@@ -1,6 +1,8 @@
 # Worker Runtime / Transport Pre-Score-Band Residue Convergence Roadmap
 
-Status: proposed convergence roadmap.
+Status: active roadmap; presence/read-view interface removal is already in
+progress in the current working tree. WTP-0 inventory and WTP-4 warm-candidate
+deletion are the next executable slices.
 
 ## Purpose
 
@@ -27,6 +29,9 @@ starts now:
 - `WorkerRuntimeStateRecord`, `WorkerReadinessState`, and
   `WorkerOccupancyState` are diagnostic/delete candidates. They must not
   become alternate scheduling truth while score-band eligibility is introduced.
+  The older runtime-history boundary track was removed from active roadmap
+  scope because it preserved stale runtime-history and storage-shape wording
+  around this area instead of reducing the pre score-band surface.
 - `AdapterNodeRecord` / `NodeGroupBindingRecord` preserve an older
   adapter-node topology model. That model needs explicit classification before
   score-band work starts, because it is not the same thing as a resource slot,
@@ -38,6 +43,8 @@ starts now:
 - `WorkerCandidateBatch` has become mostly a warm/cold diagnostic carrier. If
   the remaining caller only needs candidate rows, the wrapper should be
   deleted with the warm-pool path instead of narrowed into another DTO.
+  Deletion must include the `findWorkerCandidateBatch(...)` method name; a
+  row-returning method that still says `Batch` would keep old vocabulary alive.
 
 This roadmap is a cleanup prerequisite. It should leave current assignment and
 transport delivery behavior working, but remove unnecessary old seams before
@@ -92,6 +99,7 @@ Therefore this roadmap cleans the pre-score-band residue as follows:
 | `WorkerPresenceRuntime extends WorkerReachabilityView, WorkerDeliveryTargetView` | mixed projection / residue | It collapses transport session writes, reachability diagnostics, and delivery-target lookup into one contract. The blueprint separates transport-local freshness from worker-runtime schedulability and post-selection delivery. Current code is already moving away from the composite type; this roadmap must finish the cleanup rather than recreate it. | Split into narrow presence write/write-ingress contract plus separate read/projection surfaces. |
 | `InMemoryWorkerPresenceRuntime` backing presence, reachability, and delivery target | transitional embedded implementation | A single implementation may temporarily back multiple views, but callers should not see a composite owner. | Keep only as implementation detail if needed; expose through narrow interfaces in assembly. |
 | `WorkerRuntimePresenceIngress` connected / heartbeat path | transport freshness bridge residue | Connected and heartbeat prove session freshness only. They must not request scheduling recheck or reopen eligibility. | Keep as transport-local/presence projection only; only current-session disconnect may emit negative block evidence. |
+| `WorkerDispatchBlockRuntime` / `WorkerDispatchBlockSignal` / `WorkerDispatchBlockSource.TRANSPORT_DISCONNECTED` | allowed negative-evidence ingress | This is the one current transport-to-worker-runtime scheduling effect allowed by the blueprint: accepted current-session loss can close dispatch eligibility. It is not a freshness/reopen path. | Keep narrow. Inventory callers and prove connected/heartbeat cannot use it; only accepted current-session disconnect may emit `TRANSPORT_DISCONNECTED`. |
 | `WorkerReachabilityView` / `WorkerManager#getWorkerReachability` | diagnostic read model residue | Reachability is not score-band eligibility and must not become a second scheduling gate. The interface is being removed, but `Function<String, WorkerReachabilityState>` and direct getters can still preserve the old behavior if left unclassified. | Keep only as diagnostic point read if needed; forbid selection and recovery from depending on it. |
 | Delivery-target resolver / `SelectedWorkerDeliveryTargetEvidence` | still-required post-selection evidence | Assigned dispatch still needs selected worker to opaque `adapterMailboxKey` lookup. This is after worker selection and not a scheduling input. The interface may disappear, but the resolver surface still exists. | Keep as point lookup; classify each evidence field as dispatch-required or diagnostic. Forbid list/stats/scheduling use. |
 | `WorkerRuntimeStateRecord` + readiness/occupancy derivations | diagnostic read model / delete candidate | It composes reachability, heartbeat freshness, dispatch gate, admission, and load into one observation. That is acceptable only as a read model, but dangerous if reused as slot eligibility truth. Current code must prove a real SDK/server/operator consumer before retaining it. | Delete if there is no real consumer. If retained, keep only as read/diagnostic output and forbid selection, admission, or score-band registry writes from this composite record. |
@@ -99,7 +107,7 @@ Therefore this roadmap cleans the pre-score-band residue as follows:
 | `WorkerCandidateBucketPolicy` / `candidateBucketKeys` | current bounded-candidate partition mechanism | BCA still uses candidate buckets for sparse candidate acquisition. They are not the final score-band lane model. | Keep until score-band replacement is designed; document as current migration mechanism, not future lane truth. |
 | `TaskCandidateWarmPool` | task-local worker candidate cache residue | It is a task-side worker hint. The blueprint forbids new task-side worker indexes and moves future warming toward lane/resource preallocation. | Delete, not rename. |
 | `WorkerWarmHintRuntime` | mutation surface for warm-pool residue | It only exists to feed task-local warm candidates. | Delete with warm pool. |
-| `WorkerCandidateBatch` | warm-pool-era wrapper / delete candidate | Selection currently needs candidate rows, not warm/cold source diagnostics. If the wrapper exists only to carry `candidates()`, it is not a useful owner boundary. | Prefer deleting the wrapper and returning `List<WorkerCandidateRow>` from the candidate runtime. Retain a batch only if inventory proves non-warm-pool metadata is still required. |
+| `WorkerCandidateBatch` / `findWorkerCandidateBatch(...)` | warm-pool-era wrapper / delete candidate | Selection currently needs candidate rows, not warm/cold source diagnostics. If the wrapper exists only to carry `candidates()`, it is not a useful owner boundary. Keeping the method name after returning rows would preserve a false batch model. | Prefer deleting the wrapper and replacing the method with `findWorkerCandidates(...)` returning `List<WorkerCandidateRow>`. Retain a batch only if inventory proves non-warm-pool metadata is still required. |
 | `WorkerCandidateIndex` / `WorkerCandidateRuntime` | current migration mechanism | These remain the current bounded candidate path until the score-band matcher roadmap replaces internals with eligible slot acquire. | Do not delete in this roadmap. |
 
 In short:
@@ -114,6 +122,7 @@ clean now:
   candidate batch wrapper if it only carries rows
 
 keep narrow for now:
+  current-session disconnect -> WorkerDispatchBlockRuntime negative evidence
   post-selection delivery target resolver
   current bounded candidate acquisition
   candidate bucket partitioning as current migration mechanism
@@ -130,6 +139,38 @@ defer:
   demand-lane preallocation
   multi-resource claims
 ```
+
+## Deletion Bias For This Roadmap
+
+This roadmap assumes the scheduling model is being materially reversed toward
+score-band supply-side slots. Older worker-runtime helper records and DTOs are
+not protected by default merely because they exist.
+
+Default rule:
+
+```text
+no real production/API consumer -> delete
+only test/doc/guard/archive consumer -> delete or rewrite proof
+single narrow internal consumer -> pass the needed fields, not the whole record
+public SDK/server/operator API consumer -> classify first, then keep/narrow/delete by owner decision
+```
+
+For this roadmap, a "real consumer" means one of:
+
+- a production main-source caller that needs the whole shape for a current
+  runtime decision;
+- a public SDK/server/operator API that intentionally exposes the shape as part
+  of current behavior;
+- a documented owner contract with active proof that would fail if the shape is
+  removed.
+
+Tests, stale roadmaps, archived docs, architecture guards protecting old
+vocabulary, and compatibility examples do not count as real consumers. They
+should be rewritten or deleted with the model.
+
+If a no-consumer or low-coupling record becomes useful later, the score-band
+implementation should add it back under the new owner with a narrow caller and
+proof. It should not be retained now as speculative diagnostic surface.
 
 ## Current Code Observations
 
@@ -149,6 +190,11 @@ defer:
   connected / heartbeat / disconnected events and emits the negative
   `TRANSPORT_DISCONNECTED` block only when a current session becomes
   unreachable.
+- `WorkerDispatchBlockRuntime`, `WorkerDispatchBlockSignal`, and
+  `WorkerDispatchBlockSource.TRANSPORT_DISCONNECTED` are the current narrow
+  negative-evidence path from transport session loss into worker-runtime
+  dispatch eligibility. They are allowed only for accepted current-session
+  disconnect, not connected, heartbeat, session refresh, or positive recovery.
 - Delivery-target resolution is still required for assigned dispatch:
   delivery integration resolves an already-selected worker to an opaque
   `adapterMailboxKey` through `SelectedWorkerDeliveryTargetEvidence`.
@@ -173,16 +219,19 @@ defer:
   replaces it with slot-state vocabulary.
 - `AdapterNodeRecord` / `NodeGroupBindingRecord` are exposed through
   `WorkerManager`, `WorkerResourceQueryRuntime`, `WorkerNodeBindingRuntime`,
-  and embedded SDK snapshots. They look like older adapter topology/control
-  surface, not score-band supply truth.
+  embedded SDK snapshots, SDK runtime-control operations, and public worker
+  API routes such as `/worker-api/v1/adapter-nodes` and
+  `/worker-api/v1/node-group-bindings`. They look like older adapter
+  topology/control surface, not score-band supply truth.
 - `TaskCandidateWarmPool` is used by `WorkerCandidateSourceOwner` before cold
   candidate acquisition.
 - `WorkerWarmHintRuntime` exposes warm-candidate mutation through
   `WorkerManager` and SDK/starter config.
 - `WorkerCandidateBatch` carries warm/cold diagnostic counts that exist only
   because the warm-pool path exists. Current selection consumes candidate rows;
-  if no other non-warm metadata remains, delete the batch wrapper instead of
-  preserving a row-only DTO.
+  if no other non-warm metadata remains, delete the batch wrapper and rename
+  `findWorkerCandidateBatch(...)` to a row-returning acquisition method instead
+  of preserving a row-only DTO or batch-shaped method name.
 - `WorkerCandidateBucketPolicy`, `WorkerTaskSelector#candidateBucketKeys`, and
   `ResolvedWorkerSchedulingPolicy#candidateBucketKeys` are current
   bounded-candidate partitioning mechanics. They are not the same as future
@@ -314,6 +363,9 @@ rows.
   acquire roadmap replaces the production caller path.
 - Do not treat `WorkerRuntimeStateRecord`, readiness, or occupancy as the
   future eligibility index.
+- Do not retain no-consumer or low-coupling broad records "just in case".
+  Future score-band work should add back narrowly owned records only when a
+  real caller and proof exist.
 
 ## WTP-0: Inventory And Baseline Classification
 
@@ -328,6 +380,9 @@ Scope:
   - `WorkerPresenceRuntime`
   - `InMemoryWorkerPresenceRuntime`
   - `WorkerRuntimePresenceIngress`
+  - `WorkerDispatchBlockRuntime`
+  - `WorkerDispatchBlockSignal`
+  - `WorkerDispatchBlockSource`
   - `WorkerReachabilityView`
   - `WorkerDeliveryTargetView`
   - `WorkerManager#getWorkerReachability`
@@ -342,6 +397,7 @@ Scope:
   - `WorkerWarmHintRuntime`
   - `TaskCandidateWarmPool`
   - `WorkerCandidateBatch`
+  - `WorkerCandidateRuntime#findWorkerCandidateBatch`
   - `WorkerCandidateBatch#warmCandidateCount`
   - `WorkerCandidateBatch#coldCandidateCount`
   - `WorkerCandidateBatch#warmSourceGuardRejectedCount`
@@ -351,6 +407,12 @@ Scope:
   - `ResolvedWorkerSchedulingPolicy#candidateBucketKeys`
 - Separate production, test, architecture guard, documentation, and archived
   roadmap references.
+- Classify the allowed negative-evidence path separately from freshness
+  residue: `TRANSPORT_DISCONNECTED` is kept only as current-session loss input
+  to worker-runtime dispatch eligibility.
+- Classify whether each record/interface has a real consumer under the
+  roadmap-level deletion-bias rule. Tests, docs, guards, and archived roadmaps
+  are not enough to retain a production model.
 - Verify whether selection packages still read reachability directly.
 - Verify whether any production path depends on warm-candidate behavior for
   correctness rather than performance.
@@ -360,6 +422,11 @@ Scope:
 - Verify whether adapter-node / node-group APIs are production scheduling
   inputs, admin/control-plane inventory, test fixtures, or stale public SDK
   surface.
+  This inventory must include `MassSdkApplication`,
+  `WorkerRegistryOperations`, `MassRuntimeControl`,
+  `ExternalWorkerApiController`, server API docs, SDK quickstart/docs, and
+  server integration tests for `/worker-api/v1/adapter-nodes` and
+  `/worker-api/v1/node-group-bindings`.
 - Verify whether candidate bucket keys are only current BCA partitioning
   mechanics or are being described as future score-band demand lanes.
 
@@ -368,12 +435,19 @@ Acceptance:
 - Inventory states each symbol's current owner, fact classification, caller
   class, and target disposition:
   `keep`, `narrow`, `delete`, `defer`, or `move to diagnostics`.
+- Any symbol with no real consumer is marked `delete`, not `move to
+  diagnostics`, unless WTP-0 names the concrete public/API/operator consumer.
+- Any low-coupling symbol with one or two internal callers that only need a few
+  fields is marked `narrow`, with the exact replacement fields or method shape.
 - No behavior change.
 - The next slice can be implemented without discovering a hidden production
   caller that requires compatibility aliases.
 - The inventory explicitly says which symbols are user-facing SDK/API
   surfaces and which are internal runtime support, so cleanup does not
   preserve stale public paths accidentally.
+- The inventory explicitly proves that the only transport-origin scheduling
+  effect retained by this roadmap is accepted current-session disconnect into
+  `WorkerDispatchBlockRuntime`.
 
 Suggested inventory file:
 
@@ -399,6 +473,10 @@ Scope:
 - Update `WorkerRuntimePresenceIngress` so its worker-runtime dependency can
   only write session presence and emit negative disconnect through
   `WorkerDispatchBlockRuntime`.
+- Keep `WorkerDispatchBlockRuntime`, `WorkerDispatchBlockSignal`, and
+  `WorkerDispatchBlockSource.TRANSPORT_DISCONNECTED` as an explicit
+  negative-evidence ingress, not as presence-read residue. Classify the port in
+  WTP-0 and prove its caller path is limited to accepted current-session loss.
 - Keep connected / heartbeat as presence writes only; they must not refresh
   registry heartbeat, request dispatch wakeup, or reopen schedulability.
 - Keep disconnected as the only current transport-to-worker-runtime negative
@@ -418,6 +496,9 @@ Acceptance:
   explicitly reclassifies one as a still-current contract.
 - `WorkerRuntimePresenceIngress` cannot call `resolveDeliveryTarget(...)` or
   `getWorkerReachability(...)` through its presence dependency.
+- `WorkerRuntimePresenceIngress` can call `WorkerDispatchBlockRuntime` only
+  for accepted current-session disconnect. Connected, heartbeat, refresh, and
+  stale/replaced disconnect cannot call block, recovery, or recheck.
 - `EngineConfig` no longer uses one composite field as the public/default owner
   of presence, reachability, and delivery target.
 - Existing embedded distributed transport tests still prove selected-worker
@@ -480,6 +561,9 @@ Scope:
   SDK/server/operator consumer. Keep `WorkerOccupancyState` only as the narrow
   `WorkerLoadSnapshot` diagnostic helper unless a later score-band roadmap
   explicitly replaces it with slot-state contracts.
+- Do not keep `WorkerRuntimeStateRecord` or `WorkerReadinessState` as
+  diagnostic surfaces only because they are cheap to leave in place. They need
+  a real consumer; otherwise deletion is the target.
 - Verify no selection/admission/dispatch hot path consumes
   `WorkerRuntimeStateRecord` as input.
 - Classify `AdapterNodeRecord`, `NodeGroupBindingRecord`, and
@@ -487,6 +571,12 @@ Scope:
   WTP-0 proves all API/SDK consumers are stale. Do not delete this surface in
   the same slice as warm-pool deletion; it has a different caller set and proof
   surface.
+- Include the SDK/server/API disposition in the same classification:
+  `MassSdkApplication`, `WorkerRegistryOperations`, `MassRuntimeControl`,
+  `ExternalWorkerApiController`, `xa-mass-server` API docs, SDK quickstart
+  docs, and external-worker registration E2E tests must either keep the surface
+  as explicit topology inventory or be listed for deletion in a separate API
+  owner slice.
 - If adapter-node/group binding stays, document that it is not worker slot
   supply, not demand-lane routing, and not assigned-delivery mailbox truth.
 - Classify `WorkerCandidateBucketPolicy`,
@@ -501,9 +591,11 @@ Acceptance:
 
 - Owner docs either delete `WorkerRuntimeStateRecord` /
   `WorkerReadinessState` from current contracts or describe the retained state
-  surfaces as diagnostics only.
+  surfaces as diagnostics only with the real public/API/operator consumer
+  named.
 - Adapter-node / node-group binding is either explicitly retained as
-  control-plane inventory or marked for deletion with caller list and proof.
+  control-plane inventory or marked for deletion with caller list, SDK/server
+  API disposition, and proof.
 - Candidate bucket policy is documented as current BCA partitioning, not
   score-band lane/index truth.
 - No new abstraction is introduced in this slice. The output is owner
@@ -529,9 +621,17 @@ Scope:
 - Remove warm-candidate sampling from `WorkerCandidateSourceOwner`; it should
   request the bounded candidate source directly.
 - Prefer deleting `WorkerCandidateBatch` and changing
-  `WorkerCandidateRuntime#findWorkerCandidateBatch(...)` to return
-  `List<WorkerCandidateRow>` or an equivalently narrow row collection. Retain
-  a batch type only if WTP-0 proves non-warm-pool metadata is still required.
+  `WorkerCandidateRuntime#findWorkerCandidateBatch(...)` to
+  `findWorkerCandidates(...)` returning `List<WorkerCandidateRow>` or an
+  equivalently narrow row collection. Retain a batch type only if WTP-0 proves
+  non-warm-pool metadata is still required.
+- Update `WorkerSelectionOwner`, `WorkerCandidateSourceOwner`, `WorkerManager`,
+  and focused tests to use the row-returning acquisition method. Do not keep a
+  method named `findWorkerCandidateBatch(...)` when no batch carrier remains.
+- Update selection-focused tests and helpers, including
+  `WorkerSelectionAtomicRuntimeTest`, `WorkerSelectionRankingMechanicsTest`,
+  and `WorkerSelectionTestSupport`, so they mock/provide candidate rows rather
+  than `WorkerCandidateBatch` or warm/cold diagnostic metadata.
 - If a batch type is retained temporarily, remove all warm/cold/source-guard
   diagnostic counters from it.
 - Delete or rewrite tests that preserve warm-pool behavior, including
@@ -553,6 +653,13 @@ Acceptance:
 - `WorkerCandidateBatch` is deleted when it carries no non-warm metadata. If
   retained by explicit WTP-0 decision, it carries no warm/cold/source-guard
   diagnostic counters and has a later deletion owner.
+- If `WorkerCandidateBatch` is deleted, no production or test source references
+  `findWorkerCandidateBatch(...)`. If a batch carrier is retained by explicit
+  WTP-0 decision, the method name and metadata fields are documented as
+  current, non-warm-pool facts with a later score-band replacement owner.
+- `WorkerSelectionOwner` and selection tests prove selection consumes
+  candidate rows only; warm/cold/source-guard batch metadata is not preserved
+  as a hidden selection input.
 - Candidate acquisition remains bounded through the BCA contract.
 - No correctness test depends on warm-candidate preference.
 - Engine and worker-runtime architecture guards no longer require or protect
@@ -587,6 +694,7 @@ Scope:
   - forbid adapter-node / node-group topology from being used as
     score-band slot, lane, or mailbox truth;
   - forbid task-local warm candidate pool classes or mutation ports.
+  - forbid `findWorkerCandidateBatch(...)` after the batch wrapper is deleted.
 - Archive or mark superseded any roadmap sections that still treat warm pool as
   a current mechanism.
 
@@ -594,12 +702,13 @@ Acceptance:
 
 - Owner docs describe:
   - transport freshness as transport-local evidence;
-  - current-session disconnect as narrow negative evidence;
+  - current-session disconnect as the only retained transport-origin negative
+    scheduling evidence path;
   - delivery target lookup as post-selection only;
   - runtime-state/readiness/occupancy as deleted surfaces or diagnostics/read
     models only;
   - adapter-node / node-group binding as classified topology or removed
-    surface, not score-band truth;
+    surface, with SDK/server API disposition, not score-band truth;
   - candidate buckets as current bounded-candidate partitioning only;
   - warm-pool mechanism as removed.
 - Proof registry points to focused tests for presence split, delivery target
@@ -621,12 +730,19 @@ topology redesign gate. Once WTP-0 confirms warm-pool is only acceleration,
 start WTP-4 before the larger presence/topology cleanup so score-band is not
 blocked by unrelated public-surface decisions.
 
+The removed runtime-history boundary track is not a dependency for this
+roadmap. Do not reintroduce it to justify retaining `WorkerRuntimeStateRecord`
+or old runtime-history storage wording.
+
 ## Do Not Start With
 
 - Do not start from only `WorkerPresenceRuntime` and `TaskCandidateWarmPool`
   because they were named as examples. WTP-0 must inventory runtime-state,
   topology, delivery-target evidence, candidate-bucket, and warm-pool residue
   together before choosing delete/narrow/defer actions.
+- Do not start by creating diagnostic replacements for records that have no
+  real consumer. Delete first; add back later only under a new score-band owner
+  if a caller proves the need.
 - Do not start by adding score-band classes.
 - Do not start by renaming `TaskCandidateWarmPool`.
 - Do not replace warm pool with another task-local candidate cache.
@@ -644,15 +760,19 @@ blocked by unrelated public-surface decisions.
 Commands must be corrected after WTP-0 if test names change.
 
 ```powershell
-rg -n "WorkerPresenceRuntime|InMemoryWorkerPresenceRuntime|WorkerRuntimePresenceIngress|WorkerDeliveryTargetView|WorkerReachabilityView|WorkerManager#getWorkerReachability|getWorkerReachability|SelectedWorkerDeliveryTargetEvidence|WorkerRuntimeStateRecord|WorkerReadinessState|WorkerOccupancyState|AdapterNodeRecord|NodeGroupBindingRecord|WorkerNodeBindingRuntime|WorkerCandidateBucketPolicy|candidateBucketKeys|TaskCandidateWarmPool|WorkerWarmHintRuntime|warmCandidate|warmCandidateCount|coldCandidateCount|warmSourceGuardRejectedCount|duplicateCandidateCount" xa-mass-worker-runtime sdk/xa-mass-embedded-sdk transport xa-mass-engine platform_infra roadmap doc --glob "!**/target/**" --glob "!**/archive/**"
+rg -n "WorkerPresenceRuntime|InMemoryWorkerPresenceRuntime|WorkerRuntimePresenceIngress|WorkerDispatchBlockRuntime|WorkerDispatchBlockSignal|WorkerDispatchBlockSource|WorkerDeliveryTargetView|WorkerReachabilityView|WorkerManager#getWorkerReachability|getWorkerReachability|SelectedWorkerDeliveryTargetEvidence|WorkerRuntimeStateRecord|WorkerReadinessState|WorkerOccupancyState|AdapterNodeRecord|NodeGroupBindingRecord|WorkerNodeBindingRuntime|WorkerCandidateBucketPolicy|candidateBucketKeys|TaskCandidateWarmPool|WorkerWarmHintRuntime|warmCandidate|warmCandidateCount|coldCandidateCount|warmSourceGuardRejectedCount|duplicateCandidateCount|findWorkerCandidateBatch" xa-mass-worker-runtime sdk/xa-mass-embedded-sdk transport xa-mass-engine platform_infra roadmap doc --glob "!**/target/**" --glob "!**/archive/**"
 
-rg -n "TaskCandidateWarmPool|WorkerWarmHintRuntime|recordWarmCandidate|warmCandidateCount|WorkerCandidateBatch|coldCandidateCount|warmSourceGuardRejectedCount|duplicateCandidateCount" xa-mass-worker-runtime/src/main sdk/xa-mass-embedded-sdk/src/main xa-mass-engine/src/main platform_infra --glob "*.java" --glob "!**/target/**"
+rg -n "TaskCandidateWarmPool|WorkerWarmHintRuntime|recordWarmCandidate|warmCandidateCount|WorkerCandidateBatch|findWorkerCandidateBatch|coldCandidateCount|warmSourceGuardRejectedCount|duplicateCandidateCount" xa-mass-worker-runtime/src/main sdk/xa-mass-embedded-sdk/src/main xa-mass-engine/src/main platform_infra --glob "*.java" --glob "!**/target/**"
 
-.\mvnw.cmd -q -pl xa-mass-worker-runtime -am "-Dtest=WorkerManagerTest,WorkerCandidateIndexTest,WorkerAdmissionOwnerTest,InMemoryWorkerPresenceRuntimeTest" test
+.\mvnw.cmd -q -pl xa-mass-worker-runtime,sdk/xa-mass-embedded-sdk,transport/transport_runtime,xa-mass-engine -am -DskipTests compile
+
+.\mvnw.cmd -q -pl xa-mass-worker-runtime -am "-Dtest=WorkerManagerTest,WorkerCandidateIndexTest,WorkerAdmissionOwnerTest,InMemoryWorkerPresenceRuntimeTest,WorkerSelectionAtomicRuntimeTest,WorkerSelectionRankingMechanicsTest" test
 
 .\mvnw.cmd -q -pl sdk/xa-mass-embedded-sdk -am "-Dtest=WorkerRuntimePresenceIngressTest,MassApplicationDistributedTransportTest,TaskDispatchRoutingSubmitterTest" test
 
-.\mvnw.cmd -q -pl transport/transport_runtime,xa-mass-engine -am "-Dtest=TransportConvergenceArchitectureGuardTest,EngineSchedulingCoreArchitectureGuardTest" test
+.\mvnw.cmd -q -pl transport/transport_runtime -am "-Dtest=TransportConvergenceArchitectureGuardTest" test
+
+.\mvnw.cmd -q -pl xa-mass-engine -am "-Dtest=EngineSchedulingCoreArchitectureGuardTest" test
 ```
 
 For final completion proof, mandatory focused tests must run without
@@ -668,7 +788,9 @@ This roadmap is complete when:
    reachability/delivery-target reads.
 2. Transport connected / heartbeat / keepalive remains transport-local
    freshness and cannot reopen worker schedulability.
-3. Current-session disconnect remains a narrow negative evidence path.
+3. Current-session disconnect remains the only retained transport-origin
+   negative scheduling evidence path and enters through
+   `WorkerDispatchBlockRuntime` / `TRANSPORT_DISCONNECTED`.
 4. Selected-worker delivery-target resolution is available only as
    post-selection point lookup for assigned delivery.
 5. Selection hot path does not depend on reachability diagnostics.
@@ -676,8 +798,8 @@ This roadmap is complete when:
    dispatch-required fields are used on the assigned-delivery path.
 7. `WorkerRuntimeStateRecord` and `WorkerReadinessState` are either deleted or
    documented and guarded as read/diagnostic derivations, not schedulable slot
-   truth. `WorkerOccupancyState` remains only as a narrow load diagnostic if
-   retained.
+   truth, with a real consumer named. `WorkerOccupancyState` remains only as a
+   narrow load diagnostic if retained.
 8. `AdapterNodeRecord` / `NodeGroupBindingRecord` are either retained as
    explicit control-plane/admin topology or removed from current runtime
    surfaces; they are not score-band supply, demand lane, or mailbox truth.
@@ -685,14 +807,17 @@ This roadmap is complete when:
    current BCA partitioning and have a clear replacement/defer decision for
    score-band work.
 10. `TaskCandidateWarmPool`, `WorkerWarmHintRuntime`, warm-candidate mutation,
-   warm/cold batch counters, and row-only `WorkerCandidateBatch` residue are
-   removed from main sources.
+   warm/cold batch counters, `findWorkerCandidateBatch(...)`, and row-only
+   `WorkerCandidateBatch` residue are removed from main sources.
 11. Bounded candidate acquisition still works without task-local warm hints.
 12. Owner docs, proof registry, and guards no longer preserve warm-pool,
    composite-presence, topology-as-slot, or runtime-state-as-eligibility
    vocabulary as current truth.
 13. The repo is ready for the first score-band registry roadmap without hidden
    old scheduling acceleration paths.
+14. No no-consumer broad record is retained solely as speculative diagnostic
+   surface; deleted models can be reintroduced later only by a new owner
+   decision and focused proof.
 
 ## Deferred Decisions
 

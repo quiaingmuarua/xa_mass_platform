@@ -1,6 +1,8 @@
 package com.xa.mass.transport.socket.server;
 
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
+import com.xa.mass.contract.worker.WorkerChannelFrame;
+import com.xa.mass.contract.worker.WorkerChannelFrameJsonCodec;
 import com.xa.mass.transport.channel.ResultIngressEntry;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
@@ -132,7 +134,7 @@ class SocketTransportServerTest {
     }
 
     @Test
-    void canonicalTaskResultIngressUsesBoundRouteKeyAndCorrelationTraceFallback() throws Exception {
+    void actionReplyResultIngressUsesWorkerChannelFrame() throws Exception {
         VirtualThreadRuntimeTaskExecutor executor = new VirtualThreadRuntimeTaskExecutor("socket-test-", 4);
         SocketSessionManager sessionManager = sessionManager();
         AtomicReference<ResultIngressEntry> capturedEntry = new AtomicReference<>();
@@ -158,20 +160,22 @@ class SocketTransportServerTest {
                          new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8))) {
                 writer.write("{\"type\":\"hello\",\"workerId\":\"worker-1\",\"workerGroupId\":\"bucket-1\",\"routeKey\":\"socket-route-9\"}");
                 writer.newLine();
-                writer.write("""
-                        {"resultCorrelationRef":"corr-1","success":true,"detail":"ok","output":{"status":"SUCCESS"}}
-                        """.trim());
+                writer.write(new WorkerChannelFrameJsonCodec().encode(new WorkerChannelFrame(
+                        "reply-corr-1",
+                        WorkerChannelFrame.ACTION_REPLY,
+                        "{\"replyRef\":\"corr-1\",\"success\":true,\"body\":\"{\\\"status\\\":\\\"SUCCESS\\\"}\"}"
+                )));
                 writer.newLine();
                 writer.flush();
 
                 waitUntil(() -> capturedEntry.get() != null,
-                        "canonical socket result should be ingested");
+                        "socket ACTION_REPLY result should be ingested");
                 assertEquals("corr-1", capturedEntry.get().partitionKey());
                 assertEquals("corr-1", capturedEntry.get().message().resultCorrelationRef());
                 assertEquals("socket", capturedEntry.get().diagnostics().get("adapterId"));
-                assertEquals("socket-route-9", capturedEntry.get().diagnostics().get("routeKey"));
-                assertEquals("corr-1", capturedEntry.get().diagnostics().get("traceId"));
-                assertTrue(capturedEntry.get().message().payload().contains("\"resultCorrelationRef\":\"corr-1\""));
+                assertNull(capturedEntry.get().diagnostics().get("routeKey"));
+                assertEquals("reply-corr-1", capturedEntry.get().diagnostics().get("traceId"));
+                assertTrue(capturedEntry.get().message().payload().contains("\"replyRef\":\"corr-1\""));
                 assertFalse(capturedEntry.get().message().payload().contains("\"taskId\""));
                 assertFalse(capturedEntry.get().message().payload().contains("\"messageId\""));
             }

@@ -1,6 +1,5 @@
 package com.xa.mass.testing.chaos.support;
 
-import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
@@ -29,7 +28,6 @@ import com.xa.mass.testing.support.WorkerRegistrationSpineSupport;
 import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
-import com.xa.mass.transport.model.TransportOutboundMessage;
 
 import java.net.URI;
 import java.util.ArrayList;
@@ -83,10 +81,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                         .webSocketAdapter(webSocket -> webSocket
                                 .server(transportPort, config.endpointPath())
                                 .enabled(true)
-                                .serverEnabled(true))
-                        .inputQueue(new InMemoryMessageQueue<>(config.queuePrefix() + "-input", String.class))
-                        .outputQueue(new InMemoryMessageQueue<>(config.queuePrefix() + "-output", TransportOutboundMessage.class))
-                        .queueMode())
+                                .serverEnabled(true)))
                 .engine(engine -> {
                     engine.enabled(true)
                             .workerThreads(config.workerThreads())
@@ -114,10 +109,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                 .transport(transport -> transport
                         .webSocketAdapter(webSocket -> webSocket
                                 .enabled(false)
-                                .serverEnabled(false))
-                        .inputQueue(new InMemoryMessageQueue<>(config.queuePrefix() + "-input", String.class))
-                        .outputQueue(new InMemoryMessageQueue<>(config.queuePrefix() + "-output", TransportOutboundMessage.class))
-                        .queueMode())
+                                .serverEnabled(false)))
                 .engine(engine -> {
                     engine.enabled(true)
                             .workerThreads(config.workerThreads())
@@ -154,10 +146,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                 .transport(transport -> transport
                         .webSocketAdapter(webSocket -> webSocket
                                 .enabled(false)
-                                .serverEnabled(false))
-                        .inputQueue(new InMemoryMessageQueue<>(config.queuePrefix() + "-input", String.class))
-                        .outputQueue(new InMemoryMessageQueue<>(config.queuePrefix() + "-output", TransportOutboundMessage.class))
-                        .queueMode())
+                                .serverEnabled(false)))
                 .engine(engine -> {
                     engine.enabled(true)
                             .workerThreads(config.workerThreads())

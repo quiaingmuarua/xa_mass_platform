@@ -3,6 +3,7 @@ package com.xa.mass.sdk.worker;
 import com.xa.mass.transport.channel.DeliveryPullChannel;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.runtime.embedded.PullSessionEvidenceDriver;
+import com.xa.mass.worker.runtime.resource.WorkerHeartbeatRuntime;
 
 /**
  * Internal starter assembly entry for pull worker sessions.
@@ -22,6 +23,7 @@ public final class EmbeddedPullWorkerSessions {
                                          DeliveryPullChannel deliveryPullChannel,
                                          TransportResultIngressChannel resultIngressChannel,
                                          PullSessionEvidenceDriver evidenceDriver,
+                                         WorkerHeartbeatRuntime workerHeartbeatRuntime,
                                          String transportHint) {
         return new EmbeddedPullWorkerSession(
                 workerId,
@@ -30,6 +32,7 @@ public final class EmbeddedPullWorkerSessions {
                 deliveryPullChannel,
                 resultIngressChannel,
                 evidenceDriver,
+                workerHeartbeatRuntime,
                 transportHint
         );
     }

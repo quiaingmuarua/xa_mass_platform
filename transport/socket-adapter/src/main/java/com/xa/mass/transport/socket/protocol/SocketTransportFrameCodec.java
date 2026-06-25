@@ -3,6 +3,7 @@ package com.xa.mass.transport.socket.protocol;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
+import com.xa.mass.contract.worker.WorkerChannelFrameJsonCodec;
 import com.xa.mass.transport.runtime.frame.TransportJsonFrameParser;
 import com.xa.mass.transport.packet.TransportPacket;
 import com.xa.mass.transport.runtime.delivery.DispatchMessage;
@@ -16,10 +17,9 @@ public final class SocketTransportFrameCodec {
     private static final String WORKER_GROUP_ID_FIELD = "workerGroupId";
     private static final String ROUTE_KEY_FIELD = "routeKey";
     private static final String TRACE_ID_FIELD = "traceId";
-    private static final String RESULT_CORRELATION_REF_FIELD = "resultCorrelationRef";
-    private static final String EVENT_CODE_FIELD = "eventCode";
 
     private final TransportJsonFrameParser jsonFrameParser;
+    private final WorkerChannelFrameJsonCodec workerFrameCodec;
 
     public SocketTransportFrameCodec() {
         this(new GsonBuilder().create());
@@ -27,6 +27,7 @@ public final class SocketTransportFrameCodec {
 
     public SocketTransportFrameCodec(Gson gson) {
         this.jsonFrameParser = new TransportJsonFrameParser(gson);
+        this.workerFrameCodec = new WorkerChannelFrameJsonCodec();
     }
 
     public JsonObject parseObject(String json) {
@@ -58,36 +59,11 @@ public final class SocketTransportFrameCodec {
         return readString(frame, TRACE_ID_FIELD);
     }
 
-    public String extractResultCorrelationRef(JsonObject frame) {
-        return readString(frame, RESULT_CORRELATION_REF_FIELD);
-    }
-
-    public String extractEventCode(JsonObject frame) {
-        return readString(frame, EVENT_CODE_FIELD);
-    }
-
-    public boolean isCanonicalTaskResult(JsonObject frame) {
-        return frame != null
-                && extractEventCode(frame) == null
-                && readString(frame, RESULT_CORRELATION_REF_FIELD) != null
-                && extractResultCorrelationRef(frame) != null
-                && !isHelloFrame(frame)
-                && !isHeartbeatFrame(frame);
-    }
-
     public String encodeCanonicalTaskDispatch(DispatchMessage item) {
         if (item == null) {
             throw new IllegalArgumentException("item must not be null");
         }
-        return item.payload();
-    }
-
-    public String encodeCanonicalTaskResultPayload(JsonObject frame) {
-        String resultCorrelationRef = readString(frame, RESULT_CORRELATION_REF_FIELD);
-        if (resultCorrelationRef == null) {
-            throw new IllegalArgumentException(RESULT_CORRELATION_REF_FIELD + " is required");
-        }
-        return jsonFrameParser.toJson(frame);
+        return workerFrameCodec.encodeAction(item.payload());
     }
 
     private String readString(JsonObject object, String field) {

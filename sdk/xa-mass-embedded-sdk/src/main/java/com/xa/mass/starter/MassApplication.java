@@ -564,6 +564,8 @@ public class MassApplication {
         return new WorkerRuntimePresenceIngress(
                 engineConfig.getWorkerPresenceRuntime(),
                 engineConfig.getWorkerDispatchBlockRuntime(),
+                engineConfig.getWorkerDispatchRecoveryRuntime(),
+                engineConfig.getWorkerHeartbeatRuntime(),
                 engineConfig.getExecutionEventSink()
         );
     }
@@ -628,6 +630,7 @@ public class MassApplication {
                 resolved.getDeliveryPullChannel(),
                 resolved.getResultIngressChannel(),
                 resolved.getPullSessionEvidenceDriver(),
+                engineConfig.getWorkerHeartbeatRuntime(),
                 resolved.getTransportHint()
         );
     }

@@ -3,10 +3,10 @@ package com.xa.mass.transport.socket.server;
 import com.google.gson.JsonObject;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.runtime.AdapterHostExecutor;
-import com.xa.mass.transport.runtime.AdapterResultIngressEntries;
 import com.xa.mass.transport.runtime.AdapterResultIngressSink;
-import com.xa.mass.transport.runtime.embedded.AdapterResultFrame;
+import com.xa.mass.transport.runtime.embedded.AdapterInboundResultProcessor;
 import com.xa.mass.transport.runtime.embedded.JsonAdapterResultDiagnosticsProvider;
+import com.xa.mass.transport.runtime.embedded.WorkerChannelActionReplyResultFrameReader;
 import com.xa.mass.transport.runtime.frame.TransportJsonFrameParser;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
 import com.xa.mass.transport.socket.session.SocketSessionManager;
@@ -45,9 +45,9 @@ public final class SocketTransportServer implements TransportServer {
     private final int maxConnections;
     private final SocketSessionManager sessionManager;
     private final SocketTransportFrameCodec frameCodec;
-    private final AdapterResultIngressSink resultIngressSink;
     private final AdapterHostExecutor hostExecutor;
-    private final JsonAdapterResultDiagnosticsProvider resultDiagnosticsProvider;
+    private final WorkerChannelActionReplyResultFrameReader resultFrameReader;
+    private final AdapterInboundResultProcessor<JsonObject> resultProcessor;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final Set<Future<?>> clientTasks = ConcurrentHashMap.newKeySet();
 
@@ -68,11 +68,13 @@ public final class SocketTransportServer implements TransportServer {
         this.maxConnections = maxConnections;
         this.sessionManager = Objects.requireNonNull(sessionManager, "sessionManager");
         this.frameCodec = Objects.requireNonNull(frameCodec, "frameCodec");
-        this.resultIngressSink = resultIngressSink;
         this.hostExecutor = Objects.requireNonNull(hostExecutor, "hostExecutor");
-        this.resultDiagnosticsProvider = new JsonAdapterResultDiagnosticsProvider(
-                this.adapterId,
-                new TransportJsonFrameParser()
+        TransportJsonFrameParser resultFrameParser = new TransportJsonFrameParser();
+        this.resultFrameReader = new WorkerChannelActionReplyResultFrameReader(resultFrameParser);
+        this.resultProcessor = AdapterInboundResultProcessor.with(
+                this.resultFrameReader,
+                resultIngressSink,
+                new JsonAdapterResultDiagnosticsProvider(this.adapterId, resultFrameParser)::diagnostics
         );
     }
 
@@ -184,32 +186,12 @@ public final class SocketTransportServer implements TransportServer {
                     continue;
                 }
                 if (frameCodec.isHeartbeatFrame(frame)) {
-                    String traceId = firstNonBlank(frameCodec.extractTraceId(frame),
-                            frameCodec.extractResultCorrelationRef(frame));
+                    String traceId = frameCodec.extractTraceId(frame);
                     sessionManager.recordHeartbeat(boundRouteKey, boundWorkerId, endpointId, "socket heartbeat", traceId);
                     continue;
                 }
-                if (frameCodec.isCanonicalTaskResult(frame)) {
-                    if (resultIngressSink == null) {
-                        logger.warn("Canonical socket task result ignored because ingest channel is unavailable");
-                        continue;
-                    }
-                    String resultCorrelationRef = frameCodec.extractResultCorrelationRef(frame);
-                    String payload = frameCodec.encodeCanonicalTaskResultPayload(frame);
-                    AdapterResultFrame result = new AdapterResultFrame(
-                            resultCorrelationRef,
-                            payload,
-                            frameCodec.extractTraceId(frame),
-                            null
-                    );
-                    boolean accepted = resultIngressSink.ingest(AdapterResultIngressEntries.from(
-                            result.correlationRef(),
-                            result.payload(),
-                            resultDiagnosticsProvider.diagnostics(frame, result, boundRouteKey)
-                    ));
-                    if (!accepted) {
-                        throw new IllegalStateException("task result ingest channel rejected inbound socket task result");
-                    }
+                if (resultFrameReader.isResultFrame(frame)) {
+                    resultProcessor.processResult(frame);
                     continue;
                 }
                 logger.warn("Ignoring unsupported socket frame: endpointId={}, routeKey={}, workerId={}",
@@ -259,14 +241,5 @@ public final class SocketTransportServer implements TransportServer {
         }
     }
 
-    private static String firstNonBlank(String first, String second) {
-        if (first != null && !first.isBlank()) {
-            return first;
-        }
-        if (second != null && !second.isBlank()) {
-            return second;
-        }
-        return null;
-    }
 }
 

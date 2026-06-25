@@ -2,16 +2,19 @@ package com.xa.mass.transport.socket.protocol;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.xa.mass.contract.worker.WorkerChannelFrame;
+import com.xa.mass.contract.worker.WorkerChannelFrameJsonCodec;
 import com.xa.mass.transport.packet.TransportPacket;
+import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SocketTransportFrameCodecTest {
 
     private final SocketTransportFrameCodec codec = new SocketTransportFrameCodec();
+    private final WorkerChannelFrameJsonCodec workerFrameCodec = new WorkerChannelFrameJsonCodec();
 
     @Test
     void helloFrameCanCarryIndependentRouteKey() {
@@ -26,22 +29,22 @@ class SocketTransportFrameCodecTest {
     }
 
     @Test
-    void canonicalTaskResultEncodesOpaquePayload() {
-        JsonObject frame = new JsonObject();
-        frame.addProperty("resultCorrelationRef", "corr-1");
-        frame.addProperty(TransportPacket.PAYLOAD_SUCCESS, true);
-        frame.addProperty(TransportPacket.PAYLOAD_DETAIL, "completed");
-        JsonObject output = new JsonObject();
-        output.addProperty("status", "SUCCESS");
-        frame.add(TransportPacket.PAYLOAD_OUTPUT, output);
+    void dispatchPayloadIsEncodedAsWorkerActionFrame() {
+        String payload = "{\"replyRef\":\"corr-1\",\"eventCode\":\"demo.dispatch\",\"body\":\"{}\"}";
+        String encoded = codec.encodeCanonicalTaskDispatch(new DispatchMessage(
+                "message-1",
+                "worker-1",
+                payload,
+                "corr-1",
+                0L,
+                1L
+        ));
 
-        JsonObject payload = JsonParser.parseString(codec.encodeCanonicalTaskResultPayload(frame)).getAsJsonObject();
-
-        assertEquals("corr-1", payload.get("resultCorrelationRef").getAsString());
-        assertFalse(payload.has("taskId"));
-        assertFalse(payload.has("messageId"));
-        assertTrue(payload.get(TransportPacket.PAYLOAD_SUCCESS).getAsBoolean());
-        assertEquals("completed", payload.get(TransportPacket.PAYLOAD_DETAIL).getAsString());
-        assertEquals("SUCCESS", payload.getAsJsonObject(TransportPacket.PAYLOAD_OUTPUT).get("status").getAsString());
+        WorkerChannelFrame frame = workerFrameCodec.decode(encoded);
+        assertEquals(WorkerChannelFrame.ACTION, frame.kind());
+        assertEquals(payload, frame.body());
+        JsonObject body = JsonParser.parseString(frame.body()).getAsJsonObject();
+        assertEquals("corr-1", body.get("replyRef").getAsString());
+        assertEquals("demo.dispatch", body.get("eventCode").getAsString());
     }
 }

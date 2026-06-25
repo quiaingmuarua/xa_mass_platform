@@ -25,7 +25,7 @@ function sendFrame(frame) {
 }
 
 function buildTaskResult(taskFrame, result) {
-  const body = {
+  const resultBody = {
     status: result?.success === false ? "FAILED" : "SUCCESS",
     integrationProbe: "cross-language-node-socket",
     workerProfile: {
@@ -42,11 +42,16 @@ function buildTaskResult(taskFrame, result) {
     eventCode: taskFrame?.eventCode ?? null,
     ...(result?.result ?? {}),
   };
+
   return {
-    resultCorrelationRef: taskFrame?.resultCorrelationRef,
-    success: Boolean(result?.success),
-    resultCode: result?.resultCode ?? null,
-    result: JSON.stringify(body),
+    frameId: `reply-${taskFrame?.replyRef ?? Date.now()}`,
+    kind: "ACTION_REPLY",
+    body: JSON.stringify({
+      replyRef: taskFrame?.replyRef,
+      success: Boolean(result?.success),
+      code: result?.resultCode ?? null,
+      body: JSON.stringify(resultBody),
+    }),
   };
 }
 
@@ -55,7 +60,7 @@ async function handleDemoDispatch(frame) {
     success: true,
     result: {
       detail: "completed by external node socket worker",
-      taskInput: frame?.input ?? {},
+      taskInput: actionBody(frame),
     },
   };
 }
@@ -65,7 +70,7 @@ async function handleCrawlerFetchPage(frame) {
     success: true,
     result: {
       detail: "crawler fetch simulated by external node socket worker",
-      url: frame?.input?.url ?? frame?.sharedConfig?.url ?? null,
+      url: actionBody(frame)?.url ?? frame?.sharedConfig?.url ?? null,
       fetchedAt: new Date().toISOString(),
     },
   };
@@ -76,23 +81,24 @@ const taskHandlers = new Map([
   ["crawler.fetch-page", handleCrawlerFetchPage],
 ]);
 
-function isCanonicalTaskDispatch(frame) {
-  return Boolean(frame?.resultCorrelationRef) && Boolean(frame?.eventCode) && frame?.success === undefined;
+function isActionDispatchFrame(frame) {
+  return frame?.kind === "ACTION";
 }
 
 async function handleFrame(rawFrame) {
   const frame = JSON.parse(rawFrame);
-  if (!isCanonicalTaskDispatch(frame)) {
+  if (!isActionDispatchFrame(frame)) {
     log("ignoring unsupported frame");
     return;
   }
 
-  const eventCode = frame?.eventCode;
+  const action = parseJson(frame.body);
+  const eventCode = action?.eventCode;
   const handler = eventCode ? taskHandlers.get(eventCode) : null;
-  log(`received task frame resultCorrelationRef=${frame.resultCorrelationRef} eventCode=${eventCode ?? "<none>"}`);
+  log(`received action frame replyRef=${action?.replyRef ?? "<none>"} eventCode=${eventCode ?? "<none>"}`);
 
   if (!handler) {
-    sendFrame(buildTaskResult(frame, {
+    sendFrame(buildTaskResult(action, {
       success: false,
       resultCode: "UNSUPPORTED_EVENT_CODE",
       result: {
@@ -102,8 +108,8 @@ async function handleFrame(rawFrame) {
     return;
   }
 
-  const result = await handler(frame);
-  sendFrame(buildTaskResult(frame, result));
+  const result = await handler(action);
+  sendFrame(buildTaskResult(action, result));
 }
 
 function stringValue(value) {
@@ -112,6 +118,18 @@ function stringValue(value) {
   }
   const text = String(value).trim();
   return text.length > 0 ? text : null;
+}
+
+function parseJson(body) {
+  try {
+    return JSON.parse(body);
+  } catch {
+    return {};
+  }
+}
+
+function actionBody(action) {
+  return parseJson(action?.body);
 }
 
 function base64Url(value) {

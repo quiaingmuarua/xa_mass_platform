@@ -11,6 +11,7 @@ import com.xa.mass.transport.polling.runtime.PollingSessionEvidenceDriver;
 import com.xa.mass.transport.runtime.embedded.PullSessionEvidenceDriver;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
+import com.xa.mass.worker.runtime.resource.WorkerHeartbeatRuntime;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -22,6 +23,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -112,10 +115,12 @@ class EmbeddedPullWorkerSessionTest {
     void connectHeartbeatDisconnectWritePresenceWithoutRouteKeyAndWithSessionToken() {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
         RecordingWorkerPresenceIngress presenceIngress = new RecordingWorkerPresenceIngress();
+        WorkerHeartbeatRuntime workerHeartbeatRuntime = mock(WorkerHeartbeatRuntime.class);
         EmbeddedPullWorkerSession session = session(mock(DeliveryPullChannel.class), mock(TransportResultIngressChannel.class),
-                endpointLeaseStore, presenceIngress);
+                endpointLeaseStore, presenceIngress, workerHeartbeatRuntime);
 
         assertTrue(session.connectAndClaim("connected"));
+        verify(workerHeartbeatRuntime).refreshWorkerHeartbeat(eq("worker-1"), anyLong());
         assertTrue(endpointLeaseStore.currentEndpointLease("group-1", "worker-1").isPresent());
         assertEquals("conn-1", endpointLeaseStore.currentEndpointLease("group-1", "worker-1")
                 .orElseThrow()
@@ -130,6 +135,7 @@ class EmbeddedPullWorkerSessionTest {
         assertFalse(staleSession("stale-conn", endpointLeaseStore, new RecordingWorkerPresenceIngress())
                 .refreshHeartbeatIfCurrent("stale-heartbeat"));
         assertTrue(session.refreshHeartbeatIfCurrent("heartbeat"));
+        verify(workerHeartbeatRuntime, org.mockito.Mockito.times(2)).refreshWorkerHeartbeat(eq("worker-1"), anyLong());
         assertTrue(endpointLeaseStore.currentEndpointLease("group-1", "worker-1").isPresent());
         assertEquals(List.of(
                         "CONNECTED:worker-1:polling:null:conn-1:connected:conn-1",
@@ -165,7 +171,17 @@ class EmbeddedPullWorkerSessionTest {
                                              TransportResultIngressChannel resultIngestChannel,
                                              InMemoryTransportEndpointLeaseStore endpointLeaseStore,
                                              WorkerPresenceIngress presenceIngress) {
-        return session("conn-1", deliveryPullChannel, resultIngestChannel, endpointLeaseStore, presenceIngress);
+        return session(deliveryPullChannel, resultIngestChannel, endpointLeaseStore, presenceIngress,
+                mock(WorkerHeartbeatRuntime.class));
+    }
+
+    private static EmbeddedPullWorkerSession session(DeliveryPullChannel deliveryPullChannel,
+                                             TransportResultIngressChannel resultIngestChannel,
+                                             InMemoryTransportEndpointLeaseStore endpointLeaseStore,
+                                             WorkerPresenceIngress presenceIngress,
+                                             WorkerHeartbeatRuntime workerHeartbeatRuntime) {
+        return session("conn-1", deliveryPullChannel, resultIngestChannel, endpointLeaseStore, presenceIngress,
+                workerHeartbeatRuntime);
     }
 
     private static EmbeddedPullWorkerSession session(String sessionToken,
@@ -173,6 +189,16 @@ class EmbeddedPullWorkerSessionTest {
                                              TransportResultIngressChannel resultIngestChannel,
                                              InMemoryTransportEndpointLeaseStore endpointLeaseStore,
                                              WorkerPresenceIngress presenceIngress) {
+        return session(sessionToken, deliveryPullChannel, resultIngestChannel, endpointLeaseStore, presenceIngress,
+                mock(WorkerHeartbeatRuntime.class));
+    }
+
+    private static EmbeddedPullWorkerSession session(String sessionToken,
+                                             DeliveryPullChannel deliveryPullChannel,
+                                             TransportResultIngressChannel resultIngestChannel,
+                                             InMemoryTransportEndpointLeaseStore endpointLeaseStore,
+                                             WorkerPresenceIngress presenceIngress,
+                                             WorkerHeartbeatRuntime workerHeartbeatRuntime) {
         return new EmbeddedPullWorkerSession(
                 "worker-1",
                 "group-1",
@@ -180,6 +206,7 @@ class EmbeddedPullWorkerSessionTest {
                 deliveryPullChannel,
                 resultIngestChannel,
                 evidenceDriver(endpointLeaseStore, presenceIngress),
+                workerHeartbeatRuntime,
                 "polling"
         );
     }

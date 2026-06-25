@@ -38,7 +38,7 @@ Current code centers on:
 - runtime embedded-support `AdapterSessionIdentity`
 - runtime embedded-support `WorkerChannelActionReplyResultFrameReader`
 - runtime embedded-support `AdapterInboundResultProcessor`
-- `WebSocketResultDiagnosticsProvider`
+- `JsonAdapterResultDiagnosticsProvider`
 
 ## Adapter Does Not Own
 
@@ -131,7 +131,7 @@ Hard rules:
 - `WorkerChannelFrame(ACTION_REPLY)` carrier decoding uses the public frame
   codec, but `replyRef` extraction belongs to transport runtime embedded
   support; `WorkerChannelActionReplyResultFrameReader` owns the shared
-  worker-channel result facts, `WebSocketResultDiagnosticsProvider` owns only
+  worker-channel result facts, `JsonAdapterResultDiagnosticsProvider` owns only
   WebSocket-local diagnostics such as route/trace fallback, and
   `AdapterInboundResultProcessor` owns result-entry construction plus sink
   ingestion behavior

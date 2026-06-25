@@ -5,7 +5,6 @@ import com.xa.mass.worker.runtime.candidate.WorkerCandidateBatch;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRuntime;
 import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
-import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerResourceQueryRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
@@ -34,10 +33,6 @@ final class PerfWorkerMatchingSupport {
                                    WorkerResourceRecord worker) {
         if (schedulingViewRuntime == null || worker == null
                 || worker.workerId() == null || worker.workerId().isBlank()) {
-            return false;
-        }
-        WorkerReachabilityState reachability = schedulingViewRuntime.getWorkerReachability(worker.workerId());
-        if (reachability == WorkerReachabilityState.OFFLINE) {
             return false;
         }
         return schedulingViewRuntime.isWorkerDispatchEnabled(worker.workerId())

@@ -1,7 +1,6 @@
 package com.xa.mass.testing.soak;
 
 import com.google.gson.Gson;
-import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
@@ -215,11 +214,7 @@ public final class SdkPollingSchedulingSoakRunner {
                             .socketAdapter(socket -> socket
                                     .server(0)
                                     .enabled(false)
-                                    .serverEnabled(false))
-                            .inputQueue(new InMemoryMessageQueue<>("soak-input", String.class))
-                            .outputQueue(new InMemoryMessageQueue<>("soak-output",
-                                    com.xa.mass.transport.model.TransportOutboundMessage.class))
-                            .queueMode())
+                                    .serverEnabled(false)))
                     .engine(engine -> {
                         engine.enabled(true)
                                 .taskShellStore(taskStorage)

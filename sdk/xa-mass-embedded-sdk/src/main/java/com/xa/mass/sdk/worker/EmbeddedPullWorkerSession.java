@@ -6,6 +6,7 @@ import com.xa.mass.transport.channel.DeliveryPullStatus;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.starter.TaskResultCallbackCodec;
 import com.xa.mass.transport.runtime.embedded.PullSessionEvidenceDriver;
+import com.xa.mass.worker.runtime.resource.WorkerHeartbeatRuntime;
 
 import java.util.List;
 import java.util.Map;
@@ -28,6 +29,7 @@ public final class EmbeddedPullWorkerSession {
     private final TransportResultIngressChannel resultIngressChannel;
     private final TaskResultCallbackCodec resultCallbackCodec;
     private final PullSessionEvidenceDriver evidenceDriver;
+    private final WorkerHeartbeatRuntime workerHeartbeatRuntime;
     private final String transportHint;
 
     EmbeddedPullWorkerSession(String workerId,
@@ -36,6 +38,7 @@ public final class EmbeddedPullWorkerSession {
                               DeliveryPullChannel deliveryPullChannel,
                               TransportResultIngressChannel resultIngressChannel,
                               PullSessionEvidenceDriver evidenceDriver,
+                              WorkerHeartbeatRuntime workerHeartbeatRuntime,
                               String transportHint) {
         if (workerId == null || workerId.isBlank()) {
             throw new IllegalArgumentException("workerId must not be blank");
@@ -48,6 +51,7 @@ public final class EmbeddedPullWorkerSession {
         this.resultIngressChannel = Objects.requireNonNull(resultIngressChannel, "resultIngressChannel");
         this.resultCallbackCodec = new TaskResultCallbackCodec();
         this.evidenceDriver = Objects.requireNonNull(evidenceDriver, "evidenceDriver");
+        this.workerHeartbeatRuntime = Objects.requireNonNull(workerHeartbeatRuntime, "workerHeartbeatRuntime");
         this.transportHint = transportHint;
     }
 
@@ -72,12 +76,16 @@ public final class EmbeddedPullWorkerSession {
     }
 
     public boolean connectAndClaim(String reason) {
-        return evidenceDriver.connect(
+        boolean connected = evidenceDriver.connect(
                 workerId,
                 workerGroupId,
                 sessionToken,
                 normalizeReason(reason, "pull-session-connect")
         );
+        if (connected) {
+            workerHeartbeatRuntime.refreshWorkerHeartbeat(workerId, System.currentTimeMillis());
+        }
+        return connected;
     }
 
     public void disconnect() {
@@ -106,12 +114,16 @@ public final class EmbeddedPullWorkerSession {
     }
 
     public boolean refreshHeartbeatIfCurrent(String reason) {
-        return evidenceDriver.heartbeat(
+        boolean refreshed = evidenceDriver.heartbeat(
                 workerId,
                 workerGroupId,
                 sessionToken,
                 normalizeReason(reason, "pull-session-heartbeat")
         );
+        if (refreshed) {
+            workerHeartbeatRuntime.refreshWorkerHeartbeat(workerId, System.currentTimeMillis());
+        }
+        return refreshed;
     }
 
     public List<WorkerAction> poll(int maxMessages) {

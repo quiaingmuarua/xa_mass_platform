@@ -91,7 +91,11 @@ class TransportConvergenceArchitectureGuardTest {
         );
         assertNoProductionSourceContains(
                 List.of(
-                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/WorkerRuntimePresenceIngress.java")
+                        repoRoot().resolve("transport/transport_api/src/main/java"),
+                        repoRoot().resolve("transport/transport_runtime/src/main/java"),
+                        repoRoot().resolve("transport/polling-adapter/src/main/java"),
+                        repoRoot().resolve("transport/socket-adapter/src/main/java"),
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java")
                 ),
                 "WorkerHeartbeatRuntime",
                 "refreshWorkerHeartbeat(",

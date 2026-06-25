@@ -3,8 +3,6 @@ package com.xa.mass.testing.concurrency;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
-import com.xa.mass.base.channel.messaging.memory.InMemoryMessageQueue;
-import com.xa.mass.transport.model.TransportOutboundMessage;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.RuntimeDiagnosticsOperations;
@@ -268,10 +266,7 @@ public final class SdkTransportLoadRunner {
                             .socketAdapter(socket -> socket
                                     .server(transportPort)
                                     .enabled(config.transport() == WorkerTransportMode.SOCKET)
-                                    .serverEnabled(config.transport() == WorkerTransportMode.SOCKET))
-                            .inputQueue(new InMemoryMessageQueue<>("sdk-load-input", String.class))
-                            .outputQueue(new InMemoryMessageQueue<>("sdk-load-output", com.xa.mass.transport.model.TransportOutboundMessage.class))
-                            .queueMode())
+                                    .serverEnabled(config.transport() == WorkerTransportMode.SOCKET)))
                     .engine(engine -> engine.enabled(true)
                             .taskShellStore(taskStorage)
                             .taskWorkRuntime(taskWorkRuntime))

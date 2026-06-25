@@ -49,6 +49,7 @@ import com.xa.mass.worker.runtime.candidate.WorkerCandidateRuntime;
 import com.xa.mass.worker.runtime.control.DefaultWorkerDispatchAvailabilityPolicy;
 import com.xa.mass.worker.runtime.control.WorkerDispatchEligibilityRuntime;
 import com.xa.mass.worker.runtime.control.WorkerDispatchGateRuntime;
+import com.xa.mass.worker.runtime.control.WorkerDispatchRecoveryRuntime;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.worker.runtime.report.WorkerReportRuntime;
 import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
@@ -373,6 +374,10 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
     }
 
     public WorkerDispatchBlockRuntime getWorkerDispatchBlockRuntime() {
+        return workerManager();
+    }
+
+    public WorkerDispatchRecoveryRuntime getWorkerDispatchRecoveryRuntime() {
         return workerManager();
     }
 

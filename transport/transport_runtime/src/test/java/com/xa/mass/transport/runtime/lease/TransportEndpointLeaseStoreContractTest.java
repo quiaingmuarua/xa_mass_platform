@@ -89,18 +89,18 @@ abstract class TransportEndpointLeaseStoreContractTest {
 
     @Test
     void expiredLeaseIsRemovedByBucketScopedPrune() throws Exception {
-        try (LeaseStoreFixture fixture = createFixture(25L)) {
+        try (LeaseStoreFixture fixture = createFixture(500L)) {
             TransportEndpointLeaseStore store = fixture.store();
             TransportEndpointLeaseMaintenance maintenance = fixture.maintenance();
 
             store.claimEndpointLease(claim("worker-1", "bucket-a", "websocket", "conn-1"));
-            Thread.sleep(40L);
+            Thread.sleep(600L);
             store.claimEndpointLease(claim("worker-2", "bucket-b", "websocket", "conn-2"));
 
             assertEquals(1, maintenance.pruneExpired("bucket-a", 10));
             assertTrue(store.currentEndpointLease("bucket-a", "worker-1").isEmpty());
             assertTrue(store.currentEndpointLease("bucket-b", "worker-2").isPresent());
-            Thread.sleep(40L);
+            Thread.sleep(600L);
             assertEquals(1, maintenance.pruneExpired("bucket-b", 10));
             assertTrue(store.currentEndpointLease("bucket-b", "worker-2").isEmpty());
         }

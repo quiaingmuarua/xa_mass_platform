@@ -69,6 +69,11 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
     }
 
     @Override
+    public boolean connectBlocking(long timeout, TimeUnit timeUnit) throws InterruptedException {
+        return super.connectBlocking(timeout, timeUnit);
+    }
+
+    @Override
     public void onOpen(ServerHandshake handshakedata) {
         logger.info("[{}] Connected to server: {}", workerId, handshakedata.getHttpStatusMessage());
         reconnectAttempts.set(0);

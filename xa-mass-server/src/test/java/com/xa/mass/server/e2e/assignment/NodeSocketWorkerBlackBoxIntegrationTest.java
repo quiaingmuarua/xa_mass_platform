@@ -8,6 +8,7 @@ import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.CredentialPrincipalRegistration;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.transport.socket.server.SocketTransportServer;
+import com.xa.mass.worker.runtime.control.WorkerDispatchRecoveryMode;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -74,7 +75,7 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eTe
                 "workerId", SOCKET_WORKER_ID,
                 "workerGroupId", "node-socket-crawler",
                 "transportHint", "realtime",
-                "attributes", Map.of("lang", "node", "runtime", "node-socket-worker")
+                "attributes", realtimeWorkerAttributes("node-socket-worker")
         ), workerHeaders);
         assertApiOk(registerResponse);
         assertFalse(responseData(registerResponse).containsKey("adapterId"));
@@ -158,14 +159,14 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eTe
                 "workerId", WEBSOCKET_WORKER_ID,
                 "workerGroupId", "node-websocket-demo",
                 "transportHint", "realtime",
-                "attributes", Map.of("lang", "node", "runtime", "node-websocket-worker")
+                "attributes", realtimeWorkerAttributes("node-websocket-worker")
         ), websocketHeaders));
 
         assertApiOk(exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", SOCKET_WORKER_ID,
                 "workerGroupId", "node-socket-crawler",
                 "transportHint", "realtime",
-                "attributes", Map.of("lang", "node", "runtime", "node-socket-worker")
+                "attributes", realtimeWorkerAttributes("node-socket-worker")
         ), socketHeaders));
 
         try (ExternalNodeWorkerProcess websocketWorker = ExternalNodeWorkerProcess.startWebSocketSample(
@@ -238,6 +239,14 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eTe
                 .eventScopes(eventCodes)
                 .attributes(Map.of("workerId", workerId))
                 .build());
+    }
+
+    private static Map<String, Object> realtimeWorkerAttributes(String runtime) {
+        return Map.of(
+                "lang", "node",
+                "runtime", runtime,
+                WorkerDispatchRecoveryMode.ATTRIBUTE_KEY, WorkerDispatchRecoveryMode.FRESHNESS_EVIDENCE.name()
+        );
     }
 
     private String createAndApproveTask(String project, String eventCode, Map<String, Object> input) {

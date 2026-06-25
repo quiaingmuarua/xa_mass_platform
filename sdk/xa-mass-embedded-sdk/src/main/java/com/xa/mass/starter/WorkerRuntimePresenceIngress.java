@@ -9,8 +9,11 @@ import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.worker.runtime.control.WorkerDispatchBlockRuntime;
 import com.xa.mass.worker.runtime.control.WorkerDispatchBlockSignal;
 import com.xa.mass.worker.runtime.control.WorkerDispatchBlockSource;
+import com.xa.mass.worker.runtime.control.WorkerDispatchRecoveryRuntime;
+import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.worker.runtime.presence.InMemoryWorkerPresenceRuntime;
 import com.xa.mass.worker.runtime.presence.WorkerPresenceChange;
+import com.xa.mass.worker.runtime.resource.WorkerHeartbeatRuntime;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -24,13 +27,19 @@ final class WorkerRuntimePresenceIngress implements WorkerPresenceIngress {
 
     private final InMemoryWorkerPresenceRuntime workerPresenceRuntime;
     private final WorkerDispatchBlockRuntime workerDispatchBlockRuntime;
+    private final WorkerDispatchRecoveryRuntime workerDispatchRecoveryRuntime;
+    private final WorkerHeartbeatRuntime workerHeartbeatRuntime;
     private final ExecutionEventSink traceSink;
 
     WorkerRuntimePresenceIngress(InMemoryWorkerPresenceRuntime workerPresenceRuntime,
                                  WorkerDispatchBlockRuntime workerDispatchBlockRuntime,
+                                 WorkerDispatchRecoveryRuntime workerDispatchRecoveryRuntime,
+                                 WorkerHeartbeatRuntime workerHeartbeatRuntime,
                                  ExecutionEventSink traceSink) {
         this.workerPresenceRuntime = Objects.requireNonNull(workerPresenceRuntime, "workerPresenceRuntime");
         this.workerDispatchBlockRuntime = workerDispatchBlockRuntime;
+        this.workerDispatchRecoveryRuntime = workerDispatchRecoveryRuntime;
+        this.workerHeartbeatRuntime = workerHeartbeatRuntime;
         this.traceSink = traceSink == null ? new NoopExecutionEventSink() : traceSink;
     }
 
@@ -46,6 +55,7 @@ final class WorkerRuntimePresenceIngress implements WorkerPresenceIngress {
                 normalized.observedAtMillis(),
                 normalized.reason()
         );
+        refreshWorkerRuntimeWhenCurrent(change, normalized);
         emitReachabilityTrace(change, normalized);
     }
 
@@ -61,6 +71,7 @@ final class WorkerRuntimePresenceIngress implements WorkerPresenceIngress {
                 normalized.observedAtMillis(),
                 normalized.reason()
         );
+        refreshWorkerRuntimeWhenCurrent(change, normalized);
         emitReachabilityTrace(change, normalized);
     }
 
@@ -78,6 +89,24 @@ final class WorkerRuntimePresenceIngress implements WorkerPresenceIngress {
         );
         blockDispatchWhenCurrentSessionGone(change, normalized);
         emitReachabilityTrace(change, normalized);
+    }
+
+    private void refreshWorkerRuntimeWhenCurrent(WorkerPresenceChange change, WorkerSessionPresenceEvent event) {
+        if (change == null
+                || !change.observationAccepted()
+                || change.currentState() != WorkerReachabilityState.ONLINE) {
+            return;
+        }
+        if (workerHeartbeatRuntime != null) {
+            workerHeartbeatRuntime.refreshWorkerHeartbeat(event.workerId(), event.observedAtMillis());
+        }
+        if (workerDispatchRecoveryRuntime != null) {
+            workerDispatchRecoveryRuntime.recoverWorkerDispatch(
+                    event.workerId(),
+                    WorkerDispatchBlockSource.TRANSPORT_DISCONNECTED.gateSource(),
+                    firstNonBlank(event.reason(), "transport session reachable")
+            );
+        }
     }
 
     private void blockDispatchWhenCurrentSessionGone(WorkerPresenceChange change, WorkerSessionPresenceEvent event) {

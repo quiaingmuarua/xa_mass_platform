@@ -8,13 +8,16 @@ import com.xa.mass.transport.channel.WorkerSessionPresenceEvent;
 import com.xa.mass.worker.runtime.control.WorkerDispatchBlockRuntime;
 import com.xa.mass.worker.runtime.control.WorkerDispatchBlockSignal;
 import com.xa.mass.worker.runtime.control.WorkerDispatchBlockSource;
+import com.xa.mass.worker.runtime.control.WorkerDispatchRecoveryRuntime;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.worker.runtime.presence.InMemoryWorkerPresenceRuntime;
+import com.xa.mass.worker.runtime.resource.WorkerHeartbeatRuntime;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
 import java.util.List;
 
+import static com.xa.mass.runtime.worker.DispatchAvailabilitySource.TRANSPORT_DISCONNECTED;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -31,7 +34,7 @@ class WorkerRuntimePresenceIngressTest {
     void connectedSessionProjectsReachabilityAndOnlineTrace() {
         InMemoryWorkerPresenceRuntime runtime = new InMemoryWorkerPresenceRuntime(Long.MAX_VALUE);
         RecordingExecutionEventSink sink = new RecordingExecutionEventSink();
-        WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(runtime, null, sink);
+        WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(runtime, null, null, null, sink);
 
         ingress.sessionConnected(presenceEvent(WorkerPresenceEventType.CONNECTED,
                 "worker-1", "websocket", "route-1", "session-1", 1_000L, "connected", "trace-1"
@@ -55,7 +58,7 @@ class WorkerRuntimePresenceIngressTest {
     void connectedSessionPreservesAdapterMailboxKeyForDeliveryTargetEvidence() {
         InMemoryWorkerPresenceRuntime runtime = new InMemoryWorkerPresenceRuntime(Long.MAX_VALUE);
         RecordingExecutionEventSink sink = new RecordingExecutionEventSink();
-        WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(runtime, null, sink);
+        WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(runtime, null, null, null, sink);
 
         ingress.sessionConnected(presenceEvent(WorkerPresenceEventType.CONNECTED,
                 "worker-1", "websocket", "mailbox-a", "route-1", "session-1",
@@ -71,7 +74,7 @@ class WorkerRuntimePresenceIngressTest {
     void heartbeatDoesNotCreatePresenceWhenSessionWasNotConnected() {
         InMemoryWorkerPresenceRuntime runtime = new InMemoryWorkerPresenceRuntime(Long.MAX_VALUE);
         RecordingExecutionEventSink sink = new RecordingExecutionEventSink();
-        WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(runtime, null, sink);
+        WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(runtime, null, null, null, sink);
 
         ingress.sessionHeartbeat(presenceEvent(WorkerPresenceEventType.HEARTBEAT,
                 "worker-1", "polling", "route-1", "session-1", 1_000L, "heartbeat", "trace-1"
@@ -85,7 +88,7 @@ class WorkerRuntimePresenceIngressTest {
     void heartbeatRefreshesConnectedPresenceWithoutAdditionalTrace() {
         InMemoryWorkerPresenceRuntime runtime = new InMemoryWorkerPresenceRuntime(Long.MAX_VALUE);
         RecordingExecutionEventSink sink = new RecordingExecutionEventSink();
-        WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(runtime, null, sink);
+        WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(runtime, null, null, null, sink);
 
         ingress.sessionConnected(presenceEvent(WorkerPresenceEventType.CONNECTED,
                 "worker-1", "polling", "route-1", "session-1", 1_000L, "connected", "trace-1"
@@ -101,10 +104,64 @@ class WorkerRuntimePresenceIngressTest {
     }
 
     @Test
+    void acceptedCurrentSessionRefreshesWorkerHeartbeat() {
+        InMemoryWorkerPresenceRuntime runtime = new InMemoryWorkerPresenceRuntime(Long.MAX_VALUE);
+        WorkerHeartbeatRuntime heartbeatRuntime = mock(WorkerHeartbeatRuntime.class);
+        WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(
+                runtime,
+                null,
+                null,
+                heartbeatRuntime,
+                new RecordingExecutionEventSink()
+        );
+
+        ingress.sessionConnected(presenceEvent(WorkerPresenceEventType.CONNECTED,
+                "worker-1", "websocket", "route-1", "session-1", 1_000L, "connected", null
+        ));
+        ingress.sessionHeartbeat(presenceEvent(WorkerPresenceEventType.HEARTBEAT,
+                "worker-1", "websocket", "route-1", "session-1", 1_001L, "heartbeat", null
+        ));
+        ingress.sessionHeartbeat(presenceEvent(WorkerPresenceEventType.HEARTBEAT,
+                "worker-1", "websocket", "route-1", "stale-session", 1_002L, "stale", null
+        ));
+
+        verify(heartbeatRuntime).refreshWorkerHeartbeat("worker-1", 1_000L);
+        verify(heartbeatRuntime).refreshWorkerHeartbeat("worker-1", 1_001L);
+        verify(heartbeatRuntime, org.mockito.Mockito.never()).refreshWorkerHeartbeat("worker-1", 1_002L);
+    }
+
+    @Test
+    void acceptedCurrentSessionRequestsWorkerRuntimeRecovery() {
+        InMemoryWorkerPresenceRuntime runtime = new InMemoryWorkerPresenceRuntime(Long.MAX_VALUE);
+        WorkerDispatchRecoveryRuntime recoveryRuntime = mock(WorkerDispatchRecoveryRuntime.class);
+        WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(
+                runtime,
+                null,
+                recoveryRuntime,
+                null,
+                new RecordingExecutionEventSink()
+        );
+
+        ingress.sessionConnected(presenceEvent(WorkerPresenceEventType.CONNECTED,
+                "worker-1", "websocket", "route-1", "session-1", 1_000L, "connected", null
+        ));
+        ingress.sessionHeartbeat(presenceEvent(WorkerPresenceEventType.HEARTBEAT,
+                "worker-1", "websocket", "route-1", "session-1", 1_001L, "heartbeat", null
+        ));
+        ingress.sessionHeartbeat(presenceEvent(WorkerPresenceEventType.HEARTBEAT,
+                "worker-1", "websocket", "route-1", "stale-session", 1_002L, "stale", null
+        ));
+
+        verify(recoveryRuntime).recoverWorkerDispatch("worker-1", TRANSPORT_DISCONNECTED, "connected");
+        verify(recoveryRuntime).recoverWorkerDispatch("worker-1", TRANSPORT_DISCONNECTED, "heartbeat");
+        verify(recoveryRuntime, never()).recoverWorkerDispatch("worker-1", TRANSPORT_DISCONNECTED, "stale");
+    }
+
+    @Test
     void staleDisconnectDoesNotEmitOfflineUntilLastSessionEnds() {
         InMemoryWorkerPresenceRuntime runtime = new InMemoryWorkerPresenceRuntime(Long.MAX_VALUE);
         RecordingExecutionEventSink sink = new RecordingExecutionEventSink();
-        WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(runtime, null, sink);
+        WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(runtime, null, null, null, sink);
 
         ingress.sessionConnected(presenceEvent(WorkerPresenceEventType.CONNECTED,
                 "worker-1", "websocket", "route-1", "old-session", 1_000L, "connected", "old"
@@ -136,7 +193,7 @@ class WorkerRuntimePresenceIngressTest {
     void staleHeartbeatForReplacedSessionDoesNotRefreshPresence() {
         InMemoryWorkerPresenceRuntime runtime = new InMemoryWorkerPresenceRuntime(Long.MAX_VALUE);
         RecordingExecutionEventSink sink = new RecordingExecutionEventSink();
-        WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(runtime, null, sink);
+        WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(runtime, null, null, null, sink);
 
         ingress.sessionConnected(presenceEvent(WorkerPresenceEventType.CONNECTED,
                 "worker-1", "websocket", "route-1", "old-session", 1_000L, "connected", null
@@ -160,7 +217,7 @@ class WorkerRuntimePresenceIngressTest {
     void disconnectingOneOfMultipleAdaptersKeepsWorkerReachable() {
         InMemoryWorkerPresenceRuntime runtime = new InMemoryWorkerPresenceRuntime(Long.MAX_VALUE);
         RecordingExecutionEventSink sink = new RecordingExecutionEventSink();
-        WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(runtime, null, sink);
+        WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(runtime, null, null, null, sink);
 
         ingress.sessionConnected(presenceEvent(WorkerPresenceEventType.CONNECTED,
                 "worker-1", "websocket", "route-1", "ws", 1_000L, "connected", null
@@ -185,6 +242,8 @@ class WorkerRuntimePresenceIngressTest {
         WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(
                 runtime,
                 blockRuntime,
+                null,
+                null,
                 sink
         );
 
@@ -210,6 +269,8 @@ class WorkerRuntimePresenceIngressTest {
         WorkerRuntimePresenceIngress ingress = new WorkerRuntimePresenceIngress(
                 runtime,
                 blockRuntime,
+                null,
+                null,
                 sink
         );
 
