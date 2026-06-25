@@ -11,6 +11,9 @@ import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.runtime.worker.EventKey;
 import com.xa.mass.runtime.worker.RandomWorkerCandidateSamplingPolicy;
 import com.xa.mass.runtime.worker.WorkerDispatchBlockRecord;
+import com.xa.mass.runtime.worker.slot.WorkerScoreBand;
+import com.xa.mass.runtime.worker.slot.WorkerScoreBandAcquireRequest;
+import com.xa.mass.runtime.worker.slot.WorkerScoreBandSlot;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionTarget;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
 import com.xa.mass.worker.runtime.control.WorkerDispatchBlockSignal;
@@ -23,6 +26,7 @@ import com.xa.mass.worker.runtime.routing.WorkerCandidateBucketPolicies;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
+import com.xa.mass.runtime.memory.InMemoryWorkerScoreBandSlotRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -222,6 +226,54 @@ public class WorkerManagerTest {
         assertTrue(updateWorker(updated));
 
         assertEquals(4, manager.getWorkerLoad("worker-capacity-update").declaredCapacity());
+    }
+
+    @Test
+    void workerDeclarationProjectsScoreBandSlotWithoutHeartbeatPositiveWrite() {
+        InMemoryWorkerScoreBandSlotRuntime scoreBandRuntime = new InMemoryWorkerScoreBandSlotRuntime();
+        WorkerManager scoreBandManager = new WorkerManager(
+                new TestWorkerDeclarationStore(),
+                ignored -> WorkerReachabilityState.UNKNOWN,
+                platformRegistry(),
+                scoreBandRuntime,
+                WorkerCandidateBucketPolicies.defaultPolicy()
+        );
+        Worker worker = worker("worker-score-band", "pool-a");
+
+        scoreBandManager.addWorker(workerDeclaration(worker));
+        WorkerScoreBandSlot initialSlot = scoreBandRuntime.slot("pool-a", "worker-score-band").orElseThrow();
+        assertEquals("pool-a", initialSlot.homeBucketId());
+        assertEquals("worker-score-band", initialSlot.workerId());
+        assertTrue(WorkerScoreBand.isAcquireVisible(initialSlot.score(), System.currentTimeMillis()));
+
+        scoreBandManager.refreshWorkerHeartbeat("worker-score-band", System.currentTimeMillis() + 10_000);
+
+        assertEquals(initialSlot.score(),
+                scoreBandRuntime.slot("pool-a", "worker-score-band").orElseThrow().score());
+    }
+
+    @Test
+    void workerGroupUpdateMovesScoreBandSlotHomeBucket() {
+        InMemoryWorkerScoreBandSlotRuntime scoreBandRuntime = new InMemoryWorkerScoreBandSlotRuntime();
+        WorkerManager scoreBandManager = new WorkerManager(
+                new TestWorkerDeclarationStore(),
+                ignored -> WorkerReachabilityState.UNKNOWN,
+                platformRegistry(),
+                scoreBandRuntime,
+                WorkerCandidateBucketPolicies.defaultPolicy()
+        );
+        Worker worker = worker("worker-score-band-move", "pool-a");
+        scoreBandManager.addWorker(workerDeclaration(worker));
+
+        Worker updated = worker("worker-score-band-move", "pool-b");
+        assertTrue(scoreBandManager.updateWorker(workerDeclaration(updated)));
+
+        assertTrue(scoreBandRuntime.slot("pool-a", "worker-score-band-move").isEmpty());
+        assertTrue(scoreBandRuntime.acquire(
+                WorkerScoreBandAcquireRequest.inHomeBucket("pool-a", 10, System.currentTimeMillis() + 10)
+        ).isEmpty());
+        assertEquals("pool-b",
+                scoreBandRuntime.slot("pool-b", "worker-score-band-move").orElseThrow().homeBucketId());
     }
 
     @Test

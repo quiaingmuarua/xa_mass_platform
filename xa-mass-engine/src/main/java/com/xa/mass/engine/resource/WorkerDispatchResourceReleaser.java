@@ -124,6 +124,7 @@ public final class WorkerDispatchResourceReleaser {
                 evidence.workerGroupId(),
                 evidence.selectionScopeKey(),
                 evidence.selectionToken(),
+                evidence.scoreBandClaimScore(),
                 true
         );
         workerSelectionRuntime.releaseSelectedLock(lockEvidence);

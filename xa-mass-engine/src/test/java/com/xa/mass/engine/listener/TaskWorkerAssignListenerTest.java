@@ -60,7 +60,7 @@ public class TaskWorkerAssignListenerTest {
         SelectedWorkerHandle first = handle("worker-1", task.getTid(), true);
         SelectedWorkerHandle second = handle("worker-2", task.getTid(), true);
         when(assignmentRuntime.countDispatchReadyWork(task.getTid())).thenReturn(2);
-        when(workerSelectionRuntime.activeSelectedWorkerCount(task.getTid())).thenReturn(0);
+        when(assignmentRuntime.countActiveDispatchWorkers(task.getTid())).thenReturn(0);
         when(workerSelectionRuntime.selectAndReserve(any(WorkerSelectionRequest.class)))
                 .thenReturn(selection(first, second));
         when(dispatchBinder.bindDispatches(task, List.of(first)))
@@ -180,6 +180,8 @@ public class TaskWorkerAssignListenerTest {
                 workerId,
                 "batch-1",
                 "pool-a",
+                null,
+                null,
                 "demoApp:demo.event",
                 "GROUP_SELECTOR"
         );

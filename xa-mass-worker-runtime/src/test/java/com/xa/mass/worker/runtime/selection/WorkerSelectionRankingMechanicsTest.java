@@ -1,8 +1,8 @@
 package com.xa.mass.worker.runtime.selection;
 
+import com.xa.mass.runtime.worker.slot.WorkerScoreBandAcquireRequest;
+import com.xa.mass.runtime.worker.slot.WorkerScoreBandSlotRuntime;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
-import com.xa.mass.worker.runtime.candidate.WorkerCandidateRuntime;
-import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
 import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -14,17 +14,14 @@ import static com.xa.mass.worker.runtime.selection.WorkerSelectionTestSupport.GR
 import static com.xa.mass.worker.runtime.selection.WorkerSelectionTestSupport.EVENT_CODE;
 import static com.xa.mass.worker.runtime.selection.WorkerSelectionTestSupport.PROJECT;
 import static com.xa.mass.worker.runtime.selection.WorkerSelectionTestSupport.TASK_ID;
-import static com.xa.mass.worker.runtime.selection.WorkerSelectionTestSupport.accepted;
-import static com.xa.mass.worker.runtime.selection.WorkerSelectionTestSupport.candidates;
 import static com.xa.mass.worker.runtime.selection.WorkerSelectionTestSupport.groupIsReadable;
 import static com.xa.mass.worker.runtime.selection.WorkerSelectionTestSupport.load;
 import static com.xa.mass.worker.runtime.selection.WorkerSelectionTestSupport.request;
 import static com.xa.mass.worker.runtime.selection.WorkerSelectionTestSupport.row;
+import static com.xa.mass.worker.runtime.selection.WorkerSelectionTestSupport.scoreBandRuntime;
 import static com.xa.mass.worker.runtime.selection.WorkerSelectionTestSupport.selectable;
-import static com.xa.mass.worker.runtime.selection.WorkerSelectionTestSupport.target;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -33,24 +30,22 @@ import static org.mockito.Mockito.when;
 class WorkerSelectionRankingMechanicsTest {
 
     @Test
-    void ranksByWorkerRuntimeLoadAndRoutingAffinityBeforeReserve() {
-        WorkerCandidateRuntime candidateRuntime = mock(WorkerCandidateRuntime.class);
+    void ranksByWorkerRuntimeLoadAndRoutingAffinityBeforeScoreBandClaim() {
         WorkerSchedulingViewRuntime schedulingViewRuntime = mock(WorkerSchedulingViewRuntime.class);
         WorkerAdmissionRuntime admissionRuntime = mock(WorkerAdmissionRuntime.class);
-        WorkerSelectionOwner owner = new WorkerSelectionOwner(candidateRuntime, schedulingViewRuntime, admissionRuntime);
-
-        when(candidateRuntime.findWorkerCandidates(any(), anyInt())).thenReturn(candidates(
-                row("worker-loaded", Map.of("region", "us", "routingTags", "lane-us")),
-                row("worker-no-affinity", Map.of("region", "us", "routingTags", "eu")),
-                row("worker-best", Map.of("region", "us", "routingTags", "lane-us")),
-                row("worker-blocked", Map.of("region", "us", "routingTags", "lane-us"))
-        ));
+        WorkerSelectionOwner owner = new WorkerSelectionOwner(
+                schedulingViewRuntime,
+                admissionRuntime,
+                scoreBandRuntime(
+                        row("worker-loaded", Map.of("region", "us", "routingTags", "lane-us")),
+                        row("worker-no-affinity", Map.of("region", "us", "routingTags", "eu")),
+                        row("worker-best", Map.of("region", "us", "routingTags", "lane-us")),
+                        row("worker-blocked", Map.of("region", "us", "routingTags", "lane-us"))));
         groupIsReadable(schedulingViewRuntime);
         selectable(schedulingViewRuntime, "worker-loaded", load("worker-loaded", 3, 0, 3));
         selectable(schedulingViewRuntime, "worker-no-affinity", load("worker-no-affinity", 0, 0, 3));
         selectable(schedulingViewRuntime, "worker-best", load("worker-best", 0, 0, 3));
         when(schedulingViewRuntime.isWorkerDispatchEnabled("worker-blocked")).thenReturn(false);
-        when(admissionRuntime.reserveWorkerCapacity(target("worker-best"))).thenReturn(accepted());
         when(admissionRuntime.tryAcquireWorkerExclusiveLease("worker-best")).thenReturn(true);
 
         WorkerSelectionResult result = owner.selectAndReserve(requestWithRoutingCode("lane-us", 1));
@@ -71,27 +66,29 @@ class WorkerSelectionRankingMechanicsTest {
         assertEquals(3, selected.workerDeclaredCapacity());
         assertEquals(1.0d / 3.0d, selected.workerEstimatedLoadRatio());
         assertEquals(1, result.rejectedCountByReason().get("worker dispatch disabled"));
-        verify(admissionRuntime).reserveWorkerCapacity(target("worker-best"));
-        verify(admissionRuntime, never()).reserveWorkerCapacity(target("worker-loaded"));
-        verify(admissionRuntime, never()).reserveWorkerCapacity(target("worker-no-affinity"));
+        verify(admissionRuntime).tryAcquireWorkerExclusiveLease("worker-best");
+        verify(admissionRuntime, never()).tryAcquireWorkerExclusiveLease("worker-loaded");
+        verify(admissionRuntime, never()).tryAcquireWorkerExclusiveLease("worker-no-affinity");
     }
 
     @Test
-    void selectionRequestIsTranslatedToBoundedWorkerTaskSelector() {
-        WorkerCandidateRuntime candidateRuntime = mock(WorkerCandidateRuntime.class);
+    void selectionRequestIsTranslatedToBoundedScoreBandAcquire() {
         WorkerSchedulingViewRuntime schedulingViewRuntime = mock(WorkerSchedulingViewRuntime.class);
         WorkerAdmissionRuntime admissionRuntime = mock(WorkerAdmissionRuntime.class);
-        WorkerSelectionOwner owner = new WorkerSelectionOwner(candidateRuntime, schedulingViewRuntime, admissionRuntime);
-        when(candidateRuntime.findWorkerCandidates(any(), anyInt())).thenReturn(candidates());
+        WorkerScoreBandSlotRuntime scoreBandSlotRuntime = mock(WorkerScoreBandSlotRuntime.class);
+        WorkerSelectionOwner owner = new WorkerSelectionOwner(
+                schedulingViewRuntime,
+                admissionRuntime,
+                scoreBandSlotRuntime);
+        when(scoreBandSlotRuntime.acquire(any())).thenReturn(List.of());
 
         owner.selectAndReserve(request(2, false));
 
-        ArgumentCaptor<WorkerTaskSelector> selector = ArgumentCaptor.forClass(WorkerTaskSelector.class);
-        ArgumentCaptor<Integer> limit = ArgumentCaptor.forClass(Integer.class);
-        verify(candidateRuntime).findWorkerCandidates(selector.capture(), limit.capture());
-        assertEquals(WorkerSelectionTestSupport.TASK_ID, selector.getValue().taskId());
-        assertEquals(List.of(GROUP_ID), selector.getValue().workerGroupIds());
-        assertEquals(512, limit.getValue());
+        ArgumentCaptor<WorkerScoreBandAcquireRequest> request =
+                ArgumentCaptor.forClass(WorkerScoreBandAcquireRequest.class);
+        verify(scoreBandSlotRuntime).acquire(request.capture());
+        assertEquals(List.of(GROUP_ID), request.getValue().homeBucketIds());
+        assertEquals(512, request.getValue().maxCount());
     }
 
     private static WorkerSelectionRequest requestWithRoutingCode(String routingCode, int requestedCount) {

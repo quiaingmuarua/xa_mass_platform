@@ -4,6 +4,7 @@ import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.worker.WorkerRegistry;
+import com.xa.mass.runtime.worker.slot.WorkerScoreBandSlotRuntime;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.TaskShellStore;
@@ -24,6 +25,7 @@ public class MassEngineBuilder {
     private TaskResultRuntime taskResultRuntime;
     private WorkerDeclarationStore workerDeclarationStore;
     private WorkerRegistry workerRegistry;
+    private WorkerScoreBandSlotRuntime workerScoreBandSlotRuntime;
     private RuleStorage ruleStorage;
 
     private Integer workerThreads;
@@ -66,6 +68,11 @@ public class MassEngineBuilder {
         return this;
     }
 
+    public MassEngineBuilder workerScoreBandSlotRuntime(WorkerScoreBandSlotRuntime workerScoreBandSlotRuntime) {
+        this.workerScoreBandSlotRuntime = workerScoreBandSlotRuntime;
+        return this;
+    }
+
     public MassEngineBuilder ruleStorage(RuleStorage ruleStorage) {
         this.ruleStorage = ruleStorage;
         return this;
@@ -99,6 +106,7 @@ public class MassEngineBuilder {
         if (taskResultRuntime != null) config.setTaskResultRuntime(taskResultRuntime);
         if (workerDeclarationStore != null) config.setWorkerDeclarationStore(workerDeclarationStore);
         if (workerRegistry != null) config.setWorkerRegistry(workerRegistry);
+        if (workerScoreBandSlotRuntime != null) config.setWorkerScoreBandSlotRuntime(workerScoreBandSlotRuntime);
         if (ruleStorage != null) config.setRuleStorage(ruleStorage);
         if (recordService != null) config.setRecordService(recordService);
         if (bootstrapDataProvider != null) config.setBootstrapDataProvider(bootstrapDataProvider);

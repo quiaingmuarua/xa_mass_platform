@@ -29,8 +29,20 @@ final class SelectedWorkerClaimAuthorization {
         return new SelectedWorkerClaimAuthorization(supportedEventCodes);
     }
 
-    public WorkerClaimTarget toClaimTarget(String workerGroupId, String workerId, String batchId, int capacity) {
-        return WorkerClaimTarget.groupScoped(workerGroupId, workerId, batchId, capacity, supportedEventCodes);
+    public WorkerClaimTarget toClaimTarget(String workerGroupId,
+                                           String workerId,
+                                           String batchId,
+                                           String selectionToken,
+                                           Long scoreBandClaimScore,
+                                           int capacity) {
+        return WorkerClaimTarget.groupScoped(
+                workerGroupId,
+                workerId,
+                batchId,
+                selectionToken,
+                scoreBandClaimScore,
+                capacity,
+                supportedEventCodes);
     }
 
     private static Set<String> normalize(Collection<String> values) {

@@ -4,6 +4,7 @@ import com.xa.mass.engine.PollingIdleBackoffPolicy;
 import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.worker.WorkerRegistry;
+import com.xa.mass.runtime.worker.slot.WorkerScoreBandSlotRuntime;
 import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.TaskShellStore;
@@ -557,6 +558,11 @@ public class MassApplicationBuilder {
 
         public EngineBuilder workerRegistry(WorkerRegistry workerRegistry) {
             config.setWorkerRegistry(workerRegistry);
+            return this;
+        }
+
+        public EngineBuilder workerScoreBandSlotRuntime(WorkerScoreBandSlotRuntime workerScoreBandSlotRuntime) {
+            config.setWorkerScoreBandSlotRuntime(workerScoreBandSlotRuntime);
             return this;
         }
 

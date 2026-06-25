@@ -57,9 +57,10 @@ Current truth for this conservative first slice:
   `TaskWorkRuntime` for queue/lease/retry/apply truth and
   `TaskResultRuntime` for stable-final result-read truth, repair staging,
   task-local result sequence, and barriers; it also owns the shared
-  `WorkerRegistry` / `WorkerSlot` contract and low-level worker registry
-  primitives used by memory and Redis worker registry implementations. Higher
-  level worker-plane contracts live in `xa-mass-worker-runtime`
+  `WorkerRegistry` / `WorkerSlot` contract, low-level worker registry
+  primitives, and the worker-runtime-owned `WorkerScoreBandSlotRuntime`
+  score/meta state-machine contract used by memory and Redis implementations.
+  Higher level worker-plane contracts live in `xa-mass-worker-runtime`
 - `mass-runtime-memory` owns the in-memory runtime implementations used by the
   embedded default path and focused runtime tests
 - `mass-runtime-redis` now owns the Redis-backed runtime implementations plus
@@ -84,9 +85,12 @@ Current truth for this conservative first slice:
   commitment from local schema helpers: current new-environment setup should
   prefer explicit seed/import and may use SQLite as the lightweight
   control-plane DB direction.
-- worker registry slot state, dispatch availability, candidate buckets, and
-  candidate sampling are runtime state, not control-plane DB CRUD state. Higher
-  level worker resource/candidate/evidence contracts such as
+- worker registry slot state, score-band worker slot state, dispatch
+  availability, candidate buckets, and candidate sampling are runtime state, not
+  control-plane DB CRUD state. The score-band runtime shape is
+  `score:{homeBucketId}` plus `meta:{homeBucketId}`; transition evidence and
+  diagnostics must not become writable current-state owners. Higher level
+  worker resource/candidate/evidence contracts such as
   `WorkerRegistrySnapshot`, `AdapterNodeRecord`, and `NodeGroupBindingRecord`
   belong to `xa-mass-worker-runtime`; if they need durable history or operator
   query, emit trace/events and let an async pipeline persist them outside the

@@ -420,6 +420,19 @@ public class TaskManager implements TaskAssignmentRuntimePort, TaskLeaseMaintena
     }
 
     @Override
+    public int countActiveDispatchWorkers(String taskId) {
+        if (taskId == null || taskId.isBlank()) {
+            return 0;
+        }
+        long activeWorkers = taskWorkRuntime.activeLeases(taskId).stream()
+                .map(ActiveLeaseRecord::workerId)
+                .filter(workerId -> workerId != null && !workerId.isBlank())
+                .distinct()
+                .count();
+        return activeWorkers > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) activeWorkers;
+    }
+
+    @Override
     public boolean hasDispatchReadyWork(String taskId) {
         return countDispatchReadyWork(taskId) > 0;
     }

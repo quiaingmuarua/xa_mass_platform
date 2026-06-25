@@ -24,6 +24,10 @@ public record RuntimeResultApplyContext(
         /** Worker group id from the active lease snapshot captured before apply. */
         String workerGroupId,
         String batchId,
+        /** Selected-worker token from worker-runtime claim evidence. */
+        String selectionToken,
+        /** Score-band claim score captured at selected-worker claim time. */
+        Long scoreBandClaimScore,
         /** The active lease token captured before apply. */
         String activeLeaseToken,
         /** Payload reference from the lease or work envelope. */
@@ -44,7 +48,7 @@ public record RuntimeResultApplyContext(
     /** Factory for the no-active-lease outcome (duplicate / late callback). */
     public static RuntimeResultApplyContext noLease(ResultApplyOutcome outcome) {
         return new RuntimeResultApplyContext(
-                outcome, null, null, null, null, null, 0, 0, null);
+                outcome, null, null, null, null, null, null, null, 0, 0, null);
     }
 
     /**
@@ -55,6 +59,8 @@ public record RuntimeResultApplyContext(
                                                          String workerId,
                                                          String workerGroupId,
                                                          String batchId,
+                                                         String selectionToken,
+                                                         Long scoreBandClaimScore,
                                                          String activeLeaseToken,
                                                          String payloadRef,
                                                          int retryCount,
@@ -62,6 +68,7 @@ public record RuntimeResultApplyContext(
                                                          Instant leasedAt) {
         return new RuntimeResultApplyContext(
                 outcome, workerId, workerGroupId, batchId,
-                activeLeaseToken, payloadRef, retryCount, maxRetryCount, leasedAt);
+                selectionToken, scoreBandClaimScore, activeLeaseToken, payloadRef,
+                retryCount, maxRetryCount, leasedAt);
     }
 }

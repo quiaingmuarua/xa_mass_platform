@@ -60,6 +60,8 @@ class TaskDispatchPayloadEncoderTest {
                 "batch-1",
                 "workers",
                 null,
+                null,
+                null,
                 "test-fixture"
         );
     }

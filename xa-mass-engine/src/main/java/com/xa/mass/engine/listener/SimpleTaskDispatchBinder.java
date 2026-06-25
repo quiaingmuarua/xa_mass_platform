@@ -280,10 +280,12 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
             return;
         }
         for (TaskDispatchBinding binding : dispatchBindings) {
-            workerSelectionRuntime.recordSelectedFinal(SelectedWorkerEvidence.of(
+            workerSelectionRuntime.recordSelectedFinal(new SelectedWorkerEvidence(
                     binding.workerId(),
                     binding.workerGroupId(),
                     binding.taskId(),
+                    binding.selectionToken(),
+                    binding.scoreBandClaimScore(),
                     false
             ));
         }
@@ -382,6 +384,8 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 work.workerId(),
                 work.batchId(),
                 slot.workerGroupId(),
+                work.selectionToken(),
+                work.scoreBandClaimScore(),
                 eventBindingKey,
                 workerCandidateSource
         );

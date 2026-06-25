@@ -26,6 +26,8 @@ public final class TaskDispatchBinding {
     private final String workerId;
     private final String batchId;
     private final String workerGroupId;
+    private final String selectionToken;
+    private final Long scoreBandClaimScore;
     private final String eventBindingKey;
     private final String workerCandidateSource;
 
@@ -52,6 +54,8 @@ public final class TaskDispatchBinding {
         this.workerId = workerId;
         this.batchId = batchId;
         this.workerGroupId = null;
+        this.selectionToken = null;
+        this.scoreBandClaimScore = null;
         this.eventBindingKey = null;
         this.workerCandidateSource = null;
     }
@@ -68,6 +72,8 @@ public final class TaskDispatchBinding {
                                 String workerId,
                                 String batchId,
                                 String workerGroupId,
+                                String selectionToken,
+                                Long scoreBandClaimScore,
                                 String eventBindingKey,
                                 String workerCandidateSource) {
         this.taskId = requireText(taskId, "taskId");
@@ -82,6 +88,8 @@ public final class TaskDispatchBinding {
         this.workerId = workerId;
         this.batchId = batchId;
         this.workerGroupId = optionalText(workerGroupId);
+        this.selectionToken = optionalText(selectionToken);
+        this.scoreBandClaimScore = scoreBandClaimScore;
         this.eventBindingKey = optionalText(eventBindingKey);
         this.workerCandidateSource = optionalText(workerCandidateSource);
     }
@@ -124,6 +132,8 @@ public final class TaskDispatchBinding {
                                                               String workerId,
                                                               String batchId,
                                                               String workerGroupId,
+                                                              String selectionToken,
+                                                              Long scoreBandClaimScore,
                                                               String eventBindingKey,
                                                               String workerCandidateSource) {
         return new TaskDispatchBinding(
@@ -139,6 +149,8 @@ public final class TaskDispatchBinding {
                 workerId,
                 batchId,
                 workerGroupId,
+                selectionToken,
+                scoreBandClaimScore,
                 eventBindingKey,
                 workerCandidateSource
         );
@@ -190,6 +202,14 @@ public final class TaskDispatchBinding {
 
     public String workerGroupId() {
         return workerGroupId;
+    }
+
+    public String selectionToken() {
+        return selectionToken;
+    }
+
+    public Long scoreBandClaimScore() {
+        return scoreBandClaimScore;
     }
 
     public String eventBindingKey() {

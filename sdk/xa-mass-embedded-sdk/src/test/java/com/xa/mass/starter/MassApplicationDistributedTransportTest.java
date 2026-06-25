@@ -301,6 +301,8 @@ class MassApplicationDistributedTransportTest {
                 "batch-1",
                 "demo-workers",
                 null,
+                null,
+                null,
                 "test-fixture"
         );
     }

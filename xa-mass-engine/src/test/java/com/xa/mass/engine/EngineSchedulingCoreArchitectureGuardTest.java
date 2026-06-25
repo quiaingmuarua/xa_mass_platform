@@ -1861,7 +1861,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void workerCandidateRuntimeContractDoesNotExposeDiagnosticsOrWarmWrites() throws IOException {
+    void workerCandidateRuntimeContractIsSourceProjectionSupportOnly() throws IOException {
         Path candidateRuntimePath = Path.of("../xa-mass-worker-runtime/src/main/java")
                 .resolve("com/xa/mass/worker/runtime/candidate/WorkerCandidateRuntime.java");
         String source = Files.readString(candidateRuntimePath, StandardCharsets.UTF_8);
@@ -1890,8 +1890,9 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "WorkerCandidateRuntime is a worker-runtime candidate acquisition sub-port behind WorkerSelectionRuntime. "
-                        + "Keep diagnostics, batch wrappers, and warm hint writes off candidate acquisition:\n"
+                "WorkerCandidateRuntime is migration/source projection support, not the production "
+                        + "selection acquire owner after the score-band pivot. Keep diagnostics, batch wrappers, "
+                        + "and warm hint writes off candidate acquisition:\n"
                         + String.join("\n", violations));
     }
 
@@ -2068,6 +2069,18 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "WorkerAdmissionSnapshot.java",
                 "WorkerCandidateSamplingContext.java",
                 "WorkerCandidateSamplingPolicy.java",
+                "NoopWorkerScoreBandSlotRuntime.java",
+                "WorkerScoreBand.java",
+                "WorkerScoreBandAcquireRequest.java",
+                "WorkerScoreBandKind.java",
+                "WorkerScoreBandSlot.java",
+                "WorkerScoreBandSlotMetadata.java",
+                "WorkerScoreBandSlotRuntime.java",
+                "WorkerScoreBandTransitionCommand.java",
+                "WorkerScoreBandTransitionResult.java",
+                "WorkerScoreBandTransitionRules.java",
+                "WorkerScoreBandTransitionStatus.java",
+                "WorkerScoreBandTransitionType.java",
                 "WorkerMeta.java",
                 "WorkerRegistry.java",
                 "WorkerCandidateBucketPolicy.java",
@@ -2090,7 +2103,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
         }
 
         assertTrue(violations.isEmpty(),
-                "mass-runtime-api worker package must remain a low-level registry SPI allowlist:\n"
+                "mass-runtime-api worker package must remain a low-level registry/score-band SPI allowlist:\n"
                         + String.join("\n", violations));
     }
 
@@ -2692,7 +2705,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
     }
 
     @Test
-    void taskSelectorAdapterDoesNotReturnToEngineSelectionMainline() throws IOException {
+    void scoreBandAcquireOwnsWorkerSelectionMainline() throws IOException {
         Path workerPackage = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/worker");
         Path strategyPackage = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/strategy");
         Path selectionOwnerPath = Path.of("..", "xa-mass-worker-runtime", "src", "main", "java",
@@ -2712,13 +2725,19 @@ class EngineSchedulingCoreArchitectureGuardTest {
             violations.add(strategyPackage.resolve("WorkerRoutingPolicy.java")
                     + " reintroduces a second candidate-bucket owner");
         }
-        if (!Files.readString(selectionOwnerPath, StandardCharsets.UTF_8).contains("new WorkerTaskSelector(")) {
-            violations.add(selectionOwnerPath + " does not own WorkerTaskSelector construction");
+        String selectionOwner = Files.readString(selectionOwnerPath, StandardCharsets.UTF_8);
+        if (!selectionOwner.contains("WorkerScoreBandAcquireRequest")) {
+            violations.add(selectionOwnerPath + " does not build score-band acquire requests");
+        }
+        if (selectionOwner.contains("new WorkerTaskSelector(")
+                || selectionOwner.contains("findWorkerCandidates(")
+                || selectionOwner.contains("WorkerCandidateRuntime")) {
+            violations.add(selectionOwnerPath + " reintroduces old candidate acquire into production selection");
         }
 
         assertTrue(violations.isEmpty(),
-                "Engine builds WorkerSelectionRequest only. WorkerTaskSelector adaptation and candidate "
-                        + "bucket policy belong inside worker-runtime selection:\n"
+                "Engine builds WorkerSelectionRequest only. Worker-runtime selection must acquire bounded "
+                        + "score-band slots and must not return to WorkerTaskSelector/candidate-bucket acquire:\n"
                         + String.join("\n", violations));
     }
 

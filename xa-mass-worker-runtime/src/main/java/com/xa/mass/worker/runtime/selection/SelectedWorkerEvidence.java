@@ -11,6 +11,7 @@ public record SelectedWorkerEvidence(
         String workerGroupId,
         String selectionScopeKey,
         String selectionToken,
+        Long scoreBandClaimScore,
         boolean exclusiveWorkerLock
 ) {
 
@@ -25,7 +26,7 @@ public record SelectedWorkerEvidence(
                                             String workerGroupId,
                                             String selectionScopeKey,
                                             boolean exclusiveWorkerLock) {
-        return new SelectedWorkerEvidence(workerId, workerGroupId, selectionScopeKey, null, exclusiveWorkerLock);
+        return new SelectedWorkerEvidence(workerId, workerGroupId, selectionScopeKey, null, null, exclusiveWorkerLock);
     }
 
     private static String requireText(String value, String field) {

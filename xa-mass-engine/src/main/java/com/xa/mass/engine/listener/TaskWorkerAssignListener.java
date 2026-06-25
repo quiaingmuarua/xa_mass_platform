@@ -135,7 +135,7 @@ public class TaskWorkerAssignListener {
                 task,
                 initialStatus,
                 readyWorkCount,
-                workerSelectionRuntime.activeSelectedWorkerCount(task.getTid())
+                assignmentRuntime.countActiveDispatchWorkers(task.getTid())
         ));
         if (allocationPlan.requestedMatchCount() <= 0) {
             AssignmentAllocationDecision allocationDecision =

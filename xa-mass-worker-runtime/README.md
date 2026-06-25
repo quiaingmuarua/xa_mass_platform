@@ -3,8 +3,8 @@
 Status: current higher-level worker runtime owner module.
 
 This module owns worker-plane lifecycle, resource convergence, runtime worker
-selection, candidate source, admission, reporting, and scheduling evidence
-above the low-level `mass-runtime-api` registry SPI.
+selection, score-band worker slot state, admission/lock residue, reporting, and
+scheduling evidence above the low-level `mass-runtime-api` registry SPI.
 
 For the full boundary contract, see [CONTRACTS.md](CONTRACTS.md).
 
@@ -19,13 +19,15 @@ Worker runtime owns worker truth that is not task truth:
 - Worker-runtime dispatch eligibility evidence: reachability observations,
   heartbeat freshness, load, admission, capacity, dispatch gates, and exclusive
   leases.
-- Runtime worker selection: worker-side predicates, ordering, reservation,
-  selected handles, claim authorization, and selected-worker accounting.
+- Runtime worker selection: worker-side predicates, ordering, bounded
+  score-band acquire/claim, selected handles, claim authorization, and
+  selected-worker evidence.
 - Worker command lifecycle truth: command records, status transitions,
   worker-pulled claims, delivery attempt state, and command lifecycle value
   contracts.
-- Stage-1 bounded worker candidate source and source guard.
-- Platform-approved worker candidate bucket policies.
+- Stage-1 bounded worker candidate source, source guard, and platform-approved
+  worker candidate bucket policies where still used as migration/source
+  projection support.
 - Legacy adapter-node and node/group relation read models where still present in
   worker registration surfaces. These are topology/control-plane evidence only;
   they do not own event capability, final-hop delivery, or worker selection.
@@ -39,15 +41,17 @@ or become a second task scheduling policy owner.
 Scheduling admission is WorkerGroup-scoped. Engine assignment calls
 `WorkerSelectionRuntime` with task-side worker-universe intent and consumes
 `SelectedWorkerHandle` / `SelectedWorkerEvidence` for confirm, release, claim,
-and final accounting. `WorkerAdmissionTarget` remains below that selection
-boundary; engine mainline must not call worker-id-only admission mutations when
-group evidence is already known or recoverable from runtime lifecycle records.
+and final accounting. Production selection now acquires bounded eligible worker
+slots from `WorkerScoreBandSlotRuntime` and writes a `FUTURE_BAND` claim score.
+`WorkerAdmissionRuntime` remains below that selection boundary only for the
+current exclusive-lock owner and direct/runtime API residue; production
+selection must not write separate reserve/confirm/claimed/final counters beside
+score-band claim state.
 
-Stage-1 scheduling candidate acquisition passes one scheduling clock into the
-registry acquisition and source guard. Redis may use that clock against an
-adapter-internal deadline projection, but WorkerRuntime contracts still expose
-only bounded candidate acquisition plus canonical source-guard validation, not
-Redis key shapes.
+Stage-1 candidate acquisition and candidate bucket policies are migration/source
+projection support. Redis may keep candidate buckets and registry deadline
+projections for existing owners, but WorkerRuntime selection contracts expose
+score-band-backed selection, not Redis key shapes or candidate bucket truth.
 
 Candidate bucket policy is source-index policy, not lifecycle truth. The
 runtime-api `WorkerCandidateBucketPolicy` owns bucket key calculation and its
@@ -61,9 +65,9 @@ acquisition, source guard, and worker-runtime selection filtering.
 ```text
 com.xa.mass.worker.runtime.resource   resource declarations and lookup
 com.xa.mass.worker.runtime.selection  selected-worker contract for engine
-com.xa.mass.worker.runtime.candidate  Stage-1 candidate contracts
+com.xa.mass.worker.runtime.candidate  migration/source candidate projection support
 com.xa.mass.worker.runtime.evidence   read-only scheduling evidence
-com.xa.mass.worker.runtime.admission  reserve/release and wakeup
+com.xa.mass.worker.runtime.admission  exclusive locks and legacy admission residue
 com.xa.mass.worker.runtime.command    worker command lifecycle truth
 com.xa.mass.worker.runtime.report     capability and state report projection
 com.xa.mass.worker.runtime.control    worker dispatch gate/block control
@@ -77,8 +81,9 @@ com.xa.mass.worker.runtime            implementation owners and assembly
   the worker-runtime owned declaration port: execution identity, WorkerGroup
   membership, adapter hints, static attributes, max concurrency, and timestamps.
 - Broad runtime-state/readiness DTOs are not current worker-runtime contracts.
-  Heartbeat freshness, dispatch gates, reservation/load, and lease observations
-  stay on the registry/admission/selection path or narrow diagnostics.
+Heartbeat freshness, dispatch gates, load, score-band claim observations, and
+  lease observations stay on the registry/score-band/selection path or narrow
+  diagnostics.
 - `WorkerResourceRecord` is the current composite read model. It may be used
   for SDK/server/operator resource views, but it must not become declaration
   persistence truth while it still carries status, last heartbeat, and
@@ -137,8 +142,9 @@ Worker runtime does not own transport delivery identity:
 ## Dispatch Eligibility Truth
 
 Worker-runtime owns whether a worker may enter dispatch competition. That truth
-must converge through registry candidate acquisition, dispatch gates,
-admission/capacity, reservation/lease checks, and selection confirmation. Older
+now converges through score-band worker slot state, dispatch gates,
+admission/capacity evidence, exclusive-lock checks, lease observations, and
+selection confirmation. Older registry candidate acquisition,
 `reachability`, `readiness`, and `occupancy` vocabulary is useful only as
 evidence or diagnostics inside that owner path; it must not become three
 parallel scheduling state machines. `WorkerRuntimeStateRecord` and
@@ -230,10 +236,14 @@ Runtime outcome proof:
 
 ```powershell
 .\mvnw.cmd -pl xa-mass-worker-runtime `
-  "-Dtest=WorkerManagerTest,WorkerCandidateIndexTest,WorkerAdmissionOwnerTest,WorkerSelectionAtomicRuntimeTest,WorkerSelectionRankingMechanicsTest" test
+  "-Dtest=WorkerManagerTest,WorkerSelectionAtomicRuntimeTest,WorkerSelectionRankingMechanicsTest,WorkerSelectionContractGuardTest" test
+
+.\mvnw.cmd -pl platform_infra/mass-runtime-memory,platform_infra/mass-runtime-redis -am `
+  "-Dtest=InMemoryWorkerScoreBandSlotRuntimeTest,RedisWorkerScoreBandSlotRuntimeTest" `
+  "-Dsurefire.failIfNoSpecifiedTests=false" test
 
 .\mvnw.cmd -pl xa-mass-engine `
-  "-Dtest=TaskWorkerEligibilityTest,WorkerStateReportSchedulingIntegrationTest,TaskSchedulingGateAndTargetingTest,TaskSchedulingContentionTest,TaskSchedulingBindingEntryBypassTest,EngineSchedulingCoreSuite" test
+  "-Dtest=TaskResourceReleaseListenerTest,TaskWorkerAssignListenerTest,TaskResultCorrelationSupportTest,TaskWorkAttemptIdSupportTest,EngineSchedulingCoreArchitectureGuardTest,SimpleTaskDispatchBinderTest" test
 ```
 
 Boundary residue sanity:

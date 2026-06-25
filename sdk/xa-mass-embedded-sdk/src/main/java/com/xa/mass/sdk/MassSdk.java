@@ -4,6 +4,7 @@ import com.xa.mass.engine.PollingIdleBackoffPolicy;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.worker.WorkerRegistry;
+import com.xa.mass.runtime.worker.slot.WorkerScoreBandSlotRuntime;
 import com.xa.mass.sdk.auth.CredentialPrincipalStore;
 import com.xa.mass.sdk.catalog.ProjectEventCatalogRegistry;
 import com.xa.mass.storage.api.RuleStorage;
@@ -414,6 +415,11 @@ public final class MassSdk {
 
         public EngineOptions workerRegistry(WorkerRegistry workerRegistry) {
             delegate.workerRegistry(workerRegistry);
+            return this;
+        }
+
+        public EngineOptions workerScoreBandSlotRuntime(WorkerScoreBandSlotRuntime workerScoreBandSlotRuntime) {
+            delegate.workerScoreBandSlotRuntime(workerScoreBandSlotRuntime);
             return this;
         }
 

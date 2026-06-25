@@ -87,6 +87,8 @@ public interface TaskWorkRuntime {
                 lease.workerId(),
                 lease.workerGroupId(),
                 lease.batchId(),
+                lease.selectionToken(),
+                lease.scoreBandClaimScore(),
                 lease.leaseToken(),
                 lease.payloadRef(),
                 lease.retryCount(),

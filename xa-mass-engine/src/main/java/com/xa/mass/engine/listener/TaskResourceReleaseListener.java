@@ -143,12 +143,24 @@ public class TaskResourceReleaseListener {
     private static SelectedWorkerEvidence selectedWorkerEvidence(String taskId,
                                                                  ActiveLeaseRecord lease,
                                                                  boolean exclusiveWorkerLock) {
-        return SelectedWorkerEvidence.of(lease.workerId(), lease.workerGroupId(), taskId, exclusiveWorkerLock);
+        return new SelectedWorkerEvidence(
+                lease.workerId(),
+                lease.workerGroupId(),
+                taskId,
+                lease.selectionToken(),
+                lease.scoreBandClaimScore(),
+                exclusiveWorkerLock);
     }
 
     private static SelectedWorkerEvidence selectedWorkerEvidence(String taskId,
                                                                  TaskWorkAttemptClosedEvent event,
                                                                  boolean exclusiveWorkerLock) {
-        return SelectedWorkerEvidence.of(event.workerId(), event.workerGroupId(), taskId, exclusiveWorkerLock);
+        return new SelectedWorkerEvidence(
+                event.workerId(),
+                event.workerGroupId(),
+                taskId,
+                event.selectionToken(),
+                event.scoreBandClaimScore(),
+                exclusiveWorkerLock);
     }
 }

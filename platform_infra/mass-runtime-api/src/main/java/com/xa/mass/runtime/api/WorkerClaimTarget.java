@@ -14,11 +14,13 @@ import java.util.Set;
 public record WorkerClaimTarget(String workerId,
                                 String workerGroupId,
                                 String batchId,
+                                String selectionToken,
+                                Long scoreBandClaimScore,
                                 int capacity,
                                 Set<String> supportedEventCodes) {
 
     public WorkerClaimTarget(String workerId, String batchId, int capacity) {
-        this(workerId, null, batchId, capacity, Set.of());
+        this(workerId, null, batchId, null, null, capacity, Set.of());
     }
 
     public static WorkerClaimTarget workerLevel(String workerId, String batchId, int capacity) {
@@ -29,7 +31,7 @@ public record WorkerClaimTarget(String workerId,
                                                 String batchId,
                                                 int capacity,
                                                 Set<String> supportedEventCodes) {
-        return new WorkerClaimTarget(workerId, null, batchId, capacity, supportedEventCodes);
+        return new WorkerClaimTarget(workerId, null, batchId, null, null, capacity, supportedEventCodes);
     }
 
     public static WorkerClaimTarget groupScoped(String workerGroupId,
@@ -37,11 +39,29 @@ public record WorkerClaimTarget(String workerId,
                                                 String batchId,
                                                 int capacity,
                                                 Set<String> supportedEventCodes) {
-        return new WorkerClaimTarget(workerId, workerGroupId, batchId, capacity, supportedEventCodes);
+        return groupScoped(workerGroupId, workerId, batchId, null, null, capacity, supportedEventCodes);
+    }
+
+    public static WorkerClaimTarget groupScoped(String workerGroupId,
+                                                String workerId,
+                                                String batchId,
+                                                String selectionToken,
+                                                Long scoreBandClaimScore,
+                                                int capacity,
+                                                Set<String> supportedEventCodes) {
+        return new WorkerClaimTarget(
+                workerId,
+                workerGroupId,
+                batchId,
+                selectionToken,
+                scoreBandClaimScore,
+                capacity,
+                supportedEventCodes);
     }
 
     public WorkerClaimTarget {
         workerGroupId = normalizeNullable(workerGroupId);
+        selectionToken = normalizeNullable(selectionToken);
         capacity = Math.max(0, capacity);
         supportedEventCodes = normalizeSupportedEventCodes(supportedEventCodes);
     }

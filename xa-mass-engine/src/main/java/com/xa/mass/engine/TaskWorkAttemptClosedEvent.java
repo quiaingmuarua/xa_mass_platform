@@ -11,6 +11,8 @@ public record TaskWorkAttemptClosedEvent(
         String workerId,
         String workerGroupId,
         String batchId,
+        String selectionToken,
+        Long scoreBandClaimScore,
         TaskWorkLifecycleState.AttemptStatus status,
         TaskWorkLifecycleState.AttemptFinalReason finalReason
 ) {
@@ -20,10 +22,10 @@ public record TaskWorkAttemptClosedEvent(
                                                      String attemptId,
                                                      int attemptNo,
                                                      String workerId,
-                                                     String batchId,
-                                                     TaskWorkLifecycleState.AttemptStatus status,
-                                                     TaskWorkLifecycleState.AttemptFinalReason finalReason) {
-        return from(taskId, messageId, attemptId, attemptNo, workerId, null, batchId, status, finalReason);
+                                                  String batchId,
+                                                  TaskWorkLifecycleState.AttemptStatus status,
+                                                  TaskWorkLifecycleState.AttemptFinalReason finalReason) {
+        return from(taskId, messageId, attemptId, attemptNo, workerId, null, batchId, null, null, status, finalReason);
     }
 
     public static TaskWorkAttemptClosedEvent from(String taskId,
@@ -35,6 +37,20 @@ public record TaskWorkAttemptClosedEvent(
                                                   String batchId,
                                                   TaskWorkLifecycleState.AttemptStatus status,
                                                   TaskWorkLifecycleState.AttemptFinalReason finalReason) {
+        return from(taskId, messageId, attemptId, attemptNo, workerId, workerGroupId, batchId, null, null, status, finalReason);
+    }
+
+    public static TaskWorkAttemptClosedEvent from(String taskId,
+                                                  String messageId,
+                                                  String attemptId,
+                                                  int attemptNo,
+                                                  String workerId,
+                                                  String workerGroupId,
+                                                  String batchId,
+                                                  String selectionToken,
+                                                  Long scoreBandClaimScore,
+                                                  TaskWorkLifecycleState.AttemptStatus status,
+                                                  TaskWorkLifecycleState.AttemptFinalReason finalReason) {
         return new TaskWorkAttemptClosedEvent(
                 taskId,
                 messageId,
@@ -43,6 +59,8 @@ public record TaskWorkAttemptClosedEvent(
                 workerId,
                 workerGroupId,
                 batchId,
+                selectionToken,
+                scoreBandClaimScore,
                 status,
                 finalReason
         );

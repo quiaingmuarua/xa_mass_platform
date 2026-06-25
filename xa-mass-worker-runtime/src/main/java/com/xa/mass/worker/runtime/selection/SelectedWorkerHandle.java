@@ -18,6 +18,7 @@ public final class SelectedWorkerHandle {
     private final String workerGroupId;
     private final String selectionScopeKey;
     private final String selectionToken;
+    private final Long scoreBandClaimScore;
     private final boolean exclusiveWorkerLock;
     private final SelectedWorkerClaimAuthorization claimAuthorization;
     private final String eventBindingKey;
@@ -38,7 +39,7 @@ public final class SelectedWorkerHandle {
                          boolean exclusiveWorkerLock,
                          SelectedWorkerClaimAuthorization claimAuthorization) {
         this(workerId, workerGroupId, selectionScopeKey, UUID.randomUUID().toString(),
-                exclusiveWorkerLock, claimAuthorization, null, null, null, null, Map.of(),
+                null, exclusiveWorkerLock, claimAuthorization, null, null, null, null, Map.of(),
                 null, null, null, null, null, null);
     }
 
@@ -54,6 +55,7 @@ public final class SelectedWorkerHandle {
                                  String workerGroupId,
                                  String selectionScopeKey,
                                  String selectionToken,
+                                 Long scoreBandClaimScore,
                                  boolean exclusiveWorkerLock,
                                  SelectedWorkerClaimAuthorization claimAuthorization,
                                  String eventBindingKey,
@@ -71,6 +73,7 @@ public final class SelectedWorkerHandle {
         this.workerGroupId = requireText(workerGroupId, "workerGroupId");
         this.selectionScopeKey = normalizeNullable(selectionScopeKey);
         this.selectionToken = requireText(selectionToken, "selectionToken");
+        this.scoreBandClaimScore = scoreBandClaimScore;
         this.exclusiveWorkerLock = exclusiveWorkerLock;
         this.claimAuthorization = claimAuthorization == null
                 ? SelectedWorkerClaimAuthorization.unrestricted()
@@ -93,6 +96,7 @@ public final class SelectedWorkerHandle {
                                                      String selectionScopeKey,
                                                      boolean exclusiveWorkerLock,
                                                      SelectedWorkerClaimAuthorization claimAuthorization,
+                                                     Long scoreBandClaimScore,
                                                      String eventBindingKey,
                                                      String workerCandidateSource,
                                                      String workerSchedulingResourceId,
@@ -109,6 +113,7 @@ public final class SelectedWorkerHandle {
                 workerGroupId,
                 selectionScopeKey,
                 UUID.randomUUID().toString(),
+                scoreBandClaimScore,
                 exclusiveWorkerLock,
                 claimAuthorization,
                 eventBindingKey,
@@ -135,6 +140,10 @@ public final class SelectedWorkerHandle {
 
     public String selectionToken() {
         return selectionToken;
+    }
+
+    Long scoreBandClaimScore() {
+        return scoreBandClaimScore;
     }
 
     public boolean exclusiveWorkerLock() {
@@ -186,7 +195,13 @@ public final class SelectedWorkerHandle {
     }
 
     public WorkerClaimTarget toClaimTarget(String batchId, int capacity) {
-        return claimAuthorization.toClaimTarget(workerGroupId, workerId, batchId, capacity);
+        return claimAuthorization.toClaimTarget(
+                workerGroupId,
+                workerId,
+                batchId,
+                selectionToken,
+                scoreBandClaimScore,
+                capacity);
     }
 
     String selectionScopeKey() {
@@ -194,7 +209,13 @@ public final class SelectedWorkerHandle {
     }
 
     SelectedWorkerEvidence toEvidence() {
-        return new SelectedWorkerEvidence(workerId, workerGroupId, selectionScopeKey, selectionToken, exclusiveWorkerLock);
+        return new SelectedWorkerEvidence(
+                workerId,
+                workerGroupId,
+                selectionScopeKey,
+                selectionToken,
+                scoreBandClaimScore,
+                exclusiveWorkerLock);
     }
 
     private static String requireText(String value, String field) {

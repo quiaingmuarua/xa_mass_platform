@@ -5,6 +5,7 @@ import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.runtime.redis.RedisWorkerRegistry;
+import com.xa.mass.runtime.redis.RedisWorkerScoreBandSlotRuntime;
 import com.xa.mass.runtime.redis.RedisTaskResultRuntime;
 import com.xa.mass.runtime.redis.RedisTaskWorkRuntime;
 import com.xa.mass.runtime.worker.WorkerRegistry;
@@ -390,6 +391,10 @@ public class XaMassServerApplication {
                     WorkerRegistry workerRegistry = workerRegistry();
                     if (workerRegistry != null) {
                         engine.workerRegistry(workerRegistry);
+                        engine.workerScoreBandSlotRuntime(new RedisWorkerScoreBandSlotRuntime(
+                                redisUri(),
+                                runtimeRedisNamespace + ":worker:score-band"
+                        ));
                     }
                     ExecutionEventSink executionEventSink = executionEventSinkProvider.getIfAvailable();
                     if (executionEventSink != null) {

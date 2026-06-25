@@ -20,6 +20,8 @@ public interface TaskAssignmentRuntimePort {
 
     int countDispatchReadyWork(String taskId);
 
+    int countActiveDispatchWorkers(String taskId);
+
     long getWorkLeaseSeconds();
 
     boolean updateTask(Task task);

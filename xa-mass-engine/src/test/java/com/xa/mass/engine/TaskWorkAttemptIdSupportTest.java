@@ -31,6 +31,8 @@ class TaskWorkAttemptIdSupportTest {
                 null,
                 "batch-1",
                 null,
+                null,
+                null,
                 0,
                 Instant.now(),
                 Instant.now()

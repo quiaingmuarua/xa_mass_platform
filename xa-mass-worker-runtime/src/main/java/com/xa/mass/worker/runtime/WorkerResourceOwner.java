@@ -2,6 +2,11 @@ package com.xa.mass.worker.runtime;
 
 import com.xa.mass.runtime.worker.WorkerMeta;
 import com.xa.mass.runtime.worker.WorkerRegistry;
+import com.xa.mass.runtime.worker.slot.NoopWorkerScoreBandSlotRuntime;
+import com.xa.mass.runtime.worker.slot.WorkerScoreBand;
+import com.xa.mass.runtime.worker.slot.WorkerScoreBandSlot;
+import com.xa.mass.runtime.worker.slot.WorkerScoreBandSlotMetadata;
+import com.xa.mass.runtime.worker.slot.WorkerScoreBandSlotRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationStore;
 
@@ -16,13 +21,24 @@ public final class WorkerResourceOwner {
     private final Object lock = new Object();
     private final WorkerDeclarationStore workerStorage;
     private final WorkerRegistry workerRegistry;
+    private final WorkerScoreBandSlotRuntime scoreBandSlotRuntime;
     private final WorkerGroupOwner groupOwner;
 
     public WorkerResourceOwner(WorkerDeclarationStore workerStorage,
                                WorkerRegistry workerRegistry,
                                WorkerGroupOwner groupOwner) {
+        this(workerStorage, workerRegistry, NoopWorkerScoreBandSlotRuntime.INSTANCE, groupOwner);
+    }
+
+    public WorkerResourceOwner(WorkerDeclarationStore workerStorage,
+                               WorkerRegistry workerRegistry,
+                               WorkerScoreBandSlotRuntime scoreBandSlotRuntime,
+                               WorkerGroupOwner groupOwner) {
         this.workerStorage = workerStorage;
         this.workerRegistry = workerRegistry;
+        this.scoreBandSlotRuntime = scoreBandSlotRuntime != null
+                ? scoreBandSlotRuntime
+                : NoopWorkerScoreBandSlotRuntime.INSTANCE;
         this.groupOwner = groupOwner;
     }
 
@@ -31,6 +47,7 @@ public final class WorkerResourceOwner {
         workerStorage.addWorker(declarationRow);
         synchronized (lock) {
             upsertWorkerRegistrySlot(declarationRow);
+            upsertScoreBandSlot(declarationRow, null, "worker registered");
         }
         return declarationRow;
     }
@@ -45,10 +62,12 @@ public final class WorkerResourceOwner {
 
     public Optional<WorkerDeclarationRecord> updateWorker(WorkerDeclarationRecord worker) {
         WorkerDeclarationRecord declarationRow = normalizeWorkerRegistrationInput(worker);
+        WorkerDeclarationRecord previous = workerStorage.getWorker(declarationRow.workerId()).orElse(null);
         boolean updated = workerStorage.updateWorker(declarationRow);
         if (updated) {
             synchronized (lock) {
                 upsertWorkerRegistrySlot(declarationRow);
+                upsertScoreBandSlot(declarationRow, previous, "worker updated");
             }
             return Optional.of(declarationRow);
         }
@@ -88,6 +107,7 @@ public final class WorkerResourceOwner {
         if (deleted) {
             synchronized (lock) {
                 markWorkerRemoving(existing, "worker deleted");
+                removeScoreBandSlot(existing, "worker deleted");
             }
         }
         return deleted;
@@ -100,6 +120,7 @@ public final class WorkerResourceOwner {
         synchronized (lock) {
             for (WorkerDeclarationRecord worker : workers) {
                 upsertWorkerRegistrySlot(worker);
+                upsertScoreBandSlot(worker, null, "worker registry sync");
             }
         }
     }
@@ -120,6 +141,46 @@ public final class WorkerResourceOwner {
             return;
         }
         workerRegistry.markWorkerRemoving(meta.workerId(), reason);
+    }
+
+    private void upsertScoreBandSlot(WorkerDeclarationRecord worker,
+                                     WorkerDeclarationRecord previous,
+                                     String reason) {
+        WorkerScoreBandSlotMetadata metadata = scoreBandMetadata(worker);
+        if (metadata == null) {
+            return;
+        }
+        long now = System.currentTimeMillis();
+        if (previous != null
+                && previous.workerGroupId() != null
+                && !previous.workerGroupId().equals(metadata.homeBucketId())) {
+            scoreBandSlotRuntime.remove(previous.workerGroupId(), metadata.workerId(), "worker home bucket changed", now);
+        }
+        long score = scoreBandSlotRuntime.slot(metadata.homeBucketId(), metadata.workerId())
+                .map(WorkerScoreBandSlot::score)
+                .orElse(WorkerScoreBand.eligibleScore(now));
+        scoreBandSlotRuntime.upsert(metadata, score, reason, now);
+    }
+
+    private void removeScoreBandSlot(WorkerDeclarationRecord worker, String reason) {
+        WorkerScoreBandSlotMetadata metadata = scoreBandMetadata(worker);
+        if (metadata == null) {
+            return;
+        }
+        scoreBandSlotRuntime.remove(metadata.homeBucketId(), metadata.workerId(), reason, System.currentTimeMillis());
+    }
+
+    private WorkerScoreBandSlotMetadata scoreBandMetadata(WorkerDeclarationRecord worker) {
+        if (worker == null || normalizeNullable(worker.workerId()) == null || normalizeNullable(worker.workerGroupId()) == null) {
+            return null;
+        }
+        return WorkerScoreBandSlotMetadata.worker(
+                worker.workerGroupId(),
+                worker.workerId(),
+                worker.transportHint(),
+                worker.attributes(),
+                worker.maxConcurrentWork()
+        );
     }
 
     private WorkerMeta workerMeta(WorkerDeclarationRecord worker) {

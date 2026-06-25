@@ -1,11 +1,16 @@
 package com.xa.mass.worker.runtime.selection;
 
-import com.xa.mass.worker.runtime.admission.WorkerAdmissionResult;
+import com.xa.mass.runtime.worker.slot.WorkerScoreBand;
+import com.xa.mass.runtime.worker.slot.WorkerScoreBandAcquireRequest;
+import com.xa.mass.runtime.worker.slot.WorkerScoreBandSlot;
+import com.xa.mass.runtime.worker.slot.WorkerScoreBandSlotMetadata;
+import com.xa.mass.runtime.worker.slot.WorkerScoreBandSlotRuntime;
+import com.xa.mass.runtime.worker.slot.WorkerScoreBandTransitionCommand;
+import com.xa.mass.runtime.worker.slot.WorkerScoreBandTransitionResult;
+import com.xa.mass.runtime.worker.slot.WorkerScoreBandTransitionStatus;
+import com.xa.mass.runtime.worker.slot.WorkerScoreBandTransitionType;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
-import com.xa.mass.worker.runtime.admission.WorkerAdmissionTarget;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
-import com.xa.mass.worker.runtime.candidate.WorkerCandidateRuntime;
-import com.xa.mass.worker.runtime.candidate.WorkerTaskSelector;
 import com.xa.mass.worker.runtime.evidence.WorkerGroupCapabilityView;
 import com.xa.mass.worker.runtime.evidence.WorkerLoadSnapshot;
 import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
@@ -31,17 +36,19 @@ public final class WorkerSelectionOwner implements WorkerSelectionRuntime {
             Integer.getInteger("xa.mass.workerRuntime.selection.stageOneCandidateSampleMax", 2_048);
     private static final int DEFAULT_STAGE_ONE_OVERSAMPLE_FACTOR =
             Integer.getInteger("xa.mass.workerRuntime.selection.stageOneCandidateOversampleFactor", 4);
+    private static final long DEFAULT_SCORE_BAND_CLAIM_HOLD_MILLIS =
+            Long.getLong("xa.mass.workerRuntime.selection.scoreBandClaimHoldMillis", 300_000L);
 
-    private final WorkerCandidateRuntime candidateRuntime;
     private final WorkerSchedulingViewRuntime schedulingViewRuntime;
     private final WorkerAdmissionRuntime admissionRuntime;
+    private final WorkerScoreBandSlotRuntime scoreBandSlotRuntime;
 
-    public WorkerSelectionOwner(WorkerCandidateRuntime candidateRuntime,
-                                WorkerSchedulingViewRuntime schedulingViewRuntime,
-                                WorkerAdmissionRuntime admissionRuntime) {
-        this.candidateRuntime = Objects.requireNonNull(candidateRuntime, "candidateRuntime");
+    public WorkerSelectionOwner(WorkerSchedulingViewRuntime schedulingViewRuntime,
+                                WorkerAdmissionRuntime admissionRuntime,
+                                WorkerScoreBandSlotRuntime scoreBandSlotRuntime) {
         this.schedulingViewRuntime = Objects.requireNonNull(schedulingViewRuntime, "schedulingViewRuntime");
         this.admissionRuntime = Objects.requireNonNull(admissionRuntime, "admissionRuntime");
+        this.scoreBandSlotRuntime = Objects.requireNonNull(scoreBandSlotRuntime, "scoreBandSlotRuntime");
     }
 
     @Override
@@ -54,28 +61,27 @@ public final class WorkerSelectionOwner implements WorkerSelectionRuntime {
         }
 
         WorkerSelectionIntent intent = resolvedRequest.intent();
-        WorkerTaskSelector selector = new WorkerTaskSelector(
-                resolvedRequest.selectionScopeKey(),
-                intent.workerGroupIds(),
-                intent.targetWorkerId(),
-                Set.of()
-        );
-        List<WorkerCandidateRow> candidateRows = candidateRuntime.findWorkerCandidates(
-                selector,
-                candidateAcquisitionLimit(intent, resolvedRequest.requestedWorkerCount())
+        long nowMillis = System.currentTimeMillis();
+        List<WorkerScoreBandSlot> scoreBandSlots = scoreBandSlotRuntime.acquire(
+                acquireRequest(intent, resolvedRequest.requestedWorkerCount(), nowMillis)
         );
         List<CandidateEvaluation> accepted = new ArrayList<>();
         Map<String, Integer> rejectedByReason = new LinkedHashMap<>();
         Set<String> completedWorkerIds = new LinkedHashSet<>();
 
-        for (WorkerCandidateRow row : candidateRows) {
+        if (scoreBandSlots.isEmpty()) {
+            increment(rejectedByReason, "score-band acquire returned no eligible workers");
+        }
+
+        for (WorkerScoreBandSlot slot : scoreBandSlots) {
+            WorkerCandidateRow row = candidateRow(slot);
             if (row == null || isBlank(row.workerId()) || !completedWorkerIds.add(row.workerId())) {
                 increment(rejectedByReason, "duplicate or invalid worker candidate");
                 continue;
             }
             CandidateEvaluation evaluation = evaluate(row, intent);
             if (evaluation.accepted()) {
-                accepted.add(evaluation);
+                accepted.add(evaluation.withScoreBandClaimSource(slot));
             } else {
                 increment(rejectedByReason, evaluation.reason());
             }
@@ -88,16 +94,20 @@ public final class WorkerSelectionOwner implements WorkerSelectionRuntime {
             if (selected.size() >= resolvedRequest.requestedWorkerCount()) {
                 break;
             }
-            WorkerAdmissionTarget target = admissionTarget(resolvedRequest.selectionScopeKey(), candidate.row());
-            WorkerAdmissionResult reserveResult = admissionRuntime.reserveWorkerCapacity(target);
-            if (reserveResult == null || !reserveResult.accepted()) {
-                increment(rejectedByReason, reserveRejectionReason(reserveResult));
-                continue;
-            }
             if (resolvedRequest.exclusiveWorkerLock()
                     && !admissionRuntime.tryAcquireWorkerExclusiveLease(candidate.row().workerId())) {
-                admissionRuntime.releaseWorkerReservation(target);
                 increment(rejectedByReason, "worker lock conflict");
+                continue;
+            }
+            Long scoreBandClaimScore = claimScoreBandSlot(
+                    candidate,
+                    resolvedRequest.selectionScopeKey(),
+                    nowMillis);
+            if (scoreBandClaimScore == null) {
+                if (resolvedRequest.exclusiveWorkerLock()) {
+                    admissionRuntime.releaseWorkerExclusiveLease(candidate.row().workerId());
+                }
+                increment(rejectedByReason, "score-band claim rejected");
                 continue;
             }
             selected.add(SelectedWorkerHandle.selectedWithEvidence(
@@ -106,6 +116,7 @@ public final class WorkerSelectionOwner implements WorkerSelectionRuntime {
                     resolvedRequest.selectionScopeKey(),
                     resolvedRequest.exclusiveWorkerLock(),
                     SelectedWorkerClaimAuthorization.eventCodes(candidate.groupView().eventCodes()),
+                    scoreBandClaimScore,
                     eventBindingKey(intent),
                     workerCandidateSource(intent),
                     candidate.row().workerId(),
@@ -125,16 +136,8 @@ public final class WorkerSelectionOwner implements WorkerSelectionRuntime {
     }
 
     @Override
-    public int activeSelectedWorkerCount(String selectionScopeKey) {
-        return admissionRuntime.getActiveWorkerCountForTask(selectionScopeKey);
-    }
-
-    @Override
     public boolean confirmSelected(SelectedWorkerHandle handle) {
-        if (handle == null) {
-            return false;
-        }
-        return admissionRuntime.confirmWorkerReservation(admissionTarget(handle.toEvidence()));
+        return handle != null;
     }
 
     @Override
@@ -149,8 +152,8 @@ public final class WorkerSelectionOwner implements WorkerSelectionRuntime {
         if (evidence == null) {
             return;
         }
-        admissionRuntime.releaseWorkerReservation(admissionTarget(evidence));
         releaseSelectedLock(evidence);
+        closeScoreBandClaim(evidence, "release");
     }
 
     @Override
@@ -158,7 +161,6 @@ public final class WorkerSelectionOwner implements WorkerSelectionRuntime {
         if (handle == null) {
             return;
         }
-        admissionRuntime.recordWorkClaimed(admissionTarget(handle.toEvidence()));
     }
 
     @Override
@@ -166,7 +168,7 @@ public final class WorkerSelectionOwner implements WorkerSelectionRuntime {
         if (evidence == null) {
             return;
         }
-        admissionRuntime.recordWorkFinal(admissionTarget(evidence));
+        closeScoreBandClaim(evidence, "final");
     }
 
     @Override
@@ -347,6 +349,25 @@ public final class WorkerSelectionOwner implements WorkerSelectionRuntime {
         return (activeLeaseCount(load) + reservedCountAfterSelection(load)) / (double) declaredCapacity(load);
     }
 
+    private static WorkerScoreBandAcquireRequest acquireRequest(WorkerSelectionIntent intent,
+                                                                int requestedWorkerCount,
+                                                                long nowMillis) {
+        if (intent == null || intent.workerGroupIds().isEmpty()) {
+            return new WorkerScoreBandAcquireRequest(List.of(), null, 0, nowMillis);
+        }
+        if (intent.targetWorkerId() != null) {
+            return WorkerScoreBandAcquireRequest.targetInHomeBuckets(
+                    intent.workerGroupIds(),
+                    intent.targetWorkerId(),
+                    nowMillis);
+        }
+        return new WorkerScoreBandAcquireRequest(
+                intent.workerGroupIds(),
+                null,
+                candidateAcquisitionLimit(intent, requestedWorkerCount),
+                nowMillis);
+    }
+
     private static int candidateAcquisitionLimit(WorkerSelectionIntent intent, int requestedWorkerCount) {
         if (intent != null && intent.targetWorkerId() != null) {
             return 1;
@@ -358,35 +379,65 @@ public final class WorkerSelectionOwner implements WorkerSelectionRuntime {
         return (int) Math.min(sampleMax, Math.max(sampleMin, desiredSample));
     }
 
-    private static WorkerAdmissionTarget admissionTarget(String selectionScopeKey, WorkerCandidateRow row) {
-        return WorkerAdmissionTarget.groupScoped(row.workerGroupId(), row.workerId(), selectionScopeKey);
+    private static WorkerCandidateRow candidateRow(WorkerScoreBandSlot slot) {
+        if (slot == null || slot.metadata() == null) {
+            return null;
+        }
+        WorkerScoreBandSlotMetadata metadata = slot.metadata();
+        return new WorkerCandidateRow(
+                metadata.workerId(),
+                null,
+                metadata.workerGroupId(),
+                metadata.transportHint(),
+                metadata.attributes());
     }
 
-    private static WorkerAdmissionTarget admissionTarget(SelectedWorkerEvidence evidence) {
-        return WorkerAdmissionTarget.groupScoped(
+    private Long claimScoreBandSlot(CandidateEvaluation candidate,
+                                    String selectionScopeKey,
+                                    long nowMillis) {
+        if (candidate == null || candidate.scoreBandSlot() == null) {
+            return null;
+        }
+        WorkerScoreBandSlot slot = candidate.scoreBandSlot();
+        long holdMillis = Math.max(1L, DEFAULT_SCORE_BAND_CLAIM_HOLD_MILLIS);
+        long futureUntil = Math.max(nowMillis + holdMillis, WorkerScoreBand.TIME_SCORE_FLOOR);
+        long futureScore = WorkerScoreBand.futureScore(futureUntil);
+        WorkerScoreBandTransitionResult result = scoreBandSlotRuntime.transition(
+                new WorkerScoreBandTransitionCommand(
+                        WorkerScoreBandTransitionType.FUTURE_INTERVAL,
+                        slot.homeBucketId(),
+                        slot.workerId(),
+                        futureScore,
+                        slot.score(),
+                        selectionScopeKey,
+                        "SELECT",
+                        "WORKER_RUNTIME",
+                        nowMillis)
+        );
+        if (result == null || result.status() != WorkerScoreBandTransitionStatus.ACCEPTED || result.after() == null) {
+            return null;
+        }
+        return result.after().score();
+    }
+
+    private void closeScoreBandClaim(SelectedWorkerEvidence evidence, String reasonCode) {
+        if (evidence == null
+                || evidence.scoreBandClaimScore() == null
+                || isBlank(evidence.workerId())
+                || isBlank(evidence.workerGroupId())) {
+            return;
+        }
+        if (!schedulingViewRuntime.isWorkerDispatchEnabled(evidence.workerId())) {
+            return;
+        }
+        long nowMillis = System.currentTimeMillis();
+        scoreBandSlotRuntime.transition(WorkerScoreBandTransitionCommand.claimClose(
                 evidence.workerGroupId(),
                 evidence.workerId(),
-                evidence.selectionScopeKey()
-        );
-    }
-
-    private static String reserveRejectionReason(WorkerAdmissionResult reserveResult) {
-        if (reserveResult == null) {
-            return "worker reserve rejected";
-        }
-        String reason = reserveResult.reason();
-        if (reason == null || reason.isBlank()) {
-            return "worker reserve rejected";
-        }
-        return switch (reason) {
-            case "CAPACITY_UNAVAILABLE" -> "worker capacity unavailable";
-            case "DISPATCH_DISABLED" -> "worker dispatch disabled";
-            case "STALE_HEARTBEAT" -> "worker heartbeat stale";
-            case "REMOVING_SLOT" -> "worker removing";
-            case "MISSING_SLOT" -> "worker slot missing";
-            case "GROUP_MISMATCH" -> "worker group mismatch";
-            default -> reason;
-        };
+                evidence.scoreBandClaimScore(),
+                WorkerScoreBand.eligibleScore(nowMillis),
+                reasonCode,
+                nowMillis));
     }
 
     private static void increment(Map<String, Integer> counts, String reason) {
@@ -413,20 +464,25 @@ public final class WorkerSelectionOwner implements WorkerSelectionRuntime {
                                        WorkerLoadSnapshot load,
                                        boolean accepted,
                                        String reason,
-                                       double score) {
+                                       double score,
+                                       WorkerScoreBandSlot scoreBandSlot) {
 
         static CandidateEvaluation accept(WorkerCandidateRow row,
                                           WorkerGroupCapabilityView groupView,
                                           WorkerLoadSnapshot load,
                                           double score) {
-            return new CandidateEvaluation(row, groupView, load, true, null, score);
+            return new CandidateEvaluation(row, groupView, load, true, null, score, null);
         }
 
         static CandidateEvaluation reject(WorkerCandidateRow row,
                                           WorkerGroupCapabilityView groupView,
                                           WorkerLoadSnapshot load,
                                           String reason) {
-            return new CandidateEvaluation(row, groupView, load, false, reason, Double.POSITIVE_INFINITY);
+            return new CandidateEvaluation(row, groupView, load, false, reason, Double.POSITIVE_INFINITY, null);
+        }
+
+        CandidateEvaluation withScoreBandClaimSource(WorkerScoreBandSlot slot) {
+            return new CandidateEvaluation(row, groupView, load, accepted, reason, score, slot);
         }
     }
 }

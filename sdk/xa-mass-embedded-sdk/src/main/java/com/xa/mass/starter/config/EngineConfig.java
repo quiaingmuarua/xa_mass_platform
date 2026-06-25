@@ -38,6 +38,7 @@ import com.xa.mass.kernel.spi.task.TaskShellRuntimeStore;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
+import com.xa.mass.runtime.memory.InMemoryWorkerScoreBandSlotRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.runtime.worker.RandomWorkerCandidateSamplingPolicy;
@@ -50,6 +51,7 @@ import com.xa.mass.worker.runtime.control.WorkerDispatchEligibilityRuntime;
 import com.xa.mass.worker.runtime.control.WorkerDispatchGateRuntime;
 import com.xa.mass.worker.runtime.control.WorkerDispatchRecoveryRuntime;
 import com.xa.mass.runtime.worker.WorkerRegistry;
+import com.xa.mass.runtime.worker.slot.WorkerScoreBandSlotRuntime;
 import com.xa.mass.worker.runtime.report.WorkerReportRuntime;
 import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
 import com.xa.mass.worker.runtime.report.WorkerStateProjectionRuntime;
@@ -111,6 +113,7 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
     private boolean workerDeliveryTargetResolverExplicitlyConfigured;
     private WorkerDeclarationStore workerDeclarationStore = new InMemoryWorkerDeclarationStore();
     private WorkerRegistry workerRegistry;
+    private WorkerScoreBandSlotRuntime workerScoreBandSlotRuntime;
     private final WorkerCandidateBucketPolicy workerCandidateBucketPolicy = WorkerCandidateBucketPolicies.defaultPolicy();
     private WorkerManager workerManager;
     private WorkerCommandLifecycleOwner workerCommandLifecycleOwner = new WorkerCommandLifecycleOwner();
@@ -166,6 +169,7 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
                 : selectedWorkerId -> Optional.empty();
         this.workerDeclarationStore = source.workerDeclarationStore;
         this.workerRegistry = source.workerRegistry;
+        this.workerScoreBandSlotRuntime = source.workerScoreBandSlotRuntime;
         this.workerManager = null;
         this.workerCommandLifecycleOwner = source.workerCommandLifecycleOwner;
         this.workerDispatchEligibilityRuntime = source.workerDispatchEligibilityRuntime;
@@ -325,6 +329,7 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
                     getWorkerDeclarationStore(),
                     UNKNOWN_WORKER_REACHABILITY,
                     getWorkerRegistry(),
+                    getWorkerScoreBandSlotRuntime(),
                     workerCandidateBucketPolicy
             );
         }
@@ -474,6 +479,25 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
             throw new IllegalStateException("Cannot replace workerRegistry after workerManager has been configured");
         }
         this.workerRegistry = workerRegistry;
+        this.workerControlRuntime = null;
+    }
+
+    public WorkerScoreBandSlotRuntime getWorkerScoreBandSlotRuntime() {
+        if (workerScoreBandSlotRuntime == null) {
+            workerScoreBandSlotRuntime = new InMemoryWorkerScoreBandSlotRuntime();
+        }
+        return workerScoreBandSlotRuntime;
+    }
+
+    public void setWorkerScoreBandSlotRuntime(WorkerScoreBandSlotRuntime workerScoreBandSlotRuntime) {
+        if (workerScoreBandSlotRuntime == null) {
+            throw new IllegalArgumentException("workerScoreBandSlotRuntime must not be null");
+        }
+        if (this.workerManager != null) {
+            throw new IllegalStateException(
+                    "Cannot replace workerScoreBandSlotRuntime after workerManager has been configured");
+        }
+        this.workerScoreBandSlotRuntime = workerScoreBandSlotRuntime;
         this.workerControlRuntime = null;
     }
 
@@ -640,6 +664,13 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
                 closeable.close();
             } catch (Exception e) {
                 throw new IllegalStateException("Failed to close workerRegistry", e);
+            }
+        }
+        if (workerScoreBandSlotRuntime instanceof AutoCloseable closeable) {
+            try {
+                closeable.close();
+            } catch (Exception e) {
+                throw new IllegalStateException("Failed to close workerScoreBandSlotRuntime", e);
             }
         }
     }

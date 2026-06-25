@@ -28,14 +28,15 @@ Worker runtime owns:
 - Worker-runtime dispatch eligibility evidence used by worker-runtime selection
   and explicit diagnostics: reachability observations, heartbeat freshness,
   load, admission, capacity permits, dispatch gates, and exclusive leases.
-- Runtime worker selection: worker-fact predicates, ordering, reservation,
-  selected handles, selected claim authorization, and selected-worker
-  accounting.
+- Runtime worker selection: worker-fact predicates, ordering, bounded
+  score-band acquire/claim, selected handles, selected claim authorization, and
+  selected-worker evidence.
 - Worker command lifecycle truth: request records, status transitions,
   worker-pulled claims, delivery-attempt bookkeeping, expiry, and command
   lifecycle value contracts.
-- Stage-1 bounded worker candidate source and source guard.
-- Platform-approved worker candidate bucket policy composition.
+- Stage-1 bounded worker candidate source, source guard, and platform-approved
+  worker candidate bucket policy composition where still used as
+  migration/source projection support.
 
 Worker runtime does not own:
 
@@ -441,6 +442,44 @@ candidate/evidence/admission subports. The default engine-facing contract is
 `WorkerSelectionRuntime`; module assembly may still wire registry
 implementations into `WorkerManager`.
 
+## Score-Band Slot Runtime
+
+`platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/worker/slot`
+contains the score-band slot state-machine contract:
+
+- `WorkerScoreBandSlotRuntime`
+- `WorkerScoreBandSlotMetadata`
+- `WorkerScoreBandTransitionCommand`
+- `WorkerScoreBandTransitionResult`
+- `WorkerScoreBand`
+
+Current implementation status:
+
+- worker registration/update projects stable worker slot metadata into the
+  score-band runtime when assembly provides one;
+- `homeBucketId` is `workerGroupId` in this slice;
+- heartbeat refresh does not write score-band state or request positive
+  recovery;
+- memory and Redis implementations store only score zset/map plus stable
+  metadata;
+- production `WorkerSelectionRuntime` now acquires bounded eligible slots from
+  score-band runtime and writes `FUTURE_BAND` claim scores for selected
+  workers;
+- `WorkerSelectionOwner` no longer writes the old
+  `WorkerAdmissionRuntime.reserveWorkerCapacity / confirm / claimed / final`
+  accounting path;
+- `WorkerAdmissionRuntime` still owns exclusive worker locks and remains as
+  direct/runtime API residue outside the score-band selection hot path;
+- `WorkerSelectionRuntime.activeSelectedWorkerCount(taskId)` has been removed.
+  Task-scope active dispatch worker budgeting belongs to engine/task-runtime
+  assignment truth via `TaskAssignmentRuntimePort.countActiveDispatchWorkers`.
+
+Score-band claim close requires an observation that can be validated against
+the current score-band claim. Runtime claim paths carry `scoreBandClaimScore`
+through worker claim target, task lease, dispatch binding, result context, and
+selected-worker evidence. Null-observation legacy `SelectedWorkerEvidence` is
+not enough to shorten a `FUTURE_BAND` score or reopen eligibility.
+
 ## Implementation-Only Owners
 
 The root package contains implementation owners such as `WorkerManager`,
@@ -456,7 +495,10 @@ Runtime outcome proof:
 
 ```powershell
 .\mvnw.cmd -pl xa-mass-worker-runtime `
-  "-Dtest=WorkerManagerTest,WorkerCandidateIndexTest,WorkerAdmissionOwnerTest,WorkerSelectionAtomicRuntimeTest,WorkerSelectionRankingMechanicsTest" test
+  "-Dtest=WorkerManagerTest,WorkerCandidateIndexTest,WorkerAdmissionOwnerTest,WorkerSelectionAtomicRuntimeTest,WorkerSelectionRankingMechanicsTest,WorkerSelectionContractGuardTest" test
+
+.\mvnw.cmd -pl platform_infra/mass-runtime-memory,platform_infra/mass-runtime-redis -am `
+  "-Dtest=InMemoryWorkerScoreBandSlotRuntimeTest,RedisWorkerScoreBandSlotRuntimeTest" test
 
 .\mvnw.cmd -pl xa-mass-engine `
   "-Dtest=TaskWorkerEligibilityTest,WorkerStateReportSchedulingIntegrationTest,TaskSchedulingGateAndTargetingTest,TaskSchedulingContentionTest,TaskSchedulingBindingEntryBypassTest,EngineSchedulingCoreSuite" test

@@ -1,7 +1,8 @@
 package com.xa.mass.worker.runtime.selection;
 
-import com.xa.mass.worker.runtime.admission.WorkerAdmissionResult;
-import com.xa.mass.worker.runtime.admission.WorkerAdmissionTarget;
+import com.xa.mass.runtime.memory.InMemoryWorkerScoreBandSlotRuntime;
+import com.xa.mass.runtime.worker.slot.WorkerScoreBand;
+import com.xa.mass.runtime.worker.slot.WorkerScoreBandSlotMetadata;
 import com.xa.mass.worker.runtime.candidate.WorkerCandidateRow;
 import com.xa.mass.worker.runtime.evidence.WorkerGroupCapabilityView;
 import com.xa.mass.worker.runtime.evidence.WorkerLoadSnapshot;
@@ -44,16 +45,22 @@ final class WorkerSelectionTestSupport {
         return new WorkerCandidateRow(workerId, "agent-v1", GROUP_ID, "polling", attributes);
     }
 
-    static List<WorkerCandidateRow> candidates(WorkerCandidateRow... rows) {
-        return List.of(rows);
-    }
-
-    static WorkerAdmissionTarget target(String workerId) {
-        return WorkerAdmissionTarget.groupScoped(GROUP_ID, workerId, TASK_ID);
-    }
-
-    static WorkerAdmissionResult accepted() {
-        return WorkerAdmissionResult.acceptedResult();
+    static InMemoryWorkerScoreBandSlotRuntime scoreBandRuntime(WorkerCandidateRow... rows) {
+        InMemoryWorkerScoreBandSlotRuntime runtime = new InMemoryWorkerScoreBandSlotRuntime();
+        long now = System.currentTimeMillis();
+        for (WorkerCandidateRow row : rows) {
+            runtime.upsert(
+                    WorkerScoreBandSlotMetadata.worker(
+                            row.workerGroupId(),
+                            row.workerId(),
+                            row.transportHint(),
+                            row.attributes(),
+                            1),
+                    WorkerScoreBand.eligibleScore(now),
+                    "test worker slot",
+                    now);
+        }
+        return runtime;
     }
 
     static WorkerGroupCapabilityView groupView() {

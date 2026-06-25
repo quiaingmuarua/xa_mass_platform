@@ -125,6 +125,20 @@ public class SimpleTaskDispatchBinderTest {
     }
 
     @Test
+    void taskManagerCountsActiveDispatchWorkersFromTaskRuntimeLeases() {
+        Task task = createTask(2);
+        task.getExecutionSpec().setBatchSize(1);
+
+        List<TaskDispatchBinding> dispatched = listener.bindDispatches(
+                task,
+                List.of(matched("d1"), matched("d2"))
+        );
+
+        assertEquals(2, dispatched.size());
+        assertEquals(2, taskManager.countActiveDispatchWorkers(task.getTid()));
+    }
+
+    @Test
     void dispatchSubmitFailureCompensatesRuntimeClaimAndReleasesWorkerResources() {
         Task task = createTask(1);
         task.getExecutionSpec().setBatchSize(1);
@@ -148,7 +162,14 @@ public class SimpleTaskDispatchBinderTest {
         assertEquals(1, taskWorkRuntime.stats(task.getTid()).readyCount());
         assertEquals(0, taskWorkRuntime.stats(task.getTid()).inflightCount());
         verify(workerSelectionRuntime).confirmSelected(selected);
-        verify(workerSelectionRuntime).recordSelectedFinal(SelectedWorkerEvidence.of("d1", "group-a", task.getTid(), false));
+        verify(workerSelectionRuntime).recordSelectedFinal(new SelectedWorkerEvidence(
+                "d1",
+                "group-a",
+                task.getTid(),
+                selected.selectionToken(),
+                null,
+                false
+        ));
         verify(workerSelectionRuntime).releaseSelectedLock(selected);
     }
 

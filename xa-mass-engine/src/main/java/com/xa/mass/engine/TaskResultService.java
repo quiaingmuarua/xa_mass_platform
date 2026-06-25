@@ -884,6 +884,8 @@ class TaskResultService {
                 ctx.workerId(),
                 ctx.workerGroupId(),
                 ctx.batchId(),
+                ctx.selectionToken(),
+                ctx.scoreBandClaimScore(),
                 ctx.payloadRef(),
                 ctx.retryCount(),
                 null,         // leaseExpireAt - not needed for runtime view reconstruction
@@ -1334,7 +1336,9 @@ class TaskResultService {
                 0,
                 row.workerId(),
                 row.workerGroupId(),
-                row.batchId()
+                row.batchId(),
+                null,
+                null
         );
         repairAttempt.status = attemptStatusForRepair(workSummary.status());
         repairAttempt.finalReason = attemptFinalReasonForRepair(workSummary.finalReason());
@@ -1402,6 +1406,8 @@ class TaskResultService {
                         attempt.workerId(),
                         attempt.workerGroupId(),
                         attempt.batchId(),
+                        attempt.selectionToken(),
+                        attempt.scoreBandClaimScore(),
                         attempt.status(),
                         attempt.finalReason()
                 )
@@ -1572,6 +1578,8 @@ class TaskResultService {
         private final String workerId;
         private final String workerGroupId;
         private final String batchId;
+        private final String selectionToken;
+        private final Long scoreBandClaimScore;
         private AttemptStatus status;
         private AttemptFinalReason finalReason;
         private String errorMessage;
@@ -1584,7 +1592,9 @@ class TaskResultService {
                                       int attemptNo,
                                       String workerId,
                                       String workerGroupId,
-                                      String batchId) {
+                                      String batchId,
+                                      String selectionToken,
+                                      Long scoreBandClaimScore) {
             this.attemptId = attemptId;
             this.taskId = taskId;
             this.messageId = messageId;
@@ -1592,6 +1602,8 @@ class TaskResultService {
             this.workerId = workerId;
             this.workerGroupId = workerGroupId;
             this.batchId = batchId;
+            this.selectionToken = selectionToken;
+            this.scoreBandClaimScore = scoreBandClaimScore;
             this.status = AttemptStatus.DISPATCHED;
         }
 
@@ -1610,7 +1622,9 @@ class TaskResultService {
                     attemptNo,
                     activeLease.workerId(),
                     activeLease.workerGroupId(),
-                    activeLease.batchId()
+                    activeLease.batchId(),
+                    activeLease.selectionToken(),
+                    activeLease.scoreBandClaimScore()
             );
             return attempt;
         }
@@ -1641,6 +1655,14 @@ class TaskResultService {
 
         String batchId() {
             return batchId;
+        }
+
+        String selectionToken() {
+            return selectionToken;
+        }
+
+        Long scoreBandClaimScore() {
+            return scoreBandClaimScore;
         }
 
         AttemptStatus status() {

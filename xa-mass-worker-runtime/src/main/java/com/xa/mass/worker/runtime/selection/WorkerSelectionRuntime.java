@@ -4,8 +4,6 @@ public interface WorkerSelectionRuntime {
 
     WorkerSelectionResult selectAndReserve(WorkerSelectionRequest request);
 
-    int activeSelectedWorkerCount(String selectionScopeKey);
-
     boolean confirmSelected(SelectedWorkerHandle handle);
 
     void releaseSelected(SelectedWorkerHandle handle);

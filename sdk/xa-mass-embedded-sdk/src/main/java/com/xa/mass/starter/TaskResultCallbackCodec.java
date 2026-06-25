@@ -8,7 +8,6 @@ import com.xa.mass.sdk.worker.WorkerActionReply;
 import com.xa.mass.transport.channel.ResultIngressDiagnostics;
 import com.xa.mass.transport.channel.ResultIngressEntry;
 import com.xa.mass.transport.channel.ResultIngressMessage;
-import com.xa.mass.transport.packet.TransportPacket;
 
 import java.util.Map;
 import java.util.Objects;
@@ -25,6 +24,7 @@ public final class TaskResultCallbackCodec {
     private static final String BODY_FIELD = "body";
     private static final String MESSAGE_FIELD = "message";
     private static final String TRACE_ID_FIELD = "traceId";
+    private static final String SUCCESS_FIELD = "success";
 
     private final Gson gson;
     private final TaskDispatchDeliveryCorrelationCodec deliveryCorrelationCodec;
@@ -83,7 +83,7 @@ public final class TaskResultCallbackCodec {
     private String encodeWorkerActionReplyPayload(WorkerActionReply request) {
         JsonObject payload = new JsonObject();
         payload.addProperty(REPLY_REF_FIELD, request.replyRef());
-        payload.addProperty(TransportPacket.PAYLOAD_SUCCESS, request.success());
+        payload.addProperty(SUCCESS_FIELD, request.success());
         addOptionalProperty(payload, CODE_FIELD, request.code());
         addOptionalProperty(payload, BODY_FIELD, request.body());
         return gson.toJson(payload);
@@ -97,7 +97,7 @@ public final class TaskResultCallbackCodec {
 
     private DecodedPayload decodePayload(String payloadJson) {
         JsonObject payload = parseObject(payloadJson, "payload");
-        Boolean success = readBoolean(payload, TransportPacket.PAYLOAD_SUCCESS);
+        Boolean success = readBoolean(payload, SUCCESS_FIELD);
         if (success == null) {
             throw new IllegalArgumentException("result callback payload requires success");
         }

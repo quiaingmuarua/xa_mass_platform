@@ -1,6 +1,16 @@
 # Worker Runtime Score-Band Slot State Machine Convergence Roadmap
 
-Status: proposed direction document.
+Status: mainline complete for score-band worker single-slot v1; follow-up
+roadmaps remain. SBR-0 through SBR-5 have landed for the worker resource slot
+score-band runtime, memory/Redis parity, production selection acquire/claim
+pivot, and claim-close observation propagation. The current score-band slice
+models one scheduling slot per worker resource: once selected, that worker is
+held in `FUTURE_BAND` until claim close or natural due time. Remaining-permit
+concurrency for `declaredCapacity > 1` is not proven by this roadmap and needs
+a later per-permit/per-resource-slot owner decision. The old
+`activeSelectedWorkerCount(taskId)` budgeting read has been removed from
+`WorkerSelectionRuntime`; assignment budgeting now reads active dispatch
+workers from task-runtime lease truth through `TaskAssignmentRuntimePort`.
 
 This is the first implementation roadmap derived from:
 
@@ -23,6 +33,36 @@ not complete until `WorkerSelectionRuntime` production internals acquire and
 claim workers through that score-band runtime instead of leaving score-band
 state as a shadow projection.
 
+Current implementation notes:
+
+- `WorkerScoreBandSlotRuntime` and memory / Redis implementations exist.
+- Worker declaration add/update projects score-band slot metadata when assembly
+  provides a score-band runtime; heartbeat refresh does not write score-band
+  state.
+- SDK memory assembly defaults to `InMemoryWorkerScoreBandSlotRuntime`; server
+  Redis assembly wires `RedisWorkerScoreBandSlotRuntime`.
+- Production `WorkerSelectionRuntime` acquire now reads bounded score-band
+  slots and moves selected workers into `FUTURE_BAND`.
+- The current production score-band unit is a worker-resource single slot. A
+  selected worker is not reacquired while its score is still future-held,
+  regardless of `declaredCapacity`. `declaredCapacity` remains load/ranking and
+  diagnostic evidence in this slice; it is not a remaining-permit acquire
+  source.
+- Release/final evidence now carries `scoreBandClaimScore` through
+  `WorkerClaimTarget -> ActiveLeaseRecord / ClaimedTaskWork ->
+  TaskDispatchBinding / RuntimeResultApplyContext -> SelectedWorkerEvidence`.
+  Null-observation legacy evidence must not reopen or shorten score-band
+  claims.
+- `WorkerSelectionOwner` no longer writes the old
+  `WorkerAdmissionRuntime.reserveWorkerCapacity / confirm / claimed / final`
+  accounting path. `WorkerAdmissionRuntime` still owns exclusive worker locks
+  and remains as direct/runtime API residue outside the score-band selection
+  hot path.
+- `WorkerSelectionRuntime.activeSelectedWorkerCount(taskId)` has been removed.
+  Task-scope budgeting reads belong to engine/task-runtime assignment truth and
+  are served by `TaskAssignmentRuntimePort.countActiveDispatchWorkers(taskId)`,
+  which counts distinct workers from active task work leases.
+
 ## Current Facts
 
 - `xa-mass-worker-runtime` owns worker-plane lifecycle, admission, dispatch
@@ -33,17 +73,23 @@ state as a shadow projection.
   bucket policy contracts.
 - Memory and Redis implementations already share `WorkerRegistryContractTest`
   and concrete `InMemoryWorkerRegistryTest` / `RedisWorkerRegistryTest` proof.
-- Current selection still flows through group/candidate acquisition:
+- Current production selection now flows through score-band acquisition:
 
   ```text
   WorkerSelectionRuntime
-    -> WorkerCandidateRuntime / WorkerCandidateIndex
-    -> WorkerRegistry.acquireCandidates(...)
-    -> worker-runtime filters/ranking
-    -> WorkerAdmissionRuntime.reserveWorkerCapacity(...)
+    -> WorkerSelectionOwner
+    -> WorkerScoreBandSlotRuntime.acquire(...)
+    -> worker-runtime filters / ranking / exclusive-lock check
+    -> WorkerScoreBandSlotRuntime.transition(FUTURE_INTERVAL)
   ```
 
-- Redis currently has group-partitioned slot hashes, candidate buckets,
+- Current production selection is one score-band slot per worker resource. It
+  does not prove that an occupied worker with remaining declared capacity can
+  be concurrently selected. That capacity semantics is deferred to a follow-up
+  per-permit/per-resource-slot roadmap.
+
+- Older Redis worker-registry data still has group-partitioned slot hashes,
+  candidate buckets,
   heartbeat deadline zsets, and candidate-bucket lifecycle deadline zsets. These
   are current candidate/source projections, not score-band resource-slot truth,
   and this roadmap must not rename them into score-band keys.
@@ -94,31 +140,37 @@ counters, Redis buckets, or raw slot metadata directly.
 
 Score-band slot state is worker-runtime truth, not trace, diagnostics,
 transport presence, or task policy truth. Transition evidence is proof/audit
-evidence; it must not become a second current-state owner. Existing
-`WorkerRegistry` remains the current production candidate/reserve path until
-the score-band acquire pivot in this roadmap lands. After that pivot, any old
-candidate path that remains must be classified as migration residue, test
-support, or a separately justified non-selection owner.
+evidence; it must not become a second current-state owner. Production
+`WorkerSelectionOwner` now acquires and claims candidates from score-band slots.
+The old candidate/reserve path must not return to production selection. Any old
+candidate or admission path that remains must be classified as non-selection
+runtime API, migration residue, test support, or a separately justified owner.
 
 ## Boundary Decision
 
-Introduce a new worker resource slot state-machine contract instead of mutating
-`WorkerRegistry` in place, then consume that contract behind the existing
-`WorkerSelectionRuntime` before this roadmap is considered complete.
+SBR-0 production worker slot-state owner shape is fixed for this roadmap:
+
+```text
+introduce a new worker resource slot state-machine contract
+```
+
+That contract must be consumed behind the existing `WorkerSelectionRuntime`
+before this roadmap is considered complete.
 
 Reasons:
 
 - `WorkerRegistry` is still the current production path for candidate source,
   reservation, active work accounting, dispatch gates, and tests.
-- Replacing it in-place would force selection migration before the score-band
-  state machine is proven.
-- A separate first contract lets memory and Redis prove identical transition
+- In-place mutation of `WorkerRegistry` would preserve too much old candidate /
+  reserve / heartbeat / gate vocabulary and make the score-band state machine
+  look like another projection instead of the new worker-runtime slot truth.
+- The separate first contract lets memory and Redis prove identical transition
   semantics before matcher internals move.
-- The new contract is not a wrapper over `WorkerRegistry`; it owns a different
-  runtime truth: score-band slot lifecycle and the unified worker-runtime
-  `score/meta` Redis shape.
+- The new contract must not be a wrapper over `WorkerRegistry`; it owns a
+  different runtime truth: score-band slot lifecycle and the unified
+  worker-runtime `score/meta` Redis shape.
 - The roadmap must not stop at a second state owner. Once the score-band
-  contract is proven, `WorkerSelectionOwner` must use it through the unchanged
+  owner is proven, `WorkerSelectionOwner` must use it through the unchanged
   engine-facing `WorkerSelectionRuntime` seam.
 - The roadmap must not create a second production admission owner. Once the
   acquire pivot lands, capacity reserve/confirm/release/final accounting must
@@ -126,8 +178,8 @@ Reasons:
   score-band dynamic score state and the old `WorkerAdmissionRuntime` reserve
   truth.
 
-Target first contract vocabulary can be adjusted during implementation, but the
-owner shape should stay:
+Target owner vocabulary can be adjusted during implementation, but the
+score-band slot contract must express:
 
 ```text
 WorkerResourceSlotRegistry or WorkerScoreBandSlotRuntime
@@ -317,13 +369,17 @@ lowRecheckScore = nextRecheckAtMillis - LOW_RECHECK_EPOCH_MILLIS
   maps aliases of score-band state.
 - Do not make transition evidence or diagnostics a current-state owner.
 - Do not preserve old and new paths as equivalent production hot paths after a
-  later migration slice chooses one.
+  score-band acquire pivot lands.
 
 ## Do Not Start With
 
 Do not start by renaming current candidate buckets or heartbeat deadline zsets
 to "score-band." The first implementation must introduce and prove the
 score-band lifecycle truth directly.
+
+Do not start by mutating `WorkerRegistry` in place. `WorkerRegistry` remains
+the current migration source until the score-band owner is consumed behind
+`WorkerSelectionRuntime`; it is not the first score-band contract.
 
 Do not start by changing engine assignment, task dispatch binding, transport,
 or the engine-facing `WorkerSelectionRuntime` contract. The first useful slice
@@ -365,7 +421,9 @@ Scope:
   - future score due as read-time eligibility, not a stored transition event;
   - engine attempt timeout as task/attempt evidence, not positive close;
   - owner-validated recovery/recheck;
-  - heartbeat/freshness as recheck evidence only.
+  - heartbeat/freshness as point-read evidence that worker-runtime may consult
+    during an owner-initiated recheck, not as a recheck request and not as a
+    direct eligibility writer.
 - Classify current selection-domain inputs that must survive SBR-5:
   - WorkerGroup universe;
   - target worker id;
@@ -398,14 +456,15 @@ Scope:
   - immediately eligible only when worker declaration, recovery mode, and
     owner validation allow it;
   - otherwise low-recheck or parked with explicit reason.
-- Decide coexistence boundary with current `WorkerRegistry`: score-band runtime
-  is not production selection truth until the internal acquire pivot in this
-  roadmap lands, and it must not remain shadow state after roadmap completion.
-- Decide the SBR-5 admission/reserve convergence rule:
-  - `WorkerAdmissionRuntime` becomes a score-band-backed port; or
-  - production selection stops using `WorkerAdmissionRuntime`; or
-  - another single owner is named.
-  A dual production path is not allowed.
+- Record the coexistence boundary with current `WorkerRegistry`: score-band
+  runtime is not production selection truth until the internal acquire pivot in
+  this roadmap lands, and it must not remain shadow state after roadmap
+  completion.
+- Apply the SBR-5 task-scope active-count rule:
+  - remove `activeSelectedWorkerCount(taskId)` from worker selection;
+  - use task-runtime assignment/lease truth for allocation budgeting;
+  - do not add task-scoped score-band indexes or return to old reserve
+    accounting for this read.
 - Decide the SBR-5 claim-close rule:
   - claim close is one state-machine transition for closing a `FUTURE_BAND`
     claim;
@@ -413,10 +472,10 @@ Scope:
     separate event models;
   - future score due is read-time interpretation of the existing score, not a
     stored transition event;
-  - engine attempt timeout is task/attempt evidence and must not write an
-    eligible score;
+  - engine attempt timeout is task/attempt evidence only and must not write any
+    score;
   - heartbeat/connected/session keepalive/transport freshness cannot request
-    worker-runtime recheck and cannot directly write an eligible score;
+    worker-runtime recheck and cannot directly write worker-runtime score;
   - freshness evidence is considered only for workers with
     `dispatchRecoveryMode=FRESHNESS_EVIDENCE`; default `EXPLICIT_ONLY` workers
     need explicit worker report/control evidence;
@@ -425,8 +484,13 @@ Scope:
 
 Acceptance:
 
-- Inventory separates current production `WorkerRegistry` from new
-  score-band slot truth.
+- Inventory separates current production `WorkerRegistry` responsibilities from
+  the selected score-band slot truth.
+- SBR-0 records the fixed production slot-state owner path: introduce a new
+  worker resource slot state-machine contract. Direct in-place mutation of
+  `WorkerRegistry` is not the selected first path.
+- The chosen path forbids split production truth between old candidate/reserve
+  state and new score-band score state after SBR-5.
 - First-slice contract does not require engine, transport, or concrete adapter
   changes.
 - `WorkerGroup` may remain metadata or management scope, but the hot-path
@@ -438,20 +502,22 @@ Acceptance:
   state, not part of the new score-band Redis shape.
 - Score-band acquire scope is specified before SBR-5 starts and proves bounded
   acquisition without full worker/home-bucket scan.
-- Admission/reserve owner after SBR-5 is specified as exactly one production
-  truth.
+- Post-SBR-5 budgeting reads are task-runtime assignment truth. Production
+  selection must not return to old reserve truth, and score-band must not gain a
+  task-scoped active-count index for this read.
 - Claim-close, future-score due, and attempt-timeout handling are specified
   before SBR-5 starts.
 - Roadmap is updated if inventory shows the first slice cannot compile without
   modifying the engine-facing `WorkerSelectionRuntime` contract.
 
-## SBR-1 Contract And State Machine Semantics
+## SBR-1 Slot-State Contract And State Machine Semantics
 
 Scope:
 
 - Add score-band constants and validation helpers in `mass-runtime-api`.
-- Add first-slice worker resource slot state-machine contracts in
-  `mass-runtime-api`.
+- Implement the SBR-0 selected worker slot-state contract path by adding the
+  new score-band resource slot contract in `mass-runtime-api`. Do not add
+  parallel score fields to `WorkerRegistry` as the first implementation path.
 - Add a shared contract test suite for memory and Redis implementations.
 - Model only worker resources:
 
@@ -512,7 +578,7 @@ Acceptance:
   - FUTURE_BAND due is proven by acquire range semantics, not by a timeout
     event or queue move;
   - engine attempt timeout cannot act as positive claim close and cannot write
-    an eligible score;
+    any score;
   - heartbeat/connected/session keepalive/transport freshness cannot create a
     worker-runtime recheck request;
   - owner-validated recheck can move the resource to the next validated band;
@@ -634,8 +700,9 @@ Acceptance:
 - No engine code imports score-band implementation classes or Redis keyspace.
 - Score-band state is not consumed by current production selection until SBR-5.
 - The temporary dual state is explicitly transitional: `WorkerRegistry` remains
-  production candidate/reserve truth for this slice only, while score-band
-  proves worker-runtime transition parity.
+  production candidate/reserve truth for SBR-4 only, while score-band proves
+  worker-runtime transition parity. SBR-5 must replace the production selection
+  acquire/claim path with score-band.
 
 ## SBR-5 WorkerSelectionRuntime Internal Acquire Pivot
 
@@ -669,30 +736,49 @@ Scope:
   - exclusive worker lock requirement maps to score-band future/unavailable
     score semantics or a
     single named worker-runtime lock owner.
-- Replace the old admission/reserve production truth with one SBR-0-selected
-  owner path. If `WorkerAdmissionRuntime` remains, it must be backed by
-  score-band slot state for production selection, not by an independent reserve
-  counter.
+- Replace the old admission/reserve production truth with the SBR-0-selected
+  score-band owner path. `WorkerAdmissionRuntime` may remain for exclusive
+  worker locks and direct/runtime API residue, but production selection must not
+  write independent reserve/confirm/claimed/final counters beside score-band
+  claims.
+- Preserve the current score-band v1 capacity boundary: score-band acquire is
+  worker-resource single-slot. This slice must not claim proof for concurrent
+  remaining-permit selection. If the platform wants `declaredCapacity > 1` to
+  mean concurrent selectable permits, that belongs to a later per-permit or
+  per-resource-slot roadmap before old capacity/reservation support is removed.
+- Move `activeSelectedWorkerCount(taskId)` out of `WorkerSelectionRuntime`.
+  Score-band claims are worker-slot keyed; task-scoped active dispatch worker
+  counts are computed from task-runtime active leases through
+  `TaskAssignmentRuntimePort`.
+- Do not mark the SBR-5 pivot complete while claim-close evidence lacks an
+  observation that can be validated against the score-band claim. The current
+  implementation carries `scoreBandClaimScore`, the expected `FUTURE_BAND`
+  score written at selection time. `selectionToken` remains selected-handle
+  identity; it is not stored as a Redis hold token.
 - Apply the SBR-0 claim-close rule:
   - claim close is one transition for an existing `FUTURE_BAND` claim;
   - `release`, `final`, and `cancel` are close reasons only;
   - `FUTURE_BAND` expiry is not a close event; no writer moves the slot from
     future to eligible when time passes;
-  - engine attempt timeout is not positive claim close and must not write an
-    eligible score;
+  - engine attempt timeout is not positive claim close and must not write any
+    score;
   - claim close must not directly reopen a parked, low-recheck, or otherwise
     blocked worker;
   - only worker-runtime validation may write an eligible score.
 - Apply the SBR-5 claim observation rule:
-  - reuse existing `SelectedWorkerHandle.selectionToken` as the score-band
-    claim observation when it is available;
+  - use `scoreBandClaimScore` as the score-band same-claim observation;
   - `selectionToken` is not a transport session token, endpoint lease id, or
-    second Redis hold truth;
+    second Redis hold truth, and it is not the score comparison value;
   - claim-close evidence with a matching claim observation may participate in
     same-claim validation;
-  - null-token legacy `SelectedWorkerEvidence` is evidence-only for claim
-    close: it may be logged or classified conservatively, but it must not
-    directly shorten `FUTURE_BAND` score or write an eligible score.
+  - null-observation legacy `SelectedWorkerEvidence` is evidence-only for
+    claim close: it may be logged or classified conservatively, but it must
+    not directly shorten `FUTURE_BAND` score or write an eligible score.
+- If SBR-5 keeps the engine-facing `WorkerSelectionRuntime` method shape
+  unchanged, worker-runtime must still ensure that engine release/final paths
+  can return a score-band claim observation through persisted selected-worker
+  evidence. Otherwise SBR-5 may only pivot candidate acquire, not admission /
+  claim-close ownership, and the roadmap is not complete.
 - Keep old candidate/runtime registry structures only where still needed for
   non-selection owners, tests, or migration residue. They must not remain the
   production selection source after this slice.
@@ -719,20 +805,34 @@ Acceptance:
   all-group, or all-home-bucket scan.
 - Score-band acquire returns eligible/time-due resources; parked, low-recheck,
   and not-yet-due future-held resources are not selected by the hot path.
+- Score-band acquire is worker-resource single-slot in this slice. A selected
+  worker is future-held as a whole worker resource until claim close or due
+  time; remaining-permit capacity is not part of SBR-5 acceptance.
 - Selected WorkerGroup, target worker, routing, and attribute constraints remain
   observable in focused selection tests after the acquire pivot.
 - Owner validation can reject a score-band slot without corrupting score state.
+- Release/final/claim-close proof uses non-null score-band claim observation.
+  Tests must also prove null-observation legacy `SelectedWorkerEvidence` does not
+  reopen or shorten a score-band claim.
 - Successful selection moves the worker through worker-runtime-owned
   future/unavailable score state or a single named lock owner.
-- Successful selection carries the existing `selectionToken` as score-band
-  claim observation where claim-close validation needs same-claim proof.
+- Successful selection carries `scoreBandClaimScore` as score-band claim
+  observation where claim-close validation needs same-claim proof.
 - Confirm/claim-close paths validate and advance score through the score-band
   runtime rather than a separate production reserve truth.
+- Production selection no longer calls
+  `WorkerAdmissionRuntime.reserveWorkerCapacity`,
+  `confirmWorkerReservation`, `recordWorkClaimed`, `recordWorkFinal`, or
+  `releaseWorkerReservation`.
+- `WorkerSelectionRuntime` no longer exposes `activeSelectedWorkerCount`.
+- `TaskWorkerAssignListener` reads current task worker count from
+  `TaskAssignmentRuntimePort.countActiveDispatchWorkers(taskId)`, backed by
+  distinct workers in task-runtime active leases.
 - FUTURE_BAND due is represented by the existing score becoming due; no
   timeout event, queue move, or writer is needed.
 - Engine attempt timeout does not act as positive claim close; it is
-  task/attempt evidence and cannot write an eligible score.
-- Stale or null-token claim-close evidence cannot directly shorten
+  task/attempt evidence and cannot write any score.
+- Stale or null-observation claim-close evidence cannot directly shorten
   `FUTURE_BAND` or reopen eligibility for the same worker.
 - No engine, task assignment, transport, adapter, or result-ingress code imports
   score-band implementation classes or Redis keyspace.
@@ -741,8 +841,10 @@ Acceptance:
   production selection must use score-band acquire/claim and must not replace
   old candidate acquire with all-worker/all-group/all-home-bucket scans.
 - Candidate-bucket and old registry reserve code is either removed from
-  production selection or explicitly classified as residue/test support with a
-  follow-up removal target.
+  production selection or explicitly classified as direct API residue/test
+  support with a follow-up removal target.
+- `activeSelectedWorkerCount(taskId)` is removed from worker-runtime selection,
+  and task-runtime active-lease proof covers the replacement budgeting read.
 
 ## SBR-6 Docs, Guards, And Proof Registry
 
@@ -781,7 +883,8 @@ Acceptance:
 
 ## Suggested Implementation Order
 
-1. SBR-0 inventory, event-to-transition table, and naming decision.
+1. SBR-0 inventory, event-to-transition table, and fixed production slot-state
+   owner record.
 2. SBR-1 API constants, transition model, and shared contract tests.
 3. SBR-2 in-memory state-machine implementation.
 4. SBR-3 Redis score/meta implementation and keyspace proof.
@@ -803,46 +906,49 @@ After SBR-1/SBR-2:
 
 ```powershell
 .\mvnw.cmd -q -pl platform_infra/mass-runtime-api,platform_infra/mass-runtime-memory -am -DskipTests test-compile
-.\mvnw.cmd -q -pl platform_infra/mass-runtime-memory -am test `
-  "-Dtest=InMemoryWorkerScoreBandSlotRuntimeTest,InMemoryWorkerRegistryTest"
+.\mvnw.cmd -q -pl platform_infra/mass-runtime-memory `
+  "-Dtest=InMemoryWorkerScoreBandSlotRuntimeTest,InMemoryWorkerRegistryTest" test
 ```
 
 After SBR-3:
 
 ```powershell
 .\mvnw.cmd -q -pl platform_infra/mass-runtime-api,platform_infra/mass-runtime-memory,platform_infra/mass-runtime-redis -am -DskipTests test-compile
-.\mvnw.cmd -q -pl platform_infra/mass-runtime-memory -am test `
-  "-Dtest=InMemoryWorkerScoreBandSlotRuntimeTest,InMemoryWorkerRegistryTest"
-.\mvnw.cmd -q -pl platform_infra/mass-runtime-redis -am test `
-  "-Dtest=RedisWorkerScoreBandSlotRuntimeTest,RedisWorkerRegistryTest"
+.\mvnw.cmd -q -pl platform_infra/mass-runtime-memory `
+  "-Dtest=InMemoryWorkerScoreBandSlotRuntimeTest,InMemoryWorkerRegistryTest" test
+.\mvnw.cmd -q -pl platform_infra/mass-runtime-redis `
+  "-Dtest=RedisWorkerScoreBandSlotRuntimeTest,RedisWorkerRegistryTest" test
 ```
 
 After SBR-4:
 
 ```powershell
 .\mvnw.cmd -q -pl xa-mass-worker-runtime,xa-mass-engine -am -DskipTests test-compile
-.\mvnw.cmd -q -pl xa-mass-worker-runtime -am test `
-  "-Dtest=WorkerManagerTest,WorkerScoreBandSlotStateMachineIntegrationTest,WorkerCandidateIndexTest,WorkerAdmissionOwnerTest,WorkerSelectionAtomicRuntimeTest,WorkerSelectionRankingMechanicsTest,WorkerSelectionContractGuardTest"
-.\mvnw.cmd -q -pl xa-mass-engine -am test `
-  "-Dtest=EngineSchedulingCoreArchitectureGuardTest"
+.\mvnw.cmd -q -pl xa-mass-worker-runtime `
+  "-Dtest=WorkerManagerTest,WorkerScoreBandSlotStateMachineIntegrationTest,WorkerCandidateIndexTest,WorkerAdmissionOwnerTest,WorkerSelectionAtomicRuntimeTest,WorkerSelectionRankingMechanicsTest,WorkerSelectionContractGuardTest" test
+.\mvnw.cmd -q -pl xa-mass-engine `
+  "-Dtest=EngineSchedulingCoreArchitectureGuardTest" test
 ```
 
 After SBR-5:
 
 ```powershell
 .\mvnw.cmd -q -pl xa-mass-worker-runtime,xa-mass-engine -am -DskipTests test-compile
-.\mvnw.cmd -q -pl xa-mass-worker-runtime -am test `
-  "-Dtest=WorkerSelectionScoreBandRuntimeTest,WorkerSelectionScoreBandDomainTest,WorkerSelectionScoreBandPositiveEvidenceTest,WorkerSelectionAtomicRuntimeTest,WorkerSelectionRankingMechanicsTest,WorkerSelectionContractGuardTest,WorkerManagerTest"
-.\mvnw.cmd -q -pl xa-mass-engine -am test `
-  "-Dtest=TaskWorkerEligibilityTest,TaskSchedulingGateAndTargetingTest,TaskSchedulingContentionTest,EngineSchedulingCoreArchitectureGuardTest"
+.\mvnw.cmd -q -pl xa-mass-worker-runtime `
+  "-Dtest=WorkerSelectionAtomicRuntimeTest,WorkerSelectionRankingMechanicsTest,WorkerSelectionContractGuardTest,WorkerManagerTest" test
+.\mvnw.cmd -q -pl xa-mass-engine `
+  "-Dtest=TaskResourceReleaseListenerTest,TaskWorkerAssignListenerTest,TaskResultCorrelationSupportTest,TaskWorkAttemptIdSupportTest,EngineSchedulingCoreArchitectureGuardTest,SimpleTaskDispatchBinderTest" test
 ```
 
-`WorkerSelectionScoreBandRuntimeTest`, bounded-domain proof, and stale
-positive/release evidence proof are mandatory new or renamed focused proofs for
-SBR-5. If
-implementation uses different class names, these commands must be corrected
-before completion; do not rely on
-`-Dsurefire.failIfNoSpecifiedTests=false`.
+The SBR-5 proof currently lives in the existing focused selection and engine
+tests above. They must prove bounded score-band acquire, no old candidate
+acquire in `WorkerSelectionOwner`, claim-close observation propagation, and
+stale/null-observation safety. Do not rely on
+`-Dsurefire.failIfNoSpecifiedTests=false` for final roadmap completion proof.
+Use the two-step verification shape above: first reactor `test-compile` with
+`-am`, then strict focused tests on the owning module without `-am`, so upstream
+modules without matching test names do not turn the proof command itself into a
+false failure.
 
 Completion residue scan:
 
@@ -851,7 +957,7 @@ rg -n "WorkerScoreBand|ScoreBand|score-band|wr:.*score|wr:.*meta|wr:.*hold" `
   xa-mass-engine transport `
   --glob "*.java" --glob "!**/target/**"
 rg -n "WorkerCandidateRuntime|WorkerCandidateIndex|acquireCandidates\(" `
-  xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/selection xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/WorkerManager.java `
+  xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/selection xa-mass-engine/src/main/java `
   --glob "*.java" --glob "!**/target/**"
 rg -n "adapterMailboxKey|routeKey|connectionId|sessionHandle" `
   xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/selection xa-mass-engine/src/main/java `
@@ -863,6 +969,14 @@ all `wr:*score/meta` or `RedisWorkerRegistry` mentions as residue.
 `RedisWorkerRegistry` may remain while old candidate structures are being
 retired, but it must not write score/meta keys and score-band Redis runtime
 must not write the old candidate/heartbeat/group slot keys.
+
+The broader old candidate/admission surface in `WorkerManager`,
+`WorkerAdmissionRuntime`, `WorkerCandidateRuntime`, `WorkerCandidateIndex`,
+`WorkerRegistry.acquireCandidates(...)`, and candidate-bucket keyspace is
+tracked by
+[WORKER_RUNTIME_POST_SCORE_BAND_RESIDUE_RETIREMENT_ROADMAP.md](WORKER_RUNTIME_POST_SCORE_BAND_RESIDUE_RETIREMENT_ROADMAP.md).
+SBR completion only requires that production selection no longer uses those
+old paths.
 
 Mandatory new test classes must exist before the corresponding verification
 command is considered proof. Do not use `-Dsurefire.failIfNoSpecifiedTests=false`
@@ -890,6 +1004,9 @@ This roadmap can be considered complete only when:
   without changing engine assignment;
 - production `WorkerSelectionRuntime` internals acquire/claim workers through
   score-band runtime while preserving the engine-facing selection contract;
+- score-band completion is scoped to worker-resource single-slot v1; concurrent
+  remaining-permit selection for `declaredCapacity > 1` is a follow-up owner
+  decision, not current proof;
 - `WorkerSelectionOwner` production selection no longer depends on
   `WorkerCandidateRuntime`, `WorkerCandidateIndex`, or
   `WorkerRegistry.acquireCandidates(...)`;
@@ -898,9 +1015,12 @@ This roadmap can be considered complete only when:
 - WorkerGroup, target worker, routing, attribute, exclusive-lock, and requested
   count semantics are preserved behind the unchanged `WorkerSelectionRuntime`
   contract;
-- admission/reserve/final accounting has one production owner path after the
-  acquire pivot, with no independent old reserve truth running beside
+- production selection acquire/claim/final close uses score-band state and does
+  not write independent old reserve/confirm/claimed/final counters beside
   score-band dynamic score truth;
+- `activeSelectedWorkerCount(taskId)` is removed from worker-runtime selection,
+  and assignment budgeting reads distinct active workers from task-runtime lease
+  truth;
 - stale claim-close evidence from an older observation cannot reopen
   eligibility;
 - docs and proof registry reflect implemented behavior;

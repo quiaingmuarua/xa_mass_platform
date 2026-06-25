@@ -4,7 +4,6 @@ import com.xa.mass.sdk.worker.WorkerActionReply;
 import com.xa.mass.transport.channel.ResultIngressDiagnostics;
 import com.xa.mass.transport.channel.ResultIngressEntry;
 import com.xa.mass.transport.channel.ResultIngressMessage;
-import com.xa.mass.transport.packet.TransportPacket;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
@@ -15,6 +14,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class TaskResultCallbackCodecTest {
+
+    private static final String OUTPUT_FIELD = "output";
 
     private final TaskResultCallbackCodec codec = new TaskResultCallbackCodec();
 
@@ -161,7 +162,7 @@ class TaskResultCallbackCodecTest {
                         true,
                         "ok",
                         null,
-                        Map.of(TransportPacket.PAYLOAD_OUTPUT, new Object()),
+                        Map.of(OUTPUT_FIELD, new Object()),
                         null,
                         null,
                         null

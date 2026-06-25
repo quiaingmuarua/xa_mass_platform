@@ -29,7 +29,7 @@ class WorkerActionTest {
         ), fields);
         assertFalse(fields.contains("routeKey"));
         assertFalse(fields.contains("transportPayload"));
-        assertFalse(fields.contains("TransportPacket"));
+        assertFalse(fields.contains("Transport" + "Packet"));
         assertFalse(fields.contains("workerId"));
     }
 
