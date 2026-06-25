@@ -1,7 +1,7 @@
 package com.xa.mass.worker.runtime.resource;
 
 /**
- * Narrow runtime heartbeat mutation surface for presence ingress.
+ * Narrow worker-runtime heartbeat freshness mutation surface.
  */
 public interface WorkerHeartbeatRuntime {
 

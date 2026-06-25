@@ -72,7 +72,7 @@ Current landed slice:
   clearing that source through `WorkerRegistry.recoverDispatchDisable(...)`;
 - the former transport-to-worker-runtime push-presence event bridge has been
   removed. Transport connected/heartbeat observations stay transport-local and
-  cannot wake the scheduler through presence projection. Embedded assigned
+  cannot wake the scheduler through a generic session-event projection. Embedded assigned
   delivery uses worker registration plus local transport binding for
   selected-worker mailbox lookup; split producer runtimes use explicit
   resolver injection;
@@ -561,11 +561,11 @@ transport boundary roadmap.
 This avoids the old ambiguity where `connected` could be mistaken for
 business readiness or scheduling eligibility.
 
-Before any transport session-presence path is removed, the implementation must
-classify every supported worker intake mode. WebSocket, socket, polling,
-embedded, and external SDK workers must either have worker-owned
-heartbeat/report evidence or transport freshness evidence that can be
-point-read during recheck, or be classified as `EXPLICIT_ONLY`.
+Before any future transport-backed freshness provider is allowed to participate
+in recovery, the implementation must classify every supported worker intake
+mode. WebSocket, socket, polling, embedded, and external SDK workers must either
+have worker-owned heartbeat/report evidence or transport freshness evidence
+that can be point-read during recheck, or be classified as `EXPLICIT_ONLY`.
 
 Worker state report and command lifecycle evidence may still be positive
 evidence. Their dispatch eligibility interpretation is now owned by
@@ -594,7 +594,7 @@ classification remains follow-up policy.
   dispatch eligibility, admission, capacity, locks, and matching.
 - Current `WorkerSchedulingViewRuntime` no longer exposes
   `getWorkerReachability`; SDK/operator diagnostics read reachability through
-  a point read on the embedded presence projection.
+  explicit diagnostic/freshness point-read providers.
 - Current `WorkerRegistry` already owns candidate acquisition, slot lifecycle,
   heartbeat freshness, dispatch disable sources, reservation, and lifecycle
   cleanup in memory and Redis implementations.
@@ -617,8 +617,8 @@ classification remains follow-up policy.
   `TaskEventListenerRegistrar` plus the dispatch wakeup callback; they do not
   accept `WorkerDispatchGateRuntime`.
 - Current `MassEngine` no longer passes a clear-capable worker dispatch gate to
-  optional shell bridge code, and it no longer wires engine dispatch wakeup into
-  worker presence projection.
+  optional shell bridge code, and it no longer wires engine dispatch wakeup from
+  transport/session projection.
 - Current `EngineRuntimeKernel.StartedRuntime` carries only event listeners and
   the dispatch wakeup callback; it no longer exposes
   `WorkerDispatchGateRuntime`.
@@ -1103,9 +1103,11 @@ First implementation decisions:
   recheck and only for workers whose `RecoveryMode` is `FRESHNESS_EVIDENCE`.
 - Worker heartbeat, transport refresh, session keepalive, and connected events
   are not recheck request sources.
-- The previous session-presence heartbeat-to-registry write bridge has been
-  removed. The remaining session-presence bridge is delivery-target and
-  reachability projection only, not scheduling reopen truth.
+- The previous transport heartbeat-to-registry write bridge has been
+  removed. There is no remaining generic session-presence bridge; embedded
+  delivery-target lookup uses worker registration plus local transport binding,
+  and future transport-backed freshness must be exposed only through explicit
+  point-read providers.
 
 Scope:
 
@@ -1132,10 +1134,9 @@ Scope:
 - `EXPLICIT_ONLY` workers do not use heartbeat/freshness evidence for recovery.
 - Explicit worker readiness/drain reports are modeled as block sources or gate
   sources, not a parallel readiness state machine.
-- If current session-presence ingress is the only freshness source for an intake
-  mode, that mode must either use `FRESHNESS_EVIDENCE` plus a narrow
-  transport-backed point-read provider, or stay `EXPLICIT_ONLY` before the old
-  write bridge is removed.
+- If a deployment needs transport-backed freshness for an intake mode, that
+  mode must either use `FRESHNESS_EVIDENCE` plus a narrow transport-backed
+  point-read provider, or stay `EXPLICIT_ONLY`.
 - Detailed retry intervals, threshold tuning, and lost-worker cleanup are left
   to worker-runtime policy follow-up.
 
@@ -1163,8 +1164,9 @@ Acceptance:
 - A fresh worker/transport heartbeat is ignored when worker declaration, slot,
   group membership, scheduling attributes, or `RecoveryMode` disallow freshness
   evidence.
-- The old presence-heartbeat write bridge is transitional and should be removed
-  once the mode-specific evidence path exists.
+- The former transport heartbeat write bridge has been removed; future freshness
+  providers must not recreate transport/session event push into worker-runtime
+  scheduling state.
 - WebSocket/socket/embedded/polling/external SDK focused tests prove that
   recovery follows the configured `RecoveryMode` and never comes from transport
   connected/heartbeat writes, heartbeat notifications, or heartbeat-triggered
@@ -1174,7 +1176,7 @@ Acceptance:
 
 Status: push-presence cleanup landed. Transport connected/heartbeat no longer
 refresh worker registry heartbeat, write worker-runtime scheduling freshness, or
-wake the scheduler through a presence projection. Embedded delivery-target
+wake the scheduler through a generic session-event projection. Embedded delivery-target
 lookup is derived from worker registration plus local transport binding; a
 future shared projection remains a separate deployment decision.
 
@@ -1192,9 +1194,9 @@ Scope:
 - Preserve the embedded delivery target resolver and split-runtime explicit
   resolver requirement unless a future shared projection replaces them.
 - Current allowed state: no transport session event may update worker-runtime
-  presence projection for delivery-target evidence or reachability diagnostics,
-  and transport connected/heartbeat must not call `WorkerHeartbeatRuntime`, refresh
-  registry heartbeat, request dispatch wakeup/recheck, or open eligibility.
+  scheduling or diagnostic reachability projection, and transport
+  connected/heartbeat must not call `WorkerHeartbeatRuntime`, refresh registry
+  heartbeat, request dispatch wakeup/recheck, or open eligibility.
 
 Acceptance:
 
@@ -1226,7 +1228,6 @@ Scope:
   - `transport/TRANSPORT_BOUNDARY_BASELINE.md`
   - `xa-mass-worker-runtime/README.md`
   - `xa-mass-worker-runtime/CONTRACTS.md`
-  - `roadmap/WORKER_STATE_SYNC_ELIGIBILITY_DISCUSSION.md`
   - `doc/PROOF_REGISTRY.md` if proof ownership changes.
 
 Acceptance:
@@ -1454,7 +1455,7 @@ rg -n "WorkerDispatchGateRuntime|clearWorkerDispatchDisable" sdk/xa-mass-embedde
 rg -n "clearWorkerDispatchDisable" xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/control/DefaultWorkerDispatchAvailabilityPolicy.java xa-mass-engine/src/main/java/com/xa/mass/engine/control/WorkerControlService.java
 ```
 
-NDE-4A transport-presence heartbeat-write, wakeup, and push-presence deletion
+NDE-4A transport heartbeat-write, wakeup, and push-presence deletion
 proof:
 
 ```bash
@@ -1566,8 +1567,9 @@ This roadmap is complete only when:
   models;
 - assigned dispatch keeps a pre-transport delivery target resolution step, and
   it is not replaced by transport endpoint/session reads;
-- push-presence scheduling-mutation residue is removed or replaced by a named
-  delivery-target/freshness evidence writer that does not own schedulability;
+- push-presence scheduling-mutation residue is removed; any future
+  delivery-target or freshness evidence writer must be named and must not own
+  schedulability;
 - endpoint lease, if retained, is transport-local evidence/currentness and is not
   worker-runtime schedulability truth or producer-side target resolution;
 - docs and guards protect the negative-signal owner boundary.

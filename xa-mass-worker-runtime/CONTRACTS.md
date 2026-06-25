@@ -208,8 +208,8 @@ lifecycle truth.
 `WorkerSchedulingViewRuntime` is the selection-facing read surface. It exposes
 group capability, dispatch gate, lock, and load facts, but it must not expose
 `getWorkerReachability`. Reachability stays as a diagnostic point read from the
-presence projection so diagnostic/freshness observations cannot quietly return
-as a selection gate.
+explicit diagnostic or freshness provider so diagnostic/freshness observations
+cannot quietly return as a selection gate.
 
 Selected-worker delivery target resolution is the post-selection delivery
 evidence contract. It resolves an already selected worker to an opaque adapter

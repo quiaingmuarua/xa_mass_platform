@@ -147,7 +147,8 @@ as a compact helper derived from `WorkerLoadSnapshot`.
 
 `WorkerSchedulingViewRuntime` is the selection-facing read surface and no
 longer exposes reachability. Reachability diagnostics remain point reads from
-the embedded presence projection and must not return as a selection gate.
+an explicit diagnostic or freshness provider and must not return as a selection
+gate.
 
 Reachability is an observation input. `UNKNOWN` means the worker-runtime lacks
 fresh evidence and should not treat the worker as reachable for scheduling, but

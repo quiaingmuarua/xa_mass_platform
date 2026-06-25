@@ -71,8 +71,8 @@ SDK/starter assembly owns:
 
 Custom embedded WebSocket server factories may consume a narrow runtime access
 object, but they must not receive the full session registry, transport runtime
-context, adapter mailbox client, endpoint lease store, worker presence ingress,
-or result ingress channel.
+context, adapter mailbox client, endpoint lease store, worker-runtime
+scheduling mutation sinks, or result ingress channel.
 
 ## Adapter Onboarding Template
 
@@ -326,8 +326,8 @@ Scope:
   - no `WebSocketServerFactoryContext`;
   - no `WebSocketRuntimeParts`;
   - custom server runtime access does not expose `WebSocketSessionRegistry`,
-    endpoint lease store, worker presence ingress, result ingress, mailbox
-    client, or transport runtime context;
+    endpoint lease store, worker-runtime scheduling mutation sinks, result
+    ingress, mailbox client, or transport runtime context;
   - `WebSocketAdapterConfig` remains property-only.
 
 Acceptance:

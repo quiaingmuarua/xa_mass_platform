@@ -16,11 +16,12 @@ First-slice assumptions:
 - `resourceKind = worker`
 - `resourceId = workerId`
 - each `resourceId` has exactly one `homeBucketId`
+- first worker slice uses `homeBucketId = workerGroupId`
 - `homeBucketId` is the worker resource's primary runtime partition
 - `homeBucketId` is not a placement tag bucket and not a task-created index
-- score, metadata, and hold state all use the same `homeBucketId`
+- score and scheduling metadata use the same `homeBucketId`
 
-Worker runtime data splits into three lanes:
+Worker runtime data splits into two lanes:
 
 ```text
 Eligibility Index
@@ -28,9 +29,6 @@ Eligibility Index
 
 Scheduling Metadata
   stable worker facts used by placement projection and validation
-
-Lease / Hold State
-  current lease token, hold reason, low-recheck counters, and reopen policy
 ```
 
 Do not collapse these lanes into one large worker runtime blob.
@@ -47,21 +45,12 @@ wr:{prefix}:score:{homeBucketId}
 wr:{prefix}:meta:{homeBucketId}
   HASH field = workerId
   value = WorkerSchedulingMetadata
-
-wr:{prefix}:hold:{homeBucketId}
-  HASH field = workerId
-  value = WorkerHoldState
 ```
 
-Optional evidence sink:
-
-```text
-wr:{prefix}:transition
-  STREAM or trace sink
-```
-
-The transition sink is not current state truth and must not drive hot-path
-acquire.
+Transition evidence is not part of the first-slice Redis runtime shape. The
+default sink is trace plus focused contract-test assertions. A Redis transition
+stream may be added later only for an explicit repair/debug requirement, and it
+must not become current state truth or drive hot-path acquire.
 
 ## Eligibility Index
 
@@ -82,14 +71,18 @@ low-recheck due
 parked inventory
 ```
 
+`future due` means the existing `FUTURE_BAND` score is now `<= now` and can be
+seen by acquire. It is not a timeout event, queue move, or background writer.
+
 The ZSET value is the score index. Do not duplicate `band` in worker metadata;
 derive band from score. Do not duplicate `score` in worker metadata as another
 truth.
 
 Do not fan out score across placement buckets in the first slice. If auxiliary
 placement indexes are added later, they may map tag values to worker ids, but
-they must not own score, scheduling metadata, or lease/hold truth. Acquire must
-return to the resource's `homeBucketId` to read score and validate hold state.
+they must not own score or scheduling metadata truth. Acquire must return to
+the resource's `homeBucketId` to read score and validate owner-approved
+metadata.
 
 Do not create:
 
@@ -172,74 +165,45 @@ Transport/session/freshness evidence stays in transport-owned stores or trace.
 If a transport-derived fact must affect scheduling, it must first become
 owner-approved scheduling evidence and flow through a worker-runtime transition.
 
-## Lease / Hold State
+## Dynamic State Boundary
 
-Lease and hold state contains the minimal dynamic state that cannot be encoded
-by ZSET score alone.
+The score ZSET is the first-slice dynamic scheduling truth. It carries parked,
+low-recheck, eligible, and future/unavailable state through the score value.
 
-Target shape:
+Do not add a first-slice `hold` hash, `WorkerHoldState`, lease token, session
+generation, or current hold owner record. Worker is the schedulable unit; a
+delayed close/release must not be able to make an unavailable worker available.
+Positive events such as release, final, heartbeat, connected, or freshness may
+only request worker-runtime recheck. Worker-runtime may write an eligible score
+only after validating declaration, group membership, gates, capacity, recovery
+mode, and owner-approved metadata.
 
-```text
-wr:{prefix}:hold:{homeBucketId}
-  HASH field = workerId
-  value = WorkerHoldState
-```
-
-First-slice fields:
-
-```text
-leaseToken
-leaseOwnerType
-leaseOwnerId
-holdReasonCode
-failedRecheckCount
-reopenPolicy
-```
-
-Field roles:
-
-```text
-leaseToken
-  prevents stale release or renew from affecting a newer lease
-
-leaseOwnerType / leaseOwnerId
-  identifies preallocation, attempt, cooldown, or owner hold
-
-holdReasonCode
-  explains the current non-eligible reason when score alone is not enough
-
-failedRecheckCount
-  LOW_RECHECK failed fallback count; score remains due-time only
-
-reopenPolicy
-  defines whether explicit worker report, owner command, or policy promotion
-  can reopen or unpark the worker resource
-```
-
-Prefer deriving these from score instead of duplicating them:
-
-```text
-band
-score
-leaseUntilMillis
-nextRecheckAtMillis
-```
-
-If an implementation temporarily denormalizes `leaseUntilMillis` or
-`nextRecheckAtMillis` for diagnostics, it must be rewritten by the same owner
-transition as the ZSET score and must not become transition truth.
+Reason, owner action, failed recheck count, and reopen policy are trace or
+diagnostic evidence in the first slice. If a later proof needs a repair/debug
+projection for these fields, add it through a separate roadmap and keep it out
+of hot-path acquire truth.
 
 ## Transition Evidence
 
 Transition evidence is for proof, trace, and repair. It is not current state
 truth and must not drive hot-path acquire.
 
-Possible sink:
+Default sink:
+
+```text
+trace event / test evidence sink
+```
+
+Deferred optional sink:
 
 ```text
 wr:{prefix}:transition
-  STREAM or trace sink
+  Redis Stream for explicit repair/debug needs only
 ```
+
+The first score-band Redis slice does not need this stream. Do not include it in
+Redis completion criteria unless a later roadmap proves a concrete repair or
+debug owner.
 
 Suggested evidence fields:
 
@@ -252,7 +216,7 @@ reasonCode
 sourceType
 ownerAction
 rawEventName
-leaseToken
+ownerRef
 attemptId
 observedAt
 ```
@@ -264,14 +228,17 @@ observedAt
 - `band` is derived from ZSET score; do not store it as independent truth.
 - `score` lives in score ZSETs; do not copy it into metadata as current truth.
 - Worker metadata is for matching and validation, not transport/session proof.
-- Lease token and owner identity live in hold state, not placement metadata.
+- Do not create `wr:{prefix}:hold:{homeBucketId}` in the first slice.
+- Do not introduce `WorkerHoldState`, lease tokens, or session generation as
+  Redis runtime decision truth in the first slice.
 - `homeBucketId` is primary runtime partition, not a placement tag bucket.
 - A resource has exactly one `homeBucketId` in the first slice.
 - Bucket membership is long-lived policy output, not task-created state.
 - Placement tag values are bounded and owner-approved.
-- Auxiliary placement indexes, if added later, must not own score / metadata /
-  hold truth.
-- Stale auxiliary candidates may be rejected by hold/lease validation and
-  cleaned opportunistically; double lease and parked release are not allowed.
+- Auxiliary placement indexes, if added later, must not own score or metadata
+  truth.
+- Stale auxiliary candidates may be rejected by owner validation and cleaned
+  opportunistically; stale positive/release evidence must not reopen a worker
+  directly.
 - No per-task worker candidate keys.
 - No Redis LIST for worker current metadata.

@@ -11,8 +11,10 @@ Current WebSocket endpoint evidence refresh is local-session-list driven:
 - `WebSocketSessionRegistry.activeSessionSnapshots()` builds a full list of
   active `SessionSnapshot(workerGroupId, workerId, sessionHandle)` values by
   scanning `sessionsByChannel`.
-- `AdapterSessionEvidencePublisher.heartbeat(...)` writes both worker session
-  presence ingress and transport endpoint lease refresh.
+- `AdapterSessionEvidencePublisher.heartbeat(...)` refreshes transport
+  endpoint lease evidence only. Current-session disconnect is the only
+  worker-runtime-facing signal from this evidence lane, and it uses
+  `CurrentSessionDisconnectSink`.
 - `TransportEndpointLeaseStore.refreshEndpointLease(...)` is session-scoped:
   the heartbeat must match `workerId + deliveryBucketId + endpointDriverId +
   sessionHandle + endpointLeaseId`.
@@ -246,8 +248,9 @@ Acceptance:
 - WebSocket refresh no longer calls `activeSessionSnapshots()`
 - WebSocket registry does not expose list-all session snapshots as a production
   mainline API
-- due hint for an active worker refreshes the current session's endpoint lease
-  and worker presence heartbeat
+- due hint for an active worker refreshes the current session's transport
+  endpoint lease evidence only; it does not refresh worker-runtime heartbeat
+  evidence or request scheduling recheck
 - due hint for a disconnected worker emits no heartbeat
 - stale disconnect after reconnect still cannot remove the newer endpoint lease
 - worker reconnect under the same delivery bucket may be refreshed by a stale
