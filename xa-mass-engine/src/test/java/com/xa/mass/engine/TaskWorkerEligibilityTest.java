@@ -52,8 +52,19 @@ class TaskWorkerEligibilityTest {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
         harness.addWorker("worker-primary", "us");
         harness.addWorker("worker-backup", "us");
-        Task firstTask = harness.createReadyBatchTask("dispatch-block-first", List.of(harness.item("first")));
+        Task firstTask = harness.createBatchTask(
+                "dispatch-block-first",
+                List.of(harness.item("first")),
+                0,
+                1,
+                Map.of(
+                        TaskSharedConfig.ROUTING_CODE, "us",
+                        TaskSharedConfig.TARGET_WORKER_ID, "worker-primary"
+                ),
+                1
+        );
         Task secondTask = harness.createReadyBatchTask("dispatch-block-second", List.of(harness.item("second")));
+        assertTrue(harness.taskManager.approveTask(firstTask.getTid()));
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(firstTask.getTid())));
         ActiveLeaseRecord firstLease = harness.activeLeases(firstTask.getTid()).getFirst();

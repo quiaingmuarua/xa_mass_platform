@@ -211,10 +211,18 @@ class TaskSchedulingGateAndTargetingTest {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
         harness.addWorker("worker-target", "us");
         harness.addWorker("worker-backup", "us");
-        Task runningTask = harness.createReadyBatchTask(
+        Task runningTask = harness.createBatchTask(
                 "target-worker-id-running",
-                List.of(harness.item("running"))
+                List.of(harness.item("running")),
+                0,
+                1,
+                Map.of(
+                        TaskSharedConfig.ROUTING_CODE, "us",
+                        TaskSharedConfig.TARGET_WORKER_ID, "worker-target"
+                ),
+                1
         );
+        assertTrue(harness.taskManager.approveTask(runningTask.getTid()));
         Task waitingTask = harness.createBatchTask(
                 "target-worker-id-waiting",
                 List.of(harness.item("waiting")),
@@ -237,7 +245,8 @@ class TaskSchedulingGateAndTargetingTest {
         assertEquals(1, harness.stats(waitingTask.getTid()).readyCount());
         assertTrue(harness.activeLeases(waitingTask.getTid()).isEmpty());
         assertTrue(harness.workerRecords(waitingTask.getTid(), "worker-backup").isEmpty());
-        assertEquals(1, harness.selectionReasonCount(waitingTask.getTid(), "worker locked"));
+        assertEquals(1, harness.selectionReasonCount(waitingTask.getTid(),
+                "score-band acquire returned no eligible workers"));
 
         assertTrue(harness.taskManager.ingestTaskResult(
                 runningTask.getTid(),
