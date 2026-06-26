@@ -98,7 +98,7 @@ public class TaskAssignWorker {
                 retryDelayMillis,
                 assignmentQueueCapacity,
                 taskRuntimeRetryPolicyResolver,
-                new DefaultSchedulingPlaneResolver(TASK_RUNTIME_PROFILE_RESOLVER, null),
+                new DefaultSchedulingPlaneResolver(TASK_RUNTIME_PROFILE_RESOLVER),
                 TraceEventLogger.noop());
     }
 
@@ -112,7 +112,7 @@ public class TaskAssignWorker {
                 retryDelayMillis,
                 assignmentQueueCapacity,
                 taskRuntimeRetryPolicyResolver,
-                new DefaultSchedulingPlaneResolver(taskRuntimeProfileResolver, null),
+                new DefaultSchedulingPlaneResolver(taskRuntimeProfileResolver),
                 traceEventLogger);
     }
 
@@ -127,7 +127,7 @@ public class TaskAssignWorker {
         this.assignmentQueueCapacity = Math.max(1, assignmentQueueCapacity);
         this.taskRuntimeRetryPolicyResolver = taskRuntimeRetryPolicyResolver;
         this.schedulingPlaneResolver = schedulingPlaneResolver == null
-                ? new DefaultSchedulingPlaneResolver(TASK_RUNTIME_PROFILE_RESOLVER, null)
+                ? new DefaultSchedulingPlaneResolver(TASK_RUNTIME_PROFILE_RESOLVER)
                 : schedulingPlaneResolver;
         this.traceEventLogger = traceEventLogger;
     }
@@ -141,7 +141,7 @@ public class TaskAssignWorker {
                 retryDelayMillis,
                 assignmentQueueCapacity,
                 taskRuntimeRetryPolicyResolver,
-                new DefaultSchedulingPlaneResolver(TASK_RUNTIME_PROFILE_RESOLVER, null),
+                new DefaultSchedulingPlaneResolver(TASK_RUNTIME_PROFILE_RESOLVER),
                 traceEventLogger);
     }
 
