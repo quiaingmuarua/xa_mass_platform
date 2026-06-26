@@ -41,12 +41,16 @@ import com.xa.mass.transport.runtime.delivery.TransportAssignedDeliverySubmitter
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureInboxPump;
+import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
+import com.xa.mass.transport.lease.TransportEndpointLeaseViewRecord;
+import com.xa.mass.transport.runtime.lease.CurrentSessionConnectSink;
 import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
 import com.xa.mass.worker.runtime.control.WorkerDispatchBlockSignal;
 import com.xa.mass.worker.runtime.control.WorkerDispatchBlockSource;
 import com.xa.mass.worker.runtime.evidence.SelectedWorkerDeliveryTargetEvidence;
+import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -59,6 +63,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
+
+import static com.xa.mass.runtime.worker.DispatchAvailabilitySource.TRANSPORT_DISCONNECTED;
 
 /**
  * Main runtime composition entry for engine plus embedded transport adapter
@@ -216,6 +222,8 @@ public class MassApplication {
             embeddedAdapterHostSet = EmbeddedAdapterHostSet.empty();
             startEventRuntimeTaskExecutor();
             endpointLeaseStore = transportRuntimeComposition.resolveTransportEndpointLeaseStore();
+            engineConfig.setWorkerReachabilityLookup(this::resolveWorkerReachabilityFromEndpointLease);
+            CurrentSessionConnectSink currentSessionConnectSink = createCurrentSessionConnectSink();
             CurrentSessionDisconnectSink currentSessionDisconnectSink = createCurrentSessionDisconnectSink();
             transportRuntimeTaskExecutor = new VirtualThreadRuntimeTaskExecutor(
                     "transport-runtime-",
@@ -284,6 +292,7 @@ public class MassApplication {
                             assignedMailboxKey,
                             resultIngressChannel,
                             endpointLeaseStore,
+                            currentSessionConnectSink,
                             currentSessionDisconnectSink,
                             transportRuntimeTaskExecutor,
                             transportDispatchHandoff == null ? null : transportDispatchHandoff::poll,
@@ -445,12 +454,70 @@ public class MassApplication {
     }
 
     private TransportBinding resolveTransportBinding(WorkerResourceRecord worker) {
+        Optional<TransportBinding> sessionBinding = resolveCurrentEndpointBinding(worker);
+        if (sessionBinding.isPresent()) {
+            return sessionBinding.get();
+        }
         try {
             return transportRuntimeRegistry.resolveBinding(null, worker.transportHint());
         } catch (IllegalArgumentException e) {
             throw new IllegalStateException("Cannot resolve transport binding for worker " + worker.workerId()
                     + ": " + e.getMessage(), e);
         }
+    }
+
+    private Optional<TransportBinding> resolveCurrentEndpointBinding(WorkerResourceRecord worker) {
+        if (worker == null || transportRuntimeRegistry == null || endpointLeaseStore == null
+                || worker.workerId() == null || worker.workerId().isBlank()
+                || worker.workerGroupId() == null || worker.workerGroupId().isBlank()) {
+            return Optional.empty();
+        }
+        Optional<TransportEndpointLeaseViewRecord> endpoint =
+                endpointLeaseStore.currentEndpointLease(worker.workerGroupId(), worker.workerId());
+        if (endpoint.isEmpty()) {
+            return Optional.empty();
+        }
+        String endpointDriverId = endpoint.get().endpointDriverId();
+        try {
+            TransportBinding binding = transportRuntimeRegistry.resolveBindingByAdapterId(endpointDriverId);
+            validateEndpointBindingTransportHint(worker, binding);
+            return Optional.of(binding);
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("Cannot resolve transport binding for worker " + worker.workerId()
+                    + " from current endpoint driver '" + endpointDriverId + "': " + e.getMessage(), e);
+        }
+    }
+
+    private static void validateEndpointBindingTransportHint(WorkerResourceRecord worker, TransportBinding binding) {
+        String declaredHint = WorkerTransportHints.normalize(worker.transportHint());
+        String bindingHint = binding == null ? null : WorkerTransportHints.normalize(binding.getTransportHint());
+        if (declaredHint == null || bindingHint == null || declaredHint.equals(bindingHint)) {
+            return;
+        }
+        throw new IllegalStateException("Current endpoint binding for worker " + worker.workerId()
+                + " uses transportHint '" + bindingHint + "' but worker declares transportHint '" + declaredHint + "'");
+    }
+
+    private WorkerReachabilityState resolveWorkerReachabilityFromEndpointLease(String workerId) {
+        if (workerId == null || workerId.isBlank()) {
+            return WorkerReachabilityState.UNKNOWN;
+        }
+        TransportEndpointLeaseStore store = endpointLeaseStore;
+        if (store == null) {
+            return WorkerReachabilityState.UNKNOWN;
+        }
+        WorkerResourceRecord worker;
+        try {
+            worker = requireWorkerResource(workerId.trim());
+        } catch (IllegalArgumentException e) {
+            return WorkerReachabilityState.UNKNOWN;
+        }
+        if (worker.workerGroupId() == null || worker.workerGroupId().isBlank()) {
+            return WorkerReachabilityState.UNKNOWN;
+        }
+        return store.currentEndpointLease(worker.workerGroupId(), worker.workerId()).isPresent()
+                ? WorkerReachabilityState.ONLINE
+                : WorkerReachabilityState.OFFLINE;
     }
 
     private void startEmbeddedAdapterHostSet() {
@@ -591,6 +658,18 @@ public class MassApplication {
                                 observedAtMillis,
                                 0L
                         )
+                );
+    }
+
+    private CurrentSessionConnectSink createCurrentSessionConnectSink() {
+        if (!engineConfig.isEnabled()) {
+            return CurrentSessionConnectSink.NOOP;
+        }
+        return (deliveryBucketId, workerId, reason, observedAtMillis) ->
+                engineConfig.getWorkerDispatchRecoveryRuntime().recoverWorkerDispatch(
+                        workerId,
+                        TRANSPORT_DISCONNECTED,
+                        firstNonBlank(reason, "transport session connected")
                 );
     }
 

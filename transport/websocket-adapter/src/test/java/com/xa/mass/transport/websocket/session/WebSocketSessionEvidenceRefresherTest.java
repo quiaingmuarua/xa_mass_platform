@@ -1,6 +1,7 @@
 package com.xa.mass.transport.websocket.session;
 
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
+import com.xa.mass.transport.runtime.lease.CurrentSessionConnectSink;
 import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import io.netty.channel.Channel;
@@ -87,6 +88,7 @@ class WebSocketSessionEvidenceRefresherTest {
                 ADAPTER_ID,
                 ADAPTER_ID,
                 endpointLeaseStore,
+                CurrentSessionConnectSink.NOOP,
                 CurrentSessionDisconnectSink.NOOP
         );
     }

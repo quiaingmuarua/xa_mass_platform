@@ -204,6 +204,28 @@ public class SimpleTaskDispatchBinderTest {
         verify(workerSelectionRuntime, never()).releaseSelectedLock(any(SelectedWorkerHandle.class));
     }
 
+    @Test
+    void successfulNonExclusiveDispatchReleasesScoreBandSelectionAfterSubmit() {
+        Task task = createTask(1);
+        AtomicReference<List<TaskDispatchBinding>> dispatchedBatch = new AtomicReference<>();
+        listener = new SimpleTaskDispatchBinder(
+                taskManager,
+                workerSelectionRuntime,
+                recordService,
+                (context, bindings) -> dispatchedBatch.set(bindings),
+                com.xa.mass.engine.TraceEventLogger.noop(),
+                new NonExclusiveResourcePolicy()
+        );
+        SelectedWorkerHandle selected = matched("d1", task.getTid(), false);
+
+        List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(selected));
+
+        assertEquals(1, dispatched.size());
+        assertNotNull(dispatchedBatch.get());
+        verify(workerSelectionRuntime).releaseSelected(selected);
+        verify(workerSelectionRuntime, never()).releaseSelectedLock(selected);
+    }
+
     private Task createTask(int messageCount) {
         TaskShellCreateRequestDto dto = new TaskShellCreateRequestDto();
         dto.setSourceRef("task");
@@ -231,11 +253,15 @@ public class SimpleTaskDispatchBinderTest {
     }
 
     private SelectedWorkerHandle matched(String workerId, String taskId) {
+        return matched(workerId, taskId, true);
+    }
+
+    private SelectedWorkerHandle matched(String workerId, String taskId, boolean exclusiveWorkerLock) {
         return SelectedWorkerHandle.of(
                 workerId,
                 "group-a",
                 taskId,
-                true
+                exclusiveWorkerLock
         );
     }
 

@@ -104,6 +104,7 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
     private TaskShellStore taskShellStore;
     private TaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
     private TaskResultRuntime taskResultRuntime = new InMemoryTaskResultRuntime();
+    private Function<String, WorkerReachabilityState> workerReachabilityLookup = UNKNOWN_WORKER_REACHABILITY;
     private Function<String, Optional<SelectedWorkerDeliveryTargetEvidence>> workerDeliveryTargetResolver =
             selectedWorkerId -> Optional.empty();
     private boolean workerDeliveryTargetResolverExplicitlyConfigured;
@@ -322,7 +323,7 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
         if (workerManager == null) {
             workerManager = new WorkerManager(
                     getWorkerDeclarationStore(),
-                    UNKNOWN_WORKER_REACHABILITY,
+                    this::lookupWorkerReachability,
                     getWorkerRegistry(),
                     getWorkerScoreBandSlotRuntime()
             );
@@ -404,7 +405,21 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
     }
 
     public WorkerReachabilityState getWorkerReachability(String workerId) {
-        return UNKNOWN_WORKER_REACHABILITY.apply(workerId);
+        return lookupWorkerReachability(workerId);
+    }
+
+    public void setWorkerReachabilityLookup(Function<String, WorkerReachabilityState> workerReachabilityLookup) {
+        this.workerReachabilityLookup = workerReachabilityLookup != null
+                ? workerReachabilityLookup
+                : UNKNOWN_WORKER_REACHABILITY;
+    }
+
+    private WorkerReachabilityState lookupWorkerReachability(String workerId) {
+        if (workerId == null || workerId.isBlank()) {
+            return WorkerReachabilityState.UNKNOWN;
+        }
+        WorkerReachabilityState state = workerReachabilityLookup.apply(workerId.trim());
+        return state != null ? state : WorkerReachabilityState.UNKNOWN;
     }
 
     public Optional<SelectedWorkerDeliveryTargetEvidence> resolveWorkerDeliveryTarget(String selectedWorkerId) {

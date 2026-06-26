@@ -350,7 +350,8 @@ public class WorkerManager implements WorkerResourceQueryRuntime,
     }
 
     public boolean isWorkerDispatchEnabled(String workerId) {
-        return workerRegistry.isDispatchEnabled(workerId);
+        return workerRegistry.isDispatchEnabled(workerId)
+                && getWorkerReachability(workerId) == WorkerReachabilityState.ONLINE;
     }
 
     public boolean disableWorkerDispatch(String workerId, DispatchAvailabilitySource source, String reason) {
@@ -376,7 +377,11 @@ public class WorkerManager implements WorkerResourceQueryRuntime,
     }
 
     public boolean clearWorkerDispatchDisable(String workerId, DispatchAvailabilitySource source, String reason) {
-        return workerRegistry.clearDispatchDisable(workerId, source);
+        boolean cleared = workerRegistry.clearDispatchDisable(workerId, source);
+        if (cleared) {
+            notifyDispatchWakeup("worker dispatch disable cleared");
+        }
+        return cleared;
     }
 
     @Override
@@ -389,7 +394,11 @@ public class WorkerManager implements WorkerResourceQueryRuntime,
         if (!recoveryAllowed(meta.orElseThrow(), source)) {
             return false;
         }
-        return workerRegistry.recoverDispatchDisable(workerId, source);
+        boolean recovered = workerRegistry.recoverDispatchDisable(workerId, source);
+        if (recovered) {
+            notifyDispatchWakeup("worker dispatch recovered");
+        }
+        return recovered;
     }
 
     public void setDispatchWakeupCallback(Runnable dispatchWakeupCallback) {

@@ -76,6 +76,25 @@ class WorkerDispatchResourceReleaserTest {
     }
 
     @Test
+    void releaseNonExclusiveReservationsSkipsExclusiveHandles() {
+        WorkerSelectionRuntime workerSelectionRuntime = mock(WorkerSelectionRuntime.class);
+        WorkerDispatchResourceReleaser releaser = new WorkerDispatchResourceReleaser(
+                workerSelectionRuntime,
+                new DefaultWorkerDispatchResourcePolicy(),
+                TraceEventLogger.noop()
+        );
+        Task task = task("task-1");
+        SelectedWorkerHandle exclusive = handle("worker-exclusive", "task-1", true);
+        SelectedWorkerHandle nonExclusive = handle("worker-background", "task-1", false);
+
+        releaser.releaseNonExclusiveReservations(task, List.of(exclusive, nonExclusive));
+
+        verify(workerSelectionRuntime, never()).releaseSelected(exclusive);
+        verify(workerSelectionRuntime).releaseSelected(nonExclusive);
+        verify(workerSelectionRuntime, never()).releaseSelectedLock(nonExclusive);
+    }
+
+    @Test
     void releaseLocksUsesSelectedHandleLockFlagInsteadOfTaskPolicy() {
         WorkerSelectionRuntime workerSelectionRuntime = mock(WorkerSelectionRuntime.class);
         WorkerDispatchResourceReleaser releaser = new WorkerDispatchResourceReleaser(

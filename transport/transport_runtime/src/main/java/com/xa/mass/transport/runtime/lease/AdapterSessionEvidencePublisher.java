@@ -14,16 +14,19 @@ import java.util.Locale;
 public final class AdapterSessionEvidencePublisher {
 
     private final TransportEndpointLeasePublisher endpointLeasePublisher;
+    private final CurrentSessionConnectSink connectSink;
     private final CurrentSessionDisconnectSink disconnectSink;
 
     public AdapterSessionEvidencePublisher(String adapterId,
                                            String adapterMailboxKey,
                                            TransportEndpointLeaseStore endpointLeaseStore,
+                                           CurrentSessionConnectSink connectSink,
                                            CurrentSessionDisconnectSink disconnectSink) {
         String normalizedAdapterId = requireText(adapterId, "adapterId").toLowerCase(Locale.ROOT);
         requireText(adapterMailboxKey, "adapterMailboxKey");
         this.endpointLeasePublisher = new TransportEndpointLeasePublisher(normalizedAdapterId);
         this.endpointLeasePublisher.setEndpointLeaseStore(endpointLeaseStore);
+        this.connectSink = connectSink != null ? connectSink : CurrentSessionConnectSink.NOOP;
         this.disconnectSink = disconnectSink != null ? disconnectSink : CurrentSessionDisconnectSink.NOOP;
     }
 
@@ -32,6 +35,7 @@ public final class AdapterSessionEvidencePublisher {
                 adapterId,
                 adapterMailboxKey,
                 new InMemoryTransportEndpointLeaseStore(),
+                CurrentSessionConnectSink.NOOP,
                 CurrentSessionDisconnectSink.NOOP
         );
     }
@@ -46,6 +50,12 @@ public final class AdapterSessionEvidencePublisher {
                           String reason,
                           String traceId) {
         endpointLeasePublisher.claim(workerId, deliveryBucketId, sessionToken, reason);
+        connectSink.currentSessionConnected(
+                deliveryBucketId,
+                workerId,
+                firstNonBlank(reason, "transport session connected"),
+                System.currentTimeMillis()
+        );
     }
 
     public boolean heartbeat(String workerId,
@@ -78,6 +88,12 @@ public final class AdapterSessionEvidencePublisher {
                               String sessionToken,
                               String reason) {
         endpointLeasePublisher.claim(workerId, deliveryBucketId, sessionToken, reason);
+        connectSink.currentSessionConnected(
+                deliveryBucketId,
+                workerId,
+                firstNonBlank(reason, "transport endpoint claimed"),
+                System.currentTimeMillis()
+        );
     }
 
     private static String requireText(String value, String fieldName) {

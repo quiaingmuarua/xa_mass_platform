@@ -301,9 +301,9 @@ not prove shared worker execution. `workerDeclaredCapacity` reflects the
 current worker declaration observed by `WorkerRegistry`; the default is `1`.
 `foreground` is the canonical read-side declaration of the task's current
 scheduling mode. It defaults to `true`. When `false`, current engine behavior
-skips the long-lived worker lock and relies on process-local capacity
-reservation for worker sharing. `WorkerContext` is not consulted as the active
-resource-sharing truth.
+skips the long-lived worker lock and may close the score-band claim after
+successful dispatch binding so later background work can compete again.
+`WorkerContext` is not consulted as the active resource-sharing truth.
 `workerBudget`, `currentTaskWorkerCount`, and `budgetLimited` are the
 assignment policy budget evidence fields. A missing `workerBudget` means no
 allocation plan reached budget policy for that event, for example an early
@@ -317,9 +317,11 @@ show `active + reserved > declaredCapacity`, and capacity rejections must show
 `active + reserved >= declaredCapacity`.
 The `background-worker-sharing` analyzer uses the same assignment rows for a
 single background task: accepted worker match evidence must show
-`foreground=false`, existing active worker load, a new reservation within
-declared capacity, and no `WORKER_LOCK_ACQUIRED` / `WORKER_LOCK_RELEASED`
-evidence for that task.
+`foreground=false`, selection reservation evidence within declared capacity,
+successful dispatch binding, and no `WORKER_LOCK_ACQUIRED` /
+`WORKER_LOCK_RELEASED` evidence for that task. It must not be cited as proof
+that an occupied worker with spare declared capacity was selected from worker
+admission counters.
 The `worker-attribute-routing-without-context` analyzer uses worker scheduling
 evidence: accepted worker matches must carry worker-level scheduling attributes
 or routing tags, and must show `workerSchedulingMatchesRoutingCode=true`.

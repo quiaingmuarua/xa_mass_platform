@@ -1106,10 +1106,10 @@ class TraceOperatorServiceIntegrationTest {
                             "foreground", false,
                             "candidateRank", 1,
                             "candidateScore", "0.1",
-                            "workerActiveLeaseCount", 1,
+                            "workerActiveLeaseCount", 0,
                             "workerReservedCount", 1,
                             "workerDeclaredCapacity", 2,
-                            "workerEstimatedLoadRatio", "1.0"))
+                            "workerEstimatedLoadRatio", "0.5"))
                     .build());
             sink.emit(ExecutionEvent.builder()
                     .eventType(ExecutionEventType.DISPATCH_BINDING_SUMMARY)

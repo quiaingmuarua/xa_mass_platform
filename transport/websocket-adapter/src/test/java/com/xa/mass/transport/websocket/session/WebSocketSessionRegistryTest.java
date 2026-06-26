@@ -2,6 +2,7 @@ package com.xa.mass.transport.websocket.session;
 
 import com.xa.mass.transport.lease.TransportEndpointLeaseViewRecord;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
+import com.xa.mass.transport.runtime.lease.CurrentSessionConnectSink;
 import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
@@ -230,6 +231,7 @@ class WebSocketSessionRegistryTest {
                 adapterId,
                 adapterId,
                 endpointLeaseStore,
+                CurrentSessionConnectSink.NOOP,
                 disconnectSink
         );
         return new WebSocketSessionRegistry(sessionEvidencePublisher);

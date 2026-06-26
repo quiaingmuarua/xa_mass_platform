@@ -9,6 +9,7 @@ import com.xa.mass.runtime.worker.slot.WorkerScoreBandSlot;
 import com.xa.mass.worker.runtime.control.WorkerDispatchBlockSignal;
 import com.xa.mass.worker.runtime.control.WorkerDispatchBlockSource;
 import com.xa.mass.worker.runtime.control.WorkerDispatchRecoveryMode;
+import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.worker.runtime.resource.AdapterNodeRecord;
 import com.xa.mass.worker.runtime.resource.EventBinding;
 import com.xa.mass.worker.runtime.resource.NodeGroupBindingRecord;
@@ -172,6 +173,44 @@ public class WorkerManagerTest {
     }
 
     @Test
+    void selectionConsumesReachabilityThroughDispatchEligibility() {
+        WorkerManager reachabilityAwareManager = new WorkerManager(
+                new TestWorkerDeclarationStore(),
+                workerId -> "worker-online".equals(workerId)
+                        ? WorkerReachabilityState.ONLINE
+                        : WorkerReachabilityState.OFFLINE,
+                new InMemoryWorkerRegistry(),
+                new InMemoryWorkerScoreBandSlotRuntime()
+        );
+        reachabilityAwareManager.upsertWorkerGroup(WorkerGroupRecord.builder("group-a")
+                .eventBindings(List.of(EventBinding.of("event-a", List.of("project-a"))))
+                .build());
+        reachabilityAwareManager.addWorker(worker("worker-online", "group-a", 1, Map.of()));
+        reachabilityAwareManager.addWorker(worker("worker-offline", "group-a", 1, Map.of()));
+
+        assertTrue(reachabilityAwareManager.isWorkerDispatchEnabled("worker-online"));
+        assertFalse(reachabilityAwareManager.isWorkerDispatchEnabled("worker-offline"));
+
+        WorkerSelectionResult result = reachabilityAwareManager.selectAndReserve(new WorkerSelectionRequest(
+                "scope-1",
+                new WorkerSelectionIntent(
+                        "project-a",
+                        "event-a",
+                        List.of("group-a"),
+                        null,
+                        Map.of(),
+                        null,
+                        Map.of()),
+                2,
+                false));
+
+        assertEquals(List.of("worker-online"), result.selectedWorkers().stream()
+                .map(SelectedWorkerHandle::workerId)
+                .toList());
+        assertEquals(1, result.rejectedCountByReason().get("worker dispatch disabled"));
+    }
+
+    @Test
     void negativeBlockSignalDisablesDispatchAndRejectsStaleSignal() {
         manager.addWorker(worker("worker-1", "group-a"));
 
@@ -201,6 +240,26 @@ public class WorkerManagerTest {
         assertTrue(manager.recoverWorkerDispatch("freshness", TRANSPORT_DISCONNECTED, "freshness"));
         assertFalse(manager.isWorkerDispatchEnabled("explicit"));
         assertTrue(manager.isWorkerDispatchEnabled("freshness"));
+    }
+
+    @Test
+    void dispatchClearAndRecoveryNotifyWakeupWhenEligibilityCanOpen() {
+        manager.addWorker(worker("freshness", "group-a", 1,
+                Map.of(WorkerDispatchRecoveryMode.ATTRIBUTE_KEY, "FRESHNESS_EVIDENCE")));
+        manager.blockWorkerDispatch("group-a", "freshness", blockSignal("disconnect", 1_000L));
+
+        AtomicInteger wakeups = new AtomicInteger();
+        manager.setDispatchWakeupCallback(wakeups::incrementAndGet);
+        assertEquals(0, wakeups.get());
+
+        assertTrue(manager.clearWorkerDispatchDisable("freshness", TRANSPORT_DISCONNECTED, "manual clear"));
+        assertTrue(manager.isWorkerDispatchEnabled("freshness"));
+        assertEquals(1, wakeups.get());
+
+        manager.blockWorkerDispatch("group-a", "freshness", blockSignal("disconnect", 2_000L));
+        assertTrue(manager.recoverWorkerDispatch("freshness", TRANSPORT_DISCONNECTED, "current session connected"));
+        assertTrue(manager.isWorkerDispatchEnabled("freshness"));
+        assertEquals(2, wakeups.get());
     }
 
     @Test

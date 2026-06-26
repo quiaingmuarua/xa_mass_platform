@@ -2,6 +2,7 @@ package com.xa.mass.transport.socket.session;
 
 import com.xa.mass.transport.lease.TransportEndpointLeaseViewRecord;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
+import com.xa.mass.transport.runtime.lease.CurrentSessionConnectSink;
 import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import org.junit.jupiter.api.Test;
@@ -173,6 +174,7 @@ class SocketSessionManagerTest {
                         adapterId,
                         adapterMailboxKey,
                         endpointLeaseStore,
+                        CurrentSessionConnectSink.NOOP,
                         disconnectSink
                 )
         );

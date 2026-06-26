@@ -24,6 +24,8 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
     private static final int MAX_RECONNECT_ATTEMPTS = 10;
     private static final long INITIAL_RECONNECT_DELAY_MS = 1000;
     private static final long MAX_RECONNECT_DELAY_MS = 60000;
+    private static final long CLOSE_TIMEOUT_MS = 1500;
+    private static final long CLOSE_POLL_MS = 50;
 
     private final Gson gson = new Gson();
     private final ScheduledExecutorService reconnectScheduler;
@@ -172,13 +174,30 @@ public class SampleWorkerWebSocketClient extends WebSocketClient implements Samp
         logger.info("[{}] Intentionally closing connection...", workerId);
         intentionalClose = true;
         try {
-            super.closeBlocking();
+            if (!isClosed()) {
+                super.close();
+                if (!awaitClosed(CLOSE_TIMEOUT_MS)) {
+                    logger.warn("[{}] WebSocket close did not complete within {} ms; forcing connection close.",
+                            workerId, CLOSE_TIMEOUT_MS);
+                    super.closeConnection(1000, "sample worker close timeout");
+                    awaitClosed(CLOSE_TIMEOUT_MS);
+                }
+            }
         } catch (InterruptedException e) {
             logger.warn("[{}] Interrupted while closing connection.", workerId);
             Thread.currentThread().interrupt();
-            super.close();
+            super.closeConnection(1000, "sample worker close interrupted");
+        } finally {
+            shutdownScheduler();
         }
-        shutdownScheduler();
+    }
+
+    private boolean awaitClosed(long timeoutMs) throws InterruptedException {
+        long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMs);
+        while (!isClosed() && System.nanoTime() < deadlineNanos) {
+            Thread.sleep(CLOSE_POLL_MS);
+        }
+        return isClosed();
     }
 
     private void shutdownScheduler() {

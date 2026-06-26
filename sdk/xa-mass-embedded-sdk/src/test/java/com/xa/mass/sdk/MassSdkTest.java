@@ -92,6 +92,7 @@ import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeComposition;
 import com.xa.mass.starter.config.TransportRuntimeRole;
+import com.xa.mass.transport.runtime.lease.CurrentSessionConnectSink;
 import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
 import com.xa.mass.transport.polling.delivery.InMemoryPollingPendingDeliveryBuffer;
 import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
@@ -352,9 +353,43 @@ class MassSdkTest {
                         .endpointLeaseStoreFactory(() -> endpointLeaseStore))
                 .engine(engine -> engine.enabled(true))
                 .build();
+        app.registerEventDefinition(EventDefinition.builder()
+                .code("demo.dispatch")
+                .name("Demo Dispatch")
+                .projectCodes(List.of("demoApp"))
+                .build());
+        app.registerProject(ProjectDefinition.builder()
+                .code("demoApp")
+                .name("Demo App")
+                .eventCodes(List.of("demo.dispatch"))
+                .build());
 
         try {
             app.start();
+            app.declareWorkerGroup(WorkerGroupDeclaration.builder()
+                    .groupId("sdk-socket-workers")
+                    .eventBindings(List.of(WorkerEventBinding.builder()
+                            .eventCode("demo.dispatch")
+                            .projectCodes(List.of("demoApp"))
+                            .build()))
+                    .build());
+            app.registerAdapterNode(AdapterNodeRegistration.builder()
+                    .adapterNodeId("sdk-socket-node")
+                    .adapterType("socket")
+                    .endpointId("sdk-socket")
+                    .build());
+            app.bindNodeGroup(NodeGroupBindingRegistration.builder()
+                    .adapterNodeId("sdk-socket-node")
+                    .workerGroupId("sdk-socket-workers")
+                    .build());
+            app.registerWorker(WorkerRegistration.builder()
+                    .workerId("sdk-socket-worker")
+                    .workerGroupId("sdk-socket-workers")
+                    .transportHint("socket")
+                    .build());
+            assertFalse(app.isWorkerReachable("sdk-socket-worker"),
+                    "worker registration must not create transport reachability");
+
             int port = Integer.parseInt(System.getProperty(
                     com.xa.mass.transport.socket.server.SocketTransportServer.BOUND_PORT_PROPERTY));
             try (Socket socket = new Socket("127.0.0.1", port);
@@ -376,6 +411,8 @@ class MassSdkTest {
                 assertEquals("socket", endpoint.endpointDriverId());
                 assertNotNull(endpoint.sessionHandle());
                 assertNotNull(endpoint.endpointLeaseId());
+                waitUntil(() -> app.isWorkerReachable("sdk-socket-worker"),
+                        "sdk socket endpoint lease should surface worker reachability");
             }
         } finally {
             app.stop();
@@ -2479,6 +2516,55 @@ class MassSdkTest {
     }
 
     @Test
+    void realtimeWorkerBindingUsesCurrentEndpointLeaseWhenMultipleRealtimeAdaptersAreConfigured() {
+        InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
+        WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
+                                                         store,
+                                                         adapterBindings) -> new TransportRuntimeRegistry(
+                taskResultIngestChannel,
+                store,
+                List.of(
+                        canonicalRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
+                        canonicalRouteBinding(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
+                )
+        );
+
+        MassSdkApplication app = MassSdk.builder()
+                .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport")
+                        .endpointLeaseStoreFactory(() -> endpointLeaseStore)
+                        .workerTransportRuntimeFactory(transportFactory))
+                .engine(engine -> engine.enabled(true).workerThreads(1))
+                .build();
+
+        try {
+            app.start();
+            app.registerWorker(WorkerRegistration.builder()
+                    .workerId("realtime-worker-websocket-session")
+                    .workerGroupId("realtime-workers")
+                    .transportHint("realtime")
+                    .build());
+
+            endpointLeaseStore.claimEndpointLease(new TransportEndpointLeaseClaim(
+                    "realtime-worker-websocket-session",
+                    "realtime-workers",
+                    "websocket",
+                    "session-1",
+                    "test websocket session connected"
+            ));
+
+            MassApplication delegate = requireDelegate(app);
+            assertTrue(app.isWorkerReachable("realtime-worker-websocket-session"));
+            assertEquals("websocket", delegate.resolveWorkerAdapterId("realtime-worker-websocket-session"));
+            assertEquals(WorkerTransportHints.REALTIME,
+                    delegate.resolveWorkerTransportHint("realtime-worker-websocket-session"));
+            assertEquals(WorkerTransportHints.REALTIME,
+                    app.getWorker("realtime-worker-websocket-session").getTransportHint());
+        } finally {
+            app.stop();
+        }
+    }
+
+    @Test
     void registerWorkerDoesNotPersistRealtimeAdapterIdentity() {
         WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
                                                          endpointLeaseStore,
@@ -3062,6 +3148,7 @@ class MassSdkTest {
                 descriptor.getAdapterId(),
                 mock(TransportResultIngressChannel.class),
                 new InMemoryTransportEndpointLeaseStore(),
+                CurrentSessionConnectSink.NOOP,
                 CurrentSessionDisconnectSink.NOOP,
                 runtimeTaskExecutor,
                 (adapterMailboxKey, maxItems, timeoutMillis) -> List.of(),

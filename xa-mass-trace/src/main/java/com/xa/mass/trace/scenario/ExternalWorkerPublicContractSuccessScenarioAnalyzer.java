@@ -43,7 +43,6 @@ final class ExternalWorkerPublicContractSuccessScenarioAnalyzer implements Trace
             analyzeTaskRows(taskRows, target, issues);
         }
         analyzeAssignmentRows(queryBackend.assignment(source, target.taskId(), 2_000), target, issues);
-        analyzeWorkerRows(workerRows, target, issues);
         return report(source, taskId, taskRows, workerRows, issues);
     }
 
@@ -114,28 +113,6 @@ final class ExternalWorkerPublicContractSuccessScenarioAnalyzer implements Trace
             issues.add(new TraceScenarioIssue(
                     "MISSING_GROUP_FIRST_DISPATCH_EVIDENCE",
                     "Expected accepted worker match evidence plus dispatched attempt eventBindingKey evidence"));
-        }
-    }
-
-    private void analyzeWorkerRows(List<TraceTimelineRow> rows,
-                                   Target target,
-                                   List<TraceScenarioIssue> issues) {
-        boolean hasOnline = rows.stream()
-                .anyMatch(row -> "WORKER_ONLINE".equals(row.eventType())
-                        && target.workerId().equals(row.workerId()));
-        boolean hasControlReport = rows.stream()
-                .anyMatch(row -> ("WORKER_STATE_REPORT_APPLIED".equals(row.eventType())
-                        || "WORKER_CAPABILITY_REPORT_APPLIED".equals(row.eventType()))
-                        && target.workerId().equals(row.workerId()));
-        if (!hasOnline) {
-            issues.add(new TraceScenarioIssue(
-                    "MISSING_WORKER_ONLINE",
-                    "Expected WORKER_ONLINE for workerId=" + target.workerId()));
-        }
-        if (!hasOnline && !hasControlReport) {
-            issues.add(new TraceScenarioIssue(
-                    "MISSING_WORKER_CONTRACT_EVIDENCE",
-                    "Expected worker presence or worker-control trace evidence for workerId=" + target.workerId()));
         }
     }
 

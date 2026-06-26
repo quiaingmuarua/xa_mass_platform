@@ -8,6 +8,7 @@ import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.polling.runtime.PollingSessionEvidenceDriver;
 import com.xa.mass.transport.runtime.embedded.PullSessionEvidenceDriver;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
+import com.xa.mass.transport.runtime.lease.CurrentSessionConnectSink;
 import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import com.xa.mass.worker.runtime.resource.WorkerHeartbeatRuntime;
@@ -206,6 +207,7 @@ class EmbeddedPullWorkerSessionTest {
                 "polling",
                 "polling",
                 endpointLeaseStore,
+                CurrentSessionConnectSink.NOOP,
                 disconnectSink
         ));
     }

@@ -11,6 +11,7 @@ import com.xa.mass.transport.runtime.embedded.AdapterMailboxConsumer;
 import com.xa.mass.transport.runtime.embedded.AdapterMailboxConsumerLoop;
 import com.xa.mass.transport.runtime.embedded.DeliveryFailureEvidenceSink;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
+import com.xa.mass.transport.runtime.lease.CurrentSessionConnectSink;
 import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
 
 import java.util.Objects;
@@ -23,6 +24,7 @@ public final class TransportAdapterBootstrapContext implements AdapterBootstrapC
     private final AdapterBootstrapAssignment assignment;
     private final TransportResultIngressChannel resultIngressChannel;
     private final TransportEndpointLeaseStore endpointLeaseStore;
+    private final CurrentSessionConnectSink currentSessionConnectSink;
     private final CurrentSessionDisconnectSink currentSessionDisconnectSink;
     private final RuntimeTaskExecutor runtimeTaskExecutor;
     private final AdapterMailboxClient adapterMailboxClient;
@@ -39,6 +41,7 @@ public final class TransportAdapterBootstrapContext implements AdapterBootstrapC
                                             String adapterMailboxKey,
                                             TransportResultIngressChannel resultIngressChannel,
                                             TransportEndpointLeaseStore endpointLeaseStore,
+                                            CurrentSessionConnectSink currentSessionConnectSink,
                                             CurrentSessionDisconnectSink currentSessionDisconnectSink,
                                             RuntimeTaskExecutor runtimeTaskExecutor,
                                             AdapterMailboxClient adapterMailboxClient,
@@ -48,6 +51,9 @@ public final class TransportAdapterBootstrapContext implements AdapterBootstrapC
         this.assignment = new AdapterBootstrapAssignment(descriptor, adapterMailboxKey);
         this.resultIngressChannel = resultIngressChannel;
         this.endpointLeaseStore = Objects.requireNonNull(endpointLeaseStore, "endpointLeaseStore");
+        this.currentSessionConnectSink = currentSessionConnectSink != null
+                ? currentSessionConnectSink
+                : CurrentSessionConnectSink.NOOP;
         this.currentSessionDisconnectSink = currentSessionDisconnectSink != null
                 ? currentSessionDisconnectSink
                 : CurrentSessionDisconnectSink.NOOP;
@@ -136,6 +142,7 @@ public final class TransportAdapterBootstrapContext implements AdapterBootstrapC
                     assignment.adapterId(),
                     assignment.adapterMailboxKey(),
                     endpointLeaseStore,
+                    currentSessionConnectSink,
                     currentSessionDisconnectSink
             );
         }

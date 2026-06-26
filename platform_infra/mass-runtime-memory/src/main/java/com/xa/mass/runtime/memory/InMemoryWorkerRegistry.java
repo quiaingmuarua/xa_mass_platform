@@ -185,13 +185,13 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
         if (slotRef.isEmpty()) {
             return false;
         }
-        boolean[] acquired = new boolean[1];
-        update(slotRef.orElseThrow(), current -> {
+        AtomicReference<WorkerSlot> ref = slotRef.orElseThrow();
+        while (true) {
+            WorkerSlot current = ref.get();
             if (current == null || current.removing() || current.exclusiveLeaseHeld()) {
-                return current;
+                return false;
             }
-            acquired[0] = true;
-            return new WorkerSlot(
+            WorkerSlot updated = new WorkerSlot(
                     current.meta(),
                     current.declaredCapacity(),
                     current.eventBindingCeiling(),
@@ -203,8 +203,10 @@ public final class InMemoryWorkerRegistry implements WorkerRegistry {
                     current.removing(),
                     current.removingReason()
             );
-        });
-        return acquired[0];
+            if (ref.compareAndSet(current, updated)) {
+                return true;
+            }
+        }
     }
 
     @Override

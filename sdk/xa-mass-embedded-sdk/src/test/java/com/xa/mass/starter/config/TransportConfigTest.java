@@ -2,6 +2,7 @@ package com.xa.mass.starter.config;
 
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.transport.TransportServer;
+import com.xa.mass.transport.runtime.lease.CurrentSessionConnectSink;
 import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
@@ -94,6 +95,7 @@ class TransportConfigTest {
                 "ws-extra-mailbox",
                 entry -> true,
                 new InMemoryTransportEndpointLeaseStore(),
+                CurrentSessionConnectSink.NOOP,
                 CurrentSessionDisconnectSink.NOOP,
                 mock(RuntimeTaskExecutor.class),
                 null,

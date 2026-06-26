@@ -40,9 +40,9 @@ final class BackgroundWorkerSharingScenarioAnalyzer extends AbstractAssignmentSc
             issues.add(new TraceScenarioIssue("MISSING_BACKGROUND_DECLARATION",
                     "Expected accepted worker match with foreground=false"));
         }
-        if (accepted.stream().noneMatch(this::showsExistingSharedLoad)) {
-            issues.add(new TraceScenarioIssue("MISSING_EXISTING_SHARED_LOAD",
-                    "Expected accepted worker match with active load, reservation, and spare declared capacity"));
+        if (accepted.stream().noneMatch(this::showsBackgroundReservationEvidence)) {
+            issues.add(new TraceScenarioIssue("MISSING_BACKGROUND_RESERVATION",
+                    "Expected accepted background worker match with selection reservation evidence"));
         }
         if (accepted.stream().noneMatch(row -> contains(row.reason(), "capacity reserved"))) {
             issues.add(new TraceScenarioIssue("MISSING_CAPACITY_RESERVED_REASON",
@@ -69,16 +69,13 @@ final class BackgroundWorkerSharingScenarioAnalyzer extends AbstractAssignmentSc
         }
     }
 
-    private boolean showsExistingSharedLoad(TraceAssignmentRow row) {
-        if (row.workerActiveLeaseCount() == null
-                || row.workerReservedCount() == null
+    private boolean showsBackgroundReservationEvidence(TraceAssignmentRow row) {
+        if (row.workerReservedCount() == null
                 || row.workerDeclaredCapacity() == null) {
             return false;
         }
-        int observedLoad = row.workerActiveLeaseCount() + row.workerReservedCount();
-        return row.workerActiveLeaseCount() > 0
-                && row.workerReservedCount() > 0
-                && observedLoad <= row.workerDeclaredCapacity();
+        return row.workerReservedCount() > 0
+                && row.workerReservedCount() <= row.workerDeclaredCapacity();
     }
 
     private boolean contains(String value, String token) {

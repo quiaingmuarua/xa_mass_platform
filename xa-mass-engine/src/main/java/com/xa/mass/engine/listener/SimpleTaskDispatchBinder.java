@@ -272,6 +272,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 return List.of();
             }
         }
+        resourceReleaser.releaseNonExclusiveReservations(task, assignedSelectedWorkers(dispatchSlots));
         return List.copyOf(dispatchBindings);
     }
 
@@ -426,16 +427,22 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
     }
 
     private void releaseAssignedWorkerLocks(Task task, List<DispatchSlot> dispatchSlots, String reason) {
-        List<SelectedWorkerHandle> assignedSelectedWorkers = dispatchSlots.stream()
-                .filter(slot -> slot.assignedCount() > 0)
-                .map(slot -> slot.handle)
-                .toList();
         resourceReleaser.releaseLocks(
                 task,
-                assignedSelectedWorkers,
+                assignedSelectedWorkers(dispatchSlots),
                 "UNLOCK_WORKER",
                 "SimpleTaskDispatchBinder",
                 reason
         );
+    }
+
+    private static List<SelectedWorkerHandle> assignedSelectedWorkers(List<DispatchSlot> dispatchSlots) {
+        if (dispatchSlots == null || dispatchSlots.isEmpty()) {
+            return List.of();
+        }
+        return dispatchSlots.stream()
+                .filter(slot -> slot.assignedCount() > 0)
+                .map(slot -> slot.handle)
+                .toList();
     }
 }

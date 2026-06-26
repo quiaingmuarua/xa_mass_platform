@@ -1,6 +1,7 @@
 package com.xa.mass.transport.polling.runtime;
 
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
+import com.xa.mass.transport.runtime.lease.CurrentSessionConnectSink;
 import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import org.junit.jupiter.api.Test;
@@ -22,6 +23,7 @@ class PollingSessionEvidenceDriverTest {
                 "polling-default",
                 "polling-mailbox",
                 endpointLeaseStore,
+                CurrentSessionConnectSink.NOOP,
                 disconnectSink
         ));
 
@@ -34,6 +36,7 @@ class PollingSessionEvidenceDriverTest {
                 "polling-default",
                 "polling-mailbox",
                 endpointLeaseStore,
+                CurrentSessionConnectSink.NOOP,
                 disconnectSink
         ));
         assertFalse(staleDriver.heartbeat("worker-1", "bucket-1", "stale-conn", "stale-heartbeat"));

@@ -51,7 +51,7 @@ class TaskSchedulingContentionTest {
     }
 
     @Test
-    void statelessWorkerScoreBandHoldBlocksConcurrentAssignmentUntilClaimClose() {
+    void backgroundTasksShareStatelessWorkerAfterDispatchClaimClose() {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
         harness.addStatelessWorker("worker-background", 2);
         Task firstTask = createReadyBackgroundTask(harness, "background-first", "first");
@@ -59,17 +59,19 @@ class TaskSchedulingContentionTest {
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(firstTask.getTid())));
         assertEquals(0, harness.workerManager.getWorkerLoad("worker-background").activeLeaseCount());
-        assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(secondTask.getTid())));
+        assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(secondTask.getTid())));
 
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(firstTask.getTid()).getStatus());
-        assertEquals(TaskStatus.READY, harness.taskManager.getTask(secondTask.getTid()).getStatus());
+        assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(secondTask.getTid()).getStatus());
         assertFalse(harness.workerManager.hasWorkerExclusiveLease("worker-background"));
 
         List<ActiveLeaseRecord> firstLeases = harness.activeLeases(firstTask.getTid());
+        List<ActiveLeaseRecord> secondLeases = harness.activeLeases(secondTask.getTid());
         assertEquals(1, firstLeases.size());
+        assertEquals(1, secondLeases.size());
         assertEquals("worker-background", firstLeases.getFirst().workerId());
-        assertTrue(harness.activeLeases(secondTask.getTid()).isEmpty());
-        assertEquals(1, harness.selectionReasonCount(secondTask.getTid(),
+        assertEquals("worker-background", secondLeases.getFirst().workerId());
+        assertEquals(0, harness.selectionReasonCount(secondTask.getTid(),
                 "score-band acquire returned no eligible workers"));
 
         assertTrue(harness.taskManager.ingestTaskResult(
@@ -82,10 +84,15 @@ class TaskSchedulingContentionTest {
         ));
         assertEquals(TaskStatus.TERMINAL, harness.taskManager.getTask(firstTask.getTid()).getStatus());
 
-        assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(secondTask.getTid())));
-        List<ActiveLeaseRecord> secondLeases = harness.activeLeases(secondTask.getTid());
-        assertEquals(1, secondLeases.size());
-        assertEquals("worker-background", secondLeases.getFirst().workerId());
+        assertTrue(harness.taskManager.ingestTaskResult(
+                secondTask.getTid(),
+                secondLeases.getFirst().messageId(),
+                true,
+                "second done",
+                null,
+                java.util.Map.of("source", "score-band-release")
+        ));
+        assertEquals(TaskStatus.TERMINAL, harness.taskManager.getTask(secondTask.getTid()).getStatus());
     }
 
     @Test

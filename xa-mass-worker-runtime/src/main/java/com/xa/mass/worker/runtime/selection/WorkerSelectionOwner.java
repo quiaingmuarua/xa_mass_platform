@@ -427,9 +427,6 @@ public final class WorkerSelectionOwner implements WorkerSelectionRuntime {
                 || isBlank(evidence.workerGroupId())) {
             return;
         }
-        if (!schedulingViewRuntime.isWorkerDispatchEnabled(evidence.workerId())) {
-            return;
-        }
         long nowMillis = System.currentTimeMillis();
         scoreBandSlotRuntime.transition(WorkerScoreBandTransitionCommand.claimClose(
                 evidence.workerGroupId(),

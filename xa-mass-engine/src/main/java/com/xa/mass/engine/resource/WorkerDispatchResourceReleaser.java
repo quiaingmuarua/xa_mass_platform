@@ -36,6 +36,17 @@ public final class WorkerDispatchResourceReleaser {
         }
     }
 
+    public void releaseNonExclusiveReservations(Task task, Collection<SelectedWorkerHandle> handles) {
+        if (task == null || handles == null || handles.isEmpty()) {
+            return;
+        }
+        for (SelectedWorkerHandle handle : handles) {
+            if (handle != null && !handle.exclusiveWorkerLock()) {
+                workerSelectionRuntime.releaseSelected(handle);
+            }
+        }
+    }
+
     public void releaseReservationsAndLocks(Task task,
                                             Collection<SelectedWorkerHandle> handles,
                                             String trigger,

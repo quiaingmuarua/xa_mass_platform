@@ -7,6 +7,7 @@ import com.xa.mass.contract.worker.WorkerChannelFrameJsonCodec;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.channel.ResultIngressEntry;
+import com.xa.mass.transport.runtime.lease.CurrentSessionConnectSink;
 import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
@@ -197,6 +198,7 @@ class WebSocketTransportAdapterBootstrapTest {
                     return true;
                 },
                 new InMemoryTransportEndpointLeaseStore(),
+                CurrentSessionConnectSink.NOOP,
                 CurrentSessionDisconnectSink.NOOP,
                 mock(RuntimeTaskExecutor.class),
                 adapterMailboxClient,
