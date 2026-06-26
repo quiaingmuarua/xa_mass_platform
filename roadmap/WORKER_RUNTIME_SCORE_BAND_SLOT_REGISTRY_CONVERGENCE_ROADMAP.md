@@ -63,6 +63,11 @@ Current implementation notes:
   Task-scope budgeting reads belong to engine/task-runtime assignment truth and
   are served by `TaskAssignmentRuntimePort.countActiveDispatchWorkers(taskId)`,
   which counts distinct workers from active task work leases.
+- Follow-up recovery correction: worker-level `dispatchRecoveryMode` /
+  `FRESHNESS_EVIDENCE` is no longer the target direction. Global worker
+  eligibility should use transport network freshness as the minimum positive
+  evidence during worker-runtime recheck; task attributes and event capability
+  remain task-specific selection filters and must not write score bands.
 
 ## Current Facts
 
@@ -251,11 +256,11 @@ heartbeat / connected / session keepalive / transport freshness
 ```
 
 Heartbeat, connected, session keepalive, and transport freshness evidence are
-freshness evidence only. They may be point-read during an already requested or
-maintenance-selected recovery check only when worker metadata explicitly opts
-into `dispatchRecoveryMode=FRESHNESS_EVIDENCE`. The default recovery mode is
-explicit-only: freshness does not request recheck and must not directly reopen
-parked, low-recheck, or blocked workers.
+freshness evidence only. They may be point-read during a worker-runtime recheck
+for any declared worker. There is no target worker-declared recovery mode:
+freshness does not request recheck and must not directly reopen parked,
+platform-blocked, or held workers, but fresh network evidence is the minimum
+positive evidence needed to reopen ordinary network-related low-recheck state.
 
 ## Target Shape
 
@@ -342,13 +347,15 @@ LOW_RECHECK_BAND: 0 <= score < TIME_SCORE_FLOOR
 TIME_BAND:        score >= TIME_SCORE_FLOOR
 ```
 
-`LOW_RECHECK_BAND` stores relative due scores:
+`LOW_RECHECK_BAND` stores owner-defined priority / retry-class scores:
 
 ```text
-lowRecheckScore = nextRecheckAtMillis - LOW_RECHECK_EPOCH_MILLIS
+lowRecheckScore = retryPriorityOrAttemptCount
 ```
 
-`ELIGIBLE_BAND` and `FUTURE_BAND` use real epoch millis scores.
+Delayed low-recheck due-time is not the default. It is reserved for an explicit
+backoff sub-policy, such as repeated handler failure or suspicious health
+evidence. `ELIGIBLE_BAND` and `FUTURE_BAND` use real epoch millis scores.
 
 ## Non-Goals
 
@@ -364,6 +371,9 @@ lowRecheckScore = nextRecheckAtMillis - LOW_RECHECK_EPOCH_MILLIS
 - Do not introduce per-permit worker resource ids.
 - Do not convert transport heartbeat, session keepalive, or connected events
   into score writes.
+- Do not add a worker-declared positive-recovery mode. A connected/fresh worker
+  is generally eligible unless worker-runtime sees platform block, parked state,
+  hold, missing declaration/group membership, or other owner-owned closure.
 - Do not let task demand create placement indexes, bucket keys, or task-local
   worker candidate keys.
 - Do not migrate or rename current `RedisWorkerRegistry` group/candidate/admin
@@ -423,9 +433,9 @@ Scope:
   - future score due as read-time eligibility, not a stored transition event;
   - engine attempt timeout as task/attempt evidence, not positive close;
   - owner-validated recovery/recheck;
-  - heartbeat/freshness as point-read evidence that worker-runtime may consult
-    during an owner-initiated recheck, not as a recheck request and not as a
-    direct eligibility writer.
+  - heartbeat/freshness as point-read network evidence that worker-runtime may
+    consult during bounded recheck for any declared worker; it is not a recheck
+    request and not a direct eligibility writer.
 - Classify current selection-domain inputs that must survive SBR-5:
   - WorkerGroup universe;
   - target worker id;
@@ -478,12 +488,12 @@ Scope:
     score;
   - heartbeat/connected/session keepalive/transport freshness cannot request
     worker-runtime recheck and cannot directly write worker-runtime score;
-  - freshness evidence is considered only for workers with
-    `dispatchRecoveryMode=FRESHNESS_EVIDENCE`; default `EXPLICIT_ONLY` workers
-    need explicit worker report/control evidence;
+  - freshness evidence is considered during worker-runtime recheck for declared
+    workers without a platform block, parked state, or active hold; no
+    worker-declared recovery mode is required;
   - only worker-runtime validation may reopen eligibility after declaration,
-    WorkerGroup membership, gates, single-slot hold state, recovery mode, and
-    metadata checks.
+    WorkerGroup membership, gates, single-slot hold state, network freshness,
+    and metadata checks.
 
 Acceptance:
 
@@ -560,7 +570,8 @@ Acceptance:
 
 - Band classifier proves:
   - parked scores are negative and never treated as time;
-  - low-recheck scores are relative due scores below `TIME_SCORE_FLOOR`;
+  - low-recheck scores are owner-defined priority / retry-class scores below
+    `TIME_SCORE_FLOOR`;
   - eligible/future scores are epoch millis time scores;
   - low-recheck overflow cannot silently become time-band score.
 - Contract tests prove:
@@ -569,8 +580,8 @@ Acceptance:
   - intentional disable/drain/park moves resource to `PARKED_BAND`;
   - future interval moves resource to `FUTURE_BAND`;
   - positive freshness/heartbeat cannot directly reopen parked or low-recheck;
-  - freshness-based recovery is rejected unless worker metadata has
-    `dispatchRecoveryMode=FRESHNESS_EVIDENCE`;
+  - freshness-based recovery does not depend on worker metadata
+    `dispatchRecoveryMode`;
   - explicit owner recovery may reopen low-recheck after validation;
   - parked requires explicit unpark/resume/enable or owner policy promotion.
 - Contract tests prove positive evidence cannot reopen directly:
@@ -662,8 +673,9 @@ Acceptance:
 - Transition evidence is emitted through trace or a test evidence sink. Redis
   transition stream is not required for SBR-3 completion.
 - Eligible acquire query uses `TIME_SCORE_FLOOR` lower bound and bounded limit.
-- Low-recheck due query uses the relative due-score range and is maintenance
-  only.
+- Low-recheck maintenance query uses the reserved low-recheck priority /
+  retry-class range and bounded limit. It must not assume all low-recheck scores
+  are due timestamps.
 - Redis acquire proof does not scan all workers, all WorkerGroups, or all
   home buckets for a normal worker selection request.
 - Any auxiliary domain index is a bounded locator only. It must not duplicate
@@ -833,6 +845,10 @@ Acceptance:
   distinct workers in task-runtime active leases.
 - FUTURE_BAND due is represented by the existing score becoming due; no
   timeout event, queue move, or writer is needed.
+- LOW_RECHECK_BAND is not a default time queue. Ordinary network disconnect or
+  no-current-endpoint should use an owner-defined retry priority/count score;
+  delayed low-recheck due-time is reserved for explicit suspicious/backoff
+  policies such as repeated handler failure.
 - Engine attempt timeout does not act as positive claim close; it is
   task/attempt evidence and cannot write any score.
 - Stale or null-observation claim-close evidence cannot directly shorten

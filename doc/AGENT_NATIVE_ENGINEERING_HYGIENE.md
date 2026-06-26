@@ -89,6 +89,46 @@ Rules:
 Do not let temporary fields, caches, compatibility aliases, or test fixtures
 become mainline by accident.
 
+### Public Interface Contract Shape
+
+Public runtime interfaces are owner boundaries. Their parameters must be stable
+contracts, not whichever implementation record happened to be available at the
+call site.
+
+Allowed parameter shapes:
+
+- primitive fields or stable value objects owned by the caller or shared
+  contract, such as `workerId`, `workerGroupId`, `messageId`, or
+  `observedAtMillis`
+- explicit public contract DTOs with fields that are stable, meaningful, and
+  constructible by the caller
+- functional interfaces or callbacks when the caller is providing behavior
+  rather than handing over owner-internal state
+- opaque handles or refs that callers only store and return, without reading
+  implementation fields
+
+Forbidden public contract shapes:
+
+- internal observation records whose fields are produced by the callee's state
+  machine
+- cache snapshots, diagnostics, trace evidence, score-band observations,
+  lease/session internals, or current implementation DTOs
+- wrapper records created only to move many internal fields through an
+  interface
+- parallel overloads such as `handle` and `evidence` variants that exist only
+  because the lifecycle boundary is unclear
+
+Agent rule:
+
+- before adding an interface parameter, ask whether the caller owns, validates,
+  and can construct every field
+- if not, keep the data behind the owner and expose an opaque ref/handle or a
+  smaller stable command
+- tests must not mock internal observation records into public contracts just
+  to preserve old call shapes
+- if an interface already accepts such a record, treat it as convergence debt
+  and avoid expanding it
+
 ### Roadmap Review
 
 Complex cross-module changes require a reviewed roadmap before implementation.

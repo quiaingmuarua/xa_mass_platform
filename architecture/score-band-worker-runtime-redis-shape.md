@@ -67,7 +67,7 @@ The ZSET answers:
 ```text
 eligible acquire
 future due
-low-recheck due
+low-recheck priority/inventory
 parked inventory
 ```
 

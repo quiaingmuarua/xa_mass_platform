@@ -288,7 +288,6 @@ Owned contract:
 - `WorkerDispatchEligibilityRuntime`
 - `WorkerDispatchGateRuntime`
 - `WorkerDispatchRecoveryRuntime`
-- `WorkerDispatchRecoveryMode`
 
 Allowed callers:
 
@@ -306,11 +305,17 @@ engine control submits evidence to this runtime instead of receiving the
 clear-capable gate. `DefaultWorkerDispatchAvailabilityPolicy` is the default
 worker-runtime implementation of that evidence translation. Positive recovery
 from that policy uses `WorkerDispatchRecoveryRuntime`; the first synchronous
-implementation validates worker meta, `WorkerDispatchRecoveryMode`, slot
-presence, removing state, and the active block source before clearing only that
-source.
+implementation validates worker meta, slot presence, removing state, and the
+active block source before clearing only that source.
 `WorkerDispatchGateRuntime` is clear-capable and remains worker-runtime/control
 internal; transport and concrete adapters must not import or call it.
+
+Current code still contains `WorkerDispatchRecoveryMode` as convergence
+scaffolding. It is not a stable owner contract; the target direction is tracked
+by
+[WORKER_RUNTIME_NETWORK_FRESHNESS_RECHECK_CONVERGENCE_ROADMAP.md](../roadmap/WORKER_RUNTIME_NETWORK_FRESHNESS_RECHECK_CONVERGENCE_ROADMAP.md):
+network freshness is common point-read evidence during worker-runtime recheck,
+not a worker-declared recovery capability.
 
 ### Command
 

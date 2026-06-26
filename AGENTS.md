@@ -114,6 +114,23 @@ This repo is not anti-abstraction. It is anti-fake abstraction.
 - if a new layer does not change who owns the decision, who may call it, or
   what lifecycle boundary it protects, it probably should not exist
 
+Public runtime interfaces must expose stable contracts, not internal
+observation records. Interface parameters should be one of:
+
+- primitive fields or stable value objects owned by the caller or shared
+  contract, such as `workerId`, `workerGroupId`, or `observedAtMillis`
+- explicit public contract DTOs whose fields are stable, meaningful, and
+  constructible by the caller
+- functional interfaces / callbacks that represent deferred behavior without
+  carrying owner-internal state
+- opaque handles or refs that callers only store and return, without reading
+  implementation fields
+
+If the caller cannot validate, construct, or own the fields, the object is not
+a public contract. Do not pass internal observations, cache snapshots,
+state-machine evidence, score/lease internals, or convenience wrapper records
+through public interfaces just to make call sites compile.
+
 Common misreads to avoid:
 
 - `TaskManager` implementing multiple engine seams is current owner design, not
@@ -237,6 +254,12 @@ Planning rule for multi-file or core changes:
   profile residue, group selectors, matching rules, assignment policy,
   backpressure, and admission
 - do not add scan-heavy observability or reconciliation loops to hot paths
+- high-cost runtime mechanisms require a named high-ROI decision before they
+  are introduced. Threads, pollers, scanners, periodic jobs, lifecycle owners,
+  event-triggered wakeups, queues, indexes, and cross-module push signals are
+  high-cost by default; use opportunistic point reads or owner-local validation
+  unless the roadmap proves why the higher-cost mechanism protects a
+  high-value invariant.
 - trace and query concerns must not reverse-drive runtime ownership or mainline lifecycle design
 - SQLite/control-plane storage must not absorb runtime queue, lease, heartbeat,
   dispatch, result convergence, or trace/audit truth; server profiles such as

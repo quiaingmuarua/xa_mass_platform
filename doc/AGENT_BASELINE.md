@@ -176,6 +176,21 @@ Runtime and query boundaries:
 - observability belongs in logs, traces, counters, and bounded diagnostics, not
   scan-heavy hot-path projections
 
+Interface contract shape:
+
+- public runtime interface parameters must be primitives/stable value objects,
+  explicit public contract DTOs, functional interfaces/callbacks, or opaque
+  handles that callers only store and return
+- a DTO is not a contract just because it wraps fields. If the caller cannot
+  validate, construct, or own the fields, it is internal observation and must
+  not be accepted as a public interface parameter
+- internal state-machine evidence, score/lease internals, cache snapshots,
+  diagnostics, and implementation observations must stay behind the owner or be
+  represented as opaque refs
+- overloads must not preserve an unclear lifecycle boundary; prefer one stable
+  action with a stable reason/ref over parallel `handle` and `evidence`
+  variants
+
 ## 5. Current Entry Points
 
 - task shell creation: `POST /api/v1/tasks`
@@ -203,6 +218,11 @@ Lifecycle and trace detail live in:
 - do not let adapters become scheduling owners
 - do not select workers by transport implementation identifiers
 - do not add full-table, full-task, or full-attempt scans to hot paths
+- do not introduce high-cost runtime mechanisms for low-value latency wins:
+  threads, pollers, scanners, periodic jobs, lifecycle owners,
+  event-triggered wakeups, queues, indexes, and cross-module push signals need
+  a named high-ROI invariant and proof that cheaper opportunistic validation is
+  insufficient
 - keep new or changed policy seams explicit across matching, assignment,
   attempt, release, refill, intake, control, and terminal decisions
 - UI pages, mock runtime, and demo APIs must not redefine the kernel

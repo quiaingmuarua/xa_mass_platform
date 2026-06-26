@@ -56,7 +56,7 @@ in one of four bands:
 
 ```text
 PARKED_BAND       intentionally out of active scheduling and recheck
-LOW_RECHECK_BAND  blocked / offline / recoverable failure that deserves bounded recheck
+LOW_RECHECK_BAND  recoverable negative state that deserves owner recheck
 ELIGIBLE_BAND     currently schedulable window
 FUTURE_BAND       preallocated / occupied / cooldown / attempt interval
 ```
@@ -65,7 +65,7 @@ The important asymmetry:
 
 ```text
 FUTURE_BAND is time-due by score interpretation.
-LOW_RECHECK_BAND is bounded-recheck releasable only by resource owner.
+LOW_RECHECK_BAND is owner-recheck releasable, but it is not time-due by default.
 PARKED_BAND is not automatically rechecked or time-releasable.
 ```
 
@@ -170,15 +170,19 @@ resource-runtime believes bounded recovery attempts are still useful.
 
 Rules:
 
-- it is due-time semantics inside the low-recheck range;
+- it is an owner-defined recheck priority / retry-class range by default;
+- network disconnect / no-current-endpoint should write an immediate low-recheck
+  score, usually based on retry priority or attempt count, not a recheck
+  timestamp;
+- delayed low-recheck due-time is an explicit sub-policy for suspicious or
+  backoff-worthy states, not the default meaning of the band;
 - normal acquire never scans it;
 - it is not the fast recovery path;
 - it does not recover by time;
-- score is `nextRecheckAtMillis - LOW_RECHECK_EPOCH_MILLIS`;
-- failed recheck count is trace/diagnostic or a later explicit maintenance
-  projection, not score and not stable scheduling metadata;
-- each owner maintenance recheck that still finds the slot unavailable writes a
-  later low-recheck due score according to bounded backoff policy;
+- failed recheck count can be encoded as low-recheck priority for simple
+  network recovery, or kept as trace/diagnostic for richer policies;
+- an owner maintenance recheck that still finds the slot unavailable may rewrite
+  priority/count or, for suspicious states only, write a delayed backoff score;
 - when owner policy reaches the configured failed-recheck threshold,
   resource-runtime
   may remove the slot or move it to `PARKED_BAND`;
@@ -247,12 +251,13 @@ PARKED_BAND score
   metadata / trace transition evidence
 
 LOW_RECHECK_BAND score
-  reserved relative due-time range
+  reserved owner-defined priority / retry-class range
   example: 0 <= score < TIME_SCORE_FLOOR
-  score = nextRecheckAtMillis - LOW_RECHECK_EPOCH_MILLIS
-  failedRecheckCount, reasonCode, sourceType, actorId, observedAt,
-  nextRecheckAt, and backoffPolicy live in trace / diagnostic evidence unless
-  a later roadmap proves a runtime maintenance projection
+  network disconnect/no-endpoint may use score as retry priority or attempt
+  count; it is not a timestamp
+  delayed backoff, reasonCode, sourceType, actorId, observedAt, nextRecheckAt,
+  and backoffPolicy live in trace / diagnostic evidence unless a later roadmap
+  proves a runtime maintenance projection
 
 TIME_BAND score
   example: score >= TIME_SCORE_FLOOR
@@ -267,11 +272,13 @@ must stay fixed:
 - parked score is not a timestamp;
 - parked score is not a retry counter;
 - parked score does not by itself explain full reason or reopen policy;
-- low-recheck score is a relative due-time, not an absolute epoch timestamp;
+- low-recheck score is not an absolute epoch timestamp;
+- low-recheck score is not a relative due-time unless the owning policy
+  explicitly selects a delayed-backoff subrange for a suspicious state;
 - low-recheck score is not a boolean block bit;
 - low-recheck score must stay below `TIME_SCORE_FLOOR`;
 - low-recheck score is updated only by resource-runtime according to owner
-  backoff/recheck policy;
+  recheck policy;
 - failed recheck count must not be inferred from score and must not be stored
   in stable scheduling metadata;
 - low-recheck cleanup or parking is threshold/policy based, not automatic time
@@ -311,26 +318,31 @@ configuration/code constants, not values inferred from the current clock.
 Recommended shape:
 
 ```text
-LOW_RECHECK_EPOCH_MILLIS = epoch millis for 2026-01-01T00:00:00Z
+LOW_RECHECK_SCORE_FLOOR = 0
 TIME_SCORE_FLOOR = a fixed high lower bound for real epochMillis time scores
 ```
 
-`LOW_RECHECK_EPOCH_MILLIS` is a fixed recent epoch used only to map
-low-recheck due timestamps into the reserved low-recheck score range:
+`LOW_RECHECK_BAND` is reserved for owner-defined priority / retry-class scores.
+For ordinary network disconnect recovery, the score may be a simple retry
+priority or attempt count:
 
 ```text
-lowRecheckScore = nextRecheckAtMillis - LOW_RECHECK_EPOCH_MILLIS
-nextRecheckAtMillis = LOW_RECHECK_EPOCH_MILLIS + lowRecheckScore
+lowRecheckScore = retryPriorityOrAttemptCount
 ```
 
-`TIME_SCORE_FLOOR` must be large enough that expected low-recheck relative due
-scores never overlap real epochMillis time scores:
+If a specific owner policy needs delayed low-recheck backoff, that policy must
+define an explicit subrange or maintenance projection. Generic low-recheck
+logic must not assume that the score is a timestamp.
+
+`TIME_SCORE_FLOOR` must be large enough that expected low-recheck priority /
+retry-class scores never overlap real epochMillis time scores:
 
 ```text
 0 <= lowRecheckScore < TIME_SCORE_FLOOR
 ```
 
-This separation is mandatory. `LOW_RECHECK_BAND` uses relative due-time scores;
+This separation is mandatory. `LOW_RECHECK_BAND` uses owner-defined non-time
+scores by default;
 `ELIGIBLE_BAND` and `FUTURE_BAND` use real epochMillis scores.
 
 If an owner computes a low-recheck score outside that range, it must not write
@@ -348,7 +360,7 @@ future due / no freshness-window acquire:
   ZRANGE key TIME_SCORE_FLOOR now BYSCORE LIMIT 0 N
 
 low-recheck inventory:
-  ZRANGE key 0 (nowMillis - LOW_RECHECK_EPOCH_MILLIS) BYSCORE LIMIT 0 N
+  ZRANGE key 0 (TIME_SCORE_FLOOR BYSCORE LIMIT 0 N
 
 parked inventory:
   ZRANGE key -inf -1 BYSCORE LIMIT 0 N
@@ -363,14 +375,14 @@ maintenance paths, not task hot paths.
 | --- | --- | --- | --- | --- |
 | Slot declared and owner validates schedulable | worker-runtime/resource-runtime | `now` | `ELIGIBLE_BAND` | Initial open is owner validation, not transport connect. |
 | Slot declared but intentionally idle or disabled | worker-runtime/resource-runtime | parked code, for example `PARKED_IDLE` or `PARKED_OPERATOR_DISABLED` | `PARKED_BAND` | No periodic recheck budget should be spent until explicit promotion or demand policy. |
-| Slot declared but requires bounded readiness recheck | worker-runtime/resource-runtime | `nextRecheckAtMillis - LOW_RECHECK_EPOCH_MILLIS` | `LOW_RECHECK_BAND` | Reason can be `INIT_REQUIRED` or `RECHECK_REQUIRED`; failed count starts in trace/test evidence or a later maintenance projection. |
-| Explicit worker `AVAILABLE` / `READY` report validated while in `LOW_RECHECK_BAND` | worker-runtime | `now` | `ELIGIBLE_BAND` | Positive report is evidence-only until owner validation. It cannot clear parked state. |
+| Slot declared but requires bounded readiness recheck | worker-runtime/resource-runtime | owner-defined low-recheck priority/count or delayed score if explicitly required | `LOW_RECHECK_BAND` | Reason can be `INIT_REQUIRED` or `RECHECK_REQUIRED`; failed count may be score for simple network recovery or trace/test evidence for richer policy. |
+| Fresh network evidence validated while in `LOW_RECHECK_BAND` | worker-runtime, after point-reading transport freshness | `now` | `ELIGIBLE_BAND` | Network freshness is the minimum positive eligibility evidence. It cannot clear parked/platform block state. |
 | Explicit unpark / resume / enable command validated | worker-runtime/resource-runtime | `now` or low-recheck due score | `ELIGIBLE_BAND` or `LOW_RECHECK_BAND` | Required to unpark `PARKED_BAND`; `AVAILABLE` / `READY` alone is insufficient. |
-| Explicit worker `OFFLINE` / unavailable report | worker-runtime | `nextRecheckAtMillis - LOW_RECHECK_EPOCH_MILLIS` | `LOW_RECHECK_BAND` | Negative business-state report closes eligibility and may be recoverable. |
+| Explicit worker `OFFLINE` / unavailable report | worker-runtime | owner-defined low-recheck priority/count or parked code, depending on policy | `LOW_RECHECK_BAND` or `PARKED_BAND` | Negative business-state report closes eligibility and may be recoverable only if owner policy allows it. |
 | Explicit worker `DRAINING` report | worker-runtime | parked code, for example `PARKED_DRAIN` | `PARKED_BAND` | Drain should not burn periodic recheck budget. |
 | Operator disable / drain | worker-runtime/resource-runtime | parked code, for example `PARKED_OPERATOR_DISABLED` | `PARKED_BAND` | Operator policy is not time-releasable. |
-| Confirmed current-session disconnect | worker-runtime via allowlisted transport evidence | `nextRecheckAtMillis - LOW_RECHECK_EPOCH_MILLIS` | `LOW_RECHECK_BAND` | Transport proves hard dispatch blocker; worker-runtime owns the transition. |
-| Maintenance recheck still unavailable | worker-runtime/resource-runtime | next due score from owner backoff policy | `LOW_RECHECK_BAND` | Failed count increments in trace/test evidence or a later maintenance projection; score remains due-time only. |
+| Confirmed current-session disconnect | worker-runtime via allowlisted transport evidence | owner-defined low-recheck priority/count | `LOW_RECHECK_BAND` | Transport proves hard dispatch blocker; worker-runtime owns the transition. Do not encode a default recheck timestamp for ordinary disconnect. |
+| Maintenance recheck still unavailable | worker-runtime/resource-runtime | updated low-recheck priority/count, or delayed score only for explicit suspicious/backoff policy | `LOW_RECHECK_BAND` | Failed count may be score for simple network recovery or trace/test evidence for richer policies. |
 | Low-recheck failed count reaches threshold | worker-runtime/resource-runtime | parked code or remove/cold transition | `PARKED_BAND` or outside normal acquire | Cleanup/parking/removal is policy-owned and must emit transition evidence. |
 | `WORKER_HEARTBEAT` / `TRANSPORT_REFRESH` / `SESSION_KEEPALIVE` / `CONNECTED` | transport | no score write | unchanged | Freshness evidence stays transport-local unless point-read during an allowed owner recheck. |
 | Preallocation acquire | matcher through resource-runtime | `now + preallocUntilMillis` | `FUTURE_BAND` | Claim owner is demand lane / matcher. |
@@ -426,18 +438,20 @@ score < 0
   -> reopened only by explicit owner event or explicit policy promotion
 ```
 
-### Low-Recheck Due Score And Count Metadata
+### Low-Recheck Priority And Optional Delay
 
-The value in `LOW_RECHECK_BAND` is not an age and not a failed-retry count. It
-is the due score for the next fallback owner recheck:
+The value in `LOW_RECHECK_BAND` is not an age and not an absolute timestamp. It
+is an owner-defined recheck priority or retry-class value. For ordinary network
+disconnect / no-current-endpoint, the simplest interpretation is an immediate
+priority/count score:
 
 ```text
-score = nextRecheckAtMillis - LOW_RECHECK_EPOCH_MILLIS
+score = lowRecheckPriorityOrAttemptCount
 ```
 
-Failed owner recheck count is not part of stable scheduling metadata. The first
-slice should keep it in trace/test evidence or a later explicit maintenance
-projection:
+Delayed low-recheck due-time is reserved for suspicious or backoff-worthy
+states such as repeated handler failures. If added, the delay policy must be
+explicit and must not be assumed by generic network recovery:
 
 ```text
 failedRecheckCount
@@ -453,19 +467,19 @@ worker-a initially eligible
   score = now
 
 transport current-session disconnect accepted
-  score = nextRecheckAtMillis - LOW_RECHECK_EPOCH_MILLIS
+  score = 1
   band = LOW_RECHECK_BAND
   transitionType = RECOVERABLE_CLOSE
   reasonCode = CURRENT_SESSION_DISCONNECTED
   failedRecheckCount = 0
 
 first maintenance recheck still unavailable
-  score = nextRecheckAtMillis - LOW_RECHECK_EPOCH_MILLIS
+  score = 2
   band = LOW_RECHECK_BAND
   failedRecheckCount = 1
 
 second maintenance recheck still unavailable
-  score = nextRecheckAtMillis - LOW_RECHECK_EPOCH_MILLIS
+  score = 3
   band = LOW_RECHECK_BAND
   failedRecheckCount = 2
 
@@ -488,16 +502,16 @@ Only worker-runtime/resource-runtime may perform that transition.
 
 ### Low-Recheck Recovery Contract
 
-`LOW_RECHECK_BAND` exists to prevent recoverable negative state from getting
-stuck forever when a disconnect, stale observation, or recovery event is lost.
-It does not optimize recovery latency.
+`LOW_RECHECK_BAND` exists to keep recoverable negative state out of normal
+acquire while still making it available to bounded owner recheck. It should not
+be modeled as a second time queue by default.
 
-Fast recovery path:
+Network recovery path:
 
 ```text
-worker explicitly reports AVAILABLE / READY / business-available
-  -> transport carries the report
-  -> worker-runtime report/control owner validates it
+worker-runtime selects worker for recheck
+  -> point-read transport freshness
+  -> validate declaration / group / platform block / hold
   -> owner may reopen slot into ELIGIBLE_BAND
 ```
 
@@ -506,8 +520,7 @@ Fallback recovery path:
 ```text
 slot is in LOW_RECHECK_BAND
   -> bounded owner maintenance may recheck it
-  -> failed recheck increments trace/diagnostic or maintenance-projection count
-  -> owner writes the next low-recheck due score
+  -> failed recheck updates priority/count or explicit delayed backoff policy
   -> threshold moves slot to PARKED_BAND or removes it
 ```
 
@@ -515,14 +528,14 @@ Rules:
 
 - scheduling hot path never scans `LOW_RECHECK_BAND`;
 - `LOW_RECHECK_BAND` should not be used to chase response speed;
-- worker heartbeat, session keepalive, and transport reconnect are not recovery
-  reports;
-- if the worker wants to return quickly, it must send an explicit worker
-  availability/readiness report;
+- worker heartbeat, session keepalive, and transport reconnect update
+  transport-local freshness;
+- worker-runtime may use that freshness through a narrow point-read during
+  recheck; no per-worker `RecoveryMode` is required;
 - a worker-provided `nextRecheckAt` or recovery hint, if added later, is only a
   hint to worker-runtime/resource-runtime and never a direct score write;
 - owner must validate and bound any worker-provided recheck hint before
-  computing `nextRecheckAtMillis - LOW_RECHECK_EPOCH_MILLIS`;
+  computing a low-recheck score;
 - owner maintenance should be bounded, backoff-aware, and allowed to be
   demand-triggered rather than continuously scanning every low-recheck slot.
 
@@ -998,6 +1011,7 @@ Transport must not:
 - decide resource lifecycle;
 - own score bands;
 - turn heartbeat/connected into schedulable truth.
+- let workers opt into schedulability policy through a recovery-mode attribute.
 
 Transport is often the carrier for worker-originated reports, but carrier does
 not mean owner. If a worker explicitly reports business availability,
@@ -1019,7 +1033,7 @@ worker eligibility event lane
 transport-local freshness lane
   WORKER_HEARTBEAT / TRANSPORT_REFRESH / SESSION_KEEPALIVE / CONNECTED
   -> transport endpoint/session/freshness evidence
-  -> optional worker-runtime point-read during an already allowed recheck
+  -> worker-runtime point-read during bounded recheck
 
 demand and claim lane
   engine task demand lanes

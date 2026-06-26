@@ -1,15 +1,27 @@
 # Worker Runtime Dispatch Eligibility Signal Convergence Roadmap
 
-Status: slice complete, roadmap active. The current landed slice covers the
-disconnect negative-signal path, selection-gate owner move, worker-control
-eligibility owner move, clear-capable SDK runtime bridge cleanup, and the first
-worker-runtime-owned positive recovery path for worker state/command sources.
-Transport session presence bridge has been deleted; connected and heartbeat
-observations stay transport-local.
-Capacity-changing release/final/lock-release evidence now requests dispatch
-wakeup through the worker-runtime availability hook. Freshness point-read
-recovery, richer release/capacity recovery policy, and a future shared
-delivery-target projection remain open.
+Status: superseded and archived on 2026-06-26. This file is historical context
+for the negative-signal and clear-capable surface cleanup slices that landed
+before the score-band recovery model was corrected.
+
+Current follow-up owner:
+[WORKER_RUNTIME_NETWORK_FRESHNESS_RECHECK_CONVERGENCE_ROADMAP.md](../../../roadmap/WORKER_RUNTIME_NETWORK_FRESHNESS_RECHECK_CONVERGENCE_ROADMAP.md).
+
+The landed slices covered the disconnect negative-signal path,
+selection-gate owner move, worker-control eligibility owner move,
+clear-capable SDK runtime bridge cleanup, deletion of the generic transport
+session presence bridge, and the first worker-runtime-owned positive recovery
+path for worker state/command sources.
+
+2026-06-26 correction: the earlier `RecoveryMode` / `FRESHNESS_EVIDENCE`
+direction is superseded by
+[WORKER_RUNTIME_NETWORK_FRESHNESS_RECHECK_CONVERGENCE_ROADMAP.md](../../../roadmap/WORKER_RUNTIME_NETWORK_FRESHNESS_RECHECK_CONVERGENCE_ROADMAP.md).
+A worker does not opt into schedulability through a worker-declared recovery attribute.
+Network freshness is the minimum positive evidence for global worker
+eligibility during worker-runtime recheck; task attributes and event capability
+remain task-specific selection filters. Ordinary network disconnect should enter
+`LOW_RECHECK_BAND` with owner-defined priority/count semantics, not a default
+`recheckAt` timestamp.
 
 ## Summary
 
@@ -18,9 +30,9 @@ direction. The core invariant is:
 
 ```text
 Negative evidence may close dispatch eligibility immediately as best-effort protection.
-Positive evidence may only request worker-runtime recheck.
+Positive evidence may update its owning evidence store or request worker-runtime recheck.
 Only worker-runtime may reopen dispatch eligibility after validating worker declaration,
-slot, group membership, gates, holds, capacity, and recovery mode.
+slot, group membership, platform gates, holds, capacity, and network freshness.
 ```
 
 Transport should own worker network/session/heartbeat facts locally. It should
@@ -133,11 +145,10 @@ operator / worker command / worker report
   -> worker-runtime decides whether to block or clear internal gate sources
 
 worker-runtime registry/gate recheck
-  -> validates declaration / slot / group membership / scheduling attributes
+  -> validates declaration / slot / group membership
   -> runs because worker-runtime accepted a high-value recheck request or a
      bounded maintenance scan selected the worker
-  -> reads worker `RecoveryMode`
-  -> if `RecoveryMode == FRESHNESS_EVIDENCE`, point-read freshness evidence
+  -> point-read transport network freshness
   -> validates admission/gates inside worker-runtime owners
   -> decides whether the worker may re-enter scheduling
 ```
@@ -199,9 +210,9 @@ Worker-runtime owns:
   decision;
 - candidate acquisition and final reserve validation.
 - positive recovery from worker report/command/release/freshness evidence only
-  when worker-runtime recheck is requested by an allowed high-value source or
-  bounded maintenance, and the worker's `RecoveryMode` allows freshness
-  evidence to be point-read during the recheck.
+  when worker-runtime recheck is requested by an allowed high-value source,
+  bounded maintenance, or worker-runtime demand policy. Freshness point-read is
+  network evidence, not a worker-declared mode.
 
 Engine owns:
 
@@ -254,9 +265,10 @@ recheck due zset
 
 These zsets are implementation indexes, not public queues and not a second
 scheduling truth. A zset hit is only a candidate acquisition optimization; final
-dispatch eligibility still requires worker-runtime validation of slot,
-attributes, `RecoveryMode`, block sources, hold state, capacity, and
-reserve/admission.
+dispatch eligibility still requires worker-runtime validation of slot, group
+membership, platform block state, hold state, capacity, reserve/admission, and
+network freshness. Worker/task attributes are task-specific selection filters,
+not global eligibility state.
 
 `reachability`, `readiness`, and `occupancy` should be read as evidence or
 diagnostic vocabulary feeding this path, not as three synchronized state models
@@ -301,15 +313,15 @@ reduce occupancy or release capacity. It still must not directly clear unrelated
 block sources. If completion/release evidence leaves the worker with capacity
 and worker-runtime checks pass, worker-runtime may make that worker schedulable.
 
-Recovery has two separate concepts:
+Recovery has two separate concepts after the 2026-06-26 correction:
 
 ```text
 recheck request source
   why worker-runtime should spend work evaluating this worker now
 
-RecoveryMode
-  whether worker-runtime may point-read freshness evidence when it is already
-  rechecking the worker; it is not an event subscription or notification path
+network freshness provider
+  transport-owned point-read evidence that tells worker-runtime whether the
+  worker currently has a usable network channel
 ```
 
 Heartbeat, transport refresh, and session keepalive are transport or
@@ -340,39 +352,14 @@ SESSION_KEEPALIVE
 CONNECTED
 ```
 
-`RecoveryMode` must be explicit. It intentionally does not encode who reported
-freshness. Worker-owned heartbeat/report evidence and transport fresh/not-fresh
-evidence are both freshness evidence providers; the mode only says whether
-worker-runtime may use freshness evidence during recheck.
-
-```text
-EXPLICIT_ONLY
-  worker-runtime recheck cannot use heartbeat/freshness evidence to reopen
-  dispatch eligibility; recovery requires explicit worker-runtime/control
-  evidence such as command/operator/state/re-registration policy
-
-FRESHNESS_EVIDENCE
-  worker-runtime may point-read freshness evidence while handling an
-  already-requested or maintenance-selected recheck
-  freshness evidence may come from worker-owned report/heartbeat evidence or
-  a narrow transport-owned fresh/not-fresh view
-  this mode must be explicitly enabled per worker/intake type and is not the
-  default mode
-```
-
-Default should be conservative: `EXPLICIT_ONLY` unless the worker or intake path
-is explicitly classified. For this roadmap, `RecoveryMode` is stored in worker
-attributes / scheduling attributes and travels with the worker fact. Test
-workers may opt into `FRESHNESS_EVIDENCE` by declaring that attribute. The mode
-is still interpreted only by worker-runtime; heartbeat/freshness evidence cannot
-notify worker-runtime, trigger recheck, choose `RecoveryMode`, or upgrade the
-recovery mode.
-
-If `FRESHNESS_EVIDENCE` reads transport-owned freshness, that read must be a
-narrow fresh/not-fresh point-read and must not expose session, endpoint,
-adapter, route, lease, or connection details. Transport freshness remains
-transport-owned evidence; it does not become worker-runtime state or a recheck
-request.
+There is no worker-declared recovery mode in the target model. If worker-runtime
+is rechecking a declared worker with valid group membership and no platform
+park/block/hold, it may point-read transport freshness. Fresh network evidence
+can reopen global eligibility. Missing freshness keeps or rewrites
+`LOW_RECHECK_BAND`. The freshness read must be a narrow fresh/not-fresh point
+read and must not expose session, endpoint, adapter, route, lease, or connection
+details. Transport freshness remains transport-owned evidence; it does not
+become worker-runtime state or a recheck request.
 
 First implementation mode should favor a stable owner seam over early
 performance optimization:
@@ -537,35 +524,35 @@ capacity; it cannot clear unrelated block sources.
 Worker heartbeat/report refresh, transport refresh, and session keepalive do not
 enter worker-runtime as events. They do not directly reopen scheduling and do
 not request recheck. They only update their owning evidence stores. Reopening
-requires worker-runtime recheck requested by an allowed high-value source or
-selected by bounded maintenance, and it is allowed only for workers whose
-`RecoveryMode` permits freshness evidence to be point-read.
+requires worker-runtime recheck requested by an allowed high-value source,
+selected by bounded maintenance, or triggered by worker-runtime demand policy.
+During that recheck, fresh transport evidence is sufficient network evidence
+unless a platform block, parked state, hold, missing declaration, or invalid
+group membership keeps the worker closed.
 
 Recovery order is intentionally coarse:
 
 ```text
 read worker declaration / slot / group membership / scheduling attributes
   -> confirm recheck was requested by an allowed high-value source or bounded maintenance
-  -> read worker RecoveryMode
-  -> point-read freshness evidence only if RecoveryMode permits it
+  -> point-read transport freshness through a narrow fresh/not-fresh view
   -> apply completion/release evidence only to capacity/admission facts
   -> worker-runtime decides whether the worker may enter scheduling
 ```
 
-Freshness evidence is ignored for workers whose attributes do not allow the
-matching `RecoveryMode`. Freshness events never enter worker-runtime and never
-request the recheck themselves. The detailed timing, retry, lost-worker, and
-cleanup policy is worker-runtime-owned and should not be over-specified in this
-transport boundary roadmap.
+Worker attributes, event capability, and task-specific filters do not decide
+global eligibility. They are selection filters for a concrete task. Freshness
+events never enter worker-runtime and never request the recheck themselves. The
+detailed timing, retry, lost-worker, and cleanup policy is worker-runtime-owned
+and should not be over-specified in this transport boundary roadmap.
 
 This avoids the old ambiguity where `connected` could be mistaken for
 business readiness or scheduling eligibility.
 
-Before any future transport-backed freshness provider is allowed to participate
-in recovery, the implementation must classify every supported worker intake
-mode. WebSocket, socket, polling, embedded, and external SDK workers must either
-have worker-owned heartbeat/report evidence or transport freshness evidence
-that can be point-read during recheck, or be classified as `EXPLICIT_ONLY`.
+Before the follow-up network-freshness recheck roadmap is complete, the
+implementation must inventory every supported worker intake mode and prove each
+one has a transport freshness provider or is explicitly unsupported for network
+freshness recovery.
 
 Worker state report and command lifecycle evidence may still be positive
 evidence. Their dispatch eligibility interpretation is now owned by
@@ -750,16 +737,17 @@ Scope:
   - socket worker;
   - embedded/default worker;
   - external Java SDK worker.
-- Classify `RecoveryMode` by worker intake mode:
-  - `EXPLICIT_ONLY`;
-  - `FRESHNESS_EVIDENCE`.
-- Inventory how `RecoveryMode` is represented in worker attributes /
-  scheduling attributes:
-  - default is `EXPLICIT_ONLY`;
-  - test workers and explicitly classified intake paths may set
-    `FRESHNESS_EVIDENCE`;
-  - group policy or slot metadata may later provide defaults, but must not
-    override explicit worker attributes without a worker-runtime owner decision.
+- Inventory network freshness by worker intake mode:
+  - polling worker;
+  - WebSocket worker;
+  - socket worker;
+  - embedded/default worker;
+  - external Java SDK worker.
+- Remove the worker-declared recovery-mode direction:
+  - no worker attribute controls whether freshness can reopen global
+    eligibility;
+  - freshness can participate only during worker-runtime recheck;
+  - platform block / park / hold overrides fresh network evidence.
 - Classify current hold-like mechanisms:
   - ordinary reservation / active lease / occupied permits;
   - exclusive lease / lock;
@@ -829,8 +817,9 @@ Implementation state:
 - Integration owner: SDK/starter assembly bridges accepted current-session
   disconnect observations into the worker-runtime block port. Delivery outcomes
   are not block producers in the landed slice.
-- Decided for this roadmap: `RecoveryMode` is stored in worker attributes /
-  scheduling attributes and interpreted by worker-runtime.
+- Superseded decision: `RecoveryMode` in worker attributes / scheduling
+  attributes is no longer the target model. Fresh network evidence should be
+  common worker-runtime recheck evidence, not a worker-declared capability.
 - Decided for the first recovery slice: recheck requests enter worker-runtime
   through a narrow request port; first implementation may recheck synchronously;
   zset/maintenance indexing is an internal optimization behind the same port.
@@ -849,12 +838,11 @@ Scope:
 - Finalize the transport/worker-runtime positive recovery mechanism before code
   only at naming and field-shape level:
   - declaration/slot/scheduling-attribute validation;
-  - worker-owned heartbeat/report input;
   - transport freshness read input;
   - engine task-completion / assignment-release evidence input;
   - worker-runtime occupancy/capacity release owner;
-  - worker attribute key / value shape for `RecoveryMode`;
-  - freshness evidence provider shape, if `RecoveryMode == FRESHNESS_EVIDENCE`;
+  - freshness evidence provider shape;
+  - removal of worker-declared recovery-mode fields from the target contract;
   - stable worker-runtime recheck request port name and record shape;
   - dispatch gate clear policy;
   - bounded maintenance scan owner, if a maintenance scan is added after the
@@ -920,9 +908,8 @@ Acceptance:
   transport-origin block sources internal to worker-runtime registry/gate
   storage by mapping `WorkerDispatchBlockSource` to
   `DispatchAvailabilitySource`.
-- Every supported worker intake mode has an explicit `RecoveryMode`:
-  - `EXPLICIT_ONLY`; or
-  - `FRESHNESS_EVIDENCE`.
+- Every supported worker intake mode has an explicit network freshness source or
+  is explicitly unsupported for network freshness recovery.
 - Heartbeat, transport refresh, session keepalive, and connected events are
   explicitly forbidden as recheck request sources.
 - High-value recheck request sources are explicitly allowlisted, such as item
@@ -932,8 +919,9 @@ Acceptance:
   not direct eligibility reopen and not a recheck trigger.
 - Completion/release evidence is documented and tested as capacity or occupancy
   evidence, not direct eligibility reopen.
-- Tests or inventory proof show recheck validates worker attributes/recovery
-  mode before reading worker or transport freshness evidence.
+- Tests or inventory proof show recheck validates declaration, group membership,
+  platform block, parked state, hold state, and capacity before writing an
+  eligible score from transport freshness evidence.
 - Tests or inventory proof show any transport-backed freshness provider is a
   point-read fresh/not-fresh evidence source only and cannot enumerate
   candidates, request recheck, or wake scheduling.
@@ -985,10 +973,11 @@ Acceptance:
 - A worker moves back to `schedulable` only through worker-runtime validation.
 - Heartbeat freshness alone never clears block sources or moves a worker back to
   `schedulable`.
-- Worker declaration/slot/group membership/scheduling attributes are validated
+- Worker declaration/slot/group membership/platform blocks/hold state are validated
   before any freshness source participates in recovery.
-- Freshness evidence is ignored when worker attributes do not allow
-  `RecoveryMode == FRESHNESS_EVIDENCE`.
+- Freshness evidence is not controlled by worker attributes; task attributes are
+  selection filters and cannot keep a globally fresh worker out of the generic
+  eligible pool.
 - Duplicate block signals are idempotent.
 - Clearing one block source does not clear other block sources.
 - Task completion/release evidence can reduce occupancy/capacity, but it does
@@ -1083,8 +1072,8 @@ worker-runtime policy, not part of the current mainline completion gate.
 
 First implementation decisions:
 
-- `RecoveryMode` is stored in worker attributes / scheduling attributes and
-  defaults to `EXPLICIT_ONLY`.
+- The earlier worker-declared `RecoveryMode` decision is superseded by the
+  network-freshness recheck roadmap. Do not extend it.
 - A narrow worker-runtime recheck request port receives high-value recheck
   requests. Exact Java names can be chosen during implementation, but the port
   must not expose gate-clear capability to callers.
@@ -1099,8 +1088,8 @@ First implementation decisions:
 - Task completion / assignment release / exclusive-lock release now requests
   dispatch wakeup through `WorkerAvailabilityWakeupRuntime` after the
   worker-runtime admission owner applies the capacity change.
-- Transport freshness, if used, is only a point-read provider during an existing
-  recheck and only for workers whose `RecoveryMode` is `FRESHNESS_EVIDENCE`.
+- Transport freshness, if used, is only a point-read provider during a
+  worker-runtime recheck. It is not gated by worker-declared recovery mode.
 - Worker heartbeat, transport refresh, session keepalive, and connected events
   are not recheck request sources.
 - The previous transport heartbeat-to-registry write bridge has been
@@ -1125,18 +1114,16 @@ Scope:
 - First implementation may perform this recheck synchronously from the request
   source. Performance-oriented due indexes or maintenance scans can be added
   later without changing caller contracts.
-- Worker-runtime validates worker declaration, slot, group membership,
-  scheduling attributes, and `RecoveryMode` before reading freshness evidence.
-- Worker heartbeat/report and transport freshness are both freshness evidence
-  providers. `RecoveryMode` does not distinguish who reported heartbeat.
+- Worker-runtime validates worker declaration, slot, group membership, platform
+  block, parked state, hold state, and capacity before writing an eligible score
+  from freshness evidence.
+- Transport freshness is the target network evidence provider.
 - If the freshness provider is transport-backed, worker-runtime may point-read
   it only through a narrow fresh/not-fresh view during an existing recheck.
-- `EXPLICIT_ONLY` workers do not use heartbeat/freshness evidence for recovery.
 - Explicit worker readiness/drain reports are modeled as block sources or gate
   sources, not a parallel readiness state machine.
-- If a deployment needs transport-backed freshness for an intake mode, that
-  mode must either use `FRESHNESS_EVIDENCE` plus a narrow transport-backed
-  point-read provider, or stay `EXPLICIT_ONLY`.
+- If a deployment needs transport-backed freshness for an intake mode, that mode
+  must provide a narrow transport-backed point-read provider.
 - Detailed retry intervals, threshold tuning, and lost-worker cleanup are left
   to worker-runtime policy follow-up.
 
@@ -1147,28 +1134,24 @@ Acceptance:
   notify worker-runtime, cannot request recheck, and cannot make a worker
   schedulable.
 - A worker heartbeat/report may be considered only when worker-runtime is
-  already rechecking due to an allowed high-value request or bounded maintenance,
-  and only when the worker's `RecoveryMode` allows freshness evidence to be
-  point-read.
+  already rechecking due to an allowed high-value request, bounded maintenance,
+  or worker-runtime demand policy.
 - Task completion or assignment-release evidence can make an `occupied` worker
   eligible for recheck, and can make the worker schedulable only after
   worker-runtime capacity/admission checks pass.
 - Task completion or assignment-release evidence does not clear transport,
   operator, command-drain, or other unrelated block sources.
 - A fresh transport heartbeat can participate in recovery only as point-read
-  evidence during an already-requested or maintenance-selected recheck, only
-  through the narrow transport freshness view, and only for `FRESHNESS_EVIDENCE`
-  workers.
-- A fresh heartbeat/report for `EXPLICIT_ONLY` workers does not participate in
-  recovery.
+  evidence during worker-runtime recheck and only through the narrow transport
+  freshness view.
 - A fresh worker/transport heartbeat is ignored when worker declaration, slot,
-  group membership, scheduling attributes, or `RecoveryMode` disallow freshness
-  evidence.
+  group membership, platform block, parked state, hold state, or capacity keeps
+  the worker closed.
 - The former transport heartbeat write bridge has been removed; future freshness
   providers must not recreate transport/session event push into worker-runtime
   scheduling state.
 - WebSocket/socket/embedded/polling/external SDK focused tests prove that
-  recovery follows the configured `RecoveryMode` and never comes from transport
+  recovery follows worker-runtime validation and never comes from transport
   connected/heartbeat writes, heartbeat notifications, or heartbeat-triggered
   recheck.
 
@@ -1261,9 +1244,9 @@ NDE-6A clear-capable shell-surface cleanup
 
 NDE-6B validated positive recovery
   landed first pass: positive state/command evidence enters
-  WorkerDispatchRecoveryRuntime and validates worker meta, RecoveryMode, slot
-  presence, removing state, and active block source before clearing only that
-  source. Full freshness point-read and release/capacity recovery remain open.
+  WorkerDispatchRecoveryRuntime and validates worker meta, slot presence,
+  removing state, and active block source before clearing only that source. Full
+  freshness point-read and release/capacity recovery remain open.
 ```
 
 Current `DefaultWorkerDispatchAvailabilityPolicy` is no longer a direct positive
@@ -1332,9 +1315,9 @@ Scope:
 - task completion / assignment release / capacity release may request
   worker-runtime recheck because they are high-value capacity-changing events;
 - replace direct `AVAILABLE` positive clear with a worker-runtime recovery
-  request; first-pass validation must at least check worker meta,
-  `RecoveryMode`, current slot existence, removing state, and the active block
-  source before clearing only that source;
+  request; first-pass validation must at least check worker meta, current slot
+  existence, removing state, and the active block source before clearing only
+  that source;
 - keep hold, capacity/admission, release evidence, and freshness point-read
   validation visible as follow-up worker-runtime policy unless the current
   slice implements them explicitly;
@@ -1355,9 +1338,8 @@ Acceptance:
   `clearWorkerDispatchDisable(...)` directly for `AVAILABLE`.
 - `WorkerDispatchRecoveryRuntime` or its successor is the only default positive
   recovery entry from worker state/command evidence.
-- The first synchronous recovery path rejects missing or removing worker slots,
-  validates recovery mode for non-controlled sources, and clears only the
-  matching active block source.
+- The first synchronous recovery path rejects missing or removing worker slots
+  and clears only the matching active block source.
 - Engine control paths do not receive `WorkerDispatchGateRuntime` and do not
   call `clearWorkerDispatchDisable`.
 - Engine task-completion or assignment-release paths can release
@@ -1404,9 +1386,9 @@ Acceptance:
 9. Apply task completion / assignment-release evidence through worker-runtime
    occupancy/admission/capacity owners; do not clear unrelated block sources.
 10. Update docs and guards in the same slice that moves eligibility ownership.
-11. Follow-up only when needed: prove `RecoveryMode` classification,
+11. Follow-up only when needed: remove the superseded recovery-mode model,
    remove push-presence scheduling-mutation residue, add worker-runtime
-   due-index performance optimization, or handle hold/lost cleanup.
+   recheck performance optimization, or handle hold/lost cleanup.
 
 ## Verification Candidates
 
@@ -1536,12 +1518,9 @@ This roadmap is complete only when:
   `WorkerDispatchGateRuntime` or any clear-capable worker dispatch gate;
 - `EngineRuntimeKernelConfig` does not retain a clear-capable gate accessor
   unless it has a documented non-shell worker-runtime assembly use;
-- `RecoveryMode` is explicit per worker/intake path;
-- first implementation stores `RecoveryMode` in worker attributes / scheduling
-  attributes with default `EXPLICIT_ONLY`;
-- worker declaration, slot, group membership, scheduling attributes, block
-  sources, holds, capacity, and `RecoveryMode` are validated before any worker
-  can reopen dispatch eligibility;
+- worker declaration, slot, group membership, platform block sources, holds,
+  capacity, and transport freshness are validated before any worker can reopen
+  dispatch eligibility;
 - `AVAILABLE` state reports, command lifecycle updates, and release/completion
   evidence request or enter worker-runtime recovery validation instead of
   directly bypassing recovery checks through a positive gate clear;
@@ -1551,11 +1530,8 @@ This roadmap is complete only when:
   scheduling behavior;
 - if transport freshness is retained, the freshness view is narrow and does not
   expose session, endpoint, adapter mailbox, route, or connection details;
-- `EXPLICIT_ONLY` workers do not automatically recover from heartbeat/freshness
-  evidence;
-- `FRESHNESS_EVIDENCE` workers may use freshness evidence during recheck without
-  distinguishing whether the evidence came from worker report or transport
-  freshness;
+- no worker-declared recovery mode controls whether heartbeat/freshness evidence
+  can participate in global eligibility recheck;
 - ordinary reservation/active work/`OCCUPIED` does not remove a multi-capacity
   worker from candidate acquisition by itself;
 - task completion/release evidence only updates occupancy/capacity/reservation

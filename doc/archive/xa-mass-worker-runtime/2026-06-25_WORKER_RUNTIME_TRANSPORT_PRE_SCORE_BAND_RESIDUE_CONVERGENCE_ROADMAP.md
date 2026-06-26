@@ -47,7 +47,7 @@ the score-band registry is introduced.
 
 - [Score-Band Resource Slot Scheduling Blueprint](../../../architecture/score-band-resource-slot-scheduling-blueprint.md)
 - [Score-Band Worker Runtime Redis Shape](../../../architecture/score-band-worker-runtime-redis-shape.md)
-- [Worker Runtime Dispatch Eligibility Signal Convergence Roadmap](../../../roadmap/WORKER_RUNTIME_NEGATIVE_SIGNAL_DISPATCH_ELIGIBILITY_CONVERGENCE_ROADMAP.md)
+- [Worker Runtime Dispatch Eligibility Signal Convergence Roadmap](2026-06-26_WORKER_RUNTIME_NEGATIVE_SIGNAL_DISPATCH_ELIGIBILITY_CONVERGENCE_ROADMAP.md)
 - [Worker Runtime Bounded Candidate Acquisition Roadmap](../../../roadmap/WORKER_RUNTIME_BOUNDED_CANDIDATE_ACQUISITION_ROADMAP.md)
 - [Worker Runtime / Transport Pre-Score-Band Residue Inventory](./2026-06-25_WORKER_RUNTIME_TRANSPORT_PRE_SCORE_BAND_RESIDUE_INVENTORY.md)
 - [Worker Runtime README](../../../xa-mass-worker-runtime/README.md)

@@ -323,9 +323,6 @@ For repository-specific ownership rules, load and follow the repository's
 handoff docs and module contracts. Do not apply one repository's owner split to
 another repository unless the current repo has the same documented boundary.
 
-For XA Mass Platform roadmaps, load
-`references/xa-mass-owner-rules.md` from this skill directory if present.
-
 ### 6. Decide Merge Versus Separate Roadmap
 
 Merge into an existing roadmap only when all are true:
