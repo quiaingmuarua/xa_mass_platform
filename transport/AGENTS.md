@@ -101,12 +101,11 @@ entry for `transport/`.
   push adapters dispatch by concrete adapter command executors using a
   worker-id-only local session lookup rather than a route-only fallback.
 - `WorkerEndpointRegistry` has been removed. Do not reintroduce a generic
-  assigned-delivery endpoint interface. Worker-id raw sends may use
-  `RawWorkerMessageChannel`; routeKey-only WebSocket output queues and route
-  registries are not current assigned-task delivery surfaces.
-- raw/debug worker side-channels are also adapter-scoped. They may resolve one
-  concrete active route for a worker, but once resolved they must dispatch via
-  the serving adapter identity instead of reviving route-only shared semantics.
+  assigned-delivery endpoint interface. Worker-id raw sends and routeKey-only
+  WebSocket output queues are not current assigned-task delivery surfaces.
+- raw/debug worker side-channels have been removed from the embedded adapter
+  contribution surface. Future worker command or manual messaging must define a
+  typed owner and channel instead of writing arbitrary JSON into worker sessions.
 - The network/session evidence lane is a first-class transport responsibility,
   not delivery-executor residue. Adapter session connect/heartbeat/disconnect
   observations feed transport endpoint/session evidence. Worker-runtime

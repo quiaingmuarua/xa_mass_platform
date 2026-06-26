@@ -36,7 +36,7 @@ class SocketTransportAdapterBootstrapTest {
     private final WorkerChannelFrameJsonCodec workerFrameCodec = new WorkerChannelFrameJsonCodec();
 
     @Test
-    void enabledAdapterContributesBindingConsumerRawChannelAndServer() {
+    void enabledAdapterContributesBindingConsumerAndServer() {
         SocketAdapterConfig config = enabledConfig();
         SocketTransportAdapterBootstrap bootstrap = new SocketTransportAdapterBootstrap(config);
 
@@ -49,9 +49,6 @@ class SocketTransportAdapterBootstrapTest {
         assertEquals(SocketAdapterConfig.PROTOCOL, binding.getProtocol());
         assertEquals(1, contribution.getAdapterMailboxConsumers().size());
         assertEquals("socket-mailbox", contribution.getAdapterMailboxConsumers().get(0).adapterMailboxKey());
-        assertEquals(1, contribution.getRawWorkerMessageChannels().size());
-        assertEquals(SocketAdapterConfig.DEFAULT_ADAPTER_ID,
-                contribution.getRawWorkerMessageChannels().get(0).adapterId());
         assertEquals(1, contribution.getTransportServers().size());
     }
 
@@ -66,7 +63,6 @@ class SocketTransportAdapterBootstrapTest {
 
         assertTrue(contribution.getTransportBindings().isEmpty());
         assertTrue(contribution.getAdapterMailboxConsumers().isEmpty());
-        assertTrue(contribution.getRawWorkerMessageChannels().isEmpty());
         assertTrue(contribution.getManagedTransportAdapters().isEmpty());
         assertTrue(contribution.getTransportServers().isEmpty());
     }

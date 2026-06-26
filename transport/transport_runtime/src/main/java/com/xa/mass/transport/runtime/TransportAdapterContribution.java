@@ -12,8 +12,8 @@ import java.util.Objects;
  *
  * <p>Runtime inputs live in {@link TransportAdapterBootstrapContext}. This
  * contribution object owns adapter-produced runtime outputs so bootstrap
- * assembly cannot silently overwrite bindings, servers, or raw side-channels
- * in mutable context state.
+ * assembly cannot silently overwrite bindings or servers in mutable context
+ * state.
  */
 public final class TransportAdapterContribution {
 
@@ -23,14 +23,12 @@ public final class TransportAdapterContribution {
     private final List<AdapterMailboxConsumer> adapterMailboxConsumers;
     private final List<ManagedTransportAdapter> managedTransportAdapters;
     private final List<TransportServer> transportServers;
-    private final List<RawWorkerMessageChannel> rawWorkerMessageChannels;
 
     private TransportAdapterContribution(Builder builder) {
         this.transportBindings = List.copyOf(builder.transportBindings);
         this.adapterMailboxConsumers = List.copyOf(builder.adapterMailboxConsumers);
         this.managedTransportAdapters = List.copyOf(builder.managedTransportAdapters);
         this.transportServers = List.copyOf(builder.transportServers);
-        this.rawWorkerMessageChannels = List.copyOf(builder.rawWorkerMessageChannels);
     }
 
     public static TransportAdapterContribution empty() {
@@ -55,10 +53,6 @@ public final class TransportAdapterContribution {
 
     public List<TransportServer> getTransportServers() {
         return transportServers;
-    }
-
-    public List<RawWorkerMessageChannel> getRawWorkerMessageChannels() {
-        return rawWorkerMessageChannels;
     }
 
     public void validateAgainst(TransportAdapterDescriptor descriptor, String assignedMailboxKey) {
@@ -104,7 +98,6 @@ public final class TransportAdapterContribution {
         private final List<AdapterMailboxConsumer> adapterMailboxConsumers = new ArrayList<>();
         private final List<ManagedTransportAdapter> managedTransportAdapters = new ArrayList<>();
         private final List<TransportServer> transportServers = new ArrayList<>();
-        private final List<RawWorkerMessageChannel> rawWorkerMessageChannels = new ArrayList<>();
 
         public Builder addTransportBinding(TransportBinding binding) {
             if (binding != null) {
@@ -130,13 +123,6 @@ public final class TransportAdapterContribution {
         public Builder addTransportServer(TransportServer server) {
             if (server != null) {
                 transportServers.add(server);
-            }
-            return this;
-        }
-
-        public Builder addRawWorkerMessageChannel(RawWorkerMessageChannel channel) {
-            if (channel != null) {
-                rawWorkerMessageChannels.add(channel);
             }
             return this;
         }

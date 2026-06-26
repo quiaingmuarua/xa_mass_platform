@@ -20,7 +20,6 @@ class TransportAdapterContributionTest {
         ManagedTransportAdapter managedAdapter = managedAdapter();
         TransportServer server = server();
         AdapterMailboxConsumer mailboxConsumer = mailboxConsumer("mailbox-a");
-        RawWorkerMessageChannel rawChannel = rawChannel("ws-public");
 
         TransportAdapterContribution contribution = TransportAdapterContribution.builder()
                 .addTransportBinding(bindingOne)
@@ -28,14 +27,12 @@ class TransportAdapterContributionTest {
                 .addManagedTransportAdapter(managedAdapter)
                 .addAdapterMailboxConsumer(mailboxConsumer)
                 .addTransportServer(server)
-                .addRawWorkerMessageChannel(rawChannel)
                 .build();
 
         assertEquals(List.of(bindingOne, bindingTwo), contribution.getTransportBindings());
         assertEquals(List.of(managedAdapter), contribution.getManagedTransportAdapters());
         assertEquals(List.of(mailboxConsumer), contribution.getAdapterMailboxConsumers());
         assertEquals(List.of(server), contribution.getTransportServers());
-        assertEquals(List.of(rawChannel), contribution.getRawWorkerMessageChannels());
     }
 
     @Test
@@ -198,17 +195,4 @@ class TransportAdapterContributionTest {
         };
     }
 
-    private static RawWorkerMessageChannel rawChannel(String adapterId) {
-        return new RawWorkerMessageChannel() {
-            @Override
-            public String adapterId() {
-                return adapterId;
-            }
-
-            @Override
-            public boolean sendToWorker(String workerId, String rawJson, String traceId) {
-                return true;
-            }
-        };
-    }
 }

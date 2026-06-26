@@ -161,8 +161,7 @@ private record WebSocketSessionLane(
         String adapterMailboxKey,
         WebSocketSessionRegistry sessionRegistry,
         WebSocketSessionEvidenceRefresher evidenceRefresher,
-        AdapterCommandExecutor commandExecutor,
-        RawWorkerMessageChannel rawWorkerMessageChannel) {
+        AdapterCommandExecutor commandExecutor) {
 }
 
 private record WebSocketInboundFramePipeline(
@@ -192,7 +191,6 @@ The bootstrap should also serve as an example of adapter contribution anatomy:
 ```java
 contribution.addTransportBinding(...);
 contribution.addAdapterMailboxConsumer(...);
-contribution.addRawWorkerMessageChannel(...);
 contribution.addManagedTransportAdapter(...);
 contribution.addTransportServer(...);
 ```

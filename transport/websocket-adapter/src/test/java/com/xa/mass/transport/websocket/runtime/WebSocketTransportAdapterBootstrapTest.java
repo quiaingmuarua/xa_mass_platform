@@ -44,7 +44,7 @@ class WebSocketTransportAdapterBootstrapTest {
     private final TransportJsonFrameParser frameParser = new TransportJsonFrameParser();
 
     @Test
-    void enabledAdapterContributesBindingConsumerRawChannelServerAndRefresher() {
+    void enabledAdapterContributesBindingConsumerServerAndRefresher() {
         AtomicReference<ResultIngressEntry> captured = new AtomicReference<>();
         AtomicReference<WebSocketServerFactoryContext> serverContext = new AtomicReference<>();
         WebSocketTransportAdapterBootstrap bootstrap = bootstrapCapturing(serverContext);
@@ -58,9 +58,6 @@ class WebSocketTransportAdapterBootstrapTest {
         assertEquals(WebSocketAdapterConfig.PROTOCOL, binding.getProtocol());
         assertEquals(1, contribution.getAdapterMailboxConsumers().size());
         assertEquals("websocket-mailbox", contribution.getAdapterMailboxConsumers().get(0).adapterMailboxKey());
-        assertEquals(1, contribution.getRawWorkerMessageChannels().size());
-        assertEquals(WebSocketAdapterConfig.DEFAULT_ADAPTER_ID,
-                contribution.getRawWorkerMessageChannels().get(0).adapterId());
         assertEquals(1, contribution.getManagedTransportAdapters().size());
         assertEquals(1, contribution.getTransportServers().size());
         assertNotNull(serverContext.get());
@@ -83,7 +80,6 @@ class WebSocketTransportAdapterBootstrapTest {
 
         assertTrue(contribution.getTransportBindings().isEmpty());
         assertTrue(contribution.getAdapterMailboxConsumers().isEmpty());
-        assertTrue(contribution.getRawWorkerMessageChannels().isEmpty());
         assertTrue(contribution.getManagedTransportAdapters().isEmpty());
         assertTrue(contribution.getTransportServers().isEmpty());
         assertNull(serverContext.get());

@@ -1,6 +1,5 @@
 package com.xa.mass.starter;
 
-import com.google.gson.Gson;
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchDeliveryFailure;
@@ -10,8 +9,6 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.command.event.BoundedMassEventRuntime;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.command.event.MassEventRuntime;
-import com.xa.mass.worker.runtime.command.WorkerCommandDeliveryResult;
-import com.xa.mass.worker.runtime.command.WorkerCommandRecord;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.sdk.worker.EmbeddedPullWorkerSessions;
@@ -21,7 +18,6 @@ import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeComposition;
 import com.xa.mass.starter.config.TransportRuntimeRole;
 import com.xa.mass.transport.runtime.EmbeddedAdapterHostSet;
-import com.xa.mass.transport.runtime.RawWorkerMessageChannel;
 import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
 import com.xa.mass.transport.runtime.ResolvedPullWorkerTransport;
 import com.xa.mass.transport.runtime.TransportAdapterContribution;
@@ -57,7 +53,6 @@ import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -73,7 +68,6 @@ import static com.xa.mass.runtime.worker.DispatchAvailabilitySource.TRANSPORT_DI
 public class MassApplication {
 
     private static final Logger logger = LoggerFactory.getLogger(MassApplication.class);
-    private static final Gson TRANSPORT_JSON = new Gson();
     private static final int DEFAULT_DISPATCH_HANDOFF_CAPACITY =
             Integer.getInteger("xa.mass.engine.dispatchHandoffCapacity", 10_000);
 
@@ -81,7 +75,6 @@ public class MassApplication {
     private final EngineConfig engineConfig;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final MassEventRuntime eventRuntime;
-    private final Map<String, RawWorkerMessageChannel> rawWorkerMessageChannelsByAdapterId = new LinkedHashMap<>();
 
     private final MassEngine engine;
     private TransportRuntimeRegistry transportRuntimeRegistry;
@@ -218,7 +211,6 @@ public class MassApplication {
         logger.info("Initializing core components");
 
         try {
-            rawWorkerMessageChannelsByAdapterId.clear();
             embeddedAdapterHostSet = EmbeddedAdapterHostSet.empty();
             startEventRuntimeTaskExecutor();
             endpointLeaseStore = transportRuntimeComposition.resolveTransportEndpointLeaseStore();
@@ -318,7 +310,6 @@ public class MassApplication {
                 embeddedAdapterHostSet = EmbeddedAdapterHostSet.fromContributions(
                         adapterContributions
                 );
-                configureRealtimeWorkerCommandDelivery();
             }
             if (engineConfig.isEnabled() && runtimeRole != TransportRuntimeRole.TRANSPORT_CONSUMER) {
                 taskDispatchListener = createDispatchSubmitter(transportDispatchHandoff);
@@ -673,16 +664,6 @@ public class MassApplication {
                 );
     }
 
-    private void registerRawWorkerMessageChannel(RawWorkerMessageChannel rawWorkerMessageChannel) {
-        if (rawWorkerMessageChannel != null) {
-            String adapterId = requireRawWorkerMessageAdapterId(rawWorkerMessageChannel);
-            RawWorkerMessageChannel existing = rawWorkerMessageChannelsByAdapterId.putIfAbsent(adapterId, rawWorkerMessageChannel);
-            if (existing != null && existing != rawWorkerMessageChannel) {
-                throw new IllegalStateException("Duplicate raw worker message channel configured for adapterId '" + adapterId + "'");
-            }
-        }
-    }
-
     private void registerTransportAdapterContribution(TransportAdapterContribution contribution,
                                                       List<TransportBinding> adapterBindings,
                                                       List<TransportAdapterContribution> adapterContributions) {
@@ -691,9 +672,6 @@ public class MassApplication {
                 : TransportAdapterContribution.empty();
         adapterContributions.add(next);
         adapterBindings.addAll(next.getTransportBindings());
-        for (RawWorkerMessageChannel rawWorkerMessageChannel : next.getRawWorkerMessageChannels()) {
-            registerRawWorkerMessageChannel(rawWorkerMessageChannel);
-        }
     }
 
     private static String assignedAdapterMailboxKey(TransportAdapterDescriptor descriptor, int index) {
@@ -755,107 +733,12 @@ public class MassApplication {
         return null;
     }
 
-    public boolean sendRawTransportMessage(String workerId, String rawJson, String traceId) {
-        if (workerId == null || workerId.isBlank()) {
-            throw new IllegalArgumentException("workerId must not be blank");
-        }
-        if (rawJson == null) {
-            throw new IllegalArgumentException("rawJson must not be null");
-        }
-        if (rawWorkerMessageChannelsByAdapterId.isEmpty() || transportRuntimeRegistry == null) {
-            return false;
-        }
-        String normalizedWorkerId = workerId.trim();
-        String workerAdapterId = resolveWorkerAdapterId(normalizedWorkerId);
-        RawWorkerMessageChannel rawWorkerMessageChannel = rawWorkerMessageChannelsByAdapterId.get(
-                workerAdapterId == null ? null : workerAdapterId.trim().toLowerCase(java.util.Locale.ROOT)
-        );
-        if (rawWorkerMessageChannel == null) {
-            return false;
-        }
-        if (!rawWorkerMessageChannel.sendToWorker(normalizedWorkerId, rawJson, traceId)) {
-            logger.debug("Skip raw transport side-channel because no active worker session is available: workerId={}, adapterId={}",
-                    normalizedWorkerId, workerAdapterId);
-            return false;
-        }
-        return true;
-    }
-
-    private void configureRealtimeWorkerCommandDelivery() {
-        if (!engineConfig.isEnabled()
-                || transportRuntimeComposition.getRuntimeRole() == TransportRuntimeRole.TRANSPORT_CONSUMER
-                || rawWorkerMessageChannelsByAdapterId.isEmpty()) {
-            return;
-        }
-        engineConfig.getWorkerControlRuntime().setCommandDeliveryPort(
-                this::deliverRealtimeWorkerCommand,
-                task -> {
-                    if (transportRuntimeTaskExecutor == null) {
-                        task.run();
-                    } else {
-                        transportRuntimeTaskExecutor.submit(task);
-                    }
-                }
-        );
-    }
-
-    private WorkerCommandDeliveryResult deliverRealtimeWorkerCommand(WorkerCommandRecord command) {
-        if (command == null || command.workerId() == null || command.workerId().isBlank()) {
-            return WorkerCommandDeliveryResult.rejected("worker command missing workerId");
-        }
-        String normalizedWorkerId = command.workerId().trim();
-        RawWorkerMessageChannel rawWorkerMessageChannel;
-        try {
-            rawWorkerMessageChannel = resolveRawWorkerMessageChannel(normalizedWorkerId);
-        } catch (RuntimeException e) {
-            return WorkerCommandDeliveryResult.workerUnavailable("worker command route resolution failed: " + e.getMessage());
-        }
-        if (rawWorkerMessageChannel == null) {
-            return WorkerCommandDeliveryResult.deferred("worker has no realtime command carrier");
-        }
-        boolean sent = sendRawTransportMessage(
-                normalizedWorkerId,
-                encodeWorkerCommandFrame(command),
-                "worker-command-" + command.commandId()
-        );
-        return sent
-                ? WorkerCommandDeliveryResult.accepted("command sent to realtime worker route")
-                : WorkerCommandDeliveryResult.workerUnavailable("worker realtime route unavailable for command delivery");
-    }
-
-    private RawWorkerMessageChannel resolveRawWorkerMessageChannel(String workerId) {
-        if (transportRuntimeRegistry == null || workerId == null || workerId.isBlank()) {
-            return null;
-        }
-        String workerAdapterId = resolveWorkerAdapterId(workerId.trim());
-        if (workerAdapterId == null || workerAdapterId.isBlank()) {
-            return null;
-        }
-        return rawWorkerMessageChannelsByAdapterId.get(workerAdapterId.trim().toLowerCase(java.util.Locale.ROOT));
-    }
-
     public String resolveWorkerAdapterId(String workerId) {
         return resolveTransportBinding(requireWorkerResource(workerId)).getAdapterId();
     }
 
     public String resolveWorkerTransportHint(String workerId) {
         return resolveTransportBinding(requireWorkerResource(workerId)).getTransportHint();
-    }
-
-    private String encodeWorkerCommandFrame(WorkerCommandRecord command) {
-        Map<String, Object> frame = new LinkedHashMap<>();
-        frame.put("type", "worker.command");
-        frame.put("commandId", command.commandId());
-        frame.put("workerId", command.workerId());
-        frame.put("commandType", command.commandType());
-        frame.put("payload", command.payload());
-        if (command.deadlineEpochMillis() != null) {
-            frame.put("deadlineEpochMillis", command.deadlineEpochMillis());
-        }
-        if (command.createdAt() != null) {
-            frame.put("requestedAt", command.createdAt().toString());
-        }
-        return TRANSPORT_JSON.toJson(frame);
     }
 
     public Map<String, Object> getTransportQueueDetail() {
@@ -894,14 +777,6 @@ public class MassApplication {
             throw new IllegalStateException("Mass engine is unavailable for this application");
         }
         return engine;
-    }
-
-    private static String requireRawWorkerMessageAdapterId(RawWorkerMessageChannel rawWorkerMessageChannel) {
-        String adapterId = rawWorkerMessageChannel.adapterId();
-        if (adapterId == null || adapterId.isBlank()) {
-            throw new IllegalStateException("Raw worker message channel must declare a non-blank adapterId");
-        }
-        return adapterId.trim().toLowerCase(java.util.Locale.ROOT);
     }
 
 }

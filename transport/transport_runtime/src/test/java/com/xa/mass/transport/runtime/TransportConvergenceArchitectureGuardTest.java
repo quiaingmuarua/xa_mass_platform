@@ -651,11 +651,33 @@ class TransportConvergenceArchitectureGuardTest {
                 "registerTransportBinding",
                 "registerManagedTransportAdapter",
                 "registerTransportServer",
-                "registerRawWorkerMessageChannel",
                 "private TransportBinding",
                 "private ManagedTransportAdapter",
-                "private TransportServer",
-                "private RawWorkerMessageChannel"
+                "private TransportServer"
+        );
+    }
+
+    @Test
+    void rawWorkerSideChannelIsRemovedFromMainline() throws IOException {
+        String rawChannel = "RawWorker" + "MessageChannel";
+        assertPathsDoNotExist(repoRoot().resolve(
+                "transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/" + rawChannel + ".java"));
+
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("transport/transport_runtime/src/main/java"),
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java"),
+                        repoRoot().resolve("transport/socket-adapter/src/main/java"),
+                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java"),
+                        repoRoot().resolve("xa-mass-server/src/main/java"),
+                        repoRoot().resolve("xa-mass-worker-runtime/src/main/java")
+                ),
+                rawChannel,
+                "addRawWorker" + "MessageChannel",
+                "getRawWorker" + "MessageChannels",
+                "sendRawTransport" + "Message",
+                "enqueueRaw" + "Message",
+                "rawWorker" + "MessageChannels"
         );
     }
 
@@ -827,7 +849,7 @@ class TransportConvergenceArchitectureGuardTest {
                 "ManagedTransportAdapter",
                 "CompositeWorkerEndpointRegistry",
                 "CompositeWorkerEndpointInspector",
-                "RawWorkerMessageChannel",
+                "RawWorker" + "MessageChannel",
                 "AdapterCommandExecutor"
         );
     }

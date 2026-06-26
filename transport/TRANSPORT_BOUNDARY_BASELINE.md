@@ -718,10 +718,9 @@ Current runtime rules:
   diagnostics after a selected worker and endpoint evidence already exist.
 - There is no transport-neutral selected-worker endpoint registry for assigned
   push delivery. Concrete push adapter command executors perform worker-id-only
-  session lookup and final-hop writes inside the adapter. Worker-id raw sends
-  may remain behind `RawWorkerMessageChannel`, but routeKey-only WebSocket
-  output queues and raw route registries are not assigned-task delivery
-  fallbacks.
+  session lookup and final-hop writes inside the adapter. Worker-id raw sends,
+  routeKey-only WebSocket output queues, and raw route registries are not
+  assigned-task delivery fallbacks.
 - endpoint lease evidence must not require routeKey or route-derived endpoint
   address fields.
   Push assigned delivery must not require routeKey when selected-worker session
@@ -736,13 +735,10 @@ Current runtime rules:
   is only opaque connection/correlation metadata. Transport runtime must not
   reinterpret routeKey as task, attempt, lease, worker-group, worker, or
   business routing truth.
-- route-only endpoint helpers may exist only as explicit raw/manual
-  adapter-scoped side-channels. They are not task-dispatch mainline operations
-  and must not be used to infer selected-worker ownership from endpoint
-  snapshots.
-- worker-addressed debug/raw side-channels are not task-dispatch truth; if they
-  remain, they must stay separate from selected-worker task dispatch and must
-  not reintroduce a route-only fallback for assigned items.
+- route-only endpoint helpers and worker-addressed raw/debug side-channels are
+  not current transport surfaces. Future manual messaging needs a typed owner
+  and channel, not a fallback from assigned delivery or a direct arbitrary JSON
+  worker-session write.
 - future Redis/JDBC queue replacements must preserve the same opaque addressing
   rules and must not require hot-path scans to recover queue ownership
 

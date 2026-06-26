@@ -78,7 +78,6 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
         TransportAdapterContribution.Builder contribution = TransportAdapterContribution.builder();
 
         contributeAssignedDelivery(contribution, context, parts);
-        contributeRawWorkerChannel(contribution, parts);
         contributeServer(contribution, parts);
         return contribution.build();
     }
@@ -122,14 +121,6 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
         contribution.addAdapterMailboxConsumer(context.mailbox().consumer(
                 adapterId,
                 webSocketCommandExecutor(parts.sessionRegistry(), new WorkerChannelFrameJsonCodec())
-        ));
-    }
-
-    private void contributeRawWorkerChannel(TransportAdapterContribution.Builder contribution,
-                                            WebSocketRuntimeParts parts) {
-        contribution.addRawWorkerMessageChannel(new WebSocketRawWorkerMessageChannel(
-                adapterId,
-                parts.sessionRegistry()
         ));
     }
 
@@ -225,28 +216,5 @@ public final class WebSocketTransportAdapterBootstrap implements TransportAdapte
             Consumer<JsonObject> inboundFrameSink) {
     }
 
-    private static final class WebSocketRawWorkerMessageChannel
-            implements com.xa.mass.transport.runtime.RawWorkerMessageChannel {
-
-        private final String adapterId;
-        private final WebSocketSessionRegistry sessionRegistry;
-
-        private WebSocketRawWorkerMessageChannel(
-                String adapterId,
-                WebSocketSessionRegistry sessionRegistry) {
-            this.adapterId = adapterId;
-            this.sessionRegistry = sessionRegistry;
-        }
-
-        @Override
-        public String adapterId() {
-            return adapterId;
-        }
-
-        @Override
-        public boolean sendToWorker(String workerId, String rawJson, String traceId) {
-            return sessionRegistry.sendTextToWorker(workerId, rawJson);
-        }
-    }
 }
 

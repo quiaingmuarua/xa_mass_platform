@@ -1,6 +1,5 @@
 package com.xa.mass.transport.socket.runtime;
 
-import com.xa.mass.transport.runtime.RawWorkerMessageChannel;
 import com.xa.mass.transport.runtime.TransportAdapterContribution;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
 import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
@@ -54,7 +53,6 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
         SocketRuntimeParts parts = createRuntimeParts(context);
         TransportAdapterContribution.Builder contribution = TransportAdapterContribution.builder();
         contributeAssignedDelivery(contribution, context, parts);
-        contributeRawWorkerChannel(contribution, parts);
         contributeServer(contribution, context, parts);
         return contribution.build();
     }
@@ -83,14 +81,6 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
         contribution.addAdapterMailboxConsumer(context.mailbox().consumer(
                 adapterId,
                 socketCommandExecutor(parts.sessionManager(), parts.frameCodec())
-        ));
-    }
-
-    private void contributeRawWorkerChannel(TransportAdapterContribution.Builder contribution,
-                                            SocketRuntimeParts parts) {
-        contribution.addRawWorkerMessageChannel(new SocketRawWorkerMessageChannel(
-                adapterId,
-                parts.sessionManager()
         ));
     }
 
@@ -127,27 +117,5 @@ public final class SocketTransportAdapterBootstrap implements TransportAdapterBo
             SocketTransportFrameCodec frameCodec) {
     }
 
-    private static final class SocketRawWorkerMessageChannel implements RawWorkerMessageChannel {
-
-        private final String adapterId;
-        private final SocketSessionManager sessionManager;
-
-        private SocketRawWorkerMessageChannel(
-                String adapterId,
-                SocketSessionManager sessionManager) {
-            this.adapterId = adapterId;
-            this.sessionManager = sessionManager;
-        }
-
-        @Override
-        public String adapterId() {
-            return adapterId;
-        }
-
-        @Override
-        public boolean sendToWorker(String workerId, String rawJson, String traceId) {
-            return sessionManager.sendToWorker(workerId, rawJson);
-        }
-    }
 }
 

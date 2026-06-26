@@ -151,9 +151,9 @@ Hard rules:
   libraries. It may depend on transport API/runtime embedded support,
   `xa-mass-public-contract` worker-channel DTOs/codecs, Gson for
   WebSocket-local frame glue, Netty, and currently used lifecycle annotations.
-- worker-id raw sending may remain through `RawWorkerMessageChannel`; routeKey
-  raw/manual output queues and route-only WebSocket registries are not current
-  WebSocket owner surfaces and must not be assigned-delivery fallbacks
+- worker-id raw sending, routeKey raw/manual output queues, and route-only
+  WebSocket registries are not current WebSocket owner surfaces and must not be
+  assigned-delivery fallbacks
 - endpoint address and route-style fields are not WebSocket session identity,
   assigned-delivery lookup keys, or endpoint lease truth
 - keep bootstrap defaults inside adapter-owned support code

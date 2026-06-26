@@ -66,8 +66,6 @@ import com.xa.mass.sdk.event.EventRequest;
 import com.xa.mass.sdk.event.EventResponse;
 import com.xa.mass.sdk.event.PlatformEventCodes;
 import com.xa.mass.sdk.event.EventDefinition;
-import com.xa.mass.sdk.internal.DefaultTransportDebugOperations;
-import com.xa.mass.sdk.internal.TransportDebugOperations;
 import com.xa.mass.sdk.model.AdapterNodeRegistration;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
@@ -545,7 +543,6 @@ class MassSdkTest {
 
         assertEquals(1, contribution.getTransportBindings().size());
         assertEquals(1, contribution.getTransportServers().size());
-        assertEquals(1, contribution.getRawWorkerMessageChannels().size());
     }
 
     @Test
@@ -568,7 +565,6 @@ class MassSdkTest {
         assertEquals(1, contribution.getTransportBindings().size());
         assertEquals(1, contribution.getManagedTransportAdapters().size());
         assertEquals(1, contribution.getTransportServers().size());
-        assertEquals(1, contribution.getRawWorkerMessageChannels().size());
     }
 
     @Test
@@ -592,7 +588,6 @@ class MassSdkTest {
         assertEquals("ws-public", adapterBootstrap(runtimeComposition, "ws-public").descriptor().getAdapterId());
         assertEquals("ws-public", contribution.getTransportBindings().get(0).getAdapterId());
         assertEquals("websocket", contribution.getTransportBindings().get(0).getProtocol());
-        assertEquals("ws-public", contribution.getRawWorkerMessageChannels().get(0).adapterId());
         assertEquals("ws-public",
                 runtimeComposition.resolveRegistrationAdapterId("ws-public", WorkerTransportHints.REALTIME));
     }
@@ -617,7 +612,6 @@ class MassSdkTest {
 
         assertEquals("socket-edge", contribution.getTransportBindings().get(0).getAdapterId());
         assertEquals("socket", contribution.getTransportBindings().get(0).getProtocol());
-        assertEquals("socket-edge", contribution.getRawWorkerMessageChannels().get(0).adapterId());
         assertEquals("socket-edge",
                 runtimeComposition.resolveRegistrationAdapterId("socket-edge", WorkerTransportHints.REALTIME));
     }
@@ -919,23 +913,16 @@ class MassSdkTest {
                         "event", Map.of("available", false, "pendingTasks", 0)
                 )
         ));
-        when(delegate.sendRawTransportMessage(anyString(), anyString(), anyString())).thenReturn(true);
-
         MassSdkApplication app = new MassSdkApplication(delegate);
 
         Map<String, Object> queueDetail = runtimeDiagnostics(app).getQueueDetail();
-        Map<String, Object> enqueueResult = rawTransportDebug(app).enqueueRawMessage(
-                Map.of("workerId", "worker-debug-1", "rawJson", "{\"eventCode\":\"platform.test\"}")
-        );
 
         assertEquals(1, ((Map<?, ?>) queueDetail.get("deliveryDiagnostics")).get("queuedItems"));
         assertEquals(1, ((Map<?, ?>) ((Map<?, ?>) ((Map<?, ?>) queueDetail.get("deliveryDiagnostics"))
                 .get("queueByAdapter")).get("polling")).get("queuedItems"));
         assertEquals(true, ((Map<?, ?>) ((Map<?, ?>) queueDetail.get("runtimeExecutors")).get("transport"))
                 .get("available"));
-        assertEquals(true, enqueueResult.get("success"));
         verify(delegate).getTransportQueueDetail();
-        verify(delegate).sendRawTransportMessage(eq("worker-debug-1"), eq("{\"eventCode\":\"platform.test\"}"), anyString());
     }
 
     @Test
@@ -973,22 +960,6 @@ class MassSdkTest {
         MassSdkApplication app = new MassSdkApplication(delegate);
 
         assertFalse(app.isWorkerReachable("worker-stale"));
-    }
-
-    @Test
-    void enqueueRawMessageUsesTransportSideChannelEvenWithoutMessageTransporter() {
-        MassApplication delegate = mock(MassApplication.class);
-        when(delegate.sendRawTransportMessage(anyString(), anyString(), anyString())).thenReturn(true);
-
-        MassSdkApplication app = new MassSdkApplication(delegate);
-
-        Map<String, Object> enqueueResult = rawTransportDebug(app).enqueueRawMessage(Map.of(
-                "workerId", "worker-debug-2",
-                "rawJson", "{\"eventCode\":\"platform.direct\"}"
-        ));
-
-        assertEquals(true, enqueueResult.get("success"));
-        verify(delegate).sendRawTransportMessage(eq("worker-debug-2"), eq("{\"eventCode\":\"platform.direct\"}"), anyString());
     }
 
     @Test
@@ -2929,7 +2900,7 @@ class MassSdkTest {
         assertMissingMethod(MassSdkApplication.class, "publishTaskEvents");
         assertMissingMethod(MassSdkApplication.class, "listSessions");
         assertMissingMethod(MassSdkApplication.class, "getSessionStats");
-        assertMissingMethod(MassSdkApplication.class, "enqueueRawMessage", Map.class);
+        assertMissingMethod(MassSdkApplication.class, "enqueueRaw" + "Message", Map.class);
         assertMissingMethod(MassSdkApplication.class, "getQueueDetail");
         assertMissingMethod(MassSdkApplication.class, "getQueueMetrics");
         assertMissingMethod(RuntimeDiagnosticsOperations.class, "listSessions");
@@ -3578,7 +3549,4 @@ class MassSdkTest {
         return app.runtimeDiagnostics();
     }
 
-    private static TransportDebugOperations rawTransportDebug(MassSdkApplication app) {
-        return new DefaultTransportDebugOperations(app.runtimeApplication());
-    }
 }
