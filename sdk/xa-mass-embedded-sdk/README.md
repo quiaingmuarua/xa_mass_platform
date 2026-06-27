@@ -176,13 +176,13 @@ transport consumer JVMs without adding server-owned transport endpoints. Use
 Redis-backed runtime channels for dispatch handoff, result ingest, and
 delivery-failure compensation. The one-argument
 `redisDistributedChannels(redisUri)` helper wires the dispatch handoff,
-result inbox, delivery-failure inbox, Redis endpoint lease store, and Redis
+result ingress queue, delivery-failure inbox, Redis endpoint lease store, and Redis
 polling pending pull buffer under owner-specific component namespaces:
 
 | Component | Default namespace |
 | --- | --- |
 | dispatch | `xa:mass:transport:dispatch:v1` |
-| result-inbox | `xa:mass:transport:result-inbox:v1` |
+| result-ingress | `xa:mass:transport:result-ingress:v1` |
 | delivery-failure | `xa:mass:transport:delivery-failure:v1` |
 | endpoint-lease | `xa:mass:transport:endpoint-lease:v1` |
 | polling-delivery | `xa:mass:transport:polling-delivery:v1` |
@@ -229,9 +229,9 @@ SDK/starter assembly from neutral engine binding truth. Transport-owned delivery
 submitters resolve selected-worker adapter mailbox evidence before handoff and
 write bounded dispatch batches to the target mailbox. It is not a
 duplicate of the runtime ready queue, and transport consumers must not apply
-results, retry tasks, or mutate task lifecycle directly. Result and retryable
-delivery-failure inboxes are drained by the engine producer into local
-engine-owned ports.
+results, retry tasks, or mutate task lifecycle directly. The result ingress
+queue and retryable delivery-failure inbox are drained by the engine producer
+into local engine-owned ports.
 
 For multi-instance realtime assembly, `adapterType` and `adapterId` are not the
 same concept. For example, two bundled WebSocket instances might use adapter ids
@@ -361,7 +361,7 @@ Assignment no longer hands dispatch-ready batches straight into a transport
 routing listener. SDK runtime assembly now translates assignment truth into
 flat dispatch items and hands them to a transport-owned selected-worker
 delivery submitter; the bundled default is an in-memory bounded dispatch
-handoff, while `redisDistributedChannels(...)` uses Redis dispatch inboxes with a
+handoff, while `redisDistributedChannels(...)` uses a Redis dispatch handoff with a
 mailbox-scoped delivery queue. Starter assembly records only `deliveryBucketId +
 selectedWorkerId` plus typed payload/context, then resolves the selected worker
 through worker-runtime delivery target evidence to an opaque
@@ -370,9 +370,9 @@ transport-owned evidence. Transport producers do not derive queues from
 `deliveryBucketId` and do not resolve transport nodes. Transport consumers drain
 mailbox entries, demux by item-level `selectedWorkerId`, invoke the local
 adapter final-hop executor, and do not reselect workers.
-The companion result and delivery-failure Redis inboxes are runtime channels
-back to the engine process; they are not server APIs and they do not move task
-lifecycle ownership into transport.
+The companion result ingress queue and delivery-failure Redis inbox are runtime
+channels back to the engine process; they are not server APIs and they do not
+move task lifecycle ownership into transport.
 
 ## Compatibility Policy
 

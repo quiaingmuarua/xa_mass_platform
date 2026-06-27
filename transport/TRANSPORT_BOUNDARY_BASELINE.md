@@ -55,7 +55,8 @@ Transport owns assigned-delivery mechanics:
 
 Transport owns result-ingress carrier mechanics:
 
-- task result ingress queuing and relay through opaque routing envelopes
+- task result ingress queuing and relay through opaque `ResultIngressEntry`
+  values
 
 Engine remains the owner of task lifecycle:
 
@@ -66,13 +67,13 @@ Engine remains the owner of task lifecycle:
 
 Transport core and concrete adapters are separate layers. Transport core owns
 the endpoint/session evidence lane, assigned-delivery executor contract,
-delivery queue/store mechanics, result ingress inboxes, and delivery outcomes.
+delivery queue/store mechanics, result ingress queues, and delivery outcomes.
 Concrete adapters own protocol I/O, local session indexes, protocol frame
 parsing and writing, session evidence observation, and final-hop send attempts
 for already selected workers. Current embedded Java adapters are one deployment
 shape, not the transport contract. Facts that a future remote adapter process
-cannot provide through typed delivery commands, endpoint lease evidence, result
-ingress envelopes, delivery outcomes, diagnostics, or session/availability
+cannot provide through typed delivery commands, endpoint lease evidence,
+`ResultIngressEntry`, delivery outcomes, diagnostics, or session/availability
 observations must stay in embedded adapter support rather than
 transport-neutral APIs.
 
@@ -176,9 +177,10 @@ Transport should stay centered on these concepts only:
   result correlation, opaque payload, and diagnostics. It owns generated result
   message id, default deadline/timestamp, diagnostics copying, and required
   correlation/payload validation; it does not parse result payloads.
-- `TransportResultIngressChannel` / `TransportResultIngressHandler` /
-  `TransportResultIngressOutcome`: result ingress producer/consumer seams and
-  ackability outcome used by local buffers and Redis inbox pumps.
+- `TransportResultIngressChannel` / `TransportResultIngressHandler`: result
+  ingress producer/consumer seams. The channel offers entries; the handler is a
+  void sink. Handler output must not drive queue ack, retry, reclaim, or
+  visibility lifecycle inside transport.
 - `TransportDispatchHandoff`: best-effort dispatch queue between
   engine/starter assembly and transport. Producers offer
   `AdapterMailboxDispatchBatch(adapterMailboxKey=<key>, items)` after
@@ -295,7 +297,7 @@ hot-path recovery logic.
 - dispatch handoff admission control and polling-adapter-owned pending buffer
   configuration
 - adapter-facing host executor capability for transport-owned blocking work
-- result ingress envelope queueing, buffering, and runtime logging; result
+- result ingress queueing, buffering, and runtime logging; result
   payload decoding, correlation, and lease/attempt validation live in
   SDK/starter or engine-owned result code
 - core dispatch handoff bounded admission and destructive mailbox poll
@@ -471,12 +473,12 @@ The split runtime uses three transport/runtime channels:
   context, not repeated in every value. `routeKey` remains opaque
   endpoint/result metadata and must not be the only isolation key for assigned
   polling task delivery.
-- result/compensation inboxes: transport writes opaque
-  `ResultIngressEntry(partitionKey=<resultCorrelationRef>, message)` values and
-  retryable delivery-failure events to Redis-backed inboxes; the engine process
-  drains those inboxes into starter-owned result callback decoding and
-  engine-owned result ingest and assignment compensation ports. Result lifecycle
-  ownership is defined in
+- result/compensation channels: transport writes opaque
+  `ResultIngressEntry(partitionKey=<resultCorrelationRef>, message)` values to
+  the Redis result ingress queue and retryable delivery-failure events to the
+  delivery-failure inbox; the engine process drains those channels into
+  starter-owned result callback decoding and engine-owned result ingest and
+  assignment compensation ports. Result lifecycle ownership is defined in
   [../doc/TASK_LIFECYCLE_BASELINE.md](../doc/TASK_LIFECYCLE_BASELINE.md).
 
 These queues are runtime-state queues. They must be bounded and must preserve
@@ -574,7 +576,7 @@ default component namespaces are:
 | endpoint-lease | `xa:mass:transport:endpoint-lease:v1` | `bucket:<encodedDeliveryBucketId>:workers`, `bucket:<encodedDeliveryBucketId>:deadlines` |
 | polling-delivery | `xa:mass:transport:polling-delivery:v1` | `polling:<encodedAdapterMailboxKey>:worker:<encodedSelectedWorkerId>:q`, `queues`, `stats` |
 | dispatch | `xa:mass:transport:dispatch:v1` | `mailbox:<encodedAdapterMailboxKey>:ready-commands`, `mailbox-consumers`, `mailbox-consumer-deadlines`, `queues` |
-| result-inbox | `xa:mass:transport:result-inbox:v1` | engine-drained result inbox entries |
+| result-ingress | `xa:mass:transport:result-ingress:v1` | engine-drained result ingress queue entries |
 | delivery-failure | `xa:mass:transport:delivery-failure:v1` | engine-drained retryable delivery-failure entries |
 
 Endpoint lease truth is keyed by opaque `deliveryBucketId + workerId`. Redis
@@ -598,7 +600,7 @@ Forbidden transport key families:
   `worker:occupancy:*` keys
 
 Worker runtime aggregates such as `group:{groupId}:slots` remain worker runtime
-truth. Transport may maintain endpoint lease, dispatch handoff, result inbox,
+truth. Transport may maintain endpoint lease, dispatch handoff, result ingress queue,
 and delivery-failure inbox runtime state; polling adapter may maintain its own
 pending pull-buffer runtime state. Neither transport nor adapter runtime state
 may preserve or derive scheduling/admission truth in its Redis keyspace.
@@ -661,8 +663,8 @@ result ingress then validates attempt or lease identity before mutating runtime
 truth. SDK/server worker submit paths use `WorkerActionReply`, not
 transport-owned result DTOs.
 
-When envelope identity validation rejects stale attempt or lease evidence,
-starter-owned result ingress returns accepted-noop semantics: the envelope was
+When result identity validation rejects stale attempt or lease evidence,
+starter-owned result ingress returns accepted-noop semantics: the entry was
 handled and intentionally not applied. Transport still does not decide retry,
 finality, task terminal convergence, or public result read truth.
 
@@ -860,7 +862,7 @@ age, and admission counters as adapter-local operator evidence, but those
 fields are not transport owner truth and are not required by push adapters.
 
 Queue mechanics such as keyed FIFO storage, blocking poll coordination,
-per-key/global admission, and queue snapshot counters may live under
+per-key admission, and targeted `size(String key)` diagnostics may live under
 `platform_infra` so long as transport semantics remain owned by
 `TransportDispatchHandoff`, `DispatchMessage`, `DispatchOutcome`, and the
 polling-adapter-owned `PollingPendingDeliveryBuffer`. Embedded runtime

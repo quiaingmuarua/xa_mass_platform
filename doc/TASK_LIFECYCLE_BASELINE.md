@@ -211,7 +211,7 @@ Must hold:
 Result handling is the result-side counterpart to assignment:
 
 ```text
-callback / result inbox
+callback / result ingress queue
   -> transport ingress normalization
   -> optional envelope identity gate
   -> engine result ingest port

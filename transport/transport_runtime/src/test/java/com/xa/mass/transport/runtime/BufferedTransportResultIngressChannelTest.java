@@ -1,6 +1,5 @@
 package com.xa.mass.transport.runtime;
 
-import com.xa.mass.transport.channel.TransportResultIngressOutcome;
 import com.xa.mass.transport.channel.ResultIngressDiagnostics;
 import com.xa.mass.transport.channel.ResultIngressEntry;
 import com.xa.mass.transport.channel.ResultIngressMessage;
@@ -26,7 +25,6 @@ class BufferedTransportResultIngressChannelTest {
         BufferedTransportResultIngressChannel channel = new BufferedTransportResultIngressChannel(entry -> {
             received.add(entry);
             latch.countDown();
-            return TransportResultIngressOutcome.ACKNOWLEDGED;
         });
 
         boolean accepted = channel.ingest(entry("payload-1", "message-1"));
@@ -50,7 +48,6 @@ class BufferedTransportResultIngressChannelTest {
                 Thread.currentThread().interrupt();
             }
             processed.add(entry.message().resultCorrelationRef());
-            return TransportResultIngressOutcome.ACKNOWLEDGED;
         }, 100);
         for (int i = 0; i < itemCount; i++) {
             assertTrue(channel.ingest(entry("payload", "msg-" + i)));
@@ -81,7 +78,6 @@ class BufferedTransportResultIngressChannelTest {
             if ("msg-overflow".equals(entry.message().resultCorrelationRef())) {
                 synchronousFallback.countDown();
             }
-            return TransportResultIngressOutcome.ACKNOWLEDGED;
         }, 1);
 
         assertTrue(channel.ingest(entry("payload", "msg-0")));
@@ -97,23 +93,20 @@ class BufferedTransportResultIngressChannelTest {
     }
 
     @Test
-    void retryableOutcomeRequeuesUntilAcked() throws InterruptedException {
-        CountDownLatch secondAttempt = new CountDownLatch(1);
+    void delegateFailureIsBestEffortAndNotRetriedByTransport() throws InterruptedException {
+        CountDownLatch firstAttempt = new CountDownLatch(1);
         AtomicInteger attempts = new AtomicInteger();
         BufferedTransportResultIngressChannel channel = new BufferedTransportResultIngressChannel(entry -> {
-            int attempt = attempts.incrementAndGet();
-            if (attempt == 1) {
-                return TransportResultIngressOutcome.RETRYABLE_FAILURE;
-            }
-            secondAttempt.countDown();
-            return TransportResultIngressOutcome.ACKNOWLEDGED;
+            attempts.incrementAndGet();
+            firstAttempt.countDown();
+            throw new IllegalStateException("delegate down");
         }, 2);
 
         assertTrue(channel.ingest(entry("payload", "msg-1")));
 
-        assertTrue(secondAttempt.await(2, TimeUnit.SECONDS), "retryable result must be retried by buffer");
-        assertEquals(2, attempts.get());
+        assertTrue(firstAttempt.await(2, TimeUnit.SECONDS), "delegate must be called once");
         channel.shutdown();
+        assertEquals(1, attempts.get());
     }
 
     @Test
@@ -122,7 +115,6 @@ class BufferedTransportResultIngressChannelTest {
         BufferedTransportResultIngressChannel channel =
                 new BufferedTransportResultIngressChannel(entry -> {
                     delegateCalls.incrementAndGet();
-                    return TransportResultIngressOutcome.ACKNOWLEDGED;
                 });
 
         assertFalse(channel.ingest(null));
@@ -134,7 +126,8 @@ class BufferedTransportResultIngressChannelTest {
     @Test
     void ingestAfterShutdownReturnsFalse() {
         BufferedTransportResultIngressChannel channel =
-                new BufferedTransportResultIngressChannel(entry -> TransportResultIngressOutcome.ACKNOWLEDGED);
+                new BufferedTransportResultIngressChannel(entry -> {
+                });
         channel.shutdown();
 
         assertFalse(channel.ingest(entry("payload", "msg-1")));

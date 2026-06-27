@@ -2,7 +2,6 @@ package com.xa.mass.transport.polling.delivery;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import com.xa.mass.runtime.queue.KeyedQueueEntry;
 import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 
 import java.nio.charset.StandardCharsets;
@@ -43,18 +42,17 @@ final class PollingDispatchMessageCodec {
         return encodeKeyToken(selectedWorkerId);
     }
 
-    String encodeStoredValue(KeyedQueueEntry<DispatchMessage> entry) {
-        Objects.requireNonNull(entry, "entry");
-        DispatchMessage item = Objects.requireNonNull(entry.value(), "entry.value");
-        String encodedValue = VALUE_ENCODER.encodeToString(encodeEntry(entry));
-        return entry.createdAtEpochMillis()
+    String encodeStoredValue(DispatchMessage item) {
+        Objects.requireNonNull(item, "item");
+        String encodedValue = VALUE_ENCODER.encodeToString(encodeEntry(item));
+        return item.createdAtEpochMillis()
                 + String.valueOf(STORED_VALUE_DELIMITER)
                 + encodeSelectedWorkerToken(item.selectedWorkerId())
                 + STORED_VALUE_DELIMITER
                 + encodedValue;
     }
 
-    KeyedQueueEntry<DispatchMessage> decodeStoredValue(String storedValue) {
+    DispatchMessage decodeStoredValue(String storedValue) {
         if (storedValue == null || storedValue.isBlank()) {
             throw new IllegalArgumentException("stored queue value must not be blank");
         }
@@ -67,9 +65,8 @@ final class PollingDispatchMessageCodec {
         return decodeEntry(VALUE_DECODER.decode(encodedValue));
     }
 
-    byte[] encodeEntry(KeyedQueueEntry<DispatchMessage> entry) {
-        Objects.requireNonNull(entry, "entry");
-        DispatchMessage item = Objects.requireNonNull(entry.value(), "entry.value");
+    byte[] encodeEntry(DispatchMessage item) {
+        Objects.requireNonNull(item, "item");
         RedisDispatchMessageRecord record = new RedisDispatchMessageRecord(
                 item.deliveryId(),
                 item.selectedWorkerId(),
@@ -81,7 +78,7 @@ final class PollingDispatchMessageCodec {
         return gson.toJson(record).getBytes(StandardCharsets.UTF_8);
     }
 
-    KeyedQueueEntry<DispatchMessage> decodeEntry(byte[] bytes) {
+    DispatchMessage decodeEntry(byte[] bytes) {
         if (bytes == null || bytes.length == 0) {
             throw new IllegalArgumentException("bytes must not be empty");
         }
@@ -96,7 +93,7 @@ final class PollingDispatchMessageCodec {
                 || record.correlationRef == null) {
             throw new IllegalArgumentException("encoded queued dispatch record is incomplete");
         }
-        DispatchMessage item = new DispatchMessage(
+        return new DispatchMessage(
                 record.deliveryId,
                 record.selectedWorkerId,
                 record.payload,
@@ -104,7 +101,6 @@ final class PollingDispatchMessageCodec {
                 record.deadlineEpochMillis,
                 record.createdAtEpochMillis
         );
-        return new KeyedQueueEntry<>(item, item.createdAtEpochMillis());
     }
 
     private static String encodeKeyToken(String value) {

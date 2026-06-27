@@ -254,14 +254,14 @@ public class MassApplicationBuilder {
             return this;
         }
 
-        public TransportBuilder redisResultInbox(String redisUri) {
-            return redisResultInbox(redisUri, RedisTransportResultIngressChannel.DEFAULT_NAMESPACE_PREFIX);
+        public TransportBuilder redisResultIngressQueue(String redisUri) {
+            return redisResultIngressQueue(redisUri, RedisTransportResultIngressChannel.DEFAULT_NAMESPACE_PREFIX);
         }
 
-        public TransportBuilder redisResultInbox(String redisUri, String namespacePrefix) {
+        public TransportBuilder redisResultIngressQueue(String redisUri, String namespacePrefix) {
             String normalizedRedisUri = requireRedisUri(redisUri);
             String normalizedNamespacePrefix = requireNamespacePrefix(namespacePrefix);
-            config.setTaskResultInboxFactory(() -> new RedisTransportResultIngressChannel(
+            config.setTaskResultIngressQueueFactory(() -> new RedisTransportResultIngressChannel(
                     normalizedRedisUri,
                     normalizedNamespacePrefix,
                     RedisTransportResultIngressChannel.DEFAULT_MAX_QUEUED_RESULTS
@@ -286,7 +286,7 @@ public class MassApplicationBuilder {
 
         public TransportBuilder redisDistributedChannels(String redisUri) {
             return redisDispatchHandoff(redisUri, RedisTransportNamespaces.DISPATCH)
-                    .redisResultInbox(redisUri, RedisTransportNamespaces.RESULT_INBOX)
+                    .redisResultIngressQueue(redisUri, RedisTransportNamespaces.RESULT_INGRESS)
                     .redisDeliveryFailureInbox(redisUri, RedisTransportNamespaces.DELIVERY_FAILURE)
                     .redisEndpointLeaseStore(redisUri, RedisTransportNamespaces.ENDPOINT_LEASE)
                     .redisPollingPendingDeliveryBuffer(redisUri, RedisPollingPendingDeliveryBuffer.DEFAULT_NAMESPACE_PREFIX);
@@ -295,7 +295,7 @@ public class MassApplicationBuilder {
         public TransportBuilder redisDistributedChannels(String redisUri, String namespacePrefix) {
             String normalizedNamespacePrefix = requireNamespacePrefix(namespacePrefix);
             return redisDispatchHandoff(redisUri, normalizedNamespacePrefix + ":dispatch")
-                    .redisResultInbox(redisUri, normalizedNamespacePrefix + ":result-inbox")
+                    .redisResultIngressQueue(redisUri, normalizedNamespacePrefix + ":result-ingress")
                     .redisDeliveryFailureInbox(redisUri, normalizedNamespacePrefix + ":delivery-failure")
                     .redisEndpointLeaseStore(redisUri, normalizedNamespacePrefix + ":endpoint-lease")
                     .redisPollingPendingDeliveryBuffer(redisUri, normalizedNamespacePrefix + ":polling-delivery");

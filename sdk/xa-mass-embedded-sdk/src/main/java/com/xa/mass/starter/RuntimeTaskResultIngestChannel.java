@@ -4,7 +4,6 @@ import com.xa.mass.base.runtime.result.TaskResultCorrelation;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.transport.channel.ResultIngressEntry;
 import com.xa.mass.transport.channel.TransportResultIngressHandler;
-import com.xa.mass.transport.channel.TransportResultIngressOutcome;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -39,13 +38,13 @@ public final class RuntimeTaskResultIngestChannel implements TransportResultIngr
     }
 
     @Override
-    public TransportResultIngressOutcome handle(ResultIngressEntry entry) {
-        return handleResult(entry).toTransportOutcome();
+    public void handle(ResultIngressEntry entry) {
+        handleResult(entry);
     }
 
     public ResultIngressHandleOutcome handleResult(ResultIngressEntry entry) {
         if (entry == null) {
-            return ResultIngressHandleOutcome.RETRYABLE_FAILURE;
+            return ResultIngressHandleOutcome.TRANSIENT_FAILURE;
         }
         TaskResultCallbackCommand command;
         try {
@@ -81,7 +80,7 @@ public final class RuntimeTaskResultIngestChannel implements TransportResultIngr
         } catch (RuntimeException ex) {
             logger.error("Runtime task result ingest failed: resultMessageId={}, taskId={}, messageId={}",
                     entry.message().resultMessageId(), command.taskId(), command.messageId(), ex);
-            return ResultIngressHandleOutcome.RETRYABLE_FAILURE;
+            return ResultIngressHandleOutcome.TRANSIENT_FAILURE;
         } finally {
             if (previousTraceId == null || previousTraceId.isBlank()) {
                 MDC.remove(TRACE_ID_MDC_KEY);

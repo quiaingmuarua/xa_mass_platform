@@ -39,7 +39,7 @@ public class TransportConfig {
     private WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
     private Supplier<PollingPendingDeliveryBuffer> pollingPendingDeliveryBufferFactory;
     private Supplier<TransportDispatchHandoff> dispatchHandoffFactory;
-    private Supplier<RedisTransportResultIngressChannel> taskResultInboxFactory;
+    private Supplier<RedisTransportResultIngressChannel> taskResultIngressQueueFactory;
     private Supplier<RedisTransportDeliveryFailureChannel> deliveryFailureInboxFactory;
     private TransportAdapterBootstrap primaryTransportAdapterBootstrap;
     private List<TransportAdapterBootstrap> supplementalTransportAdapterBootstraps = List.of();
@@ -75,7 +75,7 @@ public class TransportConfig {
         this.workerTransportRuntimeFactory = source.workerTransportRuntimeFactory;
         this.pollingPendingDeliveryBufferFactory = source.pollingPendingDeliveryBufferFactory;
         this.dispatchHandoffFactory = source.dispatchHandoffFactory;
-        this.taskResultInboxFactory = source.taskResultInboxFactory;
+        this.taskResultIngressQueueFactory = source.taskResultIngressQueueFactory;
         this.deliveryFailureInboxFactory = source.deliveryFailureInboxFactory;
         this.primaryTransportAdapterBootstrap = source.primaryTransportAdapterBootstrap;
         this.supplementalTransportAdapterBootstraps = List.copyOf(source.supplementalTransportAdapterBootstraps);
@@ -252,12 +252,12 @@ public class TransportConfig {
         this.dispatchHandoffFactory = dispatchHandoffFactory;
     }
 
-    public Supplier<RedisTransportResultIngressChannel> getTaskResultInboxFactory() {
-        return taskResultInboxFactory;
+    public Supplier<RedisTransportResultIngressChannel> getTaskResultIngressQueueFactory() {
+        return taskResultIngressQueueFactory;
     }
 
-    public void setTaskResultInboxFactory(Supplier<RedisTransportResultIngressChannel> taskResultInboxFactory) {
-        this.taskResultInboxFactory = taskResultInboxFactory;
+    public void setTaskResultIngressQueueFactory(Supplier<RedisTransportResultIngressChannel> taskResultIngressQueueFactory) {
+        this.taskResultIngressQueueFactory = taskResultIngressQueueFactory;
     }
 
     public Supplier<RedisTransportDeliveryFailureChannel> getDeliveryFailureInboxFactory() {
@@ -370,8 +370,8 @@ public class TransportConfig {
         return dispatchHandoffFactory;
     }
 
-    Supplier<RedisTransportResultIngressChannel> taskResultInboxFactory() {
-        return taskResultInboxFactory;
+    Supplier<RedisTransportResultIngressChannel> taskResultIngressQueueFactory() {
+        return taskResultIngressQueueFactory;
     }
 
     Supplier<RedisTransportDeliveryFailureChannel> deliveryFailureInboxFactory() {

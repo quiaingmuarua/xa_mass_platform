@@ -7,25 +7,21 @@ import java.util.Objects;
  * Narrow runtime options for Redis-backed keyed queues.
  */
 public record RedisKeyedQueueOptions(int maxQueuedItems,
-                                     Duration pollSleepInterval,
-                                     Duration snapshotCacheWindow) {
+                                     Duration pollSleepInterval) {
 
     private static final Duration DEFAULT_POLL_SLEEP_INTERVAL = Duration.ofMillis(100);
-    private static final Duration DEFAULT_SNAPSHOT_CACHE_WINDOW = Duration.ofMillis(250);
 
     public RedisKeyedQueueOptions {
         if (maxQueuedItems <= 0) {
             throw new IllegalArgumentException("maxQueuedItems must be positive");
         }
         pollSleepInterval = requirePositiveDuration(pollSleepInterval, "pollSleepInterval");
-        snapshotCacheWindow = requirePositiveDuration(snapshotCacheWindow, "snapshotCacheWindow");
     }
 
     public static RedisKeyedQueueOptions defaults(int maxQueuedItems) {
         return new RedisKeyedQueueOptions(
                 maxQueuedItems,
-                DEFAULT_POLL_SLEEP_INTERVAL,
-                DEFAULT_SNAPSHOT_CACHE_WINDOW
+                DEFAULT_POLL_SLEEP_INTERVAL
         );
     }
 

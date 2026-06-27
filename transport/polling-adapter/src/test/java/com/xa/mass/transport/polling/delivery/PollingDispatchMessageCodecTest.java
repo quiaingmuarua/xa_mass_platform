@@ -1,6 +1,5 @@
 package com.xa.mass.transport.polling.delivery;
 
-import com.xa.mass.runtime.queue.KeyedQueueEntry;
 import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 import org.junit.jupiter.api.Test;
 
@@ -33,12 +32,12 @@ class PollingDispatchMessageCodecTest {
                 123L
         );
 
-        String storedValue = codec.encodeStoredValue(new KeyedQueueEntry<>(item, item.createdAtEpochMillis()));
-        KeyedQueueEntry<DispatchMessage> decoded = codec.decodeStoredValue(storedValue);
+        String storedValue = codec.encodeStoredValue(item);
+        DispatchMessage decoded = codec.decodeStoredValue(storedValue);
 
-        assertEquals(item.deliveryId(), decoded.value().deliveryId());
-        assertEquals(item.selectedWorkerId(), decoded.value().selectedWorkerId());
-        assertEquals(item.payload(), decoded.value().payload());
-        assertEquals(item.correlationRef(), decoded.value().correlationRef());
+        assertEquals(item.deliveryId(), decoded.deliveryId());
+        assertEquals(item.selectedWorkerId(), decoded.selectedWorkerId());
+        assertEquals(item.payload(), decoded.payload());
+        assertEquals(item.correlationRef(), decoded.correlationRef());
     }
 }

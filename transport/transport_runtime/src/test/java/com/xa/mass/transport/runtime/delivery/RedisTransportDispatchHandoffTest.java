@@ -94,8 +94,7 @@ class RedisTransportDispatchHandoffTest {
         ));
         List<String> keys = producerConnection.sync().keys(namespacePrefix + ":*");
 
-        assertTrue(keys.stream().anyMatch(key -> key.endsWith(":queues")));
-        assertTrue(keys.stream().anyMatch(key -> key.contains(":mailbox:") && key.endsWith(":ready-commands")));
+        assertTrue(keys.stream().anyMatch(key -> key.contains(":ready:q:")));
         assertTrue(keys.stream().anyMatch(key -> key.endsWith(":mailbox-consumers")));
         assertTrue(keys.stream().anyMatch(key -> key.endsWith(":mailbox-consumer-deadlines")));
         assertFalse(keys.stream().anyMatch(key -> key.contains(":selected-worker-consumers:")));

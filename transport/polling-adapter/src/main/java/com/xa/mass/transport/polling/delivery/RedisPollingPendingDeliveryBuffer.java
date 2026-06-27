@@ -1,6 +1,5 @@
 package com.xa.mass.transport.polling.delivery;
 
-import com.xa.mass.runtime.queue.KeyedQueueEntry;
 import com.xa.mass.runtime.redis.queue.RedisKeyedQueueNamespace;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
@@ -403,7 +402,7 @@ public final class RedisPollingPendingDeliveryBuffer implements PollingPendingDe
                             namespace.activeQueuesKey(),
                             namespace.globalStatsKey()
                     },
-                    codec.encodeStoredValue(new KeyedQueueEntry<>(normalizedItem, normalizedItem.createdAtEpochMillis())),
+                    codec.encodeStoredValue(normalizedItem),
                     String.valueOf(normalizedItem.createdAtEpochMillis()),
                     String.valueOf(maxItemsPerWorker),
                     String.valueOf(maxQueuedItems),
@@ -488,7 +487,7 @@ public final class RedisPollingPendingDeliveryBuffer implements PollingPendingDe
         List<DispatchMessage> drained = new ArrayList<>(values.size() - 2);
         for (Object rawValue : values.subList(2, values.size())) {
             if (rawValue != null) {
-                drained.add(codec.decodeStoredValue(rawValue.toString()).value());
+                drained.add(codec.decodeStoredValue(rawValue.toString()));
             }
         }
         return List.copyOf(drained);

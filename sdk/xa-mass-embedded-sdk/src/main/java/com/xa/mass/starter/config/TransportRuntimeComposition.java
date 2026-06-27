@@ -43,7 +43,7 @@ public class TransportRuntimeComposition {
     private final WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
     private final Supplier<PollingPendingDeliveryBuffer> pollingPendingDeliveryBufferFactory;
     private final Supplier<TransportDispatchHandoff> dispatchHandoffFactory;
-    private final Supplier<RedisTransportResultIngressChannel> taskResultInboxFactory;
+    private final Supplier<RedisTransportResultIngressChannel> taskResultIngressQueueFactory;
     private final Supplier<RedisTransportDeliveryFailureChannel> deliveryFailureInboxFactory;
     private final TransportAdapterBootstrap primaryTransportAdapterBootstrap;
     private final List<TransportAdapterBootstrap> supplementalTransportAdapterBootstraps;
@@ -76,7 +76,7 @@ public class TransportRuntimeComposition {
         this.workerTransportRuntimeFactory = source.getWorkerTransportRuntimeFactory();
         this.pollingPendingDeliveryBufferFactory = source.pollingPendingDeliveryBufferFactory();
         this.dispatchHandoffFactory = source.getDispatchHandoffFactory();
-        this.taskResultInboxFactory = source.taskResultInboxFactory();
+        this.taskResultIngressQueueFactory = source.taskResultIngressQueueFactory();
         this.deliveryFailureInboxFactory = source.deliveryFailureInboxFactory();
         this.primaryTransportAdapterBootstrap = source.getPrimaryTransportAdapterBootstrap();
         this.supplementalTransportAdapterBootstraps = List.copyOf(source.getSupplementalTransportAdapterBootstraps());
@@ -141,11 +141,11 @@ public class TransportRuntimeComposition {
                 : new InMemoryTransportDispatchHandoff(defaultCapacity);
     }
 
-    public RedisTransportResultIngressChannel resolveTaskResultInbox() {
-        if (taskResultInboxFactory == null) {
-            throw new IllegalStateException("Task result inbox is not configured for split transport runtime");
+    public RedisTransportResultIngressChannel resolveTaskResultIngressQueue() {
+        if (taskResultIngressQueueFactory == null) {
+            throw new IllegalStateException("Task result ingress queue is not configured for split transport runtime");
         }
-        return taskResultInboxFactory.get();
+        return taskResultIngressQueueFactory.get();
     }
 
     public RedisTransportDeliveryFailureChannel resolveDeliveryFailureInbox() {

@@ -1,5 +1,10 @@
 package com.xa.mass.transport.runtime.delivery;
 
+import com.xa.mass.runtime.queue.InMemoryKeyedBlockingQueueStore;
+import com.xa.mass.runtime.queue.KeyedQueueEntry;
+import com.xa.mass.runtime.queue.KeyedQueueOfferResult;
+import com.xa.mass.runtime.queue.KeyedQueuePollResult;
+import com.xa.mass.runtime.queue.KeyedQueuePollStatus;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 
@@ -8,7 +13,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -18,16 +22,18 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class InMemoryTransportDispatchHandoff implements TransportDispatchHandoff,
         AdapterMailboxConsumerRegistry {
 
-    private final Map<String, LinkedBlockingQueue<DispatchMessage>> readyByMailbox = new ConcurrentHashMap<>();
+    private final InMemoryKeyedBlockingQueueStore readyQueue;
     private final Map<String, MailboxConsumerEvidence> mailboxConsumers = new ConcurrentHashMap<>();
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final int capacity;
+    private final TransportDispatchBatchCodec codec = new TransportDispatchBatchCodec();
 
     public InMemoryTransportDispatchHandoff(int capacity) {
         if (capacity < 1) {
             throw new IllegalArgumentException("capacity must be greater than 0");
         }
         this.capacity = capacity;
+        this.readyQueue = new InMemoryKeyedBlockingQueueStore(capacity);
     }
 
     @Override
@@ -84,7 +90,7 @@ public final class InMemoryTransportDispatchHandoff implements TransportDispatch
     @Override
     public void shutdown() {
         running.set(false);
-        readyByMailbox.clear();
+        readyQueue.shutdown();
         mailboxConsumers.clear();
     }
 
@@ -118,11 +124,12 @@ public final class InMemoryTransportDispatchHandoff implements TransportDispatch
     }
 
     private boolean offerReadyItem(String adapterMailboxKey, DispatchMessage item) {
-        LinkedBlockingQueue<DispatchMessage> readyQueue = queueForMailbox(adapterMailboxKey);
-        if (readyQueue.size() >= capacity) {
-            return false;
-        }
-        return readyQueue.offer(item);
+        KeyedQueueOfferResult result = readyQueue.offer(
+                adapterMailboxKey,
+                new KeyedQueueEntry(codec.encodeItem(item), item.createdAtEpochMillis()),
+                capacity
+        );
+        return result.status() == KeyedQueueOfferResult.Status.ENQUEUED;
     }
 
     private List<DispatchMessage> pollLocalMailboxItems(String adapterMailboxKey,
@@ -134,11 +141,20 @@ public final class InMemoryTransportDispatchHandoff implements TransportDispatch
             if (currentEvidence(adapterMailboxKey) == null) {
                 return List.copyOf(items);
             }
-            LinkedBlockingQueue<DispatchMessage> queue = queueForMailbox(adapterMailboxKey);
-            DispatchMessage first = queue.poll();
-            if (first != null) {
-                items.add(first);
-                queue.drainTo(items, maxItems - items.size());
+            KeyedQueuePollResult result = readyQueue.poll(
+                    adapterMailboxKey,
+                    maxItems,
+                    0L,
+                    TimeUnit.MILLISECONDS
+            );
+            if (result.status() == KeyedQueuePollStatus.DELIVERED) {
+                for (KeyedQueueEntry entry : result.items()) {
+                    try {
+                        items.add(codec.decodeItem(entry.value()));
+                    } catch (RuntimeException ignored) {
+                        // Corrupt handoff entries are dropped as store-local corruption.
+                    }
+                }
                 return List.copyOf(items);
             }
             if (timeoutMillis <= 0L) {
@@ -154,13 +170,8 @@ public final class InMemoryTransportDispatchHandoff implements TransportDispatch
         return List.of();
     }
 
-    private LinkedBlockingQueue<DispatchMessage> queueForMailbox(String adapterMailboxKey) {
-        return readyByMailbox.computeIfAbsent(adapterMailboxKey, ignored -> new LinkedBlockingQueue<>());
-    }
-
     private boolean readyQueueEmpty(String adapterMailboxKey) {
-        LinkedBlockingQueue<DispatchMessage> queue = readyByMailbox.get(adapterMailboxKey);
-        return queue == null || queue.isEmpty();
+        return readyQueue.size(adapterMailboxKey) == 0;
     }
 
     private static String normalizeRequired(String value, String fieldName) {

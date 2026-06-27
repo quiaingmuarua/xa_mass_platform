@@ -1604,9 +1604,12 @@ class TransportConvergenceArchitectureGuardTest {
                 repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/model/TaskResultReport.java"),
                 repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/model/TransportResultIngressEnvelope.java"),
                 repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/model/TransportResultEnvelope.java"),
+                repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/channel/TransportResultIngressOutcome.java"),
                 repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/BufferedTaskResultIngestChannel.java"),
                 repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RedisTaskResultIngestChannel.java"),
                 repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TaskResultIngestInboxPump.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/ClaimedTransportResultIngress.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TransportResultIngressInboxPump.java"),
                 repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TransportResultEnvelopeCodec.java"),
                 repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TransportResultIngressEnvelopeCodec.java")
         );
@@ -1624,7 +1627,10 @@ class TransportConvergenceArchitectureGuardTest {
                 "TaskResultIngestChannel",
                 "RedisTaskResultIngestChannel",
                 "BufferedTaskResultIngestChannel",
-                "TaskResultIngestInboxPump"
+                "TaskResultIngestInboxPump",
+                "TransportResultIngressOutcome",
+                "ClaimedTransportResultIngress",
+                "TransportResultIngressInboxPump"
         );
     }
 
@@ -1666,10 +1672,23 @@ class TransportConvergenceArchitectureGuardTest {
         assertNoProductionSourceContains(
                 List.of(
                         repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/BufferedTransportResultIngressChannel.java"),
-                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RedisTransportResultIngressChannel.java")
+                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RedisTransportResultIngressChannel.java"),
+                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TransportResultIngressQueuePump.java"),
+                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/RuntimeTaskResultIngestChannel.java"),
+                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/ResultIngressHandleOutcome.java")
                 ),
                 "pendingCount(",
-                "queuedResults("
+                "queuedResults(",
+                "TransportResultIngressOutcome",
+                "ClaimedTransportResultIngress",
+                "TransportResultIngressInboxPump",
+                "visibilityTimeout",
+                "inflight",
+                "complete(",
+                "ackable",
+                "RETRYABLE_FAILURE",
+                "toTransportOutcome",
+                "reclaim"
         );
     }
 

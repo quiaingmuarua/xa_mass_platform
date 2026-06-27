@@ -27,7 +27,7 @@ import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.BufferedTransportResultIngressChannel;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
-import com.xa.mass.transport.runtime.TransportResultIngressInboxPump;
+import com.xa.mass.transport.runtime.TransportResultIngressQueuePump;
 import com.xa.mass.transport.runtime.embedded.TransportDeliveryFailureEvidenceSink;
 import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
 import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerRegistry;
@@ -81,8 +81,8 @@ public class MassApplication {
     private TransportEndpointLeaseStore endpointLeaseStore;
     private TransportDispatchHandoff transportDispatchHandoff;
     private EmbeddedAdapterHostSet embeddedAdapterHostSet = EmbeddedAdapterHostSet.empty();
-    private RedisTransportResultIngressChannel taskResultInbox;
-    private TransportResultIngressInboxPump taskResultInboxPump;
+    private RedisTransportResultIngressChannel taskResultIngressQueue;
+    private TransportResultIngressQueuePump taskResultIngressQueuePump;
     private RedisTransportDeliveryFailureChannel deliveryFailureInbox;
     private TransportDeliveryFailureInboxPump deliveryFailureInboxPump;
     private RuntimeTaskExecutor transportRuntimeTaskExecutor;
@@ -139,9 +139,9 @@ public class MassApplication {
                 TransportRuntimeRole runtimeRole = transportRuntimeComposition.getRuntimeRole();
                 if (runtimeRole == TransportRuntimeRole.TRANSPORT_CONSUMER) {
                     stopDispatchHandoff();
-                    stopDistributedTransportInboxes();
+                    stopDistributedTransportChannels();
                 } else if (runtimeRole == TransportRuntimeRole.ENGINE_PRODUCER) {
-                    stopDistributedTransportInboxes();
+                    stopDistributedTransportChannels();
                 }
                 drainResultIngestBuffer();
 
@@ -150,7 +150,7 @@ public class MassApplication {
                 }
             } finally {
                 stopDispatchHandoff();
-                closeDistributedTransportInboxes();
+                closeDistributedTransportChannels();
                 stopEndpointLeaseStore();
                 stopTransportRuntimeTaskExecutor();
                 stopEventRuntimeTaskExecutor();
@@ -176,7 +176,7 @@ public class MassApplication {
         try {
             stopEmbeddedAdapterHostSet();
             stopDispatchHandoff();
-            stopDistributedTransportInboxes();
+            stopDistributedTransportChannels();
         } catch (Exception cleanupError) {
             startupFailure.addSuppressed(cleanupError);
             logger.warn("Failed to stop embedded adapter runtime after startup failure", cleanupError);
@@ -237,11 +237,11 @@ public class MassApplication {
             List<TransportBinding> adapterBindings = new ArrayList<>();
             List<TransportAdapterContribution> adapterContributions = new ArrayList<>();
             if (runtimeRole == TransportRuntimeRole.TRANSPORT_CONSUMER) {
-                taskResultInbox = transportRuntimeComposition.resolveTaskResultInbox();
-                resultIngressChannel = taskResultInbox;
+                taskResultIngressQueue = transportRuntimeComposition.resolveTaskResultIngressQueue();
+                resultIngressChannel = taskResultIngressQueue;
                 deliveryFailureInbox = transportRuntimeComposition.resolveDeliveryFailureInbox();
                 adapterHostFailureHandler = deliveryFailureInbox;
-                logger.info("Task result ingest channel initialized (redis inbox producer)");
+                logger.info("Task result ingest channel initialized (redis ingress queue producer)");
             } else if (engineConfig.isEnabled()) {
                 TaskResultIngestFacade taskResultIngestFacade = engineConfig.getTaskResultIngestFacade();
                 BufferedTransportResultIngressChannel buffer = new BufferedTransportResultIngressChannel(
@@ -251,13 +251,13 @@ public class MassApplication {
                 adapterHostFailureHandler = createTransportDeliveryFailureHandler();
                 logger.info("Task result ingest channel initialized (buffered async)");
                 if (runtimeRole == TransportRuntimeRole.ENGINE_PRODUCER) {
-                    taskResultInbox = transportRuntimeComposition.resolveTaskResultInbox();
-                    taskResultInboxPump = new TransportResultIngressInboxPump(
-                            taskResultInbox,
+                    taskResultIngressQueue = transportRuntimeComposition.resolveTaskResultIngressQueue();
+                    taskResultIngressQueuePump = new TransportResultIngressQueuePump(
+                            taskResultIngressQueue,
                             new RuntimeTaskResultIngestChannel(taskResultIngestFacade),
                             transportRuntimeTaskExecutor
                     );
-                    taskResultInboxPump.start();
+                    taskResultIngressQueuePump.start();
                     deliveryFailureInbox = transportRuntimeComposition.resolveDeliveryFailureInbox();
                     deliveryFailureInboxPump = new TransportDeliveryFailureInboxPump(
                             deliveryFailureInbox,
@@ -265,7 +265,7 @@ public class MassApplication {
                             transportRuntimeTaskExecutor
                     );
                     deliveryFailureInboxPump.start();
-                    logger.info("Distributed transport inbox pumps started for engine-producer role");
+                    logger.info("Distributed transport queue pumps started for engine-producer role");
                 }
             }
             if (resultIngressChannel == null && runtimeRole == TransportRuntimeRole.EMBEDDED) {
@@ -318,7 +318,7 @@ public class MassApplication {
         } catch (Exception e) {
             try {
                 stopDispatchHandoff();
-                stopDistributedTransportInboxes();
+                stopDistributedTransportChannels();
                 stopTransportRuntimeTaskExecutor();
                 stopEventRuntimeTaskExecutor();
             } catch (Exception stopError) {
@@ -565,14 +565,14 @@ public class MassApplication {
         }
     }
 
-    private void stopDistributedTransportInboxes() {
-        stopDistributedTransportInboxPumps();
-        closeDistributedTransportInboxes();
+    private void stopDistributedTransportChannels() {
+        stopDistributedTransportQueuePumps();
+        closeDistributedTransportChannels();
     }
 
-    private void stopDistributedTransportInboxPumps() {
-        TransportResultIngressInboxPump resultPump = taskResultInboxPump;
-        taskResultInboxPump = null;
+    private void stopDistributedTransportQueuePumps() {
+        TransportResultIngressQueuePump resultPump = taskResultIngressQueuePump;
+        taskResultIngressQueuePump = null;
         if (resultPump != null) {
             resultPump.stop();
         }
@@ -583,11 +583,11 @@ public class MassApplication {
         }
     }
 
-    private void closeDistributedTransportInboxes() {
-        RedisTransportResultIngressChannel resultInbox = taskResultInbox;
-        taskResultInbox = null;
-        if (resultInbox != null) {
-            resultInbox.shutdown();
+    private void closeDistributedTransportChannels() {
+        RedisTransportResultIngressChannel resultIngressQueue = taskResultIngressQueue;
+        taskResultIngressQueue = null;
+        if (resultIngressQueue != null) {
+            resultIngressQueue.shutdown();
         }
         RedisTransportDeliveryFailureChannel failureInbox = deliveryFailureInbox;
         deliveryFailureInbox = null;

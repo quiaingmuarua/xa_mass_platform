@@ -1,10 +1,14 @@
 package com.xa.mass.transport.runtime.delivery;
 
+import com.xa.mass.runtime.queue.KeyedQueueEntry;
+import com.xa.mass.runtime.queue.KeyedQueueOfferResult;
+import com.xa.mass.runtime.redis.queue.RedisKeyedBlockingQueueStore;
+import com.xa.mass.runtime.redis.queue.RedisKeyedQueueNamespace;
+import com.xa.mass.runtime.redis.queue.RedisKeyedQueueOptions;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.runtime.RedisTransportNamespaces;
 import io.lettuce.core.RedisClient;
-import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
 
@@ -32,27 +36,11 @@ public final class RedisTransportDispatchHandoff implements TransportDispatchHan
     private static final String CONSUMER_EVIDENCE_VERSION = "v3";
     private static final Base64.Encoder TOKEN_ENCODER = Base64.getUrlEncoder().withoutPadding();
     private static final Base64.Decoder TOKEN_DECODER = Base64.getUrlDecoder();
-    private static final String OFFER_DISPATCH_SCRIPT = """
-            local readyDispatchKey = KEYS[1]
-            local queuesKey = KEYS[2]
-            local maxQueuedItems = tonumber(ARGV[1])
-            local value = ARGV[2]
-            local adapterMailboxKey = ARGV[3]
-            if maxQueuedItems <= 0 then
-              return {'BACKPRESSURE', 'queue capacity is exhausted'}
-            end
-            local queuedItems = redis.call('LLEN', readyDispatchKey)
-            if queuedItems >= maxQueuedItems then
-              return {'BACKPRESSURE', 'dispatch queue backlog is full'}
-            end
-            redis.call('RPUSH', readyDispatchKey, value)
-            redis.call('SADD', queuesKey, adapterMailboxKey)
-            return {'QUEUED', ''}
-            """;
 
     private final RedisClient redisClient;
     private final StatefulRedisConnection<String, String> connection;
     private final RedisCommands<String, String> commands;
+    private final RedisKeyedBlockingQueueStore readyQueue;
     private final String namespacePrefix;
     private final Map<String, LocalMailboxConsumerEvidence> localConsumers = new ConcurrentHashMap<>();
     private final int maxQueuedItemsPerQueue;
@@ -104,6 +92,11 @@ public final class RedisTransportDispatchHandoff implements TransportDispatchHan
         this.namespacePrefix = normalizeRequired(namespacePrefix, "namespacePrefix");
         this.maxQueuedItemsPerQueue = maxQueuedItemsPerQueue;
         this.ownsClient = ownsClient;
+        this.readyQueue = new RedisKeyedBlockingQueueStore(
+                connection,
+                new RedisKeyedQueueNamespace(this.namespacePrefix + ":ready"),
+                RedisKeyedQueueOptions.defaults(maxQueuedItemsPerQueue)
+        );
     }
 
     @Override
@@ -131,25 +124,23 @@ public final class RedisTransportDispatchHandoff implements TransportDispatchHan
         }
         List<DispatchOutcome> outcomes = new ArrayList<>(itemsToOffer.size());
         for (DispatchMessage item : itemsToOffer) {
-            Object raw = commands.eval(
-                    OFFER_DISPATCH_SCRIPT,
-                    ScriptOutputType.MULTI,
-                    new String[]{
-                            readyDispatchKey(adapterMailboxKey),
-                            queuesKey()
-                    },
-                    Integer.toString(maxQueuedItemsPerQueue),
-                    codec.encodeItem(item),
-                    adapterMailboxKey
+            KeyedQueueOfferResult result = readyQueue.offer(
+                    adapterMailboxKey,
+                    new KeyedQueueEntry(codec.encodeItem(item), item.createdAtEpochMillis()),
+                    maxQueuedItemsPerQueue
             );
-            List<?> values = raw instanceof List<?> list ? list : List.of();
-            String status = values.isEmpty() ? "BACKPRESSURE" : String.valueOf(values.getFirst());
-            String reason = values.size() > 1 ? String.valueOf(values.get(1)) : "dispatch offer failed";
+            DispatchOutcomeStatus outcomeStatus = switch (result.status()) {
+                case ENQUEUED -> DispatchOutcomeStatus.QUEUED;
+                case INVALID -> DispatchOutcomeStatus.INVALID;
+                case UNAVAILABLE -> DispatchOutcomeStatus.UNAVAILABLE;
+                case BACKPRESSURE_REJECTED -> DispatchOutcomeStatus.BACKPRESSURE;
+            };
+            boolean queued = outcomeStatus == DispatchOutcomeStatus.QUEUED;
             outcomes.add(DispatchOutcomeFactory.fromItem(
                     item,
-                    "QUEUED".equals(status) ? DispatchOutcomeStatus.QUEUED : DispatchOutcomeStatus.BACKPRESSURE,
-                    !"QUEUED".equals(status),
-                    "QUEUED".equals(status) ? null : reason
+                    outcomeStatus,
+                    !queued,
+                    queued ? null : result.reason()
             ));
         }
         return List.copyOf(outcomes);
@@ -196,14 +187,9 @@ public final class RedisTransportDispatchHandoff implements TransportDispatchHan
 
     private List<DispatchMessage> pollReadyItems(String adapterMailboxKey, int maxItems) {
         List<DispatchMessage> items = new ArrayList<>(maxItems);
-        String readyKey = readyDispatchKey(adapterMailboxKey);
-        for (int i = 0; i < maxItems; i++) {
-            String encoded = commands.lpop(readyKey);
-            if (encoded == null) {
-                break;
-            }
+        for (KeyedQueueEntry entry : readyQueue.drain(adapterMailboxKey, maxItems)) {
             try {
-                items.add(codec.decodeItem(encoded));
+                items.add(codec.decodeItem(entry.value()));
             } catch (RuntimeException ignored) {
                 // Corrupt handoff entries are dropped as store-local corruption.
             }
@@ -223,7 +209,6 @@ public final class RedisTransportDispatchHandoff implements TransportDispatchHan
         localConsumers.put(lease.adapterMailboxKey(), local);
         commands.hset(mailboxConsumersKey(), lease.adapterMailboxKey(), encodeConsumerEvidence(lease));
         commands.zadd(mailboxConsumerDeadlinesKey(), lease.availableUntilEpochMillis(), lease.adapterMailboxKey());
-        commands.sadd(queuesKey(), lease.adapterMailboxKey());
     }
 
     @Override
@@ -256,27 +241,29 @@ public final class RedisTransportDispatchHandoff implements TransportDispatchHan
     }
 
     int queuedBatches(String adapterMailboxKey) {
-        return Math.toIntExact(commands.llen(readyDispatchKey(adapterMailboxKey)));
+        return readyQueue.size(adapterMailboxKey);
     }
 
     long readyItemsForTest(String adapterMailboxKey) {
-        return commands.llen(readyDispatchKey(adapterMailboxKey));
+        return readyQueue.size(adapterMailboxKey);
     }
 
     void pushReadyItemForTest(String adapterMailboxKey, DispatchMessage item) {
-        commands.rpush(readyDispatchKey(adapterMailboxKey), codec.encodeItem(item));
+        readyQueue.offer(adapterMailboxKey, new KeyedQueueEntry(codec.encodeItem(item), item.createdAtEpochMillis()),
+                maxQueuedItemsPerQueue);
     }
 
     void pushRawReadyValueForTest(String adapterMailboxKey, String value) {
-        commands.rpush(readyDispatchKey(adapterMailboxKey), value);
+        readyQueue.offer(adapterMailboxKey, new KeyedQueueEntry(value, System.currentTimeMillis()), maxQueuedItemsPerQueue);
     }
 
     void clearForTest(String adapterMailboxKey) {
         String normalizedMailboxKey = normalizeRequired(adapterMailboxKey, "adapterMailboxKey");
-        commands.del(readyDispatchKey(normalizedMailboxKey));
         commands.hdel(mailboxConsumersKey(), normalizedMailboxKey);
         commands.zrem(mailboxConsumerDeadlinesKey(), normalizedMailboxKey);
-        commands.srem(queuesKey(), normalizedMailboxKey);
+        while (!readyQueue.drain(normalizedMailboxKey, 1000).isEmpty()) {
+            // Drain all test data for this mailbox.
+        }
     }
 
     void claimConsumerForTest(String adapterMailboxKey, String consumerId) {
@@ -305,22 +292,12 @@ public final class RedisTransportDispatchHandoff implements TransportDispatchHan
         return evidence;
     }
 
-    private String readyDispatchKey(String adapterMailboxKey) {
-        return namespacePrefix
-                + ":mailbox:" + encodeToken(normalizeRequired(adapterMailboxKey, "adapterMailboxKey"))
-                + ":ready-commands";
-    }
-
     private String mailboxConsumersKey() {
         return namespacePrefix + ":mailbox-consumers";
     }
 
     private String mailboxConsumerDeadlinesKey() {
         return namespacePrefix + ":mailbox-consumer-deadlines";
-    }
-
-    private String queuesKey() {
-        return namespacePrefix + ":queues";
     }
 
     private static String encodeToken(String value) {

@@ -28,7 +28,7 @@ classes and are not protected by a single lifecycle contract.
 
 - `MassApplication.stop()` already has a partial top-level order: stop
   transport servers, stop managed transport adapters, stop transport node
-  heartbeat, stop distributed transport inboxes/handoffs by role, drain the
+  heartbeat, stop distributed transport channels/handoffs by role, drain the
   result ingest buffer, then stop `MassEngine`.
 - `BufferedTransportResultIngressChannel` documents a hard ordering rule:
   `shutdown()` must run before stopping the engine so queued worker results are
@@ -173,7 +173,7 @@ The exact names can change during inventory, but the order must remain visible:
 
 3. **Drain Accepted Result Ingress**
    - drain `BufferedTransportResultIngressChannel`
-   - stop distributed result inbox pumps after their accepted messages are
+   - stop distributed result ingress queue pumps after their accepted messages are
      handed to the local result ingest channel
    - record unprocessed counts when bounded drain cannot finish
 
@@ -324,7 +324,7 @@ Scope:
   - adapter stop
   - transport node heartbeat/offline marking
   - task dispatch handoff pump stop
-  - distributed result inbox pump stop
+  - distributed result ingress queue pump stop
   - result ingest buffer drain
   - engine kernel stop
   - task runtime shutdown

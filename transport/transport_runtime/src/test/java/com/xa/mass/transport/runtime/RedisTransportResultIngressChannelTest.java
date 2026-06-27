@@ -36,12 +36,12 @@ class RedisTransportResultIngressChannelTest {
             writerConnection = redisClient.connect();
             readerConnection = redisClient.connect();
         } catch (RuntimeException ex) {
-            Assumptions.assumeTrue(false, "Redis is not available for result inbox test: " + ex.getMessage());
+            Assumptions.assumeTrue(false, "Redis is not available for result ingress queue test: " + ex.getMessage());
             throw ex;
         }
-        namespacePrefix = "xa:mass:test:result-inbox:" + UUID.randomUUID();
-        writer = new RedisTransportResultIngressChannel(writerConnection, namespacePrefix, 1, 50L);
-        reader = new RedisTransportResultIngressChannel(readerConnection, namespacePrefix, 1, 50L);
+        namespacePrefix = "xa:mass:test:result-ingress:" + UUID.randomUUID();
+        writer = new RedisTransportResultIngressChannel(writerConnection, namespacePrefix, 1);
+        reader = new RedisTransportResultIngressChannel(readerConnection, namespacePrefix, 1);
         writer.clearForTest();
     }
 
@@ -60,18 +60,17 @@ class RedisTransportResultIngressChannelTest {
     }
 
     @Test
-    void resultEntryRoundTripsAcrossInstancesAndCompletes() throws Exception {
+    void resultEntryRoundTripsAcrossInstances() throws Exception {
         ResultIngressEntry entry = entry("task-result-json", "corr-1");
 
         assertTrue(writer.ingest(entry));
-        ClaimedTransportResultIngress claimed = reader.poll(1000L);
+        ResultIngressEntry polled = reader.poll(1000L);
 
-        assertNotNull(claimed);
-        assertEquals("task-result-json", claimed.entry().message().payload());
-        assertEquals("corr-1", claimed.entry().message().resultCorrelationRef());
-        assertEquals("trace-1", claimed.entry().diagnostics().get("traceId"));
+        assertNotNull(polled);
+        assertEquals("task-result-json", polled.message().payload());
+        assertEquals("corr-1", polled.message().resultCorrelationRef());
+        assertEquals("trace-1", polled.diagnostics().get("traceId"));
 
-        reader.complete(claimed);
         assertNull(reader.poll(100L));
     }
 
@@ -80,44 +79,31 @@ class RedisTransportResultIngressChannelTest {
         assertTrue(writer.ingest(entry("payload-1", "msg-1")));
         assertFalse(writer.ingest(entry("payload-2", "msg-2")));
 
-        ClaimedTransportResultIngress claimed = reader.poll(1000L);
+        ResultIngressEntry polled = reader.poll(1000L);
 
-        assertNotNull(claimed);
-        assertEquals("msg-1", claimed.entry().message().resultCorrelationRef());
+        assertNotNull(polled);
+        assertEquals("msg-1", polled.message().resultCorrelationRef());
     }
 
     @Test
-    void claimedItemReappearsAfterVisibilityTimeoutWithoutComplete() throws Exception {
+    void polledItemDoesNotReappearWithoutTransportAckLifecycle() throws Exception {
         assertTrue(writer.ingest(entry("payload-1", "msg-1")));
-        ClaimedTransportResultIngress firstClaim = reader.poll(1000L);
-        assertNotNull(firstClaim);
+        ResultIngressEntry first = reader.poll(1000L);
+        assertNotNull(first);
 
         Thread.sleep(75L);
-        ClaimedTransportResultIngress secondClaim = reader.poll(1000L);
+        ResultIngressEntry second = reader.poll(100L);
 
-        assertNotNull(secondClaim);
-        assertEquals(firstClaim.entry().message().payload(), secondClaim.entry().message().payload());
-        reader.complete(secondClaim);
+        assertNull(second);
     }
 
     @Test
-    void missingPayloadReferenceIsDiscardedWithoutStickingInflight() throws Exception {
+    void invalidReadyPayloadIsDiscarded() throws Exception {
         writerConnection.sync().rpush(namespacePrefix + ":ready", "missing-ref");
 
-        ClaimedTransportResultIngress claimed = reader.poll(100L);
+        ResultIngressEntry polled = reader.poll(100L);
 
-        assertNull(claimed);
-        assertNull(reader.poll(100L));
-    }
-
-    @Test
-    void invalidPayloadIsAckedAndDiscarded() throws Exception {
-        writerConnection.sync().hset(namespacePrefix + ":payloads", "bad-ref", "{");
-        writerConnection.sync().rpush(namespacePrefix + ":ready", "bad-ref");
-
-        ClaimedTransportResultIngress claimed = reader.poll(100L);
-
-        assertNull(claimed);
+        assertNull(polled);
         assertNull(reader.poll(100L));
     }
 

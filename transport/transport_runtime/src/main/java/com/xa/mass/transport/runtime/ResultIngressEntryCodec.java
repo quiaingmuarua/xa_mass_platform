@@ -10,7 +10,7 @@ import java.util.Map;
 import java.util.Objects;
 
 /**
- * JSON codec for result ingress entries crossing the result inbox process boundary.
+ * JSON codec for result ingress entries crossing the result ingress queue process boundary.
  */
 final class ResultIngressEntryCodec {
 

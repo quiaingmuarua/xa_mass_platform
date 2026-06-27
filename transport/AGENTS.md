@@ -22,7 +22,7 @@ entry for `transport/`.
 - Current adapters are embedded Java modules, but the transport boundary should
   stay compatible with future remote adapter processes. Java-only object wiring
   belongs to embedded adapter support; cross-process facts must be typed
-  delivery commands, endpoint lease evidence, routing result-ingress envelopes,
+  delivery commands, endpoint lease evidence, result-ingress entries,
   delivery outcomes, diagnostics, or session/availability observations.
 - `transport` owns two runtime lanes: network/session evidence production and
   best-effort assigned-delivery execution. The assigned-delivery lane is the

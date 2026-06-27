@@ -22,7 +22,7 @@ class TransportRedisKeyspaceGuardTest {
         for (String namespace : List.of(
                 RedisTransportNamespaces.ENDPOINT_LEASE,
                 RedisTransportNamespaces.DISPATCH,
-                RedisTransportNamespaces.RESULT_INBOX,
+                RedisTransportNamespaces.RESULT_INGRESS,
                 RedisTransportNamespaces.DELIVERY_FAILURE
         )) {
             assertTrue(content.contains(namespace), () -> "missing transport Redis namespace manifest entry: " + namespace);

@@ -178,13 +178,13 @@ public final class MassSdk {
             return this;
         }
 
-        public TransportOptions redisResultInbox(String redisUri) {
-            delegate.redisResultInbox(redisUri);
+        public TransportOptions redisResultIngressQueue(String redisUri) {
+            delegate.redisResultIngressQueue(redisUri);
             return this;
         }
 
-        public TransportOptions redisResultInbox(String redisUri, String namespacePrefix) {
-            delegate.redisResultInbox(redisUri, namespacePrefix);
+        public TransportOptions redisResultIngressQueue(String redisUri, String namespacePrefix) {
+            delegate.redisResultIngressQueue(redisUri, namespacePrefix);
             return this;
         }
 

@@ -2,7 +2,6 @@ package com.xa.mass.transport.runtime;
 
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.channel.TransportResultIngressHandler;
-import com.xa.mass.transport.channel.TransportResultIngressOutcome;
 import com.xa.mass.transport.channel.ResultIngressEntry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,7 +53,7 @@ public final class BufferedTransportResultIngressChannel implements TransportRes
         if (!offered) {
             logger.warn("Result ingress buffer full ({} capacity); falling back to synchronous ingress resultMessageId={}",
                     queue.size(), entry.message().resultMessageId());
-            return handle(entry).ackable();
+            return handle(entry);
         }
         return true;
     }
@@ -99,22 +98,18 @@ public final class BufferedTransportResultIngressChannel implements TransportRes
 
     private void processBatch(List<ResultIngressEntry> batch) {
         for (ResultIngressEntry item : batch) {
-            TransportResultIngressOutcome outcome = handle(item);
-            if (!outcome.ackable() && !shutdown) {
-                logger.warn("Result ingress delegate returned retryable outcome; requeueing resultMessageId={}",
-                        item.message().resultMessageId());
-                queue.offer(item);
-            }
+            handle(item);
         }
     }
 
-    private TransportResultIngressOutcome handle(ResultIngressEntry item) {
+    private boolean handle(ResultIngressEntry item) {
         try {
-            TransportResultIngressOutcome outcome = delegate.handle(item);
-            return outcome != null ? outcome : TransportResultIngressOutcome.RETRYABLE_FAILURE;
+            delegate.handle(item);
+            return true;
         } catch (RuntimeException ex) {
-            logger.error("Result ingress delegate failed for resultMessageId={}", item.message().resultMessageId(), ex);
-            return TransportResultIngressOutcome.RETRYABLE_FAILURE;
+            logger.error("Best-effort result ingress delegate failed for resultMessageId={}",
+                    item.message().resultMessageId(), ex);
+            return false;
         }
     }
 }

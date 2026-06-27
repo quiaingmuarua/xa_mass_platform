@@ -14,11 +14,11 @@ class RedisTransportNamespacesTest {
         assertEquals("xa:mass:transport:dispatch:v1", RedisTransportNamespaces.DISPATCH);
         assertEquals("xa:mass:transport:delivery-failure:v1", RedisTransportNamespaces.DELIVERY_FAILURE);
         assertEquals("xa:mass:transport:endpoint-lease:v1", RedisTransportNamespaces.ENDPOINT_LEASE);
-        assertEquals("xa:mass:transport:result-inbox:v1", RedisTransportNamespaces.RESULT_INBOX);
+        assertEquals("xa:mass:transport:result-ingress:v1", RedisTransportNamespaces.RESULT_INGRESS);
 
         assertEquals(RedisTransportNamespaces.DISPATCH, RedisTransportDispatchHandoff.DEFAULT_NAMESPACE_PREFIX);
         assertEquals(RedisTransportNamespaces.DELIVERY_FAILURE, RedisTransportDeliveryFailureChannel.DEFAULT_NAMESPACE_PREFIX);
         assertEquals(RedisTransportNamespaces.ENDPOINT_LEASE, RedisTransportEndpointLeaseStore.DEFAULT_NAMESPACE_PREFIX);
-        assertEquals(RedisTransportNamespaces.RESULT_INBOX, RedisTransportResultIngressChannel.DEFAULT_NAMESPACE_PREFIX);
+        assertEquals(RedisTransportNamespaces.RESULT_INGRESS, RedisTransportResultIngressChannel.DEFAULT_NAMESPACE_PREFIX);
     }
 }

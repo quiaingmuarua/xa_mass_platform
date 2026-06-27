@@ -62,7 +62,7 @@ class MassApplicationDistributedTransportTest {
         CapturingDeliveryCommandHandoff handoff = new CapturingDeliveryCommandHandoff();
         TransportConfig transport = disabledEngineProducerTransport();
         transport.setDispatchHandoffFactory(() -> handoff);
-        transport.setTaskResultInboxFactory(() -> mock(RedisTransportResultIngressChannel.class));
+        transport.setTaskResultIngressQueueFactory(() -> mock(RedisTransportResultIngressChannel.class));
         transport.setDeliveryFailureInboxFactory(() -> mock(RedisTransportDeliveryFailureChannel.class));
 
         CapturingMassEngine massEngine = new CapturingMassEngine(engine);
@@ -103,7 +103,7 @@ class MassApplicationDistributedTransportTest {
         CapturingDeliveryCommandHandoff handoff = new CapturingDeliveryCommandHandoff();
         TransportConfig transport = disabledEngineProducerTransport();
         transport.setDispatchHandoffFactory(() -> handoff);
-        transport.setTaskResultInboxFactory(() -> mock(RedisTransportResultIngressChannel.class));
+        transport.setTaskResultIngressQueueFactory(() -> mock(RedisTransportResultIngressChannel.class));
         transport.setDeliveryFailureInboxFactory(() -> mock(RedisTransportDeliveryFailureChannel.class));
 
         CapturingMassEngine massEngine = new CapturingMassEngine(engine);
@@ -178,7 +178,7 @@ class MassApplicationDistributedTransportTest {
         RecordingAdapter adapter = new RecordingAdapter("websocket", 1);
         TransportConfig transport = disabledTransportConsumerTransport();
         transport.setDispatchHandoffFactory(() -> handoff);
-        transport.setTaskResultInboxFactory(() -> mock(RedisTransportResultIngressChannel.class));
+        transport.setTaskResultIngressQueueFactory(() -> mock(RedisTransportResultIngressChannel.class));
         transport.setDeliveryFailureInboxFactory(() -> mock(RedisTransportDeliveryFailureChannel.class));
         transport.setPrimaryTransportAdapterBootstrap(new RecordingAdapterBootstrap(adapter));
 
@@ -204,7 +204,7 @@ class MassApplicationDistributedTransportTest {
         RecordingAdapter adapter = new RecordingAdapter("websocket", 0);
         TransportConfig transport = disabledTransportConsumerTransport();
         transport.setDispatchHandoffFactory(() -> handoff);
-        transport.setTaskResultInboxFactory(() -> mock(RedisTransportResultIngressChannel.class));
+        transport.setTaskResultIngressQueueFactory(() -> mock(RedisTransportResultIngressChannel.class));
         transport.setDeliveryFailureInboxFactory(() -> mock(RedisTransportDeliveryFailureChannel.class));
         transport.setPrimaryTransportAdapterBootstrap(new RecordingAdapterBootstrap(adapter));
 
@@ -228,7 +228,7 @@ class MassApplicationDistributedTransportTest {
         TransportConfig transport = disabledTransportConsumerTransport();
         transport.setAdapterMailboxConsumerAvailabilityMillis(300L);
         transport.setDispatchHandoffFactory(() -> handoff);
-        transport.setTaskResultInboxFactory(() -> mock(RedisTransportResultIngressChannel.class));
+        transport.setTaskResultIngressQueueFactory(() -> mock(RedisTransportResultIngressChannel.class));
         transport.setDeliveryFailureInboxFactory(() -> mock(RedisTransportDeliveryFailureChannel.class));
         transport.setPrimaryTransportAdapterBootstrap(new RecordingAdapterBootstrap(adapter));
 

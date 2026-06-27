@@ -6,7 +6,6 @@ import com.xa.mass.sdk.worker.WorkerActionReply;
 import com.xa.mass.transport.channel.ResultIngressDiagnostics;
 import com.xa.mass.transport.channel.ResultIngressEntry;
 import com.xa.mass.transport.channel.ResultIngressMessage;
-import com.xa.mass.transport.channel.TransportResultIngressOutcome;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
@@ -28,11 +27,11 @@ class RuntimeTaskResultIngestChannelTest {
     }
 
     @Test
-    void nullIngressIsRetryableFailure() {
+    void nullIngressIsTransientStarterFailure() {
         RuntimeTaskResultIngestChannel channel = new RuntimeTaskResultIngestChannel(new RecordingResultIngestFacade(null));
 
-        assertEquals(ResultIngressHandleOutcome.RETRYABLE_FAILURE, channel.handleResult(null));
-        assertEquals(TransportResultIngressOutcome.RETRYABLE_FAILURE, channel.handle(null));
+        assertEquals(ResultIngressHandleOutcome.TRANSIENT_FAILURE, channel.handleResult(null));
+        channel.handle(null);
     }
 
     @Test
@@ -167,7 +166,6 @@ class RuntimeTaskResultIngestChannelTest {
         assertEquals(ResultIngressHandleOutcome.HANDLED_NOOP, handled);
         assertEquals(1, facade.correlationCalls.get());
         assertEquals(0, facade.ingestCalls.get());
-        assertEquals(TransportResultIngressOutcome.ACKNOWLEDGED, handled.toTransportOutcome());
     }
 
     @Test
@@ -194,7 +192,7 @@ class RuntimeTaskResultIngestChannelTest {
     }
 
     @Test
-    void invalidPayloadIsPermanentRejectAndAckable() {
+    void invalidPayloadIsPermanentReject() {
         RuntimeTaskResultIngestChannel channel = new RuntimeTaskResultIngestChannel(new RecordingResultIngestFacade(null));
 
         ResultIngressHandleOutcome handled = channel.handleResult(
@@ -212,7 +210,6 @@ class RuntimeTaskResultIngestChannelTest {
         );
 
         assertEquals(ResultIngressHandleOutcome.PERMANENT_REJECT, handled);
-        assertEquals(TransportResultIngressOutcome.ACKNOWLEDGED, handled.toTransportOutcome());
     }
 
     @Test
@@ -233,7 +230,6 @@ class RuntimeTaskResultIngestChannelTest {
         )));
 
         assertEquals(ResultIngressHandleOutcome.PERMANENT_REJECT, handled);
-        assertEquals(TransportResultIngressOutcome.ACKNOWLEDGED, handled.toTransportOutcome());
     }
 
     private static ResultIngressEntry envelope(WorkerActionReply request) {
