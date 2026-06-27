@@ -47,9 +47,10 @@ keys for SDK/worker-api calls.
 - `xa-mass-java-sdk` production code must not depend on `xa-mass-server`,
   `xa-mass-engine`, `xa-mass-base`, embedded SDK modules, worker-pack modules,
   transport implementation modules, Spring Boot, or platform runtime assembly.
-- `xa-mass-embedded-sdk` advanced transport assembly hooks such as
-  `WorkerTransportRuntimeFactory` and `TransportAdapterBootstrap` are
-  embedded JVM extension points only. Do not expose them through
+- `xa-mass-embedded-sdk` may assemble embedded adapters through
+  adapter-starter specs and internal runtime factories. Legacy embedded
+  transport hooks such as `WorkerTransportRuntimeFactory` and
+  `TransportAdapterBootstrap` must not reappear or be exposed through
   `xa-mass-java-sdk`, public-contract DTOs, server worker APIs, worker-pack
   production APIs, or external adapter documentation.
 - `xa-mass-public-contract` may only contain Controller-exposed wire

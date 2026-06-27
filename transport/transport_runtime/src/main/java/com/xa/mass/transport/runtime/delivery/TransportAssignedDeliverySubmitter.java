@@ -18,12 +18,12 @@ public final class TransportAssignedDeliverySubmitter {
 
     private static final Logger logger = LoggerFactory.getLogger(TransportAssignedDeliverySubmitter.class);
 
-    private final TransportDispatchHandoff handoff;
+    private final TransportDispatchQueue dispatchQueue;
     private final TransportDeliveryFailureHandler failureHandler;
 
-    public TransportAssignedDeliverySubmitter(TransportDispatchHandoff handoff,
+    public TransportAssignedDeliverySubmitter(TransportDispatchQueue dispatchQueue,
                                               TransportDeliveryFailureHandler failureHandler) {
-        this.handoff = Objects.requireNonNull(handoff, "handoff");
+        this.dispatchQueue = Objects.requireNonNull(dispatchQueue, "dispatchQueue");
         this.failureHandler = failureHandler;
     }
 
@@ -45,7 +45,7 @@ public final class TransportAssignedDeliverySubmitter {
 
     private List<DispatchOutcome> offerBatch(AdapterMailboxDispatchBatch batch) {
         try {
-            List<DispatchOutcome> offered = handoff.offer(batch);
+            List<DispatchOutcome> offered = dispatchQueue.offer(batch.adapterMailboxKey(), batch.items());
             if (offered == null || offered.isEmpty()) {
                 return List.of();
             }

@@ -65,8 +65,6 @@ class RedisTransportDispatchHandoffTest {
 
     @Test
     void offerAndPollRoundTripsByAdapterMailbox() throws Exception {
-        consumerOne.claimConsumerForTest(DispatchMessageFixtures.mailboxKey(), "consumer-1");
-
         assertEquals(List.of(DispatchOutcomeStatus.QUEUED),
                 producer.offer(DispatchMessageFixtures.batch(
                         DispatchMessageFixtures.item("msg-1", "worker-1")
@@ -79,8 +77,8 @@ class RedisTransportDispatchHandoffTest {
     }
 
     @Test
-    void offerWithoutMailboxConsumerReturnsUnavailable() {
-        assertEquals(List.of(DispatchOutcomeStatus.UNAVAILABLE),
+    void offerDoesNotRequireMailboxConsumerAvailability() {
+        assertEquals(List.of(DispatchOutcomeStatus.QUEUED),
                 producer.offer(DispatchMessageFixtures.batch(
                         DispatchMessageFixtures.item("msg-1", "worker-1")
                 )).stream().map(outcome -> outcome.getStatus()).toList());
@@ -88,15 +86,14 @@ class RedisTransportDispatchHandoffTest {
 
     @Test
     void boundedOfferUsesMailboxKeysWithoutWorkerLaneOrNodeKeys() {
-        consumerOne.claimConsumerForTest(DispatchMessageFixtures.mailboxKey(), "consumer-1");
         producer.offer(DispatchMessageFixtures.batch(
                 DispatchMessageFixtures.item("msg-1", "worker-1")
         ));
         List<String> keys = producerConnection.sync().keys(namespacePrefix + ":*");
 
         assertTrue(keys.stream().anyMatch(key -> key.contains(":ready:q:")));
-        assertTrue(keys.stream().anyMatch(key -> key.endsWith(":mailbox-consumers")));
-        assertTrue(keys.stream().anyMatch(key -> key.endsWith(":mailbox-consumer-deadlines")));
+        assertFalse(keys.stream().anyMatch(key -> key.endsWith(":mailbox-consumers")));
+        assertFalse(keys.stream().anyMatch(key -> key.endsWith(":mailbox-consumer-deadlines")));
         assertFalse(keys.stream().anyMatch(key -> key.contains(":selected-worker-consumers:")));
         assertFalse(keys.stream().anyMatch(key -> key.contains(":worker:") && key.endsWith(":ready-commands")));
         assertFalse(keys.stream().anyMatch(key -> key.contains(":worker:") && key.endsWith(":inflight-commands")));
@@ -113,7 +110,6 @@ class RedisTransportDispatchHandoffTest {
 
     @Test
     void fullMailboxQueueReturnsBackpressureWithoutSleepingProducer() {
-        consumerOne.claimConsumerForTest(DispatchMessageFixtures.mailboxKey(), "consumer-1");
         producer.offer(DispatchMessageFixtures.batch(DispatchMessageFixtures.item("msg-1", "worker-1")));
         producer.offer(DispatchMessageFixtures.batch(DispatchMessageFixtures.item("msg-2", "worker-2")));
 
@@ -124,19 +120,17 @@ class RedisTransportDispatchHandoffTest {
     }
 
     @Test
-    void nonOwningConsumerCannotDestructivelyClaimMailboxItem() throws Exception {
-        consumerOne.claimConsumerForTest(DispatchMessageFixtures.mailboxKey(), "consumer-1");
+    void pollBySameQueueKeyIsDestructiveAcrossConsumers() throws Exception {
         producer.offer(DispatchMessageFixtures.batch(DispatchMessageFixtures.item("msg-1", "worker-1")));
 
-        assertTrue(consumerTwo.poll(DispatchMessageFixtures.mailboxKey(), 64, 50L).isEmpty());
-        List<DispatchMessage> batch = consumerOne.poll(DispatchMessageFixtures.mailboxKey(), 64, 500L);
+        List<DispatchMessage> batch = consumerTwo.poll(DispatchMessageFixtures.mailboxKey(), 64, 500L);
 
         assertEquals(List.of("msg-1"), DispatchMessageFixtures.messages(batch));
+        assertTrue(consumerOne.poll(DispatchMessageFixtures.mailboxKey(), 64, 50L).isEmpty());
     }
 
     @Test
     void pollIsDestructiveAndDoesNotRequireAck() throws Exception {
-        consumerOne.claimConsumerForTest(DispatchMessageFixtures.mailboxKey(), "consumer-1");
         producer.offer(DispatchMessageFixtures.batch(DispatchMessageFixtures.item("msg-1", "worker-1")));
 
         List<DispatchMessage> batch = consumerOne.poll(DispatchMessageFixtures.mailboxKey(), 64, 500L);
@@ -148,7 +142,6 @@ class RedisTransportDispatchHandoffTest {
 
     @Test
     void corruptReadyValueIsDroppedWithoutBlockingLaterItems() throws Exception {
-        consumerOne.claimConsumerForTest(DispatchMessageFixtures.mailboxKey(), "consumer-1");
         producer.pushRawReadyValueForTest(DispatchMessageFixtures.mailboxKey(), "not-json");
         producer.pushReadyItemForTest(DispatchMessageFixtures.mailboxKey(),
                 DispatchMessageFixtures.item("msg-1", "worker-1"));

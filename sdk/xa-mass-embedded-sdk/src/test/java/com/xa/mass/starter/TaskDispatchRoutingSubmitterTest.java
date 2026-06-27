@@ -140,6 +140,11 @@ class TaskDispatchRoutingSubmitterTest {
 
         @Override
         public List<DispatchOutcome> offer(AdapterMailboxDispatchBatch batch) {
+            return offer(batch.adapterMailboxKey(), batch.items());
+        }
+
+        @Override
+        public List<DispatchOutcome> offer(String dispatchQueueKey, List<DispatchMessage> items) {
             offers++;
             return List.of();
         }

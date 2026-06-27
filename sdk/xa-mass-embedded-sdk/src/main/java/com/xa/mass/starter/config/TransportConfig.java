@@ -3,8 +3,6 @@ package com.xa.mass.starter.config;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
 import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
-import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
-import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
 import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
@@ -36,20 +34,16 @@ public class TransportConfig {
     private SocketAdapterConfig bundledSocketAdapterConfig = new SocketAdapterConfig();
     private List<WebSocketAdapterAssembly> supplementalWebSocketAdapterAssemblies = List.of();
     private List<SocketAdapterConfig> supplementalSocketAdapterConfigs = List.of();
-    private WorkerTransportRuntimeFactory workerTransportRuntimeFactory;
     private Supplier<PollingPendingDeliveryBuffer> pollingPendingDeliveryBufferFactory;
     private Supplier<TransportDispatchHandoff> dispatchHandoffFactory;
     private Supplier<RedisTransportResultIngressChannel> taskResultIngressQueueFactory;
     private Supplier<RedisTransportDeliveryFailureChannel> deliveryFailureInboxFactory;
-    private TransportAdapterBootstrap primaryTransportAdapterBootstrap;
-    private List<TransportAdapterBootstrap> supplementalTransportAdapterBootstraps = List.of();
     private int maxPollingPendingDeliveryItems = DEFAULT_MAX_POLLING_PENDING_DELIVERY_ITEMS;
     private int maxPollingPendingDeliveryItemsPerWorker = DEFAULT_MAX_POLLING_PENDING_DELIVERY_ITEMS_PER_WORKER;
     private int transportRuntimeMaxPendingTasks = DEFAULT_RUNTIME_EXECUTOR_MAX_PENDING_TASKS;
     private int eventRuntimeMaxPendingTasks = DEFAULT_RUNTIME_EXECUTOR_MAX_PENDING_TASKS;
     private long eventHandlerTimeoutMillis;
     private long endpointLeaseMillis = 30_000L;
-    private long adapterMailboxConsumerAvailabilityMillis = 30_000L;
     private TransportRuntimeRole runtimeRole = TransportRuntimeRole.EMBEDDED;
 
     public TransportConfig() {
@@ -72,31 +66,24 @@ public class TransportConfig {
         this.supplementalSocketAdapterConfigs = source.supplementalSocketAdapterConfigs.stream()
                 .map(SocketAdapterConfig::new)
                 .toList();
-        this.workerTransportRuntimeFactory = source.workerTransportRuntimeFactory;
         this.pollingPendingDeliveryBufferFactory = source.pollingPendingDeliveryBufferFactory;
         this.dispatchHandoffFactory = source.dispatchHandoffFactory;
         this.taskResultIngressQueueFactory = source.taskResultIngressQueueFactory;
         this.deliveryFailureInboxFactory = source.deliveryFailureInboxFactory;
-        this.primaryTransportAdapterBootstrap = source.primaryTransportAdapterBootstrap;
-        this.supplementalTransportAdapterBootstraps = List.copyOf(source.supplementalTransportAdapterBootstraps);
         this.maxPollingPendingDeliveryItems = source.maxPollingPendingDeliveryItems;
         this.maxPollingPendingDeliveryItemsPerWorker = source.maxPollingPendingDeliveryItemsPerWorker;
         this.transportRuntimeMaxPendingTasks = source.transportRuntimeMaxPendingTasks;
         this.eventRuntimeMaxPendingTasks = source.eventRuntimeMaxPendingTasks;
         this.eventHandlerTimeoutMillis = source.eventHandlerTimeoutMillis;
         this.endpointLeaseMillis = source.endpointLeaseMillis;
-        this.adapterMailboxConsumerAvailabilityMillis = source.adapterMailboxConsumerAvailabilityMillis;
         this.runtimeRole = source.runtimeRole;
     }
 
     public boolean isEnabled() {
         return bundledWebSocketAdapterConfig.isEnabled()
                 || bundledSocketAdapterConfig.isEnabled()
-                || bundledSocketAdapterConfig.isServerEnabled()
                 || hasAnyEnabledWebSocketAssembly(supplementalWebSocketAdapterAssemblies)
-                || hasAnyEnabledSocketConfig(supplementalSocketAdapterConfigs)
-                || primaryTransportAdapterBootstrap != null
-                || !supplementalTransportAdapterBootstraps.isEmpty();
+                || hasAnyEnabledSocketConfig(supplementalSocketAdapterConfigs);
     }
 
     public String getInputApiUrl() {
@@ -197,10 +184,6 @@ public class TransportConfig {
         supplementalSocketAdapterConfigs = List.copyOf(updated);
     }
 
-    public WorkerTransportRuntimeFactory getWorkerTransportRuntimeFactory() {
-        return workerTransportRuntimeFactory;
-    }
-
     public Supplier<TransportEndpointLeaseStore> endpointLeaseStoreFactory() {
         return endpointLeaseStoreFactory;
     }
@@ -218,21 +201,6 @@ public class TransportConfig {
             throw new IllegalArgumentException("endpointLeaseMillis must be greater than 0");
         }
         this.endpointLeaseMillis = endpointLeaseMillis;
-    }
-
-    public long getAdapterMailboxConsumerAvailabilityMillis() {
-        return adapterMailboxConsumerAvailabilityMillis;
-    }
-
-    public void setAdapterMailboxConsumerAvailabilityMillis(long adapterMailboxConsumerAvailabilityMillis) {
-        if (adapterMailboxConsumerAvailabilityMillis <= 0L) {
-            throw new IllegalArgumentException("adapterMailboxConsumerAvailabilityMillis must be greater than 0");
-        }
-        this.adapterMailboxConsumerAvailabilityMillis = adapterMailboxConsumerAvailabilityMillis;
-    }
-
-    public void setWorkerTransportRuntimeFactory(WorkerTransportRuntimeFactory workerTransportRuntimeFactory) {
-        this.workerTransportRuntimeFactory = workerTransportRuntimeFactory;
     }
 
     public Supplier<PollingPendingDeliveryBuffer> getPollingPendingDeliveryBufferFactory() {
@@ -266,37 +234,6 @@ public class TransportConfig {
 
     public void setDeliveryFailureInboxFactory(Supplier<RedisTransportDeliveryFailureChannel> deliveryFailureInboxFactory) {
         this.deliveryFailureInboxFactory = deliveryFailureInboxFactory;
-    }
-
-    public TransportAdapterBootstrap getPrimaryTransportAdapterBootstrap() {
-        return primaryTransportAdapterBootstrap;
-    }
-
-    public void setPrimaryTransportAdapterBootstrap(
-            TransportAdapterBootstrap primaryTransportAdapterBootstrap) {
-        this.primaryTransportAdapterBootstrap = primaryTransportAdapterBootstrap;
-    }
-
-    public List<TransportAdapterBootstrap> getSupplementalTransportAdapterBootstraps() {
-        return supplementalTransportAdapterBootstraps;
-    }
-
-    public void setSupplementalTransportAdapterBootstraps(
-            List<TransportAdapterBootstrap> supplementalTransportAdapterBootstraps) {
-        this.supplementalTransportAdapterBootstraps = supplementalTransportAdapterBootstraps == null
-                ? List.of()
-                : List.copyOf(supplementalTransportAdapterBootstraps);
-    }
-
-    public void addSupplementalTransportAdapterBootstrap(
-            TransportAdapterBootstrap transportAdapterBootstrap) {
-        if (transportAdapterBootstrap == null) {
-            return;
-        }
-        List<TransportAdapterBootstrap> bootstraps =
-                new ArrayList<>(supplementalTransportAdapterBootstraps);
-        bootstraps.add(transportAdapterBootstrap);
-        supplementalTransportAdapterBootstraps = List.copyOf(bootstraps);
     }
 
     public int getMaxPollingPendingDeliveryItems() {
@@ -383,7 +320,7 @@ public class TransportConfig {
     }
 
     private static boolean hasAnyEnabledSocketConfig(List<SocketAdapterConfig> configs) {
-        return configs.stream().anyMatch(config -> config.isEnabled() || config.isServerEnabled());
+        return configs.stream().anyMatch(SocketAdapterConfig::isEnabled);
     }
 
     private static boolean hasAnyEnabledWebSocketAssembly(List<WebSocketAdapterAssembly> assemblies) {

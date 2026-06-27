@@ -10,23 +10,32 @@ import java.util.Objects;
 import java.util.concurrent.Future;
 
 /**
- * Drains a Redis result ingress queue into the engine-local result ingress handler.
+ * Drains a result ingress queue into the engine-local result ingress handler.
  */
 public final class TransportResultIngressQueuePump {
 
     private static final Logger logger = LoggerFactory.getLogger(TransportResultIngressQueuePump.class);
     private static final long POLL_TIMEOUT_MILLIS = 250L;
 
-    private final RedisTransportResultIngressChannel queue;
+    private final TransportResultIngressQueue queue;
+    private final String resultQueueKey;
     private final TransportResultIngressHandler delegate;
     private final RuntimeTaskExecutor executor;
     private volatile boolean running;
     private Future<?> drainLoop;
 
-    public TransportResultIngressQueuePump(RedisTransportResultIngressChannel queue,
+    public TransportResultIngressQueuePump(TransportResultIngressQueue queue,
+                                           TransportResultIngressHandler delegate,
+                                           RuntimeTaskExecutor executor) {
+        this(queue, TransportResultIngressQueue.DEFAULT_RESULT_QUEUE_KEY, delegate, executor);
+    }
+
+    public TransportResultIngressQueuePump(TransportResultIngressQueue queue,
+                                           String resultQueueKey,
                                            TransportResultIngressHandler delegate,
                                            RuntimeTaskExecutor executor) {
         this.queue = Objects.requireNonNull(queue, "queue");
+        this.resultQueueKey = requireText(resultQueueKey, "resultQueueKey");
         this.delegate = Objects.requireNonNull(delegate, "delegate");
         this.executor = Objects.requireNonNull(executor, "executor");
     }
@@ -51,7 +60,7 @@ public final class TransportResultIngressQueuePump {
     private void drainLoop() {
         while (running) {
             try {
-                ResultIngressEntry entry = queue.poll(POLL_TIMEOUT_MILLIS);
+                ResultIngressEntry entry = queue.poll(resultQueueKey, POLL_TIMEOUT_MILLIS);
                 if (entry == null) {
                     continue;
                 }
@@ -63,5 +72,12 @@ public final class TransportResultIngressQueuePump {
                 logger.error("Best-effort task result ingress queue item failed", e);
             }
         }
+    }
+
+    private static String requireText(String value, String fieldName) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(fieldName + " must not be blank");
+        }
+        return value.trim();
     }
 }

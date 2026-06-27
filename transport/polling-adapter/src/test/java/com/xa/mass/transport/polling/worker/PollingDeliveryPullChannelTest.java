@@ -4,7 +4,7 @@ import com.xa.mass.transport.channel.DeliveryPullStatus;
 import com.xa.mass.transport.channel.PulledDeliveryMessage;
 import com.xa.mass.transport.polling.delivery.InMemoryPollingPendingDeliveryBuffer;
 import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
-import com.xa.mass.transport.polling.runtime.PollingTransportAdapterBootstrap;
+import com.xa.mass.transport.polling.runtime.PollingAdapterRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 import org.junit.jupiter.api.Test;
 
@@ -21,7 +21,7 @@ class PollingDeliveryPullChannelTest {
         PollingPendingDeliveryBuffer deliveryBuffer = deliveryBuffer();
         PollingDeliveryExecutor executor = new PollingDeliveryExecutor("polling-default", deliveryBuffer);
         PollingDeliveryPullChannel pullChannel = new PollingDeliveryPullChannel(
-                PollingTransportAdapterBootstrap.DEFAULT_ADAPTER_ID,
+                PollingAdapterRuntimeFactory.DEFAULT_ADAPTER_ID,
                 deliveryBuffer
         );
         executor.dispatch(List.of(request("msg-2", "worker-2")));
@@ -39,7 +39,7 @@ class PollingDeliveryPullChannelTest {
         PollingPendingDeliveryBuffer deliveryBuffer = deliveryBuffer();
         PollingDeliveryExecutor executor = new PollingDeliveryExecutor("polling-default", deliveryBuffer);
         PollingDeliveryPullChannel pullChannel = new PollingDeliveryPullChannel(
-                PollingTransportAdapterBootstrap.DEFAULT_ADAPTER_ID,
+                PollingAdapterRuntimeFactory.DEFAULT_ADAPTER_ID,
                 deliveryBuffer
         );
         executor.dispatch(List.of(request("msg-1", "worker-1")));

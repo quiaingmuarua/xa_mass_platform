@@ -55,8 +55,8 @@ assigned-delivery final-hop executor extraction.
   parse error classification. WebSocket-specific behavior in that path is only
   `TextWebSocketFrame` extraction, `ChannelHandlerContext` error-frame writing,
   and Netty channel lifecycle.
-- WebSocket assigned delivery now contributes a runtime-created
-  `AdapterCommandExecutor` from `WebSocketTransportAdapterBootstrap` by passing
+- WebSocket assigned delivery now creates a runtime-local
+  `AdapterCommandExecutor` in `WebSocketAdapterRuntimeFactory` by passing
   a final-hop `send(DispatchMessage)` function to
   `AdapterCommandExecutors.perMessage(...)`. There is no
   `WebSocketTaskDispatchChannel` wrapper class in the target WebSocket shape.
@@ -167,7 +167,7 @@ delivery path in this roadmap:
 
 ```text
 DispatchMessage.selectedWorkerId
-  -> WebSocketTransportAdapterBootstrap contributed AdapterCommandExecutor
+  -> WebSocketAdapterRuntimeFactory creates AdapterCommandExecutor
   -> AdapterCommandExecutors.perMessage(...)
   -> WebSocketSessionRegistry.sendTextToWorker(workerId, frame)
 ```
@@ -214,7 +214,7 @@ DispatcherInboundHandler.channelRead0
   -> TransportJsonFrameParser parses JSON and DispatcherInboundHandler maps
      invalid/session-unbound frames to WebSocket error frames
   -> if accepted: inboundFrameSink.accept(frame)
-  -> WebSocketTransportAdapterBootstrap result path uses
+  -> WebSocketAdapterRuntimeFactory result path uses
      AdapterInboundResultProcessor
 ```
 
@@ -231,7 +231,7 @@ TransportEndpointLeaseDueHint(identity, leaseExpireAtEpochMillis)
 
 ```text
 DispatchMessage.selectedWorkerId
-  -> WebSocketTransportAdapterBootstrap contributed AdapterCommandExecutor
+  -> WebSocketAdapterRuntimeFactory creates AdapterCommandExecutor
   -> AdapterCommandExecutors.perMessage(...)
   -> WorkerChannelFrameJsonCodec.encodeAction(payload)
   -> WebSocketSessionRegistry.sendTextToWorker(selectedWorkerId, frame)
@@ -341,7 +341,7 @@ Scope:
   - `WebSocketServerSessionHandle.currentWorkerId(...)`
   - `WebSocketServerImpl`
   - `WebSocketServerFactoryContext`
-  - `WebSocketTransportAdapterBootstrap` custom server factory wiring
+  - `WebSocketAdapterRuntimeFactory` custom server factory wiring
   - `WebSocketSessionRegistry.SessionSnapshot`
   - `WebSocketSessionRegistry.activeSessionSnapshots()`
 - classify socket session identity fields separately:
@@ -542,7 +542,7 @@ Correct test names after ASI-0 inventory if they drift.
 Session-identity mainline proof:
 
 ```powershell
-.\mvnw.cmd -q -pl transport/websocket-adapter -am test "-Dtest=DispatcherInboundHandlerTest,WebSocketSessionRegistryTest,WebSocketSessionEvidenceRefresherTest,WebSocketTransportAdapterBootstrapTest" "-DtrimStackTrace=true"
+.\mvnw.cmd -q -pl transport/websocket-adapter -am test "-Dtest=DispatcherInboundHandlerTest,WebSocketSessionRegistryTest,WebSocketSessionEvidenceRefresherTest,WebSocketAdapterRuntimeFactoryTest" "-DtrimStackTrace=true"
 .\mvnw.cmd -q -pl transport/transport_runtime -am -Dtest=TransportConvergenceArchitectureGuardTest test "-DtrimStackTrace=true"
 .\mvnw.cmd -q -pl transport/transport_api,transport/transport_runtime,transport/websocket-adapter,sdk/xa-mass-embedded-sdk -am -DskipTests compile
 rg -n "WebSocketSessionOpenFrameReader|WebSocketSessionIdentity" transport/websocket-adapter/src/main/java transport/websocket-adapter/src/test/java

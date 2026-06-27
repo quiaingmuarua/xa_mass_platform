@@ -96,16 +96,17 @@ class TransportAssignedDeliverySubmitterTest {
         return outcomes.stream().map(DispatchOutcome::getStatus).toList();
     }
 
-    private static final class FakeHandoff implements TransportDispatchHandoff {
+    private static final class FakeHandoff implements TransportDispatchQueue {
         private final List<AdapterMailboxDispatchBatch> offered = new ArrayList<>();
         private boolean backpressure;
         private RuntimeException failure;
 
         @Override
-        public List<DispatchOutcome> offer(AdapterMailboxDispatchBatch batch) {
+        public List<DispatchOutcome> offer(String dispatchQueueKey, List<DispatchMessage> items) {
             if (failure != null) {
                 throw failure;
             }
+            AdapterMailboxDispatchBatch batch = new AdapterMailboxDispatchBatch(dispatchQueueKey, items);
             offered.add(batch);
             if (backpressure) {
                 return batch.items().stream()
@@ -126,13 +127,14 @@ class TransportAssignedDeliverySubmitterTest {
         }
 
         @Override
-        public List<DispatchMessage> poll(String adapterMailboxKey, int maxItems, long timeoutMillis) {
+        public List<DispatchMessage> poll(String dispatchQueueKey, int maxItems, long timeoutMillis) {
             return List.of();
         }
 
         @Override
         public void shutdown() {
         }
+
     }
 
     private static final class RecordingFailureHandler implements TransportDeliveryFailureHandler {

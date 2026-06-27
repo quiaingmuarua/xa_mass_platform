@@ -240,8 +240,8 @@ class TransportConvergenceArchitectureGuardTest {
         String removedPayloadWorkerIdAccessor = "payloadString(Transport" + "Packet.PAYLOAD_WORKER_ID)";
         assertNoProductionSourceContains(
                 List.of(
-                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/runtime/WebSocketTransportAdapterBootstrap.java"),
-                        repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/runtime/SocketTransportAdapterBootstrap.java")
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/runtime/WebSocketAdapterRuntimeFactory.java"),
+                        repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/runtime/SocketAdapterRuntimeFactory.java")
                 ),
                 removedPayloadWorkerIdAccessor,
                 "sendToAdapterRoute("
@@ -304,8 +304,8 @@ class TransportConvergenceArchitectureGuardTest {
         );
         assertNoProductionSourceContains(
                 List.of(
-                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/runtime/WebSocketTransportAdapterBootstrap.java"),
-                        repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/runtime/SocketTransportAdapterBootstrap.java")
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/runtime/WebSocketAdapterRuntimeFactory.java"),
+                        repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/runtime/SocketAdapterRuntimeFactory.java")
                 ),
                 "DispatchOutcomeFactory",
                 "DispatchOutcome.delivered(",
@@ -624,9 +624,9 @@ class TransportConvergenceArchitectureGuardTest {
 
         assertNoProductionSourceContains(
                 List.of(
-                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/runtime/WebSocketTransportAdapterBootstrap.java"),
-                        repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/runtime/SocketTransportAdapterBootstrap.java"),
-                        repoRoot().resolve("transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/runtime/DefaultWorkerTransportRuntimeFactory.java")
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/runtime/WebSocketAdapterRuntimeFactory.java"),
+                        repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/runtime/SocketAdapterRuntimeFactory.java"),
+                        repoRoot().resolve("transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/runtime/PollingAdapterRuntimeFactory.java")
                 ),
                 ".protocol(commandExecutor.protocol())",
                 ".protocol(pollingAdapter.protocol())"
@@ -640,21 +640,33 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
-    void adapterBootstrapOutputsAreExplicitContributions() throws IOException {
-        Path bootstrap = repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TransportAdapterBootstrap.java");
-        String bootstrapSource = Files.readString(bootstrap);
-        assertTrue(bootstrapSource.contains("TransportAdapterContribution contribute(TransportAdapterBootstrapContext context)"),
-                "Adapter bootstraps must return explicit contribution output");
-
-        assertNoProductionSourceContains(
-                List.of(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TransportAdapterBootstrapContext.java")),
-                "registerTransportBinding",
-                "registerManagedTransportAdapter",
-                "registerTransportServer",
-                "private TransportBinding",
-                "private ManagedTransportAdapter",
-                "private TransportServer"
+    void embeddedAdapterStarterReplacesBootstrapContributionModel() throws IOException {
+        assertPathsDoNotExist(
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TransportAdapterBootstrap.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TransportAdapterBootstrapContext.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TransportAdapterContribution.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/EmbeddedAdapterContributionHost.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/EmbeddedAdapterHostSet.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/WorkerTransportRuntimeFactory.java"),
+                repoRoot().resolve("transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/runtime/PollingTransportAdapterBootstrap.java"),
+                repoRoot().resolve("transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/runtime/DefaultWorkerTransportRuntimeFactory.java"),
+                repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/runtime/WebSocketTransportAdapterBootstrap.java"),
+                repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/runtime/SocketTransportAdapterBootstrap.java")
         );
+
+        Path starter = repoRoot().resolve(
+                "transport/adapter-starter/src/main/java/com/xa/mass/transport/starter/EmbeddedAdapterStarter.java");
+        String starterSource = Files.readString(starter);
+        assertTrue(starterSource.contains("EmbeddedAdapterCreateResult create(List<EmbeddedAdapterRuntimeSpec> specs)"),
+                "Embedded adapter starter must expose spec-only creation with a minimal result");
+        assertTrue(starterSource.contains("start(String adapterId)")
+                        && starterSource.contains("close(String adapterId)")
+                        && starterSource.contains("runtimeByAdapterId"),
+                "Embedded adapter starter must own adapter-id lifecycle over its internal runtime registry");
+        assertTrue(!starterSource.contains("TransportAdapterContribution")
+                        && !starterSource.contains("TransportAdapterBootstrapContext")
+                        && !starterSource.contains("EmbeddedAdapterRuntimeSet"),
+                "Embedded adapter starter must not reintroduce contribution baskets or runtime set snapshots");
     }
 
     @Test
@@ -682,88 +694,54 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
-    void concreteAdapterBootstrapsReceiveNarrowRuntimeCapabilities() throws IOException {
-        Path bootstrapContext = repoRoot().resolve(
-                "transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TransportAdapterBootstrapContext.java");
-        String contextSource = Files.readString(bootstrapContext);
-        assertTrue(contextSource.contains("implements AdapterBootstrapCapabilities"),
-                "Adapter bootstrap context must be a role-capability surface");
-        assertTrue(contextSource.contains("AdapterBootstrapAssignment assignment()"),
-                "Adapter bootstrap context must expose host assignment through a narrow capability");
-        assertTrue(contextSource.contains("AdapterMailboxCapabilities mailbox()"),
-                "Adapter bootstrap context must expose mailbox support through a narrow capability");
-        assertTrue(contextSource.contains("AdapterSessionEvidenceCapabilities sessionEvidence()"),
-                "Adapter bootstrap context must expose session evidence through a narrow capability");
-        assertTrue(!contextSource.contains("getEndpointLeaseStore(")
-                        && !contextSource.contains("getWorker" + "PresenceIngress(")
-                        && !contextSource.contains("getDeliveryService(")
-                        && !contextSource.contains("pullDeliveryBuffer(")
-                        && !contextSource.contains("public TransportResultIngressChannel getResultIngressChannel(")
-                        && !contextSource.contains("public RuntimeTaskExecutor getRuntimeTaskExecutor(")
-                        && !contextSource.contains("public String adapterMailboxKey(")
-                        && !contextSource.contains("public AdapterSessionEvidencePublisher sessionEvidencePublisher(")
-                        && !contextSource.contains("public AdapterMailboxConsumer adapterMailboxConsumer("),
-                "Adapter bootstrap context must not expose broad transport owner getters to concrete adapters");
+    void concreteAdapterRuntimeFactoriesConsumeSpecAndKeyedQueueEnvironment() throws IOException {
+        Path pollingFactory = repoRoot().resolve(
+                "transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/runtime/PollingAdapterRuntimeFactory.java");
+        Path websocketFactory = repoRoot().resolve(
+                "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/runtime/WebSocketAdapterRuntimeFactory.java");
+        Path socketFactory = repoRoot().resolve(
+                "transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/runtime/SocketAdapterRuntimeFactory.java");
 
-        Path pollingBootstrap = repoRoot().resolve(
-                "transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/runtime/PollingTransportAdapterBootstrap.java");
-        Path websocketBootstrap = repoRoot().resolve(
-                "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/runtime/WebSocketTransportAdapterBootstrap.java");
-        Path socketBootstrap = repoRoot().resolve(
-                "transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/runtime/SocketTransportAdapterBootstrap.java");
-
-        String pollingSource = Files.readString(pollingBootstrap);
-        assertTrue(pollingSource.contains("context.mailbox().assignedMailboxKey()")
-                        && pollingSource.contains("context.sessionEvidence().publisher()")
-                        && pollingSource.contains("context.mailbox().consumer(")
-                        && pollingSource.contains("PollingPendingDeliveryBuffer")
+        String pollingSource = Files.readString(pollingFactory);
+        assertTrue(pollingSource.contains("spec.dispatchQueueKey()")
+                        && pollingSource.contains("environment.dispatchQueue()")
+                        && pollingSource.contains("new AdapterDispatchQueueConsumerLoop")
                         && pollingSource.contains("new PollingDeliveryExecutor")
                         && pollingSource.contains("new PollingDeliveryPullChannel"),
-                "Polling bootstrap must consume host-owned mailbox/session capabilities and own its pending pull buffer");
-        String websocketSource = Files.readString(websocketBootstrap);
-        assertTrue(websocketSource.contains("context.mailbox().assignedMailboxKey()")
-                        && websocketSource.contains("context.sessionEvidence().publisher()")
-                        && websocketSource.contains("context.mailbox().consumer("),
-                "WebSocket bootstrap must consume host-owned mailbox key and session evidence through narrow capabilities");
-        String socketSource = Files.readString(socketBootstrap);
-        assertTrue(socketSource.contains("context.mailbox().assignedMailboxKey()")
-                        && socketSource.contains("context.sessionEvidence().publisher()")
-                        && socketSource.contains("context.mailbox().consumer("),
-                "Socket bootstrap must consume host-owned mailbox key and session evidence through narrow capabilities");
+                "Polling runtime factory must consume explicit queue keys and own polling pull-buffer parts");
+        String websocketSource = Files.readString(websocketFactory);
+        assertTrue(websocketSource.contains("spec.dispatchQueueKey()")
+                        && websocketSource.contains("spec.resultQueueKey()")
+                        && websocketSource.contains("environment.dispatchQueue()")
+                        && websocketSource.contains("environment.resultQueue()")
+                        && websocketSource.contains("new AdapterDispatchQueueConsumerLoop"),
+                "WebSocket runtime factory must consume explicit queue keys and shared queue ports");
+        String socketSource = Files.readString(socketFactory);
+        assertTrue(socketSource.contains("spec.dispatchQueueKey()")
+                        && socketSource.contains("spec.resultQueueKey()")
+                        && socketSource.contains("environment.dispatchQueue()")
+                        && socketSource.contains("environment.resultQueue()")
+                        && socketSource.contains("new AdapterDispatchQueueConsumerLoop"),
+                "Socket runtime factory must consume explicit queue keys and shared queue ports");
 
         assertNoProductionSourceContains(
-                List.of(pollingBootstrap, websocketBootstrap, socketBootstrap),
-                "getEndpointLeaseStore(",
-                "getWorker" + "PresenceIngress(",
-                "getDeliveryService(",
-                "TransportEndpointLeaseStore",
-                "WorkerPresence" + "Ingress",
+                List.of(pollingFactory, websocketFactory, socketFactory),
+                "TransportAdapterBootstrapContext",
+                "TransportAdapterContribution",
+                "AdapterMailboxCapabilities",
+                "AdapterIngressCapabilities",
+                "AdapterSessionEvidenceCapabilities",
+                "AdapterMailboxClient",
+                "AdapterMailboxConsumerRegistry",
+                "RedisTransportDispatchHandoff",
+                "InMemoryTransportDispatchHandoff",
                 "TransportDeliveryService",
-                "context.adapterMailboxKey(",
-                "context.sessionEvidencePublisher(",
-                "context.adapterMailboxConsumer(",
-                "context.getResultIngressChannel(",
-                "context.getRuntimeTaskExecutor(",
+                "TransportDeliveryStore",
                 "String adapterMailboxKey = config.getAdapterId()",
                 "String adapterMailboxKey = metadata.adapterId()"
         );
         assertNoProductionSourceContains(
-                List.of(
-                        pollingBootstrap,
-                        websocketBootstrap,
-                        socketBootstrap
-                ),
-                "AdapterMailboxConsumerRegistry",
-                "TransportDispatchHandoff",
-                "RedisTransportDispatchHandoff",
-                "InMemoryTransportDispatchHandoff",
-                "TransportEndpointLeaseStore",
-                "WorkerPresence" + "Ingress",
-                "TransportDeliveryService",
-                "TransportDeliveryStore"
-        );
-        assertNoProductionSourceContains(
-                List.of(websocketBootstrap, socketBootstrap),
+                List.of(websocketFactory, socketFactory),
                 "PollingPendingDeliveryBuffer"
         );
 
@@ -808,9 +786,14 @@ class TransportConvergenceArchitectureGuardTest {
         );
 
         assertNoProductionSourceContains(
-                List.of(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TransportAdapterBootstrapContext.java")),
+                List.of(
+                        repoRoot().resolve("transport/transport_runtime/src/main/java"),
+                        repoRoot().resolve("transport/adapter-starter/src/main/java")
+                ),
                 "getAdapterMailboxConsumerRegistry",
-                "publishMailboxConsumerAvailability("
+                "publishMailboxConsumerAvailability(",
+                "AdapterMailboxConsumerAvailability",
+                "MailboxConsumerAvailabilityPublisher"
         );
 
         assertNoProductionSourceContains(
@@ -825,14 +808,19 @@ class TransportConvergenceArchitectureGuardTest {
 
         assertNoProductionSourceContains(
                 List.of(
-                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/EmbeddedAdapterContributionHost.java"),
-                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/EmbeddedAdapterHostSet.java"),
-                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/MailboxConsumerAvailabilityPublisher.java")
+                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/embedded")
                 ),
                 "com.xa.mass.transport.websocket",
                 "com.xa.mass.transport.socket",
                 "com.xa.mass.transport.polling"
         );
+
+        Path consumerLoop = repoRoot().resolve(
+                "transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/embedded/AdapterDispatchQueueConsumerLoop.java");
+        String consumerLoopSource = Files.readString(consumerLoop);
+        assertTrue(consumerLoopSource.contains("dispatchQueue.poll")
+                        && consumerLoopSource.contains("dispatchQueueKey"),
+                "Adapter runtime consumer loop must be the mailbox queue consumer");
     }
 
     @Test
@@ -855,27 +843,36 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
-    void pollingAdapterBindingUsesBootstrapContributionPath() throws IOException {
-        Path pollingBootstrap = repoRoot().resolve(
-                "transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/runtime/PollingTransportAdapterBootstrap.java");
-        assertTrue(Files.exists(pollingBootstrap),
-                "Polling adapter must have the same bootstrap contribution owner as other embedded adapters");
-
-        Path defaultFactory = repoRoot().resolve(
-                "transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/runtime/DefaultWorkerTransportRuntimeFactory.java");
-        String factorySource = Files.readString(defaultFactory);
+    void pollingAdapterBindingUsesEmbeddedRuntimeFactoryPath() throws IOException {
+        Path pollingFactory = repoRoot().resolve(
+                "transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/runtime/PollingAdapterRuntimeFactory.java");
+        String factorySource = Files.readString(pollingFactory);
+        assertTrue(factorySource.contains("implements EmbeddedTransportAdapterRuntimeFactory"),
+                "Polling adapter must be exposed as an embedded adapter runtime factory");
+        assertTrue(factorySource.contains("new CompositeEmbeddedTransportAdapterRuntime")
+                        && factorySource.contains("TransportBinding.builder")
+                        && factorySource.contains(".deliveryPullChannel(pullChannel)")
+                        && factorySource.contains(".pullSessionEvidenceDriver(sessionEvidenceDriver)"),
+                "Polling runtime factory must create binding and polling runtime capabilities");
         assertTrue(!factorySource.contains("new PollingWorkerAdapter"),
-                "Default runtime factory must not create the polling adapter binding");
-        assertTrue(!factorySource.contains("pollingBinding("),
-                "Default runtime factory must not keep a polling binding helper");
+                "Polling runtime factory must not resurrect a polling worker adapter facade");
         assertTrue(!factorySource.contains("registrationDescriptors()"),
-                "Default runtime factory must not own polling registration metadata");
+                "Polling runtime factory must not own standalone registration metadata");
 
         Path composition = repoRoot().resolve(
                 "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/config/TransportRuntimeComposition.java");
         String compositionSource = Files.readString(composition);
-        assertTrue(compositionSource.contains("new PollingTransportAdapterBootstrap("),
-                "TransportRuntimeComposition must install the default polling adapter through bootstrap contribution");
+        assertTrue(compositionSource.contains("new EmbeddedAdapterRuntimeSpec(")
+                        && !compositionSource.contains("new PollingAdapterRuntimeFactory(")
+                        && !compositionSource.contains("new WebSocketAdapterRuntimeFactory(")
+                        && !compositionSource.contains("new SocketAdapterRuntimeFactory("),
+                "TransportRuntimeComposition must produce specs without creating concrete adapter runtime factories");
+        String starterDefaultsSource = Files.readString(repoRoot().resolve(
+                "transport/adapter-starter/src/main/java/com/xa/mass/transport/starter/EmbeddedAdapterStarterDefaults.java"));
+        assertTrue(starterDefaultsSource.contains("new PollingAdapterRuntimeFactory(")
+                        && starterDefaultsSource.contains("new WebSocketAdapterRuntimeFactory(")
+                        && starterDefaultsSource.contains("new SocketAdapterRuntimeFactory("),
+                "Adapter-starter defaults must own the bundled concrete adapter factory list");
     }
 
     @Test
@@ -889,8 +886,8 @@ class TransportConvergenceArchitectureGuardTest {
                 "transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/worker/PollingDeliveryPullChannel.java");
         Path evidenceDriver = repoRoot().resolve(
                 "transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/runtime/PollingSessionEvidenceDriver.java");
-        Path bootstrap = repoRoot().resolve(
-                "transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/runtime/PollingTransportAdapterBootstrap.java");
+        Path factory = repoRoot().resolve(
+                "transport/polling-adapter/src/main/java/com/xa/mass/transport/polling/runtime/PollingAdapterRuntimeFactory.java");
         assertTrue(Files.exists(executor), "Polling command execution must live in an explicit executor");
         assertTrue(Files.exists(pullChannel), "Polling pull demux must live in an explicit pull channel");
         assertTrue(Files.exists(evidenceDriver), "Polling pull-session evidence must live in an explicit driver");
@@ -920,15 +917,15 @@ class TransportConvergenceArchitectureGuardTest {
                 "QueuedPulledDispatch"
         );
 
-        String bootstrapSource = Files.readString(bootstrap);
-        assertTrue(bootstrapSource.contains("new PollingDeliveryExecutor"),
-                "Polling bootstrap must create the command executor explicitly");
-        assertTrue(bootstrapSource.contains("new PollingDeliveryPullChannel"),
-                "Polling bootstrap must create the pull channel explicitly");
-        assertTrue(bootstrapSource.contains("new PollingSessionEvidenceDriver"),
-                "Polling bootstrap must create the session evidence driver explicitly");
-        assertTrue(!bootstrapSource.contains("deliveryPullChannel(deliveryExecutor)"),
-                "Polling bootstrap must not reuse the command executor as the pull channel");
+        String factorySource = Files.readString(factory);
+        assertTrue(factorySource.contains("new PollingDeliveryExecutor"),
+                "Polling runtime factory must create the command executor explicitly");
+        assertTrue(factorySource.contains("new PollingDeliveryPullChannel"),
+                "Polling runtime factory must create the pull channel explicitly");
+        assertTrue(factorySource.contains("new PollingSessionEvidenceDriver"),
+                "Polling runtime factory must create the session evidence driver explicitly");
+        assertTrue(!factorySource.contains("deliveryPullChannel(deliveryExecutor)"),
+                "Polling runtime factory must not reuse the command executor as the pull channel");
     }
 
     @Test
@@ -949,13 +946,14 @@ class TransportConvergenceArchitectureGuardTest {
 
         String facadeSource = Files.readString(repoRoot().resolve(
                 "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/MassSdk.java"));
-        assertTrue(facadeSource.contains("Advanced embedded Java assembly seam"),
-                "MassSdk advanced transport hooks must be documented as embedded Java assembly");
-
         String builderSource = Files.readString(repoRoot().resolve(
                 "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/builder/MassApplicationBuilder.java"));
-        assertTrue(builderSource.contains("Advanced embedded Java assembly seam"),
-                "MassApplicationBuilder advanced transport hooks must be documented as embedded Java assembly");
+        assertTrue(!facadeSource.contains("workerTransportRuntimeFactory(")
+                        && !facadeSource.contains("addSupplementalTransportAdapterBootstrap(")
+                        && !builderSource.contains("workerTransportRuntimeFactory(")
+                        && !builderSource.contains("addSupplementalTransportAdapterBootstrap(")
+                        && !builderSource.contains("adapterMailboxConsumerAvailabilityMillis("),
+                "Embedded SDK public facade/builder must not expose legacy adapter bootstrap/factory hooks");
     }
 
     @Test
@@ -963,16 +961,16 @@ class TransportConvergenceArchitectureGuardTest {
         assertPathsDoNotExist(repoRoot().resolve(
                 "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/dispatcher/WebSocket" + "TaskDispatchChannel.java"));
 
-        Path bootstrap = repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/runtime/WebSocketTransportAdapterBootstrap.java");
-        String bootstrapSource = Files.readString(bootstrap);
-        assertTrue(bootstrapSource.contains("AdapterCommandExecutors.perMessage(\"WebSocket\""),
-                "WebSocket bootstrap must let runtime embedded support own per-message outcome normalization");
-        assertTrue(bootstrapSource.contains("sendTextToWorker("),
+        Path runtimeFactory = repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/runtime/WebSocketAdapterRuntimeFactory.java");
+        String runtimeFactorySource = Files.readString(runtimeFactory);
+        assertTrue(runtimeFactorySource.contains("AdapterCommandExecutors.perMessage(\"WebSocket\""),
+                "WebSocket runtime factory must let runtime embedded support own per-message outcome normalization");
+        assertTrue(runtimeFactorySource.contains("sendTextToWorker("),
                 "WebSocket assigned delivery executor must dispatch by selected worker only");
-        assertTrue(bootstrapSource.contains("encodeAction(item.payload())"),
+        assertTrue(runtimeFactorySource.contains("encodeAction(item.payload())"),
                 "WebSocket assigned delivery must frame the opaque payload as a worker ACTION frame");
         assertSourceSliceDoesNotContain(
-                bootstrap,
+                runtimeFactory,
                 "static AdapterCommandExecutor webSocketCommandExecutor",
                 "private TransportServer createTransportServer",
                 "WebSocketSessionStore",
@@ -984,6 +982,8 @@ class TransportConvergenceArchitectureGuardTest {
                 "sendDirect(",
                 "WebSocketCommandDispatchContext",
                 "WebSocketDispatcherContext",
+                "dispatchQueueKey",
+                "resultQueueKey",
                 "adapterId"
         );
 
@@ -996,11 +996,11 @@ class TransportConvergenceArchitectureGuardTest {
                 repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSelectedWorkerSender.java"),
                 repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketSelectedWorkerRegistry.java"));
 
-        assertTrue(!bootstrapSource.contains("CompositeWorkerEndpointRegistry")
-                        && !bootstrapSource.contains("registerSelectedWorkerRegistry")
-                        && !bootstrapSource.contains("getEndpointRegistry()")
-                        && !bootstrapSource.contains("WebSocketSelectedWorker"),
-                "WebSocket bootstrap must not register a selected-worker endpoint-registry wrapper");
+        assertTrue(!runtimeFactorySource.contains("CompositeWorkerEndpointRegistry")
+                        && !runtimeFactorySource.contains("registerSelectedWorkerRegistry")
+                        && !runtimeFactorySource.contains("getEndpointRegistry()")
+                        && !runtimeFactorySource.contains("WebSocketSelectedWorker"),
+                "WebSocket runtime factory must not register a selected-worker endpoint-registry wrapper");
 
         assertPathsDoNotExist(repoRoot().resolve("transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/ServerSessionManager.java"));
         assertPathsDoNotExist(
@@ -1093,15 +1093,15 @@ class TransportConvergenceArchitectureGuardTest {
                 repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/WorkerEndpointRegistry.java"),
                 repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/CompositeWorkerEndpointRegistry.java")
         );
-        String webSocketBootstrapSource = Files.readString(repoRoot().resolve(
-                "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/runtime/WebSocketTransportAdapterBootstrap.java"));
-        assertTrue(!webSocketBootstrapSource.contains("sendToSelectedWorker(\n                            adapterId()")
-                        && !webSocketBootstrapSource.contains("sendToSelectedWorker(\r\n                            adapterId()"),
+        String webSocketFactorySource = Files.readString(repoRoot().resolve(
+                "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/runtime/WebSocketAdapterRuntimeFactory.java"));
+        assertTrue(!webSocketFactorySource.contains("sendToSelectedWorker(\n                            adapterId()")
+                        && !webSocketFactorySource.contains("sendToSelectedWorker(\r\n                            adapterId()"),
                 "WebSocket assigned delivery must not pass adapterId into selected-worker endpoint send");
-        String socketBootstrapSource = Files.readString(repoRoot().resolve(
-                "transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/runtime/SocketTransportAdapterBootstrap.java"));
-        assertTrue(!socketBootstrapSource.contains("sendToSelectedWorker(\n                            adapterId()")
-                        && !socketBootstrapSource.contains("sendToSelectedWorker(\r\n                            adapterId()"),
+        String socketFactorySource = Files.readString(repoRoot().resolve(
+                "transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/runtime/SocketAdapterRuntimeFactory.java"));
+        assertTrue(!socketFactorySource.contains("sendToSelectedWorker(\n                            adapterId()")
+                        && !socketFactorySource.contains("sendToSelectedWorker(\r\n                            adapterId()"),
                 "Socket assigned delivery must not pass adapterId into selected-worker endpoint send");
         assertPathsDoNotExist(repoRoot().resolve(
                 "transport/websocket-adapter/src/main/java/com/xa/mass/transport/websocket/session/WebSocketEndpointInspector.java"));
@@ -1115,10 +1115,8 @@ class TransportConvergenceArchitectureGuardTest {
         assertTrue(!webSocketAdapterConfigSource.contains("TransportServerFactory")
                         && !webSocketAdapterConfigSource.contains("WebSocketServerFactoryContext"),
                 "WebSocketAdapterConfig must remain pure adapter property config; custom server factory hooks belong to SDK assembly");
-        assertTrue(!webSocketBootstrapSource.contains("private final WebSocketAdapterConfig config")
-                        && !webSocketBootstrapSource.contains("config.get")
-                        && !webSocketBootstrapSource.contains("config.is"),
-                "WebSocket bootstrap must snapshot concrete adapter properties instead of retaining live config access");
+        assertTrue(!webSocketFactorySource.contains("private final WebSocketAdapterConfig config"),
+                "WebSocket runtime factory must not retain live adapter config access");
     }
 
     @Test
@@ -1150,26 +1148,26 @@ class TransportConvergenceArchitectureGuardTest {
                 repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/dispatcher/SocketCommandDispatchContext.java")
         );
 
-        Path bootstrap = repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/runtime/SocketTransportAdapterBootstrap.java");
-        String bootstrapSource = Files.readString(bootstrap);
-        assertTrue(bootstrapSource.contains("AdapterCommandExecutors.perMessage(\"Socket\""),
-                "Socket bootstrap must let runtime embedded support own per-message outcome normalization");
-        assertTrue(bootstrapSource.contains("sendToWorker("),
+        Path runtimeFactory = repoRoot().resolve("transport/socket-adapter/src/main/java/com/xa/mass/transport/socket/runtime/SocketAdapterRuntimeFactory.java");
+        String runtimeFactorySource = Files.readString(runtimeFactory);
+        assertTrue(runtimeFactorySource.contains("AdapterCommandExecutors.perMessage(\"Socket\""),
+                "Socket runtime factory must let runtime embedded support own per-message outcome normalization");
+        assertTrue(runtimeFactorySource.contains("sendToWorker("),
                 "Socket assigned delivery executor must dispatch by selected worker only");
-        assertTrue(bootstrapSource.contains("encodeCanonicalTaskDispatch(item)"),
+        assertTrue(runtimeFactorySource.contains("encodeCanonicalTaskDispatch(item)"),
                 "Socket assigned delivery must frame the opaque payload as a worker ACTION frame");
-        assertTrue(!bootstrapSource.contains("private final SocketAdapterConfig config")
-                        && !bootstrapSource.contains("config.get")
-                        && !bootstrapSource.contains("config.is"),
-                "Socket bootstrap must snapshot concrete adapter properties instead of retaining live config access");
+        assertTrue(!runtimeFactorySource.contains("private final SocketAdapterConfig config"),
+                "Socket runtime factory must not retain live adapter config access");
         assertSourceSliceDoesNotContain(
-                bootstrap,
+                runtimeFactory,
                 "static AdapterCommandExecutor socketCommandExecutor",
-                "private record SocketRuntimeParts",
+                "private TransportServer createServer",
                 "SocketCommandDispatchContext",
                 "WorkerEndpointRegistry",
                 "TransportDeliveryService",
-                "sendDirect("
+                "sendDirect(",
+                "dispatchQueueKey",
+                "resultQueueKey"
         );
 
 

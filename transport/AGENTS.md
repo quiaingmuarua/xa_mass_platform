@@ -165,27 +165,22 @@ entry for `transport/`.
   transport-neutral remote adapter contract. Do not make transport core depend
   on executor-local connection/session classes, late-bound handler setters, or
   adapter-owned registries.
-- `EmbeddedAdapterHostSet` and `EmbeddedAdapterContributionHost` are
-  current embedded Java adapter host-support classes around contribution-owned
-  managed resources and servers. Their stable role is host mounting with the
-  application, not adapter health supervision, restart, failover, migration, or
-  mailbox placement. `MailboxConsumerAvailabilityPublisher` owns only narrow mailbox
-  consumer availability claim, refresh, and release for one command-delivery
-  binding. `MassApplication` assembles and starts/stops these host-support
-  units; concrete adapter bootstraps must not receive or call
-  `AdapterMailboxConsumerRegistry`.
-- Concrete adapter bootstraps receive narrow role capabilities from
-  `TransportAdapterBootstrapContext`: host-assigned adapter mailbox key,
-  session evidence publisher, adapter-owned mailbox consumer construction,
-  adapter-facing result ingress sink, and adapter-facing host executor where
-  needed. They must not receive raw endpoint lease stores, worker-runtime
-  scheduling mutation surfaces, generic delivery services, mailbox registries,
-  or handoff internals, and they must not mint mailbox keys from adapter id or
-  protocol values themselves.
+- `EmbeddedAdapterStarter` owns embedded Java adapter runtime creation,
+  adapter-id indexing, and adapter-id lifecycle. Embedded SDK passes only
+  `EmbeddedAdapterRuntimeSpec` values and does not receive runtime sets,
+  contribution baskets, queue objects, or concrete adapter internals.
+- Concrete adapter runtime factories receive `EmbeddedAdapterRuntimeSpec` plus
+  shared runtime environment ports. They create their own binding, managed
+  adapter resources, optional server resources, selected-worker final-hop
+  executor, session evidence projection, and queue consumer loop. They must not
+  receive raw endpoint lease stores, worker-runtime scheduling mutation
+  surfaces, generic delivery services, mailbox registries, or handoff internals,
+  and they must not mint mailbox keys from adapter id or protocol values
+  themselves.
 - Concrete adapters may observe protocol sessions and send to selected workers,
   but endpoint lease evidence is projected by `TransportEndpointLeasePublisher`,
-  mailbox consumer availability is claimed by embedded adapter host support,
-  and confirmed current-session loss is bridged by SDK/starter assembly through
+  assigned-dispatch queue consumption is owned by the adapter runtime consumer
+  loop, and confirmed current-session loss is bridged by SDK/starter assembly through
   the negative-only worker dispatch block sink.
   WebSocket now splits this into explicit session store, server handle, command
   executor, protocol-edge `AdapterSessionIdentity` construction, public
@@ -299,7 +294,7 @@ Prefer these after transport changes:
 
 ```bash
 ./mvnw -q -pl transport/transport_runtime test -Dtest=TransportRuntimeRegistryTest,TransportRegistrationResolverTest,InMemoryTransportDispatchHandoffTest,TransportDispatchBatchCodecTest,RedisTransportDispatchHandoffTest,RedisTransportDeliveryFailureChannelTest,BufferedTransportResultIngressChannelTest,RedisTransportResultIngressChannelTest,InMemoryTransportEndpointLeaseStoreTest,RedisTransportEndpointLeaseStoreTest,AdapterInboundResultProcessorTest,WorkerChannelActionReplyReaderTest,WorkerChannelActionReplyResultFrameReaderTest,TransportConvergenceArchitectureGuardTest
-./mvnw -q -pl transport/transport_api,transport/transport_runtime,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter test -Dtest=CanonicalWorkerGroupRouteKeyCodecTest,ResultIngressEntryTest,ResultIngressMessageTest,JsonAdapterResultDiagnosticsProviderTest,WebSocketTransportAdapterBootstrapTest,DispatcherInboundHandlerTest,SocketTransportAdapterBootstrapTest,SocketTransportServerTest,SocketTransportFrameCodecTest,PollingDeliveryExecutorTest,PollingDeliveryPullChannelTest,PollingSessionEvidenceDriverTest,SocketSessionManagerTest,WebSocketSessionRegistryTest,PollingDispatchMessageCodecTest
+./mvnw -q -pl transport/transport_api,transport/transport_runtime,transport/adapter-starter,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter test -Dtest=CanonicalWorkerGroupRouteKeyCodecTest,ResultIngressEntryTest,ResultIngressMessageTest,JsonAdapterResultDiagnosticsProviderTest,WebSocketAdapterRuntimeFactoryTest,DispatcherInboundHandlerTest,SocketAdapterRuntimeFactoryTest,SocketTransportServerTest,SocketTransportFrameCodecTest,PollingDeliveryExecutorTest,PollingDeliveryPullChannelTest,PollingSessionEvidenceDriverTest,SocketSessionManagerTest,WebSocketSessionRegistryTest,PollingDispatchMessageCodecTest,EmbeddedAdapterStarterTest
 ./mvnw -q -pl sdk/xa-mass-embedded-sdk -am test -Dtest=MassSdkTest,MassApplicationDistributedTransportTest,RuntimeTaskResultIngestChannelTest,EmbeddedPullWorkerSessionTest -Dsurefire.failIfNoSpecifiedTests=false
 ```
 

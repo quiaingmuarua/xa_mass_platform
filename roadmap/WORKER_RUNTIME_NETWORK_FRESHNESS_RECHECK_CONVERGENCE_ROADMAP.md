@@ -280,9 +280,9 @@ Scope:
 - Scope includes:
   - `AdapterSessionEvidencePublisher.connected(...)`;
   - `AdapterSessionEvidencePublisher.claimEndpoint(...)`;
-  - `TransportAdapterBootstrapContext`;
+  - embedded adapter runtime environment/session evidence wiring;
   - `MassApplication.createCurrentSessionConnectSink()`;
-  - related WebSocket/Socket/Polling session and bootstrap tests.
+  - related WebSocket/Socket/Polling session and adapter runtime tests.
 - Delete `WorkerDispatchRecoveryMode`.
 - Remove `dispatchRecoveryMode` and related constants/methods from
   `WorkerScoreBandSlotMetadata`.

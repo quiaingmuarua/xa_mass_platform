@@ -31,12 +31,14 @@ class TransportRedisKeyspaceGuardTest {
         for (String keyFamily : List.of(
                 "bucket:<encodedDeliveryBucketId>:workers",
                 "bucket:<encodedDeliveryBucketId>:deadlines",
-                "mailbox:<encodedAdapterMailboxKey>:ready-commands",
-                "mailbox-consumers",
-                "mailbox-consumer-deadlines"
+                "mailbox:<encodedAdapterMailboxKey>:ready-commands"
         )) {
             assertTrue(content.contains(keyFamily), () -> "missing transport Redis key family manifest entry: " + keyFamily);
         }
+        assertTrue(!content.contains("mailbox-consumers"),
+                "transport Redis key manifest must not preserve adapter mailbox consumer evidence keys");
+        assertTrue(!content.contains("mailbox-consumer-deadlines"),
+                "transport Redis key manifest must not preserve adapter mailbox consumer deadline keys");
         assertTrue(!content.contains("worker-index"),
                 "transport Redis key manifest must not preserve selected-worker physical queue keys");
     }
@@ -93,8 +95,8 @@ class TransportRedisKeyspaceGuardTest {
 
         assertTrue(!content.contains("q:<routeKey>"),
                 "transport boundary baseline must not document routeKey-only delivery queues");
-        assertTrue(content.contains("mailbox-consumers"),
-                "transport boundary baseline must document mailbox delivery consumer evidence");
+        assertTrue(!content.contains("mailbox-consumers"),
+                "transport boundary baseline must not document mailbox delivery consumer evidence");
         assertTrue(!content.contains("selected-worker-consumers:<encodedDeliveryQueueKey>"),
                 "transport boundary baseline must not document selected-worker delivery consumer evidence");
         assertTrue(!content.contains("q:<encodedDeliveryQueueKey>:worker:<encodedSelectedWorkerId>:ready-commands"),

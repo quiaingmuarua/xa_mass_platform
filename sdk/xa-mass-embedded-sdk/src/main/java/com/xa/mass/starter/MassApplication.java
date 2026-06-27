@@ -17,26 +17,21 @@ import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeComposition;
 import com.xa.mass.starter.config.TransportRuntimeRole;
-import com.xa.mass.transport.runtime.EmbeddedAdapterHostSet;
+import com.xa.mass.transport.runtime.InMemoryTransportResultIngressQueue;
 import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
 import com.xa.mass.transport.runtime.ResolvedPullWorkerTransport;
-import com.xa.mass.transport.runtime.TransportAdapterContribution;
-import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
-import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
-import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
-import com.xa.mass.transport.runtime.BufferedTransportResultIngressChannel;
-import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
+import com.xa.mass.transport.runtime.TransportResultIngressQueue;
 import com.xa.mass.transport.runtime.TransportResultIngressQueuePump;
-import com.xa.mass.transport.runtime.embedded.TransportDeliveryFailureEvidenceSink;
+import com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeEnvironment;
 import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
-import com.xa.mass.transport.runtime.delivery.AdapterMailboxConsumerRegistry;
-import com.xa.mass.transport.runtime.delivery.NoopAdapterMailboxConsumerRegistry;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureEvent;
 import com.xa.mass.transport.runtime.delivery.TransportAssignedDeliverySubmitter;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
 import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureInboxPump;
+import com.xa.mass.transport.starter.EmbeddedAdapterStarter;
+import com.xa.mass.transport.starter.EmbeddedAdapterStarterDefaults;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
@@ -77,17 +72,16 @@ public class MassApplication {
     private final MassEventRuntime eventRuntime;
 
     private final MassEngine engine;
-    private TransportRuntimeRegistry transportRuntimeRegistry;
     private TransportEndpointLeaseStore endpointLeaseStore;
     private TransportDispatchHandoff transportDispatchHandoff;
-    private EmbeddedAdapterHostSet embeddedAdapterHostSet = EmbeddedAdapterHostSet.empty();
+    private EmbeddedAdapterStarter embeddedAdapterStarter;
+    private TransportResultIngressQueue resultIngressQueue;
     private RedisTransportResultIngressChannel taskResultIngressQueue;
     private TransportResultIngressQueuePump taskResultIngressQueuePump;
     private RedisTransportDeliveryFailureChannel deliveryFailureInbox;
     private TransportDeliveryFailureInboxPump deliveryFailureInboxPump;
     private RuntimeTaskExecutor transportRuntimeTaskExecutor;
     private RuntimeTaskExecutor eventRuntimeTaskExecutor;
-    private BufferedTransportResultIngressChannel bufferedResultIngestChannel;
 
     public MassApplication(MassEngine engine,
                            TransportConfig transportConfig,
@@ -110,7 +104,7 @@ public class MassApplication {
         try {
             TaskDispatchBatchListener taskDispatchListener = initializeComponents();
 
-            startEmbeddedAdapterHostSet();
+            startEmbeddedAdapterStarter();
             startEngine(taskDispatchListener);
 
             MDC.clear();
@@ -135,7 +129,7 @@ public class MassApplication {
 
         try {
             try {
-                stopEmbeddedAdapterHostSet();
+                stopEmbeddedAdapterStarter();
                 TransportRuntimeRole runtimeRole = transportRuntimeComposition.getRuntimeRole();
                 if (runtimeRole == TransportRuntimeRole.TRANSPORT_CONSUMER) {
                     stopDispatchHandoff();
@@ -143,12 +137,11 @@ public class MassApplication {
                 } else if (runtimeRole == TransportRuntimeRole.ENGINE_PRODUCER) {
                     stopDistributedTransportChannels();
                 }
-                drainResultIngestBuffer();
-
                 if (engine != null && engineConfig.isEnabled()) {
                     engine.stop();
                 }
             } finally {
+                stopDistributedTransportQueuePumps();
                 stopDispatchHandoff();
                 closeDistributedTransportChannels();
                 stopEndpointLeaseStore();
@@ -174,18 +167,12 @@ public class MassApplication {
             logger.warn("Failed to stop engine after startup failure", cleanupError);
         }
         try {
-            stopEmbeddedAdapterHostSet();
+            stopEmbeddedAdapterStarter();
             stopDispatchHandoff();
             stopDistributedTransportChannels();
         } catch (Exception cleanupError) {
             startupFailure.addSuppressed(cleanupError);
             logger.warn("Failed to stop embedded adapter runtime after startup failure", cleanupError);
-        }
-        try {
-            drainResultIngestBuffer();
-        } catch (Exception cleanupError) {
-            startupFailure.addSuppressed(cleanupError);
-            logger.warn("Failed to drain result ingest buffer after startup failure", cleanupError);
         }
         try {
             stopEndpointLeaseStore();
@@ -211,7 +198,8 @@ public class MassApplication {
         logger.info("Initializing core components");
 
         try {
-            embeddedAdapterHostSet = EmbeddedAdapterHostSet.empty();
+            embeddedAdapterStarter = null;
+            resultIngressQueue = null;
             startEventRuntimeTaskExecutor();
             endpointLeaseStore = transportRuntimeComposition.resolveTransportEndpointLeaseStore();
             engineConfig.setWorkerReachabilityLookup(this::resolveWorkerReachabilityFromEndpointLease);
@@ -223,41 +211,27 @@ public class MassApplication {
             );
             TransportRuntimeRole runtimeRole = transportRuntimeComposition.getRuntimeRole();
             validateWorkerDeliveryTargetResolverConfiguration(runtimeRole);
-            AdapterMailboxConsumerRegistry mailboxConsumerRegistry = NoopAdapterMailboxConsumerRegistry.INSTANCE;
             if (requiresDispatchHandoff(runtimeRole)) {
                 transportDispatchHandoff =
                         transportRuntimeComposition.resolveTransportDispatchHandoff(DEFAULT_DISPATCH_HANDOFF_CAPACITY);
-                if (transportDispatchHandoff instanceof AdapterMailboxConsumerRegistry registry) {
-                    mailboxConsumerRegistry = registry;
-                }
             }
             TaskDispatchBatchListener taskDispatchListener = null;
-            TransportResultIngressChannel resultIngressChannel = null;
             TransportDeliveryFailureHandler adapterHostFailureHandler = null;
-            List<TransportBinding> adapterBindings = new ArrayList<>();
-            List<TransportAdapterContribution> adapterContributions = new ArrayList<>();
             if (runtimeRole == TransportRuntimeRole.TRANSPORT_CONSUMER) {
                 taskResultIngressQueue = transportRuntimeComposition.resolveTaskResultIngressQueue();
-                resultIngressChannel = taskResultIngressQueue;
+                resultIngressQueue = taskResultIngressQueue;
                 deliveryFailureInbox = transportRuntimeComposition.resolveDeliveryFailureInbox();
                 adapterHostFailureHandler = deliveryFailureInbox;
                 logger.info("Task result ingest channel initialized (redis ingress queue producer)");
             } else if (engineConfig.isEnabled()) {
                 TaskResultIngestFacade taskResultIngestFacade = engineConfig.getTaskResultIngestFacade();
-                BufferedTransportResultIngressChannel buffer = new BufferedTransportResultIngressChannel(
-                        new RuntimeTaskResultIngestChannel(taskResultIngestFacade));
-                bufferedResultIngestChannel = buffer;
-                resultIngressChannel = buffer;
+                TransportResultIngressQueue resolvedResultQueue = new InMemoryTransportResultIngressQueue(
+                        DEFAULT_DISPATCH_HANDOFF_CAPACITY
+                );
                 adapterHostFailureHandler = createTransportDeliveryFailureHandler();
-                logger.info("Task result ingest channel initialized (buffered async)");
                 if (runtimeRole == TransportRuntimeRole.ENGINE_PRODUCER) {
                     taskResultIngressQueue = transportRuntimeComposition.resolveTaskResultIngressQueue();
-                    taskResultIngressQueuePump = new TransportResultIngressQueuePump(
-                            taskResultIngressQueue,
-                            new RuntimeTaskResultIngestChannel(taskResultIngestFacade),
-                            transportRuntimeTaskExecutor
-                    );
-                    taskResultIngressQueuePump.start();
+                    resolvedResultQueue = taskResultIngressQueue;
                     deliveryFailureInbox = transportRuntimeComposition.resolveDeliveryFailureInbox();
                     deliveryFailureInboxPump = new TransportDeliveryFailureInboxPump(
                             deliveryFailureInbox,
@@ -267,49 +241,38 @@ public class MassApplication {
                     deliveryFailureInboxPump.start();
                     logger.info("Distributed transport queue pumps started for engine-producer role");
                 }
+                resultIngressQueue = resolvedResultQueue;
+                taskResultIngressQueuePump = new TransportResultIngressQueuePump(
+                        resultIngressQueue,
+                        new RuntimeTaskResultIngestChannel(taskResultIngestFacade),
+                        transportRuntimeTaskExecutor
+                );
+                taskResultIngressQueuePump.start();
+                logger.info("Task result ingest queue pump started");
             }
-            if (resultIngressChannel == null && runtimeRole == TransportRuntimeRole.EMBEDDED) {
-                resultIngressChannel = envelope -> false;
+            if (resultIngressQueue == null && runtimeRole == TransportRuntimeRole.EMBEDDED) {
+                resultIngressQueue = new InMemoryTransportResultIngressQueue(1);
                 logger.info("Task result ingest channel initialized (noop because engine is disabled)");
             }
 
             if (runtimeRole != TransportRuntimeRole.ENGINE_PRODUCER) {
-                int bootstrapIndex = 0;
-                for (TransportAdapterBootstrap transportAdapterBootstrap
-                        : transportRuntimeComposition.resolveTransportAdapterBootstraps()) {
-                    TransportAdapterDescriptor descriptor = transportAdapterBootstrap.descriptor();
-                    String assignedMailboxKey = assignedAdapterMailboxKey(descriptor, bootstrapIndex++);
-                    TransportAdapterBootstrapContext bootstrapContext = new TransportAdapterBootstrapContext(
-                            descriptor,
-                            assignedMailboxKey,
-                            resultIngressChannel,
-                            endpointLeaseStore,
-                            currentSessionConnectSink,
-                            currentSessionDisconnectSink,
-                            transportRuntimeTaskExecutor,
-                            transportDispatchHandoff == null ? null : transportDispatchHandoff::poll,
-                            new TransportDeliveryFailureEvidenceSink(adapterHostFailureHandler),
-                            mailboxConsumerRegistry,
-                            transportRuntimeComposition.getAdapterMailboxConsumerAvailabilityMillis()
-                    );
-                    TransportAdapterContribution contribution = transportAdapterBootstrap.contribute(bootstrapContext);
-                    if (contribution == null) {
-                        contribution = TransportAdapterContribution.empty();
-                    }
-                    contribution.validateAgainst(descriptor, assignedMailboxKey);
-                    registerTransportAdapterContribution(contribution, adapterBindings, adapterContributions);
-                }
-            }
-
-            if (runtimeRole != TransportRuntimeRole.ENGINE_PRODUCER) {
-                transportRuntimeRegistry = transportRuntimeComposition.resolveWorkerTransportRuntimeFactory().create(
-                        resultIngressChannel,
-                        endpointLeaseStore,
-                        adapterBindings
+                TransportDeliveryFailureHandler failureHandler = adapterHostFailureHandler != null
+                        ? adapterHostFailureHandler
+                        : event -> false;
+                embeddedAdapterStarter = EmbeddedAdapterStarterDefaults.createStarter(
+                        new EmbeddedAdapterRuntimeEnvironment(
+                                transportDispatchHandoff,
+                                resultIngressQueue,
+                                endpointLeaseStore,
+                                currentSessionConnectSink,
+                                currentSessionDisconnectSink,
+                                transportRuntimeTaskExecutor,
+                                failureHandler
+                        ),
+                        transportRuntimeComposition.resolvePollingPendingDeliveryBufferFactory(),
+                        transportRuntimeComposition.resolveWebSocketServerFactoriesByAdapterId()
                 );
-                embeddedAdapterHostSet = EmbeddedAdapterHostSet.fromContributions(
-                        adapterContributions
-                );
+                embeddedAdapterStarter.create(transportRuntimeComposition.resolveEmbeddedAdapterRuntimeSpecs());
             }
             if (engineConfig.isEnabled() && runtimeRole != TransportRuntimeRole.TRANSPORT_CONSUMER) {
                 taskDispatchListener = createDispatchSubmitter(transportDispatchHandoff);
@@ -364,8 +327,9 @@ public class MassApplication {
     }
 
     private boolean requiresDispatchHandoff(TransportRuntimeRole runtimeRole) {
-        return runtimeRole == TransportRuntimeRole.TRANSPORT_CONSUMER
-                || (engineConfig.isEnabled() && runtimeRole != TransportRuntimeRole.TRANSPORT_CONSUMER);
+        return runtimeRole == TransportRuntimeRole.EMBEDDED
+                || runtimeRole == TransportRuntimeRole.ENGINE_PRODUCER
+                || runtimeRole == TransportRuntimeRole.TRANSPORT_CONSUMER;
     }
 
     private void validateWorkerDeliveryTargetResolverConfiguration(TransportRuntimeRole runtimeRole) {
@@ -414,7 +378,7 @@ public class MassApplication {
     }
 
     private Optional<SelectedWorkerDeliveryTargetEvidence> resolveWorkerDeliveryTargetFromBinding(String selectedWorkerId) {
-        if (selectedWorkerId == null || selectedWorkerId.isBlank() || transportRuntimeRegistry == null) {
+        if (selectedWorkerId == null || selectedWorkerId.isBlank() || embeddedAdapterStarter == null) {
             return Optional.empty();
         }
         WorkerResourceRecord worker;
@@ -450,7 +414,7 @@ public class MassApplication {
             return sessionBinding.get();
         }
         try {
-            return transportRuntimeRegistry.resolveBinding(null, worker.transportHint());
+            return requireEmbeddedAdapterStarter().resolveBinding(null, worker.transportHint());
         } catch (IllegalArgumentException e) {
             throw new IllegalStateException("Cannot resolve transport binding for worker " + worker.workerId()
                     + ": " + e.getMessage(), e);
@@ -458,7 +422,8 @@ public class MassApplication {
     }
 
     private Optional<TransportBinding> resolveCurrentEndpointBinding(WorkerResourceRecord worker) {
-        if (worker == null || transportRuntimeRegistry == null || endpointLeaseStore == null
+        EmbeddedAdapterStarter starter = embeddedAdapterStarter;
+        if (worker == null || starter == null || endpointLeaseStore == null
                 || worker.workerId() == null || worker.workerId().isBlank()
                 || worker.workerGroupId() == null || worker.workerGroupId().isBlank()) {
             return Optional.empty();
@@ -470,7 +435,7 @@ public class MassApplication {
         }
         String endpointDriverId = endpoint.get().endpointDriverId();
         try {
-            TransportBinding binding = transportRuntimeRegistry.resolveBindingByAdapterId(endpointDriverId);
+            TransportBinding binding = starter.resolveBindingByAdapterId(endpointDriverId);
             validateEndpointBindingTransportHint(worker, binding);
             return Optional.of(binding);
         } catch (RuntimeException e) {
@@ -511,8 +476,10 @@ public class MassApplication {
                 : WorkerReachabilityState.OFFLINE;
     }
 
-    private void startEmbeddedAdapterHostSet() {
-        embeddedAdapterHostSet.start();
+    private void startEmbeddedAdapterStarter() {
+        if (embeddedAdapterStarter != null) {
+            embeddedAdapterStarter.startAll();
+        }
     }
 
     private void startEngine(TaskDispatchBatchListener taskDispatchListener) {
@@ -533,19 +500,11 @@ public class MassApplication {
         }
     }
 
-    private void stopEmbeddedAdapterHostSet() {
-        EmbeddedAdapterHostSet runtimeSet = embeddedAdapterHostSet;
-        embeddedAdapterHostSet = EmbeddedAdapterHostSet.empty();
-        runtimeSet.stop();
-    }
-
-    private void drainResultIngestBuffer() {
-        BufferedTransportResultIngressChannel buffer = bufferedResultIngestChannel;
-        bufferedResultIngestChannel = null;
-        if (buffer != null) {
-            logger.info("Draining result ingest buffer");
-            buffer.shutdown();
-            logger.info("Result ingest buffer drained");
+    private void stopEmbeddedAdapterStarter() {
+        EmbeddedAdapterStarter starter = embeddedAdapterStarter;
+        embeddedAdapterStarter = null;
+        if (starter != null) {
+            starter.close();
         }
     }
 
@@ -664,28 +623,11 @@ public class MassApplication {
                 );
     }
 
-    private void registerTransportAdapterContribution(TransportAdapterContribution contribution,
-                                                      List<TransportBinding> adapterBindings,
-                                                      List<TransportAdapterContribution> adapterContributions) {
-        TransportAdapterContribution next = contribution != null
-                ? contribution
-                : TransportAdapterContribution.empty();
-        adapterContributions.add(next);
-        adapterBindings.addAll(next.getTransportBindings());
-    }
-
-    private static String assignedAdapterMailboxKey(TransportAdapterDescriptor descriptor, int index) {
-        if (descriptor != null) {
-            return descriptor.getAdapterId();
-        }
-        return "bootstrap-" + index;
-    }
-
     public boolean isRunning() {
         boolean engineExpected = engineConfig.isEnabled()
                 && transportRuntimeComposition.getRuntimeRole() != TransportRuntimeRole.TRANSPORT_CONSUMER;
         return running.get()
-                && embeddedAdapterHostSet.isRunning()
+                && (embeddedAdapterStarter == null || embeddedAdapterStarter.isRunning())
                 && (!engineExpected || engine == null || engine.isRunning());
     }
 
@@ -694,11 +636,12 @@ public class MassApplication {
     }
 
     public EmbeddedPullWorkerSession openEmbeddedPullWorkerSession(String workerId, String sessionToken) {
-        if (transportRuntimeRegistry == null) {
+        EmbeddedAdapterStarter starter = embeddedAdapterStarter;
+        if (starter == null) {
             throw new IllegalStateException("Pull worker transport is unavailable for this runtime");
         }
         WorkerResourceRecord worker = requireWorkerResource(workerId);
-        ResolvedPullWorkerTransport resolved = transportRuntimeRegistry.resolvePullWorkerTransport(
+        ResolvedPullWorkerTransport resolved = starter.resolvePullWorkerTransport(
                 worker.workerId(),
                 worker.workerGroupId(),
                 null,
@@ -748,20 +691,25 @@ public class MassApplication {
         );
     }
 
-    public TransportRuntimeRegistry getTransportRuntimeRegistry() {
-        return transportRuntimeRegistry;
-    }
-
     /**
      * Internal registration helper used by SDK/starter compatibility paths
      * when worker registration input must be normalized before the live
      * transport runtime registry is assembled.
      */
     public String resolveRegistrationAdapterId(String requestedAdapterId, String transportHint) {
-        if (transportRuntimeRegistry != null) {
-            return transportRuntimeRegistry.resolveRegistrationAdapterId(requestedAdapterId, transportHint);
+        EmbeddedAdapterStarter starter = embeddedAdapterStarter;
+        if (starter != null) {
+            return starter.resolveRegistrationAdapterId(requestedAdapterId, transportHint);
         }
         return transportRuntimeComposition.resolveRegistrationAdapterId(requestedAdapterId, transportHint);
+    }
+
+    private EmbeddedAdapterStarter requireEmbeddedAdapterStarter() {
+        EmbeddedAdapterStarter starter = embeddedAdapterStarter;
+        if (starter == null) {
+            throw new IllegalStateException("Embedded adapter runtime is unavailable for this application");
+        }
+        return starter;
     }
 
     public MassEngine getEngine() {

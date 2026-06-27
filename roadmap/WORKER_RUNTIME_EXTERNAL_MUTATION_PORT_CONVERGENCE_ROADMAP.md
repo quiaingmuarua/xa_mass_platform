@@ -34,8 +34,8 @@ closure over feature behavior changes.
   `engineConfig.getWorkerDispatchRecoveryRuntime().recoverWorkerDispatch(...)`.
 - `EngineConfig` exposes `getWorkerDispatchBlockRuntime()` and
   `getWorkerDispatchRecoveryRuntime()`, both backed by `WorkerManager`.
-- `TransportAdapterBootstrapContext` injects `CurrentSessionConnectSink` and
-  `CurrentSessionDisconnectSink` into `AdapterSessionEvidencePublisher`.
+- `EmbeddedAdapterRuntimeEnvironment` injects `CurrentSessionConnectSink` and
+  `CurrentSessionDisconnectSink` into adapter runtime session evidence wiring.
 - `AdapterSessionEvidencePublisher.connected(...)` and `claimEndpoint(...)`
   call the connect sink after writing endpoint lease evidence.
 - `AdapterSessionEvidencePublisher.disconnected(...)` calls the disconnect sink
@@ -312,8 +312,8 @@ Scope:
   - disconnected publishes a negative signal only when endpoint lease release
     confirms the disconnected session was current;
   - heartbeat only refreshes transport endpoint lease evidence.
-- Update `TransportAdapterBootstrapContext` to expose the new neutral
-  session-fact callback to adapter bootstrap code.
+- Update embedded adapter runtime environment/session evidence wiring to expose
+  the new neutral session-fact callback to adapter runtime code.
 - Update `MassApplication` so it translates transport current-session facts
   into `WorkerRuntimeSignal` and calls `WorkerRuntimeSignalIngress`.
 - Remove `EngineConfig.getWorkerDispatchRecoveryRuntime()` from SDK public

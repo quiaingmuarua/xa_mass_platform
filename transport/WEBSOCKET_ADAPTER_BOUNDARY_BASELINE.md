@@ -82,12 +82,13 @@ Hard rules:
 - `WebSocketAdapterConfig` owns only concrete adapter properties such as
   adapter id, enabled flags, port, max connections, and endpoint path. Embedded
   custom server factory hooks are SDK/starter assembly concerns carried by
-  `TransportConfig`/`TransportRuntimeComposition` into the WebSocket bootstrap
-  constructor; they must not be stored inside the copyable adapter config.
-- `WebSocketTransportAdapterBootstrap` snapshots concrete adapter properties at
-  construction time and must not retain a mutable `WebSocketAdapterConfig`
-  reference. The runtime-created `WebSocketServerFactoryContext` belongs to
-  server contribution only, not adapter property configuration.
+  `TransportConfig`/`TransportRuntimeComposition` into the
+  `WebSocketAdapterRuntimeFactory`; they must not be stored inside the copyable
+  adapter config.
+- `WebSocketAdapterRuntimeFactory` converts embedded adapter specs plus shared
+  runtime environment ports into one WebSocket runtime. It owns WebSocket
+  session registry, refresher, final-hop executor, optional server creation,
+  result ingress sink wiring, and dispatch queue consumer creation.
 - `WebSocketSessionRegistry` owns the adapter-local session indexes and final
   channel write. Its only durable indexes are `workerId -> channel/session` and
   `channel -> workerId + workerGroupId`; `workerGroupId` is evidence context,
@@ -100,9 +101,9 @@ Hard rules:
   `deliveryBucketId`, routeKey, endpoint address, and adapter mailbox key are
   not WebSocket session lookup dimensions.
 - WebSocket does not keep a protocol-specific `AdapterCommandExecutor` wrapper
-  class for assigned delivery. `WebSocketTransportAdapterBootstrap` contributes
-  an executor by passing a WebSocket final-hop `send(DispatchMessage)` function
-  to `AdapterCommandExecutors.perMessage(...)`. Reusable `DispatchOutcome`
+  class for assigned delivery. `WebSocketAdapterRuntimeFactory` creates an
+  executor by passing a WebSocket final-hop `send(DispatchMessage)` function to
+  `AdapterCommandExecutors.perMessage(...)`. Reusable `DispatchOutcome`
   production for per-message push final-hop attempts belongs to transport
   runtime embedded support. WebSocket owns only worker-channel ACTION frame
   construction and selected-worker session send wiring.

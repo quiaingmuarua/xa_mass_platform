@@ -5,7 +5,7 @@ import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.polling.delivery.InMemoryPollingPendingDeliveryBuffer;
 import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
-import com.xa.mass.transport.polling.runtime.PollingTransportAdapterBootstrap;
+import com.xa.mass.transport.polling.runtime.PollingAdapterRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 import org.junit.jupiter.api.Test;
 
@@ -70,8 +70,8 @@ class PollingDeliveryExecutorTest {
                 MAX_INBOX_SIZE
         );
         return new Fixture(
-                new PollingDeliveryExecutor(PollingTransportAdapterBootstrap.DEFAULT_ADAPTER_ID, deliveryBuffer),
-                new PollingDeliveryPullChannel(PollingTransportAdapterBootstrap.DEFAULT_ADAPTER_ID, deliveryBuffer)
+                new PollingDeliveryExecutor(PollingAdapterRuntimeFactory.DEFAULT_ADAPTER_ID, deliveryBuffer),
+                new PollingDeliveryPullChannel(PollingAdapterRuntimeFactory.DEFAULT_ADAPTER_ID, deliveryBuffer)
         );
     }
 

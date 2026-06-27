@@ -98,14 +98,9 @@ import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBufferStats;
 import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryPollResult;
 import com.xa.mass.transport.polling.delivery.RedisPollingPendingDeliveryBuffer;
 import com.xa.mass.transport.runtime.RedisTransportNamespaces;
-import com.xa.mass.transport.runtime.TransportAdapterContribution;
-import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
-import com.xa.mass.transport.runtime.TransportAdapterBootstrapContext;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRegistrationResolver;
-import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
-import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.lease.TransportEndpointLeaseClaim;
 import com.xa.mass.transport.lease.TransportEndpointLeaseConsumerEvidence;
 import com.xa.mass.transport.lease.TransportEndpointLeaseHeartbeat;
@@ -113,14 +108,10 @@ import com.xa.mass.transport.lease.TransportEndpointLeaseRelease;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.lease.TransportEndpointLeaseViewRecord;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
-import com.xa.mass.transport.runtime.embedded.AdapterCommandExecutor;
-import com.xa.mass.transport.runtime.embedded.PullSessionEvidenceDriver;
 import com.xa.mass.transport.TransportServer;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.transport.channel.DeliveryPullChannel;
 import com.xa.mass.transport.channel.DeliveryPullResult;
-import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
 import com.xa.mass.sdk.worker.WorkerAction;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
@@ -263,7 +254,7 @@ class MassSdkTest {
     }
 
     @Test
-    void additionalAdapterBootstrapCanStartServerOnDedicatedPort() {
+    void supplementalWebSocketAdapterCanStartServerOnDedicatedPort() {
         AtomicInteger startedPort = new AtomicInteger(-1);
         AtomicBoolean stopped = new AtomicBoolean(false);
 
@@ -294,7 +285,11 @@ class MassSdkTest {
                                 .server(19092, "/default-transport")
                                 .enabled(false)
                                 .serverEnabled(false))
-                        .addSupplementalTransportAdapterBootstrap(new StaticDedicatedServerBootstrap(dedicatedServer)))
+                        .addWebSocketAdapter(webSocket -> webSocket
+                                .adapterId("ws-dedicated")
+                                .enabled(true)
+                                .serverEnabled(true)
+                                .transportServerFactory(context -> dedicatedServer)))
                 .engine(engine -> engine.enabled(false))
                 .build();
 
@@ -419,21 +414,6 @@ class MassSdkTest {
     }
 
     @Test
-    void runtimeCompositionResolvesRuntimeOwnedCollaborators() {
-        TransportConfig config = new TransportConfig();
-        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
-
-        WorkerTransportRuntimeFactory customFactory = (taskResultIngestChannel,
-                                                     endpointLeaseStore,
-                                                     adapterBindings) -> mock(TransportRuntimeRegistry.class);
-        config.setWorkerTransportRuntimeFactory(customFactory);
-
-        TransportRuntimeComposition customizedRuntimeComposition = config.snapshotRuntimeComposition();
-
-        assertSame(customFactory, customizedRuntimeComposition.resolveWorkerTransportRuntimeFactory());
-    }
-
-    @Test
     void runtimeCompositionResolvesCustomPollingPendingDeliveryBufferFactory() {
         TransportConfig config = new TransportConfig();
         StubPollingPendingDeliveryBuffer buffer = new StubPollingPendingDeliveryBuffer();
@@ -508,110 +488,85 @@ class MassSdkTest {
     }
 
     @Test
-    void runtimeCompositionWebSocketBootstrapReflectsCurrentNestedAdapterConfig() {
+    void runtimeCompositionWebSocketSpecReflectsCurrentNestedAdapterConfig() {
         TransportConfig config = new TransportConfig();
         config.getBundledWebSocketAdapterConfig().setEnabled(false);
         config.getBundledWebSocketAdapterConfig().setServerEnabled(false);
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
         assertEquals(
                 List.of(),
-                runtimeComposition.resolveTransportAdapterBootstraps().stream()
-                        .map(TransportAdapterBootstrap::descriptor)
-                        .filter(Objects::nonNull)
-                        .map(TransportAdapterDescriptor::getAdapterId)
+                runtimeComposition.resolveEmbeddedAdapterRuntimeSpecs().stream()
+                        .map(com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeSpec::adapterId)
                         .filter("websocket"::equals)
                         .toList()
         );
     }
 
     @Test
-    void runtimeCompositionSocketBootstrapReflectsCurrentNestedAdapterConfig() {
+    void runtimeCompositionSocketSpecReflectsCurrentNestedAdapterConfig() {
         TransportConfig config = new TransportConfig();
         config.getBundledSocketAdapterConfig().setEnabled(true);
         config.getBundledSocketAdapterConfig().setServerEnabled(true);
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
-        VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
-                new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
+        com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeSpec spec =
+                adapterSpec(runtimeComposition, "socket");
 
-        TransportAdapterContribution contribution;
-        try {
-            TransportAdapterBootstrap bootstrap = adapterBootstrap(runtimeComposition, "socket");
-            contribution = bootstrap.contribute(bootstrapContext(bootstrap, runtimeTaskExecutor));
-        } finally {
-            shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
-        }
-
-        assertEquals(1, contribution.getTransportBindings().size());
-        assertEquals(1, contribution.getTransportServers().size());
+        assertEquals("socket", spec.adapterId());
+        assertEquals("socket", spec.dispatchQueueKey());
+        assertEquals("true", spec.option("serverEnabled"));
     }
 
     @Test
-    void runtimeCompositionWebSocketBootstrapContributesEvidenceRefresherResource() {
+    void runtimeCompositionWebSocketRuntimeFactoryCreatesBinding() {
         TransportConfig config = new TransportConfig();
         config.getBundledWebSocketAdapterConfig().setEnabled(true);
         config.getBundledWebSocketAdapterConfig().setServerEnabled(true);
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
-        VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
-                new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
 
-        TransportAdapterContribution contribution;
-        try {
-            TransportAdapterBootstrap bootstrap = adapterBootstrap(runtimeComposition, "websocket");
-            contribution = bootstrap.contribute(bootstrapContext(bootstrap, runtimeTaskExecutor));
-        } finally {
-            shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
-        }
+        com.xa.mass.transport.starter.EmbeddedAdapterStarter starter =
+                com.xa.mass.transport.starter.EmbeddedAdapterStarterDefaults.createStarter(
+                        embeddedAdapterRuntimeEnvironment(),
+                        runtimeComposition.resolvePollingPendingDeliveryBufferFactory(),
+                        runtimeComposition.resolveWebSocketServerFactoriesByAdapterId()
+                );
+        starter.create(runtimeComposition.resolveEmbeddedAdapterRuntimeSpecs());
+        TransportBinding binding = starter.resolveBindingByAdapterId("websocket");
 
-        assertEquals(1, contribution.getTransportBindings().size());
-        assertEquals(1, contribution.getManagedTransportAdapters().size());
-        assertEquals(1, contribution.getTransportServers().size());
+        assertEquals("websocket", binding.getAdapterId());
+        assertEquals("websocket", binding.getAdapterMailboxKey());
+        assertEquals("websocket", binding.getProtocol());
     }
 
     @Test
-    void runtimeCompositionWebSocketBootstrapUsesConfiguredAdapterId() {
+    void runtimeCompositionWebSocketSpecUsesConfiguredAdapterId() {
         TransportConfig config = new TransportConfig();
         config.getBundledWebSocketAdapterConfig().setAdapterId("ws-public");
         config.getBundledWebSocketAdapterConfig().setEnabled(true);
         config.getBundledWebSocketAdapterConfig().setServerEnabled(false);
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
-        VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
-                new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
+        com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeSpec spec =
+                adapterSpec(runtimeComposition, "ws-public");
 
-        TransportAdapterContribution contribution;
-        try {
-            TransportAdapterBootstrap bootstrap = adapterBootstrap(runtimeComposition, "ws-public");
-            contribution = bootstrap.contribute(bootstrapContext(bootstrap, runtimeTaskExecutor));
-        } finally {
-            shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
-        }
-
-        assertEquals("ws-public", adapterBootstrap(runtimeComposition, "ws-public").descriptor().getAdapterId());
-        assertEquals("ws-public", contribution.getTransportBindings().get(0).getAdapterId());
-        assertEquals("websocket", contribution.getTransportBindings().get(0).getProtocol());
+        assertEquals("ws-public", spec.adapterId());
+        assertEquals("ws-public", spec.dispatchQueueKey());
+        assertEquals("websocket", spec.type());
         assertEquals("ws-public",
                 runtimeComposition.resolveRegistrationAdapterId("ws-public", WorkerTransportHints.REALTIME));
     }
 
     @Test
-    void runtimeCompositionSocketBootstrapUsesConfiguredAdapterId() {
+    void runtimeCompositionSocketSpecUsesConfiguredAdapterId() {
         TransportConfig config = new TransportConfig();
         config.getBundledSocketAdapterConfig().setAdapterId("socket-edge");
         config.getBundledSocketAdapterConfig().setEnabled(true);
         config.getBundledSocketAdapterConfig().setServerEnabled(false);
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
-        VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor =
-                new VirtualThreadRuntimeTaskExecutor("test-transport-runtime-", 10);
+        com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeSpec spec =
+                adapterSpec(runtimeComposition, "socket-edge");
 
-        TransportAdapterContribution contribution;
-        try {
-            TransportAdapterBootstrap bootstrap = adapterBootstrap(runtimeComposition, "socket-edge");
-            contribution = bootstrap.contribute(bootstrapContext(bootstrap, runtimeTaskExecutor));
-        } finally {
-            shutdownRuntimeTaskExecutor(runtimeTaskExecutor);
-        }
-
-        assertEquals("socket-edge", contribution.getTransportBindings().get(0).getAdapterId());
-        assertEquals("socket", contribution.getTransportBindings().get(0).getProtocol());
+        assertEquals("socket-edge", spec.adapterId());
+        assertEquals("socket-edge", spec.dispatchQueueKey());
+        assertEquals("socket", spec.type());
         assertEquals("socket-edge",
                 runtimeComposition.resolveRegistrationAdapterId("socket-edge", WorkerTransportHints.REALTIME));
     }
@@ -647,94 +602,6 @@ class MassSdkTest {
     }
 
     @Test
-    void transportRuntimeCompositionUsesCustomPrimaryBootstrapDescriptorEvenWhenWebsocketIsDisabled() {
-        TransportConfig config = new TransportConfig();
-        config.getBundledWebSocketAdapterConfig().setEnabled(false);
-        config.setPrimaryTransportAdapterBootstrap(new DescriptorOnlyBootstrap(
-                new TransportAdapterDescriptor("custom-rt", WorkerTransportHints.REALTIME)
-        ));
-
-        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
-
-        assertEquals("custom-rt", runtimeComposition.resolveRegistrationAdapterId("custom-rt", "realtime"));
-        assertEquals("custom-rt", runtimeComposition.resolveRegistrationAdapterId(null, "realtime"));
-    }
-
-    @Test
-    void transportRuntimeCompositionRequiresExplicitAdapterIdWhenCustomRuntimeFactoryHasNoRegistrationMetadata() {
-        TransportConfig config = new TransportConfig();
-        config.getBundledWebSocketAdapterConfig().setEnabled(false);
-        config.getBundledWebSocketAdapterConfig().setServerEnabled(false);
-        config.setWorkerTransportRuntimeFactory((taskResultIngestChannel,
-                                                endpointLeaseStore,
-                                                adapterBindings) -> mock(TransportRuntimeRegistry.class));
-
-        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
-
-        IllegalStateException error = assertThrows(
-                IllegalStateException.class,
-                () -> runtimeComposition.resolveRegistrationAdapterId(null, "polling")
-        );
-        assertEquals(
-                "transport registration metadata is unavailable; cannot infer adapter binding before runtime start",
-                error.getMessage()
-        );
-        assertEquals("custom-polling",
-                runtimeComposition.resolveRegistrationAdapterId(" custom-polling ", "polling"));
-    }
-
-    @Test
-    void transportRuntimeCompositionUsesBootstrapDescriptorEvenWithCustomRuntimeFactory() {
-        TransportConfig config = new TransportConfig();
-        config.setWorkerTransportRuntimeFactory((taskResultIngestChannel,
-                                                endpointLeaseStore,
-                                                adapterBindings) -> mock(TransportRuntimeRegistry.class));
-        config.setPrimaryTransportAdapterBootstrap(new DescriptorOnlyBootstrap(
-                new TransportAdapterDescriptor("custom-rt", WorkerTransportHints.REALTIME)
-        ));
-
-        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
-
-        assertEquals("custom-rt", runtimeComposition.resolveRegistrationAdapterId("custom-rt", "realtime"));
-        assertEquals("custom-rt", runtimeComposition.resolveRegistrationAdapterId(null, "realtime"));
-    }
-
-    @Test
-    void transportRuntimeCompositionUsesRuntimeFactoryRegistrationMetadataWhenProvided() {
-        TransportConfig config = new TransportConfig();
-        config.getBundledWebSocketAdapterConfig().setEnabled(false);
-        config.getBundledWebSocketAdapterConfig().setServerEnabled(false);
-        config.setWorkerTransportRuntimeFactory(new WorkerTransportRuntimeFactory() {
-            @Override
-            public TransportRuntimeRegistry create(TransportResultIngressChannel taskResultIngestChannel,
-                                                   TransportEndpointLeaseStore endpointLeaseStore,
-                                                   List<TransportBinding> adapterBindings) {
-                return mock(TransportRuntimeRegistry.class);
-            }
-
-            @Override
-            public List<TransportAdapterDescriptor> registrationDescriptors() {
-                return List.of(new TransportAdapterDescriptor("polling-http-v2", WorkerTransportHints.POLLING));
-            }
-        });
-
-        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
-
-        assertEquals("polling-http-v2", runtimeComposition.resolveRegistrationAdapterId(null, "polling"));
-        assertEquals("polling-http-v2", runtimeComposition.resolveRegistrationAdapterId("polling-http-v2", "polling"));
-    }
-
-    @Test
-    void runtimeCompositionCanAggregateAdditionalTransportAdapterBootstraps() {
-        TransportConfig config = new TransportConfig();
-        config.addSupplementalTransportAdapterBootstrap(context -> TransportAdapterContribution.empty());
-
-        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
-
-        Assertions.assertEquals(3, runtimeComposition.resolveTransportAdapterBootstraps().size());
-    }
-
-    @Test
     void runtimeCompositionCanAppendAdditionalBundledRealtimeAdapterInstances() {
         TransportConfig config = new TransportConfig();
         com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig extraWebSocket =
@@ -753,11 +620,11 @@ class MassSdkTest {
 
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
-        assertNotNull(adapterBootstrap(runtimeComposition, "websocket"));
-        assertThrows(AssertionError.class, () -> adapterBootstrap(runtimeComposition, "socket"));
-        assertNotNull(adapterBootstrap(runtimeComposition, "ws-internal"));
-        assertNotNull(adapterBootstrap(runtimeComposition, "socket-edge"));
-        assertEquals(4, runtimeComposition.resolveTransportAdapterBootstraps().size());
+        assertNotNull(adapterSpec(runtimeComposition, "websocket"));
+        assertThrows(AssertionError.class, () -> adapterSpec(runtimeComposition, "socket"));
+        assertNotNull(adapterSpec(runtimeComposition, "ws-internal"));
+        assertNotNull(adapterSpec(runtimeComposition, "socket-edge"));
+        assertEquals(4, runtimeComposition.resolveEmbeddedAdapterRuntimeSpecs().size());
     }
 
     @Test
@@ -773,7 +640,7 @@ class MassSdkTest {
 
         IllegalStateException error = assertThrows(
                 IllegalStateException.class,
-                runtimeComposition::resolveTransportAdapterBootstraps
+                runtimeComposition::resolveEmbeddedAdapterRuntimeSpecs
         );
         assertTrue(error.getMessage().contains("Duplicate transport adapterId configured: websocket"));
     }
@@ -2419,17 +2286,10 @@ class MassSdkTest {
 
     @Test
     void registerWorkerStoresRealtimeTransportHintWithoutAdapterIdentity() {
-        WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
-                                                         endpointLeaseStore,
-                                                         adapterBindings) -> new TransportRuntimeRegistry(
-                taskResultIngestChannel,
-                endpointLeaseStore,
-                List.of(canonicalRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)))
-        );
-
         MassSdkApplication app = MassSdk.builder()
-                .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport")
-                        .workerTransportRuntimeFactory(transportFactory))
+                .transport(transport -> transport.webSocketAdapter(webSocket -> webSocket
+                        .enabled(true)
+                        .serverEnabled(false)))
                 .engine(engine -> engine.enabled(true).workerThreads(1))
                 .build();
 
@@ -2452,20 +2312,10 @@ class MassSdkTest {
 
     @Test
     void registerWorkerKeepsRealtimeTransportHintWhenMultipleRealtimeAdaptersAreConfigured() {
-        WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
-                                                         endpointLeaseStore,
-                                                         adapterBindings) -> new TransportRuntimeRegistry(
-                taskResultIngestChannel,
-                endpointLeaseStore,
-                List.of(
-                        canonicalRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
-                        canonicalRouteBinding(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
-                )
-        );
-
         MassSdkApplication app = MassSdk.builder()
-                .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport")
-                        .workerTransportRuntimeFactory(transportFactory))
+                .transport(transport -> transport
+                        .webSocketAdapter(webSocket -> webSocket.enabled(true).serverEnabled(false))
+                        .socketAdapter(socket -> socket.enabled(true).serverEnabled(false)))
                 .engine(engine -> engine.enabled(true).workerThreads(1))
                 .build();
 
@@ -2489,21 +2339,12 @@ class MassSdkTest {
     @Test
     void realtimeWorkerBindingUsesCurrentEndpointLeaseWhenMultipleRealtimeAdaptersAreConfigured() {
         InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
-        WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
-                                                         store,
-                                                         adapterBindings) -> new TransportRuntimeRegistry(
-                taskResultIngestChannel,
-                store,
-                List.of(
-                        canonicalRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
-                        canonicalRouteBinding(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
-                )
-        );
-
         MassSdkApplication app = MassSdk.builder()
-                .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport")
+                .transport(transport -> transport
+                        .webSocketAdapter(webSocket -> webSocket.enabled(true).serverEnabled(false))
+                        .socketAdapter(socket -> socket.enabled(true).serverEnabled(false))
                         .endpointLeaseStoreFactory(() -> endpointLeaseStore)
-                        .workerTransportRuntimeFactory(transportFactory))
+                )
                 .engine(engine -> engine.enabled(true).workerThreads(1))
                 .build();
 
@@ -2537,20 +2378,10 @@ class MassSdkTest {
 
     @Test
     void registerWorkerDoesNotPersistRealtimeAdapterIdentity() {
-        WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
-                                                         endpointLeaseStore,
-                                                         adapterBindings) -> new TransportRuntimeRegistry(
-                taskResultIngestChannel,
-                endpointLeaseStore,
-                List.of(
-                        canonicalRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
-                        canonicalRouteBinding(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
-                )
-        );
-
         MassSdkApplication app = MassSdk.builder()
-                .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport")
-                        .workerTransportRuntimeFactory(transportFactory))
+                .transport(transport -> transport.webSocketAdapter(webSocket -> webSocket
+                        .enabled(true)
+                        .serverEnabled(false)))
                 .engine(engine -> engine.enabled(true).workerThreads(1))
                 .build();
 
@@ -2570,20 +2401,10 @@ class MassSdkTest {
 
     @Test
     void registerWorkerIgnoresAdapterNodeTopologyForWorkerDeclaration() {
-        WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
-                                                         endpointLeaseStore,
-                                                         adapterBindings) -> new TransportRuntimeRegistry(
-                taskResultIngestChannel,
-                endpointLeaseStore,
-                List.of(
-                        canonicalRouteBinding(new StubPushOnlyAdapter("websocket", WorkerTransportHints.REALTIME)),
-                        canonicalRouteBinding(new StubPushOnlyAdapter("socket", WorkerTransportHints.REALTIME))
-                )
-        );
-
         MassSdkApplication app = MassSdk.builder()
-                .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport")
-                        .workerTransportRuntimeFactory(transportFactory))
+                .transport(transport -> transport.webSocketAdapter(webSocket -> webSocket
+                        .enabled(true)
+                        .serverEnabled(false)))
                 .engine(engine -> engine.enabled(true).workerThreads(1))
                 .build();
 
@@ -2650,17 +2471,10 @@ class MassSdkTest {
 
     @Test
     void pullWorkerRejectsPushOnlyWorkerWhenTransportIsNotPullCapable() {
-        WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
-                                                         endpointLeaseStore,
-                                                         adapterBindings) -> new TransportRuntimeRegistry(
-                taskResultIngestChannel,
-                endpointLeaseStore,
-                List.of(canonicalRouteBinding(new StubPushOnlyAdapter("push-only", "push-only")))
-        );
-
         MassSdkApplication app = MassSdk.builder()
-                .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport")
-                        .workerTransportRuntimeFactory(transportFactory))
+                .transport(transport -> transport.webSocketAdapter(webSocket -> webSocket
+                        .enabled(true)
+                        .serverEnabled(false)))
                 .engine(engine -> engine.enabled(true).workerThreads(1))
                 .build();
 
@@ -2669,14 +2483,14 @@ class MassSdkTest {
             app.registerWorker(WorkerRegistration.builder()
                     .workerId("push-only-worker-1")
                     .workerGroupId("push-only-workers")
-                    .transportHint("push-only")
+                    .transportHint("realtime")
                     .build());
 
             IllegalStateException error = assertThrows(
                     IllegalStateException.class,
                     () -> app.pullWorker("push-only-worker-1")
             );
-            Assertions.assertEquals("Worker adapter 'push-only' under transport 'push-only' is not pull-capable for worker push-only-worker-1",
+            Assertions.assertEquals("Worker adapter 'websocket' under transport 'realtime' is not pull-capable for worker push-only-worker-1",
                     error.getMessage());
         } finally {
             app.stop();
@@ -2685,19 +2499,9 @@ class MassSdkTest {
 
     @Test
     void pullWorkerRejectsUnsupportedTransportEvenWhenAnotherPullCapableBindingExists() {
-        WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
-                                                         endpointLeaseStore,
-                                                         adapterBindings) -> new TransportRuntimeRegistry(
-                taskResultIngestChannel,
-                endpointLeaseStore,
-                List.of(canonicalRouteBinding(
-                        new StubPullCapableAdapter("queue-consumer", "queue-consumer"),
-                        new StubPullCapableAdapter("queue-consumer", "queue-consumer")))
-        );
-
         MassSdkApplication app = MassSdk.builder()
                 .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport")
-                        .workerTransportRuntimeFactory(transportFactory))
+                        .socketAdapter(socket -> socket.enabled(false).serverEnabled(false)))
                 .engine(engine -> engine.enabled(true).workerThreads(1))
                 .build();
 
@@ -2706,13 +2510,13 @@ class MassSdkTest {
             app.registerWorker(WorkerRegistration.builder()
                     .workerId("polling-worker-unsupported")
                     .workerGroupId("unsupported-workers")
-                    .transportHint("polling")
+                    .transportHint("queue-consumer")
                     .build());
             IllegalArgumentException error = assertThrows(
                     IllegalArgumentException.class,
                     () -> app.pullWorker("polling-worker-unsupported")
             );
-            Assertions.assertEquals("Unsupported worker transportHint 'polling'; available transportHints=[queue-consumer]",
+            Assertions.assertEquals("Unsupported worker transportHint 'queue-consumer'; available transportHints=[polling]",
                     error.getMessage());
         } finally {
             app.stop();
@@ -2721,21 +2525,8 @@ class MassSdkTest {
 
     @Test
     void pullWorkerResolvesByCanonicalTransportHintInsteadOfAdapterProtocolLabel() {
-        StubPullCapableAdapter pollingAdapter = new StubPullCapableAdapter(
-                "polling-http-v2",
-                WorkerTransportHints.POLLING
-        );
-        WorkerTransportRuntimeFactory transportFactory = (taskResultIngestChannel,
-                                                         endpointLeaseStore,
-                                                         adapterBindings) -> new TransportRuntimeRegistry(
-                taskResultIngestChannel,
-                endpointLeaseStore,
-                List.of(canonicalRouteBinding(pollingAdapter, pollingAdapter))
-        );
-
         MassSdkApplication app = MassSdk.builder()
-                .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport")
-                        .workerTransportRuntimeFactory(transportFactory))
+                .transport(transport -> disableBundledWebSocket(transport, 0, "/sdk-transport"))
                 .engine(engine -> engine.enabled(true).workerThreads(1))
                 .build();
 
@@ -2939,7 +2730,6 @@ class MassSdkTest {
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.starter.worker.PollingWorkerAdapter"));
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.starter.worker.WebSocketWorkerAdapter"));
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.starter.worker.TransportRoutingTaskMsgDispatchListener"));
-        Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.starter.transport.DefaultWorkerTransportRuntimeFactory"));
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.starter.transport.TransportRuntimeRegistry"));
         Assertions.assertThrows(ClassNotFoundException.class, () -> Class.forName("com.xa.mass.gateway.runtime.WebSocketEmbeddedRuntimeSupport"));
         Assertions.assertThrows(ClassNotFoundException.class,
@@ -2985,9 +2775,6 @@ class MassSdkTest {
         assertMissingMethod(TransportConfig.class, "createMessageTransporter");
         assertMissingMethod(TransportConfig.class, "resolveWorkerEndpointRegistry");
         assertMissingMethod(TransportConfig.class, "resolveSystemEventChannel");
-        assertMissingMethod(TransportConfig.class, "resolveWorkerTransportRuntimeFactory");
-        assertMissingMethod(TransportConfig.class, "resolveTransportAdapterBootstrap");
-        assertMissingMethod(TransportConfig.class, "resolveSocketTransportAdapterBootstrap");
         Assertions.assertThrows(ClassNotFoundException.class,
                 () -> Class.forName("com.xa.mass.transport.channel.WorkerSystemEventChannel"));
         Assertions.assertThrows(ClassNotFoundException.class,
@@ -3012,8 +2799,6 @@ class MassSdkTest {
                 () -> WebSocketServerFactoryContext.class.getDeclaredMethod("getFrameCodec"));
         Assertions.assertThrows(ClassNotFoundException.class,
                 () -> Class.forName("com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec"));
-        Assertions.assertThrows(ClassNotFoundException.class,
-                () -> Class.forName("com.xa.mass.transport.runtime.WorkerTransportRuntimeFactoryContext"));
     }
 
     private static void assertEngineOperationsFailFast(MassSdkApplication app) {
@@ -3101,42 +2886,26 @@ class MassSdkTest {
         return readField(app, "delegate", MassApplication.class);
     }
 
-    private static TransportAdapterBootstrap adapterBootstrap(TransportRuntimeComposition runtimeComposition,
-                                                              String adapterId) {
-        return runtimeComposition.resolveTransportAdapterBootstraps().stream()
-                .filter(bootstrap -> bootstrap.descriptor() != null
-                        && adapterId.equals(bootstrap.descriptor().getAdapterId()))
+    private static com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeSpec adapterSpec(
+            TransportRuntimeComposition runtimeComposition,
+            String adapterId) {
+        return runtimeComposition.resolveEmbeddedAdapterRuntimeSpecs().stream()
+                .filter(spec -> adapterId.equals(spec.adapterId()))
                 .findFirst()
-                .orElseThrow(() -> new AssertionError("Missing adapter bootstrap for " + adapterId));
+                .orElseThrow(() -> new AssertionError("Missing adapter spec for " + adapterId));
     }
 
-    private static TransportAdapterBootstrapContext bootstrapContext(TransportAdapterBootstrap bootstrap,
-                                                                     VirtualThreadRuntimeTaskExecutor runtimeTaskExecutor) {
-        TransportAdapterDescriptor descriptor = bootstrap.descriptor();
-        assertNotNull(descriptor, "bootstrap descriptor is required for mailbox assignment");
-        return new TransportAdapterBootstrapContext(
-                descriptor,
-                descriptor.getAdapterId(),
-                mock(TransportResultIngressChannel.class),
+    private static com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeEnvironment
+    embeddedAdapterRuntimeEnvironment() {
+        return new com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeEnvironment(
+                new com.xa.mass.transport.runtime.delivery.InMemoryTransportDispatchHandoff(10),
+                new com.xa.mass.transport.runtime.InMemoryTransportResultIngressQueue(10),
                 new InMemoryTransportEndpointLeaseStore(),
                 CurrentSessionConnectSink.NOOP,
                 CurrentSessionDisconnectSink.NOOP,
-                runtimeTaskExecutor,
-                (adapterMailboxKey, maxItems, timeoutMillis) -> List.of(),
-                ignored -> { },
-                com.xa.mass.transport.runtime.delivery.NoopAdapterMailboxConsumerRegistry.INSTANCE,
-                30_000L
+                mock(com.xa.mass.base.runtime.RuntimeTaskExecutor.class),
+                ignored -> true
         );
-    }
-
-    private static void shutdownRuntimeTaskExecutor(VirtualThreadRuntimeTaskExecutor executor) {
-        executor.shutdown();
-        try {
-            executor.awaitTermination(5, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException(e);
-        }
     }
 
     private static <T> T readField(Object target, String fieldName, Class<T> fieldType) {
@@ -3175,51 +2944,6 @@ class MassSdkTest {
 
     private static void assertMissingMethod(Class<?> type, String methodName, Class<?>... parameterTypes) {
         Assertions.assertThrows(NoSuchMethodException.class, () -> type.getDeclaredMethod(methodName, parameterTypes));
-    }
-
-    private static TransportBinding canonicalRouteBinding(StubPushOnlyAdapter adapter) {
-        return TransportBinding.builder(adapter.adapterId(), adapter.transportHint())
-                .adapterMailboxKey(adapter.adapterId())
-                .protocol(adapter.protocol())
-                .build();
-    }
-
-    private static TransportBinding canonicalRouteBinding(StubPullCapableAdapter adapter,
-                                                          DeliveryPullChannel deliveryPullChannel) {
-        return TransportBinding.builder(adapter.adapterId(), adapter.transportHint())
-                .adapterMailboxKey(adapter.adapterId())
-                .protocol(adapter.protocol())
-                .deliveryPullChannel(deliveryPullChannel)
-                .pullSessionEvidenceDriver(noopPullSessionEvidenceDriver())
-                .build();
-    }
-
-    private static PullSessionEvidenceDriver noopPullSessionEvidenceDriver() {
-        return new PullSessionEvidenceDriver() {
-            @Override
-            public boolean connect(String workerId,
-                                   String deliveryBucketId,
-                                   String sessionToken,
-                                   String reason) {
-                return true;
-            }
-
-            @Override
-            public boolean heartbeat(String workerId,
-                                     String deliveryBucketId,
-                                     String sessionToken,
-                                     String reason) {
-                return true;
-            }
-
-            @Override
-            public boolean disconnect(String workerId,
-                                      String deliveryBucketId,
-                                      String sessionToken,
-                                      String reason) {
-                return true;
-            }
-        };
     }
 
     private static <T> T waitFor(Duration timeout, ThrowingSupplier<T> supplier) throws Exception {
@@ -3346,79 +3070,6 @@ class MassSdkTest {
         T get() throws Exception;
     }
 
-    private static class StubPushOnlyAdapter implements AdapterCommandExecutor {
-        private final String protocol;
-        private final String transportHint;
-
-        private StubPushOnlyAdapter(String protocol) {
-            this(protocol, WorkerTransportHints.normalize(protocol));
-        }
-
-        private StubPushOnlyAdapter(String protocol, String transportHint) {
-            this.protocol = protocol;
-            this.transportHint = transportHint;
-        }
-
-        public String protocol() {
-            return protocol;
-        }
-
-        public String adapterId() {
-            return protocol;
-        }
-
-        public String transportHint() {
-            return transportHint;
-        }
-
-        @Override
-        public List<com.xa.mass.transport.model.DispatchOutcome> dispatch(
-                List<com.xa.mass.transport.runtime.delivery.DispatchMessage> items) {
-            return items == null ? List.of() : items.stream()
-                    .map(item -> com.xa.mass.transport.model.DispatchOutcome.delivered(
-                            item.deliveryId(),
-                            item.selectedWorkerId(),
-                            item.correlationRef()))
-                    .toList();
-        }
-    }
-
-    private static final class StubPullCapableAdapter extends StubPushOnlyAdapter implements DeliveryPullChannel {
-
-        private StubPullCapableAdapter(String protocol) {
-            this(protocol, WorkerTransportHints.normalize(protocol));
-        }
-
-        private StubPullCapableAdapter(String protocol, String transportHint) {
-            super(protocol, transportHint);
-        }
-
-        @Override
-        public DeliveryPullResult pollDeliveryMessagesResult(String deliveryBucketId,
-                                                             String workerId,
-                                                             int maxMessages,
-                                                             long timeoutMillis) {
-            return DeliveryPullResult.empty();
-        }
-    }
-
-    private static final class StaticDedicatedServerBootstrap
-            implements TransportAdapterBootstrap {
-
-        private final TransportServer transportServer;
-
-        private StaticDedicatedServerBootstrap(TransportServer transportServer) {
-            this.transportServer = transportServer;
-        }
-
-        @Override
-        public TransportAdapterContribution contribute(TransportAdapterBootstrapContext context) {
-            return TransportAdapterContribution.builder()
-                    .addTransportServer(transportServer)
-                    .build();
-        }
-    }
-
     private static void waitUntil(BooleanSupplier condition, String failureMessage) throws InterruptedException {
         for (int attempt = 0; attempt < 40; attempt++) {
             if (condition.getAsBoolean()) {
@@ -3427,26 +3078,6 @@ class MassSdkTest {
             Thread.sleep(25L);
         }
         assertTrue(condition.getAsBoolean(), failureMessage);
-    }
-
-    private static final class DescriptorOnlyBootstrap
-            implements TransportAdapterBootstrap {
-
-        private final TransportAdapterDescriptor descriptor;
-
-        private DescriptorOnlyBootstrap(TransportAdapterDescriptor descriptor) {
-            this.descriptor = descriptor;
-        }
-
-        @Override
-        public TransportAdapterDescriptor descriptor() {
-            return descriptor;
-        }
-
-        @Override
-        public TransportAdapterContribution contribute(TransportAdapterBootstrapContext context) {
-            return TransportAdapterContribution.empty();
-        }
     }
 
     private static final class StubPollingPendingDeliveryBuffer implements PollingPendingDeliveryBuffer {

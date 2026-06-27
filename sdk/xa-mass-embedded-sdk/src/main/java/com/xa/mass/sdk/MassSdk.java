@@ -14,8 +14,6 @@ import com.xa.mass.starter.builder.MassApplicationBuilder;
 import com.xa.mass.starter.config.TransportRuntimeRole;
 import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
-import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
-import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.websocket.runtime.WebSocketServerFactoryContext;
@@ -123,20 +121,6 @@ public final class MassSdk {
             return this;
         }
 
-        /**
-         * Advanced embedded Java assembly seam for replacing the assembled set
-         * of local worker transport bindings used by this in-process runtime.
-         *
-         * <p>This is not a worker-facing API, external adapter API, or
-         * cross-process transport contract. External workers should use the
-         * public worker SDK/API paths instead of registering Java runtime
-         * objects here.
-         */
-        public TransportOptions workerTransportRuntimeFactory(WorkerTransportRuntimeFactory workerTransportRuntimeFactory) {
-            delegate.workerTransportRuntimeFactory(workerTransportRuntimeFactory);
-            return this;
-        }
-
         public TransportOptions pollingPendingDeliveryBufferFactory(
                 Supplier<PollingPendingDeliveryBuffer> pollingPendingDeliveryBufferFactory) {
             delegate.pollingPendingDeliveryBufferFactory(pollingPendingDeliveryBufferFactory);
@@ -228,11 +212,6 @@ public final class MassSdk {
             return this;
         }
 
-        public TransportOptions adapterMailboxConsumerAvailabilityMillis(long adapterMailboxConsumerAvailabilityMillis) {
-            delegate.adapterMailboxConsumerAvailabilityMillis(adapterMailboxConsumerAvailabilityMillis);
-            return this;
-        }
-
         public TransportOptions transportRuntimeMaxPendingTasks(int maxPendingTasks) {
             delegate.transportRuntimeMaxPendingTasks(maxPendingTasks);
             return this;
@@ -245,19 +224,6 @@ public final class MassSdk {
 
         public TransportOptions eventHandlerTimeoutMillis(long eventHandlerTimeoutMillis) {
             delegate.eventHandlerTimeoutMillis(eventHandlerTimeoutMillis);
-            return this;
-        }
-
-        /**
-         * Advanced embedded Java assembly seam for adding a local adapter
-         * bootstrap to this in-process runtime.
-         *
-         * <p>This accepts Java runtime objects and therefore must not be used as
-         * the contract shape for future external or cross-language adapters.
-         */
-        public TransportOptions addSupplementalTransportAdapterBootstrap(
-                TransportAdapterBootstrap transportAdapterBootstrap) {
-            delegate.addSupplementalTransportAdapterBootstrap(transportAdapterBootstrap);
             return this;
         }
 

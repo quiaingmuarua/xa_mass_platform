@@ -18,7 +18,7 @@ class TransportDispatchHandoffContractTest {
     void inMemoryHandoffSatisfiesContract() throws Exception {
         InMemoryTransportDispatchHandoff handoff = new InMemoryTransportDispatchHandoff(2);
 
-        verifyContract(new HandoffFixture(handoff, handoff, handoff));
+        verifyContract(new HandoffFixture(handoff, handoff));
     }
 
     @Test
@@ -39,7 +39,7 @@ class TransportDispatchHandoffContractTest {
         RedisTransportDispatchHandoff consumer = new RedisTransportDispatchHandoff(consumerConnection, namespace, 2);
         StatefulRedisConnection<String, String> cleanupConnection = producerConnection;
         try {
-            verifyContract(new HandoffFixture(producer, consumer, consumer));
+            verifyContract(new HandoffFixture(producer, consumer));
         } finally {
             cleanupConnection.sync().keys(namespace + ":*").forEach(key -> cleanupConnection.sync().del(key));
             producer.shutdown();
@@ -50,13 +50,16 @@ class TransportDispatchHandoffContractTest {
 
     private static void verifyContract(HandoffFixture fixture) throws Exception {
         assertEquals(
-                List.of(DispatchOutcomeStatus.UNAVAILABLE),
+                List.of(DispatchOutcomeStatus.QUEUED),
                 fixture.producer.offer(DispatchMessageFixtures.batch(
                         DispatchMessageFixtures.item("msg-no-consumer", "worker-1")
                 )).stream().map(outcome -> outcome.getStatus()).toList()
         );
+        assertEquals(
+                List.of("msg-no-consumer"),
+                DispatchMessageFixtures.messages(fixture.consumer.poll(DispatchMessageFixtures.mailboxKey(), 10, 250L))
+        );
 
-        claim(fixture.registry, DispatchMessageFixtures.mailboxKey(), "consumer-1");
         assertEquals(
                 List.of(DispatchOutcomeStatus.QUEUED, DispatchOutcomeStatus.QUEUED),
                 fixture.producer.offer(DispatchMessageFixtures.batch(
@@ -75,7 +78,6 @@ class TransportDispatchHandoffContractTest {
         assertEquals(List.of("msg-1", "msg-2"), DispatchMessageFixtures.messages(firstBatch));
         assertTrue(fixture.consumer.poll(DispatchMessageFixtures.mailboxKey(), 10, 0L).isEmpty());
 
-        claim(fixture.registry, "mailbox-2", "consumer-2");
         fixture.producer.offer(new AdapterMailboxDispatchBatch(
                 "mailbox-2",
                 List.of(DispatchMessageFixtures.item("msg-4", "worker-4"))
@@ -87,17 +89,7 @@ class TransportDispatchHandoffContractTest {
         );
     }
 
-    private static void claim(AdapterMailboxConsumerRegistry registry, String mailboxKey, String consumerId) {
-        registry.publishMailboxConsumerAvailability(new AdapterMailboxConsumerAvailability(
-                mailboxKey,
-                consumerId,
-                1L,
-                System.currentTimeMillis() + 30_000L
-        ));
-    }
-
     private record HandoffFixture(TransportDispatchHandoff producer,
-                                  TransportDispatchHandoff consumer,
-                                  AdapterMailboxConsumerRegistry registry) {
+                                  TransportDispatchHandoff consumer) {
     }
 }

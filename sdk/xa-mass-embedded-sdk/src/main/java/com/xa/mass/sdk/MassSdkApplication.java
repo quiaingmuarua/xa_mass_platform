@@ -614,8 +614,12 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
             throw new IllegalArgumentException("Worker not found: " + requireWorkerId(workerId));
         }
         String transportHint = WorkerTransportHints.normalize(worker.transportHint());
-        if (transportHint == null && delegate.getTransportRuntimeRegistry() != null) {
-            transportHint = delegate.resolveWorkerTransportHint(worker.workerId());
+        if (transportHint == null) {
+            try {
+                transportHint = delegate.resolveWorkerTransportHint(worker.workerId());
+            } catch (IllegalStateException ignored) {
+                // Fall through to the stable worker-facing error below.
+            }
         }
         if (transportHint == null) {
             throw new IllegalStateException("Worker transportHint is not set: " + worker.workerId());

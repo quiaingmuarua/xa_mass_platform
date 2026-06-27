@@ -19,7 +19,6 @@ class InMemoryTransportDispatchHandoffTest {
     @Test
     void offerAndPollRoundTrip() throws Exception {
         InMemoryTransportDispatchHandoff handoff = new InMemoryTransportDispatchHandoff(2);
-        claim(handoff, "consumer-1", 1L);
 
         assertEquals(
                 List.of(DispatchOutcomeStatus.QUEUED),
@@ -36,7 +35,6 @@ class InMemoryTransportDispatchHandoffTest {
     @Test
     void fullQueueReturnsBackpressureWithoutBlockingProducer() {
         InMemoryTransportDispatchHandoff handoff = new InMemoryTransportDispatchHandoff(1);
-        claim(handoff, "consumer-1", 1L);
         handoff.offer(DispatchMessageFixtures.batch(
                 DispatchMessageFixtures.item("msg-1", "worker-1")
         ));
@@ -52,8 +50,6 @@ class InMemoryTransportDispatchHandoffTest {
     @Test
     void backpressureIsScopedByAdapterMailboxQueue() {
         InMemoryTransportDispatchHandoff handoff = new InMemoryTransportDispatchHandoff(1);
-        claimMailbox(handoff, "mailbox-1", "consumer-1", 1L);
-        claimMailbox(handoff, "mailbox-2", "consumer-2", 1L);
 
         assertEquals(
                 List.of(DispatchOutcomeStatus.QUEUED),
@@ -74,7 +70,6 @@ class InMemoryTransportDispatchHandoffTest {
     @Test
     void pollIsDestructiveAndDoesNotRequireAck() throws Exception {
         InMemoryTransportDispatchHandoff handoff = new InMemoryTransportDispatchHandoff(2);
-        claim(handoff, "consumer-1", 1L);
         handoff.offer(DispatchMessageFixtures.batch(
                 DispatchMessageFixtures.item("msg-1", "worker-1")
         ));
@@ -86,29 +81,8 @@ class InMemoryTransportDispatchHandoffTest {
     }
 
     @Test
-    void offerWithoutMailboxConsumerReturnsUnavailable() {
+    void offerDoesNotRequireMailboxConsumerAvailability() {
         InMemoryTransportDispatchHandoff handoff = new InMemoryTransportDispatchHandoff(1);
-
-        assertEquals(
-                List.of(DispatchOutcomeStatus.UNAVAILABLE),
-                handoff.offer(DispatchMessageFixtures.batch(
-                        DispatchMessageFixtures.item("msg-1", "worker-1")
-                )).stream().map(outcome -> outcome.getStatus()).toList()
-        );
-    }
-
-    @Test
-    void staleAvailabilityRemovalDoesNotRemoveNewMailboxConsumer() {
-        InMemoryTransportDispatchHandoff handoff = new InMemoryTransportDispatchHandoff(2);
-        claim(handoff, "consumer-old", 1L);
-        claim(handoff, "consumer-new", 2L);
-
-        handoff.removeMailboxConsumerAvailability(new AdapterMailboxConsumerAvailability(
-                DispatchMessageFixtures.mailboxKey(),
-                "consumer-old",
-                1L,
-                0L
-        ));
 
         assertEquals(
                 List.of(DispatchOutcomeStatus.QUEUED),
@@ -116,23 +90,5 @@ class InMemoryTransportDispatchHandoffTest {
                         DispatchMessageFixtures.item("msg-1", "worker-1")
                 )).stream().map(outcome -> outcome.getStatus()).toList()
         );
-    }
-
-    private static void claim(InMemoryTransportDispatchHandoff handoff,
-                              String consumerId,
-                              long generation) {
-        claimMailbox(handoff, DispatchMessageFixtures.mailboxKey(), consumerId, generation);
-    }
-
-    private static void claimMailbox(InMemoryTransportDispatchHandoff handoff,
-                                     String mailboxKey,
-                                     String consumerId,
-                                     long generation) {
-        handoff.publishMailboxConsumerAvailability(new AdapterMailboxConsumerAvailability(
-                mailboxKey,
-                consumerId,
-                generation,
-                System.currentTimeMillis() + 30_000L
-        ));
     }
 }

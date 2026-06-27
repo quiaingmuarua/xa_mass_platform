@@ -10,20 +10,16 @@ import com.xa.mass.transport.model.DispatchOutcomeStatus;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
  * In-process non-blocking dispatch handoff.
  */
-public final class InMemoryTransportDispatchHandoff implements TransportDispatchHandoff,
-        AdapterMailboxConsumerRegistry {
+public final class InMemoryTransportDispatchHandoff implements TransportDispatchHandoff {
 
     private final InMemoryKeyedBlockingQueueStore readyQueue;
-    private final Map<String, MailboxConsumerEvidence> mailboxConsumers = new ConcurrentHashMap<>();
     private final AtomicBoolean running = new AtomicBoolean(true);
     private final int capacity;
     private final TransportDispatchBatchCodec codec = new TransportDispatchBatchCodec();
@@ -37,10 +33,11 @@ public final class InMemoryTransportDispatchHandoff implements TransportDispatch
     }
 
     @Override
-    public List<DispatchOutcome> offer(AdapterMailboxDispatchBatch batch) {
-        Objects.requireNonNull(batch, "batch");
+    public List<DispatchOutcome> offer(String dispatchQueueKey, List<DispatchMessage> items) {
+        String queueKey = normalizeRequired(dispatchQueueKey, "dispatchQueueKey");
+        List<DispatchMessage> itemsToOffer = normalizeItems(items);
         if (!running.get()) {
-            return batch.items().stream()
+            return itemsToOffer.stream()
                     .map(item -> DispatchOutcomeFactory.fromItem(
                             item,
                             DispatchOutcomeStatus.SHUTDOWN,
@@ -48,18 +45,9 @@ public final class InMemoryTransportDispatchHandoff implements TransportDispatch
                             "dispatch handoff is stopped"))
                     .toList();
         }
-        if (currentEvidence(batch.adapterMailboxKey()) == null) {
-            return batch.items().stream()
-                    .map(item -> DispatchOutcomeFactory.fromItem(
-                            item,
-                            DispatchOutcomeStatus.UNAVAILABLE,
-                            true,
-                            "adapter mailbox has no active consumer"))
-                    .toList();
-        }
-        List<DispatchOutcome> outcomes = new ArrayList<>(batch.items().size());
-        for (DispatchMessage item : batch.items()) {
-            boolean accepted = offerReadyItem(batch.adapterMailboxKey(), item);
+        List<DispatchOutcome> outcomes = new ArrayList<>(itemsToOffer.size());
+        for (DispatchMessage item : itemsToOffer) {
+            boolean accepted = offerReadyItem(queueKey, item);
             outcomes.add(DispatchOutcomeFactory.fromItem(
                     item,
                     accepted ? DispatchOutcomeStatus.QUEUED : DispatchOutcomeStatus.BACKPRESSURE,
@@ -78,9 +66,6 @@ public final class InMemoryTransportDispatchHandoff implements TransportDispatch
         if (maxItems < 1) {
             throw new IllegalArgumentException("maxItems must be greater than 0");
         }
-        if (currentEvidence(mailboxKey) == null) {
-            return List.of();
-        }
         if (!running.get() && readyQueueEmpty(mailboxKey)) {
             return List.of();
         }
@@ -91,36 +76,6 @@ public final class InMemoryTransportDispatchHandoff implements TransportDispatch
     public void shutdown() {
         running.set(false);
         readyQueue.shutdown();
-        mailboxConsumers.clear();
-    }
-
-    @Override
-    public void publishMailboxConsumerAvailability(AdapterMailboxConsumerAvailability lease) {
-        Objects.requireNonNull(lease, "lease");
-        mailboxConsumers.put(lease.adapterMailboxKey(), new MailboxConsumerEvidence(
-                lease.consumerId(),
-                lease.generation(),
-                lease.availableUntilEpochMillis()
-        ));
-    }
-
-    @Override
-    public void removeMailboxConsumerAvailability(AdapterMailboxConsumerAvailability lease) {
-        Objects.requireNonNull(lease, "lease");
-        mailboxConsumers.computeIfPresent(lease.adapterMailboxKey(),
-                (ignored, current) -> lease.consumerId().equals(current.consumerId()) ? null : current);
-    }
-
-    private MailboxConsumerEvidence currentEvidence(String adapterMailboxKey) {
-        MailboxConsumerEvidence evidence = mailboxConsumers.get(adapterMailboxKey);
-        if (evidence == null) {
-            return null;
-        }
-        if (evidence.availableUntilEpochMillis() <= System.currentTimeMillis()) {
-            mailboxConsumers.remove(adapterMailboxKey, evidence);
-            return null;
-        }
-        return evidence;
     }
 
     private boolean offerReadyItem(String adapterMailboxKey, DispatchMessage item) {
@@ -138,9 +93,6 @@ public final class InMemoryTransportDispatchHandoff implements TransportDispatch
         long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
         List<DispatchMessage> items = new ArrayList<>(maxItems);
         do {
-            if (currentEvidence(adapterMailboxKey) == null) {
-                return List.copyOf(items);
-            }
             KeyedQueuePollResult result = readyQueue.poll(
                     adapterMailboxKey,
                     maxItems,
@@ -174,6 +126,19 @@ public final class InMemoryTransportDispatchHandoff implements TransportDispatch
         return readyQueue.size(adapterMailboxKey) == 0;
     }
 
+    private static List<DispatchMessage> normalizeItems(List<DispatchMessage> items) {
+        Objects.requireNonNull(items, "items");
+        if (items.isEmpty()) {
+            throw new IllegalArgumentException("items must not be empty");
+        }
+        for (DispatchMessage item : items) {
+            if (item == null) {
+                throw new IllegalArgumentException("items must not contain null");
+            }
+        }
+        return List.copyOf(items);
+    }
+
     private static String normalizeRequired(String value, String fieldName) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(fieldName + " must not be blank");
@@ -181,8 +146,4 @@ public final class InMemoryTransportDispatchHandoff implements TransportDispatch
         return value.trim();
     }
 
-    private record MailboxConsumerEvidence(String consumerId,
-                                           long generation,
-                                           long availableUntilEpochMillis) {
-    }
 }

@@ -99,29 +99,23 @@ Transport should stay centered on these concepts only:
   evidence driver. A pull-capable binding must provide both the pull channel
   and the evidence driver; it must not read adapter metadata back from the
   command executor.
-- `TransportAdapterContribution`: explicit adapter bootstrap output for
-  contributed bindings, managed adapters, servers, raw/manual channels, and
-  diagnostics. Runtime input context and adapter-produced outputs must not share
-  mutable single-slot state.
-- `TransportAdapterBootstrapContext`: embedded adapter support capability
-  surface. It exposes host assignment, mailbox, session evidence, result
-  ingress, and host-resource capabilities. Concrete adapters must not receive
-  raw endpoint lease stores, worker-runtime scheduling mutation surfaces,
-  mailbox registries, dispatch handoff internals, or generic delivery services
-  through this surface.
-- `EmbeddedAdapterHostSet` / `EmbeddedAdapterContributionHost`: current
-  embedded Java adapter host-support classes around one or more adapter
-  contributions. Their stable role is host mounting: start/stop
-  contribution-owned managed resources and servers with the application without
-  making one binding own shared protocol resources.
-  They are not adapter health, restart, migration, or failover lifecycle
-  owners.
-- `MailboxConsumerAvailabilityPublisher`: current embedded host-support class for narrow
-  mailbox consumer availability claim, refresh, and release for one
-  command-delivery binding. This is queue-safety evidence only. It does not own
-  dispatch queues, selected-worker session maps, task result decode, endpoint
-  lease projection, worker scheduling, concrete protocol state, adapter health,
-  restart, migration, or mailbox placement policy.
+- `EmbeddedAdapterStarter`: embedded adapter startup owner. It creates adapter
+  runtimes from `EmbeddedAdapterRuntimeSpec`, indexes them by adapter id,
+  exposes adapter-id lifecycle calls, and returns only created adapter ids to
+  SDK assembly. It does not expose runtime sets, contribution baskets, queue
+  objects, or concrete adapter internals to embedded SDK.
+- `EmbeddedTransportAdapterRuntimeFactory`: concrete adapter module owner for
+  runtime construction. A factory consumes `EmbeddedAdapterRuntimeSpec` plus
+  shared runtime environment ports and returns one runtime with its binding,
+  managed adapter resources, and optional server resources.
+- `EmbeddedTransportAdapterRuntime`: one embedded adapter runtime instance with
+  `start`, `isRunning`, `close`, `descriptor`, and `binding`. It is not a
+  health supervisor, restart policy, migration owner, or mailbox placement
+  policy.
+- `AdapterDispatchQueueConsumerLoop`: adapter-owned assigned-dispatch queue
+  consumer. It polls one explicit dispatch queue key and calls the concrete
+  `AdapterCommandExecutor`. Dispatch offer no longer depends on mailbox
+  consumer availability evidence.
 - `PollingDeliveryExecutor`: polling adapter command executor. It owns only
   `DispatchMessage` enqueue into the polling delivery buffer and dispatch
   outcome normalization/logging. It must not own pull polling, endpoint lease
@@ -575,7 +569,7 @@ default component namespaces are:
 | --- | --- | --- |
 | endpoint-lease | `xa:mass:transport:endpoint-lease:v1` | `bucket:<encodedDeliveryBucketId>:workers`, `bucket:<encodedDeliveryBucketId>:deadlines` |
 | polling-delivery | `xa:mass:transport:polling-delivery:v1` | `polling:<encodedAdapterMailboxKey>:worker:<encodedSelectedWorkerId>:q`, `queues`, `stats` |
-| dispatch | `xa:mass:transport:dispatch:v1` | `mailbox:<encodedAdapterMailboxKey>:ready-commands`, `mailbox-consumers`, `mailbox-consumer-deadlines`, `queues` |
+| dispatch | `xa:mass:transport:dispatch:v1` | `mailbox:<encodedAdapterMailboxKey>:ready-commands`, `queues` |
 | result-ingress | `xa:mass:transport:result-ingress:v1` | engine-drained result ingress queue entries |
 | delivery-failure | `xa:mass:transport:delivery-failure:v1` | engine-drained retryable delivery-failure entries |
 
@@ -584,8 +578,7 @@ stores bucket-local worker metadata plus a bucket-local deadline index. The
 general endpoint lease view does not expose the deadline timestamp. Endpoint
 lease does not store route-key consumer hashes, route-owner worker projections,
 or `bucket:<deliveryBucketId>:worker:<workerId>:owner` pointers. Split
-transport handoff availability is represented by handoff-private mailbox
-consumer lease evidence.
+transport handoff does not store mailbox consumer availability evidence.
 
 Forbidden transport key families:
 

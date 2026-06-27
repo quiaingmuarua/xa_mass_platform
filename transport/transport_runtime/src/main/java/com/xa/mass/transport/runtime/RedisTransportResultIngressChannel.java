@@ -15,7 +15,9 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Redis-backed best-effort result ingress queue.
  */
-public final class RedisTransportResultIngressChannel implements TransportResultIngressChannel, AutoCloseable {
+public final class RedisTransportResultIngressChannel implements TransportResultIngressChannel,
+        TransportResultIngressQueue,
+        AutoCloseable {
 
     public static final String DEFAULT_NAMESPACE_PREFIX = RedisTransportNamespaces.RESULT_INGRESS;
     public static final int DEFAULT_MAX_QUEUED_RESULTS = 100_000;
@@ -74,6 +76,12 @@ public final class RedisTransportResultIngressChannel implements TransportResult
 
     @Override
     public boolean ingest(ResultIngressEntry entry) {
+        return offer(DEFAULT_RESULT_QUEUE_KEY, entry);
+    }
+
+    @Override
+    public boolean offer(String resultQueueKey, ResultIngressEntry entry) {
+        requireDefaultQueue(resultQueueKey);
         if (entry == null || !running.get()) {
             return false;
         }
@@ -91,6 +99,12 @@ public final class RedisTransportResultIngressChannel implements TransportResult
     }
 
     public ResultIngressEntry poll(long timeoutMillis) throws InterruptedException {
+        return poll(DEFAULT_RESULT_QUEUE_KEY, timeoutMillis);
+    }
+
+    @Override
+    public ResultIngressEntry poll(String resultQueueKey, long timeoutMillis) throws InterruptedException {
+        requireDefaultQueue(resultQueueKey);
         if (!running.get()) {
             return null;
         }
@@ -149,5 +163,12 @@ public final class RedisTransportResultIngressChannel implements TransportResult
             throw new IllegalArgumentException(fieldName + " must not be blank");
         }
         return value.trim();
+    }
+
+    private static void requireDefaultQueue(String resultQueueKey) {
+        String normalized = normalizeRequired(resultQueueKey, "resultQueueKey");
+        if (!TransportResultIngressQueue.DEFAULT_RESULT_QUEUE_KEY.equals(normalized)) {
+            throw new IllegalArgumentException("Unsupported resultQueueKey: " + resultQueueKey);
+        }
     }
 }

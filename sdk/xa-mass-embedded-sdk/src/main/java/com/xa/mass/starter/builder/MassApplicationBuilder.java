@@ -16,11 +16,8 @@ import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeRole;
 import com.xa.mass.trace.sink.ExecutionEventSink;
-import com.xa.mass.transport.runtime.TransportAdapterBootstrap;
-import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.RedisTransportNamespaces;
 import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
-import com.xa.mass.transport.runtime.WorkerTransportRuntimeFactory;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDispatchHandoff;
 import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
 import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
@@ -128,29 +125,7 @@ public class MassApplicationBuilder {
                     + ")");
         }
 
-        TransportAdapterBootstrap primaryBootstrap =
-                transportConfig.getPrimaryTransportAdapterBootstrap();
-        if (primaryBootstrap != null) {
-            summaries.add(describeBootstrap("primaryBootstrap", primaryBootstrap));
-        }
-        List<TransportAdapterBootstrap> additionalBootstraps =
-                transportConfig.getSupplementalTransportAdapterBootstraps();
-        for (int i = 0; i < additionalBootstraps.size(); i++) {
-            summaries.add(describeBootstrap("supplemental[" + i + "]", additionalBootstraps.get(i)));
-        }
-
         return summaries.toString();
-    }
-
-    private static String describeBootstrap(String source,
-                                            TransportAdapterBootstrap bootstrap) {
-        TransportAdapterDescriptor descriptor = bootstrap.descriptor();
-        if (descriptor == null) {
-            return source + "(descriptor=<none>)";
-        }
-        return source + "(adapterId=" + descriptor.getAdapterId()
-                + ",transportHint=" + descriptor.getTransportHint()
-                + ")";
     }
 
     public static class TransportBuilder {
@@ -190,18 +165,6 @@ public class MassApplicationBuilder {
             SocketAdapterBuilder builder = new SocketAdapterBuilder(extra);
             socketAdapterConfigurator.accept(builder);
             config.addSupplementalSocketAdapterConfig(extra);
-            return this;
-        }
-
-        /**
-         * Advanced embedded Java assembly seam for replacing the local runtime
-         * binding factory.
-         *
-         * <p>This is an in-process JVM extension point, not an external worker
-         * or cross-process adapter contract.
-         */
-        public TransportBuilder workerTransportRuntimeFactory(WorkerTransportRuntimeFactory workerTransportRuntimeFactory) {
-            config.setWorkerTransportRuntimeFactory(workerTransportRuntimeFactory);
             return this;
         }
 
@@ -342,11 +305,6 @@ public class MassApplicationBuilder {
             return this;
         }
 
-        public TransportBuilder adapterMailboxConsumerAvailabilityMillis(long adapterMailboxConsumerAvailabilityMillis) {
-            config.setAdapterMailboxConsumerAvailabilityMillis(adapterMailboxConsumerAvailabilityMillis);
-            return this;
-        }
-
         public TransportBuilder transportRuntimeRole(TransportRuntimeRole runtimeRole) {
             config.setRuntimeRole(runtimeRole);
             return this;
@@ -364,20 +322,6 @@ public class MassApplicationBuilder {
 
         public TransportBuilder eventHandlerTimeoutMillis(long eventHandlerTimeoutMillis) {
             config.setEventHandlerTimeoutMillis(eventHandlerTimeoutMillis);
-            return this;
-        }
-
-        /**
-         * Advanced embedded Java assembly seam for adding a local adapter
-         * bootstrap contribution.
-         *
-         * <p>External adapters must not model themselves as Java bootstrap
-         * objects; a future external adapter path needs typed queue/evidence/
-         * outcome contracts instead.
-         */
-        public TransportBuilder addSupplementalTransportAdapterBootstrap(
-                TransportAdapterBootstrap transportAdapterBootstrap) {
-            config.addSupplementalTransportAdapterBootstrap(transportAdapterBootstrap);
             return this;
         }
 
