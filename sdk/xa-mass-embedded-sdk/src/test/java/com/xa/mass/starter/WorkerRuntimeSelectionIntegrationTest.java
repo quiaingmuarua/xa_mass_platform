@@ -12,6 +12,7 @@ import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import com.xa.mass.worker.runtime.resource.WorkerResourceDeclarationRuntime;
+import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.starter.config.EngineConfig;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
@@ -57,6 +58,7 @@ class WorkerRuntimeSelectionIntegrationTest {
     private static void runDispatchProof(WorkerRegistry workerRegistry) throws Exception {
         EngineConfig config = new EngineConfig();
         config.setWorkerRegistry(workerRegistry);
+        config.setWorkerReachabilityLookup(workerId -> WorkerReachabilityState.ONLINE);
         config.setRuntimeReadyDispatchIntervalMillis(50L);
 
         WorkerResourceDeclarationRuntime workerDeclaration = config.getWorkerResourceDeclarationRuntime();

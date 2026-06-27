@@ -11,6 +11,7 @@ import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import com.xa.mass.worker.runtime.resource.WorkerResourceDeclarationRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
+import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.starter.config.EngineConfig;
 import org.junit.jupiter.api.Test;
@@ -172,6 +173,7 @@ class MassEngineStartRecoveryTest {
     }
 
     private static void registerSelectableWorker(EngineConfig config, String workerId, String workerGroupId) {
+        config.setWorkerReachabilityLookup(candidateWorkerId -> WorkerReachabilityState.ONLINE);
         WorkerResourceDeclarationRuntime workerDeclaration = config.getWorkerResourceDeclarationRuntime();
         workerDeclaration.upsertWorkerGroup(WorkerGroupRecord.builder(workerGroupId)
                 .projectCodes(Set.of("demoApp"))
