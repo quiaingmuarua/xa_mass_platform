@@ -518,7 +518,7 @@ Guard targets:
 - WebSocket production code must not contain
   `WebSocketSessionOpenFrameReader`
 - `AdapterSessionIdentity` must not contain routeKey, adapterId,
-  sessionHandle, endpointLeaseId, connectionId, or transportHint fields
+  endpoint lease/session token, connectionId, or transportHint fields
 - WebSocket protocol-edge code may unwrap `AdapterSessionIdentity` into the
   existing `WebSocketServerSessionHandle` methods, but assigned dispatch models
   must not import or consume identity

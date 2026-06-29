@@ -90,7 +90,6 @@ import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeComposition;
 import com.xa.mass.starter.config.TransportRuntimeRole;
-import com.xa.mass.transport.runtime.lease.CurrentSessionConnectSink;
 import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
 import com.xa.mass.transport.polling.delivery.InMemoryPollingPendingDeliveryBuffer;
 import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
@@ -402,8 +401,7 @@ class MassSdkTest {
                 var endpoint = endpointLeaseStore.currentEndpointLease("sdk-socket-workers", "sdk-socket-worker")
                         .orElseThrow();
                 assertEquals("socket", endpoint.endpointDriverId());
-                assertNotNull(endpoint.sessionHandle());
-                assertNotNull(endpoint.endpointLeaseId());
+                assertNotNull(endpoint.sessionToken());
                 waitUntil(() -> app.isWorkerReachable("sdk-socket-worker"),
                         "sdk socket endpoint lease should surface worker reachability");
             }
@@ -478,7 +476,6 @@ class MassSdkTest {
 
         assertCapturedNamespace(runtimeComposition, "dispatchHandoffFactory", RedisTransportNamespaces.DISPATCH);
         assertCapturedNamespace(runtimeComposition, "taskResultIngressQueueFactory", RedisTransportNamespaces.RESULT_INGRESS);
-        assertCapturedNamespace(runtimeComposition, "deliveryFailureInboxFactory", RedisTransportNamespaces.DELIVERY_FAILURE);
         assertCapturedNamespace(runtimeComposition, "endpointLeaseStoreFactory", RedisTransportNamespaces.ENDPOINT_LEASE);
         assertCapturedNamespace(
                 runtimeComposition,
@@ -2901,10 +2898,8 @@ class MassSdkTest {
                 new com.xa.mass.transport.runtime.delivery.InMemoryTransportDispatchHandoff(10),
                 new com.xa.mass.transport.runtime.InMemoryTransportResultIngressQueue(10),
                 new InMemoryTransportEndpointLeaseStore(),
-                CurrentSessionConnectSink.NOOP,
                 CurrentSessionDisconnectSink.NOOP,
-                mock(com.xa.mass.base.runtime.RuntimeTaskExecutor.class),
-                ignored -> true
+                mock(com.xa.mass.base.runtime.RuntimeTaskExecutor.class)
         );
     }
 

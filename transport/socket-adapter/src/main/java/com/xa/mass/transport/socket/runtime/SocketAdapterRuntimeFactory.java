@@ -53,9 +53,7 @@ public final class SocketAdapterRuntimeFactory implements EmbeddedTransportAdapt
         TransportAdapterDescriptor descriptor = descriptor(spec);
         AdapterSessionEvidencePublisher sessionEvidencePublisher = new AdapterSessionEvidencePublisher(
                 descriptor.getAdapterId(),
-                spec.dispatchQueueKey(),
                 environment.endpointLeaseStore(),
-                environment.currentSessionConnectSink(),
                 environment.currentSessionDisconnectSink()
         );
         SocketTransportFrameCodec frameCodec = new SocketTransportFrameCodec();
@@ -69,7 +67,6 @@ public final class SocketAdapterRuntimeFactory implements EmbeddedTransportAdapt
                 spec.dispatchQueueKey(),
                 environment.dispatchQueue(),
                 commandExecutor,
-                environment.deliveryFailureHandler(),
                 environment.executor()
         );
         TransportServer server = createServer(spec, descriptor, sessionManager, frameCodec, environment);

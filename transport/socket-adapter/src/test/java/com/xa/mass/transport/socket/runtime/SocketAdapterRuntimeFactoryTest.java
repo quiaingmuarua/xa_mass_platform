@@ -16,7 +16,6 @@ import com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeEnvironment;
 import com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeSpec;
 import com.xa.mass.transport.runtime.embedded.EmbeddedTransportAdapterRuntime;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
-import com.xa.mass.transport.runtime.lease.CurrentSessionConnectSink;
 import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import com.xa.mass.transport.socket.protocol.SocketTransportFrameCodec;
@@ -108,10 +107,8 @@ class SocketAdapterRuntimeFactoryTest {
                 new InMemoryTransportDispatchHandoff(10),
                 new InMemoryTransportResultIngressQueue(10),
                 new InMemoryTransportEndpointLeaseStore(),
-                CurrentSessionConnectSink.NOOP,
                 CurrentSessionDisconnectSink.NOOP,
-                new DirectExecutor(),
-                ignored -> true
+                new DirectExecutor()
         );
     }
 
@@ -134,7 +131,7 @@ class SocketAdapterRuntimeFactoryTest {
         return new SocketSessionManager(
                 "socket",
                 "socket",
-                AdapterSessionEvidencePublisher.noop("socket", "socket")
+                AdapterSessionEvidencePublisher.noop("socket")
         );
     }
 

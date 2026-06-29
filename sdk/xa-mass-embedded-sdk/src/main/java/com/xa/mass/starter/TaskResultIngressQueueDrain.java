@@ -1,8 +1,9 @@
-package com.xa.mass.transport.runtime;
+package com.xa.mass.starter;
 
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.transport.channel.ResultIngressEntry;
 import com.xa.mass.transport.channel.TransportResultIngressHandler;
+import com.xa.mass.transport.runtime.TransportResultIngressQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -10,11 +11,11 @@ import java.util.Objects;
 import java.util.concurrent.Future;
 
 /**
- * Drains a result ingress queue into the engine-local result ingress handler.
+ * Starter-owned drain from transport result ingress queue into engine result convergence.
  */
-public final class TransportResultIngressQueuePump {
+final class TaskResultIngressQueueDrain {
 
-    private static final Logger logger = LoggerFactory.getLogger(TransportResultIngressQueuePump.class);
+    private static final Logger logger = LoggerFactory.getLogger(TaskResultIngressQueueDrain.class);
     private static final long POLL_TIMEOUT_MILLIS = 250L;
 
     private final TransportResultIngressQueue queue;
@@ -24,23 +25,23 @@ public final class TransportResultIngressQueuePump {
     private volatile boolean running;
     private Future<?> drainLoop;
 
-    public TransportResultIngressQueuePump(TransportResultIngressQueue queue,
-                                           TransportResultIngressHandler delegate,
-                                           RuntimeTaskExecutor executor) {
+    TaskResultIngressQueueDrain(TransportResultIngressQueue queue,
+                                TransportResultIngressHandler delegate,
+                                RuntimeTaskExecutor executor) {
         this(queue, TransportResultIngressQueue.DEFAULT_RESULT_QUEUE_KEY, delegate, executor);
     }
 
-    public TransportResultIngressQueuePump(TransportResultIngressQueue queue,
-                                           String resultQueueKey,
-                                           TransportResultIngressHandler delegate,
-                                           RuntimeTaskExecutor executor) {
+    TaskResultIngressQueueDrain(TransportResultIngressQueue queue,
+                                String resultQueueKey,
+                                TransportResultIngressHandler delegate,
+                                RuntimeTaskExecutor executor) {
         this.queue = Objects.requireNonNull(queue, "queue");
         this.resultQueueKey = requireText(resultQueueKey, "resultQueueKey");
         this.delegate = Objects.requireNonNull(delegate, "delegate");
         this.executor = Objects.requireNonNull(executor, "executor");
     }
 
-    public void start() {
+    void start() {
         if (running) {
             return;
         }
@@ -48,7 +49,7 @@ public final class TransportResultIngressQueuePump {
         drainLoop = executor.submit(this::drainLoop);
     }
 
-    public void stop() {
+    void stop() {
         running = false;
         Future<?> currentDrainLoop = drainLoop;
         if (currentDrainLoop != null) {

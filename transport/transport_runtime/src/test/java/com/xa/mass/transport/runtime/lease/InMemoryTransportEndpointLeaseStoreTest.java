@@ -25,12 +25,11 @@ class InMemoryTransportEndpointLeaseStoreTest {
         assertEquals("bucket-a", evidence.deliveryBucketId());
         assertEquals("worker-1", evidence.workerId());
         assertEquals("websocket", evidence.endpointDriverId());
-        assertEquals("conn-1", evidence.endpointLeaseId());
+        assertEquals("conn-1", evidence.sessionToken());
         assertTrue(evidence.leaseExpireAtEpochMillis() > System.currentTimeMillis());
 
         var view = store.currentEndpointLease("bucket-a", "worker-1").orElseThrow();
-        assertEquals("conn-1", view.sessionHandle());
-        assertEquals("conn-1", view.endpointLeaseId());
+        assertEquals("conn-1", view.sessionToken());
     }
 
     @Test
@@ -45,8 +44,7 @@ class InMemoryTransportEndpointLeaseStoreTest {
         assertFalse(store.releaseEndpointLease(release("worker-1", "bucket-a", "websocket", "conn-old")));
 
         var view = store.currentEndpointLease("bucket-a", "worker-1").orElseThrow();
-        assertEquals("conn-new", view.sessionHandle());
-        assertEquals("conn-new", view.endpointLeaseId());
+        assertEquals("conn-new", view.sessionToken());
     }
 
     @Test
@@ -58,7 +56,7 @@ class InMemoryTransportEndpointLeaseStoreTest {
         var refreshed = store.refreshEndpointLease(heartbeat("worker-1", "bucket-a", "websocket", "conn-1"))
                 .orElseThrow();
 
-        assertEquals(first.endpointLeaseId(), refreshed.endpointLeaseId());
+        assertEquals(first.sessionToken(), refreshed.sessionToken());
         assertTrue(refreshed.leaseExpireAtEpochMillis() > first.leaseExpireAtEpochMillis());
     }
 
@@ -112,12 +110,12 @@ class InMemoryTransportEndpointLeaseStoreTest {
     private static TransportEndpointLeaseClaim claim(String workerId,
                                                      String deliveryBucketId,
                                                      String endpointDriverId,
-                                                     String sessionHandle) {
+                                                     String sessionToken) {
         return new TransportEndpointLeaseClaim(
                 workerId,
                 deliveryBucketId,
                 endpointDriverId,
-                sessionHandle,
+                sessionToken,
                 "test"
         );
     }
@@ -125,12 +123,12 @@ class InMemoryTransportEndpointLeaseStoreTest {
     private static TransportEndpointLeaseHeartbeat heartbeat(String workerId,
                                                             String deliveryBucketId,
                                                             String endpointDriverId,
-                                                            String sessionHandle) {
+                                                            String sessionToken) {
         return new TransportEndpointLeaseHeartbeat(
                 workerId,
                 deliveryBucketId,
                 endpointDriverId,
-                sessionHandle,
+                sessionToken,
                 "test"
         );
     }
@@ -138,12 +136,12 @@ class InMemoryTransportEndpointLeaseStoreTest {
     private static TransportEndpointLeaseRelease release(String workerId,
                                                         String deliveryBucketId,
                                                         String endpointDriverId,
-                                                        String sessionHandle) {
+                                                        String sessionToken) {
         return new TransportEndpointLeaseRelease(
                 workerId,
                 deliveryBucketId,
                 endpointDriverId,
-                sessionHandle,
+                sessionToken,
                 "test"
         );
     }

@@ -172,16 +172,6 @@ public final class MassSdk {
             return this;
         }
 
-        public TransportOptions redisDeliveryFailureInbox(String redisUri) {
-            delegate.redisDeliveryFailureInbox(redisUri);
-            return this;
-        }
-
-        public TransportOptions redisDeliveryFailureInbox(String redisUri, String namespacePrefix) {
-            delegate.redisDeliveryFailureInbox(redisUri, namespacePrefix);
-            return this;
-        }
-
         public TransportOptions redisDistributedChannels(String redisUri) {
             delegate.redisDistributedChannels(redisUri);
             return this;

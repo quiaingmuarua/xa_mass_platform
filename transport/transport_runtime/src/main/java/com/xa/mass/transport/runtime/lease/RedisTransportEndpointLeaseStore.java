@@ -271,8 +271,7 @@ public final class RedisTransportEndpointLeaseStore implements TransportEndpoint
                 claim.deliveryBucketId(),
                 claim.workerId(),
                 claim.endpointDriverId(),
-                claim.sessionHandle(),
-                claim.endpointLeaseId()
+                claim.sessionToken()
         );
     }
 
@@ -290,7 +289,7 @@ public final class RedisTransportEndpointLeaseStore implements TransportEndpoint
                 metadata.deliveryBucketId(),
                 metadata.workerId(),
                 metadata.endpointDriverId(),
-                metadata.endpointLeaseId(),
+                metadata.sessionToken(),
                 leaseExpireAtEpochMillis
         );
     }
@@ -300,8 +299,7 @@ public final class RedisTransportEndpointLeaseStore implements TransportEndpoint
         return heartbeat.workerId().equals(metadata.workerId())
                 && heartbeat.deliveryBucketId().equals(metadata.deliveryBucketId())
                 && heartbeat.endpointDriverId().equals(metadata.endpointDriverId())
-                && heartbeat.sessionHandle().equals(metadata.sessionHandle())
-                && heartbeat.endpointLeaseId().equals(metadata.endpointLeaseId());
+                && heartbeat.sessionToken().equals(metadata.sessionToken());
     }
 
     private static boolean matches(TransportEndpointLeaseRelease release,
@@ -309,8 +307,7 @@ public final class RedisTransportEndpointLeaseStore implements TransportEndpoint
         return release.workerId().equals(metadata.workerId())
                 && release.deliveryBucketId().equals(metadata.deliveryBucketId())
                 && release.endpointDriverId().equals(metadata.endpointDriverId())
-                && release.sessionHandle().equals(metadata.sessionHandle())
-                && release.endpointLeaseId().equals(metadata.endpointLeaseId());
+                && release.sessionToken().equals(metadata.sessionToken());
     }
 
     private static String encodeMetadata(TransportEndpointLeaseMetadata metadata) {
@@ -319,8 +316,7 @@ public final class RedisTransportEndpointLeaseStore implements TransportEndpoint
                 encodeToken(metadata.deliveryBucketId()),
                 encodeToken(metadata.workerId()),
                 encodeToken(metadata.endpointDriverId()),
-                encodeToken(metadata.sessionHandle()),
-                encodeToken(metadata.endpointLeaseId())
+                encodeToken(metadata.sessionToken())
         );
     }
 
@@ -329,15 +325,14 @@ public final class RedisTransportEndpointLeaseStore implements TransportEndpoint
             return null;
         }
         String[] parts = encoded.split("\\|", -1);
-        if (parts.length != 6 || !VERSION.equals(parts[0])) {
+        if (parts.length != 5 || !VERSION.equals(parts[0])) {
             return null;
         }
         return new TransportEndpointLeaseMetadata(
                 decodeToken(parts[1], "deliveryBucketId"),
                 decodeToken(parts[2], "workerId"),
                 decodeToken(parts[3], "endpointDriverId"),
-                decodeToken(parts[4], "sessionHandle"),
-                decodeToken(parts[5], "endpointLeaseId")
+                decodeToken(parts[4], "sessionToken")
         );
     }
 

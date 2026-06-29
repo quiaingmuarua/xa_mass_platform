@@ -35,11 +35,8 @@ worker group candidate pool.
   recover from freshness.
 - `WorkerScoreBand.lowRecheckScore(nextRecheckAtMillis)` currently encodes
   low-recheck as a relative due-time score.
-- `MassApplication.createCurrentSessionConnectSink()` currently converts a
-  transport connect observation into
-  `recoverWorkerDispatch(... TRANSPORT_DISCONNECTED ...)`. That is a positive
-  reopen push from transport and must be converted to a positive recheck
-  request.
+- Transport session connect currently stays transport-local endpoint lease
+  evidence and does not call worker-runtime positive recovery.
 - `WorkerScoreBand.isAcquireVisible(...)` only returns time-band scores. A
   `LOW_RECHECK_BAND` score will not return to normal selection by itself, so a
   worker-runtime-owned recheck caller is required.
@@ -56,10 +53,11 @@ point-read to worker-runtime recheck. Transport must not push heartbeat events
 into worker-runtime, must not call positive recovery on connect, and must not
 write score-band state.
 
-Adapter-confirmed current-session connect is allowed to emit a positive recheck
-request. It is not allowed to reopen eligibility. Worker-runtime must validate
-worker declaration, group membership, blocks, holds, capacity, and freshness
-before it writes `ELIGIBLE_BAND`.
+Adapter-confirmed current-session connect does not emit a worker-runtime signal
+in the current mainline. A future positive recheck caller must be explicitly
+approved and must remain request-only. Worker-runtime must validate worker
+declaration, group membership, blocks, holds, capacity, and freshness before it
+writes `ELIGIBLE_BAND`.
 
 A future protocol-authenticated first worker message may become a positive
 recheck request, but that is not part of this roadmap. It needs a separate
@@ -107,8 +105,8 @@ Any future high-cost mechanism must name:
   insufficient.
 
 For this roadmap, LOW_RECHECK recovery latency is not enough. The default shape
-is request-only targeted recheck from an existing high-value event. The first
-event is adapter-confirmed current-session connect.
+is request-only targeted recheck from an existing high-value event. This roadmap
+does not approve transport session connect as that event.
 
 ## Target Shape
 
@@ -143,11 +141,11 @@ Who rechecks LOW_RECHECK:
 ```text
 worker-runtime targeted recheck service
   inputs:
-    - adapter-confirmed current-session connected
     - explicit worker state/control/operator event
     - worker registration/redeclaration
     - assignment/claim close or exclusive-lock release
   never inputs:
+    - transport session connect unless a successor roadmap approves it
     - transport heartbeat update
     - non-current/stale transport connected callback
     - connection-auth success or first protocol message in this roadmap
@@ -178,10 +176,9 @@ existing worker-runtime recheck round
   global score bands.
 - Do not let transport heartbeat events into worker-runtime.
 - Do not let adapter/session connect directly reopen worker dispatch
-  eligibility. Current-session connect may only request worker-runtime recheck.
+  eligibility or request worker-runtime recheck in this roadmap.
 - Do not add a positive recovery signal from connection authentication or the
   first protocol message in this slice.
-- Do not keep `CurrentSessionConnectSink` as a positive recovery bridge.
 - Do not add a compatibility bridge for `dispatchRecoveryMode`.
 - Do not introduce a thread, poller, scanner, lifecycle owner,
   event-triggered wakeup, queue, or secondary index only to improve
@@ -219,10 +216,10 @@ and lacks the WorkerGroup input required for network freshness validation.
 - Decide where the freshness read contract lives. It must be a narrow provider,
   not the diagnostic endpoint lease view. The first implementation must not make
   worker-runtime depend on adapter/session internals.
-- Inventory and classify `CurrentSessionConnectSink`. Target: rename or replace
-  it with a positive recheck request sink, not a dispatch recovery sink. It must
-  not call worker-runtime direct recovery, clear-capable gate APIs, or score-band
-  writers.
+- Confirm transport session connect has no positive worker-runtime caller. Any
+  future positive recheck request sink must be introduced by a successor owner
+  review and must not call worker-runtime direct recovery, clear-capable gate
+  APIs, or score-band writers.
 - Inventory `EngineConfig.getWorkerDispatchRecoveryRuntime()`. Target: delete
   this SDK/assembly getter. Controlled recovery stays worker-runtime/control
   owned, and `DefaultWorkerDispatchAvailabilityPolicy` can continue receiving
@@ -238,8 +235,6 @@ Acceptance:
   routing identity.
 - Recheck caller contract is worker-runtime owned and does not expose
   clear-capable gate APIs to transport or adapters.
-- `CurrentSessionConnectSink` is classified as positive-reopen residue; its
-  successor, if kept, is request-only recheck plumbing.
 - SDK/transport assembly no longer treats `WorkerDispatchRecoveryRuntime` as the
   connect-path capability.
 
@@ -274,14 +269,9 @@ Scope:
 - Add `WorkerNetworkEligibilityRecheckRuntime` or an equivalent request-only
   contract. It accepts `workerGroupId`, `workerId`, and `reason`; it does not
   expose clear-capable gates, direct recovery, or score-band write APIs.
-- Rename or replace `CurrentSessionConnectSink` with request-only recheck
-  plumbing, so adapter-confirmed current-session connect can request recheck but
-  cannot become unconditional positive reopen.
 - Scope includes:
   - `AdapterSessionEvidencePublisher.connected(...)`;
-  - `AdapterSessionEvidencePublisher.claimEndpoint(...)`;
   - embedded adapter runtime environment/session evidence wiring;
-  - `MassApplication.createCurrentSessionConnectSink()`;
   - related WebSocket/Socket/Polling session and adapter runtime tests.
 - Delete `WorkerDispatchRecoveryMode`.
 - Remove `dispatchRecoveryMode` and related constants/methods from
@@ -306,10 +296,7 @@ Scope:
 - If all checks pass, write `ELIGIBLE_BAND(now)`.
 - If freshness is missing/stale, keep or write `LOW_RECHECK_BAND` with
   priority/count semantics.
-- Add the first bounded LOW_RECHECK recheck caller in the same executable
-  slice:
-  - synchronous targeted recheck request from adapter-confirmed current-session
-    connect.
+- Do not add a transport session connect caller in this executable slice.
 - Delete `EngineConfig.getWorkerDispatchRecoveryRuntime()` from SDK/transport
   assembly. Controlled recovery should remain worker-runtime/control owned.
 - Do not add a standalone timer, scanner, or demand-triggered broad recheck job
@@ -328,9 +315,7 @@ Acceptance:
 - A parked/platform-blocked worker does not recover from network freshness.
 - A task attribute mismatch does not write a score band.
 - Transport heartbeat/session freshness updates do not invoke worker-runtime.
-- Adapter-confirmed current-session connect invokes only the request-only
-  network recheck path, and tests prove worker-runtime validation still decides
-  whether eligibility reopens.
+- Transport session connect invokes no worker-runtime path in this roadmap.
 - SDK/transport connect paths do not call `WorkerDispatchRecoveryRuntime`,
   `recoverWorkerDispatch(...)`, clear-capable gate APIs, or score-band writers.
 - `WorkerManager.recoverWorkerDispatch(...)` does not read transport freshness
@@ -395,7 +380,6 @@ Acceptance:
 3. NFR-2/3 request-only network recheck slice:
    - add the recheck contract;
    - implement freshness validation;
-   - convert connect plumbing to the request-only path;
    - remove recovery-mode gating;
    - keep `recoverWorkerDispatch(...)` controlled-only.
 4. NFR-4 docs, guards, and proof registry.
@@ -429,9 +413,8 @@ rg -n "WorkerDispatchRecoveryRuntime|recoverWorkerDispatch\\(|clearWorkerDispatc
 
 Expected residue after completion: no recovery-mode symbols; low-recheck
 time/due symbols only remain if explicitly renamed as delayed/backoff policy and
-not used for ordinary network disconnect. Connect-path symbols may remain only
-if they represent request-only recheck plumbing. Transport/adapter/SDK main code
-must not call direct recovery, clear-capable gates, or score-band writers.
+not used for ordinary network disconnect. Transport/adapter/SDK main code must
+not call direct recovery, clear-capable gates, or score-band writers.
 `TransportConvergenceArchitectureGuardTest` or an equivalent guard must prove
 heartbeat paths cannot call worker-runtime recheck or recovery.
 
@@ -445,10 +428,9 @@ heartbeat paths cannot call worker-runtime recheck or recovery.
   low-recheck workers after worker-runtime validates declaration, group
   membership, block/park/hold, and capacity facts.
 - LOW_RECHECK recheck is triggered only through request-only recheck callers.
-  Adapter-confirmed current-session connect is the first caller. Transport
-  heartbeat/freshness update, connection-auth success, first protocol messages,
-  task filter misses, and standalone low-recheck timers never trigger it in
-  this roadmap.
+  Transport session connect, heartbeat/freshness update, connection-auth
+  success, first protocol messages, task filter misses, and standalone
+  low-recheck timers never trigger it in this roadmap.
 - No external signal directly writes `ELIGIBLE_BAND`, clears a gate, or calls
   direct recovery.
 - Parked/platform-blocked workers remain closed until their owner explicitly

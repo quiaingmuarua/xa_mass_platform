@@ -19,7 +19,6 @@ import com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeEnvironment;
 import com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeSpec;
 import com.xa.mass.transport.runtime.embedded.EmbeddedTransportAdapterRuntime;
 import com.xa.mass.transport.runtime.frame.TransportJsonFrameParser;
-import com.xa.mass.transport.runtime.lease.CurrentSessionConnectSink;
 import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
@@ -119,7 +118,7 @@ class WebSocketAdapterRuntimeFactoryTest {
     @Test
     void commandExecutorReturnsNoEndpointWhenSelectedWorkerHasNoSession() {
         WebSocketSessionRegistry registry = new WebSocketSessionRegistry(
-                AdapterSessionEvidencePublisher.noop("websocket", "websocket"));
+                AdapterSessionEvidencePublisher.noop("websocket"));
         AdapterCommandExecutor executor =
                 WebSocketAdapterRuntimeFactory.webSocketCommandExecutor(registry, frameCodec);
 
@@ -145,16 +144,14 @@ class WebSocketAdapterRuntimeFactoryTest {
                 new InMemoryTransportDispatchHandoff(10),
                 resultQueue,
                 new InMemoryTransportEndpointLeaseStore(),
-                CurrentSessionConnectSink.NOOP,
                 CurrentSessionDisconnectSink.NOOP,
-                new DirectExecutor(),
-                ignored -> true
+                new DirectExecutor()
         );
     }
 
     private SessionFixture sessionWithWorker(String workerId) {
         WebSocketSessionRegistry registry = new WebSocketSessionRegistry(
-                AdapterSessionEvidencePublisher.noop("websocket", "websocket"));
+                AdapterSessionEvidencePublisher.noop("websocket"));
         Channel channel = mockActiveChannel(workerId);
         registry.addSession("bucket-1", workerId, channel);
         return new SessionFixture(registry, channel);

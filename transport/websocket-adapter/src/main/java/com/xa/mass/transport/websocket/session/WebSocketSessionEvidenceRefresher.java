@@ -83,11 +83,9 @@ public final class WebSocketSessionEvidenceRefresher implements ManagedTransport
         try {
             for (WebSocketSessionRegistry.SessionSnapshot session : registry.activeSessionSnapshots()) {
                 sessionEvidencePublisher.heartbeat(
-                        session.workerId(),
-                        session.workerGroupId(),
+                        session.identity(),
                         session.sessionHandle(),
-                        "websocket session keepalive",
-                        session.sessionHandle()
+                        "websocket session keepalive"
                 );
             }
         } catch (Exception e) {

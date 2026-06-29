@@ -14,7 +14,6 @@ import com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeEnvironment;
 import com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeSpec;
 import com.xa.mass.transport.runtime.embedded.EmbeddedTransportAdapterRuntime;
 import com.xa.mass.transport.runtime.embedded.EmbeddedTransportAdapterRuntimeFactory;
-import com.xa.mass.transport.runtime.lease.CurrentSessionConnectSink;
 import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import org.junit.jupiter.api.Test;
@@ -95,10 +94,8 @@ class EmbeddedAdapterStarterTest {
                 new InMemoryTransportDispatchHandoff(10),
                 new InMemoryTransportResultIngressQueue(10),
                 endpointLeaseStore,
-                CurrentSessionConnectSink.NOOP,
                 CurrentSessionDisconnectSink.NOOP,
-                new DirectExecutor(),
-                ignored -> true
+                new DirectExecutor()
         );
     }
 

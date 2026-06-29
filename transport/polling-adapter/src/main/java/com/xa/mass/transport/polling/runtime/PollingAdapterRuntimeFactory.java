@@ -61,9 +61,7 @@ public final class PollingAdapterRuntimeFactory implements EmbeddedTransportAdap
         TransportAdapterDescriptor descriptor = descriptor(spec);
         AdapterSessionEvidencePublisher sessionEvidencePublisher = new AdapterSessionEvidencePublisher(
                 descriptor.getAdapterId(),
-                spec.dispatchQueueKey(),
                 environment.endpointLeaseStore(),
-                environment.currentSessionConnectSink(),
                 environment.currentSessionDisconnectSink()
         );
         PollingPendingDeliveryBuffer pendingDeliveryBuffer = Objects.requireNonNull(
@@ -85,7 +83,6 @@ public final class PollingAdapterRuntimeFactory implements EmbeddedTransportAdap
                 spec.dispatchQueueKey(),
                 environment.dispatchQueue(),
                 deliveryExecutor,
-                environment.deliveryFailureHandler(),
                 environment.executor()
         );
         TransportBinding binding = TransportBinding.builder(descriptor.getAdapterId(), descriptor.getTransportHint())

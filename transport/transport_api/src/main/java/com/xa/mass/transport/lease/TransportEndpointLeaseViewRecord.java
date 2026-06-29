@@ -8,22 +8,19 @@ package com.xa.mass.transport.lease;
 public record TransportEndpointLeaseViewRecord(String deliveryBucketId,
                                                String workerId,
                                                String endpointDriverId,
-                                               String sessionHandle,
-                                               String endpointLeaseId) {
+                                               String sessionToken) {
 
     public TransportEndpointLeaseViewRecord(TransportEndpointLeaseMetadata metadata) {
         this(metadata.deliveryBucketId(),
                 metadata.workerId(),
                 metadata.endpointDriverId(),
-                metadata.sessionHandle(),
-                metadata.endpointLeaseId());
+                metadata.sessionToken());
     }
 
     public TransportEndpointLeaseViewRecord {
         deliveryBucketId = TransportEndpointLeaseClaim.requireText(deliveryBucketId, "deliveryBucketId");
         workerId = TransportEndpointLeaseClaim.requireText(workerId, "workerId");
         endpointDriverId = TransportEndpointLeaseClaim.requireText(endpointDriverId, "endpointDriverId");
-        sessionHandle = TransportEndpointLeaseClaim.requireText(sessionHandle, "sessionHandle");
-        endpointLeaseId = TransportEndpointLeaseClaim.requireText(endpointLeaseId, "endpointLeaseId");
+        sessionToken = TransportEndpointLeaseClaim.requireText(sessionToken, "sessionToken");
     }
 }

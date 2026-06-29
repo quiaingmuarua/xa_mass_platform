@@ -8,8 +8,6 @@ import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.runtime.delivery.AdapterMailboxDispatchBatch;
 import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 import com.xa.mass.transport.runtime.delivery.TransportAssignedDeliverySubmitter;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureEvent;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
 import com.xa.mass.worker.runtime.evidence.SelectedWorkerDeliveryTargetEvidence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,16 +30,13 @@ final class TaskDispatchRoutingSubmitter implements TaskDispatchBatchListener {
     private static final Logger logger = LoggerFactory.getLogger(TaskDispatchRoutingSubmitter.class);
 
     private final TransportAssignedDeliverySubmitter assignedDeliverySubmitter;
-    private final TransportDeliveryFailureHandler failureHandler;
     private final Function<String, Optional<SelectedWorkerDeliveryTargetEvidence>> deliveryTargetResolver;
     private final TaskDispatchPayloadEncoder payloadEncoder = new TaskDispatchPayloadEncoder();
     private final TaskDispatchDeliveryCorrelationCodec correlationCodec = new TaskDispatchDeliveryCorrelationCodec();
 
     TaskDispatchRoutingSubmitter(TransportAssignedDeliverySubmitter assignedDeliverySubmitter,
-                                  TransportDeliveryFailureHandler failureHandler,
                                   Function<String, Optional<SelectedWorkerDeliveryTargetEvidence>> deliveryTargetResolver) {
         this.assignedDeliverySubmitter = Objects.requireNonNull(assignedDeliverySubmitter, "assignedDeliverySubmitter");
-        this.failureHandler = failureHandler;
         this.deliveryTargetResolver = deliveryTargetResolver != null
                 ? deliveryTargetResolver
                 : selectedWorkerId -> Optional.empty();
@@ -68,17 +63,17 @@ final class TaskDispatchRoutingSubmitter implements TaskDispatchBatchListener {
                     .apply(selectedWorkerId)
                     .orElse(null);
             if (target == null || !target.isDeliverable(System.currentTimeMillis())) {
-                compensateDeliveryTargetFailure(item, "selected worker has no current adapter mailbox target");
+                logDeliveryTargetFailure(item, "selected worker has no current adapter mailbox target");
                 continue;
             }
             if (!selectedWorkerId.equals(target.workerId())) {
-                compensateDeliveryTargetFailure(item, "selected worker delivery target does not match assignment worker");
+                logDeliveryTargetFailure(item, "selected worker delivery target does not match assignment worker");
                 continue;
             }
             itemsByMailbox.computeIfAbsent(target.adapterMailboxKey(), ignored -> new ArrayList<>()).add(item);
         }
 
-        compensateInvalidBindings(task, invalidBindings, "delivery command translation failed before transport handoff");
+        logInvalidBindings(task, invalidBindings, "delivery command translation failed before transport handoff");
         if (itemsByMailbox.isEmpty()) {
             return;
         }
@@ -87,7 +82,7 @@ final class TaskDispatchRoutingSubmitter implements TaskDispatchBatchListener {
                         entry.getKey(),
                         entry.getValue()))
                 .toList();
-        assignedDeliverySubmitter.submit(batches);
+        logRetryableOutcomes(assignedDeliverySubmitter.submit(batches));
     }
 
     private DispatchMessage toItem(TaskDispatchContext task,
@@ -105,13 +100,8 @@ final class TaskDispatchRoutingSubmitter implements TaskDispatchBatchListener {
         );
     }
 
-    private void compensateInvalidBindings(TaskDispatchContext task, List<TaskDispatchBinding> bindings, String detail) {
+    private void logInvalidBindings(TaskDispatchContext task, List<TaskDispatchBinding> bindings, String detail) {
         if (bindings == null || bindings.isEmpty()) {
-            return;
-        }
-        if (failureHandler == null) {
-            logger.warn("Cannot compensate invalid delivery bindings because no failure handler is configured: taskId={}, bindings={}, detail={}",
-                    task != null ? task.taskId() : null, bindings.size(), detail);
             return;
         }
         for (TaskDispatchBinding binding : bindings) {
@@ -126,21 +116,12 @@ final class TaskDispatchRoutingSubmitter implements TaskDispatchBatchListener {
                     detail,
                     System.currentTimeMillis()
             );
-            boolean handled = failureHandler.handle(new TransportDeliveryFailureEvent(outcome, detail));
-            if (!handled) {
-                logger.error("Delivery failure was not compensated: deliveryId={}, selectedWorkerId={}, detail={}",
-                        outcome.getDeliveryId(), outcome.getSelectedWorkerId(), detail);
-            }
+            logRetryableOutcome(outcome);
         }
     }
 
-    private void compensateDeliveryTargetFailure(DispatchMessage item, String detail) {
+    private void logDeliveryTargetFailure(DispatchMessage item, String detail) {
         if (item == null) {
-            return;
-        }
-        if (failureHandler == null) {
-            logger.warn("Cannot compensate delivery target failure because no failure handler is configured: deliveryId={}, selectedWorkerId={}, detail={}",
-                    item.deliveryId(), item.selectedWorkerId(), detail);
             return;
         }
         DispatchOutcome outcome = new DispatchOutcome(
@@ -152,11 +133,27 @@ final class TaskDispatchRoutingSubmitter implements TaskDispatchBatchListener {
                 detail,
                 System.currentTimeMillis()
         );
-        boolean handled = failureHandler.handle(new TransportDeliveryFailureEvent(outcome, detail));
-        if (!handled) {
-            logger.error("Delivery target failure was not compensated: deliveryId={}, selectedWorkerId={}, detail={}",
-                    outcome.getDeliveryId(), outcome.getSelectedWorkerId(), detail);
+        logRetryableOutcome(outcome);
+    }
+
+    private void logRetryableOutcomes(List<DispatchOutcome> outcomes) {
+        if (outcomes == null || outcomes.isEmpty()) {
+            return;
         }
+        for (DispatchOutcome outcome : outcomes) {
+            logRetryableOutcome(outcome);
+        }
+    }
+
+    private void logRetryableOutcome(DispatchOutcome outcome) {
+        if (outcome == null || !outcome.isRetryable()) {
+            return;
+        }
+        logger.warn("Assigned delivery failed before worker result; engine attempt timeout remains recovery path: deliveryId={}, selectedWorkerId={}, status={}, reason={}",
+                outcome.getDeliveryId(),
+                outcome.getSelectedWorkerId(),
+                outcome.getStatus(),
+                outcome.getReason());
     }
 
     private static String normalize(String value) {

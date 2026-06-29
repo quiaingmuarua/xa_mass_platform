@@ -8,7 +8,6 @@ import com.xa.mass.transport.runtime.TransportResultIngressQueue;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDispatchHandoff;
 import com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeEnvironment;
 import com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeSpec;
-import com.xa.mass.transport.runtime.lease.CurrentSessionConnectSink;
 import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import com.xa.mass.transport.starter.EmbeddedAdapterStarter;
@@ -107,10 +106,8 @@ class TransportConfigTest {
                 new InMemoryTransportDispatchHandoff(10),
                 new InMemoryTransportResultIngressQueue(10),
                 new InMemoryTransportEndpointLeaseStore(),
-                CurrentSessionConnectSink.NOOP,
                 CurrentSessionDisconnectSink.NOOP,
-                new DirectExecutor(),
-                ignored -> true
+                new DirectExecutor()
         );
     }
 

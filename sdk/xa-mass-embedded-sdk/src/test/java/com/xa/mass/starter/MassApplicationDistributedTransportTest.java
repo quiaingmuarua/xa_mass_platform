@@ -12,7 +12,6 @@ import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
 import com.xa.mass.transport.runtime.delivery.DispatchOutcomeFactory;
 import com.xa.mass.transport.runtime.delivery.AdapterMailboxDispatchBatch;
 import com.xa.mass.transport.runtime.delivery.DispatchMessage;
-import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
 import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
 import com.xa.mass.worker.runtime.evidence.SelectedWorkerDeliveryTargetEvidence;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
@@ -48,7 +47,6 @@ class MassApplicationDistributedTransportTest {
         TransportConfig transport = disabledEngineProducerTransport();
         transport.setDispatchHandoffFactory(() -> handoff);
         transport.setTaskResultIngressQueueFactory(() -> mock(RedisTransportResultIngressChannel.class));
-        transport.setDeliveryFailureInboxFactory(() -> mock(RedisTransportDeliveryFailureChannel.class));
 
         CapturingMassEngine massEngine = new CapturingMassEngine(engine);
         MassApplication app = new MassApplication(massEngine, transport, engine);
@@ -89,7 +87,6 @@ class MassApplicationDistributedTransportTest {
         TransportConfig transport = disabledEngineProducerTransport();
         transport.setDispatchHandoffFactory(() -> handoff);
         transport.setTaskResultIngressQueueFactory(() -> mock(RedisTransportResultIngressChannel.class));
-        transport.setDeliveryFailureInboxFactory(() -> mock(RedisTransportDeliveryFailureChannel.class));
 
         CapturingMassEngine massEngine = new CapturingMassEngine(engine);
         MassApplication app = new MassApplication(massEngine, transport, engine);

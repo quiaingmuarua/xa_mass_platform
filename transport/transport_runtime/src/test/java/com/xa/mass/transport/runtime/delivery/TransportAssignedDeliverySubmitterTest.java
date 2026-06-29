@@ -12,46 +12,33 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class TransportAssignedDeliverySubmitterTest {
 
     @Test
-    void handoffBackpressureEmitsOneFailure() {
+    void handoffBackpressureReturnsRetryableOutcome() {
         FakeHandoff handoff = new FakeHandoff();
         handoff.backpressure = true;
-        RecordingFailureHandler failures = new RecordingFailureHandler();
-        TransportAssignedDeliverySubmitter submitter = new TransportAssignedDeliverySubmitter(
-                handoff,
-                failures
-        );
+        TransportAssignedDeliverySubmitter submitter = new TransportAssignedDeliverySubmitter(handoff);
 
         List<DispatchOutcome> outcomes = submitter.submit(List.of(batch(item("msg-1", "worker-1"))));
 
         assertEquals(List.of(DispatchOutcomeStatus.BACKPRESSURE), statuses(outcomes));
-        assertEquals(1, failures.events.size());
-        assertEquals("worker-1", failures.events.getFirst().outcome().getSelectedWorkerId());
+        assertEquals("worker-1", outcomes.getFirst().getSelectedWorkerId());
     }
 
     @Test
     void handoffFailureIsConvertedToRetryableOutcome() {
         FakeHandoff handoff = new FakeHandoff();
         handoff.failure = new IllegalStateException("redis unavailable");
-        RecordingFailureHandler failures = new RecordingFailureHandler();
-        TransportAssignedDeliverySubmitter submitter = new TransportAssignedDeliverySubmitter(
-                handoff,
-                failures
-        );
+        TransportAssignedDeliverySubmitter submitter = new TransportAssignedDeliverySubmitter(handoff);
 
         List<DispatchOutcome> outcomes = submitter.submit(List.of(batch(item("msg-1", "worker-1"))));
 
         assertEquals(List.of(DispatchOutcomeStatus.UNAVAILABLE), statuses(outcomes));
-        assertEquals(1, failures.events.size());
-        assertEquals("worker-1", failures.events.getFirst().outcome().getSelectedWorkerId());
+        assertEquals("worker-1", outcomes.getFirst().getSelectedWorkerId());
     }
 
     @Test
     void submitsOneMailboxBatchWithoutSelectedWorkerRegrouping() {
         FakeHandoff handoff = new FakeHandoff();
-        TransportAssignedDeliverySubmitter submitter = new TransportAssignedDeliverySubmitter(
-                handoff,
-                new RecordingFailureHandler()
-        );
+        TransportAssignedDeliverySubmitter submitter = new TransportAssignedDeliverySubmitter(handoff);
 
         List<DispatchOutcome> outcomes = submitter.submit(List.of(batch(
                 item("msg-1", "worker-1"),
@@ -72,10 +59,7 @@ class TransportAssignedDeliverySubmitterTest {
     @Test
     void adapterMailboxGroupingDoesNotChangeSelectedWorker() {
         FakeHandoff handoff = new FakeHandoff();
-        TransportAssignedDeliverySubmitter submitter = new TransportAssignedDeliverySubmitter(
-                handoff,
-                new RecordingFailureHandler()
-        );
+        TransportAssignedDeliverySubmitter submitter = new TransportAssignedDeliverySubmitter(handoff);
 
         submitter.submit(List.of(batch(item("msg-1", "worker-selected"))));
 
@@ -135,15 +119,5 @@ class TransportAssignedDeliverySubmitterTest {
         public void shutdown() {
         }
 
-    }
-
-    private static final class RecordingFailureHandler implements TransportDeliveryFailureHandler {
-        private final List<TransportDeliveryFailureEvent> events = new ArrayList<>();
-
-        @Override
-        public boolean handle(TransportDeliveryFailureEvent event) {
-            events.add(event);
-            return true;
-        }
     }
 }

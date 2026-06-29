@@ -30,14 +30,12 @@ closure over feature behavior changes.
 
 - `MassApplication.createCurrentSessionDisconnectSink()` directly calls
   `engineConfig.getWorkerDispatchBlockRuntime().blockWorkerDispatch(...)`.
-- `MassApplication.createCurrentSessionConnectSink()` directly calls
-  `engineConfig.getWorkerDispatchRecoveryRuntime().recoverWorkerDispatch(...)`.
+- Transport session connect no longer calls worker-runtime positive recovery;
+  connected observations only claim transport endpoint lease evidence.
 - `EngineConfig` exposes `getWorkerDispatchBlockRuntime()` and
   `getWorkerDispatchRecoveryRuntime()`, both backed by `WorkerManager`.
-- `EmbeddedAdapterRuntimeEnvironment` injects `CurrentSessionConnectSink` and
-  `CurrentSessionDisconnectSink` into adapter runtime session evidence wiring.
-- `AdapterSessionEvidencePublisher.connected(...)` and `claimEndpoint(...)`
-  call the connect sink after writing endpoint lease evidence.
+- `EmbeddedAdapterRuntimeEnvironment` injects `CurrentSessionDisconnectSink`
+  into adapter runtime session evidence wiring.
 - `AdapterSessionEvidencePublisher.disconnected(...)` calls the disconnect sink
   when the endpoint lease release proves the disconnected session was current.
 - `WorkerManager` implements `WorkerDispatchBlockRuntime` and
@@ -148,9 +146,9 @@ Connect semantics:
 
 ```text
 current-session connected
-  -> positive recheck request only
-  -> worker-runtime may reopen only after validating worker declaration,
-     group membership, platform blocks, holds, score-band state, and freshness
+  -> transport endpoint lease evidence only in the current mainline
+  -> any future positive recheck request must be worker-runtime owned and
+     separately reviewed
 ```
 
 Disconnect semantics:
@@ -295,20 +293,21 @@ Acceptance:
   explicit dependency decision is made. The default path is SDK assembly
   adaptation.
 
-## EMP-2 Replace Session Connect/Disconnect Mutation Bridges
+## EMP-2 Replace Session Disconnect Mutation Bridge
 
 Goal:
 
-Move transport session connect/disconnect facts off direct worker-runtime
-mutation ports.
+Move confirmed transport session disconnect facts off direct worker-runtime
+mutation ports. Session connect is already transport-local endpoint lease
+evidence in the current mainline.
 
 Scope:
 
-- Replace `CurrentSessionConnectSink` and `CurrentSessionDisconnectSink` with a
+- Replace `CurrentSessionDisconnectSink` with a
   neutral transport current-session fact sink, or keep them only as a temporary
   internal adapter during the same slice and delete them before completion.
 - Update `AdapterSessionEvidencePublisher` so:
-  - connected/current endpoint claimed publishes a request-only signal;
+  - connected/current endpoint claimed stays transport-local endpoint evidence;
   - disconnected publishes a negative signal only when endpoint lease release
     confirms the disconnected session was current;
   - heartbeat only refreshes transport endpoint lease evidence.
@@ -325,11 +324,10 @@ Scope:
 Acceptance:
 
 - `sdk/xa-mass-embedded-sdk/src/main` no longer calls
-  `recoverWorkerDispatch(...)` for transport connect.
-- `sdk/xa-mass-embedded-sdk/src/main` no longer calls
   `blockWorkerDispatch(...)` for transport disconnect.
-- Transport session connect/disconnect reaches worker-runtime only through
+- Transport session disconnect reaches worker-runtime only through
   `WorkerRuntimeSignalIngress`.
+- Transport session connect does not reach worker-runtime in this roadmap.
 - Session heartbeat does not publish a worker-runtime signal.
 - Stale or replaced session disconnect still cannot block the new session:
   only current-session release success may publish the disconnect signal.
@@ -426,13 +424,13 @@ Residue checks after EMP-2:
 rg -n "getWorkerDispatchRecoveryRuntime|WorkerDispatchRecoveryRuntime|recoverWorkerDispatch\(" sdk transport --glob "*.java" --glob "!**/target/**"
 rg -n "getWorkerDispatchBlockRuntime|WorkerDispatchBlockRuntime|blockWorkerDispatch\(" sdk transport --glob "*.java" --glob "!**/target/**"
 rg -n "WorkerScoreBandSlotRuntime|WorkerRegistry|WorkerDispatchGateRuntime" sdk transport xa-mass-engine/src/main --glob "*.java" --glob "!**/target/**"
-rg -n "CurrentSessionConnectSink|CurrentSessionDisconnectSink" transport sdk --glob "*.java" --glob "!**/target/**"
+rg -n "CurrentSessionDisconnectSink" transport sdk --glob "*.java" --glob "!**/target/**"
 ```
 
 Expected after EMP-2/EMP-3:
 
 - no SDK/transport main-source direct recovery/block mutation calls;
-- no session connect/disconnect sink residue;
+- no session disconnect sink residue after EMP-2;
 - no heartbeat-to-worker-runtime signal path;
 - engine mainline still uses only `WorkerSelectionRuntime` for selection until
   EMP-4 starts.
@@ -441,7 +439,9 @@ Expected after EMP-2/EMP-3:
 
 - SDK and transport no longer receive or expose direct worker-runtime
   recovery/block/gate/score mutation ports.
-- Session connect/disconnect enters worker-runtime through signal ingress only.
+- Session disconnect enters worker-runtime through signal ingress only; session
+  connect remains transport-local endpoint evidence unless a successor roadmap
+  approves a worker-runtime positive recheck request.
 - Worker-runtime owns signal classification and state mutation.
 - `EngineConfig` no longer exposes direct worker-runtime mutation getters for
   adapter/session assembly.

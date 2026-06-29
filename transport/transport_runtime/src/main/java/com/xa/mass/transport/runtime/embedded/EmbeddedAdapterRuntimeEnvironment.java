@@ -3,9 +3,7 @@ package com.xa.mass.transport.runtime.embedded;
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.runtime.TransportResultIngressQueue;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
 import com.xa.mass.transport.runtime.delivery.TransportDispatchQueue;
-import com.xa.mass.transport.runtime.lease.CurrentSessionConnectSink;
 import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
 
 import java.util.Objects;
@@ -18,29 +16,21 @@ public final class EmbeddedAdapterRuntimeEnvironment {
     private final TransportDispatchQueue dispatchQueue;
     private final TransportResultIngressQueue resultQueue;
     private final TransportEndpointLeaseStore endpointLeaseStore;
-    private final CurrentSessionConnectSink currentSessionConnectSink;
     private final CurrentSessionDisconnectSink currentSessionDisconnectSink;
     private final RuntimeTaskExecutor executor;
-    private final TransportDeliveryFailureHandler deliveryFailureHandler;
 
     public EmbeddedAdapterRuntimeEnvironment(TransportDispatchQueue dispatchQueue,
                                              TransportResultIngressQueue resultQueue,
                                              TransportEndpointLeaseStore endpointLeaseStore,
-                                             CurrentSessionConnectSink currentSessionConnectSink,
                                              CurrentSessionDisconnectSink currentSessionDisconnectSink,
-                                             RuntimeTaskExecutor executor,
-                                             TransportDeliveryFailureHandler deliveryFailureHandler) {
+                                             RuntimeTaskExecutor executor) {
         this.dispatchQueue = Objects.requireNonNull(dispatchQueue, "dispatchQueue");
         this.resultQueue = Objects.requireNonNull(resultQueue, "resultQueue");
         this.endpointLeaseStore = Objects.requireNonNull(endpointLeaseStore, "endpointLeaseStore");
-        this.currentSessionConnectSink = currentSessionConnectSink != null
-                ? currentSessionConnectSink
-                : CurrentSessionConnectSink.NOOP;
         this.currentSessionDisconnectSink = currentSessionDisconnectSink != null
                 ? currentSessionDisconnectSink
                 : CurrentSessionDisconnectSink.NOOP;
         this.executor = Objects.requireNonNull(executor, "executor");
-        this.deliveryFailureHandler = deliveryFailureHandler;
     }
 
     public TransportDispatchQueue dispatchQueue() {
@@ -55,10 +45,6 @@ public final class EmbeddedAdapterRuntimeEnvironment {
         return endpointLeaseStore;
     }
 
-    public CurrentSessionConnectSink currentSessionConnectSink() {
-        return currentSessionConnectSink;
-    }
-
     public CurrentSessionDisconnectSink currentSessionDisconnectSink() {
         return currentSessionDisconnectSink;
     }
@@ -67,7 +53,4 @@ public final class EmbeddedAdapterRuntimeEnvironment {
         return executor;
     }
 
-    public TransportDeliveryFailureHandler deliveryFailureHandler() {
-        return deliveryFailureHandler;
-    }
 }

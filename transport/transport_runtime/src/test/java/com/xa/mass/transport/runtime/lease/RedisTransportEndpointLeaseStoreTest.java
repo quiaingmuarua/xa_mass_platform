@@ -77,8 +77,7 @@ class RedisTransportEndpointLeaseStoreTest {
 
         var view = store.currentEndpointLease("bucket-a", "worker-1").orElseThrow();
         assertEquals("websocket", view.endpointDriverId());
-        assertEquals("conn-1", view.sessionHandle());
-        assertEquals("conn-1", view.endpointLeaseId());
+        assertEquals("conn-1", view.sessionToken());
         assertNotNull(observerCommands.hget(bucketWorkersKey("bucket-a"), "worker-1"));
         assertTrue(observerCommands.zscore(deadlineKey("bucket-a"), "worker-1") > 0D);
         assertNull(observerCommands.get(oldBucketWorkerPointerKey("bucket-a", "worker-1")));
@@ -103,8 +102,7 @@ class RedisTransportEndpointLeaseStoreTest {
         assertFalse(store.releaseEndpointLease(release("worker-1", "bucket-a", "websocket", "conn-old")));
 
         var view = store.currentEndpointLease("bucket-a", "worker-1").orElseThrow();
-        assertEquals("conn-new", view.sessionHandle());
-        assertEquals("conn-new", view.endpointLeaseId());
+        assertEquals("conn-new", view.sessionToken());
     }
 
     @Test
@@ -116,7 +114,7 @@ class RedisTransportEndpointLeaseStoreTest {
         assertFalse(invokeRemoveIfCurrent(stale));
 
         var view = store.currentEndpointLease("bucket-a", "worker-1").orElseThrow();
-        assertEquals("conn-new", view.endpointLeaseId());
+        assertEquals("conn-new", view.sessionToken());
     }
 
     @Test
@@ -130,7 +128,7 @@ class RedisTransportEndpointLeaseStoreTest {
 
         assertEquals(replacementDeadline, observerCommands.zscore(deadlineKey("bucket-a"), "worker-1"));
         var view = store.currentEndpointLease("bucket-a", "worker-1").orElseThrow();
-        assertEquals("conn-new", view.endpointLeaseId());
+        assertEquals("conn-new", view.sessionToken());
     }
 
     @Test
@@ -145,7 +143,7 @@ class RedisTransportEndpointLeaseStoreTest {
             assertFalse(invokeRemoveIfDeadlineDue(shortLeaseStore, "bucket-a", "worker-1", staleCleanupClock));
 
             var view = shortLeaseStore.currentEndpointLease("bucket-a", "worker-1").orElseThrow();
-            assertEquals("conn-new", view.endpointLeaseId());
+            assertEquals("conn-new", view.sessionToken());
         }
     }
 
@@ -173,8 +171,7 @@ class RedisTransportEndpointLeaseStoreTest {
             store.claimEndpointLease(claim("worker-4", "bucket-a", "websocket", "conn-4"));
 
             var mirrored = secondary.currentEndpointLease("bucket-a", "worker-4").orElseThrow();
-            assertEquals("conn-4", mirrored.sessionHandle());
-            assertEquals("conn-4", mirrored.endpointLeaseId());
+            assertEquals("conn-4", mirrored.sessionToken());
 
             secondary.releaseEndpointLease(release("worker-4", "bucket-a", "websocket", "conn-4"));
 
@@ -185,12 +182,12 @@ class RedisTransportEndpointLeaseStoreTest {
     private static TransportEndpointLeaseClaim claim(String workerId,
                                                      String deliveryBucketId,
                                                      String endpointDriverId,
-                                                     String sessionHandle) {
+                                                     String sessionToken) {
         return new TransportEndpointLeaseClaim(
                 workerId,
                 deliveryBucketId,
                 endpointDriverId,
-                sessionHandle,
+                sessionToken,
                 "test"
         );
     }
@@ -198,12 +195,12 @@ class RedisTransportEndpointLeaseStoreTest {
     private static TransportEndpointLeaseHeartbeat heartbeat(String workerId,
                                                             String deliveryBucketId,
                                                             String endpointDriverId,
-                                                            String sessionHandle) {
+                                                            String sessionToken) {
         return new TransportEndpointLeaseHeartbeat(
                 workerId,
                 deliveryBucketId,
                 endpointDriverId,
-                sessionHandle,
+                sessionToken,
                 "test"
         );
     }
@@ -211,12 +208,12 @@ class RedisTransportEndpointLeaseStoreTest {
     private static TransportEndpointLeaseRelease release(String workerId,
                                                          String deliveryBucketId,
                                                          String endpointDriverId,
-                                                         String sessionHandle) {
+                                                         String sessionToken) {
         return new TransportEndpointLeaseRelease(
                 workerId,
                 deliveryBucketId,
                 endpointDriverId,
-                sessionHandle,
+                sessionToken,
                 "test"
         );
     }
@@ -224,13 +221,12 @@ class RedisTransportEndpointLeaseStoreTest {
     private static TransportEndpointLeaseMetadata metadata(String workerId,
                                                            String deliveryBucketId,
                                                            String endpointDriverId,
-                                                           String sessionHandle) {
+                                                           String sessionToken) {
         return new TransportEndpointLeaseMetadata(
                 deliveryBucketId,
                 workerId,
                 endpointDriverId,
-                sessionHandle,
-                sessionHandle
+                sessionToken
         );
     }
 

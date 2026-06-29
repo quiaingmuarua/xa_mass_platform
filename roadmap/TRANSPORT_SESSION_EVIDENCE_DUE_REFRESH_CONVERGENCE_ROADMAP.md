@@ -17,7 +17,7 @@ Current WebSocket endpoint evidence refresh is local-session-list driven:
   `CurrentSessionDisconnectSink`.
 - `TransportEndpointLeaseStore.refreshEndpointLease(...)` is session-scoped:
   the heartbeat must match `workerId + deliveryBucketId + endpointDriverId +
-  sessionHandle + endpointLeaseId`.
+  sessionToken`.
 - Redis endpoint lease storage already maintains a deadline sorted set per
   delivery bucket; `RedisTransportEndpointLeaseStore.pruneExpired(...)` reads
   from that zset to remove expired leases.
@@ -62,8 +62,8 @@ Refresh may be worker-id level:
 - A stale due hint may trigger a heartbeat for the current session of the same
   worker if that worker is still active in the same delivery bucket.
 - The due hint must not carry or require the old session handle.
-- The adapter registry must provide the current `sessionHandle` used for the
-  heartbeat.
+- The adapter registry must provide the current adapter-local session handle as
+  the `sessionToken` used for the heartbeat.
 
 Disconnect/release remains session-scoped:
 
@@ -95,7 +95,7 @@ Adapter-local current evidence contract:
 ```java
 public record AdapterSessionEvidenceSnapshot(
         AdapterSessionIdentity identity,
-        String sessionHandle
+        String sessionToken
 ) {}
 
 public interface AdapterSessionEvidenceSource {
@@ -119,7 +119,7 @@ AdapterSessionEvidenceDueRefresher
     for each due hint:
       currentEvidence(hint.identity)
       if present:
-        heartbeat(current identity.workerId, current identity.deliveryBucketId, current sessionHandle)
+        heartbeat(current identity, current sessionToken)
       else:
         no-op; existing expiry/prune/release handles stale evidence
 ```
@@ -142,7 +142,7 @@ due hint(AdapterSessionIdentity(deliveryBucketId, workerId))
 
 If a worker reconnects under the same delivery bucket before the old due hint
 is processed, refreshing the current session is acceptable. Scheduling and
-delivery identity are `workerId`; the session handle is only the current
+delivery identity are `workerId`; the `sessionToken` is only the current
 adapter-local freshness token.
 
 If a worker reconnects under a different delivery bucket, the old bucket's due
@@ -154,7 +154,7 @@ claimed its own endpoint lease.
 Disconnect remains session-scoped:
 
 ```text
-disconnect(workerId, deliveryBucketId, sessionHandle)
+disconnect(workerId, deliveryBucketId, sessionToken)
   -> release only if this is still the stored session/lease
 ```
 
@@ -223,7 +223,7 @@ Scope:
 
 Acceptance:
 
-- due hint contains no `sessionHandle`, `endpointLeaseId`, adapter lifecycle
+- due hint contains no `sessionToken`, adapter lifecycle
   status, worker attributes, or scheduling fields
 - Redis due read is bounded by `maxItems`
 - due read does not delete or refresh leases

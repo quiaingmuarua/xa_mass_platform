@@ -1,7 +1,6 @@
 package com.xa.mass.transport.polling.runtime;
 
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
-import com.xa.mass.transport.runtime.lease.CurrentSessionConnectSink;
 import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import org.junit.jupiter.api.Test;
@@ -21,22 +20,18 @@ class PollingSessionEvidenceDriverTest {
         RecordingDisconnectSink disconnectSink = new RecordingDisconnectSink();
         PollingSessionEvidenceDriver driver = new PollingSessionEvidenceDriver(new AdapterSessionEvidencePublisher(
                 "polling-default",
-                "polling-mailbox",
                 endpointLeaseStore,
-                CurrentSessionConnectSink.NOOP,
                 disconnectSink
         ));
 
         assertTrue(driver.connect("worker-1", "bucket-1", "conn-1", "connected"));
         var connected = endpointLeaseStore.currentEndpointLease("bucket-1", "worker-1").orElseThrow();
-        assertEquals("conn-1", connected.endpointLeaseId());
+        assertEquals("conn-1", connected.sessionToken());
         assertEquals(List.of(), disconnectSink.events);
 
         PollingSessionEvidenceDriver staleDriver = new PollingSessionEvidenceDriver(new AdapterSessionEvidencePublisher(
                 "polling-default",
-                "polling-mailbox",
                 endpointLeaseStore,
-                CurrentSessionConnectSink.NOOP,
                 disconnectSink
         ));
         assertFalse(staleDriver.heartbeat("worker-1", "bucket-1", "stale-conn", "stale-heartbeat"));

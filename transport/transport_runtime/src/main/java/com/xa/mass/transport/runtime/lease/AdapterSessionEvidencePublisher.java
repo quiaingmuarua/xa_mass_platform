@@ -1,5 +1,6 @@
 package com.xa.mass.transport.runtime.lease;
 
+import com.xa.mass.transport.runtime.embedded.AdapterSessionIdentity;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 
 import java.util.Locale;
@@ -14,28 +15,21 @@ import java.util.Locale;
 public final class AdapterSessionEvidencePublisher {
 
     private final TransportEndpointLeasePublisher endpointLeasePublisher;
-    private final CurrentSessionConnectSink connectSink;
     private final CurrentSessionDisconnectSink disconnectSink;
 
     public AdapterSessionEvidencePublisher(String adapterId,
-                                           String adapterMailboxKey,
                                            TransportEndpointLeaseStore endpointLeaseStore,
-                                           CurrentSessionConnectSink connectSink,
                                            CurrentSessionDisconnectSink disconnectSink) {
         String normalizedAdapterId = requireText(adapterId, "adapterId").toLowerCase(Locale.ROOT);
-        requireText(adapterMailboxKey, "adapterMailboxKey");
         this.endpointLeasePublisher = new TransportEndpointLeasePublisher(normalizedAdapterId);
         this.endpointLeasePublisher.setEndpointLeaseStore(endpointLeaseStore);
-        this.connectSink = connectSink != null ? connectSink : CurrentSessionConnectSink.NOOP;
         this.disconnectSink = disconnectSink != null ? disconnectSink : CurrentSessionDisconnectSink.NOOP;
     }
 
-    public static AdapterSessionEvidencePublisher noop(String adapterId, String adapterMailboxKey) {
+    public static AdapterSessionEvidencePublisher noop(String adapterId) {
         return new AdapterSessionEvidencePublisher(
                 adapterId,
-                adapterMailboxKey,
                 new InMemoryTransportEndpointLeaseStore(),
-                CurrentSessionConnectSink.NOOP,
                 CurrentSessionDisconnectSink.NOOP
         );
     }
@@ -44,38 +38,44 @@ public final class AdapterSessionEvidencePublisher {
         return endpointLeasePublisher.getLeaseMillis();
     }
 
-    public void connected(String workerId,
-                          String deliveryBucketId,
+    public void connected(AdapterSessionIdentity identity,
                           String sessionToken,
-                          String reason,
-                          String traceId) {
-        endpointLeasePublisher.claim(workerId, deliveryBucketId, sessionToken, reason);
-        connectSink.currentSessionConnected(
-                deliveryBucketId,
-                workerId,
-                firstNonBlank(reason, "transport session connected"),
-                System.currentTimeMillis()
+                          String reason) {
+        AdapterSessionIdentity requiredIdentity = requireIdentity(identity);
+        endpointLeasePublisher.claim(
+                requiredIdentity.workerId(),
+                requiredIdentity.deliveryBucketId(),
+                sessionToken,
+                reason
         );
     }
 
-    public boolean heartbeat(String workerId,
-                             String deliveryBucketId,
+    public boolean heartbeat(AdapterSessionIdentity identity,
                              String sessionToken,
-                             String reason,
-                             String traceId) {
-        return endpointLeasePublisher.refresh(workerId, deliveryBucketId, sessionToken, reason);
+                             String reason) {
+        AdapterSessionIdentity requiredIdentity = requireIdentity(identity);
+        return endpointLeasePublisher.refresh(
+                requiredIdentity.workerId(),
+                requiredIdentity.deliveryBucketId(),
+                sessionToken,
+                reason
+        );
     }
 
-    public boolean disconnected(String workerId,
-                                String deliveryBucketId,
+    public boolean disconnected(AdapterSessionIdentity identity,
                                 String sessionToken,
-                                String reason,
-                                String traceId) {
-        boolean releasedCurrent = endpointLeasePublisher.release(workerId, deliveryBucketId, sessionToken, reason);
+                                String reason) {
+        AdapterSessionIdentity requiredIdentity = requireIdentity(identity);
+        boolean releasedCurrent = endpointLeasePublisher.release(
+                requiredIdentity.workerId(),
+                requiredIdentity.deliveryBucketId(),
+                sessionToken,
+                reason
+        );
         if (releasedCurrent) {
             disconnectSink.currentSessionDisconnected(
-                    deliveryBucketId,
-                    workerId,
+                    requiredIdentity.deliveryBucketId(),
+                    requiredIdentity.workerId(),
                     firstNonBlank(reason, "transport session disconnected"),
                     System.currentTimeMillis()
             );
@@ -83,17 +83,11 @@ public final class AdapterSessionEvidencePublisher {
         return releasedCurrent;
     }
 
-    public void claimEndpoint(String workerId,
-                              String deliveryBucketId,
-                              String sessionToken,
-                              String reason) {
-        endpointLeasePublisher.claim(workerId, deliveryBucketId, sessionToken, reason);
-        connectSink.currentSessionConnected(
-                deliveryBucketId,
-                workerId,
-                firstNonBlank(reason, "transport endpoint claimed"),
-                System.currentTimeMillis()
-        );
+    private static AdapterSessionIdentity requireIdentity(AdapterSessionIdentity identity) {
+        if (identity == null) {
+            throw new NullPointerException("identity");
+        }
+        return identity;
     }
 
     private static String requireText(String value, String fieldName) {

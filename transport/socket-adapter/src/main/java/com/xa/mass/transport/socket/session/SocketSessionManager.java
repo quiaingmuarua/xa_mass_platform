@@ -1,5 +1,6 @@
 package com.xa.mass.transport.socket.session;
 
+import com.xa.mass.transport.runtime.embedded.AdapterSessionIdentity;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -146,11 +147,9 @@ public final class SocketSessionManager {
             return;
         }
         sessionEvidencePublisher.heartbeat(
-                current.workerId(),
-                current.deliveryBucketId(),
+                current.identity(),
                 current.endpointId(),
-                reason,
-                traceId
+                reason
         );
     }
 
@@ -171,21 +170,17 @@ public final class SocketSessionManager {
 
     private void publishConnected(SessionEntry entry, String reason) {
         sessionEvidencePublisher.connected(
-                entry.workerId(),
-                entry.deliveryBucketId(),
+                entry.identity(),
                 entry.endpointId(),
-                reason,
-                entry.endpointId()
+                reason
         );
     }
 
     private void publishDisconnected(SessionEntry entry, String reason) {
         sessionEvidencePublisher.disconnected(
-                entry.workerId(),
-                entry.deliveryBucketId(),
+                entry.identity(),
                 entry.endpointId(),
-                reason,
-                entry.endpointId()
+                reason
         );
     }
 
@@ -229,6 +224,10 @@ public final class SocketSessionManager {
                                 SocketWorkerEndpoint endpoint) {
         String endpointId() {
             return endpoint.endpointId();
+        }
+
+        AdapterSessionIdentity identity() {
+            return new AdapterSessionIdentity(deliveryBucketId, workerId);
         }
     }
 

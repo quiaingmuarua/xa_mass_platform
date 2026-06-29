@@ -19,12 +19,8 @@ public final class TransportAssignedDeliverySubmitter {
     private static final Logger logger = LoggerFactory.getLogger(TransportAssignedDeliverySubmitter.class);
 
     private final TransportDispatchQueue dispatchQueue;
-    private final TransportDeliveryFailureHandler failureHandler;
-
-    public TransportAssignedDeliverySubmitter(TransportDispatchQueue dispatchQueue,
-                                              TransportDeliveryFailureHandler failureHandler) {
+    public TransportAssignedDeliverySubmitter(TransportDispatchQueue dispatchQueue) {
         this.dispatchQueue = Objects.requireNonNull(dispatchQueue, "dispatchQueue");
-        this.failureHandler = failureHandler;
     }
 
     public List<DispatchOutcome> submit(List<AdapterMailboxDispatchBatch> batches) {
@@ -38,7 +34,6 @@ public final class TransportAssignedDeliverySubmitter {
             AdapterMailboxDispatchBatch normalized = Objects.requireNonNull(batch, "batch");
             List<DispatchOutcome> offeredOutcomes = offerBatch(batch);
             outcomes.addAll(offeredOutcomes);
-            handleRetryableFailures(offeredOutcomes);
         }
         return Collections.unmodifiableList(outcomes);
     }
@@ -66,32 +61,6 @@ public final class TransportAssignedDeliverySubmitter {
                             reason))
                     .toList();
         }
-    }
-
-    private void handleRetryableFailures(List<DispatchOutcome> outcomes) {
-        for (DispatchOutcome outcome : outcomes) {
-            if (outcome != null && outcome.isRetryable()) {
-                handleRetryableFailure(outcome, outcome.getReason());
-            }
-        }
-    }
-
-    private DispatchOutcome handleRetryableFailure(DispatchOutcome outcome,
-                                                   String detail) {
-        if (outcome == null || !outcome.isRetryable()) {
-            return outcome;
-        }
-        if (failureHandler == null) {
-            logger.warn("Delivery failure has no failure handler: deliveryId={}, selectedWorkerId={}, status={}, reason={}",
-                    outcome.getDeliveryId(), outcome.getSelectedWorkerId(), outcome.getStatus(), detail);
-            return outcome;
-        }
-        boolean handled = failureHandler.handle(new TransportDeliveryFailureEvent(outcome, detail));
-        if (!handled) {
-            logger.error("Delivery failure was not handled: deliveryId={}, selectedWorkerId={}, status={}, reason={}",
-                    outcome.getDeliveryId(), outcome.getSelectedWorkerId(), outcome.getStatus(), detail);
-        }
-        return outcome;
     }
 
 }

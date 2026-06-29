@@ -1,5 +1,6 @@
 package com.xa.mass.transport.websocket.session;
 
+import com.xa.mass.transport.runtime.embedded.AdapterSessionIdentity;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 import io.netty.channel.Channel;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
@@ -197,21 +198,17 @@ public final class WebSocketSessionRegistry implements WebSocketServerSessionHan
 
     private void publishConnected(SessionSnapshot session, String reason) {
         sessionEvidencePublisher.connected(
-                session.workerId(),
-                session.workerGroupId(),
+                session.identity(),
                 session.sessionHandle(),
-                reason,
-                session.sessionHandle()
+                reason
         );
     }
 
     private void publishDisconnected(SessionSnapshot session, String reason) {
         sessionEvidencePublisher.disconnected(
-                session.workerId(),
-                session.workerGroupId(),
+                session.identity(),
                 session.sessionHandle(),
-                reason,
-                session.sessionHandle()
+                reason
         );
     }
 
@@ -241,6 +238,10 @@ public final class WebSocketSessionRegistry implements WebSocketServerSessionHan
             workerGroupId = requireText(workerGroupId, "workerGroupId");
             workerId = requireText(workerId, "workerId");
             sessionHandle = requireText(sessionHandle, "sessionHandle");
+        }
+
+        AdapterSessionIdentity identity() {
+            return new AdapterSessionIdentity(workerGroupId, workerId);
         }
     }
 

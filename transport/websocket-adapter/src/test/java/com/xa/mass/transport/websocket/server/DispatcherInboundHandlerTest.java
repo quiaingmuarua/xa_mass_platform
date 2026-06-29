@@ -282,7 +282,7 @@ class DispatcherInboundHandlerTest {
 
     private WebSocketSessionRegistry newSessionRegistry(String adapterId) {
         AdapterSessionEvidencePublisher sessionEvidencePublisher =
-                AdapterSessionEvidencePublisher.noop(adapterId, adapterId);
+                AdapterSessionEvidencePublisher.noop(adapterId);
         return new WebSocketSessionRegistry(sessionEvidencePublisher);
     }
 }
@@ -383,7 +383,7 @@ class WebSocketServerImplDisconnectTest {
 
     private WebSocketSessionRegistry newSessionRegistry(String adapterId) {
         AdapterSessionEvidencePublisher sessionEvidencePublisher =
-                AdapterSessionEvidencePublisher.noop(adapterId, adapterId);
+                AdapterSessionEvidencePublisher.noop(adapterId);
         this.sessionRegistry = new WebSocketSessionRegistry(sessionEvidencePublisher);
         return this.sessionRegistry;
     }

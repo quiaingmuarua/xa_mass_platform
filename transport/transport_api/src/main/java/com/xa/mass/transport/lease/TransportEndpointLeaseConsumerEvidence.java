@@ -8,14 +8,14 @@ package com.xa.mass.transport.lease;
 public record TransportEndpointLeaseConsumerEvidence(String deliveryBucketId,
                                                      String workerId,
                                                      String endpointDriverId,
-                                                     String endpointLeaseId,
+                                                     String sessionToken,
                                                      long leaseExpireAtEpochMillis) {
 
     public TransportEndpointLeaseConsumerEvidence {
         deliveryBucketId = TransportEndpointLeaseClaim.requireText(deliveryBucketId, "deliveryBucketId");
         workerId = TransportEndpointLeaseClaim.requireText(workerId, "workerId");
         endpointDriverId = TransportEndpointLeaseClaim.requireText(endpointDriverId, "endpointDriverId");
-        endpointLeaseId = TransportEndpointLeaseClaim.requireText(endpointLeaseId, "endpointLeaseId");
+        sessionToken = TransportEndpointLeaseClaim.requireText(sessionToken, "sessionToken");
         leaseExpireAtEpochMillis = Math.max(0L, leaseExpireAtEpochMillis);
     }
 }

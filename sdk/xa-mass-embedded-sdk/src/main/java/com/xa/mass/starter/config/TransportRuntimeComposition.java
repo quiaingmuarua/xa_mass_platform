@@ -9,7 +9,6 @@ import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportRegistrationResolver;
 import com.xa.mass.transport.runtime.TransportResultIngressQueue;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDispatchHandoff;
-import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
 import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
 import com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeSpec;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
@@ -42,7 +41,6 @@ public class TransportRuntimeComposition {
     private final Supplier<PollingPendingDeliveryBuffer> pollingPendingDeliveryBufferFactory;
     private final Supplier<TransportDispatchHandoff> dispatchHandoffFactory;
     private final Supplier<RedisTransportResultIngressChannel> taskResultIngressQueueFactory;
-    private final Supplier<RedisTransportDeliveryFailureChannel> deliveryFailureInboxFactory;
     private final int maxPollingPendingDeliveryItems;
     private final int maxPollingPendingDeliveryItemsPerWorker;
     private final int transportRuntimeMaxPendingTasks;
@@ -71,7 +69,6 @@ public class TransportRuntimeComposition {
         this.pollingPendingDeliveryBufferFactory = source.pollingPendingDeliveryBufferFactory();
         this.dispatchHandoffFactory = source.getDispatchHandoffFactory();
         this.taskResultIngressQueueFactory = source.taskResultIngressQueueFactory();
-        this.deliveryFailureInboxFactory = source.deliveryFailureInboxFactory();
         this.maxPollingPendingDeliveryItems = source.getMaxPollingPendingDeliveryItems();
         this.maxPollingPendingDeliveryItemsPerWorker = source.getMaxPollingPendingDeliveryItemsPerWorker();
         this.transportRuntimeMaxPendingTasks = source.getTransportRuntimeMaxPendingTasks();
@@ -128,13 +125,6 @@ public class TransportRuntimeComposition {
             throw new IllegalStateException("Task result ingress queue is not configured for split transport runtime");
         }
         return taskResultIngressQueueFactory.get();
-    }
-
-    public RedisTransportDeliveryFailureChannel resolveDeliveryFailureInbox() {
-        if (deliveryFailureInboxFactory == null) {
-            throw new IllegalStateException("Delivery failure inbox is not configured for split transport runtime");
-        }
-        return deliveryFailureInboxFactory.get();
     }
 
     public TransportEndpointLeaseStore resolveTransportEndpointLeaseStore() {

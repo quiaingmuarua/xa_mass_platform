@@ -173,7 +173,7 @@ The exact names can change during inventory, but the order must remain visible:
 
 3. **Drain Accepted Result Ingress**
    - drain `BufferedTransportResultIngressChannel`
-   - stop distributed result ingress queue pumps after their accepted messages are
+   - stop distributed result ingress queue drains after their accepted messages are
      handed to the local result ingest channel
    - record unprocessed counts when bounded drain cannot finish
 
@@ -324,7 +324,7 @@ Scope:
   - adapter stop
   - transport node heartbeat/offline marking
   - task dispatch handoff pump stop
-  - distributed result ingress queue pump stop
+  - distributed result ingress queue drain stop
   - result ingest buffer drain
   - engine kernel stop
   - task runtime shutdown

@@ -190,10 +190,7 @@ class SocketTransportServerTest {
         return new SocketSessionManager(
                 SocketAdapterConfig.DEFAULT_ADAPTER_ID,
                 SocketAdapterConfig.DEFAULT_ADAPTER_ID,
-                AdapterSessionEvidencePublisher.noop(
-                        SocketAdapterConfig.DEFAULT_ADAPTER_ID,
-                        SocketAdapterConfig.DEFAULT_ADAPTER_ID
-                )
+                AdapterSessionEvidencePublisher.noop(SocketAdapterConfig.DEFAULT_ADAPTER_ID)
         );
     }
 

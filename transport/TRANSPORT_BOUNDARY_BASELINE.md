@@ -1,6 +1,6 @@
 # Transport Boundary Baseline
 
-Last updated: 2026-06-23
+Last updated: 2026-06-29
 
 Status: current transport boundary baseline.
 
@@ -141,7 +141,7 @@ Transport should stay centered on these concepts only:
   call this sink. The sink is narrow negative evidence, not a generic worker
   presence event channel.
 - `DispatchOutcome`: adapter-neutral delivery result, never task-lifecycle truth
-  and the single retryable delivery-failure fact owner. It carries stable
+  and the single delivery-failure fact owner. It carries stable
   delivery identity, selected worker, opaque delivery correlation, status,
   retryability, reason, and time. It must not expose adapter id, delivery queue
   key, route key, connection id, endpoint lease evidence, or task-shaped
@@ -174,7 +174,9 @@ Transport should stay centered on these concepts only:
 - `TransportResultIngressChannel` / `TransportResultIngressHandler`: result
   ingress producer/consumer seams. The channel offers entries; the handler is a
   void sink. Handler output must not drive queue ack, retry, reclaim, or
-  visibility lifecycle inside transport.
+  visibility lifecycle inside transport. Queue drain lifecycle is assembled by
+  SDK/starter (`TaskResultIngressQueueDrain`), not by a transport-runtime pump
+  owner.
 - `TransportDispatchHandoff`: best-effort dispatch queue between
   engine/starter assembly and transport. Producers offer
   `AdapterMailboxDispatchBatch(adapterMailboxKey=<key>, items)` after
@@ -187,7 +189,7 @@ Transport should stay centered on these concepts only:
 - Adapter-owned mailbox consumers are embedded-support contributions owned by
   concrete adapter bootstraps. A consumer polls one mailbox through
   `TransportDispatchHandoff`, invokes the local `AdapterCommandExecutor`, and
-  emits retryable delivery failure evidence for known final-hop failures. There
+  logs retryable final-hop outcomes for diagnosis. There
   is no production global dispatch pump/listener or central mailbox mount.
 - `DeliveryPullResult`: explicit transport pull-path status plus delivered
   `PulledDeliveryMessage` items. SDK/server worker polling projects those
@@ -210,7 +212,7 @@ Transport should stay centered on these concepts only:
   must not expose clear-capable gate APIs to transport or concrete adapters.
   Final-hop `NO_ENDPOINT`, pre-transport missing target, mailbox unavailable,
   backpressure, invalid input, shutdown, and generic failed outcomes remain
-  delivery outcomes/failure evidence in the current roadmap.
+  delivery outcomes and do not become worker dispatch blocks.
 - `WorkerGroup`: capability declaration and scheduling entry boundary. It owns
   project/event capability truth through event bindings.
 - `Worker`: selected execution identity plus scheduling evidence. Worker rows
@@ -297,9 +299,9 @@ hot-path recovery logic.
 - core dispatch handoff bounded admission and destructive mailbox poll
   semantics. Current embedded assembly drains flat dispatch items through
   adapter-owned mailbox consumers, not a starter-owned global pump/listener or
-  central mount. Known final-hop failures are emitted as failure evidence; if
-  evidence emission fails after destructive poll, engine task-attempt timeout is
-  the recovery path.
+  central mount. Known final-hop failures are returned as `DispatchOutcome`
+  values and logged by the consumer loop; after destructive poll, engine
+  task-attempt timeout is the recovery path.
 - engine-to-transport dispatch handoff queue/store ownership after assignment;
   current embedded default wiring is an in-memory `TransportDispatchHandoff`,
   while split runtimes use Redis adapter-mailbox dispatch queues plus mailbox
@@ -357,7 +359,7 @@ Transport owns only endpoint/session lease evidence and mailbox handoff
 consumer evidence, not worker online/offline lifecycle.
 Heartbeat expiry is a transport lease rule, not an engine selector heuristic.
 Expired endpoint or mailbox consumer evidence is not dispatchable; missing or
-stale evidence is a retryable delivery-failure input, not permission to reselect
+stale evidence is an infeasible delivery outcome, not permission to reselect
 workers or mark workers offline. Shared-store implementations such as Redis
 must preserve the same endpoint lease semantics as the in-memory default. Only
 one current endpoint lease may own a given `(deliveryBucketId, workerId)` pair;
@@ -467,12 +469,12 @@ The split runtime uses three transport/runtime channels:
   context, not repeated in every value. `routeKey` remains opaque
   endpoint/result metadata and must not be the only isolation key for assigned
   polling task delivery.
-- result/compensation channels: transport writes opaque
+- result ingress channel: transport writes opaque
   `ResultIngressEntry(partitionKey=<resultCorrelationRef>, message)` values to
-  the Redis result ingress queue and retryable delivery-failure events to the
-  delivery-failure inbox; the engine process drains those channels into
-  starter-owned result callback decoding and engine-owned result ingest and
-  assignment compensation ports. Result lifecycle ownership is defined in
+  the Redis result ingress queue; SDK/starter assembly drains that channel into
+  starter-owned result callback decoding and engine-owned result ingest.
+  Transport no longer maintains a delivery-failure inbox or a cross-process
+  dispatch-failure compensation channel. Result lifecycle ownership is defined in
   [../doc/TASK_LIFECYCLE_BASELINE.md](../doc/TASK_LIFECYCLE_BASELINE.md).
 
 These queues are runtime-state queues. They must be bounded and must preserve
@@ -495,7 +497,7 @@ Worker runtime state is not a queue. Transport endpoint lease state contains
 current endpoint metadata for a concrete delivery bucket and worker:
 
 ```text
-deliveryBucketId, workerId, endpointDriverId, sessionHandle, endpointLeaseId
+deliveryBucketId, workerId, endpointDriverId, sessionToken
 ```
 
 Engine matching still selects a worker from control-plane registration,
@@ -515,12 +517,12 @@ SDK/starter assembly exposes three runtime roles:
   Command drain runs through adapter-owned mailbox consumers, not a
   starter-owned global pump.
 - `ENGINE_PRODUCER`: engine runs and submits flat dispatch batches into the
-  configured handoff; it drains result and delivery-failure inboxes back into
-  local engine ports, but does not start transport adapters
+  configured handoff; it drains the result ingress queue back into local engine
+  ports, but does not start transport adapters
 - `TRANSPORT_CONSUMER`: transport adapters, endpoint lease store, delivery
   store, embedded adapter host set, and dispatch handoff consumers run
-  without starting the engine; results and retryable delivery failures are
-  enqueued for engine-side draining. Command drain runs through adapter-owned
+  without starting the engine; results are enqueued for engine-side draining.
+  Command drain runs through adapter-owned
   mailbox consumers.
 
 Transport consumers consume already resolved delivery targets. They must not
@@ -546,7 +548,7 @@ Endpoint lease semantics are also part of the transport contract:
 - `currentEndpointLease(deliveryBucketId, workerId)` is a narrow diagnostic
   view for current endpoint metadata. It is not worker lifecycle truth, not a
   scheduling view, and not producer-side queue selection.
-- `endpointLeaseId` identifies one live endpoint lease/session for that worker
+- `sessionToken` identifies one live endpoint lease/session for that worker
   in the bucket; stale heartbeat or disconnect events from an older lease must
   never revoke a newer active endpoint after reconnect or endpoint takeover.
 - `claimEndpointLease(...)` replaces the current endpoint lease for exactly
@@ -570,8 +572,7 @@ default component namespaces are:
 | endpoint-lease | `xa:mass:transport:endpoint-lease:v1` | `bucket:<encodedDeliveryBucketId>:workers`, `bucket:<encodedDeliveryBucketId>:deadlines` |
 | polling-delivery | `xa:mass:transport:polling-delivery:v1` | `polling:<encodedAdapterMailboxKey>:worker:<encodedSelectedWorkerId>:q`, `queues`, `stats` |
 | dispatch | `xa:mass:transport:dispatch:v1` | `mailbox:<encodedAdapterMailboxKey>:ready-commands`, `queues` |
-| result-ingress | `xa:mass:transport:result-ingress:v1` | engine-drained result ingress queue entries |
-| delivery-failure | `xa:mass:transport:delivery-failure:v1` | engine-drained retryable delivery-failure entries |
+| result-ingress | `xa:mass:transport:result-ingress:v1` | starter-drained result ingress queue entries |
 
 Endpoint lease truth is keyed by opaque `deliveryBucketId + workerId`. Redis
 stores bucket-local worker metadata plus a bucket-local deadline index. The
@@ -593,8 +594,8 @@ Forbidden transport key families:
   `worker:occupancy:*` keys
 
 Worker runtime aggregates such as `group:{groupId}:slots` remain worker runtime
-truth. Transport may maintain endpoint lease, dispatch handoff, result ingress queue,
-and delivery-failure inbox runtime state; polling adapter may maintain its own
+truth. Transport may maintain endpoint lease, dispatch handoff, and result ingress queue
+runtime state; polling adapter may maintain its own
 pending pull-buffer runtime state. Neither transport nor adapter runtime state
 may preserve or derive scheduling/admission truth in its Redis keyspace.
 
@@ -814,11 +815,10 @@ retry, reassign, compensation, attempt-timeout, or final-recovery owner.
 Transport owns only delivery-executor consistency and observable delivery
 attempt failure. Offered items are admitted only to the target mailbox queue,
 adapter-owned consumers destructively poll their own mailbox, and final-hop
-execution returns delivery outcome or failure evidence when the failure is
-known. Transport
+execution returns delivery outcome when the failure is known. Transport
 must not actively discard a known failed offer, unavailable mailbox, missing
 endpoint, invalid dispatch item, or adapter final-hop failure without returning
-a `DispatchOutcome` or publishing retryable delivery failure evidence. Once an
+a `DispatchOutcome`. Once an
 item has been accepted into the transport attempt path, lack of later worker
 consumption, process completion, or task result is not a transport retry loop;
 engine-owned task attempt timeout, retry, reassign, and compensation remain the

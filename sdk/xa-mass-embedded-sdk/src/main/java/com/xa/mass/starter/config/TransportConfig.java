@@ -3,7 +3,6 @@ package com.xa.mass.starter.config;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
 import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
-import com.xa.mass.transport.runtime.delivery.RedisTransportDeliveryFailureChannel;
 import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
@@ -37,7 +36,6 @@ public class TransportConfig {
     private Supplier<PollingPendingDeliveryBuffer> pollingPendingDeliveryBufferFactory;
     private Supplier<TransportDispatchHandoff> dispatchHandoffFactory;
     private Supplier<RedisTransportResultIngressChannel> taskResultIngressQueueFactory;
-    private Supplier<RedisTransportDeliveryFailureChannel> deliveryFailureInboxFactory;
     private int maxPollingPendingDeliveryItems = DEFAULT_MAX_POLLING_PENDING_DELIVERY_ITEMS;
     private int maxPollingPendingDeliveryItemsPerWorker = DEFAULT_MAX_POLLING_PENDING_DELIVERY_ITEMS_PER_WORKER;
     private int transportRuntimeMaxPendingTasks = DEFAULT_RUNTIME_EXECUTOR_MAX_PENDING_TASKS;
@@ -69,7 +67,6 @@ public class TransportConfig {
         this.pollingPendingDeliveryBufferFactory = source.pollingPendingDeliveryBufferFactory;
         this.dispatchHandoffFactory = source.dispatchHandoffFactory;
         this.taskResultIngressQueueFactory = source.taskResultIngressQueueFactory;
-        this.deliveryFailureInboxFactory = source.deliveryFailureInboxFactory;
         this.maxPollingPendingDeliveryItems = source.maxPollingPendingDeliveryItems;
         this.maxPollingPendingDeliveryItemsPerWorker = source.maxPollingPendingDeliveryItemsPerWorker;
         this.transportRuntimeMaxPendingTasks = source.transportRuntimeMaxPendingTasks;
@@ -228,14 +225,6 @@ public class TransportConfig {
         this.taskResultIngressQueueFactory = taskResultIngressQueueFactory;
     }
 
-    public Supplier<RedisTransportDeliveryFailureChannel> getDeliveryFailureInboxFactory() {
-        return deliveryFailureInboxFactory;
-    }
-
-    public void setDeliveryFailureInboxFactory(Supplier<RedisTransportDeliveryFailureChannel> deliveryFailureInboxFactory) {
-        this.deliveryFailureInboxFactory = deliveryFailureInboxFactory;
-    }
-
     public int getMaxPollingPendingDeliveryItems() {
         return maxPollingPendingDeliveryItems;
     }
@@ -309,10 +298,6 @@ public class TransportConfig {
 
     Supplier<RedisTransportResultIngressChannel> taskResultIngressQueueFactory() {
         return taskResultIngressQueueFactory;
-    }
-
-    Supplier<RedisTransportDeliveryFailureChannel> deliveryFailureInboxFactory() {
-        return deliveryFailureInboxFactory;
     }
 
     public TransportRuntimeComposition snapshotRuntimeComposition() {

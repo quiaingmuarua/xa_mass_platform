@@ -2,7 +2,6 @@ package com.xa.mass.transport.socket.session;
 
 import com.xa.mass.transport.lease.TransportEndpointLeaseViewRecord;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
-import com.xa.mass.transport.runtime.lease.CurrentSessionConnectSink;
 import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import org.junit.jupiter.api.Test;
@@ -36,7 +35,7 @@ class SocketSessionManagerTest {
         manager.addSession(DELIVERY_BUCKET_ID, "worker-1", "endpoint-1",
                 activeSocket(), mock(BufferedWriter.class));
 
-        assertEquals("endpoint-1", endpoint(endpointLeaseStore, "worker-1").endpointLeaseId());
+        assertEquals("endpoint-1", endpoint(endpointLeaseStore, "worker-1").sessionToken());
         assertEquals(List.of(), disconnectSink.events);
 
         manager.recordHeartbeat("worker-1", "endpoint-1", "socket heartbeat", "trace-1");
@@ -92,7 +91,7 @@ class SocketSessionManagerTest {
         manager.recordHeartbeat("worker-1", "endpoint-old", "stale-heartbeat", "trace-old");
 
         assertTrue(hasEndpoint(endpointLeaseStore, "worker-1"));
-        assertEquals("endpoint-new", endpoint(endpointLeaseStore, "worker-1").endpointLeaseId());
+        assertEquals("endpoint-new", endpoint(endpointLeaseStore, "worker-1").sessionToken());
 
         manager.removeSession("endpoint-old");
 
@@ -131,7 +130,7 @@ class SocketSessionManagerTest {
         manager.addSession(DELIVERY_BUCKET_ID, "worker-1", "endpoint-new", newSocket, newWriter);
 
         assertEquals(1, manager.getActiveConnectionCount());
-        assertEquals("endpoint-new", endpoint(endpointLeaseStore, "worker-1").endpointLeaseId());
+        assertEquals("endpoint-new", endpoint(endpointLeaseStore, "worker-1").sessionToken());
         verify(oldSocket).close();
 
         assertTrue(manager.sendToWorker("worker-1", "{\"messageId\":\"msg-new\"}"));
@@ -159,7 +158,7 @@ class SocketSessionManagerTest {
         return new SocketSessionManager(
                 adapterId,
                 adapterMailboxKey,
-                AdapterSessionEvidencePublisher.noop(adapterId, adapterMailboxKey)
+                AdapterSessionEvidencePublisher.noop(adapterId)
         );
     }
 
@@ -172,9 +171,7 @@ class SocketSessionManagerTest {
                 adapterMailboxKey,
                 new AdapterSessionEvidencePublisher(
                         adapterId,
-                        adapterMailboxKey,
                         endpointLeaseStore,
-                        CurrentSessionConnectSink.NOOP,
                         disconnectSink
                 )
         );

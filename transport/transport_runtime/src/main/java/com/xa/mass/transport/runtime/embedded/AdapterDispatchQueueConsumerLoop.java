@@ -4,8 +4,6 @@ import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 import com.xa.mass.transport.runtime.delivery.DispatchOutcomeFactory;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureEvent;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureHandler;
 import com.xa.mass.transport.runtime.delivery.TransportDispatchQueue;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,7 +28,6 @@ public final class AdapterDispatchQueueConsumerLoop implements AdapterDispatchQu
     private final String dispatchQueueKey;
     private final TransportDispatchQueue dispatchQueue;
     private final AdapterCommandExecutor commandExecutor;
-    private final TransportDeliveryFailureHandler failureHandler;
     private final RuntimeTaskExecutor runtimeTaskExecutor;
     private final int maxItems;
     private final long pollTimeoutMillis;
@@ -40,13 +37,11 @@ public final class AdapterDispatchQueueConsumerLoop implements AdapterDispatchQu
     public AdapterDispatchQueueConsumerLoop(String dispatchQueueKey,
                                             TransportDispatchQueue dispatchQueue,
                                             AdapterCommandExecutor commandExecutor,
-                                            TransportDeliveryFailureHandler failureHandler,
                                             RuntimeTaskExecutor runtimeTaskExecutor) {
         this(
                 dispatchQueueKey,
                 dispatchQueue,
                 commandExecutor,
-                failureHandler,
                 runtimeTaskExecutor,
                 DEFAULT_MAX_ITEMS,
                 DEFAULT_POLL_TIMEOUT_MILLIS
@@ -56,14 +51,12 @@ public final class AdapterDispatchQueueConsumerLoop implements AdapterDispatchQu
     public AdapterDispatchQueueConsumerLoop(String dispatchQueueKey,
                                             TransportDispatchQueue dispatchQueue,
                                             AdapterCommandExecutor commandExecutor,
-                                            TransportDeliveryFailureHandler failureHandler,
                                             RuntimeTaskExecutor runtimeTaskExecutor,
                                             int maxItems,
                                             long pollTimeoutMillis) {
         this.dispatchQueueKey = requireText(dispatchQueueKey, "dispatchQueueKey");
         this.dispatchQueue = Objects.requireNonNull(dispatchQueue, "dispatchQueue");
         this.commandExecutor = Objects.requireNonNull(commandExecutor, "commandExecutor");
-        this.failureHandler = failureHandler;
         this.runtimeTaskExecutor = Objects.requireNonNull(runtimeTaskExecutor, "runtimeTaskExecutor");
         if (maxItems < 1) {
             throw new IllegalArgumentException("maxItems must be greater than 0");
@@ -116,7 +109,7 @@ public final class AdapterDispatchQueueConsumerLoop implements AdapterDispatchQu
                 if (items == null || items.isEmpty()) {
                     continue;
                 }
-                emitFailureEvidence(dispatch(items));
+                logRetryableFailures(dispatch(items));
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return;
@@ -143,20 +136,20 @@ public final class AdapterDispatchQueueConsumerLoop implements AdapterDispatchQu
         }
     }
 
-    private void emitFailureEvidence(List<DispatchOutcome> outcomes) {
-        if (outcomes == null || outcomes.isEmpty() || failureHandler == null) {
+    private void logRetryableFailures(List<DispatchOutcome> outcomes) {
+        if (outcomes == null || outcomes.isEmpty()) {
             return;
         }
         for (DispatchOutcome outcome : outcomes) {
             if (outcome == null || !outcome.isRetryable()) {
                 continue;
             }
-            try {
-                failureHandler.handle(new TransportDeliveryFailureEvent(outcome, outcome.getReason()));
-            } catch (RuntimeException e) {
-                logger.error("Delivery failure handler failed after destructive poll; engine timeout remains recovery path: dispatchQueueKey={}",
-                        dispatchQueueKey, e);
-            }
+            logger.warn("Adapter dispatch produced retryable outcome after destructive poll; engine timeout remains recovery path: dispatchQueueKey={}, deliveryId={}, selectedWorkerId={}, status={}, reason={}",
+                    dispatchQueueKey,
+                    outcome.getDeliveryId(),
+                    outcome.getSelectedWorkerId(),
+                    outcome.getStatus(),
+                    outcome.getReason());
         }
     }
 

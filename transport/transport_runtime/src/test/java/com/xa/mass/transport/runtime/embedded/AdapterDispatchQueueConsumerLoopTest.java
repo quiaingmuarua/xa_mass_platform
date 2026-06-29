@@ -3,11 +3,9 @@ package com.xa.mass.transport.runtime.embedded;
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.base.runtime.RuntimeTaskExecutorStatistics;
 import com.xa.mass.transport.model.DispatchOutcome;
-import com.xa.mass.transport.model.DispatchOutcomeStatus;
 import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 import com.xa.mass.transport.runtime.delivery.DispatchOutcomeFactory;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDispatchHandoff;
-import com.xa.mass.transport.runtime.delivery.TransportDeliveryFailureEvent;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -35,7 +33,6 @@ class AdapterDispatchQueueConsumerLoopTest {
                 "mailbox-a",
                 queue,
                 executor,
-                ignored -> true,
                 executor,
                 64,
                 10L
@@ -50,11 +47,10 @@ class AdapterDispatchQueueConsumerLoopTest {
     }
 
     @Test
-    void retryableOutcomesAreEmittedToFailureHandler() throws Exception {
+    void retryableOutcomesDoNotStopConsumerLoop() throws Exception {
         InMemoryTransportDispatchHandoff queue = new InMemoryTransportDispatchHandoff(10);
         DispatchMessage item = item("msg-1", "worker-1");
         queue.offer("mailbox-a", List.of(item));
-        RecordingFailureHandler failureHandler = new RecordingFailureHandler(1);
         RecordingExecutor executor = new RecordingExecutor(items -> List.of(
                 DispatchOutcomeFactory.unavailable(items.getFirst(), "no endpoint")
         ));
@@ -62,7 +58,6 @@ class AdapterDispatchQueueConsumerLoopTest {
                 "mailbox-a",
                 queue,
                 executor,
-                failureHandler::handle,
                 executor,
                 64,
                 10L
@@ -70,11 +65,10 @@ class AdapterDispatchQueueConsumerLoopTest {
 
         loop.start();
 
-        assertTrue(failureHandler.await(2, TimeUnit.SECONDS), "failure evidence should be emitted");
+        assertTrue(executor.awaitDispatch(2, TimeUnit.SECONDS), "dispatch should be called");
         loop.stop();
 
-        assertEquals(List.of(DispatchOutcomeStatus.UNAVAILABLE),
-                failureHandler.outcomes().stream().map(DispatchOutcome::getStatus).toList());
+        assertEquals(List.of("worker-1"), executor.dispatchedWorkerIds());
     }
 
     private static DispatchMessage item(String messageId, String selectedWorkerId) {
@@ -86,29 +80,6 @@ class AdapterDispatchQueueConsumerLoopTest {
                 0L,
                 10L
         );
-    }
-
-    private static final class RecordingFailureHandler {
-        private final CountDownLatch latch;
-        private final List<DispatchOutcome> outcomes = java.util.Collections.synchronizedList(new ArrayList<>());
-
-        private RecordingFailureHandler(int expectedCalls) {
-            this.latch = new CountDownLatch(expectedCalls);
-        }
-
-        private boolean handle(TransportDeliveryFailureEvent event) {
-            outcomes.add(event.outcome());
-            latch.countDown();
-            return true;
-        }
-
-        private boolean await(long timeout, TimeUnit unit) throws InterruptedException {
-            return latch.await(timeout, unit);
-        }
-
-        private List<DispatchOutcome> outcomes() {
-            return outcomes;
-        }
     }
 
     private static final class RecordingExecutor implements RuntimeTaskExecutor, AdapterCommandExecutor {

@@ -1,5 +1,6 @@
 package com.xa.mass.transport.polling.runtime;
 
+import com.xa.mass.transport.runtime.embedded.AdapterSessionIdentity;
 import com.xa.mass.transport.runtime.embedded.PullSessionEvidenceDriver;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 
@@ -28,11 +29,9 @@ public final class PollingSessionEvidenceDriver implements PullSessionEvidenceDr
         String normalizedSessionToken = requireText(sessionToken, "sessionToken");
         String normalizedReason = requireText(reason, "reason");
         sessionEvidencePublisher.connected(
-                normalizedWorkerId,
-                deliveryBucketId,
+                new AdapterSessionIdentity(deliveryBucketId, normalizedWorkerId),
                 normalizedSessionToken,
-                normalizedReason,
-                normalizedSessionToken
+                normalizedReason
         );
         return true;
     }
@@ -46,11 +45,9 @@ public final class PollingSessionEvidenceDriver implements PullSessionEvidenceDr
         String normalizedSessionToken = requireText(sessionToken, "sessionToken");
         String normalizedReason = requireText(reason, "reason");
         return sessionEvidencePublisher.heartbeat(
-                normalizedWorkerId,
-                deliveryBucketId,
+                new AdapterSessionIdentity(deliveryBucketId, normalizedWorkerId),
                 normalizedSessionToken,
-                normalizedReason,
-                normalizedSessionToken
+                normalizedReason
         );
     }
 
@@ -63,11 +60,9 @@ public final class PollingSessionEvidenceDriver implements PullSessionEvidenceDr
         String normalizedSessionToken = requireText(sessionToken, "sessionToken");
         String normalizedReason = requireText(reason, "reason");
         return sessionEvidencePublisher.disconnected(
-                normalizedWorkerId,
-                deliveryBucketId,
+                new AdapterSessionIdentity(deliveryBucketId, normalizedWorkerId),
                 normalizedSessionToken,
-                normalizedReason,
-                normalizedSessionToken
+                normalizedReason
         );
     }
 

@@ -80,9 +80,7 @@ public final class WebSocketAdapterRuntimeFactory implements EmbeddedTransportAd
         TransportAdapterDescriptor descriptor = descriptor(spec);
         AdapterSessionEvidencePublisher sessionEvidencePublisher = new AdapterSessionEvidencePublisher(
                 descriptor.getAdapterId(),
-                spec.dispatchQueueKey(),
                 environment.endpointLeaseStore(),
-                environment.currentSessionConnectSink(),
                 environment.currentSessionDisconnectSink()
         );
         WebSocketSessionRegistry sessionRegistry = new WebSocketSessionRegistry(sessionEvidencePublisher);
@@ -106,7 +104,6 @@ public final class WebSocketAdapterRuntimeFactory implements EmbeddedTransportAd
                 spec.dispatchQueueKey(),
                 environment.dispatchQueue(),
                 commandExecutor,
-                environment.deliveryFailureHandler(),
                 environment.executor()
         );
         TransportServer server = createTransportServer(spec, frameParser, inboundFrameSink, sessionRegistry);

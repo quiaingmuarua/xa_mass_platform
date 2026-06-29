@@ -1,13 +1,19 @@
 package com.xa.mass.transport.runtime;
 
+import com.xa.mass.runtime.queue.KeyedQueueEntry;
+import com.xa.mass.runtime.queue.KeyedQueueOfferResult;
+import com.xa.mass.runtime.queue.KeyedQueuePollResult;
+import com.xa.mass.runtime.redis.queue.RedisKeyedBlockingQueueStore;
+import com.xa.mass.runtime.redis.queue.RedisKeyedQueueNamespace;
+import com.xa.mass.runtime.redis.queue.RedisKeyedQueueOptions;
 import com.xa.mass.transport.channel.ResultIngressEntry;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
-import io.lettuce.core.api.sync.RedisCommands;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -22,12 +28,10 @@ public final class RedisTransportResultIngressChannel implements TransportResult
     public static final String DEFAULT_NAMESPACE_PREFIX = RedisTransportNamespaces.RESULT_INGRESS;
     public static final int DEFAULT_MAX_QUEUED_RESULTS = 100_000;
     private static final Logger logger = LoggerFactory.getLogger(RedisTransportResultIngressChannel.class);
-    private static final long POLL_SLEEP_MILLIS = 100L;
 
     private final RedisClient redisClient;
     private final StatefulRedisConnection<String, String> connection;
-    private final RedisCommands<String, String> commands;
-    private final String readyKey;
+    private final RedisKeyedBlockingQueueStore readyQueue;
     private final int maxQueuedResults;
     private final boolean ownsClient;
     private final AtomicBoolean running = new AtomicBoolean(true);
@@ -67,9 +71,12 @@ public final class RedisTransportResultIngressChannel implements TransportResult
         }
         this.redisClient = redisClient;
         this.connection = Objects.requireNonNull(connection, "connection");
-        this.commands = connection.sync();
         String prefix = normalizeRequired(namespacePrefix, "namespacePrefix");
-        this.readyKey = prefix + ":ready";
+        this.readyQueue = new RedisKeyedBlockingQueueStore(
+                connection,
+                new RedisKeyedQueueNamespace(prefix + ":ready"),
+                RedisKeyedQueueOptions.defaults(maxQueuedResults)
+        );
         this.maxQueuedResults = maxQueuedResults;
         this.ownsClient = ownsClient;
     }
@@ -86,11 +93,12 @@ public final class RedisTransportResultIngressChannel implements TransportResult
             return false;
         }
         try {
-            if (commands.llen(readyKey) >= maxQueuedResults) {
-                return false;
-            }
-            commands.rpush(readyKey, codec.encode(entry));
-            return true;
+            KeyedQueueOfferResult result = readyQueue.offer(
+                    DEFAULT_RESULT_QUEUE_KEY,
+                    new KeyedQueueEntry(codec.encode(entry), entry.message().createdAtEpochMillis()),
+                    maxQueuedResults
+            );
+            return result.status() == KeyedQueueOfferResult.Status.ENQUEUED;
         } catch (RuntimeException ex) {
             logger.warn("Redis result ingress offer failed: resultMessageId={}",
                     entry.message().resultMessageId(), ex);
@@ -108,30 +116,22 @@ public final class RedisTransportResultIngressChannel implements TransportResult
         if (!running.get()) {
             return null;
         }
-        long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(Math.max(0L, timeoutMillis));
-        do {
-            ResultIngressEntry entry = pollOnce();
-            if (entry != null) {
-                return entry;
-            }
-            if (timeoutMillis <= 0L) {
-                return null;
-            }
-            long remainingNanos = deadlineNanos - System.nanoTime();
-            if (remainingNanos <= 0L) {
-                return null;
-            }
-            Thread.sleep(Math.min(POLL_SLEEP_MILLIS, Math.max(1L, TimeUnit.NANOSECONDS.toMillis(remainingNanos))));
-        } while (running.get());
-        return null;
+        KeyedQueuePollResult result = readyQueue.poll(
+                DEFAULT_RESULT_QUEUE_KEY,
+                1,
+                Math.max(0L, timeoutMillis),
+                TimeUnit.MILLISECONDS
+        );
+        if (result.items().isEmpty()) {
+            return null;
+        }
+        return decodeFirst(result.items());
     }
 
     @Override
     public void close() {
         running.set(false);
-        if (connection.isOpen()) {
-            connection.close();
-        }
+        readyQueue.shutdown();
         if (ownsClient && redisClient != null) {
             redisClient.shutdown();
         }
@@ -142,20 +142,28 @@ public final class RedisTransportResultIngressChannel implements TransportResult
     }
 
     void clearForTest() {
-        commands.del(readyKey);
+        while (!readyQueue.drain(DEFAULT_RESULT_QUEUE_KEY, 1000).isEmpty()) {
+            // Drain all test data.
+        }
     }
 
-    private ResultIngressEntry pollOnce() {
-        String encoded = commands.lpop(readyKey);
-        if (encoded == null) {
-            return null;
+    void pushRawReadyValueForTest(String value) {
+        readyQueue.offer(
+                DEFAULT_RESULT_QUEUE_KEY,
+                new KeyedQueueEntry(value, System.currentTimeMillis()),
+                maxQueuedResults
+        );
+    }
+
+    private ResultIngressEntry decodeFirst(List<KeyedQueueEntry> entries) {
+        for (KeyedQueueEntry entry : entries) {
+            try {
+                return codec.decode(entry.value());
+            } catch (RuntimeException ex) {
+                logger.warn("Discarding invalid result ingress queue payload", ex);
+            }
         }
-        try {
-            return codec.decode(encoded);
-        } catch (RuntimeException ex) {
-            logger.warn("Discarding invalid result ingress queue payload", ex);
-            return null;
-        }
+        return null;
     }
 
     private static String normalizeRequired(String value, String fieldName) {

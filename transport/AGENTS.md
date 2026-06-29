@@ -1,6 +1,6 @@
 # Transport Agent Handoff
 
-Last updated: 2026-06-23
+Last updated: 2026-06-29
 
 Status: current transport owner handoff.
 
@@ -28,10 +28,9 @@ entry for `transport/`.
   best-effort assigned-delivery execution. The assigned-delivery lane is the
   pure delivery executor: it owns assigned-worker delivery attempts, bounded
   queue admission, destructive mailbox poll mechanics, mailbox/session
-  feasibility checks, and observable delivery outcomes or failure evidence. It
+  feasibility checks, and observable delivery outcomes. It
   must not actively drop a known failed offer, unavailable mailbox, missing
-  endpoint, or adapter final-hop failure without a `DispatchOutcome` or
-  retryable failure event. Accepted work that later sees no worker consumption,
+  endpoint, or adapter final-hop failure without a `DispatchOutcome`. Accepted work that later sees no worker consumption,
   process completion, or result is resolved by engine-owned task attempt
   timeout/retry, not by transport retry, reassign, compensation, worker
   lifecycle, worker scheduling, adapter health lifecycle,
@@ -122,7 +121,7 @@ entry for `transport/`.
   Endpoint lease writes are connection-aware: each claim carries an explicit
   `deliveryBucketId`, heartbeat only extends the matching endpoint lease, and
   release only removes the endpoint lease when the caller still holds the
-  stored `endpointLeaseId` / public `sessionToken`.
+  stored `sessionToken`.
 - There is no transport-to-worker-runtime session-presence event bridge.
   Connected and heartbeat observations stay transport-local endpoint/session
   freshness. Confirmed current-session disconnect may emit
@@ -138,7 +137,7 @@ entry for `transport/`.
 - Only confirmed current-session loss may become a worker dispatch block in the
   current mainline. Selected-worker final-hop `NO_ENDPOINT`, backpressure,
   invalid input, shutdown, mailbox/system unavailability, and generic failed
-  outcomes remain delivery outcomes/failure evidence and do not block worker
+  outcomes remain delivery outcomes and do not block worker
   dispatch in this roadmap.
 - `DispatchMessage` is the assigned-item delivery carrier inside an
   adapter-mailbox dispatch batch. It carries only delivery id,
@@ -198,7 +197,7 @@ entry for `transport/`.
   bucket, lane, target node, adapter route, connection, or endpoint lease facts.
 - Embedded adapter support contributes explicit adapter-owned mailbox
   consumers. The consumer loop polls one mailbox, invokes the adapter final-hop
-  SPI with `DispatchMessage`, and emits known retryable failure evidence.
+  SPI with `DispatchMessage`, and logs retryable final-hop outcomes.
   There is no production global dispatch pump/listener or central mailbox
   drain object; `MassApplication` only assembles and starts the contributed
   embedded host resources.
@@ -214,8 +213,8 @@ entry for `transport/`.
   `AdapterMailboxDispatchBatch`, `DispatchMessage`, `TransportDispatchHandoff`,
   and `DispatchOutcome`. Polling pending pull buffers are polling-adapter
   internal storage, not transport-core handoff truth.
-  `DispatchOutcome` is the single delivery-failure fact owner; failure inbox
-  events wrap the outcome instead of maintaining group/item snapshot copies.
+  `DispatchOutcome` is the single delivery-failure fact owner; transport no
+  longer maintains a delivery-failure inbox side-channel.
   `DispatchOutcome` reports only delivery identity, selected worker, opaque
   correlation, status, retryability, reason, and time. It must not expose
   adapter, lane, route, node, connection, endpoint evidence, or task-shaped
@@ -293,7 +292,7 @@ Use this order for transport changes:
 Prefer these after transport changes:
 
 ```bash
-./mvnw -q -pl transport/transport_runtime test -Dtest=TransportRuntimeRegistryTest,TransportRegistrationResolverTest,InMemoryTransportDispatchHandoffTest,TransportDispatchBatchCodecTest,RedisTransportDispatchHandoffTest,RedisTransportDeliveryFailureChannelTest,BufferedTransportResultIngressChannelTest,RedisTransportResultIngressChannelTest,InMemoryTransportEndpointLeaseStoreTest,RedisTransportEndpointLeaseStoreTest,AdapterInboundResultProcessorTest,WorkerChannelActionReplyReaderTest,WorkerChannelActionReplyResultFrameReaderTest,TransportConvergenceArchitectureGuardTest
+./mvnw -q -pl transport/transport_runtime test -Dtest=TransportRuntimeRegistryTest,TransportRegistrationResolverTest,InMemoryTransportDispatchHandoffTest,TransportDispatchBatchCodecTest,RedisTransportDispatchHandoffTest,BufferedTransportResultIngressChannelTest,RedisTransportResultIngressChannelTest,InMemoryTransportEndpointLeaseStoreTest,RedisTransportEndpointLeaseStoreTest,AdapterInboundResultProcessorTest,WorkerChannelActionReplyReaderTest,WorkerChannelActionReplyResultFrameReaderTest,TransportConvergenceArchitectureGuardTest
 ./mvnw -q -pl transport/transport_api,transport/transport_runtime,transport/adapter-starter,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter test -Dtest=CanonicalWorkerGroupRouteKeyCodecTest,ResultIngressEntryTest,ResultIngressMessageTest,JsonAdapterResultDiagnosticsProviderTest,WebSocketAdapterRuntimeFactoryTest,DispatcherInboundHandlerTest,SocketAdapterRuntimeFactoryTest,SocketTransportServerTest,SocketTransportFrameCodecTest,PollingDeliveryExecutorTest,PollingDeliveryPullChannelTest,PollingSessionEvidenceDriverTest,SocketSessionManagerTest,WebSocketSessionRegistryTest,PollingDispatchMessageCodecTest,EmbeddedAdapterStarterTest
 ./mvnw -q -pl sdk/xa-mass-embedded-sdk -am test -Dtest=MassSdkTest,MassApplicationDistributedTransportTest,RuntimeTaskResultIngestChannelTest,EmbeddedPullWorkerSessionTest -Dsurefire.failIfNoSpecifiedTests=false
 ```

@@ -125,8 +125,7 @@ public final class InMemoryTransportEndpointLeaseStore implements TransportEndpo
                 claim.deliveryBucketId(),
                 claim.workerId(),
                 claim.endpointDriverId(),
-                claim.sessionHandle(),
-                claim.endpointLeaseId()
+                claim.sessionToken()
         );
     }
 
@@ -136,7 +135,7 @@ public final class InMemoryTransportEndpointLeaseStore implements TransportEndpo
                 metadata.deliveryBucketId(),
                 metadata.workerId(),
                 metadata.endpointDriverId(),
-                metadata.endpointLeaseId(),
+                metadata.sessionToken(),
                 leaseExpireAtEpochMillis
         );
     }
@@ -146,8 +145,7 @@ public final class InMemoryTransportEndpointLeaseStore implements TransportEndpo
         return heartbeat.workerId().equals(metadata.workerId())
                 && heartbeat.deliveryBucketId().equals(metadata.deliveryBucketId())
                 && heartbeat.endpointDriverId().equals(metadata.endpointDriverId())
-                && heartbeat.sessionHandle().equals(metadata.sessionHandle())
-                && heartbeat.endpointLeaseId().equals(metadata.endpointLeaseId());
+                && heartbeat.sessionToken().equals(metadata.sessionToken());
     }
 
     private static boolean matches(TransportEndpointLeaseRelease release,
@@ -155,8 +153,7 @@ public final class InMemoryTransportEndpointLeaseStore implements TransportEndpo
         return release.workerId().equals(metadata.workerId())
                 && release.deliveryBucketId().equals(metadata.deliveryBucketId())
                 && release.endpointDriverId().equals(metadata.endpointDriverId())
-                && release.sessionHandle().equals(metadata.sessionHandle())
-                && release.endpointLeaseId().equals(metadata.endpointLeaseId());
+                && release.sessionToken().equals(metadata.sessionToken());
     }
 
     private static String requireText(String value, String fieldName) {

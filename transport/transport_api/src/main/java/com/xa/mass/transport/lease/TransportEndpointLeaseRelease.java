@@ -7,29 +7,14 @@ package com.xa.mass.transport.lease;
 public record TransportEndpointLeaseRelease(String workerId,
                                             String deliveryBucketId,
                                             String endpointDriverId,
-                                            String sessionHandle,
-                                            String endpointLeaseId,
+                                            String sessionToken,
                                             String reason) {
-
-    public TransportEndpointLeaseRelease(String workerId,
-                                         String deliveryBucketId,
-                                         String endpointDriverId,
-                                         String sessionHandle,
-                                         String reason) {
-        this(workerId,
-                deliveryBucketId,
-                endpointDriverId,
-                sessionHandle,
-                sessionHandle,
-                reason);
-    }
 
     public TransportEndpointLeaseRelease {
         workerId = TransportEndpointLeaseClaim.requireText(workerId, "workerId");
         deliveryBucketId = TransportEndpointLeaseClaim.requireText(deliveryBucketId, "deliveryBucketId");
         endpointDriverId = TransportEndpointLeaseClaim.requireText(endpointDriverId, "endpointDriverId");
-        sessionHandle = TransportEndpointLeaseClaim.requireText(sessionHandle, "sessionHandle");
-        endpointLeaseId = TransportEndpointLeaseClaim.requireText(endpointLeaseId, "endpointLeaseId");
+        sessionToken = TransportEndpointLeaseClaim.requireText(sessionToken, "sessionToken");
         reason = TransportEndpointLeaseClaim.normalizeNullable(reason);
     }
 
@@ -38,7 +23,6 @@ public record TransportEndpointLeaseRelease(String workerId,
                 && workerId.equals(metadata.workerId())
                 && deliveryBucketId.equals(metadata.deliveryBucketId())
                 && endpointDriverId.equals(metadata.endpointDriverId())
-                && sessionHandle.equals(metadata.sessionHandle())
-                && endpointLeaseId.equals(metadata.endpointLeaseId());
+                && sessionToken.equals(metadata.sessionToken());
     }
 }

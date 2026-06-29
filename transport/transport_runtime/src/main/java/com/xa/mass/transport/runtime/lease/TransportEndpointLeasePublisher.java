@@ -32,13 +32,13 @@ public final class TransportEndpointLeasePublisher {
 
     public void claim(String workerId,
                       String deliveryBucketId,
-                      String endpointLeaseId,
+                      String sessionToken,
                       String reason) {
         TransportEndpointLeaseClaim claim = new TransportEndpointLeaseClaim(
                 workerId,
                 requireText(deliveryBucketId, "deliveryBucketId"),
                 endpointDriverId,
-                endpointLeaseId,
+                sessionToken,
                 reason
         );
         endpointLeaseStore.claimEndpointLease(claim);
@@ -46,13 +46,13 @@ public final class TransportEndpointLeasePublisher {
 
     public boolean refresh(String workerId,
                            String deliveryBucketId,
-                           String endpointLeaseId,
+                           String sessionToken,
                            String reason) {
         TransportEndpointLeaseHeartbeat heartbeat = new TransportEndpointLeaseHeartbeat(
                 workerId,
                 requireText(deliveryBucketId, "deliveryBucketId"),
                 endpointDriverId,
-                endpointLeaseId,
+                sessionToken,
                 reason
         );
         return endpointLeaseStore.refreshEndpointLease(heartbeat).isPresent();
@@ -60,13 +60,13 @@ public final class TransportEndpointLeasePublisher {
 
     public boolean release(String workerId,
                            String deliveryBucketId,
-                           String endpointLeaseId,
+                           String sessionToken,
                            String reason) {
         TransportEndpointLeaseRelease release = new TransportEndpointLeaseRelease(
                 workerId,
                 requireText(deliveryBucketId, "deliveryBucketId"),
                 endpointDriverId,
-                endpointLeaseId,
+                sessionToken,
                 reason
         );
         boolean releasedCurrent = endpointLeaseStore.releaseEndpointLease(release);

@@ -4,35 +4,20 @@ package com.xa.mass.transport.lease;
  * Transport-owned endpoint lease write.
  *
  * <p>The stable lookup key is {@code deliveryBucketId + workerId}. Endpoint
- * driver, session handle, and lease id are transport-local
- * evidence for the current connection/session.</p>
+ * driver and session token are transport-local evidence for the current
+ * connection/session.</p>
  */
 public record TransportEndpointLeaseClaim(String workerId,
                                           String deliveryBucketId,
                                           String endpointDriverId,
-                                          String sessionHandle,
-                                          String endpointLeaseId,
+                                          String sessionToken,
                                           String reason) {
-
-    public TransportEndpointLeaseClaim(String workerId,
-                                       String deliveryBucketId,
-                                       String endpointDriverId,
-                                       String sessionHandle,
-                                       String reason) {
-        this(workerId,
-                deliveryBucketId,
-                endpointDriverId,
-                sessionHandle,
-                sessionHandle,
-                reason);
-    }
 
     public TransportEndpointLeaseClaim {
         workerId = requireText(workerId, "workerId");
         deliveryBucketId = requireText(deliveryBucketId, "deliveryBucketId");
         endpointDriverId = requireText(endpointDriverId, "endpointDriverId");
-        sessionHandle = requireText(sessionHandle, "sessionHandle");
-        endpointLeaseId = requireText(endpointLeaseId, "endpointLeaseId");
+        sessionToken = requireText(sessionToken, "sessionToken");
         reason = normalizeNullable(reason);
     }
 
@@ -41,8 +26,7 @@ public record TransportEndpointLeaseClaim(String workerId,
                 && workerId.equals(metadata.workerId())
                 && deliveryBucketId.equals(metadata.deliveryBucketId())
                 && endpointDriverId.equals(metadata.endpointDriverId())
-                && sessionHandle.equals(metadata.sessionHandle())
-                && endpointLeaseId.equals(metadata.endpointLeaseId());
+                && sessionToken.equals(metadata.sessionToken());
     }
 
     static String requireText(String value, String fieldName) {

@@ -1250,6 +1250,41 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
+    void sessionEvidencePublisherAndEndpointLeaseApiStayNegativeOnlyAndSingleToken() throws IOException {
+        assertPathsDoNotExist(repoRoot().resolve(
+                "transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/lease/CurrentSessionConnectSink.java"));
+
+        Path publisherPath = repoRoot().resolve(
+                "transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/lease/AdapterSessionEvidencePublisher.java");
+        String publisherSource = Files.readString(publisherPath);
+        assertTrue(!publisherSource.contains("adapterMailboxKey")
+                        && !publisherSource.contains("traceId")
+                        && !publisherSource.contains("claimEndpoint(")
+                        && !publisherSource.contains("currentSessionConnected("),
+                "AdapterSessionEvidencePublisher must publish endpoint lease evidence without mailbox, trace, or positive recovery hooks");
+
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/MassApplication.java"),
+                        repoRoot().resolve("transport/transport_runtime/src/main/java"),
+                        repoRoot().resolve("transport/polling-adapter/src/main/java"),
+                        repoRoot().resolve("transport/socket-adapter/src/main/java"),
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java")
+                ),
+                "CurrentSessionConnectSink",
+                "currentSessionConnected("
+        );
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/lease"),
+                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/lease")
+                ),
+                "endpointLeaseId",
+                "sessionHandle"
+        );
+    }
+
+    @Test
     void embeddedPullWorkerSessionUsesEvidenceDriverInsteadOfTransportEvidenceInternals() throws IOException {
         Path embeddedPullWorkerSession = repoRoot().resolve(
                 "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/worker/EmbeddedPullWorkerSession.java");
@@ -1420,23 +1455,29 @@ class TransportConvergenceArchitectureGuardTest {
     }
 
     @Test
-    void deliveryFailureEventCodecDoesNotSerializeFullCommandsOrPacketPayloads() throws IOException {
-        String removedPacketModel = "Transport" + "Packet";
+    void transportDoesNotReintroduceDeliveryFailureInboxSideChannel() throws IOException {
+        assertPathsDoNotExist(
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/RedisTransportDeliveryFailureChannel.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryFailureEvent.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryFailureEventCodec.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryFailureHandler.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryFailureInboxPump.java")
+        );
         assertNoProductionSourceContains(
-                List.of(repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDeliveryFailureEventCodec.java")),
-                "DeliveryCommand",
-                removedPacketModel,
-                "TaskDispatchItem",
-                "DeliveryObservation",
-                "groupContext",
-                "itemSnapshot",
-                "connectionToken",
-                "adapterId",
-                "deliveryQueueKey",
-                "routeKey",
-                "transportNodeId",
-                "connectionId",
-                "\"payload\""
+                List.of(
+                        repoRoot().resolve("transport/transport_runtime/src/main/java"),
+                        repoRoot().resolve("transport/adapter-starter/src/main/java"),
+                        repoRoot().resolve("transport/polling-adapter/src/main/java"),
+                        repoRoot().resolve("transport/socket-adapter/src/main/java"),
+                        repoRoot().resolve("transport/websocket-adapter/src/main/java"),
+                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java")
+                ),
+                "RedisTransport" + "DeliveryFailureChannel",
+                "Transport" + "DeliveryFailureEvent",
+                "Transport" + "DeliveryFailureHandler",
+                "DeliveryFailure" + "InboxPump",
+                "redisDelivery" + "FailureInbox",
+                "deliveryFailure" + "InboxFactory"
         );
     }
 
@@ -1638,7 +1679,8 @@ class TransportConvergenceArchitectureGuardTest {
                 repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/routing/RoutingEnvelope.java"),
                 repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/routing/RoutingTarget.java"),
                 repoRoot().resolve("transport/transport_api/src/main/java/com/xa/mass/transport/routing/RoutingOwnerKinds.java"),
-                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RoutingEnvelopeCodec.java")
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RoutingEnvelopeCodec.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TransportResultIngressQueuePump.java")
         );
         assertNoProductionSourceContains(
                 List.of(
@@ -1671,7 +1713,7 @@ class TransportConvergenceArchitectureGuardTest {
                 List.of(
                         repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/BufferedTransportResultIngressChannel.java"),
                         repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RedisTransportResultIngressChannel.java"),
-                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/TransportResultIngressQueuePump.java"),
+                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/TaskResultIngressQueueDrain.java"),
                         repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/RuntimeTaskResultIngestChannel.java"),
                         repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/ResultIngressHandleOutcome.java")
                 ),

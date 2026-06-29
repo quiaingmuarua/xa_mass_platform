@@ -2,7 +2,6 @@ package com.xa.mass.transport.websocket.session;
 
 import com.xa.mass.transport.lease.TransportEndpointLeaseViewRecord;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
-import com.xa.mass.transport.runtime.lease.CurrentSessionConnectSink;
 import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
@@ -72,7 +71,7 @@ class WebSocketSessionRegistryTest {
         TransportEndpointLeaseViewRecord endpoint = endpoint(endpointLeaseStore, "worker-1");
         assertEquals(WORKER_GROUP_ID, endpoint.deliveryBucketId());
         assertEquals("worker-1", endpoint.workerId());
-        assertEquals("worker-1", endpoint.endpointLeaseId());
+        assertEquals("worker-1", endpoint.sessionToken());
         assertEquals(List.of(), disconnectSink.events);
 
         registry.removeSession(channel);
@@ -137,7 +136,7 @@ class WebSocketSessionRegistryTest {
 
         registry.addSession(WORKER_GROUP_ID, "worker-1", firstChannel);
 
-        assertEquals("worker-1-new", endpoint(endpointLeaseStore, "worker-1").endpointLeaseId());
+        assertEquals("worker-1-new", endpoint(endpointLeaseStore, "worker-1").sessionToken());
         verify(firstChannel).close();
     }
 
@@ -155,7 +154,7 @@ class WebSocketSessionRegistryTest {
         registry.removeSession(firstChannel);
 
         assertTrue(hasEndpoint(endpointLeaseStore, "worker-1"));
-        assertEquals("worker-1-new", endpoint(endpointLeaseStore, "worker-1").endpointLeaseId());
+        assertEquals("worker-1-new", endpoint(endpointLeaseStore, "worker-1").sessionToken());
 
         registry.removeSession(secondChannel);
 
@@ -229,9 +228,7 @@ class WebSocketSessionRegistryTest {
                                                  CurrentSessionDisconnectSink disconnectSink) {
         AdapterSessionEvidencePublisher sessionEvidencePublisher = new AdapterSessionEvidencePublisher(
                 adapterId,
-                adapterId,
                 endpointLeaseStore,
-                CurrentSessionConnectSink.NOOP,
                 disconnectSink
         );
         return new WebSocketSessionRegistry(sessionEvidencePublisher);

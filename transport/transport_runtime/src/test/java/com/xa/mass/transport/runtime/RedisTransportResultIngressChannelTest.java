@@ -99,7 +99,7 @@ class RedisTransportResultIngressChannelTest {
 
     @Test
     void invalidReadyPayloadIsDiscarded() throws Exception {
-        writerConnection.sync().rpush(namespacePrefix + ":ready", "missing-ref");
+        writer.pushRawReadyValueForTest("missing-ref");
 
         ResultIngressEntry polled = reader.poll(100L);
 
