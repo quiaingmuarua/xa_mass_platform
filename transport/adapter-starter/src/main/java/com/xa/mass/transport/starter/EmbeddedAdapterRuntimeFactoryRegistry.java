@@ -28,13 +28,30 @@ public final class EmbeddedAdapterRuntimeFactoryRegistry {
         this.factoryByType = indexFactories(factories);
     }
 
+    public EmbeddedTransportAdapterRuntime create(EmbeddedAdapterDeclaration declaration,
+                                                  EmbeddedAdapterRuntimeEnvironment environment) {
+        return create(toRuntimeSpec(declaration), environment);
+    }
+
     public EmbeddedTransportAdapterRuntime create(EmbeddedAdapterRuntimeSpec spec,
                                                   EmbeddedAdapterRuntimeEnvironment environment) {
         return Objects.requireNonNull(factory(spec).create(spec, environment), "factory.create");
     }
 
+    public TransportAdapterDescriptor descriptor(EmbeddedAdapterDeclaration declaration) {
+        return descriptor(toRuntimeSpec(declaration));
+    }
+
     public TransportAdapterDescriptor descriptor(EmbeddedAdapterRuntimeSpec spec) {
         return Objects.requireNonNull(factory(spec).descriptor(spec), "factory.descriptor");
+    }
+
+    public List<TransportAdapterDescriptor> descriptorsFromDeclarations(List<EmbeddedAdapterDeclaration> declarations) {
+        List<TransportAdapterDescriptor> descriptors = new ArrayList<>();
+        for (EmbeddedAdapterDeclaration declaration : List.copyOf(Objects.requireNonNull(declarations, "declarations"))) {
+            descriptors.add(descriptor(declaration));
+        }
+        return List.copyOf(descriptors);
     }
 
     public List<TransportAdapterDescriptor> descriptors(List<EmbeddedAdapterRuntimeSpec> specs) {
@@ -47,6 +64,11 @@ public final class EmbeddedAdapterRuntimeFactoryRegistry {
 
     public TransportRegistrationResolver registrationResolver(List<EmbeddedAdapterRuntimeSpec> specs) {
         return new TransportRegistrationResolver(descriptors(specs));
+    }
+
+    public TransportRegistrationResolver registrationResolverFromDeclarations(
+            List<EmbeddedAdapterDeclaration> declarations) {
+        return new TransportRegistrationResolver(descriptorsFromDeclarations(declarations));
     }
 
     private EmbeddedTransportAdapterRuntimeFactory factory(EmbeddedAdapterRuntimeSpec spec) {
@@ -80,5 +102,9 @@ public final class EmbeddedAdapterRuntimeFactoryRegistry {
             throw new IllegalArgumentException("adapter runtime factory type must not be blank");
         }
         return type.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static EmbeddedAdapterRuntimeSpec toRuntimeSpec(EmbeddedAdapterDeclaration declaration) {
+        return EmbeddedTransportAssembly.runtimeSpec(Objects.requireNonNull(declaration, "declaration"));
     }
 }

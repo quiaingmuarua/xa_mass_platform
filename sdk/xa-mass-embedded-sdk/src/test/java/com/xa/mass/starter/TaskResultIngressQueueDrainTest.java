@@ -28,7 +28,9 @@ class TaskResultIngressQueueDrainTest {
         RecordingExecutor executor = new RecordingExecutor();
         CountDownLatch handled = new CountDownLatch(1);
         AtomicReference<ResultIngressEntry> captured = new AtomicReference<>();
-        TaskResultIngressQueueDrain drain = new TaskResultIngressQueueDrain(queue, entry -> {
+        TaskResultIngressQueueDrain drain = new TaskResultIngressQueueDrain(
+                timeoutMillis -> queue.poll(TransportResultIngressQueue.DEFAULT_RESULT_QUEUE_KEY, timeoutMillis),
+                entry -> {
             captured.set(entry);
             handled.countDown();
         }, executor);

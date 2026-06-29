@@ -2,7 +2,7 @@ package com.xa.mass.sdk.worker;
 
 import com.xa.mass.transport.channel.DeliveryPullChannel;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
-import com.xa.mass.transport.runtime.embedded.PullSessionEvidenceDriver;
+import com.xa.mass.transport.starter.PullSessionEvidencePort;
 import com.xa.mass.worker.runtime.resource.WorkerHeartbeatRuntime;
 
 /**
@@ -22,7 +22,7 @@ public final class EmbeddedPullWorkerSessions {
                                          String sessionToken,
                                          DeliveryPullChannel deliveryPullChannel,
                                          TransportResultIngressChannel resultIngressChannel,
-                                         PullSessionEvidenceDriver evidenceDriver,
+                                         PullSessionEvidencePort evidencePort,
                                          WorkerHeartbeatRuntime workerHeartbeatRuntime,
                                          String transportHint) {
         return new EmbeddedPullWorkerSession(
@@ -31,7 +31,7 @@ public final class EmbeddedPullWorkerSessions {
                 sessionToken,
                 deliveryPullChannel,
                 resultIngressChannel,
-                evidenceDriver,
+                evidencePort,
                 workerHeartbeatRuntime,
                 transportHint
         );

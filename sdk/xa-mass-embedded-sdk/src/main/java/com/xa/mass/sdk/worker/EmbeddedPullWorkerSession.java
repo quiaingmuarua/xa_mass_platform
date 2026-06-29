@@ -5,7 +5,7 @@ import com.xa.mass.transport.channel.DeliveryPullResult;
 import com.xa.mass.transport.channel.DeliveryPullStatus;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.starter.TaskResultCallbackCodec;
-import com.xa.mass.transport.runtime.embedded.PullSessionEvidenceDriver;
+import com.xa.mass.transport.starter.PullSessionEvidencePort;
 import com.xa.mass.worker.runtime.resource.WorkerHeartbeatRuntime;
 
 import java.util.List;
@@ -28,7 +28,7 @@ public final class EmbeddedPullWorkerSession {
     private final WorkerActionPayloadDecoder payloadDecoder;
     private final TransportResultIngressChannel resultIngressChannel;
     private final TaskResultCallbackCodec resultCallbackCodec;
-    private final PullSessionEvidenceDriver evidenceDriver;
+    private final PullSessionEvidencePort evidencePort;
     private final WorkerHeartbeatRuntime workerHeartbeatRuntime;
     private final String transportHint;
 
@@ -37,7 +37,7 @@ public final class EmbeddedPullWorkerSession {
                               String sessionToken,
                               DeliveryPullChannel deliveryPullChannel,
                               TransportResultIngressChannel resultIngressChannel,
-                              PullSessionEvidenceDriver evidenceDriver,
+                              PullSessionEvidencePort evidencePort,
                               WorkerHeartbeatRuntime workerHeartbeatRuntime,
                               String transportHint) {
         if (workerId == null || workerId.isBlank()) {
@@ -50,7 +50,7 @@ public final class EmbeddedPullWorkerSession {
         this.payloadDecoder = new WorkerActionPayloadDecoder();
         this.resultIngressChannel = Objects.requireNonNull(resultIngressChannel, "resultIngressChannel");
         this.resultCallbackCodec = new TaskResultCallbackCodec();
-        this.evidenceDriver = Objects.requireNonNull(evidenceDriver, "evidenceDriver");
+        this.evidencePort = Objects.requireNonNull(evidencePort, "evidencePort");
         this.workerHeartbeatRuntime = Objects.requireNonNull(workerHeartbeatRuntime, "workerHeartbeatRuntime");
         this.transportHint = transportHint;
     }
@@ -76,7 +76,7 @@ public final class EmbeddedPullWorkerSession {
     }
 
     public boolean connectAndClaim(String reason) {
-        boolean connected = evidenceDriver.connect(
+        boolean connected = evidencePort.connect(
                 workerId,
                 workerGroupId,
                 sessionToken,
@@ -97,7 +97,7 @@ public final class EmbeddedPullWorkerSession {
     }
 
     public boolean disconnectIfCurrent(String reason) {
-        return evidenceDriver.disconnect(
+        return evidencePort.disconnect(
                 workerId,
                 workerGroupId,
                 sessionToken,
@@ -114,7 +114,7 @@ public final class EmbeddedPullWorkerSession {
     }
 
     public boolean refreshHeartbeatIfCurrent(String reason) {
-        boolean refreshed = evidenceDriver.heartbeat(
+        boolean refreshed = evidencePort.heartbeat(
                 workerId,
                 workerGroupId,
                 sessionToken,

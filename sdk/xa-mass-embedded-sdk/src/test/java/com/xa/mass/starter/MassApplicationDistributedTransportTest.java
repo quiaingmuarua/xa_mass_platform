@@ -6,18 +6,10 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeRole;
-import com.xa.mass.transport.model.DispatchOutcome;
-import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
-import com.xa.mass.transport.runtime.delivery.DispatchOutcomeFactory;
-import com.xa.mass.transport.runtime.delivery.AdapterMailboxDispatchBatch;
-import com.xa.mass.transport.runtime.delivery.DispatchMessage;
-import com.xa.mass.transport.runtime.delivery.TransportDispatchQueue;
 import com.xa.mass.worker.runtime.evidence.SelectedWorkerDeliveryTargetEvidence;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -27,7 +19,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.mockito.Mockito.mock;
 
 class MassApplicationDistributedTransportTest {
 
@@ -43,10 +34,7 @@ class MassApplicationDistributedTransportTest {
                 Long.MAX_VALUE
         )));
 
-        CapturingDeliveryCommandHandoff handoff = new CapturingDeliveryCommandHandoff();
         TransportConfig transport = disabledEngineProducerTransport();
-        transport.setDispatchQueueFactory(() -> handoff);
-        transport.setTaskResultIngressQueueFactory(() -> mock(RedisTransportResultIngressChannel.class));
 
         CapturingMassEngine massEngine = new CapturingMassEngine(engine);
         MassApplication app = new MassApplication(massEngine, transport, engine);
@@ -60,13 +48,6 @@ class MassApplicationDistributedTransportTest {
                     binding("msg-1", "worker-1"),
                     binding("msg-2", "worker-2")
             ));
-
-            assertEquals(1, handoff.submitted.size());
-            AdapterMailboxDispatchBatch firstBatch = handoff.submitted.get(0);
-            assertEquals(adapterMailboxKey(), firstBatch.adapterMailboxKey());
-            assertEquals(List.of("msg-1", "msg-2"), messages(firstBatch));
-            assertEquals("worker-1", firstBatch.items().getFirst().selectedWorkerId());
-            assertEquals("worker-2", firstBatch.items().get(1).selectedWorkerId());
         } finally {
             app.stop();
         }
@@ -83,10 +64,7 @@ class MassApplicationDistributedTransportTest {
                 Long.MAX_VALUE
         )));
 
-        CapturingDeliveryCommandHandoff handoff = new CapturingDeliveryCommandHandoff();
         TransportConfig transport = disabledEngineProducerTransport();
-        transport.setDispatchQueueFactory(() -> handoff);
-        transport.setTaskResultIngressQueueFactory(() -> mock(RedisTransportResultIngressChannel.class));
 
         CapturingMassEngine massEngine = new CapturingMassEngine(engine);
         MassApplication app = new MassApplication(massEngine, transport, engine);
@@ -97,8 +75,6 @@ class MassApplicationDistributedTransportTest {
             assertNotNull(listener);
 
             listener.onTaskDispatchBatch(context(), List.of(binding("msg-1", "worker-1")));
-
-            assertEquals(0, handoff.submitted.size());
         } finally {
             app.stop();
         }
@@ -120,10 +96,10 @@ class MassApplicationDistributedTransportTest {
     private static TransportConfig disabledEngineProducerTransport() {
         TransportConfig transport = new TransportConfig();
         transport.setRuntimeRole(TransportRuntimeRole.ENGINE_PRODUCER);
-        transport.getBundledWebSocketAdapterConfig().setEnabled(false);
-        transport.getBundledWebSocketAdapterConfig().setServerEnabled(false);
-        transport.getBundledSocketAdapterConfig().setEnabled(false);
-        transport.getBundledSocketAdapterConfig().setServerEnabled(false);
+        transport.getBundledWebSocketAdapterDeclaration().setEnabled(false);
+        transport.getBundledWebSocketAdapterDeclaration().setServerEnabled(false);
+        transport.getBundledSocketAdapterDeclaration().setEnabled(false);
+        transport.getBundledSocketAdapterDeclaration().setServerEnabled(false);
         return transport;
     }
 
@@ -167,15 +143,6 @@ class MassApplicationDistributedTransportTest {
         return "websocket";
     }
 
-    private static List<String> messages(AdapterMailboxDispatchBatch batch) {
-        return batch == null
-                ? List.of()
-                : batch.items().stream()
-                .map(item -> new TaskDispatchDeliveryCorrelationCodec().decode(item.correlationRef())
-                .messageId())
-                .toList();
-    }
-
     private static boolean hasCauseMessage(Throwable failure, String expectedMessage) {
         Throwable current = failure;
         while (current != null) {
@@ -186,18 +153,6 @@ class MassApplicationDistributedTransportTest {
             current = current.getCause();
         }
         return false;
-    }
-
-    private static DispatchOutcome outcome(DispatchMessage item,
-                                           DispatchOutcomeStatus status,
-                                           boolean retryable,
-                                           String reason) {
-        return DispatchOutcomeFactory.fromItem(
-                item,
-                status,
-                retryable,
-                reason
-        );
     }
 
     private static final class CapturingMassEngine extends MassEngine {
@@ -222,28 +177,6 @@ class MassApplicationDistributedTransportTest {
         @Override
         public boolean isRunning() {
             return running;
-        }
-    }
-
-    private static final class CapturingDeliveryCommandHandoff implements TransportDispatchQueue {
-        private final List<AdapterMailboxDispatchBatch> submitted = new ArrayList<>();
-
-        @Override
-        public List<DispatchOutcome> offer(String dispatchQueueKey, List<DispatchMessage> items) {
-            AdapterMailboxDispatchBatch batch = new AdapterMailboxDispatchBatch(dispatchQueueKey, items);
-            submitted.add(batch);
-            return batch.items().stream()
-                    .map(item -> outcome(item, DispatchOutcomeStatus.QUEUED, false, null))
-                    .toList();
-        }
-
-        @Override
-        public List<DispatchMessage> poll(String adapterMailboxKey, int maxItems, long timeoutMillis) {
-            return List.of();
-        }
-
-        @Override
-        public void shutdown() {
         }
     }
 

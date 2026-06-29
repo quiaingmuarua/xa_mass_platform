@@ -3,7 +3,7 @@ package com.xa.mass.starter;
 import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.transport.channel.ResultIngressEntry;
 import com.xa.mass.transport.channel.TransportResultIngressHandler;
-import com.xa.mass.transport.runtime.TransportResultIngressQueue;
+import com.xa.mass.transport.starter.ResultIngressSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -18,25 +18,16 @@ final class TaskResultIngressQueueDrain {
     private static final Logger logger = LoggerFactory.getLogger(TaskResultIngressQueueDrain.class);
     private static final long POLL_TIMEOUT_MILLIS = 250L;
 
-    private final TransportResultIngressQueue queue;
-    private final String resultQueueKey;
+    private final ResultIngressSource source;
     private final TransportResultIngressHandler delegate;
     private final RuntimeTaskExecutor executor;
     private volatile boolean running;
     private Future<?> drainLoop;
 
-    TaskResultIngressQueueDrain(TransportResultIngressQueue queue,
+    TaskResultIngressQueueDrain(ResultIngressSource source,
                                 TransportResultIngressHandler delegate,
                                 RuntimeTaskExecutor executor) {
-        this(queue, TransportResultIngressQueue.DEFAULT_RESULT_QUEUE_KEY, delegate, executor);
-    }
-
-    TaskResultIngressQueueDrain(TransportResultIngressQueue queue,
-                                String resultQueueKey,
-                                TransportResultIngressHandler delegate,
-                                RuntimeTaskExecutor executor) {
-        this.queue = Objects.requireNonNull(queue, "queue");
-        this.resultQueueKey = requireText(resultQueueKey, "resultQueueKey");
+        this.source = Objects.requireNonNull(source, "source");
         this.delegate = Objects.requireNonNull(delegate, "delegate");
         this.executor = Objects.requireNonNull(executor, "executor");
     }
@@ -61,7 +52,7 @@ final class TaskResultIngressQueueDrain {
     private void drainLoop() {
         while (running) {
             try {
-                ResultIngressEntry entry = queue.poll(resultQueueKey, POLL_TIMEOUT_MILLIS);
+                ResultIngressEntry entry = source.poll(POLL_TIMEOUT_MILLIS);
                 if (entry == null) {
                     continue;
                 }
@@ -75,10 +66,4 @@ final class TaskResultIngressQueueDrain {
         }
     }
 
-    private static String requireText(String value, String fieldName) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(fieldName + " must not be blank");
-        }
-        return value.trim();
-    }
 }

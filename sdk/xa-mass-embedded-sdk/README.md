@@ -6,7 +6,8 @@ Status: current embedded SDK runtime-composition owner README.
 
 It carries both:
 
-- the embedded runtime composition, split between SDK-facing builder/facade types (`com.xa.mass.starter.*`), SDK-owned transport composition (`com.xa.mass.sdk.transport.*`), and shared transport runtime assembly (`com.xa.mass.transport.runtime.*`)
+- SDK-facing builder/facade types (`com.xa.mass.starter.*`) that express
+  runtime intent and adapter/backend declarations
 - the in-process embedding facade (`com.xa.mass.sdk.*`)
 
 The runtime composition has been folded into this artifact so library callers
@@ -14,11 +15,11 @@ can depend on one embedded SDK module without pulling the HTTP/demo control surf
 Stable SDK-facing catalog/auth/model contracts now live in the internal
 `xa-mass-embedded-sdk-api` module and are pulled transitively through this artifact.
 Transport-neutral runtime contracts now live in `xa-mass-transport-api`; the
-current bundled transport adapters include polling plus realtime adapters such
-as WebSocket and socket. Adapter/bootstrap ownership lives in adapter modules
-such as `xa-mass-transport-websocket` and `xa-mass-transport-socket`.
-`xa-mass-embedded-sdk` assembles worker transports through a transport runtime
-registry/factory seam instead of hiding a websocket-first default runtime.
+embedded adapter startup and transport runtime assembly boundary lives behind
+`xa-mass-transport-adapter-starter`. The embedded SDK does not directly depend
+on concrete transport runtime, polling, socket, or WebSocket implementation
+modules; it passes adapter/backend declarations to adapter-starter and keeps
+task/result translation in SDK starter code.
 
 ## Dependency
 
@@ -134,8 +135,7 @@ canonical coarse families such as `realtime` or `polling`.
 
 When distributed final-hop delivery needs cross-instance connection evidence,
 configure shared transport endpoint leases through
-`redisDistributedChannels(...)`, `redisEndpointLeaseStore(...)`, or
-`endpointLeaseStoreFactory(...)`. Adapters still own local
+`redisDistributedChannels(...)` or `redisEndpointLeaseStore(...)`. Adapters still own local
 session/connect/heartbeat ingress, but shared endpoint lease evidence belongs to
 transport runtime as delivery feasibility, not SDK worker inspection or worker
 lifecycle truth. `routeKey` remains opaque connection/domain metadata minted
@@ -381,8 +381,9 @@ into transport.
 `com.xa.mass.starter.*` remains available for advanced embedding at the builder
 and facade boundary, but it is a lower-level runtime composition layer and does
 not carry the same compatibility commitment as the SDK facade. Transport-owned
-runtime internals now live under `com.xa.mass.transport.runtime.*`, and the SDK
-default transport composition lives under `com.xa.mass.sdk.transport.*`.
+runtime internals are assembled behind `xa-mass-transport-adapter-starter`; SDK
+main source should not import transport runtime or concrete adapter
+implementation packages directly.
 
 Mock/demo bootstrap behavior is intentionally outside the SDK core. Keep custom
 bootstrap code on `MassRuntimeControl`.
@@ -426,41 +427,34 @@ Additional same-type adapter instances can be appended through
 `transport(... -> addWebSocketAdapter(...))` and
 `transport(... -> addSocketAdapter(...))`.
 
-Current embedded-runtime mainline snapshots `TransportConfig` into an internal
-runtime-composition object during `MassApplication` construction. Runtime
-assembly then manages only assembled transport components rather than holding a
-live transport config object as the primary composition backbone. That
-composition now consumes one or more adapter bootstrap contributions. Assigned
-dispatch enters transport through adapter-mailbox handoff and reaches concrete
-adapters as `DispatchMessage` final-hop attempts; route-key outbound queues are
-not part of the current embedded runtime surface.
+Current embedded-runtime mainline snapshots `TransportConfig` into
+`TransportRuntimeComposition`, which contains SDK-local configuration
+projections and adapter-starter declarations rather than runtime stores,
+queues, factories, or concrete adapter configs. `MassApplication` creates a
+single adapter-starter `EmbeddedTransportAssembly`; that assembly owns
+transport queue/result/lease construction, adapter runtime creation, adapter
+start/close, registration descriptor resolution, binding lookup, and
+pull-worker transport resolution.
 
-Within that lower-level surface, embedded-runtime mainline snapshots
-`TransportConfig` into `TransportRuntimeComposition`, then uses adapter-owned
-bootstrap/contribution assembly for the default WebSocket-backed path or an
-explicit `webSocketAdapter(...).transportServerFactory(...)` override.
-Adapter bootstrap context now carries only neutral runtime collaborators; shared message
-transporter state is kept out of adapter bootstrap inputs entirely. Inbound
-server settings such as port/path are owned
-by the adapter bootstrap instead of being injected by `MassApplication` at
-startup time. Builder-level mainline should configure that bundled adapter
-explicitly via `transport(... -> webSocketAdapter(...))` rather than treating
-those settings as runtime-global transport facts, and mainline inspection
-should read adapter-owned config snapshots instead.
-Pre-start worker registration resolution now also comes from adapter-owned
-transport descriptors exposed through runtime composition; if a custom worker
-transport runtime factory does not expose that metadata, worker registration
-must provide explicit `adapterId` before the runtime is started.
-Custom primary transport bootstraps are resolved from their own descriptor
-metadata rather than from the bundled WebSocket enable flag, so swapping the
-primary adapter does not silently erase pre-start registration identity.
-Polling pending pull-buffer admission is configured through the transport
-builder; `maxPollingPendingDeliveryItems(...)` controls the total queued
-polling pull backlog. The embedded mainline still defaults to the in-memory
-polling pending buffer, but SDK composition may replace it through
-`pollingPendingDeliveryBufferFactory(...)` or
-`redisPollingPendingDeliveryBuffer(redisUri[, namespacePrefix])` without
-changing dispatch handoff contracts.
+Task dispatch translation remains SDK starter-owned: engine assignment truth is
+encoded into adapter-starter `AssignedDeliveryMessage` values and submitted
+through an `AssignedDeliverySink`. Result convergence remains SDK
+starter-owned: `TaskResultIngressQueueDrain` reads an adapter-starter
+`ResultIngressSource` and passes entries to engine result ingest. The adapter
+starter does not interpret task lifecycle, worker selection, or engine result
+policy.
+
+Builder-level mainline should configure bundled adapters explicitly via
+`transport(... -> webSocketAdapter(...))` or
+`transport(... -> socketAdapter(...))`; these populate adapter-starter-owned
+declarations, not concrete WebSocket/Socket config objects.
+
+Polling pull admission is configured through the transport builder;
+`maxPollingPendingDeliveryItems(...)` controls the total queued polling pull
+backlog. The embedded mainline defaults to adapter-starter-owned in-memory
+transport primitives, and SDK composition may request Redis-backed polling
+delivery through `redisPollingDeliveryQueue(redisUri[, namespacePrefix])`
+without exposing polling buffer implementation types.
 `maxPollingPendingDeliveryItemsPerWorker(...)` controls per-worker polling
 pending backlog admission for both the in-memory and Redis-backed polling
 buffers.

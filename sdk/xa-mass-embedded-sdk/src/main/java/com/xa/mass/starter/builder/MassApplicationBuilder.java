@@ -16,25 +16,16 @@ import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeRole;
 import com.xa.mass.trace.sink.ExecutionEventSink;
-import com.xa.mass.transport.runtime.RedisTransportNamespaces;
-import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
-import com.xa.mass.transport.runtime.delivery.RedisTransportDispatchHandoff;
-import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
-import com.xa.mass.transport.polling.delivery.RedisPollingPendingDeliveryBuffer;
-import com.xa.mass.transport.runtime.lease.RedisTransportEndpointLeaseStore;
-import com.xa.mass.transport.TransportServerFactory;
-import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
-import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
-import com.xa.mass.transport.websocket.runtime.WebSocketServerFactoryContext;
+import com.xa.mass.transport.starter.EmbeddedSocketAdapterDeclaration;
+import com.xa.mass.transport.starter.EmbeddedTransportBackendDeclaration;
+import com.xa.mass.transport.starter.EmbeddedWebSocketAdapterDeclaration;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
-import java.util.function.Supplier;
 
 /**
  * Builds {@link MassApplication} instances from transport and engine configuration.
@@ -93,34 +84,34 @@ public class MassApplicationBuilder {
 
     private static String describeAdapterSummary(TransportConfig transportConfig) {
         List<String> summaries = new ArrayList<>();
-        WebSocketAdapterConfig webSocket = transportConfig.getBundledWebSocketAdapterConfig();
-        SocketAdapterConfig socket = transportConfig.getBundledSocketAdapterConfig();
-        summaries.add("websocket(enabled=" + webSocket.isEnabled()
-                + ",adapterId=" + webSocket.getAdapterId()
-                + ",serverEnabled=" + webSocket.isServerEnabled()
-                + ",port=" + webSocket.getServerPort()
-                + ",path=" + webSocket.getEndpointPath()
+        EmbeddedWebSocketAdapterDeclaration webSocket = transportConfig.getBundledWebSocketAdapterDeclaration();
+        EmbeddedSocketAdapterDeclaration socket = transportConfig.getBundledSocketAdapterDeclaration();
+        summaries.add("websocket(enabled=" + webSocket.enabled()
+                + ",adapterId=" + webSocket.adapterId()
+                + ",serverEnabled=" + webSocket.serverEnabled()
+                + ",port=" + webSocket.serverPort()
+                + ",path=" + webSocket.endpointPath()
                 + ")");
-        summaries.add("socket(enabled=" + socket.isEnabled()
-                + ",adapterId=" + socket.getAdapterId()
-                + ",serverEnabled=" + socket.isServerEnabled()
-                + ",host=" + socket.getBindHost()
-                + ",port=" + socket.getServerPort()
+        summaries.add("socket(enabled=" + socket.enabled()
+                + ",adapterId=" + socket.adapterId()
+                + ",serverEnabled=" + socket.serverEnabled()
+                + ",host=" + socket.bindHost()
+                + ",port=" + socket.serverPort()
                 + ")");
-        for (WebSocketAdapterConfig extra : transportConfig.getSupplementalWebSocketAdapterConfigs()) {
-            summaries.add("websocket+(" + extra.getAdapterId()
-                    + ",enabled=" + extra.isEnabled()
-                    + ",serverEnabled=" + extra.isServerEnabled()
-                    + ",port=" + extra.getServerPort()
-                    + ",path=" + extra.getEndpointPath()
+        for (EmbeddedWebSocketAdapterDeclaration extra : transportConfig.getSupplementalWebSocketAdapterDeclarations()) {
+            summaries.add("websocket+(" + extra.adapterId()
+                    + ",enabled=" + extra.enabled()
+                    + ",serverEnabled=" + extra.serverEnabled()
+                    + ",port=" + extra.serverPort()
+                    + ",path=" + extra.endpointPath()
                     + ")");
         }
-        for (SocketAdapterConfig extra : transportConfig.getSupplementalSocketAdapterConfigs()) {
-            summaries.add("socket+(" + extra.getAdapterId()
-                    + ",enabled=" + extra.isEnabled()
-                    + ",serverEnabled=" + extra.isServerEnabled()
-                    + ",host=" + extra.getBindHost()
-                    + ",port=" + extra.getServerPort()
+        for (EmbeddedSocketAdapterDeclaration extra : transportConfig.getSupplementalSocketAdapterDeclarations()) {
+            summaries.add("socket+(" + extra.adapterId()
+                    + ",enabled=" + extra.enabled()
+                    + ",serverEnabled=" + extra.serverEnabled()
+                    + ",host=" + extra.bindHost()
+                    + ",port=" + extra.serverPort()
                     + ")");
         }
 
@@ -134,108 +125,85 @@ public class MassApplicationBuilder {
             this.config = config;
         }
 
-        public TransportBuilder webSocketAdapter(Consumer<WebSocketAdapterBuilder> webSocketAdapterConfigurator) {
-            WebSocketAdapterBuilder builder = new WebSocketAdapterBuilder(
-                    config.getBundledWebSocketAdapterConfig(),
-                    config::setBundledWebSocketTransportServerFactory
-            );
-            webSocketAdapterConfigurator.accept(builder);
+        public TransportBuilder webSocketAdapter(Consumer<WebSocketAdapterBuilder> webSocketConfigurer) {
+            EmbeddedWebSocketAdapterDeclaration declaration = config.getBundledWebSocketAdapterDeclaration();
+            WebSocketAdapterBuilder builder = new WebSocketAdapterBuilder(declaration);
+            webSocketConfigurer.accept(builder);
+            config.setBundledWebSocketAdapterDeclaration(declaration);
             return this;
         }
 
-        public TransportBuilder addWebSocketAdapter(Consumer<WebSocketAdapterBuilder> webSocketAdapterConfigurator) {
-            WebSocketAdapterConfig extra = new WebSocketAdapterConfig();
-            AtomicReference<TransportServerFactory<WebSocketServerFactoryContext>> transportServerFactory =
-                    new AtomicReference<>();
-            WebSocketAdapterBuilder builder = new WebSocketAdapterBuilder(extra, transportServerFactory::set);
-            webSocketAdapterConfigurator.accept(builder);
-            config.addSupplementalWebSocketAdapterConfig(extra, transportServerFactory.get());
+        public TransportBuilder addWebSocketAdapter(Consumer<WebSocketAdapterBuilder> webSocketConfigurer) {
+            EmbeddedWebSocketAdapterDeclaration extra = new EmbeddedWebSocketAdapterDeclaration();
+            WebSocketAdapterBuilder builder = new WebSocketAdapterBuilder(extra);
+            webSocketConfigurer.accept(builder);
+            config.addSupplementalWebSocketAdapterDeclaration(extra);
             return this;
         }
 
-        public TransportBuilder socketAdapter(Consumer<SocketAdapterBuilder> socketAdapterConfigurator) {
-            SocketAdapterBuilder builder = new SocketAdapterBuilder(config.getBundledSocketAdapterConfig());
-            socketAdapterConfigurator.accept(builder);
+        public TransportBuilder socketAdapter(Consumer<SocketAdapterBuilder> socketConfigurer) {
+            EmbeddedSocketAdapterDeclaration declaration = config.getBundledSocketAdapterDeclaration();
+            SocketAdapterBuilder builder = new SocketAdapterBuilder(declaration);
+            socketConfigurer.accept(builder);
+            config.setBundledSocketAdapterDeclaration(declaration);
             return this;
         }
 
-        public TransportBuilder addSocketAdapter(Consumer<SocketAdapterBuilder> socketAdapterConfigurator) {
-            SocketAdapterConfig extra = new SocketAdapterConfig();
+        public TransportBuilder addSocketAdapter(Consumer<SocketAdapterBuilder> socketConfigurer) {
+            EmbeddedSocketAdapterDeclaration extra = new EmbeddedSocketAdapterDeclaration();
             SocketAdapterBuilder builder = new SocketAdapterBuilder(extra);
-            socketAdapterConfigurator.accept(builder);
-            config.addSupplementalSocketAdapterConfig(extra);
+            socketConfigurer.accept(builder);
+            config.addSupplementalSocketAdapterDeclaration(extra);
             return this;
         }
 
-        public TransportBuilder pollingPendingDeliveryBufferFactory(
-                Supplier<PollingPendingDeliveryBuffer> pollingPendingDeliveryBufferFactory) {
-            config.setPollingPendingDeliveryBufferFactory(Objects.requireNonNull(
-                    pollingPendingDeliveryBufferFactory,
-                    "pollingPendingDeliveryBufferFactory"
-            ));
-            return this;
+        public TransportBuilder redisPollingDeliveryQueue(String redisUri) {
+            return redisPollingDeliveryQueue(
+                    redisUri,
+                    EmbeddedTransportBackendDeclaration.DEFAULT_REDIS_POLLING_DELIVERY_NAMESPACE
+            );
         }
 
-        public TransportBuilder redisPollingPendingDeliveryBuffer(String redisUri) {
-            return redisPollingPendingDeliveryBuffer(redisUri, RedisPollingPendingDeliveryBuffer.DEFAULT_NAMESPACE_PREFIX);
-        }
-
-        public TransportBuilder redisPollingPendingDeliveryBuffer(String redisUri, String namespacePrefix) {
-            String normalizedRedisUri = Objects.requireNonNull(redisUri, "redisUri").trim();
-            if (normalizedRedisUri.isBlank()) {
-                throw new IllegalArgumentException("redisUri must not be blank");
-            }
-            String normalizedNamespacePrefix = Objects.requireNonNull(namespacePrefix, "namespacePrefix").trim();
-            if (normalizedNamespacePrefix.isBlank()) {
-                throw new IllegalArgumentException("namespacePrefix must not be blank");
-            }
-            config.setPollingPendingDeliveryBufferFactory(() -> new RedisPollingPendingDeliveryBuffer(
-                    normalizedRedisUri,
-                    normalizedNamespacePrefix,
-                    config.getMaxPollingPendingDeliveryItems(),
-                    config.getMaxPollingPendingDeliveryItemsPerWorker()
-            ));
+        public TransportBuilder redisPollingDeliveryQueue(String redisUri, String namespacePrefix) {
+            config.setBackendDeclaration(config.getBackendDeclaration().toBuilder()
+                    .pollingDeliveryRedis(requireRedisUri(redisUri), requireNamespacePrefix(namespacePrefix))
+                    .build());
             return this;
         }
 
         public TransportBuilder redisDispatchQueue(String redisUri) {
             return redisDispatchQueue(
                     redisUri,
-                    RedisTransportDispatchHandoff.DEFAULT_NAMESPACE_PREFIX
+                    EmbeddedTransportBackendDeclaration.DEFAULT_REDIS_DISPATCH_NAMESPACE
             );
         }
 
         public TransportBuilder redisDispatchQueue(String redisUri, String namespacePrefix) {
-            String normalizedRedisUri = requireRedisUri(redisUri);
-            String normalizedNamespacePrefix = requireNamespacePrefix(namespacePrefix);
-            config.setDispatchQueueFactory(() -> new RedisTransportDispatchHandoff(
-                    normalizedRedisUri,
-                    normalizedNamespacePrefix,
-                    RedisTransportDispatchHandoff.DEFAULT_MAX_QUEUED_ITEMS_PER_QUEUE
-            ));
+            config.setBackendDeclaration(config.getBackendDeclaration().toBuilder()
+                    .dispatchRedis(requireRedisUri(redisUri), requireNamespacePrefix(namespacePrefix))
+                    .build());
             return this;
         }
 
         public TransportBuilder redisResultIngressQueue(String redisUri) {
-            return redisResultIngressQueue(redisUri, RedisTransportResultIngressChannel.DEFAULT_NAMESPACE_PREFIX);
+            return redisResultIngressQueue(
+                    redisUri,
+                    EmbeddedTransportBackendDeclaration.DEFAULT_REDIS_RESULT_INGRESS_NAMESPACE
+            );
         }
 
         public TransportBuilder redisResultIngressQueue(String redisUri, String namespacePrefix) {
-            String normalizedRedisUri = requireRedisUri(redisUri);
-            String normalizedNamespacePrefix = requireNamespacePrefix(namespacePrefix);
-            config.setTaskResultIngressQueueFactory(() -> new RedisTransportResultIngressChannel(
-                    normalizedRedisUri,
-                    normalizedNamespacePrefix,
-                    RedisTransportResultIngressChannel.DEFAULT_MAX_QUEUED_RESULTS
-            ));
+            config.setBackendDeclaration(config.getBackendDeclaration().toBuilder()
+                    .resultIngressRedis(requireRedisUri(redisUri), requireNamespacePrefix(namespacePrefix))
+                    .build());
             return this;
         }
 
         public TransportBuilder redisDistributedChannels(String redisUri) {
-            return redisDispatchQueue(redisUri, RedisTransportNamespaces.DISPATCH)
-                    .redisResultIngressQueue(redisUri, RedisTransportNamespaces.RESULT_INGRESS)
-                    .redisEndpointLeaseStore(redisUri, RedisTransportNamespaces.ENDPOINT_LEASE)
-                    .redisPollingPendingDeliveryBuffer(redisUri, RedisPollingPendingDeliveryBuffer.DEFAULT_NAMESPACE_PREFIX);
+            return redisDispatchQueue(redisUri, EmbeddedTransportBackendDeclaration.DEFAULT_REDIS_DISPATCH_NAMESPACE)
+                    .redisResultIngressQueue(redisUri, EmbeddedTransportBackendDeclaration.DEFAULT_REDIS_RESULT_INGRESS_NAMESPACE)
+                    .redisEndpointLeaseStore(redisUri, EmbeddedTransportBackendDeclaration.DEFAULT_REDIS_ENDPOINT_LEASE_NAMESPACE)
+                    .redisPollingDeliveryQueue(redisUri, EmbeddedTransportBackendDeclaration.DEFAULT_REDIS_POLLING_DELIVERY_NAMESPACE);
         }
 
         public TransportBuilder redisDistributedChannels(String redisUri, String namespacePrefix) {
@@ -243,32 +211,20 @@ public class MassApplicationBuilder {
             return redisDispatchQueue(redisUri, normalizedNamespacePrefix + ":dispatch")
                     .redisResultIngressQueue(redisUri, normalizedNamespacePrefix + ":result-ingress")
                     .redisEndpointLeaseStore(redisUri, normalizedNamespacePrefix + ":endpoint-lease")
-                    .redisPollingPendingDeliveryBuffer(redisUri, normalizedNamespacePrefix + ":polling-delivery");
-        }
-
-        public TransportBuilder endpointLeaseStoreFactory(Supplier<com.xa.mass.transport.lease.TransportEndpointLeaseStore> endpointLeaseStoreFactory) {
-            config.setEndpointLeaseStoreFactory(Objects.requireNonNull(endpointLeaseStoreFactory, "endpointLeaseStoreFactory"));
-            return this;
+                    .redisPollingDeliveryQueue(redisUri, normalizedNamespacePrefix + ":polling-delivery");
         }
 
         public TransportBuilder redisEndpointLeaseStore(String redisUri) {
-            return redisEndpointLeaseStore(redisUri, RedisTransportEndpointLeaseStore.DEFAULT_NAMESPACE_PREFIX);
+            return redisEndpointLeaseStore(
+                    redisUri,
+                    EmbeddedTransportBackendDeclaration.DEFAULT_REDIS_ENDPOINT_LEASE_NAMESPACE
+            );
         }
 
         public TransportBuilder redisEndpointLeaseStore(String redisUri, String namespacePrefix) {
-            String normalizedRedisUri = Objects.requireNonNull(redisUri, "redisUri").trim();
-            if (normalizedRedisUri.isBlank()) {
-                throw new IllegalArgumentException("redisUri must not be blank");
-            }
-            String normalizedNamespacePrefix = Objects.requireNonNull(namespacePrefix, "namespacePrefix").trim();
-            if (normalizedNamespacePrefix.isBlank()) {
-                throw new IllegalArgumentException("namespacePrefix must not be blank");
-            }
-            config.setEndpointLeaseStoreFactory(() -> new RedisTransportEndpointLeaseStore(
-                    normalizedRedisUri,
-                    normalizedNamespacePrefix,
-                    config.getEndpointLeaseMillis()
-            ));
+            config.setBackendDeclaration(config.getBackendDeclaration().toBuilder()
+                    .endpointLeaseRedis(requireRedisUri(redisUri), requireNamespacePrefix(namespacePrefix))
+                    .build());
             return this;
         }
 
@@ -326,31 +282,24 @@ public class MassApplicationBuilder {
     }
 
     public static class WebSocketAdapterBuilder {
-        private final WebSocketAdapterConfig adapterConfig;
-        private final Consumer<TransportServerFactory<WebSocketServerFactoryContext>> transportServerFactoryConsumer;
+        private final EmbeddedWebSocketAdapterDeclaration adapterDeclaration;
 
-        public WebSocketAdapterBuilder(
-                WebSocketAdapterConfig config,
-                Consumer<TransportServerFactory<WebSocketServerFactoryContext>> transportServerFactoryConsumer) {
-            this.adapterConfig = Objects.requireNonNull(config, "config");
-            this.transportServerFactoryConsumer = Objects.requireNonNull(
-                    transportServerFactoryConsumer,
-                    "transportServerFactoryConsumer"
-            );
+        public WebSocketAdapterBuilder(EmbeddedWebSocketAdapterDeclaration declaration) {
+            this.adapterDeclaration = Objects.requireNonNull(declaration, "declaration");
         }
 
         public WebSocketAdapterBuilder enabled(boolean enabled) {
-            adapterConfig.setEnabled(enabled);
+            adapterDeclaration.enabled(enabled);
             return this;
         }
 
         public WebSocketAdapterBuilder adapterId(String adapterId) {
-            adapterConfig.setAdapterId(adapterId);
+            adapterDeclaration.adapterId(adapterId);
             return this;
         }
 
         public WebSocketAdapterBuilder serverEnabled(boolean enabled) {
-            adapterConfig.setServerEnabled(enabled);
+            adapterDeclaration.serverEnabled(enabled);
             return this;
         }
 
@@ -359,57 +308,51 @@ public class MassApplicationBuilder {
         }
 
         public WebSocketAdapterBuilder server(int port, String endpointPath) {
-            adapterConfig.setServerPort(port);
-            adapterConfig.setEndpointPath(endpointPath);
+            adapterDeclaration.serverPort(port);
+            adapterDeclaration.endpointPath(endpointPath);
             return this;
         }
 
         public WebSocketAdapterBuilder endpointPath(String endpointPath) {
-            adapterConfig.setEndpointPath(endpointPath);
+            adapterDeclaration.endpointPath(endpointPath);
             return this;
         }
 
         public WebSocketAdapterBuilder maxConnections(int maxConnections) {
-            adapterConfig.setMaxConnections(maxConnections);
-            return this;
-        }
-
-        public WebSocketAdapterBuilder transportServerFactory(
-                TransportServerFactory<WebSocketServerFactoryContext> transportServerFactory) {
-            transportServerFactoryConsumer.accept(transportServerFactory);
+            adapterDeclaration.maxConnections(maxConnections);
             return this;
         }
     }
 
     public static class SocketAdapterBuilder {
-        private final SocketAdapterConfig config;
+        private final EmbeddedSocketAdapterDeclaration declaration;
 
-        public SocketAdapterBuilder(SocketAdapterConfig config) {
-            this.config = config;
+        public SocketAdapterBuilder(EmbeddedSocketAdapterDeclaration declaration) {
+            this.declaration = Objects.requireNonNull(declaration, "declaration");
         }
 
         public SocketAdapterBuilder enabled(boolean enabled) {
-            config.setEnabled(enabled);
+            declaration.enabled(enabled);
             return this;
         }
 
         public SocketAdapterBuilder adapterId(String adapterId) {
-            config.setAdapterId(adapterId);
+            declaration.adapterId(adapterId);
             return this;
         }
 
         public SocketAdapterBuilder serverEnabled(boolean enabled) {
-            config.setServerEnabled(enabled);
+            declaration.serverEnabled(enabled);
             return this;
         }
 
         public SocketAdapterBuilder server(int port) {
-            config.setServerPort(port);
+            declaration.serverPort(port);
             return this;
         }
 
         public SocketAdapterBuilder maxConnections(int maxConnections) {
-            config.setMaxConnections(maxConnections);
+            declaration.maxConnections(maxConnections);
             return this;
         }
     }

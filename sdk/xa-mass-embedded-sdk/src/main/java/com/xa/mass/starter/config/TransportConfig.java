@@ -1,21 +1,15 @@
 package com.xa.mass.starter.config;
 
-import com.xa.mass.transport.TransportServerFactory;
-import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
-import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
-import com.xa.mass.transport.runtime.delivery.TransportDispatchQueue;
-import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
-import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
-import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
-import com.xa.mass.transport.websocket.runtime.WebSocketServerFactoryContext;
+import com.xa.mass.transport.starter.EmbeddedSocketAdapterDeclaration;
+import com.xa.mass.transport.starter.EmbeddedTransportBackendDeclaration;
+import com.xa.mass.transport.starter.EmbeddedWebSocketAdapterDeclaration;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.function.Supplier;
 
 /**
- * Transport runtime configuration for embedded XA Mass application assembly.
+ * Transport configuration for embedded XA Mass application assembly.
  */
 public class TransportConfig {
 
@@ -27,21 +21,21 @@ public class TransportConfig {
     private String outputApiUrl;
     private String apiKey;
 
-    private Supplier<TransportEndpointLeaseStore> endpointLeaseStoreFactory;
-    private WebSocketAdapterConfig bundledWebSocketAdapterConfig = new WebSocketAdapterConfig();
-    private TransportServerFactory<WebSocketServerFactoryContext> bundledWebSocketTransportServerFactory;
-    private SocketAdapterConfig bundledSocketAdapterConfig = new SocketAdapterConfig();
-    private List<WebSocketAdapterAssembly> supplementalWebSocketAdapterAssemblies = List.of();
-    private List<SocketAdapterConfig> supplementalSocketAdapterConfigs = List.of();
-    private Supplier<PollingPendingDeliveryBuffer> pollingPendingDeliveryBufferFactory;
-    private Supplier<TransportDispatchQueue> dispatchQueueFactory;
-    private Supplier<RedisTransportResultIngressChannel> taskResultIngressQueueFactory;
-    private int maxPollingPendingDeliveryItems = DEFAULT_MAX_POLLING_PENDING_DELIVERY_ITEMS;
-    private int maxPollingPendingDeliveryItemsPerWorker = DEFAULT_MAX_POLLING_PENDING_DELIVERY_ITEMS_PER_WORKER;
+    private EmbeddedTransportBackendDeclaration backendDeclaration = EmbeddedTransportBackendDeclaration
+            .memory(
+                    DEFAULT_MAX_POLLING_PENDING_DELIVERY_ITEMS,
+                    DEFAULT_MAX_POLLING_PENDING_DELIVERY_ITEMS_PER_WORKER,
+                    30_000L
+            );
+    private EmbeddedWebSocketAdapterDeclaration bundledWebSocketAdapterDeclaration =
+            new EmbeddedWebSocketAdapterDeclaration();
+    private EmbeddedSocketAdapterDeclaration bundledSocketAdapterDeclaration =
+            new EmbeddedSocketAdapterDeclaration();
+    private List<EmbeddedWebSocketAdapterDeclaration> supplementalWebSocketAdapterDeclarations = List.of();
+    private List<EmbeddedSocketAdapterDeclaration> supplementalSocketAdapterDeclarations = List.of();
     private int transportRuntimeMaxPendingTasks = DEFAULT_RUNTIME_EXECUTOR_MAX_PENDING_TASKS;
     private int eventRuntimeMaxPendingTasks = DEFAULT_RUNTIME_EXECUTOR_MAX_PENDING_TASKS;
     private long eventHandlerTimeoutMillis;
-    private long endpointLeaseMillis = 30_000L;
     private TransportRuntimeRole runtimeRole = TransportRuntimeRole.EMBEDDED;
 
     public TransportConfig() {
@@ -51,36 +45,28 @@ public class TransportConfig {
         this.inputApiUrl = source.inputApiUrl;
         this.outputApiUrl = source.outputApiUrl;
         this.apiKey = source.apiKey;
-        this.endpointLeaseStoreFactory = source.endpointLeaseStoreFactory;
-        this.bundledWebSocketAdapterConfig = new WebSocketAdapterConfig(source.bundledWebSocketAdapterConfig);
-        this.bundledWebSocketTransportServerFactory = source.bundledWebSocketTransportServerFactory;
-        this.bundledSocketAdapterConfig = new SocketAdapterConfig(source.bundledSocketAdapterConfig);
-        this.supplementalWebSocketAdapterAssemblies = source.supplementalWebSocketAdapterAssemblies.stream()
-                .map(assembly -> new WebSocketAdapterAssembly(
-                        assembly.config(),
-                        assembly.transportServerFactory()
-                ))
+        this.backendDeclaration = source.backendDeclaration;
+        this.bundledWebSocketAdapterDeclaration =
+                new EmbeddedWebSocketAdapterDeclaration(source.bundledWebSocketAdapterDeclaration);
+        this.bundledSocketAdapterDeclaration =
+                new EmbeddedSocketAdapterDeclaration(source.bundledSocketAdapterDeclaration);
+        this.supplementalWebSocketAdapterDeclarations = source.supplementalWebSocketAdapterDeclarations.stream()
+                .map(EmbeddedWebSocketAdapterDeclaration::new)
                 .toList();
-        this.supplementalSocketAdapterConfigs = source.supplementalSocketAdapterConfigs.stream()
-                .map(SocketAdapterConfig::new)
+        this.supplementalSocketAdapterDeclarations = source.supplementalSocketAdapterDeclarations.stream()
+                .map(EmbeddedSocketAdapterDeclaration::new)
                 .toList();
-        this.pollingPendingDeliveryBufferFactory = source.pollingPendingDeliveryBufferFactory;
-        this.dispatchQueueFactory = source.dispatchQueueFactory;
-        this.taskResultIngressQueueFactory = source.taskResultIngressQueueFactory;
-        this.maxPollingPendingDeliveryItems = source.maxPollingPendingDeliveryItems;
-        this.maxPollingPendingDeliveryItemsPerWorker = source.maxPollingPendingDeliveryItemsPerWorker;
         this.transportRuntimeMaxPendingTasks = source.transportRuntimeMaxPendingTasks;
         this.eventRuntimeMaxPendingTasks = source.eventRuntimeMaxPendingTasks;
         this.eventHandlerTimeoutMillis = source.eventHandlerTimeoutMillis;
-        this.endpointLeaseMillis = source.endpointLeaseMillis;
         this.runtimeRole = source.runtimeRole;
     }
 
     public boolean isEnabled() {
-        return bundledWebSocketAdapterConfig.isEnabled()
-                || bundledSocketAdapterConfig.isEnabled()
-                || hasAnyEnabledWebSocketAssembly(supplementalWebSocketAdapterAssemblies)
-                || hasAnyEnabledSocketConfig(supplementalSocketAdapterConfigs);
+        return bundledWebSocketAdapterDeclaration.enabled()
+                || bundledSocketAdapterDeclaration.enabled()
+                || hasAnyEnabledWebSocketDeclaration(supplementalWebSocketAdapterDeclarations)
+                || hasAnyEnabledSocketDeclaration(supplementalSocketAdapterDeclarations);
     }
 
     public String getInputApiUrl() {
@@ -107,144 +93,93 @@ public class TransportConfig {
         this.apiKey = apiKey;
     }
 
-    public WebSocketAdapterConfig getBundledWebSocketAdapterConfig() {
-        return bundledWebSocketAdapterConfig;
+    public EmbeddedWebSocketAdapterDeclaration getBundledWebSocketAdapterDeclaration() {
+        return bundledWebSocketAdapterDeclaration;
     }
 
-    public void setBundledWebSocketAdapterConfig(WebSocketAdapterConfig bundledWebSocketAdapterConfig) {
-        this.bundledWebSocketAdapterConfig = new WebSocketAdapterConfig(
-                Objects.requireNonNull(bundledWebSocketAdapterConfig, "bundledWebSocketAdapterConfig")
+    public void setBundledWebSocketAdapterDeclaration(
+            EmbeddedWebSocketAdapterDeclaration bundledWebSocketAdapterDeclaration) {
+        this.bundledWebSocketAdapterDeclaration = new EmbeddedWebSocketAdapterDeclaration(
+                Objects.requireNonNull(bundledWebSocketAdapterDeclaration, "bundledWebSocketAdapterDeclaration")
         );
     }
 
-    TransportServerFactory<WebSocketServerFactoryContext> getBundledWebSocketTransportServerFactory() {
-        return bundledWebSocketTransportServerFactory;
+    public EmbeddedSocketAdapterDeclaration getBundledSocketAdapterDeclaration() {
+        return bundledSocketAdapterDeclaration;
     }
 
-    public void setBundledWebSocketTransportServerFactory(
-            TransportServerFactory<WebSocketServerFactoryContext> bundledWebSocketTransportServerFactory) {
-        this.bundledWebSocketTransportServerFactory = bundledWebSocketTransportServerFactory;
-    }
-
-    public SocketAdapterConfig getBundledSocketAdapterConfig() {
-        return bundledSocketAdapterConfig;
-    }
-
-    public void setBundledSocketAdapterConfig(SocketAdapterConfig bundledSocketAdapterConfig) {
-        this.bundledSocketAdapterConfig = new SocketAdapterConfig(
-                Objects.requireNonNull(bundledSocketAdapterConfig, "bundledSocketAdapterConfig")
+    public void setBundledSocketAdapterDeclaration(EmbeddedSocketAdapterDeclaration bundledSocketAdapterDeclaration) {
+        this.bundledSocketAdapterDeclaration = new EmbeddedSocketAdapterDeclaration(
+                Objects.requireNonNull(bundledSocketAdapterDeclaration, "bundledSocketAdapterDeclaration")
         );
     }
 
-    public List<WebSocketAdapterConfig> getSupplementalWebSocketAdapterConfigs() {
-        return supplementalWebSocketAdapterAssemblies.stream()
-                .map(WebSocketAdapterAssembly::config)
+    public List<EmbeddedWebSocketAdapterDeclaration> getSupplementalWebSocketAdapterDeclarations() {
+        return supplementalWebSocketAdapterDeclarations.stream()
+                .map(EmbeddedWebSocketAdapterDeclaration::new)
                 .toList();
     }
 
-    List<WebSocketAdapterAssembly> getSupplementalWebSocketAdapterAssemblies() {
-        return supplementalWebSocketAdapterAssemblies.stream()
-                .map(assembly -> new WebSocketAdapterAssembly(
-                        assembly.config(),
-                        assembly.transportServerFactory()
-                ))
-                .toList();
-    }
-
-    public void addSupplementalWebSocketAdapterConfig(WebSocketAdapterConfig config) {
-        addSupplementalWebSocketAdapterConfig(config, null);
-    }
-
-    public void addSupplementalWebSocketAdapterConfig(
-            WebSocketAdapterConfig config,
-            TransportServerFactory<WebSocketServerFactoryContext> transportServerFactory) {
-        if (config == null) {
+    public void addSupplementalWebSocketAdapterDeclaration(EmbeddedWebSocketAdapterDeclaration declaration) {
+        if (declaration == null) {
             return;
         }
-        List<WebSocketAdapterAssembly> updated = new ArrayList<>(supplementalWebSocketAdapterAssemblies);
-        updated.add(new WebSocketAdapterAssembly(config, transportServerFactory));
-        supplementalWebSocketAdapterAssemblies = List.copyOf(updated);
+        List<EmbeddedWebSocketAdapterDeclaration> updated = new ArrayList<>(supplementalWebSocketAdapterDeclarations);
+        updated.add(new EmbeddedWebSocketAdapterDeclaration(declaration));
+        supplementalWebSocketAdapterDeclarations = List.copyOf(updated);
     }
 
-    public List<SocketAdapterConfig> getSupplementalSocketAdapterConfigs() {
-        return supplementalSocketAdapterConfigs.stream()
-                .map(SocketAdapterConfig::new)
+    public List<EmbeddedSocketAdapterDeclaration> getSupplementalSocketAdapterDeclarations() {
+        return supplementalSocketAdapterDeclarations.stream()
+                .map(EmbeddedSocketAdapterDeclaration::new)
                 .toList();
     }
 
-    public void addSupplementalSocketAdapterConfig(SocketAdapterConfig config) {
-        if (config == null) {
+    public void addSupplementalSocketAdapterDeclaration(EmbeddedSocketAdapterDeclaration declaration) {
+        if (declaration == null) {
             return;
         }
-        List<SocketAdapterConfig> updated = new ArrayList<>(supplementalSocketAdapterConfigs);
-        updated.add(new SocketAdapterConfig(config));
-        supplementalSocketAdapterConfigs = List.copyOf(updated);
+        List<EmbeddedSocketAdapterDeclaration> updated = new ArrayList<>(supplementalSocketAdapterDeclarations);
+        updated.add(new EmbeddedSocketAdapterDeclaration(declaration));
+        supplementalSocketAdapterDeclarations = List.copyOf(updated);
     }
 
-    public Supplier<TransportEndpointLeaseStore> endpointLeaseStoreFactory() {
-        return endpointLeaseStoreFactory;
+    public EmbeddedTransportBackendDeclaration getBackendDeclaration() {
+        return backendDeclaration;
     }
 
-    public void setEndpointLeaseStoreFactory(Supplier<TransportEndpointLeaseStore> endpointLeaseStoreFactory) {
-        this.endpointLeaseStoreFactory = endpointLeaseStoreFactory;
-    }
-
-    public long getEndpointLeaseMillis() {
-        return endpointLeaseMillis;
-    }
-
-    public void setEndpointLeaseMillis(long endpointLeaseMillis) {
-        if (endpointLeaseMillis <= 0L) {
-            throw new IllegalArgumentException("endpointLeaseMillis must be greater than 0");
-        }
-        this.endpointLeaseMillis = endpointLeaseMillis;
-    }
-
-    public Supplier<PollingPendingDeliveryBuffer> getPollingPendingDeliveryBufferFactory() {
-        return pollingPendingDeliveryBufferFactory;
-    }
-
-    public void setPollingPendingDeliveryBufferFactory(
-            Supplier<PollingPendingDeliveryBuffer> pollingPendingDeliveryBufferFactory) {
-        this.pollingPendingDeliveryBufferFactory = pollingPendingDeliveryBufferFactory;
-    }
-
-    public Supplier<TransportDispatchQueue> getDispatchQueueFactory() {
-        return dispatchQueueFactory;
-    }
-
-    public void setDispatchQueueFactory(Supplier<TransportDispatchQueue> dispatchQueueFactory) {
-        this.dispatchQueueFactory = dispatchQueueFactory;
-    }
-
-    public Supplier<RedisTransportResultIngressChannel> getTaskResultIngressQueueFactory() {
-        return taskResultIngressQueueFactory;
-    }
-
-    public void setTaskResultIngressQueueFactory(Supplier<RedisTransportResultIngressChannel> taskResultIngressQueueFactory) {
-        this.taskResultIngressQueueFactory = taskResultIngressQueueFactory;
+    public void setBackendDeclaration(EmbeddedTransportBackendDeclaration backendDeclaration) {
+        this.backendDeclaration = Objects.requireNonNull(backendDeclaration, "backendDeclaration");
     }
 
     public int getMaxPollingPendingDeliveryItems() {
-        return maxPollingPendingDeliveryItems;
+        return backendDeclaration.maxPollingPendingDeliveryItems();
     }
 
     public void setMaxPollingPendingDeliveryItems(int maxPollingPendingDeliveryItems) {
-        if (maxPollingPendingDeliveryItems <= 0) {
-            throw new IllegalArgumentException("maxPollingPendingDeliveryItems must be positive");
-        }
-        this.maxPollingPendingDeliveryItems = maxPollingPendingDeliveryItems;
+        setBackendDeclaration(backendDeclaration.toBuilder()
+                .maxPollingPendingDeliveryItems(maxPollingPendingDeliveryItems)
+                .build());
     }
 
     public int getMaxPollingPendingDeliveryItemsPerWorker() {
-        return maxPollingPendingDeliveryItemsPerWorker;
+        return backendDeclaration.maxPollingPendingDeliveryItemsPerWorker();
     }
 
     public void setMaxPollingPendingDeliveryItemsPerWorker(int maxPollingPendingDeliveryItemsPerWorker) {
-        if (maxPollingPendingDeliveryItemsPerWorker <= 0) {
-            throw new IllegalArgumentException("maxPollingPendingDeliveryItemsPerWorker must be positive");
-        }
-        this.maxPollingPendingDeliveryItemsPerWorker = maxPollingPendingDeliveryItemsPerWorker;
+        setBackendDeclaration(backendDeclaration.toBuilder()
+                .maxPollingPendingDeliveryItemsPerWorker(maxPollingPendingDeliveryItemsPerWorker)
+                .build());
+    }
+
+    public long getEndpointLeaseMillis() {
+        return backendDeclaration.endpointLeaseMillis();
+    }
+
+    public void setEndpointLeaseMillis(long endpointLeaseMillis) {
+        setBackendDeclaration(backendDeclaration.toBuilder()
+                .endpointLeaseMillis(endpointLeaseMillis)
+                .build());
     }
 
     public long getEventHandlerTimeoutMillis() {
@@ -288,47 +223,15 @@ public class TransportConfig {
         this.eventHandlerTimeoutMillis = eventHandlerTimeoutMillis;
     }
 
-    Supplier<PollingPendingDeliveryBuffer> pollingPendingDeliveryBufferFactory() {
-        return pollingPendingDeliveryBufferFactory;
-    }
-
-    Supplier<TransportDispatchQueue> dispatchQueueFactory() {
-        return dispatchQueueFactory;
-    }
-
-    Supplier<RedisTransportResultIngressChannel> taskResultIngressQueueFactory() {
-        return taskResultIngressQueueFactory;
-    }
-
     public TransportRuntimeComposition snapshotRuntimeComposition() {
         return new TransportRuntimeComposition(this);
     }
 
-    private static boolean hasAnyEnabledSocketConfig(List<SocketAdapterConfig> configs) {
-        return configs.stream().anyMatch(SocketAdapterConfig::isEnabled);
+    private static boolean hasAnyEnabledSocketDeclaration(List<EmbeddedSocketAdapterDeclaration> declarations) {
+        return declarations.stream().anyMatch(EmbeddedSocketAdapterDeclaration::enabled);
     }
 
-    private static boolean hasAnyEnabledWebSocketAssembly(List<WebSocketAdapterAssembly> assemblies) {
-        return assemblies.stream().anyMatch(assembly -> assembly.config().isEnabled());
-    }
-
-    static final class WebSocketAdapterAssembly {
-        private final WebSocketAdapterConfig adapterConfig;
-        private final TransportServerFactory<WebSocketServerFactoryContext> transportServerFactory;
-
-        WebSocketAdapterAssembly(
-                WebSocketAdapterConfig config,
-                TransportServerFactory<WebSocketServerFactoryContext> transportServerFactory) {
-            this.adapterConfig = new WebSocketAdapterConfig(Objects.requireNonNull(config, "config"));
-            this.transportServerFactory = transportServerFactory;
-        }
-
-        WebSocketAdapterConfig config() {
-            return new WebSocketAdapterConfig(adapterConfig);
-        }
-
-        TransportServerFactory<WebSocketServerFactoryContext> transportServerFactory() {
-            return transportServerFactory;
-        }
+    private static boolean hasAnyEnabledWebSocketDeclaration(List<EmbeddedWebSocketAdapterDeclaration> declarations) {
+        return declarations.stream().anyMatch(EmbeddedWebSocketAdapterDeclaration::enabled);
     }
 }

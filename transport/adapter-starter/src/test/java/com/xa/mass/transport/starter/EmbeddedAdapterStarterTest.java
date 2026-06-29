@@ -8,7 +8,6 @@ import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.runtime.InMemoryTransportResultIngressQueue;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
-import com.xa.mass.transport.runtime.TransportResultIngressQueue;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDispatchHandoff;
 import com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeEnvironment;
 import com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeSpec;
@@ -67,7 +66,7 @@ class EmbeddedAdapterStarterTest {
                 environment(),
                 List.of(new StubRuntimeFactory())
         );
-        EmbeddedAdapterRuntimeSpec spec = new EmbeddedAdapterRuntimeSpec(
+        EmbeddedAdapterDeclaration declaration = new EmbeddedAdapterDeclaration(
                 "stub",
                 "adapter-a",
                 "mailbox-a",
@@ -75,7 +74,7 @@ class EmbeddedAdapterStarterTest {
                 Map.of()
         );
 
-        assertThrows(IllegalArgumentException.class, () -> starter.create(List.of(spec)));
+        assertThrows(IllegalArgumentException.class, () -> starter.create(List.of(declaration)));
     }
 
     @Test
@@ -84,17 +83,17 @@ class EmbeddedAdapterStarterTest {
                 List.of(new DescriptorOnlyRuntimeFactory())
         );
 
-        assertEquals("adapter-a", registry.registrationResolver(
+        assertEquals("adapter-a", registry.registrationResolverFromDeclarations(
                 List.of(spec("descriptor-only", "adapter-a", "mailbox-a"))
         ).resolveRegistrationAdapterId(null, WorkerTransportHints.REALTIME));
     }
 
-    private static EmbeddedAdapterRuntimeSpec spec(String type, String adapterId, String mailboxKey) {
-        return new EmbeddedAdapterRuntimeSpec(
+    private static EmbeddedAdapterDeclaration spec(String type, String adapterId, String mailboxKey) {
+        return new EmbeddedAdapterDeclaration(
                 type,
                 adapterId,
                 mailboxKey,
-                TransportResultIngressQueue.DEFAULT_RESULT_QUEUE_KEY,
+                EmbeddedAdapterDeclaration.DEFAULT_RESULT_QUEUE_KEY,
                 Map.of()
         );
     }

@@ -3,9 +3,8 @@ package com.xa.mass.starter;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.transport.model.DispatchOutcome;
-import com.xa.mass.transport.runtime.delivery.DispatchMessage;
-import com.xa.mass.transport.runtime.delivery.TransportAssignedDeliverySubmitter;
-import com.xa.mass.transport.runtime.delivery.TransportDispatchQueue;
+import com.xa.mass.transport.starter.AssignedDeliveryBatch;
+import com.xa.mass.transport.starter.AssignedDeliverySink;
 import com.xa.mass.worker.runtime.evidence.SelectedWorkerDeliveryTargetEvidence;
 import org.junit.jupiter.api.Test;
 
@@ -20,56 +19,56 @@ class TaskDispatchRoutingSubmitterTest {
 
     @Test
     void missingDeliveryTargetEvidenceDoesNotOfferHandoff() {
-        RecordingHandoff handoff = new RecordingHandoff();
+        RecordingSink sink = new RecordingSink();
         TaskDispatchRoutingSubmitter submitter = submitter(
                 selectedWorkerId -> Optional.empty(),
-                handoff
+                sink
         );
 
         submitter.onTaskDispatchBatch(context(), List.of(binding("msg-1", "worker-1")));
 
-        assertEquals(0, handoff.offers);
+        assertEquals(0, sink.offers);
     }
 
     @Test
     void expiredDeliveryTargetEvidenceDoesNotOfferHandoff() {
-        RecordingHandoff handoff = new RecordingHandoff();
+        RecordingSink sink = new RecordingSink();
         TaskDispatchRoutingSubmitter submitter = submitter(
                 selectedWorkerId -> Optional.of(new SelectedWorkerDeliveryTargetEvidence(
                         selectedWorkerId,
                         "mailbox-a",
                         1L
                 )),
-                handoff
+                sink
         );
 
         submitter.onTaskDispatchBatch(context(), List.of(binding("msg-1", "worker-1")));
 
-        assertEquals(0, handoff.offers);
+        assertEquals(0, sink.offers);
     }
 
     @Test
     void mismatchedDeliveryTargetEvidenceDoesNotOfferHandoff() {
-        RecordingHandoff handoff = new RecordingHandoff();
+        RecordingSink sink = new RecordingSink();
         TaskDispatchRoutingSubmitter submitter = submitter(
                 selectedWorkerId -> Optional.of(new SelectedWorkerDeliveryTargetEvidence(
                         "other-worker",
                         "mailbox-a",
                         Long.MAX_VALUE
                 )),
-                handoff
+                sink
         );
 
         submitter.onTaskDispatchBatch(context(), List.of(binding("msg-1", "worker-1")));
 
-        assertEquals(0, handoff.offers);
+        assertEquals(0, sink.offers);
     }
 
     private static TaskDispatchRoutingSubmitter submitter(
             Function<String, Optional<SelectedWorkerDeliveryTargetEvidence>> resolver,
-            RecordingHandoff handoff) {
+            RecordingSink sink) {
         return new TaskDispatchRoutingSubmitter(
-                new TransportAssignedDeliverySubmitter(handoff),
+                sink,
                 resolver
         );
     }
@@ -99,22 +98,13 @@ class TaskDispatchRoutingSubmitterTest {
         );
     }
 
-    private static final class RecordingHandoff implements TransportDispatchQueue {
+    private static final class RecordingSink implements AssignedDeliverySink {
         private int offers;
 
         @Override
-        public List<DispatchOutcome> offer(String dispatchQueueKey, List<DispatchMessage> items) {
+        public List<DispatchOutcome> submit(List<AssignedDeliveryBatch> batches) {
             offers++;
             return List.of();
-        }
-
-        @Override
-        public List<DispatchMessage> poll(String adapterMailboxKey, int maxItems, long timeoutMillis) {
-            return List.of();
-        }
-
-        @Override
-        public void shutdown() {
         }
     }
 }

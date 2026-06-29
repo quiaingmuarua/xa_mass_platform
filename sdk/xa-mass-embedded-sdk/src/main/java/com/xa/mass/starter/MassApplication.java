@@ -7,32 +7,19 @@ import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
 import com.xa.mass.command.event.BoundedMassEventRuntime;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.command.event.MassEventRuntime;
-import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.sdk.worker.EmbeddedPullWorkerSessions;
 import com.xa.mass.sdk.worker.EmbeddedPullWorkerSession;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeComposition;
 import com.xa.mass.starter.config.TransportRuntimeRole;
-import com.xa.mass.transport.runtime.InMemoryTransportResultIngressQueue;
-import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
-import com.xa.mass.transport.runtime.ResolvedPullWorkerTransport;
-import com.xa.mass.transport.runtime.TransportBinding;
-import com.xa.mass.transport.runtime.TransportRegistrationResolver;
-import com.xa.mass.transport.runtime.TransportResultIngressQueue;
-import com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeEnvironment;
-import com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeSpec;
-import com.xa.mass.transport.runtime.delivery.TransportDispatchQueue;
-import com.xa.mass.transport.runtime.delivery.TransportAssignedDeliverySubmitter;
-import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
-import com.xa.mass.transport.starter.EmbeddedAdapterRuntimeFactoryRegistry;
-import com.xa.mass.transport.starter.EmbeddedAdapterStarter;
-import com.xa.mass.transport.starter.EmbeddedAdapterStarterDefaults;
 import com.xa.mass.transport.WorkerTransportHints;
-import com.xa.mass.transport.channel.TransportResultIngressChannel;
-import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
-import com.xa.mass.transport.lease.TransportEndpointLeaseViewRecord;
-import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
+import com.xa.mass.transport.starter.AssignedDeliverySink;
+import com.xa.mass.transport.starter.CurrentSessionDisconnectHandler;
+import com.xa.mass.transport.starter.EmbeddedPullWorkerTransport;
+import com.xa.mass.transport.starter.EmbeddedTransportAssembly;
+import com.xa.mass.transport.starter.EmbeddedTransportAssemblyConfig;
+import com.xa.mass.transport.starter.EmbeddedTransportBindingView;
 import com.xa.mass.worker.runtime.control.WorkerDispatchBlockSignal;
 import com.xa.mass.worker.runtime.control.WorkerDispatchBlockSource;
 import com.xa.mass.worker.runtime.evidence.SelectedWorkerDeliveryTargetEvidence;
@@ -42,14 +29,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
-
-import static com.xa.mass.runtime.worker.DispatchAvailabilitySource.TRANSPORT_DISCONNECTED;
 
 /**
  * Main runtime composition entry for engine plus embedded transport adapter
@@ -58,8 +41,6 @@ import static com.xa.mass.runtime.worker.DispatchAvailabilitySource.TRANSPORT_DI
 public class MassApplication {
 
     private static final Logger logger = LoggerFactory.getLogger(MassApplication.class);
-    private static final int DEFAULT_TRANSPORT_QUEUE_CAPACITY =
-            Integer.getInteger("xa.mass.transport.queueCapacity", 10_000);
 
     private final TransportRuntimeComposition transportRuntimeComposition;
     private final EngineConfig engineConfig;
@@ -67,12 +48,7 @@ public class MassApplication {
     private final MassEventRuntime eventRuntime;
 
     private final MassEngine engine;
-    private TransportEndpointLeaseStore endpointLeaseStore;
-    private TransportDispatchQueue transportDispatchQueue;
-    private EmbeddedAdapterStarter embeddedAdapterStarter;
-    private TransportRegistrationResolver embeddedAdapterRegistrationResolver;
-    private TransportResultIngressQueue resultIngressQueue;
-    private RedisTransportResultIngressChannel taskResultIngressQueue;
+    private EmbeddedTransportAssembly transportAssembly;
     private TaskResultIngressQueueDrain taskResultIngressQueueDrain;
     private RuntimeTaskExecutor transportRuntimeTaskExecutor;
     private RuntimeTaskExecutor eventRuntimeTaskExecutor;
@@ -124,21 +100,12 @@ public class MassApplication {
         try {
             try {
                 stopEmbeddedAdapterStarter();
-                TransportRuntimeRole runtimeRole = transportRuntimeComposition.getRuntimeRole();
-                if (runtimeRole == TransportRuntimeRole.TRANSPORT_CONSUMER) {
-                    stopDispatchQueue();
-                    stopDistributedTransportChannels();
-                } else if (runtimeRole == TransportRuntimeRole.ENGINE_PRODUCER) {
-                    stopDistributedTransportChannels();
-                }
                 if (engine != null && engineConfig.isEnabled()) {
                     engine.stop();
                 }
             } finally {
                 stopDistributedTransportQueueDrains();
-                stopDispatchQueue();
                 closeDistributedTransportChannels();
-                stopEndpointLeaseStore();
                 stopTransportRuntimeTaskExecutor();
                 stopEventRuntimeTaskExecutor();
             }
@@ -162,17 +129,10 @@ public class MassApplication {
         }
         try {
             stopEmbeddedAdapterStarter();
-            stopDispatchQueue();
             stopDistributedTransportChannels();
         } catch (Exception cleanupError) {
             startupFailure.addSuppressed(cleanupError);
             logger.warn("Failed to stop embedded adapter runtime after startup failure", cleanupError);
-        }
-        try {
-            stopEndpointLeaseStore();
-        } catch (Exception cleanupError) {
-            startupFailure.addSuppressed(cleanupError);
-            logger.warn("Failed to stop transport endpoint lease store after startup failure", cleanupError);
         }
         try {
             stopTransportRuntimeTaskExecutor();
@@ -192,82 +152,43 @@ public class MassApplication {
         logger.info("Initializing core components");
 
         try {
-            embeddedAdapterStarter = null;
-            embeddedAdapterRegistrationResolver = null;
-            resultIngressQueue = null;
+            transportAssembly = null;
             startEventRuntimeTaskExecutor();
-            endpointLeaseStore = resolveTransportEndpointLeaseStore();
             engineConfig.setWorkerReachabilityLookup(this::resolveWorkerReachabilityFromEndpointLease);
-            CurrentSessionDisconnectSink currentSessionDisconnectSink = createCurrentSessionDisconnectSink();
             transportRuntimeTaskExecutor = new VirtualThreadRuntimeTaskExecutor(
                     "transport-runtime-",
                     transportRuntimeComposition.getTransportRuntimeMaxPendingTasks()
             );
             TransportRuntimeRole runtimeRole = transportRuntimeComposition.getRuntimeRole();
             validateWorkerDeliveryTargetResolverConfiguration(runtimeRole);
-            if (requiresDispatchQueue(runtimeRole)) {
-                transportDispatchQueue =
-                        transportRuntimeComposition.resolveTransportDispatchQueue(DEFAULT_TRANSPORT_QUEUE_CAPACITY);
-            }
+            transportAssembly = EmbeddedTransportAssembly.create(new EmbeddedTransportAssemblyConfig(
+                    transportRuntimeComposition.getBackendDeclaration(),
+                    transportRuntimeComposition.resolveEmbeddedAdapterDeclarations(),
+                    transportRuntimeTaskExecutor,
+                    createCurrentSessionDisconnectHandler()
+            ));
             TaskDispatchBatchListener taskDispatchListener = null;
-            if (runtimeRole == TransportRuntimeRole.TRANSPORT_CONSUMER) {
-                taskResultIngressQueue = transportRuntimeComposition.resolveTaskResultIngressQueue();
-                resultIngressQueue = taskResultIngressQueue;
-                logger.info("Task result ingest channel initialized (redis ingress queue producer)");
-            } else if (engineConfig.isEnabled()) {
+            if (runtimeRole != TransportRuntimeRole.TRANSPORT_CONSUMER && engineConfig.isEnabled()) {
                 TaskResultIngestFacade taskResultIngestFacade = engineConfig.getTaskResultIngestFacade();
-                TransportResultIngressQueue resolvedResultQueue = new InMemoryTransportResultIngressQueue(
-                        DEFAULT_TRANSPORT_QUEUE_CAPACITY
-                );
                 if (runtimeRole == TransportRuntimeRole.ENGINE_PRODUCER) {
-                    taskResultIngressQueue = transportRuntimeComposition.resolveTaskResultIngressQueue();
-                    resolvedResultQueue = taskResultIngressQueue;
                     logger.info("Distributed transport result queue drain started for engine-producer role");
                 }
-                resultIngressQueue = resolvedResultQueue;
                 taskResultIngressQueueDrain = new TaskResultIngressQueueDrain(
-                        resultIngressQueue,
+                        transportAssembly.resultIngressSource(),
                         new RuntimeTaskResultIngestChannel(taskResultIngestFacade),
                         transportRuntimeTaskExecutor
                 );
                 taskResultIngressQueueDrain.start();
                 logger.info("Task result ingest queue drain started");
             }
-            if (resultIngressQueue == null && runtimeRole == TransportRuntimeRole.EMBEDDED) {
-                resultIngressQueue = new InMemoryTransportResultIngressQueue(1);
-                logger.info("Task result ingest channel initialized (noop because engine is disabled)");
-            }
-
-            List<EmbeddedAdapterRuntimeSpec> embeddedAdapterSpecs =
-                    transportRuntimeComposition.resolveEmbeddedAdapterRuntimeSpecs();
-            EmbeddedAdapterRuntimeFactoryRegistry embeddedAdapterFactoryRegistry =
-                    EmbeddedAdapterStarterDefaults.createRegistry(
-                            transportRuntimeComposition.resolvePollingPendingDeliveryBufferFactory(),
-                            transportRuntimeComposition.resolveWebSocketServerFactoriesByAdapterId()
-                    );
-            embeddedAdapterRegistrationResolver =
-                    embeddedAdapterFactoryRegistry.registrationResolver(embeddedAdapterSpecs);
-            if (runtimeRole != TransportRuntimeRole.ENGINE_PRODUCER) {
-                embeddedAdapterStarter = EmbeddedAdapterStarterDefaults.createStarter(
-                        new EmbeddedAdapterRuntimeEnvironment(
-                                transportDispatchQueue,
-                                resultIngressQueue,
-                                endpointLeaseStore,
-                                currentSessionDisconnectSink,
-                                transportRuntimeTaskExecutor
-                        ),
-                        embeddedAdapterFactoryRegistry
-                );
-                embeddedAdapterStarter.create(embeddedAdapterSpecs);
-            }
             if (engineConfig.isEnabled() && runtimeRole != TransportRuntimeRole.TRANSPORT_CONSUMER) {
-                taskDispatchListener = createDispatchSubmitter(transportDispatchQueue);
+                taskDispatchListener = createDispatchSubmitter(transportAssembly.assignedDeliverySink());
             }
             return taskDispatchListener;
         } catch (Exception e) {
             try {
-                stopDispatchQueue();
-                stopDistributedTransportChannels();
+                stopDistributedTransportQueueDrains();
+                closeTransportAssembly();
                 stopTransportRuntimeTaskExecutor();
                 stopEventRuntimeTaskExecutor();
             } catch (Exception stopError) {
@@ -276,12 +197,6 @@ public class MassApplication {
             logger.error("Failed to initialize core components", e);
             throw new RuntimeException("Failed to initialize core components", e);
         }
-    }
-
-    private boolean requiresDispatchQueue(TransportRuntimeRole runtimeRole) {
-        return runtimeRole == TransportRuntimeRole.EMBEDDED
-                || runtimeRole == TransportRuntimeRole.ENGINE_PRODUCER
-                || runtimeRole == TransportRuntimeRole.TRANSPORT_CONSUMER;
     }
 
     private void validateWorkerDeliveryTargetResolverConfiguration(TransportRuntimeRole runtimeRole) {
@@ -295,10 +210,9 @@ public class MassApplication {
         }
     }
 
-    private TaskDispatchBatchListener createDispatchSubmitter(TransportDispatchQueue dispatchQueue) {
-        TransportAssignedDeliverySubmitter assignedDeliverySubmitter = new TransportAssignedDeliverySubmitter(dispatchQueue);
+    private TaskDispatchBatchListener createDispatchSubmitter(AssignedDeliverySink assignedDeliverySink) {
         return new TaskDispatchRoutingSubmitter(
-                assignedDeliverySubmitter,
+                assignedDeliverySink,
                 createWorkerDeliveryTargetResolver()
         );
     }
@@ -312,7 +226,7 @@ public class MassApplication {
     }
 
     private Optional<SelectedWorkerDeliveryTargetEvidence> resolveWorkerDeliveryTargetFromBinding(String selectedWorkerId) {
-        if (selectedWorkerId == null || selectedWorkerId.isBlank() || embeddedAdapterStarter == null) {
+        if (selectedWorkerId == null || selectedWorkerId.isBlank() || transportAssembly == null) {
             return Optional.empty();
         }
         WorkerResourceRecord worker;
@@ -321,10 +235,10 @@ public class MassApplication {
         } catch (IllegalArgumentException e) {
             return Optional.empty();
         }
-        TransportBinding binding = resolveTransportBinding(worker);
+        EmbeddedTransportBindingView binding = resolveTransportBinding(worker);
         return Optional.of(new SelectedWorkerDeliveryTargetEvidence(
                 worker.workerId(),
-                binding.getAdapterMailboxKey(),
+                binding.adapterMailboxKey(),
                 Long.MAX_VALUE
         ));
     }
@@ -342,45 +256,44 @@ public class MassApplication {
         return worker;
     }
 
-    private TransportBinding resolveTransportBinding(WorkerResourceRecord worker) {
-        Optional<TransportBinding> sessionBinding = resolveCurrentEndpointBinding(worker);
+    private EmbeddedTransportBindingView resolveTransportBinding(WorkerResourceRecord worker) {
+        Optional<EmbeddedTransportBindingView> sessionBinding = resolveCurrentEndpointBinding(worker);
         if (sessionBinding.isPresent()) {
             return sessionBinding.get();
         }
         try {
-            return requireEmbeddedAdapterStarter().resolveBinding(null, worker.transportHint());
+            return requireTransportAssembly().resolveBinding(null, worker.transportHint());
         } catch (IllegalArgumentException e) {
             throw new IllegalStateException("Cannot resolve transport binding for worker " + worker.workerId()
                     + ": " + e.getMessage(), e);
         }
     }
 
-    private Optional<TransportBinding> resolveCurrentEndpointBinding(WorkerResourceRecord worker) {
-        EmbeddedAdapterStarter starter = embeddedAdapterStarter;
-        if (worker == null || starter == null || endpointLeaseStore == null
+    private Optional<EmbeddedTransportBindingView> resolveCurrentEndpointBinding(WorkerResourceRecord worker) {
+        EmbeddedTransportAssembly assembly = transportAssembly;
+        if (worker == null || assembly == null
                 || worker.workerId() == null || worker.workerId().isBlank()
                 || worker.workerGroupId() == null || worker.workerGroupId().isBlank()) {
             return Optional.empty();
         }
-        Optional<TransportEndpointLeaseViewRecord> endpoint =
-                endpointLeaseStore.currentEndpointLease(worker.workerGroupId(), worker.workerId());
-        if (endpoint.isEmpty()) {
+        Optional<String> endpointDriverId = assembly.currentEndpointDriverId(worker.workerGroupId(), worker.workerId());
+        if (endpointDriverId.isEmpty()) {
             return Optional.empty();
         }
-        String endpointDriverId = endpoint.get().endpointDriverId();
         try {
-            TransportBinding binding = starter.resolveBindingByAdapterId(endpointDriverId);
+            EmbeddedTransportBindingView binding = assembly.resolveBindingByAdapterId(endpointDriverId.get());
             validateEndpointBindingTransportHint(worker, binding);
             return Optional.of(binding);
         } catch (RuntimeException e) {
             throw new IllegalStateException("Cannot resolve transport binding for worker " + worker.workerId()
-                    + " from current endpoint driver '" + endpointDriverId + "': " + e.getMessage(), e);
+                    + " from current endpoint driver '" + endpointDriverId.get() + "': " + e.getMessage(), e);
         }
     }
 
-    private static void validateEndpointBindingTransportHint(WorkerResourceRecord worker, TransportBinding binding) {
+    private static void validateEndpointBindingTransportHint(WorkerResourceRecord worker,
+                                                             EmbeddedTransportBindingView binding) {
         String declaredHint = WorkerTransportHints.normalize(worker.transportHint());
-        String bindingHint = binding == null ? null : WorkerTransportHints.normalize(binding.getTransportHint());
+        String bindingHint = binding == null ? null : WorkerTransportHints.normalize(binding.transportHint());
         if (declaredHint == null || bindingHint == null || declaredHint.equals(bindingHint)) {
             return;
         }
@@ -392,8 +305,8 @@ public class MassApplication {
         if (workerId == null || workerId.isBlank()) {
             return WorkerReachabilityState.UNKNOWN;
         }
-        TransportEndpointLeaseStore store = endpointLeaseStore;
-        if (store == null) {
+        EmbeddedTransportAssembly assembly = transportAssembly;
+        if (assembly == null) {
             return WorkerReachabilityState.UNKNOWN;
         }
         WorkerResourceRecord worker;
@@ -405,14 +318,15 @@ public class MassApplication {
         if (worker.workerGroupId() == null || worker.workerGroupId().isBlank()) {
             return WorkerReachabilityState.UNKNOWN;
         }
-        return store.currentEndpointLease(worker.workerGroupId(), worker.workerId()).isPresent()
+        return assembly.hasCurrentEndpointLease(worker.workerGroupId(), worker.workerId())
                 ? WorkerReachabilityState.ONLINE
                 : WorkerReachabilityState.OFFLINE;
     }
 
     private void startEmbeddedAdapterStarter() {
-        if (embeddedAdapterStarter != null) {
-            embeddedAdapterStarter.startAll();
+        if (transportAssembly != null
+                && transportRuntimeComposition.getRuntimeRole() != TransportRuntimeRole.ENGINE_PRODUCER) {
+            transportAssembly.startAllAdapters();
         }
     }
 
@@ -435,39 +349,7 @@ public class MassApplication {
     }
 
     private void stopEmbeddedAdapterStarter() {
-        EmbeddedAdapterStarter starter = embeddedAdapterStarter;
-        embeddedAdapterStarter = null;
-        if (starter != null) {
-            starter.close();
-        }
-    }
-
-    private void stopEndpointLeaseStore() throws Exception {
-        TransportEndpointLeaseStore store = endpointLeaseStore;
-        endpointLeaseStore = null;
-        if (store instanceof AutoCloseable closeable) {
-            closeable.close();
-        }
-    }
-
-    private void stopDispatchQueue() {
-        TransportDispatchQueue dispatchQueue = transportDispatchQueue;
-        transportDispatchQueue = null;
-        if (dispatchQueue != null) {
-            dispatchQueue.shutdown();
-        }
-    }
-
-    private TransportEndpointLeaseStore resolveTransportEndpointLeaseStore() {
-        java.util.function.Supplier<TransportEndpointLeaseStore> factory =
-                transportRuntimeComposition.endpointLeaseStoreFactory();
-        TransportEndpointLeaseStore store = factory != null
-                ? factory.get()
-                : new InMemoryTransportEndpointLeaseStore(transportRuntimeComposition.getEndpointLeaseMillis());
-        if (store == null) {
-            throw new IllegalStateException("Transport endpoint lease store factory returned null");
-        }
-        return store;
+        closeTransportAssembly();
     }
 
     private void stopDistributedTransportChannels() {
@@ -484,10 +366,14 @@ public class MassApplication {
     }
 
     private void closeDistributedTransportChannels() {
-        RedisTransportResultIngressChannel resultIngressQueue = taskResultIngressQueue;
-        taskResultIngressQueue = null;
-        if (resultIngressQueue != null) {
-            resultIngressQueue.shutdown();
+        closeTransportAssembly();
+    }
+
+    private void closeTransportAssembly() {
+        EmbeddedTransportAssembly assembly = transportAssembly;
+        transportAssembly = null;
+        if (assembly != null) {
+            assembly.close();
         }
     }
 
@@ -530,9 +416,9 @@ public class MassApplication {
         return new BoundedMassEventRuntime(inMemoryRuntime, () -> eventRuntimeTaskExecutor, timeoutMillis);
     }
 
-    private CurrentSessionDisconnectSink createCurrentSessionDisconnectSink() {
+    private CurrentSessionDisconnectHandler createCurrentSessionDisconnectHandler() {
         if (!engineConfig.isEnabled()) {
-            return CurrentSessionDisconnectSink.NOOP;
+            return CurrentSessionDisconnectHandler.NOOP;
         }
         return (deliveryBucketId, workerId, reason, observedAtMillis) ->
                 engineConfig.getWorkerDispatchBlockRuntime().blockWorkerDispatch(
@@ -551,7 +437,7 @@ public class MassApplication {
         boolean engineExpected = engineConfig.isEnabled()
                 && transportRuntimeComposition.getRuntimeRole() != TransportRuntimeRole.TRANSPORT_CONSUMER;
         return running.get()
-                && (embeddedAdapterStarter == null || embeddedAdapterStarter.isRunning())
+                && (transportAssembly == null || transportAssembly.isRunning())
                 && (!engineExpected || engine == null || engine.isRunning());
     }
 
@@ -560,12 +446,12 @@ public class MassApplication {
     }
 
     public EmbeddedPullWorkerSession openEmbeddedPullWorkerSession(String workerId, String sessionToken) {
-        EmbeddedAdapterStarter starter = embeddedAdapterStarter;
-        if (starter == null) {
+        EmbeddedTransportAssembly assembly = transportAssembly;
+        if (assembly == null) {
             throw new IllegalStateException("Pull worker transport is unavailable for this runtime");
         }
         WorkerResourceRecord worker = requireWorkerResource(workerId);
-        ResolvedPullWorkerTransport resolved = starter.resolvePullWorkerTransport(
+        EmbeddedPullWorkerTransport resolved = assembly.resolvePullWorkerTransport(
                 worker.workerId(),
                 worker.workerGroupId(),
                 null,
@@ -577,7 +463,7 @@ public class MassApplication {
                 requireText(sessionToken, "sessionToken"),
                 resolved.getDeliveryPullChannel(),
                 resolved.getResultIngressChannel(),
-                resolved.getPullSessionEvidenceDriver(),
+                resolved.getPullSessionEvidencePort(),
                 engineConfig.getWorkerHeartbeatRuntime(),
                 resolved.getTransportHint()
         );
@@ -601,11 +487,11 @@ public class MassApplication {
     }
 
     public String resolveWorkerAdapterId(String workerId) {
-        return resolveTransportBinding(requireWorkerResource(workerId)).getAdapterId();
+        return resolveTransportBinding(requireWorkerResource(workerId)).adapterId();
     }
 
     public String resolveWorkerTransportHint(String workerId) {
-        return resolveTransportBinding(requireWorkerResource(workerId)).getTransportHint();
+        return resolveTransportBinding(requireWorkerResource(workerId)).transportHint();
     }
 
     public Map<String, Object> getTransportQueueDetail() {
@@ -621,23 +507,15 @@ public class MassApplication {
      * transport runtime registry is assembled.
      */
     public String resolveRegistrationAdapterId(String requestedAdapterId, String transportHint) {
-        EmbeddedAdapterStarter starter = embeddedAdapterStarter;
-        if (starter != null) {
-            return starter.resolveRegistrationAdapterId(requestedAdapterId, transportHint);
-        }
-        TransportRegistrationResolver resolver = embeddedAdapterRegistrationResolver;
-        if (resolver == null) {
-            throw new IllegalStateException("Embedded adapter registration resolver is unavailable");
-        }
-        return resolver.resolveRegistrationAdapterId(requestedAdapterId, transportHint);
+        return requireTransportAssembly().resolveRegistrationAdapterId(requestedAdapterId, transportHint);
     }
 
-    private EmbeddedAdapterStarter requireEmbeddedAdapterStarter() {
-        EmbeddedAdapterStarter starter = embeddedAdapterStarter;
-        if (starter == null) {
+    private EmbeddedTransportAssembly requireTransportAssembly() {
+        EmbeddedTransportAssembly assembly = transportAssembly;
+        if (assembly == null) {
             throw new IllegalStateException("Embedded adapter runtime is unavailable for this application");
         }
-        return starter;
+        return assembly;
     }
 
     public MassEngine getEngine() {

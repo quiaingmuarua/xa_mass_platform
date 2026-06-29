@@ -657,8 +657,11 @@ class TransportConvergenceArchitectureGuardTest {
         Path starter = repoRoot().resolve(
                 "transport/adapter-starter/src/main/java/com/xa/mass/transport/starter/EmbeddedAdapterStarter.java");
         String starterSource = Files.readString(starter);
-        assertTrue(starterSource.contains("EmbeddedAdapterCreateResult create(List<EmbeddedAdapterRuntimeSpec> specs)"),
-                "Embedded adapter starter must expose spec-only creation with a minimal result");
+        assertTrue(starterSource.contains("EmbeddedAdapterCreateResult create(List<EmbeddedAdapterDeclaration> declarations)"),
+                "Embedded adapter starter must expose declaration-only creation with a minimal result");
+        assertTrue(starterSource.contains("cross-module adapter declarations stay")
+                        && starterSource.contains("EmbeddedAdapterDeclaration"),
+                "Embedded adapter starter must keep runtime specs internal to adapter-starter");
         assertTrue(starterSource.contains("start(String adapterId)")
                         && starterSource.contains("close(String adapterId)")
                         && starterSource.contains("runtimeByAdapterId"),
@@ -865,21 +868,20 @@ class TransportConvergenceArchitectureGuardTest {
         Path composition = repoRoot().resolve(
                 "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/config/TransportRuntimeComposition.java");
         String compositionSource = Files.readString(composition);
-        assertTrue(!compositionSource.contains("new EmbeddedAdapterRuntimeSpec(")
+        assertTrue(!compositionSource.contains("EmbeddedAdapterRuntimeSpec")
                         && !compositionSource.contains("new PollingAdapterRuntimeFactory(")
                         && !compositionSource.contains("new WebSocketAdapterRuntimeFactory(")
                         && !compositionSource.contains("new SocketAdapterRuntimeFactory(")
                         && !compositionSource.contains("transportHintForType")
                         && !compositionSource.contains("TransportRegistrationResolver")
-                        && !compositionSource.contains("runtimeOwnedEndpointLeaseStore"),
-                "TransportRuntimeComposition must stay a snapshot/projection surface, not adapter spec or resolver owner");
+                        && !compositionSource.contains("runtimeOwnedEndpointLeaseStore")
+                        && !compositionSource.contains("WebSocketAdapterConfig")
+                        && !compositionSource.contains("SocketAdapterConfig")
+                        && !compositionSource.contains("WebSocketServerFactoryContext"),
+                "TransportRuntimeComposition must stay a declaration snapshot/projection surface, not runtime spec, adapter factory, or concrete config owner");
 
-        Path specAssembler = repoRoot().resolve(
-                "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/config/EmbeddedAdapterSpecAssembler.java");
-        String specAssemblerSource = Files.readString(specAssembler);
-        assertTrue(specAssemblerSource.contains("new EmbeddedAdapterRuntimeSpec(")
-                        && specAssemblerSource.contains("WebSocketAdapterAssembly"),
-                "SDK starter/config internal assembler must own typed declarations to embedded adapter specs");
+        assertPathsDoNotExist(repoRoot().resolve(
+                "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/config/EmbeddedAdapterSpecAssembler.java"));
 
         String starterDefaultsSource = Files.readString(repoRoot().resolve(
                 "transport/adapter-starter/src/main/java/com/xa/mass/transport/starter/EmbeddedAdapterStarterDefaults.java"));
@@ -892,15 +894,44 @@ class TransportConvergenceArchitectureGuardTest {
 
         String registrySource = Files.readString(repoRoot().resolve(
                 "transport/adapter-starter/src/main/java/com/xa/mass/transport/starter/EmbeddedAdapterRuntimeFactoryRegistry.java"));
-        assertTrue(registrySource.contains("registrationResolver(")
-                        && registrySource.contains("descriptor(spec)")
+        assertTrue(registrySource.contains("registrationResolverFromDeclarations(")
+                        && registrySource.contains("toRuntimeSpec(")
                         && !registrySource.contains("ServiceLoader")
                         && !registrySource.contains("Class.forName"),
-                "Adapter-starter registry must provide descriptor-only resolver without dynamic discovery");
+                "Adapter-starter registry must translate declarations to runtime specs and provide descriptor-only resolver without dynamic discovery");
+        String assemblySource = Files.readString(repoRoot().resolve(
+                "transport/adapter-starter/src/main/java/com/xa/mass/transport/starter/EmbeddedTransportAssembly.java"));
+        assertTrue(assemblySource.contains("AssignedDeliverySink")
+                        && assemblySource.contains("ResultIngressSource")
+                        && assemblySource.contains("PullSessionEvidencePort")
+                        && assemblySource.contains("evidencePort(PullSessionEvidenceDriver"),
+                "Adapter-starter assembly must expose narrow transport ports instead of leaking runtime stores and adapter modules to embedded SDK");
+        String assemblyConfigSource = Files.readString(repoRoot().resolve(
+                "transport/adapter-starter/src/main/java/com/xa/mass/transport/starter/EmbeddedTransportAssemblyConfig.java"));
+        assertTrue(assemblyConfigSource.contains("CurrentSessionDisconnectHandler"),
+                "Adapter-starter assembly config must expose current-session disconnect through a narrow handler port");
         assertNoProductionSourceContains(
                 List.of(repoRoot().resolve("transport/adapter-starter/src/main/java")),
                 "com.xa.mass.starter.config"
         );
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java")),
+                "com.xa.mass.transport.runtime",
+                "com.xa.mass.transport.polling",
+                "com.xa.mass.transport.socket",
+                "com.xa.mass.transport.websocket",
+                "PollingPendingDeliveryBuffer",
+                "TransportEndpointLeaseStore",
+                "WebSocketServerFactoryContext",
+                "import com.xa.mass.transport.websocket",
+                "import com.xa.mass.transport.socket"
+        );
+        String embeddedSdkPom = Files.readString(repoRoot().resolve("sdk/xa-mass-embedded-sdk/pom.xml"));
+        assertTrue(!embeddedSdkPom.contains("xa-mass-transport-runtime")
+                        && !embeddedSdkPom.contains("xa-mass-transport-polling")
+                        && !embeddedSdkPom.contains("xa-mass-transport-socket")
+                        && !embeddedSdkPom.contains("xa-mass-transport-websocket"),
+                "Embedded SDK must depend on adapter-starter contracts, not concrete transport runtime/adapter artifacts");
     }
 
     @Test
@@ -1331,8 +1362,9 @@ class TransportConvergenceArchitectureGuardTest {
                 "releaseEndpointLease"
         );
         String source = Files.readString(embeddedPullWorkerSession);
-        assertTrue(source.contains("PullSessionEvidenceDriver"),
-                "EmbeddedPullWorkerSession must consume the runtime-resolved pull-session evidence driver");
+        assertTrue(source.contains("PullSessionEvidencePort")
+                        && !source.contains("PullSessionEvidenceDriver"),
+                "EmbeddedPullWorkerSession must consume the adapter-starter pull-session evidence port");
     }
 
     @Test

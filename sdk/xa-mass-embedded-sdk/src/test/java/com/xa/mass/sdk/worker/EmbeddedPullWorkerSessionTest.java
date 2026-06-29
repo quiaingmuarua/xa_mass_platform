@@ -6,10 +6,10 @@ import com.xa.mass.transport.channel.PulledDeliveryMessage;
 import com.xa.mass.transport.channel.ResultIngressEntry;
 import com.xa.mass.transport.channel.TransportResultIngressChannel;
 import com.xa.mass.transport.polling.runtime.PollingSessionEvidenceDriver;
-import com.xa.mass.transport.runtime.embedded.PullSessionEvidenceDriver;
 import com.xa.mass.transport.runtime.lease.AdapterSessionEvidencePublisher;
 import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
+import com.xa.mass.transport.starter.PullSessionEvidencePort;
 import com.xa.mass.worker.runtime.resource.WorkerHeartbeatRuntime;
 import org.junit.jupiter.api.Test;
 
@@ -200,13 +200,29 @@ class EmbeddedPullWorkerSessionTest {
         );
     }
 
-    private static PullSessionEvidenceDriver evidenceDriver(InMemoryTransportEndpointLeaseStore endpointLeaseStore,
-                                                            CurrentSessionDisconnectSink disconnectSink) {
-        return new PollingSessionEvidenceDriver(new AdapterSessionEvidencePublisher(
+    private static PullSessionEvidencePort evidenceDriver(InMemoryTransportEndpointLeaseStore endpointLeaseStore,
+                                                          CurrentSessionDisconnectSink disconnectSink) {
+        PollingSessionEvidenceDriver delegate = new PollingSessionEvidenceDriver(new AdapterSessionEvidencePublisher(
                 "polling",
                 endpointLeaseStore,
                 disconnectSink
         ));
+        return new PullSessionEvidencePort() {
+            @Override
+            public boolean connect(String workerId, String workerGroupId, String sessionToken, String reason) {
+                return delegate.connect(workerId, workerGroupId, sessionToken, reason);
+            }
+
+            @Override
+            public boolean heartbeat(String workerId, String workerGroupId, String sessionToken, String reason) {
+                return delegate.heartbeat(workerId, workerGroupId, sessionToken, reason);
+            }
+
+            @Override
+            public boolean disconnect(String workerId, String workerGroupId, String sessionToken, String reason) {
+                return delegate.disconnect(workerId, workerGroupId, sessionToken, reason);
+            }
+        };
     }
 
     private static final class RecordingDisconnectSink implements CurrentSessionDisconnectSink {

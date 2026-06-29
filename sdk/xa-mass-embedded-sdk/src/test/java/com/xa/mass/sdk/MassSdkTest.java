@@ -50,9 +50,6 @@ import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.kernel.spi.rule.RuleType;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
-import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
-import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
-import com.xa.mass.transport.websocket.runtime.WebSocketServerFactoryContext;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.CredentialPrincipalProfile;
 import com.xa.mass.sdk.auth.CredentialPrincipalRegistration;
@@ -95,8 +92,6 @@ import com.xa.mass.transport.polling.delivery.InMemoryPollingPendingDeliveryBuff
 import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
 import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBufferStats;
 import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryPollResult;
-import com.xa.mass.transport.polling.delivery.RedisPollingPendingDeliveryBuffer;
-import com.xa.mass.transport.runtime.RedisTransportNamespaces;
 import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRegistrationResolver;
@@ -113,6 +108,9 @@ import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.DeliveryPullResult;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
 import com.xa.mass.transport.starter.EmbeddedAdapterStarterDefaults;
+import com.xa.mass.transport.starter.EmbeddedAdapterDeclaration;
+import com.xa.mass.transport.starter.EmbeddedSocketAdapterDeclaration;
+import com.xa.mass.transport.starter.EmbeddedWebSocketAdapterDeclaration;
 import com.xa.mass.sdk.worker.WorkerAction;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import org.junit.jupiter.api.Assertions;
@@ -203,120 +201,18 @@ class MassSdkTest {
     }
 
     @Test
-    void customTransportServerFactoryOverridesBundledWebSocketAdapter() {
-        AtomicReference<WebSocketServerFactoryContext> capturedContext = new AtomicReference<>();
-        AtomicBoolean started = new AtomicBoolean(false);
-        AtomicBoolean stopped = new AtomicBoolean(false);
-
-        TransportServerFactory<WebSocketServerFactoryContext> factory = context -> {
-            capturedContext.set(context);
-            return new TransportServer() {
-                @Override
-                public void start() {
-                    started.set(true);
-                }
-
-                @Override
-                public void stop() {
-                    stopped.set(true);
-                }
-
-                @Override
-                public boolean isRunning() {
-                    return started.get() && !stopped.get();
-                }
-            };
-        };
-
-        MassSdkApplication app = MassSdk.builder()
-                .transport(transport -> transport
-                        .webSocketAdapter(webSocket -> webSocket
-                                .server(19092, "/custom-transport")
-                                .enabled(true)
-                                .serverEnabled(true)
-                                .transportServerFactory(factory)))
-                .engine(engine -> engine.enabled(false))
-                .build();
-
-        try {
-            app.start();
-            assertTrue(app.isRunning());
-            assertNotNull(capturedContext.get());
-            Assertions.assertEquals(19092, capturedContext.get().getPort());
-            Assertions.assertEquals("/custom-transport", capturedContext.get().getEndpointPath());
-            assertNotNull(capturedContext.get().getSessionHandle());
-        } finally {
-            app.stop();
-        }
-
-        assertTrue(started.get());
-        assertTrue(stopped.get());
-    }
-
-    @Test
-    void supplementalWebSocketAdapterCanStartServerOnDedicatedPort() {
-        AtomicInteger startedPort = new AtomicInteger(-1);
-        AtomicBoolean stopped = new AtomicBoolean(false);
-
-        TransportServer dedicatedServer = new TransportServer() {
-            private boolean running;
-
-            @Override
-            public void start() {
-                startedPort.set(19193);
-                running = true;
-            }
-
-            @Override
-            public void stop() {
-                running = false;
-                stopped.set(true);
-            }
-
-            @Override
-            public boolean isRunning() {
-                return running;
-            }
-        };
-
-        MassSdkApplication app = MassSdk.builder()
-                .transport(transport -> transport
-                        .webSocketAdapter(webSocket -> webSocket
-                                .server(19092, "/default-transport")
-                                .enabled(false)
-                                .serverEnabled(false))
-                        .addWebSocketAdapter(webSocket -> webSocket
-                                .adapterId("ws-dedicated")
-                                .enabled(true)
-                                .serverEnabled(true)
-                                .transportServerFactory(context -> dedicatedServer)))
-                .engine(engine -> engine.enabled(false))
-                .build();
-
-        try {
-            app.start();
-            assertTrue(app.isRunning());
-            assertEquals(19193, startedPort.get());
-        } finally {
-            app.stop();
-        }
-
-        assertTrue(stopped.get());
-    }
-
-    @Test
     void runtimeCompositionExposesAdapterOwnedConfigSnapshots() {
         TransportConfig config = new TransportConfig();
-        config.getBundledWebSocketAdapterConfig().setServerPort(19095);
-        config.getBundledWebSocketAdapterConfig().setEndpointPath("/runtime-ws");
-        config.getBundledSocketAdapterConfig().setEnabled(true);
-        config.getBundledSocketAdapterConfig().setServerEnabled(true);
-        config.getBundledSocketAdapterConfig().setServerPort(18123);
-        config.getBundledSocketAdapterConfig().setBindHost("127.0.0.1");
+        config.getBundledWebSocketAdapterDeclaration().setServerPort(19095);
+        config.getBundledWebSocketAdapterDeclaration().setEndpointPath("/runtime-ws");
+        config.getBundledSocketAdapterDeclaration().setEnabled(true);
+        config.getBundledSocketAdapterDeclaration().setServerEnabled(true);
+        config.getBundledSocketAdapterDeclaration().setServerPort(18123);
+        config.getBundledSocketAdapterDeclaration().setBindHost("127.0.0.1");
 
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
-        WebSocketAdapterConfig webSocketConfig = runtimeComposition.getBundledWebSocketAdapterConfig();
-        SocketAdapterConfig socketConfig = runtimeComposition.getBundledSocketAdapterConfig();
+        EmbeddedWebSocketAdapterDeclaration webSocketConfig = runtimeComposition.getBundledWebSocketAdapterDeclaration();
+        EmbeddedSocketAdapterDeclaration socketConfig = runtimeComposition.getBundledSocketAdapterDeclaration();
 
         assertEquals(19095, webSocketConfig.getServerPort());
         assertEquals("/runtime-ws", webSocketConfig.getEndpointPath());
@@ -327,13 +223,12 @@ class MassSdkTest {
 
         webSocketConfig.setServerPort(19999);
         socketConfig.setServerPort(19998);
-        assertEquals(19095, runtimeComposition.getBundledWebSocketAdapterConfig().getServerPort());
-        assertEquals(18123, runtimeComposition.getBundledSocketAdapterConfig().getServerPort());
+        assertEquals(19095, runtimeComposition.getBundledWebSocketAdapterDeclaration().getServerPort());
+        assertEquals(18123, runtimeComposition.getBundledSocketAdapterDeclaration().getServerPort());
     }
 
     @Test
     void sdkBundledSocketServerRegistersHelloSession() throws Exception {
-        InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
         MassSdkApplication app = MassSdk.builder()
                 .transport(transport -> transport
                         .webSocketAdapter(webSocket -> webSocket
@@ -342,8 +237,7 @@ class MassSdkTest {
                         .socketAdapter(socket -> socket
                                 .server(0)
                                 .enabled(true)
-                                .serverEnabled(true))
-                        .endpointLeaseStoreFactory(() -> endpointLeaseStore))
+                                .serverEnabled(true)))
                 .engine(engine -> engine.enabled(true))
                 .build();
         app.registerEventDefinition(EventDefinition.builder()
@@ -396,13 +290,6 @@ class MassSdkTest {
                 writer.newLine();
                 writer.flush();
 
-                waitUntil(() -> endpointLeaseStore.currentEndpointLease("sdk-socket-workers", "sdk-socket-worker")
-                                .isPresent(),
-                        "sdk socket hello should publish an endpoint lease");
-                var endpoint = endpointLeaseStore.currentEndpointLease("sdk-socket-workers", "sdk-socket-worker")
-                        .orElseThrow();
-                assertEquals("socket", endpoint.endpointDriverId());
-                assertNotNull(endpoint.sessionToken());
                 waitUntil(() -> app.isWorkerReachable("sdk-socket-worker"),
                         "sdk socket endpoint lease should surface worker reachability");
             }
@@ -410,17 +297,6 @@ class MassSdkTest {
             app.stop();
             System.clearProperty(com.xa.mass.transport.socket.server.SocketTransportServer.BOUND_PORT_PROPERTY);
         }
-    }
-
-    @Test
-    void runtimeCompositionResolvesCustomPollingPendingDeliveryBufferFactory() {
-        TransportConfig config = new TransportConfig();
-        StubPollingPendingDeliveryBuffer buffer = new StubPollingPendingDeliveryBuffer();
-        config.setPollingPendingDeliveryBufferFactory(() -> buffer);
-
-        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
-
-        assertSame(buffer, runtimeComposition.resolvePollingPendingDeliveryBufferFactory().get());
     }
 
     @Test
@@ -475,26 +351,26 @@ class MassSdkTest {
                 TransportRuntimeComposition.class
         );
 
-        assertCapturedNamespace(runtimeComposition, "dispatchQueueFactory", RedisTransportNamespaces.DISPATCH);
-        assertCapturedNamespace(runtimeComposition, "taskResultIngressQueueFactory", RedisTransportNamespaces.RESULT_INGRESS);
-        assertCapturedNamespace(runtimeComposition, "endpointLeaseStoreFactory", RedisTransportNamespaces.ENDPOINT_LEASE);
-        assertCapturedNamespace(
-                runtimeComposition,
-                "pollingPendingDeliveryBufferFactory",
-                RedisPollingPendingDeliveryBuffer.DEFAULT_NAMESPACE_PREFIX
-        );
+        assertEquals("xa:mass:transport:dispatch:v1",
+                runtimeComposition.getBackendDeclaration().dispatchNamespace());
+        assertEquals("xa:mass:transport:result-ingress:v1",
+                runtimeComposition.getBackendDeclaration().resultIngressNamespace());
+        assertEquals("xa:mass:transport:endpoint-lease:v1",
+                runtimeComposition.getBackendDeclaration().endpointLeaseNamespace());
+        assertEquals("xa:mass:transport:polling-delivery:v1",
+                runtimeComposition.getBackendDeclaration().pollingDeliveryNamespace());
     }
 
     @Test
     void runtimeCompositionWebSocketSpecReflectsCurrentNestedAdapterConfig() {
         TransportConfig config = new TransportConfig();
-        config.getBundledWebSocketAdapterConfig().setEnabled(false);
-        config.getBundledWebSocketAdapterConfig().setServerEnabled(false);
+        config.getBundledWebSocketAdapterDeclaration().setEnabled(false);
+        config.getBundledWebSocketAdapterDeclaration().setServerEnabled(false);
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
         assertEquals(
                 List.of(),
-                runtimeComposition.resolveEmbeddedAdapterRuntimeSpecs().stream()
-                        .map(com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeSpec::adapterId)
+                runtimeComposition.resolveEmbeddedAdapterDeclarations().stream()
+                        .map(EmbeddedAdapterDeclaration::adapterId)
                         .filter("websocket"::equals)
                         .toList()
         );
@@ -503,31 +379,30 @@ class MassSdkTest {
     @Test
     void runtimeCompositionSocketSpecReflectsCurrentNestedAdapterConfig() {
         TransportConfig config = new TransportConfig();
-        config.getBundledSocketAdapterConfig().setEnabled(true);
-        config.getBundledSocketAdapterConfig().setServerEnabled(true);
+        config.getBundledSocketAdapterDeclaration().setEnabled(true);
+        config.getBundledSocketAdapterDeclaration().setServerEnabled(true);
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
-        com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeSpec spec =
+        EmbeddedAdapterDeclaration spec =
                 adapterSpec(runtimeComposition, "socket");
 
         assertEquals("socket", spec.adapterId());
         assertEquals("socket", spec.dispatchQueueKey());
-        assertEquals("true", spec.option("serverEnabled"));
+        assertEquals("true", spec.options().get("serverEnabled"));
     }
 
     @Test
     void runtimeCompositionWebSocketRuntimeFactoryCreatesBinding() {
         TransportConfig config = new TransportConfig();
-        config.getBundledWebSocketAdapterConfig().setEnabled(true);
-        config.getBundledWebSocketAdapterConfig().setServerEnabled(true);
+        config.getBundledWebSocketAdapterDeclaration().setEnabled(true);
+        config.getBundledWebSocketAdapterDeclaration().setServerEnabled(true);
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
         com.xa.mass.transport.starter.EmbeddedAdapterStarter starter =
                 com.xa.mass.transport.starter.EmbeddedAdapterStarterDefaults.createStarter(
                         embeddedAdapterRuntimeEnvironment(),
-                        runtimeComposition.resolvePollingPendingDeliveryBufferFactory(),
-                        runtimeComposition.resolveWebSocketServerFactoriesByAdapterId()
+                        InMemoryPollingPendingDeliveryBuffer::new
                 );
-        starter.create(runtimeComposition.resolveEmbeddedAdapterRuntimeSpecs());
+        starter.create(runtimeComposition.resolveEmbeddedAdapterDeclarations());
         TransportBinding binding = starter.resolveBindingByAdapterId("websocket");
 
         assertEquals("websocket", binding.getAdapterId());
@@ -538,11 +413,11 @@ class MassSdkTest {
     @Test
     void runtimeCompositionWebSocketSpecUsesConfiguredAdapterId() {
         TransportConfig config = new TransportConfig();
-        config.getBundledWebSocketAdapterConfig().setAdapterId("ws-public");
-        config.getBundledWebSocketAdapterConfig().setEnabled(true);
-        config.getBundledWebSocketAdapterConfig().setServerEnabled(false);
+        config.getBundledWebSocketAdapterDeclaration().setAdapterId("ws-public");
+        config.getBundledWebSocketAdapterDeclaration().setEnabled(true);
+        config.getBundledWebSocketAdapterDeclaration().setServerEnabled(false);
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
-        com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeSpec spec =
+        EmbeddedAdapterDeclaration spec =
                 adapterSpec(runtimeComposition, "ws-public");
 
         assertEquals("ws-public", spec.adapterId());
@@ -556,11 +431,11 @@ class MassSdkTest {
     @Test
     void runtimeCompositionSocketSpecUsesConfiguredAdapterId() {
         TransportConfig config = new TransportConfig();
-        config.getBundledSocketAdapterConfig().setAdapterId("socket-edge");
-        config.getBundledSocketAdapterConfig().setEnabled(true);
-        config.getBundledSocketAdapterConfig().setServerEnabled(false);
+        config.getBundledSocketAdapterDeclaration().setAdapterId("socket-edge");
+        config.getBundledSocketAdapterDeclaration().setEnabled(true);
+        config.getBundledSocketAdapterDeclaration().setServerEnabled(false);
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
-        com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeSpec spec =
+        EmbeddedAdapterDeclaration spec =
                 adapterSpec(runtimeComposition, "socket-edge");
 
         assertEquals("socket-edge", spec.adapterId());
@@ -585,12 +460,11 @@ class MassSdkTest {
     @Test
     void transportRuntimeCompositionRequiresExplicitAdapterIdWhenRealtimeRegistrationIsAmbiguousBeforeStart() {
         TransportConfig config = new TransportConfig();
-        com.xa.mass.transport.socket.runtime.SocketAdapterConfig extraSocket =
-                new com.xa.mass.transport.socket.runtime.SocketAdapterConfig();
+        EmbeddedSocketAdapterDeclaration extraSocket = new EmbeddedSocketAdapterDeclaration();
         extraSocket.setAdapterId("socket-edge");
         extraSocket.setEnabled(true);
         extraSocket.setServerEnabled(false);
-        config.addSupplementalSocketAdapterConfig(extraSocket);
+        config.addSupplementalSocketAdapterDeclaration(extraSocket);
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
         IllegalArgumentException error = assertThrows(
@@ -605,19 +479,17 @@ class MassSdkTest {
     @Test
     void runtimeCompositionCanAppendAdditionalBundledRealtimeAdapterInstances() {
         TransportConfig config = new TransportConfig();
-        com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig extraWebSocket =
-                new com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig();
+        EmbeddedWebSocketAdapterDeclaration extraWebSocket = new EmbeddedWebSocketAdapterDeclaration();
         extraWebSocket.setAdapterId("ws-internal");
         extraWebSocket.setEnabled(true);
         extraWebSocket.setServerEnabled(false);
-        config.addSupplementalWebSocketAdapterConfig(extraWebSocket);
+        config.addSupplementalWebSocketAdapterDeclaration(extraWebSocket);
 
-        com.xa.mass.transport.socket.runtime.SocketAdapterConfig extraSocket =
-                new com.xa.mass.transport.socket.runtime.SocketAdapterConfig();
+        EmbeddedSocketAdapterDeclaration extraSocket = new EmbeddedSocketAdapterDeclaration();
         extraSocket.setAdapterId("socket-edge");
         extraSocket.setEnabled(true);
         extraSocket.setServerEnabled(false);
-        config.addSupplementalSocketAdapterConfig(extraSocket);
+        config.addSupplementalSocketAdapterDeclaration(extraSocket);
 
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
@@ -625,23 +497,22 @@ class MassSdkTest {
         assertThrows(AssertionError.class, () -> adapterSpec(runtimeComposition, "socket"));
         assertNotNull(adapterSpec(runtimeComposition, "ws-internal"));
         assertNotNull(adapterSpec(runtimeComposition, "socket-edge"));
-        assertEquals(4, runtimeComposition.resolveEmbeddedAdapterRuntimeSpecs().size());
+        assertEquals(4, runtimeComposition.resolveEmbeddedAdapterDeclarations().size());
     }
 
     @Test
     void runtimeCompositionRejectsDuplicateAdapterIdsAcrossBundledInstances() {
         TransportConfig config = new TransportConfig();
-        com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig extraWebSocket =
-                new com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig();
+        EmbeddedWebSocketAdapterDeclaration extraWebSocket = new EmbeddedWebSocketAdapterDeclaration();
         extraWebSocket.setAdapterId("websocket");
         extraWebSocket.setEnabled(true);
-        config.addSupplementalWebSocketAdapterConfig(extraWebSocket);
+        config.addSupplementalWebSocketAdapterDeclaration(extraWebSocket);
 
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
 
         IllegalStateException error = assertThrows(
                 IllegalStateException.class,
-                runtimeComposition::resolveEmbeddedAdapterRuntimeSpecs
+                runtimeComposition::resolveEmbeddedAdapterDeclarations
         );
         assertTrue(error.getMessage().contains("Duplicate transport adapterId configured: websocket"));
     }
@@ -667,27 +538,11 @@ class MassSdkTest {
     }
 
     @Test
-    void massApplicationStopsCustomPollingPendingDeliveryBuffer() {
-        StubPollingPendingDeliveryBuffer buffer = new StubPollingPendingDeliveryBuffer();
-        MassSdkApplication app = MassSdk.builder()
-                .transport(transport -> transport
-                        .pollingPendingDeliveryBufferFactory(() -> buffer)
-                        .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false)))
-                .engine(engine -> engine.enabled(false))
-                .build();
-
-        app.start();
-        app.stop();
-
-        assertTrue(buffer.shutdownCalled.get());
-    }
-
-    @Test
-    void sdkBuilderAcceptsRedisPollingPendingDeliveryBufferNamespaceOverride() {
+    void sdkBuilderAcceptsRedisPollingDeliveryQueueNamespaceOverride() {
         MassSdkApplication app = MassSdk.builder()
                 .transport(transport -> transport
                         .maxPollingPendingDeliveryItemsPerWorker(5)
-                        .redisPollingPendingDeliveryBuffer(
+                        .redisPollingDeliveryQueue(
                                 "redis://127.0.0.1:6379/0",
                                 "xa:mass:test:transport:polling-delivery")
                         .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false)))
@@ -696,22 +551,6 @@ class MassSdkTest {
 
         assertNotNull(app);
         assertFalse(app.isRunning());
-    }
-
-    @Test
-    void massApplicationStopsCustomEndpointLeaseStore() {
-        StubTransportEndpointLeaseStore store = new StubTransportEndpointLeaseStore();
-        MassSdkApplication app = MassSdk.builder()
-                .transport(transport -> transport
-                        .endpointLeaseStoreFactory(() -> store)
-                        .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false)))
-                .engine(engine -> engine.enabled(false))
-                .build();
-
-        app.start();
-        app.stop();
-
-        assertTrue(store.closed.get());
     }
 
     @Test
@@ -2338,46 +2177,6 @@ class MassSdkTest {
     }
 
     @Test
-    void realtimeWorkerBindingUsesCurrentEndpointLeaseWhenMultipleRealtimeAdaptersAreConfigured() {
-        InMemoryTransportEndpointLeaseStore endpointLeaseStore = new InMemoryTransportEndpointLeaseStore();
-        MassSdkApplication app = MassSdk.builder()
-                .transport(transport -> transport
-                        .webSocketAdapter(webSocket -> webSocket.enabled(true).serverEnabled(false))
-                        .socketAdapter(socket -> socket.enabled(true).serverEnabled(false))
-                        .endpointLeaseStoreFactory(() -> endpointLeaseStore)
-                )
-                .engine(engine -> engine.enabled(true).workerThreads(1))
-                .build();
-
-        try {
-            app.start();
-            app.registerWorker(WorkerRegistration.builder()
-                    .workerId("realtime-worker-websocket-session")
-                    .workerGroupId("realtime-workers")
-                    .transportHint("realtime")
-                    .build());
-
-            endpointLeaseStore.claimEndpointLease(new TransportEndpointLeaseClaim(
-                    "realtime-worker-websocket-session",
-                    "realtime-workers",
-                    "websocket",
-                    "session-1",
-                    "test websocket session connected"
-            ));
-
-            MassApplication delegate = requireDelegate(app);
-            assertTrue(app.isWorkerReachable("realtime-worker-websocket-session"));
-            assertEquals("websocket", delegate.resolveWorkerAdapterId("realtime-worker-websocket-session"));
-            assertEquals(WorkerTransportHints.REALTIME,
-                    delegate.resolveWorkerTransportHint("realtime-worker-websocket-session"));
-            assertEquals(WorkerTransportHints.REALTIME,
-                    app.getWorker("realtime-worker-websocket-session").getTransportHint());
-        } finally {
-            app.stop();
-        }
-    }
-
-    @Test
     void registerWorkerDoesNotPersistRealtimeAdapterIdentity() {
         MassSdkApplication app = MassSdk.builder()
                 .transport(transport -> transport.webSocketAdapter(webSocket -> webSocket
@@ -2795,9 +2594,11 @@ class MassSdkTest {
         Assertions.assertThrows(ClassNotFoundException.class,
                 () -> Class.forName("com.xa.mass.transport.runtime.TransportServerFactoryContext"));
         Assertions.assertThrows(NoSuchMethodException.class,
-                () -> WebSocketServerFactoryContext.class.getDeclaredMethod("getEndpointRegistry"));
+                () -> Class.forName("com.xa.mass.transport.websocket.runtime.WebSocketServerFactoryContext")
+                        .getDeclaredMethod("getEndpointRegistry"));
         Assertions.assertThrows(NoSuchMethodException.class,
-                () -> WebSocketServerFactoryContext.class.getDeclaredMethod("getFrameCodec"));
+                () -> Class.forName("com.xa.mass.transport.websocket.runtime.WebSocketServerFactoryContext")
+                        .getDeclaredMethod("getFrameCodec"));
         Assertions.assertThrows(ClassNotFoundException.class,
                 () -> Class.forName("com.xa.mass.transport.websocket.queue.WebSocketTransportFrameCodec"));
     }
@@ -2887,10 +2688,10 @@ class MassSdkTest {
         return readField(app, "delegate", MassApplication.class);
     }
 
-    private static com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeSpec adapterSpec(
+    private static EmbeddedAdapterDeclaration adapterSpec(
             TransportRuntimeComposition runtimeComposition,
             String adapterId) {
-        return runtimeComposition.resolveEmbeddedAdapterRuntimeSpecs().stream()
+        return runtimeComposition.resolveEmbeddedAdapterDeclarations().stream()
                 .filter(spec -> adapterId.equals(spec.adapterId()))
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("Missing adapter spec for " + adapterId));
@@ -2898,9 +2699,8 @@ class MassSdkTest {
 
     private static TransportRegistrationResolver registrationResolver(TransportRuntimeComposition runtimeComposition) {
         return EmbeddedAdapterStarterDefaults.createRegistry(
-                runtimeComposition.resolvePollingPendingDeliveryBufferFactory(),
-                runtimeComposition.resolveWebSocketServerFactoriesByAdapterId()
-        ).registrationResolver(runtimeComposition.resolveEmbeddedAdapterRuntimeSpecs());
+                InMemoryPollingPendingDeliveryBuffer::new
+        ).registrationResolverFromDeclarations(runtimeComposition.resolveEmbeddedAdapterDeclarations());
     }
 
     private static com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeEnvironment

@@ -8,7 +8,6 @@ import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportRuntimeRegistry;
 import com.xa.mass.transport.runtime.TransportResultIngressQueue;
 import com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeEnvironment;
-import com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeSpec;
 import com.xa.mass.transport.runtime.embedded.EmbeddedTransportAdapterRuntime;
 import com.xa.mass.transport.runtime.embedded.EmbeddedTransportAdapterRuntimeFactory;
 
@@ -24,8 +23,9 @@ import java.util.Objects;
  *
  * <p>The starter owns adapter runtime creation/start/stop and runtime binding
  * registration. Queue stores, lease stores, executors, and sinks are backend
- * ports injected at construction time; adapter declarations stay as small
- * {@link EmbeddedAdapterRuntimeSpec} records.
+ * ports injected at construction time; cross-module adapter declarations stay
+ * as {@link EmbeddedAdapterDeclaration} records and are translated to runtime
+ * specs inside adapter-starter.
  */
 public final class EmbeddedAdapterStarter implements AutoCloseable {
 
@@ -48,9 +48,9 @@ public final class EmbeddedAdapterStarter implements AutoCloseable {
         this.resultIngressChannel = this::offerDefaultResult;
     }
 
-    public EmbeddedAdapterCreateResult create(List<EmbeddedAdapterRuntimeSpec> specs) {
-        List<EmbeddedAdapterRuntimeSpec> requestedSpecs = List.copyOf(
-                Objects.requireNonNull(specs, "specs")
+    public EmbeddedAdapterCreateResult create(List<EmbeddedAdapterDeclaration> declarations) {
+        List<EmbeddedAdapterDeclaration> requestedDeclarations = List.copyOf(
+                Objects.requireNonNull(declarations, "declarations")
         );
         if (runtimeRegistry != null || !runtimeByAdapterId.isEmpty()) {
             throw new IllegalStateException("Embedded adapter runtimes have already been created");
@@ -59,9 +59,9 @@ public final class EmbeddedAdapterStarter implements AutoCloseable {
         List<TransportBinding> bindings = new ArrayList<>();
         Map<String, EmbeddedTransportAdapterRuntime> createdRuntimes = new LinkedHashMap<>();
         try {
-            for (EmbeddedAdapterRuntimeSpec spec : requestedSpecs) {
-                validateResultQueueKey(spec);
-                EmbeddedTransportAdapterRuntime runtime = factoryRegistry.create(spec, environment);
+            for (EmbeddedAdapterDeclaration declaration : requestedDeclarations) {
+                validateResultQueueKey(declaration);
+                EmbeddedTransportAdapterRuntime runtime = factoryRegistry.create(declaration, environment);
                 String adapterId = normalizeAdapterId(runtime.descriptor().getAdapterId());
                 if (createdRuntimes.putIfAbsent(adapterId, runtime) != null) {
                     throw new IllegalArgumentException("Duplicate embedded adapterId configured: " + adapterId);
@@ -170,11 +170,11 @@ public final class EmbeddedAdapterStarter implements AutoCloseable {
         return runtimeRegistry;
     }
 
-    private static void validateResultQueueKey(EmbeddedAdapterRuntimeSpec spec) {
-        if (!TransportResultIngressQueue.DEFAULT_RESULT_QUEUE_KEY.equals(spec.resultQueueKey())) {
+    private static void validateResultQueueKey(EmbeddedAdapterDeclaration declaration) {
+        if (!TransportResultIngressQueue.DEFAULT_RESULT_QUEUE_KEY.equals(declaration.resultQueueKey())) {
             throw new IllegalArgumentException("Embedded adapter resultQueueKey must be '"
                     + TransportResultIngressQueue.DEFAULT_RESULT_QUEUE_KEY
-                    + "' in v1; actual=" + spec.resultQueueKey());
+                    + "' in v1; actual=" + declaration.resultQueueKey());
         }
     }
 

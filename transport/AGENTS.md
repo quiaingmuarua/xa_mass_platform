@@ -166,17 +166,19 @@ entry for `transport/`.
   adapter-owned registries.
 - `EmbeddedAdapterStarter` owns embedded Java adapter runtime creation,
   adapter-id indexing, and adapter-id lifecycle. Embedded SDK passes only
-  `EmbeddedAdapterRuntimeSpec` values and does not receive runtime sets,
-  contribution baskets, queue objects, or concrete adapter internals.
+  adapter-starter-owned `EmbeddedAdapterDeclaration` values and does not
+  receive runtime sets, contribution baskets, queue objects, runtime specs, or
+  concrete adapter internals.
 - `EmbeddedAdapterRuntimeFactoryRegistry` is the fixed built-in factory and
-  descriptor resolver. It is the only first-party `spec.type -> factory`
-  lookup path and can build registration resolution from specs before runtimes
-  exist. Do not add a parallel `type -> transportHint` switch, dynamic
-  discovery, or `ServiceLoader` path.
-- SDK/starter typed adapter declarations are translated by the embedded SDK's
-  internal spec assembler. `TransportRuntimeComposition` is only an immutable
-  snapshot/projection surface; it must not construct adapter specs directly,
-  own registration descriptor truth, or lazy-own runtime resources.
+  descriptor resolver. It is the only first-party declaration/runtime-spec
+  `type -> factory` lookup path and can build registration resolution from
+  adapter declarations before runtimes exist. Do not add a parallel
+  `type -> transportHint` switch, dynamic discovery, or `ServiceLoader` path.
+- SDK/starter typed adapter options are projected into adapter-starter
+  declarations. Runtime spec construction is owned inside adapter-starter.
+  `TransportRuntimeComposition` is only an immutable snapshot/projection
+  surface; it must not construct adapter specs directly, own registration
+  descriptor truth, or lazy-own runtime resources.
 - Concrete adapter runtime factories receive `EmbeddedAdapterRuntimeSpec` plus
   shared runtime environment ports. They create their own binding, managed
   adapter resources, optional server resources, selected-worker final-hop

@@ -13,14 +13,9 @@ import com.xa.mass.worker.runtime.resource.WorkerDeclarationStore;
 import com.xa.mass.starter.builder.MassApplicationBuilder;
 import com.xa.mass.starter.config.TransportRuntimeRole;
 import com.xa.mass.trace.sink.ExecutionEventSink;
-import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
-import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
-import com.xa.mass.transport.TransportServerFactory;
-import com.xa.mass.transport.websocket.runtime.WebSocketServerFactoryContext;
 
 import java.util.Objects;
 import java.util.function.Consumer;
-import java.util.function.Supplier;
 
 /**
  * Consumer-facing SDK facade for embedding XA Mass Platform.
@@ -121,24 +116,13 @@ public final class MassSdk {
             return this;
         }
 
-        public TransportOptions pollingPendingDeliveryBufferFactory(
-                Supplier<PollingPendingDeliveryBuffer> pollingPendingDeliveryBufferFactory) {
-            delegate.pollingPendingDeliveryBufferFactory(pollingPendingDeliveryBufferFactory);
+        public TransportOptions redisPollingDeliveryQueue(String redisUri) {
+            delegate.redisPollingDeliveryQueue(redisUri);
             return this;
         }
 
-        public TransportOptions endpointLeaseStoreFactory(Supplier<TransportEndpointLeaseStore> endpointLeaseStoreFactory) {
-            delegate.endpointLeaseStoreFactory(endpointLeaseStoreFactory);
-            return this;
-        }
-
-        public TransportOptions redisPollingPendingDeliveryBuffer(String redisUri) {
-            delegate.redisPollingPendingDeliveryBuffer(redisUri);
-            return this;
-        }
-
-        public TransportOptions redisPollingPendingDeliveryBuffer(String redisUri, String namespacePrefix) {
-            delegate.redisPollingPendingDeliveryBuffer(redisUri, namespacePrefix);
+        public TransportOptions redisPollingDeliveryQueue(String redisUri, String namespacePrefix) {
+            delegate.redisPollingDeliveryQueue(redisUri, namespacePrefix);
             return this;
         }
 
@@ -261,11 +245,6 @@ public final class MassSdk {
             return this;
         }
 
-        public WebSocketAdapterOptions transportServerFactory(
-                TransportServerFactory<WebSocketServerFactoryContext> transportServerFactory) {
-            delegate.transportServerFactory(transportServerFactory);
-            return this;
-        }
     }
 
     public static final class SocketAdapterOptions {

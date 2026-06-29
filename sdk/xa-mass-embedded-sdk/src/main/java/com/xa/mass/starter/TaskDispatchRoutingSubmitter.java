@@ -5,9 +5,9 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.transport.model.DispatchOutcome;
 import com.xa.mass.transport.model.DispatchOutcomeStatus;
-import com.xa.mass.transport.runtime.delivery.AdapterMailboxDispatchBatch;
-import com.xa.mass.transport.runtime.delivery.DispatchMessage;
-import com.xa.mass.transport.runtime.delivery.TransportAssignedDeliverySubmitter;
+import com.xa.mass.transport.starter.AssignedDeliveryBatch;
+import com.xa.mass.transport.starter.AssignedDeliveryMessage;
+import com.xa.mass.transport.starter.AssignedDeliverySink;
 import com.xa.mass.worker.runtime.evidence.SelectedWorkerDeliveryTargetEvidence;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -29,14 +29,14 @@ final class TaskDispatchRoutingSubmitter implements TaskDispatchBatchListener {
 
     private static final Logger logger = LoggerFactory.getLogger(TaskDispatchRoutingSubmitter.class);
 
-    private final TransportAssignedDeliverySubmitter assignedDeliverySubmitter;
+    private final AssignedDeliverySink assignedDeliverySink;
     private final Function<String, Optional<SelectedWorkerDeliveryTargetEvidence>> deliveryTargetResolver;
     private final TaskDispatchPayloadEncoder payloadEncoder = new TaskDispatchPayloadEncoder();
     private final TaskDispatchDeliveryCorrelationCodec correlationCodec = new TaskDispatchDeliveryCorrelationCodec();
 
-    TaskDispatchRoutingSubmitter(TransportAssignedDeliverySubmitter assignedDeliverySubmitter,
-                                  Function<String, Optional<SelectedWorkerDeliveryTargetEvidence>> deliveryTargetResolver) {
-        this.assignedDeliverySubmitter = Objects.requireNonNull(assignedDeliverySubmitter, "assignedDeliverySubmitter");
+    TaskDispatchRoutingSubmitter(AssignedDeliverySink assignedDeliverySink,
+                                 Function<String, Optional<SelectedWorkerDeliveryTargetEvidence>> deliveryTargetResolver) {
+        this.assignedDeliverySink = Objects.requireNonNull(assignedDeliverySink, "assignedDeliverySink");
         this.deliveryTargetResolver = deliveryTargetResolver != null
                 ? deliveryTargetResolver
                 : selectedWorkerId -> Optional.empty();
@@ -47,7 +47,7 @@ final class TaskDispatchRoutingSubmitter implements TaskDispatchBatchListener {
         if (task == null || dispatchBindings == null || dispatchBindings.isEmpty()) {
             return;
         }
-        Map<String, List<DispatchMessage>> itemsByMailbox = new LinkedHashMap<>();
+        Map<String, List<AssignedDeliveryMessage>> itemsByMailbox = new LinkedHashMap<>();
         List<TaskDispatchBinding> invalidBindings = new ArrayList<>();
         for (TaskDispatchBinding binding : dispatchBindings) {
             if (binding == null) {
@@ -58,7 +58,7 @@ final class TaskDispatchRoutingSubmitter implements TaskDispatchBatchListener {
                 invalidBindings.add(binding);
                 continue;
             }
-            DispatchMessage item = toItem(task, binding, selectedWorkerId);
+            AssignedDeliveryMessage item = toItem(task, binding, selectedWorkerId);
             SelectedWorkerDeliveryTargetEvidence target = deliveryTargetResolver
                     .apply(selectedWorkerId)
                     .orElse(null);
@@ -77,20 +77,20 @@ final class TaskDispatchRoutingSubmitter implements TaskDispatchBatchListener {
         if (itemsByMailbox.isEmpty()) {
             return;
         }
-        List<AdapterMailboxDispatchBatch> batches = itemsByMailbox.entrySet().stream()
-                .map(entry -> new AdapterMailboxDispatchBatch(
+        List<AssignedDeliveryBatch> batches = itemsByMailbox.entrySet().stream()
+                .map(entry -> new AssignedDeliveryBatch(
                         entry.getKey(),
                         entry.getValue()))
                 .toList();
-        logRetryableOutcomes(assignedDeliverySubmitter.submit(batches));
+        logRetryableOutcomes(assignedDeliverySink.submit(batches));
     }
 
-    private DispatchMessage toItem(TaskDispatchContext task,
-                                       TaskDispatchBinding binding,
-                                       String selectedWorkerId) {
+    private AssignedDeliveryMessage toItem(TaskDispatchContext task,
+                                           TaskDispatchBinding binding,
+                                           String selectedWorkerId) {
         String correlationRef = correlationCodec.encode(task, binding);
         String deliveryId = UUID.randomUUID().toString();
-        return new DispatchMessage(
+        return new AssignedDeliveryMessage(
                 deliveryId,
                 selectedWorkerId,
                 payloadEncoder.encode(task, binding, deliveryId, correlationRef),
@@ -120,7 +120,7 @@ final class TaskDispatchRoutingSubmitter implements TaskDispatchBatchListener {
         }
     }
 
-    private void logDeliveryTargetFailure(DispatchMessage item, String detail) {
+    private void logDeliveryTargetFailure(AssignedDeliveryMessage item, String detail) {
         if (item == null) {
             return;
         }

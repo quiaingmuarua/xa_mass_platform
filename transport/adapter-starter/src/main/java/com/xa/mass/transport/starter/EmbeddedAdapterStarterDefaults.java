@@ -1,15 +1,11 @@
 package com.xa.mass.transport.starter;
 
-import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
 import com.xa.mass.transport.polling.runtime.PollingAdapterRuntimeFactory;
 import com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeEnvironment;
 import com.xa.mass.transport.runtime.embedded.EmbeddedTransportAdapterRuntimeFactory;
-import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
 import com.xa.mass.transport.socket.runtime.SocketAdapterRuntimeFactory;
-import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterRuntimeFactory;
-import com.xa.mass.transport.websocket.runtime.WebSocketServerFactoryContext;
 
 import java.util.List;
 import java.util.Map;
@@ -31,11 +27,10 @@ public final class EmbeddedAdapterStarterDefaults {
 
     public static EmbeddedAdapterStarter createStarter(
             EmbeddedAdapterRuntimeEnvironment environment,
-            Supplier<PollingPendingDeliveryBuffer> pollingPendingDeliveryBufferFactory,
-            Map<String, TransportServerFactory<WebSocketServerFactoryContext>> webSocketServerFactoriesByAdapterId) {
+            Supplier<PollingPendingDeliveryBuffer> pollingPendingDeliveryBufferFactory) {
         return new EmbeddedAdapterStarter(
                 environment,
-                createRegistry(pollingPendingDeliveryBufferFactory, webSocketServerFactoriesByAdapterId)
+                createRegistry(pollingPendingDeliveryBufferFactory)
         );
     }
 
@@ -46,32 +41,40 @@ public final class EmbeddedAdapterStarterDefaults {
     }
 
     public static EmbeddedAdapterRuntimeFactoryRegistry createRegistry(
-            Supplier<PollingPendingDeliveryBuffer> pollingPendingDeliveryBufferFactory,
-            Map<String, TransportServerFactory<WebSocketServerFactoryContext>> webSocketServerFactoriesByAdapterId) {
+            Supplier<PollingPendingDeliveryBuffer> pollingPendingDeliveryBufferFactory) {
         return new EmbeddedAdapterRuntimeFactoryRegistry(
-                defaultFactories(pollingPendingDeliveryBufferFactory, webSocketServerFactoriesByAdapterId)
+                defaultFactories(pollingPendingDeliveryBufferFactory)
         );
     }
 
-    public static Map<String, String> webSocketOptions(WebSocketAdapterConfig config) {
-        return WebSocketAdapterRuntimeFactory.options(config);
+    public static Map<String, String> webSocketOptions(EmbeddedWebSocketAdapterDeclaration declaration) {
+        Objects.requireNonNull(declaration, "declaration");
+        return Map.of(
+                WebSocketAdapterRuntimeFactory.OPTION_SERVER_ENABLED, Boolean.toString(declaration.serverEnabled()),
+                WebSocketAdapterRuntimeFactory.OPTION_SERVER_PORT, Integer.toString(declaration.serverPort()),
+                WebSocketAdapterRuntimeFactory.OPTION_MAX_CONNECTIONS, Integer.toString(declaration.maxConnections()),
+                WebSocketAdapterRuntimeFactory.OPTION_ENDPOINT_PATH, declaration.endpointPath()
+        );
     }
 
-    public static Map<String, String> socketOptions(SocketAdapterConfig config) {
-        return SocketAdapterRuntimeFactory.options(config);
+    public static Map<String, String> socketOptions(EmbeddedSocketAdapterDeclaration declaration) {
+        Objects.requireNonNull(declaration, "declaration");
+        return Map.of(
+                SocketAdapterRuntimeFactory.OPTION_SERVER_ENABLED, Boolean.toString(declaration.serverEnabled()),
+                SocketAdapterRuntimeFactory.OPTION_SERVER_PORT, Integer.toString(declaration.serverPort()),
+                SocketAdapterRuntimeFactory.OPTION_MAX_CONNECTIONS, Integer.toString(declaration.maxConnections()),
+                SocketAdapterRuntimeFactory.OPTION_BIND_HOST, declaration.bindHost()
+        );
     }
 
     static List<EmbeddedTransportAdapterRuntimeFactory> defaultFactories(
-            Supplier<PollingPendingDeliveryBuffer> pollingPendingDeliveryBufferFactory,
-            Map<String, TransportServerFactory<WebSocketServerFactoryContext>> webSocketServerFactoriesByAdapterId) {
+            Supplier<PollingPendingDeliveryBuffer> pollingPendingDeliveryBufferFactory) {
         return List.of(
                 new PollingAdapterRuntimeFactory(Objects.requireNonNull(
                         pollingPendingDeliveryBufferFactory,
                         "pollingPendingDeliveryBufferFactory"
                 )),
-                new WebSocketAdapterRuntimeFactory(webSocketServerFactoriesByAdapterId == null
-                        ? Map.of()
-                        : Map.copyOf(webSocketServerFactoriesByAdapterId)),
+                new WebSocketAdapterRuntimeFactory(Map.of()),
                 new SocketAdapterRuntimeFactory()
         );
     }
