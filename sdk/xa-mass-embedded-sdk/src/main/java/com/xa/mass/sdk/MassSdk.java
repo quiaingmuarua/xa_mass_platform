@@ -323,11 +323,6 @@ public final class MassSdk {
             return this;
         }
 
-        public EngineOptions bootstrapDataProvider(MassBootstrapDataProvider bootstrapDataProvider) {
-            delegate.bootstrapDataProvider(bootstrapDataProvider);
-            return this;
-        }
-
         public EngineOptions taskShellStore(TaskShellStore taskShellStore) {
             delegate.taskShellStore(taskShellStore);
             return this;

@@ -38,6 +38,7 @@
         <module>transport/transport_runtime</module>
         <module>transport/socket-adapter</module>
         <module>xa-mass-engine</module>
+        <module>xa-mass-engine-starter</module>
         <module>transport/websocket-adapter</module>
         <module>transport/adapter-starter</module>
         <module>sdk/xa-mass-public-contract</module>

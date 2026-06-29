@@ -33,7 +33,7 @@
         </dependency>
         <dependency>
             <groupId>com.xa.mass</groupId>
-            <artifactId>xa-mass-engine</artifactId>
+            <artifactId>xa-mass-engine-starter</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
@@ -154,6 +154,7 @@
                                     <searchTransitive>false</searchTransitive>
                                     <excludes>
                                         <exclude>com.xa.mass:xa-mass-server</exclude>
+                                        <exclude>com.xa.mass:xa-mass-engine</exclude>
                                     </excludes>
                                 </bannedDependencies>
                             </rules>

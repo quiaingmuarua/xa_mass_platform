@@ -9,12 +9,27 @@ assembly outside the semantic owner module.
 
 Read with:
 
+- [ENGINE_CALLER_SURFACE_PRE_TROM_CONVERGENCE_ROADMAP.md](ENGINE_CALLER_SURFACE_PRE_TROM_CONVERGENCE_ROADMAP.md)
 - [TASK_LIFECYCLE_BASELINE.md](../doc/TASK_LIFECYCLE_BASELINE.md)
 - [INFRA_TRUTH_LAYERS.md](../doc/INFRA_TRUTH_LAYERS.md)
 - [platform_infra/README.md](../platform_infra/README.md)
 - [sdk/README.md](../sdk/README.md)
 - [score-band-task-runtime-redis-shape.md](../architecture/score-band-task-runtime-redis-shape.md)
 - [EMBEDDED_RUNTIME_SDK_BOUNDARY_CONVERGENCE_ROADMAP.md](EMBEDDED_RUNTIME_SDK_BOUNDARY_CONVERGENCE_ROADMAP.md)
+
+Prerequisite:
+
+- [ENGINE_CALLER_SURFACE_PRE_TROM_CONVERGENCE_ROADMAP.md](ENGINE_CALLER_SURFACE_PRE_TROM_CONVERGENCE_ROADMAP.md)
+  is the completed prerequisite boundary for this roadmap. It creates
+  `xa-mass-engine-starter` as the containment module for current
+  engine-facing assembly and records the approved starter surfaces, temporary
+  value-contract exceptions, and guards in
+  [ENGINE_CALLER_SURFACE_PRE_TROM_INVENTORY.md](ENGINE_CALLER_SURFACE_PRE_TROM_INVENTORY.md).
+- TROM must start from those engine-starter handles instead of rediscovering
+  broad `embedded-sdk -> engine` dependency/import leakage. The prerequisite
+  cleanup is still best-effort containment, not a new runtime owner, and it
+  must not introduce listener-first or event-bus runtime coordination as the
+  path into TROM.
 
 ## Current Code Observations
 
@@ -196,6 +211,62 @@ The key rule is:
 timing may be best-effort; convergence and discoverability may not.
 ```
 
+## Append Admission And Commit Boundary
+
+Append crosses two owners and must make that boundary explicit:
+
+- engine/task shell owns intake-window validation, task aggregate counters,
+  shell-visible append receipt, and aggregate counter reconciliation;
+- task-runtime owns accepted item identity, runtime enqueue/no-loss, replay
+  idempotency for `taskId + messageId`, and ready/delayed visibility;
+- starter or engine assembly may call both owners during migration, but it does
+  not own either side's truth.
+
+Append must not leave accepted work silently visible only inside runtime. Batch
+append must be one of:
+
+- `all accepted`: every item has runtime ownership and shell aggregate counters
+  are committed or reconciled;
+- `classified partial`: each item has an explicit accepted/duplicate/rejected
+  classification, accepted items are discoverable for aggregate reconciliation,
+  and rejected items have not become runtime-owned work;
+- `rejected before runtime ownership`: intake/admission failed before any item
+  was accepted.
+
+If shell counter update, receipt emission, or wakeup fails after runtime accepts
+an item, recovery must be idempotent and bounded: the shell side can reconcile
+from accepted runtime item identity without re-appending duplicate work. The
+roadmap must not rely on "throw and forget" after partial runtime acceptance.
+
+## Result Finality And Terminal Split
+
+Task-runtime owns message-level finality. Engine owns task aggregate terminal
+policy. The split is:
+
+- task-runtime applies result, consumes retry budget, closes or reopens the
+  message attempt, records visible final rows, handles duplicate/late callback
+  classification, and emits compact outcome facts;
+- engine consumes outcome facts to update task progress, trigger terminal
+  policy, publish trace/review/projection events, and run task-shell aggregate
+  convergence;
+- server review and trace materialization are downstream projections, not
+  runtime result truth.
+
+Task-runtime outcome facts should be narrow and engine-neutral, for example:
+
+```text
+AttemptClosed
+LogicalFinal
+ProgressDirty
+TerminalCandidate
+ResultDuplicateOrLate
+ResultRejected
+```
+
+The exact names may change during TROM-1, but the boundary may not: task-runtime
+must not import engine, trace, or server review code, and engine must not keep a
+second result-finality truth after a production lane moves.
+
 ## Default Cost Policy
 
 The default task-runtime path is optimized for high-cardinality task items.
@@ -356,6 +427,11 @@ Scope:
   do not rename or mutate them as the first implementation path.
 - Inventory all current `TaskWorkRuntime` and `TaskResultRuntime` production
   callers.
+- Inventory `platform_infra/mass-runtime-api` as a mixed module. Classify every
+  task-runtime symbol, worker low-level SPI symbol, score-band slot contract,
+  shared value, and test fixture as:
+  `migrate to xa-mass-task-runtime`, `remain low-level shared SPI`,
+  `owned by xa-mass-worker-runtime`, `implementation-only`, or `remove`.
 - Inventory current `TaskWorkRuntimeContractTest` and
   `TaskResultRuntimeContractTest` coverage as migration seeds. Classify each
   invariant as preserved semantic contract, renamed semantic contract,
@@ -379,6 +455,9 @@ Acceptance:
   naming or intentionally uses a different path.
 - Existing runtime contract tests are classified as migration seeds, not ignored
   or blindly copied.
+- The `mass-runtime-api` split inventory prevents the old module from remaining
+  a hidden task-runtime semantic owner and prevents task-runtime from importing
+  worker-runtime low-level SPI by accident.
 - No code behavior changes are required in this slice.
 - The old Redis-only roadmap is no longer an executable parallel direction.
 
@@ -391,6 +470,9 @@ Scope:
 - Define the semantic runtime surface for append, task-lane acquire/due check,
   claim, result apply, retry/finality, lease repair, final result read, and
   discard.
+- Define append admission/commit outcomes across task shell and task-runtime:
+  rejected-before-runtime, all-accepted, classified-partial, duplicate replay,
+  and reconciliation-needed.
 - Define stable command/outcome values that do not expose Redis, memory map,
   Stream, ZSET, LIST, HASH, Lua, or queue primitive details.
 - Define compact task-runtime DTOs from first principles. Do not preserve
@@ -419,6 +501,12 @@ DISCARDED
 - Define append identity as accepted-item identity, not caller-level
   exactly-once submit. Caller API idempotency is deferred, but runtime replay of
   the same accepted `taskId + messageId` remains idempotent.
+- Define aggregate reconciliation semantics for accepted runtime items when
+  shell counters, append receipt, or wakeup fail after runtime acceptance.
+- Define message-finality outcome contracts emitted by result apply/retry/
+  finality. These outcomes are engine-neutral facts such as attempt closed,
+  logical final, progress dirty, terminal candidate, duplicate/late, or
+  rejected result; engine consumes them for trace/progress/terminal policy.
 - Define final result retention as bounded runtime read state. The first target
   retention is one day after task terminal, not durable public history.
 - Define default-cost behavior: million-item raw backlog support, sparse active
@@ -442,6 +530,10 @@ Acceptance:
 - Contract surface states that worker selection/reservation precedes runtime
   claim and that stale epoch or missing reservation evidence cannot create an
   active lease.
+- Contract surface states that append cannot silently leave accepted runtime
+  items outside shell aggregate reconciliation.
+- Contract surface splits message finality from task terminal convergence and
+  forbids task-runtime dependencies on engine, trace, or server review code.
 
 ## TROM-2 Contract Test Harness And Memory Proof
 
@@ -457,6 +549,15 @@ Scope:
   rejection, claim exclusivity, result success, retryable failure, retry
   exhausted, late/duplicate result, lease repair, pause/resume boundary, discard
   cleanup, and one-day terminal final result retention.
+- Cover append half-commit recovery: runtime accepted item plus failed shell
+  counter/receipt/wakeup must produce a reconciliation-needed outcome or a
+  bounded idempotent reconciliation path.
+- Cover batch append partial classification if the implementation allows
+  partial acceptance; otherwise prove rejected-before-runtime or all-accepted
+  behavior.
+- Cover result outcome emission for attempt-closed, logical-final,
+  progress-dirty, terminal-candidate, duplicate/late, and rejected-result
+  classifications without importing engine/trace/server code.
 - Prove active leases remain discoverable even when no task score/due-work
   entry remains.
 - Prove starter/thread absence in the semantic module through an architecture
@@ -543,6 +644,11 @@ Acceptance:
   memory/Redis bootstrap profile selection for isolated loop hosts.
 - No production lane runs both an engine-owned loop and a starter-owned loop for
   the same task-runtime responsibility.
+- A guard or fixture fails if a migrated production lane registers both the old
+  engine loop and the new starter loop for assignment, runtime-ready dispatch,
+  lease repair, or result repair.
+- Cutover tests prove the old loop is explicitly disabled or bypassed for the
+  migrated lane, not merely expected to stay idle.
 
 ## TROM-5 Engine Strangler Integration
 
@@ -553,12 +659,15 @@ runtime truth.
 Scope:
 
 - Choose BATCH as the first entry path:
-  append -> task-lane acquire/due check -> worker-runtime select/reserve/admit
-  -> task-runtime claim with reservation token and expected runtime epoch ->
-  transport handoff -> result apply -> final read, including retry and lease
-  repair proof.
+  append admission/commit -> task-lane acquire/due check -> worker-runtime
+  select/reserve/admit -> task-runtime claim with reservation token and expected
+  runtime epoch -> transport handoff -> result apply -> final read, including
+  retry and lease repair proof.
 - Build an engine adapter that calls task-runtime semantic ports.
 - Keep engine shell validation and scheduling decisions outside task-runtime.
+- Keep engine-owned task aggregate counter reconciliation and terminal policy as
+  consumers of task-runtime outcomes; do not move trace/review/progress policy
+  into task-runtime.
 - Add or narrow the worker-runtime integration port needed by this path. It
   should expose only selected worker/admission/reservation/dispatch-target
   evidence, not worker-runtime internal state or score-band implementation
@@ -571,6 +680,8 @@ Scope:
   worker reservations without leaking capacity.
 - Keep transport as best-effort delivery only.
 - Disable or bypass old per-message runtime mutation for the chosen path.
+- Disable or bypass old engine-owned assignment/dispatch/repair loops for the
+  migrated lane when starter-owned loops take over that responsibility.
 - Emit projection/review/trace after runtime acceptance, not before.
 - Treat server view/API parity as a downstream projection concern, not the
   primary proof for this slice.
@@ -579,15 +690,23 @@ Acceptance:
 
 - Chosen path has one runtime owner for item state.
 - Old engine/runtime mutation path is not also writing the same item truth.
-- Focused E2E or integration proof shows append, lane acquire/due check,
-  worker-runtime select/reserve/admit, task-runtime claim, dispatch handoff,
-  result apply, retry, and final read through the new owner.
+- Focused E2E or integration proof shows append admission/commit, lane acquire/
+  due check, worker-runtime select/reserve/admit, task-runtime claim, dispatch
+  handoff, result apply, retry, and final read through the new owner.
+- Append proof covers accepted-item runtime ownership plus shell aggregate
+  reconciliation. No accepted item may remain runtime-only without a classified
+  reconciliation path.
 - The same proof crosses worker-runtime through a minimal worker/admission/
   reservation/dispatch-target port and crosses transport through a minimal
   assigned-delivery handoff port.
+- Result proof shows task-runtime emits message-finality outcome facts and
+  engine consumes them for trace/progress/terminal policy without owning a
+  second result-finality truth.
 - A stale epoch or missing/mismatched worker reservation cannot create an active
   lease.
 - Empty or rejected claims do not leak worker reservations.
+- Migrated lane has a failing guard/fixture for duplicate old/new loop
+  registration.
 - Regression guard prevents the chosen path from importing Redis keyspace or
   writing old engine item lifecycle state.
 - No server view/API parity requirement is used as a substitute for the runtime
@@ -633,6 +752,9 @@ Scope:
 
 - Delete old per-message lifecycle state owners after callers move.
 - Remove compatibility aliases and hidden fallbacks.
+- Retire task-runtime semantic ownership from `platform_infra/mass-runtime-api`;
+  leave only explicitly classified low-level shared SPI or worker-runtime
+  residue until later convergence removes it.
 - Retire or archive superseded Redis-shape roadmap text after implementation
   truth moves to owner READMEs and proof registry.
 - Update `doc/TASK_LIFECYCLE_BASELINE.md`,
@@ -648,11 +770,15 @@ Acceptance:
   leakage.
 - Guards block engine/server/SDK/transport from Redis task-runtime keyspace and
   physical DTO imports.
+- Guards block `mass-runtime-api` from regaining task-runtime semantic ownership
+  after task-runtime callers move.
 - Proof registry names the focused non-best-effort task-runtime contract tests
   and startup/starter verification commands.
 
 ## Suggested Implementation Order
 
+0. Complete
+   [ENGINE_CALLER_SURFACE_PRE_TROM_CONVERGENCE_ROADMAP.md](ENGINE_CALLER_SURFACE_PRE_TROM_CONVERGENCE_ROADMAP.md).
 1. TROM-0: inventory, module naming, and old roadmap supersession.
 2. TROM-1: semantic contracts and state-machine docs.
 3. TROM-2: contract tests and memory proof.
@@ -670,10 +796,12 @@ shape:
 
 ```powershell
 .\mvnw.cmd -q -pl xa-mass-task-runtime test "-Dtest=TaskRuntimeContractTest,TaskRuntimeArchitectureGuardTest"
+.\mvnw.cmd -q -pl xa-mass-task-runtime test "-Dtest=TaskRuntimeAppendCommitBoundaryTest,TaskRuntimeResultOutcomeContractTest"
 .\mvnw.cmd -q -pl platform_infra/mass-task-runtime-memory test "-Dtest=InMemoryTaskRuntimeContractTest"
 .\mvnw.cmd -q -pl platform_infra/mass-task-runtime-redis test "-Dtest=RedisTaskRuntimeContractTest,RedisTaskRuntimeKeyspaceTest"
 .\mvnw.cmd -q -pl <task-runtime-starter-sdk-module> test "-Dtest=TaskRuntimeStarterLifecycleTest,TaskRuntimeStarterBootstrapTest"
-.\mvnw.cmd -q -pl xa-mass-engine test "-Dtest=TaskRuntimeStranglerIntegrationTest,EngineTaskRuntimeBoundaryGuardTest"
+.\mvnw.cmd -q -pl <task-runtime-starter-sdk-module> test "-Dtest=TaskRuntimeLoopCutoverGuardTest"
+.\mvnw.cmd -q -pl xa-mass-engine test "-Dtest=TaskRuntimeStranglerIntegrationTest,EngineTaskRuntimeBoundaryGuardTest,TaskRuntimeAppendReconciliationIntegrationTest"
 ```
 
 If any slice touches Spring/server startup, add a startup or context proof for
@@ -685,6 +813,10 @@ the relevant profile instead of relying only on direct constructor tests.
   convergence protocol.
 - Physical memory/Redis storage details live only in infra implementation
   modules.
+- Append has an explicit admission/commit boundary: accepted runtime items are
+  either shell-committed or shell-reconcilable, never runtime-only and silent.
+- Message finality belongs to task-runtime outcome facts; task terminal policy,
+  trace, and progress convergence consume those facts from engine-side owners.
 - The starter SDK owns new task-runtime runner/loop-host construction,
   bootstrap, lifecycle, and host integration for migrated lanes.
 - At least one production lane uses the new owner without dual runtime truth and
@@ -692,8 +824,13 @@ the relevant profile instead of relying only on direct constructor tests.
   through minimal ports.
 - Migrated lanes do not run duplicate engine-owned and starter-owned loops for
   the same task-runtime responsibility.
+- `platform_infra/mass-runtime-api` no longer acts as hidden task-runtime
+  semantic owner for migrated paths; remaining worker low-level SPI is
+  explicitly classified.
 - Old engine item lifecycle residue is removed or explicitly tracked by the
   next active slice.
 - Owner docs, proof registry, and guards match the implemented behavior.
 - Superseded Redis-only direction is archived or rewritten as an implementation
   detail under the new owner boundary.
+- The prerequisite engine-starter boundary roadmap is complete, and this
+  roadmap consumes its final inventory, starter handle decisions, and guard set.

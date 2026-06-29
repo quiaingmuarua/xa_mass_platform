@@ -54,7 +54,6 @@ import com.xa.mass.worker.runtime.evidence.WorkerSchedulingViewRuntime;
 import com.xa.mass.worker.runtime.report.WorkerStateProjectionRuntime;
 import com.xa.mass.worker.runtime.control.WorkerDispatchBlockRuntime;
 import com.xa.mass.worker.runtime.selection.WorkerSelectionRuntime;
-import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.TaskShellStore;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationStore;
@@ -125,7 +124,6 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
     private ExecutionEventSink executionEventSink = new NoopExecutionEventSink();
     private EngineRuntimeBridge runtimeBridge = EngineRuntimeBridge.noop();
     private boolean defaultRulesInitialized;
-    private MassBootstrapDataProvider bootstrapDataProvider;
     private long assignmentRetryDelayMillis = 1000L;
     private long leaseWatchdogIntervalSeconds = 30L;
     private long workerCommandMaintenanceIntervalSeconds = 30L;
@@ -179,7 +177,6 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
         this.executionEventSink = source.executionEventSink;
         this.runtimeBridge = source.runtimeBridge;
         this.defaultRulesInitialized = source.defaultRulesInitialized;
-        this.bootstrapDataProvider = source.bootstrapDataProvider;
         this.assignmentRetryDelayMillis = source.assignmentRetryDelayMillis;
         this.leaseWatchdogIntervalSeconds = source.leaseWatchdogIntervalSeconds;
         this.workerCommandMaintenanceIntervalSeconds = source.workerCommandMaintenanceIntervalSeconds;
@@ -569,14 +566,6 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
             throw new IllegalArgumentException("runtimeBridge must not be null");
         }
         this.runtimeBridge = runtimeBridge;
-    }
-
-    public MassBootstrapDataProvider getBootstrapDataProvider() {
-        return bootstrapDataProvider;
-    }
-
-    public void setBootstrapDataProvider(MassBootstrapDataProvider bootstrapDataProvider) {
-        this.bootstrapDataProvider = bootstrapDataProvider;
     }
 
     public long getAssignmentRetryDelayMillis() {

@@ -5,7 +5,6 @@ import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.runtime.worker.slot.WorkerScoreBandSlotRuntime;
-import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.TaskShellStore;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationStore;
@@ -397,11 +396,6 @@ public class MassApplicationBuilder {
 
         public EngineBuilder taskMessageLeaseSeconds(long taskMessageLeaseSeconds) {
             config.setTaskMessageLeaseSeconds(taskMessageLeaseSeconds);
-            return this;
-        }
-
-        public EngineBuilder bootstrapDataProvider(MassBootstrapDataProvider bootstrapDataProvider) {
-            config.setBootstrapDataProvider(bootstrapDataProvider);
             return this;
         }
 

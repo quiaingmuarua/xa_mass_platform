@@ -328,7 +328,7 @@ The returned `MassSdkApplication` exposes:
 - worker client/mainline after `start()`: `pullWorker(...)`, `workerOnline(...)`, `workerHeartbeat(...)`, `workerOffline(...)`, `pollActions(...)`, `submitActionReply(...)`
 - resource/control-plane operations through `ResourceOperations`: `registerProject(...)`, `registerEventDefinition(...)`, `registerCredentialPrincipal(...)`, `listProjects()`, `getProject(...)`, `listEvents()`, `getEvent(...)`, `getEventsForProject(...)`, `listCredentialPrincipals()`, `getCredentialPrincipal(...)`, `authenticateCredential(...)`, `hasProject(...)`, `hasEvent(...)`, `hasCredentialPrincipal(...)`, `projectSupportsEvent(...)`; credential principal list/get return `CredentialPrincipalProfile` without raw credentials
 - stable runtime bootstrap surface after `start()`: open mainline registration/mutation methods such as `registerWorker(...)`, `createTaskShell(...)`, `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)`, `executeTaskCommand(taskId, MassTaskCommandRequest)`, `replaceDefaultRules(...)`; WorkerContext registration is no longer an SDK surface
-- new bootstrap integration seam: `EngineOptions.bootstrapDataProvider(...)` accepts a pluggable `MassBootstrapDataProvider`
+- embedded bootstrap is explicit through the normal engine store/runtime options; mock/demo bootstrap is not a separate SDK-owned data-provider lane
 
 Current SDK contracts:
 
@@ -341,7 +341,7 @@ Current SDK contracts:
 | credential principals | in-memory principal/API-key binding only, not a full user subsystem; queries return `CredentialPrincipalProfile`, not raw credentials |
 | diagnostics/detail | bounded runtime validation/resolution stays behind `app.taskDiagnostics()` instead of the default `MassSdkApplication` task mainline. SDK mainline no longer exposes task-item or attempt detail query APIs; production detail belongs in logs, trace, audit sinks, or async persistence |
 | removed paths | direct engine/manager/runtime escape hatches are removed; queue/session/raw transport debug methods are also off the stable `MassSdkApplication` main surface |
-| startup/bootstrap | operations fail fast without a started engine; mock/demo bootstrap belongs outside SDK via `MassBootstrapDataProvider` / `MassRuntimeControl` |
+| startup/bootstrap | operations fail fast without a started engine; mock/demo bootstrap belongs outside SDK public engine assembly |
 
 For embedded runtime wiring, keep the mainline on storage/runtime contracts
 such as `taskShellStore(...)`, `taskWorkRuntime(...)`,

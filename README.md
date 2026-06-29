@@ -210,6 +210,9 @@ Current integration boundary rule:
 - `transport/websocket-adapter`: WebSocket worker transport adapter
 - `xa-mass-worker-runtime`: worker-plane lifecycle/resource owner for WorkerGroup capability, worker execution identity, declaration ports, candidate source, scheduling evidence, admission, dispatch gates, and warm hints; transport adapter/session ids remain final-hop delivery evidence, not scheduling identity
 - `xa-mass-engine`: lifecycle, assignment, result handling, and policy seams
+- `xa-mass-engine-starter`: containment module for engine process assembly,
+  config construction, lifecycle, and approved SDK/starter operation handles;
+  not a worker-runtime, transport, or task-runtime owner
 - `sdk/xa-mass-public-contract`: narrow public HTTP wire DTOs/constants shared by server and external SDKs
 - `sdk/xa-mass-java-sdk`: external Java client/session/handler SDK for task producers and external workers
 - `sdk/xa-mass-embedded-sdk-api`: embedded SDK-facing auth, catalog, event, and model contracts

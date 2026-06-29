@@ -5,7 +5,6 @@ import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.runtime.worker.slot.WorkerScoreBandSlotRuntime;
-import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.TaskShellStore;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationStore;
@@ -19,7 +18,6 @@ public class MassEngineBuilder {
     private EngineConfig config = new EngineConfig();
 
     private AssignmentDiagnosticRecorder recordService;
-    private MassBootstrapDataProvider bootstrapDataProvider;
     private TaskShellStore taskShellStore;
     private TaskWorkRuntime taskWorkRuntime;
     private TaskResultRuntime taskResultRuntime;
@@ -83,11 +81,6 @@ public class MassEngineBuilder {
         return this;
     }
 
-    public MassEngineBuilder bootstrapDataProvider(MassBootstrapDataProvider bootstrapDataProvider) {
-        this.bootstrapDataProvider = bootstrapDataProvider;
-        return this;
-    }
-
     public MassEngineBuilder workerThreads(int workerThreads) {
         this.workerThreads = workerThreads;
         return this;
@@ -109,7 +102,6 @@ public class MassEngineBuilder {
         if (workerScoreBandSlotRuntime != null) config.setWorkerScoreBandSlotRuntime(workerScoreBandSlotRuntime);
         if (ruleStorage != null) config.setRuleStorage(ruleStorage);
         if (recordService != null) config.setRecordService(recordService);
-        if (bootstrapDataProvider != null) config.setBootstrapDataProvider(bootstrapDataProvider);
         return new MassEngine(config);
     }
 }

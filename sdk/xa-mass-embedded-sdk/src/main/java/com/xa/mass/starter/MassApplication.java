@@ -4,9 +4,24 @@ import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
+import com.xa.mass.base.enums.task.TaskStatus;
+import com.xa.mass.base.enums.task.TaskTerminalReason;
+import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.command.event.BoundedMassEventRuntime;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.command.event.MassEventRuntime;
+import com.xa.mass.engine.model.TaskAppendReceipt;
+import com.xa.mass.engine.model.TaskDefinitionPatch;
+import com.xa.mass.engine.model.TaskResumeResult;
+import com.xa.mass.engine.model.TaskStateResolutionResult;
+import com.xa.mass.engine.model.TaskStateValidationResult;
+import com.xa.mass.engine.stage.TaskStageEvidenceResult;
+import com.xa.mass.engine.stage.TaskStageProjection;
+import com.xa.mass.kernel.spi.rule.RuleDefinition;
+import com.xa.mass.kernel.spi.rule.RuleType;
+import com.xa.mass.runtime.api.TaskResultRuntimeRow;
+import com.xa.mass.runtime.api.TaskResultWindow;
 import com.xa.mass.sdk.worker.EmbeddedPullWorkerSessions;
 import com.xa.mass.sdk.worker.EmbeddedPullWorkerSession;
 import com.xa.mass.starter.config.EngineConfig;
@@ -19,10 +34,23 @@ import com.xa.mass.transport.starter.EmbeddedPullWorkerTransport;
 import com.xa.mass.transport.starter.EmbeddedTransportAssembly;
 import com.xa.mass.transport.starter.EmbeddedTransportAssemblyConfig;
 import com.xa.mass.transport.starter.EmbeddedTransportBindingView;
+import com.xa.mass.worker.runtime.command.WorkerCommandAcknowledgement;
+import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleResult;
+import com.xa.mass.worker.runtime.command.WorkerCommandRecord;
+import com.xa.mass.worker.runtime.command.WorkerCommandRequest;
 import com.xa.mass.worker.runtime.control.WorkerDispatchBlockSignal;
 import com.xa.mass.worker.runtime.control.WorkerDispatchBlockSource;
 import com.xa.mass.worker.runtime.evidence.SelectedWorkerDeliveryTargetEvidence;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
+import com.xa.mass.worker.runtime.report.WorkerCapabilityReport;
+import com.xa.mass.worker.runtime.report.WorkerCapabilityReportResult;
+import com.xa.mass.worker.runtime.report.WorkerStateProjection;
+import com.xa.mass.worker.runtime.report.WorkerStateProjectionResult;
+import com.xa.mass.worker.runtime.report.WorkerStateReport;
+import com.xa.mass.worker.runtime.resource.AdapterNodeRecord;
+import com.xa.mass.worker.runtime.resource.NodeGroupBindingRecord;
+import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
+import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -32,6 +60,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.Collection;
+import java.util.List;
 
 /**
  * Main runtime composition entry for engine plus embedded transport adapter
@@ -153,7 +183,9 @@ public class MassApplication {
         try {
             transportAssembly = null;
             startEventRuntimeTaskExecutor();
-            engineConfig.setWorkerReachabilityLookup(this::resolveWorkerReachabilityFromEndpointLease);
+            if (engine != null) {
+                engine.setWorkerReachabilityLookup(this::resolveWorkerReachabilityFromEndpointLease);
+            }
             transportRuntimeTaskExecutor = new VirtualThreadRuntimeTaskExecutor(
                     "transport-runtime-",
                     transportConfig.getTransportRuntimeMaxPendingTasks()
@@ -168,7 +200,7 @@ public class MassApplication {
             ));
             TaskDispatchBatchListener taskDispatchListener = null;
             if (runtimeRole != TransportRuntimeRole.TRANSPORT_CONSUMER && engineConfig.isEnabled()) {
-                TaskResultIngestFacade taskResultIngestFacade = engineConfig.getTaskResultIngestFacade();
+                TaskResultIngestFacade taskResultIngestFacade = requireConfiguredEngine().taskResultIngestFacade();
                 if (runtimeRole == TransportRuntimeRole.ENGINE_PRODUCER) {
                     logger.info("Distributed transport result queue drain started for engine-producer role");
                 }
@@ -201,7 +233,7 @@ public class MassApplication {
     private void validateWorkerDeliveryTargetResolverConfiguration(TransportRuntimeRole runtimeRole) {
         if (runtimeRole == TransportRuntimeRole.ENGINE_PRODUCER
                 && engineConfig.isEnabled()
-                && !engineConfig.isWorkerDeliveryTargetResolverExplicitlyConfigured()) {
+                && (engine == null || !engine.isWorkerDeliveryTargetResolverExplicitlyConfigured())) {
             throw new IllegalStateException(
                     "engine-producer runtime requires an explicit worker delivery target resolver; "
                             + "local transport bindings are only a valid default for embedded runtime"
@@ -218,8 +250,8 @@ public class MassApplication {
 
     private java.util.function.Function<String, Optional<SelectedWorkerDeliveryTargetEvidence>>
     createWorkerDeliveryTargetResolver() {
-        if (engineConfig.isWorkerDeliveryTargetResolverExplicitlyConfigured()) {
-            return engineConfig::resolveWorkerDeliveryTarget;
+        if (engine != null && engine.isWorkerDeliveryTargetResolverExplicitlyConfigured()) {
+            return engine::resolveWorkerDeliveryTarget;
         }
         return this::resolveWorkerDeliveryTargetFromBinding;
     }
@@ -246,7 +278,7 @@ public class MassApplication {
         if (workerId == null || workerId.isBlank()) {
             throw new IllegalArgumentException("workerId must not be blank");
         }
-        WorkerResourceRecord worker = engineConfig.getWorkerResourceQueryRuntime()
+        WorkerResourceRecord worker = requireConfiguredEngine()
                 .worker(workerId.trim())
                 .orElse(null);
         if (worker == null) {
@@ -420,7 +452,7 @@ public class MassApplication {
             return CurrentSessionDisconnectHandler.NOOP;
         }
         return (deliveryBucketId, workerId, reason, observedAtMillis) ->
-                engineConfig.getWorkerDispatchBlockRuntime().blockWorkerDispatch(
+                requireConfiguredEngine().blockWorkerDispatch(
                         deliveryBucketId,
                         workerId,
                         new WorkerDispatchBlockSignal(
@@ -463,7 +495,7 @@ public class MassApplication {
                 resolved.getDeliveryPullChannel(),
                 resolved.getResultIngressChannel(),
                 resolved.getPullSessionEvidencePort(),
-                engineConfig.getWorkerHeartbeatRuntime(),
+                requireConfiguredEngine().workerHeartbeatRuntime(),
                 resolved.getTransportHint()
         );
     }
@@ -517,12 +549,209 @@ public class MassApplication {
         return assembly;
     }
 
-    public MassEngine getEngine() {
-        return engine;
-    }
-
     public MassEventRuntime getEventRuntime() {
         return eventRuntime;
+    }
+
+    public boolean isEngineRunning() {
+        return engine != null && engine.isRunning();
+    }
+
+    public Task createTaskShell(TaskShellCreateRequestDto dto) {
+        return requireStartedEngine().createTaskShell(dto);
+    }
+
+    public Task getTask(String taskId) {
+        return requireStartedEngine().getTask(taskId);
+    }
+
+    public List<Task> listTasksPaged(int offset, int limit) {
+        return requireStartedEngine().listTasksPaged(offset, limit);
+    }
+
+    public List<Task> getTasksByStatus(TaskStatus status) {
+        return requireStartedEngine().getTasksByStatus(status);
+    }
+
+    public TaskAppendReceipt appendTaskItemsWithReceipt(String taskId, List<Map<String, Object>> items) {
+        return requireStartedEngine().appendTaskItemsWithReceipt(taskId, items);
+    }
+
+    public boolean patchTaskDefinition(String taskId, TaskDefinitionPatch patch) {
+        return requireStartedEngine().patchTaskDefinition(taskId, patch);
+    }
+
+    public boolean approveTask(String taskId) {
+        return requireStartedEngine().approveTask(taskId);
+    }
+
+    public boolean rejectTask(String taskId) {
+        return requireStartedEngine().rejectTask(taskId);
+    }
+
+    public boolean blockTask(String taskId) {
+        return requireStartedEngine().blockTask(taskId);
+    }
+
+    public boolean pauseTask(String taskId) {
+        return requireStartedEngine().pauseTask(taskId);
+    }
+
+    public TaskResumeResult resumeTaskDetailed(String taskId) {
+        return requireStartedEngine().resumeTaskDetailed(taskId);
+    }
+
+    public boolean cancelTask(String taskId) {
+        return requireStartedEngine().cancelTask(taskId);
+    }
+
+    public boolean terminateTask(String taskId, TaskTerminalReason reason) {
+        return requireStartedEngine().terminateTask(taskId, reason);
+    }
+
+    public boolean sealTask(String taskId) {
+        return requireStartedEngine().sealTask(taskId);
+    }
+
+    public TaskStateValidationResult validateTaskState(String taskId) {
+        return requireStartedEngine().validateTaskState(taskId);
+    }
+
+    public TaskStateResolutionResult resolveTaskState(String taskId) {
+        return requireStartedEngine().resolveTaskState(taskId);
+    }
+
+    public TaskResultWindow readTaskResults(String taskId, long afterSeq, int limit) {
+        return requireStartedEngine().readTaskResults(taskId, afterSeq, limit);
+    }
+
+    public Optional<TaskResultRuntimeRow> getVisibleTaskResultByMessageId(String taskId, String messageId) {
+        return requireStartedEngine().getVisibleTaskResultByMessageId(taskId, messageId);
+    }
+
+    public long countVisibleTaskResults(String taskId) {
+        return requireStartedEngine().countVisibleTaskResults(taskId);
+    }
+
+    public void registerAdapterNode(AdapterNodeRecord record) {
+        requireStartedEngine().registerAdapterNode(record);
+    }
+
+    public void bindNodeGroup(NodeGroupBindingRecord record) {
+        requireStartedEngine().bindNodeGroup(record);
+    }
+
+    public void upsertWorkerGroup(WorkerGroupRecord record) {
+        requireStartedEngine().upsertWorkerGroup(record);
+    }
+
+    public void addWorker(WorkerDeclarationRecord record) {
+        requireStartedEngine().addWorker(record);
+    }
+
+    public Optional<WorkerResourceRecord> worker(String workerId) {
+        return requireStartedEngine().worker(workerId);
+    }
+
+    public List<WorkerResourceRecord> workers() {
+        return requireStartedEngine().workers();
+    }
+
+    public List<WorkerGroupRecord> workerGroups() {
+        return requireStartedEngine().workerGroups();
+    }
+
+    public List<AdapterNodeRecord> adapterNodes() {
+        return requireStartedEngine().adapterNodes();
+    }
+
+    public List<NodeGroupBindingRecord> nodeGroupBindings() {
+        return requireStartedEngine().nodeGroupBindings();
+    }
+
+    public WorkerCapabilityReportResult applyWorkerCapabilityReport(WorkerCapabilityReport report) {
+        return requireStartedEngine().applyWorkerCapabilityReport(report);
+    }
+
+    public WorkerStateProjectionResult applyWorkerStateReport(WorkerStateReport report) {
+        return requireStartedEngine().applyWorkerStateReport(report);
+    }
+
+    public Optional<WorkerStateProjection> workerStateProjection(String workerId) {
+        return requireStartedEngine().workerStateProjection(workerId);
+    }
+
+    public List<WorkerStateProjection> workerStateProjections() {
+        return requireStartedEngine().workerStateProjections();
+    }
+
+    public WorkerCommandLifecycleResult requestWorkerCommand(WorkerCommandRequest request) {
+        return requireStartedEngine().requestWorkerCommand(request);
+    }
+
+    public WorkerCommandLifecycleResult applyWorkerCommandAcknowledgement(WorkerCommandAcknowledgement acknowledgement) {
+        return requireStartedEngine().applyWorkerCommandAcknowledgement(acknowledgement);
+    }
+
+    public List<WorkerCommandRecord> claimPendingWorkerCommands(String workerId, int maxCommands) {
+        return requireStartedEngine().claimPendingWorkerCommands(workerId, maxCommands);
+    }
+
+    public Optional<WorkerCommandRecord> workerCommand(String commandId) {
+        return requireStartedEngine().workerCommand(commandId);
+    }
+
+    public List<WorkerCommandRecord> workerCommandsForWorker(String workerId) {
+        return requireStartedEngine().workerCommandsForWorker(workerId);
+    }
+
+    public TaskStageEvidenceResult applyTaskStageEvidence(String taskId,
+                                                          String messageId,
+                                                          String stageName,
+                                                          long stageVersion,
+                                                          String stageStatus,
+                                                          String detail,
+                                                          java.time.Instant observedAt,
+                                                          Map<String, Object> attributes) {
+        return requireStartedEngine().applyTaskStageEvidence(
+                taskId, messageId, stageName, stageVersion, stageStatus, detail, observedAt, attributes);
+    }
+
+    public Optional<TaskStageProjection> taskStageProjection(String taskId, String messageId, String stageName) {
+        return requireStartedEngine().taskStageProjection(taskId, messageId, stageName);
+    }
+
+    public List<TaskStageProjection> taskStageProjectionsForMessage(String taskId, String messageId) {
+        return requireStartedEngine().taskStageProjectionsForMessage(taskId, messageId);
+    }
+
+    public List<RuleDefinition> listRules() {
+        return requireStartedEngine().listRules();
+    }
+
+    public void replaceRules(Collection<RuleDefinition> rules) {
+        requireStartedEngine().replaceRules(rules);
+    }
+
+    public List<RuleType> registeredEvaluatorTypes() {
+        return requireStartedEngine().registeredEvaluatorTypes();
+    }
+
+    public boolean hasWorkerExclusiveLease(String workerId) {
+        return requireStartedEngine().hasWorkerExclusiveLease(workerId);
+    }
+
+    public void addTaskWorkFinalListener(java.util.function.Consumer<MassEngine.TaskWorkFinalNotification> listener) {
+        requireStartedEngine().addTaskWorkLogicallyFinalListener(listener);
+    }
+
+    public void addTaskWorkAttemptClosedListener(
+            java.util.function.Consumer<MassEngine.TaskWorkAttemptClosedNotification> listener) {
+        requireStartedEngine().addTaskWorkAttemptClosedListener(listener);
+    }
+
+    public WorkerReachabilityState workerReachability(String workerId) {
+        return requireStartedEngine().workerReachability(workerId);
     }
 
     private MassEngine requireConfiguredEngine() {
@@ -530,6 +759,14 @@ public class MassApplication {
             throw new IllegalStateException("Mass engine is unavailable for this application");
         }
         return engine;
+    }
+
+    private MassEngine requireStartedEngine() {
+        MassEngine configuredEngine = requireConfiguredEngine();
+        if (!configuredEngine.isRunning()) {
+            throw new IllegalStateException("Mass engine has not been started");
+        }
+        return configuredEngine;
     }
 
 }

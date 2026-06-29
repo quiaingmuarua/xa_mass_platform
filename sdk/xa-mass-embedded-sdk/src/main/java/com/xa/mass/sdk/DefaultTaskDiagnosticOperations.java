@@ -1,27 +1,26 @@
 package com.xa.mass.sdk;
 
-import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
+import com.xa.mass.starter.MassApplication;
 
 import java.util.Objects;
-import java.util.function.Supplier;
 
 final class DefaultTaskDiagnosticOperations implements TaskDiagnosticOperations {
 
-    private final Supplier<TaskQueryService> taskQueriesSupplier;
+    private final MassApplication delegate;
 
-    DefaultTaskDiagnosticOperations(Supplier<TaskQueryService> taskQueriesSupplier) {
-        this.taskQueriesSupplier = Objects.requireNonNull(taskQueriesSupplier, "taskQueriesSupplier");
+    DefaultTaskDiagnosticOperations(MassApplication delegate) {
+        this.delegate = Objects.requireNonNull(delegate, "delegate");
     }
 
     @Override
     public TaskStateValidationResult validateTaskState(String taskId) {
-        return taskQueriesSupplier.get().validateTaskState(taskId);
+        return delegate.validateTaskState(taskId);
     }
 
     @Override
     public TaskStateResolutionResult resolveTaskState(String taskId) {
-        return taskQueriesSupplier.get().resolveTaskState(taskId);
+        return delegate.resolveTaskState(taskId);
     }
 }

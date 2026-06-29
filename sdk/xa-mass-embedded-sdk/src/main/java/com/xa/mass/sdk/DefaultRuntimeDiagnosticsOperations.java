@@ -35,11 +35,11 @@ public class DefaultRuntimeDiagnosticsOperations implements RuntimeDiagnosticsOp
             throw new IllegalArgumentException("workerId must not be blank");
         }
         ensureEngineStarted();
-        return delegate.getEngine().getConfig().getWorkerAdmissionRuntime().hasWorkerExclusiveLease(workerId.trim());
+        return delegate.hasWorkerExclusiveLease(workerId.trim());
     }
 
     private void ensureEngineStarted() {
-        if (delegate.getEngine() == null || !delegate.getEngine().isRunning() || delegate.getEngine().getConfig() == null) {
+        if (!delegate.isEngineRunning()) {
             throw new IllegalStateException("MassEngine is not started");
         }
     }

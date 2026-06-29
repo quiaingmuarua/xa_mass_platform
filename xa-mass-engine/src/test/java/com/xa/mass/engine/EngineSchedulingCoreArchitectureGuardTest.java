@@ -2399,9 +2399,9 @@ class EngineSchedulingCoreArchitectureGuardTest {
             violations.add(inMemoryWorkerLoadViewPath + " still exists as a mutable occupancy owner");
         }
         for (Path sourcePath : List.of(
-                Path.of("..", "sdk", "xa-mass-embedded-sdk", "src", "main", "java", "com", "xa", "mass", "starter", "config",
+                Path.of("..", "xa-mass-engine-starter", "src", "main", "java", "com", "xa", "mass", "starter", "config",
                         "EngineConfig.java"),
-                Path.of("..", "sdk", "xa-mass-embedded-sdk", "src", "main", "java", "com", "xa", "mass", "starter", "builder",
+                Path.of("..", "xa-mass-engine-starter", "src", "main", "java", "com", "xa", "mass", "starter", "builder",
                         "MassEngineBuilder.java")
         )) {
             String sdkSource = Files.readString(sourcePath, StandardCharsets.UTF_8);
@@ -2510,10 +2510,10 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "com", "xa", "mass", "sdk", "MassSdkApplication.java");
         Path diagnosticsPath = Path.of("..", "sdk", "xa-mass-embedded-sdk", "src", "main", "java",
                 "com", "xa", "mass", "sdk", "DefaultRuntimeDiagnosticsOperations.java");
-        Path massEnginePath = Path.of("..", "sdk", "xa-mass-embedded-sdk", "src", "main", "java",
+        Path massEnginePath = Path.of("..", "xa-mass-engine-starter", "src", "main", "java",
                 "com", "xa", "mass", "starter", "MassEngine.java");
         Path runtimeKernelPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/EngineRuntimeKernel.java");
-        Path engineConfigPath = Path.of("..", "sdk", "xa-mass-embedded-sdk", "src", "main", "java",
+        Path engineConfigPath = Path.of("..", "xa-mass-engine-starter", "src", "main", "java",
                 "com", "xa", "mass", "starter", "config", "EngineConfig.java");
         String sdkSource = Files.readString(sdkApplicationPath, StandardCharsets.UTF_8);
         String diagnosticsSource = Files.readString(diagnosticsPath, StandardCharsets.UTF_8);
@@ -2533,11 +2533,22 @@ class EngineSchedulingCoreArchitectureGuardTest {
         if (sdkSource.contains("WorkerResourceRuntime") || sdkSource.contains("getWorkerResourceRuntime")) {
             violations.add(sdkApplicationPath + " uses retired WorkerResourceRuntime aggregate");
         }
-        if (!sdkSource.contains("WorkerResourceQueryRuntime")
-                || !sdkSource.contains("getWorkerResourceQueryRuntime()")
-                || !sdkSource.contains("getWorkerResourceDeclarationRuntime()")
-                || !sdkSource.contains("getWorkerNodeBindingRuntime()")) {
-            violations.add(sdkApplicationPath + " does not use narrow worker resource accessors");
+        if (sdkSource.contains("getWorkerResourceQueryRuntime()")
+                || sdkSource.contains("getWorkerResourceDeclarationRuntime()")
+                || sdkSource.contains("getWorkerNodeBindingRuntime()")) {
+            violations.add(sdkApplicationPath + " reads EngineConfig worker runtime getters directly");
+        }
+        for (String requiredDelegateOperation : List.of(
+                "delegate.worker(",
+                "delegate.workers()",
+                "delegate.workerGroups()",
+                "delegate.registerAdapterNode(",
+                "delegate.bindNodeGroup(",
+                "delegate.addWorker(")) {
+            if (!sdkSource.contains(requiredDelegateOperation)) {
+                violations.add(sdkApplicationPath + " does not use MassApplication worker operation "
+                        + requiredDelegateOperation);
+            }
         }
         if (sdkSource.contains("com.xa.mass.engine.worker.WorkerControlService")
                 || Pattern.compile("\\bWorkerControlService\\b").matcher(sdkSource).find()) {
@@ -2560,6 +2571,11 @@ class EngineSchedulingCoreArchitectureGuardTest {
         if (!engineConfigSource.contains("WorkerControlRuntime getWorkerControlRuntime()")) {
             violations.add(engineConfigPath + " does not expose worker control through WorkerControlRuntime");
         }
+        if (!massEngineSource.contains("config.getWorkerResourceQueryRuntime()")
+                || !massEngineSource.contains("config.getWorkerResourceDeclarationRuntime()")
+                || !massEngineSource.contains("config.getWorkerNodeBindingRuntime()")) {
+            violations.add(massEnginePath + " does not contain worker runtime access behind engine-starter handle");
+        }
         if (massEngineSource.contains("com.xa.mass.worker.runtime.WorkerManager")
                 || Pattern.compile("\\bWorkerManager\\b").matcher(massEngineSource).find()) {
             violations.add(massEnginePath + " depends on full WorkerManager");
@@ -2577,9 +2593,9 @@ class EngineSchedulingCoreArchitectureGuardTest {
     @Test
     void sdkRuntimeBridgeDoesNotRequireFullWorkerManager() throws IOException {
         List<Path> bridgePaths = List.of(
-                Path.of("..", "sdk", "xa-mass-embedded-sdk", "src", "main", "java",
+                Path.of("..", "xa-mass-engine-starter", "src", "main", "java",
                         "com", "xa", "mass", "starter", "EngineRuntimeBridge.java"),
-                Path.of("..", "sdk", "xa-mass-embedded-sdk", "src", "main", "java",
+                Path.of("..", "xa-mass-engine-starter", "src", "main", "java",
                         "com", "xa", "mass", "starter", "RuntimeEventBusEngineBridge.java")
         );
 
@@ -2610,11 +2626,11 @@ class EngineSchedulingCoreArchitectureGuardTest {
     @Test
     void clearCapableDispatchGateDoesNotCrossEngineShellBridge() throws IOException {
         List<Path> shellBridgePaths = List.of(
-                Path.of("..", "sdk", "xa-mass-embedded-sdk", "src", "main", "java",
+                Path.of("..", "xa-mass-engine-starter", "src", "main", "java",
                         "com", "xa", "mass", "starter", "EngineRuntimeBridge.java"),
-                Path.of("..", "sdk", "xa-mass-embedded-sdk", "src", "main", "java",
+                Path.of("..", "xa-mass-engine-starter", "src", "main", "java",
                         "com", "xa", "mass", "starter", "RuntimeEventBusEngineBridge.java"),
-                Path.of("..", "sdk", "xa-mass-embedded-sdk", "src", "main", "java",
+                Path.of("..", "xa-mass-engine-starter", "src", "main", "java",
                         "com", "xa", "mass", "starter", "MassEngine.java"),
                 MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/EngineRuntimeKernel.java"),
                 MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/EngineRuntimeKernelConfig.java")
