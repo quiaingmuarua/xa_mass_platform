@@ -3,10 +3,9 @@ package com.xa.mass.starter;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchContext;
 import com.xa.mass.transport.model.DispatchOutcome;
-import com.xa.mass.transport.runtime.delivery.AdapterMailboxDispatchBatch;
 import com.xa.mass.transport.runtime.delivery.DispatchMessage;
 import com.xa.mass.transport.runtime.delivery.TransportAssignedDeliverySubmitter;
-import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
+import com.xa.mass.transport.runtime.delivery.TransportDispatchQueue;
 import com.xa.mass.worker.runtime.evidence.SelectedWorkerDeliveryTargetEvidence;
 import org.junit.jupiter.api.Test;
 
@@ -100,13 +99,8 @@ class TaskDispatchRoutingSubmitterTest {
         );
     }
 
-    private static final class RecordingHandoff implements TransportDispatchHandoff {
+    private static final class RecordingHandoff implements TransportDispatchQueue {
         private int offers;
-
-        @Override
-        public List<DispatchOutcome> offer(AdapterMailboxDispatchBatch batch) {
-            return offer(batch.adapterMailboxKey(), batch.items());
-        }
 
         @Override
         public List<DispatchOutcome> offer(String dispatchQueueKey, List<DispatchMessage> items) {

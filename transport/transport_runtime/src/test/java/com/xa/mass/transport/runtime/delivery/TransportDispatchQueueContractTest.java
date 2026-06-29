@@ -12,7 +12,7 @@ import java.util.UUID;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class TransportDispatchHandoffContractTest {
+class TransportDispatchQueueContractTest {
 
     @Test
     void inMemoryHandoffSatisfiesContract() throws Exception {
@@ -51,7 +51,7 @@ class TransportDispatchHandoffContractTest {
     private static void verifyContract(HandoffFixture fixture) throws Exception {
         assertEquals(
                 List.of(DispatchOutcomeStatus.QUEUED),
-                fixture.producer.offer(DispatchMessageFixtures.batch(
+                offer(fixture.producer, DispatchMessageFixtures.batch(
                         DispatchMessageFixtures.item("msg-no-consumer", "worker-1")
                 )).stream().map(outcome -> outcome.getStatus()).toList()
         );
@@ -62,14 +62,14 @@ class TransportDispatchHandoffContractTest {
 
         assertEquals(
                 List.of(DispatchOutcomeStatus.QUEUED, DispatchOutcomeStatus.QUEUED),
-                fixture.producer.offer(DispatchMessageFixtures.batch(
+                offer(fixture.producer, DispatchMessageFixtures.batch(
                         DispatchMessageFixtures.item("msg-1", "worker-1"),
                         DispatchMessageFixtures.item("msg-2", "worker-2")
                 )).stream().map(outcome -> outcome.getStatus()).toList()
         );
         assertEquals(
                 List.of(DispatchOutcomeStatus.BACKPRESSURE),
-                fixture.producer.offer(DispatchMessageFixtures.batch(
+                offer(fixture.producer, DispatchMessageFixtures.batch(
                         DispatchMessageFixtures.item("msg-3", "worker-3")
                 )).stream().map(outcome -> outcome.getStatus()).toList()
         );
@@ -78,7 +78,7 @@ class TransportDispatchHandoffContractTest {
         assertEquals(List.of("msg-1", "msg-2"), DispatchMessageFixtures.messages(firstBatch));
         assertTrue(fixture.consumer.poll(DispatchMessageFixtures.mailboxKey(), 10, 0L).isEmpty());
 
-        fixture.producer.offer(new AdapterMailboxDispatchBatch(
+        offer(fixture.producer, new AdapterMailboxDispatchBatch(
                 "mailbox-2",
                 List.of(DispatchMessageFixtures.item("msg-4", "worker-4"))
         ));
@@ -89,7 +89,13 @@ class TransportDispatchHandoffContractTest {
         );
     }
 
-    private record HandoffFixture(TransportDispatchHandoff producer,
-                                  TransportDispatchHandoff consumer) {
+    private static List<com.xa.mass.transport.model.DispatchOutcome> offer(
+            TransportDispatchQueue queue,
+            AdapterMailboxDispatchBatch batch) {
+        return queue.offer(batch.adapterMailboxKey(), batch.items());
+    }
+
+    private record HandoffFixture(TransportDispatchQueue producer,
+                                  TransportDispatchQueue consumer) {
     }
 }

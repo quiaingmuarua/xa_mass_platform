@@ -28,11 +28,11 @@ classes and are not protected by a single lifecycle contract.
 
 - `MassApplication.stop()` already has a partial top-level order: stop
   transport servers, stop managed transport adapters, stop transport node
-  heartbeat, stop distributed transport channels/handoffs by role, drain the
-  result ingest buffer, then stop `MassEngine`.
-- `BufferedTransportResultIngressChannel` documents a hard ordering rule:
-  `shutdown()` must run before stopping the engine so queued worker results are
-  drained into engine result convergence.
+  heartbeat, stop distributed transport channels/queues by role, stop result
+  ingress drains, then stop `MassEngine`.
+- Result ingress drain ownership now sits in `TaskResultIngressQueueDrain` over
+  `TransportResultIngressQueue`; the old buffered result ingress channel has
+  been removed.
 - `MassEngine.stop()` stops `EngineRuntimeBridge`, then
   `EngineRuntimeKernel`, then calls `EngineConfig.shutdownTaskRuntime()`.
 - `EngineRuntimeKernel.stop()` unregisters event listeners and wakeup callbacks
@@ -172,9 +172,8 @@ The exact names can change during inventory, but the order must remain visible:
    - stop worker command maintenance delivery/retry scans
 
 3. **Drain Accepted Result Ingress**
-   - drain `BufferedTransportResultIngressChannel`
-   - stop distributed result ingress queue drains after their accepted messages are
-     handed to the local result ingest channel
+   - stop result ingress queue drains after accepted messages are handed to
+     engine result convergence or bounded drain limits are reached
    - record unprocessed counts when bounded drain cannot finish
 
 4. **Stop Result Repair And Runtime Services**
@@ -379,10 +378,10 @@ Goal: protect accepted worker results during shutdown.
 
 Scope:
 
-- Verify `MassApplication.stop()` drains `BufferedTransportResultIngressChannel`
-  before `MassEngine.stop()` for all runtime roles that use the buffer.
-- Verify distributed inbox pumps stop in the correct order relative to buffer
-  drain for engine-producer mode.
+- Verify `MassApplication.stop()` stops `TaskResultIngressQueueDrain` before
+  `MassEngine.stop()` for runtime roles that ingest worker results.
+- Verify distributed result ingress queue drains stop in the correct order
+  relative to engine shutdown for engine-producer mode.
 - If GSL-1 accepts shutdown trace events, emit or prepare event emission for
   result-drain phases such as `RESULT_BUFFER_DRAIN_STARTED` and
   `RESULT_BUFFER_DRAIN_COMPLETED`.

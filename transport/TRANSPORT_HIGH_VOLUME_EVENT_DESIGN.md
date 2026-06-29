@@ -41,7 +41,7 @@ engine assignment
 
 Current transport concepts are defined in the boundary baseline. In particular:
 
-- `TransportDispatchHandoff` owns engine-to-adapter-mailbox handoff.
+- `TransportDispatchQueue` owns engine-to-adapter-mailbox dispatch queueing.
 - `AdapterMailboxDispatchBatch` / `DispatchMessage` are the dispatch carrier.
 - `DispatchOutcome` is delivery attempt evidence.
 - Polling pending pull storage is owned by `polling-adapter`.

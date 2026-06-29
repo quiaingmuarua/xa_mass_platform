@@ -3,7 +3,7 @@ package com.xa.mass.starter.config;
 import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
 import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
-import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
+import com.xa.mass.transport.runtime.delivery.TransportDispatchQueue;
 import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
 import com.xa.mass.transport.websocket.runtime.WebSocketAdapterConfig;
@@ -34,7 +34,7 @@ public class TransportConfig {
     private List<WebSocketAdapterAssembly> supplementalWebSocketAdapterAssemblies = List.of();
     private List<SocketAdapterConfig> supplementalSocketAdapterConfigs = List.of();
     private Supplier<PollingPendingDeliveryBuffer> pollingPendingDeliveryBufferFactory;
-    private Supplier<TransportDispatchHandoff> dispatchHandoffFactory;
+    private Supplier<TransportDispatchQueue> dispatchQueueFactory;
     private Supplier<RedisTransportResultIngressChannel> taskResultIngressQueueFactory;
     private int maxPollingPendingDeliveryItems = DEFAULT_MAX_POLLING_PENDING_DELIVERY_ITEMS;
     private int maxPollingPendingDeliveryItemsPerWorker = DEFAULT_MAX_POLLING_PENDING_DELIVERY_ITEMS_PER_WORKER;
@@ -65,7 +65,7 @@ public class TransportConfig {
                 .map(SocketAdapterConfig::new)
                 .toList();
         this.pollingPendingDeliveryBufferFactory = source.pollingPendingDeliveryBufferFactory;
-        this.dispatchHandoffFactory = source.dispatchHandoffFactory;
+        this.dispatchQueueFactory = source.dispatchQueueFactory;
         this.taskResultIngressQueueFactory = source.taskResultIngressQueueFactory;
         this.maxPollingPendingDeliveryItems = source.maxPollingPendingDeliveryItems;
         this.maxPollingPendingDeliveryItemsPerWorker = source.maxPollingPendingDeliveryItemsPerWorker;
@@ -209,12 +209,12 @@ public class TransportConfig {
         this.pollingPendingDeliveryBufferFactory = pollingPendingDeliveryBufferFactory;
     }
 
-    public Supplier<TransportDispatchHandoff> getDispatchHandoffFactory() {
-        return dispatchHandoffFactory;
+    public Supplier<TransportDispatchQueue> getDispatchQueueFactory() {
+        return dispatchQueueFactory;
     }
 
-    public void setDispatchHandoffFactory(Supplier<TransportDispatchHandoff> dispatchHandoffFactory) {
-        this.dispatchHandoffFactory = dispatchHandoffFactory;
+    public void setDispatchQueueFactory(Supplier<TransportDispatchQueue> dispatchQueueFactory) {
+        this.dispatchQueueFactory = dispatchQueueFactory;
     }
 
     public Supplier<RedisTransportResultIngressChannel> getTaskResultIngressQueueFactory() {
@@ -292,8 +292,8 @@ public class TransportConfig {
         return pollingPendingDeliveryBufferFactory;
     }
 
-    Supplier<TransportDispatchHandoff> dispatchHandoffFactory() {
-        return dispatchHandoffFactory;
+    Supplier<TransportDispatchQueue> dispatchQueueFactory() {
+        return dispatchQueueFactory;
     }
 
     Supplier<RedisTransportResultIngressChannel> taskResultIngressQueueFactory() {

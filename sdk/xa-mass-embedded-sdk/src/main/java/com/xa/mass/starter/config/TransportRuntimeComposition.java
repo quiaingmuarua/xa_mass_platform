@@ -9,7 +9,7 @@ import com.xa.mass.transport.runtime.TransportAdapterDescriptor;
 import com.xa.mass.transport.runtime.TransportRegistrationResolver;
 import com.xa.mass.transport.runtime.TransportResultIngressQueue;
 import com.xa.mass.transport.runtime.delivery.InMemoryTransportDispatchHandoff;
-import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
+import com.xa.mass.transport.runtime.delivery.TransportDispatchQueue;
 import com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeSpec;
 import com.xa.mass.transport.runtime.lease.InMemoryTransportEndpointLeaseStore;
 import com.xa.mass.transport.socket.runtime.SocketAdapterConfig;
@@ -39,7 +39,7 @@ public class TransportRuntimeComposition {
     private final List<TransportConfig.WebSocketAdapterAssembly> supplementalWebSocketAdapterAssemblies;
     private final List<SocketAdapterConfig> supplementalSocketAdapterConfigs;
     private final Supplier<PollingPendingDeliveryBuffer> pollingPendingDeliveryBufferFactory;
-    private final Supplier<TransportDispatchHandoff> dispatchHandoffFactory;
+    private final Supplier<TransportDispatchQueue> dispatchQueueFactory;
     private final Supplier<RedisTransportResultIngressChannel> taskResultIngressQueueFactory;
     private final int maxPollingPendingDeliveryItems;
     private final int maxPollingPendingDeliveryItemsPerWorker;
@@ -67,7 +67,7 @@ public class TransportRuntimeComposition {
                 .map(SocketAdapterConfig::new)
                 .toList();
         this.pollingPendingDeliveryBufferFactory = source.pollingPendingDeliveryBufferFactory();
-        this.dispatchHandoffFactory = source.getDispatchHandoffFactory();
+        this.dispatchQueueFactory = source.getDispatchQueueFactory();
         this.taskResultIngressQueueFactory = source.taskResultIngressQueueFactory();
         this.maxPollingPendingDeliveryItems = source.getMaxPollingPendingDeliveryItems();
         this.maxPollingPendingDeliveryItemsPerWorker = source.getMaxPollingPendingDeliveryItemsPerWorker();
@@ -114,9 +114,9 @@ public class TransportRuntimeComposition {
                 );
     }
 
-    public TransportDispatchHandoff resolveTransportDispatchHandoff(int defaultCapacity) {
-        return dispatchHandoffFactory != null
-                ? dispatchHandoffFactory.get()
+    public TransportDispatchQueue resolveTransportDispatchQueue(int defaultCapacity) {
+        return dispatchQueueFactory != null
+                ? dispatchQueueFactory.get()
                 : new InMemoryTransportDispatchHandoff(defaultCapacity);
     }
 

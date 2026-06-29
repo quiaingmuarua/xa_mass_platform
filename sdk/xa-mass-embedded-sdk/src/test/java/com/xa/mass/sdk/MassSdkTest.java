@@ -474,7 +474,7 @@ class MassSdkTest {
                 TransportRuntimeComposition.class
         );
 
-        assertCapturedNamespace(runtimeComposition, "dispatchHandoffFactory", RedisTransportNamespaces.DISPATCH);
+        assertCapturedNamespace(runtimeComposition, "dispatchQueueFactory", RedisTransportNamespaces.DISPATCH);
         assertCapturedNamespace(runtimeComposition, "taskResultIngressQueueFactory", RedisTransportNamespaces.RESULT_INGRESS);
         assertCapturedNamespace(runtimeComposition, "endpointLeaseStoreFactory", RedisTransportNamespaces.ENDPOINT_LEASE);
         assertCapturedNamespace(

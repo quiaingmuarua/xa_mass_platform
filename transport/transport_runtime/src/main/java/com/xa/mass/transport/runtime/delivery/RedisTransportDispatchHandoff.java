@@ -2,6 +2,8 @@ package com.xa.mass.transport.runtime.delivery;
 
 import com.xa.mass.runtime.queue.KeyedQueueEntry;
 import com.xa.mass.runtime.queue.KeyedQueueOfferResult;
+import com.xa.mass.runtime.queue.KeyedQueuePollResult;
+import com.xa.mass.runtime.queue.KeyedQueuePollStatus;
 import com.xa.mass.runtime.redis.queue.RedisKeyedBlockingQueueStore;
 import com.xa.mass.runtime.redis.queue.RedisKeyedQueueNamespace;
 import com.xa.mass.runtime.redis.queue.RedisKeyedQueueOptions;
@@ -20,12 +22,10 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Redis-backed best-effort dispatch handoff.
  */
-public final class RedisTransportDispatchHandoff implements TransportDispatchHandoff, AutoCloseable {
+public final class RedisTransportDispatchHandoff implements TransportDispatchQueue, AutoCloseable {
 
     public static final String DEFAULT_NAMESPACE_PREFIX = RedisTransportNamespaces.DISPATCH;
     public static final int DEFAULT_MAX_QUEUED_ITEMS_PER_QUEUE = 100_000;
-
-    private static final long POLL_SLEEP_MILLIS = 50L;
 
     private final RedisClient redisClient;
     private final StatefulRedisConnection<String, String> connection;
@@ -134,27 +134,23 @@ public final class RedisTransportDispatchHandoff implements TransportDispatchHan
         if (!running.get()) {
             return List.of();
         }
-        long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(Math.max(0L, timeoutMillis));
-        do {
-            List<DispatchMessage> items = pollReadyItems(mailboxKey, maxItems);
-            if (!items.isEmpty()) {
-                return items;
-            }
-            if (timeoutMillis <= 0L) {
-                return List.of();
-            }
-            long remainingNanos = deadlineNanos - System.nanoTime();
-            if (remainingNanos <= 0L) {
-                return List.of();
-            }
-            Thread.sleep(Math.min(POLL_SLEEP_MILLIS, Math.max(1L, TimeUnit.NANOSECONDS.toMillis(remainingNanos))));
-        } while (running.get());
-        return List.of();
+        return pollReadyItems(mailboxKey, maxItems, Math.max(0L, timeoutMillis));
     }
 
-    private List<DispatchMessage> pollReadyItems(String adapterMailboxKey, int maxItems) {
+    private List<DispatchMessage> pollReadyItems(String adapterMailboxKey,
+                                                 int maxItems,
+                                                 long timeoutMillis) throws InterruptedException {
         List<DispatchMessage> items = new ArrayList<>(maxItems);
-        for (KeyedQueueEntry entry : readyQueue.drain(adapterMailboxKey, maxItems)) {
+        KeyedQueuePollResult result = readyQueue.poll(
+                adapterMailboxKey,
+                maxItems,
+                timeoutMillis,
+                TimeUnit.MILLISECONDS
+        );
+        if (result.status() != KeyedQueuePollStatus.DELIVERED) {
+            return List.of();
+        }
+        for (KeyedQueueEntry entry : result.items()) {
             try {
                 items.add(codec.decodeItem(entry.value()));
             } catch (RuntimeException ignored) {
@@ -172,6 +168,7 @@ public final class RedisTransportDispatchHandoff implements TransportDispatchHan
 
     @Override
     public void close() {
+        readyQueue.shutdown();
         if (connection.isOpen()) {
             connection.close();
         }

@@ -210,9 +210,10 @@ entry for `transport/`.
   boundary. Packet, route, endpoint, taskName/project/userId, and
   deliveryQueueKey are not serialized in the Redis queue value.
 - Queue mechanics may live under `platform_infra`; transport still owns
-  `AdapterMailboxDispatchBatch`, `DispatchMessage`, `TransportDispatchHandoff`,
-  and `DispatchOutcome`. Polling pending pull buffers are polling-adapter
-  internal storage, not transport-core handoff truth.
+  `AdapterMailboxDispatchBatch`, `DispatchMessage`, `TransportDispatchQueue`,
+  result-ingress typed queue adapters, and `DispatchOutcome`. Polling pending
+  pull buffers are polling-adapter internal storage, not transport-core queue
+  truth.
   `DispatchOutcome` is the single delivery-failure fact owner; transport no
   longer maintains a delivery-failure inbox side-channel.
   `DispatchOutcome` reports only delivery identity, selected worker, opaque
@@ -226,7 +227,7 @@ entry for `transport/`.
 - Embedded runtime composition currently defaults to an in-memory polling
   pending pull buffer for the bundled polling adapter, but SDK/starter wiring
   may swap in a Redis-backed polling buffer without changing transport dispatch
-  handoff contracts.
+  queue contracts.
 
 Canonical transport concepts live in
 [TRANSPORT_BOUNDARY_BASELINE.md](./TRANSPORT_BOUNDARY_BASELINE.md). Use that as
@@ -292,7 +293,7 @@ Use this order for transport changes:
 Prefer these after transport changes:
 
 ```bash
-./mvnw -q -pl transport/transport_runtime test -Dtest=TransportRuntimeRegistryTest,TransportRegistrationResolverTest,InMemoryTransportDispatchHandoffTest,TransportDispatchBatchCodecTest,RedisTransportDispatchHandoffTest,BufferedTransportResultIngressChannelTest,RedisTransportResultIngressChannelTest,InMemoryTransportEndpointLeaseStoreTest,RedisTransportEndpointLeaseStoreTest,AdapterInboundResultProcessorTest,WorkerChannelActionReplyReaderTest,WorkerChannelActionReplyResultFrameReaderTest,TransportConvergenceArchitectureGuardTest
+./mvnw -q -pl transport/transport_runtime test -Dtest=TransportRuntimeRegistryTest,TransportRegistrationResolverTest,InMemoryTransportDispatchHandoffTest,TransportDispatchQueueContractTest,TransportDispatchBatchCodecTest,RedisTransportDispatchHandoffTest,InMemoryTransportResultIngressQueueTest,RedisTransportResultIngressChannelTest,InMemoryTransportEndpointLeaseStoreTest,RedisTransportEndpointLeaseStoreTest,AdapterInboundResultProcessorTest,WorkerChannelActionReplyReaderTest,WorkerChannelActionReplyResultFrameReaderTest,TransportConvergenceArchitectureGuardTest
 ./mvnw -q -pl transport/transport_api,transport/transport_runtime,transport/adapter-starter,transport/websocket-adapter,transport/socket-adapter,transport/polling-adapter test -Dtest=CanonicalWorkerGroupRouteKeyCodecTest,ResultIngressEntryTest,ResultIngressMessageTest,JsonAdapterResultDiagnosticsProviderTest,WebSocketAdapterRuntimeFactoryTest,DispatcherInboundHandlerTest,SocketAdapterRuntimeFactoryTest,SocketTransportServerTest,SocketTransportFrameCodecTest,PollingDeliveryExecutorTest,PollingDeliveryPullChannelTest,PollingSessionEvidenceDriverTest,SocketSessionManagerTest,WebSocketSessionRegistryTest,PollingDispatchMessageCodecTest,EmbeddedAdapterStarterTest
 ./mvnw -q -pl sdk/xa-mass-embedded-sdk -am test -Dtest=MassSdkTest,MassApplicationDistributedTransportTest,RuntimeTaskResultIngestChannelTest,EmbeddedPullWorkerSessionTest -Dsurefire.failIfNoSpecifiedTests=false
 ```

@@ -17,7 +17,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * In-process non-blocking dispatch handoff.
  */
-public final class InMemoryTransportDispatchHandoff implements TransportDispatchHandoff {
+public final class InMemoryTransportDispatchHandoff implements TransportDispatchQueue {
 
     private final InMemoryKeyedBlockingQueueStore readyQueue;
     private final AtomicBoolean running = new AtomicBoolean(true);
@@ -90,36 +90,24 @@ public final class InMemoryTransportDispatchHandoff implements TransportDispatch
     private List<DispatchMessage> pollLocalMailboxItems(String adapterMailboxKey,
                                                            int maxItems,
                                                            long timeoutMillis) throws InterruptedException {
-        long deadlineNanos = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis);
         List<DispatchMessage> items = new ArrayList<>(maxItems);
-        do {
-            KeyedQueuePollResult result = readyQueue.poll(
-                    adapterMailboxKey,
-                    maxItems,
-                    0L,
-                    TimeUnit.MILLISECONDS
-            );
-            if (result.status() == KeyedQueuePollStatus.DELIVERED) {
-                for (KeyedQueueEntry entry : result.items()) {
-                    try {
-                        items.add(codec.decodeItem(entry.value()));
-                    } catch (RuntimeException ignored) {
-                        // Corrupt handoff entries are dropped as store-local corruption.
-                    }
-                }
-                return List.copyOf(items);
+        KeyedQueuePollResult result = readyQueue.poll(
+                adapterMailboxKey,
+                maxItems,
+                timeoutMillis,
+                TimeUnit.MILLISECONDS
+        );
+        if (result.status() != KeyedQueuePollStatus.DELIVERED) {
+            return List.of();
+        }
+        for (KeyedQueueEntry entry : result.items()) {
+            try {
+                items.add(codec.decodeItem(entry.value()));
+            } catch (RuntimeException ignored) {
+                // Corrupt handoff entries are dropped as store-local corruption.
             }
-            if (timeoutMillis <= 0L) {
-                return List.of();
-            }
-            long remaining = deadlineNanos - System.nanoTime();
-            if (remaining <= 0L) {
-                return List.of();
-            }
-            TimeUnit.MILLISECONDS.sleep(Math.min(TimeUnit.NANOSECONDS.toMillis(remaining), 50L));
-            timeoutMillis = TimeUnit.NANOSECONDS.toMillis(remaining);
-        } while (running.get());
-        return List.of();
+        }
+        return List.copyOf(items);
     }
 
     private boolean readyQueueEmpty(String adapterMailboxKey) {

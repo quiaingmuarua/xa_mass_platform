@@ -762,16 +762,19 @@ class TransportConvergenceArchitectureGuardTest {
 
     @Test
     void embeddedAdapterMailboxAvailabilityHasSingleHostOwner() throws IOException {
-        Path handoff = repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDispatchHandoff.java");
-        String handoffSource = Files.readString(handoff);
-        assertTrue(handoffSource.contains("poll(String adapterMailboxKey"),
-                "Transport dispatch handoff must expose mailbox-scoped poll only");
-        assertTrue(handoffSource.contains("int maxItems"),
-                "Transport dispatch handoff poll must be bounded by caller-provided maxItems");
-        assertTrue(!handoffSource.contains("poll(long timeoutMillis)"),
-                "Transport dispatch handoff must not keep an unscoped production poll entry");
-        assertTrue(!handoffSource.contains("complete("),
-                "Transport dispatch handoff must not keep queue ack/complete for assigned dispatch");
+        assertPathsDoNotExist(
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDispatchHandoff.java")
+        );
+        Path dispatchQueue = repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDispatchQueue.java");
+        String dispatchQueueSource = Files.readString(dispatchQueue);
+        assertTrue(dispatchQueueSource.contains("poll(String dispatchQueueKey"),
+                "Transport dispatch queue must expose scoped poll only");
+        assertTrue(dispatchQueueSource.contains("int maxItems"),
+                "Transport dispatch queue poll must be bounded by caller-provided maxItems");
+        assertTrue(!dispatchQueueSource.contains("poll(long timeoutMillis)"),
+                "Transport dispatch queue must not keep an unscoped production poll entry");
+        assertTrue(!dispatchQueueSource.contains("complete("),
+                "Transport dispatch queue must not keep queue ack/complete for assigned dispatch");
 
         assertNoProductionSourceContains(
                 List.of(repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/MassApplication.java")),
@@ -1757,6 +1760,44 @@ class TransportConvergenceArchitectureGuardTest {
                 "pollDispatchViews",
                 "toDispatchView",
                 "toDispatchViews"
+        );
+    }
+
+    @Test
+    void transportQueueMainlineUsesInfraQueuePrimitivesOnly() throws IOException {
+        assertPathsDoNotExist(
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/BufferedTransportResultIngressChannel.java"),
+                repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/TransportDispatchHandoff.java")
+        );
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/InMemoryTransportResultIngressQueue.java"),
+                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/RedisTransportResultIngressChannel.java"),
+                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/InMemoryTransportDispatchHandoff.java"),
+                        repoRoot().resolve("transport/transport_runtime/src/main/java/com/xa/mass/transport/runtime/delivery/RedisTransportDispatchHandoff.java")
+                ),
+                "LinkedBlockingQueue",
+                "ArrayBlockingQueue",
+                "BlockingQueue<",
+                "Thread.sleep",
+                "TimeUnit.MILLISECONDS.sleep",
+                "TimeUnit.NANOSECONDS.sleep",
+                "RedisCommands",
+                "RPUSH",
+                "LPOP",
+                "BRPOP",
+                "BLPOP"
+        );
+        assertNoProductionSourceContains(
+                List.of(
+                        repoRoot().resolve("transport/transport_runtime/src/main/java"),
+                        repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java")
+                ),
+                "import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff",
+                "implements TransportDispatchHandoff",
+                "Supplier<TransportDispatchHandoff>",
+                "TransportDispatchHandoff transportDispatch",
+                "TransportDispatchHandoff handoff"
         );
     }
 

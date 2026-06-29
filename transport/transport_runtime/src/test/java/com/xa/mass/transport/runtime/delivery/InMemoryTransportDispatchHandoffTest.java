@@ -22,7 +22,7 @@ class InMemoryTransportDispatchHandoffTest {
 
         assertEquals(
                 List.of(DispatchOutcomeStatus.QUEUED),
-                handoff.offer(DispatchMessageFixtures.batch(
+                offer(handoff, DispatchMessageFixtures.batch(
                         DispatchMessageFixtures.item("msg-1", "worker-1")
                 )).stream().map(outcome -> outcome.getStatus()).toList()
         );
@@ -35,13 +35,13 @@ class InMemoryTransportDispatchHandoffTest {
     @Test
     void fullQueueReturnsBackpressureWithoutBlockingProducer() {
         InMemoryTransportDispatchHandoff handoff = new InMemoryTransportDispatchHandoff(1);
-        handoff.offer(DispatchMessageFixtures.batch(
+        offer(handoff, DispatchMessageFixtures.batch(
                 DispatchMessageFixtures.item("msg-1", "worker-1")
         ));
 
         assertEquals(
                 List.of(DispatchOutcomeStatus.BACKPRESSURE),
-                handoff.offer(DispatchMessageFixtures.batch(
+                offer(handoff, DispatchMessageFixtures.batch(
                         DispatchMessageFixtures.item("msg-2", "worker-2")
                 )).stream().map(outcome -> outcome.getStatus()).toList()
         );
@@ -53,14 +53,14 @@ class InMemoryTransportDispatchHandoffTest {
 
         assertEquals(
                 List.of(DispatchOutcomeStatus.QUEUED),
-                handoff.offer(new AdapterMailboxDispatchBatch(
+                offer(handoff, new AdapterMailboxDispatchBatch(
                         "mailbox-1",
                         List.of(DispatchMessageFixtures.item("msg-1", "worker-1"))
                 )).stream().map(outcome -> outcome.getStatus()).toList()
         );
         assertEquals(
                 List.of(DispatchOutcomeStatus.QUEUED),
-                handoff.offer(new AdapterMailboxDispatchBatch(
+                offer(handoff, new AdapterMailboxDispatchBatch(
                         "mailbox-2",
                         List.of(DispatchMessageFixtures.item("msg-2", "worker-2"))
                 )).stream().map(outcome -> outcome.getStatus()).toList()
@@ -70,7 +70,7 @@ class InMemoryTransportDispatchHandoffTest {
     @Test
     void pollIsDestructiveAndDoesNotRequireAck() throws Exception {
         InMemoryTransportDispatchHandoff handoff = new InMemoryTransportDispatchHandoff(2);
-        handoff.offer(DispatchMessageFixtures.batch(
+        offer(handoff, DispatchMessageFixtures.batch(
                 DispatchMessageFixtures.item("msg-1", "worker-1")
         ));
 
@@ -86,9 +86,15 @@ class InMemoryTransportDispatchHandoffTest {
 
         assertEquals(
                 List.of(DispatchOutcomeStatus.QUEUED),
-                handoff.offer(DispatchMessageFixtures.batch(
+                offer(handoff, DispatchMessageFixtures.batch(
                         DispatchMessageFixtures.item("msg-1", "worker-1")
                 )).stream().map(outcome -> outcome.getStatus()).toList()
         );
+    }
+
+    private static java.util.List<com.xa.mass.transport.model.DispatchOutcome> offer(
+            InMemoryTransportDispatchHandoff handoff,
+            AdapterMailboxDispatchBatch batch) {
+        return handoff.offer(batch.adapterMailboxKey(), batch.items());
     }
 }

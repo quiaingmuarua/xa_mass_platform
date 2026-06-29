@@ -198,17 +198,17 @@ public class MassApplicationBuilder {
             return this;
         }
 
-        public TransportBuilder redisDispatchHandoff(String redisUri) {
-            return redisDispatchHandoff(
+        public TransportBuilder redisDispatchQueue(String redisUri) {
+            return redisDispatchQueue(
                     redisUri,
                     RedisTransportDispatchHandoff.DEFAULT_NAMESPACE_PREFIX
             );
         }
 
-        public TransportBuilder redisDispatchHandoff(String redisUri, String namespacePrefix) {
+        public TransportBuilder redisDispatchQueue(String redisUri, String namespacePrefix) {
             String normalizedRedisUri = requireRedisUri(redisUri);
             String normalizedNamespacePrefix = requireNamespacePrefix(namespacePrefix);
-            config.setDispatchHandoffFactory(() -> new RedisTransportDispatchHandoff(
+            config.setDispatchQueueFactory(() -> new RedisTransportDispatchHandoff(
                     normalizedRedisUri,
                     normalizedNamespacePrefix,
                     RedisTransportDispatchHandoff.DEFAULT_MAX_QUEUED_ITEMS_PER_QUEUE
@@ -232,7 +232,7 @@ public class MassApplicationBuilder {
         }
 
         public TransportBuilder redisDistributedChannels(String redisUri) {
-            return redisDispatchHandoff(redisUri, RedisTransportNamespaces.DISPATCH)
+            return redisDispatchQueue(redisUri, RedisTransportNamespaces.DISPATCH)
                     .redisResultIngressQueue(redisUri, RedisTransportNamespaces.RESULT_INGRESS)
                     .redisEndpointLeaseStore(redisUri, RedisTransportNamespaces.ENDPOINT_LEASE)
                     .redisPollingPendingDeliveryBuffer(redisUri, RedisPollingPendingDeliveryBuffer.DEFAULT_NAMESPACE_PREFIX);
@@ -240,7 +240,7 @@ public class MassApplicationBuilder {
 
         public TransportBuilder redisDistributedChannels(String redisUri, String namespacePrefix) {
             String normalizedNamespacePrefix = requireNamespacePrefix(namespacePrefix);
-            return redisDispatchHandoff(redisUri, normalizedNamespacePrefix + ":dispatch")
+            return redisDispatchQueue(redisUri, normalizedNamespacePrefix + ":dispatch")
                     .redisResultIngressQueue(redisUri, normalizedNamespacePrefix + ":result-ingress")
                     .redisEndpointLeaseStore(redisUri, normalizedNamespacePrefix + ":endpoint-lease")
                     .redisPollingPendingDeliveryBuffer(redisUri, normalizedNamespacePrefix + ":polling-delivery");

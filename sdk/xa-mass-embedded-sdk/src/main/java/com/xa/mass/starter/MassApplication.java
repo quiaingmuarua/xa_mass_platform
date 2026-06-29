@@ -20,7 +20,7 @@ import com.xa.mass.transport.runtime.ResolvedPullWorkerTransport;
 import com.xa.mass.transport.runtime.TransportBinding;
 import com.xa.mass.transport.runtime.TransportResultIngressQueue;
 import com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeEnvironment;
-import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
+import com.xa.mass.transport.runtime.delivery.TransportDispatchQueue;
 import com.xa.mass.transport.runtime.delivery.TransportAssignedDeliverySubmitter;
 import com.xa.mass.transport.starter.EmbeddedAdapterStarter;
 import com.xa.mass.transport.starter.EmbeddedAdapterStarterDefaults;
@@ -54,8 +54,8 @@ import static com.xa.mass.runtime.worker.DispatchAvailabilitySource.TRANSPORT_DI
 public class MassApplication {
 
     private static final Logger logger = LoggerFactory.getLogger(MassApplication.class);
-    private static final int DEFAULT_DISPATCH_HANDOFF_CAPACITY =
-            Integer.getInteger("xa.mass.engine.dispatchHandoffCapacity", 10_000);
+    private static final int DEFAULT_TRANSPORT_QUEUE_CAPACITY =
+            Integer.getInteger("xa.mass.transport.queueCapacity", 10_000);
 
     private final TransportRuntimeComposition transportRuntimeComposition;
     private final EngineConfig engineConfig;
@@ -64,7 +64,7 @@ public class MassApplication {
 
     private final MassEngine engine;
     private TransportEndpointLeaseStore endpointLeaseStore;
-    private TransportDispatchHandoff transportDispatchHandoff;
+    private TransportDispatchQueue transportDispatchQueue;
     private EmbeddedAdapterStarter embeddedAdapterStarter;
     private TransportResultIngressQueue resultIngressQueue;
     private RedisTransportResultIngressChannel taskResultIngressQueue;
@@ -121,7 +121,7 @@ public class MassApplication {
                 stopEmbeddedAdapterStarter();
                 TransportRuntimeRole runtimeRole = transportRuntimeComposition.getRuntimeRole();
                 if (runtimeRole == TransportRuntimeRole.TRANSPORT_CONSUMER) {
-                    stopDispatchHandoff();
+                    stopDispatchQueue();
                     stopDistributedTransportChannels();
                 } else if (runtimeRole == TransportRuntimeRole.ENGINE_PRODUCER) {
                     stopDistributedTransportChannels();
@@ -131,7 +131,7 @@ public class MassApplication {
                 }
             } finally {
                 stopDistributedTransportQueueDrains();
-                stopDispatchHandoff();
+                stopDispatchQueue();
                 closeDistributedTransportChannels();
                 stopEndpointLeaseStore();
                 stopTransportRuntimeTaskExecutor();
@@ -157,7 +157,7 @@ public class MassApplication {
         }
         try {
             stopEmbeddedAdapterStarter();
-            stopDispatchHandoff();
+            stopDispatchQueue();
             stopDistributedTransportChannels();
         } catch (Exception cleanupError) {
             startupFailure.addSuppressed(cleanupError);
@@ -199,9 +199,9 @@ public class MassApplication {
             );
             TransportRuntimeRole runtimeRole = transportRuntimeComposition.getRuntimeRole();
             validateWorkerDeliveryTargetResolverConfiguration(runtimeRole);
-            if (requiresDispatchHandoff(runtimeRole)) {
-                transportDispatchHandoff =
-                        transportRuntimeComposition.resolveTransportDispatchHandoff(DEFAULT_DISPATCH_HANDOFF_CAPACITY);
+            if (requiresDispatchQueue(runtimeRole)) {
+                transportDispatchQueue =
+                        transportRuntimeComposition.resolveTransportDispatchQueue(DEFAULT_TRANSPORT_QUEUE_CAPACITY);
             }
             TaskDispatchBatchListener taskDispatchListener = null;
             if (runtimeRole == TransportRuntimeRole.TRANSPORT_CONSUMER) {
@@ -211,7 +211,7 @@ public class MassApplication {
             } else if (engineConfig.isEnabled()) {
                 TaskResultIngestFacade taskResultIngestFacade = engineConfig.getTaskResultIngestFacade();
                 TransportResultIngressQueue resolvedResultQueue = new InMemoryTransportResultIngressQueue(
-                        DEFAULT_DISPATCH_HANDOFF_CAPACITY
+                        DEFAULT_TRANSPORT_QUEUE_CAPACITY
                 );
                 if (runtimeRole == TransportRuntimeRole.ENGINE_PRODUCER) {
                     taskResultIngressQueue = transportRuntimeComposition.resolveTaskResultIngressQueue();
@@ -235,7 +235,7 @@ public class MassApplication {
             if (runtimeRole != TransportRuntimeRole.ENGINE_PRODUCER) {
                 embeddedAdapterStarter = EmbeddedAdapterStarterDefaults.createStarter(
                         new EmbeddedAdapterRuntimeEnvironment(
-                                transportDispatchHandoff,
+                                transportDispatchQueue,
                                 resultIngressQueue,
                                 endpointLeaseStore,
                                 currentSessionDisconnectSink,
@@ -247,12 +247,12 @@ public class MassApplication {
                 embeddedAdapterStarter.create(transportRuntimeComposition.resolveEmbeddedAdapterRuntimeSpecs());
             }
             if (engineConfig.isEnabled() && runtimeRole != TransportRuntimeRole.TRANSPORT_CONSUMER) {
-                taskDispatchListener = createDispatchSubmitter(transportDispatchHandoff);
+                taskDispatchListener = createDispatchSubmitter(transportDispatchQueue);
             }
             return taskDispatchListener;
         } catch (Exception e) {
             try {
-                stopDispatchHandoff();
+                stopDispatchQueue();
                 stopDistributedTransportChannels();
                 stopTransportRuntimeTaskExecutor();
                 stopEventRuntimeTaskExecutor();
@@ -264,7 +264,7 @@ public class MassApplication {
         }
     }
 
-    private boolean requiresDispatchHandoff(TransportRuntimeRole runtimeRole) {
+    private boolean requiresDispatchQueue(TransportRuntimeRole runtimeRole) {
         return runtimeRole == TransportRuntimeRole.EMBEDDED
                 || runtimeRole == TransportRuntimeRole.ENGINE_PRODUCER
                 || runtimeRole == TransportRuntimeRole.TRANSPORT_CONSUMER;
@@ -281,8 +281,8 @@ public class MassApplication {
         }
     }
 
-    private TaskDispatchBatchListener createDispatchSubmitter(TransportDispatchHandoff handoff) {
-        TransportAssignedDeliverySubmitter assignedDeliverySubmitter = new TransportAssignedDeliverySubmitter(handoff);
+    private TaskDispatchBatchListener createDispatchSubmitter(TransportDispatchQueue dispatchQueue) {
+        TransportAssignedDeliverySubmitter assignedDeliverySubmitter = new TransportAssignedDeliverySubmitter(dispatchQueue);
         return new TaskDispatchRoutingSubmitter(
                 assignedDeliverySubmitter,
                 createWorkerDeliveryTargetResolver()
@@ -436,11 +436,11 @@ public class MassApplication {
         }
     }
 
-    private void stopDispatchHandoff() {
-        TransportDispatchHandoff handoff = transportDispatchHandoff;
-        transportDispatchHandoff = null;
-        if (handoff != null) {
-            handoff.shutdown();
+    private void stopDispatchQueue() {
+        TransportDispatchQueue dispatchQueue = transportDispatchQueue;
+        transportDispatchQueue = null;
+        if (dispatchQueue != null) {
+            dispatchQueue.shutdown();
         }
     }
 

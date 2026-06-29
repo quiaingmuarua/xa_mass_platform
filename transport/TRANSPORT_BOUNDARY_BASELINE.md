@@ -177,18 +177,17 @@ Transport should stay centered on these concepts only:
   visibility lifecycle inside transport. Queue drain lifecycle is assembled by
   SDK/starter (`TaskResultIngressQueueDrain`), not by a transport-runtime pump
   owner.
-- `TransportDispatchHandoff`: best-effort dispatch queue between
+- `TransportDispatchQueue`: best-effort dispatch queue port between
   engine/starter assembly and transport. Producers offer
   `AdapterMailboxDispatchBatch(adapterMailboxKey=<key>, items)` after
   worker-runtime delivery target evidence resolves the already selected worker
-  to an adapter mailbox. Handoff implementations own bounded queue admission,
-  destructive mailbox poll, mailbox consumer availability evidence, and
-  availability/backpressure outcomes. Mailbox consumer availability is finite
-  queue-safety proof refreshed by adapter-owned mailbox consumers; it is not an
-  adapter health monitor, lifecycle truth, or recovery owner.
+  to an adapter mailbox. Transport implementations own typed
+  `DispatchMessage` codec/status mapping and availability/backpressure
+  outcomes; keyed FIFO storage, bounded admission, and blocking poll mechanics
+  are delegated to infra queue primitives.
 - Adapter-owned mailbox consumers are embedded-support contributions owned by
   concrete adapter bootstraps. A consumer polls one mailbox through
-  `TransportDispatchHandoff`, invokes the local `AdapterCommandExecutor`, and
+  `TransportDispatchQueue`, invokes the local `AdapterCommandExecutor`, and
   logs retryable final-hop outcomes for diagnosis. There
   is no production global dispatch pump/listener or central mailbox mount.
 - `DeliveryPullResult`: explicit transport pull-path status plus delivered
@@ -287,13 +286,13 @@ hot-path recovery logic.
 - canonical adapter-id resolution; old aliases such as `ws`, `pull`, `queue`, or `tcp-socket` are not adapter identities
 - canonical transport-hint resolution; adapter labels such as `websocket`,
   `ws`, `push`, `pull`, or `queue` are not family aliases
-- dispatch handoff queue/store and mailbox-scoped embedded host drain
+- dispatch queue typed adapter and mailbox-scoped embedded host drain
 - runtime-owned envelope identity/timestamp generation for queued dispatch
   handoff
-- dispatch handoff admission control and polling-adapter-owned pending buffer
+- dispatch queue admission/status translation and polling-adapter-owned pending buffer
   configuration
 - adapter-facing host executor capability for transport-owned blocking work
-- result ingress queueing, buffering, and runtime logging; result
+- result ingress queueing and runtime logging; result
   payload decoding, correlation, and lease/attempt validation live in
   SDK/starter or engine-owned result code
 - core dispatch handoff bounded admission and destructive mailbox poll
@@ -302,10 +301,10 @@ hot-path recovery logic.
   central mount. Known final-hop failures are returned as `DispatchOutcome`
   values and logged by the consumer loop; after destructive poll, engine
   task-attempt timeout is the recovery path.
-- engine-to-transport dispatch handoff queue/store ownership after assignment;
-  current embedded default wiring is an in-memory `TransportDispatchHandoff`,
-  while split runtimes use Redis adapter-mailbox dispatch queues plus mailbox
-  consumer availability evidence
+- engine-to-transport dispatch queue ownership after assignment; current
+  embedded default wiring uses an in-memory `TransportDispatchQueue`
+  implementation, while split runtimes use Redis adapter-mailbox dispatch
+  queues plus mailbox consumer availability evidence
 - producer-side starter assembly translates immutable `TaskDispatchContext +
   TaskDispatchBinding` assignment facts into flat `DispatchMessage` values.
   The binding-level worker-group context remains `deliveryBucketId`, and
@@ -803,7 +802,7 @@ Retryable dispatch outcomes must carry delivery id,
 transport trace ids are diagnostics and must not double as compensation keys.
 
 Assignment-to-transport handoff is also part of the hot path. Embedded and
-split runtime both use adapter-mailbox `TransportDispatchHandoff`
+split runtime both use adapter-mailbox `TransportDispatchQueue`
 contracts: producers offer to an `adapterMailboxKey`, and embedded adapter
 hosts contribute adapter-owned consumers that destructively poll only their
 mailbox. Producer
@@ -857,8 +856,9 @@ fields are not transport owner truth and are not required by push adapters.
 Queue mechanics such as keyed FIFO storage, blocking poll coordination,
 per-key admission, and targeted `size(String key)` diagnostics may live under
 `platform_infra` so long as transport semantics remain owned by
-`TransportDispatchHandoff`, `DispatchMessage`, `DispatchOutcome`, and the
-polling-adapter-owned `PollingPendingDeliveryBuffer`. Embedded runtime
+`TransportDispatchQueue`, `DispatchMessage`, `DispatchOutcome`,
+`TransportResultIngressQueue`, and the polling-adapter-owned
+`PollingPendingDeliveryBuffer`. Embedded runtime
 composition may choose between the default in-memory polling pending buffer and
 a Redis-backed polling pending buffer, but that selection belongs to
 SDK/starter polling adapter assembly rather than transport-facing adapter

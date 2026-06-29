@@ -66,7 +66,7 @@ class RedisTransportDispatchHandoffTest {
     @Test
     void offerAndPollRoundTripsByAdapterMailbox() throws Exception {
         assertEquals(List.of(DispatchOutcomeStatus.QUEUED),
-                producer.offer(DispatchMessageFixtures.batch(
+                offer(producer, DispatchMessageFixtures.batch(
                         DispatchMessageFixtures.item("msg-1", "worker-1")
                 )).stream().map(outcome -> outcome.getStatus()).toList());
 
@@ -79,14 +79,14 @@ class RedisTransportDispatchHandoffTest {
     @Test
     void offerDoesNotRequireMailboxConsumerAvailability() {
         assertEquals(List.of(DispatchOutcomeStatus.QUEUED),
-                producer.offer(DispatchMessageFixtures.batch(
+                offer(producer, DispatchMessageFixtures.batch(
                         DispatchMessageFixtures.item("msg-1", "worker-1")
                 )).stream().map(outcome -> outcome.getStatus()).toList());
     }
 
     @Test
     void boundedOfferUsesMailboxKeysWithoutWorkerLaneOrNodeKeys() {
-        producer.offer(DispatchMessageFixtures.batch(
+        offer(producer, DispatchMessageFixtures.batch(
                 DispatchMessageFixtures.item("msg-1", "worker-1")
         ));
         List<String> keys = producerConnection.sync().keys(namespacePrefix + ":*");
@@ -110,18 +110,18 @@ class RedisTransportDispatchHandoffTest {
 
     @Test
     void fullMailboxQueueReturnsBackpressureWithoutSleepingProducer() {
-        producer.offer(DispatchMessageFixtures.batch(DispatchMessageFixtures.item("msg-1", "worker-1")));
-        producer.offer(DispatchMessageFixtures.batch(DispatchMessageFixtures.item("msg-2", "worker-2")));
+        offer(producer, DispatchMessageFixtures.batch(DispatchMessageFixtures.item("msg-1", "worker-1")));
+        offer(producer, DispatchMessageFixtures.batch(DispatchMessageFixtures.item("msg-2", "worker-2")));
 
         assertEquals(List.of(DispatchOutcomeStatus.BACKPRESSURE),
-                producer.offer(DispatchMessageFixtures.batch(
+                offer(producer, DispatchMessageFixtures.batch(
                         DispatchMessageFixtures.item("msg-3", "worker-3")
                 )).stream().map(outcome -> outcome.getStatus()).toList());
     }
 
     @Test
     void pollBySameQueueKeyIsDestructiveAcrossConsumers() throws Exception {
-        producer.offer(DispatchMessageFixtures.batch(DispatchMessageFixtures.item("msg-1", "worker-1")));
+        offer(producer, DispatchMessageFixtures.batch(DispatchMessageFixtures.item("msg-1", "worker-1")));
 
         List<DispatchMessage> batch = consumerTwo.poll(DispatchMessageFixtures.mailboxKey(), 64, 500L);
 
@@ -131,7 +131,7 @@ class RedisTransportDispatchHandoffTest {
 
     @Test
     void pollIsDestructiveAndDoesNotRequireAck() throws Exception {
-        producer.offer(DispatchMessageFixtures.batch(DispatchMessageFixtures.item("msg-1", "worker-1")));
+        offer(producer, DispatchMessageFixtures.batch(DispatchMessageFixtures.item("msg-1", "worker-1")));
 
         List<DispatchMessage> batch = consumerOne.poll(DispatchMessageFixtures.mailboxKey(), 64, 500L);
 
@@ -149,5 +149,11 @@ class RedisTransportDispatchHandoffTest {
         List<DispatchMessage> batch = consumerOne.poll(DispatchMessageFixtures.mailboxKey(), 64, 500L);
 
         assertEquals(List.of("msg-1"), DispatchMessageFixtures.messages(batch));
+    }
+
+    private static java.util.List<com.xa.mass.transport.model.DispatchOutcome> offer(
+            RedisTransportDispatchHandoff handoff,
+            AdapterMailboxDispatchBatch batch) {
+        return handoff.offer(batch.adapterMailboxKey(), batch.items());
     }
 }

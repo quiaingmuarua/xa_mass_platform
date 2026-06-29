@@ -12,7 +12,7 @@ import com.xa.mass.transport.runtime.RedisTransportResultIngressChannel;
 import com.xa.mass.transport.runtime.delivery.DispatchOutcomeFactory;
 import com.xa.mass.transport.runtime.delivery.AdapterMailboxDispatchBatch;
 import com.xa.mass.transport.runtime.delivery.DispatchMessage;
-import com.xa.mass.transport.runtime.delivery.TransportDispatchHandoff;
+import com.xa.mass.transport.runtime.delivery.TransportDispatchQueue;
 import com.xa.mass.worker.runtime.evidence.SelectedWorkerDeliveryTargetEvidence;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import org.junit.jupiter.api.Test;
@@ -45,7 +45,7 @@ class MassApplicationDistributedTransportTest {
 
         CapturingDeliveryCommandHandoff handoff = new CapturingDeliveryCommandHandoff();
         TransportConfig transport = disabledEngineProducerTransport();
-        transport.setDispatchHandoffFactory(() -> handoff);
+        transport.setDispatchQueueFactory(() -> handoff);
         transport.setTaskResultIngressQueueFactory(() -> mock(RedisTransportResultIngressChannel.class));
 
         CapturingMassEngine massEngine = new CapturingMassEngine(engine);
@@ -85,7 +85,7 @@ class MassApplicationDistributedTransportTest {
 
         CapturingDeliveryCommandHandoff handoff = new CapturingDeliveryCommandHandoff();
         TransportConfig transport = disabledEngineProducerTransport();
-        transport.setDispatchHandoffFactory(() -> handoff);
+        transport.setDispatchQueueFactory(() -> handoff);
         transport.setTaskResultIngressQueueFactory(() -> mock(RedisTransportResultIngressChannel.class));
 
         CapturingMassEngine massEngine = new CapturingMassEngine(engine);
@@ -225,20 +225,16 @@ class MassApplicationDistributedTransportTest {
         }
     }
 
-    private static final class CapturingDeliveryCommandHandoff implements TransportDispatchHandoff {
+    private static final class CapturingDeliveryCommandHandoff implements TransportDispatchQueue {
         private final List<AdapterMailboxDispatchBatch> submitted = new ArrayList<>();
 
         @Override
-        public List<DispatchOutcome> offer(AdapterMailboxDispatchBatch batch) {
+        public List<DispatchOutcome> offer(String dispatchQueueKey, List<DispatchMessage> items) {
+            AdapterMailboxDispatchBatch batch = new AdapterMailboxDispatchBatch(dispatchQueueKey, items);
             submitted.add(batch);
             return batch.items().stream()
                     .map(item -> outcome(item, DispatchOutcomeStatus.QUEUED, false, null))
                     .toList();
-        }
-
-        @Override
-        public List<DispatchOutcome> offer(String dispatchQueueKey, List<DispatchMessage> items) {
-            return offer(new AdapterMailboxDispatchBatch(dispatchQueueKey, items));
         }
 
         @Override
