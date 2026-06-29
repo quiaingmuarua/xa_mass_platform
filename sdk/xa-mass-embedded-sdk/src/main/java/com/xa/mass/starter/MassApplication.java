@@ -11,7 +11,6 @@ import com.xa.mass.sdk.worker.EmbeddedPullWorkerSessions;
 import com.xa.mass.sdk.worker.EmbeddedPullWorkerSession;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
-import com.xa.mass.starter.config.TransportRuntimeComposition;
 import com.xa.mass.starter.config.TransportRuntimeRole;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.starter.AssignedDeliverySink;
@@ -42,7 +41,7 @@ public class MassApplication {
 
     private static final Logger logger = LoggerFactory.getLogger(MassApplication.class);
 
-    private final TransportRuntimeComposition transportRuntimeComposition;
+    private final TransportConfig transportConfig;
     private final EngineConfig engineConfig;
     private final AtomicBoolean running = new AtomicBoolean(false);
     private final MassEventRuntime eventRuntime;
@@ -57,7 +56,7 @@ public class MassApplication {
                            TransportConfig transportConfig,
                            EngineConfig engineConfig) {
         this.engine = engine;
-        this.transportRuntimeComposition = transportConfig.snapshotRuntimeComposition();
+        this.transportConfig = new TransportConfig(transportConfig);
         this.engineConfig = engineConfig;
         this.eventRuntime = createEventRuntime();
     }
@@ -157,13 +156,13 @@ public class MassApplication {
             engineConfig.setWorkerReachabilityLookup(this::resolveWorkerReachabilityFromEndpointLease);
             transportRuntimeTaskExecutor = new VirtualThreadRuntimeTaskExecutor(
                     "transport-runtime-",
-                    transportRuntimeComposition.getTransportRuntimeMaxPendingTasks()
+                    transportConfig.getTransportRuntimeMaxPendingTasks()
             );
-            TransportRuntimeRole runtimeRole = transportRuntimeComposition.getRuntimeRole();
+            TransportRuntimeRole runtimeRole = transportConfig.getRuntimeRole();
             validateWorkerDeliveryTargetResolverConfiguration(runtimeRole);
             transportAssembly = EmbeddedTransportAssembly.create(new EmbeddedTransportAssemblyConfig(
-                    transportRuntimeComposition.getBackendDeclaration(),
-                    transportRuntimeComposition.resolveEmbeddedAdapterDeclarations(),
+                    transportConfig.getBackendDeclaration(),
+                    transportConfig.resolveEmbeddedAdapterDeclarations(),
                     transportRuntimeTaskExecutor,
                     createCurrentSessionDisconnectHandler()
             ));
@@ -325,13 +324,13 @@ public class MassApplication {
 
     private void startEmbeddedAdapterStarter() {
         if (transportAssembly != null
-                && transportRuntimeComposition.getRuntimeRole() != TransportRuntimeRole.ENGINE_PRODUCER) {
+                && transportConfig.getRuntimeRole() != TransportRuntimeRole.ENGINE_PRODUCER) {
             transportAssembly.startAllAdapters();
         }
     }
 
     private void startEngine(TaskDispatchBatchListener taskDispatchListener) {
-        if (transportRuntimeComposition.getRuntimeRole() == TransportRuntimeRole.TRANSPORT_CONSUMER) {
+        if (transportConfig.getRuntimeRole() == TransportRuntimeRole.TRANSPORT_CONSUMER) {
             logger.info("MassEngine is skipped for transport-consumer runtime role");
             return;
         }
@@ -388,12 +387,12 @@ public class MassApplication {
     }
 
     private void startEventRuntimeTaskExecutor() {
-        if (transportRuntimeComposition.getEventHandlerTimeoutMillis() <= 0 || eventRuntimeTaskExecutor != null) {
+        if (transportConfig.getEventHandlerTimeoutMillis() <= 0 || eventRuntimeTaskExecutor != null) {
             return;
         }
         eventRuntimeTaskExecutor = new VirtualThreadRuntimeTaskExecutor(
                 "runtime-event-handler-",
-                transportRuntimeComposition.getEventRuntimeMaxPendingTasks()
+                transportConfig.getEventRuntimeMaxPendingTasks()
         );
     }
 
@@ -409,7 +408,7 @@ public class MassApplication {
 
     private MassEventRuntime createEventRuntime() {
         InMemoryMassEventRuntime inMemoryRuntime = new InMemoryMassEventRuntime();
-        long timeoutMillis = transportRuntimeComposition.getEventHandlerTimeoutMillis();
+        long timeoutMillis = transportConfig.getEventHandlerTimeoutMillis();
         if (timeoutMillis <= 0) {
             return inMemoryRuntime;
         }
@@ -435,7 +434,7 @@ public class MassApplication {
 
     public boolean isRunning() {
         boolean engineExpected = engineConfig.isEnabled()
-                && transportRuntimeComposition.getRuntimeRole() != TransportRuntimeRole.TRANSPORT_CONSUMER;
+                && transportConfig.getRuntimeRole() != TransportRuntimeRole.TRANSPORT_CONSUMER;
         return running.get()
                 && (transportAssembly == null || transportAssembly.isRunning())
                 && (!engineExpected || engine == null || engine.isRunning());

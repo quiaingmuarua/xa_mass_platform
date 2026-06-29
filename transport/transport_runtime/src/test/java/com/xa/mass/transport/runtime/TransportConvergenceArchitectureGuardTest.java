@@ -865,23 +865,26 @@ class TransportConvergenceArchitectureGuardTest {
         assertTrue(!factorySource.contains("registrationDescriptors()"),
                 "Polling runtime factory must not own standalone registration metadata");
 
-        Path composition = repoRoot().resolve(
-                "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/config/TransportRuntimeComposition.java");
-        String compositionSource = Files.readString(composition);
-        assertTrue(!compositionSource.contains("EmbeddedAdapterRuntimeSpec")
-                        && !compositionSource.contains("new PollingAdapterRuntimeFactory(")
-                        && !compositionSource.contains("new WebSocketAdapterRuntimeFactory(")
-                        && !compositionSource.contains("new SocketAdapterRuntimeFactory(")
-                        && !compositionSource.contains("transportHintForType")
-                        && !compositionSource.contains("TransportRegistrationResolver")
-                        && !compositionSource.contains("runtimeOwnedEndpointLeaseStore")
-                        && !compositionSource.contains("WebSocketAdapterConfig")
-                        && !compositionSource.contains("SocketAdapterConfig")
-                        && !compositionSource.contains("WebSocketServerFactoryContext"),
-                "TransportRuntimeComposition must stay a declaration snapshot/projection surface, not runtime spec, adapter factory, or concrete config owner");
+        assertPathsDoNotExist(
+                repoRoot().resolve(
+                        "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/config/EmbeddedAdapterSpecAssembler.java"),
+                repoRoot().resolve(
+                        "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/config/TransportRuntimeComposition.java")
+        );
 
-        assertPathsDoNotExist(repoRoot().resolve(
-                "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/config/EmbeddedAdapterSpecAssembler.java"));
+        String transportConfigSource = Files.readString(repoRoot().resolve(
+                "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/config/TransportConfig.java"));
+        assertTrue(!transportConfigSource.contains("EmbeddedAdapterRuntimeSpec")
+                        && !transportConfigSource.contains("new PollingAdapterRuntimeFactory(")
+                        && !transportConfigSource.contains("new WebSocketAdapterRuntimeFactory(")
+                        && !transportConfigSource.contains("new SocketAdapterRuntimeFactory(")
+                        && !transportConfigSource.contains("transportHintForType")
+                        && !transportConfigSource.contains("TransportRegistrationResolver")
+                        && !transportConfigSource.contains("runtimeOwnedEndpointLeaseStore")
+                        && !transportConfigSource.contains("WebSocketAdapterConfig")
+                        && !transportConfigSource.contains("SocketAdapterConfig")
+                        && !transportConfigSource.contains("WebSocketServerFactoryContext"),
+                "TransportConfig may accumulate embedded SDK declarations, but runtime specs, factories, and registration resolution must stay in adapter-starter");
 
         String starterDefaultsSource = Files.readString(repoRoot().resolve(
                 "transport/adapter-starter/src/main/java/com/xa/mass/transport/starter/EmbeddedAdapterStarterDefaults.java"));

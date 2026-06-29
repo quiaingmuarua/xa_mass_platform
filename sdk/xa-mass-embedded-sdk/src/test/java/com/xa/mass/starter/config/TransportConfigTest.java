@@ -20,7 +20,6 @@ class TransportConfigTest {
         config.setBundledWebSocketAdapterDeclaration(declaration);
 
         assertFalse(config.isEnabled());
-        assertFalse(config.snapshotRuntimeComposition().isEnabled());
     }
 
     @Test
@@ -33,17 +32,15 @@ class TransportConfigTest {
         config.addSupplementalSocketAdapterDeclaration(extraSocket);
 
         assertFalse(config.isEnabled());
-        assertFalse(config.snapshotRuntimeComposition().isEnabled());
 
         extraSocket.setEnabled(true);
         config.addSupplementalSocketAdapterDeclaration(extraSocket);
 
         assertTrue(config.isEnabled());
-        assertTrue(config.snapshotRuntimeComposition().isEnabled());
     }
 
     @Test
-    void runtimeCompositionBuildsAdapterStarterDeclarations() {
+    void buildsAdapterStarterDeclarations() {
         TransportConfig config = disabledConfig();
         EmbeddedWebSocketAdapterDeclaration extraWebSocket = new EmbeddedWebSocketAdapterDeclaration();
         extraWebSocket.setAdapterId("ws-extra");
@@ -53,8 +50,7 @@ class TransportConfigTest {
         extraWebSocket.setEndpointPath("/ws-extra");
         config.addSupplementalWebSocketAdapterDeclaration(extraWebSocket);
 
-        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
-        EmbeddedAdapterDeclaration declaration = runtimeComposition.resolveEmbeddedAdapterDeclarations().stream()
+        EmbeddedAdapterDeclaration declaration = config.resolveEmbeddedAdapterDeclarations().stream()
                 .filter(candidate -> "ws-extra".equals(candidate.adapterId()))
                 .findFirst()
                 .orElseThrow();
@@ -67,7 +63,7 @@ class TransportConfigTest {
     }
 
     @Test
-    void runtimeCompositionRejectsDuplicateAdapterIds() {
+    void rejectsDuplicateAdapterIds() {
         TransportConfig config = disabledConfig();
         EmbeddedWebSocketAdapterDeclaration first = new EmbeddedWebSocketAdapterDeclaration();
         first.setAdapterId("edge");
@@ -80,7 +76,7 @@ class TransportConfigTest {
 
         IllegalStateException error = assertThrows(
                 IllegalStateException.class,
-                () -> config.snapshotRuntimeComposition().resolveEmbeddedAdapterDeclarations()
+                config::resolveEmbeddedAdapterDeclarations
         );
         assertTrue(error.getMessage().contains("Duplicate transport adapterId configured: edge"));
     }

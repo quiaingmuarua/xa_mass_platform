@@ -80,6 +80,12 @@ The first slice should not promise both guarantees for the same task type.
 `FAST_READY` is the compact default. `DUE_TIME` is opt-in for task types that
 need a per-message scheduled retry interval.
 
+`FAST_READY` is task-wide backoff. A retry frame returned to the ready LIST may
+sit in front of newly appended frames. The runtime must not promise
+per-message retry due time in this mode, and claim should not skip or rotate
+LIST head entries to simulate per-message scheduling. Task types that require
+message-level due time must use `DUE_TIME`.
+
 ## Durability Boundary
 
 "No loss" has two separate meanings:
@@ -101,6 +107,12 @@ mutations. Redis durability no-loss is an operations choice:
 - do not describe async replica acknowledgement as zero data loss;
 - if strict zero-loss across Redis node loss is required, choose storage and
   acknowledgement policy accordingly before advertising that guarantee.
+
+Runtime profiles must surface this choice. A profile that claims no-loss must
+fail closed or explicitly report degraded mode when Redis durability settings
+do not satisfy the profile. A development or best-effort profile may run with
+weaker durability, but it must not present the same guarantee as the no-loss
+profile.
 
 ## Runtime Guarantees
 
@@ -124,6 +136,7 @@ Hard commitments:
   returns, subject to the Redis durability configuration above;
 - a claimed item remains recoverable from `task:{taskId}:rt` until result,
   retry, finality, or discard removes it;
+- active lease repair can discover tasks that still have `rt` records;
 - result, retry, and final mutations are idempotent by `messageId` and guarded
   by `leaseToken` / attempt evidence;
 - late replay from an older attempt must not overwrite a newer active attempt
@@ -144,6 +157,16 @@ rejection time. If the current `rt` record still exists and the `leaseToken`
 matches, a late-but-current result may still converge the item. Once repair
 creates a newer attempt or final result, the old `leaseToken` is stale and must
 be rejected.
+
+Append acknowledgement is at-least-once unless the caller supplies a stable
+idempotency key and the API layer enables bounded dedupe. If Redis commits the
+append and the response is lost, a retry without idempotency may create another
+logical item. That is duplicate work, not runtime item loss.
+
+Runtime guarantees work convergence and short-retained final result lookup.
+The task-local result hash is not a durable user result ledger; long-term
+result truth belongs to a future ledger, trace materialization, or business
+storage owner.
 
 ## Policy Consistency Model
 
@@ -207,6 +230,7 @@ Runtime Redis owns only hot-path work state:
 ```text
 raw ready backlog
 active lease state
+active task repair discoverability
 task-level retry backoff through lane score
 opt-in message-level scheduled retry visibility
 short-retained final result rows
@@ -243,6 +267,13 @@ Raw Ready Backlog
 
 Sparse Runtime State
   one HASH per active task; fields exist only for active leases
+```
+
+Active lease repair discovers task ids through a lane registry:
+
+```text
+Active Task Registry
+  one SET or ZSET per lane bucket; members are task ids with non-empty rt state
 ```
 
 Opt-in scheduled retry state is task-local:
@@ -290,6 +321,28 @@ which task lanes are actionable now
 which task lanes have a future scheduled retry, backoff, or recheck due time
 which task lanes are parked out of scheduling
 ```
+
+### Active task registry
+
+```text
+tr:{prefix}:task:active:{laneBucketId}
+  type: ZSET
+  member: taskId
+  score: repairCandidateAtMillis or lastTouchedAtMillis
+```
+
+This registry is not a precise lease-expiry index. It is the discoverability
+surface for best-effort active lease repair:
+
+- claim adds `taskId` when it writes at least one `rt` record;
+- result, retry, finality, and discard remove `taskId` when `rt` becomes empty;
+- repair scans bounded task ids from this registry, then scans the corresponding
+  `task:{taskId}:rt` hash within a bounded budget;
+- score may be a coarse repair candidate or last-touched time. It does not
+  claim exact `leaseExpireAtMillis` ordering.
+
+Without this registry, `task:{taskId}:rt` protects payload recovery but repair
+cannot discover which task ids still have active leases.
 
 ### Lane metadata
 
@@ -343,6 +396,7 @@ timestamps in metadata.
     "emptyMatchStreak": 0
   },
   "runtimeGate": "OPEN",
+  "runtimeEpoch": 42,
   "updatedAtMillis": 1760000000000
 }
 ```
@@ -364,6 +418,10 @@ Field rules:
   empty-match penalty. It must not contain item counts or next timestamps.
 - `runtimeGate` is a runtime scheduling gate such as `OPEN` or `PARKED`; it is
   not `Task.status`.
+- `runtimeEpoch` is a runtime fence. Claim, result, repair, pause/resume, and
+  discard mutations must validate the expected epoch inside their Redis atomic
+  boundary. Terminal/discard advances the epoch or writes a terminal fence
+  before deleting task-local keys.
 - `Task.status` must not be copied here as current lifecycle truth.
 - item counts may be sampled through Redis commands or maintained as optional
   diagnostics, but they must not become the core `TaskRuntimeMeta` purpose.
@@ -474,7 +532,7 @@ Rules:
   frame from `item`, removes both entries, and feeds the frame into the same
   scheduling/claim/lease path as ready LIST work;
 - the task lane score should include the earliest `item-score` timestamp as a
-  ready candidate when no earlier ready or lease candidate exists;
+  ready candidate when no earlier score-visible ready candidate exists;
 - `item-score` is allowed because normal completion deletes entries quickly and
   because it represents delayed retry visibility, not the whole raw backlog.
 
@@ -511,7 +569,9 @@ backlog size and not by total retry backlog size.
     "retryPolicyVersion": 7,
     "leaseMillis": 30000
   },
+  "runtimeEpoch": 42,
   "leaseToken": "lease-1",
+  "workerReservationToken": "reservation-1",
   "workerId": "worker-1",
   "workerGroupId": "group-a",
   "batchId": "batch-1",
@@ -539,6 +599,11 @@ without becoming Redis runtime state.
 version/evidence snapshot needed to prove which policy produced this active
 attempt and which resolved lease value applies to it. The current policy for the
 next attempt still lives in `TaskRuntimeMeta`.
+
+`runtimeEpoch` and `workerReservationToken` bind the active item to the runtime
+fence and selected worker slot. A result or repair mutation must reject stale
+epochs. If worker reservation fails, claim must not consume a ready frame; if a
+claim mutation fails after reservation, the caller must release the reservation.
 
 ### Short-retained final results
 
@@ -826,7 +891,7 @@ they own:
 | positive scheduling match | reset `scoreRuntime.emptyMatchStreak` |
 | pause or block | set runtime gate to parked |
 | resume or unblock | clear runtime gate and validate shell |
-| terminal or discard | delete task-local runtime keys and score/meta rows |
+| terminal or discard | write terminal fence, then delete task-local runtime keys and score/meta rows |
 
 Then `rewriteScore` maps the current facts back to one of the four lane states:
 
@@ -948,8 +1013,12 @@ Rules:
   initialization; task policy changes own metadata updates;
 - append must not blindly overwrite a future task-level backoff score with
   `now`; policy decides whether new raw work may wake a backed-off task;
-- caller-supplied idempotency is a separate bounded API concern; the first
-  runtime slice should prefer runtime-generated `messageId`;
+- submit is at-least-once by default. If Redis commits the append but the
+  response is lost, a caller retry without a stable idempotency key may append
+  a second logical item;
+- API-level non-duplicate append requires caller-supplied idempotency key and
+  bounded dedupe. The first runtime slice should still prefer
+  runtime-generated `messageId` as the item identity;
 - task max length/backpressure should be enforced before or during append.
 
 ### Claim
@@ -960,6 +1029,8 @@ Input:
 laneBucketId
 taskId
 selected worker handles
+workerReservationToken
+expectedRuntimeEpoch
 matched/admitted worker evidence
 maxItems
 ```
@@ -969,6 +1040,8 @@ Mutation must be atomic for each claimed batch:
 ```text
 validate task score is still actionable
 read TaskRuntimeMeta for current matching and retry policy
+validate runtimeGate is open and runtimeEpoch == expectedRuntimeEpoch
+validate workerReservationToken exists and belongs to the selected worker slot
 validate ready LIST is non-empty or scheduled retry lane has due entries
 resolve attempt lease length from TaskRuntimeMeta.scorePolicy and scheduling-round evidence
 collect claim source frames up to min(claim count, maxItems):
@@ -980,10 +1053,11 @@ collect claim source frames up to min(claim count, maxItems):
 for each source frame:
   if entry is ready frame:
     validate messageId
-    HSET task:{taskId}:rt messageId RuntimeItemState(LEASED, retryCount=0, attemptPolicy=current policy versions and resolved lease)
+    HSET task:{taskId}:rt messageId RuntimeItemState(LEASED, retryCount=0, runtimeEpoch, workerReservationToken, attemptPolicy=current policy versions and resolved lease)
   if entry is retry frame:
     validate messageId and retryCount
-    HSET task:{taskId}:rt messageId RuntimeItemState(LEASED, retryCount=entry.retryCount, attemptPolicy=current policy versions and resolved lease)
+    HSET task:{taskId}:rt messageId RuntimeItemState(LEASED, retryCount=entry.retryCount, runtimeEpoch, workerReservationToken, attemptPolicy=current policy versions and resolved lease)
+ZADD task:active:{laneBucketId} coarseRepairCandidateAtMillis taskId
 rewrite task score through the score rewrite rule:
   now + positiveMatchDelay, if ready LIST still non-empty after this bounded round
   earliest item-score nextSchedulableAtMillis, if scheduled retry lane still has delayed entries and no earlier ready candidate exists
@@ -1000,6 +1074,12 @@ When ready LIST backlog is large, the claim source policy must give due
 scheduled retry frames priority or a bounded quota so message-level retry due
 time is not starved by fresh backlog.
 
+Worker slot reservation is a precondition for claim. If reservation fails,
+claim must not consume ready or scheduled retry frames. If claim fails after a
+reservation was acquired, the caller must release the reservation. The
+reservation token stored in `RuntimeItemState` is the evidence used by result,
+repair, and diagnostics to connect task ownership with worker-slot ownership.
+
 ### Result apply
 
 Input:
@@ -1007,6 +1087,7 @@ Input:
 ```text
 taskId
 messageId
+expectedRuntimeEpoch
 leaseToken
 success/failure/expired
 retryable
@@ -1017,7 +1098,9 @@ Mutation must be atomic:
 
 ```text
 HGET task:{taskId}:rt messageId
-reject if no runtime item
+if no runtime item:
+  return existing FinalResult if present, otherwise reject as unknown/stale
+reject if runtimeEpoch mismatches expectedRuntimeEpoch
 reject stale result if leaseToken mismatches
 
 if success:
@@ -1046,6 +1129,7 @@ if failure and retry exhausted:
 
 leave TaskRuntimeMeta unchanged unless a separate task policy or runtime-gate
 update owns that change
+remove taskId from task:active:{laneBucketId} when task:{taskId}:rt is empty
 rewrite task score through the rewrite rule
 ```
 
@@ -1057,6 +1141,11 @@ future policy explicitly chooses per-attempt snapshot semantics. Raw ready
 items do not own `maxRetryCount`. The active attempt's `attemptPolicy` proves
 the claim policy and lease semantics, but it does not force the next retry to
 use the old policy.
+
+Final result rows are short-retained idempotency and lookup evidence. They are
+not the durable user result ledger. Runtime finality means the work item left
+runtime ownership; long-term user result retention must be provided by another
+owner if required.
 
 ### Due processing
 
@@ -1099,12 +1188,18 @@ score does not guarantee exact timeout wakeup.
 repair loop may expire the attempt:
 
 ```text
-scan task:{taskId}:rt within a bounded repair budget
-for each RuntimeItemState where leaseExpireAtMillis <= now:
-  expire through the same result apply / retry / finality path
-  validate the current leaseToken before mutating
-  remove or update rt only inside the result/retry/finality atomic boundary
-rewrite task score only for ready/scheduled retry/recheck candidates
+read bounded task ids from task:active:{laneBucketId}
+for each taskId:
+  scan task:{taskId}:rt within a bounded repair budget
+  for each RuntimeItemState where leaseExpireAtMillis <= now:
+    expire through the same result apply / retry / finality path
+    validate runtimeEpoch and current leaseToken before mutating
+    remove or update rt only inside the result/retry/finality atomic boundary
+  if task:{taskId}:rt is empty:
+    remove taskId from task:active:{laneBucketId}
+  else:
+    keep or update task:active:{laneBucketId} with a coarse repair score
+  rewrite task score only for ready/scheduled retry/recheck candidates
 ```
 
 The repair loop may be periodic or opportunistic. It does not need to run on
@@ -1124,7 +1219,7 @@ Pause/block:
 
 ```text
 ZADD task:score:{laneBucketId} PARKED_* taskId
-HSET task:meta:{laneBucketId} taskId runtimeGate=PARKED
+HSET task:meta:{laneBucketId} taskId runtimeGate=PARKED, runtimeEpoch=runtimeEpoch+1
 ```
 
 Do not rewrite every raw ready item or runtime item. Active leases remain in
@@ -1137,6 +1232,7 @@ Resume/unblock:
 ```text
 validate task shell
 inspect ready LIST, scheduled retry lane, and TaskRuntimeMeta
+advance or validate runtimeEpoch
 rewrite score to ELIGIBLE/FUTURE or remove
 ```
 
@@ -1148,16 +1244,22 @@ current `TaskRuntimeMeta`.
 Terminal task cleanup is precise by `taskId`:
 
 ```text
+HSET task:meta:{laneBucketId} taskId runtimeGate=TERMINAL, runtimeEpoch=runtimeEpoch+1
+ZREM task:score:{laneBucketId} taskId
+ZREM task:active:{laneBucketId} taskId
 DEL task:{taskId}:ready
 DEL task:{taskId}:item-score
 DEL task:{taskId}:item
 DEL task:{taskId}:rt
 DEL task:{taskId}:result
-ZREM task:score:{laneBucketId} taskId
 HDEL task:meta:{laneBucketId} taskId
 ```
 
-This cleanup does not scan the namespace and does not require one key per item.
+The terminal fence is the hard boundary. It must be visible to claim, result,
+and repair atomic mutations before physical cleanup is attempted. Physical key
+deletion is allowed to be best-effort delayed, but no new claim may pass the
+terminal fence. This cleanup does not scan the namespace and does not require
+one key per item.
 
 ## Atomicity Boundaries
 
@@ -1167,11 +1269,36 @@ where the state transition crosses multiple Redis values.
 Required atomic boundaries:
 
 ```text
-append: ready LIST push + task score/meta update
-claim: ready LIST pop and/or due item-score claim + runtime HASH write + score update
-result apply: runtime HASH validation + retry/final mutation + item-score/item cleanup + score update
-pause/block/resume: score + meta gate update
-discard: task-local key deletion including scheduled retry lane + score/meta removal
+append:
+  optional idempotency guard + ready LIST push + task score/meta update
+
+claim:
+  validate task score, runtime gate, runtimeEpoch, and workerReservationToken
+  ready LIST pop and/or due item-score claim
+  runtime HASH write
+  active task registry update
+  task score rewrite
+
+result apply:
+  runtime HASH runtimeEpoch and leaseToken validation
+  retry/final mutation
+  item-score/item cleanup
+  active task registry maintenance
+  task score rewrite
+
+lease timeout repair mutation:
+  validate runtimeEpoch and current leaseToken
+  move expired active runtime item through the same retry/final mutation path
+  active task registry maintenance
+  task score rewrite
+
+pause/block/resume:
+  runtime gate + runtimeEpoch + score update
+
+discard/terminal:
+  terminal fence + runtimeEpoch advance before physical key deletion
+  task-local key deletion including scheduled retry lane
+  score/active/meta removal
 ```
 
 Do not add a distributed lock around task scheduling by default. The runtime
@@ -1200,6 +1327,12 @@ current task item runtime truth.
 - Do not let `eventCode` select workers.
 - Do not make transport result queues own retry or finality.
 - Do not use server review rows to accept or reject runtime callbacks.
+- Do not rely on shell validation alone to block terminal/discard races; Redis
+  runtime fence validation is required in claim, result, and repair mutations.
+- Do not claim work unless the runtime gate is open, `runtimeEpoch` matches, and
+  a valid worker reservation token already exists.
+- Do not leave active leased items discoverable only by caller-known `taskId`.
+  A task with non-empty `rt` must be represented in the active task registry.
 - Do not use task-local `item-score` for normal ready backlog. It is allowed
   only for `retryMode=DUE_TIME` delayed/scheduled retry visibility.
 - Do not let the scheduled retry lane dispatch directly to adapters; due retry
@@ -1224,20 +1357,36 @@ current task item runtime truth.
   ids remain visible in the same lane score batch.
 - Do not claim zero Redis-node-loss unless the Redis durability configuration
   actually provides that acknowledgement contract.
+- Do not present append as exactly-once unless the API accepts a stable
+  caller-supplied idempotency key and enforces bounded dedupe.
 - Do not make result rows long-term archive truth in this shape.
+- Do not claim a no-loss runtime profile unless the profile fails closed or
+  explicitly reports degraded mode when Redis durability is insufficient.
 
 ## Acceptance Checks
 
 A first implementation should prove:
 
 - default task runtime guarantees durable convergence, not real-time precision;
+- no-loss claims are scoped to accepted runtime state and require the configured
+  Redis durability profile to acknowledge the write;
+- append without an idempotency key is at-least-once, while API-level
+  non-duplicate append requires caller-supplied idempotency evidence;
 - append assigns and returns `messageId` before the item can be claimed;
 - appending many ready items creates no per-item Redis keys;
 - raw ready backlog can hold large batches as LIST entries;
 - claim reuses append-generated `messageId` and creates sparse runtime state
   only for claimed items;
+- claim rejects stale runtime epochs, closed runtime gates, and missing or
+  mismatched worker reservation tokens before consuming ready or due frames;
+- claimed work adds the task to the active task registry, and result/retry/final
+  convergence removes it when `rt` is empty;
 - result success removes sparse runtime state and writes one task-local result
   row;
+- result and repair reject stale `runtimeEpoch` or `leaseToken` so late replay
+  cannot overwrite a newer attempt or terminal fence;
+- task-local result rows are bounded-retention lookup/idempotency evidence, not
+  a durable user result ledger;
 - `FAST_READY` retry returns a retry frame to the ready LIST and deletes active
   runtime state without creating task-local `item-score` entries;
 - `DUE_TIME` retry writes one `item-score` member and one `item` hash field for
@@ -1252,9 +1401,11 @@ A first implementation should prove:
   rewritten to a next eligible score after each round;
 - the scheduler can acquire a bounded batch of eligible tasks so one large
   backlog does not permanently hide other due tasks;
-- lease timeout repair scans `task:{taskId}:rt` and eventually expires leased
-  messages without relying on task score for exact timeout wakeup;
+- lease timeout repair discovers active tasks through the active task registry,
+  scans `task:{taskId}:rt`, and eventually expires leased messages without
+  relying on task score for exact timeout wakeup;
 - pause/block parks the task without rewriting items;
-- terminal cleanup deletes task-local runtime keys without namespace scan;
+- terminal/discard writes a runtime fence before physical cleanup, then deletes
+  task-local runtime keys without namespace scan;
 - memory and Redis implementations share the same `TaskWorkRuntime` contract
   behavior.

@@ -427,14 +427,13 @@ Additional same-type adapter instances can be appended through
 `transport(... -> addWebSocketAdapter(...))` and
 `transport(... -> addSocketAdapter(...))`.
 
-Current embedded-runtime mainline snapshots `TransportConfig` into
-`TransportRuntimeComposition`, which contains SDK-local configuration
-projections and adapter-starter declarations rather than runtime stores,
-queues, factories, or concrete adapter configs. `MassApplication` creates a
-single adapter-starter `EmbeddedTransportAssembly`; that assembly owns
-transport queue/result/lease construction, adapter runtime creation, adapter
-start/close, registration descriptor resolution, binding lookup, and
-pull-worker transport resolution.
+Current embedded-runtime mainline keeps `TransportConfig` as the SDK-local
+configuration snapshot and declaration source. It contains adapter-starter
+declarations rather than runtime stores, queues, factories, or concrete adapter
+configs. `MassApplication` creates a single adapter-starter
+`EmbeddedTransportAssembly`; that assembly owns transport queue/result/lease
+construction, adapter runtime creation, adapter start/close, registration
+descriptor resolution, binding lookup, and pull-worker transport resolution.
 
 Task dispatch translation remains SDK starter-owned: engine assignment truth is
 encoded into adapter-starter `AssignedDeliveryMessage` values and submitted
