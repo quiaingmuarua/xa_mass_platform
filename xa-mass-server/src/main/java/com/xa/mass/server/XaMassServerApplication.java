@@ -30,7 +30,6 @@ import com.xa.mass.storage.jdbc.JdbcStorageRuntime;
 import com.xa.mass.storage.memory.InMemoryCatalogMetadataStore;
 import com.xa.mass.storage.memory.InMemoryRuleStorage;
 import com.xa.mass.storage.memory.InMemoryTaskShellStore;
-import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.RuntimeDiagnosticsOperations;
@@ -335,8 +334,7 @@ public class XaMassServerApplication {
 
     @Bean(destroyMethod = "stop")
     @Profile({"memory-local", "durable-local"})
-    public MassSdkApplication fullStackRuntimeApplication(ObjectProvider<MassBootstrapDataProvider> bootstrapDataProvider,
-                                                          JdbcStorageRuntime jdbcStorageRuntime,
+    public MassSdkApplication fullStackRuntimeApplication(JdbcStorageRuntime jdbcStorageRuntime,
                                                           CatalogMetadataStore catalogMetadataStore,
                                                           TaskShellStore taskShellStore,
                                                           TaskWorkRuntime taskWorkRuntime,
@@ -395,10 +393,6 @@ public class XaMassServerApplication {
                     }
                     if (jdbcStorageRuntime.isEnabled()) {
                         engine.ruleStorage(jdbcStorageRuntime.ruleStorage());
-                    }
-                    MassBootstrapDataProvider provider = bootstrapDataProvider.getIfAvailable();
-                    if (provider != null) {
-                        engine.bootstrapDataProvider(provider);
                     }
                 })
                 .build();

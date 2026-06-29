@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
-import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassRuntimeControl;
 import com.xa.mass.sdk.model.AdapterNodeRegistration;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
@@ -34,7 +33,7 @@ import java.util.Objects;
 /**
  * Test/fixture runtime data loader.
  */
-public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
+public class MockRuntimeDataLoader {
 
     private static final Logger logger = LoggerFactory.getLogger(MockRuntimeDataLoader.class);
     private static final ObjectMapper MAPPER = new ObjectMapper()
@@ -69,7 +68,6 @@ public class MockRuntimeDataLoader implements MassBootstrapDataProvider {
         this.loadRules = loadRules;
     }
 
-    @Override
     public void loadInto(MassRuntimeControl runtime) {
         Objects.requireNonNull(runtime, "runtime");
         logger.info("Loading bootstrap data [workers={}, rules={}, tasks={}]",
