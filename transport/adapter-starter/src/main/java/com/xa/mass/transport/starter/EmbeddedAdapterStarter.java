@@ -30,7 +30,7 @@ import java.util.Objects;
 public final class EmbeddedAdapterStarter implements AutoCloseable {
 
     private final EmbeddedAdapterRuntimeEnvironment environment;
-    private final Map<String, EmbeddedTransportAdapterRuntimeFactory> factoryByType;
+    private final EmbeddedAdapterRuntimeFactoryRegistry factoryRegistry;
     private final Map<String, EmbeddedTransportAdapterRuntime> runtimeByAdapterId = new LinkedHashMap<>();
     private final TransportResultIngressChannel resultIngressChannel;
 
@@ -38,8 +38,13 @@ public final class EmbeddedAdapterStarter implements AutoCloseable {
 
     public EmbeddedAdapterStarter(EmbeddedAdapterRuntimeEnvironment environment,
                                   List<EmbeddedTransportAdapterRuntimeFactory> factories) {
+        this(environment, new EmbeddedAdapterRuntimeFactoryRegistry(factories));
+    }
+
+    public EmbeddedAdapterStarter(EmbeddedAdapterRuntimeEnvironment environment,
+                                  EmbeddedAdapterRuntimeFactoryRegistry factoryRegistry) {
         this.environment = Objects.requireNonNull(environment, "environment");
-        this.factoryByType = indexFactories(factories);
+        this.factoryRegistry = Objects.requireNonNull(factoryRegistry, "factoryRegistry");
         this.resultIngressChannel = this::offerDefaultResult;
     }
 
@@ -56,15 +61,7 @@ public final class EmbeddedAdapterStarter implements AutoCloseable {
         try {
             for (EmbeddedAdapterRuntimeSpec spec : requestedSpecs) {
                 validateResultQueueKey(spec);
-                EmbeddedTransportAdapterRuntimeFactory factory = factoryByType.get(spec.type());
-                if (factory == null) {
-                    throw new IllegalArgumentException("Unsupported embedded adapter type '" + spec.type()
-                            + "'; available types=" + factoryByType.keySet());
-                }
-                EmbeddedTransportAdapterRuntime runtime = Objects.requireNonNull(
-                        factory.create(spec, environment),
-                        "factory.create"
-                );
+                EmbeddedTransportAdapterRuntime runtime = factoryRegistry.create(spec, environment);
                 String adapterId = normalizeAdapterId(runtime.descriptor().getAdapterId());
                 if (createdRuntimes.putIfAbsent(adapterId, runtime) != null) {
                     throw new IllegalArgumentException("Duplicate embedded adapterId configured: " + adapterId);
@@ -179,29 +176,6 @@ public final class EmbeddedAdapterStarter implements AutoCloseable {
                     + TransportResultIngressQueue.DEFAULT_RESULT_QUEUE_KEY
                     + "' in v1; actual=" + spec.resultQueueKey());
         }
-    }
-
-    private static Map<String, EmbeddedTransportAdapterRuntimeFactory> indexFactories(
-            List<EmbeddedTransportAdapterRuntimeFactory> factories) {
-        LinkedHashMap<String, EmbeddedTransportAdapterRuntimeFactory> indexed = new LinkedHashMap<>();
-        for (EmbeddedTransportAdapterRuntimeFactory factory : List.copyOf(Objects.requireNonNull(factories, "factories"))) {
-            String type = normalizeType(factory.type());
-            EmbeddedTransportAdapterRuntimeFactory existing = indexed.putIfAbsent(type, factory);
-            if (existing != null) {
-                throw new IllegalArgumentException("Duplicate embedded adapter runtime factory type: " + type);
-            }
-        }
-        if (indexed.isEmpty()) {
-            throw new IllegalArgumentException("At least one embedded adapter runtime factory is required");
-        }
-        return Map.copyOf(indexed);
-    }
-
-    private static String normalizeType(String type) {
-        if (type == null || type.isBlank()) {
-            throw new IllegalArgumentException("adapter runtime factory type must not be blank");
-        }
-        return type.trim().toLowerCase(Locale.ROOT);
     }
 
     private static String normalizeAdapterId(String adapterId) {

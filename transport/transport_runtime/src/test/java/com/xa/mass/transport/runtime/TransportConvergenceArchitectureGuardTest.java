@@ -865,17 +865,42 @@ class TransportConvergenceArchitectureGuardTest {
         Path composition = repoRoot().resolve(
                 "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/config/TransportRuntimeComposition.java");
         String compositionSource = Files.readString(composition);
-        assertTrue(compositionSource.contains("new EmbeddedAdapterRuntimeSpec(")
+        assertTrue(!compositionSource.contains("new EmbeddedAdapterRuntimeSpec(")
                         && !compositionSource.contains("new PollingAdapterRuntimeFactory(")
                         && !compositionSource.contains("new WebSocketAdapterRuntimeFactory(")
-                        && !compositionSource.contains("new SocketAdapterRuntimeFactory("),
-                "TransportRuntimeComposition must produce specs without creating concrete adapter runtime factories");
+                        && !compositionSource.contains("new SocketAdapterRuntimeFactory(")
+                        && !compositionSource.contains("transportHintForType")
+                        && !compositionSource.contains("TransportRegistrationResolver")
+                        && !compositionSource.contains("runtimeOwnedEndpointLeaseStore"),
+                "TransportRuntimeComposition must stay a snapshot/projection surface, not adapter spec or resolver owner");
+
+        Path specAssembler = repoRoot().resolve(
+                "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/config/EmbeddedAdapterSpecAssembler.java");
+        String specAssemblerSource = Files.readString(specAssembler);
+        assertTrue(specAssemblerSource.contains("new EmbeddedAdapterRuntimeSpec(")
+                        && specAssemblerSource.contains("WebSocketAdapterAssembly"),
+                "SDK starter/config internal assembler must own typed declarations to embedded adapter specs");
+
         String starterDefaultsSource = Files.readString(repoRoot().resolve(
                 "transport/adapter-starter/src/main/java/com/xa/mass/transport/starter/EmbeddedAdapterStarterDefaults.java"));
         assertTrue(starterDefaultsSource.contains("new PollingAdapterRuntimeFactory(")
                         && starterDefaultsSource.contains("new WebSocketAdapterRuntimeFactory(")
-                        && starterDefaultsSource.contains("new SocketAdapterRuntimeFactory("),
+                        && starterDefaultsSource.contains("new SocketAdapterRuntimeFactory(")
+                        && starterDefaultsSource.contains("createRegistry(")
+                        && !starterDefaultsSource.contains("transportHintForType"),
                 "Adapter-starter defaults must own the bundled concrete adapter factory list");
+
+        String registrySource = Files.readString(repoRoot().resolve(
+                "transport/adapter-starter/src/main/java/com/xa/mass/transport/starter/EmbeddedAdapterRuntimeFactoryRegistry.java"));
+        assertTrue(registrySource.contains("registrationResolver(")
+                        && registrySource.contains("descriptor(spec)")
+                        && !registrySource.contains("ServiceLoader")
+                        && !registrySource.contains("Class.forName"),
+                "Adapter-starter registry must provide descriptor-only resolver without dynamic discovery");
+        assertNoProductionSourceContains(
+                List.of(repoRoot().resolve("transport/adapter-starter/src/main/java")),
+                "com.xa.mass.starter.config"
+        );
     }
 
     @Test

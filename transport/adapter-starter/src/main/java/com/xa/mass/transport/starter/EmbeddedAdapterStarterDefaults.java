@@ -1,7 +1,6 @@
 package com.xa.mass.transport.starter;
 
 import com.xa.mass.transport.TransportServerFactory;
-import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
 import com.xa.mass.transport.polling.runtime.PollingAdapterRuntimeFactory;
 import com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeEnvironment;
@@ -13,7 +12,6 @@ import com.xa.mass.transport.websocket.runtime.WebSocketAdapterRuntimeFactory;
 import com.xa.mass.transport.websocket.runtime.WebSocketServerFactoryContext;
 
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.function.Supplier;
@@ -37,6 +35,20 @@ public final class EmbeddedAdapterStarterDefaults {
             Map<String, TransportServerFactory<WebSocketServerFactoryContext>> webSocketServerFactoriesByAdapterId) {
         return new EmbeddedAdapterStarter(
                 environment,
+                createRegistry(pollingPendingDeliveryBufferFactory, webSocketServerFactoriesByAdapterId)
+        );
+    }
+
+    public static EmbeddedAdapterStarter createStarter(
+            EmbeddedAdapterRuntimeEnvironment environment,
+            EmbeddedAdapterRuntimeFactoryRegistry registry) {
+        return new EmbeddedAdapterStarter(environment, registry);
+    }
+
+    public static EmbeddedAdapterRuntimeFactoryRegistry createRegistry(
+            Supplier<PollingPendingDeliveryBuffer> pollingPendingDeliveryBufferFactory,
+            Map<String, TransportServerFactory<WebSocketServerFactoryContext>> webSocketServerFactoriesByAdapterId) {
+        return new EmbeddedAdapterRuntimeFactoryRegistry(
                 defaultFactories(pollingPendingDeliveryBufferFactory, webSocketServerFactoriesByAdapterId)
         );
     }
@@ -47,15 +59,6 @@ public final class EmbeddedAdapterStarterDefaults {
 
     public static Map<String, String> socketOptions(SocketAdapterConfig config) {
         return SocketAdapterRuntimeFactory.options(config);
-    }
-
-    public static String transportHintForType(String type) {
-        String normalized = normalizeType(type);
-        return switch (normalized) {
-            case TYPE_POLLING -> WorkerTransportHints.POLLING;
-            case TYPE_WEBSOCKET, TYPE_SOCKET -> WorkerTransportHints.REALTIME;
-            default -> throw new IllegalArgumentException("Unsupported embedded adapter type: " + type);
-        };
     }
 
     static List<EmbeddedTransportAdapterRuntimeFactory> defaultFactories(
@@ -71,12 +74,5 @@ public final class EmbeddedAdapterStarterDefaults {
                         : Map.copyOf(webSocketServerFactoriesByAdapterId)),
                 new SocketAdapterRuntimeFactory()
         );
-    }
-
-    private static String normalizeType(String type) {
-        if (type == null || type.isBlank()) {
-            throw new IllegalArgumentException("adapter runtime type must not be blank");
-        }
-        return type.trim().toLowerCase(Locale.ROOT);
     }
 }

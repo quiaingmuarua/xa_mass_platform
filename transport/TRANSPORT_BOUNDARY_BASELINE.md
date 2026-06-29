@@ -104,10 +104,20 @@ Transport should stay centered on these concepts only:
   exposes adapter-id lifecycle calls, and returns only created adapter ids to
   SDK assembly. It does not expose runtime sets, contribution baskets, queue
   objects, or concrete adapter internals to embedded SDK.
+- `EmbeddedAdapterRuntimeFactoryRegistry`: fixed built-in adapter factory and
+  descriptor owner. It resolves `spec.type` through the same first-party
+  factory set used for runtime creation, and it can build pre-runtime
+  registration resolution from specs without creating adapter runtimes. There
+  is no parallel `type -> transportHint` switch and no dynamic discovery.
 - `EmbeddedTransportAdapterRuntimeFactory`: concrete adapter module owner for
   runtime construction. A factory consumes `EmbeddedAdapterRuntimeSpec` plus
   shared runtime environment ports and returns one runtime with its binding,
   managed adapter resources, and optional server resources.
+- SDK/starter `EmbeddedAdapterSpecAssembler`: internal embedded SDK translator
+  from typed adapter declaration sugar and object sidecars to final
+  `EmbeddedAdapterRuntimeSpec` values. `TransportRuntimeComposition` remains an
+  immutable snapshot/projection surface and must not directly own adapter spec
+  construction, registration descriptors, or runtime-owned mutable resources.
 - `EmbeddedTransportAdapterRuntime`: one embedded adapter runtime instance with
   `start`, `isRunning`, `close`, `descriptor`, and `binding`. It is not a
   health supervisor, restart policy, migration owner, or mailbox placement

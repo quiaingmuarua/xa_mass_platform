@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TransportConfigTest {
@@ -88,8 +89,28 @@ class TransportConfigTest {
         starter.create(runtimeComposition.resolveEmbeddedAdapterRuntimeSpecs());
 
         assertNotNull(capturedContext.get());
+        assertEquals("ws-extra", spec.adapterId());
         assertEquals(19111, capturedContext.get().getPort());
         assertEquals("/ws-extra", capturedContext.get().getEndpointPath());
+    }
+
+    @Test
+    void webSocketServerFactoryFailsFastWhenAdapterIsDisabled() {
+        TransportConfig config = disabledConfig();
+        WebSocketAdapterConfig extra = new WebSocketAdapterConfig();
+        extra.setAdapterId("ws-disabled");
+        extra.setEnabled(false);
+        extra.setServerEnabled(true);
+
+        config.addSupplementalWebSocketAdapterConfig(extra, context -> noopServer());
+
+        TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+
+        IllegalStateException error = assertThrows(
+                IllegalStateException.class,
+                runtimeComposition::resolveWebSocketServerFactoriesByAdapterId
+        );
+        assertTrue(error.getMessage().contains("disabled adapterId: ws-disabled"));
     }
 
     private static TransportConfig disabledConfig() {

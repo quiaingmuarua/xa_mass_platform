@@ -78,6 +78,17 @@ class EmbeddedAdapterStarterTest {
         assertThrows(IllegalArgumentException.class, () -> starter.create(List.of(spec)));
     }
 
+    @Test
+    void registryBuildsRegistrationResolverWithoutCreatingRuntime() {
+        EmbeddedAdapterRuntimeFactoryRegistry registry = new EmbeddedAdapterRuntimeFactoryRegistry(
+                List.of(new DescriptorOnlyRuntimeFactory())
+        );
+
+        assertEquals("adapter-a", registry.registrationResolver(
+                List.of(spec("descriptor-only", "adapter-a", "mailbox-a"))
+        ).resolveRegistrationAdapterId(null, WorkerTransportHints.REALTIME));
+    }
+
     private static EmbeddedAdapterRuntimeSpec spec(String type, String adapterId, String mailboxKey) {
         return new EmbeddedAdapterRuntimeSpec(
                 type,
@@ -121,6 +132,25 @@ class EmbeddedAdapterStarterTest {
                     .adapterMailboxKey(spec.dispatchQueueKey())
                     .protocol("stub")
                     .build());
+        }
+    }
+
+    private static final class DescriptorOnlyRuntimeFactory implements EmbeddedTransportAdapterRuntimeFactory {
+
+        @Override
+        public String type() {
+            return "descriptor-only";
+        }
+
+        @Override
+        public TransportAdapterDescriptor descriptor(EmbeddedAdapterRuntimeSpec spec) {
+            return new TransportAdapterDescriptor(spec.adapterId(), WorkerTransportHints.REALTIME);
+        }
+
+        @Override
+        public EmbeddedTransportAdapterRuntime create(EmbeddedAdapterRuntimeSpec spec,
+                                                      EmbeddedAdapterRuntimeEnvironment environment) {
+            throw new AssertionError("descriptor-only resolver must not create adapter runtimes");
         }
     }
 

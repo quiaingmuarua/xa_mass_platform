@@ -112,6 +112,7 @@ import com.xa.mass.transport.TransportServerFactory;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.channel.DeliveryPullResult;
 import com.xa.mass.transport.model.CanonicalWorkerGroupRouteKeyCodec;
+import com.xa.mass.transport.starter.EmbeddedAdapterStarterDefaults;
 import com.xa.mass.sdk.worker.WorkerAction;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import org.junit.jupiter.api.Assertions;
@@ -548,7 +549,8 @@ class MassSdkTest {
         assertEquals("ws-public", spec.dispatchQueueKey());
         assertEquals("websocket", spec.type());
         assertEquals("ws-public",
-                runtimeComposition.resolveRegistrationAdapterId("ws-public", WorkerTransportHints.REALTIME));
+                registrationResolver(runtimeComposition)
+                        .resolveRegistrationAdapterId("ws-public", WorkerTransportHints.REALTIME));
     }
 
     @Test
@@ -565,17 +567,19 @@ class MassSdkTest {
         assertEquals("socket-edge", spec.dispatchQueueKey());
         assertEquals("socket", spec.type());
         assertEquals("socket-edge",
-                runtimeComposition.resolveRegistrationAdapterId("socket-edge", WorkerTransportHints.REALTIME));
+                registrationResolver(runtimeComposition)
+                        .resolveRegistrationAdapterId("socket-edge", WorkerTransportHints.REALTIME));
     }
 
     @Test
     void transportRuntimeCompositionResolvesRegistrationAdapterIdBeforeStart() {
         TransportConfig config = new TransportConfig();
         TransportRuntimeComposition runtimeComposition = config.snapshotRuntimeComposition();
+        TransportRegistrationResolver resolver = registrationResolver(runtimeComposition);
 
-        assertEquals("polling-default", runtimeComposition.resolveRegistrationAdapterId(null, "polling"));
-        assertEquals("websocket", runtimeComposition.resolveRegistrationAdapterId(null, "realtime"));
-        assertEquals("websocket", runtimeComposition.resolveRegistrationAdapterId("websocket", "realtime"));
+        assertEquals("polling-default", resolver.resolveRegistrationAdapterId(null, "polling"));
+        assertEquals("websocket", resolver.resolveRegistrationAdapterId(null, "realtime"));
+        assertEquals("websocket", resolver.resolveRegistrationAdapterId("websocket", "realtime"));
     }
 
     @Test
@@ -591,7 +595,7 @@ class MassSdkTest {
 
         IllegalArgumentException error = assertThrows(
                 IllegalArgumentException.class,
-                () -> runtimeComposition.resolveRegistrationAdapterId(null, "realtime")
+                () -> registrationResolver(runtimeComposition).resolveRegistrationAdapterId(null, "realtime")
         );
 
         assertEquals("worker adapterId must be set when transportHint 'realtime' matches multiple adapters [socket-edge, websocket]",
@@ -2890,6 +2894,13 @@ class MassSdkTest {
                 .filter(spec -> adapterId.equals(spec.adapterId()))
                 .findFirst()
                 .orElseThrow(() -> new AssertionError("Missing adapter spec for " + adapterId));
+    }
+
+    private static TransportRegistrationResolver registrationResolver(TransportRuntimeComposition runtimeComposition) {
+        return EmbeddedAdapterStarterDefaults.createRegistry(
+                runtimeComposition.resolvePollingPendingDeliveryBufferFactory(),
+                runtimeComposition.resolveWebSocketServerFactoriesByAdapterId()
+        ).registrationResolver(runtimeComposition.resolveEmbeddedAdapterRuntimeSpecs());
     }
 
     private static com.xa.mass.transport.runtime.embedded.EmbeddedAdapterRuntimeEnvironment
