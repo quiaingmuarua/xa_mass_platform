@@ -51,9 +51,14 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eTe
     private static final String SOCKET_WORKER_ID = "node-worker-socket-001";
     private static final String SOCKET_WORKER_KEY = "node-worker-socket-key";
     private static final String SOCKET_ADAPTER_NODE_ID = "node-socket-node";
+    private static final String SOCKET_COEXIST_WORKER_ID = "node-worker-socket-coexist-001";
+    private static final String SOCKET_COEXIST_WORKER_KEY = "node-worker-socket-coexist-key";
+    private static final String SOCKET_COEXIST_GROUP_ID = "node-socket-coexist-crawler";
+    private static final String SOCKET_COEXIST_ADAPTER_NODE_ID = "node-socket-coexist-node";
     private static final String WEBSOCKET_WORKER_ID = "node-worker-websocket-002";
     private static final String WEBSOCKET_WORKER_KEY = "node-worker-websocket-key";
     private static final String WEBSOCKET_ADAPTER_NODE_ID = "node-websocket-coexist-node";
+    private static final String WEBSOCKET_GROUP_ID = "node-websocket-demo";
 
     @Autowired
     private MassSdkApplication app;
@@ -147,35 +152,35 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eTe
     @Test
     void websocketAndSocketAdaptersCanCoexistWithoutCrossRouting() throws Exception {
         registerExternalWorkerCredential(WEBSOCKET_WORKER_ID, WEBSOCKET_WORKER_KEY, List.of("demo.dispatch"));
-        registerExternalWorkerCredential(SOCKET_WORKER_ID, SOCKET_WORKER_KEY, List.of("crawler.fetch-page"));
+        registerExternalWorkerCredential(SOCKET_COEXIST_WORKER_ID, SOCKET_COEXIST_WORKER_KEY, List.of("crawler.fetch-page"));
         HttpHeaders websocketHeaders = credentialHeaders(WEBSOCKET_WORKER_KEY);
-        HttpHeaders socketHeaders = credentialHeaders(SOCKET_WORKER_KEY);
-        declareExternalWorkerGroup("node-websocket-demo", "demoApp", "demo.dispatch", websocketHeaders);
-        declareExternalWorkerGroup("node-socket-crawler", "crawlerApp", "crawler.fetch-page", socketHeaders);
-        bindExternalAdapterNode(WEBSOCKET_ADAPTER_NODE_ID, "node-websocket-demo", websocketHeaders);
-        bindExternalAdapterNode(SOCKET_ADAPTER_NODE_ID, "node-socket-crawler", socketHeaders);
+        HttpHeaders socketHeaders = credentialHeaders(SOCKET_COEXIST_WORKER_KEY);
+        declareExternalWorkerGroup(WEBSOCKET_GROUP_ID, "demoApp", "demo.dispatch", websocketHeaders);
+        declareExternalWorkerGroup(SOCKET_COEXIST_GROUP_ID, "crawlerApp", "crawler.fetch-page", socketHeaders);
+        bindExternalAdapterNode(WEBSOCKET_ADAPTER_NODE_ID, WEBSOCKET_GROUP_ID, websocketHeaders);
+        bindExternalAdapterNode(SOCKET_COEXIST_ADAPTER_NODE_ID, SOCKET_COEXIST_GROUP_ID, socketHeaders);
 
         assertApiOk(exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
                 "workerId", WEBSOCKET_WORKER_ID,
-                "workerGroupId", "node-websocket-demo",
+                "workerGroupId", WEBSOCKET_GROUP_ID,
                 "transportHint", "realtime",
                 "attributes", realtimeWorkerAttributes("node-websocket-worker")
         ), websocketHeaders));
 
         assertApiOk(exchange("/worker-api/v1/workers", HttpMethod.POST, Map.of(
-                "workerId", SOCKET_WORKER_ID,
-                "workerGroupId", "node-socket-crawler",
+                "workerId", SOCKET_COEXIST_WORKER_ID,
+                "workerGroupId", SOCKET_COEXIST_GROUP_ID,
                 "transportHint", "realtime",
                 "attributes", realtimeWorkerAttributes("node-socket-worker")
         ), socketHeaders));
 
         try (ExternalNodeWorkerProcess websocketWorker = ExternalNodeWorkerProcess.startWebSocketSample(
                 WEBSOCKET_WORKER_ID,
-                "node-websocket-demo",
+                WEBSOCKET_GROUP_ID,
                 URI.create("ws://127.0.0.1:" + WEBSOCKET_PORT + "/ws"));
              ExternalNodeWorkerProcess socketWorker = ExternalNodeWorkerProcess.startSocketSample(
-                     SOCKET_WORKER_ID,
-                     "node-socket-crawler",
+                     SOCKET_COEXIST_WORKER_ID,
+                     SOCKET_COEXIST_GROUP_ID,
                      "127.0.0.1",
                      waitForPositiveIntSystemProperty(
                              SocketTransportServer.BOUND_PORT_PROPERTY,
@@ -191,7 +196,7 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eTe
                     websocketWorker::capturedOutput
             );
             waitForWorkerPresenceOnline(
-                    SOCKET_WORKER_ID,
+                    SOCKET_COEXIST_WORKER_ID,
                     20,
                     250L,
                     () -> socketWorker.assertAlive("External Node worker exited before reaching status ONLINE"),
@@ -214,7 +219,7 @@ class NodeSocketWorkerBlackBoxIntegrationTest extends ReviewReadModelSampleE2eTe
             TaskSnapshot socketTerminal = fetchTaskSnapshot(socketTaskId);
 
             assertEquals(WEBSOCKET_WORKER_ID, websocketTerminal.messages().get(0).get("latestAttemptWorkerId"));
-            assertEquals(SOCKET_WORKER_ID, socketTerminal.messages().get(0).get("latestAttemptWorkerId"));
+            assertEquals(SOCKET_COEXIST_WORKER_ID, socketTerminal.messages().get(0).get("latestAttemptWorkerId"));
 
             @SuppressWarnings("unchecked")
             Map<String, Object> websocketOutput = (Map<String, Object>) websocketTerminal.messages().get(0).get("output");

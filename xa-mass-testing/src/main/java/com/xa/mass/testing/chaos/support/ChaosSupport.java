@@ -10,6 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.Locale;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 
@@ -53,6 +54,11 @@ public final class ChaosSupport {
     }
 
     public static boolean isTaskDispatchFrame(JsonObject frame) {
+        JsonObject action = actionBody(frame);
+        if (action != null) {
+            return readString(action, "eventCode") != null
+                    && readString(action, "replyRef") != null;
+        }
         return frame != null
                 && readString(frame, "eventCode") != null
                 && readString(frame, "resultCorrelationRef") != null
@@ -71,6 +77,23 @@ public final class ChaosSupport {
                                          boolean success,
                                          String detail,
                                          Map<String, Object> output) {
+        JsonObject action = actionBody(taskFrame);
+        if (action != null) {
+            JsonObject body = new JsonObject();
+            body.addProperty("replyRef", readString(action, "replyRef"));
+            body.addProperty("success", success);
+            if (!success) {
+                body.addProperty("code", "CHAOS_TASK_FAILED");
+            }
+            body.addProperty("body", GSON.toJson(output != null ? output : Map.of()));
+
+            JsonObject frame = new JsonObject();
+            frame.addProperty("frameId", UUID.randomUUID().toString());
+            frame.addProperty("kind", "ACTION_REPLY");
+            frame.addProperty("body", GSON.toJson(body));
+            return GSON.toJson(frame);
+        }
+
         JsonObject frame = new JsonObject();
         frame.addProperty("resultCorrelationRef", readString(taskFrame, "resultCorrelationRef"));
         frame.addProperty("workerId", readString(taskFrame, "workerId"));
@@ -86,8 +109,34 @@ public final class ChaosSupport {
         if (messageId != null) {
             return messageId;
         }
-        CorrelationRecord correlation = decodeResultCorrelationRef(readString(taskFrame, "resultCorrelationRef"));
+        JsonObject action = actionBody(taskFrame);
+        String correlationRef = action == null
+                ? readString(taskFrame, "resultCorrelationRef")
+                : readString(action, "replyRef");
+        CorrelationRecord correlation = decodeResultCorrelationRef(correlationRef);
         return correlation == null ? null : correlation.messageId();
+    }
+
+    private static JsonObject actionBody(JsonObject frame) {
+        if (!isWorkerChannelKind(frame, "ACTION")) {
+            return null;
+        }
+        return parseJsonObject(readString(frame, "body"));
+    }
+
+    private static boolean isWorkerChannelKind(JsonObject frame, String kind) {
+        return frame != null && kind.equalsIgnoreCase(readString(frame, "kind"));
+    }
+
+    private static JsonObject parseJsonObject(String json) {
+        if (json == null || json.isBlank()) {
+            return null;
+        }
+        try {
+            return GSON.fromJson(json, JsonObject.class);
+        } catch (RuntimeException ignored) {
+            return null;
+        }
     }
 
     public static String readString(JsonObject object, String field) {
