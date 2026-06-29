@@ -9,11 +9,6 @@ import com.xa.mass.runtime.redis.RedisWorkerScoreBandSlotRuntime;
 import com.xa.mass.runtime.redis.RedisTaskResultRuntime;
 import com.xa.mass.runtime.redis.RedisTaskWorkRuntime;
 import com.xa.mass.runtime.worker.WorkerRegistry;
-import com.xa.mass.transport.lease.TransportEndpointLeaseStore;
-import com.xa.mass.transport.runtime.RedisTransportNamespaces;
-import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
-import com.xa.mass.transport.polling.delivery.RedisPollingPendingDeliveryBuffer;
-import com.xa.mass.transport.runtime.lease.RedisTransportEndpointLeaseStore;
 import com.xa.mass.api.review.InProcessTaskReviewReportQueue;
 import com.xa.mass.api.review.InMemoryTaskReviewStore;
 import com.xa.mass.api.review.JdbcTaskReviewStore;
@@ -77,6 +72,11 @@ import java.util.Locale;
 public class XaMassServerApplication {
 
     private static final Logger log = LoggerFactory.getLogger(XaMassServerApplication.class);
+    private static final String DEFAULT_TRANSPORT_POLLING_DELIVERY_REDIS_NAMESPACE =
+            "xa:mass:transport:polling-delivery:v1";
+    private static final String DEFAULT_TRANSPORT_ENDPOINT_LEASE_REDIS_NAMESPACE =
+            "xa:mass:transport:endpoint-lease:v1";
+
     @Value("${mass.websocket.port:18088}")
     private int massWebSocketPort;
 
@@ -131,7 +131,8 @@ public class XaMassServerApplication {
     @Value("${mass.transport.polling.buffer.max-items-per-worker:10000}")
     private int transportPollingPendingDeliveryMaxItemsPerWorker;
 
-    @Value("${mass.transport.polling.buffer.redis.namespace:" + RedisPollingPendingDeliveryBuffer.DEFAULT_NAMESPACE_PREFIX + "}")
+    @Value("${mass.transport.polling.buffer.redis.namespace:"
+            + DEFAULT_TRANSPORT_POLLING_DELIVERY_REDIS_NAMESPACE + "}")
     private String transportPollingPendingDeliveryRedisNamespace;
 
     @Value("${mass.transport.endpoint-lease.store:memory}")
@@ -140,7 +141,8 @@ public class XaMassServerApplication {
     @Value("${mass.transport.endpoint-lease.lease-millis:30000}")
     private long transportEndpointLeaseMillis;
 
-    @Value("${mass.transport.endpoint-lease.redis.namespace:" + RedisTransportNamespaces.ENDPOINT_LEASE + "}")
+    @Value("${mass.transport.endpoint-lease.redis.namespace:"
+            + DEFAULT_TRANSPORT_ENDPOINT_LEASE_REDIS_NAMESPACE + "}")
     private String transportEndpointLeaseRedisNamespace;
 
     @Value("${mass.storage.mode:memory}")
@@ -350,10 +352,6 @@ public class XaMassServerApplication {
         MassSdkApplication app = builder
                 .projectCatalogBootstrap(new ProjectEventCatalogRegistry())
                 .transport(transport -> {
-                    java.util.function.Supplier<PollingPendingDeliveryBuffer> pollingPendingDeliveryBufferFactory =
-                            resolvePollingPendingDeliveryBufferFactory();
-                    java.util.function.Supplier<TransportEndpointLeaseStore> endpointLeaseStoreFactory =
-                            resolveTransportEndpointLeaseStoreFactory();
                     transport
                         .maxPollingPendingDeliveryItems(transportPollingPendingDeliveryMaxQueuedItems)
                         .maxPollingPendingDeliveryItemsPerWorker(transportPollingPendingDeliveryMaxItemsPerWorker)
@@ -370,12 +368,8 @@ public class XaMassServerApplication {
                         .transportRuntimeMaxPendingTasks(transportRuntimeMaxPendingTasks)
                                 .eventRuntimeMaxPendingTasks(eventRuntimeMaxPendingTasks)
                                 .eventHandlerTimeoutMillis(eventHandlerTimeoutMillis);
-                    if (pollingPendingDeliveryBufferFactory != null) {
-                        transport.pollingPendingDeliveryBufferFactory(pollingPendingDeliveryBufferFactory);
-                    }
-                    if (endpointLeaseStoreFactory != null) {
-                        transport.endpointLeaseStoreFactory(endpointLeaseStoreFactory);
-                    }
+                    configurePollingDeliveryBackend(transport);
+                    configureEndpointLeaseBackend(transport);
                 })
                 .engine(engine -> {
                     engine.enabled(true)
@@ -576,37 +570,36 @@ public class XaMassServerApplication {
         return uri.toString();
     }
 
-    private java.util.function.Supplier<PollingPendingDeliveryBuffer> resolvePollingPendingDeliveryBufferFactory() {
+    private void configurePollingDeliveryBackend(MassSdk.TransportOptions transport) {
         String normalizedMode = normalizeInfraMode(transportPollingPendingDeliveryBufferStore, "memory");
         if ("redis".equals(normalizedMode)) {
-            return () -> new RedisPollingPendingDeliveryBuffer(
+            transport.redisPollingDeliveryQueue(
                     redisUri(),
-                    transportPollingPendingDeliveryRedisNamespace,
-                    transportPollingPendingDeliveryMaxQueuedItems,
-                    transportPollingPendingDeliveryMaxItemsPerWorker
+                    transportPollingPendingDeliveryRedisNamespace
             );
+            return;
         }
         requireDurableLocalInfraMode("mass.transport.polling.buffer.store", "redis", normalizedMode);
         if ("memory".equals(normalizedMode)) {
-            return null;
+            return;
         }
         throw new IllegalArgumentException(
                 "Unsupported mass.transport.polling.buffer.store: " + transportPollingPendingDeliveryBufferStore
         );
     }
 
-    private java.util.function.Supplier<TransportEndpointLeaseStore> resolveTransportEndpointLeaseStoreFactory() {
+    private void configureEndpointLeaseBackend(MassSdk.TransportOptions transport) {
         String normalizedMode = normalizeInfraMode(transportEndpointLeaseStore, "memory");
         if ("redis".equals(normalizedMode)) {
-            return () -> new RedisTransportEndpointLeaseStore(
+            transport.redisEndpointLeaseStore(
                     redisUri(),
-                    transportEndpointLeaseRedisNamespace,
-                    transportEndpointLeaseMillis
+                    transportEndpointLeaseRedisNamespace
             );
+            return;
         }
         requireDurableLocalInfraMode("mass.transport.endpoint-lease.store", "redis", normalizedMode);
         if ("memory".equals(normalizedMode)) {
-            return null;
+            return;
         }
         throw new IllegalArgumentException(
                 "Unsupported mass.transport.endpoint-lease.store: " + transportEndpointLeaseStore
