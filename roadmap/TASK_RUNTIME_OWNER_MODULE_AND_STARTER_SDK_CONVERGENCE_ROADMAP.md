@@ -411,6 +411,14 @@ owns broad embedded SDK/server runtime assembly split. This roadmap creates a
 task-runtime-specific starter SDK because task-runtime threads and external
 ingress/egress must not live in the semantic module.
 
+`TASK_RUNTIME_API_CONTRACT_EXTRACTION_ROADMAP.md` is a small prerequisite /
+companion roadmap that closes the current embedded SDK main-source imports of
+engine-owned task operation, diagnostic, and stage DTOs. It may create
+`xa-mass-task-runtime-api` as the clean landing module, but that module is an
+implementation means, not the completion claim. TROM should consume any
+resulting task-runtime API contracts instead of moving those DTOs into
+`kernel-spi`, `public-contract`, or `embedded-sdk-api`.
+
 ## TROM-0 Module And Caller Inventory
 
 Goal: decide exact module paths and classify live callers before any code move.

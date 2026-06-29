@@ -33,6 +33,7 @@ and forbidden imports before task-runtime ownership moves.
 Read with:
 
 - [TASK_RUNTIME_OWNER_MODULE_AND_STARTER_SDK_CONVERGENCE_ROADMAP.md](TASK_RUNTIME_OWNER_MODULE_AND_STARTER_SDK_CONVERGENCE_ROADMAP.md)
+- [TASK_RUNTIME_API_CONTRACT_EXTRACTION_ROADMAP.md](TASK_RUNTIME_API_CONTRACT_EXTRACTION_ROADMAP.md)
 - [xa-mass-engine/README.md](../xa-mass-engine/README.md)
 - [sdk/xa-mass-embedded-sdk/README.md](../sdk/xa-mass-embedded-sdk/README.md)
 - [sdk/README.md](../sdk/README.md)
@@ -64,6 +65,10 @@ Read with:
   [ENGINE_CALLER_SURFACE_PRE_TROM_INVENTORY.md](ENGINE_CALLER_SURFACE_PRE_TROM_INVENTORY.md):
   task command/result value records, task stage value records, and
   `PollingIdleBackoffPolicy`.
+- Source-level removal of those current task operation / diagnostic / stage DTO
+  imports is owned by the small closed-loop
+  [TASK_RUNTIME_API_CONTRACT_EXTRACTION_ROADMAP.md](TASK_RUNTIME_API_CONTRACT_EXTRACTION_ROADMAP.md),
+  not by this completed ECSP prerequisite slice.
 - No server route was deleted, reshaped, re-owned, or given new
   auth/permission behavior in this ECSP implementation slice.
 - Current task event/listener hooks are classified as SDK notification residue.
