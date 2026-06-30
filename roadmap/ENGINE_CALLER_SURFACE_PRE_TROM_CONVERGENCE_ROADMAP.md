@@ -15,9 +15,10 @@ This is not an API-protection roadmap for the current
 corruption first: engine-facing assembly may remain internally imperfect inside
 `xa-mass-engine-starter`, but `sdk/xa-mass-embedded-sdk` should no longer
 directly depend on or import engine implementation/service/config owner types.
-Engine-owned value contracts currently imported by SDK code are a separate
-classification problem: they must either move to a public contract module or be
-recorded as explicit temporary exceptions with an owner and removal target.
+Engine-owned value contracts currently imported by SDK code are separate
+temporary exceptions. They must stay inventoried with owner/removal targets and
+should be removed only as part of a TROM slice that also explains how the old
+engine path will close.
 
 It does not redesign core public HTTP routes, core SDK request/response
 contracts, or the future task-runtime protocol. It also does not preserve
@@ -33,7 +34,6 @@ and forbidden imports before task-runtime ownership moves.
 Read with:
 
 - [TASK_RUNTIME_OWNER_MODULE_AND_STARTER_SDK_CONVERGENCE_ROADMAP.md](TASK_RUNTIME_OWNER_MODULE_AND_STARTER_SDK_CONVERGENCE_ROADMAP.md)
-- [TASK_RUNTIME_API_CONTRACT_EXTRACTION_ROADMAP.md](TASK_RUNTIME_API_CONTRACT_EXTRACTION_ROADMAP.md)
 - [xa-mass-engine/README.md](../xa-mass-engine/README.md)
 - [sdk/xa-mass-embedded-sdk/README.md](../sdk/xa-mass-embedded-sdk/README.md)
 - [sdk/README.md](../sdk/README.md)
@@ -66,9 +66,9 @@ Read with:
   task command/result value records, task stage value records, and
   `PollingIdleBackoffPolicy`.
 - Source-level removal of those current task operation / diagnostic / stage DTO
-  imports is owned by the small closed-loop
-  [TASK_RUNTIME_API_CONTRACT_EXTRACTION_ROADMAP.md](TASK_RUNTIME_API_CONTRACT_EXTRACTION_ROADMAP.md),
-  not by this completed ECSP prerequisite slice.
+  imports is not owned by this completed ECSP prerequisite slice. It should be
+  handled inside TROM only when it helps close a named old engine path or guard a
+  migrated task-runtime lane.
 - No server route was deleted, reshaped, re-owned, or given new
   auth/permission behavior in this ECSP implementation slice.
 - Current task event/listener hooks are classified as SDK notification residue.
