@@ -193,7 +193,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                     }
                 });
                 assignWorker.start();
-                runtimeReadyDispatchPump.start();
+                PerfTaskRuntimeLoopSupport.start(engineConfig, runtimeReadyDispatchPump);
 
                 Task bulkTask = materializeTask(taskCommands, buildBulkRequest(config));
                 workloadByTaskId.put(bulkTask.getTid(), bulkTask.getExecutionSpec().getWorkloadClass());
@@ -249,6 +249,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                 Path reportPath = writeReport(config, observation);
                 return new SmokeReport(config, observation, reportPath);
             } finally {
+                PerfTaskRuntimeLoopSupport.stop(engineConfig);
                 runtimeReadyDispatchPump.stop();
                 assignWorker.stop();
                 interactiveCallbackExecutor.shutdownNow();

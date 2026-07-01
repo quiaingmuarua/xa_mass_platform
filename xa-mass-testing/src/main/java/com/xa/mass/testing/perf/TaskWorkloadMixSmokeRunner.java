@@ -173,7 +173,7 @@ public final class TaskWorkloadMixSmokeRunner {
                         interactiveTerminalLatch.countDown();
                     }
                 });
-                runtimeReadyDispatchPump.start();
+                PerfTaskRuntimeLoopSupport.start(engineConfig, runtimeReadyDispatchPump);
 
                 Task bulkTask = materializeTask(taskCommands, buildBulkRequest(config));
                 workloadByTaskId.put(bulkTask.getTid(), bulkTask.getExecutionSpec().getWorkloadClass());
@@ -221,6 +221,7 @@ public final class TaskWorkloadMixSmokeRunner {
                 Path reportPath = writeReport(config, observation);
                 return new SmokeReport(config, observation, reportPath);
             } finally {
+                PerfTaskRuntimeLoopSupport.stop(engineConfig);
                 runtimeReadyDispatchPump.stop();
                 callbackExecutor.shutdownNow();
             }

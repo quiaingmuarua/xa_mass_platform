@@ -263,7 +263,7 @@ public final class TaskFlowLoadModelRunner {
                     });
 
                     assignWorker.start();
-                    runtimeReadyDispatchPump.start();
+                    PerfTaskRuntimeLoopSupport.start(engineConfig, runtimeReadyDispatchPump);
 
                     Task task = materializeTask(taskCommands, buildRequest(config));
                     taskIdRef.set(task.getTid());
@@ -366,6 +366,7 @@ public final class TaskFlowLoadModelRunner {
                             reportPath
                     );
                 } finally {
+                    PerfTaskRuntimeLoopSupport.stop(engineConfig);
                     runtimeReadyDispatchPump.stop();
                     assignWorker.stop();
                     callbackExecutor.shutdownNow();
