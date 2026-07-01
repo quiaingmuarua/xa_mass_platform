@@ -38,9 +38,11 @@ findings-first.
   scanned, and current facts are moved to owning docs or archive when needed.
 - Track later debt as later phases, deferred decisions, residual risks, or
   non-goals. Do not hide it to make the current slice appear complete.
-- Use status precisely: `proposed`, `active`, `slice complete, roadmap active`,
-  `mainline unblocked, residual phases remain`, `implemented-with-residue`,
-  `historical`, or `superseded`.
+- Keep status small: `proposed` means still under challenge/design; `active`
+  means approved execution contract; `residue` means mainline is closed but
+  cleanup, guards, docs, archive, or known residual phases remain; `complete`
+  means completion criteria, residue scan, and fact migration are done;
+  `superseded` means no longer current.
 
 ## Owner Gate
 
@@ -138,6 +140,16 @@ test usage must be separated, dependency movement is involved, ownership is
 unclear, target docs disagree with current code, or the first slice is
 classification.
 
+For active long roadmaps, use a paired `<ROADMAP>_INVENTORY.md` only when
+execution needs a mutable current-code ledger. The roadmap owns decisions:
+owner, target mechanism, slice order, acceptance, proof, guards, and stop
+conditions. The inventory owns rows: callers, symbols, dependencies, routes,
+keys, DTOs, tests, classifications, proof/guard mapping, residue, and closure
+status. Inventory rows may expose gaps or refine scope, but must not change
+owner, target direction, or mainline order; stop for roadmap review when rows
+invalidate those decisions. Do not create an inventory for small or single-slice
+work just to satisfy a template.
+
 Minimal inventory shape:
 
 ```markdown
@@ -155,10 +167,13 @@ Status: current code inventory for <roadmap>.
 | Module | Dependency | Scope | Reason | Target |
 | --- | --- | --- | --- | --- |
 
-## Decisions
+## Closure Notes
 
 - ...
 ```
+
+Add proof, guard, and status columns when the inventory gates execution or
+closure. Keep rows factual and current-code grounded.
 
 Useful classifications: runtime truth, control-plane declaration, storage
 adapter, read model, compatibility residue, admin/bootstrap, transport/session
@@ -178,6 +193,11 @@ Use this shape flexibly:
 - verification candidates
 - "Do Not Start With" warnings for tempting wrong-order shortcuts
 
+For active long roadmaps, link only the paired inventory and directly relevant
+prerequisite roadmaps or blueprints. Do not link generic owner/proof/testing
+docs as a reading list; inline any requirement needed to execute, verify, or
+stop the current roadmap.
+
 Boundary roadmaps usually converge in this order:
 
 1. Inventory and classify current behavior.
@@ -190,10 +210,23 @@ Boundary roadmaps usually converge in this order:
 6. Remove residue, stale docs, compatibility paths, old vocabulary, strategy
    variants, and corner cases after the mainline path is closed.
 
-For runtime/serving migrations, use the sharper sequence: pre-converge
-interfaces and delete/hide wrong exposure points without changing runtime truth;
-implement the new mechanism; cut serving traffic over; close old paths and
-key/DTO/test/vocabulary residue; then add stable negative guards.
+For runtime/serving migrations, use active execution phases instead of a global
+waterfall:
+
+- `pre-converge`: narrow interfaces and delete/hide wrong exposure points
+  without changing runtime truth. It may run across domains before cutover work.
+- `mechanism-cutover`: for one bounded cutpoint/domain, implement the needed
+  owner mechanism and cut serving/runtime traffic over to it. Exit with focused
+  owner/cutover proof.
+- `batched-cleanup`: after enough cutpoints are proven, remove old paths,
+  key/DTO/test/vocabulary residue, compatibility paths, and stale docs in
+  batches.
+- `guard-freeze`: add stable negative guards after owner truth and serving paths
+  are stable.
+
+Do not let `mechanism-cutover` become mechanism-only work: each slice must name
+its cutpoint and smallest cutover proof. Cleanup and guard work may be batched
+after cutpoint proof instead of repeated after every cutpoint.
 
 Do not start by deleting dependencies before moving callers. No slice should
 require a later slice to restore compilation or runtime correctness.
@@ -204,6 +237,9 @@ require a later slice to restore compilation or runtime correctness.
   routes, dependencies, or commands when known.
 - Prefer owner-focused deterministic tests first. Add representative
   cross-boundary proof only when risk crosses a real boundary.
+- Label proof type explicitly. Behavior proof shows user-visible/runtime
+  behavior; ownership proof shows the required owner mechanism/hot path is used
+  and old/fallback paths cannot satisfy the invariant.
 - Treat green CI as support evidence, not proof, when it preserves old behavior
   or lacks a focused invariant.
 - For each proof, ask the anti-proof question: would this still pass if the old
@@ -225,11 +261,19 @@ When executing a slice:
 5. Stop for owner coordination if roadmap definition is materially unclear or
    wrong, owner boundary changes, blast radius expands, or code conflicts with
    the slice.
-6. Update contracts, docs, guards, and verification in the same slice when code
+6. During long goal-mode execution, treat an `active` roadmap as the approved
+   execution contract and keep a tiny execution cursor: status, phase, current
+   cutpoint, locked mainline, next proof, deferred residue, and stop triggers.
+   On resume or compaction, read the cursor, current diff, touched files, and
+   required proof first; expand only from concrete failing evidence, owner-doc
+   references, or stop triggers. Do not re-review, rewrite, broaden, or use it
+   as progress notes unless the user asks. Edit only for factual
+   code/status/proof/assumption changes or owner coordination.
+7. Update contracts, docs, guards, and verification in the same slice when code
    changes them.
-7. If the slice closes a roadmap gap or changes status, update roadmap wording
+8. If the slice closes a roadmap gap or changes status, update roadmap wording
    from plan-state to evidence-state.
-8. After rename, dependency, boundary, or compatibility-removal work, suggest or
+9. After rename, dependency, boundary, or compatibility-removal work, suggest or
    run `roadmap-residue-scan` before declaring completion.
 
 ## Delivery
@@ -242,7 +286,7 @@ In review mode, lead with findings. Use severity only when it helps:
 
 End with one concrete conclusion: fix blockers first, executable next slice,
 mainline can proceed with residual phases, no blocking findings, or too broad
-and must split.
+and should split before execution.
 
 After edits, summarize files changed, boundary decision, inventory status,
 unresolved decisions, and verification. If only roadmap/docs changed, say no
@@ -276,7 +320,8 @@ code behavior changed.
 - Trusting module/package names over production call sites.
 - Reusing broad tests or CI green as proof when focused invariant proof is
   missing.
-- Editing adjacent roadmap files because vocabulary looks related.
+- Editing adjacent roadmap files without requested scope, current evidence, or
+  residue/coordination need.
 - Marking a roadmap complete after only one slice or prerequisite unblocker.
 - Archiving without residue scan, active-link cleanup, and owner-doc fact
   migration.
