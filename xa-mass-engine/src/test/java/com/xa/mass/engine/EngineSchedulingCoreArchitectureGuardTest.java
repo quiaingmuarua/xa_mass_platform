@@ -2869,6 +2869,8 @@ class EngineSchedulingCoreArchitectureGuardTest {
     void taskWriteLockRemainsLifecycleAndProgressOnly() throws IOException {
         Path taskManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/TaskManager.java");
         String source = Files.readString(taskManagerPath, StandardCharsets.UTF_8);
+        Path servingLanePath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/TaskRuntimeServingLane.java");
+        String servingLaneSource = Files.readString(servingLanePath, StandardCharsets.UTF_8);
         Path concurrencyCoordinatorPath = MAIN_SOURCE_ROOT.resolve(
                 "com/xa/mass/engine/LocalTaskConcurrencyCoordinator.java");
         String concurrencyCoordinatorSource = Files.readString(concurrencyCoordinatorPath, StandardCharsets.UTF_8);
@@ -2903,12 +2905,12 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
         Map<String, String> runtimeOwnedMethods = Map.of(
                 "claimReady",
-                sourceMethod(source, "public ClaimReadyOutcome claimReady")
+                sourceMethod(servingLaneSource, "public ClaimReadyOutcome claimReady")
         );
         for (Map.Entry<String, String> runtimeOwnedMethod : runtimeOwnedMethods.entrySet()) {
             for (String forbidden : List.of("withTaskLock(", "withTaskWorkReadLock(", "withTaskWriteLock(")) {
                 if (runtimeOwnedMethod.getValue().contains(forbidden)) {
-                    violations.add(taskManagerPath + " " + runtimeOwnedMethod.getKey()
+                    violations.add(servingLanePath + " " + runtimeOwnedMethod.getKey()
                             + " must stay runtime-owned and not take task locks: " + forbidden);
                 }
             }

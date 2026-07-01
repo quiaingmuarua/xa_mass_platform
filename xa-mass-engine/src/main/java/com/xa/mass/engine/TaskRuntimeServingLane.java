@@ -386,7 +386,9 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
         Task task = taskQueries.getTask(taskId);
         var correlation = resultPort.getResultCorrelation(taskId, messageId);
         if (!correlation.present()) {
-            return getVisibleTaskResultByMessageId(taskId, messageId).isPresent();
+            Optional<FinalResultRow> finalResult = getVisibleTaskResultByMessageId(taskId, messageId);
+            finalResult.ifPresent(row -> publishDuplicateCallbackTrace(row, "already final"));
+            return finalResult.isPresent();
         }
         Map<String, Object> payload = output == null ? new LinkedHashMap<>() : new LinkedHashMap<>(output);
         if (errorCode != null && !errorCode.isBlank()) {
@@ -473,6 +475,9 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
         ActiveLeaseRepairCandidate active = findActiveCandidate(command.taskId(), command.messageId());
         var outcome = resultPort.applyResult(command);
         var decision = TaskRuntimeResultDecisionMapper.toEngineDecision(outcome);
+        if (command.source() == ResultApplySource.WORKER_RESULT) {
+            publishCallbackTrace(command, active, decision);
+        }
         if (decision.accepted() && active != null
                 && (decision.status() == MessageFinalityStatus.LOGICAL_FINAL
                 || decision.status() == MessageFinalityStatus.RETRY_SCHEDULED)) {
@@ -480,7 +485,7 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
             publishAttemptClosed(task, command, active, decision);
         }
         if (decision.accepted() && decision.status() == MessageFinalityStatus.LOGICAL_FINAL) {
-            publishLogicalFinal(task, command, decision);
+            publishLogicalFinal(task, command, active, decision);
         }
         if (decision.progressDirty()) {
             stateResolver.updateTaskProgress(command.taskId());
@@ -501,21 +506,8 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
         if (task == null) {
             return;
         }
-        boolean retry = decision.status() == MessageFinalityStatus.RETRY_SCHEDULED;
-        TaskWorkLifecycleState.AttemptStatus status = retry
-                ? TaskWorkLifecycleState.AttemptStatus.REVOKED
-                : command.success()
-                ? TaskWorkLifecycleState.AttemptStatus.SUCCEEDED
-                : command.source() == ResultApplySource.LEASE_TIMEOUT
-                ? TaskWorkLifecycleState.AttemptStatus.EXPIRED
-                : TaskWorkLifecycleState.AttemptStatus.FAILED;
-        TaskWorkLifecycleState.AttemptFinalReason reason = retry
-                ? TaskWorkLifecycleState.AttemptFinalReason.REVOKED_FOR_RETRY
-                : command.success()
-                ? TaskWorkLifecycleState.AttemptFinalReason.SUCCESS
-                : command.source() == ResultApplySource.LEASE_TIMEOUT
-                ? TaskWorkLifecycleState.AttemptFinalReason.LEASE_EXPIRED
-                : TaskWorkLifecycleState.AttemptFinalReason.BUSINESS_FAILURE;
+        TaskWorkLifecycleState.AttemptStatus status = attemptStatus(command, decision);
+        TaskWorkLifecycleState.AttemptFinalReason reason = attemptFinalReason(command, decision);
         String attemptId = TaskWorkAttemptIdSupport.workerLevelRuntimeAttemptId(
                 command.messageId(),
                 command.attemptNo(),
@@ -548,7 +540,38 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
                 decision.reason());
     }
 
-    private void publishLogicalFinal(Task task, ResultApplyCommand command, TaskRuntimeResultDecision decision) {
+    private TaskWorkLifecycleState.AttemptStatus attemptStatus(ResultApplyCommand command,
+                                                               TaskRuntimeResultDecision decision) {
+        if (command.success()) {
+            return TaskWorkLifecycleState.AttemptStatus.SUCCEEDED;
+        }
+        if (command.source() == ResultApplySource.LEASE_TIMEOUT) {
+            return TaskWorkLifecycleState.AttemptStatus.EXPIRED;
+        }
+        if (decision.retryScheduled() && command.source() != ResultApplySource.WORKER_RESULT) {
+            return TaskWorkLifecycleState.AttemptStatus.REVOKED;
+        }
+        return TaskWorkLifecycleState.AttemptStatus.FAILED;
+    }
+
+    private TaskWorkLifecycleState.AttemptFinalReason attemptFinalReason(ResultApplyCommand command,
+                                                                         TaskRuntimeResultDecision decision) {
+        if (command.success()) {
+            return TaskWorkLifecycleState.AttemptFinalReason.SUCCESS;
+        }
+        if (command.source() == ResultApplySource.LEASE_TIMEOUT) {
+            return TaskWorkLifecycleState.AttemptFinalReason.LEASE_EXPIRED;
+        }
+        if (decision.retryScheduled() && command.source() != ResultApplySource.WORKER_RESULT) {
+            return TaskWorkLifecycleState.AttemptFinalReason.REVOKED_FOR_RETRY;
+        }
+        return TaskWorkLifecycleState.AttemptFinalReason.BUSINESS_FAILURE;
+    }
+
+    private void publishLogicalFinal(Task task,
+                                     ResultApplyCommand command,
+                                     ActiveLeaseRepairCandidate active,
+                                     TaskRuntimeResultDecision decision) {
         if (task == null) {
             return;
         }
@@ -562,6 +585,7 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
                 : command.source() == ResultApplySource.LEASE_TIMEOUT
                 ? TaskWorkLifecycleState.MessageFinalReason.LEASE_EXPIRED
                 : TaskWorkLifecycleState.MessageFinalReason.BUSINESS_FAILED;
+        String traceReason = logicalFinalTraceReason(command);
         taskEvents.publishTaskWorkLogicallyFinal(
                 task,
                 TaskWorkLogicallyFinalEvent.from(
@@ -571,9 +595,46 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
                         reason,
                         Math.max(0, command.attemptNo() - 1),
                         null,
-                        decision.reason(),
+                        traceReason,
                         null,
                         command.resultPayloadJson()));
+        traceEventLogger.taskWorkLogicallyFinal(
+                task,
+                traceView(command, active, decision),
+                TaskWorkAttemptIdSupport.workerLevelRuntimeAttemptId(
+                        command.messageId(),
+                        command.attemptNo(),
+                        command.workerId(),
+                        active != null ? active.batchId() : null),
+                command.workerId(),
+                active != null ? active.batchId() : null,
+                "APPLY_RESULT",
+                "TaskRuntimeServingLane",
+                traceReason);
+    }
+
+    private void publishCallbackTrace(ResultApplyCommand command,
+                                      ActiveLeaseRepairCandidate active,
+                                      TaskRuntimeResultDecision decision) {
+        if (active == null) {
+            return;
+        }
+        var view = traceView(command, active, decision);
+        if (decision.status() == MessageFinalityStatus.DUPLICATE_OR_LATE) {
+            traceEventLogger.callbackIgnoredDuplicate(view, decision.reason());
+        } else if (decision.accepted()) {
+            traceEventLogger.callbackAccepted(view, decision.reason());
+        }
+    }
+
+    private void publishDuplicateCallbackTrace(FinalResultRow row, String reason) {
+        traceEventLogger.callbackIgnoredDuplicate(traceView(row), reason);
+    }
+
+    private String logicalFinalTraceReason(ResultApplyCommand command) {
+        return command.success()
+                ? "work item reached stable success"
+                : "work item reached stable failure";
     }
 
     private void publishLeaseExpiredTrace(ResultApplyCommand command,
@@ -611,12 +672,39 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
                         command.messageId(),
                         command.attemptNo(),
                         command.workerId(),
-                        active.batchId()),
+                        active != null ? active.batchId() : null),
                 command.workerId(),
-                active.batchId(),
+                active != null ? active.batchId() : null,
                 traceMessageStatus(command, decision),
                 traceMessageFinalReason(command, decision),
                 Math.max(0, command.attemptNo() - 1),
+                null);
+    }
+
+    private TraceEventLogger.TaskWorkTraceView traceView(FinalResultRow row) {
+        TaskWorkLifecycleState.MessageStatus status = row.success()
+                ? TaskWorkLifecycleState.MessageStatus.SUCCESS
+                : row.source() == ResultApplySource.LEASE_TIMEOUT
+                ? TaskWorkLifecycleState.MessageStatus.EXPIRED
+                : TaskWorkLifecycleState.MessageStatus.FAILED;
+        TaskWorkLifecycleState.MessageFinalReason reason = row.success()
+                ? TaskWorkLifecycleState.MessageFinalReason.BUSINESS_SUCCESS
+                : row.source() == ResultApplySource.LEASE_TIMEOUT
+                ? TaskWorkLifecycleState.MessageFinalReason.LEASE_EXPIRED
+                : TaskWorkLifecycleState.MessageFinalReason.BUSINESS_FAILED;
+        return new TraceEventLogger.TaskWorkTraceView(
+                row.taskId(),
+                row.messageId(),
+                TaskWorkAttemptIdSupport.workerLevelRuntimeAttemptId(
+                        row.messageId(),
+                        row.attemptNo(),
+                        row.workerId(),
+                        row.batchId()),
+                row.workerId(),
+                row.batchId(),
+                status,
+                reason,
+                Math.max(0, row.attemptNo() - 1),
                 null);
     }
 
