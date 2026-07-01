@@ -193,13 +193,34 @@ public final class TraceEventLogger {
     }
 
     public void taskWorkRetryReset(TaskWorkTraceView workView,
-                                  String attemptId,
-                                  String workerId,
-                                  String batchId,
-                                  Long workRetryDelayMillis,
-                                  String trigger,
-                                  String source,
-                                  String reason) {
+                                   String attemptId,
+                                   String workerId,
+                                   String batchId,
+                                   Long workRetryDelayMillis,
+                                   String trigger,
+                                   String source,
+                                   String reason) {
+        taskWorkRetryReset(
+                workView,
+                attemptId,
+                workerId,
+                batchId,
+                null,
+                workRetryDelayMillis,
+                trigger,
+                source,
+                reason);
+    }
+
+    public void taskWorkRetryReset(TaskWorkTraceView workView,
+                                   String attemptId,
+                                   String workerId,
+                                   String batchId,
+                                   MessageStatus fromStatus,
+                                   Long workRetryDelayMillis,
+                                   String trigger,
+                                   String source,
+                                   String reason) {
         if (workView == null) {
             return;
         }
@@ -209,7 +230,7 @@ public final class TraceEventLogger {
                         .messageId(workView.messageId())
                         .attemptId(attemptId != null ? attemptId : workView.latestAttemptId())
                         .workerId(workerId != null ? workerId : workView.latestAttemptWorkerId()))
-                .transition("FAILED_OR_EXPIRED", MessageStatus.INIT.name(), reason)
+                .transition(retryResetSourceStatus(fromStatus), MessageStatus.INIT.name(), reason)
                 .attrs(attrs(
                         "trigger", trigger,
                         "source", source,
@@ -937,6 +958,10 @@ public final class TraceEventLogger {
 
     private static String enumName(Enum<?> value) {
         return value != null ? value.name() : null;
+    }
+
+    private static String retryResetSourceStatus(MessageStatus fromStatus) {
+        return fromStatus != null ? fromStatus.name() : "FAILED_OR_EXPIRED";
     }
 
     private static String formatDouble(double value) {

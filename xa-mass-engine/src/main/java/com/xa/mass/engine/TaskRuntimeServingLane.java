@@ -484,6 +484,9 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
             publishLeaseExpiredTrace(command, active, decision);
             publishAttemptClosed(task, command, active, decision);
         }
+        if (decision.accepted() && decision.retryScheduled()) {
+            publishRetryResetTrace(command, active, decision);
+        }
         if (decision.accepted() && decision.status() == MessageFinalityStatus.LOGICAL_FINAL) {
             publishLogicalFinal(task, command, active, decision);
         }
@@ -662,6 +665,29 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
                 decision.reason());
     }
 
+    private void publishRetryResetTrace(ResultApplyCommand command,
+                                        ActiveLeaseRepairCandidate active,
+                                        TaskRuntimeResultDecision decision) {
+        if (!decision.retryScheduled()) {
+            return;
+        }
+        String attemptId = TaskWorkAttemptIdSupport.workerLevelRuntimeAttemptId(
+                command.messageId(),
+                command.attemptNo(),
+                command.workerId(),
+                active != null ? active.batchId() : null);
+        traceEventLogger.taskWorkRetryReset(
+                traceView(command, active, decision),
+                attemptId,
+                command.workerId(),
+                active != null ? active.batchId() : null,
+                retryResetSourceStatus(command),
+                command.retryPolicy().retryDelayMillis(),
+                retryResetTrigger(command),
+                "TaskRuntimeServingLane",
+                retryResetReason(command, decision));
+    }
+
     private TraceEventLogger.TaskWorkTraceView traceView(ResultApplyCommand command,
                                                          ActiveLeaseRepairCandidate active,
                                                          TaskRuntimeResultDecision decision) {
@@ -797,6 +823,31 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
                 .filter(candidate -> messageId.equals(candidate.messageId()))
                 .findFirst()
                 .orElse(null);
+    }
+
+    private TaskWorkLifecycleState.MessageStatus retryResetSourceStatus(ResultApplyCommand command) {
+        return command.source() == ResultApplySource.LEASE_TIMEOUT
+                ? TaskWorkLifecycleState.MessageStatus.EXPIRED
+                : TaskWorkLifecycleState.MessageStatus.FAILED;
+    }
+
+    private String retryResetTrigger(ResultApplyCommand command) {
+        return command.source() == ResultApplySource.LEASE_TIMEOUT
+                ? "LEASE_TIMEOUT"
+                : "RESULT_APPLY";
+    }
+
+    private String retryResetReason(ResultApplyCommand command, TaskRuntimeResultDecision decision) {
+        String reason = decision.reason();
+        if (reason == null || reason.isBlank()) {
+            reason = command.failureReason();
+        }
+        if (reason == null || reason.isBlank()) {
+            reason = command.source() == ResultApplySource.LEASE_TIMEOUT
+                    ? "retry reset after lease expiry"
+                    : "retry reset after failed attempt";
+        }
+        return reason;
     }
 
 

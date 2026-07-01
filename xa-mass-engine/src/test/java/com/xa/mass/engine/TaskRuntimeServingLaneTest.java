@@ -12,8 +12,12 @@ import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchDeliveryFailure;
 import com.xa.mass.engine.policy.ContractAwareTaskTerminalPolicy;
+import com.xa.mass.engine.strategy.DefaultSchedulingPlaneResolver;
 import com.xa.mass.task.runtime.ClaimedWorkItem;
 import com.xa.mass.task.runtime.memory.InMemoryTaskRuntime;
+import com.xa.mass.trace.sink.ExecutionEvent;
+import com.xa.mass.trace.sink.ExecutionEventSink;
+import com.xa.mass.trace.sink.ExecutionEventType;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -220,6 +224,38 @@ class TaskRuntimeServingLaneTest {
     }
 
     @Test
+    void retryableLeaseExpiryEmitsRetryResetTrace() {
+        AtomicLong clock = new AtomicLong(1_000L);
+        Harness harness = new Harness(clock);
+        Task task = harness.createApprovedBatchTask("serving-timeout-retry", 1);
+        harness.appendRuntimeItems(task, List.of(Map.of("eventCode", "demo.event", "value", 1)));
+        var claimed = harness.lane.claimReady(TaskRuntimeClaimTestSupport.claimCommand(
+                task.getTid(),
+                "group-1",
+                "worker-1",
+                "batch-1",
+                "selection-1",
+                123L,
+                1,
+                1L)).claimedItems();
+
+        clock.set(3_000L);
+
+        assertThat(harness.lane.expireLeasedWork(task.getTid(), claimed.getFirst().messageId())).isTrue();
+
+        List<ExecutionEvent> retryResetEvents = harness.traceSink.eventsOfType(ExecutionEventType.TASK_WORK_RETRY_RESET);
+        assertThat(retryResetEvents).hasSize(1);
+        ExecutionEvent retryReset = retryResetEvents.getFirst();
+        assertThat(retryReset.getIdentity().taskId()).isEqualTo(task.getTid());
+        assertThat(retryReset.getIdentity().messageId()).isEqualTo(claimed.getFirst().messageId());
+        assertThat(retryReset.getIdentity().workerId()).isEqualTo("worker-1");
+        assertThat(retryReset.getTransition().src()).isEqualTo("EXPIRED");
+        assertThat(retryReset.getTransition().dst()).isEqualTo("INIT");
+        assertThat(retryReset.getAttrs()).containsEntry("source", "TaskRuntimeServingLane");
+        assertThat(retryReset.getAttrs()).containsEntry("trigger", "LEASE_TIMEOUT");
+    }
+
+    @Test
     void taskManagerFullDiscardUsesServingLaneRuntimeOwner() {
         AtomicLong clock = new AtomicLong(1_000L);
         Harness harness = new Harness(clock);
@@ -353,9 +389,11 @@ class TaskRuntimeServingLaneTest {
         private final TaskManager manager;
         private final TaskEventService events;
         private final TaskRuntimeServingLane lane;
+        private final CapturingTraceSink traceSink;
 
         private Harness(AtomicLong clock) {
             this.runtime = new InMemoryTaskRuntime(clock::get);
+            this.traceSink = new CapturingTraceSink();
             var taskStorage = new InMemoryTaskShellRuntimeStore();
             this.manager = new TaskManager(
                     taskStorage,
@@ -372,9 +410,14 @@ class TaskRuntimeServingLaneTest {
                     runtime,
                     runtime,
                     runtime,
+                    runtime,
+                    runtime,
                     queries,
                     commands,
                     events,
+                    new ContractAwareTaskTerminalPolicy(),
+                    new DefaultSchedulingPlaneResolver(),
+                    new TraceEventLogger(traceSink),
                     1L,
                     100,
                     86_400_000L);
@@ -382,12 +425,16 @@ class TaskRuntimeServingLaneTest {
         }
 
         private Task createApprovedBatchTask(String name) {
+            return createApprovedBatchTask(name, 0);
+        }
+
+        private Task createApprovedBatchTask(String name, int maxRetryCount) {
             TaskShellCreateRequestDto dto = new TaskShellCreateRequestDto();
             dto.setProject("demoApp");
             dto.setUserId("agent");
             dto.setSourceRef(name);
             dto.setContract(TaskContract.BATCH);
-            dto.setExecutionSpec(taskExecutionSpec());
+            dto.setExecutionSpec(taskExecutionSpec(maxRetryCount));
             dto.setSharedConfig(Map.of(TaskSharedConfig.WORKER_GROUP_ID, "group-1"));
             Task task = manager.createTaskShell(dto);
             assertThat(manager.approveTask(task.getTid())).isTrue();
@@ -411,11 +458,30 @@ class TaskRuntimeServingLaneTest {
         }
 
         private TaskExecutionSpec taskExecutionSpec() {
+            return taskExecutionSpec(0);
+        }
+
+        private TaskExecutionSpec taskExecutionSpec(int maxRetryCount) {
             TaskExecutionSpec spec = new TaskExecutionSpec();
-            spec.setDefaultMaxRetryCount(0);
+            spec.setDefaultMaxRetryCount(maxRetryCount);
             spec.setBatchSize(1);
             return spec;
         }
 
+    }
+
+    private static final class CapturingTraceSink implements ExecutionEventSink {
+        private final List<ExecutionEvent> events = new ArrayList<>();
+
+        @Override
+        public synchronized void emit(ExecutionEvent event) {
+            events.add(event);
+        }
+
+        private synchronized List<ExecutionEvent> eventsOfType(ExecutionEventType eventType) {
+            return events.stream()
+                    .filter(event -> event.getEventType() == eventType)
+                    .toList();
+        }
     }
 }
