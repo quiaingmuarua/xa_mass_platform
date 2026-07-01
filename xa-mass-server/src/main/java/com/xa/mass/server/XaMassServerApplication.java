@@ -1,13 +1,7 @@
 package com.xa.mass.server;
 
-import com.xa.mass.runtime.api.TaskWorkRuntime;
-import com.xa.mass.runtime.api.TaskResultRuntime;
-import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
-import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.runtime.redis.RedisWorkerRegistry;
 import com.xa.mass.runtime.redis.RedisWorkerScoreBandSlotRuntime;
-import com.xa.mass.runtime.redis.RedisTaskResultRuntime;
-import com.xa.mass.runtime.redis.RedisTaskWorkRuntime;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.api.review.InProcessTaskReviewReportQueue;
 import com.xa.mass.api.review.InMemoryTaskReviewStore;
@@ -117,9 +111,6 @@ public class XaMassServerApplication {
 
     @Value("${mass.runtime.redis.namespace:xa:mass:runtime:v1}")
     private String runtimeRedisNamespace;
-
-    @Value("${mass.runtime.redis.max-queued-items:1000000}")
-    private int runtimeRedisMaxQueuedItems;
 
     @Value("${mass.transport.polling.buffer.store:memory}")
     private String transportPollingPendingDeliveryBufferStore;
@@ -304,41 +295,11 @@ public class XaMassServerApplication {
         return new QueueBackedTaskReviewReadModelWriter(taskReviewReportQueue, policy);
     }
 
-    @Bean(destroyMethod = "shutdown")
-    @Profile({"memory-local", "durable-local"})
-    public TaskWorkRuntime taskWorkRuntime() {
-        String normalizedMode = normalizeInfraMode(runtimeMode, "memory");
-        if ("redis".equals(normalizedMode)) {
-            return new RedisTaskWorkRuntime(redisUri(), runtimeRedisNamespace, runtimeRedisMaxQueuedItems);
-        }
-        requireDurableLocalInfraMode("mass.runtime.mode", "redis", normalizedMode);
-        if ("memory".equals(normalizedMode)) {
-            return new InMemoryTaskWorkRuntime();
-        }
-        throw new IllegalArgumentException("Unsupported mass.runtime.mode: " + runtimeMode);
-    }
-
-    @Bean(destroyMethod = "shutdown")
-    @Profile({"memory-local", "durable-local"})
-    public TaskResultRuntime taskResultRuntime() {
-        String normalizedMode = normalizeInfraMode(runtimeMode, "memory");
-        if ("redis".equals(normalizedMode)) {
-            return new RedisTaskResultRuntime(redisUri(), runtimeRedisNamespace + ":result");
-        }
-        requireDurableLocalInfraMode("mass.runtime.mode", "redis", normalizedMode);
-        if ("memory".equals(normalizedMode)) {
-            return new InMemoryTaskResultRuntime();
-        }
-        throw new IllegalArgumentException("Unsupported mass.runtime.mode: " + runtimeMode);
-    }
-
     @Bean(destroyMethod = "stop")
     @Profile({"memory-local", "durable-local"})
     public MassSdkApplication fullStackRuntimeApplication(JdbcStorageRuntime jdbcStorageRuntime,
                                                           CatalogMetadataStore catalogMetadataStore,
                                                           TaskShellStore taskShellStore,
-                                                          TaskWorkRuntime taskWorkRuntime,
-                                                          TaskResultRuntime taskResultRuntime,
                                                           ObjectProvider<ExecutionEventSink> executionEventSinkProvider) {
         MassSdk.Builder builder = MassSdk.builder();
         if (jdbcStorageRuntime.isEnabled()) {
@@ -377,8 +338,7 @@ public class XaMassServerApplication {
                             .leaseWatchdogIntervalSeconds(leaseWatchdogIntervalSeconds)
                             .taskMessageLeaseSeconds(taskMessageLeaseSeconds)
                             .taskShellStore(taskShellStore);
-                    engine.taskWorkRuntime(taskWorkRuntime);
-                    engine.taskResultRuntime(taskResultRuntime);
+                    configureTaskRuntimeBackend(engine);
                     WorkerRegistry workerRegistry = workerRegistry();
                     if (workerRegistry != null) {
                         engine.workerRegistry(workerRegistry);
@@ -598,6 +558,20 @@ public class XaMassServerApplication {
         throw new IllegalArgumentException(
                 "Unsupported mass.transport.endpoint-lease.store: " + transportEndpointLeaseStore
         );
+    }
+
+    private void configureTaskRuntimeBackend(MassSdk.EngineOptions engine) {
+        String normalizedMode = normalizeInfraMode(runtimeMode, "memory");
+        if ("redis".equals(normalizedMode)) {
+            engine.redisTaskRuntime(redisUri(), runtimeRedisNamespace + ":task-runtime");
+            return;
+        }
+        requireDurableLocalInfraMode("mass.runtime.mode", "redis", normalizedMode);
+        if ("memory".equals(normalizedMode)) {
+            engine.memoryTaskRuntime();
+            return;
+        }
+        throw new IllegalArgumentException("Unsupported mass.runtime.mode: " + runtimeMode);
     }
 
     private String normalizeInfraMode(String rawValue, String defaultValue) {

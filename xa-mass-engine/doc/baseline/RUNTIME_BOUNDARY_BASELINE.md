@@ -1,140 +1,153 @@
 # Runtime Boundary Baseline
 
-Status: current engine runtime boundary baseline.
+Status: current engine runtime boundary baseline after the task-runtime
+serving-lane cutover.
 
-This file freezes the engine-side runtime boundary so memory and Redis can
-share one behavioral contract without turning storage, review materialization,
-or starter assembly into a second runtime truth.
+This file freezes the engine-facing task-runtime boundary so memory and Redis
+task-runtime adapters can share one behavioral contract without turning engine
+storage, server review materialization, transport, or starter assembly into a
+second task item runtime truth.
 
 Use with:
 
 - [README.md](../../README.md)
 - [STORAGE_BASELINE.md](./STORAGE_BASELINE.md)
+- [../../../doc/TASK_LIFECYCLE_BASELINE.md](../../../doc/TASK_LIFECYCLE_BASELINE.md)
 - [../../../doc/INFRA_TRUTH_LAYERS.md](../../../doc/INFRA_TRUTH_LAYERS.md)
 - [../../../platform_infra/README.md](../../../platform_infra/README.md)
 
 ## Scope
 
-This baseline only covers the engine-facing runtime boundary:
+This baseline covers the engine-facing task-runtime boundary:
 
-- what `TaskWorkRuntime` owns
-- what storage and server review materialization do not own
-- what runtime switching does and does not promise
-- what recovery paths may infer from runtime truth
+- what `xa-mass-task-runtime` owns;
+- what engine shell orchestration consumes;
+- what storage and server review materialization do not own;
+- what runtime switching does and does not promise;
+- what recovery paths may infer from runtime truth.
 
-It does not redesign transport, public API shape, or future trace/audit sinks.
+It does not redesign transport, public API shape, worker selection, or future
+trace/audit sinks.
 
 ## Runtime Truth
 
-`TaskWorkRuntime` is the only runtime truth for:
+`xa-mass-task-runtime` is the runtime truth for:
 
-- ready queue membership
-- delayed visibility / retry re-entry timing
-- exclusive claim ownership
-- active lease identity and expiry
-- runtime backpressure and queue-admission rejection
-- per-task runtime counters used by engine progress convergence
+- accepted ready backlog;
+- scheduler discovery of task-level runnable candidates;
+- exclusive claim ownership;
+- active lease identity, expiry, and repair candidates;
+- retry/finality outcome;
+- final-result rows and bounded result reads;
+- progress snapshots used by engine state/terminal policy;
+- runtime discard/cleanup.
 
 Engine hot paths must treat these runtime semantics as authoritative:
 
-- `enqueue(...)` is the runtime-owned admission point for logical work
-- `readyTaskIds(limit)` is the startup and redispatch recovery surface
-- batch/bulk redispatch should prefer periodic recovery from
-  `readyTaskIds(limit)` over engine-local task-delay ownership
-- `claimReady(...)` is the exclusive runtime claim path
-- `applyResult(...)` and `applyResultWithContext(...)` are the runtime result
-  convergence paths
-- `pollExpiredLeases(...)` reports runtime expiry truth
-- `getRecentFinalReceipt(...)` is the bounded duplicate/late callback recovery
-  read after queue and lease ownership have already been released
-- `discardTask(...)` removes runtime residue without redefining storage truth
-- engine -> transport handoff carries runtime-native dispatch bindings built
-  from claimed runtime work plus active attempt ownership
-- transport must not need persisted review input fields to reconstruct the
-  worker payload
-- callback duplicate, late, and no-active-lease trace emission must use bounded
-  runtime state first
-- when queue work and active lease have already been removed, accepted
-  duplicate/late callback handling must rely on bounded runtime final receipts
-- task termination / cancellation must drain runtime active leases only; review
-  rows must not be scanned just to stamp terminal status
+- append writes accepted item identity and ready backlog through
+  `TaskRuntimeAppendPort`;
+- scheduler discovery reads task-runtime runnable candidates, not storage or
+  review rows;
+- claim moves ready work to active leases through `TaskRuntimeClaimPort`;
+- result ingest applies worker/timeout/dispatch-failure outcomes through
+  `TaskRuntimeResultPort`;
+- active lease timeout and repair candidates come from `TaskRuntimeRepairPort`;
+- public final-result reads come from `TaskRuntimeReadPort`;
+- terminal/delete cleanup uses `TaskRuntimeDiscardPort`;
+- task progress and terminal convergence consume `TaskRuntimeProgressSnapshot`.
+
+## Engine Role
+
+Engine remains the shell and orchestration owner:
+
+- task shell lifecycle, intake, control commands, and terminal aggregate policy;
+- scheduling policy resolution and worker selection orchestration;
+- dispatch binding and trace emission;
+- consumption of task-runtime outcomes into task progress and terminal
+  convergence.
+
+`TaskRuntimeServingLane` is the engine-side serving boundary to the
+task-runtime ports. `TaskManager` must not reintroduce old direct
+`TaskWorkRuntime` / `TaskResultRuntime` stores or a parallel result helper path.
 
 ## Storage And Review Non-Truth
 
 `TaskShellStore` owns control-plane shell truth only:
 
-- `Task` shell state
-- rule definition truth
+- `Task` shell state;
+- rule definition truth.
 
 Worker declaration truth is owned by `xa-mass-worker-runtime`.
 
 Server review/export materialization is owned by `xa-mass-server` and may lag
 runtime. It may support:
 
-- bounded UI/debug/export reads
-- focused tests and operator review flows
-- server-local item and attempt summaries
+- bounded UI/debug/export reads;
+- focused tests and operator review flows;
+- server-local item and attempt summaries.
 
 It must not redefine:
 
-- ready queue truth
-- lease truth
-- retry visibility truth
-- startup recovery truth
-- result commit truth
-- task progress correctness in place of runtime counters
+- ready backlog truth;
+- lease truth;
+- retry visibility truth;
+- startup recovery truth;
+- result commit truth;
+- task progress correctness in place of task-runtime progress snapshots.
 
 ## Cutover Semantics
 
 Runtime implementation choice belongs to startup assembly, not to engine
-callers. Engine depends on `TaskWorkRuntime`; starter wiring chooses memory or
-Redis.
+callers. Engine depends on `TaskRuntimeServingLane`; starter wiring chooses a
+task-runtime memory or Redis backend through `sdk/xa-mass-task-runtime-starter-sdk`.
 
 Current truth:
 
-- code paths are implementation-agnostic once a `TaskWorkRuntime` is injected
-- runtime implementation is selected before `TaskManager` assembly
-- runtime implementation must not be replaced after `TaskManager` is configured
-- memory -> Redis is an explicit cutover, not an online hot-switch contract
+- code paths are implementation-agnostic once a serving lane is installed;
+- runtime implementation is selected before `TaskManager` serving-lane use;
+- runtime implementation must not be replaced after the serving lane is
+  configured except through a full starter/runtime restart;
+- memory -> Redis is an explicit cutover, not an online hot-switch contract.
 
 Do not describe runtime selection as seamless state migration unless backlog,
-delay, and lease transfer semantics are explicitly implemented and verified.
+delay, lease, and final-result transfer semantics are explicitly implemented
+and verified.
 
 ## Recovery Rules
 
-Startup or replay recovery must trust runtime truth first:
+Startup or replay recovery must trust task-runtime truth first:
 
-- dispatch recovery reads `TaskWorkRuntime.readyTaskIds(limit)`
-- starter-owned bulk dispatch pump also reads `TaskWorkRuntime.readyTaskIds(limit)`
-  and routes only batch-contract tasks into direct assignment/matching
-- storage task status alone must not imply dispatchable runtime work
+- dispatch recovery reads task-runtime scheduler discovery;
+- storage task status alone must not imply dispatchable runtime work;
 - runtime task ids missing from storage are filtered as residue, not promoted
-  into synthetic storage truth
+  into synthetic storage truth.
 
 Recovery must not rely on:
 
-- scanning server review rows to reconstruct queue truth
-- inferring ready work from `TaskStatus.READY` alone
-- replaying review history into runtime on every startup
+- scanning server review rows to reconstruct queue truth;
+- inferring ready work from `TaskStatus.READY` alone;
+- replaying review history into runtime on every startup.
 
 ## Forbidden Drift
 
 Do not add these regressions:
 
-- a second engine runtime facade beside `TaskWorkRuntime`
-- review-row-driven recovery or finality correctness
-- storage or review scans in hot paths to reconstruct ready queues
-- starter or transport code that mutates runtime truth outside the contract
-- docs that imply runtime implementation switching is hot or automatic
+- a second engine runtime facade beside `TaskRuntimeServingLane`;
+- old `TaskWorkRuntime` / `TaskResultRuntime` stores, DTOs, or constructors;
+- review-row-driven recovery or finality correctness;
+- storage or review scans in hot paths to reconstruct ready queues;
+- starter or transport code that mutates task-runtime truth outside the
+  task-runtime ports;
+- docs that imply runtime implementation switching is hot or automatic.
 
 ## Current Residue
 
 Current bounded residue that remains acceptable:
 
-- recent final receipts in runtime for duplicate/late callback classification
-- staged callback/result repair anchors in `TaskResultRuntime`
-- server-local review rows for operator/UI/export materialization
-- bounded debug reads exposed by shell-facing query services
+- server-local review rows for operator/UI/export materialization;
+- bounded debug reads exposed by shell-facing query services;
+- manual chaos/diagnostic snapshot proof semantics that still need to be
+  retargeted to the serving-lane vocabulary.
 
-These are current implementation facts, not permission to make review rows
-runtime truth.
+These are current implementation facts, not permission to make review rows,
+transport queues, or storage rows task-runtime truth.

@@ -352,6 +352,10 @@ class ServerMainSourceArchitectureGuardTest {
         String disabledJdbcFallback = "JdbcStorageRuntime" + "::disabled";
         String taskWorkFallback = "getIfAvailable(" + "InMemoryTaskWorkRuntime::new)";
         String taskResultFallback = "getIfAvailable(" + "InMemoryTaskResultRuntime::new)";
+        String legacyTaskWorkImport = "import com.xa.mass.runtime.api.TaskWorkRuntime;";
+        String legacyTaskResultImport = "import com.xa.mass.runtime.api.TaskResultRuntime;";
+        String legacyTaskWorkBean = "public TaskWorkRuntime taskWorkRuntime()";
+        String legacyTaskResultBean = "public TaskResultRuntime taskResultRuntime()";
         String memoryNullSwitch = "case \"\", \"memory\" -> " + "null";
         String memoryRuntimeSwitch = "case \"\", \"memory\" -> " + "new InMemory";
 
@@ -363,6 +367,18 @@ class ServerMainSourceArchitectureGuardTest {
                 "durable-local runtime assembly must not fallback to in-memory task work runtime when the bean is missing");
         assertTrue(!applicationSource.contains(taskResultFallback),
                 "durable-local runtime assembly must not fallback to in-memory task result runtime when the bean is missing");
+        assertTrue(!applicationSource.contains(legacyTaskWorkImport),
+                "server main assembly must not import the legacy task work runtime API");
+        assertTrue(!applicationSource.contains(legacyTaskResultImport),
+                "server main assembly must not import the legacy task result runtime API");
+        assertTrue(!applicationSource.contains(legacyTaskWorkBean),
+                "server main assembly must not expose a legacy task work runtime Spring bean");
+        assertTrue(!applicationSource.contains(legacyTaskResultBean),
+                "server main assembly must not expose a legacy task result runtime Spring bean");
+        assertTrue(!applicationSource.contains("engine.taskWorkRuntime("),
+                "server assembly must not inject legacy task work runtime into the engine starter serving path");
+        assertTrue(!applicationSource.contains("engine.taskResultRuntime("),
+                "server assembly must not inject legacy task result runtime into the engine starter serving path");
         assertTrue(!applicationSource.contains(memoryNullSwitch),
                 "durable-local transport resolver must not encode memory as a null/default factory fallback");
         assertTrue(!applicationSource.contains(memoryRuntimeSwitch),

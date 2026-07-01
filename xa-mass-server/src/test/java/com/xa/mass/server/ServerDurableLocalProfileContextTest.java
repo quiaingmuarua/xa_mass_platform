@@ -1,18 +1,21 @@
 package com.xa.mass.server;
 
-import com.xa.mass.runtime.redis.RedisTaskWorkRuntime;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import com.xa.mass.storage.jdbc.JdbcStorageRuntime;
+import com.xa.mass.starter.config.EngineConfig;
+import com.xa.mass.task.runtime.starter.TaskRuntimeBackendKind;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.context.ApplicationContext;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -50,6 +53,9 @@ class ServerDurableLocalProfileContextTest extends AbstractSampleE2eTest {
     @Autowired
     private JdbcStorageRuntime jdbcStorageRuntime;
 
+    @Autowired
+    private ApplicationContext applicationContext;
+
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {
         registerWebSocketProperties(registry, WEBSOCKET_PORT);
@@ -78,8 +84,19 @@ class ServerDurableLocalProfileContextTest extends AbstractSampleE2eTest {
     @Test
     void durableLocalStartsWithSqliteAndRedisRuntime() {
         assertThat(jdbcStorageRuntime.isEnabled()).isTrue();
-        assertThat(taskWorkRuntime).isInstanceOf(RedisTaskWorkRuntime.class);
+        assertThat(applicationContext.containsBean("taskWorkRuntime")).isFalse();
+        assertThat(applicationContext.containsBean("taskResultRuntime")).isFalse();
+        assertThat(runtimeEngineConfig().getTaskRuntimeBootstrapConfig().backendKind())
+                .isEqualTo(TaskRuntimeBackendKind.REDIS);
+        assertThat(runtimeEngineConfig().getTaskRuntimeBootstrapConfig().redisNamespace())
+                .isEqualTo(NAMESPACE + ":runtime:task-runtime");
         assertThat(Files.exists(SQLITE_DB.resolveSibling(SQLITE_DB.getFileName() + ".schema.sha256"))).isTrue();
+    }
+
+    private EngineConfig runtimeEngineConfig() {
+        Object delegate = ReflectionTestUtils.getField(app, "delegate");
+        Object engine = ReflectionTestUtils.getField(delegate, "engine");
+        return (EngineConfig) ReflectionTestUtils.getField(engine, "config");
     }
 
     private static Path createTempSqliteDbPath() {

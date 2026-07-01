@@ -9,9 +9,7 @@ import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.engine.TraceEventLogger;
-import com.xa.mass.runtime.api.TaskWorkRuntimeStats;
-import com.xa.mass.runtime.api.TaskWorkStats;
-import com.xa.mass.runtime.api.WorkEnqueueOptions;
+import com.xa.mass.task.runtime.TaskRuntimeProgressSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,14 +23,11 @@ class TaskLifecycleService {
     private static final Logger logger = LoggerFactory.getLogger(TaskLifecycleService.class);
 
     private final TaskManager taskManager;
-    private final TaskStateResolver stateResolver;
     private final TraceEventLogger traceEventLogger;
 
     TaskLifecycleService(TaskManager taskManager,
-                         TaskStateResolver stateResolver,
                          TraceEventLogger traceEventLogger) {
         this.taskManager = taskManager;
-        this.stateResolver = stateResolver;
         this.traceEventLogger = traceEventLogger;
     }
 
@@ -52,6 +47,7 @@ class TaskLifecycleService {
                     traceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
                             "APPROVE_TASK", "TaskManager", "task approved");
                     taskManager.updateTask(task);
+                    taskManager.syncRuntimeSchedulerEligibility(task);
                     taskManager.publishTaskReady(task);
                     long duration = System.currentTimeMillis() - startTime;
                     LogUtils.logOperationSuccess("task approved", duration);
@@ -86,6 +82,7 @@ class TaskLifecycleService {
                     traceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
                             "REJECT_TASK", "TaskManager", "task rejected");
                     taskManager.updateTask(task);
+                    taskManager.syncRuntimeSchedulerEligibility(task);
                     long duration = System.currentTimeMillis() - startTime;
                     LogUtils.logOperationSuccess("task rejected and moved to BLOCKED", duration);
                 } else {
@@ -120,6 +117,7 @@ class TaskLifecycleService {
                     traceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
                             "BLOCK_TASK", "TaskManager", "task blocked");
                     taskManager.updateTask(task);
+                    taskManager.syncRuntimeSchedulerEligibility(task);
                     long duration = System.currentTimeMillis() - startTime;
                     LogUtils.logOperationSuccess("task blocked", duration);
                 } else {
@@ -154,6 +152,7 @@ class TaskLifecycleService {
                     traceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
                             "PAUSE_TASK", "TaskManager", "task paused");
                     taskManager.updateTask(task);
+                    taskManager.syncRuntimeSchedulerEligibility(task);
                     long duration = System.currentTimeMillis() - startTime;
                     LogUtils.logOperationSuccess("task paused", duration);
                 } else {
@@ -181,7 +180,7 @@ class TaskLifecycleService {
         try {
             Task task = taskManager.getTask(taskId);
             if (task != null && task.getStatus() == TaskStatus.PAUSED) {
-                TaskWorkStats stats = taskManager.getTaskWorkStats(taskId);
+                TaskRuntimeProgressSnapshot stats = taskManager.getTaskRuntimeProgressSnapshot(taskId);
                 TaskTerminalPolicyDecision decision = taskManager.evaluateTerminalPolicy(task, stats);
                 if (decision.getOutcome() == TaskTerminalPolicyDecision.Outcome.FINALIZE_TO_TERMINAL) {
                     task.setTaskSuccessNumber((int) Math.min(stats.successCount(), Integer.MAX_VALUE));
@@ -194,6 +193,7 @@ class TaskLifecycleService {
                         traceEventLogger.taskTerminalClosed(taskId, fromStatus, terminalReason,
                                 "RESUME_TASK", "TaskManager", "task already completed while paused");
                         taskManager.updateTask(task);
+                        taskManager.syncRuntimeSchedulerEligibility(task);
                         taskManager.publishTaskTerminal(task);
                         long duration = System.currentTimeMillis() - startTime;
                         LogUtils.logOperationSuccess("task completed while paused and closed to TERMINAL", duration);
@@ -210,6 +210,7 @@ class TaskLifecycleService {
                     traceEventLogger.taskStatusTransition(taskId, fromStatus, task.getStatus(),
                             "RESUME_TASK", "TaskManager", "task resumed to ready");
                     taskManager.updateTask(task);
+                    taskManager.syncRuntimeSchedulerEligibility(task);
                     taskManager.publishTaskReady(task);
                     long duration = System.currentTimeMillis() - startTime;
                     LogUtils.logOperationSuccess("task resumed to READY", duration);
@@ -284,21 +285,7 @@ class TaskLifecycleService {
     }
 
     private void validateAtomicAppendAdmission(Task task, int itemCount) {
-        if (task == null || itemCount <= 0) {
-            return;
-        }
-        WorkEnqueueOptions enqueueOptions = taskManager.enqueueOptionsResolver()
-                .resolve(taskManager.resolveTaskSchedulingPolicy(task));
-        TaskWorkStats taskStats = taskManager.getTaskWorkRuntime().stats(task.getTid());
-        long projectedReadyCount = taskStats.readyCount() + itemCount;
-        if (projectedReadyCount > enqueueOptions.maxReadyItemsPerTask()) {
-            throw new IllegalStateException("task work enqueue failed: status=BACKPRESSURE_REJECTED, reason=task ready backlog is full");
-        }
-        TaskWorkRuntimeStats runtimeStats = taskManager.getTaskWorkRuntime().stats();
-        long projectedQueuedCount = runtimeStats.readyItems() + runtimeStats.delayedItems() + itemCount;
-        if (projectedQueuedCount > runtimeStats.maxQueuedItems()) {
-            throw new IllegalStateException("task work enqueue failed: status=BACKPRESSURE_REJECTED, reason=engine work backlog is full");
-        }
+        taskManager.validateRuntimeAppendAdmission(task, itemCount);
     }
 
     private int addedItemCount(List<RuntimeTaskIngressItem> ingressItems) {
@@ -315,7 +302,7 @@ class TaskLifecycleService {
         }
         task.sealIntake();
         taskManager.updateTask(task);
-        stateResolver.updateTaskProgress(taskId);
+        taskManager.updateTaskProgress(taskId);
         logger.info("[sealTask] Sealed task {}", taskId);
         return true;
     }
@@ -377,8 +364,9 @@ class TaskLifecycleService {
                     traceEventLogger.taskTerminalClosed(taskId, fromStatus, reason,
                             trigger, "TaskManager", "task terminated: " + reason);
                     taskManager.updateTask(task);
+                    taskManager.syncRuntimeSchedulerEligibility(task);
                     taskManager.publishTaskTerminal(task);
-                    taskManager.discardTaskWorkRuntime(taskId);
+                    taskManager.discardTaskWork(taskId);
                     long duration = System.currentTimeMillis() - startTime;
                     LogUtils.logOperationSuccess("task terminated: " + reason, duration);
                 } else {

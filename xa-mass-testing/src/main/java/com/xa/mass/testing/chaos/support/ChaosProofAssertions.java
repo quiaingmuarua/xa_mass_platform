@@ -1,7 +1,7 @@
 package com.xa.mass.testing.chaos.support;
 
-import com.xa.mass.runtime.api.RecentFinalWorkReceipt;
-import com.xa.mass.runtime.api.TaskWorkStats;
+import com.xa.mass.sdk.model.TaskWorkFinalSnapshot;
+import com.xa.mass.sdk.model.TaskWorkStatsSnapshot;
 import com.xa.mass.sdk.model.TaskStateSnapshot;
 import com.xa.mass.trace.sink.ExecutionEventType;
 
@@ -30,7 +30,7 @@ public final class ChaosProofAssertions {
                 timeoutSeconds,
                 proofName + ": task must converge"
         );
-        TaskWorkStats finalStats = runtime.waitForRuntimeStats(
+        TaskWorkStatsSnapshot finalStats = runtime.waitForRuntimeStats(
                 taskId,
                 1,
                 1,
@@ -42,7 +42,7 @@ public final class ChaosProofAssertions {
         ChaosSupport.require(finalStats.readyCount() == 0, proofName + ": runtime ready queue should be drained");
         ChaosSupport.require(finalStats.inflightCount() == 0, proofName + ": runtime leases should be drained");
         ChaosSupport.require(runtime.activeLeases(taskId).isEmpty(), proofName + ": active leases should be empty");
-        RecentFinalWorkReceipt finalReceipt = runtime.recentFinalReceipt(taskId, messageId).orElse(null);
+        TaskWorkFinalSnapshot finalReceipt = runtime.recentFinalReceipt(taskId, messageId).orElse(null);
         ChaosSupport.require(finalReceipt != null, proofName + ": runtime recent final receipt should exist");
         ChaosSupport.require(finalReceipt.retryCount() == expectedRetryCount,
                 proofName + ": final receipt retry count expected " + expectedRetryCount
@@ -57,11 +57,11 @@ public final class ChaosProofAssertions {
             ChaosRuntimeHarness runtime,
             String taskId,
             String messageId,
-            TaskWorkStats beforeStats,
-            RecentFinalWorkReceipt beforeReceipt,
+            TaskWorkStatsSnapshot beforeStats,
+            TaskWorkFinalSnapshot beforeReceipt,
             String proofName) {
         TaskOutcomeSnapshot afterReplayOutcome = runtime.snapshotTaskOutcome(taskId, 1);
-        TaskWorkStats afterReplayStats = runtime.runtimeStats(taskId);
+        TaskWorkStatsSnapshot afterReplayStats = runtime.runtimeStats(taskId);
         ChaosSupport.require(afterReplayStats.totalCount() == beforeStats.totalCount(),
                 proofName + ": late replay must not change runtime total count");
         ChaosSupport.require(afterReplayStats.successCount() == beforeStats.successCount(),
@@ -72,7 +72,7 @@ public final class ChaosProofAssertions {
                 proofName + ": late replay must not change runtime expired count");
         ChaosSupport.require(runtime.activeLeases(taskId).isEmpty(),
                 proofName + ": late replay must not create active leases");
-        RecentFinalWorkReceipt afterReplayReceipt = runtime.recentFinalReceipt(taskId, messageId).orElse(null);
+        TaskWorkFinalSnapshot afterReplayReceipt = runtime.recentFinalReceipt(taskId, messageId).orElse(null);
         ChaosSupport.require(afterReplayReceipt != null, proofName + ": final receipt should still exist after replay");
         ChaosSupport.require(afterReplayReceipt.retryCount() == beforeReceipt.retryCount(),
                 proofName + ": late replay must not change final receipt retry count");
@@ -111,7 +111,7 @@ public final class ChaosProofAssertions {
     }
 
     public record TerminalRuntimeProof(TaskOutcomeSnapshot outcome,
-                                       TaskWorkStats finalStats,
-                                       RecentFinalWorkReceipt finalReceipt) {
+                                       TaskWorkStatsSnapshot finalStats,
+                                       TaskWorkFinalSnapshot finalReceipt) {
     }
 }

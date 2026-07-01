@@ -3,7 +3,7 @@ package com.xa.mass.engine.policy;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
 import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy.IdleClosePolicy;
-import com.xa.mass.runtime.api.TaskWorkStats;
+import com.xa.mass.task.runtime.TaskRuntimeProgressSnapshot;
 
 import java.util.Objects;
 
@@ -24,7 +24,7 @@ public class ContractAwareTaskTerminalPolicy implements TaskTerminalPolicy {
     }
 
     @Override
-    public TaskTerminalPolicyDecision evaluate(Task task, TaskWorkStats stats, IdleClosePolicy idleClosePolicy) {
+    public TaskTerminalPolicyDecision evaluate(Task task, TaskRuntimeProgressSnapshot stats, IdleClosePolicy idleClosePolicy) {
         if (task == null) {
             return TaskTerminalPolicyDecision.keepRunning();
         }
@@ -34,7 +34,7 @@ public class ContractAwareTaskTerminalPolicy implements TaskTerminalPolicy {
         return evaluateSession(task, stats);
     }
 
-    private TaskTerminalPolicyDecision evaluateSession(Task task, TaskWorkStats stats) {
+    private TaskTerminalPolicyDecision evaluateSession(Task task, TaskRuntimeProgressSnapshot stats) {
         // Session shells may stop accepting new items, but draining the current
         // runtime work set is not sufficient to end the session lifecycle.
         // Terminal closure stays explicit or policy-driven outside the

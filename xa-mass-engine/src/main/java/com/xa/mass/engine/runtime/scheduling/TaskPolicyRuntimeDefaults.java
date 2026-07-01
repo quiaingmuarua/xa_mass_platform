@@ -1,7 +1,5 @@
 package com.xa.mass.engine.runtime.scheduling;
 
-import com.xa.mass.runtime.api.WorkEnqueueOptions;
-
 /**
  * Runtime tunables used when resolving task policy presets.
  *
@@ -18,6 +16,8 @@ public record TaskPolicyRuntimeDefaults(
         int interactiveMaxReadyItemsPerTask,
         int bulkMaxReadyItemsPerTask
 ) {
+
+    private static final int UNLIMITED_READY_ITEMS = Integer.MAX_VALUE;
 
     public TaskPolicyRuntimeDefaults {
         interactivePerWorkerClaimLimit = Math.max(1, interactivePerWorkerClaimLimit);
@@ -37,11 +37,11 @@ public record TaskPolicyRuntimeDefaults(
                 Long.getLong("xa.mass.engine.interactiveWorkRetryDelayMillis", 100L),
                 Long.getLong("xa.mass.engine.bulkWorkRetryDelayMillis", 0L),
                 Integer.getInteger("xa.mass.engine.interactiveMaxReadyItemsPerTask", 10_000),
-                Integer.getInteger("xa.mass.engine.bulkMaxReadyItemsPerTask", WorkEnqueueOptions.UNLIMITED)
+                Integer.getInteger("xa.mass.engine.bulkMaxReadyItemsPerTask", UNLIMITED_READY_ITEMS)
         );
     }
 
     private static int normalizeLimit(int value) {
-        return value <= 0 ? WorkEnqueueOptions.UNLIMITED : value;
+        return value <= 0 ? UNLIMITED_READY_ITEMS : value;
     }
 }

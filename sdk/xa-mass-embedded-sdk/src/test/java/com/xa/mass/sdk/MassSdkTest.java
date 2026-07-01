@@ -42,7 +42,6 @@ import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.kernel.spi.rule.RuleType;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
-import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.CredentialPrincipalProfile;
 import com.xa.mass.sdk.auth.CredentialPrincipalRegistration;
@@ -79,6 +78,7 @@ import com.xa.mass.starter.builder.MassApplicationBuilder;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeRole;
+import com.xa.mass.task.runtime.starter.TaskRuntimeBackendKind;
 import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
 import com.xa.mass.transport.polling.delivery.InMemoryPollingPendingDeliveryBuffer;
 import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
@@ -171,6 +171,24 @@ class MassSdkTest {
         assertEquals(idleBackoffPolicy, config.getRuntimeReadyDispatchIdleBackoffPolicy());
         assertEquals(3L, config.getLeaseWatchdogIntervalSeconds());
         assertEquals(7L, config.getTaskMessageLeaseSeconds());
+    }
+
+    @Test
+    void engineOptionsExposeTaskRuntimeBackendSelection() {
+        MassSdkApplication app = MassSdk.builder()
+                .transport(transport -> transport
+                        .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false)))
+                .engine(engine -> engine
+                        .enabled(true)
+                        .redisTaskRuntime("redis://localhost:6379/0", "xa:mass:test:task-runtime"))
+                .build();
+
+        Object engine = readField(requireDelegate(app), "engine", Object.class);
+        EngineConfig config = readField(engine, "config", EngineConfig.class);
+
+        assertEquals(TaskRuntimeBackendKind.REDIS, config.getTaskRuntimeBootstrapConfig().backendKind());
+        assertEquals("redis://localhost:6379/0", config.getTaskRuntimeBootstrapConfig().redisUri());
+        assertEquals("xa:mass:test:task-runtime", config.getTaskRuntimeBootstrapConfig().redisNamespace());
     }
 
     @Test
@@ -984,34 +1002,6 @@ class MassSdkTest {
 
         verify(delegate).replaceRules(List.of(replacement));
         Assertions.assertEquals("sdk_rule", app.listDefaultRules().getFirst().get("ruleId"));
-    }
-
-    @Test
-    void engineConfigUsesInjectedTaskWorkRuntimeForDefaultTaskManagerAssembly() {
-        EngineConfig config = new EngineConfig();
-        InMemoryTaskWorkRuntime runtime = new InMemoryTaskWorkRuntime();
-
-        config.setTaskWorkRuntime(runtime);
-        assertSame(runtime, config.getTaskWorkRuntime());
-        List<Map<String, Object>> inputs = List.of(Map.of("target", "alpha"));
-        TaskShellCreateRequestDto shell = new TaskShellCreateRequestDto();
-        shell.setSourceRef("runtime-assembly");
-        shell.setProject("demoApp");
-        shell.setUserId("sdk-test");
-        shell.setExecutionSpec(taskExecutionSpec(null, 1, 0, 3));
-        Task task = config.getTaskCommandService().createTaskShell(shell);
-        config.getTaskCommandService().appendTaskItems(task.getTid(), inputs);
-        assertTrue(config.getTaskCommandService().sealTask(task.getTid()));
-        assertEquals(1, runtime.stats(task.getTid()).readyCount());
-    }
-
-    @Test
-    void engineConfigRejectsTaskWorkRuntimeMismatchAfterTaskManagerIsConfigured() {
-        EngineConfig config = new EngineConfig();
-        config.getTaskCommandService();
-
-        assertThrows(IllegalStateException.class,
-                () -> config.setTaskWorkRuntime(new InMemoryTaskWorkRuntime()));
     }
 
     @Test

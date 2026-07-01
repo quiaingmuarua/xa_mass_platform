@@ -115,7 +115,6 @@ public final class WorkerSelectionOwner implements WorkerSelectionRuntime {
                     candidate.row().workerGroupId(),
                     resolvedRequest.selectionScopeKey(),
                     resolvedRequest.exclusiveWorkerLock(),
-                    SelectedWorkerClaimAuthorization.eventCodes(candidate.groupView().eventCodes()),
                     scoreBandClaimScore,
                     eventBindingKey(intent),
                     workerCandidateSource(intent),

@@ -100,8 +100,8 @@ policy 收敛状态�?
 | 领域 | 当前 owner | 说明 |
 | --- | --- | --- |
 | task lifecycle | engine | task status、intake、terminal policy |
-| ready/lease/retry | `TaskWorkRuntime` | 热路径可执行 work truth |
-| public result | `TaskResultRuntime` | stable-final result rows |
+| ready/lease/retry/result | `xa-mass-task-runtime` | accepted backlog, scheduler discovery, claim/lease/retry/finality, final rows |
+| public result | `xa-mass-task-runtime` | retained final rows |
 | worker capability | WorkerGroup / WorkerCandidateIndex | capability candidate source |
 | delivery/presence | transport | adapter routing、presence、delivery |
 | trace | trace/audit plane | evidence，不�?runtime truth |

@@ -2,6 +2,10 @@ package com.xa.mass.sdk;
 
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
+import com.xa.mass.sdk.model.TaskActiveLeaseSnapshot;
+import com.xa.mass.sdk.model.TaskWorkStatsSnapshot;
+
+import java.util.List;
 
 /**
  * Diagnostic-only task state inspection surface.
@@ -15,4 +19,8 @@ public interface TaskDiagnosticOperations {
     TaskStateValidationResult validateTaskState(String taskId);
 
     TaskStateResolutionResult resolveTaskState(String taskId);
+
+    TaskWorkStatsSnapshot getTaskWorkStats(String taskId);
+
+    List<TaskActiveLeaseSnapshot> getActiveLeases(String taskId);
 }

@@ -21,9 +21,8 @@ The active engine boundary has four explicit contract groups:
   - `RuleStorage`
 - worker declaration port in `xa-mass-worker-runtime`
   - `WorkerDeclarationStore`
-- hot-path runtime contracts in `platform_infra/mass-runtime-api`
-  - `TaskWorkRuntime`
-  - `TaskResultRuntime`
+- hot-path task-runtime contracts in `xa-mass-task-runtime`
+  - append/scheduler/claim/result/repair/read/progress/discard ports
 
 Do not collapse them back into one "storage owns everything" model.
 
@@ -39,9 +38,8 @@ What the engine assumes today:
   contracts, not through `RuleStorage` CRUD.
 - Ready backlog, delay queues, lease ownership, retry visibility, expiry
   indexes, and backpressure come from runtime.
-- Result/expiry recovery should prefer runtime work-envelope metadata,
-  runtime leases, runtime final receipts, and `TaskResultRuntime` stable-final
-  rows.
+- Result/expiry recovery should prefer task-runtime work evidence, runtime
+  leases, and task-runtime stable-final rows.
 - Ingest enqueue must not roll back or fail runtime admission because a server
   review row cannot be materialized in the same turn.
 - Dispatch handoff does not require message-projection input or a persisted

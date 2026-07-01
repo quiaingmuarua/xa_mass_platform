@@ -28,8 +28,7 @@ import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.storage.memory.InMemoryWorkerDeclarationStore;
 import com.xa.mass.engine.watchdog.RuntimeReadyDispatchPump;
-import com.xa.mass.runtime.api.TaskWorkStats;
-import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
+import com.xa.mass.sdk.model.TaskWorkStatsSnapshot;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import com.xa.mass.worker.runtime.resource.WorkerResourceDeclarationRuntime;
@@ -94,9 +93,8 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
         }
 
         private SmokeReport run() throws Exception {
-            InMemoryTaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
             InMemoryTaskShellStore taskStorage = new InMemoryTaskShellStore();
-            EngineConfig engineConfig = buildEngineConfig(taskStorage, taskWorkRuntime);
+            EngineConfig engineConfig = buildEngineConfig(taskStorage);
             TaskCommandService taskCommands = engineConfig.getTaskCommandService();
             TaskEventService taskEvents = engineConfig.getTaskEventService();
             TaskResultIngestFacade taskResultIngestFacade = engineConfig.getTaskResultIngestFacade();
@@ -141,7 +139,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                             : bulkCallbackExecutor;
                     callbackExecutor.submit(() -> handleBinding(
                             taskResultIngestFacade,
-                            taskWorkRuntime,
+                            engineConfig,
                             timing,
                             interactiveAttempts,
                             workloadByTaskId,
@@ -259,7 +257,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
         }
 
         private void handleBinding(TaskResultIngestFacade taskResultIngestFacade,
-                                   InMemoryTaskWorkRuntime taskWorkRuntime,
+                                   EngineConfig engineConfig,
                                    RetryTiming timing,
                                    Map<String, AtomicInteger> interactiveAttempts,
                                    Map<String, TaskWorkloadClass> workloadByTaskId,
@@ -300,7 +298,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                 );
                 require(accepted, "result callback should be accepted for " + messageId);
                 if (interactive && attemptNo == 1) {
-                    timing.onInteractiveFailure(task.taskId(), taskWorkRuntime.stats(task.taskId()));
+                    timing.onInteractiveFailure(task.taskId(), engineConfig.getTaskWorkStats(task.taskId()));
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -324,11 +322,9 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             return new TaskCreatePlan(shell, buildInputs("bulk", config.bulkMessages()), false);
         }
 
-        private static EngineConfig buildEngineConfig(InMemoryTaskShellStore taskStorage,
-                                                      InMemoryTaskWorkRuntime taskWorkRuntime) {
+        private static EngineConfig buildEngineConfig(InMemoryTaskShellStore taskStorage) {
             EngineConfig engineConfig = new EngineConfig();
             engineConfig.setTaskShellStore(taskStorage);
-            engineConfig.setTaskWorkRuntime(taskWorkRuntime);
             return engineConfig;
         }
 
@@ -495,7 +491,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             }
         }
 
-        private void onInteractiveFailure(String taskId, TaskWorkStats statsAfterFailure) {
+        private void onInteractiveFailure(String taskId, TaskWorkStatsSnapshot statsAfterFailure) {
             if (interactiveTaskId != null && interactiveTaskId.equals(taskId)) {
                 if (statsAfterFailure != null) {
                     interactiveDelayedCountBeforeWakeup.compareAndSet(-1L, statsAfterFailure.delayedCount());

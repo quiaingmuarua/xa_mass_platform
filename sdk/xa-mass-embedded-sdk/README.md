@@ -19,7 +19,15 @@ embedded adapter startup and transport runtime assembly boundary lives behind
 `xa-mass-transport-adapter-starter`. The embedded SDK does not directly depend
 on concrete transport runtime, polling, socket, or WebSocket implementation
 modules; it passes adapter/backend declarations to adapter-starter and keeps
-task/result translation in SDK starter code.
+task/result translation in SDK starter code. Migrated task-runtime serving
+paths select memory or Redis backends through embedded engine options that
+delegate to `xa-mass-task-runtime-starter-sdk`; embedded SDK callers should not
+import task-runtime ports, Redis keyspace internals, or old runtime stores.
+Runtime stats and active-lease reads exposed through diagnostics are
+owner-backed debug projections for the selected serving lane, not a new public
+task runtime mutation surface. The `app.taskDiagnostics()` surface returns
+SDK-owned `TaskWorkStatsSnapshot` and `TaskActiveLeaseSnapshot` values instead
+of exposing `mass-runtime-api` runtime DTOs.
 
 ## Dependency
 
@@ -154,10 +162,9 @@ endpoint leasing.
 
 Task result reads are exposed through `TaskResultQueryOperations`, separate
 from task aggregate query. `readTaskResults(...)` and archive streaming read
-committed stable-final rows from `TaskResultRuntime`; they do not read
-server review materialization. Memory result runtime is volatile
-local/dev truth, while Redis result runtime is the cross-process result read
-truth.
+committed stable-final rows from task-runtime; they do not read server review
+materialization. Memory task-runtime remains local/dev truth, while Redis
+task-runtime is the cross-process result read truth.
 
 Owner-backed worker-control and stage-evidence APIs are exposed through SDK
 contracts instead of engine internals:
@@ -347,6 +354,9 @@ For embedded runtime wiring, keep the mainline on storage/runtime contracts
 such as `taskShellStore(...)`, `taskWorkRuntime(...)`,
 `workerDeclarationStore(...)`, and `ruleStorage(...)`. Do not make `TaskManager` or
 `WorkerManager` the default SDK assembly surface.
+For migrated task item serving paths, select the task-runtime backend through
+`memoryTaskRuntime()` or `redisTaskRuntime(redisUri, namespace)`; do not inject
+task-runtime ports or Redis task-runtime keyspace details through SDK callers.
 Shell-mainline SDK create maps onto `TaskShellCreateRequestDto`; worker registration/query helpers use `WorkerDeclarationStore`
 for control-plane truth instead of treating `WorkerManager` as the default SDK
 dependency; SDK rule list/replace helpers now use `RuleStorage` directly

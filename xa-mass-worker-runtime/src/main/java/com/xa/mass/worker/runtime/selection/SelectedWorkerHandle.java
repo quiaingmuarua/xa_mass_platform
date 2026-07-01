@@ -1,7 +1,5 @@
 package com.xa.mass.worker.runtime.selection;
 
-import com.xa.mass.runtime.api.WorkerClaimTarget;
-
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -20,7 +18,6 @@ public final class SelectedWorkerHandle {
     private final String selectionToken;
     private final Long scoreBandClaimScore;
     private final boolean exclusiveWorkerLock;
-    private final SelectedWorkerClaimAuthorization claimAuthorization;
     private final String eventBindingKey;
     private final String workerCandidateSource;
     private final String workerSchedulingResourceId;
@@ -36,10 +33,9 @@ public final class SelectedWorkerHandle {
     SelectedWorkerHandle(String workerId,
                          String workerGroupId,
                          String selectionScopeKey,
-                         boolean exclusiveWorkerLock,
-                         SelectedWorkerClaimAuthorization claimAuthorization) {
+                         boolean exclusiveWorkerLock) {
         this(workerId, workerGroupId, selectionScopeKey, UUID.randomUUID().toString(),
-                null, exclusiveWorkerLock, claimAuthorization, null, null, null, null, Map.of(),
+                null, exclusiveWorkerLock, null, null, null, null, Map.of(),
                 null, null, null, null, null, null);
     }
 
@@ -48,7 +44,7 @@ public final class SelectedWorkerHandle {
                                           String selectionScopeKey,
                                           boolean exclusiveWorkerLock) {
         return new SelectedWorkerHandle(workerId, workerGroupId, selectionScopeKey,
-                exclusiveWorkerLock, SelectedWorkerClaimAuthorization.unrestricted());
+                exclusiveWorkerLock);
     }
 
     private SelectedWorkerHandle(String workerId,
@@ -57,7 +53,6 @@ public final class SelectedWorkerHandle {
                                  String selectionToken,
                                  Long scoreBandClaimScore,
                                  boolean exclusiveWorkerLock,
-                                 SelectedWorkerClaimAuthorization claimAuthorization,
                                  String eventBindingKey,
                                  String workerCandidateSource,
                                  String workerSchedulingResourceId,
@@ -75,9 +70,6 @@ public final class SelectedWorkerHandle {
         this.selectionToken = requireText(selectionToken, "selectionToken");
         this.scoreBandClaimScore = scoreBandClaimScore;
         this.exclusiveWorkerLock = exclusiveWorkerLock;
-        this.claimAuthorization = claimAuthorization == null
-                ? SelectedWorkerClaimAuthorization.unrestricted()
-                : claimAuthorization;
         this.eventBindingKey = normalizeNullable(eventBindingKey);
         this.workerCandidateSource = normalizeNullable(workerCandidateSource);
         this.workerSchedulingResourceId = normalizeNullable(workerSchedulingResourceId);
@@ -95,7 +87,6 @@ public final class SelectedWorkerHandle {
                                                      String workerGroupId,
                                                      String selectionScopeKey,
                                                      boolean exclusiveWorkerLock,
-                                                     SelectedWorkerClaimAuthorization claimAuthorization,
                                                      Long scoreBandClaimScore,
                                                      String eventBindingKey,
                                                      String workerCandidateSource,
@@ -115,7 +106,6 @@ public final class SelectedWorkerHandle {
                 UUID.randomUUID().toString(),
                 scoreBandClaimScore,
                 exclusiveWorkerLock,
-                claimAuthorization,
                 eventBindingKey,
                 workerCandidateSource,
                 workerSchedulingResourceId,
@@ -142,7 +132,7 @@ public final class SelectedWorkerHandle {
         return selectionToken;
     }
 
-    Long scoreBandClaimScore() {
+    public Long scoreBandClaimScore() {
         return scoreBandClaimScore;
     }
 
@@ -192,16 +182,6 @@ public final class SelectedWorkerHandle {
 
     Double workerEstimatedLoadRatio() {
         return workerEstimatedLoadRatio;
-    }
-
-    public WorkerClaimTarget toClaimTarget(String batchId, int capacity) {
-        return claimAuthorization.toClaimTarget(
-                workerGroupId,
-                workerId,
-                batchId,
-                selectionToken,
-                scoreBandClaimScore,
-                capacity);
     }
 
     String selectionScopeKey() {

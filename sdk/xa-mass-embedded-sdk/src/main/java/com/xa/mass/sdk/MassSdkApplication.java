@@ -29,8 +29,6 @@ import com.xa.mass.worker.runtime.report.WorkerStateProjectionResult;
 import com.xa.mass.worker.runtime.report.WorkerStateReport;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
-import com.xa.mass.runtime.api.TaskResultRuntimeRow;
-import com.xa.mass.runtime.api.TaskResultWindow;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.kernel.spi.rule.RuleType;
 import com.xa.mass.sdk.auth.*;
@@ -219,14 +217,12 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
 
     @Override
     public TaskResultWindowSnapshot readTaskResults(String taskId, long afterSeq, int limit) {
-        TaskResultWindow window = delegate.readTaskResults(requireTaskId(taskId), Math.max(0L, afterSeq), Math.max(1, limit));
-        return toTaskResultWindowSnapshot(window);
+        return delegate.readTaskResults(requireTaskId(taskId), Math.max(0L, afterSeq), Math.max(1, limit));
     }
 
     @Override
     public Optional<TaskWorkFinalSnapshot> getTaskWorkFinal(String taskId, String messageId) {
-        return delegate.getVisibleTaskResultByMessageId(requireTaskId(taskId), requireMessageId(messageId))
-                .map(this::toTaskWorkFinalSnapshot);
+        return delegate.getVisibleTaskResultByMessageId(requireTaskId(taskId), requireMessageId(messageId));
     }
 
     @Override
@@ -255,17 +251,20 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
             GZIPOutputStream gzip = new GZIPOutputStream(sink);
             long afterSeq = 0L;
             while (true) {
-                TaskResultWindow window = delegate.readTaskResults(normalizedTaskId, afterSeq, ARCHIVE_STREAM_WINDOW);
-                for (TaskResultRuntimeRow row : window.items()) {
-                    gzip.write(RESULT_JSON.toJson(toTaskResultItemSnapshot(row)).getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                TaskResultWindowSnapshot window = delegate.readTaskResults(
+                        normalizedTaskId,
+                        afterSeq,
+                        ARCHIVE_STREAM_WINDOW);
+                for (TaskResultItemSnapshot row : window.getItems()) {
+                    gzip.write(RESULT_JSON.toJson(row).getBytes(java.nio.charset.StandardCharsets.UTF_8));
                     gzip.write('\n');
                 }
-                if (!window.hasMore()) {
+                if (!window.isHasMore()) {
                     gzip.finish();
                     gzip.flush();
                     return;
                 }
-                afterSeq = window.nextAfterSeq();
+                afterSeq = window.getNextAfterSeq();
             }
         } catch (IOException e) {
             throw new IllegalStateException("Failed to stream task result archive: " + e.getMessage(), e);
@@ -1905,64 +1904,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 task.getStartTime(),
                 task.getEndTime(),
                 enumName(task.getTerminalReason())
-        );
-    }
-
-    private TaskResultWindowSnapshot toTaskResultWindowSnapshot(TaskResultWindow window) {
-        return new TaskResultWindowSnapshot(
-                window.taskId(),
-                window.items().stream().map(this::toTaskResultItemSnapshot).toList(),
-                window.nextAfterSeq(),
-                window.hasMore(),
-                window.totalVisible()
-        );
-    }
-
-    private TaskResultItemSnapshot toTaskResultItemSnapshot(TaskResultRuntimeRow row) {
-        return new TaskResultItemSnapshot(
-                row.seq(),
-                row.messageId(),
-                row.eventCode(),
-                row.status(),
-                row.finalReason(),
-                row.retryCount(),
-                row.maxRetryCount(),
-                row.workerId(),
-                row.batchId(),
-                row.attemptId(),
-                row.payloadRef(),
-                row.createTime(),
-                row.assignedTime(),
-                row.startTime(),
-                row.completeTime(),
-                row.updateTime(),
-                row.errorCode(),
-                row.errorMessage(),
-                row.output()
-        );
-    }
-
-    private TaskWorkFinalSnapshot toTaskWorkFinalSnapshot(TaskResultRuntimeRow row) {
-        return new TaskWorkFinalSnapshot(
-                row.taskId(),
-                row.messageId(),
-                row.status(),
-                row.finalReason(),
-                row.retryCount(),
-                row.maxRetryCount(),
-                row.eventCode(),
-                row.workerId(),
-                row.batchId(),
-                row.attemptId(),
-                row.errorCode(),
-                row.errorMessage(),
-                row.payloadRef(),
-                row.createTime(),
-                row.assignedTime(),
-                row.startTime(),
-                row.completeTime(),
-                row.updateTime(),
-                row.output()
         );
     }
 

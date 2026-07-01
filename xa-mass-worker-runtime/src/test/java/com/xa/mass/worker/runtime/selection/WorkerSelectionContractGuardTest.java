@@ -28,15 +28,23 @@ class WorkerSelectionContractGuardTest {
                 "workerId",
                 "workerGroupId",
                 "selectionToken",
-                "exclusiveWorkerLock",
-                "toClaimTarget"
+                "scoreBandClaimScore",
+                "exclusiveWorkerLock"
         ), publicMethodNames);
     }
 
     @Test
-    void claimAuthorizationStaysHiddenBehindSelectedHandle() {
-        assertFalse(Modifier.isPublic(SelectedWorkerClaimAuthorization.class.getModifiers()));
-        assertFalse(Modifier.isProtected(SelectedWorkerClaimAuthorization.class.getModifiers()));
+    void selectedWorkerHandleDoesNotExposeOldTaskRuntimeClaimTarget() throws Exception {
+        Path selectionRoot = Path.of("src/main/java/com/xa/mass/worker/runtime/selection");
+        String source = Files.walk(selectionRoot)
+                .filter(path -> path.toString().endsWith(".java"))
+                .map(WorkerSelectionContractGuardTest::readString)
+                .collect(Collectors.joining("\n"));
+
+        assertFalse(source.contains("WorkerClaimTarget"),
+                "worker selection must expose selected worker evidence, not old task-runtime WorkerClaimTarget DTOs");
+        assertFalse(source.contains("toClaimTarget("),
+                "SelectedWorkerHandle must not keep the old task-runtime claim-target bridge");
     }
 
     @Test
@@ -60,8 +68,6 @@ class WorkerSelectionContractGuardTest {
             assertFalse(source.contains(forbiddenPublicGetter),
                     "selection package exposes worker fact getter: " + forbiddenPublicGetter);
         }
-        assertTrue(source.contains("final class SelectedWorkerClaimAuthorization"),
-                "claim authorization should remain package-private");
     }
 
     @Test

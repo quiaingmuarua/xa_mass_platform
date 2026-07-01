@@ -49,11 +49,12 @@ Fast entry only. Use module owner READMEs and `doc/` contracts for detail.
 - Kernel truth is currently split across:
   - `Task.contract` as the current public/runtime preset input
   - `Task.intakeStatus` for intake-window truth
-  - `TaskWorkRuntime` for ready/delayed/lease/counter truth
-  - `TaskResultRuntime` for stable-final result rows and result-side barriers
+  - `xa-mass-task-runtime` owner ports for accepted backlog, scheduler
+    discovery, claim/lease/retry/finality, retained final rows, and progress
+    snapshots
 - result convergence is runtime-first, but the lifecycle owner split must be
   verified from `doc/TASK_LIFECYCLE_BASELINE.md` plus current engine/runtime
-  code rather than inferred from historical `TaskWorkRuntime` wording alone
+  code rather than inferred from historical runtime wording alone
 - Transport is three explicit channels: task dispatch, result ingest, and system events.
   Its runtime responsibilities split into network/session evidence production
   and best-effort assigned-delivery execution; only the assigned-delivery lane
@@ -68,7 +69,7 @@ Fast entry only. Use module owner READMEs and `doc/` contracts for detail.
 
 Current mainline execution path:
 
-- `Task shell -> item append -> runtime enqueue -> scheduling eligibility -> worker selection and assignment -> transport dispatch -> result convergence -> task state`
+- `Task shell -> item append -> task-runtime accepted backlog -> scheduling eligibility -> worker selection and assignment -> transport dispatch -> task-runtime result convergence -> task state`
 
 Task item dispatch boundary:
 

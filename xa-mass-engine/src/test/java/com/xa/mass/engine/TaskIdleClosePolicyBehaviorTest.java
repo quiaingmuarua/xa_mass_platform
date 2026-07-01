@@ -8,10 +8,9 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
-import com.xa.mass.runtime.api.ClaimedTaskWork;
-import com.xa.mass.runtime.api.WorkerClaimTarget;
-import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
-import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
+import com.xa.mass.engine.policy.ContractAwareTaskTerminalPolicy;
+import com.xa.mass.task.runtime.ClaimedWorkItem;
+import com.xa.mass.task.runtime.memory.InMemoryTaskRuntime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -26,16 +25,32 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class TaskIdleClosePolicyBehaviorTest {
 
     private TaskManager taskManager;
+    private TaskRuntimeServingLane taskRuntimeServingLane;
 
     @BeforeEach
     void setUp() {
         InMemoryTaskShellRuntimeStore taskStorage = new InMemoryTaskShellRuntimeStore();
+        InMemoryTaskRuntime taskRuntime = new InMemoryTaskRuntime();
         taskManager = new TaskManager(
                 taskStorage,
-                new InMemoryTaskWorkRuntime(),
-                new InMemoryTaskResultRuntime(),
+                taskStorage,
+                new ContractAwareTaskTerminalPolicy(),
                 null
         );
+        taskRuntimeServingLane = new TaskRuntimeServingLane(
+                taskRuntime,
+                taskRuntime,
+                taskRuntime,
+                taskRuntime,
+                taskRuntime,
+                taskRuntime,
+                new TaskQueryService(taskManager),
+                new TaskCommandService(taskManager),
+                new TaskEventService(taskManager),
+                taskManager.getWorkLeaseSeconds(),
+                1_000,
+                86_400_000L);
+        taskManager.installTaskRuntimeServingLane(taskRuntimeServingLane);
     }
 
     @Test
@@ -51,8 +66,8 @@ class TaskIdleClosePolicyBehaviorTest {
         assertTrue(taskManager.approveTask(task.getTid()));
         markRunning(task.getTid());
 
-        ClaimedTaskWork claimed = claimSingle(task.getTid(), "worker-batch");
-        assertTrue(taskManager.ingestTaskResult(
+        ClaimedWorkItem claimed = claimSingle(task.getTid(), "worker-batch");
+        assertTrue(taskRuntimeServingLane.ingestTaskResult(
                 task.getTid(),
                 claimed.messageId(),
                 true,
@@ -86,8 +101,8 @@ class TaskIdleClosePolicyBehaviorTest {
         assertTrue(taskManager.approveTask(task.getTid()));
         markRunning(task.getTid());
 
-        ClaimedTaskWork claimed = claimSingle(task.getTid(), "worker-session");
-        assertTrue(taskManager.ingestTaskResult(
+        ClaimedWorkItem claimed = claimSingle(task.getTid(), "worker-session");
+        assertTrue(taskRuntimeServingLane.ingestTaskResult(
                 task.getTid(),
                 claimed.messageId(),
                 true,
@@ -149,15 +164,14 @@ class TaskIdleClosePolicyBehaviorTest {
         return taskManager.getTask(task.getTid());
     }
 
-    private ClaimedTaskWork claimSingle(String taskId, String workerId) {
-        List<ClaimedTaskWork> claimed = taskManager.getTaskWorkRuntime().claimReady(
+    private ClaimedWorkItem claimSingle(String taskId, String workerId) {
+        return TaskRuntimeClaimTestSupport.claimSingle(
+                taskRuntimeServingLane,
+                taskManager.getWorkLeaseSeconds(),
                 taskId,
-                List.of(WorkerClaimTarget.workerLevel(workerId, "batch-0", 1)),
-                1,
-                taskManager.getWorkLeaseSeconds()
-        );
-        assertEquals(1, claimed.size());
-        return claimed.getFirst();
+                "pool-main",
+                workerId,
+                "batch-0");
     }
 
     private void markRunning(String taskId) {
@@ -226,5 +240,4 @@ class TaskIdleClosePolicyBehaviorTest {
             return dto;
         }
     }
-
 }

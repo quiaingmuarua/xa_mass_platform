@@ -7,10 +7,10 @@ import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
-import com.xa.mass.runtime.api.ClaimedTaskWork;
-import com.xa.mass.runtime.api.WorkerClaimTarget;
-import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
-import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
+import com.xa.mass.engine.model.TaskAppendReceipt;
+import com.xa.mass.engine.policy.ContractAwareTaskTerminalPolicy;
+import com.xa.mass.task.runtime.ClaimedWorkItem;
+import com.xa.mass.task.runtime.memory.InMemoryTaskRuntime;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,14 +24,36 @@ import static org.junit.jupiter.api.Assertions.*;
 class TaskManagerLifecycleTest {
 
     private InMemoryTaskShellRuntimeStore taskStorage;
-    private InMemoryTaskWorkRuntime taskWorkRuntime;
+    private InMemoryTaskRuntime taskRuntime;
     private TaskManager taskManager;
+    private TaskRuntimeServingLane taskRuntimeServingLane;
 
     @BeforeEach
     void setUp() {
         taskStorage = new InMemoryTaskShellRuntimeStore();
-        taskWorkRuntime = new InMemoryTaskWorkRuntime();
-        taskManager = new TaskManager(taskStorage, taskWorkRuntime, new InMemoryTaskResultRuntime(), null);
+        taskRuntime = new InMemoryTaskRuntime();
+        taskManager = new TaskManager(
+                taskStorage,
+                taskStorage,
+                new ContractAwareTaskTerminalPolicy(),
+                null);
+        var commands = new TaskCommandService(taskManager);
+        var queries = new TaskQueryService(taskManager);
+        var events = new TaskEventService(taskManager);
+        taskRuntimeServingLane = new TaskRuntimeServingLane(
+                taskRuntime,
+                taskRuntime,
+                taskRuntime,
+                taskRuntime,
+                taskRuntime,
+                taskRuntime,
+                queries,
+                commands,
+                events,
+                300L,
+                TaskManager.MAX_INGEST_BATCH_ITEMS,
+                86_400_000L);
+        taskManager.installTaskRuntimeServingLane(taskRuntimeServingLane);
     }
 
     @AfterEach
@@ -54,11 +76,35 @@ class TaskManagerLifecycleTest {
         assertEquals("demoApp", task.getProjectRef().getCode());
         assertNotNull(task.getUser());
         assertEquals("agent", task.getUser().getUserId());
-        assertEquals(2, taskWorkRuntime.stats(task.getTid()).readyCount());
+        assertEquals(2, taskManager.getTaskRuntimeProgressSnapshot(task.getTid()).readyCount());
     }
 
     @Test
-    void payloadRefIngressEnqueuesRuntimeWorkWithoutMessageInputPayload() {
+    void noOldRuntimeConstructorFailsFastWithoutServingLaneInsteadOfUsingLegacySentinels() {
+        InMemoryTaskShellRuntimeStore storage = new InMemoryTaskShellRuntimeStore();
+        TaskManager manager = new TaskManager(
+                storage,
+                storage,
+                new ContractAwareTaskTerminalPolicy(),
+                null);
+
+        try {
+            TaskShellCreateRequestDto request = new TaskShellCreateRequestDto();
+            request.setProject("demoApp");
+            request.setUserId("agent");
+            Task task = manager.createTaskShell(request);
+            IllegalStateException exception = assertThrows(
+                    IllegalStateException.class,
+                    () -> manager.appendTaskItems(task.getTid(), List.of(Map.of("target", "alpha"))));
+            assertTrue(exception.getMessage().contains("requires TaskRuntimeServingLane"));
+            assertTrue(exception.getMessage().contains("old TaskWorkRuntime/TaskResultRuntime path has been deleted"));
+        } finally {
+            manager.shutdown();
+        }
+    }
+
+    @Test
+    void payloadRefAppendEnqueuesRuntimeWorkWithoutMessageInputPayload() {
         TaskShellCreateRequestDto dto = new TaskShellCreateRequestDto();
         dto.setSourceRef("payload-ref-ingress");
         dto.setProject("demoApp");
@@ -66,21 +112,25 @@ class TaskManagerLifecycleTest {
         dto.setContract(TaskContract.SESSION);
 
         Task task = taskManager.createTaskShell(dto);
-        String messageId = java.util.UUID.randomUUID().toString();
         String payloadRef = "s3://bucket/payloads/demo-1.json";
 
-        taskManager.ingestRuntimePayloadRef(task.getTid(), messageId, payloadRef, 5);
-
-        assertEquals(1, taskWorkRuntime.stats(task.getTid()).readyCount());
-        ClaimedTaskWork claimed = taskWorkRuntime.claimReady(
+        TaskAppendReceipt receipt = taskManager.appendTaskItemsWithReceipt(
                 task.getTid(),
-                List.of(WorkerClaimTarget.workerLevel("worker-payload-ref", "batch-0", 1)),
-                1,
-                taskManager.getWorkLeaseSeconds()
-        ).getFirst();
-        assertEquals(messageId, claimed.messageId());
+                List.of(Map.<String, Object>of(
+                        "eventCode", "demo.event",
+                        "payloadRef", payloadRef)));
+
+        assertEquals(1, taskManager.getTaskRuntimeProgressSnapshot(task.getTid()).readyCount());
+        ClaimedWorkItem claimed = TaskRuntimeClaimTestSupport.claimSingle(
+                taskRuntimeServingLane,
+                taskManager.getWorkLeaseSeconds(),
+                task.getTid(),
+                "group-1",
+                "worker-payload-ref",
+                "batch-0");
+        assertEquals(receipt.messageIds().getFirst(), claimed.messageId());
         assertEquals(payloadRef, claimed.payloadRef());
-        assertTrue(claimed.payload().isEmpty());
+        assertTrue(claimed.payloadJson().isEmpty());
     }
 
     @Test
@@ -106,7 +156,7 @@ class TaskManagerLifecycleTest {
         assertEquals(TaskStatus.NEW, updatedTask.getStatus());
         assertEquals(TaskIntakeStatus.OPEN, updatedTask.getIntakeStatus());
         assertEquals(2, updatedTask.getTaskTargetNumber());
-        assertEquals(2, taskWorkRuntime.stats(task.getTid()).readyCount());
+        assertEquals(2, taskManager.getTaskRuntimeProgressSnapshot(task.getTid()).readyCount());
         assertEquals(0, dispatchRequests.get());
     }
 
@@ -134,4 +184,5 @@ class TaskManagerLifecycleTest {
         dto.setExecutionSpec(spec);
         return dto;
     }
+
 }

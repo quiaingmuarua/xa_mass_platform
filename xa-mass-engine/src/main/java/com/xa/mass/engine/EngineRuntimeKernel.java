@@ -23,6 +23,7 @@ import com.xa.mass.engine.watchdog.WorkerCommandMaintenanceWatchdog;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.function.Consumer;
 
@@ -53,6 +54,7 @@ public class EngineRuntimeKernel {
     private WorkerCommandMaintenanceWatchdog workerCommandMaintenanceWatchdog;
     private RuntimeReadyDispatchPump runtimeReadyDispatchPump;
     private TaskResourceReleaseListener resourceReleaseListener;
+    private List<EngineRuntimeLoop> taskRuntimeLoops = List.of();
     private Consumer<Task> taskReadyListener;
     private Consumer<Task> taskDispatchSignalListener;
     private Consumer<Task> taskTerminalListener;
@@ -97,7 +99,8 @@ public class EngineRuntimeKernel {
                     traceEventLogger,
                     resourcePolicy,
                     resourceReleaser,
-                    schedulingPlaneResolver);
+                    schedulingPlaneResolver,
+                    config::getTaskMessageLeaseSeconds);
             var workerAssignListener = new TaskWorkerAssignListener(
                     workerSelectionRuntime,
                     dispatchBinder,
@@ -130,7 +133,6 @@ public class EngineRuntimeKernel {
             Runnable dispatchWakeupCallback = dispatchWakeupBridge.callback("worker availability changed");
             config.getWorkerControlRuntime().setDispatchWakeupCallback(dispatchWakeupCallback);
             workerAvailabilityWakeupRuntime.setDispatchWakeupCallback(dispatchWakeupCallback);
-            runtimeReadyDispatchPump.start();
 
             resourceReleaseListener = new TaskResourceReleaseListener(
                     leaseMaintenancePort,
@@ -162,7 +164,7 @@ public class EngineRuntimeKernel {
                     leaseMaintenancePort,
                     shellLifecycleMaintenancePort,
                     config.getLeaseWatchdogIntervalSeconds());
-            leaseWatchdog.start();
+            taskRuntimeLoops = List.of(runtimeReadyDispatchPump, leaseWatchdog);
             workerCommandMaintenanceWatchdog = new WorkerCommandMaintenanceWatchdog(
                     config.getWorkerControlRuntime(),
                     config.getWorkerCommandMaintenanceIntervalSeconds(),
@@ -203,10 +205,8 @@ public class EngineRuntimeKernel {
             }
             config.getWorkerControlRuntime().setDispatchWakeupCallback(null);
             config.getWorkerAvailabilityWakeupRuntime().setDispatchWakeupCallback(null);
-            if (leaseWatchdog != null) {
-                leaseWatchdog.stop();
-                leaseWatchdog = null;
-            }
+            leaseWatchdog = null;
+            taskRuntimeLoops = List.of();
             if (workerCommandMaintenanceWatchdog != null) {
                 workerCommandMaintenanceWatchdog.stop();
                 workerCommandMaintenanceWatchdog = null;
@@ -268,18 +268,24 @@ public class EngineRuntimeKernel {
     private StartedRuntime startedRuntime() {
         return new StartedRuntime(
                 eventListeners,
-                null
+                null,
+                taskRuntimeLoops
         );
     }
 
     private StartedRuntime startedRuntime(Runnable dispatchWakeupCallback) {
         return new StartedRuntime(
                 eventListeners,
-                dispatchWakeupCallback
+                dispatchWakeupCallback,
+                taskRuntimeLoops
         );
     }
 
     public record StartedRuntime(TaskEventListenerRegistrar eventListeners,
-                                 Runnable dispatchWakeupCallback) {
+                                 Runnable dispatchWakeupCallback,
+                                 List<EngineRuntimeLoop> taskRuntimeLoops) {
+        public StartedRuntime {
+            taskRuntimeLoops = List.copyOf(taskRuntimeLoops == null ? List.of() : taskRuntimeLoops);
+        }
     }
 }

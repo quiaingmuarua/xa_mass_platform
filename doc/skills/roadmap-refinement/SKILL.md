@@ -1,204 +1,179 @@
 ---
 name: roadmap-refinement
-description: Converge architecture or implementation roadmap work into an executable, code-grounded plan with owner review, boundary analysis, proof surfaces, guardrails, and verification commands. Use when the user asks for roadmap review, roadmap repair, executable slice planning, owner-boundary review, proof/guard design, roadmap residue follow-up, merge/split decisions between roadmaps, or caller/dependency/boundary inventory before implementation. Do not trigger for open-ended brainstorming, early product/architecture ideation, or casual discussion unless the user asks to turn the idea into a roadmap, review, proof plan, or implementation plan.
+description: Converge roadmap or boundary work into executable, code-grounded plans with owner review, proof surfaces, guardrails, and verification. Use for roadmap review/repair, executable slice planning, owner-boundary review, proof/guard design, residue follow-up, merge/split decisions, or caller/dependency/boundary inventory. Do not trigger for open-ended brainstorming or ordinary code, PR, bug, or implementation reviews unless the user asks to convert findings into a roadmap, slice plan, proof plan, boundary inventory, or convergence plan.
 ---
 
 # Roadmap Refinement
 
 Use this skill to turn vague or drifting roadmap work into an executable,
-code-grounded plan. Default to owner review: validate the real code path first,
-then refine the roadmap.
+code-grounded convergence plan. Default to owner review: inspect the live code
+path first, then refine the roadmap.
 
-Roadmaps are not one-turn plan-mode checklists. Treat a roadmap as a
-goal-mode convergence artifact that may be reviewed and implemented across
-multiple turns, sessions, and phases. A roadmap should preserve the full
-problem boundary while making the next executable slice clear.
+Do not use this skill for early brainstorming or free-form architecture
+discussion unless the user asks to converge on a roadmap, review, proof plan, or
+implementation plan.
 
-Do not use this skill as a fixed template for early exploration. If the user is
-brainstorming, asking "what could this be?", or explicitly wants free-form
-architecture discussion, stay in normal reasoning mode until they ask to
-converge on a roadmap, review, proof plan, or implementation plan.
+## Modes
 
-## Roadmap Semantics
+Choose the mode from the user's wording before editing.
 
-Roadmaps describe a multi-phase convergence path, not a promise that all
-related problems will be solved in one implementation pass.
+- **Review mode**: review, assess, owner-review, re-review, or give findings.
+  Return findings first and do not modify files.
+- **Edit mode**: fix, update, repair, rewrite, create, or revise a roadmap.
+  Edit roadmap/docs directly; create an inventory only when the boundary needs
+  one.
+- **Implementation mode**: execute or implement an approved roadmap slice. Make
+  only the approved slice's code/doc changes; stop if the slice no longer
+  matches current code or needs a larger owner decision.
 
-Use this distinction:
+Use the lightest response shape that fits. Simple one-file checks can be short;
+multi-module owner reviews should use findings-first structure.
 
-- **roadmap**: records the whole owner boundary, known debt, deferred
-  decisions, phases, proof surfaces, and completion criteria
-- **current slice**: the next independently verifiable implementation unit
-- **goal-mode progress**: repeated review and implementation turns that advance
-  the roadmap without pretending deferred phases are complete
+## Core Semantics
 
-When a roadmap contains a large related concern, do not delete or hide it just
-because it is not part of the first slice. Keep it visible as a later phase,
-deferred decision, residual risk, or non-goal with a follow-up owner. The
-roadmap should avoid both extremes: it should not demand all related problems
-in the first slice, and it should not create the illusion that unsolved phases
-are complete.
+- A roadmap records the full owner boundary, known debt, deferred decisions,
+  phases, proof surfaces, and completion criteria.
+- A current slice is the next independently verifiable implementation unit.
+- Slice acceptance is not roadmap completion. Use `complete` only after all
+  completion criteria are satisfied, residue is scanned, and current facts are
+  moved to owning docs or archive when needed.
+- Later-phase debt should remain visible as a later phase, deferred decision,
+  residual risk, or non-goal. Do not hide it to make the current slice appear
+  smaller or complete.
 
-Status wording should be honest:
+Useful status words:
 
-- `proposed direction document`: target path exists, implementation not started
-- `active roadmap`: at least one slice is in progress or landed, more remains
-- `slice complete, roadmap active`: current slice landed but later phases remain
-- `mainline unblocked, residual phases remain`: prerequisite work is enough for
-  a dependent roadmap, but the roadmap is not complete
-- `complete`: all stated completion criteria are satisfied, residue scanned,
-  and current facts were moved to owning docs or archive as needed
+- `proposed`: target direction exists; implementation not meaningfully landed.
+- `active`: at least one slice is in progress or landed, and more remains.
+- `slice complete, roadmap active`: current slice landed; later phases remain.
+- `mainline unblocked, residual phases remain`: enough landed for a dependent
+  roadmap, but this roadmap is not complete.
+- `implemented-with-residue`: behavior appears landed, but old names, imports,
+  docs, guards, aliases, or references remain.
+- `historical` or `superseded`: do not execute except as background.
 
-Avoid using `complete` when only the current slice is done.
+## Demand Challenge
 
-## Mode Rule
+Do not accept the requested abstraction as valid merely because it was named.
+Before refining a roadmap, challenge whether the public interface, port method,
+model, field, DTO, command/request object, bridge, wrapper, lifecycle state,
+guard, or status sync is needed at all.
 
-Choose the mode from the user's request before editing anything.
+- Who is the named owner?
+- Does it protect a production invariant or only agent/refactor convenience?
+- Without it, where does production behavior actually fail?
+- Can an existing owner seam or channel carrier express it?
+- Is the interface a use-case decision surface or a narrow mechanical action?
+  Do not wrap narrow mechanical actions in `Command`, `Request`, `Context`, or
+  `Options` DTOs just to make the signature look cleaner.
+- Is the DTO for an external server/SDK contract, an adapter codec, or an
+  internal kernel/mechanism seam?
+- If it is diagnostics or observability, can it be an append-only event, trace,
+  counter, structured log, or owner-local bounded hook instead of a snapshot
+  viewer, read model, public contract, or mainline-maintained state?
+- Does it add resource or infra cost such as threads, table scans, locks,
+  transactions, queues, indexes, background jobs, or infra operations?
+- Is each field `truth`, `evidence`, `address`, `correlation`, `diagnostics`,
+  `projection`, `hint`, `residue`, or `experimental`?
+- If this abstraction is deleted, what breaks beyond naming symmetry,
+  dependency comfort, or roadmap narrative?
 
-- **Review mode**: If the user asks to review, assess, or give findings, return
-  findings first and do not modify files.
-- **Edit mode**: If the user asks to fix, update, repair, rewrite, or create a
-  roadmap, edit roadmap/docs directly.
-- **Implementation mode**: If the user asks to execute an approved roadmap,
-  make code/doc changes only within the approved slice or report when the
-  roadmap is unclear.
+If the answer is weak, recommend deletion, narrowing, parking, or inventory
+instead of turning the request into a roadmap.
 
-In review mode, require or recommend an inventory when needed, but do not
-create files unless the user asks for edits.
+## Boundary Gate
 
-Use the lightest response shape that fits the task. Simple one-file roadmap
-checks can be short. Use the full findings table for owner review,
-multi-module boundary work, high-severity issues, or when the user explicitly
-asks for a full review.
-
-## Operating Rules
-
-- Treat code and verified behavior as stronger evidence than direction docs.
-- Do not document target state as current implementation.
-- Keep each slice independently verifiable: compilation and the relevant test
-  set should pass after the slice lands.
-- Do not create "break now, fix later" intermediate roadmap states.
-- Do not remove later-phase debt from a roadmap merely to make the current slice
-  look smaller or complete.
-- Do not mark a roadmap complete because one executable slice landed.
-- Separate production dependencies from test fixtures.
-- Separate owner boundaries from implementation convenience.
-- Prefer deleting stale parallel narratives over preserving old and new tracks.
-- Do not add compatibility aliases unless the user explicitly requires external
-  compatibility.
-- Do not create wrapper/facade/bridge layers unless they protect a real owner
-  boundary, protocol seam, lifecycle split, or external caller surface.
-- Do not merge unrelated boundary work into one roadmap because the dependency
-  name looks similar.
-- Do not trust a roadmap `Status:` line without checking current code and, when
-  useful, recent commits or archive location.
-
-## Decision Gate
-
-Before creating, repairing, or executing a boundary roadmap, walk the request
-through this order. Do not skip to guardrails or automation before the owner
-and mechanism are stable.
+Before creating, repairing, or executing a boundary roadmap, walk through this
+order. Do not start with guardrails, automation, or rename work before owner and
+mechanism are stable.
 
 1. **Question**
-   - Name the owner that owns the production decision or runtime truth.
-   - State whether the work protects a production invariant or only agent
-     convenience.
-   - Explain how the system fails without the change.
-   - Classify the fact as `truth`, `projection`, `evidence`, `hint`,
-     `residue`, or `experimental`.
+   - Name the owner of the production decision or runtime truth.
+   - State the invariant and how the system fails without the change.
+   - For large changes, name the mainline mechanism, boundary API, and lifecycle
+     path that must close first. Strategy may stay built-in/default until that
+     path is stable.
+   - Classify each fact as `truth`, `evidence`, `address`, `correlation`,
+     `diagnostics`, `projection`, `hint`, `residue`, or `experimental`.
+   - Keep `address`, `correlation`, and `diagnostics` out of lifecycle,
+     scheduling, and owner state-machine authority.
+   - Keep diagnostics and observability side-channel by default: append-only,
+     bounded, owner-local, and non-authoritative. Mechanism and strategy should
+     stay separable; observation must not become a policy, lifecycle, dispatch,
+     public DTO, or cross-module owner-fact dependency unless a named production
+     invariant requires it.
+   - Decide whether the work is high-ROI boundary reduction or stopgap hygiene.
+     Prefer shrinking externally visible surfaces before polishing internal
+     debt.
+   - State whether strong consistency is required by a high-ROI production
+     invariant. If not, prefer best-effort observation, retry, bounded drift, or
+     eventual convergence.
+   - Resource-consuming mechanisms and infra operations need explicit
+     cost/blast-radius assessment, owner, cheaper-alternative rejection, and
+     proof.
 2. **Delete**
-   - Prefer deleting an old DTO, wrapper, bridge, fallback, alias, or stale
-     test path before adding a replacement.
+   - Prefer deleting old DTOs, wrappers, bridges, fallbacks, aliases, stale
+     tests, and parallel narratives before adding replacements.
    - Reuse an existing owner seam when it already expresses the invariant.
-   - Prefer moving ownership over adding fields to make two owners agree.
+   - Move ownership rather than adding fields so two owners can agree.
 3. **Simplify**
-   - Keep the remaining seam narrow enough that the caller sees only what it
-     owns.
-   - Let only the target owner parse payload or domain fields.
-   - Forbid intermediate layers from reading domain fields just to preserve an
-     old route, lifecycle, or projection path.
-4. **Accelerate**
-   - Pick the smallest proof that can fail when the owner invariant is wrong.
-   - Prefer owner-focused tests first; add representative cross-boundary proof
-     only when the risk crosses the boundary.
-   - Treat a green CI run as support evidence, not proof, when it preserves
-     compatibility behavior or lacks a focused invariant.
-5. **Automate**
+   - Keep cross-module parameters minimal: stable primitives, caller-owned value
+     objects, narrow public contracts, callbacks, or opaque handles.
+   - Allow wider, redundant DTOs at server/SDK external API boundaries when they
+     improve caller ergonomics, compatibility, or contract stability.
+   - For internal kernel/mechanism seams, treat method-local DTOs and mirrored
+     DTO pairs as suspect; reject them when they group fields the caller cannot
+     own, validate, or construct.
+   - For narrow mechanical ports, prefer explicit minimal parameters or a thin
+     carrier only when that carrier is already the owner-stable object being
+     moved; do not introduce `Command`, `Request`, `Context`, or `Options` DTOs
+     to shorten signatures.
+   - Do not invent pair/carrier records for kernel seams when an owner-stable
+     model, opaque frame/handle, or primitive identity already expresses the
+     action.
+   - Keep policy, pre-check/filter choices, lifecycle fence/epoch, diagnostics,
+     and future-extension fields out of mechanical action interfaces unless a
+     named invariant proves the action itself must read them.
+   - For internal mechanism seams, let only the target owner parse payload or
+     domain fields. Adapter codecs may translate at protocol edges, but must not
+     become lifecycle, policy, or domain owners.
+   - Do not add wrapper, facade, bridge, or adapter layers unless they protect a
+     real owner boundary, protocol seam, lifecycle split, or external caller
+     surface.
+4. **Lifecycle**
+   - Only the real owner may maintain lifecycle truth.
+   - Intermediate layers may emit or consume best-effort evidence, but must not
+     mirror lifecycle truth or promise strong consistency unless the roadmap
+     names the high-ROI invariant, writer, repair path, and proof.
+   - Small timing drift in status synchronization is acceptable when retry,
+     repair, or bounded observation can converge it.
+5. **Prove and Automate**
+   - Pick the smallest proof that fails when the owner invariant is wrong.
+   - Prefer proof before guard when the owner mechanism is still settling.
    - Add guards only after the owner truth is stable enough to freeze.
-   - Prefer negative guards that block old imports, old symbols, fallback
-     paths, fat DTOs, and projection-to-mainline leaks.
+   - Prefer negative guards that block old imports, old symbols, fallback paths,
+     fat DTOs, mirrored DTOs, and projection-to-mainline leaks.
    - Do not guard provisional class names, temporary lifecycle states, or
      implementation shape before the mechanism is settled.
 
-Lifecycle state deserves extra caution: it can protect a mature mechanism, but
-it must not become owner truth before the owner, writer, consumer, failure
-semantics, migration behavior, and proof are named.
-
-## Convergence Rhythm
-
-Boundary roadmaps follow layered convergence, not a flat checklist.
-
-**Phase 1 - Identify**:
-inventory callers, classify current usage, verify docs against code, and
-decide ownership.
-
-**Phase 2 - Converge**:
-move consumers to the correct owner, narrow contracts, retarget adapters, and
-update assembly. Each slice must leave the repo compiling and the relevant
-test set passing.
-
-**Phase 3 - Remove Residue**:
-delete stale code, stale vocabulary, compatibility paths, and add guards that
-prevent regression.
-
-Do not jump to Phase 3 before Phase 2 is complete. No slice should require a
-later slice to restore compilation or runtime correctness.
-
-Phases may be intentionally uneven. Some phases only unblock a dependent
-roadmap; others retire residue or tighten semantics later. Record this
-explicitly instead of forcing every related concern into the first phase.
-
-Every boundary roadmap should include a "Do Not Start With" note that names
-the most tempting wrong-order shortcut, such as deleting dependencies before
-moving callers or deleting writes before replacing read models.
-
-## Workflow
-
-### 1. Establish Scope
-
-Determine whether the task is:
-
-- roadmap review
-- roadmap creation
-- roadmap repair after review findings
-- implementation planning for an approved roadmap
-- dependency or owner-boundary convergence
-
-Locate the current roadmap, related module README/CONTRACTS files, repo
-handoff instructions, and the repository's roadmap/doc index when present.
-
-If the user asks whether to merge with an existing roadmap, answer from owner
-boundary, caller set, blast radius, and proof set.
-
-### 2. Inspect Current Code
+## Evidence Workflow
 
 Use fast source search before editing. Prefer `rg`.
 
-Check:
+Check the evidence needed for the requested boundary:
 
-- main-source imports and call sites
+- main-source imports, public signatures, and call sites
 - test-only imports separately
 - Maven/Gradle dependencies and scopes
-- controller/API routes
-- existing architecture guards
-- storage/runtime/transport ownership docs
-- companion docs referenced by the roadmap header or body
-- related active roadmaps from doc indexes, explicit links, and nearby roadmap
-  directories
-- stale roadmap or inventory documents
-- recent commits when a roadmap status may be stale
+- controller/API routes and external SDK/API shapes
+- existing architecture guards and allowlists
+- storage, runtime, transport, server, SDK, or owner docs referenced by the
+  roadmap
+- related active roadmaps, Non-Goals, pending slices, acceptance criteria, and
+  dependency assumptions
+- recent commits or archive location when status may be stale
 
-When reporting facts, distinguish:
+Report facts with this split:
 
 ```text
 current code says ...
@@ -206,72 +181,31 @@ target roadmap says ...
 gap is ...
 ```
 
-For referenced docs, verify that files exist and do not contradict the
-roadmap's boundary decision. Do not treat referenced direction docs as proof
-of current behavior unless the current code also confirms it.
+Do not treat direction docs, blueprint docs, status lines, or archived roadmaps
+as proof of current behavior. If status and code disagree, report doc drift in
+review mode or repair the status in edit mode.
 
-For related roadmaps, check status, Non-Goals, pending slices, acceptance
-criteria, and dependency assumptions. Flag conflicts or required cross-links.
-
-For stale status detection:
-
-- Verify `Status: proposed`, `active`, or `complete` against source code,
-  guards, tests, and recent commits when available.
-- Treat archived roadmaps as historical context, not active truth, unless the
-  repo explicitly says otherwise.
-- If status and code disagree, report doc drift in review mode or update the
-  roadmap status in edit mode.
-
-### 3. Classify Roadmap Portfolio State
-
-When a repository has many roadmaps, classify each roadmap by current code
-state, not only by its `Status:` line.
-
-Use this taxonomy:
-
-| Class | Meaning | Action |
-| --- | --- | --- |
-| proposed | target direction exists, no meaningful implementation has landed | review/refine before execution |
-| active | implementation is in progress and slices remain | continue from the current slice |
-| slice-complete | one or more slices landed, but roadmap completion criteria are not all satisfied | keep roadmap active; advance to next slice |
-| mainline-unblocked | prerequisite slice is enough for a dependent roadmap, but residual phases remain | unblock dependency while tracking remaining phases |
-| implemented | acceptance appears satisfied in code/tests/docs | update status and proof; consider archive |
-| implemented-with-residue | mainline is done but old names/imports/docs/aliases remain | run residue scan before archive |
-| superseded | a newer roadmap owns the direction | mark pointer to replacement; archive when safe |
-| blocked | owner decision, external dependency, or proof gap blocks execution | record decision needed |
-| stale-status | status line disagrees with code or commits | repair status before planning work |
-| historical | archived or obsolete context only | do not execute; use only for background |
-
-For portfolio review, produce a table:
+For many-roadmap reviews, classify each roadmap by current code state, not just
+its `Status:` line. Keep the table short:
 
 ```markdown
 | Roadmap | Status Line | Code Evidence | Class | Next Action |
 | --- | --- | --- | --- | --- |
 ```
 
-Do not archive just because code exists. Archive only after status, proof,
-remaining residue, and replacement links are clear.
+## Inventory
 
-### 4. Require, Propose, Or Create Inventory
+Inventory is often the first deliverable for boundary work.
 
-Inventory is often the first real deliverable for boundary work, but it should
-match the mode.
-
-- Review mode: say an inventory is required or recommended; do not create it.
-- Edit mode: create or update a sibling `*_INVENTORY.md` when conditions match.
+- Review mode: require or recommend inventory; do not create it.
+- Edit mode: create or update a sibling `*_INVENTORY.md` when needed.
 - Implementation mode: create or update inventory only if the approved roadmap
   calls for it or the code path is materially unclear.
 
-Use an inventory when any of these are true:
-
-- many callers or modules are involved
-- production and test usage must be separated
-- a dependency is being moved or removed
-- ownership is unclear
-- current implementation and target docs disagree
-- the first roadmap slice is classification
-
-Do not create an inventory for a trivial one-file documentation correction.
+Use an inventory when there are many callers/modules, production and test usage
+must be separated, a dependency is being moved or removed, ownership is unclear,
+current implementation and target docs disagree, or the first slice is
+classification.
 
 Minimal inventory shape:
 
@@ -295,37 +229,36 @@ Status: current code inventory for <roadmap>.
 - ...
 ```
 
-Useful classifications:
+Useful classifications: runtime truth, control-plane declaration, storage
+adapter, read model, compatibility residue, admin/bootstrap, transport/session
+evidence, test fixture, stale documentation.
 
-- runtime truth
-- control-plane declaration
-- storage adapter
-- read model
-- compatibility residue
-- admin/bootstrap
-- transport/session evidence
-- test fixture
-- stale documentation
+## Owner Review
 
-### 5. Owner Review
-
-Before rewriting a roadmap, state the owner decision explicitly.
-
-Use this pattern:
+Before rewriting a roadmap, state the owner decision explicitly:
 
 ```text
 <Domain object> belongs to <owner>.
-<Other module> may consume it through <contract>, but must not define it.
-<Implementation module> is an adapter, not the contract owner.
+<Other module> may consume it through <minimal contract>, but must not define it.
+<Implementation module> is an adapter/evidence producer, not the contract owner.
 ```
 
-For repository-specific ownership rules, load and follow the repository's
-handoff docs and module contracts. Do not apply one repository's owner split to
-another repository unless the current repo has the same documented boundary.
+For lifecycle or status synchronization:
 
-### 6. Decide Merge Versus Separate Roadmap
+```text
+<Lifecycle fact> is maintained by <owner>.
+<Intermediate module> may emit or consume best-effort evidence, but must not
+mirror lifecycle truth or promise strong consistency unless the roadmap names
+the high-ROI invariant, writer, repair path, and proof.
+```
 
-Merge into an existing roadmap only when all are true:
+Load and follow the repository's handoff docs and owner contracts. Do not apply
+one repository's owner split to another repository unless the current repo has
+the same documented boundary.
+
+## Merge Or Split
+
+Merge work into one roadmap only when all are true:
 
 - same owner boundary
 - same caller family
@@ -333,302 +266,147 @@ Merge into an existing roadmap only when all are true:
 - same implementation sequence
 - no existing Non-Goal is violated
 
-Create a separate roadmap when any are true:
+Split the roadmap when owner boundary, proof commands, caller set, or execution
+sequence differ; when one track can finish while another is blocked; or when the
+shared label is superficial, such as both touching `storage`.
 
-- the work has a different owner boundary
-- proof commands differ materially
-- one track can finish while the other is blocked
-- the shared label is superficial, such as both touching `storage`
-- merging would turn the roadmap into a broad cleanup bucket
+When splitting, cross-link the roadmaps and say why they are separate.
 
-When splitting, cross-link the roadmaps and state why they are separate.
+## Roadmap Shape
 
-### 7. Roadmap Structure
+Use this shape flexibly:
 
-Use this as a flexible skeleton, not a rigid template:
+- current code observations
+- owner review and boundary decision
+- target shape only when it adds clarity beyond the boundary decision
+- non-goals
+- executable slices with goal, scope, acceptance, and verification point
+- suggested implementation order
+- roadmap completion criteria distinct from slice acceptance
+- verification candidates
+- "Do Not Start With" warning for tempting wrong-order shortcuts
 
-```markdown
-# <Roadmap Title>
+Boundary roadmaps usually converge in this order:
 
-Status: proposed direction document.
+1. Inventory and classify callers, dependencies, symbols, and current behavior.
+2. Decide the contract owner and minimal public seam.
+3. Close one mainline mechanism through the boundary API and lifecycle path,
+   using built-in/default strategy when needed.
+4. Move or narrow contracts, retarget implementations/adapters, and update
+   assembly plus downstream callers.
+5. Add focused proof and stable negative guards.
+6. Remove residue, stale docs, compatibility paths, old vocabulary, strategy
+   variants, and corner cases only after the mainline path is closed.
 
-## Current Facts
+Do not start by deleting dependencies before moving callers. No slice should
+require a later slice to restore compilation or runtime correctness.
 
-or
-
-## Current Code Observations
-
-## Owner Review
-
-## Boundary Decision
-
-## Target Shape
-
-## Non-Goals
-
-## <SLICE-0> Inventory And Classification
-
-Scope:
-
-Acceptance:
-
-## <SLICE-1> ...
-
-## Suggested Implementation Order
-
-## Verification Candidates
-```
-
-`Owner Review` is recommended for complex module-boundary work. `Target Shape`
-is optional when `Boundary Decision` already contains the target. Topic-specific
-review sections such as dependency convergence or API compatibility are valid
-when they make the roadmap easier to review.
-
-Keep slices executable. Each slice should have:
-
-- goal
-- scope
-- acceptance
-- no hidden behavior changes unless explicitly stated
-- a stable verification point
-
-Also include a roadmap-level completion section when the topic spans multiple
-phases. Slice acceptance proves only that slice. Roadmap completion criteria
-prove the whole convergence path.
-
-Include a "Do Not Start With" note for boundary roadmaps that are likely to
-tempt agents into the wrong order.
-
-### 8. Slice Ordering
-
-Map slices to the convergence rhythm.
-
-Identify:
-
-1. inventory/classification
-2. contract/owner decision
-
-Converge:
-
-3. move or narrow contracts
-4. retarget implementations/adapters
-5. update SDK/server/test assembly
-
-Remove residue:
-
-6. add guards and proof
-7. remove residue and stale docs
-
-Do not start by deleting dependencies. First prove what owns the contract, move
-callers, then remove the dependency. Each step should be commit-sized or
-phase-sized and independently verifiable.
-
-When review finds a later phase is too large for the current implementation
-pass, reclassify it as a later phase or deferred decision instead of removing
-it from the roadmap. The current slice should narrow execution; the roadmap
-should keep the full convergence context.
-
-### 9. Acceptance Criteria
+## Acceptance, Proof, And Guards
 
 Acceptance must be testable in code review.
 
-Write acceptance at two levels when needed:
+- Write slice acceptance for the implementation unit.
+- Write roadmap completion criteria for the whole convergence path.
+- Use concrete file, class, method, package, route, dependency, or command
+  names when known.
+- Avoid acceptance that cannot fail, such as "clean up dependencies" or "make
+  the boundary clearer."
 
-- slice acceptance: what must be true after this implementation unit
-- roadmap completion criteria: what must be true before the roadmap can be
-  marked complete or archived
+For proof:
 
-Do not treat slice acceptance as roadmap completion unless the roadmap is truly
-single-slice.
+- Prefer owner-focused deterministic tests first.
+- Add representative cross-boundary proof only when the changed risk crosses a
+  real boundary.
+- Use the repository's proof registry or testing index when present.
+- Treat green CI as support evidence, not proof, when it preserves
+  compatibility behavior or lacks a focused invariant.
+- Verification candidates should be concrete commands. If exact tests are not
+  known yet, say they must be corrected after inventory.
 
-Good:
+For guards:
 
-- `xa-mass-worker-runtime` main sources no longer import
-  `com.xa.mass.storage.api.WorkerDeclaration*`.
-- Architecture guard fails if engine runtime packages import
-  `com.xa.mass.storage.api.projection.*`.
-- `mass-storage-memory` implements the worker-runtime declaration port as an
-  adapter.
+- Guard stable owner invariants and forbidden regressions, not temporary
+  implementation shape.
+- Useful guards include forbidden import/package scans, Maven dependency-scope
+  guards, architecture tests, contract-shape allowlists, route naming guards,
+  and proof-registry/testing-index updates.
 
-Weak:
-
-- "Clean up dependencies."
-- "Improve architecture."
-- "Make the boundary clearer."
-- "Consider adding a guard."
-
-### 10. Guards And Verification
-
-For every boundary decision, prefer at least one guard:
-
-- forbidden import/package scan
-- Maven dependency-scope guard
-- architecture test
-- contract-shape allowlist
-- route naming guard
-- proof registry or testing index update
-
-Guard stable owner invariants and forbidden regressions, not temporary
-implementation shape. Prefer guards that fail when projection, diagnostics,
-compatibility paths, fallback logic, or transport/session facts re-enter a
-runtime mainline. Do not add guards that force a provisional lifecycle enum,
-class name, or wrapper to remain after the next convergence slice.
-
-Verification candidates should be concrete commands. If exact tests are not
-known yet, say they must be corrected after inventory.
-
-### 11. Implementation Mode Rules
+## Implementation Mode
 
 When executing a roadmap slice:
 
-1. Confirm the exact slice, scope, acceptance criteria, and verification
-   commands before editing.
-2. Check the worktree and avoid reverting unrelated user changes.
-3. Establish a baseline when risk is meaningful: compile, focused tests, or at
-   minimum inspect recent failures so pre-existing failures are not confused
-   with new regressions.
-4. Implement only the current slice. Do not opportunistically pull in future
-   slices.
-5. If the roadmap conflicts with current code or the slice requires a larger
-   owner decision, stop implementation and return to roadmap refinement.
-6. If compilation fails because of this slice, fix it within scope before
-   continuing.
-7. If tests fail:
-   - fix failures clearly caused by the slice
-   - record clearly pre-existing failures without expanding scope
-   - reduce ambiguous failures to a focused repro before deciding
-8. If fixing requires changing contracts, docs, guards, or verification, update
-   them in the same slice.
-9. End the slice at a stable point: relevant compile/tests pass, guards are in
-   place, docs match behavior, and the repo is ready for a phase commit.
-10. After a rename, dependency, boundary, or compatibility-removal slice,
-    suggest or run `roadmap-residue-scan` when available before declaring the
-    slice complete.
-11. If implementation changes close a roadmap's own `Known gaps`, `current
-    site`, `Scope`, or verification assumptions, update that roadmap from
-    plan-state wording to evidence-state wording in the same slice. Do not
-    leave a completed issue described as a current gap.
+1. Confirm exact slice, scope, acceptance criteria, and verification commands.
+2. Check the worktree and preserve unrelated user changes.
+3. Establish a meaningful baseline when risk justifies it.
+4. Implement only the current slice.
+5. Stop for owner coordination if the roadmap definition is materially unclear
+   or wrong, the owner boundary changes, blast radius expands, or the slice
+   conflicts with current code.
+6. Update contracts, docs, guards, and verification in the same slice when the
+   code change changes them.
+7. If implementation closes a roadmap's known gap, current site, scope, or
+   verification assumption, update the roadmap from plan-state wording to
+   evidence-state wording.
+8. After rename, dependency, boundary, or compatibility-removal work, suggest or
+   run `roadmap-residue-scan` when available before declaring the slice
+   complete.
 
-### 12. Review Delivery Format
+## Delivery
 
 In review mode, lead with findings.
 
-Use this structure:
+Use severity only when it helps:
 
-```markdown
-## <Roadmap> Review
+- **High**: blocks execution, creates an incorrect owner boundary, or likely
+  causes implementation churn/failure.
+- **Medium**: should be fixed before implementation; otherwise likely causes
+  scope creep, weak proof, or ambiguous ownership.
+- **Low**: clarity or maintainability improvement that does not block execution.
 
-### Findings
-
-**F1 - <title>**
-Severity: High | Medium | Low
-Evidence: <file:line or method/class reference>
-Impact: <why it matters>
-Recommendation: <specific fix>
-
-### Summary
-
-| Finding | Severity | Blocks execution? |
-| --- | --- | --- |
-| F1 | High | Yes |
-
-Conclusion: <formula>
-```
-
-Severity meanings:
-
-- **High**: blocks execution, creates an incorrect owner boundary, or would
-  likely cause implementation churn/failure.
-- **Medium**: should be fixed before implementation when practical; otherwise
-  likely causes scope creep, weak verification, or ambiguous ownership.
-- **Low**: clarity, maintainability, or follow-up improvement that does not
-  block execution.
-
-Use conclusion formulas:
+End reviews with one concrete conclusion:
 
 - `Fix F1/F2 before implementation.`
-- `Executable after the named Medium findings are clarified.`
 - `Executable for the next slice; roadmap remains active for later phases.`
 - `Mainline can proceed after Slice N; residual phases remain tracked.`
 - `No blocking findings; remaining items can be handled during implementation.`
-- `Too broad; split into separate roadmaps before executing.`
+- `Too broad; split before executing.`
 
-### 13. Final Response
+After edits, summarize files changed, major boundary decision, whether inventory
+was created, unresolved decisions, and verification run or not run. If only the
+roadmap changed, say no code behavior changed.
 
-After editing, summarize:
+## High-Risk Failure Modes
 
-- files changed
-- major boundary decision
-- whether an inventory was created
-- unresolved decisions
-- verification run or not run
-
-State whether the roadmap is:
-
-- executable
-- executable after named decisions
-- executable for the next slice while later phases remain
-- mainline unblocked but residual phases remain
-- blocked
-- too broad and should be split
-
-Do not overstate completion. If only the roadmap changed, say no code behavior
-changed.
-
-## Anti-Patterns
-
-- Treating a direction doc as proof of current behavior.
-- Combining projection, rule, worker lifecycle, and task shell work into one
-  roadmap because they all touch storage.
-- Promoting lifecycle state into owner truth before the mechanism, writer,
-  consumer, failure semantics, and proof are stable.
-- Adding local lifecycle/status fields so each module appears self-contained
-  while two modules still own the same runtime fact.
-- Leaving "or document it" as an escape hatch for a known production boundary
-  problem.
-- Creating compatibility aliases inside the repo after moving all callers.
-- Letting tests preserve old vocabulary as a hidden second API.
-- Treating CI green as validation when tests or guards preserve the removed
-  mechanism, projection, fallback, or fat DTO.
-- Hiding production dependency removal under a documentation-only slice.
-- Writing acceptance criteria that cannot fail.
-- Starting with a large rename before call sites and owner decisions are known.
-- Deleting later-phase debt from a roadmap so the current slice appears done.
-- Calling a roadmap complete when only the current slice or prerequisite
-  unblocking work is complete.
-- Treating a roadmap like plan mode, where the plan ends when the next action
-  is described, instead of goal mode, where the artifact carries state across
-  multiple review and implementation turns.
-
-## Quick Checklist
-
-Before finishing a roadmap refinement:
-
-- Current code observations are verified with source search.
-- Target state is not described as already implemented.
-- Roadmap `Status:` was checked against code, tests, guards, or commits when
-  plausibly stale.
-- Portfolio state was classified when the request involves many roadmaps.
-- Mode was respected: review-only did not edit files.
-- Companion docs referenced by the roadmap exist and do not contradict it.
-- The roadmap's own current-gap and known-site wording matches the code after
-  implementation.
-- Related roadmap Non-Goals and acceptance criteria do not conflict.
-- Public SDK/API breaking changes are called out when present.
-- File, class, method, and route names match current code.
-- Non-goals prevent scope creep.
-- The Decision Gate was applied: owner, invariant, failure mode, fact lane,
-  deletion opportunity, narrow seam, minimum proof, and guard timing are clear.
-- First slice inventories ambiguous caller/dependency sets.
-- Each slice has scope and acceptance.
-- Multi-phase roadmaps distinguish slice acceptance from roadmap completion
-  criteria.
-- Each slice is independently verifiable; no break-now-fix-later state exists.
-- Later-phase debt and deferred decisions remain visible instead of being
-  removed to make the roadmap look complete.
-- A "Do Not Start With" warning exists for boundary roadmaps with tempting
-  wrong-order shortcuts.
-- Merge/split decision is justified by owner boundary and proof set.
-- Verification commands are present and reference real modules/tests where
-  known.
-- Remaining decisions are explicit.
+- Accepting the user's proposed abstraction as real without challenging owner,
+  invariant, failure mode, and deletion path first.
+- Treating target or direction docs as current implementation proof.
+- Overselling stopgap hygiene as the strategic boundary fix.
+- Hiding a public exposure problem behind local import cleanup.
+- Creating fake isolation with internal fat DTOs, mirrored DTOs, compatibility
+  aliases, or wrappers that only forward to the same owner.
+- Wrapping a clear mechanical operation in a `Command`/`Request` DTO, then
+  letting policy, lifecycle, diagnostics, or future-extension fields accumulate
+  inside it.
+- Treating "thin DTO" as sufficient design when the internal seam should use an
+  existing owner-stable model, opaque frame/handle, or explicit primitive.
+- Promoting address, correlation, diagnostics, or evidence into lifecycle or
+  scheduling truth.
+- Treating diagnostics or observability as harmless completeness work, then
+  coupling snapshot viewers, read models, schemas, public DTOs, or policy /
+  lifecycle / dispatch dependencies into the mainline.
+- Letting non-owner modules maintain lifecycle truth or promise strong
+  consistency without a named high-ROI invariant.
+- Polishing strategy variants, corner cases, diagnostics, rename, guard
+  automation, or transport/API reshaping before the mainline mechanism,
+  boundary API, lifecycle path, and current callers are closed.
+- Adding threads, scanners, locks, transactions, queues, indexes, background
+  jobs, or infra operations without cost/blast-radius assessment and
+  cheaper-alternative rejection.
+- Trusting module/package names over actual production call sites.
+- Reusing broad tests or CI green as proof when they preserve old behavior or
+  skip the focused invariant.
+- Editing adjacent roadmap files because the vocabulary looks related.
+- Marking a roadmap complete when only one slice or prerequisite unblocker is
+  done.
+- Archiving without residue scan, active-link cleanup, and owner-doc fact
+  migration.

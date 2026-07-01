@@ -1,6 +1,8 @@
 const workerId = process.env.WORKER_ID;
 const wsUrl = process.env.WS_URL;
 const workerGroupId = stringValue(process.env.MASS_WORKER_GROUP_ID ?? process.env.WORKER_GROUP_ID);
+const dispatchFaultMode = stringValue(process.env.MASS_DISPATCH_FAULT) ?? "";
+const resultDelayMs = intEnv("MASS_RESULT_DELAY_MS", 5000);
 
 if (!workerId || !wsUrl || !workerGroupId) {
   console.error("WORKER_ID, WS_URL and MASS_WORKER_GROUP_ID are required");
@@ -13,6 +15,7 @@ if (typeof WebSocket !== "function") {
 }
 
 let socket;
+let receivedActionCount = 0;
 
 function log(message) {
   console.log(`[node-worker:${workerId}] ${message}`);
@@ -149,6 +152,40 @@ async function handleFrame(rawFrame) {
   const eventCode = action?.eventCode;
   const handler = eventCode ? taskHandlers.get(eventCode) : null;
   log(`received action frame replyRef=${action?.replyRef ?? "<none>"} eventCode=${eventCode ?? "<none>"}`);
+  receivedActionCount += 1;
+
+  if (dispatchFaultMode === "exit-before-result" && receivedActionCount === 1) {
+    log(`fault exit-before-result replyRef=${action?.replyRef ?? "<none>"}`);
+    setTimeout(() => process.exit(2), 50);
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      try {
+        socket.close(4001, "fault exit before result");
+      } catch {
+        process.exit(2);
+      }
+    }
+    return;
+  }
+
+  if (dispatchFaultMode === "late-result-after-lease-expiry" && receivedActionCount === 1) {
+    const result = handler
+      ? await handler(action)
+      : {
+          success: false,
+          code: "UNSUPPORTED_EVENT_CODE",
+          body: {
+            detail: `Unsupported eventCode: ${eventCode ?? "<missing>"}`,
+          },
+        };
+    log(`fault late-result-after-lease-expiry replyRef=${action?.replyRef ?? "<none>"} delayMs=${resultDelayMs}`);
+    if (socket && socket.readyState === WebSocket.OPEN) {
+      socket.close(4002, "fault late result replay");
+    }
+    await sleep(resultDelayMs);
+    await sendLateReplay(action, result);
+    process.exit(0);
+    return;
+  }
 
   if (!handler) {
     socket.send(buildTaskResult(action, {
@@ -163,6 +200,36 @@ async function handleFrame(rawFrame) {
 
   const result = await handler(action);
   socket.send(buildTaskResult(action, result));
+}
+
+function sendLateReplay(action, result) {
+  return new Promise((resolve, reject) => {
+    const replaySocket = new WebSocket(appendWorkerIdentity(wsUrl, workerId, workerGroupId));
+    let resolved = false;
+    const finish = () => {
+      if (!resolved) {
+        resolved = true;
+        resolve();
+      }
+    };
+
+    replaySocket.addEventListener("open", () => {
+      try {
+        replaySocket.send(buildTaskResult(action, result));
+        log(`fault late-result-after-lease-expiry submitted result replyRef=${action?.replyRef ?? "<none>"}`);
+        replaySocket.close(1000, "late result replay submitted");
+        setTimeout(finish, 200);
+      } catch (error) {
+        reject(error);
+      }
+    });
+    replaySocket.addEventListener("close", finish);
+    replaySocket.addEventListener("error", (event) => {
+      if (!resolved) {
+        reject(event?.error ?? event);
+      }
+    });
+  });
 }
 
 function shutdown(exitCode) {
@@ -239,6 +306,15 @@ function stringValue(value) {
 function numberValue(value) {
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
+}
+
+function intEnv(name, fallback) {
+  const parsed = Number.parseInt(process.env[name] ?? "", 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function sleep(delayMillis) {
+  return new Promise((resolve) => setTimeout(resolve, delayMillis));
 }
 
 function compactObject(value) {

@@ -28,11 +28,6 @@
         </dependency>
         <dependency>
             <groupId>com.xa.mass</groupId>
-            <artifactId>mass-runtime-redis</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.xa.mass</groupId>
             <artifactId>xa-mass-trace</artifactId>
             <version>${project.version}</version>
         </dependency>

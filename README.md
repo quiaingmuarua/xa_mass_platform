@@ -80,14 +80,15 @@ Current kernel truth is intentionally narrow:
   (`SESSION | BATCH`); engine behavior consumes resolved task scheduling policy
   values derived from it
 - `Task.intakeStatus` answers whether ingress remains `OPEN` or is already `SEALED`
-- `TaskWorkRuntime` answers ready/delayed/lease/counter truth for execution
+- `xa-mass-task-runtime` answers accepted ready backlog, claim/lease, retry,
+  final-result, progress, and discard truth for execution
 - result convergence is runtime-first, but the lifecycle owner split is documented
   in [`doc/TASK_LIFECYCLE_BASELINE.md`](./doc/TASK_LIFECYCLE_BASELINE.md)
   and current engine/runtime code rather than frozen in this summary
 
 Current mainline execution path:
 
-- `Task shell -> item append -> runtime enqueue -> scheduling eligibility -> worker selection and assignment -> transport dispatch -> result convergence -> task state`
+- `Task shell -> item append -> task-runtime accepted backlog -> scheduling eligibility -> worker selection and assignment -> task-runtime claim/lease -> transport dispatch -> task-runtime result convergence -> task state`
 - By the time a work item enters transport, Scheduling Plane has already
   selected a concrete worker. Transport preserves that `selectedWorkerId` as a
   delivery constraint; `routeKey` is opaque connection/domain metadata and
@@ -183,7 +184,8 @@ Current integration boundary rule:
 - Current verified ports: `server.port=8088`, `mass.websocket.port=18088`
 - Pull-style workers are mainline through `MassSdkApplication.pullWorker(...)` and `/worker-api/v1/**`
 - `Task.project`, `Task.user`, and `Task.sharedConfig` are task-level truth; runtime ingress payload or `payloadRef` is the per-item payload boundary
-- `TaskWorkRuntime` is the current hot-path owner for ready work, active lease, retry scheduling, expiry, and backpressure truth
+- `xa-mass-task-runtime` is the current hot-path owner for accepted ready
+  backlog, active leases, retry/finality, progress, and runtime discard truth
 - result convergence remains runtime-first; verify the lifecycle split between
   runtime apply truth, stable-final result rows, and server-local review
   materialization from
@@ -244,7 +246,8 @@ Top-level non-reactor directories are intentionally narrow:
 - trace operator CLI: [xa-mass-trace/README.md](./xa-mass-trace/README.md)
 - task lifecycle baseline: [doc/TASK_LIFECYCLE_BASELINE.md](./doc/TASK_LIFECYCLE_BASELINE.md)
 - storage-jdbc ownership and current drift notes: [platform_infra/mass-storage-jdbc/README.md](./platform_infra/mass-storage-jdbc/README.md)
-- Redis runtime keyspace baseline: [platform_infra/mass-runtime-redis/REDIS_RUNTIME_BASELINE.md](./platform_infra/mass-runtime-redis/REDIS_RUNTIME_BASELINE.md)
+- Redis worker/queue runtime baseline: [platform_infra/mass-runtime-redis/REDIS_RUNTIME_BASELINE.md](./platform_infra/mass-runtime-redis/REDIS_RUNTIME_BASELINE.md)
+- Redis task-runtime adapter: [platform_infra/mass-task-runtime-redis/README.md](./platform_infra/mass-task-runtime-redis/README.md)
 - startup, smoke, and regression commands: [xa-mass-testing/VERIFIED_RUNBOOK.md](./xa-mass-testing/VERIFIED_RUNBOOK.md)
 - active HTTP contracts: [xa-mass-server/doc/INTERNAL_API_REFERENCE.md](./xa-mass-server/doc/INTERNAL_API_REFERENCE.md)
 - transport ownership and verification: [transport/AGENTS.md](./transport/AGENTS.md)

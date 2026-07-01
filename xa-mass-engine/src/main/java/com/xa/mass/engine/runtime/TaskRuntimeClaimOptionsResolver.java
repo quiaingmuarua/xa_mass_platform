@@ -2,7 +2,8 @@ package com.xa.mass.engine.runtime;
 
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy;
-import com.xa.mass.runtime.api.TaskWorkClaimOptions;
+import com.xa.mass.task.runtime.ClaimLeasePolicy;
+import com.xa.mass.task.runtime.RuntimeEpoch;
 
 /**
  * Resolves workload-aware ready-claim options from the normalized runtime
@@ -25,7 +26,7 @@ public class TaskRuntimeClaimOptionsResolver {
         this.profileResolver = profileResolver;
     }
 
-    TaskWorkClaimOptions resolve(Task task, int workerCount, long defaultLeaseSeconds) {
+    ClaimLeasePolicy resolve(Task task, int workerCount, long defaultLeaseSeconds) {
         TaskRuntimeProfile profile = profileResolver.resolve(task);
         return resolve(task,
                 ResolvedTaskSchedulingPolicy.ClaimPolicy.from(
@@ -33,23 +34,26 @@ public class TaskRuntimeClaimOptionsResolver {
                         DEFAULT_INTERACTIVE_PER_WORKER_CAP,
                         DEFAULT_SHORT_LEASE_SECONDS),
                 workerCount,
-                defaultLeaseSeconds);
+                defaultLeaseSeconds,
+                RuntimeEpoch.unspecified());
     }
 
-    public TaskWorkClaimOptions resolve(Task task,
-                                        ResolvedTaskSchedulingPolicy taskPolicy,
-                                        int workerCount,
-                                        long defaultLeaseSeconds) {
+    public ClaimLeasePolicy resolve(Task task,
+                                    ResolvedTaskSchedulingPolicy taskPolicy,
+                                    int workerCount,
+                                    long defaultLeaseSeconds,
+                                    RuntimeEpoch expectedRuntimeEpoch) {
         ResolvedTaskSchedulingPolicy.ClaimPolicy claimPolicy = taskPolicy == null
                 ? null
                 : taskPolicy.claimPolicy();
-        return resolve(task, claimPolicy, workerCount, defaultLeaseSeconds);
+        return resolve(task, claimPolicy, workerCount, defaultLeaseSeconds, expectedRuntimeEpoch);
     }
 
-    public TaskWorkClaimOptions resolve(Task task,
-                                        ResolvedTaskSchedulingPolicy.ClaimPolicy claimPolicy,
-                                        int workerCount,
-                                        long defaultLeaseSeconds) {
+    public ClaimLeasePolicy resolve(Task task,
+                                    ResolvedTaskSchedulingPolicy.ClaimPolicy claimPolicy,
+                                    int workerCount,
+                                    long defaultLeaseSeconds,
+                                    RuntimeEpoch expectedRuntimeEpoch) {
         ResolvedTaskSchedulingPolicy.ClaimPolicy resolvedPolicy = claimPolicy != null
                 ? claimPolicy
                 : ResolvedTaskSchedulingPolicy.ClaimPolicy.from(
@@ -65,6 +69,10 @@ public class TaskRuntimeClaimOptionsResolver {
             case SHORT -> Math.max(1L, Math.min(defaultLeaseSeconds, resolvedPolicy.shortLeaseSeconds()));
             case NORMAL -> Math.max(1L, defaultLeaseSeconds);
         };
-        return TaskWorkClaimOptions.of(perWorkerCapacity, workerCount, leaseSeconds);
+        return new ClaimLeasePolicy(
+                perWorkerCapacity * Math.max(1, workerCount),
+                leaseSeconds * 1_000L,
+                1L,
+                expectedRuntimeEpoch);
     }
 }

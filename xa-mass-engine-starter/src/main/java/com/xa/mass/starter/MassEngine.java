@@ -6,6 +6,7 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
+import com.xa.mass.engine.EngineRuntimeLoop;
 import com.xa.mass.engine.EngineRuntimeKernel;
 import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskEventService;
@@ -21,11 +22,13 @@ import com.xa.mass.engine.stage.TaskStageEvidenceService;
 import com.xa.mass.engine.stage.TaskStageProjection;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.kernel.spi.rule.RuleType;
-import com.xa.mass.runtime.api.TaskResultRuntime;
-import com.xa.mass.runtime.api.TaskResultRuntimeRow;
-import com.xa.mass.runtime.api.TaskResultWindow;
+import com.xa.mass.sdk.model.TaskActiveLeaseSnapshot;
+import com.xa.mass.sdk.model.TaskResultWindowSnapshot;
+import com.xa.mass.sdk.model.TaskWorkFinalSnapshot;
+import com.xa.mass.sdk.model.TaskWorkStatsSnapshot;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.storage.api.RuleStorage;
+import com.xa.mass.task.runtime.starter.TaskRuntimeLoop;
 import com.xa.mass.worker.runtime.command.WorkerCommandAcknowledgement;
 import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleResult;
 import com.xa.mass.worker.runtime.command.WorkerCommandRecord;
@@ -102,6 +105,7 @@ public class MassEngine {
             runtimeBridge = config.getRuntimeBridge();
             runtimeKernel = new EngineRuntimeKernel(config);
             EngineRuntimeKernel.StartedRuntime startedRuntime = runtimeKernel.start(dispatchBatchListener);
+            config.registerStarterOwnedTaskRuntimeLoops(toTaskRuntimeLoops(startedRuntime.taskRuntimeLoops()));
             taskCommands = runtimeKernel.taskCommands();
             runtimeBridge.start(
                     startedRuntime.eventListeners(),
@@ -109,9 +113,11 @@ public class MassEngine {
             running = true;
             logger.info("MassEngine started successfully");
         } catch (Exception e) {
+            config.stopStarterOwnedTaskRuntimeLoops();
             if (runtimeKernel != null) {
                 runtimeKernel.stop();
             }
+            config.shutdownTaskRuntime();
             logger.error("Failed to start MassEngine", e);
             throw new RuntimeException("Failed to start MassEngine", e);
         }
@@ -128,6 +134,7 @@ public class MassEngine {
                 runtimeBridge.stop();
                 runtimeBridge = null;
             }
+            config.stopStarterOwnedTaskRuntimeLoops();
             if (runtimeKernel != null) {
                 runtimeKernel.stop();
                 runtimeKernel = null;
@@ -151,6 +158,34 @@ public class MassEngine {
 
     public boolean isEnabled() {
         return config.isEnabled();
+    }
+
+    private static List<TaskRuntimeLoop> toTaskRuntimeLoops(List<EngineRuntimeLoop> engineLoops) {
+        if (engineLoops == null || engineLoops.isEmpty()) {
+            return List.of();
+        }
+        return engineLoops.stream()
+                .map(MassEngine::toTaskRuntimeLoop)
+                .toList();
+    }
+
+    private static TaskRuntimeLoop toTaskRuntimeLoop(EngineRuntimeLoop engineLoop) {
+        return new TaskRuntimeLoop() {
+            @Override
+            public void runOnce(com.xa.mass.task.runtime.starter.TaskRuntimeLoopContext context) {
+                engineLoop.runOnce();
+            }
+
+            @Override
+            public String name() {
+                return engineLoop.name();
+            }
+
+            @Override
+            public long intervalMillis() {
+                return engineLoop.intervalMillis();
+            }
+        };
     }
 
     public void setWorkerReachabilityLookup(Function<String, WorkerReachabilityState> workerReachabilityLookup) {
@@ -279,16 +314,29 @@ public class MassEngine {
         return requireStartedTaskQueries().resolveTaskState(taskId);
     }
 
-    public TaskResultWindow readTaskResults(String taskId, long afterSeq, int limit) {
-        return requireStartedTaskResultRuntime().readWindow(taskId, afterSeq, limit);
+    public TaskResultWindowSnapshot readTaskResults(String taskId, long afterSeq, int limit) {
+        ensureRunning();
+        return config.readTaskResults(taskId, afterSeq, limit);
     }
 
-    public Optional<TaskResultRuntimeRow> getVisibleTaskResultByMessageId(String taskId, String messageId) {
-        return requireStartedTaskResultRuntime().getVisibleByMessageId(taskId, messageId);
+    public TaskWorkStatsSnapshot getTaskWorkStats(String taskId) {
+        ensureRunning();
+        return config.getTaskWorkStats(taskId);
+    }
+
+    public List<TaskActiveLeaseSnapshot> getActiveLeases(String taskId) {
+        ensureRunning();
+        return config.getActiveLeases(taskId);
+    }
+
+    public Optional<TaskWorkFinalSnapshot> getVisibleTaskResultByMessageId(String taskId, String messageId) {
+        ensureRunning();
+        return config.getVisibleTaskResultByMessageId(taskId, messageId);
     }
 
     public long countVisibleTaskResults(String taskId) {
-        return requireStartedTaskResultRuntime().countVisibleResults(taskId);
+        ensureRunning();
+        return config.countVisibleTaskResults(taskId);
     }
 
     public WorkerCapabilityReportResult applyWorkerCapabilityReport(WorkerCapabilityReport report) {
@@ -417,15 +465,6 @@ public class MassEngine {
             throw new IllegalStateException("Task query service is unavailable for this engine");
         }
         return taskQueries;
-    }
-
-    private TaskResultRuntime requireStartedTaskResultRuntime() {
-        ensureRunning();
-        TaskResultRuntime runtime = config.getTaskResultRuntime();
-        if (runtime == null) {
-            throw new IllegalStateException("Task result runtime is unavailable for this engine");
-        }
-        return runtime;
     }
 
     private TaskEventService requireStartedTaskEvents() {

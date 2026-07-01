@@ -37,6 +37,8 @@ public interface EngineRuntimeKernelConfig {
 
     TraceEventLogger getTraceEventLogger();
 
+    long getTaskMessageLeaseSeconds();
+
     long getAssignmentRetryDelayMillis();
 
     long getRuntimeReadyDispatchIntervalMillis();

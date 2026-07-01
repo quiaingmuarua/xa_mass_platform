@@ -1,7 +1,7 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.runtime.result.TaskResultCorrelation;
-import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.task.runtime.ActiveLeaseRepairCandidate;
 
 final class TaskResultCorrelationSupport {
 
@@ -11,13 +11,13 @@ final class TaskResultCorrelationSupport {
     static TaskResultCorrelation fromRuntimeState(String taskId,
                                                   String messageId,
                                                   String projectedAttemptId,
-                                                  ActiveLeaseRecord activeLease) {
+                                                  ActiveLeaseRepairCandidate activeLease) {
         if (activeLease == null) {
             return TaskResultCorrelation.noActiveLease(taskId, messageId);
         }
         String runtimeAttemptId = TaskWorkAttemptIdSupport.runtimeAttemptId(
                 messageId,
-                Math.max(1, activeLease.retryCount() + 1),
+                activeLease.attemptNo(),
                 activeLease
         );
         String resolvedAttemptId = projectedAttemptId != null && !projectedAttemptId.isBlank()

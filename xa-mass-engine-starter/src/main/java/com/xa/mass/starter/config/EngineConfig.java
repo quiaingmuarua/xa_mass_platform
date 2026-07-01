@@ -13,6 +13,8 @@ import com.xa.mass.engine.TaskLeaseMaintenancePort;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TaskManagerResultIngestFacade;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
+import com.xa.mass.engine.TaskRuntimeServingLane;
+import com.xa.mass.engine.TaskWorkAttemptIdSupport;
 import com.xa.mass.engine.TaskShellLifecycleMaintenancePort;
 import com.xa.mass.engine.TraceEventLogger;
 import com.xa.mass.engine.WorkerControlRuntime;
@@ -35,12 +37,14 @@ import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.policy.ContractAwareTaskTerminalPolicy;
 import com.xa.mass.kernel.spi.task.TaskShellRuntimeLifecycleQuery;
 import com.xa.mass.kernel.spi.task.TaskShellRuntimeStore;
-import com.xa.mass.runtime.api.TaskWorkRuntime;
-import com.xa.mass.runtime.api.TaskResultRuntime;
+import com.xa.mass.sdk.model.TaskActiveLeaseSnapshot;
+import com.xa.mass.sdk.model.TaskResultItemSnapshot;
+import com.xa.mass.sdk.model.TaskResultWindowSnapshot;
+import com.xa.mass.sdk.model.TaskWorkFinalSnapshot;
+import com.xa.mass.sdk.model.TaskWorkStatsSnapshot;
+import com.xa.mass.task.runtime.ActiveLeaseRepairCandidate;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.runtime.memory.InMemoryWorkerScoreBandSlotRuntime;
-import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
-import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
 import com.xa.mass.worker.runtime.admission.WorkerAvailabilityWakeupRuntime;
 import com.xa.mass.worker.runtime.control.DefaultWorkerDispatchAvailabilityPolicy;
@@ -61,6 +65,13 @@ import com.xa.mass.storage.memory.InMemoryRuleStorage;
 import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.storage.memory.InMemoryWorkerDeclarationStore;
 import com.xa.mass.starter.EngineRuntimeBridge;
+import com.xa.mass.task.runtime.starter.TaskRuntimeBootstrapConfig;
+import com.xa.mass.task.runtime.starter.TaskRuntimeHandle;
+import com.xa.mass.task.runtime.starter.TaskRuntimeLoop;
+import com.xa.mass.task.runtime.starter.TaskRuntimePortSet;
+import com.xa.mass.task.runtime.starter.TaskRuntimeStarter;
+import com.xa.mass.task.runtime.FinalResultRow;
+import com.xa.mass.task.runtime.ResultApplySource;
 import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.trace.sink.NoopExecutionEventSink;
 import com.xa.mass.worker.runtime.resource.WorkerHeartbeatRuntime;
@@ -68,6 +79,8 @@ import com.xa.mass.worker.runtime.resource.WorkerNodeBindingRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerResourceDeclarationRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerResourceQueryRuntime;
 
+import java.time.Instant;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Function;
@@ -99,10 +112,11 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
     private TaskDispatchWakeupPort taskDispatchWakeupPort;
     private TaskShellLifecycleMaintenancePort taskShellLifecycleMaintenancePort;
     private TaskRuntimeRecoveryPort taskRuntimeRecoveryPort;
+    private TaskRuntimeServingLane taskRuntimeServingLane;
     private TraceEventLogger traceEventLogger;
     private TaskShellStore taskShellStore;
-    private TaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
-    private TaskResultRuntime taskResultRuntime = new InMemoryTaskResultRuntime();
+    private TaskRuntimeBootstrapConfig taskRuntimeBootstrapConfig = TaskRuntimeBootstrapConfig.memory();
+    private TaskRuntimeHandle taskRuntimeHandle;
     private Function<String, WorkerReachabilityState> workerReachabilityLookup = UNKNOWN_WORKER_REACHABILITY;
     private Function<String, Optional<SelectedWorkerDeliveryTargetEvidence>> workerDeliveryTargetResolver =
             selectedWorkerId -> Optional.empty();
@@ -143,19 +157,20 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
     public EngineConfig(EngineConfig source) {
         this.enabled = source.enabled;
         this.workerThreads = source.workerThreads;
-        this.taskManager = source.taskManager;
-        this.taskCommandService = source.taskCommandService;
-        this.taskEventService = source.taskEventService;
-        this.taskQueryService = source.taskQueryService;
-        this.taskResultIngestFacade = source.taskResultIngestFacade;
-        this.taskAssignmentRuntimePort = source.taskAssignmentRuntimePort;
-        this.taskLeaseMaintenancePort = source.taskLeaseMaintenancePort;
-        this.taskDispatchWakeupPort = source.taskDispatchWakeupPort;
-        this.taskShellLifecycleMaintenancePort = source.taskShellLifecycleMaintenancePort;
-        this.taskRuntimeRecoveryPort = source.taskRuntimeRecoveryPort;
+        this.taskManager = null;
+        this.taskCommandService = null;
+        this.taskEventService = null;
+        this.taskQueryService = null;
+        this.taskResultIngestFacade = null;
+        this.taskAssignmentRuntimePort = null;
+        this.taskLeaseMaintenancePort = null;
+        this.taskDispatchWakeupPort = null;
+        this.taskShellLifecycleMaintenancePort = null;
+        this.taskRuntimeRecoveryPort = null;
+        this.taskRuntimeServingLane = null;
         this.taskShellStore = source.taskShellStore;
-        this.taskWorkRuntime = source.taskWorkRuntime;
-        this.taskResultRuntime = source.taskResultRuntime;
+        this.taskRuntimeBootstrapConfig = source.taskRuntimeBootstrapConfig;
+        this.taskRuntimeHandle = null;
         this.workerDeliveryTargetResolverExplicitlyConfigured =
                 source.workerDeliveryTargetResolverExplicitlyConfigured;
         this.workerDeliveryTargetResolver = source.workerDeliveryTargetResolverExplicitlyConfigured
@@ -205,50 +220,87 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
     }
 
     public TaskCommandService getTaskCommandService() {
-        if (taskCommandService == null) {
-            taskCommandService = new TaskCommandService(ensureTaskManager());
-        }
+        ensureTaskRuntimeServingLane();
         return taskCommandService;
     }
 
     public TaskEventService getTaskEventService() {
-        if (taskEventService == null) {
-            taskEventService = new TaskEventService(ensureTaskManager());
-        }
+        ensureTaskRuntimeServingLane();
         return taskEventService;
     }
 
     public TaskQueryService getTaskQueryService() {
-        if (taskQueryService == null) {
-            taskQueryService = new TaskQueryService(ensureTaskManager());
-        }
+        ensureTaskRuntimeServingLane();
         return taskQueryService;
     }
 
     public TaskResultIngestFacade getTaskResultIngestFacade() {
         if (taskResultIngestFacade == null) {
-            taskResultIngestFacade = new TaskManagerResultIngestFacade(ensureTaskManager());
+            taskResultIngestFacade = new TaskManagerResultIngestFacade(ensureTaskRuntimeServingLane());
         }
         return taskResultIngestFacade;
     }
 
+    public TaskResultWindowSnapshot readTaskResults(String taskId, long afterSeq, int limit) {
+        var window = ensureTaskRuntimeServingLane().readTaskResults(taskId, afterSeq, limit);
+        return new TaskResultWindowSnapshot(
+                window.taskId(),
+                window.rows().stream()
+                        .map(EngineConfig::toResultItemSnapshot)
+                        .toList(),
+                window.nextAfterSeq(),
+                window.hasMore(),
+                window.totalVisible());
+    }
+
+    public TaskWorkStatsSnapshot getTaskWorkStats(String taskId) {
+        var stats = ensureTaskRuntimeServingLane().getTaskRuntimeProgressSnapshot(taskId);
+        if (stats == null) {
+            return TaskWorkStatsSnapshot.EMPTY;
+        }
+        return new TaskWorkStatsSnapshot(
+                stats.totalCount(),
+                stats.readyCount(),
+                stats.activeCount(),
+                stats.delayedCount(),
+                stats.successCount(),
+                stats.failedCount(),
+                stats.expiredCount(),
+                stats.finalCount());
+    }
+
+    public List<TaskActiveLeaseSnapshot> getActiveLeases(String taskId) {
+        return ensureTaskRuntimeServingLane().getActiveLeaseCandidates(taskId).stream()
+                .map(EngineConfig::toActiveLeaseSnapshot)
+                .toList();
+    }
+
+    public Optional<TaskWorkFinalSnapshot> getVisibleTaskResultByMessageId(String taskId, String messageId) {
+        return ensureTaskRuntimeServingLane().getVisibleTaskResultByMessageId(taskId, messageId)
+                .map(EngineConfig::toFinalSnapshot);
+    }
+
+    public long countVisibleTaskResults(String taskId) {
+        return ensureTaskRuntimeServingLane().countVisibleTaskResults(taskId);
+    }
+
     public TaskAssignmentRuntimePort getTaskAssignmentRuntimePort() {
         if (taskAssignmentRuntimePort == null) {
-            taskAssignmentRuntimePort = ensureTaskManager();
+            taskAssignmentRuntimePort = ensureTaskRuntimeServingLane();
         }
         return taskAssignmentRuntimePort;
     }
 
     public TaskLeaseMaintenancePort getTaskLeaseMaintenancePort() {
         if (taskLeaseMaintenancePort == null) {
-            taskLeaseMaintenancePort = ensureTaskManager();
+            taskLeaseMaintenancePort = ensureTaskRuntimeServingLane();
         }
         return taskLeaseMaintenancePort;
     }
 
     public TaskDispatchWakeupPort getTaskDispatchWakeupPort() {
         if (taskDispatchWakeupPort == null) {
-            taskDispatchWakeupPort = ensureTaskManager();
+            taskDispatchWakeupPort = ensureTaskRuntimeServingLane();
         }
         return taskDispatchWakeupPort;
     }
@@ -262,7 +314,7 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
 
     public TaskRuntimeRecoveryPort getTaskRuntimeRecoveryPort() {
         if (taskRuntimeRecoveryPort == null) {
-            taskRuntimeRecoveryPort = ensureTaskManager();
+            taskRuntimeRecoveryPort = ensureTaskRuntimeServingLane();
         }
         return taskRuntimeRecoveryPort;
     }
@@ -274,32 +326,26 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
         return traceEventLogger;
     }
 
-    public TaskWorkRuntime getTaskWorkRuntime() {
-        return taskWorkRuntime;
+    public TaskRuntimeBootstrapConfig getTaskRuntimeBootstrapConfig() {
+        return taskRuntimeBootstrapConfig;
     }
 
-    public void setTaskWorkRuntime(TaskWorkRuntime taskWorkRuntime) {
-        if (taskWorkRuntime == null) {
-            throw new IllegalArgumentException("taskWorkRuntime must not be null");
+    public void setTaskRuntimeBootstrapConfig(TaskRuntimeBootstrapConfig taskRuntimeBootstrapConfig) {
+        if (this.taskManager != null || this.taskRuntimeHandle != null || this.taskRuntimeServingLane != null) {
+            throw new IllegalStateException(
+                    "Cannot replace taskRuntimeBootstrapConfig after task-runtime assembly has been materialized");
         }
-        if (this.taskManager != null) {
-            throw new IllegalStateException("Cannot replace taskWorkRuntime after engine assembly has been materialized");
-        }
-        this.taskWorkRuntime = taskWorkRuntime;
+        this.taskRuntimeBootstrapConfig = taskRuntimeBootstrapConfig == null
+                ? TaskRuntimeBootstrapConfig.memory()
+                : taskRuntimeBootstrapConfig;
     }
 
-    public TaskResultRuntime getTaskResultRuntime() {
-        return taskResultRuntime;
+    public void useMemoryTaskRuntime() {
+        setTaskRuntimeBootstrapConfig(TaskRuntimeBootstrapConfig.memory());
     }
 
-    public void setTaskResultRuntime(TaskResultRuntime taskResultRuntime) {
-        if (taskResultRuntime == null) {
-            throw new IllegalArgumentException("taskResultRuntime must not be null");
-        }
-        if (this.taskManager != null) {
-            throw new IllegalStateException("Cannot replace taskResultRuntime after engine assembly has been materialized");
-        }
-        this.taskResultRuntime = taskResultRuntime;
+    public void useRedisTaskRuntime(String redisUri, String redisNamespace) {
+        setTaskRuntimeBootstrapConfig(TaskRuntimeBootstrapConfig.redis(redisUri, redisNamespace));
     }
 
     public TaskShellStore getTaskShellStore() {
@@ -640,6 +686,10 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
     }
 
     public void setTaskMessageLeaseSeconds(long taskMessageLeaseSeconds) {
+        if (taskRuntimeServingLane != null && this.taskMessageLeaseSeconds != taskMessageLeaseSeconds) {
+            throw new IllegalStateException(
+                    "Cannot replace taskMessageLeaseSeconds after task-runtime serving lane has been materialized");
+        }
         this.taskMessageLeaseSeconds = taskMessageLeaseSeconds;
         if (taskManager != null) {
             taskManager.setWorkLeaseSeconds(taskMessageLeaseSeconds);
@@ -649,6 +699,22 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
     public void shutdownTaskRuntime() {
         if (taskManager != null) {
             taskManager.shutdown();
+            taskManager = null;
+        }
+        taskCommandService = null;
+        taskEventService = null;
+        taskQueryService = null;
+        taskResultIngestFacade = null;
+        taskAssignmentRuntimePort = null;
+        taskLeaseMaintenancePort = null;
+        taskDispatchWakeupPort = null;
+        taskShellLifecycleMaintenancePort = null;
+        taskRuntimeRecoveryPort = null;
+        taskRuntimeServingLane = null;
+        TaskRuntimeHandle handle = taskRuntimeHandle;
+        taskRuntimeHandle = null;
+        if (handle != null) {
+            handle.close();
         }
         if (workerRegistry instanceof AutoCloseable closeable) {
             try {
@@ -666,19 +732,152 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
         }
     }
 
+    public void registerStarterOwnedTaskRuntimeLoops(List<TaskRuntimeLoop> loops) {
+        ensureTaskRuntimeHandle().registerLoops(loops);
+    }
+
+    public void stopStarterOwnedTaskRuntimeLoops() {
+        if (taskRuntimeHandle != null) {
+            taskRuntimeHandle.stop();
+        }
+    }
+
     private TaskManager ensureTaskManager() {
         if (taskManager == null) {
             taskManager = new TaskManager(
                     getTaskShellRuntimeStore(),
                     getTaskShellRuntimeLifecycleQuery(),
                     new ContractAwareTaskTerminalPolicy(),
-                    getTaskWorkRuntime(),
-                    getTaskResultRuntime(),
                     getExecutionEventSink()
             );
         }
         taskManager.setWorkLeaseSeconds(taskMessageLeaseSeconds);
         return taskManager;
+    }
+
+    private TaskRuntimeServingLane ensureTaskRuntimeServingLane() {
+        if (taskRuntimeServingLane == null) {
+            TaskManager manager = ensureTaskManager();
+            if (taskCommandService == null) {
+                taskCommandService = new TaskCommandService(manager);
+            }
+            if (taskQueryService == null) {
+                taskQueryService = new TaskQueryService(manager);
+            }
+            if (taskEventService == null) {
+                taskEventService = new TaskEventService(manager);
+            }
+            TaskRuntimePortSet taskRuntime = ensureTaskRuntimeHandle().runtime();
+            taskRuntimeServingLane = new TaskRuntimeServingLane(
+                    taskRuntime,
+                    taskRuntime,
+                    taskRuntime,
+                    taskRuntime,
+                    taskRuntime,
+                    taskRuntime,
+                    taskRuntime,
+                    taskRuntime,
+                    taskQueryService,
+                    taskCommandService,
+                    taskEventService,
+                    new ContractAwareTaskTerminalPolicy(),
+                    null,
+                    getTraceEventLogger(),
+                    taskMessageLeaseSeconds,
+                    TaskManager.MAX_INGEST_BATCH_ITEMS,
+                    86_400_000L);
+            manager.installTaskRuntimeServingLane(taskRuntimeServingLane);
+        }
+        return taskRuntimeServingLane;
+    }
+
+    private TaskRuntimeHandle ensureTaskRuntimeHandle() {
+        if (taskRuntimeHandle == null) {
+            taskRuntimeHandle = TaskRuntimeStarter.start(taskRuntimeBootstrapConfig, List.of());
+        }
+        return taskRuntimeHandle;
+    }
+
+    private static TaskActiveLeaseSnapshot toActiveLeaseSnapshot(ActiveLeaseRepairCandidate lease) {
+        return new TaskActiveLeaseSnapshot(
+                lease.taskId(),
+                lease.messageId(),
+                lease.workerId(),
+                lease.batchId(),
+                null,
+                Math.max(0, lease.attemptNo() - 1),
+                Instant.ofEpochMilli(lease.leaseExpireAtMillis()),
+                null);
+    }
+
+    private static TaskResultItemSnapshot toResultItemSnapshot(FinalResultRow row) {
+        Instant completedAt = Instant.ofEpochMilli(row.finalizedAtMillis());
+        return new TaskResultItemSnapshot(
+                row.seq(),
+                row.messageId(),
+                null,
+                resultStatus(row),
+                resultFinalReason(row),
+                Math.max(0, row.attemptNo() - 1),
+                Math.max(0, row.attemptNo() - 1),
+                row.workerId(),
+                row.batchId(),
+                attemptId(row),
+                null,
+                completedAt,
+                null,
+                null,
+                completedAt,
+                completedAt,
+                null,
+                row.failureReason(),
+                row.resultPayloadJson());
+    }
+
+    private static TaskWorkFinalSnapshot toFinalSnapshot(FinalResultRow row) {
+        Instant completedAt = Instant.ofEpochMilli(row.finalizedAtMillis());
+        return new TaskWorkFinalSnapshot(
+                row.taskId(),
+                row.messageId(),
+                resultStatus(row),
+                resultFinalReason(row),
+                Math.max(0, row.attemptNo() - 1),
+                Math.max(0, row.attemptNo() - 1),
+                null,
+                row.workerId(),
+                row.batchId(),
+                attemptId(row),
+                null,
+                row.failureReason(),
+                null,
+                completedAt,
+                null,
+                null,
+                completedAt,
+                completedAt,
+                row.resultPayloadJson());
+    }
+
+    private static String attemptId(FinalResultRow row) {
+        return TaskWorkAttemptIdSupport.workerLevelRuntimeAttemptId(
+                row.messageId(),
+                row.attemptNo(),
+                row.workerId(),
+                row.batchId());
+    }
+
+    private static String resultStatus(FinalResultRow row) {
+        if (row.success()) {
+            return "SUCCESS";
+        }
+        return row.source() == ResultApplySource.LEASE_TIMEOUT ? "EXPIRED" : "FAILED";
+    }
+
+    private static String resultFinalReason(FinalResultRow row) {
+        if (row.success()) {
+            return "BUSINESS_SUCCESS";
+        }
+        return row.source() == ResultApplySource.LEASE_TIMEOUT ? "LEASE_EXPIRED" : "BUSINESS_FAILED";
     }
 
     private void ensureDefaultRulesInitialized() {
@@ -702,4 +901,5 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
         }
         throw new IllegalStateException("taskShellStore must implement TaskShellRuntimeLifecycleQuery");
     }
+
 }

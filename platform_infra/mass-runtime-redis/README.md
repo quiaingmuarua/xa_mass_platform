@@ -1,38 +1,27 @@
 # mass-runtime-redis
 
-Status: current Redis runtime implementation for prod runtime selection,
-compose/local distributed verification, and explicit embedded/server runtime
-selection.
+Status: current Redis worker-runtime SPI and shared queue implementation module.
 
 ## Role
 
-- owns the Redis-backed `TaskWorkRuntime` implementation
 - owns the first-slice Redis-backed `WorkerRegistry` implementation
-- keeps Redis queue/lease/counter ownership under `platform_infra` instead of
-  leaking back into engine or server shells
-- fixes Redis runtime keyspace/index ownership inside this module
+- owns the Redis-backed `WorkerScoreBandSlotRuntime` implementation
+- owns shared Redis keyed queue primitives used by runtime modules
+- keeps Redis worker and queue keyspace ownership under `platform_infra`
+  instead of leaking back into engine or server shells
 
 ## Current Truth
 
-- Redis-backed runtime is the current `prod` runtime backend and remains the
-  compose/local distributed verification path through the server `prod`
-  profile or explicit property overrides
-- embedded/server bootstrap still defaults to memory unless Redis is selected by
-  the `prod` profile, property override, or builder wiring
-- this module now provides a real Redis-backed `TaskWorkRuntime`
+- old Redis `TaskWorkRuntime` / `TaskResultRuntime` implementations have been
+  removed after the task-runtime serving-lane cutover
+- Redis task-runtime state now lives in `../mass-task-runtime-redis`
 - this module now provides a contract-tested Redis-backed `WorkerRegistry`
   foundation using group-partitioned worker slot hashes, group-local heartbeat
   deadline indexes, and candidate buckets
-- dev/server shells can opt into it explicitly without changing engine constructors
-- this module is intentionally not the bootstrap default
+- dev/server shells can opt into Redis worker-runtime SPI and Redis queue
+  primitives explicitly without changing engine constructors
 - the intended Redis keyspace and hot-path index model lives in
   [REDIS_RUNTIME_BASELINE.md](./REDIS_RUNTIME_BASELINE.md)
-- current implementation keeps queue/lease/result hot-path mutations inside
-  Redis-scripted atomic operations for `enqueue`, `claimReady`, `applyResult`,
-  `pollExpiredLeases`, and `discardTask`
-- bounded delayed promotion and stats/query reads still use straightforward
-  Redis commands around that hot-path truth; fine-grained optimization is not a
-  second runtime contract
 - Redis `WorkerRegistry` uses `WATCH` / `MULTI` / `EXEC` over the group-local
   slot hash for first-slice reserve, confirm, release, final, gate, and lease
   mutations; broader server/runtime switching and finer-grained Lua mutation are
@@ -48,9 +37,7 @@ selection.
 ## Guardrails
 
 - do not add scan-heavy recovery or observability semantics here
-- preserve `TaskWorkRuntime` method-level queue/lease/result semantics
+- do not reintroduce task item scheduling/runtime ownership here
 - preserve `WorkerRegistry` group-partitioned key ownership; do not introduce
   one global worker table or DB-row-style worker CRUD state here
 - keep Redis key/index ownership behind this module rather than spreading Redis-specific logic across engine, sdk, or server
-- do not silently replace the embedded in-memory default; Redis selection must
-  remain explicit through profile or builder wiring

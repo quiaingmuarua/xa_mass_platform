@@ -14,12 +14,15 @@ const region = process.env.MASS_REGION ?? "us";
 const routingTags = splitCsv(process.env.MASS_ROUTING_TAGS ?? `web,${region}`);
 const pollIntervalMs = intEnv("MASS_POLL_INTERVAL_MS", 1000);
 const heartbeatIntervalMs = intEnv("MASS_HEARTBEAT_INTERVAL_MS", 10000);
+const resultDelayMs = intEnv("MASS_RESULT_DELAY_MS", 5000);
 const initialWorkerState = optionalEnv("MASS_INITIAL_WORKER_STATE") ?? "AVAILABLE";
 const initialWorkerStateReason = process.env.MASS_INITIAL_WORKER_STATE_REASON ?? "worker-ready";
+const dispatchFaultMode = optionalEnv("MASS_DISPATCH_FAULT") ?? "";
 
 let heartbeatTimer = null;
 let pollTimer = null;
 let shuttingDown = false;
+let receivedDispatchCount = 0;
 
 main().catch(async (error) => {
   console.error("[worker] fatal error:", error);
@@ -149,6 +152,12 @@ async function pollOnce() {
 async function handleDispatch(item) {
   const { replyRef, eventCode: dispatchEventCode } = item;
   console.log(`[worker] received replyRef=${replyRef} eventCode=${dispatchEventCode}`);
+  receivedDispatchCount += 1;
+  if (dispatchFaultMode === "exit-before-result" && receivedDispatchCount === 1) {
+    console.log(`[worker] fault exit-before-result replyRef=${replyRef}`);
+    clearRuntimeTimers();
+    process.exit(2);
+  }
 
   let result;
   try {
@@ -165,13 +174,27 @@ async function handleDispatch(item) {
     };
   }
 
-  const response = await post(`/worker-api/v1/workers/${encodeURIComponent(workerId)}:submit-result`, {
+  if (dispatchFaultMode === "late-result-after-lease-expiry" && receivedDispatchCount === 1) {
+    console.log(`[worker] fault late-result-after-lease-expiry replyRef=${replyRef} delayMs=${resultDelayMs}`);
+    clearRuntimeTimers();
+    await safeOffline("node-worker-late-result-replay");
+    await sleep(resultDelayMs);
+    const response = await submitResult(replyRef, result);
+    console.log("[worker] fault late-result-after-lease-expiry submitted result:", response.data);
+    process.exit(0);
+  }
+
+  const response = await submitResult(replyRef, result);
+  console.log("[worker] submitted result:", response.data);
+}
+
+async function submitResult(replyRef, result) {
+  return post(`/worker-api/v1/workers/${encodeURIComponent(workerId)}:submit-result`, {
     replyRef,
     success: result.success,
     code: result.code ?? null,
     body: JSON.stringify(result.body ?? {}),
   });
-  console.log("[worker] submitted result:", response.data);
 }
 
 async function dispatchByEventCode(item) {
@@ -306,20 +329,30 @@ function splitCsv(value) {
     .filter(Boolean);
 }
 
+function sleep(delayMillis) {
+  return new Promise((resolve) => setTimeout(resolve, Math.max(0, delayMillis)));
+}
+
 async function shutdown(signal) {
   if (shuttingDown) {
     return;
   }
   shuttingDown = true;
   console.log(`[worker] shutting down on ${signal}`);
+  clearRuntimeTimers();
+  await safeOffline(`node-worker-${signal.toLowerCase()}`);
+  process.exit(0);
+}
+
+function clearRuntimeTimers() {
   if (heartbeatTimer) {
     clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
   }
   if (pollTimer) {
     clearInterval(pollTimer);
+    pollTimer = null;
   }
-  await safeOffline(`node-worker-${signal.toLowerCase()}`);
-  process.exit(0);
 }
 
 async function safeOffline(reason) {

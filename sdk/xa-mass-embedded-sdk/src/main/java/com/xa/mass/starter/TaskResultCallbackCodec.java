@@ -25,6 +25,7 @@ public final class TaskResultCallbackCodec {
     private static final String MESSAGE_FIELD = "message";
     private static final String TRACE_ID_FIELD = "traceId";
     private static final String SUCCESS_FIELD = "success";
+    private static final String LEASE_TOKEN_FIELD = "leaseToken";
 
     private final Gson gson;
     private final TaskDispatchDeliveryCorrelationCodec deliveryCorrelationCodec;
@@ -124,7 +125,7 @@ public final class TaskResultCallbackCodec {
                         resultCode,
                         success && result != null ? Map.of("result", result) : Map.of(),
                         deliveryCorrelation.attemptId(),
-                        null,
+                        readString(payload, LEASE_TOKEN_FIELD),
                         null)
         );
     }

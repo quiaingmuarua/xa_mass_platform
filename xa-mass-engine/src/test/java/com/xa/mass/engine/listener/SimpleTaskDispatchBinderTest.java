@@ -6,19 +6,22 @@ import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
-import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.InMemoryTaskShellRuntimeStore;
+import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskManager;
 import com.xa.mass.engine.TaskQueryService;
+import com.xa.mass.engine.TaskRuntimeServingLane;
+import com.xa.mass.engine.TaskEventService;
+import com.xa.mass.engine.policy.ContractAwareTaskTerminalPolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourceUsage;
 import com.xa.mass.engine.service.AssignmentRecordService;
-import com.xa.mass.runtime.api.ActiveLeaseRecord;
-import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
-import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
+import com.xa.mass.task.runtime.ActiveLeaseRepairCandidate;
+import com.xa.mass.task.runtime.memory.InMemoryTaskRuntime;
 import com.xa.mass.worker.runtime.selection.SelectedWorkerEvidence;
 import com.xa.mass.worker.runtime.selection.SelectedWorkerHandle;
 import com.xa.mass.worker.runtime.selection.WorkerSelectionRuntime;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -30,16 +33,21 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 public class SimpleTaskDispatchBinderTest {
 
     private WorkerSelectionRuntime workerSelectionRuntime;
     private AssignmentRecordService recordService;
-    private InMemoryTaskWorkRuntime taskWorkRuntime;
     private TaskManager taskManager;
+    private TaskRuntimeServingLane taskRuntimeServingLane;
     private TaskCommandService taskCommands;
     private TaskQueryService taskQueries;
     private SimpleTaskDispatchBinder listener;
@@ -48,17 +56,18 @@ public class SimpleTaskDispatchBinderTest {
     void setUp() {
         workerSelectionRuntime = mock(WorkerSelectionRuntime.class);
         recordService = mock(AssignmentRecordService.class);
-        taskWorkRuntime = new InMemoryTaskWorkRuntime();
-        taskManager = new TaskManager(
-                new InMemoryTaskShellRuntimeStore(),
-                taskWorkRuntime,
-                new InMemoryTaskResultRuntime(),
-                null
-        );
+        var harness = servingLaneTaskManager();
+        taskManager = harness.manager();
+        taskRuntimeServingLane = harness.lane();
         taskCommands = new TaskCommandService(taskManager);
         taskQueries = new TaskQueryService(taskManager);
         when(workerSelectionRuntime.confirmSelected(any(SelectedWorkerHandle.class))).thenReturn(true);
         listener = newAssignmentListener();
+    }
+
+    @AfterEach
+    void tearDown() {
+        taskManager.shutdown();
     }
 
     @Test
@@ -67,10 +76,11 @@ public class SimpleTaskDispatchBinderTest {
         task.getExecutionSpec().setBatchSize(10);
         AtomicReference<List<TaskDispatchBinding>> dispatched = new AtomicReference<>();
         listener = new SimpleTaskDispatchBinder(
-                taskManager,
+                taskRuntimeServingLane,
                 workerSelectionRuntime,
                 recordService,
-                (t, bindings) -> dispatched.set(bindings)
+                (t, bindings) -> dispatched.set(bindings),
+                taskManager::getWorkLeaseSeconds
         );
 
         listener.bindDispatches(task, List.of(matched("d1"), matched("d2")));
@@ -80,8 +90,8 @@ public class SimpleTaskDispatchBinderTest {
         assertEquals(3, pushed.size());
         assertEquals(List.of("target-0", "target-1", "target-2"),
                 pushed.stream().map(binding -> binding.payload().get("target")).collect(Collectors.toList()));
-        assertEquals(0, taskWorkRuntime.stats(task.getTid()).readyCount());
-        assertEquals(3, taskWorkRuntime.stats(task.getTid()).inflightCount());
+        assertEquals(0, taskManager.getTaskRuntimeProgressSnapshot(task.getTid()).readyCount());
+        assertEquals(3, taskManager.getTaskRuntimeProgressSnapshot(task.getTid()).activeCount());
     }
 
     @Test
@@ -95,13 +105,18 @@ public class SimpleTaskDispatchBinderTest {
         LocalDateTime afterAssign = LocalDateTime.now();
 
         assertEquals(1, dispatched.size());
-        ActiveLeaseRecord activeLease = taskWorkRuntime
-                .getActiveLease(task.getTid(), dispatched.getFirst().messageId())
+        ActiveLeaseRepairCandidate activeLease = taskRuntimeServingLane
+                .getActiveLeases(task.getTid())
+                .stream()
+                .filter(lease -> dispatched.getFirst().messageId().equals(lease.messageId()))
+                .findFirst()
                 .orElse(null);
 
         assertNotNull(activeLease);
-        assertNotNull(activeLease.leaseExpireAt());
-        LocalDateTime leaseExpireTime = LocalDateTime.ofInstant(activeLease.leaseExpireAt(), java.time.ZoneId.systemDefault());
+        assertTrue(activeLease.leaseExpireAtMillis() > 0L);
+        LocalDateTime leaseExpireTime = LocalDateTime.ofInstant(
+                java.time.Instant.ofEpochMilli(activeLease.leaseExpireAtMillis()),
+                java.time.ZoneId.systemDefault());
         long lowerBound = Duration.between(beforeAssign, leaseExpireTime).getSeconds();
         long upperBound = Duration.between(afterAssign, leaseExpireTime).getSeconds();
         assertTrue(lowerBound >= 1, "lease should be at least about 2 seconds after assignment start");
@@ -135,7 +150,7 @@ public class SimpleTaskDispatchBinderTest {
         );
 
         assertEquals(2, dispatched.size());
-        assertEquals(2, taskManager.countActiveDispatchWorkers(task.getTid()));
+        assertEquals(2, taskRuntimeServingLane.countActiveDispatchWorkers(task.getTid()));
     }
 
     @Test
@@ -144,13 +159,14 @@ public class SimpleTaskDispatchBinderTest {
         task.getExecutionSpec().setBatchSize(1);
         AtomicReference<List<TaskDispatchBinding>> failedBindings = new AtomicReference<>();
         listener = new SimpleTaskDispatchBinder(
-                taskManager,
+                taskRuntimeServingLane,
                 workerSelectionRuntime,
                 recordService,
                 (context, bindings) -> {
                     failedBindings.set(bindings);
                     throw new IllegalStateException("transport down");
-                }
+                },
+                taskManager::getWorkLeaseSeconds
         );
         SelectedWorkerHandle selected = matched("d1", task.getTid());
 
@@ -159,8 +175,8 @@ public class SimpleTaskDispatchBinderTest {
         assertTrue(dispatched.isEmpty());
         assertNotNull(failedBindings.get());
         assertEquals(1, failedBindings.get().size());
-        assertEquals(1, taskWorkRuntime.stats(task.getTid()).readyCount());
-        assertEquals(0, taskWorkRuntime.stats(task.getTid()).inflightCount());
+        assertEquals(1, taskManager.getTaskRuntimeProgressSnapshot(task.getTid()).readyCount());
+        assertEquals(0, taskManager.getTaskRuntimeProgressSnapshot(task.getTid()).activeCount());
         verify(workerSelectionRuntime).confirmSelected(selected);
         verify(workerSelectionRuntime).recordSelectedFinal(new SelectedWorkerEvidence(
                 "d1",
@@ -182,15 +198,15 @@ public class SimpleTaskDispatchBinderTest {
         List<TaskDispatchBinding> dispatched = listener.bindDispatches(task, List.of(matched("d1"), matched("d2")));
 
         assertEquals(2, dispatched.size());
-        assertEquals(3, taskWorkRuntime.stats(task.getTid()).readyCount());
-        assertEquals(2, taskWorkRuntime.stats(task.getTid()).inflightCount());
+        assertEquals(3, taskManager.getTaskRuntimeProgressSnapshot(task.getTid()).readyCount());
+        assertEquals(2, taskManager.getTaskRuntimeProgressSnapshot(task.getTid()).activeCount());
     }
 
     @Test
     void injectedResourcePolicyOwnsBinderContextAndUnlockDecision() {
         Task task = createTask(1);
         listener = new SimpleTaskDispatchBinder(
-                taskManager,
+                taskRuntimeServingLane,
                 workerSelectionRuntime,
                 recordService,
                 null,
@@ -209,7 +225,7 @@ public class SimpleTaskDispatchBinderTest {
         Task task = createTask(1);
         AtomicReference<List<TaskDispatchBinding>> dispatchedBatch = new AtomicReference<>();
         listener = new SimpleTaskDispatchBinder(
-                taskManager,
+                taskRuntimeServingLane,
                 workerSelectionRuntime,
                 recordService,
                 (context, bindings) -> dispatchedBatch.set(bindings),
@@ -267,10 +283,42 @@ public class SimpleTaskDispatchBinderTest {
 
     private SimpleTaskDispatchBinder newAssignmentListener() {
         return new SimpleTaskDispatchBinder(
-                taskManager,
+                taskRuntimeServingLane,
                 workerSelectionRuntime,
-                recordService
+                recordService,
+                taskManager::getWorkLeaseSeconds
         );
+    }
+
+    private static ServingLaneHarness servingLaneTaskManager() {
+        InMemoryTaskRuntime runtime = new InMemoryTaskRuntime();
+        InMemoryTaskShellRuntimeStore storage = new InMemoryTaskShellRuntimeStore();
+        TaskManager manager = new TaskManager(
+                storage,
+                storage,
+                new ContractAwareTaskTerminalPolicy(),
+                null);
+        var commands = new TaskCommandService(manager);
+        var queries = new TaskQueryService(manager);
+        var events = new TaskEventService(manager);
+        var lane = new TaskRuntimeServingLane(
+                runtime,
+                runtime,
+                runtime,
+                runtime,
+                runtime,
+                runtime,
+                queries,
+                commands,
+                events,
+                300L,
+                TaskManager.MAX_INGEST_BATCH_ITEMS,
+                86_400_000L);
+        manager.installTaskRuntimeServingLane(lane);
+        return new ServingLaneHarness(manager, lane);
+    }
+
+    private record ServingLaneHarness(TaskManager manager, TaskRuntimeServingLane lane) {
     }
 
     private static final class NonExclusiveResourcePolicy implements WorkerDispatchResourcePolicy {

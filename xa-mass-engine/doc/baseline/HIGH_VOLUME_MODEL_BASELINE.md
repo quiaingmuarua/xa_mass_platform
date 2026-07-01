@@ -16,11 +16,12 @@ Trust: code and verified behavior override this summary.
 
 Already true in current code:
 
-- the first `TaskWorkRuntime` slice is landed, and its shared runtime contract now lives in `platform_infra/mass-runtime-api`
+- the task-runtime serving-lane slice is landed, and its shared runtime
+  contract now lives in `xa-mass-task-runtime`
 - `TaskManager` still writes `Task`, while server review materialization is
   best-effort residue written from the review report queue instead of the
   ingest truth
-- initial or appended work is also written into `TaskWorkRuntime`
+- initial or appended work is written into `xa-mass-task-runtime`
 - assignment claims ready work from runtime instead of scanning all `INIT` messages
 - engine startup recovery can repopulate assignment signals from runtime-owned ready work instead of relying on `READY` task status scans alone
 - runtime owns active lease and expiry indexes

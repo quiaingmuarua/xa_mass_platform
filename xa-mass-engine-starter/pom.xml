@@ -35,6 +35,11 @@
         </dependency>
         <dependency>
             <groupId>com.xa.mass</groupId>
+            <artifactId>xa-mass-task-runtime-starter-sdk</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.xa.mass</groupId>
             <artifactId>mass-storage-api</artifactId>
             <version>${project.version}</version>
         </dependency>
@@ -52,6 +57,11 @@
             <groupId>com.xa.mass</groupId>
             <artifactId>xa-mass-embedded-sdk-api</artifactId>
             <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 </project>

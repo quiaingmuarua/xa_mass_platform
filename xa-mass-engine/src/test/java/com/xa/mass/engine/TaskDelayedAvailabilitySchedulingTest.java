@@ -2,7 +2,7 @@ package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.task.runtime.ActiveLeaseRepairCandidate;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -27,12 +27,12 @@ class TaskDelayedAvailabilitySchedulingTest {
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
 
-        List<ActiveLeaseRecord> activeLeases = harness.activeLeases(task.getTid());
+        List<ActiveLeaseRepairCandidate> activeLeases = harness.activeLeases(task.getTid());
         assertEquals(1, activeLeases.size());
         assertEquals("worker-delayed", activeLeases.getFirst().workerId());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(task.getTid()).getStatus());
         assertEquals(0, harness.stats(task.getTid()).readyCount());
-        assertEquals(1, harness.stats(task.getTid()).inflightCount());
+        assertEquals(1, harness.stats(task.getTid()).activeCount());
     }
 
     @Test
@@ -43,7 +43,7 @@ class TaskDelayedAvailabilitySchedulingTest {
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
 
-        List<ActiveLeaseRecord> activeLeases = harness.activeLeases(task.getTid());
+        List<ActiveLeaseRepairCandidate> activeLeases = harness.activeLeases(task.getTid());
         assertEquals(1, activeLeases.size());
         assertEquals("worker-stateless", activeLeases.getFirst().workerId());
         assertTrue(harness.workerManager.hasWorkerExclusiveLease("worker-stateless"));

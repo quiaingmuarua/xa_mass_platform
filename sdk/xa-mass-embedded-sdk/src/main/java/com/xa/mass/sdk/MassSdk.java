@@ -1,8 +1,6 @@
 package com.xa.mass.sdk;
 
 import com.xa.mass.engine.PollingIdleBackoffPolicy;
-import com.xa.mass.runtime.api.TaskWorkRuntime;
-import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.runtime.worker.slot.WorkerScoreBandSlotRuntime;
 import com.xa.mass.sdk.auth.CredentialPrincipalStore;
@@ -328,13 +326,13 @@ public final class MassSdk {
             return this;
         }
 
-        public EngineOptions taskWorkRuntime(TaskWorkRuntime taskWorkRuntime) {
-            delegate.taskWorkRuntime(taskWorkRuntime);
+        public EngineOptions memoryTaskRuntime() {
+            delegate.memoryTaskRuntime();
             return this;
         }
 
-        public EngineOptions taskResultRuntime(TaskResultRuntime taskResultRuntime) {
-            delegate.taskResultRuntime(taskResultRuntime);
+        public EngineOptions redisTaskRuntime(String redisUri, String redisNamespace) {
+            delegate.redisTaskRuntime(redisUri, redisNamespace);
             return this;
         }
 

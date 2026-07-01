@@ -34,9 +34,11 @@ class RuntimeReadyDispatchPumpTest {
         );
 
         try {
-            pump.start();
+            pump.runOnce();
             awaitAttempts(attempts, 1, 1_000L);
             Thread.sleep(220L);
+            pump.runOnce();
+            Thread.sleep(80L);
             assertEquals(1, attempts.get());
         } finally {
             pump.stop();
@@ -60,7 +62,10 @@ class RuntimeReadyDispatchPumpTest {
         );
 
         try {
-            pump.start();
+            pump.runOnce();
+            awaitAttempts(attempts, 1, 1_000L);
+            Thread.sleep(120L);
+            pump.runOnce();
             awaitAttempts(attempts, 2, 1_000L);
             assertTrue(attempts.get() >= 2);
         } finally {
@@ -90,9 +95,11 @@ class RuntimeReadyDispatchPumpTest {
         );
 
         try {
-            pump.start();
+            pump.runOnce();
             awaitAttempts(attempts, 1, 1_000L);
             Thread.sleep(160L);
+            pump.runOnce();
+            Thread.sleep(80L);
             assertEquals(1, attempts.get());
             assertEquals(1, policyCalls.get());
         } finally {
@@ -117,12 +124,13 @@ class RuntimeReadyDispatchPumpTest {
         );
 
         try {
-            pump.start();
+            pump.runOnce();
             awaitAttempts(attempts, 1, 1_000L);
             Thread.sleep(160L);
             assertEquals(1, attempts.get());
 
             pump.wakeIdleAdmissions();
+            pump.runOnce();
 
             awaitAttempts(attempts, 2, 400L);
         } finally {
@@ -150,7 +158,7 @@ class RuntimeReadyDispatchPumpTest {
         );
 
         try {
-            pump.start();
+            pump.runOnce();
             assertTrue(latch.await(1, TimeUnit.SECONDS));
             assertEquals(Set.of("task-1", "task-2"), attemptedTaskIds);
         } finally {
@@ -172,13 +180,16 @@ class RuntimeReadyDispatchPumpTest {
         );
 
         try {
-            pump.start();
+            pump.runOnce();
             awaitAttempts(attempts, 1, 1_000L);
             Thread.sleep(160L);
             assertEquals(1, attempts.get());
 
             pump.wakeIdleAdmissions();
+            pump.runOnce();
+            awaitAttempts(attempts, 2, 600L);
 
+            pump.runOnce();
             awaitAttempts(attempts, 3, 600L);
         } finally {
             pump.stop();

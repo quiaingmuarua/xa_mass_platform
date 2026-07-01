@@ -66,8 +66,8 @@ more implemented than another.
 | per-message attempt timelines at scale | trace / audit stream | execution-history / analysis surface | server-local review materialization for bounded UI/export views | JDBC control-plane storage or engine runtime state |
 | engine -> transport dispatch payload | runtime state | best-effort delivery-attempt queue state: bounded admission, destructive mailbox-scoped poll, and observable known failures | bounded in-memory or Redis infra queue primitive behind `TransportDispatchQueue` carrying mailbox-targeted dispatch items | JDBC/review-row truth, a duplicate engine ready queue, or a transport-owned retry/final-recovery state machine |
 | transport -> engine result ingress queue | runtime state | hot-path cross-JVM ingress back into engine-owned result ingest ports | bounded Redis channel drained by engine process | server/API owner semantics, transport-owned lifecycle state, or a dispatch-failure compensation inbox |
-| runtime result apply | runtime state | active lease, retry budget consumption, runtime apply status, counters, and recent receipts are hot-path truth | `TaskWorkRuntime.applyResultWithContext(...)` | review rows or transport envelope metadata |
-| runtime result read | runtime state | stable-final public result rows, task-local result sequence, result repair anchors, and attempt-closed/event/progress barriers are kernel runtime truth | `TaskResultRuntime` memory or Redis implementation | server review rows, JDBC result tables, controller projection reads |
+| runtime result apply | runtime state | active lease, retry budget consumption, finality status, counters, and idempotent final-result lookup are hot-path truth | `xa-mass-task-runtime` `TaskRuntimeResultPort` | review rows or transport envelope metadata |
+| runtime result read | runtime state | stable-final public result rows, task-local result sequence, and result-side idempotency evidence are kernel runtime truth | `xa-mass-task-runtime` `TaskRuntimeReadPort` memory or Redis adapter | server review rows, JDBC result tables, controller projection reads |
 | callback / dispatch / assignment histories | trace / audit stream | replay/debug/analysis, not control truth | structured logs or bounded queues | JDBC durable event history |
 | cross-task failure analytics | trace / audit stream | analytical workload | external sink/export | task tables or runtime hot-path scans |
 
@@ -82,7 +82,7 @@ mainline callback acceptance. If runtime no longer has an active lease and no
 recent final receipt exists, callback acceptance must not fall back to review
 materialization or legacy message projections to recover a second acceptance
 truth.
-Public result reads come from `TaskResultRuntime` committed stable-final rows.
+Public result reads come from `xa-mass-task-runtime` committed stable-final rows.
 Server-local review rows remain operator/debug material and must not be used for
 `/results`, archive generation, or SDK result query.
 A durable result ledger or archive materialized view still requires a separate
@@ -96,8 +96,8 @@ design and must not be implied by result ingress or review materialization.
 | SQLite control-plane storage | lightweight persistence direction for new-environment control-plane setup; currently backs generic control-plane tables including project/event catalog metadata plus server API-key lifecycle, operator IAM, and low-volume usage evidence in JDBC modes; not a runtime backend | may host stable project/rule/catalog/credential truth; not a queue, lease, heartbeat, result-convergence, or trace store |
 | JDBC-local worker lock residue | process-local runtime residue | not durable worker-runtime truth; worker locks/capacity must not become control-plane storage truth |
 | `platform_infra/mass-storage-memory` | in-memory task shell, worker declaration adapter, and rule definition storage | current embedded/test implementation |
-| `mass-runtime-*` modules | queue/lease/counter semantics | canonical runtime-state home |
-| `TaskResultRuntime` memory/Redis implementations | stable-final result rows plus stage/barrier repair state | canonical runtime result-read truth; memory is volatile local/dev, Redis is cross-process runtime truth |
+| `xa-mass-task-runtime` + `mass-task-runtime-*` modules | task item queue/lease/retry/finality/progress/discard semantics | canonical task-runtime state home; memory is local/dev, Redis is cross-process runtime truth |
+| `mass-runtime-*` modules | worker-runtime SPI plus shared queue primitives | worker registry/score-band and generic queue implementation home, not task item runtime ownership |
 | Redis transport dispatch handoff | post-assignment queue between engine and adapter-host JVMs; delivery integration resolves the selected worker to an opaque `adapterMailboxKey`, while handoff-private mailbox consumer availability evidence gates bounded queue admission | runtime-state delivery-executor handoff, not ready queue ownership, not worker routing truth, not reliable-message ack/requeue ownership, and not task lifecycle truth |
 | Redis transport endpoint lease view | shared transport-owned endpoint/session lease evidence | queryable runtime evidence for endpoint diagnostics and selected-worker delivery feasibility; not a queue, not control-plane worker declaration, and not a post-assignment routing engine |
 | Redis transport result ingress queue | transport-to-engine runtime ingress | bounded cross-JVM channel drained into engine-owned result ingest, not server endpoints and not dispatch-failure compensation |

@@ -17,6 +17,7 @@ class EngineStarterSurfaceInventoryGuardTest {
         for (String requiredSurface : List.of(
                 "Lifecycle and engine availability",
                 "Task shell and item operations",
+                "Task runtime diagnostic operations",
                 "Result read operations",
                 "Worker topology and declaration operations",
                 "Worker control, state, command, reachability operations",

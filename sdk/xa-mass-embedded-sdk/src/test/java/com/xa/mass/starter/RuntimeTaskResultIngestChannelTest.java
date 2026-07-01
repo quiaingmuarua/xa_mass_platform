@@ -124,16 +124,14 @@ class RuntimeTaskResultIngestChannelTest {
         ));
         RuntimeTaskResultIngestChannel channel = new RuntimeTaskResultIngestChannel(facade);
 
-        ResultIngressHandleOutcome handled = channel.handleResult(envelope(request(
+        ResultIngressHandleOutcome handled = channel.handleResult(rawEnvelope(
                 "task-4",
                 "msg-4",
                 true,
                 "ok",
-                null,
                 "attempt-4",
-                "lease-4",
-                null
-        )));
+                "lease-4"
+        ));
 
         assertEquals(ResultIngressHandleOutcome.HANDLED_APPLIED, handled);
         assertEquals(1, facade.correlationCalls.get());
@@ -167,6 +165,33 @@ class RuntimeTaskResultIngestChannelTest {
         assertEquals(1, facade.correlationCalls.get());
         assertEquals(0, facade.ingestCalls.get());
     }
+
+    @Test
+    void leaseIdentityMismatchIsAcceptedNoopWithoutEngineApply() {
+        RecordingResultIngestFacade facade = new RecordingResultIngestFacade(TaskResultCorrelation.workerLevel(
+                "task-5-lease",
+                "msg-5-lease",
+                "attempt-5-lease",
+                "active-lease-token",
+                "worker-5",
+                "batch-5"
+        ));
+        RuntimeTaskResultIngestChannel channel = new RuntimeTaskResultIngestChannel(facade);
+
+        ResultIngressHandleOutcome handled = channel.handleResult(rawEnvelope(
+                "task-5-lease",
+                "msg-5-lease",
+                true,
+                "late stale result",
+                "attempt-5-lease",
+                "stale-lease-token"
+        ));
+
+        assertEquals(ResultIngressHandleOutcome.HANDLED_NOOP, handled);
+        assertEquals(1, facade.correlationCalls.get());
+        assertEquals(0, facade.ingestCalls.get());
+    }
+
 
     @Test
     void missingActiveLeaseDelegatesToEngineForDuplicateLateOrNoLeaseClassification() {
@@ -251,6 +276,30 @@ class RuntimeTaskResultIngestChannelTest {
                 success,
                 resultCode,
                 result
+        );
+    }
+
+    private static ResultIngressEntry rawEnvelope(String taskId,
+                                                  String messageId,
+                                                  boolean success,
+                                                  String result,
+                                                  String attemptId,
+                                                  String leaseToken) {
+        String replyRef = new TaskDispatchDeliveryCorrelationCodec().encode(
+                new TaskDispatchDeliveryCorrelation(taskId, messageId, attemptId, 0)
+        );
+        String payload = """
+                {
+                  "replyRef": "%s",
+                  "success": %s,
+                  "body": "%s",
+                  "leaseToken": "%s"
+                }
+                """.formatted(replyRef, success, result, leaseToken);
+        return new ResultIngressEntry(
+                replyRef,
+                new ResultIngressMessage("result-" + messageId, replyRef, payload, 0L, System.currentTimeMillis()),
+                new ResultIngressDiagnostics(Map.of("adapterId", "polling"))
         );
     }
 

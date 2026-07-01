@@ -1,9 +1,7 @@
 package com.xa.mass.testing.soak;
 
 import com.google.gson.Gson;
-import com.xa.mass.runtime.api.TaskWorkRuntime;
-import com.xa.mass.runtime.api.TaskWorkStats;
-import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
+import com.xa.mass.sdk.model.TaskWorkStatsSnapshot;
 import com.xa.mass.sdk.MassSdk;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.RuntimeDiagnosticsOperations;
@@ -147,7 +145,7 @@ public final class SdkPollingSchedulingSoakRunner {
                 stopRequested.set(true);
                 closeWorkers(workers);
                 taskStats = collectFinalTaskStats(app, taskPlans);
-                workStats = collectFinalWorkStats(runtime.taskWorkRuntime(), taskPlans);
+                workStats = collectFinalWorkStats(app, taskPlans);
                 resultReadStats = verifyResultReads(app, taskPlans);
                 deliveryDiagnostics = collectDeliveryDiagnostics(app);
                 workerLifecycle = workerLifecycleStats();
@@ -204,7 +202,6 @@ public final class SdkPollingSchedulingSoakRunner {
 
         private EmbeddedRuntime buildRuntime(JsonlExecutionEventSink traceSink) {
             InMemoryTaskShellStore taskStorage = new InMemoryTaskShellStore();
-            TaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
             MassSdkApplication app = MassSdk.builder()
                     .transport(transport -> transport
                             .webSocketAdapter(webSocket -> webSocket
@@ -218,13 +215,13 @@ public final class SdkPollingSchedulingSoakRunner {
                     .engine(engine -> {
                         engine.enabled(true)
                                 .taskShellStore(taskStorage)
-                                .taskWorkRuntime(taskWorkRuntime);
+                                .memoryTaskRuntime();
                         if (traceSink != null) {
                             engine.executionEventSink(traceSink);
                         }
                     })
                     .build();
-            return new EmbeddedRuntime(app, taskWorkRuntime);
+            return new EmbeddedRuntime(app);
         }
 
         private void bootstrapCatalog(MassSdkApplication app) {
@@ -488,7 +485,7 @@ public final class SdkPollingSchedulingSoakRunner {
             );
         }
 
-        private FinalWorkStats collectFinalWorkStats(TaskWorkRuntime runtime, List<SoakTaskPlan> taskPlans) {
+        private FinalWorkStats collectFinalWorkStats(MassSdkApplication app, List<SoakTaskPlan> taskPlans) {
             long total = 0;
             long success = 0;
             long failed = 0;
@@ -496,7 +493,7 @@ public final class SdkPollingSchedulingSoakRunner {
             long activeLeases = 0;
             for (SoakTaskPlan plan : taskPlans) {
                 String taskId = plan.taskId();
-                TaskWorkStats stats = runtime.stats(taskId);
+                TaskWorkStatsSnapshot stats = app.taskDiagnostics().getTaskWorkStats(taskId);
                 require(stats.totalCount() == config.messagesPerTask(),
                         "unexpected runtime work count for task=" + taskId + " total=" + stats.totalCount());
                 require(stats.finalCount() == stats.totalCount(),
@@ -513,7 +510,7 @@ public final class SdkPollingSchedulingSoakRunner {
                 success += stats.successCount();
                 failed += stats.failedCount();
                 expired += stats.expiredCount();
-                activeLeases += runtime.activeLeases(taskId).size();
+                activeLeases += app.taskDiagnostics().getActiveLeases(taskId).size();
             }
             return new FinalWorkStats(total, success, failed, expired, activeLeases);
         }
@@ -909,7 +906,7 @@ public final class SdkPollingSchedulingSoakRunner {
         }
     }
 
-    private record EmbeddedRuntime(MassSdkApplication app, TaskWorkRuntime taskWorkRuntime) {
+    private record EmbeddedRuntime(MassSdkApplication app) {
     }
 
     private record SoakTaskPlan(String taskId,

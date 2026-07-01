@@ -15,6 +15,7 @@ Global boundary guard:
 | [`xa-mass-public-contract`](./xa-mass-public-contract/README.md) | `xa-mass-public-contract` | narrow public HTTP Controller wire DTOs/constants shared by server and external SDKs |
 | [`xa-mass-java-sdk`](./xa-mass-java-sdk/README.md) | `xa-mass-java-sdk` | external Java client/session/handler SDK for task producers and external worker processes |
 | [`xa-mass-embedded-sdk-api`](./xa-mass-embedded-sdk-api/README.md) | `xa-mass-embedded-sdk-api` | embedded SDK-facing auth, catalog, event, and model contracts |
+| [`xa-mass-task-runtime-starter-sdk`](./xa-mass-task-runtime-starter-sdk/README.md) | `xa-mass-task-runtime-starter-sdk` | task-runtime backend bootstrap and loop-host lifecycle for migrated task-runtime responsibilities |
 | [`xa-mass-embedded-sdk`](./xa-mass-embedded-sdk/README.md) | `xa-mass-embedded-sdk` | in-process JVM runtime composition and starter APIs |
 
 ## Boundaries
@@ -37,6 +38,14 @@ Global boundary guard:
   server operator/API-key routes. `xa-mass-java-sdk` consumes API keys; it must
   not grow username/password operator login or API-key lifecycle helpers.
 - In-process JVM embedding callers should start from `xa-mass-embedded-sdk`.
+- `xa-mass-task-runtime-starter-sdk` is a lower-level in-process runtime
+  assembly module consumed by engine-starter/server profile wiring and future
+  embedded runtime convergence. It owns task-runtime loop hosting and backend
+  selection only; it is not an external SDK and does not own task item state
+  transitions. Current representative server proof reaches it through
+  memory-local, Redis external polling worker, Redis external Node polling
+  worker, Redis external Node WebSocket worker, and Redis external Node Socket
+  worker paths. Distributed failure edges remain separate runtime proof gaps.
 - `xa-mass-embedded-sdk` may expose advanced embedded Java transport assembly
   seams such as local adapter bootstraps or runtime factories. Those are
   in-process JVM extension points only; they are not external worker APIs,
@@ -44,7 +53,8 @@ Global boundary guard:
 - Embedded runtime diagnostics are not a session or endpoint inventory API.
   Keep diagnostics aggregate, targeted, or owner-local debug; product worker
   reads that need reachability or lock labels should use owner-scoped worker
-  facts for the selected subjects.
+  facts for the selected subjects. Task runtime diagnostics return SDK-owned
+  snapshots, not `mass-runtime-api` runtime DTOs.
 - Public HTTP wire DTOs belong in `xa-mass-public-contract` only when the owning
   Controller method and route role are documented by
   `xa-mass-public-contract`.
@@ -80,7 +90,7 @@ Use the module-specific README when you need a narrower command. For a directory
 ownership smoke after SDK layout changes:
 
 ```bash
-./mvnw -pl sdk/xa-mass-public-contract,sdk/xa-mass-java-sdk,sdk/xa-mass-embedded-sdk-api,sdk/xa-mass-embedded-sdk -am test
+./mvnw -pl sdk/xa-mass-public-contract,sdk/xa-mass-java-sdk,sdk/xa-mass-embedded-sdk-api,sdk/xa-mass-task-runtime-starter-sdk,sdk/xa-mass-embedded-sdk -am test
 ```
 
 Current public-contract ownership and first-slice DTOs are summarized in

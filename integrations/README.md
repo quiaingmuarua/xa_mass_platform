@@ -26,6 +26,8 @@ Global boundary guard:
 
 - Integrations prove SDK value through real external registration and task
   submission. They must not become SDK owners.
+- `sdk/xa-mass-task-runtime-starter-sdk` is an embedded/runtime assembly
+  module, not an integration dependency or external worker/task SDK surface.
 - `xa-mass-scenario-launcher` should use `sdk/xa-mass-java-sdk` as the standard
   external Java entrypoint.
 - `xa-mass-worker-pack` should keep real worker capability code here. Embedded

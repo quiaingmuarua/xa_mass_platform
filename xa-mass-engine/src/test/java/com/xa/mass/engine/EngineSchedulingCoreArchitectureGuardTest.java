@@ -360,10 +360,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
     void selectedWorkerHandleDoesNotExposeWorkerFactsToEngine() throws IOException {
         Path handlePath = Path.of("..", "xa-mass-worker-runtime", "src", "main", "java",
                 "com", "xa", "mass", "worker", "runtime", "selection", "SelectedWorkerHandle.java");
-        Path authorizationPath = Path.of("..", "xa-mass-worker-runtime", "src", "main", "java",
-                "com", "xa", "mass", "worker", "runtime", "selection", "SelectedWorkerClaimAuthorization.java");
-        String source = Files.readString(handlePath, StandardCharsets.UTF_8)
-                + "\n" + Files.readString(authorizationPath, StandardCharsets.UTF_8);
+        String source = Files.readString(handlePath, StandardCharsets.UTF_8);
 
         List<String> violations = new ArrayList<>();
         for (String forbiddenToken : List.of(
@@ -381,16 +378,13 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 violations.add("selected-worker handle surface exposes worker fact token: " + forbiddenToken);
             }
         }
-        if (Pattern.compile("public\\s+.*\\s+supportedEventCodes\\s*\\(").matcher(source).find()) {
-            violations.add("claim authorization exposes raw supportedEventCodes getter");
-        }
-        if (Pattern.compile("public\\s+final\\s+class\\s+SelectedWorkerClaimAuthorization").matcher(source).find()) {
-            violations.add("SelectedWorkerClaimAuthorization is public; keep claim authorization behind SelectedWorkerHandle");
+        if (source.contains("WorkerClaimTarget") || source.contains("toClaimTarget(")) {
+            violations.add("SelectedWorkerHandle exposes old task-runtime WorkerClaimTarget bridge");
         }
 
         assertTrue(violations.isEmpty(),
                 "Selected worker handles may expose workerId, workerGroupId, selection token, "
-                        + "lock mode, and an opaque claim bridge only:\n"
+                        + "score-band claim score, and lock mode only:\n"
                         + String.join("\n", violations));
     }
 
@@ -469,7 +463,6 @@ class EngineSchedulingCoreArchitectureGuardTest {
     @Test
     void dispatchCadenceConsumersUseResolvedPolicyNotLegacyPresetHelpers() throws IOException {
         List<Path> dispatchSources = List.of(
-                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/TaskDispatchRequestService.java"),
                 MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/watchdog/RuntimeReadyDispatchPump.java"),
                 MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/EngineRuntimeKernel.java")
         );
@@ -519,12 +512,10 @@ class EngineSchedulingCoreArchitectureGuardTest {
     void runtimeClaimRetryAndBackpressureConsumersUseResolvedPolicy() throws IOException {
         Path binderPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/listener/SimpleTaskDispatchBinder.java");
         Path assignWorkerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/listener/TaskAssignWorker.java");
-        Path resultServicePath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/TaskResultService.java");
         Path taskManagerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/TaskManager.java");
         Path lifecyclePath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/TaskLifecycleService.java");
         String binderSource = readSource(binderPath);
         String assignWorkerSource = Files.readString(assignWorkerPath, StandardCharsets.UTF_8);
-        String resultServiceSource = Files.readString(resultServicePath, StandardCharsets.UTF_8);
         String taskManagerSource = Files.readString(taskManagerPath, StandardCharsets.UTF_8);
         String lifecycleSource = Files.readString(lifecyclePath, StandardCharsets.UTF_8);
 
@@ -537,14 +528,6 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 .matcher(assignWorkerSource)
                 .find()) {
             violations.add(assignWorkerPath + " resolves retry from raw Task instead of resolved task policy");
-        }
-        if (Pattern.compile("taskRuntimeRetryPolicyResolver\\.resolve\\s*\\(\\s*task\\s*,")
-                .matcher(resultServiceSource)
-                .find()) {
-            violations.add(resultServicePath + " resolves retry from raw Task instead of resolved task policy");
-        }
-        if (resultServiceSource.contains(RETIRED_PRESET_HELPER)) {
-            violations.add(resultServicePath + " reads legacy preset helpers for result finality");
         }
         if (Pattern.compile("enqueueOptionsResolver\\.resolve\\s*\\(\\s*task\\s*\\)")
                 .matcher(taskManagerSource)
@@ -567,16 +550,13 @@ class EngineSchedulingCoreArchitectureGuardTest {
     void rawTaskPolicyResolverEntriesAreNotPublicMainlineSurface() throws IOException {
         List<Path> resolverSources = List.of(
                 MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/runtime/TaskRuntimeClaimOptionsResolver.java"),
-                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/runtime/TaskRuntimeRetryPolicyResolver.java"),
-                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/runtime/TaskRuntimeEnqueueOptionsResolver.java")
+                MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/runtime/TaskRuntimeRetryPolicyResolver.java")
         );
         Map<String, Pattern> rawOverloadByFile = Map.of(
                 "TaskRuntimeClaimOptionsResolver.java",
-                Pattern.compile("public\\s+TaskWorkClaimOptions\\s+resolve\\s*\\(\\s*Task\\s+task\\s*,\\s*int"),
+                Pattern.compile("public\\s+ClaimLeasePolicy\\s+resolve\\s*\\(\\s*Task\\s+task\\s*,\\s*int"),
                 "TaskRuntimeRetryPolicyResolver.java",
-                Pattern.compile("public\\s+TaskRuntimeRetryPolicy\\s+resolve\\s*\\(\\s*Task\\s+task\\s*,\\s*long"),
-                "TaskRuntimeEnqueueOptionsResolver.java",
-                Pattern.compile("public\\s+WorkEnqueueOptions\\s+resolve\\s*\\(\\s*Task\\s+task\\s*\\)")
+                Pattern.compile("public\\s+TaskRuntimeRetryPolicy\\s+resolve\\s*\\(\\s*Task\\s+task\\s*,\\s*long")
         );
 
         List<String> violations = new ArrayList<>();
@@ -705,19 +685,16 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 .matcher(policySource).find()) {
             violations.add(policyPath + " derives resource usage from WorkerContext identity");
         }
-        if (Pattern.compile("new\\s+WorkerClaimTarget\\s*\\([^;]*getWorkerContextId\\s*\\(",
-                Pattern.DOTALL).matcher(binderSource).find()) {
-            violations.add(binderPath + " passes candidate WorkerContext identity into runtime claim target");
+        if (Pattern.compile("\\bWorkerClaimTarget\\b", Pattern.DOTALL).matcher(binderSource).find()) {
+            violations.add(binderPath + " must not pass old WorkerClaimTarget DTOs through the scheduling mainline");
         }
-        if (Pattern.compile("new\\s+WorkerClaimTarget\\s*\\(", Pattern.DOTALL).matcher(binderSource).find()) {
-            violations.add(binderPath + " should use WorkerClaimTarget.groupScoped(...) for scheduling claims");
-        }
-        if (Pattern.compile("WorkerClaimTarget\\.workerLevel\\s*\\(", Pattern.DOTALL).matcher(binderSource).find()) {
-            violations.add(binderPath + " uses worker-id-only claim targets in the engine scheduling mainline");
-        }
-        if (!Pattern.compile("\\.toClaimTarget\\s*\\(", Pattern.DOTALL)
+        if (!Pattern.compile("TaskRuntimeWorkerReservationMapper\\.toReservationEvidence\\s*\\(", Pattern.DOTALL)
                 .matcher(binderSource).find()) {
-            violations.add(binderPath + " does not translate selected handles into runtime claim targets");
+            violations.add(binderPath + " must translate selected handles into task-runtime worker reservation evidence");
+        }
+        if (Pattern.compile("\\.toClaimTarget\\s*\\(", Pattern.DOTALL)
+                .matcher(binderSource).find()) {
+            violations.add(binderPath + " must not build old runtime claim targets after task-runtime claim cutover");
         }
         if (Pattern.compile("\\.claimAuthorization\\s*\\(", Pattern.DOTALL).matcher(binderSource).find()) {
             violations.add(binderPath + " reads selected-handle claim authorization instead of using the handle bridge");
@@ -2926,9 +2903,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
         Map<String, String> runtimeOwnedMethods = Map.of(
                 "claimReady",
-                sourceMethod(source, "public List<ClaimedTaskWork> claimReady"),
-                "applyTaskWorkResultWithContext",
-                sourceMethod(source, "RuntimeResultApplyContext applyTaskWorkResultWithContext")
+                sourceMethod(source, "public ClaimReadyOutcome claimReady")
         );
         for (Map.Entry<String, String> runtimeOwnedMethod : runtimeOwnedMethods.entrySet()) {
             for (String forbidden : List.of("withTaskLock(", "withTaskWorkReadLock(", "withTaskWriteLock(")) {
@@ -3350,12 +3325,13 @@ class EngineSchedulingCoreArchitectureGuardTest {
         Path repo = repositoryRoot();
         Pattern stageEvidence = Pattern.compile("\\bTaskStageEvidence\\b|\\bTASK_STAGE_EVIDENCE_APPLIED\\b");
         List<Path> publicResultOwners = List.of(
-                repo.resolve("platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/api/TaskResultRuntime.java"),
-                repo.resolve("platform_infra/mass-runtime-api/src/main/java/com/xa/mass/runtime/api/TaskResultRuntimeRow.java"),
-                repo.resolve("platform_infra/mass-runtime-memory/src/main/java/com/xa/mass/runtime/memory/InMemoryTaskResultRuntime.java"),
-                repo.resolve("xa-mass-engine/src/main/java/com/xa/mass/engine/TaskResultService.java"),
-                repo.resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/MassSdkApplication.java"),
-                repo.resolve("xa-mass-server/src/main/java/com/xa/mass/api/internal/TaskApiController.java")
+                repo.resolve("xa-mass-task-runtime/src/main/java/com/xa/mass/task/runtime/FinalResultRow.java"),
+                repo.resolve("xa-mass-task-runtime/src/main/java/com/xa/mass/task/runtime/FinalResultWindow.java"),
+                repo.resolve("sdk/xa-mass-embedded-sdk-api/src/main/java/com/xa/mass/sdk/model/TaskResultItemSnapshot.java"),
+                repo.resolve("sdk/xa-mass-embedded-sdk-api/src/main/java/com/xa/mass/sdk/model/TaskResultWindowSnapshot.java"),
+                repo.resolve("sdk/xa-mass-embedded-sdk-api/src/main/java/com/xa/mass/sdk/model/TaskWorkFinalSnapshot.java"),
+                repo.resolve("xa-mass-server/src/main/java/com/xa/mass/api/model/task/TaskApiContracts.java"),
+                repo.resolve("xa-mass-server/src/main/java/com/xa/mass/api/internal/TaskApiContractAssembler.java")
         );
 
         List<String> violations = new ArrayList<>();
@@ -3368,7 +3344,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
         assertTrue(violations.isEmpty(),
                 "EWC-6 stage evidence must stay separate from public stable-final result rows. "
-                        + "/results and TaskResultRuntimeRow must remain final-result surfaces:\n"
+                        + "/results and task-runtime final result rows must remain final-result surfaces:\n"
                         + String.join("\n", violations));
     }
 

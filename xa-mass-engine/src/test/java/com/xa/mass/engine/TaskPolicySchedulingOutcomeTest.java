@@ -4,8 +4,8 @@ import com.xa.mass.base.enums.task.TaskIntakeStatus;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.runtime.api.ActiveLeaseRecord;
-import com.xa.mass.runtime.api.TaskWorkStats;
+import com.xa.mass.task.runtime.ActiveLeaseRepairCandidate;
+import com.xa.mass.task.runtime.TaskRuntimeProgressSnapshot;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -29,8 +29,8 @@ class TaskPolicySchedulingOutcomeTest {
         assertTrue(harness.taskManager.approveTask(task.getTid()));
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
-        ActiveLeaseRecord lease = harness.activeLeases(task.getTid()).getFirst();
-        assertTrue(harness.taskManager.ingestTaskResult(
+        ActiveLeaseRepairCandidate lease = harness.activeLeases(task.getTid()).getFirst();
+        assertTrue(harness.taskRuntimeServingLane.ingestTaskResult(
                 task.getTid(),
                 lease.messageId(),
                 true,
@@ -40,14 +40,14 @@ class TaskPolicySchedulingOutcomeTest {
         ));
 
         Task completedTask = harness.taskManager.getTask(task.getTid());
-        TaskWorkStats stats = harness.stats(task.getTid());
+        TaskRuntimeProgressSnapshot stats = harness.stats(task.getTid());
         assertEquals(TaskStatus.TERMINAL, completedTask.getStatus());
         assertEquals(TaskIntakeStatus.SEALED, completedTask.getIntakeStatus());
         assertEquals(TaskTerminalReason.ALL_MESSAGES_SUCCEEDED, completedTask.getTerminalReason());
         assertEquals(1, stats.successCount());
         assertEquals(1, stats.finalCount());
         assertEquals(0, stats.readyCount());
-        assertEquals(0, stats.inflightCount());
+        assertEquals(0, stats.activeCount());
     }
 
     @Test
@@ -63,8 +63,8 @@ class TaskPolicySchedulingOutcomeTest {
         assertTrue(harness.taskManager.approveTask(task.getTid()));
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
-        ActiveLeaseRecord firstLease = harness.activeLeases(task.getTid()).getFirst();
-        assertTrue(harness.taskManager.ingestTaskResult(
+        ActiveLeaseRepairCandidate firstLease = harness.activeLeases(task.getTid()).getFirst();
+        assertTrue(harness.taskRuntimeServingLane.ingestTaskResult(
                 task.getTid(),
                 firstLease.messageId(),
                 true,
@@ -74,19 +74,19 @@ class TaskPolicySchedulingOutcomeTest {
         ));
 
         Task drainedTask = harness.taskManager.getTask(task.getTid());
-        TaskWorkStats drainedStats = harness.stats(task.getTid());
+        TaskRuntimeProgressSnapshot drainedStats = harness.stats(task.getTid());
         assertEquals(TaskStatus.RUNNING, drainedTask.getStatus());
         assertEquals(TaskIntakeStatus.OPEN, drainedTask.getIntakeStatus());
         assertNull(drainedTask.getTerminalReason());
         assertEquals(1, drainedStats.successCount());
         assertEquals(1, drainedStats.finalCount());
         assertEquals(0, drainedStats.readyCount());
-        assertEquals(0, drainedStats.inflightCount());
+        assertEquals(0, drainedStats.activeCount());
 
         assertEquals(1, harness.taskManager.appendTaskItems(task.getTid(), List.of(harness.item("second"))));
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
 
-        List<ActiveLeaseRecord> activeLeases = harness.activeLeases(task.getTid());
+        List<ActiveLeaseRepairCandidate> activeLeases = harness.activeLeases(task.getTid());
         assertEquals(1, activeLeases.size());
         assertEquals("worker-session", activeLeases.getFirst().workerId());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(task.getTid()).getStatus());

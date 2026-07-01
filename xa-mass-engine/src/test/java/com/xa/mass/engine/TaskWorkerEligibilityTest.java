@@ -3,8 +3,8 @@ package com.xa.mass.engine;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
-import com.xa.mass.runtime.api.ActiveLeaseRecord;
-import com.xa.mass.runtime.api.TaskWorkStats;
+import com.xa.mass.task.runtime.ActiveLeaseRepairCandidate;
+import com.xa.mass.task.runtime.TaskRuntimeProgressSnapshot;
 import com.xa.mass.worker.runtime.control.WorkerDispatchBlockSignal;
 import com.xa.mass.worker.runtime.control.WorkerDispatchBlockSource;
 import org.junit.jupiter.api.Test;
@@ -37,7 +37,7 @@ class TaskWorkerEligibilityTest {
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
 
-        List<ActiveLeaseRecord> activeLeases = harness.activeLeases(task.getTid());
+        List<ActiveLeaseRepairCandidate> activeLeases = harness.activeLeases(task.getTid());
         assertEquals(1, activeLeases.size());
         assertEquals("worker-eligible", activeLeases.getFirst().workerId());
         assertEquals(1, harness.successfulMessageAssignments(task.getTid(), "worker-eligible"));
@@ -67,7 +67,7 @@ class TaskWorkerEligibilityTest {
         assertTrue(harness.taskManager.approveTask(firstTask.getTid()));
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(firstTask.getTid())));
-        ActiveLeaseRecord firstLease = harness.activeLeases(firstTask.getTid()).getFirst();
+        ActiveLeaseRepairCandidate firstLease = harness.activeLeases(firstTask.getTid()).getFirst();
         assertEquals("worker-primary", firstLease.workerId());
 
         assertTrue(harness.workerManager.blockWorkerDispatch("pool-main", "worker-primary",
@@ -75,7 +75,7 @@ class TaskWorkerEligibilityTest {
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(secondTask.getTid())));
 
-        List<ActiveLeaseRecord> secondLeases = harness.activeLeases(secondTask.getTid());
+        List<ActiveLeaseRepairCandidate> secondLeases = harness.activeLeases(secondTask.getTid());
         assertEquals(1, secondLeases.size());
         assertEquals("worker-backup", secondLeases.getFirst().workerId());
         assertEquals(1, harness.activeLeases(firstTask.getTid()).size());
@@ -93,7 +93,7 @@ class TaskWorkerEligibilityTest {
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(firstTask.getTid())));
 
-        List<ActiveLeaseRecord> firstLeases = harness.activeLeases(firstTask.getTid());
+        List<ActiveLeaseRepairCandidate> firstLeases = harness.activeLeases(firstTask.getTid());
         assertEquals(1, firstLeases.size());
         assertEquals("worker-backup", firstLeases.getFirst().workerId());
         assertTrue(harness.workerRecords(firstTask.getTid(), "worker-draining").isEmpty());
@@ -102,7 +102,7 @@ class TaskWorkerEligibilityTest {
 
         Task secondTask = harness.createReadyBatchTask("draining-second", List.of(harness.item("second")));
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(secondTask.getTid())));
-        List<ActiveLeaseRecord> secondLeases = harness.activeLeases(secondTask.getTid());
+        List<ActiveLeaseRepairCandidate> secondLeases = harness.activeLeases(secondTask.getTid());
         assertEquals(1, secondLeases.size());
         assertEquals("worker-draining", secondLeases.getFirst().workerId());
     }
@@ -128,10 +128,10 @@ class TaskWorkerEligibilityTest {
         assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
 
         Task updatedTask = harness.taskManager.getTask(task.getTid());
-        TaskWorkStats stats = harness.stats(task.getTid());
+        TaskRuntimeProgressSnapshot stats = harness.stats(task.getTid());
         assertEquals(TaskStatus.READY, updatedTask.getStatus());
         assertEquals(2, stats.readyCount());
-        assertEquals(0, stats.inflightCount());
+        assertEquals(0, stats.activeCount());
         assertTrue(harness.activeLeases(task.getTid()).isEmpty());
         assertFalse(harness.workerManager.hasWorkerExclusiveLease("worker-stable"));
         assertFalse(harness.workerManager.hasWorkerExclusiveLease("worker-dropped"));
@@ -145,11 +145,11 @@ class TaskWorkerEligibilityTest {
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
 
-        List<ActiveLeaseRecord> activeLeases = harness.activeLeases(task.getTid());
+        List<ActiveLeaseRepairCandidate> activeLeases = harness.activeLeases(task.getTid());
         assertEquals(2, activeLeases.size());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(task.getTid()).getStatus());
         assertEquals(0, harness.stats(task.getTid()).readyCount());
-        assertEquals(2, harness.stats(task.getTid()).inflightCount());
+        assertEquals(2, harness.stats(task.getTid()).activeCount());
     }
 
     private static WorkerDispatchBlockSignal disconnectedSignal(String reason, long observedAtMillis) {

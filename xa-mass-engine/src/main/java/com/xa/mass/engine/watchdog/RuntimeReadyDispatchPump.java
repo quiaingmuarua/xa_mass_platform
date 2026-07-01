@@ -3,6 +3,7 @@ package com.xa.mass.engine.watchdog;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
+import com.xa.mass.engine.EngineRuntimeLoop;
 import com.xa.mass.engine.ExponentialPollingIdleBackoffPolicy;
 import com.xa.mass.engine.PollingIdleBackoffPolicy;
 import com.xa.mass.engine.PollingResourceKey;
@@ -17,9 +18,6 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.function.Predicate;
 
 /**
@@ -28,7 +26,7 @@ import java.util.function.Predicate;
  * <p>This keeps bulk dispatch aligned with runtime ready visibility instead of
  * relying on task-signal retry queues and per-task delayed wakeups.
  */
-public class RuntimeReadyDispatchPump {
+public class RuntimeReadyDispatchPump implements EngineRuntimeLoop {
 
     private static final Logger log = LoggerFactory.getLogger(RuntimeReadyDispatchPump.class);
     private static final String POLLING_SOURCE = "runtime-ready-dispatch";
@@ -45,7 +43,6 @@ public class RuntimeReadyDispatchPump {
     private final VirtualThreadRuntimeTaskExecutor dispatchExecutor;
     private final SchedulingPlaneResolver schedulingPlaneResolver;
     private final Set<String> inFlightTaskIds = ConcurrentHashMap.newKeySet();
-    private ScheduledExecutorService scheduler;
 
     public RuntimeReadyDispatchPump(TaskRuntimeRecoveryPort recoveryPort,
                                     Predicate<Task> dispatchAttempt,
@@ -107,30 +104,17 @@ public class RuntimeReadyDispatchPump {
         this.schedulingPlaneResolver = Objects.requireNonNull(schedulingPlaneResolver, "schedulingPlaneResolver");
     }
 
-    public void start() {
-        scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "RuntimeReadyDispatchPump");
-            t.setDaemon(true);
-            return t;
-        });
-        scheduler.scheduleWithFixedDelay(this::scan, 0L, intervalMillis, TimeUnit.MILLISECONDS);
-        log.info("RuntimeReadyDispatchPump started (intervalMs={}, scanLimit={}, idleBackoffBaseMs={}, idleBackoffMaxMs={}, idleBackoffPolicy={})",
-                intervalMillis, scanLimit, baseIdleBackoffMillis, maxIdleBackoffMillis,
-                idleBackoffPolicy.getClass().getSimpleName());
+    @Override
+    public String name() {
+        return "runtime-ready-dispatch-pump";
+    }
+
+    @Override
+    public long intervalMillis() {
+        return intervalMillis;
     }
 
     public void stop() {
-        if (scheduler != null) {
-            scheduler.shutdownNow();
-            try {
-                if (!scheduler.awaitTermination(10, TimeUnit.SECONDS)) {
-                    log.warn("RuntimeReadyDispatchPump did not terminate within 10 seconds");
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-            scheduler = null;
-        }
         dispatchExecutor.shutdown();
         log.info("RuntimeReadyDispatchPump stopped");
     }
@@ -139,7 +123,8 @@ public class RuntimeReadyDispatchPump {
         idleAdmissionTracker.wakeAll();
     }
 
-    private void scan() {
+    @Override
+    public void runOnce() {
         try {
             long nowMillis = System.currentTimeMillis();
             idleAdmissionTracker.pruneStale(nowMillis);

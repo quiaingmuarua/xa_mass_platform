@@ -99,8 +99,8 @@ Task shell -> item append -> runtime enqueue -> scheduling eligibility
 **Kernel truth is split across:**
 - `Task.contract` — public/runtime preset: `SESSION | BATCH`
 - `Task.intakeStatus` — append window: `OPEN | SEALED`
-- `TaskWorkRuntime` — ready work, lease, retry, expiry, backpressure
-- `TaskResultRuntime` — stable-final result rows and result-side barriers
+- `xa-mass-task-runtime` — accepted backlog, scheduler discovery,
+  claim/lease/retry/finality, retained final rows, and progress snapshots
 
 **Infra truth layers** (from [doc/INFRA_TRUTH_LAYERS.md](doc/INFRA_TRUTH_LAYERS.md)):
 - Control-plane: SQLite (task/worker/rule shell storage) via `platform_infra/mass-storage-jdbc`

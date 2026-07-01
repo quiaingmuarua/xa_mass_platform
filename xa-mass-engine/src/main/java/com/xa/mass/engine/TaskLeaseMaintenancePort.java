@@ -1,6 +1,6 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.task.runtime.ActiveLeaseRepairCandidate;
 
 import java.time.Instant;
 import java.util.List;
@@ -10,9 +10,9 @@ import java.util.List;
  */
 public interface TaskLeaseMaintenancePort {
 
-    List<ActiveLeaseRecord> getActiveLeases(String taskId);
+    List<ActiveLeaseRepairCandidate> getActiveLeaseCandidates(String taskId);
 
-    List<ActiveLeaseRecord> pollExpiredLeases(int limit, Instant now);
+    List<ActiveLeaseRepairCandidate> pollExpiredLeaseCandidates(int limit, Instant now);
 
     boolean hasActiveWorkForWorker(String taskId, String workerId);
 

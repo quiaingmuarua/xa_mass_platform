@@ -1,6 +1,6 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.task.runtime.ActiveLeaseRepairCandidate;
 
 /**
  * Narrow helper for runtime attempt correlation.
@@ -12,7 +12,7 @@ public final class TaskWorkAttemptIdSupport {
 
     public static String runtimeAttemptId(String messageId,
                                           int attemptNo,
-                                          ActiveLeaseRecord activeLease) {
+                                          ActiveLeaseRepairCandidate activeLease) {
         String normalizedMessageId = messageId == null || messageId.isBlank() ? "unknown-message" : messageId;
         if (activeLease == null) {
             return "runtime-attempt-" + normalizedMessageId + "-" + attemptNo;

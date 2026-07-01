@@ -30,7 +30,6 @@ import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.storage.memory.InMemoryWorkerDeclarationStore;
 import com.xa.mass.engine.watchdog.RuntimeReadyDispatchPump;
-import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import com.xa.mass.worker.runtime.resource.WorkerResourceDeclarationRuntime;
@@ -94,7 +93,7 @@ public final class TaskWorkloadMixSmokeRunner {
 
         private SmokeReport run() throws Exception {
             InMemoryTaskShellStore taskStorage = new InMemoryTaskShellStore();
-            EngineConfig engineConfig = buildEngineConfig(taskStorage, new InMemoryTaskWorkRuntime());
+            EngineConfig engineConfig = buildEngineConfig(taskStorage);
             TaskCommandService taskCommands = engineConfig.getTaskCommandService();
             TaskQueryService taskQueries = engineConfig.getTaskQueryService();
             TaskEventService taskEvents = engineConfig.getTaskEventService();
@@ -273,11 +272,9 @@ public final class TaskWorkloadMixSmokeRunner {
             return new TaskCreatePlan(shell, buildInputs("bulk", config.bulkMessages()), false);
         }
 
-        private static EngineConfig buildEngineConfig(InMemoryTaskShellStore taskStorage,
-                                                      InMemoryTaskWorkRuntime taskWorkRuntime) {
+        private static EngineConfig buildEngineConfig(InMemoryTaskShellStore taskStorage) {
             EngineConfig engineConfig = new EngineConfig();
             engineConfig.setTaskShellStore(taskStorage);
-            engineConfig.setTaskWorkRuntime(taskWorkRuntime);
             return engineConfig;
         }
 

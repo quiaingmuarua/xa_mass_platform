@@ -91,7 +91,7 @@ Task item dispatch boundary:
 
 ```text
 task item
-  -> TaskWorkRuntime claim / lease
+  -> xa-mass-task-runtime claim / lease
   -> Scheduling Plane selects concrete worker
   -> engine binds TaskDispatchBinding(workerId, workerGroupId, ...)
   -> transport handoff carries delivery metadata
@@ -128,7 +128,7 @@ retry/compensation remains engine-owned.
 
 ## 2. Global Rules
 
-1. `TaskStatus`, `TaskHoldReason`, `TaskIntakeStatus`, and `TaskTerminalReason` are the current task lifecycle vocabulary. Per-item runtime state lives in `TaskWorkRuntime`; server review item/attempt statuses are materialized read-model strings, not engine lifecycle truth.
+1. `TaskStatus`, `TaskHoldReason`, `TaskIntakeStatus`, and `TaskTerminalReason` are the current task lifecycle vocabulary. Per-item runtime state lives in `xa-mass-task-runtime`; server review item/attempt statuses are materialized read-model strings, not engine lifecycle truth.
 2. `Task.contract` is the current public/runtime preset input (`SESSION | BATCH`). Engine behavior must consume resolved task scheduling policy values derived from it; ingress form must not redefine lifecycle, terminal, or retry semantics.
 3. Worker capability truth is declared through WorkerGroup/event bindings. Worker scheduling evidence participates in runtime selection inside the selected group, but worker rows and adapters must not become a second project/event capability source.
 4. Scheduling and worker selection are task-level orchestration decisions, but item payload is not a worker-selection policy source. Do not reintroduce per-message rule matching, worker-context lifecycle ownership, or item-level worker capability scans on the hot path.
@@ -142,10 +142,10 @@ retry/compensation remains engine-owned.
 8. The logical work-projection status model is a bounded compatibility contract, not a complete transport-event history. Transport-specific delivery phases belong in trace/event data or a dedicated transport model.
 9. The current runtime concurrency model is owned by worker scheduling facts, runtime capacity/reservation state, active worker locks where applicable, and work-runtime leases. `WorkerContext` must not be used as the engine scheduling or resource-lifecycle truth.
 10. Policy changes must preserve ownership boundaries across matching, assignment, attempt, release, refill, intake, control, and terminal decisions.
-11. `TaskWorkRuntime` in `platform_infra/mass-runtime-api` is the current hot-path owner for ready work, active leases, retry scheduling, retry budget, and lease expiry indexes.
-12. `TaskResultRuntime` is the runtime-owned public result read truth for stable-final result rows, repair staging, and result-side attempt-closed/event/progress barriers. Server review/export rows are lagging materialized views and must not drive lifecycle decisions.
+11. `xa-mass-task-runtime` is the current hot-path owner for accepted ready backlog, active leases, retry/finality, progress, and runtime discard truth. Its memory and Redis implementations live in `platform_infra/mass-task-runtime-memory` and `platform_infra/mass-task-runtime-redis`.
+12. `xa-mass-task-runtime` `TaskRuntimeReadPort` is the runtime-owned public result read truth for stable-final result rows and task-local result sequence. Server review/export rows are lagging materialized views and must not drive lifecycle decisions.
 13. `Task.workloadClass` is the explicit task-level runtime optimization input; current engine truth is `INTERACTIVE` or `BULK`, and assignment signal routing consumes resolved task scheduling policy rather than free-form `sharedConfig` semantics.
-14. Result callbacks follow the result-side lifecycle mainline: runtime apply truth comes from `TaskWorkRuntime.applyResultWithContext(...)`; stable-final public result rows are committed into `TaskResultRuntime`; server review reports are emitted best-effort after runtime acceptance and are not the result commit point or a public result read source.
+14. Result callbacks follow the result-side lifecycle mainline: runtime apply truth comes from `xa-mass-task-runtime` `TaskRuntimeResultPort`; stable-final public result rows are committed into task-runtime final-result rows; server review reports are emitted best-effort after runtime acceptance and are not the result commit point or a public result read source.
 15. `eventCode` is handler/capability identity. It validates that the selected WorkerGroup supports the item's handler and tells the worker which local handler to invoke. It is not a worker selector.
 16. The architecture boundary is: task scheduling policy decides competition admission/cadence/priority/fairness/budget; worker scheduling policy decides resource-universe and pool constraints; RuntimeWorkerSelection chooses a concrete worker from live evidence/admission. Project/workload binding selects and configures allowed/default policies, task dispatch intent narrows selected policies/route/target constraints, WorkerGroup capability constrains project/event eligibility, adapter owns only final-hop connectivity, transport delivers only to `selectedWorkerId`, and item decides only the event handler plus payload.
 
@@ -215,13 +215,12 @@ callback / result ingress queue
   -> transport ingress normalization
   -> optional envelope identity gate
   -> engine result ingest port
-  -> TaskResultService
-  -> TaskResultRuntime.stageCallback(...)
-  -> TaskWorkRuntime.applyResultWithContext(...)
-  -> runtime outcome interpretation
+  -> TaskRuntimeServingLane
+  -> TaskRuntimeResultPort.applyResult(...)
+  -> runtime finality outcome interpretation
   -> trace
-  -> TaskResultRuntime.commitVisibleFinal(...)
-  -> result-side event/progress barriers
+  -> task-runtime final-result row when final
+  -> task-runtime progress snapshot
   -> server review report emitted for async materialization
   -> task progress / terminal convergence trigger
 ```
@@ -234,9 +233,9 @@ Owner split:
 | transport ingress carrier | `ResultIngressEntry(partitionKey=<resultCorrelationRef>, message)` | opaque payload, partition key, diagnostics, and creation time; transport queues and relays it without task-shaped validation |
 | starter result callback projection | `TaskResultCallbackCodec`, `TaskResultCallbackCommand` | decodes opaque ingress payload/correlation and carries task result callback facts into engine-owned validation |
 | engine ingest port | `TaskResultIngestFacade`, `TaskResultIngestPort` | narrow transport-to-engine callable surface |
-| runtime apply truth | `TaskWorkRuntime.applyResultWithContext(...)` | lease-valid apply, retry budget consumption, runtime apply status, counters, and recent receipts |
-| runtime result read truth | `TaskResultRuntime` | staged callback repair anchors, stable-final visible rows, task-local result sequence, and result-side idempotency barriers |
-| engine result orchestration | `TaskResultService` | terminal/duplicate/late classification, runtime outcome interpretation, trace, review report emission, result-side events, and convergence trigger |
+| runtime apply truth | `TaskRuntimeResultPort.applyResult(...)` | lease-valid apply, retry budget consumption, finality outcome, progress, and final-result idempotency evidence |
+| runtime result read truth | `TaskRuntimeReadPort` | stable-final visible rows and task-local result sequence |
+| engine result orchestration | `TaskRuntimeServingLane` plus `TaskManager` result ingress | terminal/duplicate/late classification handoff, runtime outcome interpretation, trace, review report emission, and convergence trigger |
 | server review materialization | `TaskReviewReportQueue`, `TaskReviewMaterializer`, `TaskReviewStore` | bounded UI/debug/export read view; not callback acceptance, retry/finality, public result read, or runtime truth |
 
 Must hold:
@@ -245,7 +244,7 @@ Must hold:
   apply path unless recent-final receipt or task terminal state proves the
   logical result already converged
 - public result reads and archive generation read stable-final rows from
-  `TaskResultRuntime`, not server review rows
+  `xa-mass-task-runtime`, not server review rows
 - visible final commit is atomic at the runtime boundary; duplicate visible
   commit resolves by `taskId + messageId`
 - repair uses staged callback anchors plus runtime final truth; it is bounded
@@ -401,7 +400,8 @@ Must hold:
 
 Both policies are enforced by `LeaseExpireWatchdog` (runs every `leaseWatchdogIntervalSeconds`, default 30 s):
 
-- **Lease expiry**: expired active leases are pulled from `TaskWorkRuntime.pollExpiredLeases(...)` and expired via
+- **Lease expiry**: expired active lease candidates are pulled from
+  `xa-mass-task-runtime` repair ports and expired via
   the engine lease-maintenance path (`TaskLeaseMaintenancePort.expireLeasedWork(...)`). This always publishes
   `taskWorkAttemptClosed` for resource release and may later materialize an
   `EXPIRED` review attempt. If retry budget remains, the logical work item is reset to `INIT`,

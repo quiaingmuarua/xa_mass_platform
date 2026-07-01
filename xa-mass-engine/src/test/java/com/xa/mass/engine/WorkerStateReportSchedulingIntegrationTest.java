@@ -3,7 +3,7 @@ package com.xa.mass.engine;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
-import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.task.runtime.ActiveLeaseRepairCandidate;
 import com.xa.mass.worker.runtime.command.WorkerCommandAcknowledgement;
 import com.xa.mass.worker.runtime.command.WorkerCommandRequest;
 import org.junit.jupiter.api.Test;
@@ -28,7 +28,7 @@ class WorkerStateReportSchedulingIntegrationTest {
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(firstTask.getTid())));
 
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(firstTask.getTid()).getStatus());
-        List<ActiveLeaseRecord> firstLeases = harness.activeLeases(firstTask.getTid());
+        List<ActiveLeaseRepairCandidate> firstLeases = harness.activeLeases(firstTask.getTid());
         assertEquals(1, firstLeases.size());
         assertEquals("worker-backup", firstLeases.getFirst().workerId());
         assertEquals(0, harness.successfulMessageAssignments(firstTask.getTid(), "worker-draining"));
@@ -40,7 +40,7 @@ class WorkerStateReportSchedulingIntegrationTest {
         Task secondTask = harness.createReadyBatchTask("state-report-draining-second", List.of(harness.item("second")));
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(secondTask.getTid())));
 
-        List<ActiveLeaseRecord> secondLeases = harness.activeLeases(secondTask.getTid());
+        List<ActiveLeaseRepairCandidate> secondLeases = harness.activeLeases(secondTask.getTid());
         assertEquals(1, secondLeases.size());
         assertEquals("worker-draining", secondLeases.getFirst().workerId());
         assertEquals(1, harness.successfulMessageAssignments(secondTask.getTid(), "worker-draining"));
@@ -63,7 +63,7 @@ class WorkerStateReportSchedulingIntegrationTest {
         Task task = harness.createReadyBatchTask("command-drain-state-available", List.of(harness.item("work")));
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
 
-        List<ActiveLeaseRecord> leases = harness.activeLeases(task.getTid());
+        List<ActiveLeaseRepairCandidate> leases = harness.activeLeases(task.getTid());
         assertEquals(1, leases.size());
         assertEquals("worker-backup", leases.getFirst().workerId());
         assertEquals(0, harness.successfulMessageAssignments(task.getTid(), "worker-command-drained"));

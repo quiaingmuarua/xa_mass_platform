@@ -85,14 +85,14 @@ class XaMassTraceCliIntegrationTest {
                     .traceId("trace-a")
                     .identity(identity -> identity.taskId("task-2").messageId("msg-1").attemptId("attempt-1"))
                     .outcome(true, null, "accepted")
-                    .attrs(Map.of("reason", "accepted", "source", "TaskResultService"))
+                    .attrs(Map.of("reason", "accepted", "source", "TaskRuntimeServingLane"))
                     .build());
             sink.emit(ExecutionEvent.builder()
                     .eventType(ExecutionEventType.CALLBACK_ACCEPTED)
                     .traceId("trace-a")
                     .identity(identity -> identity.taskId("task-2").messageId("msg-2").attemptId("attempt-2"))
                     .outcome(true, null, "accepted")
-                    .attrs(Map.of("reason", "accepted", "source", "TaskResultService"))
+                    .attrs(Map.of("reason", "accepted", "source", "TaskRuntimeServingLane"))
                     .build());
         }
         awaitJsonlFiles(tempDir, 2);
@@ -288,7 +288,7 @@ class XaMassTraceCliIntegrationTest {
                     .traceId("trace-1")
                     .identity(identity -> identity.taskId("task-1").messageId("msg-1").attemptId("attempt-1"))
                     .outcome(true, null, "accepted")
-                    .attrs(Map.of("reason", "result-ingested", "source", "TaskResultService"))
+                    .attrs(Map.of("reason", "result-ingested", "source", "TaskRuntimeServingLane"))
                     .build());
             sink.emit(ExecutionEvent.builder()
                     .eventType(ExecutionEventType.TASK_TERMINAL_CLOSED)
@@ -314,14 +314,14 @@ class XaMassTraceCliIntegrationTest {
                     .traceId("trace-replay")
                     .identity(identity -> identity.taskId("task-replay").messageId("msg-1").attemptId("attempt-1"))
                     .outcome(true, null, "accepted")
-                    .attrs(Map.of("reason", "accepted", "source", "TaskResultService"))
+                    .attrs(Map.of("reason", "accepted", "source", "TaskRuntimeServingLane"))
                     .build());
             sink.emit(ExecutionEvent.builder()
                     .eventType(ExecutionEventType.CALLBACK_ACCEPTED)
                     .traceId("trace-replay")
                     .identity(identity -> identity.taskId("task-replay").messageId("msg-2").attemptId("attempt-2"))
                     .outcome(true, null, "accepted")
-                    .attrs(Map.of("reason", "accepted", "source", "TaskResultService"))
+                    .attrs(Map.of("reason", "accepted", "source", "TaskRuntimeServingLane"))
                     .build());
             sink.emit(ExecutionEvent.builder()
                     .eventType(ExecutionEventType.TASK_TERMINAL_CLOSED)

@@ -22,7 +22,7 @@ convergence.
 
 Primary scheduling correctness proof must stay engine-local and runtime-first:
 
-- `TaskWorkRuntime` ready / inflight / delayed / final counters
+- task-runtime ready / active / delayed / final counters
 - active leases and lease tokens
 - task aggregate status and terminal reason
 - worker lock / capacity / resource state
@@ -74,7 +74,7 @@ visibility expansion or same-module wrapper seams.
 | Released worker/resource can be used by waiting ready work | resource releaser + refill policy + assignment signal | `TaskSchedulingContentionTest`, `TaskRedispatchCompetitionTest`, `TaskResourceReleaseListenerTest`, `DefaultAssignmentRefillPolicyTest` | worker lock/load release, later assignment, terminal source task | Covered |
 | A new eligible worker can move waiting READY work into dispatch | worker registry + assignment trigger | `TaskDelayedAvailabilitySchedulingTest`, `TaskWorkerEligibilityTest` | READY before worker, RUNNING after worker, active lease | Covered deterministic; soak covers pressure only |
 | Offline/unreachable workers must be excluded from new work | registry/gate eligibility + candidate admission | `TaskWorkerEligibilityTest` | rejection record, backup worker lease, original active lease unchanged | Covered |
-| An active lease is not finalized by reachability loss; lease/runtime decides expiry or result acceptance | `TaskWorkRuntime` lease truth + result application | `TaskWorkerEligibilityTest`, `TaskRedispatchCompetitionTest` | active lease remains, expiry/reset path, stale lease rejection | Partially covered engine-local; real disconnect/reconnect remains chaos/E2E lane |
+| An active lease is not finalized by reachability loss; lease/runtime decides expiry or result acceptance | task-runtime lease truth + result application | `TaskWorkerEligibilityTest`, `TaskRedispatchCompetitionTest` | active lease remains, expiry/reset path, stale lease rejection | Partially covered engine-local; real disconnect/reconnect remains chaos/E2E lane |
 | Lease expiry re-enters retryable work into competition exactly once | runtime expiry + retry policy + assignment | `TaskRedispatchCompetitionTest` | ready/inflight/final counts, retry count, same message id | Covered |
 | Stale late result after redispatch must not overwrite active/final work | result application + lease token validation | `TaskRedispatchCompetitionTest` | `STALE_LEASE`, active lease token unchanged, final count unchanged | Covered |
 | Retry-exhausted expiry finalizes and releases resources for waiting work | runtime retry policy + terminal convergence + resource release | `TaskRedispatchCompetitionTest` | terminal reason, expired/final counters, worker unlock, later assignment | Covered |

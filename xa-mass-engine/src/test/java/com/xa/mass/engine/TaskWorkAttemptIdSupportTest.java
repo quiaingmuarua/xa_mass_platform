@@ -1,9 +1,7 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.task.runtime.ActiveLeaseRepairCandidate;
 import org.junit.jupiter.api.Test;
-
-import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -23,19 +21,17 @@ class TaskWorkAttemptIdSupportTest {
 
     @Test
     void activeLeaseUsesWorkerLevelAttemptId() {
-        ActiveLeaseRecord lease = new ActiveLeaseRecord(
+        ActiveLeaseRepairCandidate lease = new ActiveLeaseRepairCandidate(
                 "task-1",
                 "msg-1",
                 "lease-1",
                 "worker-1",
-                null,
+                "",
                 "batch-1",
+                "",
                 null,
-                null,
-                null,
-                0,
-                Instant.now(),
-                Instant.now()
+                1,
+                System.currentTimeMillis() + 30_000L
         );
 
         assertEquals(

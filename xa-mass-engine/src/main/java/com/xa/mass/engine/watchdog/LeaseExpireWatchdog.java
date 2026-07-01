@@ -2,17 +2,16 @@ package com.xa.mass.engine.watchdog;
 
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.engine.EngineRuntimeLoop;
 import com.xa.mass.engine.TaskLeaseMaintenancePort;
 import com.xa.mass.engine.TaskShellLifecycleMaintenancePort;
-import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.task.runtime.ActiveLeaseRepairCandidate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 
 /**
  * Background watchdog that enforces two time-based policies:
@@ -29,10 +28,10 @@ import java.util.concurrent.TimeUnit;
  *       {@link TaskTerminalReason#MAX_RUNTIME_REACHED}.</li>
  * </ol>
  *
- * <p>Start this once from {@code MassEngine.start()} and stop it in
- * {@code MassEngine.stop()}.
+ * <p>The engine owns the lease-repair decision, but the starter owns loop
+ * scheduling and thread lifecycle through {@link #runOnce()}.
  */
-public class LeaseExpireWatchdog {
+public class LeaseExpireWatchdog implements EngineRuntimeLoop {
 
     private static final Logger log = LoggerFactory.getLogger(LeaseExpireWatchdog.class);
     private static final int EXPIRED_LEASE_SCAN_LIMIT = 1000;
@@ -41,7 +40,6 @@ public class LeaseExpireWatchdog {
     private final TaskLeaseMaintenancePort leaseMaintenancePort;
     private final TaskShellLifecycleMaintenancePort shellLifecycleMaintenancePort;
     private final long intervalSeconds;
-    private ScheduledExecutorService scheduler;
 
     public LeaseExpireWatchdog(TaskLeaseMaintenancePort leaseMaintenancePort,
                                TaskShellLifecycleMaintenancePort shellLifecycleMaintenancePort,
@@ -51,35 +49,21 @@ public class LeaseExpireWatchdog {
         this.intervalSeconds = intervalSeconds;
     }
 
-    public void start() {
-        scheduler = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "LeaseExpireWatchdog");
-            t.setDaemon(true);
-            return t;
-        });
-        scheduler.scheduleAtFixedRate(this::scan, intervalSeconds, intervalSeconds, TimeUnit.SECONDS);
-        log.info("LeaseExpireWatchdog started (interval={}s)", intervalSeconds);
+    @Override
+    public String name() {
+        return "lease-expire-watchdog";
     }
 
-    public void stop() {
-        if (scheduler != null) {
-            scheduler.shutdownNow();
-            try {
-                if (!scheduler.awaitTermination(10, TimeUnit.SECONDS)) {
-                    log.warn("LeaseExpireWatchdog did not terminate within 10 seconds");
-                }
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-            scheduler = null;
-        }
-        log.info("LeaseExpireWatchdog stopped");
+    @Override
+    public long intervalMillis() {
+        return Math.max(1L, intervalSeconds) * 1000L;
     }
 
-    private void scan() {
+    @Override
+    public void runOnce() {
         try {
             LocalDateTime now = LocalDateTime.now();
-            scanExpiredLeases(java.time.Instant.now());
+            scanExpiredLeases(Instant.now());
             scanMaxRuntime(now);
         } catch (Exception e) {
             log.error("LeaseExpireWatchdog scan failed", e);
@@ -87,10 +71,10 @@ public class LeaseExpireWatchdog {
     }
 
     private void scanExpiredLeases(java.time.Instant now) {
-        List<ActiveLeaseRecord> expiredLeases = leaseMaintenancePort.pollExpiredLeases(EXPIRED_LEASE_SCAN_LIMIT, now);
-        for (ActiveLeaseRecord lease : expiredLeases) {
+        List<ActiveLeaseRepairCandidate> expiredLeases = leaseMaintenancePort.pollExpiredLeaseCandidates(EXPIRED_LEASE_SCAN_LIMIT, now);
+        for (ActiveLeaseRepairCandidate lease : expiredLeases) {
             log.warn("[Watchdog] Expiring stale work lease {} for msg {} in task {} (lease expired at {})",
-                    lease.leaseToken(), lease.messageId(), lease.taskId(), lease.leaseExpireAt());
+                    lease.leaseToken(), lease.messageId(), lease.taskId(), lease.leaseExpireAtMillis());
             leaseMaintenancePort.expireLeasedWork(lease.taskId(), lease.messageId());
         }
     }

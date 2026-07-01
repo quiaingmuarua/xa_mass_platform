@@ -3,9 +3,8 @@ package com.xa.mass.server.e2e.support;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.engine.model.TaskStateValidationResult;
-import com.xa.mass.runtime.api.ActiveLeaseRecord;
-import com.xa.mass.runtime.api.TaskWorkStats;
-import com.xa.mass.runtime.api.TaskWorkRuntime;
+import com.xa.mass.sdk.model.TaskActiveLeaseSnapshot;
+import com.xa.mass.sdk.model.TaskWorkStatsSnapshot;
 import com.xa.mass.storage.api.TaskShellStore;
 import com.xa.mass.workerpack.sample.client.SampleWorkerClient;
 import com.xa.mass.workerpack.sample.client.SampleWorkerWebSocketClient;
@@ -60,9 +59,6 @@ public abstract class AbstractSampleE2eTest {
 
     @Autowired
     protected TaskShellStore taskStorage;
-
-    @Autowired
-    protected TaskWorkRuntime taskWorkRuntime;
 
     protected static void registerWebSocketProperties(DynamicPropertyRegistry registry, int websocketPort) {
         registry.add("mass.websocket.port", () -> websocketPort);
@@ -445,12 +441,8 @@ public abstract class AbstractSampleE2eTest {
         Map<String, Object> task = task(detailResponse);
         return new RuntimeTaskSnapshot(
                 task,
-                List.copyOf(resolveTaskWorkRuntime().activeLeases(taskId)),
-                resolveTaskWorkRuntime().stats(taskId));
-    }
-
-    private TaskWorkRuntime resolveTaskWorkRuntime() {
-        return taskWorkRuntime;
+                List.copyOf(app.taskDiagnostics().getActiveLeases(taskId)),
+                app.taskDiagnostics().getTaskWorkStats(taskId));
     }
 
     protected void assertClientConnects(SampleWorkerClient client, String failureMessage) throws Exception {
@@ -838,7 +830,7 @@ public abstract class AbstractSampleE2eTest {
     }
 
     protected record RuntimeTaskSnapshot(Map<String, Object> task,
-                                         List<ActiveLeaseRecord> activeLeases,
-                                         TaskWorkStats stats) {
+                                         List<TaskActiveLeaseSnapshot> activeLeases,
+                                         TaskWorkStatsSnapshot stats) {
     }
 }

@@ -592,7 +592,7 @@ Query parameters:
 
 Response notes:
 
-- returns committed stable-final rows from `TaskResultRuntime`, not
+- returns committed stable-final rows from task-runtime, not
   server review materialization
 - response fields include `mode`, `taskTerminal`, `archiveReady`, `items`,
   `nextAfterSeq`, `hasMore`, and optional `archiveUrl`
@@ -611,7 +611,7 @@ Behavior:
 - returns terminal-result archive manifest
 - archive contract is fixed to `ndjson`
 - content encoding is surfaced explicitly, currently `gzip`
-- archive rows are streamed from `TaskResultRuntime` committed visible rows
+- archive rows are streamed from task-runtime committed visible rows
 - `byteSize` and `checksum` may be `null` when the runtime does not materialize
   archive metadata ahead of download
 - response `data` is `ApiTaskResultArchive`

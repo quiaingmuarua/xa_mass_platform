@@ -20,8 +20,10 @@ import com.xa.mass.engine.stage.TaskStageEvidenceResult;
 import com.xa.mass.engine.stage.TaskStageProjection;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.kernel.spi.rule.RuleType;
-import com.xa.mass.runtime.api.TaskResultRuntimeRow;
-import com.xa.mass.runtime.api.TaskResultWindow;
+import com.xa.mass.sdk.model.TaskActiveLeaseSnapshot;
+import com.xa.mass.sdk.model.TaskResultWindowSnapshot;
+import com.xa.mass.sdk.model.TaskWorkFinalSnapshot;
+import com.xa.mass.sdk.model.TaskWorkStatsSnapshot;
 import com.xa.mass.sdk.worker.EmbeddedPullWorkerSessions;
 import com.xa.mass.sdk.worker.EmbeddedPullWorkerSession;
 import com.xa.mass.starter.config.EngineConfig;
@@ -621,11 +623,19 @@ public class MassApplication {
         return requireStartedEngine().resolveTaskState(taskId);
     }
 
-    public TaskResultWindow readTaskResults(String taskId, long afterSeq, int limit) {
+    public TaskResultWindowSnapshot readTaskResults(String taskId, long afterSeq, int limit) {
         return requireStartedEngine().readTaskResults(taskId, afterSeq, limit);
     }
 
-    public Optional<TaskResultRuntimeRow> getVisibleTaskResultByMessageId(String taskId, String messageId) {
+    public TaskWorkStatsSnapshot getTaskWorkStats(String taskId) {
+        return requireStartedEngine().getTaskWorkStats(taskId);
+    }
+
+    public List<TaskActiveLeaseSnapshot> getActiveLeases(String taskId) {
+        return requireStartedEngine().getActiveLeases(taskId);
+    }
+
+    public Optional<TaskWorkFinalSnapshot> getVisibleTaskResultByMessageId(String taskId, String messageId) {
         return requireStartedEngine().getVisibleTaskResultByMessageId(taskId, messageId);
     }
 

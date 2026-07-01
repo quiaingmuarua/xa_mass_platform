@@ -4,8 +4,8 @@ Status: target runtime design reference, not current implementation truth.
 
 This document describes a compact Redis shape for task work runtime. It is a
 directional blueprint for the next task-runtime convergence work. The current
-implemented Redis keyspace is documented separately in
-[`../platform_infra/mass-runtime-redis/REDIS_RUNTIME_BASELINE.md`](../platform_infra/mass-runtime-redis/REDIS_RUNTIME_BASELINE.md).
+first Redis implementation lives in
+[`../platform_infra/mass-task-runtime-redis`](../platform_infra/mass-task-runtime-redis).
 
 The design borrows the score-band idea from
 [`score-band-resource-slot-scheduling-blueprint.md`](./score-band-resource-slot-scheduling-blueprint.md),
@@ -30,9 +30,9 @@ This shape targets:
 - no Redis Stream/Pending Entry List as the task lease owner;
 - result storage grouped by task, not one result key per item.
 
-`TaskWorkRuntime` and `TaskResultRuntime` remain the public runtime contracts.
-Engine code should not know whether Redis uses LIST, HASH, ZSET, Lua, or a
-future implementation detail.
+`xa-mass-task-runtime` public ports are the runtime contracts. Engine code
+should not know whether Redis uses LIST, HASH, ZSET, Lua, or a future
+implementation detail.
 
 ## Production Bias
 
@@ -438,6 +438,11 @@ This key is allowed to contain many items. One million ready items should remain
 one Redis LIST with one million entries, not one million runtime HASH fields and
 not one million Redis keys.
 
+Append intake owns this LIST write only. It must not be required to rewrite
+task-level scheduling score, task status, or lane state when the backlog length
+changes. Scheduler-owned discovery, lane scoring, and wakeup repair are separate
+task-level mechanisms.
+
 `ReadyItemFrame` is intentionally close to the original task item. It carries
 the append-generated logical `messageId` plus the opaque payload. The runtime
 generates and returns `messageId` when append accepts the item; claim must not
@@ -700,8 +705,10 @@ The score is an index. Before claim, engine/runtime must validate:
 
 ### Score rewrite rule
 
-All runtime mutations that touch ready backlog, active leases, retry, or task
-gate must rewrite the task lane score through one deterministic rule:
+Scheduler-owned runtime mutations that change task-level eligibility, active
+leases, retry visibility, or task gate must rewrite the task lane score through
+one deterministic rule. Append intake is not a scheduler-owned mutation: it
+writes ready backlog truth and may emit only a best-effort dirty/wakeup hint.
 
 | Step | Condition | Score action |
 | --- | --- | --- |
@@ -742,8 +749,8 @@ priority weights, per-project quotas, and round-robin cursors belong to later
 The mechanism still needs a no-permanent-starvation floor:
 
 - task score is the next eligible time, not a permanent `firstReadyAt`;
-- first append uses the current ready time so earlier-ready tasks compete
-  first;
+- first scheduler discovery of a newly ready task uses the current ready time
+  so earlier-ready tasks compete first;
 - every claim round has a bounded `maxItems`;
 - after each claim round, a task with remaining backlog is scored at the next
   eligible time, such as `now + positiveMatchDelay`, rather than keeping its
@@ -1000,7 +1007,6 @@ Mutation:
 ```text
 messageId = generate logical id
 RPUSH task:{taskId}:ready ReadyItemFrame(messageId, payload)
-ZADD task:score:{laneBucketId} computedTaskScore taskId
 ```
 
 Rules:
@@ -1009,10 +1015,12 @@ Rules:
   needed;
 - no sparse runtime HASH field is created;
 - no item-level score is created;
+- append does not rewrite the task lane score. It may emit only a best-effort
+  dirty/wakeup hint for scheduler discovery;
 - append should not rewrite `TaskRuntimeMeta` except for first-time runtime
   initialization; task policy changes own metadata updates;
-- append must not blindly overwrite a future task-level backoff score with
-  `now`; policy decides whether new raw work may wake a backed-off task;
+- scheduler/recovery owns task-level lane scoring. It decides whether newly
+  appended raw work may wake a backed-off or parked task;
 - submit is at-least-once by default. If Redis commits the append but the
   response is lost, a caller retry without a stable idempotency key may append
   a second logical item;
@@ -1064,7 +1072,7 @@ rewrite task score through the score rewrite rule:
   remove, if no ready or scheduled retry candidate remains
 ```
 
-Claim returns `ClaimedTaskWork` values for dispatch binding. For initial
+Claim returns `ClaimedWorkItem` values for dispatch binding. For initial
 backlog entries, the worker payload comes from the raw LIST entry. For retry
 frames, the worker payload comes from either the ready LIST (`FAST_READY`) or
 the scheduled retry lane (`DUE_TIME`). The scheduled retry lane must not
@@ -1270,7 +1278,9 @@ Required atomic boundaries:
 
 ```text
 append:
-  optional idempotency guard + ready LIST push + task score/meta update
+  optional idempotency/backlog guard + ready LIST push
+  optional first-time TaskRuntimeMeta init or dirty marker
+  no task score rewrite in the append mutation
 
 claim:
   validate task score, runtime gate, runtimeEpoch, and workerReservationToken
@@ -1407,5 +1417,6 @@ A first implementation should prove:
 - pause/block parks the task without rewriting items;
 - terminal/discard writes a runtime fence before physical cleanup, then deletes
   task-local runtime keys without namespace scan;
-- memory and Redis implementations share the same `TaskWorkRuntime` contract
+- memory and Redis implementations share the same `xa-mass-task-runtime` public
+  contract
   behavior.

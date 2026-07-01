@@ -33,8 +33,8 @@ Assignment allocation is engine-internal policy ownership:
 
 Task item dispatch output:
 
-- `TaskWorkRuntime` owns ready membership, claim, active lease, retry timing,
-  and runtime counters before dispatch.
+- `xa-mass-task-runtime` owns accepted ready backlog, claim, active lease,
+  retry/finality, progress, and final-result rows before/after dispatch.
 - Scheduling Plane / engine worker selection owns the concrete worker decision.
   Once selected, `TaskDispatchBinding.workerId()` is the assigned execution
   identity for the item.
@@ -79,8 +79,8 @@ Resource usage and cleanup
   -> AssignmentRefillPolicy
 
 Runtime and result truth
-  -> TaskWorkRuntime
-  -> TaskResultRuntime
+  -> TaskRuntimeServingLane
+  -> xa-mass-task-runtime ports
 ```
 
 Owner-backed worker-control and stage entry surfaces:
@@ -253,7 +253,7 @@ Keep these facts fixed unless the owning global baselines change:
 - kernel truth is the explicit triad:
   - `Task.contract`
   - `Task.intakeStatus`
-  - `TaskWorkRuntime`
+  - `xa-mass-task-runtime`
 - task classification is now explicit-policy driven, not ingress-shaped:
   - `Task.contract`: current public/runtime preset input
   - `Task.workloadClass`: runtime tuning input and read evidence
@@ -286,9 +286,10 @@ Keep these facts fixed unless the owning global baselines change:
   engine API
 - `TaskConcurrencyStrategy` / `LocalTaskConcurrencyCoordinator` owns task/message locking plus coalesced progress
   reconciliation
-- `TaskManager` now reaches `TaskWorkRuntime` directly for enqueue, claim,
-  lease, retry, and result application; do not reintroduce a pass-through
-  bridge unless a real protocol boundary appears
+- `TaskManager` reaches task item runtime through `TaskRuntimeServingLane` and
+  `xa-mass-task-runtime` ports for append, scheduler discovery, claim, lease,
+  retry/finality, final-result reads, and progress; do not reintroduce old
+  infra runtime stores or pass-through bridges
 - `TaskCommandPort` and `TaskQueryPort` are the narrow backing seams for the
   shell-facing command/query services; keep those services off raw
   `TaskManager` growth
@@ -339,14 +340,11 @@ Keep these facts fixed unless the owning global baselines change:
   engine resource-mode truth
 - worker match trace rows include reservation-time load snapshots so canonical
   assignment trace can prove the current process-local capacity guard
-- `TaskWorkRuntime` owns ready work, active lease, retry scheduling, expiry, and
-  queue/backpressure truth
-- `TaskResultRuntime` owns stable-final public result rows, task-local result
-  sequence, staged callback repair anchors, and result-side event/progress
-  barriers
-- batch/bulk redispatch is runtime-driven from `TaskWorkRuntime.readyTaskIds`
-  through starter-owned recovery/pump wiring; task-signal queues are not the
-  only batch redispatch owner anymore
+- `xa-mass-task-runtime` owns ready backlog, active lease, retry/finality,
+  final-result rows, progress, and queue/backpressure truth
+- batch/bulk redispatch is runtime-driven from task-runtime scheduler discovery
+  through starter/engine recovery wiring; task-signal queues are not the only
+  batch redispatch owner anymore
 - bounded work/message compatibility residue is not the hot-path runtime
   owner
 - `TaskQueryService` is the default task aggregate/state query surface; do not
@@ -356,12 +354,13 @@ Keep these facts fixed unless the owning global baselines change:
   diagnostic surface
 - legacy projection helpers, storage projection row types, and `TaskDetailStore`
   have been retired from engine/runtime ownership
-- public result reads must use `TaskResultRuntime`; server-local review rows
+- public result reads must use `xa-mass-task-runtime` final-result rows;
+  server-local review rows
   and retired projection rows must not source `/results`, SDK result query, or
   archive generation
 - runtime ingest must stay correct when server-local review materialization
-  fails or lags; enqueue truth lives in `TaskWorkRuntime`, and review writes
-  are best-effort read-model materialization
+  fails or lags; accepted runtime truth lives in `xa-mass-task-runtime`, and
+  review writes are best-effort read-model materialization
 - assignment diagnostics are append-only bounded residue; matching and dispatch
   mainline should depend on a write-only recorder, not on report/history APIs
 - dispatch submit failure after claim/attempt creation must compensate inline
@@ -410,13 +409,13 @@ Infra ownership:
 - persistence/control-plane storage contracts live in
   `../platform_infra/mass-storage-api`; engine production must not depend on
   that module
-- runtime queue/lease contracts live in `../platform_infra/mass-runtime-api`
+- task runtime queue/lease/result contracts live in `../xa-mass-task-runtime`
 - transport adapter contracts live outside engine; engine must not take a direct
   dependency on `../transport/transport_api`
 - SDK/server bootstrap owns concrete wiring
 - primary SDK/server builders should wire storage implementations into kernel
-  SPI task-shell ports, `TaskWorkRuntime`, `TaskResultRuntime`,
-  `WorkerDeclarationStore`, worker runtime contracts, and `RuleStorage`; server
+  SPI task-shell ports, task-runtime starter handles, `WorkerDeclarationStore`,
+  worker runtime contracts, and `RuleStorage`; server
   review materialization is wired through server-local review stores, not
   engine or shared storage projection contracts
 - starter assembly should treat private worker-runtime `WorkerManager` assembly

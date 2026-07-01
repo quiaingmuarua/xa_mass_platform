@@ -43,6 +43,13 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
     public static ExternalNodeWorkerProcess startWebSocketSample(String workerId,
                                                                  String workerGroupId,
                                                                  URI wsUri) throws Exception {
+        return startWebSocketSample(workerId, workerGroupId, wsUri, Map.of());
+    }
+
+    public static ExternalNodeWorkerProcess startWebSocketSample(String workerId,
+                                                                 String workerGroupId,
+                                                                 URI wsUri,
+                                                                 Map<String, String> extraEnvironment) throws Exception {
         Objects.requireNonNull(workerId, "workerId");
         requireNonBlank(workerGroupId, "workerGroupId");
         Objects.requireNonNull(wsUri, "wsUri");
@@ -52,6 +59,9 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
                 "WS_URL", wsUri.toString()
         ));
         environment.put("MASS_WORKER_GROUP_ID", workerGroupId.trim());
+        if (extraEnvironment != null && !extraEnvironment.isEmpty()) {
+            environment.putAll(new LinkedHashMap<>(extraEnvironment));
+        }
         return startRepoScript("integrations/samples/node/worker-websocket/worker.mjs", environment);
     }
 
@@ -59,6 +69,14 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
                                                               String workerGroupId,
                                                               String host,
                                                               int port) throws Exception {
+        return startSocketSample(workerId, workerGroupId, host, port, Map.of());
+    }
+
+    public static ExternalNodeWorkerProcess startSocketSample(String workerId,
+                                                              String workerGroupId,
+                                                              String host,
+                                                              int port,
+                                                              Map<String, String> extraEnvironment) throws Exception {
         Objects.requireNonNull(workerId, "workerId");
         requireNonBlank(workerGroupId, "workerGroupId");
         Objects.requireNonNull(host, "host");
@@ -69,6 +87,9 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
                 "SOCKET_PORT", String.valueOf(port)
         ));
         environment.put("MASS_WORKER_GROUP_ID", workerGroupId.trim());
+        if (extraEnvironment != null && !extraEnvironment.isEmpty()) {
+            environment.putAll(new LinkedHashMap<>(extraEnvironment));
+        }
         return startRepoScript("integrations/samples/node/worker-socket/worker.mjs", environment);
     }
 
@@ -82,6 +103,14 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
                                                                String workerId,
                                                                String workerKey,
                                                                String workerGroupId) throws Exception {
+        return startPollingSample(baseUrl, workerId, workerKey, workerGroupId, Map.of());
+    }
+
+    public static ExternalNodeWorkerProcess startPollingSample(String baseUrl,
+                                                               String workerId,
+                                                               String workerKey,
+                                                               String workerGroupId,
+                                                               Map<String, String> extraEnvironment) throws Exception {
         Objects.requireNonNull(baseUrl, "baseUrl");
         Objects.requireNonNull(workerId, "workerId");
         Objects.requireNonNull(workerKey, "workerKey");
@@ -97,6 +126,9 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
         ));
         if (workerGroupId != null && !workerGroupId.isBlank()) {
             environment.put("MASS_WORKER_GROUP_ID", workerGroupId);
+        }
+        if (extraEnvironment != null && !extraEnvironment.isEmpty()) {
+            environment.putAll(new LinkedHashMap<>(extraEnvironment));
         }
         return startRepoScript("integrations/samples/node/worker-polling/worker.mjs", environment,
                 () -> postWorkerOffline(baseUrl, workerId, workerKey, sessionToken));
@@ -118,6 +150,28 @@ public final class ExternalNodeWorkerProcess implements AutoCloseable {
         synchronized (capturedOutput) {
             return capturedOutput.toString();
         }
+    }
+
+    public void awaitOutputContaining(String marker, Duration timeout, String failureMessage) throws InterruptedException {
+        Objects.requireNonNull(marker, "marker");
+        Objects.requireNonNull(timeout, "timeout");
+        long deadline = System.nanoTime() + timeout.toNanos();
+        while (System.nanoTime() < deadline) {
+            if (capturedOutput().contains(marker)) {
+                return;
+            }
+            Thread.sleep(50L);
+        }
+        throw new AssertionError(failureMessage + "\nExpected output marker: " + marker
+                + "\nCaptured output:\n" + capturedOutput());
+    }
+
+    public void awaitExit(Duration timeout, String failureMessage) throws InterruptedException {
+        Objects.requireNonNull(timeout, "timeout");
+        if (process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS)) {
+            return;
+        }
+        throw new AssertionError(failureMessage + "\nCaptured output:\n" + capturedOutput());
     }
 
     @Override

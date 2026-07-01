@@ -1,8 +1,6 @@
 package com.xa.mass.starter.builder;
 
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
-import com.xa.mass.runtime.api.TaskWorkRuntime;
-import com.xa.mass.runtime.api.TaskResultRuntime;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.runtime.worker.slot.WorkerScoreBandSlotRuntime;
 import com.xa.mass.storage.api.RuleStorage;
@@ -19,8 +17,6 @@ public class MassEngineBuilder {
 
     private AssignmentDiagnosticRecorder recordService;
     private TaskShellStore taskShellStore;
-    private TaskWorkRuntime taskWorkRuntime;
-    private TaskResultRuntime taskResultRuntime;
     private WorkerDeclarationStore workerDeclarationStore;
     private WorkerRegistry workerRegistry;
     private WorkerScoreBandSlotRuntime workerScoreBandSlotRuntime;
@@ -43,16 +39,6 @@ public class MassEngineBuilder {
 
     public MassEngineBuilder taskShellStore(TaskShellStore taskShellStore) {
         this.taskShellStore = taskShellStore;
-        return this;
-    }
-
-    public MassEngineBuilder taskWorkRuntime(TaskWorkRuntime taskWorkRuntime) {
-        this.taskWorkRuntime = taskWorkRuntime;
-        return this;
-    }
-
-    public MassEngineBuilder taskResultRuntime(TaskResultRuntime taskResultRuntime) {
-        this.taskResultRuntime = taskResultRuntime;
         return this;
     }
 
@@ -95,8 +81,6 @@ public class MassEngineBuilder {
         if (workerThreads != null) config.setWorkerThreads(workerThreads);
         if (taskMessageLeaseSeconds != null) config.setTaskMessageLeaseSeconds(taskMessageLeaseSeconds);
         if (taskShellStore != null) config.setTaskShellStore(taskShellStore);
-        if (taskWorkRuntime != null) config.setTaskWorkRuntime(taskWorkRuntime);
-        if (taskResultRuntime != null) config.setTaskResultRuntime(taskResultRuntime);
         if (workerDeclarationStore != null) config.setWorkerDeclarationStore(workerDeclarationStore);
         if (workerRegistry != null) config.setWorkerRegistry(workerRegistry);
         if (workerScoreBandSlotRuntime != null) config.setWorkerScoreBandSlotRuntime(workerScoreBandSlotRuntime);

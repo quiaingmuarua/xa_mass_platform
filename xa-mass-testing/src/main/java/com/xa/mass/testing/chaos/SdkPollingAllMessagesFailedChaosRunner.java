@@ -1,7 +1,7 @@
 package com.xa.mass.testing.chaos;
 
 import com.xa.mass.sdk.model.TaskShellSnapshot;
-import com.xa.mass.runtime.api.TaskWorkStats;
+import com.xa.mass.sdk.model.TaskWorkStatsSnapshot;
 import com.xa.mass.testing.chaos.support.ChaosTraceArtifacts;
 import com.xa.mass.testing.chaos.support.ChaosReportWriter;
 import com.xa.mass.testing.chaos.support.ChaosRuntimeHarness;
@@ -125,7 +125,7 @@ public final class SdkPollingAllMessagesFailedChaosRunner {
                         config.timeoutSeconds(),
                         "all-messages-failed task must converge to TERMINAL"
                 );
-                TaskWorkStats finalStats = runtime.waitForRuntimeStats(
+                TaskWorkStatsSnapshot finalStats = runtime.waitForRuntimeStats(
                         task.getTaskId(),
                         MESSAGE_COUNT,
                         0,
