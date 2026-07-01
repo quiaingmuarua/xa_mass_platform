@@ -115,6 +115,10 @@ controller/API routes, SDK shapes, architecture guards, owner docs, active
 roadmaps, acceptance criteria, recent commits, and archive state when status may
 be stale.
 
+Identify the target core mechanism before judging progress: the required
+hot-path port, queue, index/key, state machine, or owner store, and whether
+current serving code actually goes through it instead of an old/fallback path.
+
 Report evidence as:
 
 ```text
@@ -186,6 +190,11 @@ Boundary roadmaps usually converge in this order:
 6. Remove residue, stale docs, compatibility paths, old vocabulary, strategy
    variants, and corner cases after the mainline path is closed.
 
+For runtime/serving migrations, use the sharper sequence: pre-converge
+interfaces and delete/hide wrong exposure points without changing runtime truth;
+implement the new mechanism; cut serving traffic over; close old paths and
+key/DTO/test/vocabulary residue; then add stable negative guards.
+
 Do not start by deleting dependencies before moving callers. No slice should
 require a later slice to restore compilation or runtime correctness.
 
@@ -197,6 +206,10 @@ require a later slice to restore compilation or runtime correctness.
   cross-boundary proof only when risk crosses a real boundary.
 - Treat green CI as support evidence, not proof, when it preserves old behavior
   or lacks a focused invariant.
+- For each proof, ask the anti-proof question: would this still pass if the old
+  or wrong mechanism handled the behavior? If yes, add a mechanism-specific
+  assertion, negative guard, or old-path disablement before calling it owner
+  proof.
 - Guard stable owner invariants and forbidden regressions, not temporary class
   names, lifecycle states, or provisional implementation shape.
 - Useful guards include forbidden imports, dependency-scope checks,
