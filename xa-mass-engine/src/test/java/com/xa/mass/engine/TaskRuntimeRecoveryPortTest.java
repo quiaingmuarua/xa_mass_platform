@@ -4,9 +4,7 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.policy.ContractAwareTaskTerminalPolicy;
-import com.xa.mass.task.runtime.AppendAdmissionPolicy;
-import com.xa.mass.task.runtime.AppendBatchCommand;
-import com.xa.mass.task.runtime.AppendItemInput;
+import com.xa.mass.task.runtime.BacklogFrameV1;
 import com.xa.mass.task.runtime.RuntimeEpoch;
 import com.xa.mass.task.runtime.memory.InMemoryTaskRuntime;
 import org.junit.jupiter.api.AfterEach;
@@ -96,7 +94,6 @@ class TaskRuntimeRecoveryPortTest {
                     runtime,
                     runtime,
                     runtime,
-                    runtime,
                     queries,
                     commands,
                     events,
@@ -117,7 +114,8 @@ class TaskRuntimeRecoveryPortTest {
         }
 
         private void claimReadyWork(Task task) {
-            servingLane.claimReady(TaskRuntimeClaimTestSupport.claimCommand(
+            TaskRuntimeClaimTestSupport.claim(
+                    servingLane,
                     task.getTid(),
                     "group-1",
                     "worker-1",
@@ -125,15 +123,14 @@ class TaskRuntimeRecoveryPortTest {
                     "selection-1",
                     1L,
                     2,
-                    manager.getWorkLeaseSeconds()));
+                    manager.getWorkLeaseSeconds());
         }
 
         private void appendRuntimeResidueWithoutTaskShell(String taskId) {
-            runtime.appendBatch(new AppendBatchCommand(
+            runtime.appendBacklog(
                     taskId,
-                    List.of(new AppendItemInput("message-missing-shell", Map.of("value", "orphan"))),
-                    new AppendAdmissionPolicy(10, AppendAdmissionPolicy.UNLIMITED_READY_BACKLOG),
-                    RuntimeEpoch.of(taskId, 1L)));
+                    List.of(new BacklogFrameV1("message-missing-shell", "", Map.of("value", "orphan"), null)),
+                    10);
         }
 
         private void close() {

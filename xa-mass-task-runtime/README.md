@@ -3,9 +3,9 @@
 Status: semantic task runtime owner module.
 
 This module owns task item/result convergence contracts. It defines public
-ports, commands, outcomes, and contract-test surfaces for accepted append,
-task-level scheduler discovery, claim, result finality, active-lease repair,
-progress snapshots, discard, and bounded final-result reads.
+ports, runtime-owned models, outcomes, and contract-test surfaces for accepted
+backlog append, task score visibility, claim, result finality, active-lease
+repair, progress snapshots, discard, and task-local final-result reads.
 
 This module must not own physical storage, Redis keys, Lua scripts, memory-map
 shape, Spring beans, process threads, engine shell policy, worker-runtime
@@ -18,7 +18,7 @@ Physical implementations live behind these ports in infra modules such as
 
 ## First Boundary
 
-Append writes accepted ready backlog truth. Scheduler discovery is task-level
+Append writes accepted backlog truth. Scheduler discovery is task-level
 and weakly consistent. Claim is the first item ownership transition and must be
 atomic in physical implementations.
 
@@ -30,14 +30,11 @@ repair through this owner, or delegate old result/repair callers to this owner.
 
 | Port | Runtime owner action | Old path targeted for closure |
 | --- | --- | --- |
-| `TaskRuntimeAppendPort` | accept or reject a batch, then write accepted ready backlog truth | `TaskCommandPort.appendTaskItems*`, deleted append-side runtime enqueue path |
-| `TaskRuntimeSchedulerPort` | accept narrow task eligibility snapshots and discover task-level runnable candidates without per-item lane entries | runtime-ready recovery and dispatch-wakeup reads |
-| `TaskRuntimeClaimPort` | consume worker reservation evidence and atomically move ready work to active lease | `TaskAssignmentRuntimePort.claimReady` |
-| `TaskRuntimeResultPort` | apply worker/dispatch/timeout result facts and emit message-finality outcomes | `TaskResultIngestPort`, dispatch-failure compensation, lease expiry finality |
-| `TaskRuntimeRepairPort` | discover active leases for bounded timeout repair and owner-local release evidence | `TaskLeaseMaintenancePort.pollExpiredLeases`, `getActiveLeases`, active-work worker queries |
-| `TaskRuntimeProgressPort` | expose narrow aggregate counts for engine progress and terminal policy without leaking old stats DTOs | `TaskStateRuntimePort.getTaskWorkStats` |
-| `TaskRuntimeReadPort` | read bounded final result rows retained by task runtime | deleted old result-runtime window reads |
-| `TaskRuntimeDiscardPort` | discard ready, active, and retained final-result runtime state after shell terminal/delete policy | shell delete/cancel/terminate runtime cleanup |
+| `TaskRuntimeWorkPort` | append accepted backlog frames and atomically claim backlog into active runtime state | old append/claim command buckets and ready/active vocabulary |
+| `TaskRuntimeScorePort` | own task-local runtime meta and task score visibility, including score candidate discovery/point-read | old scheduler discovery, dirty hints, eligibility snapshots, and caller-built score fields |
+| `TaskRuntimeConvergencePort` | own result apply, retry promotion, lease repair, close, and discard convergence | old result, repair, and discard command buckets |
+| `TaskRuntimeReadPort` | expose task-local point reads for final result, result correlation, progress, and active work by task | old mixed result read/write port, worker reverse active reads, and progress-only port |
+| `TaskRuntimeResultWindowReadModel` | non-core ordered final-result read window while server/engine view callers are converged | old ordered final-result projection; not core score-band runtime truth |
 
 ## State Rules
 
@@ -45,6 +42,12 @@ repair through this owner, or delegate old result/repair callers to this owner.
   API idempotency and duplicate-message filtering are deferred.
 - Append does not synchronously rewrite scheduler lane score. Scheduler
   discovery and owner-local recovery keep accepted backlog discoverable.
+- Dispatch discovery reads only dispatch-visible task scores. Active-only tasks
+  may remain maintenance-visible for repair/close, but they must not be returned
+  as dispatch candidates.
+- Claim must fence the score fact it consumes: lane, runtime gate, epoch,
+  fence token, and observed score must still match before physical runtimes move
+  backlog into active runtime state.
 - Worker reservation evidence must exist before claim can create an active
   lease; task-runtime must not create unbound active leases.
 - `ClaimLeasePolicy.maxItems` is the total item claim limit. Reservations are

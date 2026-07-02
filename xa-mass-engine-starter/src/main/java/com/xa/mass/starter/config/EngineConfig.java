@@ -767,16 +767,14 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
             if (taskEventService == null) {
                 taskEventService = new TaskEventService(manager);
             }
-            TaskRuntimePortSet taskRuntime = ensureTaskRuntimeHandle().runtime();
+            var taskRuntimeHandle = ensureTaskRuntimeHandle();
+            TaskRuntimePortSet taskRuntime = taskRuntimeHandle.runtime();
             taskRuntimeServingLane = new TaskRuntimeServingLane(
                     taskRuntime,
                     taskRuntime,
                     taskRuntime,
                     taskRuntime,
-                    taskRuntime,
-                    taskRuntime,
-                    taskRuntime,
-                    taskRuntime,
+                    taskRuntimeHandle.resultWindowReadModel(),
                     taskQueryService,
                     taskCommandService,
                     taskEventService,

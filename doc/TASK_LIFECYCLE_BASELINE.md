@@ -142,10 +142,10 @@ retry/compensation remains engine-owned.
 8. The logical work-projection status model is a bounded compatibility contract, not a complete transport-event history. Transport-specific delivery phases belong in trace/event data or a dedicated transport model.
 9. The current runtime concurrency model is owned by worker scheduling facts, runtime capacity/reservation state, active worker locks where applicable, and work-runtime leases. `WorkerContext` must not be used as the engine scheduling or resource-lifecycle truth.
 10. Policy changes must preserve ownership boundaries across matching, assignment, attempt, release, refill, intake, control, and terminal decisions.
-11. `xa-mass-task-runtime` is the current hot-path owner for accepted ready backlog, active leases, retry/finality, progress, and runtime discard truth. Its memory and Redis implementations live in `platform_infra/mass-task-runtime-memory` and `platform_infra/mass-task-runtime-redis`.
+11. `xa-mass-task-runtime` is the current hot-path owner for accepted backlog, score visibility, active leases, retry/finality, progress, and runtime discard truth. Its memory and Redis implementations live in `platform_infra/mass-task-runtime-memory` and `platform_infra/mass-task-runtime-redis`.
 12. `xa-mass-task-runtime` `TaskRuntimeReadPort` is the runtime-owned public result read truth for stable-final result rows and task-local result sequence. Server review/export rows are lagging materialized views and must not drive lifecycle decisions.
 13. `Task.workloadClass` is the explicit task-level runtime optimization input; current engine truth is `INTERACTIVE` or `BULK`, and assignment signal routing consumes resolved task scheduling policy rather than free-form `sharedConfig` semantics.
-14. Result callbacks follow the result-side lifecycle mainline: runtime apply truth comes from `xa-mass-task-runtime` `TaskRuntimeResultPort`; stable-final public result rows are committed into task-runtime final-result rows; server review reports are emitted best-effort after runtime acceptance and are not the result commit point or a public result read source.
+14. Result callbacks follow the result-side lifecycle mainline: runtime apply truth comes from `xa-mass-task-runtime` `TaskRuntimeConvergencePort#applyResult(RuntimeResultFact)`; stable-final public result rows are committed into task-runtime final-result rows; server review reports are emitted best-effort after runtime acceptance and are not the result commit point or a public result read source.
 15. `eventCode` is handler/capability identity. It validates that the selected WorkerGroup supports the item's handler and tells the worker which local handler to invoke. It is not a worker selector.
 16. The architecture boundary is: task scheduling policy decides competition admission/cadence/priority/fairness/budget; worker scheduling policy decides resource-universe and pool constraints; RuntimeWorkerSelection chooses a concrete worker from live evidence/admission. Project/workload binding selects and configures allowed/default policies, task dispatch intent narrows selected policies/route/target constraints, WorkerGroup capability constrains project/event eligibility, adapter owns only final-hop connectivity, transport delivers only to `selectedWorkerId`, and item decides only the event handler plus payload.
 
@@ -216,7 +216,7 @@ callback / result ingress queue
   -> optional envelope identity gate
   -> engine result ingest port
   -> TaskRuntimeServingLane
-  -> TaskRuntimeResultPort.applyResult(...)
+  -> TaskRuntimeConvergencePort.applyResult(RuntimeResultFact)
   -> runtime finality outcome interpretation
   -> trace
   -> task-runtime final-result row when final
@@ -233,8 +233,8 @@ Owner split:
 | transport ingress carrier | `ResultIngressEntry(partitionKey=<resultCorrelationRef>, message)` | opaque payload, partition key, diagnostics, and creation time; transport queues and relays it without task-shaped validation |
 | starter result callback projection | `TaskResultCallbackCodec`, `TaskResultCallbackCommand` | decodes opaque ingress payload/correlation and carries task result callback facts into engine-owned validation |
 | engine ingest port | `TaskResultIngestFacade`, `TaskResultIngestPort` | narrow transport-to-engine callable surface |
-| runtime apply truth | `TaskRuntimeResultPort.applyResult(...)` | lease-valid apply, retry budget consumption, finality outcome, progress, and final-result idempotency evidence |
-| runtime result read truth | `TaskRuntimeReadPort` | stable-final visible rows and task-local result sequence |
+| runtime apply truth | `TaskRuntimeConvergencePort.applyResult(RuntimeResultFact)` | lease-valid apply, retry budget consumption, finality outcome, progress, and final-result idempotency evidence |
+| runtime result read truth | `TaskRuntimeReadPort` plus non-core result-window read surface | stable-final point rows and bounded read-model windows that must not redefine runtime truth |
 | engine result orchestration | `TaskRuntimeServingLane` plus `TaskManager` result ingress | terminal/duplicate/late classification handoff, runtime outcome interpretation, trace, review report emission, and convergence trigger |
 | server review materialization | `TaskReviewReportQueue`, `TaskReviewMaterializer`, `TaskReviewStore` | bounded UI/debug/export read view; not callback acceptance, retry/finality, public result read, or runtime truth |
 

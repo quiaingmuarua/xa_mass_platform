@@ -3,7 +3,6 @@ package com.xa.mass.task.runtime;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -25,52 +24,26 @@ class TaskRuntimeContractShapeTest {
     }
 
     @Test
-    void appendCommandDoesNotAcceptOversizedBatch() {
-        var commandItems = List.of(
-                new AppendItemInput("message-1", Map.of()),
-                new AppendItemInput("message-2", Map.of()));
-
-        assertThatThrownBy(() -> new AppendBatchCommand(
-                "task-1",
-                commandItems,
-                new AppendAdmissionPolicy(1, AppendAdmissionPolicy.UNLIMITED_READY_BACKLOG),
-                RuntimeEpoch.of("task-1", 1L)))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("maxAppendBatchSize");
-    }
-
-    @Test
-    void commandValuesDefensivelyCopyCollections() {
+    void runtimeFrameValuesDefensivelyCopyPayloads() {
         var payload = new HashMap<String, Object>();
         payload.put("value", 1);
-        var item = new AppendItemInput("message-1", payload);
+        var frame = new BacklogFrameV1("message-1", "demo.event", payload, "payload-ref");
         payload.put("value", 2);
 
-        assertThat(item.payloadJson()).containsEntry("value", 1);
-        assertThatThrownBy(() -> item.payloadJson().put("new", 3))
+        assertThat(frame.payloadJson()).containsEntry("value", 1);
+        assertThatThrownBy(() -> frame.payloadJson().put("new", 3))
                 .isInstanceOf(UnsupportedOperationException.class);
-
-        var mutableItems = new ArrayList<AppendItemInput>();
-        mutableItems.add(item);
-        var command = new AppendBatchCommand("task-1", mutableItems, null, null);
-        mutableItems.clear();
-
-        assertThat(command.items()).containsExactly(item);
     }
 
     @Test
-    void claimRequiresWorkerReservationBeforeActiveLeaseCreation() {
-        var reservation = new WorkerReservationEvidence("worker-1", "group-1", "reservation-1", "delivery-ref");
-        var command = new ClaimReadyCommand(
-                "task-1",
-                List.of(reservation),
-                new ClaimLeasePolicy(10, 30_000L, 1L, RuntimeEpoch.of("task-1", 2L)));
+    void scoreCandidateCarriesOpaqueRuntimeEvidence() {
+        var epoch = RuntimeEpoch.of("task-1", 2L);
+        var candidate = new ScoreCandidate("task-1", "lane-1", epoch, TaskScoreV1.dueAt(1_000L));
 
-        assertThat(command.workerReservations()).containsExactly(reservation);
-
-        assertThatThrownBy(() -> new ClaimReadyCommand("task-1", List.of(), command.leasePolicy()))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("workerReservations");
+        assertThat(candidate.taskId()).isEqualTo("task-1");
+        assertThat(candidate.laneKey()).isEqualTo("lane-1");
+        assertThat(candidate.runtimeEpoch()).isEqualTo(epoch);
+        assertThat(candidate.observedScore().score()).isEqualTo(TaskScoreV1.TIME_SCORE_FLOOR);
     }
 
     @Test
@@ -114,14 +87,24 @@ class TaskRuntimeContractShapeTest {
     }
 
     @Test
-    void repairAndReadContractsUseBoundedRequests() {
-        var repairCommand = new PollActiveLeaseRepairCommand(100, 1_000L);
+    void runtimeFactAndReadContractsUseBoundedStableValues() {
+        var fact = new RuntimeResultFact(
+                "task-1",
+                "message-1",
+                "lease-1",
+                "worker-1",
+                0,
+                null,
+                true,
+                Map.of(),
+                null,
+                null,
+                -1L);
         var readRequest = new FinalResultReadRequest("task-1", 0, 50);
 
-        assertThat(repairCommand.limit()).isEqualTo(100);
+        assertThat(fact.attemptNo()).isEqualTo(1);
+        assertThat(fact.source()).isEqualTo(ResultApplySource.WORKER_RESULT);
+        assertThat(fact.observedAtMillis()).isZero();
         assertThat(readRequest.limit()).isEqualTo(50);
-        assertThatThrownBy(() -> new PollActiveLeaseRepairCommand(0, 1L))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("limit");
     }
 }

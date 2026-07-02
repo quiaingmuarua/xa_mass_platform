@@ -10,41 +10,36 @@ import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.policy.ContractAwareTaskTerminalPolicy;
 import com.xa.mass.engine.policy.TaskTerminalPolicy;
 import com.xa.mass.engine.runtime.TaskRuntimePolicySnapshotMapper;
-import com.xa.mass.engine.runtime.TaskRuntimeResultCommandMapper;
 import com.xa.mass.engine.runtime.TaskRuntimeResultDecision;
 import com.xa.mass.engine.runtime.TaskRuntimeResultDecisionMapper;
+import com.xa.mass.engine.runtime.TaskRuntimeResultFactMapper;
 import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy;
 import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolver;
 import com.xa.mass.engine.strategy.DefaultSchedulingPlaneResolver;
 import com.xa.mass.task.runtime.ActiveLeaseRepairCandidate;
-import com.xa.mass.task.runtime.ActiveTaskWorkQuery;
-import com.xa.mass.task.runtime.AppendBatchCommand;
 import com.xa.mass.task.runtime.AppendBatchStatus;
-import com.xa.mass.task.runtime.ClaimReadyCommand;
+import com.xa.mass.task.runtime.BacklogFrameV1;
+import com.xa.mass.task.runtime.ClaimLeasePolicy;
 import com.xa.mass.task.runtime.ClaimReadyOutcome;
-import com.xa.mass.task.runtime.DiscardTaskRuntimeCommand;
-import com.xa.mass.task.runtime.DiscardTaskWorkCommand;
 import com.xa.mass.task.runtime.FinalResultReadRequest;
 import com.xa.mass.task.runtime.FinalResultRow;
 import com.xa.mass.task.runtime.FinalResultWindow;
 import com.xa.mass.task.runtime.MessageFinalityStatus;
-import com.xa.mass.task.runtime.ResultApplyCommand;
 import com.xa.mass.task.runtime.ResultApplySource;
 import com.xa.mass.task.runtime.ResultCorrelationSnapshot;
+import com.xa.mass.task.runtime.RuntimeResultFact;
 import com.xa.mass.task.runtime.RuntimeEpoch;
 import com.xa.mass.task.runtime.RuntimeGate;
-import com.xa.mass.task.runtime.SchedulerDiscoveryCommand;
-import com.xa.mass.task.runtime.SchedulerEligibilityPolicy;
-import com.xa.mass.task.runtime.TaskRuntimeAppendPort;
-import com.xa.mass.task.runtime.TaskRuntimeClaimPort;
-import com.xa.mass.task.runtime.TaskRuntimeDiscardPort;
-import com.xa.mass.task.runtime.TaskRuntimeProgressPort;
+import com.xa.mass.task.runtime.TaskRuntimeConvergencePort;
 import com.xa.mass.task.runtime.TaskRuntimeReadPort;
-import com.xa.mass.task.runtime.TaskRuntimeRepairPort;
-import com.xa.mass.task.runtime.TaskRuntimeResultPort;
-import com.xa.mass.task.runtime.TaskRuntimeSchedulerPort;
+import com.xa.mass.task.runtime.TaskRuntimeMetaV1;
 import com.xa.mass.task.runtime.TaskRuntimeProgressSnapshot;
-import com.xa.mass.task.runtime.UpdateSchedulerEligibilityCommand;
+import com.xa.mass.task.runtime.TaskRuntimeScorePort;
+import com.xa.mass.task.runtime.TaskRuntimeWorkPort;
+import com.xa.mass.task.runtime.TaskRuntimeResultPolicyV1;
+import com.xa.mass.task.runtime.TaskRuntimeResultWindowReadModel;
+import com.xa.mass.task.runtime.TaskScoreV1;
+import com.xa.mass.task.runtime.WorkerReservationEvidence;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -53,6 +48,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.LongSupplier;
 
 /**
  * Engine-facing serving lane for the new task-runtime owner.
@@ -73,14 +69,11 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
     private static final long DEFAULT_FINAL_RESULT_RETENTION_MILLIS =
             Long.getLong("xa.mass.taskRuntime.finalResultRetentionMillis", 86_400_000L);
 
-    private final TaskRuntimeAppendPort appendPort;
-    private final TaskRuntimeSchedulerPort schedulerPort;
-    private final TaskRuntimeClaimPort claimPort;
-    private final TaskRuntimeResultPort resultPort;
-    private final TaskRuntimeRepairPort repairPort;
-    private final TaskRuntimeProgressPort progressPort;
+    private final TaskRuntimeWorkPort workPort;
+    private final TaskRuntimeScorePort scorePort;
+    private final TaskRuntimeConvergencePort convergencePort;
     private final TaskRuntimeReadPort readPort;
-    private final TaskRuntimeDiscardPort discardPort;
+    private final TaskRuntimeResultWindowReadModel resultWindowReadModel;
     private final TaskQueryService taskQueries;
     private final TaskCommandService taskCommands;
     private final TaskEventService taskEvents;
@@ -91,27 +84,24 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
     private final long workLeaseSeconds;
     private final int maxAppendBatchSize;
     private final long finalResultRetentionMillis;
+    private final LongSupplier clock;
 
-    public TaskRuntimeServingLane(TaskRuntimeAppendPort appendPort,
-                                  TaskRuntimeSchedulerPort schedulerPort,
-                                  TaskRuntimeClaimPort claimPort,
-                                  TaskRuntimeResultPort resultPort,
-                                  TaskRuntimeRepairPort repairPort,
-                                  TaskRuntimeProgressPort progressPort,
+    public TaskRuntimeServingLane(TaskRuntimeWorkPort workPort,
+                                  TaskRuntimeScorePort scorePort,
+                                  TaskRuntimeConvergencePort convergencePort,
+                                  TaskRuntimeReadPort readPort,
+                                  TaskRuntimeResultWindowReadModel resultWindowReadModel,
                                   TaskQueryService taskQueries,
                                   TaskCommandService taskCommands,
                                   TaskEventService taskEvents,
                                   long workLeaseSeconds,
                                   int maxAppendBatchSize,
                                   long finalResultRetentionMillis) {
-        this(appendPort,
-                schedulerPort,
-                claimPort,
-                resultPort,
-                repairPort,
-                progressPort,
-                requireReadPort(progressPort),
-                requireDiscardPort(progressPort),
+        this(workPort,
+                scorePort,
+                convergencePort,
+                readPort,
+                resultWindowReadModel,
                 taskQueries,
                 taskCommands,
                 taskEvents,
@@ -120,17 +110,15 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
                 TraceEventLogger.noop(),
                 workLeaseSeconds,
                 maxAppendBatchSize,
-                finalResultRetentionMillis);
+                finalResultRetentionMillis,
+                System::currentTimeMillis);
     }
 
-    public TaskRuntimeServingLane(TaskRuntimeAppendPort appendPort,
-                                  TaskRuntimeSchedulerPort schedulerPort,
-                                  TaskRuntimeClaimPort claimPort,
-                                  TaskRuntimeResultPort resultPort,
-                                  TaskRuntimeRepairPort repairPort,
-                                  TaskRuntimeProgressPort progressPort,
+    public TaskRuntimeServingLane(TaskRuntimeWorkPort workPort,
+                                  TaskRuntimeScorePort scorePort,
+                                  TaskRuntimeConvergencePort convergencePort,
                                   TaskRuntimeReadPort readPort,
-                                  TaskRuntimeDiscardPort discardPort,
+                                  TaskRuntimeResultWindowReadModel resultWindowReadModel,
                                   TaskQueryService taskQueries,
                                   TaskCommandService taskCommands,
                                   TaskEventService taskEvents,
@@ -140,14 +128,43 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
                                   long workLeaseSeconds,
                                   int maxAppendBatchSize,
                                   long finalResultRetentionMillis) {
-        this.appendPort = Objects.requireNonNull(appendPort, "appendPort");
-        this.schedulerPort = Objects.requireNonNull(schedulerPort, "schedulerPort");
-        this.claimPort = Objects.requireNonNull(claimPort, "claimPort");
-        this.resultPort = Objects.requireNonNull(resultPort, "resultPort");
-        this.repairPort = Objects.requireNonNull(repairPort, "repairPort");
-        this.progressPort = Objects.requireNonNull(progressPort, "progressPort");
+        this(workPort,
+                scorePort,
+                convergencePort,
+                readPort,
+                resultWindowReadModel,
+                taskQueries,
+                taskCommands,
+                taskEvents,
+                terminalPolicy,
+                schedulingPlaneResolver,
+                traceEventLogger,
+                workLeaseSeconds,
+                maxAppendBatchSize,
+                finalResultRetentionMillis,
+                System::currentTimeMillis);
+    }
+
+    public TaskRuntimeServingLane(TaskRuntimeWorkPort workPort,
+                                  TaskRuntimeScorePort scorePort,
+                                  TaskRuntimeConvergencePort convergencePort,
+                                  TaskRuntimeReadPort readPort,
+                                  TaskRuntimeResultWindowReadModel resultWindowReadModel,
+                                  TaskQueryService taskQueries,
+                                  TaskCommandService taskCommands,
+                                  TaskEventService taskEvents,
+                                  TaskTerminalPolicy terminalPolicy,
+                                  SchedulingPlaneResolver schedulingPlaneResolver,
+                                  TraceEventLogger traceEventLogger,
+                                  long workLeaseSeconds,
+                                  int maxAppendBatchSize,
+                                  long finalResultRetentionMillis,
+                                  LongSupplier clock) {
+        this.workPort = Objects.requireNonNull(workPort, "workPort");
+        this.scorePort = Objects.requireNonNull(scorePort, "scorePort");
+        this.convergencePort = Objects.requireNonNull(convergencePort, "convergencePort");
         this.readPort = Objects.requireNonNull(readPort, "readPort");
-        this.discardPort = Objects.requireNonNull(discardPort, "discardPort");
+        this.resultWindowReadModel = Objects.requireNonNull(resultWindowReadModel, "resultWindowReadModel");
         this.taskQueries = Objects.requireNonNull(taskQueries, "taskQueries");
         this.taskCommands = Objects.requireNonNull(taskCommands, "taskCommands");
         this.taskEvents = Objects.requireNonNull(taskEvents, "taskEvents");
@@ -160,6 +177,7 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
         this.maxAppendBatchSize = Math.max(1, maxAppendBatchSize);
         this.finalResultRetentionMillis = Math.max(0L,
                 finalResultRetentionMillis > 0L ? finalResultRetentionMillis : DEFAULT_FINAL_RESULT_RETENTION_MILLIS);
+        this.clock = clock == null ? System::currentTimeMillis : clock;
         this.stateResolver = new TaskStateResolver(
                 this,
                 this.taskCommands::updateTask,
@@ -174,13 +192,14 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
         if (ingressItems == null || ingressItems.isEmpty()) {
             throw new IllegalArgumentException("ingressItems must be a non-empty list");
         }
-        var policy = taskPolicy(task);
         var epoch = epoch(task.getTid());
-        var outcome = appendPort.appendBatch(new AppendBatchCommand(
+        var frames = TaskRuntimeAppendItemMapper.toAppendItems(ingressItems).stream()
+                .map(BacklogFrameV1::from)
+                .toList();
+        var outcome = workPort.appendBacklog(
                 task.getTid(),
-                TaskRuntimeAppendItemMapper.toAppendItems(ingressItems),
-                TaskRuntimePolicySnapshotMapper.toAppendAdmissionPolicy(policy, maxAppendBatchSize),
-                epoch));
+                frames,
+                maxAppendBatchSize);
         if (outcome.status() != AppendBatchStatus.ALL_ACCEPTED) {
             throw new IllegalStateException("task-runtime append failed: status="
                     + outcome.status() + ", reason=" + outcome.reason());
@@ -205,13 +224,13 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
 
     @Override
     public int countDispatchReadyWork(String taskId) {
-        long readyCount = progressPort.progressSnapshot(taskId).readyCount();
+        long readyCount = readPort.progressSnapshot(taskId).readyCount();
         return readyCount > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) readyCount;
     }
 
     @Override
     public int countActiveDispatchWorkers(String taskId) {
-        return (int) repairPort.getActiveWorkForTask(new ActiveTaskWorkQuery(taskId, ACTIVE_QUERY_LIMIT))
+        return (int) readPort.activeWorkForTask(taskId, ACTIVE_QUERY_LIMIT)
                 .activeItems()
                 .stream()
                 .map(ActiveLeaseRepairCandidate::workerId)
@@ -230,15 +249,27 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
     }
 
     @Override
-    public ClaimReadyOutcome claimReady(ClaimReadyCommand command) {
-        if (command == null) {
-            throw new IllegalArgumentException("claim command is required");
+    public ClaimReadyOutcome claimReady(String taskId,
+                                        List<WorkerReservationEvidence> workerReservations,
+                                        ClaimLeasePolicy leasePolicy) {
+        if (leasePolicy == null) {
+            throw new IllegalArgumentException("leasePolicy is required");
         }
-        Task task = taskQueries.getTask(command.taskId());
+        Task task = taskQueries.getTask(taskId);
         if (task == null) {
-            return new ClaimReadyOutcome(command.taskId(), List.of(), "task shell not found");
+            return new ClaimReadyOutcome(taskId, List.of(), "task shell not found");
         }
-        return claimPort.claimReady(command);
+        var candidate = scorePort.scoreCandidate(taskId, "default")
+                .orElse(null);
+        if (candidate == null) {
+            return new ClaimReadyOutcome(taskId, List.of(), "task is not score-visible");
+        }
+        return workPort.claimBacklog(
+                candidate,
+                workerReservations,
+                leasePolicy.maxItems(),
+                leasePolicy.leaseMillis(),
+                nowMillis());
     }
 
     @Override
@@ -250,14 +281,11 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
         }
         boolean accepted = true;
         for (TaskDispatchBinding binding : dispatchBindings) {
-            var outcome = applyResult(task, TaskRuntimeResultCommandMapper.fromDispatchSubmitFailure(
+            var outcome = applyResult(task, TaskRuntimeResultFactMapper.fromDispatchSubmitFailure(
                     binding,
-                    taskPolicy(task),
                     epoch(binding.taskId()),
-                    System.currentTimeMillis(),
-                    detail,
-                    1L,
-                    finalResultRetentionMillis));
+                    nowMillis(),
+                    detail));
             accepted &= outcome.accepted();
         }
         return accepted;
@@ -270,12 +298,12 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
         }
         boolean accepted = true;
         for (TaskDispatchDeliveryFailure failure : failures) {
-            ResultCorrelationSnapshot correlation = resultPort.getResultCorrelation(failure.taskId(), failure.messageId());
+            ResultCorrelationSnapshot correlation = readPort.resultCorrelation(failure.taskId(), failure.messageId());
             if (!correlation.present()) {
                 accepted = false;
                 continue;
             }
-            var outcome = applyResult(task, new ResultApplyCommand(
+            var outcome = applyResult(task, new RuntimeResultFact(
                     failure.taskId(),
                     failure.messageId(),
                     correlation.leaseToken(),
@@ -285,10 +313,8 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
                     false,
                     Map.of(),
                     failure.detail(),
-                    TaskRuntimePolicySnapshotMapper.toRetryPolicySnapshot(taskPolicy(task), -1, 1L),
-                    TaskRuntimePolicySnapshotMapper.toResultFinalityPolicySnapshot(taskPolicy(task), finalResultRetentionMillis),
                     epoch(failure.taskId()),
-                    System.currentTimeMillis()));
+                    nowMillis()));
             accepted &= outcome.accepted();
         }
         return accepted;
@@ -296,15 +322,17 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
 
     @Override
     public List<ActiveLeaseRepairCandidate> getActiveLeaseCandidates(String taskId) {
-        return List.copyOf(repairPort.getActiveWorkForTask(new ActiveTaskWorkQuery(taskId, ACTIVE_QUERY_LIMIT))
+        return List.copyOf(readPort.activeWorkForTask(taskId, ACTIVE_QUERY_LIMIT)
                 .activeItems());
     }
 
     @Override
     public List<ActiveLeaseRepairCandidate> pollExpiredLeaseCandidates(int limit, Instant now) {
-        return List.copyOf(repairPort.pollExpiredActiveLeases(new com.xa.mass.task.runtime.PollActiveLeaseRepairCommand(
-                        limit,
-                        now == null ? System.currentTimeMillis() : now.toEpochMilli()))
+        return List.copyOf(convergencePort.scanExpiredLeases(
+                        "default",
+                        now == null ? nowMillis() : now.toEpochMilli(),
+                        Math.max(1, limit),
+                        Math.max(1, limit))
                 .candidates());
     }
 
@@ -321,10 +349,10 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
         if (workerId == null || workerId.isBlank()) {
             return false;
         }
-        return repairPort.getActiveWorkForWorker(new com.xa.mass.task.runtime.ActiveWorkQuery(workerId, ACTIVE_QUERY_LIMIT))
+        return readPort.activeWorkForTask(taskId, ACTIVE_QUERY_LIMIT)
                 .activeItems()
                 .stream()
-                .anyMatch(candidate -> taskId.equals(candidate.taskId()));
+                .anyMatch(candidate -> workerId.equals(candidate.workerId()));
     }
 
     @Override
@@ -334,14 +362,11 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
             return false;
         }
         Task task = taskQueries.getTask(taskId);
-        var outcome = applyResult(task, TaskRuntimeResultCommandMapper.fromLeaseTimeout(
+        var outcome = applyResult(task, TaskRuntimeResultFactMapper.fromLeaseTimeout(
                 candidate,
-                taskPolicy(task),
                 epoch(taskId),
-                System.currentTimeMillis(),
-                "lease expired",
-                1L,
-                finalResultRetentionMillis));
+                nowMillis(),
+                "lease expired"));
         return outcome.accepted();
     }
 
@@ -363,9 +388,7 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
 
     @Override
     public List<Task> getRuntimeDispatchableTasks(int limit) {
-        var candidates = schedulerPort.discoverEligibleTasks(new SchedulerDiscoveryCommand(
-                Math.max(1, limit),
-                System.currentTimeMillis()));
+        var candidates = scorePort.discoverSchedulable("default", nowMillis(), Math.max(1, limit));
         List<Task> tasks = new ArrayList<>();
         for (var candidate : candidates.candidates()) {
             Task task = taskQueries.getTask(candidate.taskId());
@@ -384,7 +407,7 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
                                     String errorCode,
                                     Map<String, Object> output) {
         Task task = taskQueries.getTask(taskId);
-        var correlation = resultPort.getResultCorrelation(taskId, messageId);
+        var correlation = readPort.resultCorrelation(taskId, messageId);
         if (!correlation.present()) {
             Optional<FinalResultRow> finalResult = getVisibleTaskResultByMessageId(taskId, messageId);
             finalResult.ifPresent(row -> publishDuplicateCallbackTrace(row, "already final"));
@@ -394,7 +417,7 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
         if (errorCode != null && !errorCode.isBlank()) {
             payload.putIfAbsent("errorCode", errorCode.trim());
         }
-        var outcome = applyResult(task, new ResultApplyCommand(
+        var outcome = applyResult(task, new RuntimeResultFact(
                 taskId,
                 messageId,
                 correlation.leaseToken(),
@@ -404,16 +427,14 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
                 success,
                 payload,
                 detail,
-                TaskRuntimePolicySnapshotMapper.toRetryPolicySnapshot(taskPolicy(task), -1, 1L),
-                TaskRuntimePolicySnapshotMapper.toResultFinalityPolicySnapshot(taskPolicy(task), finalResultRetentionMillis),
                 epoch(taskId),
-                System.currentTimeMillis()));
+                nowMillis()));
         return outcome.accepted();
     }
 
     @Override
     public TaskResultCorrelation getResultCorrelation(String taskId, String messageId) {
-        ResultCorrelationSnapshot correlation = resultPort.getResultCorrelation(taskId, messageId);
+        ResultCorrelationSnapshot correlation = readPort.resultCorrelation(taskId, messageId);
         if (!correlation.present()) {
             return TaskResultCorrelation.noActiveLease(taskId, messageId);
         }
@@ -440,30 +461,30 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
 
     @Override
     public TaskRuntimeProgressSnapshot getTaskRuntimeProgressSnapshot(String taskId) {
-        return progressPort.progressSnapshot(taskId);
+        return readPort.progressSnapshot(taskId);
     }
 
     public FinalResultWindow readTaskResults(String taskId, long afterSeq, int limit) {
-        return readPort.readFinalResults(new FinalResultReadRequest(taskId, afterSeq, limit));
+        return resultWindowReadModel.readFinalResults(new FinalResultReadRequest(taskId, afterSeq, limit));
     }
 
     public Optional<FinalResultRow> getVisibleTaskResultByMessageId(String taskId, String messageId) {
         if (messageId == null || messageId.isBlank()) {
             return Optional.empty();
         }
-        return readPort.getFinalResultByMessageId(taskId, messageId);
+        return readPort.finalResult(taskId, messageId);
     }
 
     public long countVisibleTaskResults(String taskId) {
-        return progressPort.progressSnapshot(taskId).finalCount();
+        return readPort.progressSnapshot(taskId).finalCount();
     }
 
     public void discardTaskRuntime(String taskId, String reason) {
-        discardPort.discardTaskRuntime(new DiscardTaskRuntimeCommand(taskId, epoch(taskId), reason));
+        convergencePort.discardRuntime(taskId, "default", epoch(taskId), reason);
     }
 
     public void discardTaskWork(String taskId, String reason) {
-        discardPort.discardTaskWork(new DiscardTaskWorkCommand(taskId, epoch(taskId), reason));
+        convergencePort.discardWork(taskId, epoch(taskId), reason);
     }
 
     @Override
@@ -471,31 +492,31 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
         return terminalPolicy.evaluate(task, stats, taskPolicy(task).idleClosePolicy());
     }
 
-    private TaskRuntimeResultDecision applyResult(Task task, ResultApplyCommand command) {
-        ActiveLeaseRepairCandidate active = findActiveCandidate(command.taskId(), command.messageId());
-        var outcome = resultPort.applyResult(command);
+    private TaskRuntimeResultDecision applyResult(Task task, RuntimeResultFact fact) {
+        ActiveLeaseRepairCandidate active = findActiveCandidate(fact.taskId(), fact.messageId());
+        var outcome = convergencePort.applyResult(fact);
         var decision = TaskRuntimeResultDecisionMapper.toEngineDecision(outcome);
-        if (command.source() == ResultApplySource.WORKER_RESULT) {
-            publishCallbackTrace(command, active, decision);
+        if (fact.source() == ResultApplySource.WORKER_RESULT) {
+            publishCallbackTrace(fact, active, decision);
         }
         if (decision.accepted() && active != null
                 && (decision.status() == MessageFinalityStatus.LOGICAL_FINAL
                 || decision.status() == MessageFinalityStatus.RETRY_SCHEDULED)) {
-            publishLeaseExpiredTrace(command, active, decision);
-            publishAttemptClosed(task, command, active, decision);
+            publishLeaseExpiredTrace(fact, active, decision);
+            publishAttemptClosed(task, fact, active, decision);
         }
         if (decision.accepted() && decision.retryScheduled()) {
-            publishRetryResetTrace(command, active, decision);
+            publishRetryResetTrace(fact, active, decision);
         }
         if (decision.accepted() && decision.status() == MessageFinalityStatus.LOGICAL_FINAL) {
-            publishLogicalFinal(task, command, active, decision);
+            publishLogicalFinal(task, fact, active, decision);
         }
         if (decision.progressDirty()) {
-            stateResolver.updateTaskProgress(command.taskId());
+            stateResolver.updateTaskProgress(fact.taskId());
         }
         if (decision.retryScheduled()) {
-            schedulerPort.markTaskDirty(command.taskId());
-            if (task != null && decision.retryAtMillis() <= System.currentTimeMillis()) {
+            rescoreTaskForRetry(task, fact.taskId());
+            if (task != null && decision.retryAtMillis() <= nowMillis()) {
                 requestTaskDispatch(task);
             }
         }
@@ -503,25 +524,25 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
     }
 
     private void publishAttemptClosed(Task task,
-                                      ResultApplyCommand command,
+                                      RuntimeResultFact fact,
                                       ActiveLeaseRepairCandidate active,
                                       TaskRuntimeResultDecision decision) {
         if (task == null) {
             return;
         }
-        TaskWorkLifecycleState.AttemptStatus status = attemptStatus(command, decision);
-        TaskWorkLifecycleState.AttemptFinalReason reason = attemptFinalReason(command, decision);
+        TaskWorkLifecycleState.AttemptStatus status = attemptStatus(fact, decision);
+        TaskWorkLifecycleState.AttemptFinalReason reason = attemptFinalReason(fact, decision);
         String attemptId = TaskWorkAttemptIdSupport.workerLevelRuntimeAttemptId(
-                command.messageId(),
-                command.attemptNo(),
-                command.workerId(),
+                fact.messageId(),
+                fact.attemptNo(),
+                fact.workerId(),
                 active.batchId());
         TaskWorkAttemptClosedEvent event = TaskWorkAttemptClosedEvent.from(
-                command.taskId(),
-                command.messageId(),
+                fact.taskId(),
+                fact.messageId(),
                 attemptId,
-                command.attemptNo(),
-                command.workerId(),
+                fact.attemptNo(),
+                fact.workerId(),
                 active.workerGroupId(),
                 active.batchId(),
                 active.workerReservationToken(),
@@ -531,10 +552,10 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
         taskEvents.publishTaskWorkAttemptClosed(task, event);
         traceEventLogger.taskWorkAttemptClosed(
                 task,
-                traceView(command, active, decision),
+                traceView(fact, active, decision),
                 attemptId,
-                command.attemptNo(),
-                command.workerId(),
+                fact.attemptNo(),
+                fact.workerId(),
                 active.batchId(),
                 status,
                 reason,
@@ -543,86 +564,86 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
                 decision.reason());
     }
 
-    private TaskWorkLifecycleState.AttemptStatus attemptStatus(ResultApplyCommand command,
+    private TaskWorkLifecycleState.AttemptStatus attemptStatus(RuntimeResultFact fact,
                                                                TaskRuntimeResultDecision decision) {
-        if (command.success()) {
+        if (fact.success()) {
             return TaskWorkLifecycleState.AttemptStatus.SUCCEEDED;
         }
-        if (command.source() == ResultApplySource.LEASE_TIMEOUT) {
+        if (fact.source() == ResultApplySource.LEASE_TIMEOUT) {
             return TaskWorkLifecycleState.AttemptStatus.EXPIRED;
         }
-        if (decision.retryScheduled() && command.source() != ResultApplySource.WORKER_RESULT) {
+        if (decision.retryScheduled() && fact.source() != ResultApplySource.WORKER_RESULT) {
             return TaskWorkLifecycleState.AttemptStatus.REVOKED;
         }
         return TaskWorkLifecycleState.AttemptStatus.FAILED;
     }
 
-    private TaskWorkLifecycleState.AttemptFinalReason attemptFinalReason(ResultApplyCommand command,
+    private TaskWorkLifecycleState.AttemptFinalReason attemptFinalReason(RuntimeResultFact fact,
                                                                          TaskRuntimeResultDecision decision) {
-        if (command.success()) {
+        if (fact.success()) {
             return TaskWorkLifecycleState.AttemptFinalReason.SUCCESS;
         }
-        if (command.source() == ResultApplySource.LEASE_TIMEOUT) {
+        if (fact.source() == ResultApplySource.LEASE_TIMEOUT) {
             return TaskWorkLifecycleState.AttemptFinalReason.LEASE_EXPIRED;
         }
-        if (decision.retryScheduled() && command.source() != ResultApplySource.WORKER_RESULT) {
+        if (decision.retryScheduled() && fact.source() != ResultApplySource.WORKER_RESULT) {
             return TaskWorkLifecycleState.AttemptFinalReason.REVOKED_FOR_RETRY;
         }
         return TaskWorkLifecycleState.AttemptFinalReason.BUSINESS_FAILURE;
     }
 
     private void publishLogicalFinal(Task task,
-                                     ResultApplyCommand command,
+                                     RuntimeResultFact fact,
                                      ActiveLeaseRepairCandidate active,
                                      TaskRuntimeResultDecision decision) {
         if (task == null) {
             return;
         }
-        TaskWorkLifecycleState.MessageStatus status = command.success()
+        TaskWorkLifecycleState.MessageStatus status = fact.success()
                 ? TaskWorkLifecycleState.MessageStatus.SUCCESS
-                : command.source() == ResultApplySource.LEASE_TIMEOUT
+                : fact.source() == ResultApplySource.LEASE_TIMEOUT
                 ? TaskWorkLifecycleState.MessageStatus.EXPIRED
                 : TaskWorkLifecycleState.MessageStatus.FAILED;
-        TaskWorkLifecycleState.MessageFinalReason reason = command.success()
+        TaskWorkLifecycleState.MessageFinalReason reason = fact.success()
                 ? TaskWorkLifecycleState.MessageFinalReason.BUSINESS_SUCCESS
-                : command.source() == ResultApplySource.LEASE_TIMEOUT
+                : fact.source() == ResultApplySource.LEASE_TIMEOUT
                 ? TaskWorkLifecycleState.MessageFinalReason.LEASE_EXPIRED
                 : TaskWorkLifecycleState.MessageFinalReason.BUSINESS_FAILED;
-        String traceReason = logicalFinalTraceReason(command);
+        String traceReason = logicalFinalTraceReason(fact);
         taskEvents.publishTaskWorkLogicallyFinal(
                 task,
                 TaskWorkLogicallyFinalEvent.from(
-                        command.taskId(),
-                        command.messageId(),
+                        fact.taskId(),
+                        fact.messageId(),
                         status,
                         reason,
-                        Math.max(0, command.attemptNo() - 1),
+                        Math.max(0, fact.attemptNo() - 1),
                         null,
                         traceReason,
                         null,
-                        command.resultPayloadJson()));
+                        fact.resultPayloadJson()));
         traceEventLogger.taskWorkLogicallyFinal(
                 task,
-                traceView(command, active, decision),
+                traceView(fact, active, decision),
                 TaskWorkAttemptIdSupport.workerLevelRuntimeAttemptId(
-                        command.messageId(),
-                        command.attemptNo(),
-                        command.workerId(),
+                        fact.messageId(),
+                        fact.attemptNo(),
+                        fact.workerId(),
                         active != null ? active.batchId() : null),
-                command.workerId(),
+                fact.workerId(),
                 active != null ? active.batchId() : null,
                 "APPLY_RESULT",
                 "TaskRuntimeServingLane",
                 traceReason);
     }
 
-    private void publishCallbackTrace(ResultApplyCommand command,
+    private void publishCallbackTrace(RuntimeResultFact fact,
                                       ActiveLeaseRepairCandidate active,
                                       TaskRuntimeResultDecision decision) {
         if (active == null) {
             return;
         }
-        var view = traceView(command, active, decision);
+        var view = traceView(fact, active, decision);
         if (decision.status() == MessageFinalityStatus.DUPLICATE_OR_LATE) {
             traceEventLogger.callbackIgnoredDuplicate(view, decision.reason());
         } else if (decision.accepted()) {
@@ -634,26 +655,26 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
         traceEventLogger.callbackIgnoredDuplicate(traceView(row), reason);
     }
 
-    private String logicalFinalTraceReason(ResultApplyCommand command) {
-        return command.success()
+    private String logicalFinalTraceReason(RuntimeResultFact fact) {
+        return fact.success()
                 ? "work item reached stable success"
                 : "work item reached stable failure";
     }
 
-    private void publishLeaseExpiredTrace(ResultApplyCommand command,
+    private void publishLeaseExpiredTrace(RuntimeResultFact fact,
                                           ActiveLeaseRepairCandidate active,
                                           TaskRuntimeResultDecision decision) {
-        if (command.source() != ResultApplySource.LEASE_TIMEOUT) {
+        if (fact.source() != ResultApplySource.LEASE_TIMEOUT) {
             return;
         }
         traceEventLogger.leaseExpired(
-                traceView(command, active, decision),
+                traceView(fact, active, decision),
                 TaskWorkAttemptIdSupport.workerLevelRuntimeAttemptId(
-                        command.messageId(),
-                        command.attemptNo(),
-                        command.workerId(),
+                        fact.messageId(),
+                        fact.attemptNo(),
+                        fact.workerId(),
                         active.batchId()),
-                command.workerId(),
+                fact.workerId(),
                 active.batchId(),
                 TaskWorkLifecycleState.MessageStatus.RUNNING,
                 decision.retryScheduled()
@@ -665,45 +686,45 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
                 decision.reason());
     }
 
-    private void publishRetryResetTrace(ResultApplyCommand command,
+    private void publishRetryResetTrace(RuntimeResultFact fact,
                                         ActiveLeaseRepairCandidate active,
                                         TaskRuntimeResultDecision decision) {
         if (!decision.retryScheduled()) {
             return;
         }
         String attemptId = TaskWorkAttemptIdSupport.workerLevelRuntimeAttemptId(
-                command.messageId(),
-                command.attemptNo(),
-                command.workerId(),
+                fact.messageId(),
+                fact.attemptNo(),
+                fact.workerId(),
                 active != null ? active.batchId() : null);
         traceEventLogger.taskWorkRetryReset(
-                traceView(command, active, decision),
+                traceView(fact, active, decision),
                 attemptId,
-                command.workerId(),
+                fact.workerId(),
                 active != null ? active.batchId() : null,
-                retryResetSourceStatus(command),
-                command.retryPolicy().retryDelayMillis(),
-                retryResetTrigger(command),
+                retryResetSourceStatus(fact),
+                retryResetDelayMillis(fact, decision),
+                retryResetTrigger(fact),
                 "TaskRuntimeServingLane",
-                retryResetReason(command, decision));
+                retryResetReason(fact, decision));
     }
 
-    private TraceEventLogger.TaskWorkTraceView traceView(ResultApplyCommand command,
+    private TraceEventLogger.TaskWorkTraceView traceView(RuntimeResultFact fact,
                                                          ActiveLeaseRepairCandidate active,
                                                          TaskRuntimeResultDecision decision) {
         return new TraceEventLogger.TaskWorkTraceView(
-                command.taskId(),
-                command.messageId(),
+                fact.taskId(),
+                fact.messageId(),
                 TaskWorkAttemptIdSupport.workerLevelRuntimeAttemptId(
-                        command.messageId(),
-                        command.attemptNo(),
-                        command.workerId(),
+                        fact.messageId(),
+                        fact.attemptNo(),
+                        fact.workerId(),
                         active != null ? active.batchId() : null),
-                command.workerId(),
+                fact.workerId(),
                 active != null ? active.batchId() : null,
-                traceMessageStatus(command, decision),
-                traceMessageFinalReason(command, decision),
-                Math.max(0, command.attemptNo() - 1),
+                traceMessageStatus(fact, decision),
+                traceMessageFinalReason(fact, decision),
+                Math.max(0, fact.attemptNo() - 1),
                 null);
     }
 
@@ -734,45 +755,83 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
                 null);
     }
 
-    private TaskWorkLifecycleState.MessageStatus traceMessageStatus(ResultApplyCommand command,
+    private TaskWorkLifecycleState.MessageStatus traceMessageStatus(RuntimeResultFact fact,
                                                                     TaskRuntimeResultDecision decision) {
         if (decision.retryScheduled()) {
             return TaskWorkLifecycleState.MessageStatus.INIT;
         }
-        if (command.success()) {
+        if (fact.success()) {
             return TaskWorkLifecycleState.MessageStatus.SUCCESS;
         }
-        if (command.source() == ResultApplySource.LEASE_TIMEOUT) {
+        if (fact.source() == ResultApplySource.LEASE_TIMEOUT) {
             return TaskWorkLifecycleState.MessageStatus.EXPIRED;
         }
         return TaskWorkLifecycleState.MessageStatus.FAILED;
     }
 
-    private TaskWorkLifecycleState.MessageFinalReason traceMessageFinalReason(ResultApplyCommand command,
+    private TaskWorkLifecycleState.MessageFinalReason traceMessageFinalReason(RuntimeResultFact fact,
                                                                               TaskRuntimeResultDecision decision) {
         if (decision.retryScheduled()) {
             return null;
         }
-        if (command.success()) {
+        if (fact.success()) {
             return TaskWorkLifecycleState.MessageFinalReason.BUSINESS_SUCCESS;
         }
-        if (command.source() == ResultApplySource.LEASE_TIMEOUT) {
+        if (fact.source() == ResultApplySource.LEASE_TIMEOUT) {
             return TaskWorkLifecycleState.MessageFinalReason.LEASE_EXPIRED;
         }
         return TaskWorkLifecycleState.MessageFinalReason.BUSINESS_FAILED;
     }
 
     private void updateSchedulerEligibility(Task task, RuntimeEpoch epoch) {
-        schedulerPort.updateTaskEligibility(new UpdateSchedulerEligibilityCommand(
-                task.getTid(),
-                new SchedulerEligibilityPolicy(
-                        runtimeGate(task),
-                        "default",
-                        0L,
-                        0L,
-                        0L,
-                        0L),
-                epoch));
+        RuntimeGate gate = runtimeGate(task);
+        String taskId = task.getTid();
+        String laneKey = "default";
+        var policy = taskPolicy(task);
+        var resultPolicy = TaskRuntimeResultPolicyV1.from(
+                TaskRuntimePolicySnapshotMapper.toRetryPolicySnapshot(policy, -1, 1L),
+                TaskRuntimePolicySnapshotMapper.toResultFinalityPolicySnapshot(policy, finalResultRetentionMillis));
+        scorePort.putRuntimeMeta(new TaskRuntimeMetaV1(
+                taskId,
+                laneKey,
+                gate,
+                epoch,
+                0L,
+                0L,
+                0L,
+                0L,
+                resultPolicy));
+        switch (gate) {
+            case OPEN -> scorePort.setTaskScore(
+                    taskId,
+                    laneKey,
+                    epoch,
+                    TaskScoreV1.dueAt(nowMillis()));
+            case PAUSED -> scorePort.setTaskScore(
+                    taskId,
+                    laneKey,
+                    epoch,
+                    TaskScoreV1.pausedParked());
+            case BLOCKED -> scorePort.setTaskScore(
+                    taskId,
+                    laneKey,
+                    epoch,
+                    TaskScoreV1.blockedParked());
+            case TERMINAL, DISCARDED -> scorePort.removeTaskScore(taskId, laneKey, epoch);
+        }
+    }
+
+    private void rescoreTaskForRetry(Task task, String taskId) {
+        Task target = task != null ? task : taskQueries.getTask(taskId);
+        if (target != null) {
+            updateSchedulerEligibility(target, epoch(taskId));
+            return;
+        }
+        scorePort.setTaskScore(taskId, "default", epoch(taskId), TaskScoreV1.dueAt(nowMillis()));
+    }
+
+    private long nowMillis() {
+        return clock.getAsLong();
     }
 
     private RuntimeGate runtimeGate(Task task) {
@@ -799,25 +858,11 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
         return RuntimeEpoch.of(taskId, 1L);
     }
 
-    private static TaskRuntimeReadPort requireReadPort(TaskRuntimeProgressPort progressPort) {
-        if (progressPort instanceof TaskRuntimeReadPort readPort) {
-            return readPort;
-        }
-        throw new IllegalArgumentException("readPort is required for task-runtime serving lane result queries");
-    }
-
-    private static TaskRuntimeDiscardPort requireDiscardPort(TaskRuntimeProgressPort progressPort) {
-        if (progressPort instanceof TaskRuntimeDiscardPort discardPort) {
-            return discardPort;
-        }
-        throw new IllegalArgumentException("discardPort is required for task-runtime serving lane cleanup");
-    }
-
     private ActiveLeaseRepairCandidate findActiveCandidate(String taskId, String messageId) {
         if (taskId == null || taskId.isBlank() || messageId == null || messageId.isBlank()) {
             return null;
         }
-        return repairPort.getActiveWorkForTask(new ActiveTaskWorkQuery(taskId, ACTIVE_QUERY_LIMIT))
+        return readPort.activeWorkForTask(taskId, ACTIVE_QUERY_LIMIT)
                 .activeItems()
                 .stream()
                 .filter(candidate -> messageId.equals(candidate.messageId()))
@@ -825,25 +870,29 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
                 .orElse(null);
     }
 
-    private TaskWorkLifecycleState.MessageStatus retryResetSourceStatus(ResultApplyCommand command) {
-        return command.source() == ResultApplySource.LEASE_TIMEOUT
+    private TaskWorkLifecycleState.MessageStatus retryResetSourceStatus(RuntimeResultFact fact) {
+        return fact.source() == ResultApplySource.LEASE_TIMEOUT
                 ? TaskWorkLifecycleState.MessageStatus.EXPIRED
                 : TaskWorkLifecycleState.MessageStatus.FAILED;
     }
 
-    private String retryResetTrigger(ResultApplyCommand command) {
-        return command.source() == ResultApplySource.LEASE_TIMEOUT
+    private long retryResetDelayMillis(RuntimeResultFact fact, TaskRuntimeResultDecision decision) {
+        return Math.max(0L, decision.retryAtMillis() - fact.observedAtMillis());
+    }
+
+    private String retryResetTrigger(RuntimeResultFact fact) {
+        return fact.source() == ResultApplySource.LEASE_TIMEOUT
                 ? "LEASE_TIMEOUT"
                 : "RESULT_APPLY";
     }
 
-    private String retryResetReason(ResultApplyCommand command, TaskRuntimeResultDecision decision) {
+    private String retryResetReason(RuntimeResultFact fact, TaskRuntimeResultDecision decision) {
         String reason = decision.reason();
         if (reason == null || reason.isBlank()) {
-            reason = command.failureReason();
+            reason = fact.failureReason();
         }
         if (reason == null || reason.isBlank()) {
-            reason = command.source() == ResultApplySource.LEASE_TIMEOUT
+            reason = fact.source() == ResultApplySource.LEASE_TIMEOUT
                     ? "retry reset after lease expiry"
                     : "retry reset after failed attempt";
         }

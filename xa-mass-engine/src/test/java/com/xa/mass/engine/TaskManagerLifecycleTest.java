@@ -46,7 +46,6 @@ class TaskManagerLifecycleTest {
                 taskRuntime,
                 taskRuntime,
                 taskRuntime,
-                taskRuntime,
                 queries,
                 commands,
                 events,

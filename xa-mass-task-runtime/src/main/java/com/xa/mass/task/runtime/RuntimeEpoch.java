@@ -14,6 +14,10 @@ public record RuntimeEpoch(String taskId, long epoch, String fenceToken) {
         return new RuntimeEpoch(taskId, epoch, null);
     }
 
+    public static RuntimeEpoch of(String taskId, long epoch, String fenceToken) {
+        return new RuntimeEpoch(taskId, epoch, fenceToken);
+    }
+
     public static RuntimeEpoch unspecified() {
         return UNSPECIFIED;
     }

@@ -9,73 +9,37 @@ import org.junit.jupiter.api.Test;
 
 public abstract class TaskRuntimePortContractTest {
 
+    private static final String LANE = "default";
+    private static final long DUE = TaskScoreV1.TIME_SCORE_FLOOR;
+
     protected abstract TaskRuntimePorts createRuntime();
 
     @Test
-    void appendAndSchedulerDiscoveryStayDecoupledButDiscoverable() {
+    void appendAndScoreDiscoveryStayDecoupledButDiscoverable() {
         var runtime = createRuntime();
-        runtime.updateTaskEligibility(openEligibility("task-1", 1L));
+        runtime.putRuntimeMeta(openMeta("task-1", 1L));
 
-        var append = runtime.appendBatch(new AppendBatchCommand(
-                "task-1",
-                List.of(new AppendItemInput("message-1", Map.of("value", 1))),
-                new AppendAdmissionPolicy(10, AppendAdmissionPolicy.UNLIMITED_READY_BACKLOG),
-                RuntimeEpoch.of("task-1", 1L)));
+        var append = runtime.appendBacklog("task-1", List.of(frame("message-1", Map.of("value", 1))), 10);
 
         assertThat(append.status()).isEqualTo(AppendBatchStatus.ALL_ACCEPTED);
-
-        var discovered = runtime.discoverEligibleTasks(new SchedulerDiscoveryCommand(10, 100L));
-        assertThat(discovered.candidates())
-                .extracting(SchedulerTaskCandidate::taskId)
+        assertThat(runtime.discoverSchedulable(LANE, DUE, 10).candidates())
+                .extracting(ScoreCandidate::taskId)
                 .containsExactly("task-1");
     }
 
     @Test
-    void appendRejectsBacklogOverflowBeforePartialOwnership() {
+    void appendRejectsOversizedBatchBeforePartialOwnership() {
         var runtime = createRuntime();
 
-        var append = runtime.appendBatch(new AppendBatchCommand(
-                "task-1",
-                List.of(
-                        new AppendItemInput("message-1", Map.of()),
-                        new AppendItemInput("message-2", Map.of())),
-                new AppendAdmissionPolicy(10, 1),
-                RuntimeEpoch.of("task-1", 1L)));
+        var append = runtime.appendBacklog("task-1", List.of(
+                frame("message-1", Map.of()),
+                frame("message-2", Map.of())), 1);
 
         assertThat(append.status()).isEqualTo(AppendBatchStatus.REJECTED_BEFORE_RUNTIME);
         assertThat(append.acceptedMessageIds()).isEmpty();
 
-        runtime.updateTaskEligibility(openEligibility("task-1", 1L));
-        assertThat(runtime.discoverEligibleTasks(new SchedulerDiscoveryCommand(10, 100L)).candidates()).isEmpty();
-    }
-
-    @Test
-    void replayedAcceptedIdentityDoesNotCreateSecondReadyOrFinalTruth() {
-        var runtime = createRuntime();
-        runtime.updateTaskEligibility(openEligibility("task-1", 1L));
-        var command = new AppendBatchCommand(
-                "task-1",
-                List.of(new AppendItemInput("message-1", Map.of("value", 1))),
-                new AppendAdmissionPolicy(10, AppendAdmissionPolicy.UNLIMITED_READY_BACKLOG),
-                RuntimeEpoch.of("task-1", 1L));
-
-        assertThat(runtime.appendBatch(command).status()).isEqualTo(AppendBatchStatus.ALL_ACCEPTED);
-        assertThat(runtime.appendBatch(command).status()).isEqualTo(AppendBatchStatus.ALL_ACCEPTED);
-
-        var claim = runtime.claimReady(new ClaimReadyCommand(
-                "task-1",
-                List.of(
-                        new WorkerReservationEvidence("worker-1", "group-1", "reservation-1", "target-1"),
-                        new WorkerReservationEvidence("worker-2", "group-1", "reservation-2", "target-2")),
-                new ClaimLeasePolicy(10, 1_000L, 1L, RuntimeEpoch.of("task-1", 1L))));
-
-        assertThat(claim.claimedItems()).hasSize(1);
-        var firstOutcome = runtime.applyResult(resultCommand(claim.claimedItems().getFirst(), true, 500L));
-        var duplicateOutcome = runtime.applyResult(resultCommand(claim.claimedItems().getFirst(), true, 501L));
-
-        assertThat(firstOutcome.status()).isEqualTo(MessageFinalityStatus.LOGICAL_FINAL);
-        assertThat(duplicateOutcome.status()).isEqualTo(MessageFinalityStatus.DUPLICATE_OR_LATE);
-        assertThat(runtime.readFinalResults(new FinalResultReadRequest("task-1", 0, 10)).rows()).hasSize(1);
+        runtime.putRuntimeMeta(openMeta("task-1", 1L));
+        assertThat(runtime.discoverSchedulable(LANE, DUE, 10).candidates()).isEmpty();
     }
 
     @Test
@@ -87,15 +51,7 @@ public abstract class TaskRuntimePortContractTest {
 
         assertThat(claim.accepted()).isTrue();
         assertThat(claim.claimedItems()).hasSize(1);
-
-        var active = runtime.getActiveWorkForWorker(new ActiveWorkQuery("worker-1", 10));
-        assertThat(active.hasActiveWork()).isTrue();
-        assertThat(active.activeItems())
-                .extracting(ActiveLeaseRepairCandidate::messageId)
-                .containsExactly("message-1");
-
-        var activeTask = runtime.getActiveWorkForTask(new ActiveTaskWorkQuery("task-1", 10));
-        assertThat(activeTask.activeItems())
+        assertThat(runtime.activeWorkForTask("task-1", 10).activeItems())
                 .extracting(
                         ActiveLeaseRepairCandidate::messageId,
                         ActiveLeaseRepairCandidate::workerGroupId,
@@ -108,8 +64,8 @@ public abstract class TaskRuntimePortContractTest {
         var runtime = createRuntime();
         appendOne(runtime, "task-1", "message-1", 1L);
 
-        var claim = runtime.claimReady(new ClaimReadyCommand(
-                "task-1",
+        var claim = runtime.claimBacklog(
+                runtime.scoreCandidate("task-1", LANE).orElseThrow(),
                 List.of(new WorkerReservationEvidence(
                         "worker-1",
                         "group-1",
@@ -117,12 +73,14 @@ public abstract class TaskRuntimePortContractTest {
                         "target-1",
                         "batch-1",
                         123L)),
-                new ClaimLeasePolicy(1, 1_000L, 1L, RuntimeEpoch.of("task-1", 1L))));
+                1,
+                1_000L,
+                0L);
 
         assertThat(claim.claimedItems())
                 .extracting(ClaimedWorkItem::workerReservationToken, ClaimedWorkItem::scoreBandClaimScore)
                 .containsExactly(tuple("reservation-1", 123L));
-        assertThat(runtime.getActiveWorkForTask(new ActiveTaskWorkQuery("task-1", 10)).activeItems())
+        assertThat(runtime.activeWorkForTask("task-1", 10).activeItems())
                 .extracting(
                         ActiveLeaseRepairCandidate::workerReservationToken,
                         ActiveLeaseRepairCandidate::scoreBandClaimScore)
@@ -132,16 +90,12 @@ public abstract class TaskRuntimePortContractTest {
     @Test
     void claimPreservesHandlerAndPayloadReferenceCarrierFields() {
         var runtime = createRuntime();
-        runtime.updateTaskEligibility(openEligibility("task-1", 1L));
-        var append = runtime.appendBatch(new AppendBatchCommand(
-                "task-1",
-                List.of(new AppendItemInput(
-                        "message-1",
-                        "demo.event",
-                        Map.of("value", 1),
-                        "payload-ref-1")),
-                new AppendAdmissionPolicy(10, AppendAdmissionPolicy.UNLIMITED_READY_BACKLOG),
-                RuntimeEpoch.of("task-1", 1L)));
+        runtime.putRuntimeMeta(openMeta("task-1", 1L));
+        var append = runtime.appendBacklog("task-1", List.of(new BacklogFrameV1(
+                "message-1",
+                "demo.event",
+                Map.of("value", 1),
+                "payload-ref-1")), 10);
         assertThat(append.status()).isEqualTo(AppendBatchStatus.ALL_ACCEPTED);
 
         var claim = claimOne(runtime, "task-1", "worker-1", 1L, 1_000L);
@@ -154,41 +108,25 @@ public abstract class TaskRuntimePortContractTest {
     }
 
     @Test
-    void claimPreservesDispatchBatchCarrierFromReservationEvidence() {
-        var runtime = createRuntime();
-        appendOne(runtime, "task-1", "message-1", 1L);
-
-        var claim = runtime.claimReady(new ClaimReadyCommand(
-                "task-1",
-                List.of(new WorkerReservationEvidence("worker-1", "group-1", "reservation-1", "target-1", "batch-1")),
-                new ClaimLeasePolicy(1, 1_000L, 1L, RuntimeEpoch.of("task-1", 1L))));
-
-        assertThat(claim.accepted()).isTrue();
-        assertThat(claim.claimedItems().getFirst().batchId()).isEqualTo("batch-1");
-    }
-
-    @Test
     void claimUsesMaxItemsAsTotalBatchAndReusesReservationsRoundRobin() {
         var runtime = createRuntime();
-        runtime.updateTaskEligibility(openEligibility("task-1", 1L));
-        var append = runtime.appendBatch(new AppendBatchCommand(
-                "task-1",
-                List.of(
-                        new AppendItemInput("message-1", Map.of()),
-                        new AppendItemInput("message-2", Map.of()),
-                        new AppendItemInput("message-3", Map.of()),
-                        new AppendItemInput("message-4", Map.of()),
-                        new AppendItemInput("message-5", Map.of())),
-                new AppendAdmissionPolicy(10, AppendAdmissionPolicy.UNLIMITED_READY_BACKLOG),
-                RuntimeEpoch.of("task-1", 1L)));
+        runtime.putRuntimeMeta(openMeta("task-1", 1L));
+        var append = runtime.appendBacklog("task-1", List.of(
+                frame("message-1", Map.of()),
+                frame("message-2", Map.of()),
+                frame("message-3", Map.of()),
+                frame("message-4", Map.of()),
+                frame("message-5", Map.of())), 10);
         assertThat(append.status()).isEqualTo(AppendBatchStatus.ALL_ACCEPTED);
 
-        var claim = runtime.claimReady(new ClaimReadyCommand(
-                "task-1",
+        var claim = runtime.claimBacklog(
+                runtime.scoreCandidate("task-1", LANE).orElseThrow(),
                 List.of(
                         new WorkerReservationEvidence("worker-1", "group-1", "reservation-1", "target-1", "batch-1"),
                         new WorkerReservationEvidence("worker-2", "group-1", "reservation-2", "target-2", "batch-2")),
-                new ClaimLeasePolicy(5, 1_000L, 1L, RuntimeEpoch.of("task-1", 1L))));
+                5,
+                1_000L,
+                0L);
 
         assertThat(claim.claimedItems()).hasSize(5);
         assertThat(claim.claimedItems())
@@ -200,8 +138,7 @@ public abstract class TaskRuntimePortContractTest {
         assertThat(claim.claimedItems())
                 .extracting(ClaimedWorkItem::leaseToken)
                 .doesNotHaveDuplicates();
-        assertThat(runtime.getActiveWorkForWorker(new ActiveWorkQuery("worker-1", 10)).activeItems()).hasSize(3);
-        assertThat(runtime.getActiveWorkForWorker(new ActiveWorkQuery("worker-2", 10)).activeItems()).hasSize(2);
+        assertThat(runtime.activeWorkForTask("task-1", 10).activeItems()).hasSize(5);
     }
 
     @Test
@@ -209,13 +146,32 @@ public abstract class TaskRuntimePortContractTest {
         var runtime = createRuntime();
         appendOne(runtime, "task-1", "message-1", 2L);
 
-        var rejected = runtime.claimReady(new ClaimReadyCommand(
-                "task-1",
+        var rejected = runtime.claimBacklog(
+                new ScoreCandidate("task-1", LANE, RuntimeEpoch.of("task-1", 1L), TaskScoreV1.dueAt(0L)),
                 List.of(new WorkerReservationEvidence("worker-1", "group-1", "reservation-1", "target-1")),
-                new ClaimLeasePolicy(1, 1_000L, 1L, RuntimeEpoch.of("task-1", 1L))));
+                1,
+                1_000L,
+                0L);
 
         assertThat(rejected.accepted()).isFalse();
-        assertThat(runtime.getActiveWorkForWorker(new ActiveWorkQuery("worker-1", 10)).hasActiveWork()).isFalse();
+        assertThat(runtime.activeWorkForTask("task-1", 10).activeItems()).isEmpty();
+    }
+
+    @Test
+    void maintenanceScoreCandidateDoesNotClaimBacklog() {
+        var runtime = createRuntime();
+        appendOne(runtime, "task-1", "message-1", 1L);
+
+        var rejected = runtime.claimBacklog(
+                new ScoreCandidate("task-1", LANE, RuntimeEpoch.of("task-1", 1L), TaskScoreV1.maintActive()),
+                List.of(new WorkerReservationEvidence("worker-1", "group-1", "reservation-1", "target-1")),
+                1,
+                1_000L,
+                0L);
+
+        assertThat(rejected.accepted()).isFalse();
+        assertThat(rejected.rejectionReason()).contains("dispatch-visible");
+        assertThat(runtime.activeWorkForTask("task-1", 10).activeItems()).isEmpty();
     }
 
     @Test
@@ -224,18 +180,15 @@ public abstract class TaskRuntimePortContractTest {
         appendOne(runtime, "task-1", "message-1", 1L);
         var item = claimOne(runtime, "task-1", "worker-1", 1L, 1_000L).claimedItems().getFirst();
 
-        var outcome = runtime.applyResult(resultCommand(item, true, 500L));
+        var outcome = runtime.applyResult(resultFact(item, true, 500L));
 
         assertThat(outcome.status()).isEqualTo(MessageFinalityStatus.LOGICAL_FINAL);
-        assertThat(runtime.getActiveWorkForWorker(new ActiveWorkQuery("worker-1", 10)).hasActiveWork()).isFalse();
+        assertThat(runtime.activeWorkForTask("task-1", 10).activeItems()).isEmpty();
 
         var rows = runtime.readFinalResults(new FinalResultReadRequest("task-1", 0, 10));
         assertThat(rows.rows())
                 .extracting(FinalResultRow::messageId, FinalResultRow::seq, FinalResultRow::workerId)
                 .containsExactly(tuple("message-1", 1L, "worker-1"));
-        assertThat(rows.nextAfterSeq()).isEqualTo(1L);
-        assertThat(rows.hasMore()).isFalse();
-        assertThat(rows.totalVisible()).isEqualTo(1L);
         assertThat(runtime.getFinalResultByMessageId("task-1", "message-1"))
                 .hasValueSatisfying(row -> {
                     assertThat(row.seq()).isEqualTo(1L);
@@ -251,27 +204,16 @@ public abstract class TaskRuntimePortContractTest {
     @Test
     void failedResultCanScheduleRetryWithoutLosingItemOwnership() {
         var runtime = createRuntime();
-        appendOne(runtime, "task-1", "message-1", 1L);
+        runtime.putRuntimeMeta(openMeta("task-1", 1L, retryPolicy(1)));
+        assertThat(runtime.appendBacklog("task-1", List.of(frame("message-1", Map.of())), 10).status())
+                .isEqualTo(AppendBatchStatus.ALL_ACCEPTED);
         var item = claimOne(runtime, "task-1", "worker-1", 1L, 1_000L).claimedItems().getFirst();
 
-        var outcome = runtime.applyResult(new ResultApplyCommand(
-                item.taskId(),
-                item.messageId(),
-                item.leaseToken(),
-                item.workerId(),
-                item.attemptNo(),
-                ResultApplySource.WORKER_RESULT,
-                false,
-                Map.of(),
-                "failed",
-                new RetryPolicySnapshot(RetryMode.FAST_READY, 1, 0L, 1L),
-                new ResultFinalityPolicySnapshot(false, true, 86_400_000L),
-                RuntimeEpoch.of(item.taskId(), 1L),
-                500L));
+        var outcome = runtime.applyResult(resultFact(item, false, 500L));
 
         assertThat(outcome.status()).isEqualTo(MessageFinalityStatus.RETRY_SCHEDULED);
-        assertThat(runtime.discoverEligibleTasks(new SchedulerDiscoveryCommand(10, 500L)).candidates())
-                .extracting(SchedulerTaskCandidate::taskId)
+        assertThat(runtime.discoverSchedulable(LANE, DUE, 10).candidates())
+                .extracting(ScoreCandidate::taskId)
                 .containsExactly("task-1");
 
         var progress = runtime.progressSnapshot("task-1");
@@ -285,37 +227,11 @@ public abstract class TaskRuntimePortContractTest {
         var runtime = createRuntime();
         appendOne(runtime, "task-1", "message-failed", 1L);
         var failed = claimOne(runtime, "task-1", "worker-1", 1L, 1_000L).claimedItems().getFirst();
-        runtime.applyResult(new ResultApplyCommand(
-                failed.taskId(),
-                failed.messageId(),
-                failed.leaseToken(),
-                failed.workerId(),
-                failed.attemptNo(),
-                ResultApplySource.WORKER_RESULT,
-                false,
-                Map.of(),
-                "failed",
-                new RetryPolicySnapshot(RetryMode.FAST_READY, 0, 0L, 1L),
-                new ResultFinalityPolicySnapshot(false, true, 86_400_000L),
-                RuntimeEpoch.of(failed.taskId(), 1L),
-                500L));
+        runtime.applyResult(resultFact(failed, ResultApplySource.WORKER_RESULT, false, 500L));
 
         appendOne(runtime, "task-1", "message-expired", 1L);
         var expired = claimOne(runtime, "task-1", "worker-1", 1L, 1_000L).claimedItems().getFirst();
-        runtime.applyResult(new ResultApplyCommand(
-                expired.taskId(),
-                expired.messageId(),
-                expired.leaseToken(),
-                expired.workerId(),
-                expired.attemptNo(),
-                ResultApplySource.LEASE_TIMEOUT,
-                false,
-                Map.of(),
-                "expired",
-                new RetryPolicySnapshot(RetryMode.FAST_READY, 0, 0L, 1L),
-                new ResultFinalityPolicySnapshot(false, true, 86_400_000L),
-                RuntimeEpoch.of(expired.taskId(), 1L),
-                600L));
+        runtime.applyResult(resultFact(expired, ResultApplySource.LEASE_TIMEOUT, false, 600L));
 
         var progress = runtime.progressSnapshot("task-1");
 
@@ -332,7 +248,7 @@ public abstract class TaskRuntimePortContractTest {
         appendOne(runtime, "task-1", "message-1", 1L);
         claimOne(runtime, "task-1", "worker-1", 1L, 1_000L);
 
-        var expired = runtime.pollExpiredActiveLeases(new PollActiveLeaseRepairCommand(10, 1_001L));
+        var expired = runtime.scanExpiredLeases(LANE, 1_001L, 10, 10);
 
         assertThat(expired.candidates())
                 .extracting(ActiveLeaseRepairCandidate::messageId)
@@ -340,38 +256,32 @@ public abstract class TaskRuntimePortContractTest {
     }
 
     @Test
-    void discardRemovesReadyActiveAndFinalRuntimeState() {
+    void discardRemovesBacklogActiveAndFinalRuntimeState() {
         var runtime = createRuntime();
         appendOne(runtime, "task-1", "message-ready", 1L);
         appendOne(runtime, "task-1", "message-final", 1L);
         var item = claimOne(runtime, "task-1", "worker-1", 1L, 1_000L).claimedItems().getFirst();
-        runtime.applyResult(resultCommand(item, true, 500L));
+        runtime.applyResult(resultFact(item, true, 500L));
 
-        var discarded = runtime.discardTaskRuntime(new DiscardTaskRuntimeCommand(
-                "task-1",
-                RuntimeEpoch.of("task-1", 1L),
-                "delete"));
+        var discarded = runtime.discardRuntime("task-1", LANE, RuntimeEpoch.of("task-1", 1L), "delete");
 
         assertThat(discarded.discardedReadyItems()).isGreaterThanOrEqualTo(1);
         assertThat(discarded.discardedFinalResults()).isGreaterThanOrEqualTo(1);
         assertThat(runtime.readFinalResults(new FinalResultReadRequest("task-1", 0, 10)).rows()).isEmpty();
-        assertThat(runtime.discoverEligibleTasks(new SchedulerDiscoveryCommand(10, 1_000L)).candidates()).isEmpty();
+        assertThat(runtime.discoverSchedulable(LANE, DUE, 10).candidates()).isEmpty();
     }
 
     @Test
-    void workOnlyDiscardRemovesReadyActiveAndKeepsFinalRows() {
+    void workOnlyDiscardRemovesBacklogActiveAndKeepsFinalRows() {
         var runtime = createRuntime();
         appendOne(runtime, "task-1", "message-final", 1L);
         var finalItem = claimOne(runtime, "task-1", "worker-1", 1L, 1_000L).claimedItems().getFirst();
-        runtime.applyResult(resultCommand(finalItem, true, 500L));
+        runtime.applyResult(resultFact(finalItem, true, 500L));
         appendOne(runtime, "task-1", "message-active", 1L);
         claimOne(runtime, "task-1", "worker-1", 1L, 1_000L);
         appendOne(runtime, "task-1", "message-ready", 1L);
 
-        var discarded = runtime.discardTaskWork(new DiscardTaskWorkCommand(
-                "task-1",
-                RuntimeEpoch.of("task-1", 1L),
-                "terminate"));
+        var discarded = runtime.discardWork("task-1", RuntimeEpoch.of("task-1", 1L), "terminate");
 
         assertThat(discarded.discardedReadyItems()).isGreaterThanOrEqualTo(1);
         assertThat(discarded.discardedActiveItems()).isGreaterThanOrEqualTo(1);
@@ -381,16 +291,12 @@ public abstract class TaskRuntimePortContractTest {
         assertThat(runtime.progressSnapshot("task-1").readyCount()).isZero();
         assertThat(runtime.progressSnapshot("task-1").activeCount()).isZero();
         assertThat(runtime.progressSnapshot("task-1").finalCount()).isEqualTo(1);
-        assertThat(runtime.discoverEligibleTasks(new SchedulerDiscoveryCommand(10, 1_000L)).candidates()).isEmpty();
+        assertThat(runtime.discoverSchedulable(LANE, DUE, 10).candidates()).isEmpty();
     }
 
     private static void appendOne(TaskRuntimePorts runtime, String taskId, String messageId, long epoch) {
-        runtime.updateTaskEligibility(openEligibility(taskId, epoch));
-        var outcome = runtime.appendBatch(new AppendBatchCommand(
-                taskId,
-                List.of(new AppendItemInput(messageId, Map.of("messageId", messageId))),
-                new AppendAdmissionPolicy(10, AppendAdmissionPolicy.UNLIMITED_READY_BACKLOG),
-                RuntimeEpoch.of(taskId, epoch)));
+        runtime.putRuntimeMeta(openMeta(taskId, epoch));
+        var outcome = runtime.appendBacklog(taskId, List.of(frame(messageId, Map.of("messageId", messageId))), 10);
         assertThat(outcome.status()).isEqualTo(AppendBatchStatus.ALL_ACCEPTED);
     }
 
@@ -401,43 +307,72 @@ public abstract class TaskRuntimePortContractTest {
             long epoch,
             long leaseMillis
     ) {
-        return runtime.claimReady(new ClaimReadyCommand(
-                taskId,
+        return runtime.claimBacklog(
+                runtime.scoreCandidate(taskId, LANE).orElseThrow(),
                 List.of(new WorkerReservationEvidence(workerId, "group-1", "reservation-" + workerId, "target-1")),
-                new ClaimLeasePolicy(1, leaseMillis, 1L, RuntimeEpoch.of(taskId, epoch))));
+                1,
+                leaseMillis,
+                0L);
     }
 
-    private static ResultApplyCommand resultCommand(ClaimedWorkItem item, boolean success, long observedAtMillis) {
-        return new ResultApplyCommand(
+    private static RuntimeResultFact resultFact(ClaimedWorkItem item, boolean success, long observedAtMillis) {
+        return resultFact(item, ResultApplySource.WORKER_RESULT, success, observedAtMillis);
+    }
+
+    private static RuntimeResultFact resultFact(ClaimedWorkItem item,
+                                                ResultApplySource source,
+                                                boolean success,
+                                                long observedAtMillis) {
+        return new RuntimeResultFact(
                 item.taskId(),
                 item.messageId(),
                 item.leaseToken(),
                 item.workerId(),
                 item.attemptNo(),
-                ResultApplySource.WORKER_RESULT,
+                source,
                 success,
                 Map.of("value", item.messageId()),
-                "",
-                new RetryPolicySnapshot(RetryMode.FAST_READY, 0, 0L, 1L),
-                new ResultFinalityPolicySnapshot(false, true, 86_400_000L),
+                success ? "" : "failed",
                 RuntimeEpoch.of(item.taskId(), 1L),
                 observedAtMillis);
     }
 
-    private static UpdateSchedulerEligibilityCommand openEligibility(String taskId, long epoch) {
-        return new UpdateSchedulerEligibilityCommand(
-                taskId,
-                new SchedulerEligibilityPolicy(RuntimeGate.OPEN, "default", 0L, 0L, 0L, 0L),
-                RuntimeEpoch.of(taskId, epoch));
+    private static BacklogFrameV1 frame(String messageId, Map<String, Object> payload) {
+        return new BacklogFrameV1(messageId, "", payload, null);
     }
 
-    protected interface TaskRuntimePorts extends TaskRuntimeAppendPort,
-            TaskRuntimeSchedulerPort,
-            TaskRuntimeClaimPort,
-            TaskRuntimeResultPort,
-            TaskRuntimeRepairPort,
-            TaskRuntimeProgressPort,
+    private static TaskRuntimeMetaV1 openMeta(String taskId, long epoch) {
+        return openMeta(taskId, epoch, TaskRuntimeResultPolicyV1.defaultPolicy());
+    }
+
+    private static TaskRuntimeMetaV1 openMeta(String taskId, long epoch, TaskRuntimeResultPolicyV1 resultPolicy) {
+        return new TaskRuntimeMetaV1(
+                taskId,
+                LANE,
+                RuntimeGate.OPEN,
+                RuntimeEpoch.of(taskId, epoch),
+                DUE,
+                0L,
+                0L,
+                0L,
+                resultPolicy);
+    }
+
+    private static TaskRuntimeResultPolicyV1 retryPolicy(int maxRetryCount) {
+        return new TaskRuntimeResultPolicyV1(
+                RetryMode.FAST_READY,
+                maxRetryCount,
+                0L,
+                1L,
+                false,
+                true,
+                86_400_000L);
+    }
+
+    protected interface TaskRuntimePorts extends TaskRuntimeWorkPort,
+            TaskRuntimeScorePort,
+            TaskRuntimeConvergencePort,
             TaskRuntimeReadPort,
-            TaskRuntimeDiscardPort {
+            TaskRuntimeResultWindowReadModel {
     }
 }

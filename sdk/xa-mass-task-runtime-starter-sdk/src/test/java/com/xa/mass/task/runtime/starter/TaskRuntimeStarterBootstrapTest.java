@@ -3,11 +3,8 @@ package com.xa.mass.task.runtime.starter;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.xa.mass.task.runtime.AppendAdmissionPolicy;
-import com.xa.mass.task.runtime.AppendBatchCommand;
 import com.xa.mass.task.runtime.AppendBatchStatus;
-import com.xa.mass.task.runtime.AppendItemInput;
-import com.xa.mass.task.runtime.RuntimeEpoch;
+import com.xa.mass.task.runtime.BacklogFrameV1;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -20,11 +17,10 @@ class TaskRuntimeStarterBootstrapTest {
             assertThat(handle.backendKind()).isEqualTo(TaskRuntimeBackendKind.MEMORY);
             assertThat(handle.status().running()).isTrue();
 
-            var outcome = handle.runtime().appendBatch(new AppendBatchCommand(
+            var outcome = handle.runtime().appendBacklog(
                     "task-1",
-                    List.of(new AppendItemInput("message-1", Map.of())),
-                    new AppendAdmissionPolicy(10, AppendAdmissionPolicy.UNLIMITED_READY_BACKLOG),
-                    RuntimeEpoch.of("task-1", 1L)));
+                    List.of(new BacklogFrameV1("message-1", null, Map.of(), null)),
+                    10);
 
             assertThat(outcome.status()).isEqualTo(AppendBatchStatus.ALL_ACCEPTED);
         }

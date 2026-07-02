@@ -1,7 +1,7 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.task.runtime.ClaimLeasePolicy;
-import com.xa.mass.task.runtime.ClaimReadyCommand;
+import com.xa.mass.task.runtime.ClaimReadyOutcome;
 import com.xa.mass.task.runtime.ClaimedWorkItem;
 import com.xa.mass.task.runtime.RuntimeEpoch;
 import com.xa.mass.task.runtime.WorkerReservationEvidence;
@@ -13,13 +13,15 @@ final class TaskRuntimeClaimTestSupport {
     private TaskRuntimeClaimTestSupport() {
     }
 
-    static ClaimReadyCommand claimCommand(String taskId,
-                                          String workerGroupId,
-                                          String workerId,
-                                          String batchId,
-                                          int maxItems,
-                                          long leaseSeconds) {
-        return claimCommand(
+    static ClaimReadyOutcome claim(TaskRuntimeServingLane lane,
+                                   String taskId,
+                                   String workerGroupId,
+                                   String workerId,
+                                   String batchId,
+                                   int maxItems,
+                                   long leaseSeconds) {
+        return claim(
+                lane,
                 taskId,
                 workerGroupId,
                 workerId,
@@ -30,15 +32,16 @@ final class TaskRuntimeClaimTestSupport {
                 leaseSeconds);
     }
 
-    static ClaimReadyCommand claimCommand(String taskId,
-                                          String workerGroupId,
-                                          String workerId,
-                                          String batchId,
-                                          String reservationToken,
-                                          Long scoreBandClaimScore,
-                                          int maxItems,
-                                          long leaseSeconds) {
-        return new ClaimReadyCommand(
+    static ClaimReadyOutcome claim(TaskRuntimeServingLane lane,
+                                   String taskId,
+                                   String workerGroupId,
+                                   String workerId,
+                                   String batchId,
+                                   String reservationToken,
+                                   Long scoreBandClaimScore,
+                                   int maxItems,
+                                   long leaseSeconds) {
+        return lane.claimReady(
                 taskId,
                 List.of(new WorkerReservationEvidence(
                         workerId,
@@ -60,13 +63,14 @@ final class TaskRuntimeClaimTestSupport {
                                        String workerGroupId,
                                        String workerId,
                                        String batchId) {
-        var claimed = lane.claimReady(claimCommand(
+        var claimed = claim(
+                        lane,
                         taskId,
                         workerGroupId,
                         workerId,
                         batchId,
                         1,
-                        leaseSeconds))
+                        leaseSeconds)
                 .claimedItems();
         if (claimed.isEmpty()) {
             throw new AssertionError("expected one claimed work item for task " + taskId);

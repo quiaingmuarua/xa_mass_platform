@@ -14,6 +14,7 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchDeliveryFailure;
 import com.xa.mass.engine.policy.ContractAwareTaskTerminalPolicy;
 import com.xa.mass.engine.strategy.DefaultSchedulingPlaneResolver;
 import com.xa.mass.task.runtime.ClaimedWorkItem;
+import com.xa.mass.task.runtime.TaskScoreV1;
 import com.xa.mass.task.runtime.memory.InMemoryTaskRuntime;
 import com.xa.mass.trace.sink.ExecutionEvent;
 import com.xa.mass.trace.sink.ExecutionEventSink;
@@ -26,10 +27,11 @@ import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 
 class TaskRuntimeServingLaneTest {
+    private static final long TEST_NOW_MILLIS = TaskScoreV1.TIME_SCORE_FLOOR;
 
     @Test
     void servingLaneDrivesAppendClaimWorkerResultAndTaskTerminalFromOneTaskRuntimeOwner() {
-        AtomicLong clock = new AtomicLong(1_000L);
+        AtomicLong clock = new AtomicLong(TEST_NOW_MILLIS);
         Harness harness = new Harness(clock);
         Task task = harness.createApprovedBatchTask("serving-result");
         List<TaskWorkAttemptClosedEvent> closedAttempts = new ArrayList<>();
@@ -47,7 +49,7 @@ class TaskRuntimeServingLaneTest {
                 .extracting(Task::getTid)
                 .containsExactly(task.getTid());
 
-        var claimed = harness.lane.claimReady(TaskRuntimeClaimTestSupport.claimCommand(
+        var claimed = TaskRuntimeClaimTestSupport.claim(harness.lane,
                 task.getTid(),
                 "group-1",
                 "worker-1",
@@ -55,7 +57,7 @@ class TaskRuntimeServingLaneTest {
                 "selection-1",
                 123L,
                 1,
-                30L)).claimedItems();
+                30L).claimedItems();
 
         assertThat(claimed).hasSize(1);
         assertThat(claimed.getFirst().payloadRef()).isEqualTo("payload-ref-1");
@@ -87,14 +89,14 @@ class TaskRuntimeServingLaneTest {
 
     @Test
     void servingLaneResultIngressUsesTaskRuntimeOwner() {
-        AtomicLong clock = new AtomicLong(1_000L);
+        AtomicLong clock = new AtomicLong(TEST_NOW_MILLIS);
         Harness harness = new Harness(clock);
         Task task = harness.createApprovedBatchTask("serving-manager-ingest");
         harness.appendRuntimeItems(task, List.of(Map.of(
                 "eventCode", "demo.event",
                 "payloadRef", "payload-ref-1",
                 "value", 1)));
-        var claimed = harness.lane.claimReady(TaskRuntimeClaimTestSupport.claimCommand(
+        var claimed = TaskRuntimeClaimTestSupport.claim(harness.lane,
                 task.getTid(),
                 "group-1",
                 "worker-1",
@@ -102,7 +104,7 @@ class TaskRuntimeServingLaneTest {
                 "selection-1",
                 123L,
                 1,
-                30L)).claimedItems();
+                30L).claimedItems();
 
         assertThat(harness.lane.getResultCorrelation(task.getTid(), claimed.getFirst().messageId())
                 .activeLeasePresent()).isTrue();
@@ -122,7 +124,7 @@ class TaskRuntimeServingLaneTest {
 
     @Test
     void servingLaneRecoveryAndClaimUseTaskRuntimeOwner() {
-        AtomicLong clock = new AtomicLong(1_000L);
+        AtomicLong clock = new AtomicLong(TEST_NOW_MILLIS);
         Harness harness = new Harness(clock);
         Task task = harness.createApprovedBatchTask("serving-manager-claim");
         harness.appendRuntimeItems(task, List.of(Map.of(
@@ -134,7 +136,7 @@ class TaskRuntimeServingLaneTest {
                 .extracting(Task::getTid)
                 .containsExactly(task.getTid());
 
-        var claimed = harness.lane.claimReady(TaskRuntimeClaimTestSupport.claimCommand(
+        var claimed = TaskRuntimeClaimTestSupport.claim(harness.lane,
                 task.getTid(),
                 "group-1",
                 "worker-1",
@@ -142,7 +144,7 @@ class TaskRuntimeServingLaneTest {
                 "selection-1",
                 123L,
                 1,
-                30L)).claimedItems();
+                30L).claimedItems();
 
         assertThat(claimed).hasSize(1);
         assertThat(claimed.getFirst().messageId()).isEqualTo("message-1");
@@ -152,7 +154,7 @@ class TaskRuntimeServingLaneTest {
 
     @Test
     void taskManagerDispatchFailureCompensationUsesServingLaneRuntimeOwnerWhenInstalled() {
-        AtomicLong clock = new AtomicLong(1_000L);
+        AtomicLong clock = new AtomicLong(TEST_NOW_MILLIS);
         Harness harness = new Harness(clock);
         Task submitFailureTask = harness.createApprovedBatchTask("serving-submit-failure");
         harness.appendRuntimeItems(submitFailureTask, List.of(Map.of("eventCode", "demo.event", "value", 1)));
@@ -192,11 +194,11 @@ class TaskRuntimeServingLaneTest {
 
     @Test
     void servingLaneLeaseRepairAppliesTimeoutResultAndConvergesTaskTerminal() {
-        AtomicLong clock = new AtomicLong(1_000L);
+        AtomicLong clock = new AtomicLong(TEST_NOW_MILLIS);
         Harness harness = new Harness(clock);
         Task task = harness.createApprovedBatchTask("serving-timeout");
         harness.appendRuntimeItems(task, List.of(Map.of("eventCode", "demo.event", "value", 1)));
-        var claimed = harness.lane.claimReady(TaskRuntimeClaimTestSupport.claimCommand(
+        var claimed = TaskRuntimeClaimTestSupport.claim(harness.lane,
                 task.getTid(),
                 "group-1",
                 "worker-1",
@@ -204,9 +206,9 @@ class TaskRuntimeServingLaneTest {
                 "selection-1",
                 123L,
                 1,
-                1L)).claimedItems();
+                1L).claimedItems();
 
-        clock.set(3_000L);
+        clock.set(TEST_NOW_MILLIS + 2_000L);
 
         var expired = harness.lane.pollExpiredLeases(10, Instant.ofEpochMilli(clock.get()));
         assertThat(expired).hasSize(1);
@@ -225,11 +227,11 @@ class TaskRuntimeServingLaneTest {
 
     @Test
     void retryableLeaseExpiryEmitsRetryResetTrace() {
-        AtomicLong clock = new AtomicLong(1_000L);
+        AtomicLong clock = new AtomicLong(TEST_NOW_MILLIS);
         Harness harness = new Harness(clock);
         Task task = harness.createApprovedBatchTask("serving-timeout-retry", 1);
         harness.appendRuntimeItems(task, List.of(Map.of("eventCode", "demo.event", "value", 1)));
-        var claimed = harness.lane.claimReady(TaskRuntimeClaimTestSupport.claimCommand(
+        var claimed = TaskRuntimeClaimTestSupport.claim(harness.lane,
                 task.getTid(),
                 "group-1",
                 "worker-1",
@@ -237,9 +239,9 @@ class TaskRuntimeServingLaneTest {
                 "selection-1",
                 123L,
                 1,
-                1L)).claimedItems();
+                1L).claimedItems();
 
-        clock.set(3_000L);
+        clock.set(TEST_NOW_MILLIS + 2_000L);
 
         assertThat(harness.lane.expireLeasedWork(task.getTid(), claimed.getFirst().messageId())).isTrue();
 
@@ -257,11 +259,11 @@ class TaskRuntimeServingLaneTest {
 
     @Test
     void taskManagerFullDiscardUsesServingLaneRuntimeOwner() {
-        AtomicLong clock = new AtomicLong(1_000L);
+        AtomicLong clock = new AtomicLong(TEST_NOW_MILLIS);
         Harness harness = new Harness(clock);
         Task task = harness.createApprovedBatchTask("serving-discard");
         harness.appendRuntimeItems(task, List.of(Map.of("eventCode", "demo.event", "value", 1)));
-        var claimed = harness.lane.claimReady(TaskRuntimeClaimTestSupport.claimCommand(
+        var claimed = TaskRuntimeClaimTestSupport.claim(harness.lane,
                 task.getTid(),
                 "group-1",
                 "worker-1",
@@ -269,7 +271,7 @@ class TaskRuntimeServingLaneTest {
                 "selection-1",
                 123L,
                 1,
-                30L)).claimedItems();
+                30L).claimedItems();
         assertThat(harness.lane.ingestTaskResult(
                 task.getTid(),
                 claimed.getFirst().messageId(),
@@ -291,14 +293,14 @@ class TaskRuntimeServingLaneTest {
 
     @Test
     void taskManagerWorkOnlyDiscardUsesServingLaneAndKeepsFinalResults() {
-        AtomicLong clock = new AtomicLong(1_000L);
+        AtomicLong clock = new AtomicLong(TEST_NOW_MILLIS);
         Harness harness = new Harness(clock);
         Task task = harness.createApprovedBatchTask("serving-work-discard");
         harness.appendRuntimeItems(task, List.of(
                 Map.of("eventCode", "demo.event", "value", 1),
                 Map.of("eventCode", "demo.event", "value", 2),
                 Map.of("eventCode", "demo.event", "value", 3)));
-        var firstClaim = harness.lane.claimReady(TaskRuntimeClaimTestSupport.claimCommand(
+        var firstClaim = TaskRuntimeClaimTestSupport.claim(harness.lane,
                 task.getTid(),
                 "group-1",
                 "worker-1",
@@ -306,7 +308,7 @@ class TaskRuntimeServingLaneTest {
                 "selection-1",
                 123L,
                 1,
-                30L)).claimedItems();
+                30L).claimedItems();
         assertThat(harness.lane.ingestTaskResult(
                 task.getTid(),
                 firstClaim.getFirst().messageId(),
@@ -314,7 +316,7 @@ class TaskRuntimeServingLaneTest {
                 "done",
                 null,
                 Map.of("ok", true))).isTrue();
-        harness.lane.claimReady(TaskRuntimeClaimTestSupport.claimCommand(
+        TaskRuntimeClaimTestSupport.claim(harness.lane,
                 task.getTid(),
                 "group-1",
                 "worker-1",
@@ -322,7 +324,7 @@ class TaskRuntimeServingLaneTest {
                 "selection-2",
                 124L,
                 1,
-                30L));
+                30L);
         assertThat(harness.lane.countVisibleTaskResults(task.getTid())).isEqualTo(1);
         assertThat(harness.lane.countActiveDispatchWorkers(task.getTid())).isEqualTo(1);
         assertThat(harness.lane.countDispatchReadyWork(task.getTid())).isEqualTo(1);
@@ -343,7 +345,7 @@ class TaskRuntimeServingLaneTest {
                                                           String batchId,
                                                           String selectionToken,
                                                           long scoreBandClaimScore) {
-        var claimed = harness.lane.claimReady(TaskRuntimeClaimTestSupport.claimCommand(
+        var claimed = TaskRuntimeClaimTestSupport.claim(harness.lane,
                 task.getTid(),
                 "group-1",
                 "worker-1",
@@ -351,7 +353,7 @@ class TaskRuntimeServingLaneTest {
                 selectionToken,
                 scoreBandClaimScore,
                 1,
-                30L)).claimedItems();
+                30L).claimedItems();
         assertThat(claimed).hasSize(1);
         return claimed;
     }
@@ -409,9 +411,6 @@ class TaskRuntimeServingLaneTest {
                     runtime,
                     runtime,
                     runtime,
-                    runtime,
-                    runtime,
-                    runtime,
                     queries,
                     commands,
                     events,
@@ -420,7 +419,8 @@ class TaskRuntimeServingLaneTest {
                     new TraceEventLogger(traceSink),
                     1L,
                     100,
-                    86_400_000L);
+                    86_400_000L,
+                    clock::get);
             this.manager.installTaskRuntimeServingLane(lane);
         }
 

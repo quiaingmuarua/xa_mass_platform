@@ -2,18 +2,15 @@ package com.xa.mass.task.runtime.memory;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.xa.mass.task.runtime.AppendAdmissionPolicy;
-import com.xa.mass.task.runtime.AppendBatchCommand;
-import com.xa.mass.task.runtime.AppendItemInput;
-import com.xa.mass.task.runtime.ClaimLeasePolicy;
-import com.xa.mass.task.runtime.ClaimReadyCommand;
+import com.xa.mass.task.runtime.BacklogFrameV1;
 import com.xa.mass.task.runtime.FinalResultReadRequest;
-import com.xa.mass.task.runtime.ResultApplyCommand;
 import com.xa.mass.task.runtime.ResultApplySource;
-import com.xa.mass.task.runtime.ResultFinalityPolicySnapshot;
 import com.xa.mass.task.runtime.RetryMode;
-import com.xa.mass.task.runtime.RetryPolicySnapshot;
 import com.xa.mass.task.runtime.RuntimeEpoch;
+import com.xa.mass.task.runtime.RuntimeGate;
+import com.xa.mass.task.runtime.RuntimeResultFact;
+import com.xa.mass.task.runtime.TaskRuntimeMetaV1;
+import com.xa.mass.task.runtime.TaskRuntimeResultPolicyV1;
 import com.xa.mass.task.runtime.WorkerReservationEvidence;
 import java.util.List;
 import java.util.Map;
@@ -28,17 +25,30 @@ class InMemoryTaskRuntimeRetentionTest {
         var runtime = new InMemoryTaskRuntime(clock::get);
         var epoch = RuntimeEpoch.of("task-retention", 1L);
 
-        runtime.appendBatch(new AppendBatchCommand(
+        runtime.putRuntimeMeta(new TaskRuntimeMetaV1(
                 "task-retention",
-                List.of(new AppendItemInput("message-1", Map.of())),
-                new AppendAdmissionPolicy(10, AppendAdmissionPolicy.UNLIMITED_READY_BACKLOG),
-                epoch));
-        var claimed = runtime.claimReady(new ClaimReadyCommand(
                 "task-retention",
-                List.of(new WorkerReservationEvidence("worker-1", "group-1", "reservation-1", null)),
-                new ClaimLeasePolicy(1, 1_000L, 1L, epoch))).claimedItems().getFirst();
+                RuntimeGate.OPEN,
+                epoch,
+                0L,
+                0L,
+                0L,
+                0L,
+                new TaskRuntimeResultPolicyV1(RetryMode.FAST_READY, 0, 0L, 1L, false, true, 10L)));
+        runtime.appendBacklog(
+                "task-retention",
+                List.of(new BacklogFrameV1("message-1", "", Map.of(), null)),
+                10);
+        var claimed = runtime.claimBacklog(
+                        runtime.scoreCandidate("task-retention", "task-retention").orElseThrow(),
+                        List.of(new WorkerReservationEvidence("worker-1", "group-1", "reservation-1", null)),
+                        1,
+                        1_000L,
+                        0L)
+                .claimedItems()
+                .getFirst();
 
-        runtime.applyResult(new ResultApplyCommand(
+        runtime.applyResult(new RuntimeResultFact(
                 claimed.taskId(),
                 claimed.messageId(),
                 claimed.leaseToken(),
@@ -48,8 +58,6 @@ class InMemoryTaskRuntimeRetentionTest {
                 true,
                 Map.of("ok", true),
                 "",
-                new RetryPolicySnapshot(RetryMode.FAST_READY, 0, 0L, 1L),
-                new ResultFinalityPolicySnapshot(false, true, 10L),
                 epoch,
                 100L));
 

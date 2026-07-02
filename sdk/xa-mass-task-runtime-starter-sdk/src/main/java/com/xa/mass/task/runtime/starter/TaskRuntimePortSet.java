@@ -1,20 +1,12 @@
 package com.xa.mass.task.runtime.starter;
 
-import com.xa.mass.task.runtime.TaskRuntimeAppendPort;
-import com.xa.mass.task.runtime.TaskRuntimeClaimPort;
-import com.xa.mass.task.runtime.TaskRuntimeDiscardPort;
-import com.xa.mass.task.runtime.TaskRuntimeProgressPort;
+import com.xa.mass.task.runtime.TaskRuntimeConvergencePort;
 import com.xa.mass.task.runtime.TaskRuntimeReadPort;
-import com.xa.mass.task.runtime.TaskRuntimeRepairPort;
-import com.xa.mass.task.runtime.TaskRuntimeResultPort;
-import com.xa.mass.task.runtime.TaskRuntimeSchedulerPort;
+import com.xa.mass.task.runtime.TaskRuntimeScorePort;
+import com.xa.mass.task.runtime.TaskRuntimeWorkPort;
 
-public interface TaskRuntimePortSet extends TaskRuntimeAppendPort,
-        TaskRuntimeSchedulerPort,
-        TaskRuntimeClaimPort,
-        TaskRuntimeResultPort,
-        TaskRuntimeRepairPort,
-        TaskRuntimeProgressPort,
-        TaskRuntimeReadPort,
-        TaskRuntimeDiscardPort {
+public interface TaskRuntimePortSet extends TaskRuntimeWorkPort,
+        TaskRuntimeScorePort,
+        TaskRuntimeConvergencePort,
+        TaskRuntimeReadPort {
 }

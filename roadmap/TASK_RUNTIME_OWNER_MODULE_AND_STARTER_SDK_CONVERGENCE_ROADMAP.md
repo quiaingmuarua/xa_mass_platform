@@ -107,7 +107,7 @@ helpers. The old `TaskRuntimeEnqueueOptionsResolver` append helper and its
 admission/backpressure now flows through the task-runtime append command path,
 not the old runtime enqueue option resolver. The assignment claim port is also
 cut over: `TaskAssignmentRuntimePort.claimReady`, `TaskManager.claimReady`, and
-`SimpleTaskDispatchBinder` now use `ClaimReadyCommand`, `ClaimLeasePolicy`,
+`SimpleTaskDispatchBinder` now use direct grouped-port claim parameters with `ClaimLeasePolicy`,
 `WorkerReservationEvidence`, and `ClaimedWorkItem` instead of old
 `WorkerClaimTarget`, `TaskWorkClaimOptions`, or `ClaimedTaskWork` DTOs.
 Active lease maintenance is also cut over on the engine hot path:
@@ -144,7 +144,7 @@ pair has been deleted. `TaskSchedulingTestHarness` now drives scheduling,
 gating, contention, policy, worker-state, and redispatch tests through
 `TaskRuntimeServingLane` over the new task-runtime memory adapter through the
 no-old-runtime `TaskManager` constructor. `TaskRedispatchCompetitionTest` now proves stale
-expired-lease rejection through a task-runtime `ResultApplyCommand`, not the old
+expired-lease rejection through task-runtime `RuntimeResultFact` convergence, not the old
 `TaskWorkResult` DTO. `TaskFlowLoadModelRunner` no longer carries a synthetic
 stale-result hook; stale/late result proof lives in the dedicated engine
 stale-lease proof and external worker late-replay E2Es. Manual
@@ -1713,10 +1713,10 @@ shape:
 .\mvnw.cmd -q -pl xa-mass-task-runtime,platform_infra/mass-task-runtime-memory,platform_infra/mass-task-runtime-redis,sdk/xa-mass-task-runtime-starter-sdk -am -DskipTests install
 .\mvnw.cmd -q -pl xa-mass-task-runtime test "-Dtest=TaskRuntimeContractShapeTest,TaskRuntimeArchitectureGuardTest"
 .\mvnw.cmd -q -pl platform_infra/mass-task-runtime-memory test "-Dtest=InMemoryTaskRuntimeContractTest,InMemoryTaskRuntimeArchitectureGuardTest,InMemoryTaskRuntimeRetentionTest"
-.\mvnw.cmd -q -pl platform_infra/mass-task-runtime-redis test "-Dtest=RedisTaskRuntimeContractTest,RedisTaskRuntimeArchitectureGuardTest,RedisTaskRuntimeRetentionTest"
+.\mvnw.cmd -q -pl platform_infra/mass-task-runtime-redis test "-Dtest=RedisScoreBandTaskRuntimeTest,RedisTaskRuntimeArchitectureGuardTest,RedisTaskRuntimeScoreBandKeyspaceProofTest,RedisTaskRuntimeScoreBandAdvanceCandidateTest"
 .\mvnw.cmd -q -pl platform_infra/mass-task-runtime-redis test "-Dtest=RedisTaskRuntimeOwnerReconnectTest,RedisTaskRuntimeNetworkPartitionTest"
 .\mvnw.cmd -q -pl sdk/xa-mass-task-runtime-starter-sdk test "-Dtest=TaskRuntimeStarterBootstrapTest,TaskRuntimeStarterLifecycleTest,TaskRuntimeStarterArchitectureGuardTest,TaskRuntimeNonServingAppendToClaimProofTest,TaskRuntimeLoopCutoverGuardTest"
-.\mvnw.cmd -q -pl xa-mass-engine test "-Dtest=TaskRuntimeServingLaneTest,TaskRuntimeServingLaneOldPathClosureGuardTest,TaskManagerLifecycleTest,TaskKernelLifecycleTest,TaskRuntimeRecoveryPortTest,RuntimeReadyDispatchPumpTest,SimpleTaskDispatchBinderTest,TaskResultRuntimeConvergenceTest,TaskResultConcurrencyConvergenceTest,TaskRuntimePolicySnapshotMapperTest,TaskRuntimeResultCommandMapperTest,TaskRuntimeDispatchBindingMapperTest,TaskRuntimeResultDecisionMapperTest,TaskRuntimeAppendItemMapperTest,TaskRuntimeWorkerReservationMapperTest,TaskRuntimeEngineCutoverPreparationTest"
+.\mvnw.cmd -q -pl xa-mass-engine test "-Dtest=TaskRuntimeServingLaneTest,TaskRuntimeServingLaneOldPathClosureGuardTest,TaskManagerLifecycleTest,TaskKernelLifecycleTest,TaskRuntimeRecoveryPortTest,RuntimeReadyDispatchPumpTest,SimpleTaskDispatchBinderTest,TaskResultRuntimeConvergenceTest,TaskResultConcurrencyConvergenceTest,TaskRuntimePolicySnapshotMapperTest,TaskRuntimeResultFactMapperTest,TaskRuntimeDispatchBindingMapperTest,TaskRuntimeResultDecisionMapperTest,TaskRuntimeAppendItemMapperTest,TaskRuntimeWorkerReservationMapperTest,TaskRuntimeEngineCutoverPreparationTest"
 .\mvnw.cmd -q -pl xa-mass-engine test "-Dtest=TaskRuntimeServingLaneOldPathClosureGuardTest,TaskSchedulingGateAndTargetingTest,TaskSchedulingContentionTest,TaskSchedulingBindingEntryBypassTest,TaskWorkerEligibilityTest,TaskDelayedAvailabilitySchedulingTest,TaskRedispatchCompetitionTest,TaskPolicySchedulingOutcomeTest,WorkerStateReportSchedulingIntegrationTest"
 .\mvnw.cmd -q -pl xa-mass-engine -am -DskipTests install
 .\mvnw.cmd -q -pl xa-mass-engine-starter test "-Dtest=EngineConfigTaskRuntimeServingLaneTest"

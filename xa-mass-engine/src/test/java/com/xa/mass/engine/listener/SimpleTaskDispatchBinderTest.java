@@ -307,7 +307,6 @@ public class SimpleTaskDispatchBinderTest {
                 runtime,
                 runtime,
                 runtime,
-                runtime,
                 queries,
                 commands,
                 events,

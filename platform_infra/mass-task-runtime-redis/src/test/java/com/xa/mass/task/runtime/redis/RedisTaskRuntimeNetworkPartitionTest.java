@@ -2,25 +2,16 @@ package com.xa.mass.task.runtime.redis;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.xa.mass.task.runtime.AppendAdmissionPolicy;
-import com.xa.mass.task.runtime.AppendBatchCommand;
-import com.xa.mass.task.runtime.AppendBatchStatus;
-import com.xa.mass.task.runtime.AppendItemInput;
-import com.xa.mass.task.runtime.ClaimLeasePolicy;
-import com.xa.mass.task.runtime.ClaimReadyCommand;
-import com.xa.mass.task.runtime.FinalResultReadRequest;
+import com.xa.mass.task.runtime.BacklogFrameV1;
 import com.xa.mass.task.runtime.MessageFinalityStatus;
-import com.xa.mass.task.runtime.PollActiveLeaseRepairCommand;
-import com.xa.mass.task.runtime.ResultApplyCommand;
 import com.xa.mass.task.runtime.ResultApplySource;
-import com.xa.mass.task.runtime.ResultFinalityPolicySnapshot;
 import com.xa.mass.task.runtime.RetryMode;
-import com.xa.mass.task.runtime.RetryPolicySnapshot;
 import com.xa.mass.task.runtime.RuntimeEpoch;
 import com.xa.mass.task.runtime.RuntimeGate;
-import com.xa.mass.task.runtime.SchedulerDiscoveryCommand;
-import com.xa.mass.task.runtime.SchedulerEligibilityPolicy;
-import com.xa.mass.task.runtime.UpdateSchedulerEligibilityCommand;
+import com.xa.mass.task.runtime.RuntimeResultFact;
+import com.xa.mass.task.runtime.TaskRuntimeMetaV1;
+import com.xa.mass.task.runtime.TaskRuntimeResultPolicyV1;
+import com.xa.mass.task.runtime.TaskScoreV1;
 import com.xa.mass.task.runtime.WorkerReservationEvidence;
 import io.lettuce.core.RedisClient;
 import java.io.IOException;
@@ -46,11 +37,15 @@ import org.junit.jupiter.api.Test;
 
 class RedisTaskRuntimeNetworkPartitionTest {
 
+    private static final String LANE = "default";
+    private static final long DUE = TaskRuntimeRedisKeyspaceProofHarness.TIME_SCORE_FLOOR;
+
     private RedisClient redisClient;
     private String redisUri;
     private String namespace;
     private RedisTaskRuntime runtime;
     private RedisTcpProxy proxy;
+    private final AtomicLong clock = new AtomicLong();
 
     @AfterEach
     void cleanup() {
@@ -70,29 +65,19 @@ class RedisTaskRuntimeNetworkPartitionTest {
         var redisAddress = RedisAddress.from(redisUri);
         proxy = RedisTcpProxy.start(redisAddress.host(), redisAddress.port(), 0);
         var proxiedRedisUri = redisAddress.withPort(proxy.port());
-        var clock = new AtomicLong(0L);
         redisClient = RedisClient.create(proxiedRedisUri);
         runtime = new RedisTaskRuntime(redisClient, namespace, clock::get);
-        var epoch = RuntimeEpoch.of("task-network-partition", 1L);
+        String taskId = "task-network-partition";
+        var epoch = enrollOpenTask(taskId);
 
-        runtime.updateTaskEligibility(new UpdateSchedulerEligibilityCommand(
-                "task-network-partition",
-                new SchedulerEligibilityPolicy(RuntimeGate.OPEN, "default", 0L, 0L, 0L, 0L),
-                epoch));
-        var appended = runtime.appendBatch(new AppendBatchCommand(
-                "task-network-partition",
-                List.of(new AppendItemInput("message-1", "demo.dispatch", Map.of("value", 1), null)),
-                new AppendAdmissionPolicy(10, AppendAdmissionPolicy.UNLIMITED_READY_BACKLOG),
-                epoch));
-        assertThat(appended.status()).isEqualTo(AppendBatchStatus.ALL_ACCEPTED);
+        runtime.appendBacklog(taskId, List.of(new BacklogFrameV1(
+                "message-1",
+                "demo.dispatch",
+                Map.of("value", 1),
+                null)), 10);
 
-        var firstClaim = runtime.claimReady(new ClaimReadyCommand(
-                "task-network-partition",
-                List.of(new WorkerReservationEvidence("worker-before-partition", "group-1", "reservation-1", "target-1")),
-                new ClaimLeasePolicy(1, 1_000L, 1L, epoch)));
-        assertThat(firstClaim.claimedItems()).hasSize(1);
+        var firstItem = claimOne(taskId, "worker-before-partition", 1_000L);
         assertThat(proxy.acceptedConnections()).isPositive();
-        var firstItem = firstClaim.claimedItems().getFirst();
         assertThat(firstItem.attemptNo()).isEqualTo(1);
 
         int proxyPort = proxy.port();
@@ -103,39 +88,29 @@ class RedisTaskRuntimeNetworkPartitionTest {
         runtime = new RedisTaskRuntime(redisClient, namespace, clock::get);
         clock.set(1_001L);
 
-        var expired = runtime.pollExpiredActiveLeases(new PollActiveLeaseRepairCommand(10, clock.get()));
+        var expired = runtime.scanExpiredLeases(LANE, clock.get(), 10, 10);
         assertThat(expired.candidates())
                 .extracting(candidate -> candidate.messageId())
                 .containsExactly("message-1");
-        var repaired = expired.candidates().getFirst();
-        var timeout = runtime.applyResult(new ResultApplyCommand(
-                repaired.taskId(),
-                repaired.messageId(),
-                repaired.leaseToken(),
-                repaired.workerId(),
-                repaired.attemptNo(),
+        var expiredLease = expired.candidates().getFirst();
+        var retry = runtime.applyResult(new RuntimeResultFact(
+                expiredLease.taskId(),
+                expiredLease.messageId(),
+                expiredLease.leaseToken(),
+                expiredLease.workerId(),
+                expiredLease.attemptNo(),
                 ResultApplySource.LEASE_TIMEOUT,
                 false,
-                Map.of("reason", "network partition timeout"),
-                "expired after Redis network partition",
-                new RetryPolicySnapshot(RetryMode.FAST_READY, 1, 0L, 1L),
-                new ResultFinalityPolicySnapshot(true, true, 86_400_000L),
+                Map.of(),
+                "lease expired",
                 epoch,
                 clock.get()));
-        assertThat(timeout.status()).isEqualTo(MessageFinalityStatus.RETRY_SCHEDULED);
+        assertThat(retry.status()).isEqualTo(MessageFinalityStatus.RETRY_SCHEDULED);
 
-        assertThat(runtime.discoverEligibleTasks(new SchedulerDiscoveryCommand(10, clock.get())).candidates())
-                .extracting(candidate -> candidate.taskId())
-                .containsExactly("task-network-partition");
-        var secondClaim = runtime.claimReady(new ClaimReadyCommand(
-                "task-network-partition",
-                List.of(new WorkerReservationEvidence("worker-after-partition", "group-1", "reservation-2", "target-2")),
-                new ClaimLeasePolicy(1, 1_000L, 1L, epoch)));
-        assertThat(secondClaim.claimedItems()).hasSize(1);
-        var secondItem = secondClaim.claimedItems().getFirst();
+        var secondItem = claimOne(taskId, "worker-after-partition", 1_000L);
         assertThat(secondItem.attemptNo()).isEqualTo(2);
 
-        var finality = runtime.applyResult(new ResultApplyCommand(
+        var finality = runtime.applyResult(new RuntimeResultFact(
                 secondItem.taskId(),
                 secondItem.messageId(),
                 secondItem.leaseToken(),
@@ -145,16 +120,49 @@ class RedisTaskRuntimeNetworkPartitionTest {
                 true,
                 Map.of("ok", true),
                 "",
-                new RetryPolicySnapshot(RetryMode.FAST_READY, 1, 0L, 1L),
-                new ResultFinalityPolicySnapshot(true, true, 86_400_000L),
                 epoch,
                 clock.get() + 1L));
         assertThat(finality.status()).isEqualTo(MessageFinalityStatus.LOGICAL_FINAL);
 
-        var finalRows = runtime.readFinalResults(new FinalResultReadRequest("task-network-partition", 0, 10)).rows();
-        assertThat(finalRows).hasSize(1);
-        assertThat(finalRows.getFirst().workerId()).isEqualTo("worker-after-partition");
-        assertThat(finalRows.getFirst().attemptNo()).isEqualTo(2);
+        var finalRow = runtime.getFinalResultByMessageId(taskId, "message-1");
+        assertThat(finalRow).isPresent();
+        assertThat(finalRow.get().workerId()).isEqualTo("worker-after-partition");
+        assertThat(finalRow.get().attemptNo()).isEqualTo(2);
+    }
+
+    private RuntimeEpoch enrollOpenTask(String taskId) {
+        var epoch = RuntimeEpoch.of(taskId, 1L);
+        runtime.putRuntimeMeta(new TaskRuntimeMetaV1(
+                taskId,
+                LANE,
+                RuntimeGate.OPEN,
+                epoch,
+                DUE,
+                0L,
+                0L,
+                0L,
+                new TaskRuntimeResultPolicyV1(
+                        RetryMode.FAST_READY,
+                        1,
+                        0L,
+                        1L,
+                        false,
+                        true,
+                        86_400_000L)));
+        runtime.setTaskScore(taskId, LANE, epoch, new TaskScoreV1(DUE));
+        return epoch;
+    }
+
+    private com.xa.mass.task.runtime.ClaimedWorkItem claimOne(String taskId, String workerId, long leaseMillis) {
+        var candidate = runtime.discoverSchedulable(LANE, DUE, 10).candidates().getFirst();
+        var claim = runtime.claimBacklog(
+                candidate,
+                List.of(new WorkerReservationEvidence(workerId, "group-1", "reservation-" + workerId, "target")),
+                1,
+                leaseMillis,
+                clock.get());
+        assertThat(claim.claimedItems()).hasSize(1);
+        return claim.claimedItems().getFirst();
     }
 
     private void closeRuntimeAndClient() {

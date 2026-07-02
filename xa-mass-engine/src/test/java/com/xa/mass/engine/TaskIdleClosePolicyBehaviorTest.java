@@ -43,7 +43,6 @@ class TaskIdleClosePolicyBehaviorTest {
                 taskRuntime,
                 taskRuntime,
                 taskRuntime,
-                taskRuntime,
                 new TaskQueryService(taskManager),
                 new TaskCommandService(taskManager),
                 new TaskEventService(taskManager),

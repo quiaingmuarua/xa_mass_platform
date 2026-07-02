@@ -8,40 +8,34 @@ import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.policy.ContractAwareTaskTerminalPolicy;
-import com.xa.mass.task.runtime.TaskRuntimeProgressSnapshot;
-import com.xa.mass.task.runtime.ActiveLeaseRepairBatch;
-import com.xa.mass.task.runtime.ActiveTaskWorkQuery;
 import com.xa.mass.task.runtime.ActiveTaskWorkSnapshot;
-import com.xa.mass.task.runtime.ActiveWorkQuery;
-import com.xa.mass.task.runtime.ActiveWorkSnapshot;
-import com.xa.mass.task.runtime.AppendBatchCommand;
 import com.xa.mass.task.runtime.AppendBatchOutcome;
-import com.xa.mass.task.runtime.ClaimReadyCommand;
+import com.xa.mass.task.runtime.BacklogFrameV1;
 import com.xa.mass.task.runtime.ClaimReadyOutcome;
 import com.xa.mass.task.runtime.ClaimedWorkItem;
-import com.xa.mass.task.runtime.DiscardTaskRuntimeCommand;
 import com.xa.mass.task.runtime.DiscardTaskRuntimeOutcome;
-import com.xa.mass.task.runtime.DiscardTaskWorkCommand;
 import com.xa.mass.task.runtime.DiscardTaskWorkOutcome;
 import com.xa.mass.task.runtime.FinalResultReadRequest;
 import com.xa.mass.task.runtime.FinalResultRow;
 import com.xa.mass.task.runtime.FinalResultWindow;
+import com.xa.mass.task.runtime.LeaseRepairBatch;
 import com.xa.mass.task.runtime.MessageFinalityOutcome;
-import com.xa.mass.task.runtime.PollActiveLeaseRepairCommand;
-import com.xa.mass.task.runtime.ResultApplyCommand;
 import com.xa.mass.task.runtime.ResultCorrelationSnapshot;
-import com.xa.mass.task.runtime.SchedulerDiscoveryCommand;
-import com.xa.mass.task.runtime.SchedulerDiscoveryOutcome;
-import com.xa.mass.task.runtime.TaskRuntimeAppendPort;
-import com.xa.mass.task.runtime.TaskRuntimeClaimPort;
-import com.xa.mass.task.runtime.TaskRuntimeDiscardPort;
-import com.xa.mass.task.runtime.TaskRuntimeProgressPort;
+import com.xa.mass.task.runtime.RetryPromotionBatch;
+import com.xa.mass.task.runtime.RuntimeEpoch;
+import com.xa.mass.task.runtime.RuntimeResultFact;
+import com.xa.mass.task.runtime.ScoreCandidate;
+import com.xa.mass.task.runtime.ScoreCandidateBatch;
+import com.xa.mass.task.runtime.TaskCloseAttemptOutcome;
+import com.xa.mass.task.runtime.TaskRuntimeConvergencePort;
+import com.xa.mass.task.runtime.TaskRuntimeMetaV1;
 import com.xa.mass.task.runtime.TaskRuntimeProgressSnapshot;
 import com.xa.mass.task.runtime.TaskRuntimeReadPort;
-import com.xa.mass.task.runtime.TaskRuntimeRepairPort;
-import com.xa.mass.task.runtime.TaskRuntimeResultPort;
-import com.xa.mass.task.runtime.TaskRuntimeSchedulerPort;
-import com.xa.mass.task.runtime.UpdateSchedulerEligibilityCommand;
+import com.xa.mass.task.runtime.TaskRuntimeResultWindowReadModel;
+import com.xa.mass.task.runtime.TaskRuntimeScorePort;
+import com.xa.mass.task.runtime.TaskRuntimeWorkPort;
+import com.xa.mass.task.runtime.TaskScoreV1;
+import com.xa.mass.task.runtime.WorkerReservationEvidence;
 import com.xa.mass.task.runtime.memory.InMemoryTaskRuntime;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -270,9 +264,6 @@ class TaskResultConcurrencyConvergenceTest {
                 runtime,
                 runtime,
                 runtime,
-                runtime,
-                runtime,
-                runtime,
                 runtime);
     }
 
@@ -282,20 +273,14 @@ class TaskResultConcurrencyConvergenceTest {
                 runtime,
                 runtime,
                 runtime,
-                runtime,
-                runtime,
-                runtime,
                 runtime);
     }
 
-    private static Harness servingLaneTaskManager(TaskRuntimeAppendPort appendPort,
-                                                  TaskRuntimeSchedulerPort schedulerPort,
-                                                  TaskRuntimeClaimPort claimPort,
-                                                  TaskRuntimeResultPort resultPort,
-                                                  TaskRuntimeRepairPort repairPort,
-                                                  TaskRuntimeProgressPort progressPort,
+    private static Harness servingLaneTaskManager(TaskRuntimeWorkPort workPort,
+                                                  TaskRuntimeScorePort scorePort,
+                                                  TaskRuntimeConvergencePort convergencePort,
                                                   TaskRuntimeReadPort readPort,
-                                                  TaskRuntimeDiscardPort discardPort) {
+                                                  TaskRuntimeResultWindowReadModel resultWindowReadModel) {
         InMemoryTaskShellRuntimeStore storage = new InMemoryTaskShellRuntimeStore();
         TaskManager manager = new TaskManager(
                 storage,
@@ -306,14 +291,11 @@ class TaskResultConcurrencyConvergenceTest {
         var queries = new TaskQueryService(manager);
         var events = new TaskEventService(manager);
         var lane = new TaskRuntimeServingLane(
-                appendPort,
-                schedulerPort,
-                claimPort,
-                resultPort,
-                repairPort,
-                progressPort,
+                workPort,
+                scorePort,
+                convergencePort,
                 readPort,
-                discardPort,
+                resultWindowReadModel,
                 queries,
                 commands,
                 events,
@@ -448,14 +430,11 @@ class TaskResultConcurrencyConvergenceTest {
                                AtomicInteger terminal) {
     }
 
-    private interface TaskRuntimePorts extends TaskRuntimeAppendPort,
-            TaskRuntimeSchedulerPort,
-            TaskRuntimeClaimPort,
-            TaskRuntimeResultPort,
-            TaskRuntimeRepairPort,
-            TaskRuntimeProgressPort,
+    private interface TaskRuntimePorts extends TaskRuntimeWorkPort,
+            TaskRuntimeScorePort,
+            TaskRuntimeConvergencePort,
             TaskRuntimeReadPort,
-            TaskRuntimeDiscardPort {
+            TaskRuntimeResultWindowReadModel {
     }
 
     private static final class BlockingResultTaskRuntime implements TaskRuntimePorts {
@@ -470,38 +449,62 @@ class TaskResultConcurrencyConvergenceTest {
         }
 
         @Override
-        public AppendBatchOutcome appendBatch(AppendBatchCommand command) {
-            return delegate.appendBatch(command);
+        public AppendBatchOutcome appendBacklog(String taskId, List<BacklogFrameV1> frames, int maxBatchSize) {
+            return delegate.appendBacklog(taskId, frames, maxBatchSize);
         }
 
         @Override
-        public void updateTaskEligibility(UpdateSchedulerEligibilityCommand command) {
-            delegate.updateTaskEligibility(command);
+        public ClaimReadyOutcome claimBacklog(ScoreCandidate candidate,
+                                              List<WorkerReservationEvidence> reservations,
+                                              int maxItems,
+                                              long leaseMillis,
+                                              long nowMillis) {
+            return delegate.claimBacklog(candidate, reservations, maxItems, leaseMillis, nowMillis);
         }
 
         @Override
-        public SchedulerDiscoveryOutcome discoverEligibleTasks(SchedulerDiscoveryCommand command) {
-            return delegate.discoverEligibleTasks(command);
+        public void putRuntimeMeta(TaskRuntimeMetaV1 meta) {
+            delegate.putRuntimeMeta(meta);
         }
 
         @Override
-        public void markTaskDirty(String taskId) {
-            delegate.markTaskDirty(taskId);
+        public void setTaskScore(String taskId, String laneKey, RuntimeEpoch epoch, TaskScoreV1 score) {
+            delegate.setTaskScore(taskId, laneKey, epoch, score);
         }
 
         @Override
-        public ClaimReadyOutcome claimReady(ClaimReadyCommand command) {
-            return delegate.claimReady(command);
+        public void removeTaskScore(String taskId, String laneKey, RuntimeEpoch epoch) {
+            delegate.removeTaskScore(taskId, laneKey, epoch);
         }
 
         @Override
-        public MessageFinalityOutcome applyResult(ResultApplyCommand command) {
+        public Optional<ScoreCandidate> scoreCandidate(String taskId, String laneKey) {
+            return delegate.scoreCandidate(taskId, laneKey);
+        }
+
+        @Override
+        public ScoreCandidateBatch discoverSchedulable(String laneKey, long maxScore, int limit) {
+            return delegate.discoverSchedulable(laneKey, maxScore, limit);
+        }
+
+        @Override
+        public RetryPromotionBatch promoteDueRetries(String laneKey, long nowMillis, int taskLimit, int itemLimit) {
+            return delegate.promoteDueRetries(laneKey, nowMillis, taskLimit, itemLimit);
+        }
+
+        @Override
+        public LeaseRepairBatch scanExpiredLeases(String laneKey, long nowMillis, int taskLimit, int itemLimit) {
+            return delegate.scanExpiredLeases(laneKey, nowMillis, taskLimit, itemLimit);
+        }
+
+        @Override
+        public MessageFinalityOutcome applyResult(RuntimeResultFact fact) {
             int current = concurrentApplyResult.incrementAndGet();
             maxConcurrentApplyResult.accumulateAndGet(current, Math::max);
             enteredApplyResultLatch.countDown();
             try {
                 assertTrue(releaseApplyResultLatch.await(5, TimeUnit.SECONDS));
-                return delegate.applyResult(command);
+                return delegate.applyResult(fact);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 throw new RuntimeException(e);
@@ -511,23 +514,31 @@ class TaskResultConcurrencyConvergenceTest {
         }
 
         @Override
-        public ResultCorrelationSnapshot getResultCorrelation(String taskId, String messageId) {
-            return delegate.getResultCorrelation(taskId, messageId);
+        public TaskCloseAttemptOutcome closeIfDrained(String taskId, String laneKey, RuntimeEpoch epoch) {
+            return delegate.closeIfDrained(taskId, laneKey, epoch);
         }
 
         @Override
-        public ActiveLeaseRepairBatch pollExpiredActiveLeases(PollActiveLeaseRepairCommand command) {
-            return delegate.pollExpiredActiveLeases(command);
+        public DiscardTaskRuntimeOutcome discardRuntime(String taskId,
+                                                        String laneKey,
+                                                        RuntimeEpoch epoch,
+                                                        String reason) {
+            return delegate.discardRuntime(taskId, laneKey, epoch, reason);
         }
 
         @Override
-        public ActiveTaskWorkSnapshot getActiveWorkForTask(ActiveTaskWorkQuery query) {
-            return delegate.getActiveWorkForTask(query);
+        public DiscardTaskWorkOutcome discardWork(String taskId, RuntimeEpoch epoch, String reason) {
+            return delegate.discardWork(taskId, epoch, reason);
         }
 
         @Override
-        public ActiveWorkSnapshot getActiveWorkForWorker(ActiveWorkQuery query) {
-            return delegate.getActiveWorkForWorker(query);
+        public ResultCorrelationSnapshot resultCorrelation(String taskId, String messageId) {
+            return delegate.resultCorrelation(taskId, messageId);
+        }
+
+        @Override
+        public ActiveTaskWorkSnapshot activeWorkForTask(String taskId, int limit) {
+            return delegate.activeWorkForTask(taskId, limit);
         }
 
         @Override
@@ -543,16 +554,6 @@ class TaskResultConcurrencyConvergenceTest {
         @Override
         public Optional<FinalResultRow> getFinalResultByMessageId(String taskId, String messageId) {
             return delegate.getFinalResultByMessageId(taskId, messageId);
-        }
-
-        @Override
-        public DiscardTaskRuntimeOutcome discardTaskRuntime(DiscardTaskRuntimeCommand command) {
-            return delegate.discardTaskRuntime(command);
-        }
-
-        @Override
-        public DiscardTaskWorkOutcome discardTaskWork(DiscardTaskWorkCommand command) {
-            return delegate.discardTaskWork(command);
         }
 
         private boolean awaitApplyResultCalls(long timeout, TimeUnit unit) throws InterruptedException {

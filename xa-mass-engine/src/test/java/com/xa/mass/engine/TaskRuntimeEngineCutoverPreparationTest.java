@@ -7,22 +7,21 @@ import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.engine.runtime.TaskRuntimeDispatchBindingMapper;
 import com.xa.mass.engine.runtime.TaskRuntimePolicySnapshotMapper;
-import com.xa.mass.engine.runtime.TaskRuntimeResultCommandMapper;
 import com.xa.mass.engine.runtime.TaskRuntimeResultDecisionMapper;
+import com.xa.mass.engine.runtime.TaskRuntimeResultFactMapper;
 import com.xa.mass.engine.runtime.TaskRuntimeWorkerReservationMapper;
 import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy;
+import com.xa.mass.task.runtime.BacklogFrameV1;
 import com.xa.mass.task.runtime.TaskRuntimeProgressSnapshot;
-import com.xa.mass.task.runtime.AppendBatchCommand;
 import com.xa.mass.task.runtime.AppendBatchStatus;
-import com.xa.mass.task.runtime.ClaimReadyCommand;
 import com.xa.mass.task.runtime.MessageFinalityStatus;
-import com.xa.mass.task.runtime.ResultApplyCommand;
 import com.xa.mass.task.runtime.ResultApplySource;
 import com.xa.mass.task.runtime.RuntimeEpoch;
+import com.xa.mass.task.runtime.RuntimeResultFact;
 import com.xa.mass.task.runtime.RuntimeGate;
-import com.xa.mass.task.runtime.SchedulerDiscoveryCommand;
-import com.xa.mass.task.runtime.SchedulerEligibilityPolicy;
-import com.xa.mass.task.runtime.UpdateSchedulerEligibilityCommand;
+import com.xa.mass.task.runtime.TaskRuntimeMetaV1;
+import com.xa.mass.task.runtime.TaskRuntimeResultPolicyV1;
+import com.xa.mass.task.runtime.TaskScoreV1;
 import com.xa.mass.task.runtime.memory.InMemoryTaskRuntime;
 import com.xa.mass.worker.runtime.selection.SelectedWorkerHandle;
 import java.util.List;
@@ -30,6 +29,8 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class TaskRuntimeEngineCutoverPreparationTest {
+
+    private static final long DUE = TaskScoreV1.TIME_SCORE_FLOOR;
 
     @Test
     void engineMappersCanDriveAppendClaimDispatchBindingResultProgressWithoutOldRuntimeDtos() {
@@ -43,10 +44,16 @@ class TaskRuntimeEngineCutoverPreparationTest {
                 UserRef.of("agent"));
         var epoch = RuntimeEpoch.of("task-1", 1L);
         var policy = ResolvedTaskSchedulingPolicy.from(task, null);
-        runtime.updateTaskEligibility(new UpdateSchedulerEligibilityCommand(
+        runtime.putRuntimeMeta(new TaskRuntimeMetaV1(
                 "task-1",
-                new SchedulerEligibilityPolicy(RuntimeGate.OPEN, "default", 0L, 0L, 0L, 0L),
-                epoch));
+                "default",
+                RuntimeGate.OPEN,
+                epoch,
+                DUE,
+                0L,
+                0L,
+                0L,
+                resultPolicy(policy)));
         var ingressItem = RuntimeTaskIngressItem.fromInput(
                 "task-1",
                 "message-1",
@@ -56,22 +63,26 @@ class TaskRuntimeEngineCutoverPreparationTest {
                         "value", 1),
                 1);
 
-        var append = runtime.appendBatch(new AppendBatchCommand(
+        var append = runtime.appendBacklog(
                 "task-1",
-                TaskRuntimeAppendItemMapper.toAppendItems(List.of(ingressItem)),
-                TaskRuntimePolicySnapshotMapper.toAppendAdmissionPolicy(policy, 10),
-                epoch));
+                TaskRuntimeAppendItemMapper.toAppendItems(List.of(ingressItem)).stream()
+                        .map(BacklogFrameV1::from)
+                        .toList(),
+                10);
 
         assertThat(append.status()).isEqualTo(AppendBatchStatus.ALL_ACCEPTED);
-        assertThat(runtime.discoverEligibleTasks(new SchedulerDiscoveryCommand(10, 1_000L)).candidates())
+        assertThat(runtime.discoverSchedulable("default", DUE, 10).candidates())
                 .extracting(candidate -> candidate.taskId())
                 .containsExactly("task-1");
 
         var selectedWorker = SelectedWorkerHandle.of("worker-1", "group-1", "scope-1", true);
-        var claim = runtime.claimReady(new ClaimReadyCommand(
-                "task-1",
+        var claimPolicy = TaskRuntimePolicySnapshotMapper.toClaimLeasePolicy(task, policy, 1, 30L, 1L, epoch);
+        var claim = runtime.claimBacklog(
+                runtime.scoreCandidate("task-1", "default").orElseThrow(),
                 List.of(TaskRuntimeWorkerReservationMapper.toReservationEvidence(selectedWorker, "batch-1")),
-                TaskRuntimePolicySnapshotMapper.toClaimLeasePolicy(task, policy, 1, 30L, 1L, epoch)));
+                claimPolicy.maxItems(),
+                claimPolicy.leaseMillis(),
+                1L);
 
         assertThat(claim.accepted()).isTrue();
         var claimed = claim.claimedItems().getFirst();
@@ -88,7 +99,7 @@ class TaskRuntimeEngineCutoverPreparationTest {
         assertThat(dispatchBinding.selectionToken()).isEqualTo(selectedWorker.selectionToken());
         assertThat(dispatchBinding.eventBindingKey()).isEqualTo("demoApp:demo.event");
 
-        var result = runtime.applyResult(new ResultApplyCommand(
+        var result = runtime.applyResult(new RuntimeResultFact(
                 claimed.taskId(),
                 claimed.messageId(),
                 claimed.leaseToken(),
@@ -98,8 +109,6 @@ class TaskRuntimeEngineCutoverPreparationTest {
                 true,
                 Map.of("ok", true),
                 "",
-                TaskRuntimePolicySnapshotMapper.toRetryPolicySnapshot(policy, 1, 1L),
-                TaskRuntimePolicySnapshotMapper.toResultFinalityPolicySnapshot(policy, 86_400_000L),
                 epoch,
                 1_500L));
         var decision = TaskRuntimeResultDecisionMapper.toEngineDecision(result);
@@ -126,33 +135,38 @@ class TaskRuntimeEngineCutoverPreparationTest {
         task.getExecutionSpec().setDefaultMaxRetryCount(1);
         var epoch = RuntimeEpoch.of("task-1", 1L);
         var policy = ResolvedTaskSchedulingPolicy.from(task, null);
-        runtime.updateTaskEligibility(new UpdateSchedulerEligibilityCommand(
+        runtime.putRuntimeMeta(new TaskRuntimeMetaV1(
                 "task-1",
-                new SchedulerEligibilityPolicy(RuntimeGate.OPEN, "default", 0L, 0L, 0L, 0L),
-                epoch));
-        runtime.appendBatch(new AppendBatchCommand(
+                "default",
+                RuntimeGate.OPEN,
+                epoch,
+                DUE,
+                0L,
+                0L,
+                0L,
+                resultPolicy(policy)));
+        runtime.appendBacklog(
                 "task-1",
-                List.of(new com.xa.mass.task.runtime.AppendItemInput("message-1", Map.of("value", 1))),
-                TaskRuntimePolicySnapshotMapper.toAppendAdmissionPolicy(policy, 10),
-                epoch));
+                List.of(new BacklogFrameV1("message-1", "", Map.of("value", 1), null)),
+                10);
 
         var selectedWorker = SelectedWorkerHandle.of("worker-1", "group-1", "scope-1", true);
-        var claimed = runtime.claimReady(new ClaimReadyCommand(
-                "task-1",
+        var claimPolicy = TaskRuntimePolicySnapshotMapper.toClaimLeasePolicy(task, policy, 1, 30L, 1L, epoch);
+        var claimed = runtime.claimBacklog(
+                runtime.scoreCandidate("task-1", "default").orElseThrow(),
                 List.of(TaskRuntimeWorkerReservationMapper.toReservationEvidence(selectedWorker, "batch-1")),
-                TaskRuntimePolicySnapshotMapper.toClaimLeasePolicy(task, policy, 1, 30L, 1L, epoch)))
+                claimPolicy.maxItems(),
+                claimPolicy.leaseMillis(),
+                1L)
                 .claimedItems()
                 .getFirst();
         var dispatchBinding = TaskRuntimeDispatchBindingMapper.fromTaskRuntimeClaim(task, claimed);
 
-        var outcome = runtime.applyResult(TaskRuntimeResultCommandMapper.fromDispatchSubmitFailure(
+        var outcome = runtime.applyResult(TaskRuntimeResultFactMapper.fromDispatchSubmitFailure(
                 dispatchBinding,
-                policy,
                 epoch,
                 1_500L,
-                "dispatch submit failed",
-                1L,
-                86_400_000L));
+                "dispatch submit failed"));
         var decision = TaskRuntimeResultDecisionMapper.toEngineDecision(outcome);
         var progress = runtime.progressSnapshot("task-1");
 
@@ -161,5 +175,11 @@ class TaskRuntimeEngineCutoverPreparationTest {
         assertThat(progress.readyCount()).isEqualTo(1L);
         assertThat(progress.activeCount()).isZero();
         assertThat(progress.finalCount()).isZero();
+    }
+
+    private static TaskRuntimeResultPolicyV1 resultPolicy(ResolvedTaskSchedulingPolicy policy) {
+        return TaskRuntimeResultPolicyV1.from(
+                TaskRuntimePolicySnapshotMapper.toRetryPolicySnapshot(policy, -1, 1L),
+                TaskRuntimePolicySnapshotMapper.toResultFinalityPolicySnapshot(policy, 86_400_000L));
     }
 }

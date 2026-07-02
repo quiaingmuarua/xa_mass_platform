@@ -205,7 +205,6 @@ class TaskResultRuntimeConvergenceTest {
                 runtime,
                 runtime,
                 runtime,
-                runtime,
                 queries,
                 commands,
                 events,

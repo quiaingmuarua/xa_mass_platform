@@ -1,5 +1,6 @@
 package com.xa.mass.task.runtime.starter;
 
+import com.xa.mass.task.runtime.TaskRuntimeResultWindowReadModel;
 import com.xa.mass.task.runtime.memory.InMemoryTaskRuntime;
 import com.xa.mass.task.runtime.redis.RedisTaskRuntime;
 import io.lettuce.core.RedisClient;
@@ -31,7 +32,12 @@ public final class TaskRuntimeStarter {
                 effectiveConfig.loopIntervalMillis(),
                 threadFactory,
                 clock);
-        var handle = new TaskRuntimeHandle(effectiveConfig.backendKind(), backend.runtime(), loopHost, backend.closeable());
+        var handle = new TaskRuntimeHandle(
+                effectiveConfig.backendKind(),
+                backend.runtime(),
+                backend.resultWindowReadModel(),
+                loopHost,
+                backend.closeable());
         handle.start();
         return handle;
     }
@@ -40,15 +46,21 @@ public final class TaskRuntimeStarter {
         if (config.backendKind() == TaskRuntimeBackendKind.REDIS) {
             var client = RedisClient.create(config.redisUri());
             var runtime = new RedisTaskRuntime(client, config.redisNamespace(), clock);
-            return new Backend(new RedisPortSet(runtime), () -> {
+            var portSet = new RedisPortSet(runtime);
+            return new Backend(portSet, () -> {
                 runtime.close();
                 client.shutdown();
-            });
+            }, portSet);
         }
         var runtime = new InMemoryTaskRuntime(clock);
-        return new Backend(new MemoryPortSet(runtime), null);
+        var portSet = new MemoryPortSet(runtime);
+        return new Backend(portSet, null, portSet);
     }
 
-    private record Backend(TaskRuntimePortSet runtime, AutoCloseable closeable) {
+    private record Backend(
+            TaskRuntimePortSet runtime,
+            AutoCloseable closeable,
+            TaskRuntimeResultWindowReadModel resultWindowReadModel
+    ) {
     }
 }

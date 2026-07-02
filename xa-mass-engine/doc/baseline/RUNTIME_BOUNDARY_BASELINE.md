@@ -33,7 +33,7 @@ trace/audit sinks.
 
 `xa-mass-task-runtime` is the runtime truth for:
 
-- accepted ready backlog;
+- accepted backlog;
 - scheduler discovery of task-level runnable candidates;
 - exclusive claim ownership;
 - active lease identity, expiry, and repair candidates;
@@ -44,16 +44,17 @@ trace/audit sinks.
 
 Engine hot paths must treat these runtime semantics as authoritative:
 
-- append writes accepted item identity and ready backlog through
-  `TaskRuntimeAppendPort`;
-- scheduler discovery reads task-runtime runnable candidates, not storage or
-  review rows;
-- claim moves ready work to active leases through `TaskRuntimeClaimPort`;
-- result ingest applies worker/timeout/dispatch-failure outcomes through
-  `TaskRuntimeResultPort`;
-- active lease timeout and repair candidates come from `TaskRuntimeRepairPort`;
-- public final-result reads come from `TaskRuntimeReadPort`;
-- terminal/delete cleanup uses `TaskRuntimeDiscardPort`;
+- append writes accepted backlog frames through `TaskRuntimeWorkPort`;
+- scheduler discovery reads task-runtime score candidates through
+  `TaskRuntimeScorePort`, not storage or review rows;
+- claim moves backlog work to active runtime state through `TaskRuntimeWorkPort`;
+- result ingest applies worker/timeout/dispatch-failure facts through
+  `TaskRuntimeConvergencePort`;
+- active lease timeout and repair candidates come from
+  `TaskRuntimeConvergencePort` plus task-local reads;
+- public point final-result reads come from `TaskRuntimeReadPort`, while any
+  result window remains a separate read-model surface;
+- terminal/delete cleanup uses `TaskRuntimeConvergencePort`;
 - task progress and terminal convergence consume `TaskRuntimeProgressSnapshot`.
 
 ## Engine Role

@@ -7,12 +7,9 @@ import com.xa.mass.task.runtime.ActiveLeaseRepairCandidate;
 import com.xa.mass.task.runtime.TaskRuntimeProgressSnapshot;
 import com.xa.mass.task.runtime.MessageFinalityStatus;
 import com.xa.mass.task.runtime.MessageFinalityOutcome;
-import com.xa.mass.task.runtime.ResultApplyCommand;
 import com.xa.mass.task.runtime.ResultApplySource;
-import com.xa.mass.task.runtime.ResultFinalityPolicySnapshot;
-import com.xa.mass.task.runtime.RetryMode;
-import com.xa.mass.task.runtime.RetryPolicySnapshot;
 import com.xa.mass.task.runtime.RuntimeEpoch;
+import com.xa.mass.task.runtime.RuntimeResultFact;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -73,7 +70,7 @@ class TaskRedispatchCompetitionTest {
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
         ActiveLeaseRepairCandidate secondLease = harness.activeLeases(task.getTid()).getFirst();
 
-        MessageFinalityOutcome staleOutcome = harness.taskRuntime.applyResult(new ResultApplyCommand(
+        MessageFinalityOutcome staleOutcome = harness.taskRuntime.applyResult(new RuntimeResultFact(
                 task.getTid(),
                 firstLease.messageId(),
                 firstLease.leaseToken(),
@@ -83,8 +80,6 @@ class TaskRedispatchCompetitionTest {
                 true,
                 Map.of("source", "old-lease"),
                 "late old result",
-                new RetryPolicySnapshot(RetryMode.FAST_READY, 1, 0L, 1L),
-                new ResultFinalityPolicySnapshot(true, true, 86_400_000L),
                 RuntimeEpoch.of(task.getTid(), 1L),
                 System.currentTimeMillis()
         ));

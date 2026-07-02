@@ -199,15 +199,16 @@ class TaskRuntimeServingLaneOldPathClosureGuardTest {
         assertTrue(taskManager.contains("requireTaskRuntimeServingLane(\"hasDispatchReadyWork\").hasDispatchReadyWork(taskId)"),
                 "TaskManager default dispatch wakeup hook must require the serving lane instead of owning ready-count truth");
 
-        assertTrue(laneReadyCount.contains("progressPort.progressSnapshot(taskId).readyCount()"),
-                "serving-lane ready count must read task-runtime progress truth");
-        assertTrue(laneActiveWorkerCount.contains("repairPort.getActiveWorkForTask")
+        assertTrue(laneReadyCount.contains("readPort.progressSnapshot(taskId).readyCount()"),
+                "serving-lane ready count must read task-runtime read/progress truth");
+        assertTrue(laneActiveWorkerCount.contains("readPort.activeWorkForTask")
                         && laneActiveWorkerCount.contains("ActiveLeaseRepairCandidate::workerId"),
-                "serving-lane active-worker count must read task-runtime active lease truth");
+                "serving-lane active-worker count must read task-scoped active lease truth through the read surface");
         assertTrue(laneReadyHint.contains("countDispatchReadyWork(taskId) > 0"),
                 "serving-lane ready boolean hint must derive from task-runtime ready count");
-        assertTrue(laneWorkerActiveHint.contains("repairPort.getActiveWorkForWorker"),
-                "serving-lane worker-active hint must read task-runtime active lease truth");
+        assertTrue(laneWorkerActiveHint.contains("readPort.activeWorkForTask")
+                        && laneWorkerActiveHint.contains("candidate -> workerId.equals(candidate.workerId())"),
+                "serving-lane worker-active hint must read task-scoped active lease truth and filter by worker id");
 
         List<String> combinedBodies = List.of(
                 laneReadyCount,
@@ -229,6 +230,96 @@ class TaskRuntimeServingLaneOldPathClosureGuardTest {
         assertTrue(violations.isEmpty(),
                 "runtime readiness/active-lease hints must not read old runtime stats or DTOs: "
                         + violations);
+    }
+
+    @Test
+    void resultCorrelationReadsUseTaskRuntimeReadSurface() throws IOException {
+        String servingLane = Files.readString(repositoryRoot().resolve(
+                "xa-mass-engine/src/main/java/com/xa/mass/engine/TaskRuntimeServingLane.java"), StandardCharsets.UTF_8);
+        List<String> correlationBodies = List.of(
+                MethodGuard.methodBody(servingLane, "public boolean compensateDispatchDeliveryFailure"),
+                MethodGuard.methodBody(servingLane, "public boolean ingestTaskResult"),
+                MethodGuard.methodBody(servingLane, "public TaskResultCorrelation getResultCorrelation"));
+
+        assertTrue(correlationBodies.stream().allMatch(body -> body.contains("readPort.resultCorrelation")),
+                "serving-lane result correlation point reads must use TaskRuntimeReadPort");
+        assertTrue(correlationBodies.stream().noneMatch(body -> body.contains("resultPort.getResultCorrelation")),
+                "result correlation point reads must not keep the old result apply port as a read owner");
+    }
+
+    @Test
+    void servingLaneConstructorOnlyAcceptsGroupedTaskRuntimePorts() throws IOException {
+        String servingLane = Files.readString(repositoryRoot().resolve(
+                "xa-mass-engine/src/main/java/com/xa/mass/engine/TaskRuntimeServingLane.java"), StandardCharsets.UTF_8);
+        List<String> forbiddenOldPortTokens = List.of(
+                "TaskRuntimeAppendPort",
+                "TaskRuntimeSchedulerPort",
+                "TaskRuntimeClaimPort",
+                "TaskRuntimeResultPort",
+                "TaskRuntimeRepairPort",
+                "TaskRuntimeProgressPort",
+                "TaskRuntimeDiscardPort",
+                "requireWorkPort",
+                "requireScorePort",
+                "requireConvergencePort",
+                "requireReadPort",
+                "requireDiscardPort");
+        List<String> violations = forbiddenOldPortTokens.stream()
+                .filter(servingLane::contains)
+                .toList();
+
+        assertTrue(violations.isEmpty(),
+                "TaskRuntimeServingLane must not expose old task-runtime port constructor fallback: "
+                        + violations);
+        assertTrue(servingLane.contains("TaskRuntimeServingLane(TaskRuntimeWorkPort workPort")
+                        && servingLane.contains("TaskRuntimeScorePort scorePort")
+                        && servingLane.contains("TaskRuntimeConvergencePort convergencePort")
+                        && servingLane.contains("TaskRuntimeReadPort readPort"),
+                "TaskRuntimeServingLane constructor must take the grouped task-runtime ports directly");
+    }
+
+    @Test
+    void orderedResultWindowIsSeparatedFromCoreRuntimeReadPort() throws IOException {
+        String readPort = Files.readString(repositoryRoot().resolve(
+                "xa-mass-task-runtime/src/main/java/com/xa/mass/task/runtime/TaskRuntimeReadPort.java"), StandardCharsets.UTF_8);
+        String windowReadModel = Files.readString(repositoryRoot().resolve(
+                "xa-mass-task-runtime/src/main/java/com/xa/mass/task/runtime/TaskRuntimeResultWindowReadModel.java"), StandardCharsets.UTF_8);
+        String servingLane = Files.readString(repositoryRoot().resolve(
+                "xa-mass-engine/src/main/java/com/xa/mass/engine/TaskRuntimeServingLane.java"), StandardCharsets.UTF_8);
+
+        assertTrue(!readPort.contains("readFinalResults(")
+                        && windowReadModel.contains("readFinalResults(FinalResultReadRequest request)"),
+                "ordered final-result window must be re-owned by TaskRuntimeResultWindowReadModel, not TaskRuntimeReadPort");
+        assertTrue(servingLane.contains("TaskRuntimeResultWindowReadModel resultWindowReadModel")
+                        && servingLane.contains("resultWindowReadModel.readFinalResults"),
+                "TaskRuntimeServingLane must route result-window reads through the separate read model");
+    }
+
+    @Test
+    void engineServingResultPathUsesRuntimeResultFactNotOldResultCommand() throws IOException {
+        Path servingLane = repositoryRoot().resolve(
+                "xa-mass-engine/src/main/java/com/xa/mass/engine/TaskRuntimeServingLane.java");
+        Path mapper = repositoryRoot().resolve(
+                "xa-mass-engine/src/main/java/com/xa/mass/engine/runtime/TaskRuntimeResultFactMapper.java");
+        String servingSource = Files.readString(servingLane, StandardCharsets.UTF_8);
+        String mapperSource = Files.readString(mapper, StandardCharsets.UTF_8);
+        List<String> violations = List.of(servingSource, mapperSource)
+                .stream()
+                .flatMap(source -> List.of(
+                                "ResultApplyCommand",
+                                "TaskRuntimeResultCommandMapper",
+                                "RuntimeResultFact.from")
+                        .stream()
+                        .filter(source::contains))
+                .distinct()
+                .toList();
+
+        assertTrue(violations.isEmpty(),
+                "engine serving result path must use RuntimeResultFact and must not reintroduce old result command vocabulary: "
+                        + violations);
+        assertTrue(servingSource.contains("convergencePort.applyResult(fact)")
+                        && mapperSource.contains("new RuntimeResultFact("),
+                "engine serving result path must build RuntimeResultFact and apply it through the convergence port");
     }
 
     @Test
@@ -288,12 +379,35 @@ class TaskRuntimeServingLaneOldPathClosureGuardTest {
     }
 
     @Test
+    void engineServingLaneDoesNotImportOldTaskRuntimeCommandBuckets() throws IOException {
+        Path engineMainSource = repositoryRoot().resolve("xa-mass-engine/src/main/java");
+        List<String> oldRuntimeCommandBuckets = List.of(
+                "com.xa.mass.task.runtime.AppendBatchCommand",
+                "com.xa.mass.task.runtime.SchedulerDiscoveryCommand",
+                "com.xa.mass.task.runtime.UpdateSchedulerEligibilityCommand",
+                "com.xa.mass.task.runtime.ClaimReadyCommand",
+                "com.xa.mass.task.runtime.ResultApplyCommand",
+                "com.xa.mass.task.runtime.PollActiveLeaseRepairCommand");
+
+        try (var paths = Files.walk(engineMainSource)) {
+            List<Path> violations = paths
+                    .filter(path -> path.toString().endsWith(".java"))
+                    .filter(path -> oldRuntimeCommandBuckets.stream().anyMatch(token -> contains(path, token)))
+                    .toList();
+            assertTrue(violations.isEmpty(),
+                    "engine main source must use direct task-runtime ports/models, not old command buckets: "
+                            + violations);
+        }
+    }
+
+    @Test
     void oldClaimDtoSurfaceIsDeletedFromEngineClaimMainline() throws IOException {
         Path engineMainSource = repositoryRoot().resolve("xa-mass-engine/src/main/java");
         List<String> oldClaimDtos = List.of(
                 "com.xa.mass.runtime.api.ClaimedTaskWork",
                 "com.xa.mass.runtime.api.TaskWorkClaimOptions",
                 "com.xa.mass.runtime.api.WorkerClaimTarget",
+                "com.xa.mass.task.runtime.ClaimReadyCommand",
                 "fromOldRuntimeClaim");
 
         try (var paths = Files.walk(engineMainSource)) {
@@ -302,7 +416,7 @@ class TaskRuntimeServingLaneOldPathClosureGuardTest {
                     .filter(path -> oldClaimDtos.stream().anyMatch(token -> contains(path, token)))
                     .toList();
             assertTrue(violations.isEmpty(),
-                    "engine claim mainline must use ClaimReadyCommand/ClaimedWorkItem, not old claim DTOs: "
+                    "engine claim mainline must use direct assignment claim parameters and ClaimedWorkItem, not old claim DTOs: "
                             + violations);
         }
     }
@@ -337,7 +451,7 @@ class TaskRuntimeServingLaneOldPathClosureGuardTest {
         String source = Files.readString(servingLane, StandardCharsets.UTF_8);
         String body = MethodGuard.methodBody(source, "public boolean expireLeasedWork");
 
-        assertTrue(body.contains("TaskRuntimeResultCommandMapper.fromLeaseTimeout")
+        assertTrue(body.contains("TaskRuntimeResultFactMapper.fromLeaseTimeout")
                         && body.contains("applyResult(task")
                         && body.contains("outcome.accepted()"),
                 "lease expiry must apply task-runtime result/finality outcome through TaskRuntimeServingLane");
@@ -596,8 +710,8 @@ class TaskRuntimeServingLaneOldPathClosureGuardTest {
                 "TaskSchedulingTestHarness must drive scheduling tests through TaskRuntimeServingLane and the no-old-runtime constructor, not runnable legacy task runtime");
         assertTrue(!redispatchCompetitionTest.contains("TaskWorkResult")
                         && !redispatchCompetitionTest.contains("applyTaskWorkResult(")
-                        && redispatchCompetitionTest.contains("ResultApplyCommand"),
-                "TaskRedispatchCompetitionTest must prove stale lease rejection through task-runtime ResultApplyCommand, not old TaskWorkResult DTOs");
+                        && redispatchCompetitionTest.contains("RuntimeResultFact"),
+                "TaskRedispatchCompetitionTest must prove stale lease rejection through task-runtime RuntimeResultFact, not old TaskWorkResult DTOs");
         assertTrue(!idleClosePolicyTest.contains("com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime")
                         && !idleClosePolicyTest.contains("com.xa.mass.runtime.memory.InMemoryTaskResultRuntime")
                         && !idleClosePolicyTest.contains("new InMemoryTaskWorkRuntime")

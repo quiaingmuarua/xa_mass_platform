@@ -225,8 +225,10 @@ waterfall:
   are stable.
 
 Do not let `mechanism-cutover` become mechanism-only work: each slice must name
-its cutpoint and smallest cutover proof. Cleanup and guard work may be batched
-after cutpoint proof instead of repeated after every cutpoint.
+its cutpoint, target mechanism, old mechanism/path to close, and smallest
+cutover proof. Add allowed/forbidden scope only when drift risk is high. Cleanup
+and guard work may be batched after cutpoint proof instead of repeated after
+every cutpoint.
 
 Do not start by deleting dependencies before moving callers. No slice should
 require a later slice to restore compilation or runtime correctness.
@@ -264,11 +266,12 @@ When executing a slice:
 6. During long goal-mode execution, treat an `active` roadmap as the approved
    execution contract and keep a tiny execution cursor: status, phase, current
    cutpoint, locked mainline, next proof, deferred residue, and stop triggers.
-   On resume or compaction, read the cursor, current diff, touched files, and
-   required proof first; expand only from concrete failing evidence, owner-doc
-   references, or stop triggers. Do not re-review, rewrite, broaden, or use it
-   as progress notes unless the user asks. Edit only for factual
-   code/status/proof/assumption changes or owner coordination.
+   For `mechanism-cutover`, also include target mechanism and old
+   mechanism/path to close. On resume or compaction, read the cursor, current
+   diff, touched files, and required proof first; expand only from concrete
+   failing evidence, owner-doc references, or stop triggers. Do not re-review,
+   rewrite, broaden, or use it as progress notes unless the user asks. Edit
+   only for factual code/status/proof/assumption changes or owner coordination.
 7. Update contracts, docs, guards, and verification in the same slice when code
    changes them.
 8. If the slice closes a roadmap gap or changes status, update roadmap wording

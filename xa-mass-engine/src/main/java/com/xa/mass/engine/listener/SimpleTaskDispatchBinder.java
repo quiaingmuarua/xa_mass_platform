@@ -19,7 +19,6 @@ import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.engine.strategy.DefaultSchedulingPlaneResolver;
 import com.xa.mass.engine.TraceEventLogger;
 import com.xa.mass.task.runtime.ClaimLeasePolicy;
-import com.xa.mass.task.runtime.ClaimReadyCommand;
 import com.xa.mass.task.runtime.ClaimedWorkItem;
 import com.xa.mass.task.runtime.RuntimeEpoch;
 import com.xa.mass.task.runtime.WorkerReservationEvidence;
@@ -228,7 +227,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 .map(slot -> TaskRuntimeWorkerReservationMapper.toReservationEvidence(slot.handle, slot.batchId()))
                 .collect(Collectors.toList());
         List<ClaimedWorkItem> claimed = assignmentRuntime.claimReady(
-                        new ClaimReadyCommand(task.getTid(), workerReservations, claimPolicy))
+                        task.getTid(), workerReservations, claimPolicy)
                 .claimedItems();
 
         for (ClaimedWorkItem work : claimed) {

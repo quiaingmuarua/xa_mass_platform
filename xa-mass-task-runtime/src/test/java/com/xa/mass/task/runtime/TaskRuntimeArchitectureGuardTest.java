@@ -13,13 +13,34 @@ import org.junit.jupiter.api.Test;
 class TaskRuntimeArchitectureGuardTest {
 
     private static final List<Class<?>> PUBLIC_PORTS = List.of(
-            TaskRuntimeAppendPort.class,
-            TaskRuntimeSchedulerPort.class,
-            TaskRuntimeClaimPort.class,
-            TaskRuntimeResultPort.class,
-            TaskRuntimeRepairPort.class,
             TaskRuntimeReadPort.class,
-            TaskRuntimeDiscardPort.class
+            TaskRuntimeWorkPort.class,
+            TaskRuntimeScorePort.class,
+            TaskRuntimeConvergencePort.class
+    );
+
+    private static final List<String> DELETED_OLD_PORTS = List.of(
+            "TaskRuntimeAppendPort",
+            "TaskRuntimeSchedulerPort",
+            "TaskRuntimeClaimPort",
+            "TaskRuntimeResultPort",
+            "TaskRuntimeRepairPort",
+            "TaskRuntimeProgressPort",
+            "TaskRuntimeDiscardPort",
+            "TaskRuntimeResultWindowReadPort"
+    );
+
+    private static final List<String> DELETED_OLD_COMMAND_BUCKETS = List.of(
+            "AppendBatchCommand",
+            "SchedulerDiscoveryCommand",
+            "ClaimReadyCommand",
+            "ResultApplyCommand",
+            "PollActiveLeaseRepairCommand",
+            "ActiveWorkQuery",
+            "ActiveTaskWorkQuery",
+            "DiscardTaskRuntimeCommand",
+            "DiscardTaskWorkCommand",
+            "UpdateSchedulerEligibilityCommand"
     );
 
     private static final List<String> FORBIDDEN_SOURCE_SNIPPETS = List.of(
@@ -69,6 +90,22 @@ class TaskRuntimeArchitectureGuardTest {
         }
 
         assertThat(violations).isEmpty();
+    }
+
+    @Test
+    void oldCommandBucketPortsAreDeletedFromMainSource() {
+        var mainJava = Path.of("src", "main", "java", "com", "xa", "mass", "task", "runtime");
+
+        assertThat(DELETED_OLD_PORTS)
+                .allSatisfy(port -> assertThat(mainJava.resolve(port + ".java")).doesNotExist());
+    }
+
+    @Test
+    void oldCommandBucketDtosAreDeletedFromMainSource() {
+        var mainJava = Path.of("src", "main", "java", "com", "xa", "mass", "task", "runtime");
+
+        assertThat(DELETED_OLD_COMMAND_BUCKETS)
+                .allSatisfy(command -> assertThat(mainJava.resolve(command + ".java")).doesNotExist());
     }
 
     private static void collectForbiddenSnippetViolations(Path path, List<String> violations) {

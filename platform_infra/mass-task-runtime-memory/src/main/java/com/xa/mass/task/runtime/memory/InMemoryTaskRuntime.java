@@ -1,47 +1,39 @@
 package com.xa.mass.task.runtime.memory;
 
-import com.xa.mass.task.runtime.ActiveLeaseRepairBatch;
 import com.xa.mass.task.runtime.ActiveLeaseRepairCandidate;
-import com.xa.mass.task.runtime.ActiveTaskWorkQuery;
 import com.xa.mass.task.runtime.ActiveTaskWorkSnapshot;
-import com.xa.mass.task.runtime.ActiveWorkQuery;
-import com.xa.mass.task.runtime.ActiveWorkSnapshot;
-import com.xa.mass.task.runtime.AppendAdmissionPolicy;
-import com.xa.mass.task.runtime.AppendBatchCommand;
 import com.xa.mass.task.runtime.AppendBatchOutcome;
-import com.xa.mass.task.runtime.ClaimReadyCommand;
+import com.xa.mass.task.runtime.BacklogFrameV1;
 import com.xa.mass.task.runtime.ClaimReadyOutcome;
 import com.xa.mass.task.runtime.ClaimedWorkItem;
-import com.xa.mass.task.runtime.DiscardTaskRuntimeCommand;
 import com.xa.mass.task.runtime.DiscardTaskRuntimeOutcome;
-import com.xa.mass.task.runtime.DiscardTaskWorkCommand;
 import com.xa.mass.task.runtime.DiscardTaskWorkOutcome;
 import com.xa.mass.task.runtime.FinalResultReadRequest;
 import com.xa.mass.task.runtime.FinalResultRow;
 import com.xa.mass.task.runtime.FinalResultWindow;
+import com.xa.mass.task.runtime.LeaseRepairBatch;
 import com.xa.mass.task.runtime.MessageFinalityOutcome;
 import com.xa.mass.task.runtime.MessageFinalityStatus;
-import com.xa.mass.task.runtime.PollActiveLeaseRepairCommand;
-import com.xa.mass.task.runtime.ResultApplyCommand;
 import com.xa.mass.task.runtime.ResultApplySource;
 import com.xa.mass.task.runtime.ResultCorrelationSnapshot;
+import com.xa.mass.task.runtime.RetryPromotionBatch;
+import com.xa.mass.task.runtime.RuntimeResultFact;
 import com.xa.mass.task.runtime.RetryMode;
 import com.xa.mass.task.runtime.RuntimeEpoch;
 import com.xa.mass.task.runtime.RuntimeGate;
-import com.xa.mass.task.runtime.SchedulerDiscoveryCommand;
-import com.xa.mass.task.runtime.SchedulerDiscoveryOutcome;
+import com.xa.mass.task.runtime.ScoreCandidate;
+import com.xa.mass.task.runtime.ScoreCandidateBatch;
 import com.xa.mass.task.runtime.SchedulerEligibilityPolicy;
-import com.xa.mass.task.runtime.SchedulerTaskCandidate;
-import com.xa.mass.task.runtime.TaskRuntimeAppendPort;
-import com.xa.mass.task.runtime.TaskRuntimeClaimPort;
-import com.xa.mass.task.runtime.TaskRuntimeDiscardPort;
-import com.xa.mass.task.runtime.TaskRuntimeProgressPort;
+import com.xa.mass.task.runtime.TaskCloseAttemptOutcome;
+import com.xa.mass.task.runtime.TaskRuntimeConvergencePort;
 import com.xa.mass.task.runtime.TaskRuntimeProgressSnapshot;
 import com.xa.mass.task.runtime.TaskRuntimeReadPort;
-import com.xa.mass.task.runtime.TaskRuntimeRepairPort;
-import com.xa.mass.task.runtime.TaskRuntimeResultPort;
-import com.xa.mass.task.runtime.TaskRuntimeSchedulerPort;
-import com.xa.mass.task.runtime.UpdateSchedulerEligibilityCommand;
+import com.xa.mass.task.runtime.TaskRuntimeResultWindowReadModel;
+import com.xa.mass.task.runtime.TaskRuntimeMetaV1;
+import com.xa.mass.task.runtime.TaskRuntimeResultPolicyV1;
+import com.xa.mass.task.runtime.TaskRuntimeScorePort;
+import com.xa.mass.task.runtime.TaskRuntimeWorkPort;
+import com.xa.mass.task.runtime.TaskScoreV1;
 import com.xa.mass.task.runtime.WorkerReservationEvidence;
 
 import java.util.ArrayDeque;
@@ -56,14 +48,11 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.function.LongSupplier;
 
-public final class InMemoryTaskRuntime implements TaskRuntimeAppendPort,
-        TaskRuntimeSchedulerPort,
-        TaskRuntimeClaimPort,
-        TaskRuntimeResultPort,
-        TaskRuntimeRepairPort,
-        TaskRuntimeProgressPort,
+public final class InMemoryTaskRuntime implements TaskRuntimeWorkPort,
+        TaskRuntimeScorePort,
+        TaskRuntimeConvergencePort,
         TaskRuntimeReadPort,
-        TaskRuntimeDiscardPort {
+        TaskRuntimeResultWindowReadModel {
 
     private final Map<String, TaskState> tasks = new LinkedHashMap<>();
     private final LinkedHashSet<String> dirtyTasks = new LinkedHashSet<>();
@@ -78,49 +67,164 @@ public final class InMemoryTaskRuntime implements TaskRuntimeAppendPort,
     }
 
     @Override
-    public synchronized AppendBatchOutcome appendBatch(AppendBatchCommand command) {
-        var state = taskState(command.taskId());
-        var messageIds = command.items().stream().map(item -> item.messageId()).toList();
-        var existingCount = messageIds.stream().filter(state::containsMessage).count();
-        if (existingCount == messageIds.size()) {
-            return AppendBatchOutcome.allAccepted(command.taskId(), messageIds);
+    public synchronized AppendBatchOutcome appendBacklog(String taskId, List<BacklogFrameV1> frames, int maxBatchSize) {
+        if (frames == null || frames.isEmpty()) {
+            throw new IllegalArgumentException("frames must be non-empty");
         }
-        if (existingCount > 0) {
-            return AppendBatchOutcome.rejectedBeforeRuntime(command.taskId(), "batch mixes existing and new items");
+        if (maxBatchSize <= 0) {
+            throw new IllegalArgumentException("maxBatchSize must be positive");
         }
-        var maxBacklog = command.admissionPolicy().maxReadyBacklogItems();
-        if (maxBacklog != AppendAdmissionPolicy.UNLIMITED_READY_BACKLOG
-                && state.pendingBacklogSize() + command.items().size() > maxBacklog) {
-            return AppendBatchOutcome.rejectedBeforeRuntime(command.taskId(), "ready backlog is full");
+        if (frames.size() > maxBatchSize) {
+            return AppendBatchOutcome.rejectedBeforeRuntime(taskId, "items exceed maxAppendBatchSize");
         }
-        for (var item : command.items()) {
+        var state = taskState(taskId);
+        var messageIds = new ArrayList<String>();
+        for (var frame : frames) {
             state.ready.addLast(ReadyItem.initial(
-                    command.taskId(),
-                    item.messageId(),
-                    item.eventCode(),
-                    item.payloadJson(),
-                    item.payloadRef(),
-                    command.runtimeEpoch()));
+                    taskId,
+                    frame.messageId(),
+                    frame.eventCode(),
+                    frame.payloadJson(),
+                    frame.payloadRef(),
+                    state.runtimeEpoch));
+            messageIds.add(frame.messageId());
         }
-        state.runtimeEpoch = command.runtimeEpoch();
-        dirtyTasks.add(command.taskId());
-        return AppendBatchOutcome.allAccepted(command.taskId(), messageIds);
+        dirtyTasks.add(taskId);
+        return AppendBatchOutcome.allAccepted(taskId, messageIds);
     }
 
     @Override
-    public synchronized void updateTaskEligibility(UpdateSchedulerEligibilityCommand command) {
-        var state = taskState(command.taskId());
-        state.eligibility = command.eligibilityPolicy();
-        state.runtimeEpoch = command.runtimeEpoch();
-        dirtyTasks.add(command.taskId());
+    public synchronized ClaimReadyOutcome claimBacklog(ScoreCandidate candidate,
+                                                       List<WorkerReservationEvidence> reservations,
+                                                       int maxItems,
+                                                       long leaseMillis,
+                                                       long nowMillis) {
+        if (candidate == null) {
+            throw new IllegalArgumentException("candidate is required");
+        }
+        if (reservations == null || reservations.isEmpty()) {
+            throw new IllegalArgumentException("reservations must be non-empty");
+        }
+        if (!candidate.observedScore().isSchedulableBand()) {
+            return new ClaimReadyOutcome(candidate.taskId(), List.of(), "score candidate is not dispatch-visible");
+        }
+        var state = tasks.get(candidate.taskId());
+        if (state == null || state.ready.isEmpty()) {
+            return new ClaimReadyOutcome(candidate.taskId(), List.of(), "no ready work");
+        }
+        var eligibility = state.eligibility;
+        if (eligibility == null
+                || eligibility.runtimeGate() != RuntimeGate.OPEN
+                || !Objects.equals(eligibility.dispatchLane(), candidate.laneKey())) {
+            return new ClaimReadyOutcome(candidate.taskId(), List.of(), "score candidate metadata mismatch");
+        }
+        var currentScore = new TaskScoreV1(eligibility.nextEligibleAtMillis());
+        if (!currentScore.isSchedulableBand() || currentScore.score() != candidate.observedScore().score()) {
+            return new ClaimReadyOutcome(candidate.taskId(), List.of(), "score candidate mismatch");
+        }
+        if (!sameEpoch(state.runtimeEpoch, candidate.runtimeEpoch())) {
+            return new ClaimReadyOutcome(candidate.taskId(), List.of(), "runtime epoch mismatch");
+        }
+        var claimLimit = Math.min(Math.max(1, maxItems), state.ready.size());
+        var claimed = new ArrayList<ClaimedWorkItem>();
+        for (int index = 0; index < claimLimit && !state.ready.isEmpty(); index++) {
+            var ready = state.ready.removeFirst().withRuntimeEpoch(candidate.runtimeEpoch());
+            var reservation = reservations.get(index % reservations.size());
+            var leaseToken = UUID.randomUUID().toString();
+            var leaseExpireAtMillis = nowMillis + Math.max(1L, leaseMillis);
+            var active = new ActiveItem(ready, reservation, leaseToken, leaseExpireAtMillis);
+            state.activeByMessageId.put(ready.messageId(), active);
+            claimed.add(toClaimed(active));
+        }
+        if (state.ready.isEmpty()) {
+            dirtyTasks.remove(candidate.taskId());
+            if (!state.activeByMessageId.isEmpty() && state.eligibility != null) {
+                state.eligibility = new SchedulerEligibilityPolicy(
+                        state.eligibility.runtimeGate(),
+                        state.eligibility.dispatchLane(),
+                        TaskScoreV1.MAINT_ACTIVE,
+                        state.eligibility.positiveMatchDelayMillis(),
+                        state.eligibility.emptyMatchDelayMillis(),
+                        state.eligibility.contentionRecheckDelayMillis());
+            }
+        }
+        return new ClaimReadyOutcome(candidate.taskId(), claimed, "");
     }
 
     @Override
-    public synchronized SchedulerDiscoveryOutcome discoverEligibleTasks(SchedulerDiscoveryCommand command) {
-        promoteDueRetries(command.nowMillis());
-        var candidates = new ArrayList<SchedulerTaskCandidate>();
+    public synchronized void putRuntimeMeta(TaskRuntimeMetaV1 meta) {
+        var state = taskState(meta.taskId());
+        state.resultPolicy = meta.resultPolicy();
+        state.eligibility = meta.toEligibilityPolicy();
+        state.runtimeEpoch = meta.runtimeEpoch();
+        dirtyTasks.add(meta.taskId());
+    }
+
+    @Override
+    public synchronized void setTaskScore(String taskId, String laneKey, RuntimeEpoch epoch, TaskScoreV1 score) {
+        TaskRuntimeResultPolicyV1 resultPolicy = taskState(taskId).resultPolicy;
+        RuntimeGate gate = RuntimeGate.OPEN;
+        long nextEligibleAtMillis = 0L;
+        if (score != null) {
+            nextEligibleAtMillis = Math.max(0L, score.score());
+            if (score.isPausedParked()) {
+                gate = RuntimeGate.PAUSED;
+            } else if (score.isBlockedParked()) {
+                gate = RuntimeGate.BLOCKED;
+            }
+        }
+        putRuntimeMeta(new TaskRuntimeMetaV1(
+                taskId,
+                laneKey,
+                gate,
+                epoch,
+                nextEligibleAtMillis,
+                0L,
+                0L,
+                0L,
+                resultPolicy));
+    }
+
+    @Override
+    public synchronized void removeTaskScore(String taskId, String laneKey, RuntimeEpoch epoch) {
+        TaskRuntimeResultPolicyV1 resultPolicy = taskState(taskId).resultPolicy;
+        putRuntimeMeta(new TaskRuntimeMetaV1(
+                taskId,
+                laneKey,
+                RuntimeGate.TERMINAL,
+                epoch,
+                Long.MAX_VALUE,
+                0L,
+                0L,
+                0L,
+                resultPolicy));
+    }
+
+    @Override
+    public synchronized Optional<ScoreCandidate> scoreCandidate(String taskId, String laneKey) {
+        var state = tasks.get(taskId);
+        if (state == null || state.eligibility == null
+                || state.eligibility.runtimeGate() != RuntimeGate.OPEN
+                || !new TaskScoreV1(state.eligibility.nextEligibleAtMillis()).isSchedulableBand()
+                || !Objects.equals(state.eligibility.dispatchLane(), laneKey)) {
+            return Optional.empty();
+        }
+        return Optional.of(new ScoreCandidate(
+                taskId,
+                laneKey,
+                state.runtimeEpoch,
+                TaskScoreV1.dueAt(state.eligibility.nextEligibleAtMillis())));
+    }
+
+    @Override
+    public synchronized ScoreCandidateBatch discoverSchedulable(String laneKey, long maxScore, int limit) {
+        if (limit <= 0) {
+            throw new IllegalArgumentException("limit must be positive");
+        }
+        promoteDueRetries(maxScore);
+        var candidates = new ArrayList<ScoreCandidate>();
         for (var entry : tasks.entrySet()) {
-            if (candidates.size() >= command.limit()) {
+            if (candidates.size() >= limit) {
                 break;
             }
             var taskId = entry.getKey();
@@ -130,102 +234,147 @@ public final class InMemoryTaskRuntime implements TaskRuntimeAppendPort,
                 continue;
             }
             var eligibility = state.eligibility == null ? defaultEligibility() : state.eligibility;
-            if (eligibility.runtimeGate() != RuntimeGate.OPEN || eligibility.nextEligibleAtMillis() > command.nowMillis()) {
+            if (eligibility.runtimeGate() != RuntimeGate.OPEN
+                    || !new TaskScoreV1(eligibility.nextEligibleAtMillis()).isSchedulableBand()
+                    || eligibility.nextEligibleAtMillis() > maxScore
+                    || !Objects.equals(eligibility.dispatchLane(), laneKey)) {
                 continue;
             }
-            candidates.add(new SchedulerTaskCandidate(taskId, state.runtimeEpoch, eligibility.nextEligibleAtMillis()));
+            candidates.add(new ScoreCandidate(
+                    taskId,
+                    laneKey,
+                    state.runtimeEpoch,
+                    TaskScoreV1.dueAt(eligibility.nextEligibleAtMillis())));
         }
-        return new SchedulerDiscoveryOutcome(candidates);
+        return new ScoreCandidateBatch(candidates);
     }
 
     @Override
-    public synchronized void markTaskDirty(String taskId) {
-        if (taskId != null && !taskId.isBlank()) {
-            dirtyTasks.add(taskId);
-        }
+    public synchronized RetryPromotionBatch promoteDueRetries(String laneKey,
+                                                              long nowMillis,
+                                                              int taskLimit,
+                                                              int itemLimit) {
+        return new RetryPromotionBatch(List.of());
     }
 
     @Override
-    public synchronized ClaimReadyOutcome claimReady(ClaimReadyCommand command) {
-        var state = tasks.get(command.taskId());
-        if (state == null || state.ready.isEmpty()) {
-            return new ClaimReadyOutcome(command.taskId(), List.of(), "no ready work");
-        }
-        var expectedEpoch = command.leasePolicy().expectedRuntimeEpoch();
-        var first = state.ready.peekFirst();
-        if (first == null || !sameEpoch(first.runtimeEpoch(), expectedEpoch)) {
-            return new ClaimReadyOutcome(command.taskId(), List.of(), "runtime epoch mismatch");
-        }
-        var claimLimit = Math.min(command.leasePolicy().maxItems(), state.ready.size());
-        var claimed = new ArrayList<ClaimedWorkItem>();
-        for (int index = 0; index < claimLimit && !state.ready.isEmpty(); index++) {
-            var ready = state.ready.removeFirst();
-            var reservation = command.workerReservations().get(index % command.workerReservations().size());
-            var leaseToken = UUID.randomUUID().toString();
-            var leaseExpireAtMillis = clock.getAsLong() + command.leasePolicy().leaseMillis();
-            var active = new ActiveItem(ready, reservation, leaseToken, leaseExpireAtMillis);
-            state.activeByMessageId.put(ready.messageId(), active);
-            claimed.add(toClaimed(active));
-        }
-        if (state.ready.isEmpty()) {
-            dirtyTasks.remove(command.taskId());
-        }
-        return new ClaimReadyOutcome(command.taskId(), claimed, "");
+    public synchronized LeaseRepairBatch scanExpiredLeases(String laneKey,
+                                                             long nowMillis,
+                                                             int taskLimit,
+                                                             int itemLimit) {
+        return new LeaseRepairBatch(expiredActiveLeases(Math.max(1, itemLimit), nowMillis));
     }
 
     @Override
-    public synchronized MessageFinalityOutcome applyResult(ResultApplyCommand command) {
-        var state = tasks.get(command.taskId());
+    public synchronized MessageFinalityOutcome applyResult(RuntimeResultFact fact) {
+        TaskState state = tasks.get(fact.taskId());
+        TaskRuntimeResultPolicyV1 policy = state == null
+                ? TaskRuntimeResultPolicyV1.defaultPolicy()
+                : state.resultPolicy;
+        return applyResult(fact, policy);
+    }
+
+    @Override
+    public synchronized TaskCloseAttemptOutcome closeIfDrained(String taskId, String laneKey, RuntimeEpoch epoch) {
+        return TaskCloseAttemptOutcome.deferred(taskId, "close owner remains on the current serving path");
+    }
+
+    @Override
+    public synchronized DiscardTaskRuntimeOutcome discardRuntime(String taskId,
+                                                                 String laneKey,
+                                                                 RuntimeEpoch epoch,
+                                                                 String reason) {
+        var state = tasks.remove(taskId);
+        dirtyTasks.remove(taskId);
         if (state == null) {
-            return rejected(command, "task runtime state not found");
+            return new DiscardTaskRuntimeOutcome(taskId, 0L, 0L, 0L);
         }
-        var active = state.activeByMessageId.get(command.messageId());
+        return new DiscardTaskRuntimeOutcome(
+                taskId,
+                state.ready.size() + state.delayed.size(),
+                state.activeByMessageId.size(),
+                state.finalRowsByMessageId.size());
+    }
+
+    @Override
+    public synchronized DiscardTaskWorkOutcome discardWork(String taskId, RuntimeEpoch epoch, String reason) {
+        var state = tasks.get(taskId);
+        dirtyTasks.remove(taskId);
+        if (state == null) {
+            return new DiscardTaskWorkOutcome(taskId, 0L, 0L);
+        }
+        long readyCount = state.ready.size() + state.delayed.size();
+        long activeCount = state.activeByMessageId.size();
+        state.ready.clear();
+        state.delayed.clear();
+        state.activeByMessageId.clear();
+        state.eligibility = null;
+        if (state.finalRowsByMessageId.isEmpty()) {
+            tasks.remove(taskId);
+        }
+        return new DiscardTaskWorkOutcome(taskId, readyCount, activeCount);
+    }
+
+    private MessageFinalityOutcome applyResult(RuntimeResultFact fact, TaskRuntimeResultPolicyV1 policy) {
+        var state = tasks.get(fact.taskId());
+        if (state == null) {
+            return rejected(fact, "task runtime state not found");
+        }
+        var active = state.activeByMessageId.get(fact.messageId());
         if (active == null) {
-            return state.finalRowsByMessageId.containsKey(command.messageId())
+            return state.finalRowsByMessageId.containsKey(fact.messageId())
                     ? MessageFinalityOutcome.duplicateOrLate(
-                    command.taskId(), command.messageId(), command.attemptNo(), "already final")
-                    : rejected(command, "active lease not found");
+                    fact.taskId(), fact.messageId(), fact.attemptNo(), "already final")
+                    : rejected(fact, "active lease not found");
         }
-        if (!active.leaseToken().equals(command.leaseToken())
-                || !active.reservation().workerId().equals(command.workerId())
-                || active.ready().attemptNo() != command.attemptNo()) {
-            return rejected(command, "active lease correlation mismatch");
+        if (!active.leaseToken().equals(fact.leaseToken())
+                || !active.reservation().workerId().equals(fact.workerId())
+                || active.ready().attemptNo() != fact.attemptNo()) {
+            return rejected(fact, "active lease correlation mismatch");
         }
-        state.activeByMessageId.remove(command.messageId());
-        if (command.success()) {
-            addFinalRow(state, command, active, command.observedAtMillis());
+        state.activeByMessageId.remove(fact.messageId());
+        if (fact.success()) {
+            addFinalRow(state, fact, active, fact.observedAtMillis(), policy);
             return MessageFinalityOutcome.logicalFinal(
-                    command.taskId(),
-                    command.messageId(),
-                    command.attemptNo(),
-                    finalExpiresAt(command));
+                    fact.taskId(),
+                    fact.messageId(),
+                    fact.attemptNo(),
+                    finalExpiresAt(policy, fact.observedAtMillis()));
         }
-        if (canRetry(command)) {
-            var retryAtMillis = command.observedAtMillis() + command.retryPolicy().retryDelayMillis();
-            var retry = active.ready().nextAttempt(command.runtimeEpoch());
-            if (command.retryPolicy().retryMode() == RetryMode.DUE_TIME && retryAtMillis > command.observedAtMillis()) {
+        if (canRetry(policy, fact.attemptNo())) {
+            var retryAtMillis = fact.observedAtMillis() + policy.retryDelayMillis();
+            var retry = active.ready().nextAttempt(fact.runtimeEpoch());
+            if (policy.retryMode() == RetryMode.DUE_TIME && retryAtMillis > fact.observedAtMillis()) {
                 state.delayed.add(new DelayedItem(retry, retryAtMillis));
             } else {
                 state.ready.addLast(retry);
-                dirtyTasks.add(command.taskId());
+                dirtyTasks.add(fact.taskId());
+                var eligibility = state.eligibility == null ? defaultEligibility() : state.eligibility;
+                state.eligibility = new SchedulerEligibilityPolicy(
+                        eligibility.runtimeGate(),
+                        eligibility.dispatchLane(),
+                        TaskScoreV1.TIME_SCORE_FLOOR,
+                        eligibility.positiveMatchDelayMillis(),
+                        eligibility.emptyMatchDelayMillis(),
+                        eligibility.contentionRecheckDelayMillis());
             }
             return MessageFinalityOutcome.retryScheduled(
-                    command.taskId(),
-                    command.messageId(),
-                    command.attemptNo(),
+                    fact.taskId(),
+                    fact.messageId(),
+                    fact.attemptNo(),
                     retryAtMillis,
-                    command.failureReason());
+                    fact.failureReason());
         }
-        addFinalRow(state, command, active, command.observedAtMillis());
+        addFinalRow(state, fact, active, fact.observedAtMillis(), policy);
         return MessageFinalityOutcome.logicalFinal(
-                command.taskId(),
-                command.messageId(),
-                command.attemptNo(),
-                finalExpiresAt(command));
+                fact.taskId(),
+                fact.messageId(),
+                fact.attemptNo(),
+                finalExpiresAt(policy, fact.observedAtMillis()));
     }
 
     @Override
-    public synchronized ResultCorrelationSnapshot getResultCorrelation(String taskId, String messageId) {
+    public synchronized ResultCorrelationSnapshot resultCorrelation(String taskId, String messageId) {
         var state = tasks.get(taskId);
         if (state == null) {
             return ResultCorrelationSnapshot.missing(taskId, messageId);
@@ -243,52 +392,35 @@ public final class InMemoryTaskRuntime implements TaskRuntimeAppendPort,
                 true);
     }
 
-    @Override
-    public synchronized ActiveLeaseRepairBatch pollExpiredActiveLeases(PollActiveLeaseRepairCommand command) {
+    private List<ActiveLeaseRepairCandidate> expiredActiveLeases(int limit, long nowMillis) {
         var candidates = new ArrayList<ActiveLeaseRepairCandidate>();
         for (var state : tasks.values()) {
             for (var active : state.activeByMessageId.values()) {
-                if (candidates.size() >= command.limit()) {
-                    return new ActiveLeaseRepairBatch(candidates);
+                if (candidates.size() >= limit) {
+                    return candidates;
                 }
-                if (active.leaseExpireAtMillis() <= command.nowMillis()) {
+                if (active.leaseExpireAtMillis() <= nowMillis) {
                     candidates.add(toRepairCandidate(active));
                 }
             }
         }
-        return new ActiveLeaseRepairBatch(candidates);
+        return candidates;
     }
 
     @Override
-    public synchronized ActiveTaskWorkSnapshot getActiveWorkForTask(ActiveTaskWorkQuery query) {
-        var state = tasks.get(query.taskId());
+    public synchronized ActiveTaskWorkSnapshot activeWorkForTask(String taskId, int limit) {
+        var state = tasks.get(taskId);
         if (state == null || state.activeByMessageId.isEmpty()) {
-            return new ActiveTaskWorkSnapshot(query.taskId(), List.of());
+            return new ActiveTaskWorkSnapshot(taskId, List.of());
         }
         var activeItems = new ArrayList<ActiveLeaseRepairCandidate>();
         for (var active : state.activeByMessageId.values()) {
-            if (activeItems.size() >= query.limit()) {
+            if (activeItems.size() >= Math.max(1, limit)) {
                 break;
             }
             activeItems.add(toRepairCandidate(active));
         }
-        return new ActiveTaskWorkSnapshot(query.taskId(), activeItems);
-    }
-
-    @Override
-    public synchronized ActiveWorkSnapshot getActiveWorkForWorker(ActiveWorkQuery query) {
-        var activeItems = new ArrayList<ActiveLeaseRepairCandidate>();
-        for (var state : tasks.values()) {
-            for (var active : state.activeByMessageId.values()) {
-                if (activeItems.size() >= query.limit()) {
-                    return new ActiveWorkSnapshot(query.workerId(), activeItems);
-                }
-                if (active.reservation().workerId().equals(query.workerId())) {
-                    activeItems.add(toRepairCandidate(active));
-                }
-            }
-        }
-        return new ActiveWorkSnapshot(query.workerId(), activeItems);
+        return new ActiveTaskWorkSnapshot(taskId, activeItems);
     }
 
     @Override
@@ -358,39 +490,6 @@ public final class InMemoryTaskRuntime implements TaskRuntimeAppendPort,
                 expired);
     }
 
-    @Override
-    public synchronized DiscardTaskRuntimeOutcome discardTaskRuntime(DiscardTaskRuntimeCommand command) {
-        var state = tasks.remove(command.taskId());
-        dirtyTasks.remove(command.taskId());
-        if (state == null) {
-            return new DiscardTaskRuntimeOutcome(command.taskId(), 0L, 0L, 0L);
-        }
-        return new DiscardTaskRuntimeOutcome(
-                command.taskId(),
-                state.ready.size() + state.delayed.size(),
-                state.activeByMessageId.size(),
-                state.finalRowsByMessageId.size());
-    }
-
-    @Override
-    public synchronized DiscardTaskWorkOutcome discardTaskWork(DiscardTaskWorkCommand command) {
-        var state = tasks.get(command.taskId());
-        dirtyTasks.remove(command.taskId());
-        if (state == null) {
-            return new DiscardTaskWorkOutcome(command.taskId(), 0L, 0L);
-        }
-        long readyCount = state.ready.size() + state.delayed.size();
-        long activeCount = state.activeByMessageId.size();
-        state.ready.clear();
-        state.delayed.clear();
-        state.activeByMessageId.clear();
-        state.eligibility = null;
-        if (state.finalRowsByMessageId.isEmpty()) {
-            tasks.remove(command.taskId());
-        }
-        return new DiscardTaskWorkOutcome(command.taskId(), readyCount, activeCount);
-    }
-
     private TaskState taskState(String taskId) {
         return tasks.computeIfAbsent(taskId, ignored -> new TaskState(RuntimeEpoch.of(taskId, 0L)));
     }
@@ -410,45 +509,45 @@ public final class InMemoryTaskRuntime implements TaskRuntimeAppendPort,
         }
     }
 
-    private boolean canRetry(ResultApplyCommand command) {
-        return command.retryPolicy().maxRetryCount() > 0
-                && command.attemptNo() <= command.retryPolicy().maxRetryCount();
+    private boolean canRetry(TaskRuntimeResultPolicyV1 policy, int attemptNo) {
+        return policy.maxRetryCount() > 0 && attemptNo <= policy.maxRetryCount();
     }
 
     private void addFinalRow(TaskState state,
-                             ResultApplyCommand command,
+                             RuntimeResultFact fact,
                              ActiveItem active,
-                             long finalizedAtMillis) {
-        state.finalRowsByMessageId.put(command.messageId(), new FinalResultRow(
-                command.taskId(),
-                command.messageId(),
+                             long finalizedAtMillis,
+                             TaskRuntimeResultPolicyV1 policy) {
+        state.finalRowsByMessageId.put(fact.messageId(), new FinalResultRow(
+                fact.taskId(),
+                fact.messageId(),
                 state.nextFinalSeq++,
-                command.attemptNo(),
-                command.workerId(),
+                fact.attemptNo(),
+                fact.workerId(),
                 active == null ? "" : active.reservation().batchId(),
-                command.source(),
-                command.success(),
-                command.resultPayloadJson(),
-                command.failureReason(),
+                fact.source(),
+                fact.success(),
+                fact.resultPayloadJson(),
+                fact.failureReason(),
                 finalizedAtMillis,
-                finalExpiresAt(command)));
+                finalExpiresAt(policy, fact.observedAtMillis())));
     }
 
-    private long finalExpiresAt(ResultApplyCommand command) {
-        var retentionMillis = command.finalityPolicy().finalResultRetentionMillis();
-        return retentionMillis <= 0 ? 0L : command.observedAtMillis() + retentionMillis;
+    private long finalExpiresAt(TaskRuntimeResultPolicyV1 policy, long observedAtMillis) {
+        var retentionMillis = policy.finalResultRetentionMillis();
+        return retentionMillis <= 0 ? 0L : observedAtMillis + retentionMillis;
     }
 
     private void purgeExpiredFinalRows(TaskState state, long nowMillis) {
         state.finalRowsByMessageId.values().removeIf(row -> row.expiresAtMillis() > 0 && row.expiresAtMillis() <= nowMillis);
     }
 
-    private MessageFinalityOutcome rejected(ResultApplyCommand command, String reason) {
+    private MessageFinalityOutcome rejected(RuntimeResultFact fact, String reason) {
         return new MessageFinalityOutcome(
                 MessageFinalityStatus.REJECTED,
-                command.taskId(),
-                command.messageId(),
-                command.attemptNo(),
+                fact.taskId(),
+                fact.messageId(),
+                fact.attemptNo(),
                 false,
                 false,
                 0L,
@@ -491,7 +590,13 @@ public final class InMemoryTaskRuntime implements TaskRuntimeAppendPort,
     }
 
     private static SchedulerEligibilityPolicy defaultEligibility() {
-        return new SchedulerEligibilityPolicy(RuntimeGate.OPEN, "default", 0L, 0L, 0L, 0L);
+        return new SchedulerEligibilityPolicy(
+                RuntimeGate.OPEN,
+                "default",
+                TaskScoreV1.TIME_SCORE_FLOOR,
+                0L,
+                0L,
+                0L);
     }
 
     private static boolean sameEpoch(RuntimeEpoch left, RuntimeEpoch right) {
@@ -508,6 +613,7 @@ public final class InMemoryTaskRuntime implements TaskRuntimeAppendPort,
         private long nextFinalSeq = 1L;
         private SchedulerEligibilityPolicy eligibility;
         private RuntimeEpoch runtimeEpoch;
+        private TaskRuntimeResultPolicyV1 resultPolicy = TaskRuntimeResultPolicyV1.defaultPolicy();
 
         private TaskState(RuntimeEpoch runtimeEpoch) {
             this.runtimeEpoch = runtimeEpoch;
@@ -548,6 +654,10 @@ public final class InMemoryTaskRuntime implements TaskRuntimeAppendPort,
 
         private ReadyItem nextAttempt(RuntimeEpoch nextEpoch) {
             return new ReadyItem(taskId, messageId, eventCode, payloadJson, payloadRef, nextEpoch, attemptNo + 1);
+        }
+
+        private ReadyItem withRuntimeEpoch(RuntimeEpoch nextEpoch) {
+            return new ReadyItem(taskId, messageId, eventCode, payloadJson, payloadRef, nextEpoch, attemptNo);
         }
     }
 

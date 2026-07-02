@@ -383,7 +383,6 @@ class TaskKernelLifecycleTest {
                     runtime,
                     runtime,
                     runtime,
-                    runtime,
                     queries,
                     commands,
                     events,

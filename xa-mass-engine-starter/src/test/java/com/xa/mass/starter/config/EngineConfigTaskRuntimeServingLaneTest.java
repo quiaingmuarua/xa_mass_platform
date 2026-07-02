@@ -14,7 +14,6 @@ import com.xa.mass.engine.TaskCommandService;
 import com.xa.mass.engine.TaskQueryService;
 import com.xa.mass.engine.TaskRuntimeServingLane;
 import com.xa.mass.task.runtime.ClaimLeasePolicy;
-import com.xa.mass.task.runtime.ClaimReadyCommand;
 import com.xa.mass.task.runtime.RuntimeEpoch;
 import com.xa.mass.task.runtime.WorkerReservationEvidence;
 import com.xa.mass.task.runtime.starter.TaskRuntimeBackendKind;
@@ -176,7 +175,7 @@ class EngineConfigTaskRuntimeServingLaneTest {
                 .extracting(Task::getTid)
                 .containsExactly(task.getTid());
 
-        var claimed = config.getTaskAssignmentRuntimePort().claimReady(new ClaimReadyCommand(
+        var claimed = config.getTaskAssignmentRuntimePort().claimReady(
                 task.getTid(),
                 List.of(new WorkerReservationEvidence(
                         "worker-1",
@@ -185,7 +184,7 @@ class EngineConfigTaskRuntimeServingLaneTest {
                         null,
                         "batch-1",
                         123L)),
-                new ClaimLeasePolicy(1, 30_000L, 1L, RuntimeEpoch.of(task.getTid(), 1L))));
+                new ClaimLeasePolicy(1, 30_000L, 1L, RuntimeEpoch.of(task.getTid(), 1L)));
         assertThat(claimed.claimedItems()).hasSize(1);
         var claimedItem = claimed.claimedItems().getFirst();
         assertThat(claimedItem.payloadRef()).isEqualTo("payload-ref-1");
