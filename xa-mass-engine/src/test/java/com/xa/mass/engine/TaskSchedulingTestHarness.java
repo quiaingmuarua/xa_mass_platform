@@ -41,6 +41,7 @@ import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class TaskSchedulingTestHarness {
@@ -67,15 +68,13 @@ final class TaskSchedulingTestHarness {
                 new ContractAwareTaskTerminalPolicy(),
                 null
         );
-        this.taskRuntimeServingLane = new TaskRuntimeServingLane(
+        this.taskRuntimeServingLane = TaskRuntimeServingLaneTestSupport.forTaskManager(
                 taskRuntime,
                 taskRuntime,
                 taskRuntime,
                 taskRuntime,
                 taskRuntime,
-                new TaskQueryService(taskManager),
-                new TaskCommandService(taskManager),
-                new TaskEventService(taskManager),
+                taskManager,
                 taskManager.getWorkLeaseSeconds(),
                 1_000,
                 86_400_000L);
@@ -126,7 +125,7 @@ final class TaskSchedulingTestHarness {
 
     Task createReadyBatchTask(String sourceRef, List<Map<String, Object>> items) {
         Task task = createBatchTask(sourceRef, items, 0, 1);
-        assertTrue(taskManager.approveTask(task.getTid()));
+        assertTrue(taskManager.approveTask(task.getTid()).accepted());
         return taskManager.getTask(task.getTid());
     }
 
@@ -146,7 +145,7 @@ final class TaskSchedulingTestHarness {
         executionSpec.setDefaultMaxRetryCount(defaultMaxRetryCount);
         request.setExecutionSpec(executionSpec);
 
-        Task task = taskManager.createTaskShell(request);
+        Task task = createTask(request);
         if (items != null && !items.isEmpty()) {
             taskManager.appendTaskItems(task.getTid(), items);
         }
@@ -185,16 +184,24 @@ final class TaskSchedulingTestHarness {
         executionSpec.setDefaultMaxRetryCount(defaultMaxRetryCount);
         request.setExecutionSpec(executionSpec);
 
-        Task task = taskManager.createTaskShell(request);
+        Task task = createTask(request);
         if (minRequiredWorkerCount > 0) {
             task.setMinRequiredWorkerCount(minRequiredWorkerCount);
-            assertTrue(taskManager.updateTask(task));
+            assertTrue(taskManager.persistTaskShell(task));
         }
         if (items != null && !items.isEmpty()) {
             taskManager.appendTaskItems(task.getTid(), items);
         }
-        assertTrue(taskManager.sealTask(task.getTid()));
+        assertTrue(taskManager.sealTask(task.getTid()).accepted());
         return taskManager.getTask(task.getTid());
+    }
+
+    private Task createTask(TaskShellCreateRequestDto request) {
+        var outcome = taskManager.createTaskShell(request);
+        assertTrue(outcome.accepted());
+        Task task = taskManager.getTask(outcome.taskId());
+        assertNotNull(task);
+        return task;
     }
 
     WorkerTestFixture addWorker(String workerId, String routingCode) {

@@ -17,7 +17,7 @@ class EmbeddedSdkEngineDependencyGuardTest {
 
     private static final Pattern FORBIDDEN_ENGINE_IMPORT = Pattern.compile(
             "\\bimport\\s+com\\.xa\\.mass\\.engine\\.(?:"
-                    + "TaskManager|TaskCommandService|TaskQueryService|TaskEventService|"
+                    + "TaskManager|TaskCommandPort|TaskQueryPort|TaskCommandService|TaskQueryService|TaskEventService|"
                     + "TaskResultService|TaskManagerResultIngestFacade|EngineRuntimeKernel|"
                     + "WorkerControlRuntime|TaskStageEvidenceService|TaskAssignmentRuntimePort|"
                     + "TaskDispatchWakeupPort|TaskLeaseMaintenancePort|TaskShellLifecycleMaintenancePort|"

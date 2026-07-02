@@ -2,7 +2,7 @@ package com.xa.mass.task.runtime.redis;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.xa.mass.task.runtime.BacklogFrameV1;
+import com.xa.mass.task.runtime.AppendItemInput;
 import com.xa.mass.task.runtime.RuntimeEpoch;
 import com.xa.mass.task.runtime.RuntimeGate;
 import com.xa.mass.task.runtime.TaskRuntimeMetaV1;
@@ -64,7 +64,7 @@ class RedisTaskRuntimeScoreBandKeyspaceProofTest {
                 laneKey,
                 epoch,
                 new TaskScoreV1(TaskRuntimeRedisKeyspaceProofHarness.TIME_SCORE_FLOOR));
-        harness.appendBacklog(taskId, List.of(new BacklogFrameV1(
+        harness.appendBacklog(taskId, List.of(new AppendItemInput(
                 "message-1",
                 "handler.demo",
                 Map.of("value", "payload"),

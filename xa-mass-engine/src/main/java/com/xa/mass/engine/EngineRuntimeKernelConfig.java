@@ -13,7 +13,7 @@ import com.xa.mass.worker.runtime.selection.WorkerSelectionRuntime;
  */
 public interface EngineRuntimeKernelConfig {
 
-    TaskCommandService getTaskCommandService();
+    TaskCommandPort getTaskCommandPort();
 
     TaskRuntimeRecoveryPort getTaskRuntimeRecoveryPort();
 

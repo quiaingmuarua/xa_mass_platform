@@ -6,14 +6,14 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
-import com.xa.mass.engine.TaskCommandService;
-import com.xa.mass.engine.TaskQueryService;
+import com.xa.mass.engine.TaskCommandPort;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import com.xa.mass.worker.runtime.resource.WorkerResourceDeclarationRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.starter.config.EngineConfig;
+import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -32,8 +32,9 @@ class MassEngineStartRecoveryTest {
     @Test
     void startRecoversRunningTaskWithRuntimeReadyWork() throws Exception {
         EngineConfig config = new EngineConfig();
-        TaskCommandService taskCommands = config.getTaskCommandService();
-        TaskQueryService taskQueries = config.getTaskQueryService();
+        InMemoryTaskShellStore taskStore = new InMemoryTaskShellStore();
+        config.setTaskShellStore(taskStore);
+        TaskCommandPort taskCommands = config.getTaskCommandPort();
         registerSelectableWorker(config, "worker-1", "demo-workers");
 
         TaskShellCreateRequestDto dto = new TaskShellCreateRequestDto();
@@ -43,15 +44,18 @@ class MassEngineStartRecoveryTest {
         dto.setSharedConfig(Map.of(TaskSharedConfig.WORKER_GROUP_ID, "demo-workers"));
         dto.setExecutionSpec(taskExecutionSpec(1, 3));
 
-        Task task = taskCommands.createTaskShell(dto);
+        var create = taskCommands.createTaskShell(dto);
+        assertTrue(create.accepted());
+        Task task = taskStore.getTask(create.taskId()).orElse(null);
+        assertNotNull(task);
         taskCommands.appendTaskItems(task.getTid(), List.of(Map.of("payload", "hello")));
-        assertTrue(taskCommands.sealTask(task.getTid()));
-        assertTrue(taskCommands.approveTask(task.getTid()));
+        assertTrue(taskCommands.sealTask(task.getTid()).accepted());
+        assertTrue(taskCommands.approveTask(task.getTid()).accepted());
 
-        Task runningTask = taskQueries.getTask(task.getTid());
+        Task runningTask = taskStore.getTask(task.getTid()).orElse(null);
         assertNotNull(runningTask);
         assertTrue(runningTask.transitionTo(TaskStatus.RUNNING));
-        assertTrue(taskCommands.updateTask(runningTask));
+        assertTrue(taskStore.updateTask(runningTask));
 
         CountDownLatch dispatchLatch = new CountDownLatch(1);
         AtomicReference<List<TaskDispatchBinding>> dispatchBindingsRef = new AtomicReference<>();
@@ -85,8 +89,9 @@ class MassEngineStartRecoveryTest {
             System.setProperty("xa.mass.engine.bulkWorkRetryDelayMillis", "200");
 
             EngineConfig config = new EngineConfig();
-            TaskCommandService taskCommands = config.getTaskCommandService();
-            TaskQueryService taskQueries = config.getTaskQueryService();
+            InMemoryTaskShellStore taskStore = new InMemoryTaskShellStore();
+            config.setTaskShellStore(taskStore);
+            TaskCommandPort taskCommands = config.getTaskCommandPort();
             TaskResultIngestFacade resultIngestFacade = config.getTaskResultIngestFacade();
             registerSelectableWorker(config, "worker-1", "demo-workers");
             config.setRuntimeReadyDispatchIntervalMillis(50L);
@@ -98,15 +103,18 @@ class MassEngineStartRecoveryTest {
             dto.setSharedConfig(Map.of(TaskSharedConfig.WORKER_GROUP_ID, "demo-workers"));
             dto.setExecutionSpec(taskExecutionSpec(1, 3));
 
-            Task task = taskCommands.createTaskShell(dto);
+            var create = taskCommands.createTaskShell(dto);
+            assertTrue(create.accepted());
+            Task task = taskStore.getTask(create.taskId()).orElse(null);
+            assertNotNull(task);
             taskCommands.appendTaskItems(task.getTid(), List.of(Map.of("payload", "hello")));
-            assertTrue(taskCommands.sealTask(task.getTid()));
-            assertTrue(taskCommands.approveTask(task.getTid()));
+            assertTrue(taskCommands.sealTask(task.getTid()).accepted());
+            assertTrue(taskCommands.approveTask(task.getTid()).accepted());
 
-            Task runningTask = taskQueries.getTask(task.getTid());
+            Task runningTask = taskStore.getTask(task.getTid()).orElse(null);
             assertNotNull(runningTask);
             assertTrue(runningTask.transitionTo(TaskStatus.RUNNING));
-            assertTrue(taskCommands.updateTask(runningTask));
+            assertTrue(taskStore.updateTask(runningTask));
 
             CountDownLatch firstDispatchLatch = new CountDownLatch(1);
             CountDownLatch secondDispatchLatch = new CountDownLatch(1);

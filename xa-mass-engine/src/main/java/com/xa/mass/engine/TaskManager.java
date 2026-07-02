@@ -7,9 +7,9 @@ import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.base.model.*;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
-import com.xa.mass.engine.model.TaskAppendReceipt;
+import com.xa.mass.engine.model.TaskAppendOutcome;
+import com.xa.mass.engine.model.TaskCommandOutcome;
 import com.xa.mass.engine.model.TaskDefinitionPatch;
-import com.xa.mass.engine.model.TaskResumeResult;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
@@ -23,7 +23,12 @@ import com.xa.mass.engine.strategy.DefaultSchedulingPlaneResolver;
 import com.xa.mass.engine.util.LogUtils;
 import com.xa.mass.kernel.spi.task.TaskShellRuntimeLifecycleQuery;
 import com.xa.mass.kernel.spi.task.TaskShellRuntimeStore;
+import com.xa.mass.task.runtime.TaskRuntimeConvergencePort;
 import com.xa.mass.task.runtime.TaskRuntimeProgressSnapshot;
+import com.xa.mass.task.runtime.TaskRuntimeReadPort;
+import com.xa.mass.task.runtime.TaskRuntimeResultWindowReadModel;
+import com.xa.mass.task.runtime.TaskRuntimeScorePort;
+import com.xa.mass.task.runtime.TaskRuntimeWorkPort;
 import com.xa.mass.trace.sink.ExecutionEventSink;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,8 +47,8 @@ import java.util.function.Supplier;
  *
  * <p>This remains the owner of engine assembly semantics, but it is not the
  * preferred cross-module caller surface for shell, SDK, transport, or testing
- * flows. Downstream callers should prefer {@link TaskCommandService},
- * {@link TaskQueryService}, {@link TaskResultIngestFacade},
+ * flows. Downstream callers should prefer {@link TaskCommandPort},
+ * {@link TaskQueryPort}, {@link TaskResultIngestFacade},
  * {@link TaskShellLifecycleMaintenancePort}, and {@link TaskEventService}.
  */
 public class TaskManager implements TaskShellLifecycleMaintenancePort, TaskStateRuntimePort, TaskQueryPort, TaskCommandPort {
@@ -83,6 +88,8 @@ public class TaskManager implements TaskShellLifecycleMaintenancePort, TaskState
         this.eventPublisher = new TaskEventPublisher();
         this.stateResolver = new TaskStateResolver(
                 this,
+                this::persistTaskShell,
+                this::publishTaskTerminal,
                 traceEventLogger
         );
         this.stateValidator = new TaskStateValidator(
@@ -92,8 +99,22 @@ public class TaskManager implements TaskShellLifecycleMaintenancePort, TaskState
         this.schedulingPlaneResolver = new DefaultSchedulingPlaneResolver();
         this.concurrencyCoordinator = new LocalTaskConcurrencyCoordinator();
         this.lifecycleService = new TaskLifecycleService(
-                this,
-                traceEventLogger
+                this::getTask,
+                this::persistTaskShell,
+                this::syncRuntimeSchedulerEligibility,
+                this::publishTaskReady,
+                this::publishTaskTerminal,
+                this::getTaskRuntimeProgressSnapshot,
+                this::evaluateTerminalPolicy,
+                this::addRuntimeIngressItems,
+                this::validateRuntimeAppendAdmission,
+                this::requestTaskDispatch,
+                this::updateTaskProgress,
+                this::deleteTaskRecord,
+                this::discardTaskRuntime,
+                this::discardTaskWork,
+                traceEventLogger,
+                MAX_INGEST_BATCH_ITEMS
         );
         this.dispatchWakeupPort = new TaskDispatchWakeupPort() {
             @Override
@@ -111,7 +132,7 @@ public class TaskManager implements TaskShellLifecycleMaintenancePort, TaskState
     }
 
     @Override
-    public Task createTaskShell(TaskShellCreateRequestDto dto) {
+    public TaskCommandOutcome createTaskShell(TaskShellCreateRequestDto dto) {
         validateTaskShellCreateRequest(dto);
         long startTime = System.currentTimeMillis();
         LogUtils.logOperationStart("CREATE_TASK_SHELL", "TaskManager",
@@ -124,7 +145,7 @@ public class TaskManager implements TaskShellLifecycleMaintenancePort, TaskState
             LogUtils.logOperationSuccess("task shell created: taskId=" + task.getTid()
                     + ", contract=" + task.getContract()
                     + ", intakeStatus=" + task.getIntakeStatus(), duration);
-            return task;
+            return TaskCommandOutcome.applied(task.getTid(), "TASK_CREATED", "Task shell created");
         } catch (Exception e) {
             long duration = System.currentTimeMillis() - startTime;
             LogUtils.logOperationFailure("TASK_CREATE_ERROR", e.getMessage(), duration);
@@ -155,8 +176,7 @@ public class TaskManager implements TaskShellLifecycleMaintenancePort, TaskState
     /**
      * Persists a task update.
      */
-    @Override
-    public boolean updateTask(Task task) {
+    boolean persistTaskShell(Task task) {
         LogUtils.setTaskId(task.getTid());
         LogUtils.logOperationStart("UPDATE_TASK", "TaskManager", "taskId", task.getTid());
 
@@ -172,12 +192,12 @@ public class TaskManager implements TaskShellLifecycleMaintenancePort, TaskState
     }
 
     @Override
-    public boolean patchTaskDefinition(String taskId, TaskDefinitionPatch patch) {
+    public TaskCommandOutcome patchTaskDefinition(String taskId, TaskDefinitionPatch patch) {
         Objects.requireNonNull(patch, "patch");
         return withTaskLock(taskId, () -> {
             Task task = taskStorage.getTask(taskId).orElse(null);
             if (task == null) {
-                return false;
+                return TaskCommandOutcome.notFound(taskId);
             }
             if (patch.project() != null) {
                 task.setProject(patch.project());
@@ -188,7 +208,11 @@ public class TaskManager implements TaskShellLifecycleMaintenancePort, TaskState
             if (patch.userId() != null) {
                 task.setUser(UserRef.of(patch.userId()));
             }
-            return updateTask(task);
+            if (persistTaskShell(task)) {
+                return TaskCommandOutcome.applied(taskId, "TASK_DEFINITION_PATCHED", "Task definition patched");
+            }
+            return TaskCommandOutcome.conflict(taskId, "TASK_DEFINITION_PATCH_FAILED",
+                    "Task definition patch failed");
         });
     }
 
@@ -196,7 +220,7 @@ public class TaskManager implements TaskShellLifecycleMaintenancePort, TaskState
      * Deletes a task if it is still safe to remove.
      */
     @Override
-    public boolean deleteTask(String taskId) {
+    public TaskCommandOutcome deleteTask(String taskId) {
         return withTaskLock(taskId, () -> lifecycleService.deleteTask(taskId));
     }
 
@@ -206,40 +230,35 @@ public class TaskManager implements TaskShellLifecycleMaintenancePort, TaskState
     }
 
     @Override
-    public boolean approveTask(String taskId) {
+    public TaskCommandOutcome approveTask(String taskId) {
         return withTaskLock(taskId, () -> lifecycleService.approveTask(taskId));
     }
 
     @Override
-    public boolean rejectTask(String taskId) {
+    public TaskCommandOutcome rejectTask(String taskId) {
         return withTaskLock(taskId, () -> lifecycleService.rejectTask(taskId));
     }
 
     @Override
-    public boolean blockTask(String taskId) {
+    public TaskCommandOutcome blockTask(String taskId) {
         return withTaskLock(taskId, () -> lifecycleService.blockTask(taskId));
     }
 
     @Override
-    public boolean pauseTask(String taskId) {
+    public TaskCommandOutcome pauseTask(String taskId) {
         return withTaskLock(taskId, () -> lifecycleService.pauseTask(taskId));
     }
 
     @Override
-    public TaskResumeResult resumeTaskDetailed(String taskId) {
-        return withTaskLock(taskId, () -> lifecycleService.resumeTaskDetailed(taskId));
-    }
-
-    @Override
-    public boolean resumeTask(String taskId) {
-        return resumeTaskDetailed(taskId).isSuccess();
+    public TaskCommandOutcome resumeTask(String taskId) {
+        return withTaskLock(taskId, () -> lifecycleService.resumeTask(taskId));
     }
 
     /**
      * Manually terminates a non-final task (operator/user-initiated cancellation).
      */
     @Override
-    public boolean cancelTask(String taskId) {
+    public TaskCommandOutcome cancelTask(String taskId) {
         return withTaskLock(taskId, () -> lifecycleService.cancelTask(taskId));
     }
 
@@ -247,7 +266,7 @@ public class TaskManager implements TaskShellLifecycleMaintenancePort, TaskState
      * Policy-driven task termination (e.g. max-runtime exceeded, success-rate reached).
      */
     @Override
-    public boolean terminateTask(String taskId, TaskTerminalReason reason) {
+    public TaskCommandOutcome terminateTask(String taskId, TaskTerminalReason reason) {
         return withTaskLock(taskId, () -> lifecycleService.terminateTask(taskId, reason));
     }
 
@@ -255,23 +274,15 @@ public class TaskManager implements TaskShellLifecycleMaintenancePort, TaskState
      * Appends new work items to a READY or RUNNING task whose intake window is still open.
      */
     @Override
-    public TaskAppendReceipt appendTaskItemsWithReceipt(String taskId, List<java.util.Map<String, Object>> items) {
-        return withTaskLock(taskId, () -> lifecycleService.appendTaskItemsWithReceipt(taskId, items));
-    }
-
-    /**
-     * Appends new work items to a READY or RUNNING task whose intake window is still open.
-     */
-    @Override
-    public int appendTaskItems(String taskId, List<java.util.Map<String, Object>> items) {
-        return appendTaskItemsWithReceipt(taskId, items).added();
+    public TaskAppendOutcome appendTaskItems(String taskId, List<java.util.Map<String, Object>> items) {
+        return withTaskLock(taskId, () -> lifecycleService.appendTaskItems(taskId, items));
     }
 
     /**
      * Closes the current task intake window.
      */
     @Override
-    public boolean sealTask(String taskId) {
+    public TaskCommandOutcome sealTask(String taskId) {
         return withTaskLock(taskId, () -> lifecycleService.sealTask(taskId));
     }
 
@@ -298,11 +309,43 @@ public class TaskManager implements TaskShellLifecycleMaintenancePort, TaskState
         this.taskStateResolutionOwner = servingLane::resolveTaskState;
     }
 
+    public TaskRuntimeServingLane createTaskRuntimeServingLane(TaskRuntimeWorkPort workPort,
+                                                              TaskRuntimeScorePort scorePort,
+                                                              TaskRuntimeConvergencePort convergencePort,
+                                                              TaskRuntimeReadPort readPort,
+                                                              TaskRuntimeResultWindowReadModel resultWindowReadModel,
+                                                              TaskTerminalPolicy terminalPolicy,
+                                                              SchedulingPlaneResolver schedulingPlaneResolver,
+                                                              TraceEventLogger traceEventLogger,
+                                                              long workLeaseSeconds,
+                                                              int maxAppendBatchSize,
+                                                              long finalResultRetentionMillis) {
+        return TaskRuntimeServingLane.forShellHooks(
+                workPort,
+                scorePort,
+                convergencePort,
+                readPort,
+                resultWindowReadModel,
+                this::getTask,
+                this::persistTaskShell,
+                this::publishTaskDispatchRequested,
+                this::publishTaskTerminal,
+                this::publishTaskWorkAttemptClosed,
+                this::publishTaskWorkLogicallyFinal,
+                terminalPolicy,
+                schedulingPlaneResolver,
+                traceEventLogger,
+                workLeaseSeconds,
+                maxAppendBatchSize,
+                finalResultRetentionMillis,
+                System::currentTimeMillis);
+    }
+
     void validateRuntimeAppendAdmission(Task task, int itemCount) {
         if (task == null || itemCount <= 0) {
             return;
         }
-        requireTaskRuntimeServingLane("validateRuntimeAppendAdmission");
+        requireTaskRuntimeServingLane("validateRuntimeAppendAdmission").validateRuntimeAppendAdmission(task, itemCount);
     }
 
     void syncRuntimeSchedulerEligibility(Task task) {

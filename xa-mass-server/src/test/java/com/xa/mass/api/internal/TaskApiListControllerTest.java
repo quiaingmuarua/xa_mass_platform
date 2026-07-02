@@ -4,7 +4,7 @@ import com.xa.mass.api.auth.ApiAuthTestSupport;
 import com.xa.mass.api.auth.ApiAuthorizationService;
 import com.xa.mass.api.auth.TaskSecurityViewSupport;
 import com.xa.mass.sdk.TaskAdminOperations;
-import com.xa.mass.sdk.TaskQueryOperations;
+import com.xa.mass.sdk.TaskReadOperations;
 import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.TaskSummarySnapshot;
@@ -28,7 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class TaskApiListControllerTest {
 
     @Mock
-    private TaskQueryOperations taskQueries;
+    private TaskReadOperations taskReads;
 
     @Mock
     private TaskAdminOperations taskAdmin;
@@ -38,8 +38,7 @@ class TaskApiListControllerTest {
     @BeforeEach
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(new TaskApiController(
-                taskQueries,
-                null,
+                taskReads,
                 taskAdmin,
                 DefaultProjectEventCatalogFactory.createDefaultProjectRegistry(),
                 ApiAuthTestSupport.defaultOperatorAuthService(),
@@ -47,7 +46,7 @@ class TaskApiListControllerTest {
                 new TaskSecurityViewSupport(),
                 null,
                 null,
-                null
+                (com.xa.mass.sdk.TaskStageEvidenceOperations) null
         )).build();
     }
 
@@ -87,7 +86,7 @@ class TaskApiListControllerTest {
                 LocalDateTime.of(2026, 4, 21, 8, 0)
         );
 
-        when(taskQueries.getTaskSummariesByStatus("RUNNING")).thenReturn(List.of(runningTask));
+        when(taskReads.getTaskSummariesByStatus("RUNNING")).thenReturn(List.of(runningTask));
 
         mockMvc.perform(get("/api/v1/tasks")
                         .param("keyword", "warm")
@@ -141,7 +140,7 @@ class TaskApiListControllerTest {
                 LocalDateTime.of(2026, 4, 21, 8, 0)
         );
 
-        when(taskQueries.listTaskSummaries(0, 500)).thenReturn(List.of(demoTask, opsTask));
+        when(taskReads.listTaskSummaries(0, 500)).thenReturn(List.of(demoTask, opsTask));
 
         mockMvc.perform(get("/api/v1/tasks")
                         .param("project", "demoOps"))

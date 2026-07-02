@@ -14,14 +14,4 @@ public record ScoreCandidate(
         observedScore = observedScore == null ? TaskScoreV1.dueAt(0L) : observedScore;
     }
 
-    public static ScoreCandidate fromSchedulerCandidate(String laneKey, SchedulerTaskCandidate candidate) {
-        if (candidate == null) {
-            throw new IllegalArgumentException("candidate is required");
-        }
-        return new ScoreCandidate(
-                candidate.taskId(),
-                laneKey,
-                candidate.runtimeEpoch(),
-                TaskScoreV1.dueAt(candidate.eligibleAtMillis()));
-    }
 }

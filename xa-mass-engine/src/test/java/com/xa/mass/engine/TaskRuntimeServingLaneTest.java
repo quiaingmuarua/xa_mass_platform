@@ -402,18 +402,14 @@ class TaskRuntimeServingLaneTest {
                     taskStorage,
                     new ContractAwareTaskTerminalPolicy(),
                     null);
-            var commands = new TaskCommandService(manager);
-            var queries = new TaskQueryService(manager);
             this.events = new TaskEventService(manager);
-            this.lane = new TaskRuntimeServingLane(
+            this.lane = TaskRuntimeServingLaneTestSupport.forTaskManager(
                     runtime,
                     runtime,
                     runtime,
                     runtime,
                     runtime,
-                    queries,
-                    commands,
-                    events,
+                    manager,
                     new ContractAwareTaskTerminalPolicy(),
                     new DefaultSchedulingPlaneResolver(),
                     new TraceEventLogger(traceSink),
@@ -436,8 +432,11 @@ class TaskRuntimeServingLaneTest {
             dto.setContract(TaskContract.BATCH);
             dto.setExecutionSpec(taskExecutionSpec(maxRetryCount));
             dto.setSharedConfig(Map.of(TaskSharedConfig.WORKER_GROUP_ID, "group-1"));
-            Task task = manager.createTaskShell(dto);
-            assertThat(manager.approveTask(task.getTid())).isTrue();
+            var create = manager.createTaskShell(dto);
+            assertThat(create.accepted()).isTrue();
+            Task task = manager.getTask(create.taskId());
+            assertThat(task).isNotNull();
+            assertThat(manager.approveTask(task.getTid()).accepted()).isTrue();
             return manager.getTask(task.getTid());
         }
 
@@ -453,8 +452,8 @@ class TaskRuntimeServingLaneTest {
             lane.appendRuntimeIngressItems(task, ingressItems);
             task.setTaskTargetNumber(task.getTaskTargetNumber() + ingressItems.size());
             task.setTaskEligibleNumber(task.getTaskEligibleNumber() + ingressItems.size());
-            manager.updateTask(task);
-            assertThat(manager.sealTask(task.getTid())).isTrue();
+            manager.persistTaskShell(task);
+            assertThat(manager.sealTask(task.getTid()).accepted()).isTrue();
         }
 
         private TaskExecutionSpec taskExecutionSpec() {

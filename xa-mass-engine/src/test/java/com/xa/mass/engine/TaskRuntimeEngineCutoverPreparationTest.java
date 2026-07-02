@@ -11,7 +11,7 @@ import com.xa.mass.engine.runtime.TaskRuntimeResultDecisionMapper;
 import com.xa.mass.engine.runtime.TaskRuntimeResultFactMapper;
 import com.xa.mass.engine.runtime.TaskRuntimeWorkerReservationMapper;
 import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy;
-import com.xa.mass.task.runtime.BacklogFrameV1;
+import com.xa.mass.task.runtime.AppendItemInput;
 import com.xa.mass.task.runtime.TaskRuntimeProgressSnapshot;
 import com.xa.mass.task.runtime.AppendBatchStatus;
 import com.xa.mass.task.runtime.MessageFinalityStatus;
@@ -65,9 +65,7 @@ class TaskRuntimeEngineCutoverPreparationTest {
 
         var append = runtime.appendBacklog(
                 "task-1",
-                TaskRuntimeAppendItemMapper.toAppendItems(List.of(ingressItem)).stream()
-                        .map(BacklogFrameV1::from)
-                        .toList(),
+                TaskRuntimeAppendItemMapper.toAppendItems(List.of(ingressItem)),
                 10);
 
         assertThat(append.status()).isEqualTo(AppendBatchStatus.ALL_ACCEPTED);
@@ -76,7 +74,7 @@ class TaskRuntimeEngineCutoverPreparationTest {
                 .containsExactly("task-1");
 
         var selectedWorker = SelectedWorkerHandle.of("worker-1", "group-1", "scope-1", true);
-        var claimPolicy = TaskRuntimePolicySnapshotMapper.toClaimLeasePolicy(task, policy, 1, 30L, 1L, epoch);
+        var claimPolicy = TaskRuntimePolicySnapshotMapper.toClaimLeasePolicy(task, policy, 1, 30L);
         var claim = runtime.claimBacklog(
                 runtime.scoreCandidate("task-1", "default").orElseThrow(),
                 List.of(TaskRuntimeWorkerReservationMapper.toReservationEvidence(selectedWorker, "batch-1")),
@@ -147,11 +145,11 @@ class TaskRuntimeEngineCutoverPreparationTest {
                 resultPolicy(policy)));
         runtime.appendBacklog(
                 "task-1",
-                List.of(new BacklogFrameV1("message-1", "", Map.of("value", 1), null)),
+                List.of(new AppendItemInput("message-1", "", Map.of("value", 1), null)),
                 10);
 
         var selectedWorker = SelectedWorkerHandle.of("worker-1", "group-1", "scope-1", true);
-        var claimPolicy = TaskRuntimePolicySnapshotMapper.toClaimLeasePolicy(task, policy, 1, 30L, 1L, epoch);
+        var claimPolicy = TaskRuntimePolicySnapshotMapper.toClaimLeasePolicy(task, policy, 1, 30L);
         var claimed = runtime.claimBacklog(
                 runtime.scoreCandidate("task-1", "default").orElseThrow(),
                 List.of(TaskRuntimeWorkerReservationMapper.toReservationEvidence(selectedWorker, "batch-1")),

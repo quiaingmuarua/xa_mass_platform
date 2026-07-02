@@ -5,14 +5,12 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy;
 import com.xa.mass.task.runtime.RetryMode;
-import com.xa.mass.task.runtime.RuntimeEpoch;
 import org.junit.jupiter.api.Test;
 
 class TaskRuntimePolicySnapshotMapperTest {
 
     @Test
     void mapsBulkClaimLeaseToTotalBatchCapacity() {
-        var epoch = RuntimeEpoch.of("task-1", 9L);
         var policy = policy(
                 TaskWorkloadClass.BULK,
                 TaskRuntimeProfile.BatchPolicy.LARGE,
@@ -30,14 +28,10 @@ class TaskRuntimePolicySnapshotMapperTest {
                 null,
                 policy,
                 3,
-                120L,
-                7L,
-                epoch);
+                120L);
 
         assertThat(snapshot.maxItems()).isEqualTo(12);
         assertThat(snapshot.leaseMillis()).isEqualTo(120_000L);
-        assertThat(snapshot.attemptPolicyVersion()).isEqualTo(7L);
-        assertThat(snapshot.expectedRuntimeEpoch()).isEqualTo(epoch);
     }
 
     @Test
@@ -59,33 +53,10 @@ class TaskRuntimePolicySnapshotMapperTest {
                 null,
                 policy,
                 3,
-                300L,
-                1L,
-                RuntimeEpoch.of("task-1", 1L));
+                300L);
 
         assertThat(snapshot.maxItems()).isEqualTo(6);
         assertThat(snapshot.leaseMillis()).isEqualTo(30_000L);
-    }
-
-    @Test
-    void mapsAppendAdmissionToConfiguredBatchSizeAndReadyBacklog() {
-        var policy = policy(
-                TaskWorkloadClass.INTERACTIVE,
-                TaskRuntimeProfile.BatchPolicy.SMALL,
-                TaskRuntimeProfile.LeaseProfile.SHORT,
-                TaskRuntimeProfile.BackpressureClass.INTERACTIVE,
-                8,
-                3,
-                32,
-                120L,
-                0L,
-                true,
-                true);
-
-        var snapshot = TaskRuntimePolicySnapshotMapper.toAppendAdmissionPolicy(policy, 500);
-
-        assertThat(snapshot.maxAppendBatchSize()).isEqualTo(500);
-        assertThat(snapshot.maxReadyBacklogItems()).isEqualTo(32);
     }
 
     @Test

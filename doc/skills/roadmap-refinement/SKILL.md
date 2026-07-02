@@ -25,6 +25,11 @@ design concern should become roadmap guidance.
 - **Implementation**: execute an approved slice only. Stop if scope, owner,
   blast radius, or current code no longer matches the roadmap.
 
+Keep mode boundaries sharp: Review/Design/Edit produce or repair planning
+artifacts; Implementation treats an `active` roadmap as the execution contract.
+Do not use Implementation time to keep improving roadmap wording unless current
+code or proof invalidates the contract.
+
 Use the lightest response shape that fits. Multi-module owner reviews should be
 findings-first.
 
@@ -46,8 +51,10 @@ findings-first.
 
 ## Owner Gate
 
-Before creating, repairing, or executing a roadmap, challenge the request. Do
-not accept a named abstraction as real just because it was proposed.
+Before creating or repairing a roadmap, challenge the request. Do not accept a
+named abstraction as real just because it was proposed. During Implementation,
+treat an `active` roadmap as the contract; re-challenge only when current code,
+proof, owner boundary, or stop triggers invalidate that contract.
 
 Ask first:
 
@@ -64,7 +71,8 @@ Ask first:
   queues, indexes, background jobs, or infra operations?
 
 If answers are weak, recommend deletion or narrowing instead of turning the
-request into a roadmap.
+request into a roadmap. In Implementation, ask only the questions implicated by
+the invalidating evidence instead of reopening the whole roadmap.
 
 ## Boundary Rules
 
@@ -198,6 +206,14 @@ prerequisite roadmaps or blueprints. Do not link generic owner/proof/testing
 docs as a reading list; inline any requirement needed to execute, verify, or
 stop the current roadmap.
 
+Every active roadmap needs a mainline anchor: the owner path, external entry,
+hot path, boundary API, or serving mechanism whose closure makes the roadmap
+valuable. Rename-only, local polish, test-name/vocabulary changes, and docs
+wording cleanup are `batched-cleanup` residue, not mainline or pre-converge.
+If a change moves a fact between owner surfaces, such as moving a read model out
+of a mutation/core runtime port, classify it as owner/boundary cutover work, not
+rename.
+
 Boundary roadmaps usually converge in this order:
 
 1. Inventory and classify current behavior.
@@ -206,15 +222,21 @@ Boundary roadmaps usually converge in this order:
    using built-in/default strategy when needed.
 4. Move/narrow contracts, retarget implementations/adapters, update assembly
    and downstream callers.
-5. Add focused proof and stable negative guards.
+5. Add focused cutover proof; add stable negative guards only after owner truth
+   and serving paths are stable.
 6. Remove residue, stale docs, compatibility paths, old vocabulary, strategy
    variants, and corner cases after the mainline path is closed.
 
 For runtime/serving migrations, use active execution phases instead of a global
 waterfall:
 
-- `pre-converge`: narrow interfaces and delete/hide wrong exposure points
-  without changing runtime truth. It may run across domains before cutover work.
+- `pre-converge`: materially converge the current runtime mechanism without
+  changing runtime truth: revise boundary interfaces, DTO shapes, method
+  signatures, caller wiring, or adapter seams so current serving callers no
+  longer depend on the wrong owner fact or old mechanism exposure. It may run
+  across domains before cutover work. It is not simple rename, local polish,
+  test-name/vocabulary cleanup, docs wording cleanup, or API reshaping that
+  does not reduce current runtime-mechanism pressure.
 - `mechanism-cutover`: for one bounded cutpoint/domain, implement the needed
   owner mechanism and cut serving/runtime traffic over to it. Exit with focused
   owner/cutover proof.
@@ -229,6 +251,24 @@ its cutpoint, target mechanism, old mechanism/path to close, and smallest
 cutover proof. Add allowed/forbidden scope only when drift risk is high. Cleanup
 and guard work may be batched after cutpoint proof instead of repeated after
 every cutpoint.
+
+Do not let `pre-converge` become open-ended cleanup: each slice must name the
+mainline anchor it unblocks, the current runtime-mechanism pressure it removes,
+the smallest boundary surface to change, exit proof, and deferred residue.
+After that surface is closed or classified, move to `mechanism-cutover` or stop
+for owner coordination instead of expanding adjacent cleanup.
+
+Progress rule: stay in `pre-converge` only while each slice materially reduces
+current runtime-mechanism pressure and directly moves a named
+`mechanism-cutover` cutpoint closer. If the next work is rename, polish,
+inventory expansion, broad caller cleanup, or proof grooming beyond required
+exit proof, defer it to `batched-cleanup` or stop for owner coordination.
+
+Use phase names by effect, not file operation: changing an interface/DTO/method
+signature so current serving callers stop depending on the wrong owner fact or
+old runtime-mechanism exposure is pre-converge; moving a capability to a
+different owner entry is mechanism/boundary cutover; simple rename, local
+naming, test renames, and docs vocabulary cleanup are batched cleanup.
 
 Do not start by deleting dependencies before moving callers. No slice should
 require a later slice to restore compilation or runtime correctness.
@@ -264,19 +304,24 @@ When executing a slice:
    wrong, owner boundary changes, blast radius expands, or code conflicts with
    the slice.
 6. During long goal-mode execution, treat an `active` roadmap as the approved
-   execution contract and keep a tiny execution cursor: status, phase, current
-   cutpoint, locked mainline, next proof, deferred residue, and stop triggers.
-   For `mechanism-cutover`, also include target mechanism and old
+   execution contract and keep a tiny execution cursor: status, phase, mainline
+   anchor, current cutpoint, locked mainline, next proof, deferred residue, and
+   stop triggers. For `mechanism-cutover`, also include target mechanism and old
    mechanism/path to close. On resume or compaction, read the cursor, current
    diff, touched files, and required proof first; expand only from concrete
    failing evidence, owner-doc references, or stop triggers. Do not re-review,
    rewrite, broaden, or use it as progress notes unless the user asks. Edit
    only for factual code/status/proof/assumption changes or owner coordination.
-7. Update contracts, docs, guards, and verification in the same slice when code
+7. After each slice, state one progress outcome: materially reduced current
+   runtime-mechanism pressure toward a named cutpoint, moved to
+   `mechanism-cutover`, closed one named cutpoint with proof, stopped because
+   owner/cutpoint is unclear, or deferred residue to `batched-cleanup`. If none
+   is true, stop and re-anchor instead of continuing.
+8. Update contracts, docs, guards, and verification in the same slice when code
    changes them.
-8. If the slice closes a roadmap gap or changes status, update roadmap wording
+9. If the slice closes a roadmap gap or changes status, update roadmap wording
    from plan-state to evidence-state.
-9. After rename, dependency, boundary, or compatibility-removal work, suggest or
+10. After rename, dependency, boundary, or compatibility-removal work, suggest or
    run `roadmap-residue-scan` before declaring completion.
 
 ## Delivery
@@ -314,9 +359,17 @@ code behavior changed.
 - Coupling snapshot viewers, read models, schemas, public DTOs, or policy /
   lifecycle / dispatch dependencies into the mainline as diagnostics.
 - Letting non-owners maintain lifecycle truth or promise strong consistency.
-- Polishing strategy variants, corner cases, diagnostics, rename, guards, or
-  API reshaping before mainline mechanism, boundary API, lifecycle, and callers
-  are closed.
+- Treating rename-only, local variable cleanup, test-name/vocabulary changes,
+  docs wording cleanup, guards, diagnostics, or local polish as pre-converge or
+  mainline work. They are residue/cleanup; if a change actually moves owner
+  responsibility or caller entry, classify it as owner/boundary cutover instead
+  of rename.
+- Calling boundary churn `pre-converge` when it does not materially reduce
+  current runtime-mechanism pressure. Pre-converge must converge current serving
+  mechanism exposure while preserving runtime truth; otherwise it is residue,
+  polish, or roadmap churn.
+- Staying in `pre-converge` when the next slice does not materially reduce
+  current runtime-mechanism pressure toward a named cutpoint.
 - Adding threads, scanners, locks, transactions, queues, indexes, background
   jobs, or infra operations without cost/blast-radius assessment and
   cheaper-alternative rejection.

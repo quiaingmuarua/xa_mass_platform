@@ -97,7 +97,7 @@ public abstract class ReviewReadModelSampleE2eTest extends AbstractSampleE2eTest
                                                                  Map<String, Object> taskView,
                                                                  int limit) {
         Map<String, TaskActiveLeaseSnapshot> activeLeaseByMessageId = new LinkedHashMap<>();
-        for (TaskActiveLeaseSnapshot activeLease : app.taskDiagnostics().getActiveLeases(taskId)) {
+        for (TaskActiveLeaseSnapshot activeLease : app.getActiveLeases(taskId)) {
             if (activeLease != null
                     && activeLease.messageId() != null
                     && !activeLease.messageId().isBlank()) {

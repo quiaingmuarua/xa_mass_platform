@@ -2,7 +2,7 @@ package com.xa.mass.task.runtime.redis;
 
 import com.google.gson.Gson;
 import com.google.gson.reflect.TypeToken;
-import com.xa.mass.task.runtime.BacklogFrameV1;
+import com.xa.mass.task.runtime.AppendItemInput;
 
 import java.lang.reflect.Type;
 import java.util.LinkedHashMap;
@@ -14,7 +14,7 @@ final class TaskRuntimeRedisFrameCodecV1 {
     private static final Type MAP_TYPE = new TypeToken<Map<String, Object>>() {
     }.getType();
 
-    String encodeBacklogFrame(String taskId, BacklogFrameV1 frame, long enqueuedAtMillis) {
+    String encodeBacklogFrame(String taskId, AppendItemInput frame, long enqueuedAtMillis) {
         var payload = new LinkedHashMap<String, Object>();
         payload.put("schemaVersion", 1);
         payload.put("frameType", "RAW");

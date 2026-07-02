@@ -12,18 +12,21 @@ import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
+import com.xa.mass.engine.TaskAssignmentEventSink;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
-import com.xa.mass.engine.TaskCommandService;
-import com.xa.mass.engine.TaskEventService;
+import com.xa.mass.engine.TaskCommandPort;
+import com.xa.mass.engine.TaskEventListenerRegistrar;
 import com.xa.mass.engine.TaskDispatchWakeupPort;
 import com.xa.mass.engine.TaskLeaseMaintenancePort;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
+import com.xa.mass.engine.model.TaskCommandOutcome;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
 import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
 import com.xa.mass.engine.service.AssignmentRecordService;
+import com.xa.mass.sdk.TaskReadOperations;
 import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.storage.memory.InMemoryWorkerDeclarationStore;
 import com.xa.mass.engine.watchdog.RuntimeReadyDispatchPump;
@@ -110,8 +113,10 @@ public final class TaskFlowLoadModelRunner {
             cleanupTaskRuntimeNamespace(config);
             EngineConfig engineConfig = buildEngineConfig(taskStorage, config);
             try {
-                TaskCommandService taskCommands = engineConfig.getTaskCommandService();
-                TaskEventService taskEvents = engineConfig.getTaskEventService();
+                TaskCommandPort taskCommands = engineConfig.getTaskCommandPort();
+                TaskEventListenerRegistrar taskEvents = engineConfig.getTaskEventListeners();
+                TaskReadOperations taskReads = engineConfig.getTaskReadOperations();
+                TaskAssignmentEventSink taskAssignmentEvents = engineConfig.getTaskAssignmentEvents();
                 TaskResultIngestFacade taskResultIngestFacade = engineConfig.getTaskResultIngestFacade();
                 TaskAssignmentRuntimePort assignmentRuntimePort = engineConfig.getTaskAssignmentRuntimePort();
                 TaskLeaseMaintenancePort leaseMaintenancePort = engineConfig.getTaskLeaseMaintenancePort();
@@ -235,7 +240,7 @@ public final class TaskFlowLoadModelRunner {
                                 workerSelectionRuntime,
                                 dispatchBinder,
                                 assignmentRuntimePort,
-                                taskEvents
+                                taskAssignmentEvents
                         );
                 TaskAssignWorker assignWorker = new TaskAssignWorker(workerAssignListener, config.assignmentRetryDelayMillis());
                 RuntimeReadyDispatchPump runtimeReadyDispatchPump =
@@ -265,17 +270,17 @@ public final class TaskFlowLoadModelRunner {
                     assignWorker.start();
                     PerfTaskRuntimeLoopSupport.start(engineConfig, runtimeReadyDispatchPump);
 
-                    Task task = materializeTask(taskCommands, buildRequest(config));
+                    Task task = materializeTask(taskCommands, taskStorage, buildRequest(config));
                     taskIdRef.set(task.getTid());
                     long wallStartNanos = System.nanoTime();
-                    require(taskCommands.approveTask(task.getTid()), "task should move NEW -> READY");
+                    require(taskCommands.approveTask(task.getTid()).accepted(), "task should move NEW -> READY");
                     for (int i = 0; i < config.duplicateWakeupsOnApprove(); i++) {
                         assignWorker.submit(task);
                     }
 
                     if (!terminalLatch.await(config.timeoutSeconds(), TimeUnit.SECONDS)) {
                         Task currentTask = taskStorage.getTask(task.getTid()).orElse(task);
-                        TaskWorkStatsSnapshot currentStats = engineConfig.getTaskWorkStats(task.getTid());
+                        TaskWorkStatsSnapshot currentStats = taskReads.getTaskWorkStats(task.getTid());
                         throw new IllegalStateException("load model timed out before task reached TERMINAL"
                                 + " status=" + currentTask.getStatus()
                                 + " terminalReason=" + currentTask.getTerminalReason()
@@ -299,8 +304,8 @@ public final class TaskFlowLoadModelRunner {
                     require(finalTask != null, "task should be captured on terminal transition");
 
                     long totalWallNanos = System.nanoTime() - wallStartNanos;
-                    TaskWorkStatsSnapshot finalWorkStats = engineConfig.getTaskWorkStats(task.getTid());
-                    long finalResultCount = engineConfig.countVisibleTaskResults(task.getTid());
+                    TaskWorkStatsSnapshot finalWorkStats = taskReads.getTaskWorkStats(task.getTid());
+                    long finalResultCount = taskReads.getTaskResultArchiveManifest(task.getTid()).getItemCount();
                     RuntimeProofMetrics proofMetrics = RuntimeProofMetrics.from(
                             finalWorkStats,
                             finalResultCount,
@@ -408,13 +413,19 @@ public final class TaskFlowLoadModelRunner {
                     && logicalSeq % config.expireFirstAttemptEveryNth() == 0;
         }
 
-        private static Task materializeTask(TaskCommandService taskCommands, TaskCreatePlan request) {
-            Task task = taskCommands.createTaskShell(request.shell());
+        private static Task materializeTask(TaskCommandPort taskCommands,
+                                            InMemoryTaskShellStore taskStorage,
+                                            TaskCreatePlan request) {
+            TaskCommandOutcome create = taskCommands.createTaskShell(request.shell());
+            require(create.accepted(), "task shell should be created");
+            Task task = taskStorage.getTask(create.taskId()).orElse(null);
+            require(task != null, "created task should be readable");
             if (!request.inputs().isEmpty()) {
-                taskCommands.appendTaskItems(task.getTid(), request.inputs());
+                require(taskCommands.appendTaskItems(task.getTid(), request.inputs()).accepted(),
+                        "task items should append");
             }
             if (!request.keepIntakeOpen()) {
-                require(taskCommands.sealTask(task.getTid()), "task should seal after ingest");
+                require(taskCommands.sealTask(task.getTid()).accepted(), "task should seal after ingest");
             }
             return task;
         }

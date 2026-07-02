@@ -3,7 +3,6 @@ package com.xa.mass.engine;
 import com.xa.mass.task.runtime.ClaimLeasePolicy;
 import com.xa.mass.task.runtime.ClaimReadyOutcome;
 import com.xa.mass.task.runtime.ClaimedWorkItem;
-import com.xa.mass.task.runtime.RuntimeEpoch;
 import com.xa.mass.task.runtime.WorkerReservationEvidence;
 
 import java.util.List;
@@ -52,9 +51,7 @@ final class TaskRuntimeClaimTestSupport {
                         scoreBandClaimScore)),
                 new ClaimLeasePolicy(
                         Math.max(1, maxItems),
-                        Math.max(1L, leaseSeconds) * 1_000L,
-                        1L,
-                        RuntimeEpoch.of(taskId, 1L)));
+                        Math.max(1L, leaseSeconds) * 1_000L));
     }
 
     static ClaimedWorkItem claimSingle(TaskRuntimeServingLane lane,

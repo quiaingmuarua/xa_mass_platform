@@ -2,7 +2,7 @@ package com.xa.mass.task.runtime.redis;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.xa.mass.task.runtime.BacklogFrameV1;
+import com.xa.mass.task.runtime.AppendItemInput;
 import com.xa.mass.task.runtime.MessageFinalityStatus;
 import com.xa.mass.task.runtime.ResultApplySource;
 import com.xa.mass.task.runtime.RetryMode;
@@ -70,7 +70,7 @@ class RedisTaskRuntimeNetworkPartitionTest {
         String taskId = "task-network-partition";
         var epoch = enrollOpenTask(taskId);
 
-        runtime.appendBacklog(taskId, List.of(new BacklogFrameV1(
+        runtime.appendBacklog(taskId, List.of(new AppendItemInput(
                 "message-1",
                 "demo.dispatch",
                 Map.of("value", 1),
@@ -89,10 +89,10 @@ class RedisTaskRuntimeNetworkPartitionTest {
         clock.set(1_001L);
 
         var expired = runtime.scanExpiredLeases(LANE, clock.get(), 10, 10);
-        assertThat(expired.candidates())
+        assertThat(expired)
                 .extracting(candidate -> candidate.messageId())
                 .containsExactly("message-1");
-        var expiredLease = expired.candidates().getFirst();
+        var expiredLease = expired.getFirst();
         var retry = runtime.applyResult(new RuntimeResultFact(
                 expiredLease.taskId(),
                 expiredLease.messageId(),

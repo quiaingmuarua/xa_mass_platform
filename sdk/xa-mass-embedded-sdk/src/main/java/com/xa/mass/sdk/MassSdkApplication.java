@@ -1,7 +1,6 @@
 package com.xa.mass.sdk;
 
 import com.xa.mass.base.enums.Project;
-import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.UserRef;
 import com.xa.mass.base.project.ProjectRegistry;
@@ -11,11 +10,9 @@ import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleResult;
 import com.xa.mass.worker.runtime.command.WorkerCommandRecord;
 import com.xa.mass.worker.runtime.command.WorkerCommandRequest;
 import com.xa.mass.worker.runtime.command.WorkerCommandStatus;
-import com.xa.mass.engine.model.TaskAppendReceipt;
+import com.xa.mass.engine.model.TaskAppendOutcome;
+import com.xa.mass.engine.model.TaskCommandOutcome;
 import com.xa.mass.engine.model.TaskDefinitionPatch;
-import com.xa.mass.engine.model.TaskResumeResult;
-import com.xa.mass.engine.model.TaskStateResolutionResult;
-import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.stage.TaskStageEvidenceResult;
 import com.xa.mass.engine.stage.TaskStageProjection;
 import com.xa.mass.worker.runtime.resource.EventBinding;
@@ -48,10 +45,8 @@ import com.xa.mass.sdk.worker.WorkerAction;
 import com.xa.mass.sdk.worker.WorkerActionReply;
 import com.xa.mass.sdk.worker.WorkerPollResult;
 
-import java.io.IOException;
 import java.io.OutputStream;
 import java.util.*;
-import java.util.zip.GZIPOutputStream;
 
 /**
  * Consumer-facing runtime handle returned by the SDK facade.
@@ -60,7 +55,7 @@ import java.util.zip.GZIPOutputStream;
  * runtime, but the stable embedding path stays on {@code com.xa.mass.sdk.*}
  * methods rather than exposing starter/runtime internals directly.
  */
-public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOperations, TaskResultQueryOperations, TaskAdminOperations,
+public final class MassSdkApplication implements MassRuntimeControl, TaskReadOperations, TaskAdminOperations,
         WorkerInspectionOperations, WorkerQueryOperations, WorkerRegistryOperations,
         WorkerTopologyOperations,
         WorkerClientOperations, WorkerAdminOperations,
@@ -68,12 +63,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         ResourceOperations, CredentialAuthProjectionWriter, AuthProvider, PrincipalDirectory,
         ExternalWorkerOperations, AuthorizationPolicy,
         RuleOperations {
-
-    private static final int ARCHIVE_STREAM_WINDOW = Integer.getInteger("xa.mass.sdk.resultArchiveStreamWindow", 1000);
-    private static final String RESULT_ARCHIVE_FORMAT = "ndjson";
-    private static final String RESULT_ARCHIVE_CONTENT_TYPE = "application/x-ndjson";
-    private static final String RESULT_ARCHIVE_CONTENT_ENCODING = "gzip";
-    private static final com.google.gson.Gson RESULT_JSON = new com.google.gson.Gson();
 
     private final MassApplication delegate;
     private final ProjectEventCatalogRegistry bootstrapProjectCatalogRegistry;
@@ -87,7 +76,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     private final EventDefinitionRegistry eventDefinitionRegistry;
     private final Map<String, EventHandler> eventHandlerCache;
     private final ControlPlaneCatalog controlPlaneCatalogView;
-    private final TaskDiagnosticOperations taskDiagnostics;
     private final RuntimeDiagnosticsOperations runtimeDiagnostics;
 
     MassSdkApplication(MassApplication delegate) {
@@ -124,7 +112,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 this::getEvent,
                 this::getEventsForProject
         );
-        this.taskDiagnostics = new DefaultTaskDiagnosticOperations(delegate);
         this.runtimeDiagnostics = new DefaultRuntimeDiagnosticsOperations(delegate);
         this.eventPermissionService = new DefaultEventPermissionService(controlPlaneCatalogView);
         this.authorizationPolicy = new DefaultAuthorizationPolicy();
@@ -153,6 +140,14 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return delegate;
     }
 
+    private TaskReadOperations taskReads() {
+        TaskReadOperations reads = delegate.taskReads();
+        if (reads == null) {
+            throw new IllegalStateException("Task read surface is unavailable for this SDK application");
+        }
+        return reads;
+    }
+
     @Override
     public EventResponse dispatchEvent(EventRequest request, PrincipalContext principal) {
         Objects.requireNonNull(request, "request");
@@ -168,107 +163,63 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         requireStartedEngine();
         MassTaskShellCreateRequest stamped = TaskOwnershipSupport.stamp(request, internalPrincipal(request.getUserId()));
         WorkerGroupSelectorResolver.requireExplicitTargetWorkerBinding(stamped.getSharedConfig());
-        return toTaskShellSnapshot(delegate.createTaskShell(SdkResourceMapper.toEngineRequest(stamped)));
+        TaskCommandOutcome outcome = delegate.createTaskShell(SdkResourceMapper.toEngineRequest(stamped));
+        requireAcceptedCommand(outcome);
+        TaskDetailSnapshot task = taskReads().getTaskDetail(outcome.taskId());
+        if (task == null) {
+            throw new IllegalStateException("Created task cannot be read: " + outcome.taskId());
+        }
+        return toTaskShellSnapshot(task);
     }
 
     @Override
     public TaskDetailSnapshot getTaskDetail(String taskId) {
-        return toTaskDetailSnapshot(delegate.getTask(taskId));
+        return taskReads().getTaskDetail(taskId);
     }
 
     @Override
     public List<TaskSummarySnapshot> listTaskSummaries(int offset, int limit) {
-        requireStartedEngine();
-        return delegate.listTasksPaged(offset, limit).stream()
-                .map(this::toTaskSummarySnapshot)
-                .toList();
+        return taskReads().listTaskSummaries(offset, limit);
     }
 
     @Override
     public List<TaskSummarySnapshot> getTaskSummariesByStatus(String status) {
-        requireStartedEngine();
-        return delegate.getTasksByStatus(
-                parseTaskStatus(status)
-        ).stream().map(this::toTaskSummarySnapshot).toList();
+        return taskReads().getTaskSummariesByStatus(status);
     }
 
     @Override
     public boolean taskExists(String taskId) {
-        return delegate.getTask(requireTaskId(taskId)) != null;
+        return taskReads().taskExists(requireTaskId(taskId));
     }
 
     @Override
     public TaskStateSnapshot getTaskState(String taskId) {
-        Task task = delegate.getTask(requireTaskId(taskId));
-        if (task == null) {
-            return null;
-        }
-        return toTaskStateSnapshot(task);
+        return taskReads().getTaskState(requireTaskId(taskId));
     }
 
     @Override
     public TaskAccessSnapshot getTaskAccess(String taskId) {
-        Task task = delegate.getTask(requireTaskId(taskId));
-        if (task == null) {
-            return null;
-        }
-        return toTaskAccessSnapshot(task);
+        return taskReads().getTaskAccess(requireTaskId(taskId));
     }
 
     @Override
     public TaskResultWindowSnapshot readTaskResults(String taskId, long afterSeq, int limit) {
-        return delegate.readTaskResults(requireTaskId(taskId), Math.max(0L, afterSeq), Math.max(1, limit));
+        return taskReads().readTaskResults(requireTaskId(taskId), Math.max(0L, afterSeq), Math.max(1, limit));
     }
 
     @Override
     public Optional<TaskWorkFinalSnapshot> getTaskWorkFinal(String taskId, String messageId) {
-        return delegate.getVisibleTaskResultByMessageId(requireTaskId(taskId), requireMessageId(messageId));
+        return taskReads().getTaskWorkFinal(requireTaskId(taskId), requireMessageId(messageId));
     }
 
     @Override
     public TaskResultArchiveSnapshot getTaskResultArchiveManifest(String taskId) {
-        String normalizedTaskId = requireTaskId(taskId);
-        TaskDetailSnapshot task = getTaskDetail(normalizedTaskId);
-        boolean ready = task != null && "TERMINAL".equalsIgnoreCase(task.getStatus());
-        long itemCount = delegate.countVisibleTaskResults(normalizedTaskId);
-        return new TaskResultArchiveSnapshot(
-                normalizedTaskId,
-                ready,
-                RESULT_ARCHIVE_FORMAT,
-                RESULT_ARCHIVE_CONTENT_TYPE,
-                RESULT_ARCHIVE_CONTENT_ENCODING,
-                ready ? itemCount : 0L,
-                null,
-                null
-        );
+        return taskReads().getTaskResultArchiveManifest(requireTaskId(taskId));
     }
 
     @Override
     public void writeTaskResultArchiveContent(String taskId, OutputStream sink) {
-        Objects.requireNonNull(sink, "sink");
-        String normalizedTaskId = requireTaskId(taskId);
-        try {
-            GZIPOutputStream gzip = new GZIPOutputStream(sink);
-            long afterSeq = 0L;
-            while (true) {
-                TaskResultWindowSnapshot window = delegate.readTaskResults(
-                        normalizedTaskId,
-                        afterSeq,
-                        ARCHIVE_STREAM_WINDOW);
-                for (TaskResultItemSnapshot row : window.getItems()) {
-                    gzip.write(RESULT_JSON.toJson(row).getBytes(java.nio.charset.StandardCharsets.UTF_8));
-                    gzip.write('\n');
-                }
-                if (!window.isHasMore()) {
-                    gzip.finish();
-                    gzip.flush();
-                    return;
-                }
-                afterSeq = window.getNextAfterSeq();
-            }
-        } catch (IOException e) {
-            throw new IllegalStateException("Failed to stream task result archive: " + e.getMessage(), e);
-        }
+        taskReads().writeTaskResultArchiveContent(requireTaskId(taskId), sink);
     }
 
     public boolean approveTask(String taskId) {
@@ -288,12 +239,15 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     public SdkTaskResumeResult resumeTaskDetailed(String taskId) {
-        TaskResumeResult result = delegate.resumeTaskDetailed(taskId);
+        String normalizedTaskId = requireTaskId(taskId);
+        TaskCommandOutcome result = delegate.resumeTask(normalizedTaskId);
+        TaskDetailSnapshot task = taskReads().getTaskDetail(normalizedTaskId);
         return new SdkTaskResumeResult(
-                result.isSuccess(),
-                result.getStatus() != null ? result.getStatus().name() : null,
-                result.getTerminalReason() != null ? result.getTerminalReason().name() : null,
-                result.getOutcome() == TaskResumeResult.Outcome.COMPLETED_TO_TERMINAL
+                result.accepted(),
+                task != null ? task.getStatus() : null,
+                task != null ? task.getTerminalReason() : null,
+                result.accepted() && task != null
+                        && "TERMINAL".equalsIgnoreCase(task.getStatus())
         );
     }
 
@@ -302,7 +256,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
     }
 
     public boolean cancelTask(String taskId) {
-        return delegate.cancelTask(requireTaskId(taskId));
+        return delegate.cancelTask(requireTaskId(taskId)).accepted();
     }
 
     public boolean terminateTask(String taskId, String reason) {
@@ -318,8 +272,9 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         String normalizedTaskId = requireTaskId(taskId);
         resolveWorkerGroupSelectorForAppend(normalizedTaskId, request.getEventCode());
         List<Map<String, Object>> converted = requireAppendItems(request.getItems(), request.getEventCode());
-        TaskAppendReceipt receipt = delegate.appendTaskItemsWithReceipt(normalizedTaskId, converted);
-        return new TaskItemBatchAppendReceipt(receipt.taskId(), receipt.added(), receipt.messageIds());
+        TaskAppendOutcome outcome = delegate.appendTaskItems(normalizedTaskId, converted);
+        requireAcceptedAppend(outcome);
+        return new TaskItemBatchAppendReceipt(outcome.taskId(), outcome.acceptedCount(), outcome.messageIds());
     }
 
     @Override
@@ -331,12 +286,29 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return executeTaskCommand(taskId, MassTaskCommandRequest.builder().command("SEAL").build()).isAccepted();
     }
 
-    public TaskDiagnosticOperations taskDiagnostics() {
-        return taskDiagnostics;
-    }
-
     public RuntimeDiagnosticsOperations runtimeDiagnostics() {
         return runtimeDiagnostics;
+    }
+
+    @Override
+    public TaskStateValidationSnapshot validateTaskState(String taskId) {
+        return taskReads().validateTaskState(requireTaskId(taskId));
+    }
+
+    @Override
+    public TaskStateResolutionSnapshot resolveTaskState(String taskId) {
+        return taskReads().resolveTaskState(requireTaskId(taskId));
+    }
+
+    @Override
+    public TaskWorkStatsSnapshot getTaskWorkStats(String taskId) {
+        TaskWorkStatsSnapshot snapshot = taskReads().getTaskWorkStats(requireTaskId(taskId));
+        return snapshot == null ? TaskWorkStatsSnapshot.EMPTY : snapshot;
+    }
+
+    @Override
+    public List<TaskActiveLeaseSnapshot> getActiveLeases(String taskId) {
+        return List.copyOf(taskReads().getActiveLeases(requireTaskId(taskId)));
     }
 
     @Override
@@ -348,7 +320,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return delegate.patchTaskDefinition(
                 requireTaskId(taskId),
                 new TaskDefinitionPatch(request.getProject(), request.getSharedConfig(), request.getUserId())
-        );
+        ).accepted();
     }
 
     @Override
@@ -357,18 +329,18 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         String normalizedTaskId = requireTaskId(taskId);
         String normalizedCommand = normalizeTaskCommand(request.getCommand());
         requireStartedEngine();
-        Task before = delegate.getTask(normalizedTaskId);
+        TaskDetailSnapshot before = taskReads().getTaskDetail(normalizedTaskId);
         if (before == null) {
             return toTaskCommandResult(normalizedTaskId, normalizedCommand, false, false,
                     null, "Task not found", "TASK_NOT_FOUND");
         }
 
-        boolean accepted = switch (normalizedCommand) {
+        TaskCommandOutcome outcome = switch (normalizedCommand) {
             case "APPROVE" -> delegate.approveTask(normalizedTaskId);
             case "REJECT" -> delegate.rejectTask(normalizedTaskId);
             case "BLOCK" -> executeBlockTask(normalizedTaskId, before);
             case "PAUSE" -> delegate.pauseTask(normalizedTaskId);
-            case "RESUME" -> delegate.resumeTaskDetailed(normalizedTaskId).isSuccess();
+            case "RESUME" -> delegate.resumeTask(normalizedTaskId);
             case "TERMINATE" -> delegate.terminateTask(
                     normalizedTaskId,
                     parseTaskTerminalReason(request.getReason(),
@@ -378,15 +350,15 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
             default -> throw new IllegalArgumentException("Unsupported task command: " + normalizedCommand);
         };
 
-        Task after = delegate.getTask(normalizedTaskId);
-        if (accepted) {
+        TaskDetailSnapshot after = taskReads().getTaskDetail(normalizedTaskId);
+        if (outcome.accepted()) {
             return toTaskCommandResult(normalizedTaskId, normalizedCommand, true, true,
                     after != null ? after : before, null, null);
         }
         return toTaskCommandResult(normalizedTaskId, normalizedCommand, false, true,
                 after != null ? after : before,
-                "Task command is not allowed in the current state",
-                "COMMAND_NOT_ALLOWED");
+                outcome.message() != null ? outcome.message() : "Task command is not allowed in the current state",
+                outcome.reasonCode() != null ? outcome.reasonCode() : "COMMAND_NOT_ALLOWED");
     }
 
     @Override
@@ -1016,12 +988,12 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         if (!delegate.isEngineRunning()) {
             return;
         }
-        Task task = delegate.getTask(taskId);
+        TaskAccessSnapshot task = taskReads().getTaskAccess(taskId);
         if (task == null) {
             return;
         }
         WorkerGroupSelectorResolver.requireExplicitTargetWorkerBinding(task.getSharedConfig());
-        if (!TaskSharedConfig.workerGroupSelector(task).isEmpty() || normalizedEventCode == null) {
+        if (!TaskSharedConfig.workerGroupSelector(task.getSharedConfig()).isEmpty() || normalizedEventCode == null) {
             return;
         }
         Map<String, Object> sharedConfig = WorkerGroupSelectorResolver.resolveEventBackedSelector(
@@ -1619,20 +1591,56 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return delegate.worker(workerId).orElse(null);
     }
 
-    private boolean executeBlockTask(String taskId, Task currentTask) {
-        if (delegate.blockTask(taskId)) {
-            return true;
+    private TaskCommandOutcome executeBlockTask(String taskId, TaskDetailSnapshot currentTask) {
+        TaskCommandOutcome blockOutcome = delegate.blockTask(taskId);
+        if (blockOutcome.accepted()) {
+            return blockOutcome;
         }
-        return currentTask != null
-                && currentTask.getStatus() == com.xa.mass.base.enums.task.TaskStatus.NEW
-                && delegate.rejectTask(taskId);
+        if (currentTask != null && "NEW".equalsIgnoreCase(currentTask.getStatus())) {
+            return delegate.rejectTask(taskId);
+        }
+        return blockOutcome;
+    }
+
+    private void requireAcceptedCommand(TaskCommandOutcome outcome) {
+        if (outcome != null && outcome.accepted()) {
+            return;
+        }
+        throw new IllegalStateException(commandFailureMessage(outcome));
+    }
+
+    private void requireAcceptedAppend(TaskAppendOutcome outcome) {
+        if (outcome != null && outcome.accepted()) {
+            return;
+        }
+        throw new IllegalStateException(appendFailureMessage(outcome));
+    }
+
+    private String commandFailureMessage(TaskCommandOutcome outcome) {
+        if (outcome == null) {
+            return "Task command failed";
+        }
+        if (outcome.message() != null) {
+            return outcome.message();
+        }
+        return outcome.reasonCode() != null ? outcome.reasonCode() : "Task command failed";
+    }
+
+    private String appendFailureMessage(TaskAppendOutcome outcome) {
+        if (outcome == null) {
+            return "Task append failed";
+        }
+        if (outcome.message() != null) {
+            return outcome.message();
+        }
+        return outcome.reasonCode() != null ? outcome.reasonCode() : "Task append failed";
     }
 
     private TaskCommandResult toTaskCommandResult(String taskId,
                                                   String command,
                                                   boolean accepted,
                                                   boolean taskExists,
-                                                  Task task,
+                                                  TaskDetailSnapshot task,
                                                   String failureReason,
                                                   String reasonCode) {
         return new TaskCommandResult(
@@ -1640,10 +1648,10 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
                 command,
                 accepted,
                 taskExists,
-                task != null ? enumName(task.getStatus()) : null,
-                task != null ? enumName(task.getIntakeStatus()) : null,
-                task != null ? enumName(task.getTerminalReason()) : null,
-                task != null ? enumName(task.getHoldReason()) : null,
+                task != null ? task.getStatus() : null,
+                task != null ? task.getIntakeStatus() : null,
+                task != null ? task.getTerminalReason() : null,
+                task != null ? task.getHoldReason() : null,
                 failureReason,
                 reasonCode
         );
@@ -1823,109 +1831,19 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskQueryOp
         return List.copyOf(bindings);
     }
 
-    private TaskShellSnapshot toTaskShellSnapshot(Task task) {
+    private TaskShellSnapshot toTaskShellSnapshot(TaskDetailSnapshot task) {
         if (task == null) {
             return null;
         }
         return new TaskShellSnapshot(
-                task.getTid(),
+                task.getTaskId(),
                 task.getTaskName(),
                 task.getTenantId(),
                 task.getProject(),
-                task.getUser() == null ? null : task.getUser().getUserId(),
-                enumName(task.getContract()),
+                task.getUserId(),
+                task.getContract(),
                 task.getSourceRef()
         );
-    }
-
-    private TaskStateSnapshot toTaskStateSnapshot(Task task) {
-        return new TaskStateSnapshot(
-                task.getTid(),
-                enumName(task.getStatus()),
-                enumName(task.getTerminalReason()),
-                enumName(task.getIntakeStatus())
-        );
-    }
-
-    private TaskAccessSnapshot toTaskAccessSnapshot(Task task) {
-        return new TaskAccessSnapshot(
-                task.getTid(),
-                task.getProject(),
-                copyMap(task.getSharedConfig()),
-                enumName(task.getIntakeStatus())
-        );
-    }
-
-    private TaskSummarySnapshot toTaskSummarySnapshot(Task task) {
-        if (task == null) {
-            return null;
-        }
-        return new TaskSummarySnapshot(
-                task.getTid(),
-                task.getTaskName(),
-                task.getTenantId(),
-                task.getProject(),
-                task.getUser() == null ? null : task.getUser().getUserId(),
-                enumName(task.getContract()),
-                enumName(task.getStatus()),
-                enumName(task.getTerminalReason()),
-                toTaskExecutionOptions(task.getExecutionSpec()),
-                task.getTaskSuccessNumber(),
-                task.getTaskEligibleNumber(),
-                task.getUpdateTime()
-        );
-    }
-
-    private TaskDetailSnapshot toTaskDetailSnapshot(Task task) {
-        if (task == null) {
-            return null;
-        }
-        return new TaskDetailSnapshot(
-                task.getTid(),
-                task.getTenantId(),
-                task.getTaskName(),
-                enumName(task.getContract()),
-                task.getProject(),
-                enumName(task.getStatus()),
-                task.getTaskTargetNumber(),
-                task.getTaskEligibleNumber(),
-                task.getTaskSuccessNumber(),
-                task.getTaskNonSuccessNumber(),
-                task.getMinRequiredWorkerCount(),
-                task.getPeakAssignedWorkerCount(),
-                copyMap(task.getSharedConfig()),
-                enumName(task.getHoldReason()),
-                toTaskExecutionOptions(task.getExecutionSpec()),
-                task.getSourceRef(),
-                enumName(task.getIntakeStatus()),
-                task.getUser() == null ? null : task.getUser().getUserId(),
-                task.getCreateTime(),
-                task.getUpdateTime(),
-                task.getStartTime(),
-                task.getEndTime(),
-                enumName(task.getTerminalReason())
-        );
-    }
-
-    private TaskExecutionOptions toTaskExecutionOptions(com.xa.mass.base.model.TaskExecutionSpec spec) {
-        TaskExecutionOptions view = new TaskExecutionOptions();
-        if (spec == null) {
-            return view;
-        }
-        view.setProfile(enumName(spec.getProfile()));
-        view.setWorkloadClass(enumName(spec.getWorkloadClass()));
-        view.setBatchSize(spec.getBatchSize());
-        view.setMaxRuntimeSeconds(spec.getMaxRuntimeSeconds());
-        view.setDefaultMaxRetryCount(spec.getDefaultMaxRetryCount());
-        view.setForeground(spec.isForeground());
-        return view;
-    }
-
-    private com.xa.mass.base.enums.task.TaskStatus parseTaskStatus(String value) {
-        if (value == null || value.isBlank()) {
-            return null;
-        }
-        return com.xa.mass.base.enums.task.TaskStatus.valueOf(value.trim().toUpperCase(Locale.ROOT));
     }
 
     private com.xa.mass.base.enums.task.TaskTerminalReason parseTaskTerminalReason(

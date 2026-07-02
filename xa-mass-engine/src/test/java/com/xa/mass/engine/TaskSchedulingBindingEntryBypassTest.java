@@ -35,7 +35,7 @@ class TaskSchedulingBindingEntryBypassTest {
                 ),
                 1
         );
-        assertTrue(harness.taskManager.approveTask(task.getTid()));
+        assertTrue(harness.taskManager.approveTask(task.getTid()).accepted());
 
         RuntimeReadyDispatchPump pump = new RuntimeReadyDispatchPump(
                 harness.taskRuntimeServingLane,
@@ -85,7 +85,7 @@ class TaskSchedulingBindingEntryBypassTest {
                 ),
                 1
         );
-        assertTrue(harness.taskManager.approveTask(task.getTid()));
+        assertTrue(harness.taskManager.approveTask(task.getTid()).accepted());
 
         TaskAssignWorker assignWorker = new TaskAssignWorker(harness.assignListener, 5_000L);
         TaskDispatchWakeupBridge wakeupBridge = new TaskDispatchWakeupBridge(assignWorker, () -> {
@@ -138,7 +138,7 @@ class TaskSchedulingBindingEntryBypassTest {
                 ),
                 1
         );
-        assertTrue(harness.taskManager.approveTask(task.getTid()));
+        assertTrue(harness.taskManager.approveTask(task.getTid()).accepted());
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
         ActiveLeaseRepairCandidate firstLease = singleLease(harness, task.getTid());

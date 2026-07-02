@@ -64,7 +64,7 @@ class TaskWorkerEligibilityTest {
                 1
         );
         Task secondTask = harness.createReadyBatchTask("dispatch-block-second", List.of(harness.item("second")));
-        assertTrue(harness.taskManager.approveTask(firstTask.getTid()));
+        assertTrue(harness.taskManager.approveTask(firstTask.getTid()).accepted());
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(firstTask.getTid())));
         ActiveLeaseRepairCandidate firstLease = harness.activeLeases(firstTask.getTid()).getFirst();
@@ -120,7 +120,7 @@ class TaskWorkerEligibilityTest {
                 Map.of(TaskSharedConfig.ROUTING_CODE, "us"),
                 2
         );
-        assertTrue(harness.taskManager.approveTask(task.getTid()));
+        assertTrue(harness.taskManager.approveTask(task.getTid()).accepted());
 
         assertTrue(harness.workerManager.blockWorkerDispatch("pool-main", "worker-dropped",
                 disconnectedSignal("current session disconnected", 3_000L)));

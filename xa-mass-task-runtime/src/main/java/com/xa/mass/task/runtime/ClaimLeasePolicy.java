@@ -1,6 +1,6 @@
 package com.xa.mass.task.runtime;
 
-public record ClaimLeasePolicy(int maxItems, long leaseMillis, long attemptPolicyVersion, RuntimeEpoch expectedRuntimeEpoch) {
+public record ClaimLeasePolicy(int maxItems, long leaseMillis) {
 
     public ClaimLeasePolicy {
         if (maxItems <= 0) {
@@ -9,7 +9,5 @@ public record ClaimLeasePolicy(int maxItems, long leaseMillis, long attemptPolic
         if (leaseMillis <= 0) {
             throw new IllegalArgumentException("leaseMillis must be positive");
         }
-        attemptPolicyVersion = Math.max(0L, attemptPolicyVersion);
-        expectedRuntimeEpoch = expectedRuntimeEpoch == null ? RuntimeEpoch.unspecified() : expectedRuntimeEpoch;
     }
 }

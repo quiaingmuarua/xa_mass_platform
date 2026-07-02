@@ -23,10 +23,6 @@ class TaskStateResolver {
     private final Consumer<Task> taskTerminalPublisher;
     private final TraceEventLogger traceEventLogger;
 
-    TaskStateResolver(TaskManager taskManager, TraceEventLogger traceEventLogger) {
-        this(taskManager, taskManager::updateTask, taskManager::publishTaskTerminal, traceEventLogger);
-    }
-
     TaskStateResolver(TaskStateRuntimePort stateRuntime,
                       Function<Task, Boolean> taskUpdater,
                       Consumer<Task> taskTerminalPublisher,

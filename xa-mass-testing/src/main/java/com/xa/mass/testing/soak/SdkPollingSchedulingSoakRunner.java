@@ -493,7 +493,7 @@ public final class SdkPollingSchedulingSoakRunner {
             long activeLeases = 0;
             for (SoakTaskPlan plan : taskPlans) {
                 String taskId = plan.taskId();
-                TaskWorkStatsSnapshot stats = app.taskDiagnostics().getTaskWorkStats(taskId);
+                TaskWorkStatsSnapshot stats = app.getTaskWorkStats(taskId);
                 require(stats.totalCount() == config.messagesPerTask(),
                         "unexpected runtime work count for task=" + taskId + " total=" + stats.totalCount());
                 require(stats.finalCount() == stats.totalCount(),
@@ -510,7 +510,7 @@ public final class SdkPollingSchedulingSoakRunner {
                 success += stats.successCount();
                 failed += stats.failedCount();
                 expired += stats.expiredCount();
-                activeLeases += app.taskDiagnostics().getActiveLeases(taskId).size();
+                activeLeases += app.getActiveLeases(taskId).size();
             }
             return new FinalWorkStats(total, success, failed, expired, activeLeases);
         }

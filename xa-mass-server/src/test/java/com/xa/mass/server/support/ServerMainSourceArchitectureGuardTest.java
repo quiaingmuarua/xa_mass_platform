@@ -60,7 +60,7 @@ class ServerMainSourceArchitectureGuardTest {
         String source = Files.readString(controller, StandardCharsets.UTF_8);
 
         assertTrue(!source.contains("TaskMessageProjection"),
-                "TaskApiController result endpoints must use TaskResultQueryOperations, not TaskMessageProjection");
+                "TaskApiController result endpoints must use TaskReadOperations, not TaskMessageProjection");
         assertTrue(!source.contains("getTaskMessageProjections"),
                 "TaskApiController must not read TaskDetailStore projection rows for public results");
     }

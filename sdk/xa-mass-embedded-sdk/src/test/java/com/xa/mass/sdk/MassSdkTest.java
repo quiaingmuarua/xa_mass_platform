@@ -25,10 +25,9 @@ import com.xa.mass.engine.TaskShellLifecycleMaintenancePort;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
-import com.xa.mass.engine.model.TaskAppendReceipt;
+import com.xa.mass.engine.model.TaskAppendOutcome;
+import com.xa.mass.engine.model.TaskCommandOutcome;
 import com.xa.mass.engine.model.TaskDefinitionPatch;
-import com.xa.mass.engine.model.TaskResumeResult;
-import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.worker.runtime.resource.EventBinding;
 import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 import com.xa.mass.worker.runtime.resource.WorkerResourceRecord;
@@ -61,6 +60,7 @@ import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.MassTaskUpdateRequest;
 import com.xa.mass.sdk.model.NodeGroupBindingRegistration;
 import com.xa.mass.sdk.model.TaskWorkFinalNotification;
+import com.xa.mass.sdk.model.TaskAccessSnapshot;
 import com.xa.mass.sdk.model.TaskDetailSnapshot;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.TaskResultItemSnapshot;
@@ -833,8 +833,9 @@ class MassSdkTest {
         hydratedTask.setSharedConfig(Map.of(TaskSharedConfig.WORKER_GROUP_ID, "sdk-test-workers"));
 
         when(delegate.isEngineRunning()).thenReturn(true);
-        when(delegate.createTaskShell(any(TaskShellCreateRequestDto.class))).thenReturn(createdTask);
-        when(delegate.getTask("task-001")).thenReturn(hydratedTask);
+        when(delegate.createTaskShell(any(TaskShellCreateRequestDto.class))).thenReturn(
+                TaskCommandOutcome.applied("task-001", "TASK_CREATED", "Task shell created"));
+        stubTaskReads(delegate, hydratedTask);
         stubAppendReceipts(delegate);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
@@ -869,7 +870,7 @@ class MassSdkTest {
         );
         Assertions.assertEquals(2, dto.getExecutionSpec().getBatchSize());
         Assertions.assertEquals(600, dto.getExecutionSpec().getMaxRuntimeSeconds());
-        verify(delegate).appendTaskItemsWithReceipt("task-001", List.of(
+        verify(delegate).appendTaskItems("task-001", List.of(
                 Map.of("target", "target-a", "eventCode", "demo.dispatch"),
                 Map.of("target", "target-b", "eventCode", "demo.dispatch")
         ));
@@ -914,12 +915,15 @@ class MassSdkTest {
         task.setTid("task-1");
         task.setTaskName("before");
         task.setProject("demoApp");
+        task.setStatus(TaskStatus.READY);
         task.setUser(UserRef.of("user-1"));
 
         when(delegate.isEngineRunning()).thenReturn(true);
-        when(delegate.getTask("task-1")).thenReturn(task);
-        when(delegate.resumeTaskDetailed("task-1")).thenReturn(TaskResumeResult.resumedToReady());
-        when(delegate.patchTaskDefinition(any(), any())).thenReturn(true);
+        stubTaskReads(delegate, task);
+        when(delegate.resumeTask("task-1")).thenReturn(
+                TaskCommandOutcome.applied("task-1", "TASK_RESUMED_TO_READY", "Task resumed to READY"));
+        when(delegate.patchTaskDefinition(any(), any())).thenReturn(
+                TaskCommandOutcome.applied("task-1", "TASK_DEFINITION_PATCHED", "Task definition patched"));
 
         MassSdkApplication app = new MassSdkApplication(delegate);
 
@@ -934,7 +938,7 @@ class MassSdkTest {
         assertEquals("READY", resumeResult.status());
         assertTrue(updated);
         assertEquals("before", task.getTaskName());
-        verify(delegate).resumeTaskDetailed("task-1");
+        verify(delegate).resumeTask("task-1");
         ArgumentCaptor<TaskDefinitionPatch> patchCaptor = ArgumentCaptor.forClass(TaskDefinitionPatch.class);
         verify(delegate).patchTaskDefinition(eq("task-1"), patchCaptor.capture());
         TaskDefinitionPatch patch = patchCaptor.getValue();
@@ -1030,7 +1034,7 @@ class MassSdkTest {
         config.setTaskShellStore(new InMemoryTaskShellStore());
 
         try {
-            assertNotNull(config.getTaskCommandService());
+            assertNotNull(config.getTaskCommandPort());
         } finally {
             config.shutdownTaskRuntime();
         }
@@ -1101,8 +1105,9 @@ class MassSdkTest {
         hydratedTask.setSharedConfig(Map.of(TaskSharedConfig.WORKER_GROUP_ID, "sdk-test-workers"));
 
         when(delegate.isEngineRunning()).thenReturn(true);
-        when(delegate.createTaskShell(any(TaskShellCreateRequestDto.class))).thenReturn(createdTask);
-        when(delegate.getTask("task-stream-001")).thenReturn(hydratedTask);
+        when(delegate.createTaskShell(any(TaskShellCreateRequestDto.class))).thenReturn(
+                TaskCommandOutcome.applied("task-stream-001", "TASK_CREATED", "Task shell created"));
+        stubTaskReads(delegate, hydratedTask);
         stubAppendReceipts(delegate);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
@@ -1136,7 +1141,7 @@ class MassSdkTest {
                 ),
                 dto.getSharedConfig()
         );
-        verify(delegate).appendTaskItemsWithReceipt("task-stream-001", List.of(
+        verify(delegate).appendTaskItems("task-stream-001", List.of(
                 Map.of("url", "https://example.test/page-1", "eventCode", "crawler.fetch-page"),
                 Map.of("url", "https://example.test/page-2", "eventCode", "crawler.fetch-page")
         ));
@@ -1150,7 +1155,7 @@ class MassSdkTest {
         task.setProject("crawlerApp");
 
         when(delegate.isEngineRunning()).thenReturn(true);
-        when(delegate.getTask("task-resolve-single")).thenReturn(task);
+        stubTaskReads(delegate, task);
         when(delegate.workerGroups()).thenReturn(List.of(group("crawler", "crawlerApp", "crawler.fetch-page")));
         stubAppendReceipts(delegate);
 
@@ -1175,7 +1180,7 @@ class MassSdkTest {
         task.setProject("crawlerApp");
 
         when(delegate.isEngineRunning()).thenReturn(true);
-        when(delegate.getTask("task-resolve-multi")).thenReturn(task);
+        stubTaskReads(delegate, task);
         when(delegate.workerGroups()).thenReturn(List.of(
                 group("crawler-a", "crawlerApp", "crawler.fetch-page"),
                 group("crawler-b", "crawlerApp", "crawler.fetch-page")
@@ -1203,7 +1208,7 @@ class MassSdkTest {
         task.setProject("crawlerApp");
 
         when(delegate.isEngineRunning()).thenReturn(true);
-        when(delegate.getTask("task-resolve-none")).thenReturn(task);
+        stubTaskReads(delegate, task);
         when(delegate.workerGroups()).thenReturn(List.of());
 
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
@@ -1213,7 +1218,7 @@ class MassSdkTest {
                                 .items(List.of(Map.of("url", "https://example.test")))
                                 .build()));
         assertTrue(error.getMessage().contains("No worker group selector resolved"));
-        verify(delegate, never()).appendTaskItemsWithReceipt(any(), any());
+        verify(delegate, never()).appendTaskItems(any(), any());
     }
 
     @Test
@@ -1234,6 +1239,7 @@ class MassSdkTest {
         MassApplication delegate = mock(MassApplication.class);
 
         when(delegate.isEngineRunning()).thenReturn(true);
+        stubTaskReads(delegate);
         stubAppendReceipts(delegate);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
@@ -1246,7 +1252,7 @@ class MassSdkTest {
                 .build());
 
         assertEquals(2, added);
-        verify(delegate).appendTaskItemsWithReceipt("task-map-001", List.of(
+        verify(delegate).appendTaskItems("task-map-001", List.of(
                 Map.of("target", "hello"),
                 Map.of("target", "world")
         ));
@@ -2303,6 +2309,7 @@ class MassSdkTest {
     void appendTaskItemsAppliesBatchEventCodeWithoutPayloadRewriting() {
         MassApplication delegate = mock(MassApplication.class);
         when(delegate.isEngineRunning()).thenReturn(true);
+        stubTaskReads(delegate);
         stubAppendReceipts(delegate);
 
         MassSdkApplication app = new MassSdkApplication(delegate);
@@ -2319,11 +2326,11 @@ class MassSdkTest {
                 .items(List.of(Map.of("target", "https://example.test")))
                 .build());
 
-        verify(delegate).appendTaskItemsWithReceipt("task-map-002", List.of(
+        verify(delegate).appendTaskItems("task-map-002", List.of(
                 Map.of("target", "hello", "eventCode", "demo.dispatch"),
                 Map.of("target", "world", "eventCode", "demo.dispatch")
         ));
-        verify(delegate).appendTaskItemsWithReceipt("task-json-002", List.of(
+        verify(delegate).appendTaskItems("task-json-002", List.of(
                 Map.of("target", "https://example.test", "eventCode", "crawler.fetch-page")
         ));
     }
@@ -2470,8 +2477,8 @@ class MassSdkTest {
                 () -> app.terminateTask("task-1", "MANUAL_CANCELLED"),
                 () -> app.appendTaskItems("task-1", MassTaskItemBatchAppendRequest.builder().items(List.of()).build()),
                 () -> app.sealTask("task-1"),
-                () -> app.taskDiagnostics().resolveTaskState("task-1"),
-                () -> app.taskDiagnostics().validateTaskState("task-1"),
+                () -> app.resolveTaskState("task-1"),
+                () -> app.validateTaskState("task-1"),
                 () -> app.getWorker("worker-1"),
                 app::getAllWorkers,
                 () -> runtimeDiagnostics(app).isWorkerLocked("worker-1"),
@@ -2716,12 +2723,81 @@ class MassSdkTest {
     }
 
     private static void stubAppendReceipts(MassApplication delegate) {
-        when(delegate.appendTaskItemsWithReceipt(any(), any()))
+        when(delegate.appendTaskItems(any(), any()))
                 .thenAnswer(invocation -> {
                     String taskId = invocation.getArgument(0, String.class);
                     List<?> items = invocation.getArgument(1, List.class);
-                    return new TaskAppendReceipt(taskId, items.size(), List.of());
+                    return TaskAppendOutcome.accepted(taskId, items.size(), List.of());
                 });
+    }
+
+    private static TaskReadOperations stubTaskReads(MassApplication delegate, Task... tasks) {
+        TaskReadOperations taskReads = mock(TaskReadOperations.class);
+        when(delegate.taskReads()).thenReturn(taskReads);
+        if (tasks != null) {
+            for (Task task : tasks) {
+                if (task == null || task.getTid() == null) {
+                    continue;
+                }
+                when(taskReads.getTaskDetail(task.getTid())).thenReturn(taskDetailSnapshot(task));
+                when(taskReads.getTaskAccess(task.getTid())).thenReturn(taskAccessSnapshot(task));
+                when(taskReads.taskExists(task.getTid())).thenReturn(true);
+            }
+        }
+        return taskReads;
+    }
+
+    private static TaskDetailSnapshot taskDetailSnapshot(Task task) {
+        return new TaskDetailSnapshot(
+                task.getTid(),
+                task.getTenantId(),
+                task.getTaskName(),
+                enumName(task.getContract()),
+                task.getProject(),
+                enumName(task.getStatus()),
+                task.getTaskTargetNumber(),
+                task.getTaskEligibleNumber(),
+                task.getTaskSuccessNumber(),
+                task.getTaskNonSuccessNumber(),
+                task.getMinRequiredWorkerCount(),
+                task.getPeakAssignedWorkerCount(),
+                task.getSharedConfig(),
+                enumName(task.getHoldReason()),
+                taskExecutionOptionsFromSpec(task.getExecutionSpec()),
+                task.getSourceRef(),
+                enumName(task.getIntakeStatus()),
+                task.getUser() == null ? null : task.getUser().getUserId(),
+                task.getCreateTime(),
+                task.getUpdateTime(),
+                task.getStartTime(),
+                task.getEndTime(),
+                enumName(task.getTerminalReason())
+        );
+    }
+
+    private static TaskAccessSnapshot taskAccessSnapshot(Task task) {
+        return new TaskAccessSnapshot(
+                task.getTid(),
+                task.getProject(),
+                task.getSharedConfig(),
+                enumName(task.getIntakeStatus())
+        );
+    }
+
+    private static TaskExecutionOptions taskExecutionOptionsFromSpec(TaskExecutionSpec spec) {
+        if (spec == null) {
+            return new TaskExecutionOptions();
+        }
+        return taskExecutionOptions(
+                spec.getWorkloadClass(),
+                spec.getBatchSize(),
+                spec.getMaxRuntimeSeconds(),
+                spec.getDefaultMaxRetryCount()
+        );
+    }
+
+    private static String enumName(Enum<?> value) {
+        return value == null ? null : value.name();
     }
 
     @FunctionalInterface

@@ -57,9 +57,11 @@ Read with:
   methods and no longer exposes public `getEngine()`.
 - `MassEngine` no longer exposes public `getConfig()`. Engine config/service
   access remains internal to `xa-mass-engine-starter`.
-- `MassSdkApplication` no longer imports engine services such as
-  `TaskCommandService`, `TaskQueryService`, or `TaskEventService`, and no longer
-  reaches ordinary operations through `requireStartedEngine().getConfig()`.
+- `MassSdkApplication` no longer imports engine task command/query/event
+  owner surfaces such as `TaskCommandPort`, `TaskQueryPort`, or
+  `TaskEventService`, and no longer reaches ordinary operations through
+  `requireStartedEngine().getConfig()`. The former same-shape
+  `TaskCommandService` / `TaskQueryService` wrappers have been deleted.
 - Remaining SDK main-source imports from `com.xa.mass.engine.*` are value or
   configuration exceptions recorded in
   [ENGINE_CALLER_SURFACE_PRE_TROM_INVENTORY.md](ENGINE_CALLER_SURFACE_PRE_TROM_INVENTORY.md):
@@ -184,8 +186,9 @@ value contracts have an owner decision. ECSP separates current engine imports
 into these lanes:
 
 - `forbidden implementation/service/config-owner import`: `TaskManager`,
-  `EngineRuntimeKernel`, `EngineConfig`, `MassEngine`, `TaskCommandService`,
-  `TaskQueryService`, `TaskEventService`, `TaskManagerResultIngestFacade`,
+  `EngineRuntimeKernel`, `EngineConfig`, `MassEngine`, `TaskCommandPort`,
+  `TaskQueryPort`, deleted `TaskCommandService` / `TaskQueryService` names,
+  `TaskEventService`, `TaskManagerResultIngestFacade`,
   task runtime ports, `WorkerControlRuntime`, `TaskEventListenerRegistrar`,
   engine listener/watchdog/service/control implementations, and any owner
   object that lets SDK/starter reach engine runtime truth;
@@ -329,11 +332,12 @@ target for the first implementation slice:
     -> narrow assembly operations and ports needed by transport/starter
 ```
 
-The first slice is not allowed to expose `TaskCommandService`,
-`TaskQueryService`, `TaskEventService`, `TaskWorkRuntime`, `TaskResultRuntime`,
-`WorkerControlRuntime`, broad `WorkerResourceQueryRuntime`, `RuleStorage`, or
-`TaskManager` as starter-facing handles. Those belong to later SDK operation
-inventory or TROM, not the first assembly convergence.
+The first slice is not allowed to expose `TaskCommandPort`, `TaskQueryPort`,
+`TaskEventService`, deleted `TaskCommandService` / `TaskQueryService` names,
+`TaskWorkRuntime`, `TaskResultRuntime`, `WorkerControlRuntime`, broad
+`WorkerResourceQueryRuntime`, `RuleStorage`, or `TaskManager` as
+starter-facing handles. Those belong to later SDK operation inventory or TROM,
+not the first assembly convergence.
 
 The first slice may expose only the operations needed by the current
 `MassApplication` startup and transport bridge:

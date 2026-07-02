@@ -42,7 +42,7 @@ public class EngineRuntimeKernel {
 
     private final EngineRuntimeKernelConfig config;
 
-    private TaskCommandService taskCommands;
+    private TaskCommandPort taskCommands;
     private TaskRuntimeRecoveryPort runtimeRecoveryPort;
     private TaskLeaseMaintenancePort leaseMaintenancePort;
     private TaskDispatchWakeupPort dispatchWakeupPort;
@@ -73,7 +73,7 @@ public class EngineRuntimeKernel {
             return startedRuntime();
         }
         try {
-            taskCommands = config.getTaskCommandService();
+            taskCommands = config.getTaskCommandPort();
             runtimeRecoveryPort = config.getTaskRuntimeRecoveryPort();
             leaseMaintenancePort = config.getTaskLeaseMaintenancePort();
             dispatchWakeupPort = config.getTaskDispatchWakeupPort();
@@ -242,7 +242,7 @@ public class EngineRuntimeKernel {
         return running;
     }
 
-    public TaskCommandService taskCommands() {
+    public TaskCommandPort taskCommands() {
         return taskCommands;
     }
 

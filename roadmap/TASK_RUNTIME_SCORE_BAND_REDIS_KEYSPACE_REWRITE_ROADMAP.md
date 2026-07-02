@@ -426,7 +426,7 @@ implementation; do not smuggle back
 | Key | Redis type | Member/field type | Value type | Owner and role |
 | --- | --- | --- | --- | --- |
 | `<tr>:task:{taskIdKey}:meta` | HASH | metadata field name | primitive or compact sub-frame | Task-local runtime status, lane, policy, and gate fields. Scheduler reads selected fields. |
-| `<tr>:task:{taskIdKey}:backlog` | LIST | list element | `BacklogFrameV1` | Raw accepted item backlog. Append writes here. Claim consumes from here. |
+| `<tr>:task:{taskIdKey}:backlog` | LIST | list element | encoded backlog frame JSON | Raw accepted item backlog. Append writes here. Claim consumes from here. |
 | `<tr>:task:{taskIdKey}:retry:score` | ZSET | `MessageIdKey` | `nextSchedulableAtMillis` | Message-level delayed retry visibility for `DUE_TIME` retry mode only. |
 | `<tr>:task:{taskIdKey}:retry:item` | HASH | `MessageIdKey` | `RetryFrameV1` | Payload and retry evidence for delayed retry items. |
 | `<tr>:task:{taskIdKey}:rt` | HASH | `MessageIdKey` | `RuntimeItemStateV1` | Sparse active lease state. Bounded by active concurrency, not backlog size. |
@@ -480,7 +480,7 @@ Do not put raw item counters, payload, final result projections, server view
 fields, worker-runtime state, transport route fields, trace-only details, or
 full task definitions into task meta.
 
-`BacklogFrameV1` logical fields:
+Backlog frame JSON logical fields:
 
 ```text
 schemaVersion
@@ -518,7 +518,7 @@ schemaVersion
 taskId
 messageId
 state                     LEASED
-sourceFrame               BacklogFrameV1 or RetryFrameV1
+sourceFrame               append item frame or retry frame
 attemptNo
 retryCount
 runtimeEpoch
@@ -662,7 +662,7 @@ truth.
 - Prefer primitive identities such as `taskId`, `laneKey`, `messageId`,
   `workerId`, `leaseToken`, `nowMillis`, and `limit`.
 - Prefer runtime-owned models that map to real Redis values:
-  `BacklogFrameV1`, `TaskRuntimeMetaV1`, `TaskScoreV1`,
+  encoded backlog frame JSON, `TaskRuntimeMetaV1`, `TaskScoreV1`,
   `RuntimeItemStateV1`, `RetryFrameV1`, `FinalResultV1`, and
   `RuntimeResultFact`.
 - Prefer opaque evidence returned by the runtime and handed back unchanged, such
@@ -674,7 +674,7 @@ truth.
 
 | Target port | Target methods | Key impact |
 | --- | --- | --- |
-| `TaskRuntimeWorkPort` | `appendBacklog(String taskId, List<BacklogFrameV1> frames, int maxBatchSize)`; `claimBacklog(ScoreCandidate candidate, List<WorkerReservationEvidence> reservations, int maxItems, long leaseMillis, long nowMillis)` | Append writes only `backlog`. Claim atomically validates `ScoreCandidate` and moves `backlog -> rt`; its only score effect is dispatch-band to `MAINT_ACTIVE` when backlog drains and active work remains. No dirty, ids, retry, repair, terminal, or close. |
+| `TaskRuntimeWorkPort` | `appendBacklog(String taskId, List<AppendItemInput> items, int maxBatchSize)`; `claimBacklog(ScoreCandidate candidate, List<WorkerReservationEvidence> reservations, int maxItems, long leaseMillis, long nowMillis)` | Append writes only `backlog`. Claim atomically validates `ScoreCandidate` and moves `backlog -> rt`; its only score effect is dispatch-band to `MAINT_ACTIVE` when backlog drains and active work remains. No dirty, ids, retry, repair, terminal, or close. |
 | `TaskRuntimeScorePort` | `putRuntimeMeta(TaskRuntimeMetaV1 meta)`; `setTaskScore(String taskId, String laneKey, RuntimeEpoch epoch, TaskScoreV1 score)`; `removeTaskScore(String taskId, String laneKey, RuntimeEpoch epoch)`; `scoreCandidate(String taskId, String laneKey)`; `discoverSchedulable(String laneKey, long maxScore, int limit)` | Owns task-local `meta` and lane `task:score`. Discovery and point-read return opaque `ScoreCandidate`; callers do not fabricate score candidates. |
 | `TaskRuntimeConvergencePort` | `promoteDueRetries(String laneKey, long nowMillis, int taskLimit, int itemLimit)`; `scanExpiredLeases(String laneKey, long nowMillis, int taskLimit, int itemLimit)`; `applyResult(RuntimeResultFact fact)`; `closeIfDrained(String taskId, String laneKey, RuntimeEpoch epoch)`; `discardRuntime(String taskId, String laneKey, RuntimeEpoch epoch, String reason)`; `discardWork(String taskId, RuntimeEpoch epoch, String reason)` | Owns post-claim convergence. `scanExpiredLeases` is discovery-only; timeout mutation must enter through `applyResult(LEASE_TIMEOUT)` so engine/review events and runtime state converge through the same result boundary. |
 | `TaskRuntimeReadPort` | `finalResult(String taskId, String messageId)`; `resultCorrelation(String taskId, String messageId)`; `progressSnapshot(String taskId)`; `activeWorkForTask(String taskId, int limit)` | Task-local point reads only. No ordered final window, worker reverse lookup, global scan, or server view projection. |
@@ -694,7 +694,7 @@ projection that is explicitly outside the task-runtime score-band mechanism.
 | Current API | Target decision |
 | --- | --- |
 | `TaskRuntimeAppendPort#appendBatch(AppendBatchCommand)` | Expose as `TaskRuntimeWorkPort#appendBacklog(...)`; keep all-or-rejected batch semantics, but remove `ready` vocabulary and avoid expandable command DTOs. Old implementation may still write old keys until cutover. |
-| `AppendAdmissionPolicy#maxReadyBacklogItems` | Remove from target core API, or rename to `maxBacklogItems` only if a real backlog bound is implemented. `maxAppendBatchSize` is enough for the first cut. |
+| old append admission DTO backlog cap | Remove from target core API, or introduce a non-runtime `maxBacklogItems` intake rule only if a real backlog bound is implemented. `maxAppendBatchSize` is enough for the first cut. |
 | `TaskRuntimeSchedulerPort` | Expose as `TaskRuntimeScorePort`. `markTaskDirty` must not remain caller-visible core runtime API. |
 | `ClaimReadyCommand` / `claimReady` | Expose as `claimBacklog(...)`; consume `ScoreCandidate` evidence from score discovery or score-owner point-read instead of caller-built score fields. Old implementation may still read `ready` internally until cutover. |
 | `TaskRuntimeRepairPort#pollExpiredActiveLeases(...)` | Expose as `scanExpiredLeases(...)` for bounded expired-active discovery, then apply timeout through `applyResult(LEASE_TIMEOUT)`. Old implementation may still poll old active keys until cutover. |
@@ -1150,7 +1150,7 @@ RetryOwner.promoteDueRetry(taskId, now):
   ids = ZRANGEBYSCORE <tr>:task:{taskId}:retry:score -inf now LIMIT ...
   for each id:
     frame = HGET <tr>:task:{taskId}:retry:item id
-    RPUSH <tr>:task:{taskId}:backlog BacklogFrameV1(frame)
+    RPUSH <tr>:task:{taskId}:backlog encodedBacklogFrame(frame)
     ZREM retry:score id
     HDEL retry:item id
   if any promoted:

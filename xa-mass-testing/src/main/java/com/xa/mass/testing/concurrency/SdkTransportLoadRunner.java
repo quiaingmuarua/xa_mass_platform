@@ -486,7 +486,7 @@ public final class SdkTransportLoadRunner {
             long failed = 0;
             long expired = 0;
             for (String taskId : taskIds) {
-                TaskWorkStatsSnapshot stats = runtime.app().taskDiagnostics().getTaskWorkStats(taskId);
+                TaskWorkStatsSnapshot stats = runtime.app().getTaskWorkStats(taskId);
                 require(stats.totalCount() == config.messagesPerTask(),
                         "unexpected runtime work count for task=" + taskId + " total=" + stats.totalCount());
                 require(stats.finalCount() == stats.totalCount(),

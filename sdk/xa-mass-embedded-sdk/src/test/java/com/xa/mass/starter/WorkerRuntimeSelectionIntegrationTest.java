@@ -1,11 +1,10 @@
 package com.xa.mass.starter;
 
-import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
-import com.xa.mass.engine.TaskCommandService;
+import com.xa.mass.engine.TaskCommandPort;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.runtime.redis.RedisWorkerRegistry;
 import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
@@ -81,7 +80,7 @@ class WorkerRuntimeSelectionIntegrationTest {
                 }
             });
 
-            TaskCommandService taskCommands = config.getTaskCommandService();
+            TaskCommandPort taskCommands = config.getTaskCommandPort();
             TaskShellCreateRequestDto dto = new TaskShellCreateRequestDto();
             dto.setUserId("user-wrx");
             dto.setProject("demoApp");
@@ -89,18 +88,21 @@ class WorkerRuntimeSelectionIntegrationTest {
             dto.setSharedConfig(Map.of(TaskSharedConfig.WORKER_GROUP_ID, "wrx-selection-workers"));
             dto.setExecutionSpec(taskExecutionSpec());
 
-            Task task = taskCommands.createTaskShell(dto);
-            taskIdRef.set(task.getTid());
-            taskCommands.appendTaskItems(task.getTid(), List.of(Map.of("payload", "runtime-selection")));
-            assertTrue(taskCommands.sealTask(task.getTid()));
-            assertTrue(taskCommands.approveTask(task.getTid()));
+            var create = taskCommands.createTaskShell(dto);
+            assertTrue(create.accepted());
+            String taskId = create.taskId();
+            assertNotNull(taskId);
+            taskIdRef.set(taskId);
+            taskCommands.appendTaskItems(taskId, List.of(Map.of("payload", "runtime-selection")));
+            assertTrue(taskCommands.sealTask(taskId).accepted());
+            assertTrue(taskCommands.approveTask(taskId).accepted());
 
             assertTrue(dispatchLatch.await(5, TimeUnit.SECONDS));
             List<TaskDispatchBinding> dispatchBindings = dispatchBindingsRef.get();
             assertNotNull(dispatchBindings);
             assertEquals(1, dispatchBindings.size());
             TaskDispatchBinding binding = dispatchBindings.get(0);
-            assertEquals(task.getTid(), binding.taskId());
+            assertEquals(taskId, binding.taskId());
             assertEquals("wrx-worker-1", binding.workerId());
             assertEquals("wrx-selection-workers", binding.workerGroupId());
             assertEquals(Map.of("payload", "runtime-selection"), binding.payload());

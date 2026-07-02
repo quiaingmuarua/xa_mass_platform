@@ -3,8 +3,9 @@ package com.xa.mass.engine;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
+import com.xa.mass.engine.model.TaskCommandOutcome;
 import com.xa.mass.engine.policy.ContractAwareTaskTerminalPolicy;
-import com.xa.mass.task.runtime.BacklogFrameV1;
+import com.xa.mass.task.runtime.AppendItemInput;
 import com.xa.mass.task.runtime.RuntimeEpoch;
 import com.xa.mass.task.runtime.memory.InMemoryTaskRuntime;
 import org.junit.jupiter.api.AfterEach;
@@ -14,6 +15,8 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TaskRuntimeRecoveryPortTest {
 
@@ -85,18 +88,13 @@ class TaskRuntimeRecoveryPortTest {
                     storage,
                     new ContractAwareTaskTerminalPolicy(),
                     null);
-            TaskCommandService commands = new TaskCommandService(manager);
-            TaskQueryService queries = new TaskQueryService(manager);
-            TaskEventService events = new TaskEventService(manager);
-            this.servingLane = new TaskRuntimeServingLane(
+            this.servingLane = TaskRuntimeServingLaneTestSupport.forTaskManager(
                     runtime,
                     runtime,
                     runtime,
                     runtime,
                     runtime,
-                    queries,
-                    commands,
-                    events,
+                    manager,
                     300L,
                     TaskManager.MAX_INGEST_BATCH_ITEMS,
                     86_400_000L);
@@ -106,7 +104,10 @@ class TaskRuntimeRecoveryPortTest {
         private Task createReadyTask(String taskName) {
             TaskCreateSpec request = buildRequest(taskName);
             request.shell().setExecutionSpec(taskExecutionSpec(3));
-            Task task = manager.createTaskShell(request.shell());
+            TaskCommandOutcome create = manager.createTaskShell(request.shell());
+            assertTrue(create.accepted());
+            Task task = manager.getTask(create.taskId());
+            assertNotNull(task);
             manager.approveTask(task.getTid());
             manager.appendTaskItems(task.getTid(), request.inputs());
             manager.sealTask(task.getTid());
@@ -129,7 +130,7 @@ class TaskRuntimeRecoveryPortTest {
         private void appendRuntimeResidueWithoutTaskShell(String taskId) {
             runtime.appendBacklog(
                     taskId,
-                    List.of(new BacklogFrameV1("message-missing-shell", "", Map.of("value", "orphan"), null)),
+                    List.of(new AppendItemInput("message-missing-shell", "", Map.of("value", "orphan"), null)),
                     10);
         }
 

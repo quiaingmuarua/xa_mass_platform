@@ -20,8 +20,7 @@ import com.xa.mass.api.review.TaskReviewWorkTerminalEvent;
 import com.xa.mass.api.sync.SyncTaskResultBridge;
 import com.xa.mass.api.sync.TaskSyncRequestSupervisor;
 import com.xa.mass.sdk.TaskAdminOperations;
-import com.xa.mass.sdk.TaskQueryOperations;
-import com.xa.mass.sdk.TaskResultQueryOperations;
+import com.xa.mass.sdk.TaskReadOperations;
 import com.xa.mass.sdk.TaskStageEvidenceOperations;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.PrincipalContext;
@@ -96,10 +95,7 @@ class TaskApiControllerTest {
     private static final String TASK_ID = "task-001";
 
     @Mock
-    private TaskQueryOperations taskQueries;
-
-    @Mock
-    private TaskResultQueryOperations taskResultQueries;
+    private TaskReadOperations taskReads;
 
     @Mock
     private TaskAdminOperations taskAdmin;
@@ -125,14 +121,14 @@ class TaskApiControllerTest {
         taskSyncRequestSupervisor = new TaskSyncRequestSupervisor(null, 500, 100, 20);
         usageStore = new InMemoryApiUsageLedgerStore();
         taskReviewStore = new InMemoryTaskReviewStore();
-        controller = new TaskApiController(taskQueries, taskResultQueries, taskAdmin, createTaskCatalog(),
+        controller = new TaskApiController(taskReads, taskAdmin, createTaskCatalog(),
                 ApiAuthTestSupport.defaultOperatorAuthService(), new ApiAuthorizationService(authProvider, null),
                 new TaskSecurityViewSupport(), syncTaskResultBridge, taskSyncRequestSupervisor, taskStageEvidence);
         controller.setApiUsageLedgerService(new ApiUsageLedgerService(usageStore));
         controller.setTaskReviewReadModelWriter(directReviewWriter());
         mockMvc = MockMvcBuilders.standaloneSetup(
                 controller,
-                new InternalTaskReviewController(taskQueries, reviewReadModel())
+                new InternalTaskReviewController(taskReads, reviewReadModel())
         ).build();
     }
 
@@ -270,8 +266,8 @@ class TaskApiControllerTest {
         assertEquals(1, afterCreate.get(0).units());
         assertEquals(TASK_ID, afterCreate.get(0).taskId());
 
-        when(taskQueries.getTaskDetail(TASK_ID)).thenReturn(taskDetail("RUNNING", "detail-task", "crawlerApp"));
-        when(taskResultQueries.readTaskResults(TASK_ID, 0, 200)).thenReturn(new TaskResultWindowSnapshot(
+        when(taskReads.getTaskDetail(TASK_ID)).thenReturn(taskDetail("RUNNING", "detail-task", "crawlerApp"));
+        when(taskReads.readTaskResults(TASK_ID, 0, 200)).thenReturn(new TaskResultWindowSnapshot(
                 TASK_ID,
                 List.of(
                         resultRow(1, "msg-001", "SUCCESS", "worker-001"),
@@ -281,7 +277,7 @@ class TaskApiControllerTest {
                 false,
                 2
         ));
-        when(taskResultQueries.getTaskResultArchiveManifest(TASK_ID)).thenReturn(new TaskResultArchiveSnapshot(
+        when(taskReads.getTaskResultArchiveManifest(TASK_ID)).thenReturn(new TaskResultArchiveSnapshot(
                 TASK_ID, false, "ndjson", "application/x-ndjson", "gzip", 0, null, null));
 
         mockMvc.perform(get("/api/v1/tasks/{taskId}/results", TASK_ID)
@@ -340,7 +336,7 @@ class TaskApiControllerTest {
                 Map.of(ApiKeyCredentialService.ATTR_KEY_ID, "ak-reject-2")
         );
         when(authProvider.authenticate("viewer-key")).thenReturn(apiKeyPrincipal);
-        when(taskQueries.getTaskDetail(TASK_ID)).thenReturn(taskDetail("RUNNING", "detail-task", "crawlerApp"));
+        when(taskReads.getTaskDetail(TASK_ID)).thenReturn(taskDetail("RUNNING", "detail-task", "crawlerApp"));
 
         mockMvc.perform(get("/api/v1/tasks/{taskId}/results", TASK_ID)
                         .header("X-Mass-Api-Key", "viewer-key"))
@@ -352,7 +348,7 @@ class TaskApiControllerTest {
         assertEquals(ApiUsageStatus.REJECTED, records.get(0).status());
         assertEquals(TASK_ID, records.get(0).taskId());
         assertEquals(0, records.get(0).units());
-        verify(taskResultQueries, never()).readTaskResults(any(), anyLong(), anyInt());
+        verify(taskReads, never()).readTaskResults(any(), anyLong(), anyInt());
     }
 
     @Test
@@ -378,7 +374,7 @@ class TaskApiControllerTest {
 
     @Test
     void taskStageEvidenceEndpointsDelegateToSdkSurface() throws Exception {
-        when(taskQueries.getTaskDetail(TASK_ID)).thenReturn(taskDetail("RUNNING", "detail-task", "demoApp"));
+        when(taskReads.getTaskDetail(TASK_ID)).thenReturn(taskDetail("RUNNING", "detail-task", "demoApp"));
         TaskStageProjectionSnapshot projection = new TaskStageProjectionSnapshot(
                 TASK_ID,
                 "msg-001",
@@ -453,7 +449,7 @@ class TaskApiControllerTest {
 
     @Test
     void getTaskDoesNotReturnItemsByDefault() throws Exception {
-        when(taskQueries.getTaskDetail(TASK_ID)).thenReturn(taskDetail("READY", "detail-task", "demoApp"));
+        when(taskReads.getTaskDetail(TASK_ID)).thenReturn(taskDetail("READY", "detail-task", "demoApp"));
 
         mockMvc.perform(get("/api/v1/tasks/{taskId}", TASK_ID))
                 .andExpect(status().isOk())
@@ -476,7 +472,7 @@ class TaskApiControllerTest {
 
     @Test
     void getTaskReviewReturnsSeedAndResultPreview() throws Exception {
-        when(taskQueries.getTaskDetail(TASK_ID)).thenReturn(taskDetail("RUNNING", "detail-task", "demoApp"));
+        when(taskReads.getTaskDetail(TASK_ID)).thenReturn(taskDetail("RUNNING", "detail-task", "demoApp"));
         taskReviewStore.upsertItem(TASK_ID, reviewItem(
                 "msg-001",
                 "SUCCESS",
@@ -495,7 +491,7 @@ class TaskApiControllerTest {
 
     @Test
     void exportTaskSeedsReturnsAttachmentPayload() throws Exception {
-        when(taskQueries.getTaskDetail(TASK_ID)).thenReturn(taskDetail("RUNNING", "detail-task", "demoApp"));
+        when(taskReads.getTaskDetail(TASK_ID)).thenReturn(taskDetail("RUNNING", "detail-task", "demoApp"));
         taskReviewStore.upsertItem(TASK_ID, reviewItem(
                 "msg-001",
                 "ASSIGNED",
@@ -512,8 +508,8 @@ class TaskApiControllerTest {
 
     @Test
     void getTaskResultsReturnsLiveOrderedWindow() throws Exception {
-        when(taskQueries.getTaskDetail(TASK_ID)).thenReturn(taskDetail("RUNNING", "detail-task", "demoApp"));
-        when(taskResultQueries.readTaskResults(TASK_ID, 1, 2)).thenReturn(new TaskResultWindowSnapshot(
+        when(taskReads.getTaskDetail(TASK_ID)).thenReturn(taskDetail("RUNNING", "detail-task", "demoApp"));
+        when(taskReads.readTaskResults(TASK_ID, 1, 2)).thenReturn(new TaskResultWindowSnapshot(
                 TASK_ID,
                 List.of(
                         resultRow(2, "msg-002", "SUCCESS", "worker-002"),
@@ -523,7 +519,7 @@ class TaskApiControllerTest {
                 false,
                 3
         ));
-        when(taskResultQueries.getTaskResultArchiveManifest(TASK_ID)).thenReturn(new TaskResultArchiveSnapshot(
+        when(taskReads.getTaskResultArchiveManifest(TASK_ID)).thenReturn(new TaskResultArchiveSnapshot(
                 TASK_ID, false, "ndjson", "application/x-ndjson", "gzip", 0, null, null));
 
         mockMvc.perform(get("/api/v1/tasks/{taskId}/results", TASK_ID)
@@ -543,8 +539,8 @@ class TaskApiControllerTest {
 
     @Test
     void getTaskResultArchiveManifestReturnsArchiveMetadataForTerminalTask() throws Exception {
-        when(taskQueries.getTaskDetail(TASK_ID)).thenReturn(taskDetail("TERMINAL", "detail-task", "demoApp"));
-        when(taskResultQueries.getTaskResultArchiveManifest(TASK_ID)).thenReturn(new TaskResultArchiveSnapshot(
+        when(taskReads.getTaskDetail(TASK_ID)).thenReturn(taskDetail("TERMINAL", "detail-task", "demoApp"));
+        when(taskReads.getTaskResultArchiveManifest(TASK_ID)).thenReturn(new TaskResultArchiveSnapshot(
                 TASK_ID, true, "ndjson", "application/x-ndjson", "gzip", 1, 64L, "checksum"));
 
         mockMvc.perform(get("/api/v1/tasks/{taskId}/results/archive", TASK_ID))
@@ -559,7 +555,7 @@ class TaskApiControllerTest {
 
     @Test
     void appendTaskItemsPassesBatchEventCode() throws Exception {
-        when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
+        when(taskReads.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
         when(taskAdmin.appendTaskItemsWithReceipt(any(), any(MassTaskItemBatchAppendRequest.class)))
                 .thenReturn(new TaskItemBatchAppendReceipt(TASK_ID, 2, List.of("msg-001", "msg-002")));
 
@@ -591,7 +587,7 @@ class TaskApiControllerTest {
         doThrow(new IllegalStateException("review write failed"))
                 .when(writer).recordItemsAccepted(any(), any(), any(), any(), anyInt());
         controller.setTaskReviewReadModelWriter(writer);
-        when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
+        when(taskReads.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
         when(taskAdmin.appendTaskItemsWithReceipt(any(), any(MassTaskItemBatchAppendRequest.class)))
                 .thenReturn(new TaskItemBatchAppendReceipt(TASK_ID, 1, List.of("msg-001")));
 
@@ -611,7 +607,7 @@ class TaskApiControllerTest {
 
     @Test
     void appendTaskItemsRejectsMissingEventCode() throws Exception {
-        when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
+        when(taskReads.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
 
         mockMvc.perform(post("/api/v1/tasks/{taskId}/items", TASK_ID)
                         .contentType("application/json")
@@ -644,8 +640,8 @@ class TaskApiControllerTest {
 
     @Test
     void appendTaskItemSyncReturnsStableFinalResult() throws Exception {
-        when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
-        when(taskQueries.getTaskState(TASK_ID)).thenReturn(taskState("READY", "OPEN"));
+        when(taskReads.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
+        when(taskReads.getTaskState(TASK_ID)).thenReturn(taskState("READY", "OPEN"));
         when(taskAdmin.appendTaskItemsWithReceipt(any(), any(MassTaskItemBatchAppendRequest.class)))
                 .thenReturn(new TaskItemBatchAppendReceipt(TASK_ID, 1, List.of("msg-001")));
         CompletableFuture<TaskWorkFinalSnapshot> future = new CompletableFuture<>();
@@ -691,8 +687,8 @@ class TaskApiControllerTest {
 
     @Test
     void appendTaskItemSyncUsesItemEventCodeForAppendAndReview() throws Exception {
-        when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
-        when(taskQueries.getTaskState(TASK_ID)).thenReturn(taskState("READY", "OPEN"));
+        when(taskReads.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
+        when(taskReads.getTaskState(TASK_ID)).thenReturn(taskState("READY", "OPEN"));
         when(taskAdmin.appendTaskItemsWithReceipt(any(), any(MassTaskItemBatchAppendRequest.class)))
                 .thenReturn(new TaskItemBatchAppendReceipt(TASK_ID, 1, List.of("msg-item-event")));
         CompletableFuture<TaskWorkFinalSnapshot> future = new CompletableFuture<>();
@@ -737,8 +733,8 @@ class TaskApiControllerTest {
 
     @Test
     void appendTaskItemSyncReturnsTimeoutWithoutCancellingAppend() throws Exception {
-        when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
-        when(taskQueries.getTaskState(TASK_ID)).thenReturn(taskState("RUNNING", "OPEN"));
+        when(taskReads.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
+        when(taskReads.getTaskState(TASK_ID)).thenReturn(taskState("RUNNING", "OPEN"));
         when(taskAdmin.appendTaskItemsWithReceipt(any(), any(MassTaskItemBatchAppendRequest.class)))
                 .thenReturn(new TaskItemBatchAppendReceipt(TASK_ID, 1, List.of("msg-009")));
         CompletableFuture<TaskWorkFinalSnapshot> future = new CompletableFuture<>();
@@ -778,8 +774,8 @@ class TaskApiControllerTest {
                 Map.of(ApiKeyCredentialService.ATTR_KEY_ID, "ak-sync-fail-1")
         );
         when(authProvider.authenticate("sync-fail-key")).thenReturn(apiKeyPrincipal);
-        when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccessOwned("demoApp", "agent"));
-        when(taskQueries.getTaskState(TASK_ID)).thenReturn(taskState("RUNNING", "OPEN"));
+        when(taskReads.getTaskAccess(TASK_ID)).thenReturn(taskAccessOwned("demoApp", "agent"));
+        when(taskReads.getTaskState(TASK_ID)).thenReturn(taskState("RUNNING", "OPEN"));
         when(taskAdmin.appendTaskItemsWithReceipt(any(), any(MassTaskItemBatchAppendRequest.class)))
                 .thenReturn(new TaskItemBatchAppendReceipt(TASK_ID, 1, List.of("msg-sync-fail")));
         CompletableFuture<TaskWorkFinalSnapshot> future = new CompletableFuture<>();
@@ -836,11 +832,11 @@ class TaskApiControllerTest {
                 Map.of(ApiKeyCredentialService.ATTR_KEY_ID, "ak-archive-fail-1")
         );
         when(authProvider.authenticate("archive-fail-key")).thenReturn(apiKeyPrincipal);
-        when(taskQueries.getTaskDetail(TASK_ID)).thenReturn(taskDetail("TERMINAL", "detail-task", "demoApp"));
-        when(taskResultQueries.getTaskResultArchiveManifest(TASK_ID)).thenReturn(new TaskResultArchiveSnapshot(
+        when(taskReads.getTaskDetail(TASK_ID)).thenReturn(taskDetail("TERMINAL", "detail-task", "demoApp"));
+        when(taskReads.getTaskResultArchiveManifest(TASK_ID)).thenReturn(new TaskResultArchiveSnapshot(
                 TASK_ID, true, "ndjson", "application/x-ndjson", "gzip", 10, null, null));
         doThrow(new IllegalStateException("archive writer failed"))
-                .when(taskResultQueries).writeTaskResultArchiveContent(eq(TASK_ID), any());
+                .when(taskReads).writeTaskResultArchiveContent(eq(TASK_ID), any());
 
         org.springframework.http.ResponseEntity<?> response =
                 controller.downloadTaskResultsArchive("archive-fail-key", null, TASK_ID);
@@ -869,8 +865,8 @@ class TaskApiControllerTest {
 
     @Test
     void appendTaskItemSyncRejectsNonActiveTaskState() throws Exception {
-        when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
-        when(taskQueries.getTaskState(TASK_ID)).thenReturn(taskState("NEW", "OPEN"));
+        when(taskReads.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
+        when(taskReads.getTaskState(TASK_ID)).thenReturn(taskState("NEW", "OPEN"));
 
         mockMvc.perform(post("/api/v1/tasks/{taskId}/items:sync", TASK_ID)
                         .contentType("application/json")
@@ -888,8 +884,8 @@ class TaskApiControllerTest {
 
     @Test
     void appendTaskItemSyncRejectsMultipleResolvedEventCodes() throws Exception {
-        when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
-        when(taskQueries.getTaskState(TASK_ID)).thenReturn(taskState("READY", "OPEN"));
+        when(taskReads.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
+        when(taskReads.getTaskState(TASK_ID)).thenReturn(taskState("READY", "OPEN"));
 
         mockMvc.perform(post("/api/v1/tasks/{taskId}/items:sync", TASK_ID)
                         .contentType("application/json")
@@ -910,14 +906,15 @@ class TaskApiControllerTest {
         TaskSyncRequestSupervisor zeroCapacitySupervisor = new TaskSyncRequestSupervisor(null, 500, 100, 1);
         zeroCapacitySupervisor.acquire("demoApp", TASK_ID);
         MockMvc capacityMvc = MockMvcBuilders.standaloneSetup(
-                new TaskApiController(taskQueries, taskResultQueries, taskAdmin, createTaskCatalog(),
+                new TaskApiController(taskReads, taskAdmin, createTaskCatalog(),
                         ApiAuthTestSupport.defaultOperatorAuthService(), new ApiAuthorizationService(authProvider, null),
-                        new TaskSecurityViewSupport(), syncTaskResultBridge, zeroCapacitySupervisor, null),
-                new InternalTaskReviewController(taskQueries, reviewReadModel())
+                        new TaskSecurityViewSupport(), syncTaskResultBridge, zeroCapacitySupervisor,
+                        (TaskStageEvidenceOperations) null),
+                new InternalTaskReviewController(taskReads, reviewReadModel())
         ).build();
 
-        when(taskQueries.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
-        when(taskQueries.getTaskState(TASK_ID)).thenReturn(taskState("READY", "OPEN"));
+        when(taskReads.getTaskAccess(TASK_ID)).thenReturn(taskAccess("demoApp"));
+        when(taskReads.getTaskState(TASK_ID)).thenReturn(taskState("READY", "OPEN"));
 
         capacityMvc.perform(post("/api/v1/tasks/{taskId}/items:sync", TASK_ID)
                         .contentType("application/json")
@@ -960,7 +957,7 @@ class TaskApiControllerTest {
 
     @Test
     void updateTaskUsesPatchRoute() throws Exception {
-        when(taskQueries.getTaskState(TASK_ID)).thenReturn(taskState("NEW"));
+        when(taskReads.getTaskState(TASK_ID)).thenReturn(taskState("NEW"));
         when(taskAdmin.updateTaskDefinition(any(), any())).thenReturn(true);
 
         mockMvc.perform(patch("/api/v1/tasks/{taskId}", TASK_ID)

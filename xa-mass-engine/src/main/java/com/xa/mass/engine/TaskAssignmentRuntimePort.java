@@ -22,7 +22,7 @@ public interface TaskAssignmentRuntimePort {
 
     int countActiveDispatchWorkers(String taskId);
 
-    boolean updateTask(Task task);
+    boolean persistAssignmentState(Task task);
 
     ClaimReadyOutcome claimReady(String taskId,
                                  List<WorkerReservationEvidence> workerReservations,

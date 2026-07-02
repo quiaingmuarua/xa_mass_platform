@@ -1,5 +1,6 @@
 package com.xa.mass.engine;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
@@ -94,6 +95,10 @@ class TaskRuntimeServingLaneOldPathClosureGuardTest {
                         + fallbackViolations);
         assertTrue(!source.contains("RuntimeIngressWriter"),
                 "append selected-path routing must stay explicit instead of hiding old/new runtime ownership behind a function pointer");
+        assertTrue(!source.contains("public boolean updateTask(Task task)")
+                        && source.contains("boolean persistTaskShell(Task task)"),
+                "TaskManager must not expose public aggregate updateTask(Task); "
+                        + "internal shell persistence should stay package-private and explicitly named");
         assertTrue(!source.contains("void ingestRuntimeInput(")
                         && !source.contains("void ingestRuntimePayloadRef(")
                         && !source.contains("addRuntimeIngressItem("),
@@ -133,19 +138,27 @@ class TaskRuntimeServingLaneOldPathClosureGuardTest {
         String servingLane = Files.readString(repositoryRoot().resolve(
                 "xa-mass-engine/src/main/java/com/xa/mass/engine/TaskRuntimeServingLane.java"), StandardCharsets.UTF_8);
         String runtimeGate = MethodGuard.methodBody(servingLane, "private RuntimeGate runtimeGate");
-        List<String> lifecycleBodies = List.of(
-                MethodGuard.methodBody(lifecycleService, "boolean approveTask"),
-                MethodGuard.methodBody(lifecycleService, "boolean rejectTask"),
-                MethodGuard.methodBody(lifecycleService, "boolean blockTask"),
-                MethodGuard.methodBody(lifecycleService, "boolean pauseTask"),
-                MethodGuard.methodBody(lifecycleService, "TaskResumeResult resumeTaskDetailed"),
-                MethodGuard.methodBody(lifecycleService, "private boolean doTerminateTask"));
+        List<String> directLifecycleBodies = List.of(
+                MethodGuard.methodBody(lifecycleService, "TaskCommandOutcome resumeTask"),
+                MethodGuard.methodBody(lifecycleService, "private TaskCommandOutcome doTerminateTask"));
+        List<String> helperLifecycleBodies = List.of(
+                MethodGuard.methodBody(lifecycleService, "TaskCommandOutcome approveTask"),
+                MethodGuard.methodBody(lifecycleService, "TaskCommandOutcome rejectTask"),
+                MethodGuard.methodBody(lifecycleService, "TaskCommandOutcome blockTask"),
+                MethodGuard.methodBody(lifecycleService, "TaskCommandOutcome pauseTask"));
+        String transitionHelper = MethodGuard.methodBody(lifecycleService, "private TaskCommandOutcome transitionTask");
 
-        List<String> missingSync = lifecycleBodies.stream()
-                .filter(body -> !body.contains("taskManager.syncRuntimeSchedulerEligibility(task)"))
+        List<String> missingDirectSync = directLifecycleBodies.stream()
+                .filter(body -> !body.contains("syncRuntimeSchedulerEligibility(task)"))
                 .toList();
-        assertTrue(missingSync.isEmpty(),
+        assertTrue(missingDirectSync.isEmpty()
+                        && helperLifecycleBodies.stream().allMatch(body -> body.contains("transitionTask("))
+                        && transitionHelper.contains("syncRuntimeSchedulerEligibility(task)"),
                 "task shell lifecycle transitions that affect dispatch must synchronize the task-runtime scheduler gate");
+        assertFalse(lifecycleService.contains("TaskManager taskManager")
+                        || lifecycleService.contains("private final TaskManager")
+                        || lifecycleService.contains("taskManager."),
+                "TaskLifecycleService must not depend on the whole TaskManager object");
         assertTrue(runtimeGate.contains("case READY, RUNNING -> RuntimeGate.OPEN")
                         && runtimeGate.contains("case PAUSED -> RuntimeGate.PAUSED")
                         && runtimeGate.contains("case BLOCKED, NEW -> RuntimeGate.BLOCKED")
@@ -167,6 +180,10 @@ class TaskRuntimeServingLaneOldPathClosureGuardTest {
 
         assertTrue(!assignmentPort.contains("getWorkLeaseSeconds"),
                 "TaskAssignmentRuntimePort must stay a runtime hot-path port, not a claim-lease config getter surface");
+        assertTrue(!assignmentPort.contains("updateTask(")
+                        && assignmentPort.contains("persistAssignmentState(Task task)"),
+                "TaskAssignmentRuntimePort must not expose generic aggregate updateTask(Task); "
+                        + "assignment persistence must stay named to the assignment path");
         assertTrue(dispatchBinder.contains("LongSupplier workLeaseSecondsSupplier")
                         && dispatchBinder.contains("workLeaseSecondsSupplier.getAsLong()")
                         && !dispatchBinder.contains("assignmentRuntime.getWorkLeaseSeconds()"),
@@ -174,6 +191,31 @@ class TaskRuntimeServingLaneOldPathClosureGuardTest {
         assertTrue(runtimeKernel.contains("config::getTaskMessageLeaseSeconds")
                         && runtimeKernelConfig.contains("long getTaskMessageLeaseSeconds()"),
                 "EngineRuntimeKernel must route claim lease config from kernel config, not through assignment runtime");
+    }
+
+    @Test
+    void taskCommandPortExposesSemanticCommandsAndBoundedOutcomesOnly() throws IOException {
+        String commandPort = Files.readString(repositoryRoot().resolve(
+                "xa-mass-engine/src/main/java/com/xa/mass/engine/TaskCommandPort.java"), StandardCharsets.UTF_8);
+        List<String> forbiddenCommandShapes = List.of(
+                "Task createTaskShell",
+                "updateTask(",
+                "resumeTaskDetailed",
+                "appendTaskItemsWithReceipt",
+                "allowedCurrentStatuses",
+                "transitionTaskStatus");
+        List<String> violations = forbiddenCommandShapes.stream()
+                .filter(commandPort::contains)
+                .toList();
+
+        assertTrue(violations.isEmpty(),
+                "TaskCommandPort must expose semantic commands with bounded outcomes, not mutable CRUD/status-rule shapes: "
+                        + violations);
+        assertTrue(commandPort.contains("TaskCommandOutcome createTaskShell")
+                        && commandPort.contains("TaskAppendOutcome appendTaskItems")
+                        && commandPort.contains("TaskCommandOutcome resumeTask")
+                        && commandPort.contains("TaskCommandOutcome sealTask"),
+                "TaskCommandPort must keep bounded command outcomes for create, append, and lifecycle commands");
     }
 
     @Test
@@ -271,11 +313,26 @@ class TaskRuntimeServingLaneOldPathClosureGuardTest {
         assertTrue(violations.isEmpty(),
                 "TaskRuntimeServingLane must not expose old task-runtime port constructor fallback: "
                         + violations);
-        assertTrue(servingLane.contains("TaskRuntimeServingLane(TaskRuntimeWorkPort workPort")
+        assertFalse(servingLane.contains("forTaskManager(")
+                        || servingLane.contains("TaskManager taskManager")
+                        || servingLane.contains("TaskManager manager"),
+                "TaskRuntimeServingLane must not accept the broad TaskManager object");
+        assertTrue(servingLane.contains("forShellHooks(TaskRuntimeWorkPort workPort")
                         && servingLane.contains("TaskRuntimeScorePort scorePort")
                         && servingLane.contains("TaskRuntimeConvergencePort convergencePort")
-                        && servingLane.contains("TaskRuntimeReadPort readPort"),
-                "TaskRuntimeServingLane constructor must take the grouped task-runtime ports directly");
+                        && servingLane.contains("TaskRuntimeReadPort readPort")
+                        && servingLane.contains("Function<String, Task> taskReader")
+                        && servingLane.contains("Predicate<Task> taskWriter"),
+                "TaskRuntimeServingLane assembly must take core runtime ports and store narrow shell hooks");
+        assertFalse(servingLane.contains("private final TaskCommandPort")
+                        || servingLane.contains("private final TaskQueryPort")
+                        || servingLane.contains("private final TaskCommandService")
+                        || servingLane.contains("private final TaskQueryService")
+                        || servingLane.contains("private final TaskEventService")
+                        || servingLane.contains("taskCommands.")
+                        || servingLane.contains("taskQueries.")
+                        || servingLane.contains("taskEvents."),
+                "TaskRuntimeServingLane must not keep broad command/query/event reach-throughs");
     }
 
     @Test

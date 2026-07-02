@@ -30,8 +30,7 @@ import com.xa.mass.api.review.TaskReviewReadModelWriter;
 import com.xa.mass.api.sync.SyncTaskResultBridge;
 import com.xa.mass.api.sync.TaskSyncRequestSupervisor;
 import com.xa.mass.sdk.TaskAdminOperations;
-import com.xa.mass.sdk.TaskQueryOperations;
-import com.xa.mass.sdk.TaskResultQueryOperations;
+import com.xa.mass.sdk.TaskReadOperations;
 import com.xa.mass.sdk.TaskStageEvidenceOperations;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.authz.PlatformAction;
@@ -82,8 +81,7 @@ public class TaskApiController {
     private static final com.fasterxml.jackson.databind.ObjectMapper RESPONSE_OBJECT_MAPPER =
             new com.fasterxml.jackson.databind.ObjectMapper();
 
-    private final TaskQueryOperations taskQueries;
-    private final TaskResultQueryOperations taskResultQueries;
+    private final TaskReadOperations taskReads;
     private final TaskAdminOperations taskAdmin;
     private final ControlPlaneCatalog catalog;
     private final ApiAuthService apiAuthService;
@@ -97,7 +95,7 @@ public class TaskApiController {
     private TaskReviewReadModelWriter taskReviewReadModelWriter;
 
     @Autowired
-    public TaskApiController(TaskQueryOperations taskQueries,
+    public TaskApiController(TaskReadOperations taskReads,
                              TaskAdminOperations taskAdmin,
                              ControlPlaneCatalog catalog,
                              ApiAuthService apiAuthService,
@@ -106,8 +104,7 @@ public class TaskApiController {
                              SyncTaskResultBridge syncTaskResultBridge,
                              TaskSyncRequestSupervisor taskSyncRequestSupervisor,
                              ObjectProvider<TaskStageEvidenceOperations> taskStageEvidenceProvider) {
-        this(taskQueries,
-                taskQueries instanceof TaskResultQueryOperations resultQueries ? resultQueries : null,
+        this(taskReads,
                 taskAdmin,
                 catalog,
                 apiAuthService,
@@ -118,8 +115,7 @@ public class TaskApiController {
                 taskStageEvidenceProvider == null ? null : taskStageEvidenceProvider.getIfAvailable());
     }
 
-    public TaskApiController(TaskQueryOperations taskQueries,
-                             TaskResultQueryOperations taskResultQueries,
+    public TaskApiController(TaskReadOperations taskReads,
                              TaskAdminOperations taskAdmin,
                              ControlPlaneCatalog catalog,
                              ApiAuthService apiAuthService,
@@ -128,10 +124,7 @@ public class TaskApiController {
                              SyncTaskResultBridge syncTaskResultBridge,
                              TaskSyncRequestSupervisor taskSyncRequestSupervisor,
                              TaskStageEvidenceOperations taskStageEvidence) {
-        this.taskQueries = taskQueries;
-        this.taskResultQueries = taskResultQueries != null
-                ? taskResultQueries
-                : taskQueries instanceof TaskResultQueryOperations resultQueries ? resultQueries : null;
+        this.taskReads = Objects.requireNonNull(taskReads, "taskReads");
         this.taskAdmin = taskAdmin;
         this.catalog = Objects.requireNonNull(catalog, "catalog");
         this.apiAuthService = Objects.requireNonNull(apiAuthService, "apiAuthService");
@@ -180,8 +173,8 @@ public class TaskApiController {
             String normalizedProject = project == null ? "" : project.trim();
             // push status filter to storage when provided; otherwise use bounded page scan
             List<TaskSummarySnapshot> candidates = status != null
-                    ? taskQueries.getTaskSummariesByStatus(status)
-                    : taskQueries.listTaskSummaries(offset, Math.min(limit, 1000));
+                    ? taskReads.getTaskSummariesByStatus(status)
+                    : taskReads.listTaskSummaries(offset, Math.min(limit, 1000));
             List<ApiTask> items = candidates.stream()
                     .filter(task -> canViewTaskSummary(task, apiKeyViewer))
                     .filter(task -> matchesProject(task.getProject(), normalizedProject))
@@ -530,15 +523,14 @@ public class TaskApiController {
             TaskDetailSnapshot task = requireTaskDetail(taskId);
             PrincipalContext viewer = resolveTaskViewer(apiKeyHeader, authorizationHeader, task.getTaskId(),
                     task.getProject(), task.getSharedConfig(), ApiUsageOperation.TASK_RESULT_READ, null);
-            TaskResultQueryOperations resultQueries = requireTaskResultQueries();
             int resolvedLimit = resolveResultWindow(limit);
-            TaskResultWindowSnapshot window = resultQueries.readTaskResults(taskId, afterSeq, resolvedLimit);
+            TaskResultWindowSnapshot window = taskReads.readTaskResults(taskId, afterSeq, resolvedLimit);
             List<ApiTaskResultItem> items = window.getItems().stream()
                     .map(taskApiContractAssembler::toResultItem)
                     .toList();
             long nextAfterSeq = window.getNextAfterSeq();
             boolean taskTerminal = isTerminalTask(task);
-            boolean archiveReady = resultQueries.getTaskResultArchiveManifest(taskId).isReady();
+            boolean archiveReady = taskReads.getTaskResultArchiveManifest(taskId).isReady();
             ApiUsageAcceptedContext usage = recordApiUsage(
                     viewer,
                     ApiUsageOperation.TASK_RESULT_READ,
@@ -578,7 +570,7 @@ public class TaskApiController {
             @PathVariable String taskId) {
         return executeApi("Task result archive lookup failed", () -> {
             TaskDetailSnapshot task = requireAuthorizedTaskDetail(apiKeyHeader, authorizationHeader, taskId);
-            TaskResultArchiveSnapshot manifest = requireTaskResultQueries().getTaskResultArchiveManifest(taskId);
+            TaskResultArchiveSnapshot manifest = taskReads.getTaskResultArchiveManifest(taskId);
             return ok(taskApiContractAssembler.toResultArchive(
                     taskId,
                     manifest.isReady() && isTerminalTask(task),
@@ -666,8 +658,7 @@ public class TaskApiController {
             TaskDetailSnapshot task = requireTaskDetail(taskId);
             PrincipalContext viewer = resolveTaskViewer(apiKeyHeader, authorizationHeader, task.getTaskId(),
                     task.getProject(), task.getSharedConfig(), ApiUsageOperation.TASK_ARCHIVE_DOWNLOAD, null);
-            TaskResultQueryOperations resultQueries = requireTaskResultQueries();
-            if (!isTerminalTask(task) || !resultQueries.getTaskResultArchiveManifest(taskId).isReady()) {
+            if (!isTerminalTask(task) || !taskReads.getTaskResultArchiveManifest(taskId).isReady()) {
                 throw conflictError("Task result archive is not ready");
             }
             ApiUsageAcceptedContext usage = recordApiUsage(
@@ -682,7 +673,7 @@ public class TaskApiController {
             );
             StreamingResponseBody archive = outputStream -> {
                 try {
-                    resultQueries.writeTaskResultArchiveContent(taskId, outputStream);
+                    taskReads.writeTaskResultArchiveContent(taskId, outputStream);
                 } catch (RuntimeException e) {
                     recordApiUsageFailure(usage, 500, e);
                     throw e;
@@ -1072,7 +1063,7 @@ public class TaskApiController {
         if (apiKeyViewer == null) {
             return true;
         }
-        TaskAccessSnapshot access = taskQueries.getTaskAccess(task.getTaskId());
+        TaskAccessSnapshot access = taskReads.getTaskAccess(task.getTaskId());
         if (access == null) {
             return false;
         }
@@ -1302,7 +1293,7 @@ public class TaskApiController {
     }
 
     private int resolveDefaultMaxRetryCount(String taskId) {
-        TaskDetailSnapshot task = taskQueries.getTaskDetail(taskId);
+        TaskDetailSnapshot task = taskReads.getTaskDetail(taskId);
         if (task == null || task.getExecutionSpec() == null) {
             return 0;
         }
@@ -1425,7 +1416,7 @@ public class TaskApiController {
     }
 
     private TaskDetailSnapshot requireTaskDetail(String taskId) {
-        TaskDetailSnapshot task = taskQueries.getTaskDetail(taskId);
+        TaskDetailSnapshot task = taskReads.getTaskDetail(taskId);
         if (task == null) {
             throw notFoundError("Task not found: " + taskId);
         }
@@ -1433,7 +1424,7 @@ public class TaskApiController {
     }
 
     private TaskAccessSnapshot requireTaskAccess(String taskId) {
-        TaskAccessSnapshot task = taskQueries.getTaskAccess(taskId);
+        TaskAccessSnapshot task = taskReads.getTaskAccess(taskId);
         if (task == null) {
             throw notFoundError("Task not found: " + taskId);
         }
@@ -1441,24 +1432,17 @@ public class TaskApiController {
     }
 
     private TaskStateSnapshot getExistingTaskState(String taskId) {
-        TaskStateSnapshot state = taskQueries.getTaskState(taskId);
-        if (state == null && !taskQueries.taskExists(taskId)) {
+        TaskStateSnapshot state = taskReads.getTaskState(taskId);
+        if (state == null && !taskReads.taskExists(taskId)) {
             throw notFoundError("Task not found: " + taskId);
         }
         return state;
     }
 
     private void requireTaskExists(String taskId) {
-        if (!taskQueries.taskExists(taskId)) {
+        if (!taskReads.taskExists(taskId)) {
             throw notFoundError("Task not found: " + taskId);
         }
-    }
-
-    private TaskResultQueryOperations requireTaskResultQueries() {
-        if (taskResultQueries == null) {
-            throw new IllegalStateException("Task result runtime query surface is unavailable");
-        }
-        return taskResultQueries;
     }
 
     private TaskStageEvidenceOperations requireTaskStageEvidence() {

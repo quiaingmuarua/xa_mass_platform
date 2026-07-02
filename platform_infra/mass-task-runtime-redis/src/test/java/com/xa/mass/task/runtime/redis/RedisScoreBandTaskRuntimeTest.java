@@ -2,7 +2,7 @@ package com.xa.mass.task.runtime.redis;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.xa.mass.task.runtime.BacklogFrameV1;
+import com.xa.mass.task.runtime.AppendItemInput;
 import com.xa.mass.task.runtime.MessageFinalityStatus;
 import com.xa.mass.task.runtime.ResultApplySource;
 import com.xa.mass.task.runtime.RetryMode;
@@ -83,7 +83,7 @@ class RedisScoreBandTaskRuntimeTest {
 
         assertThat(finality.status()).isEqualTo(MessageFinalityStatus.LOGICAL_FINAL);
         assertThat(runtime.activeWorkForTask(taskId, 10).activeItems()).isEmpty();
-        assertThat(runtime.finalResult(taskId, "message-1")).isPresent();
+        assertThat(runtime.getFinalResultByMessageId(taskId, "message-1")).isPresent();
         assertThat(commands().type(runtime.keyspace().taskResultKey(taskId))).isEqualTo("hash");
         assertNoForbiddenOldKeys();
     }
@@ -117,7 +117,7 @@ class RedisScoreBandTaskRuntimeTest {
 
         clock.addAndGet(2_000L);
         var promoted = runtime.promoteDueRetries(LANE, clock.get(), 10, 10);
-        assertThat(promoted.messageIds()).containsExactly("message-1");
+        assertThat(promoted).containsExactly("message-1");
         assertThat(commands().zscore(runtime.keyspace().taskScoreKey(LANE), taskId))
                 .isGreaterThanOrEqualTo((double) TaskScoreV1.TIME_SCORE_FLOOR);
         assertThat(commands().zcard(runtime.keyspace().taskRetryScoreKey(taskId))).isZero();
@@ -140,7 +140,7 @@ class RedisScoreBandTaskRuntimeTest {
                 clock.get()));
 
         assertThat(finalFailure.status()).isEqualTo(MessageFinalityStatus.LOGICAL_FINAL);
-        assertThat(runtime.finalResult(taskId, "message-1")).isPresent();
+        assertThat(runtime.getFinalResultByMessageId(taskId, "message-1")).isPresent();
         assertThat(runtime.progressSnapshot(taskId).failedCount()).isEqualTo(1);
         assertNoForbiddenOldKeys();
     }
@@ -160,10 +160,10 @@ class RedisScoreBandTaskRuntimeTest {
 
         var repaired = runtime.scanExpiredLeases(LANE, clock.get(), 10, 10);
 
-        assertThat(repaired.candidates()).hasSize(1);
+        assertThat(repaired).hasSize(1);
         assertThat(runtime.activeWorkForTask(taskId, 10).activeItems()).hasSize(1);
 
-        var expired = repaired.candidates().getFirst();
+        var expired = repaired.getFirst();
         var retry = runtime.applyResult(new RuntimeResultFact(
                 taskId,
                 expired.messageId(),
@@ -304,12 +304,12 @@ class RedisScoreBandTaskRuntimeTest {
         commands().hset(runtime.keyspace().taskRetryItemKey(taskId), "message-1", "{}");
 
         var deferred = runtime.closeIfDrained(taskId, LANE, epoch);
-        assertThat(deferred.closed()).isFalse();
+        assertThat(deferred).isFalse();
         assertThat(commands().zscore(runtime.keyspace().taskScoreKey(LANE), taskId)).isNotNull();
 
         commands().hdel(runtime.keyspace().taskRetryItemKey(taskId), "message-1");
         var closed = runtime.closeIfDrained(taskId, LANE, epoch);
-        assertThat(closed.closed()).isTrue();
+        assertThat(closed).isTrue();
         assertThat(commands().zscore(runtime.keyspace().taskScoreKey(LANE), taskId)).isNull();
         assertNoForbiddenOldKeys();
     }
@@ -335,11 +335,8 @@ class RedisScoreBandTaskRuntimeTest {
                 epoch,
                 clock.get()));
 
-        var discarded = runtime.discardRuntime(taskId, LANE, epoch, "delete task");
+        runtime.discardRuntime(taskId, LANE, epoch, "delete task");
 
-        assertThat(discarded.discardedReadyItems()).isEqualTo(1L);
-        assertThat(discarded.discardedActiveItems()).isZero();
-        assertThat(discarded.discardedFinalResults()).isEqualTo(1L);
         assertThat(commands().exists(
                 runtime.keyspace().taskBacklogKey(taskId),
                 runtime.keyspace().taskRetryScoreKey(taskId),
@@ -372,10 +369,8 @@ class RedisScoreBandTaskRuntimeTest {
                 epoch,
                 clock.get()));
 
-        var discarded = runtime.discardWork(taskId, epoch, "discard work");
+        runtime.discardWork(taskId, epoch, "discard work");
 
-        assertThat(discarded.discardedReadyItems()).isEqualTo(1L);
-        assertThat(discarded.discardedActiveItems()).isZero();
         assertThat(commands().exists(
                 runtime.keyspace().taskBacklogKey(taskId),
                 runtime.keyspace().taskRetryScoreKey(taskId),
@@ -430,8 +425,8 @@ class RedisScoreBandTaskRuntimeTest {
         return claim.claimedItems().getFirst();
     }
 
-    private BacklogFrameV1 frame(String messageId) {
-        return new BacklogFrameV1(messageId, "handler.demo", Map.of("value", messageId), null);
+    private AppendItemInput frame(String messageId) {
+        return new AppendItemInput(messageId, "handler.demo", Map.of("value", messageId), null);
     }
 
     private WorkerReservationEvidence reservation(String workerId) {

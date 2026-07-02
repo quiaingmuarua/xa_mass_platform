@@ -2,7 +2,7 @@ package com.xa.mass.task.runtime.redis;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.xa.mass.task.runtime.BacklogFrameV1;
+import com.xa.mass.task.runtime.AppendItemInput;
 import com.xa.mass.task.runtime.MessageFinalityStatus;
 import com.xa.mass.task.runtime.ResultApplySource;
 import com.xa.mass.task.runtime.RuntimeEpoch;
@@ -61,7 +61,7 @@ class RedisTaskRuntimeScoreBandAdvanceCandidateTest {
         var epoch = RuntimeEpoch.of(taskId, 1L);
         runtime.putRuntimeMeta(new TaskRuntimeMetaV1(taskId, LANE, RuntimeGate.OPEN, epoch, DUE, 0L, 0L, 0L));
         runtime.setTaskScore(taskId, LANE, epoch, new TaskScoreV1(DUE));
-        runtime.appendBacklog(taskId, List.of(new BacklogFrameV1(
+        runtime.appendBacklog(taskId, List.of(new AppendItemInput(
                 "message-1",
                 "handler.demo",
                 Map.of("value", "payload"),

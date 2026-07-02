@@ -250,7 +250,7 @@ public class TaskWorkerAssignListener {
         emitAssignmentSummary(task, initialStatus, readyWorkCount, allocationPlan,
                 selectedWorkers.size(), dispatchCandidates.size(), dispatchedBindings.size(), (int) usedWorkerCount,
                 "selected workers dispatched", "SUCCESS");
-        assignmentRuntime.updateTask(task);
+        assignmentRuntime.persistAssignmentState(task);
         assignmentEventSink.publishTaskAssigned(task);
         return true;
     }

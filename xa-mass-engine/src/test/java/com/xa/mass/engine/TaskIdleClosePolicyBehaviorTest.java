@@ -7,6 +7,8 @@ import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
+import com.xa.mass.engine.model.TaskAppendOutcome;
+import com.xa.mass.engine.model.TaskCommandOutcome;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.policy.ContractAwareTaskTerminalPolicy;
 import com.xa.mass.task.runtime.ClaimedWorkItem;
@@ -18,8 +20,9 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TaskIdleClosePolicyBehaviorTest {
@@ -37,15 +40,13 @@ class TaskIdleClosePolicyBehaviorTest {
                 new ContractAwareTaskTerminalPolicy(),
                 null
         );
-        taskRuntimeServingLane = new TaskRuntimeServingLane(
+        taskRuntimeServingLane = TaskRuntimeServingLaneTestSupport.forTaskManager(
                 taskRuntime,
                 taskRuntime,
                 taskRuntime,
                 taskRuntime,
                 taskRuntime,
-                new TaskQueryService(taskManager),
-                new TaskCommandService(taskManager),
-                new TaskEventService(taskManager),
+                taskManager,
                 taskManager.getWorkLeaseSeconds(),
                 1_000,
                 86_400_000L);
@@ -61,8 +62,8 @@ class TaskIdleClosePolicyBehaviorTest {
         Task task = createTask(request);
         assertEquals(TaskIntakeStatus.OPEN, task.getIntakeStatus());
 
-        assertEquals(1, taskManager.appendTaskItems(task.getTid(), List.of(Map.of("target", "alpha"))));
-        assertTrue(taskManager.approveTask(task.getTid()));
+        assertEquals(1, taskManager.appendTaskItems(task.getTid(), List.of(Map.of("target", "alpha"))).acceptedCount());
+        assertTrue(taskManager.approveTask(task.getTid()).accepted());
         markRunning(task.getTid());
 
         ClaimedWorkItem claimed = claimSingle(task.getTid(), "worker-batch");
@@ -80,7 +81,7 @@ class TaskIdleClosePolicyBehaviorTest {
         assertNull(beforeSeal.getTerminalReason());
         assertEquals(TaskIntakeStatus.OPEN, beforeSeal.getIntakeStatus());
 
-        assertTrue(taskManager.sealTask(task.getTid()));
+        assertTrue(taskManager.sealTask(task.getTid()).accepted());
 
         Task sealed = taskManager.getTask(task.getTid());
         assertEquals(TaskIntakeStatus.SEALED, sealed.getIntakeStatus());
@@ -97,7 +98,7 @@ class TaskIdleClosePolicyBehaviorTest {
         Task task = createTask(request);
         assertEquals(TaskIntakeStatus.OPEN, task.getIntakeStatus());
 
-        assertTrue(taskManager.approveTask(task.getTid()));
+        assertTrue(taskManager.approveTask(task.getTid()).accepted());
         markRunning(task.getTid());
 
         ClaimedWorkItem claimed = claimSingle(task.getTid(), "worker-session");
@@ -115,11 +116,11 @@ class TaskIdleClosePolicyBehaviorTest {
         assertNull(beforeSeal.getTerminalReason());
         assertEquals(TaskIntakeStatus.OPEN, beforeSeal.getIntakeStatus());
 
-        assertTrue(taskManager.sealTask(task.getTid()));
-        IllegalStateException error = assertThrows(IllegalStateException.class, () ->
-                taskManager.appendTaskItems(task.getTid(), List.of(Map.of("target", "beta"))));
+        assertTrue(taskManager.sealTask(task.getTid()).accepted());
+        TaskAppendOutcome append = taskManager.appendTaskItems(task.getTid(), List.of(Map.of("target", "beta")));
 
-        assertTrue(error.getMessage().contains("sealed"));
+        assertFalse(append.accepted());
+        assertTrue(append.message().contains("sealed"));
         Task current = taskManager.getTask(task.getTid());
         assertEquals(TaskStatus.RUNNING, current.getStatus());
         assertNull(current.getTerminalReason());
@@ -139,26 +140,29 @@ class TaskIdleClosePolicyBehaviorTest {
         request.setSealIntakeAfterCreate(false);
 
         Task task = createTask(request);
-        assertTrue(taskManager.cancelTask(task.getTid()));
+        assertTrue(taskManager.cancelTask(task.getTid()).accepted());
 
         Task terminalTask = taskManager.getTask(task.getTid());
         assertEquals(TaskStatus.TERMINAL, terminalTask.getStatus());
         assertEquals(TaskTerminalReason.MANUAL_CANCELLED, terminalTask.getTerminalReason());
         assertEquals(TaskIntakeStatus.SEALED, terminalTask.getIntakeStatus());
 
-        IllegalStateException error = assertThrows(IllegalStateException.class, () ->
-                taskManager.appendTaskItems(task.getTid(), List.of(Map.of("target", "beta"))));
-        assertTrue(error.getMessage().contains("sealed"));
+        TaskAppendOutcome append = taskManager.appendTaskItems(task.getTid(), List.of(Map.of("target", "beta")));
+        assertFalse(append.accepted());
+        assertTrue(append.message().contains("sealed"));
     }
 
     private Task createTask(TaskCreateSpec request) {
         TaskContract contract = request.getContract() != null ? request.getContract() : TaskContract.BATCH;
-        Task task = taskManager.createTaskShell(request.toShellRequest(contract));
+        TaskCommandOutcome create = taskManager.createTaskShell(request.toShellRequest(contract));
+        assertTrue(create.accepted());
+        Task task = taskManager.getTask(create.taskId());
+        assertNotNull(task);
         if (request.getInputs() != null && !request.getInputs().isEmpty()) {
             taskManager.appendTaskItems(task.getTid(), request.getInputs());
         }
         if (!request.shouldKeepIntakeOpen(contract)) {
-            assertTrue(taskManager.sealTask(task.getTid()));
+            assertTrue(taskManager.sealTask(task.getTid()).accepted());
         }
         return taskManager.getTask(task.getTid());
     }
@@ -176,7 +180,7 @@ class TaskIdleClosePolicyBehaviorTest {
     private void markRunning(String taskId) {
         Task running = taskManager.getTask(taskId);
         running.setStatus(TaskStatus.RUNNING);
-        assertTrue(taskManager.updateTask(running));
+        assertTrue(taskManager.persistTaskShell(running));
     }
 
     private TaskCreateSpec buildRequest(String sourceRef, List<String> targets) {

@@ -7,7 +7,8 @@ import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
-import com.xa.mass.engine.model.TaskAppendReceipt;
+import com.xa.mass.engine.model.TaskAppendOutcome;
+import com.xa.mass.engine.model.TaskCommandOutcome;
 import com.xa.mass.engine.policy.ContractAwareTaskTerminalPolicy;
 import com.xa.mass.task.runtime.ClaimedWorkItem;
 import com.xa.mass.task.runtime.memory.InMemoryTaskRuntime;
@@ -37,18 +38,13 @@ class TaskManagerLifecycleTest {
                 taskStorage,
                 new ContractAwareTaskTerminalPolicy(),
                 null);
-        var commands = new TaskCommandService(taskManager);
-        var queries = new TaskQueryService(taskManager);
-        var events = new TaskEventService(taskManager);
-        taskRuntimeServingLane = new TaskRuntimeServingLane(
+        taskRuntimeServingLane = TaskRuntimeServingLaneTestSupport.forTaskManager(
                 taskRuntime,
                 taskRuntime,
                 taskRuntime,
                 taskRuntime,
                 taskRuntime,
-                queries,
-                commands,
-                events,
+                taskManager,
                 300L,
                 TaskManager.MAX_INGEST_BATCH_ITEMS,
                 86_400_000L);
@@ -91,7 +87,10 @@ class TaskManagerLifecycleTest {
             TaskShellCreateRequestDto request = new TaskShellCreateRequestDto();
             request.setProject("demoApp");
             request.setUserId("agent");
-            Task task = manager.createTaskShell(request);
+            TaskCommandOutcome create = manager.createTaskShell(request);
+            assertTrue(create.accepted());
+            Task task = manager.getTask(create.taskId());
+            assertNotNull(task);
             IllegalStateException exception = assertThrows(
                     IllegalStateException.class,
                     () -> manager.appendTaskItems(task.getTid(), List.of(Map.of("target", "alpha"))));
@@ -110,16 +109,20 @@ class TaskManagerLifecycleTest {
         dto.setUserId("agent");
         dto.setContract(TaskContract.SESSION);
 
-        Task task = taskManager.createTaskShell(dto);
+        TaskCommandOutcome create = taskManager.createTaskShell(dto);
+        assertTrue(create.accepted());
+        Task task = taskManager.getTask(create.taskId());
+        assertNotNull(task);
         String payloadRef = "s3://bucket/payloads/demo-1.json";
 
-        TaskAppendReceipt receipt = taskManager.appendTaskItemsWithReceipt(
+        TaskAppendOutcome receipt = taskManager.appendTaskItems(
                 task.getTid(),
                 List.of(Map.<String, Object>of(
                         "eventCode", "demo.event",
                         "payloadRef", payloadRef)));
 
         assertEquals(1, taskManager.getTaskRuntimeProgressSnapshot(task.getTid()).readyCount());
+        assertTrue(taskManager.approveTask(task.getTid()).accepted());
         ClaimedWorkItem claimed = TaskRuntimeClaimTestSupport.claimSingle(
                 taskRuntimeServingLane,
                 taskManager.getWorkLeaseSeconds(),
@@ -140,18 +143,21 @@ class TaskManagerLifecycleTest {
         dto.setUserId("agent");
         dto.setContract(TaskContract.BATCH);
 
-        Task task = taskManager.createTaskShell(dto);
+        TaskCommandOutcome create = taskManager.createTaskShell(dto);
+        assertTrue(create.accepted());
+        Task task = taskManager.getTask(create.taskId());
+        assertNotNull(task);
         AtomicInteger dispatchRequests = new AtomicInteger();
         taskManager.events().addTaskDispatchListener(ignored -> dispatchRequests.incrementAndGet());
 
-        int added = taskManager.appendTaskItems(task.getTid(), List.of(
+        TaskAppendOutcome append = taskManager.appendTaskItems(task.getTid(), List.of(
                 Map.<String, Object>of("target", "alpha"),
                 Map.<String, Object>of("target", "beta")
         ));
 
         Task updatedTask = taskManager.getTask(task.getTid());
 
-        assertEquals(2, added);
+        assertEquals(2, append.acceptedCount());
         assertEquals(TaskStatus.NEW, updatedTask.getStatus());
         assertEquals(TaskIntakeStatus.OPEN, updatedTask.getIntakeStatus());
         assertEquals(2, updatedTask.getTaskTargetNumber());
@@ -161,12 +167,15 @@ class TaskManagerLifecycleTest {
 
     private Task createTask(TaskShellCreateRequestDto request, List<Map<String, Object>> inputs) {
         TaskContract contract = request.getContract() != null ? request.getContract() : TaskContract.BATCH;
-        Task task = taskManager.createTaskShell(request);
+        TaskCommandOutcome create = taskManager.createTaskShell(request);
+        assertTrue(create.accepted());
+        Task task = taskManager.getTask(create.taskId());
+        assertNotNull(task);
         if (inputs != null && !inputs.isEmpty()) {
             taskManager.appendTaskItems(task.getTid(), inputs);
         }
         if (contract != TaskContract.SESSION) {
-            assertTrue(taskManager.sealTask(task.getTid()));
+            assertTrue(taskManager.sealTask(task.getTid()).accepted());
         }
         return taskManager.getTask(task.getTid());
     }

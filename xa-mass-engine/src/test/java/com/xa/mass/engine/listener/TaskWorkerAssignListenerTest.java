@@ -65,7 +65,7 @@ public class TaskWorkerAssignListenerTest {
                 .thenReturn(selection(first, second));
         when(dispatchBinder.bindDispatches(task, List.of(first)))
                 .thenReturn(List.of(binding(task.getTid(), "worker-1")));
-        when(assignmentRuntime.updateTask(task)).thenReturn(true);
+        when(assignmentRuntime.persistAssignmentState(task)).thenReturn(true);
 
         assertTrue(listener.onTaskAssign(task));
 
@@ -142,7 +142,7 @@ public class TaskWorkerAssignListenerTest {
                 .thenReturn(selection(selected));
         when(dispatchBinder.bindDispatches(task, List.of(selected)))
                 .thenReturn(List.of(binding(task.getTid(), "worker-1")));
-        when(assignmentRuntime.updateTask(task)).thenReturn(true);
+        when(assignmentRuntime.persistAssignmentState(task)).thenReturn(true);
 
         assertTrue(listener.onTaskAssign(task));
 

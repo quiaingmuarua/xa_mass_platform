@@ -597,7 +597,7 @@ ports receive only narrow command values:
 
 | Command value | First-version fields |
 | --- | --- |
-| `AppendAdmissionPolicy` | `maxAppendBatchSize`, optional `maxReadyBacklogItems` when the profile enforces backlog cap |
+| Append admission limit | primitive `maxAppendBatchSize`; optional backlog cap belongs to engine/server intake only when a real cap is implemented |
 | `SchedulerEligibilityPolicy` | `runtimeGate`, `dispatchLane`, `nextEligibleAtMillis`, `positiveMatchDelayMillis`, `emptyMatchDelayMillis`, `contentionRecheckDelayMillis` |
 | `ClaimLeasePolicy` | `maxItems` as total item claim limit, `leaseMillis`, `attemptPolicyVersion`, `expectedRuntimeEpoch` |
 | `RetryPolicySnapshot` | `retryMode`, `maxRetryCount`, `retryDelayMillis`, `retryPolicyVersion` |
@@ -900,7 +900,7 @@ Scope:
   `ResolvedTaskSchedulingPolicy`, `TaskPolicyPresetResolution`, claim/enqueue/
   retry/finality option resolvers, and any current engine value passed toward
   enqueue, scheduler discovery, claim, retry, or result finality. The target is
-  narrow command values such as `AppendAdmissionPolicy`, `ClaimLeasePolicy`,
+  narrow command values or primitive limits such as append batch size, `ClaimLeasePolicy`,
   `RetryPolicySnapshot`, `ResultFinalityPolicySnapshot`, and `RuntimeEpoch`;
   task-runtime public ports must not accept `Task`, `ResolvedTaskSchedulingPolicy`,
   `TaskRuntimeProfile`, or engine resolver classes.

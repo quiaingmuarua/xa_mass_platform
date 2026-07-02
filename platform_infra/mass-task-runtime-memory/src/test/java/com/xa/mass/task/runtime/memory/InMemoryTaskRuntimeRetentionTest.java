@@ -2,7 +2,7 @@ package com.xa.mass.task.runtime.memory;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.xa.mass.task.runtime.BacklogFrameV1;
+import com.xa.mass.task.runtime.AppendItemInput;
 import com.xa.mass.task.runtime.FinalResultReadRequest;
 import com.xa.mass.task.runtime.ResultApplySource;
 import com.xa.mass.task.runtime.RetryMode;
@@ -11,6 +11,7 @@ import com.xa.mass.task.runtime.RuntimeGate;
 import com.xa.mass.task.runtime.RuntimeResultFact;
 import com.xa.mass.task.runtime.TaskRuntimeMetaV1;
 import com.xa.mass.task.runtime.TaskRuntimeResultPolicyV1;
+import com.xa.mass.task.runtime.TaskScoreV1;
 import com.xa.mass.task.runtime.WorkerReservationEvidence;
 import java.util.List;
 import java.util.Map;
@@ -30,14 +31,14 @@ class InMemoryTaskRuntimeRetentionTest {
                 "task-retention",
                 RuntimeGate.OPEN,
                 epoch,
-                0L,
+                TaskScoreV1.TIME_SCORE_FLOOR,
                 0L,
                 0L,
                 0L,
                 new TaskRuntimeResultPolicyV1(RetryMode.FAST_READY, 0, 0L, 1L, false, true, 10L)));
         runtime.appendBacklog(
                 "task-retention",
-                List.of(new BacklogFrameV1("message-1", "", Map.of(), null)),
+                List.of(new AppendItemInput("message-1", "", Map.of(), null)),
                 10);
         var claimed = runtime.claimBacklog(
                         runtime.scoreCandidate("task-retention", "task-retention").orElseThrow(),

@@ -4,26 +4,19 @@ import com.xa.mass.base.runtime.RuntimeTaskExecutor;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
-import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
-import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.command.event.BoundedMassEventRuntime;
 import com.xa.mass.command.event.InMemoryMassEventRuntime;
 import com.xa.mass.command.event.MassEventRuntime;
-import com.xa.mass.engine.model.TaskAppendReceipt;
+import com.xa.mass.engine.model.TaskAppendOutcome;
+import com.xa.mass.engine.model.TaskCommandOutcome;
 import com.xa.mass.engine.model.TaskDefinitionPatch;
-import com.xa.mass.engine.model.TaskResumeResult;
-import com.xa.mass.engine.model.TaskStateResolutionResult;
-import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.stage.TaskStageEvidenceResult;
 import com.xa.mass.engine.stage.TaskStageProjection;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.kernel.spi.rule.RuleType;
-import com.xa.mass.sdk.model.TaskActiveLeaseSnapshot;
-import com.xa.mass.sdk.model.TaskResultWindowSnapshot;
-import com.xa.mass.sdk.model.TaskWorkFinalSnapshot;
-import com.xa.mass.sdk.model.TaskWorkStatsSnapshot;
+import com.xa.mass.sdk.TaskReadOperations;
 import com.xa.mass.sdk.worker.EmbeddedPullWorkerSessions;
 import com.xa.mass.sdk.worker.EmbeddedPullWorkerSession;
 import com.xa.mass.starter.config.EngineConfig;
@@ -559,88 +552,52 @@ public class MassApplication {
         return engine != null && engine.isRunning();
     }
 
-    public Task createTaskShell(TaskShellCreateRequestDto dto) {
+    public TaskCommandOutcome createTaskShell(TaskShellCreateRequestDto dto) {
         return requireStartedEngine().createTaskShell(dto);
     }
 
-    public Task getTask(String taskId) {
-        return requireStartedEngine().getTask(taskId);
+    public TaskReadOperations taskReads() {
+        return requireStartedEngine().taskReads();
     }
 
-    public List<Task> listTasksPaged(int offset, int limit) {
-        return requireStartedEngine().listTasksPaged(offset, limit);
+    public TaskAppendOutcome appendTaskItems(String taskId, List<Map<String, Object>> items) {
+        return requireStartedEngine().appendTaskItems(taskId, items);
     }
 
-    public List<Task> getTasksByStatus(TaskStatus status) {
-        return requireStartedEngine().getTasksByStatus(status);
-    }
-
-    public TaskAppendReceipt appendTaskItemsWithReceipt(String taskId, List<Map<String, Object>> items) {
-        return requireStartedEngine().appendTaskItemsWithReceipt(taskId, items);
-    }
-
-    public boolean patchTaskDefinition(String taskId, TaskDefinitionPatch patch) {
+    public TaskCommandOutcome patchTaskDefinition(String taskId, TaskDefinitionPatch patch) {
         return requireStartedEngine().patchTaskDefinition(taskId, patch);
     }
 
-    public boolean approveTask(String taskId) {
+    public TaskCommandOutcome approveTask(String taskId) {
         return requireStartedEngine().approveTask(taskId);
     }
 
-    public boolean rejectTask(String taskId) {
+    public TaskCommandOutcome rejectTask(String taskId) {
         return requireStartedEngine().rejectTask(taskId);
     }
 
-    public boolean blockTask(String taskId) {
+    public TaskCommandOutcome blockTask(String taskId) {
         return requireStartedEngine().blockTask(taskId);
     }
 
-    public boolean pauseTask(String taskId) {
+    public TaskCommandOutcome pauseTask(String taskId) {
         return requireStartedEngine().pauseTask(taskId);
     }
 
-    public TaskResumeResult resumeTaskDetailed(String taskId) {
-        return requireStartedEngine().resumeTaskDetailed(taskId);
+    public TaskCommandOutcome resumeTask(String taskId) {
+        return requireStartedEngine().resumeTask(taskId);
     }
 
-    public boolean cancelTask(String taskId) {
+    public TaskCommandOutcome cancelTask(String taskId) {
         return requireStartedEngine().cancelTask(taskId);
     }
 
-    public boolean terminateTask(String taskId, TaskTerminalReason reason) {
+    public TaskCommandOutcome terminateTask(String taskId, TaskTerminalReason reason) {
         return requireStartedEngine().terminateTask(taskId, reason);
     }
 
-    public boolean sealTask(String taskId) {
+    public TaskCommandOutcome sealTask(String taskId) {
         return requireStartedEngine().sealTask(taskId);
-    }
-
-    public TaskStateValidationResult validateTaskState(String taskId) {
-        return requireStartedEngine().validateTaskState(taskId);
-    }
-
-    public TaskStateResolutionResult resolveTaskState(String taskId) {
-        return requireStartedEngine().resolveTaskState(taskId);
-    }
-
-    public TaskResultWindowSnapshot readTaskResults(String taskId, long afterSeq, int limit) {
-        return requireStartedEngine().readTaskResults(taskId, afterSeq, limit);
-    }
-
-    public TaskWorkStatsSnapshot getTaskWorkStats(String taskId) {
-        return requireStartedEngine().getTaskWorkStats(taskId);
-    }
-
-    public List<TaskActiveLeaseSnapshot> getActiveLeases(String taskId) {
-        return requireStartedEngine().getActiveLeases(taskId);
-    }
-
-    public Optional<TaskWorkFinalSnapshot> getVisibleTaskResultByMessageId(String taskId, String messageId) {
-        return requireStartedEngine().getVisibleTaskResultByMessageId(taskId, messageId);
-    }
-
-    public long countVisibleTaskResults(String taskId) {
-        return requireStartedEngine().countVisibleTaskResults(taskId);
     }
 
     public void registerAdapterNode(AdapterNodeRecord record) {

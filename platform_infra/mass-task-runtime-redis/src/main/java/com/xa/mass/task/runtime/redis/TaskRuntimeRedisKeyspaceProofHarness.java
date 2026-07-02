@@ -1,6 +1,6 @@
 package com.xa.mass.task.runtime.redis;
 
-import com.xa.mass.task.runtime.BacklogFrameV1;
+import com.xa.mass.task.runtime.AppendItemInput;
 import com.xa.mass.task.runtime.RuntimeEpoch;
 import com.xa.mass.task.runtime.ScoreCandidate;
 import com.xa.mass.task.runtime.ScoreCandidateBatch;
@@ -64,7 +64,7 @@ final class TaskRuntimeRedisKeyspaceProofHarness {
                 codec.encodeSegment(taskId));
     }
 
-    void appendBacklog(String taskId, List<BacklogFrameV1> frames) {
+    void appendBacklog(String taskId, List<AppendItemInput> frames) {
         if (frames == null || frames.isEmpty()) {
             throw new IllegalArgumentException("frames must be non-empty");
         }

@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TaskResultRuntimeConvergenceTest {
@@ -196,18 +197,13 @@ class TaskResultRuntimeConvergenceTest {
                 storage,
                 new ContractAwareTaskTerminalPolicy(),
                 null);
-        var commands = new TaskCommandService(manager);
-        var queries = new TaskQueryService(manager);
-        var events = new TaskEventService(manager);
-        var lane = new TaskRuntimeServingLane(
+        var lane = TaskRuntimeServingLaneTestSupport.forTaskManager(
                 runtime,
                 runtime,
                 runtime,
                 runtime,
                 runtime,
-                queries,
-                commands,
-                events,
+                manager,
                 300L,
                 TaskManager.MAX_INGEST_BATCH_ITEMS,
                 86_400_000L);
@@ -226,13 +222,16 @@ class TaskResultRuntimeConvergenceTest {
         request.setUserId("agent");
         request.setExecutionSpec(taskExecutionSpec(defaultMaxRetryCount));
 
-        Task task = manager.createTaskShell(request);
-        assertEquals(1, manager.appendTaskItems(task.getTid(), List.of(Map.of("target", "alpha"))));
-        assertTrue(manager.sealTask(task.getTid()));
-        assertTrue(manager.approveTask(task.getTid()));
+        var create = manager.createTaskShell(request);
+        assertTrue(create.accepted());
+        Task task = manager.getTask(create.taskId());
+        assertNotNull(task);
+        assertEquals(1, manager.appendTaskItems(task.getTid(), List.of(Map.of("target", "alpha"))).acceptedCount());
+        assertTrue(manager.sealTask(task.getTid()).accepted());
+        assertTrue(manager.approveTask(task.getTid()).accepted());
         Task running = manager.getTask(task.getTid());
         running.setStatus(TaskStatus.RUNNING);
-        assertTrue(manager.updateTask(running));
+        assertTrue(manager.persistTaskShell(running));
         return manager.getTask(task.getTid());
     }
 

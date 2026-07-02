@@ -1,6 +1,8 @@
 package com.xa.mass.starter;
 
 import com.xa.mass.engine.EngineRuntimeKernel;
+import com.xa.mass.engine.TaskEventListenerSnapshot;
+import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.starter.config.EngineConfig;
 import org.junit.jupiter.api.Test;
 
@@ -57,7 +59,7 @@ class MassEngineStopTest {
         assertDoesNotThrow(() -> engine.start());
         assertTrue(engine.isRunning());
         assertNotNull(readField(engine, "runtimeKernel"));
-        assertSame(config.getTaskCommandService(), readField(engine, "taskCommands"));
+        assertSame(config.getTaskCommandPort(), readField(engine, "taskCommands"));
 
         engine.stop();
     }
@@ -152,8 +154,12 @@ class MassEngineStopTest {
         }
     }
 
-    private com.xa.mass.engine.TaskEventListenerSnapshot listenerSnapshot(EngineConfig config) {
-        return config.getTaskEventService().listenerSnapshot();
+    private TaskEventListenerSnapshot listenerSnapshot(EngineConfig config) {
+        TaskEventService service = (TaskEventService) readField(config, "taskEventService");
+        if (service == null) {
+            return new TaskEventListenerSnapshot(0, 0, 0, 0, 0, 0, 0);
+        }
+        return service.listenerSnapshot();
     }
 
     private void setField(Object target, String fieldName, Object value) {

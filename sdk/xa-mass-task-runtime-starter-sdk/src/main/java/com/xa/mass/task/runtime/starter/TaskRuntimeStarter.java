@@ -1,6 +1,5 @@
 package com.xa.mass.task.runtime.starter;
 
-import com.xa.mass.task.runtime.TaskRuntimeResultWindowReadModel;
 import com.xa.mass.task.runtime.memory.InMemoryTaskRuntime;
 import com.xa.mass.task.runtime.redis.RedisTaskRuntime;
 import io.lettuce.core.RedisClient;
@@ -35,7 +34,6 @@ public final class TaskRuntimeStarter {
         var handle = new TaskRuntimeHandle(
                 effectiveConfig.backendKind(),
                 backend.runtime(),
-                backend.resultWindowReadModel(),
                 loopHost,
                 backend.closeable());
         handle.start();
@@ -50,17 +48,16 @@ public final class TaskRuntimeStarter {
             return new Backend(portSet, () -> {
                 runtime.close();
                 client.shutdown();
-            }, portSet);
+            });
         }
         var runtime = new InMemoryTaskRuntime(clock);
         var portSet = new MemoryPortSet(runtime);
-        return new Backend(portSet, null, portSet);
+        return new Backend(portSet, null);
     }
 
     private record Backend(
             TaskRuntimePortSet runtime,
-            AutoCloseable closeable,
-            TaskRuntimeResultWindowReadModel resultWindowReadModel
+            AutoCloseable closeable
     ) {
     }
 }

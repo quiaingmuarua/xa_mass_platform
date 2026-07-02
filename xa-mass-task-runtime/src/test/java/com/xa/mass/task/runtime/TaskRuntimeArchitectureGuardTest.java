@@ -43,6 +43,20 @@ class TaskRuntimeArchitectureGuardTest {
             "UpdateSchedulerEligibilityCommand"
     );
 
+    private static final List<String> DELETED_RUNTIME_RESIDUE_SHAPES = List.of(
+            "ActiveLeaseRepairBatch",
+            "AppendAdmissionPolicy",
+            "BacklogFrameV1",
+            "DiscardTaskRuntimeOutcome",
+            "DiscardTaskWorkOutcome",
+            "LeaseRepairBatch",
+            "ActiveWorkSnapshot",
+            "SchedulerDiscoveryOutcome",
+            "SchedulerTaskCandidate",
+            "RetryPromotionBatch",
+            "TaskCloseAttemptOutcome"
+    );
+
     private static final List<String> FORBIDDEN_SOURCE_SNIPPETS = List.of(
             "com.xa.mass.engine",
             "com.xa.mass.transport",
@@ -106,6 +120,24 @@ class TaskRuntimeArchitectureGuardTest {
 
         assertThat(DELETED_OLD_COMMAND_BUCKETS)
                 .allSatisfy(command -> assertThat(mainJava.resolve(command + ".java")).doesNotExist());
+    }
+
+    @Test
+    void deletedRuntimeResidueShapesStayDeletedFromMainSource() {
+        var mainJava = Path.of("src", "main", "java", "com", "xa", "mass", "task", "runtime");
+
+        assertThat(DELETED_RUNTIME_RESIDUE_SHAPES)
+                .allSatisfy(shape -> assertThat(mainJava.resolve(shape + ".java")).doesNotExist());
+    }
+
+    @Test
+    void readPortDoesNotKeepDuplicateFinalResultAliases() throws IOException {
+        var readPort = Files.readString(Path.of(
+                "src", "main", "java", "com", "xa", "mass", "task", "runtime", "TaskRuntimeReadPort.java"));
+
+        assertThat(readPort)
+                .contains("getFinalResultByMessageId(String taskId, String messageId)")
+                .doesNotContain("finalResult(String taskId, String messageId)");
     }
 
     private static void collectForbiddenSnippetViolations(Path path, List<String> violations) {

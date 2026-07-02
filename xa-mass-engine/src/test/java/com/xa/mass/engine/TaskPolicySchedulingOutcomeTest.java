@@ -26,7 +26,7 @@ class TaskPolicySchedulingOutcomeTest {
                 0,
                 1
         );
-        assertTrue(harness.taskManager.approveTask(task.getTid()));
+        assertTrue(harness.taskManager.approveTask(task.getTid()).accepted());
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
         ActiveLeaseRepairCandidate lease = harness.activeLeases(task.getTid()).getFirst();
@@ -60,7 +60,7 @@ class TaskPolicySchedulingOutcomeTest {
                 0,
                 1
         );
-        assertTrue(harness.taskManager.approveTask(task.getTid()));
+        assertTrue(harness.taskManager.approveTask(task.getTid()).accepted());
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
         ActiveLeaseRepairCandidate firstLease = harness.activeLeases(task.getTid()).getFirst();
@@ -83,7 +83,7 @@ class TaskPolicySchedulingOutcomeTest {
         assertEquals(0, drainedStats.readyCount());
         assertEquals(0, drainedStats.activeCount());
 
-        assertEquals(1, harness.taskManager.appendTaskItems(task.getTid(), List.of(harness.item("second"))));
+        assertEquals(1, harness.taskManager.appendTaskItems(task.getTid(), List.of(harness.item("second"))).acceptedCount());
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
 
         List<ActiveLeaseRepairCandidate> activeLeases = harness.activeLeases(task.getTid());

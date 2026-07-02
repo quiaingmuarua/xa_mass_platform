@@ -1,6 +1,13 @@
 # Mass SDK Application Runtime Read Surface Convergence Roadmap
 
-Status: proposed on 2026-07-01.
+Status: superseded on 2026-07-02 by
+`TASK_RUNTIME_API_BOUNDARY_CONVERGENCE_ROADMAP.md` TRAPI-5.
+
+Supersession note: the external SDK/server read surface converged on
+SDK-owned `TaskReadOperations`, not a separate runtime-read-only SDK surface.
+Current facts and guard evidence live in TRAPI-5 and
+`sdk/xa-mass-embedded-sdk/README.md`. Do not execute this roadmap as a
+parallel track.
 
 This roadmap converges the read-only task-runtime views exposed by
 `MassSdkApplication` so embedded SDK callers read the selected task-runtime

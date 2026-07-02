@@ -9,24 +9,20 @@ import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.policy.ContractAwareTaskTerminalPolicy;
 import com.xa.mass.task.runtime.ActiveTaskWorkSnapshot;
+import com.xa.mass.task.runtime.ActiveLeaseRepairCandidate;
 import com.xa.mass.task.runtime.AppendBatchOutcome;
-import com.xa.mass.task.runtime.BacklogFrameV1;
+import com.xa.mass.task.runtime.AppendItemInput;
 import com.xa.mass.task.runtime.ClaimReadyOutcome;
 import com.xa.mass.task.runtime.ClaimedWorkItem;
-import com.xa.mass.task.runtime.DiscardTaskRuntimeOutcome;
-import com.xa.mass.task.runtime.DiscardTaskWorkOutcome;
 import com.xa.mass.task.runtime.FinalResultReadRequest;
 import com.xa.mass.task.runtime.FinalResultRow;
 import com.xa.mass.task.runtime.FinalResultWindow;
-import com.xa.mass.task.runtime.LeaseRepairBatch;
 import com.xa.mass.task.runtime.MessageFinalityOutcome;
 import com.xa.mass.task.runtime.ResultCorrelationSnapshot;
-import com.xa.mass.task.runtime.RetryPromotionBatch;
 import com.xa.mass.task.runtime.RuntimeEpoch;
 import com.xa.mass.task.runtime.RuntimeResultFact;
 import com.xa.mass.task.runtime.ScoreCandidate;
 import com.xa.mass.task.runtime.ScoreCandidateBatch;
-import com.xa.mass.task.runtime.TaskCloseAttemptOutcome;
 import com.xa.mass.task.runtime.TaskRuntimeConvergencePort;
 import com.xa.mass.task.runtime.TaskRuntimeMetaV1;
 import com.xa.mass.task.runtime.TaskRuntimeProgressSnapshot;
@@ -57,6 +53,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TaskResultConcurrencyConvergenceTest {
@@ -287,18 +284,13 @@ class TaskResultConcurrencyConvergenceTest {
                 storage,
                 new ContractAwareTaskTerminalPolicy(),
                 null);
-        var commands = new TaskCommandService(manager);
-        var queries = new TaskQueryService(manager);
-        var events = new TaskEventService(manager);
-        var lane = new TaskRuntimeServingLane(
+        var lane = TaskRuntimeServingLaneTestSupport.forTaskManager(
                 workPort,
                 scorePort,
                 convergencePort,
                 readPort,
                 resultWindowReadModel,
-                queries,
-                commands,
-                events,
+                manager,
                 new ContractAwareTaskTerminalPolicy(),
                 null,
                 TraceEventLogger.noop(),
@@ -321,18 +313,21 @@ class TaskResultConcurrencyConvergenceTest {
         request.setUserId("agent");
         request.setExecutionSpec(taskExecutionSpec(1, defaultMaxRetryCount));
 
-        Task task = manager.createTaskShell(request);
+        var create = manager.createTaskShell(request);
+        assertTrue(create.accepted());
+        Task task = manager.getTask(create.taskId());
+        assertNotNull(task);
         List<Map<String, Object>> inputs = java.util.stream.IntStream.range(0, messageCount)
                 .mapToObj(index -> Map.<String, Object>of("target", "alpha-" + index))
                 .toList();
         if (!inputs.isEmpty()) {
             manager.appendTaskItems(task.getTid(), inputs);
         }
-        assertTrue(manager.sealTask(task.getTid()));
-        assertTrue(manager.approveTask(task.getTid()));
+        assertTrue(manager.sealTask(task.getTid()).accepted());
+        assertTrue(manager.approveTask(task.getTid()).accepted());
         Task running = manager.getTask(task.getTid());
         running.setStatus(TaskStatus.RUNNING);
-        assertTrue(manager.updateTask(running));
+        assertTrue(manager.persistTaskShell(running));
         return manager.getTask(task.getTid());
     }
 
@@ -449,7 +444,7 @@ class TaskResultConcurrencyConvergenceTest {
         }
 
         @Override
-        public AppendBatchOutcome appendBacklog(String taskId, List<BacklogFrameV1> frames, int maxBatchSize) {
+        public AppendBatchOutcome appendBacklog(String taskId, List<AppendItemInput> frames, int maxBatchSize) {
             return delegate.appendBacklog(taskId, frames, maxBatchSize);
         }
 
@@ -488,12 +483,12 @@ class TaskResultConcurrencyConvergenceTest {
         }
 
         @Override
-        public RetryPromotionBatch promoteDueRetries(String laneKey, long nowMillis, int taskLimit, int itemLimit) {
+        public List<String> promoteDueRetries(String laneKey, long nowMillis, int taskLimit, int itemLimit) {
             return delegate.promoteDueRetries(laneKey, nowMillis, taskLimit, itemLimit);
         }
 
         @Override
-        public LeaseRepairBatch scanExpiredLeases(String laneKey, long nowMillis, int taskLimit, int itemLimit) {
+        public List<ActiveLeaseRepairCandidate> scanExpiredLeases(String laneKey, long nowMillis, int taskLimit, int itemLimit) {
             return delegate.scanExpiredLeases(laneKey, nowMillis, taskLimit, itemLimit);
         }
 
@@ -514,21 +509,21 @@ class TaskResultConcurrencyConvergenceTest {
         }
 
         @Override
-        public TaskCloseAttemptOutcome closeIfDrained(String taskId, String laneKey, RuntimeEpoch epoch) {
+        public boolean closeIfDrained(String taskId, String laneKey, RuntimeEpoch epoch) {
             return delegate.closeIfDrained(taskId, laneKey, epoch);
         }
 
         @Override
-        public DiscardTaskRuntimeOutcome discardRuntime(String taskId,
-                                                        String laneKey,
-                                                        RuntimeEpoch epoch,
-                                                        String reason) {
-            return delegate.discardRuntime(taskId, laneKey, epoch, reason);
+        public void discardRuntime(String taskId,
+                                   String laneKey,
+                                   RuntimeEpoch epoch,
+                                   String reason) {
+            delegate.discardRuntime(taskId, laneKey, epoch, reason);
         }
 
         @Override
-        public DiscardTaskWorkOutcome discardWork(String taskId, RuntimeEpoch epoch, String reason) {
-            return delegate.discardWork(taskId, epoch, reason);
+        public void discardWork(String taskId, RuntimeEpoch epoch, String reason) {
+            delegate.discardWork(taskId, epoch, reason);
         }
 
         @Override

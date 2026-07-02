@@ -32,6 +32,8 @@ class TaskRuntimeStarterArchitectureGuardTest {
     void portSetExposesGroupedRuntimeSurfaceNotOldPortFamilies() throws IOException {
         String source = Files.readString(
                 Path.of("src/main/java/com/xa/mass/task/runtime/starter/TaskRuntimePortSet.java"));
+        String handle = Files.readString(
+                Path.of("src/main/java/com/xa/mass/task/runtime/starter/TaskRuntimeHandle.java"));
 
         assertThat(source)
                 .contains("TaskRuntimeWorkPort")
@@ -47,6 +49,9 @@ class TaskRuntimeStarterArchitectureGuardTest {
                 .doesNotContain("TaskRuntimeRepairPort")
                 .doesNotContain("TaskRuntimeProgressPort")
                 .doesNotContain("TaskRuntimeDiscardPort");
+        assertThat(handle)
+                .doesNotContain("TaskRuntimeResultWindowReadModel")
+                .doesNotContain("resultWindowReadModel()");
     }
 
     @Test

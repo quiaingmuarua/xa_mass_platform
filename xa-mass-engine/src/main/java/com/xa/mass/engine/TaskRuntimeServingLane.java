@@ -18,7 +18,6 @@ import com.xa.mass.engine.runtime.scheduling.SchedulingPlaneResolver;
 import com.xa.mass.engine.strategy.DefaultSchedulingPlaneResolver;
 import com.xa.mass.task.runtime.ActiveLeaseRepairCandidate;
 import com.xa.mass.task.runtime.AppendBatchStatus;
-import com.xa.mass.task.runtime.BacklogFrameV1;
 import com.xa.mass.task.runtime.ClaimLeasePolicy;
 import com.xa.mass.task.runtime.ClaimReadyOutcome;
 import com.xa.mass.task.runtime.FinalResultReadRequest;
@@ -48,7 +47,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.BiConsumer;
+import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.function.LongSupplier;
+import java.util.function.Predicate;
 
 /**
  * Engine-facing serving lane for the new task-runtime owner.
@@ -74,9 +77,12 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
     private final TaskRuntimeConvergencePort convergencePort;
     private final TaskRuntimeReadPort readPort;
     private final TaskRuntimeResultWindowReadModel resultWindowReadModel;
-    private final TaskQueryService taskQueries;
-    private final TaskCommandService taskCommands;
-    private final TaskEventService taskEvents;
+    private final Function<String, Task> taskReader;
+    private final Predicate<Task> taskWriter;
+    private final Consumer<Task> taskDispatchRequestedPublisher;
+    private final Consumer<Task> taskTerminalPublisher;
+    private final BiConsumer<Task, TaskWorkAttemptClosedEvent> taskWorkAttemptClosedPublisher;
+    private final BiConsumer<Task, TaskWorkLogicallyFinalEvent> taskWorkLogicallyFinalPublisher;
     private final TaskTerminalPolicy terminalPolicy;
     private final SchedulingPlaneResolver schedulingPlaneResolver;
     private final TraceEventLogger traceEventLogger;
@@ -86,88 +92,77 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
     private final long finalResultRetentionMillis;
     private final LongSupplier clock;
 
-    public TaskRuntimeServingLane(TaskRuntimeWorkPort workPort,
-                                  TaskRuntimeScorePort scorePort,
-                                  TaskRuntimeConvergencePort convergencePort,
-                                  TaskRuntimeReadPort readPort,
-                                  TaskRuntimeResultWindowReadModel resultWindowReadModel,
-                                  TaskQueryService taskQueries,
-                                  TaskCommandService taskCommands,
-                                  TaskEventService taskEvents,
-                                  long workLeaseSeconds,
-                                  int maxAppendBatchSize,
-                                  long finalResultRetentionMillis) {
-        this(workPort,
+    public static TaskRuntimeServingLane forShellHooks(TaskRuntimeWorkPort workPort,
+                                                       TaskRuntimeScorePort scorePort,
+                                                       TaskRuntimeConvergencePort convergencePort,
+                                                       TaskRuntimeReadPort readPort,
+                                                       TaskRuntimeResultWindowReadModel resultWindowReadModel,
+                                                       Function<String, Task> taskReader,
+                                                       Predicate<Task> taskWriter,
+                                                       Consumer<Task> taskDispatchRequestedPublisher,
+                                                       Consumer<Task> taskTerminalPublisher,
+                                                       BiConsumer<Task, TaskWorkAttemptClosedEvent> taskWorkAttemptClosedPublisher,
+                                                       BiConsumer<Task, TaskWorkLogicallyFinalEvent> taskWorkLogicallyFinalPublisher,
+                                                       TaskTerminalPolicy terminalPolicy,
+                                                       SchedulingPlaneResolver schedulingPlaneResolver,
+                                                       TraceEventLogger traceEventLogger,
+                                                       long workLeaseSeconds,
+                                                       int maxAppendBatchSize,
+                                                       long finalResultRetentionMillis,
+                                                       LongSupplier clock) {
+        return new TaskRuntimeServingLane(
+                workPort,
                 scorePort,
                 convergencePort,
                 readPort,
                 resultWindowReadModel,
-                taskQueries,
-                taskCommands,
-                taskEvents,
-                new ContractAwareTaskTerminalPolicy(),
-                new DefaultSchedulingPlaneResolver(),
-                TraceEventLogger.noop(),
-                workLeaseSeconds,
-                maxAppendBatchSize,
-                finalResultRetentionMillis,
-                System::currentTimeMillis);
-    }
-
-    public TaskRuntimeServingLane(TaskRuntimeWorkPort workPort,
-                                  TaskRuntimeScorePort scorePort,
-                                  TaskRuntimeConvergencePort convergencePort,
-                                  TaskRuntimeReadPort readPort,
-                                  TaskRuntimeResultWindowReadModel resultWindowReadModel,
-                                  TaskQueryService taskQueries,
-                                  TaskCommandService taskCommands,
-                                  TaskEventService taskEvents,
-                                  TaskTerminalPolicy terminalPolicy,
-                                  SchedulingPlaneResolver schedulingPlaneResolver,
-                                  TraceEventLogger traceEventLogger,
-                                  long workLeaseSeconds,
-                                  int maxAppendBatchSize,
-                                  long finalResultRetentionMillis) {
-        this(workPort,
-                scorePort,
-                convergencePort,
-                readPort,
-                resultWindowReadModel,
-                taskQueries,
-                taskCommands,
-                taskEvents,
+                taskReader,
+                taskWriter,
+                taskDispatchRequestedPublisher,
+                taskTerminalPublisher,
+                taskWorkAttemptClosedPublisher,
+                taskWorkLogicallyFinalPublisher,
                 terminalPolicy,
                 schedulingPlaneResolver,
                 traceEventLogger,
                 workLeaseSeconds,
                 maxAppendBatchSize,
                 finalResultRetentionMillis,
-                System::currentTimeMillis);
+                clock);
     }
 
-    public TaskRuntimeServingLane(TaskRuntimeWorkPort workPort,
-                                  TaskRuntimeScorePort scorePort,
-                                  TaskRuntimeConvergencePort convergencePort,
-                                  TaskRuntimeReadPort readPort,
-                                  TaskRuntimeResultWindowReadModel resultWindowReadModel,
-                                  TaskQueryService taskQueries,
-                                  TaskCommandService taskCommands,
-                                  TaskEventService taskEvents,
-                                  TaskTerminalPolicy terminalPolicy,
-                                  SchedulingPlaneResolver schedulingPlaneResolver,
-                                  TraceEventLogger traceEventLogger,
-                                  long workLeaseSeconds,
-                                  int maxAppendBatchSize,
-                                  long finalResultRetentionMillis,
-                                  LongSupplier clock) {
+    private TaskRuntimeServingLane(TaskRuntimeWorkPort workPort,
+                                   TaskRuntimeScorePort scorePort,
+                                   TaskRuntimeConvergencePort convergencePort,
+                                   TaskRuntimeReadPort readPort,
+                                   TaskRuntimeResultWindowReadModel resultWindowReadModel,
+                                   Function<String, Task> taskReader,
+                                   Predicate<Task> taskWriter,
+                                   Consumer<Task> taskDispatchRequestedPublisher,
+                                   Consumer<Task> taskTerminalPublisher,
+                                   BiConsumer<Task, TaskWorkAttemptClosedEvent> taskWorkAttemptClosedPublisher,
+                                   BiConsumer<Task, TaskWorkLogicallyFinalEvent> taskWorkLogicallyFinalPublisher,
+                                   TaskTerminalPolicy terminalPolicy,
+                                   SchedulingPlaneResolver schedulingPlaneResolver,
+                                   TraceEventLogger traceEventLogger,
+                                   long workLeaseSeconds,
+                                   int maxAppendBatchSize,
+                                   long finalResultRetentionMillis,
+                                   LongSupplier clock) {
         this.workPort = Objects.requireNonNull(workPort, "workPort");
         this.scorePort = Objects.requireNonNull(scorePort, "scorePort");
         this.convergencePort = Objects.requireNonNull(convergencePort, "convergencePort");
         this.readPort = Objects.requireNonNull(readPort, "readPort");
         this.resultWindowReadModel = Objects.requireNonNull(resultWindowReadModel, "resultWindowReadModel");
-        this.taskQueries = Objects.requireNonNull(taskQueries, "taskQueries");
-        this.taskCommands = Objects.requireNonNull(taskCommands, "taskCommands");
-        this.taskEvents = Objects.requireNonNull(taskEvents, "taskEvents");
+        this.taskReader = Objects.requireNonNull(taskReader, "taskReader");
+        this.taskWriter = Objects.requireNonNull(taskWriter, "taskWriter");
+        this.taskDispatchRequestedPublisher = Objects.requireNonNull(
+                taskDispatchRequestedPublisher, "taskDispatchRequestedPublisher");
+        this.taskTerminalPublisher = Objects.requireNonNull(taskTerminalPublisher, "taskTerminalPublisher");
+        this.taskWorkAttemptClosedPublisher = Objects.requireNonNull(
+                taskWorkAttemptClosedPublisher, "taskWorkAttemptClosedPublisher");
+        this.taskWorkLogicallyFinalPublisher = Objects.requireNonNull(
+                taskWorkLogicallyFinalPublisher, "taskWorkLogicallyFinalPublisher");
         this.terminalPolicy = terminalPolicy == null ? new ContractAwareTaskTerminalPolicy() : terminalPolicy;
         this.schedulingPlaneResolver = schedulingPlaneResolver == null
                 ? new DefaultSchedulingPlaneResolver()
@@ -180,8 +175,8 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
         this.clock = clock == null ? System::currentTimeMillis : clock;
         this.stateResolver = new TaskStateResolver(
                 this,
-                this.taskCommands::updateTask,
-                this.taskEvents::publishTaskTerminal,
+                this.taskWriter::test,
+                this::publishTaskTerminal,
                 this.traceEventLogger);
     }
 
@@ -192,19 +187,33 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
         if (ingressItems == null || ingressItems.isEmpty()) {
             throw new IllegalArgumentException("ingressItems must be a non-empty list");
         }
+        validateRuntimeAppendAdmission(task, ingressItems.size());
         var epoch = epoch(task.getTid());
-        var frames = TaskRuntimeAppendItemMapper.toAppendItems(ingressItems).stream()
-                .map(BacklogFrameV1::from)
-                .toList();
         var outcome = workPort.appendBacklog(
                 task.getTid(),
-                frames,
+                TaskRuntimeAppendItemMapper.toAppendItems(ingressItems),
                 maxAppendBatchSize);
         if (outcome.status() != AppendBatchStatus.ALL_ACCEPTED) {
             throw new IllegalStateException("task-runtime append failed: status="
                     + outcome.status() + ", reason=" + outcome.reason());
         }
         updateSchedulerEligibility(task, epoch);
+    }
+
+    void validateRuntimeAppendAdmission(Task task, int itemCount) {
+        if (task == null || itemCount <= 0) {
+            return;
+        }
+        var maxReadyItems = taskPolicy(task).backpressurePolicy().maxReadyItemsPerTask();
+        if (maxReadyItems <= 0) {
+            return;
+        }
+        var readyCount = readPort.progressSnapshot(task.getTid()).readyCount();
+        if (readyCount + itemCount > maxReadyItems) {
+            throw new IllegalStateException("task-runtime append failed: status="
+                    + AppendBatchStatus.REJECTED_BEFORE_RUNTIME
+                    + ", reason=ready backlog is full");
+        }
     }
 
     void updateTaskProgress(String taskId) {
@@ -244,8 +253,16 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
     }
 
     @Override
-    public boolean updateTask(Task task) {
-        return taskCommands.updateTask(task);
+    public boolean persistAssignmentState(Task task) {
+        return taskWriter.test(task);
+    }
+
+    private Task loadTask(String taskId) {
+        return taskReader.apply(taskId);
+    }
+
+    private void publishTaskTerminal(Task task) {
+        taskTerminalPublisher.accept(task);
     }
 
     @Override
@@ -255,7 +272,7 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
         if (leasePolicy == null) {
             throw new IllegalArgumentException("leasePolicy is required");
         }
-        Task task = taskQueries.getTask(taskId);
+        Task task = loadTask(taskId);
         if (task == null) {
             return new ClaimReadyOutcome(taskId, List.of(), "task shell not found");
         }
@@ -332,8 +349,7 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
                         "default",
                         now == null ? nowMillis() : now.toEpochMilli(),
                         Math.max(1, limit),
-                        Math.max(1, limit))
-                .candidates());
+                        Math.max(1, limit)));
     }
 
     public List<ActiveLeaseRepairCandidate> getActiveLeases(String taskId) {
@@ -361,7 +377,7 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
         if (candidate == null) {
             return false;
         }
-        Task task = taskQueries.getTask(taskId);
+        Task task = loadTask(taskId);
         var outcome = applyResult(task, TaskRuntimeResultFactMapper.fromLeaseTimeout(
                 candidate,
                 epoch(taskId),
@@ -382,7 +398,7 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
         }
         updateSchedulerEligibility(task, epoch(task.getTid()));
         if (task.getStatus() != null && task.getStatus().isActive()) {
-            taskEvents.publishTaskDispatchRequested(task);
+            taskDispatchRequestedPublisher.accept(task);
         }
     }
 
@@ -391,7 +407,7 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
         var candidates = scorePort.discoverSchedulable("default", nowMillis(), Math.max(1, limit));
         List<Task> tasks = new ArrayList<>();
         for (var candidate : candidates.candidates()) {
-            Task task = taskQueries.getTask(candidate.taskId());
+            Task task = loadTask(candidate.taskId());
             if (task != null) {
                 tasks.add(task);
             }
@@ -406,7 +422,7 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
                                     String detail,
                                     String errorCode,
                                     Map<String, Object> output) {
-        Task task = taskQueries.getTask(taskId);
+        Task task = loadTask(taskId);
         var correlation = readPort.resultCorrelation(taskId, messageId);
         if (!correlation.present()) {
             Optional<FinalResultRow> finalResult = getVisibleTaskResultByMessageId(taskId, messageId);
@@ -456,7 +472,7 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
 
     @Override
     public Task getTask(String taskId) {
-        return taskQueries.getTask(taskId);
+        return loadTask(taskId);
     }
 
     @Override
@@ -472,7 +488,7 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
         if (messageId == null || messageId.isBlank()) {
             return Optional.empty();
         }
-        return readPort.finalResult(taskId, messageId);
+        return readPort.getFinalResultByMessageId(taskId, messageId);
     }
 
     public long countVisibleTaskResults(String taskId) {
@@ -549,7 +565,7 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
                 active.scoreBandClaimScore(),
                 status,
                 reason);
-        taskEvents.publishTaskWorkAttemptClosed(task, event);
+        taskWorkAttemptClosedPublisher.accept(task, event);
         traceEventLogger.taskWorkAttemptClosed(
                 task,
                 traceView(fact, active, decision),
@@ -610,7 +626,7 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
                 ? TaskWorkLifecycleState.MessageFinalReason.LEASE_EXPIRED
                 : TaskWorkLifecycleState.MessageFinalReason.BUSINESS_FAILED;
         String traceReason = logicalFinalTraceReason(fact);
-        taskEvents.publishTaskWorkLogicallyFinal(
+        taskWorkLogicallyFinalPublisher.accept(
                 task,
                 TaskWorkLogicallyFinalEvent.from(
                         fact.taskId(),
@@ -822,7 +838,7 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
     }
 
     private void rescoreTaskForRetry(Task task, String taskId) {
-        Task target = task != null ? task : taskQueries.getTask(taskId);
+        Task target = task != null ? task : loadTask(taskId);
         if (target != null) {
             updateSchedulerEligibility(target, epoch(taskId));
             return;

@@ -26,7 +26,7 @@ class TaskRedispatchCompetitionTest {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
         harness.addWorker("worker-retry", "us");
         Task task = harness.createBatchTask("redispatch-after-expiry", List.of(harness.item("retry")), 1, 1);
-        assertTrue(harness.taskManager.approveTask(task.getTid()));
+        assertTrue(harness.taskManager.approveTask(task.getTid()).accepted());
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
         ActiveLeaseRepairCandidate firstLease = harness.activeLeases(task.getTid()).getFirst();
@@ -62,7 +62,7 @@ class TaskRedispatchCompetitionTest {
         TaskSchedulingTestHarness harness = new TaskSchedulingTestHarness();
         harness.addWorker("worker-retry", "us");
         Task task = harness.createBatchTask("stale-result-after-redispatch", List.of(harness.item("retry")), 1, 1);
-        assertTrue(harness.taskManager.approveTask(task.getTid()));
+        assertTrue(harness.taskManager.approveTask(task.getTid()).accepted());
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
         ActiveLeaseRepairCandidate firstLease = harness.activeLeases(task.getTid()).getFirst();
@@ -124,8 +124,8 @@ class TaskRedispatchCompetitionTest {
                 1,
                 1
         );
-        assertTrue(harness.taskManager.approveTask(firstTask.getTid()));
-        assertTrue(harness.taskManager.approveTask(secondTask.getTid()));
+        assertTrue(harness.taskManager.approveTask(firstTask.getTid()).accepted());
+        assertTrue(harness.taskManager.approveTask(secondTask.getTid()).accepted());
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(firstTask.getTid())));
         assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(secondTask.getTid())));
@@ -157,7 +157,7 @@ class TaskRedispatchCompetitionTest {
                 0,
                 1
         );
-        assertTrue(harness.taskManager.approveTask(task.getTid()));
+        assertTrue(harness.taskManager.approveTask(task.getTid()).accepted());
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
         ActiveLeaseRepairCandidate firstLease = harness.activeLeases(task.getTid()).getFirst();
@@ -206,8 +206,8 @@ class TaskRedispatchCompetitionTest {
                 0,
                 1
         );
-        assertTrue(harness.taskManager.approveTask(retryingTask.getTid()));
-        assertTrue(harness.taskManager.approveTask(competingTask.getTid()));
+        assertTrue(harness.taskManager.approveTask(retryingTask.getTid()).accepted());
+        assertTrue(harness.taskManager.approveTask(competingTask.getTid()).accepted());
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(retryingTask.getTid())));
         ActiveLeaseRepairCandidate firstLease = harness.activeLeases(retryingTask.getTid()).getFirst();
@@ -263,8 +263,8 @@ class TaskRedispatchCompetitionTest {
                 0,
                 1
         );
-        assertTrue(harness.taskManager.approveTask(exhaustedTask.getTid()));
-        assertTrue(harness.taskManager.approveTask(waitingTask.getTid()));
+        assertTrue(harness.taskManager.approveTask(exhaustedTask.getTid()).accepted());
+        assertTrue(harness.taskManager.approveTask(waitingTask.getTid()).accepted());
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(exhaustedTask.getTid())));
         assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(waitingTask.getTid())));

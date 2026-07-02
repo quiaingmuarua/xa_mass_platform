@@ -40,6 +40,8 @@ class EngineStarterSurfaceInventoryGuardTest {
         assertFalse(approvedSurfaceSection.contains("getConfig()"));
         assertFalse(approvedSurfaceSection.contains("TaskCommandService"));
         assertFalse(approvedSurfaceSection.contains("TaskQueryService"));
+        assertFalse(approvedSurfaceSection.contains("TaskCommandPort"));
+        assertFalse(approvedSurfaceSection.contains("TaskQueryPort"));
         assertFalse(approvedSurfaceSection.contains("TaskEventService"));
     }
 }

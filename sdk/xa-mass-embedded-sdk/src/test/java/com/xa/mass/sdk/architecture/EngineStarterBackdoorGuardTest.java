@@ -2,9 +2,12 @@ package com.xa.mass.sdk.architecture;
 
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class EngineStarterBackdoorGuardTest {
 
@@ -72,11 +75,9 @@ class EngineStarterBackdoorGuardTest {
     }
 
     @Test
-    void sdkTaskDiagnosticsDoesNotExposeLegacyRuntimeDtos() {
+    void sdkTaskReadsDoNotExposeLegacyRuntimeDtos() {
         String source = EngineCallerSurfaceGuardSupport.read(
-                "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/TaskDiagnosticOperations.java");
-        String defaultOperations = EngineCallerSurfaceGuardSupport.read(
-                "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/DefaultTaskDiagnosticOperations.java");
+                "sdk/xa-mass-embedded-sdk-api/src/main/java/com/xa/mass/sdk/TaskReadOperations.java");
         String massApplication = EngineCallerSurfaceGuardSupport.read(
                 "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/MassApplication.java");
         String massEngine = EngineCallerSurfaceGuardSupport.read(
@@ -86,15 +87,13 @@ class EngineStarterBackdoorGuardTest {
         Pattern legacyDiagnosticDto = Pattern.compile("\\b(?:TaskWorkStats|ActiveLeaseRecord)\\b");
 
         assertFalse(source.contains("com.xa.mass.runtime.api"),
-                "TaskDiagnosticOperations must expose SDK-owned snapshots, not mass-runtime-api DTOs");
+                "TaskReadOperations must expose SDK-owned snapshots, not mass-runtime-api DTOs");
         assertFalse(Pattern.compile("\\bTaskWorkStats\\s+getTaskWorkStats\\s*\\(").matcher(source).find(),
-                "TaskDiagnosticOperations must not return legacy TaskWorkStats");
+                "TaskReadOperations must not return legacy TaskWorkStats");
         assertFalse(Pattern.compile("\\bList\\s*<\\s*ActiveLeaseRecord\\s*>\\s+getActiveLeases\\s*\\(")
                         .matcher(source)
                         .find(),
-                "TaskDiagnosticOperations must not return legacy ActiveLeaseRecord");
-        assertFalse(legacyDiagnosticDto.matcher(defaultOperations).find(),
-                "DefaultTaskDiagnosticOperations must consume SDK-owned diagnostic snapshots, not legacy runtime DTOs");
+                "TaskReadOperations must not return legacy ActiveLeaseRecord");
         assertFalse(legacyDiagnosticDto.matcher(massApplication).find(),
                 "MassApplication must expose SDK-owned diagnostic snapshots across the embedded SDK boundary");
         assertFalse(legacyDiagnosticDto.matcher(massEngine).find(),
@@ -124,5 +123,82 @@ class EngineStarterBackdoorGuardTest {
                 "MassEngine must expose SDK-owned result snapshots across the engine-starter boundary");
         assertFalse(legacyResultDto.matcher(engineConfig).find(),
                 "EngineConfig must expose SDK-owned result snapshots across starter-facing result reads");
+    }
+
+    @Test
+    void massApplicationExposesOnlyUnifiedTaskReadSurface() {
+        String massApplication = EngineCallerSurfaceGuardSupport.read(
+                "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/MassApplication.java");
+        String massEngine = EngineCallerSurfaceGuardSupport.read(
+                "xa-mass-engine-starter/src/main/java/com/xa/mass/starter/MassEngine.java");
+        String sdkFacade = EngineCallerSurfaceGuardSupport.read(
+                "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/MassSdkApplication.java");
+        String engineConfig = EngineCallerSurfaceGuardSupport.read(
+                "xa-mass-engine-starter/src/main/java/com/xa/mass/starter/config/EngineConfig.java");
+
+        assertTrue(Pattern.compile("\\bpublic\\s+TaskReadOperations\\s+taskReads\\s*\\(")
+                        .matcher(massApplication)
+                        .find(),
+                "MassApplication must expose task reads through the unified TaskReadOperations entry");
+        assertTrue(Pattern.compile("\\bpublic\\s+TaskReadOperations\\s+getTaskReadOperations\\s*\\(")
+                        .matcher(engineConfig)
+                        .find(),
+                "EngineConfig must expose one unified task read entry for starter assembly");
+        assertFalse(Pattern.compile("\\bpublic\\s+TaskShellStore\\s+getTaskShellStore\\s*\\(")
+                        .matcher(engineConfig)
+                        .find(),
+                "EngineConfig must not expose raw task shell storage as a starter-facing read surface");
+        for (String forbiddenPublicRead : java.util.List.of(
+                "Task getTask",
+                "List<Task> listTasksPaged",
+                "List<Task> getTasksByStatus",
+                "TaskResultWindowSnapshot readTaskResults",
+                "TaskWorkStatsSnapshot getTaskWorkStats",
+                "List<TaskActiveLeaseSnapshot> getActiveLeases",
+                "Optional<TaskWorkFinalSnapshot> getVisibleTaskResultByMessageId",
+                "long countVisibleTaskResults",
+                "TaskStateValidationResult validateTaskState",
+                "TaskStateResolutionResult resolveTaskState",
+                "TaskStateValidationSnapshot validateTaskState",
+                "TaskStateResolutionSnapshot resolveTaskState")) {
+            Pattern publicRawRead = Pattern.compile("\\bpublic\\s+" + Pattern.quote(forbiddenPublicRead) + "\\s*\\(");
+            assertFalse(publicRawRead.matcher(massApplication).find(),
+                    "MassApplication must not re-expose raw task read method: " + forbiddenPublicRead);
+            assertFalse(publicRawRead.matcher(massEngine).find(),
+                    "MassEngine must not re-expose raw task read method: " + forbiddenPublicRead);
+            assertFalse(publicRawRead.matcher(engineConfig).find(),
+                    "EngineConfig must not re-expose raw task read method: " + forbiddenPublicRead);
+        }
+
+        Pattern rawDelegateRead = Pattern.compile(
+                "\\bdelegate\\.(?:getTask|listTasksPaged|getTasksByStatus|readTaskResults|"
+                        + "getVisibleTaskResultByMessageId|countVisibleTaskResults|"
+                        + "validateTaskState|resolveTaskState|getTaskWorkStats|getActiveLeases)\\s*\\(");
+        assertFalse(rawDelegateRead.matcher(sdkFacade).find(),
+                "MassSdkApplication task reads must route through TaskReadOperations, not MassApplication raw reads");
+    }
+
+    @Test
+    void unifiedTaskReadSurfaceLivesInSdkApiAndStarterImplementationOnly() {
+        Path repo = EngineCallerSurfaceGuardSupport.repositoryRoot();
+        Path apiSurface = repo.resolve(
+                "sdk/xa-mass-embedded-sdk-api/src/main/java/com/xa/mass/sdk/TaskReadOperations.java");
+        Path oldEmbeddedSurface = repo.resolve(
+                "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/TaskReadOperations.java");
+        Path oldStarterImplementation = repo.resolve(
+                "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/StarterTaskReadOperations.java");
+        String engineReadImplementation = EngineCallerSurfaceGuardSupport.read(
+                "xa-mass-engine-starter/src/main/java/com/xa/mass/starter/config/EngineTaskReadOperations.java");
+
+        assertTrue(Files.isRegularFile(apiSurface),
+                "TaskReadOperations must be an SDK API contract, not an embedded-sdk implementation-local interface");
+        assertFalse(Files.exists(oldEmbeddedSurface),
+                "embedded-sdk main must not keep its own TaskReadOperations interface");
+        assertFalse(Files.exists(oldStarterImplementation),
+                "StarterTaskReadOperations must stay deleted; engine-starter owns the read implementation");
+        assertTrue(engineReadImplementation.contains("final class EngineTaskReadOperations implements TaskReadOperations"),
+                "EngineTaskReadOperations must remain the package-private engine-starter implementation");
+        assertFalse(engineReadImplementation.contains("public final class EngineTaskReadOperations"),
+                "EngineTaskReadOperations must not become a public starter-facing surface");
     }
 }

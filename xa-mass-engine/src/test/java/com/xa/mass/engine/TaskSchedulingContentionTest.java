@@ -166,7 +166,7 @@ class TaskSchedulingContentionTest {
                 0,
                 1
         );
-        assertTrue(harness.taskManager.approveTask(interactiveTask.getTid()));
+        assertTrue(harness.taskManager.approveTask(interactiveTask.getTid()).accepted());
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(bulkTask.getTid())));
         assertEquals(DefaultWorkerBudgetPolicy.DEFAULT_BULK_MAX_WORKERS, harness.activeLeases(bulkTask.getTid()).size());
@@ -203,7 +203,7 @@ class TaskSchedulingContentionTest {
                 0,
                 1
         );
-        assertTrue(singleItemBatch.taskManager.approveTask(batchSizeOneTask.getTid()));
+        assertTrue(singleItemBatch.taskManager.approveTask(batchSizeOneTask.getTid()).accepted());
 
         assertTrue(singleItemBatch.assignListener.onTaskAssign(
                 singleItemBatch.taskManager.getTask(batchSizeOneTask.getTid())));
@@ -230,7 +230,7 @@ class TaskSchedulingContentionTest {
                 0,
                 2
         );
-        assertTrue(twoItemBatch.taskManager.approveTask(batchSizeTwoTask.getTid()));
+        assertTrue(twoItemBatch.taskManager.approveTask(batchSizeTwoTask.getTid()).accepted());
 
         assertTrue(twoItemBatch.assignListener.onTaskAssign(
                 twoItemBatch.taskManager.getTask(batchSizeTwoTask.getTid())));
@@ -251,9 +251,9 @@ class TaskSchedulingContentionTest {
         Task blockedTask = harness.createReadyBatchTask("blocked-gate", List.of(harness.item("blocked")));
         Task terminalTask = harness.createReadyBatchTask("terminal-gate", List.of(harness.item("terminal")));
 
-        assertTrue(harness.taskManager.pauseTask(pausedTask.getTid()));
-        assertTrue(harness.taskManager.blockTask(blockedTask.getTid()));
-        assertTrue(harness.taskManager.cancelTask(terminalTask.getTid()));
+        assertTrue(harness.taskManager.pauseTask(pausedTask.getTid()).accepted());
+        assertTrue(harness.taskManager.blockTask(blockedTask.getTid()).accepted());
+        assertTrue(harness.taskManager.cancelTask(terminalTask.getTid()).accepted());
 
         assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(pausedTask.getTid())));
         assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(blockedTask.getTid())));
@@ -279,7 +279,7 @@ class TaskSchedulingContentionTest {
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(runningTask.getTid())));
         assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(waitingTask.getTid())));
-        assertTrue(harness.taskManager.pauseTask(waitingTask.getTid()));
+        assertTrue(harness.taskManager.pauseTask(waitingTask.getTid()).accepted());
         ActiveLeaseRepairCandidate runningLease = harness.activeLeases(runningTask.getTid()).getFirst();
 
         assertTrue(harness.taskRuntimeServingLane.ingestTaskResult(
@@ -298,7 +298,7 @@ class TaskSchedulingContentionTest {
         assertEquals(1, harness.stats(waitingTask.getTid()).readyCount());
         assertTrue(harness.activeLeases(waitingTask.getTid()).isEmpty());
 
-        assertTrue(harness.taskManager.resumeTask(waitingTask.getTid()));
+        assertTrue(harness.taskManager.resumeTask(waitingTask.getTid()).accepted());
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(waitingTask.getTid())));
 
         List<ActiveLeaseRepairCandidate> waitingLeases = harness.activeLeases(waitingTask.getTid());
@@ -318,7 +318,7 @@ class TaskSchedulingContentionTest {
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(runningTask.getTid())));
         assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(blockedTask.getTid())));
         assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(nextReadyTask.getTid())));
-        assertTrue(harness.taskManager.blockTask(blockedTask.getTid()));
+        assertTrue(harness.taskManager.blockTask(blockedTask.getTid()).accepted());
         ActiveLeaseRepairCandidate runningLease = harness.activeLeases(runningTask.getTid()).getFirst();
 
         assertTrue(harness.taskRuntimeServingLane.ingestTaskResult(
@@ -358,8 +358,8 @@ class TaskSchedulingContentionTest {
                 0
         );
         task.getExecutionSpec().setForeground(false);
-        assertTrue(harness.taskManager.updateTask(task));
-        assertTrue(harness.taskManager.approveTask(task.getTid()));
+        assertTrue(harness.taskManager.persistTaskShell(task));
+        assertTrue(harness.taskManager.approveTask(task.getTid()).accepted());
         return harness.taskManager.getTask(task.getTid());
     }
 }

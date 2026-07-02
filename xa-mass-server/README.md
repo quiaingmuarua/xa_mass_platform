@@ -59,7 +59,7 @@ What this module does not own:
 - `TaskApiController` records accepted append items through
   `TaskReviewReadModelWriter`; server startup listeners record attempt-closed
   and stable-final work notifications into the same read model
-- public result reads still use SDK `TaskResultQueryOperations` backed by
+- public result reads use SDK `TaskReadOperations` backed by
   task-runtime stable-final rows; review read-model rows must not source
   `/results`
 
@@ -605,7 +605,7 @@ What this module proves:
 - mainline boundary behavior for `project / submitter / worker / auth/IAM`
 - full-chain task shell -> item append -> dispatch -> result ingest ->
   convergence behavior
-- public result reads and archive endpoints use SDK `TaskResultQueryOperations`
+- public result reads and archive endpoints use SDK `TaskReadOperations`
   backed by task-runtime stable-final rows; controllers must not read
   server-local review rows or retired projection rows for result truth
 - representative scheduling scenarios on the real host path, not the full

@@ -220,8 +220,8 @@ Start with these classes before changing behavior:
 
 - `src/main/java/com/xa/mass/engine/TaskManager.java`
 - `src/main/java/com/xa/mass/engine/TaskConcurrencyStrategy.java` (interface) / `LocalTaskConcurrencyCoordinator.java` (default impl)
-- `src/main/java/com/xa/mass/engine/TaskCommandService.java`
-- `src/main/java/com/xa/mass/engine/TaskQueryService.java`
+- `src/main/java/com/xa/mass/engine/TaskCommandPort.java`
+- `src/main/java/com/xa/mass/engine/TaskQueryPort.java`
 - `../xa-mass-worker-runtime/src/main/java/com/xa/mass/worker/runtime/WorkerManager.java`
   only when you are intentionally working on worker-runtime owner assembly
 - `src/main/java/com/xa/mass/engine/rules/MatchingRuleSetProvider.java`
@@ -290,9 +290,9 @@ Keep these facts fixed unless the owning global baselines change:
   `xa-mass-task-runtime` ports for append, scheduler discovery, claim, lease,
   retry/finality, final-result reads, and progress; do not reintroduce old
   infra runtime stores or pass-through bridges
-- `TaskCommandPort` and `TaskQueryPort` are the narrow backing seams for the
-  shell-facing command/query services; keep those services off raw
-  `TaskManager` growth
+- `TaskCommandPort` and `TaskQueryPort` are narrow engine-internal backing
+  seams for shell-facing command/query services; external SDK/server task
+  reads converge through SDK `TaskReadOperations`, not through `TaskQueryPort`
 - `TaskResultIngestPort` is the narrow backing seam for transport-facing
   result ingress; keep callback acceptance off the raw `TaskManager` facade
 - `TaskAssignWorker` owns session/interactive assignment-signal admission;
@@ -347,7 +347,7 @@ Keep these facts fixed unless the owning global baselines change:
   batch redispatch owner anymore
 - bounded work/message compatibility residue is not the hot-path runtime
   owner
-- `TaskQueryService` is the default task aggregate/state query surface; do not
+- `TaskQueryPort` is the default task aggregate/state query surface; do not
   grow message/attempt residue reads back into it
 - `TaskStateValidator` owns runtime aggregate validation only; scan-heavy
   compatibility projection audit is no longer part of the engine kernel
@@ -379,8 +379,9 @@ Keep these facts fixed unless the owning global baselines change:
 
 Repo-level mainline surfaces:
 
-- shell/admin mutation flows use `TaskCommandService`
-- bounded inspection flows use `TaskQueryService`
+- shell/admin mutation flows use `TaskCommandPort`
+- bounded engine-internal inspection flows use `TaskQueryPort`; external
+  SDK/server read and diagnostic snapshots use SDK `TaskReadOperations`
 - production engine mainline does not carry a message/attempt projection query
   owner; review/export read models stay server-local
 - transport/runtime result ingress uses `TaskResultIngestFacade`
@@ -397,7 +398,7 @@ Repo-level mainline surfaces:
 - worker-runtime reachability diagnostics are point reads from the embedded
   presence projection; dispatch eligibility must not read transport endpoint
   leases as worker lifecycle truth
-- task-create input consumed by `TaskCommandService` now lives in the neutral
+- task-create input consumed by `TaskCommandPort` now lives in the neutral
   base model layer; cross-module create flows should not import engine-owned
   DTO packages just to submit tasks
 - listeners, watchdogs, and startup recovery should depend on narrow ports, not

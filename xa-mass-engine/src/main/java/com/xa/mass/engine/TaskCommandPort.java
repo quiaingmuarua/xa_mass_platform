@@ -1,11 +1,10 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.enums.task.TaskTerminalReason;
-import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
-import com.xa.mass.engine.model.TaskAppendReceipt;
+import com.xa.mass.engine.model.TaskAppendOutcome;
+import com.xa.mass.engine.model.TaskCommandOutcome;
 import com.xa.mass.engine.model.TaskDefinitionPatch;
-import com.xa.mass.engine.model.TaskResumeResult;
 
 import java.util.List;
 import java.util.Map;
@@ -15,33 +14,27 @@ import java.util.Map;
  */
 public interface TaskCommandPort {
 
-    Task createTaskShell(TaskShellCreateRequestDto dto);
+    TaskCommandOutcome createTaskShell(TaskShellCreateRequestDto dto);
 
-    boolean updateTask(Task task);
+    TaskCommandOutcome patchTaskDefinition(String taskId, TaskDefinitionPatch patch);
 
-    boolean patchTaskDefinition(String taskId, TaskDefinitionPatch patch);
+    TaskCommandOutcome deleteTask(String taskId);
 
-    boolean deleteTask(String taskId);
+    TaskCommandOutcome approveTask(String taskId);
 
-    boolean approveTask(String taskId);
+    TaskCommandOutcome rejectTask(String taskId);
 
-    boolean rejectTask(String taskId);
+    TaskCommandOutcome blockTask(String taskId);
 
-    boolean blockTask(String taskId);
+    TaskCommandOutcome pauseTask(String taskId);
 
-    boolean pauseTask(String taskId);
+    TaskCommandOutcome resumeTask(String taskId);
 
-    TaskResumeResult resumeTaskDetailed(String taskId);
+    TaskCommandOutcome cancelTask(String taskId);
 
-    boolean resumeTask(String taskId);
+    TaskCommandOutcome terminateTask(String taskId, TaskTerminalReason reason);
 
-    boolean cancelTask(String taskId);
+    TaskAppendOutcome appendTaskItems(String taskId, List<Map<String, Object>> items);
 
-    boolean terminateTask(String taskId, TaskTerminalReason reason);
-
-    TaskAppendReceipt appendTaskItemsWithReceipt(String taskId, List<Map<String, Object>> items);
-
-    int appendTaskItems(String taskId, List<Map<String, Object>> items);
-
-    boolean sealTask(String taskId);
+    TaskCommandOutcome sealTask(String taskId);
 }

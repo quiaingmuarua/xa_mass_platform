@@ -24,10 +24,10 @@ class TaskRuntimeContractShapeTest {
     }
 
     @Test
-    void runtimeFrameValuesDefensivelyCopyPayloads() {
+    void appendItemInputDefensivelyCopiesPayloads() {
         var payload = new HashMap<String, Object>();
         payload.put("value", 1);
-        var frame = new BacklogFrameV1("message-1", "demo.event", payload, "payload-ref");
+        var frame = new AppendItemInput("message-1", "demo.event", payload, "payload-ref");
         payload.put("value", 2);
 
         assertThat(frame.payloadJson()).containsEntry("value", 1);

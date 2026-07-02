@@ -1,23 +1,19 @@
 package com.xa.mass.task.runtime.redis;
 
 import com.xa.mass.task.runtime.ActiveTaskWorkSnapshot;
+import com.xa.mass.task.runtime.ActiveLeaseRepairCandidate;
 import com.xa.mass.task.runtime.AppendBatchOutcome;
-import com.xa.mass.task.runtime.BacklogFrameV1;
+import com.xa.mass.task.runtime.AppendItemInput;
 import com.xa.mass.task.runtime.ClaimReadyOutcome;
-import com.xa.mass.task.runtime.DiscardTaskRuntimeOutcome;
-import com.xa.mass.task.runtime.DiscardTaskWorkOutcome;
 import com.xa.mass.task.runtime.FinalResultReadRequest;
 import com.xa.mass.task.runtime.FinalResultRow;
 import com.xa.mass.task.runtime.FinalResultWindow;
-import com.xa.mass.task.runtime.LeaseRepairBatch;
 import com.xa.mass.task.runtime.MessageFinalityOutcome;
 import com.xa.mass.task.runtime.ResultCorrelationSnapshot;
-import com.xa.mass.task.runtime.RetryPromotionBatch;
 import com.xa.mass.task.runtime.RuntimeEpoch;
 import com.xa.mass.task.runtime.RuntimeResultFact;
 import com.xa.mass.task.runtime.ScoreCandidate;
 import com.xa.mass.task.runtime.ScoreCandidateBatch;
-import com.xa.mass.task.runtime.TaskCloseAttemptOutcome;
 import com.xa.mass.task.runtime.TaskRuntimeConvergencePort;
 import com.xa.mass.task.runtime.TaskRuntimeMetaV1;
 import com.xa.mass.task.runtime.TaskRuntimeProgressSnapshot;
@@ -60,7 +56,7 @@ public final class RedisTaskRuntime implements TaskRuntimeWorkPort,
     }
 
     @Override
-    public AppendBatchOutcome appendBacklog(String taskId, List<BacklogFrameV1> frames, int maxBatchSize) {
+    public AppendBatchOutcome appendBacklog(String taskId, List<AppendItemInput> frames, int maxBatchSize) {
         return delegate.appendBacklog(taskId, frames, maxBatchSize);
     }
 
@@ -99,12 +95,12 @@ public final class RedisTaskRuntime implements TaskRuntimeWorkPort,
     }
 
     @Override
-    public RetryPromotionBatch promoteDueRetries(String laneKey, long nowMillis, int taskLimit, int itemLimit) {
+    public List<String> promoteDueRetries(String laneKey, long nowMillis, int taskLimit, int itemLimit) {
         return delegate.promoteDueRetries(laneKey, nowMillis, taskLimit, itemLimit);
     }
 
     @Override
-    public LeaseRepairBatch scanExpiredLeases(String laneKey, long nowMillis, int taskLimit, int itemLimit) {
+    public List<ActiveLeaseRepairCandidate> scanExpiredLeases(String laneKey, long nowMillis, int taskLimit, int itemLimit) {
         return delegate.scanExpiredLeases(laneKey, nowMillis, taskLimit, itemLimit);
     }
 
@@ -114,18 +110,18 @@ public final class RedisTaskRuntime implements TaskRuntimeWorkPort,
     }
 
     @Override
-    public TaskCloseAttemptOutcome closeIfDrained(String taskId, String laneKey, RuntimeEpoch epoch) {
+    public boolean closeIfDrained(String taskId, String laneKey, RuntimeEpoch epoch) {
         return delegate.closeIfDrained(taskId, laneKey, epoch);
     }
 
     @Override
-    public DiscardTaskRuntimeOutcome discardRuntime(String taskId, String laneKey, RuntimeEpoch epoch, String reason) {
-        return delegate.discardRuntime(taskId, laneKey, epoch, reason);
+    public void discardRuntime(String taskId, String laneKey, RuntimeEpoch epoch, String reason) {
+        delegate.discardRuntime(taskId, laneKey, epoch, reason);
     }
 
     @Override
-    public DiscardTaskWorkOutcome discardWork(String taskId, RuntimeEpoch epoch, String reason) {
-        return delegate.discardWork(taskId, epoch, reason);
+    public void discardWork(String taskId, RuntimeEpoch epoch, String reason) {
+        delegate.discardWork(taskId, epoch, reason);
     }
 
     @Override

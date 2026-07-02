@@ -91,7 +91,7 @@ public abstract class TaskRuntimePortContractTest {
     void claimPreservesHandlerAndPayloadReferenceCarrierFields() {
         var runtime = createRuntime();
         runtime.putRuntimeMeta(openMeta("task-1", 1L));
-        var append = runtime.appendBacklog("task-1", List.of(new BacklogFrameV1(
+        var append = runtime.appendBacklog("task-1", List.of(new AppendItemInput(
                 "message-1",
                 "demo.event",
                 Map.of("value", 1),
@@ -250,7 +250,7 @@ public abstract class TaskRuntimePortContractTest {
 
         var expired = runtime.scanExpiredLeases(LANE, 1_001L, 10, 10);
 
-        assertThat(expired.candidates())
+        assertThat(expired)
                 .extracting(ActiveLeaseRepairCandidate::messageId)
                 .containsExactly("message-1");
     }
@@ -263,11 +263,10 @@ public abstract class TaskRuntimePortContractTest {
         var item = claimOne(runtime, "task-1", "worker-1", 1L, 1_000L).claimedItems().getFirst();
         runtime.applyResult(resultFact(item, true, 500L));
 
-        var discarded = runtime.discardRuntime("task-1", LANE, RuntimeEpoch.of("task-1", 1L), "delete");
+        runtime.discardRuntime("task-1", LANE, RuntimeEpoch.of("task-1", 1L), "delete");
 
-        assertThat(discarded.discardedReadyItems()).isGreaterThanOrEqualTo(1);
-        assertThat(discarded.discardedFinalResults()).isGreaterThanOrEqualTo(1);
         assertThat(runtime.readFinalResults(new FinalResultReadRequest("task-1", 0, 10)).rows()).isEmpty();
+        assertThat(runtime.progressSnapshot("task-1").totalCount()).isZero();
         assertThat(runtime.discoverSchedulable(LANE, DUE, 10).candidates()).isEmpty();
     }
 
@@ -281,10 +280,8 @@ public abstract class TaskRuntimePortContractTest {
         claimOne(runtime, "task-1", "worker-1", 1L, 1_000L);
         appendOne(runtime, "task-1", "message-ready", 1L);
 
-        var discarded = runtime.discardWork("task-1", RuntimeEpoch.of("task-1", 1L), "terminate");
+        runtime.discardWork("task-1", RuntimeEpoch.of("task-1", 1L), "terminate");
 
-        assertThat(discarded.discardedReadyItems()).isGreaterThanOrEqualTo(1);
-        assertThat(discarded.discardedActiveItems()).isGreaterThanOrEqualTo(1);
         assertThat(runtime.readFinalResults(new FinalResultReadRequest("task-1", 0, 10)).rows())
                 .extracting(FinalResultRow::messageId, FinalResultRow::workerId)
                 .containsExactly(tuple("message-final", "worker-1"));
@@ -337,8 +334,8 @@ public abstract class TaskRuntimePortContractTest {
                 observedAtMillis);
     }
 
-    private static BacklogFrameV1 frame(String messageId, Map<String, Object> payload) {
-        return new BacklogFrameV1(messageId, "", payload, null);
+    private static AppendItemInput frame(String messageId, Map<String, Object> payload) {
+        return new AppendItemInput(messageId, "", payload, null);
     }
 
     private static TaskRuntimeMetaV1 openMeta(String taskId, long epoch) {

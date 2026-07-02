@@ -3,7 +3,7 @@ package com.xa.mass.task.runtime.starter;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.task.runtime.AppendBatchStatus;
-import com.xa.mass.task.runtime.BacklogFrameV1;
+import com.xa.mass.task.runtime.AppendItemInput;
 import com.xa.mass.task.runtime.RuntimeEpoch;
 import com.xa.mass.task.runtime.RuntimeGate;
 import com.xa.mass.task.runtime.SchedulerEligibilityPolicy;
@@ -30,7 +30,7 @@ class TaskRuntimeNonServingAppendToClaimProofTest {
 
             var append = runtime.appendBacklog(
                     "task-1",
-                    List.of(new BacklogFrameV1("message-1", null, Map.of("payload", "value"), null)),
+                    List.of(new AppendItemInput("message-1", null, Map.of("payload", "value"), null)),
                     10);
 
             assertThat(append.status()).isEqualTo(AppendBatchStatus.ALL_ACCEPTED);

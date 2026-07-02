@@ -37,7 +37,7 @@ class TaskSchedulingGateAndTargetingTest {
                 0,
                 1
         );
-        assertTrue(harness.taskManager.approveTask(task.getTid()));
+        assertTrue(harness.taskManager.approveTask(task.getTid()).accepted());
 
         assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
 
@@ -65,7 +65,7 @@ class TaskSchedulingGateAndTargetingTest {
                 ),
                 1
         );
-        assertTrue(harness.taskManager.approveTask(task.getTid()));
+        assertTrue(harness.taskManager.approveTask(task.getTid()).accepted());
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
 
@@ -92,7 +92,7 @@ class TaskSchedulingGateAndTargetingTest {
                 Map.of(TaskSharedConfig.ROUTING_CODE, "us"),
                 2
         );
-        assertTrue(harness.taskManager.approveTask(task.getTid()));
+        assertTrue(harness.taskManager.approveTask(task.getTid()).accepted());
 
         assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
 
@@ -140,8 +140,8 @@ class TaskSchedulingGateAndTargetingTest {
                 Map.of(TaskSharedConfig.ROUTING_CODE, "us"),
                 1
         );
-        assertTrue(harness.taskManager.approveTask(gatedTask.getTid()));
-        assertTrue(harness.taskManager.approveTask(competingTask.getTid()));
+        assertTrue(harness.taskManager.approveTask(gatedTask.getTid()).accepted());
+        assertTrue(harness.taskManager.approveTask(competingTask.getTid()).accepted());
 
         assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(gatedTask.getTid())));
 
@@ -194,7 +194,7 @@ class TaskSchedulingGateAndTargetingTest {
                 ),
                 1
         );
-        assertTrue(harness.taskManager.approveTask(task.getTid()));
+        assertTrue(harness.taskManager.approveTask(task.getTid()).accepted());
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
 
@@ -222,7 +222,7 @@ class TaskSchedulingGateAndTargetingTest {
                 ),
                 1
         );
-        assertTrue(harness.taskManager.approveTask(runningTask.getTid()));
+        assertTrue(harness.taskManager.approveTask(runningTask.getTid()).accepted());
         Task waitingTask = harness.createBatchTask(
                 "target-worker-id-waiting",
                 List.of(harness.item("waiting")),
@@ -234,7 +234,7 @@ class TaskSchedulingGateAndTargetingTest {
                 ),
                 1
         );
-        assertTrue(harness.taskManager.approveTask(waitingTask.getTid()));
+        assertTrue(harness.taskManager.approveTask(waitingTask.getTid()).accepted());
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(runningTask.getTid())));
         ActiveLeaseRepairCandidate runningLease = harness.activeLeases(runningTask.getTid()).getFirst();

@@ -20,7 +20,6 @@ import com.xa.mass.engine.strategy.DefaultSchedulingPlaneResolver;
 import com.xa.mass.engine.TraceEventLogger;
 import com.xa.mass.task.runtime.ClaimLeasePolicy;
 import com.xa.mass.task.runtime.ClaimedWorkItem;
-import com.xa.mass.task.runtime.RuntimeEpoch;
 import com.xa.mass.task.runtime.WorkerReservationEvidence;
 import com.xa.mass.worker.runtime.selection.SelectedWorkerEvidence;
 import com.xa.mass.worker.runtime.selection.SelectedWorkerHandle;
@@ -209,8 +208,7 @@ public class SimpleTaskDispatchBinder implements TaskDispatchBinder {
                 task,
                 taskPolicy,
                 resolvedWorkerCount,
-                Math.max(1L, workLeaseSecondsSupplier.getAsLong()),
-                RuntimeEpoch.of(task.getTid(), 1L)
+                Math.max(1L, workLeaseSecondsSupplier.getAsLong())
         );
         int perWorkerBatchLimit = perWorkerBatchLimit(claimPolicy, resolvedWorkerCount);
         List<TaskDispatchBinding> dispatchBindings = new ArrayList<>();

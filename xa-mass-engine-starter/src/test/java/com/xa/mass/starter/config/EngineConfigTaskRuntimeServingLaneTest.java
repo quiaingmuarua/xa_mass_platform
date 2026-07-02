@@ -10,11 +10,10 @@ import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
-import com.xa.mass.engine.TaskCommandService;
-import com.xa.mass.engine.TaskQueryService;
+import com.xa.mass.engine.TaskCommandPort;
+import com.xa.mass.engine.TaskQueryPort;
 import com.xa.mass.engine.TaskRuntimeServingLane;
 import com.xa.mass.task.runtime.ClaimLeasePolicy;
-import com.xa.mass.task.runtime.RuntimeEpoch;
 import com.xa.mass.task.runtime.WorkerReservationEvidence;
 import com.xa.mass.task.runtime.starter.TaskRuntimeBackendKind;
 import io.lettuce.core.RedisClient;
@@ -158,17 +157,20 @@ class EngineConfigTaskRuntimeServingLaneTest {
     }
 
     private static void assertAppendClaimResultPath(EngineConfig config, String sourceRef) {
-        TaskCommandService commands = config.getTaskCommandService();
-        TaskQueryService queries = config.getTaskQueryService();
-        Task task = commands.createTaskShell(batchShell(sourceRef));
-        assertThat(commands.approveTask(task.getTid())).isTrue();
+        TaskCommandPort commands = config.taskCommandPort();
+        TaskQueryPort queries = config.taskQueryPort();
+        var create = commands.createTaskShell(batchShell(sourceRef));
+        assertThat(create.accepted()).isTrue();
+        Task task = queries.getTask(create.taskId());
+        assertThat(task).isNotNull();
+        assertThat(commands.approveTask(task.getTid()).accepted()).isTrue();
 
-        var receipt = commands.appendTaskItemsWithReceipt(task.getTid(), List.of(Map.of(
+        var receipt = commands.appendTaskItems(task.getTid(), List.of(Map.of(
                 "eventCode", "demo.event",
                 "payloadRef", "payload-ref-1",
                 "value", 1)));
-        assertThat(receipt.added()).isEqualTo(1);
-        assertThat(commands.sealTask(task.getTid())).isTrue();
+        assertThat(receipt.acceptedCount()).isEqualTo(1);
+        assertThat(commands.sealTask(task.getTid()).accepted()).isTrue();
 
         assertThat(config.getTaskAssignmentRuntimePort().countDispatchReadyWork(task.getTid())).isEqualTo(1);
         assertThat(config.getTaskRuntimeRecoveryPort().getRuntimeDispatchableTasks(10))
@@ -184,7 +186,7 @@ class EngineConfigTaskRuntimeServingLaneTest {
                         null,
                         "batch-1",
                         123L)),
-                new ClaimLeasePolicy(1, 30_000L, 1L, RuntimeEpoch.of(task.getTid(), 1L)));
+                new ClaimLeasePolicy(1, 30_000L));
         assertThat(claimed.claimedItems()).hasSize(1);
         var claimedItem = claimed.claimedItems().getFirst();
         assertThat(claimedItem.payloadRef()).isEqualTo("payload-ref-1");

@@ -1,31 +1,23 @@
 package com.xa.mass.starter;
 
-import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
-import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.engine.EngineRuntimeLoop;
 import com.xa.mass.engine.EngineRuntimeKernel;
-import com.xa.mass.engine.TaskCommandService;
-import com.xa.mass.engine.TaskEventService;
-import com.xa.mass.engine.TaskQueryService;
+import com.xa.mass.engine.TaskEventListenerRegistrar;
+import com.xa.mass.engine.TaskCommandPort;
 import com.xa.mass.engine.WorkerControlRuntime;
-import com.xa.mass.engine.model.TaskAppendReceipt;
+import com.xa.mass.engine.model.TaskAppendOutcome;
+import com.xa.mass.engine.model.TaskCommandOutcome;
 import com.xa.mass.engine.model.TaskDefinitionPatch;
-import com.xa.mass.engine.model.TaskResumeResult;
-import com.xa.mass.engine.model.TaskStateResolutionResult;
-import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.stage.TaskStageEvidenceResult;
 import com.xa.mass.engine.stage.TaskStageEvidenceService;
 import com.xa.mass.engine.stage.TaskStageProjection;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.kernel.spi.rule.RuleType;
-import com.xa.mass.sdk.model.TaskActiveLeaseSnapshot;
-import com.xa.mass.sdk.model.TaskResultWindowSnapshot;
-import com.xa.mass.sdk.model.TaskWorkFinalSnapshot;
-import com.xa.mass.sdk.model.TaskWorkStatsSnapshot;
+import com.xa.mass.sdk.TaskReadOperations;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.task.runtime.starter.TaskRuntimeLoop;
@@ -79,7 +71,8 @@ public class MassEngine {
     private final EngineConfig config;
     private boolean running = false;
 
-    private TaskCommandService taskCommands;
+    private TaskCommandPort taskCommands;
+    private TaskEventListenerRegistrar eventListeners;
     private EngineRuntimeKernel runtimeKernel;
     private EngineRuntimeBridge runtimeBridge;
 
@@ -103,10 +96,11 @@ public class MassEngine {
         logger.info("Starting MassEngine with {} worker threads", config.getWorkerThreads());
         try {
             runtimeBridge = config.getRuntimeBridge();
-            runtimeKernel = new EngineRuntimeKernel(config);
+            runtimeKernel = config.createRuntimeKernel();
             EngineRuntimeKernel.StartedRuntime startedRuntime = runtimeKernel.start(dispatchBatchListener);
             config.registerStarterOwnedTaskRuntimeLoops(toTaskRuntimeLoops(startedRuntime.taskRuntimeLoops()));
             taskCommands = runtimeKernel.taskCommands();
+            eventListeners = startedRuntime.eventListeners();
             runtimeBridge.start(
                     startedRuntime.eventListeners(),
                     startedRuntime.dispatchWakeupCallback());
@@ -141,6 +135,7 @@ public class MassEngine {
             }
             config.shutdownTaskRuntime();
             taskCommands = null;
+            eventListeners = null;
             running = false;
             logger.info("MassEngine stopped successfully");
         } catch (Exception e) {
@@ -148,7 +143,7 @@ public class MassEngine {
         }
     }
 
-    public Task createTaskShell(TaskShellCreateRequestDto dto) {
+    public TaskCommandOutcome createTaskShell(TaskShellCreateRequestDto dto) {
         return requireStartedTaskCommands().createTaskShell(dto);
     }
 
@@ -208,6 +203,11 @@ public class MassEngine {
         return config.getTaskResultIngestFacade();
     }
 
+    TaskReadOperations taskReads() {
+        ensureRunning();
+        return config.getTaskReadOperations();
+    }
+
     public void blockWorkerDispatch(String deliveryBucketId,
                                     String workerId,
                                     WorkerDispatchBlockSignal signal) {
@@ -254,89 +254,44 @@ public class MassEngine {
         config.getWorkerResourceDeclarationRuntime().addWorker(record);
     }
 
-    public Task getTask(String taskId) {
-        return requireStartedTaskQueries().getTask(taskId);
+    public TaskAppendOutcome appendTaskItems(String taskId, List<Map<String, Object>> items) {
+        return requireStartedTaskCommands().appendTaskItems(taskId, items);
     }
 
-    public List<Task> listTasksPaged(int offset, int limit) {
-        return config.getTaskShellStore().listTasksPaged(offset, limit);
-    }
-
-    public List<Task> getTasksByStatus(TaskStatus status) {
-        return config.getTaskShellStore().getTasksByStatus(status);
-    }
-
-    public TaskAppendReceipt appendTaskItemsWithReceipt(String taskId, List<Map<String, Object>> items) {
-        return requireStartedTaskCommands().appendTaskItemsWithReceipt(taskId, items);
-    }
-
-    public boolean patchTaskDefinition(String taskId, TaskDefinitionPatch patch) {
+    public TaskCommandOutcome patchTaskDefinition(String taskId, TaskDefinitionPatch patch) {
         return requireStartedTaskCommands().patchTaskDefinition(taskId, patch);
     }
 
-    public boolean approveTask(String taskId) {
+    public TaskCommandOutcome approveTask(String taskId) {
         return requireStartedTaskCommands().approveTask(taskId);
     }
 
-    public boolean rejectTask(String taskId) {
+    public TaskCommandOutcome rejectTask(String taskId) {
         return requireStartedTaskCommands().rejectTask(taskId);
     }
 
-    public boolean blockTask(String taskId) {
+    public TaskCommandOutcome blockTask(String taskId) {
         return requireStartedTaskCommands().blockTask(taskId);
     }
 
-    public boolean pauseTask(String taskId) {
+    public TaskCommandOutcome pauseTask(String taskId) {
         return requireStartedTaskCommands().pauseTask(taskId);
     }
 
-    public TaskResumeResult resumeTaskDetailed(String taskId) {
-        return requireStartedTaskCommands().resumeTaskDetailed(taskId);
+    public TaskCommandOutcome resumeTask(String taskId) {
+        return requireStartedTaskCommands().resumeTask(taskId);
     }
 
-    public boolean cancelTask(String taskId) {
+    public TaskCommandOutcome cancelTask(String taskId) {
         return requireStartedTaskCommands().cancelTask(taskId);
     }
 
-    public boolean terminateTask(String taskId, TaskTerminalReason reason) {
+    public TaskCommandOutcome terminateTask(String taskId, TaskTerminalReason reason) {
         return requireStartedTaskCommands().terminateTask(taskId, reason);
     }
 
-    public boolean sealTask(String taskId) {
+    public TaskCommandOutcome sealTask(String taskId) {
         return requireStartedTaskCommands().sealTask(taskId);
-    }
-
-    public TaskStateValidationResult validateTaskState(String taskId) {
-        return requireStartedTaskQueries().validateTaskState(taskId);
-    }
-
-    public TaskStateResolutionResult resolveTaskState(String taskId) {
-        return requireStartedTaskQueries().resolveTaskState(taskId);
-    }
-
-    public TaskResultWindowSnapshot readTaskResults(String taskId, long afterSeq, int limit) {
-        ensureRunning();
-        return config.readTaskResults(taskId, afterSeq, limit);
-    }
-
-    public TaskWorkStatsSnapshot getTaskWorkStats(String taskId) {
-        ensureRunning();
-        return config.getTaskWorkStats(taskId);
-    }
-
-    public List<TaskActiveLeaseSnapshot> getActiveLeases(String taskId) {
-        ensureRunning();
-        return config.getActiveLeases(taskId);
-    }
-
-    public Optional<TaskWorkFinalSnapshot> getVisibleTaskResultByMessageId(String taskId, String messageId) {
-        ensureRunning();
-        return config.getVisibleTaskResultByMessageId(taskId, messageId);
-    }
-
-    public long countVisibleTaskResults(String taskId) {
-        ensureRunning();
-        return config.countVisibleTaskResults(taskId);
     }
 
     public WorkerCapabilityReportResult applyWorkerCapabilityReport(WorkerCapabilityReport report) {
@@ -451,29 +406,19 @@ public class MassEngine {
                 )));
     }
 
-    private TaskCommandService requireStartedTaskCommands() {
+    private TaskCommandPort requireStartedTaskCommands() {
         if (taskCommands == null) {
-            throw new IllegalStateException("MassEngine has not been started; task command service is unavailable");
+            throw new IllegalStateException("MassEngine has not been started; task command port is unavailable");
         }
         return taskCommands;
     }
 
-    private TaskQueryService requireStartedTaskQueries() {
+    private TaskEventListenerRegistrar requireStartedTaskEvents() {
         ensureRunning();
-        TaskQueryService taskQueries = config.getTaskQueryService();
-        if (taskQueries == null) {
-            throw new IllegalStateException("Task query service is unavailable for this engine");
-        }
-        return taskQueries;
-    }
-
-    private TaskEventService requireStartedTaskEvents() {
-        ensureRunning();
-        TaskEventService taskEvents = config.getTaskEventService();
-        if (taskEvents == null) {
+        if (eventListeners == null) {
             throw new IllegalStateException("Task event service is unavailable for this engine");
         }
-        return taskEvents;
+        return eventListeners;
     }
 
     private WorkerControlRuntime requireStartedWorkerControlRuntime() {

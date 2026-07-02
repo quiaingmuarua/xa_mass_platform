@@ -5,26 +5,21 @@ import com.google.gson.reflect.TypeToken;
 import com.xa.mass.task.runtime.ActiveLeaseRepairCandidate;
 import com.xa.mass.task.runtime.ActiveTaskWorkSnapshot;
 import com.xa.mass.task.runtime.AppendBatchOutcome;
-import com.xa.mass.task.runtime.BacklogFrameV1;
+import com.xa.mass.task.runtime.AppendItemInput;
 import com.xa.mass.task.runtime.ClaimReadyOutcome;
 import com.xa.mass.task.runtime.ClaimedWorkItem;
-import com.xa.mass.task.runtime.DiscardTaskRuntimeOutcome;
-import com.xa.mass.task.runtime.DiscardTaskWorkOutcome;
 import com.xa.mass.task.runtime.FinalResultReadRequest;
 import com.xa.mass.task.runtime.FinalResultRow;
 import com.xa.mass.task.runtime.FinalResultWindow;
-import com.xa.mass.task.runtime.LeaseRepairBatch;
 import com.xa.mass.task.runtime.MessageFinalityOutcome;
 import com.xa.mass.task.runtime.ResultApplySource;
 import com.xa.mass.task.runtime.ResultCorrelationSnapshot;
-import com.xa.mass.task.runtime.RetryPromotionBatch;
 import com.xa.mass.task.runtime.RetryMode;
 import com.xa.mass.task.runtime.RuntimeEpoch;
 import com.xa.mass.task.runtime.RuntimeGate;
 import com.xa.mass.task.runtime.RuntimeResultFact;
 import com.xa.mass.task.runtime.ScoreCandidate;
 import com.xa.mass.task.runtime.ScoreCandidateBatch;
-import com.xa.mass.task.runtime.TaskCloseAttemptOutcome;
 import com.xa.mass.task.runtime.TaskRuntimeConvergencePort;
 import com.xa.mass.task.runtime.TaskRuntimeMetaV1;
 import com.xa.mass.task.runtime.TaskRuntimeReadPort;
@@ -94,7 +89,7 @@ final class RedisScoreBandTaskRuntime implements TaskRuntimeWorkPort,
     }
 
     @Override
-    public AppendBatchOutcome appendBacklog(String taskId, List<BacklogFrameV1> frames, int maxBatchSize) {
+    public AppendBatchOutcome appendBacklog(String taskId, List<AppendItemInput> frames, int maxBatchSize) {
         if (frames == null || frames.isEmpty()) {
             throw new IllegalArgumentException("frames must be non-empty");
         }
@@ -105,7 +100,7 @@ final class RedisScoreBandTaskRuntime implements TaskRuntimeWorkPort,
                 .map(frame -> frameCodec.encodeBacklogFrame(taskId, frame, clock.getAsLong()))
                 .toArray(String[]::new);
         commands.rpush(keyspace.taskBacklogKey(taskId), encoded);
-        return AppendBatchOutcome.allAccepted(taskId, frames.stream().map(BacklogFrameV1::messageId).toList());
+        return AppendBatchOutcome.allAccepted(taskId, frames.stream().map(AppendItemInput::messageId).toList());
     }
 
     @Override
@@ -230,7 +225,7 @@ final class RedisScoreBandTaskRuntime implements TaskRuntimeWorkPort,
     }
 
     @Override
-    public RetryPromotionBatch promoteDueRetries(String laneKey, long nowMillis, int taskLimit, int itemLimit) {
+    public List<String> promoteDueRetries(String laneKey, long nowMillis, int taskLimit, int itemLimit) {
         var promoted = new ArrayList<String>();
         for (String encodedTaskId : laneMembers(laneKey, taskLimit)) {
             String taskId = keyCodec.decodeSegment(encodedTaskId);
@@ -251,17 +246,17 @@ final class RedisScoreBandTaskRuntime implements TaskRuntimeWorkPort,
                 promoted.add(keyCodec.decodeSegment(encodedMessageId));
             }
         }
-        return new RetryPromotionBatch(promoted);
+        return List.copyOf(promoted);
     }
 
     @Override
-    public LeaseRepairBatch scanExpiredLeases(String laneKey, long nowMillis, int taskLimit, int itemLimit) {
+    public List<ActiveLeaseRepairCandidate> scanExpiredLeases(String laneKey, long nowMillis, int taskLimit, int itemLimit) {
         var repaired = new ArrayList<ActiveLeaseRepairCandidate>();
         for (String encodedTaskId : laneMembers(laneKey, taskLimit)) {
             String taskId = keyCodec.decodeSegment(encodedTaskId);
             for (String encodedState : commands.hvals(keyspace.taskRuntimeStateKey(taskId))) {
                 if (repaired.size() >= Math.max(1, itemLimit)) {
-                    return new LeaseRepairBatch(repaired);
+                    return List.copyOf(repaired);
                 }
                 Map<String, Object> state = decode(encodedState);
                 if (longValue(state.get("leaseExpireAtMillis")) > nowMillis) {
@@ -270,7 +265,7 @@ final class RedisScoreBandTaskRuntime implements TaskRuntimeWorkPort,
                 repaired.add(toRepairCandidate(taskId, state));
             }
         }
-        return new LeaseRepairBatch(repaired);
+        return List.copyOf(repaired);
     }
 
     @Override
@@ -391,7 +386,7 @@ final class RedisScoreBandTaskRuntime implements TaskRuntimeWorkPort,
     }
 
     @Override
-    public TaskCloseAttemptOutcome closeIfDrained(String taskId, String laneKey, RuntimeEpoch epoch) {
+    public boolean closeIfDrained(String taskId, String laneKey, RuntimeEpoch epoch) {
         Long closed = commands.eval(
                 RedisScoreBandTaskRuntimeScripts.CLOSE_IF_DRAINED,
                 ScriptOutputType.INTEGER,
@@ -403,15 +398,12 @@ final class RedisScoreBandTaskRuntime implements TaskRuntimeWorkPort,
                         keyspace.taskScoreKey(laneKey)
                 },
                 keyCodec.encodeSegment(taskId));
-        if (closed != null && closed == 1L) {
-            return new TaskCloseAttemptOutcome(taskId, true, "");
-        }
-        return TaskCloseAttemptOutcome.deferred(taskId, "runtime work remains");
+        return closed != null && closed == 1L;
     }
 
     @Override
-    public DiscardTaskRuntimeOutcome discardRuntime(String taskId, String laneKey, RuntimeEpoch epoch, String reason) {
-        String outcomeJson = commands.eval(
+    public void discardRuntime(String taskId, String laneKey, RuntimeEpoch epoch, String reason) {
+        commands.eval(
                 RedisScoreBandTaskRuntimeScripts.DISCARD_RUNTIME,
                 ScriptOutputType.VALUE,
                 new String[]{
@@ -424,17 +416,11 @@ final class RedisScoreBandTaskRuntime implements TaskRuntimeWorkPort,
                         keyspace.taskScoreKey(laneKey)
                 },
                 keyCodec.encodeSegment(taskId));
-        Map<String, Object> outcome = decode(outcomeJson);
-        return new DiscardTaskRuntimeOutcome(
-                taskId,
-                longValue(outcome.get("ready")),
-                longValue(outcome.get("active")),
-                longValue(outcome.get("results")));
     }
 
     @Override
-    public DiscardTaskWorkOutcome discardWork(String taskId, RuntimeEpoch epoch, String reason) {
-        String outcomeJson = commands.eval(
+    public void discardWork(String taskId, RuntimeEpoch epoch, String reason) {
+        commands.eval(
                 RedisScoreBandTaskRuntimeScripts.DISCARD_WORK,
                 ScriptOutputType.VALUE,
                 new String[]{
@@ -443,11 +429,6 @@ final class RedisScoreBandTaskRuntime implements TaskRuntimeWorkPort,
                         keyspace.taskRetryItemKey(taskId),
                         keyspace.taskRuntimeStateKey(taskId)
                 });
-        Map<String, Object> outcome = decode(outcomeJson);
-        return new DiscardTaskWorkOutcome(
-                taskId,
-                longValue(outcome.get("ready")),
-                longValue(outcome.get("active")));
     }
 
     @Override

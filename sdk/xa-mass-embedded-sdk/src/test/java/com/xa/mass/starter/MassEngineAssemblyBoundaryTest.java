@@ -20,14 +20,14 @@ class MassEngineAssemblyBoundaryTest {
             "import com.xa.mass.engine.ExponentialPollingIdleBackoffPolicy;",
             "import com.xa.mass.engine.PollingIdleBackoffPolicy;",
             "import com.xa.mass.engine.TaskAssignmentRuntimePort;",
-            "import com.xa.mass.engine.TaskCommandService;",
+            "import com.xa.mass.engine.TaskCommandPort;",
             "import com.xa.mass.engine.TaskDispatchWakeupPort;",
             "import com.xa.mass.engine.TaskEventListenerRegistrar;",
             "import com.xa.mass.engine.TaskEventService;",
             "import com.xa.mass.engine.TaskLeaseMaintenancePort;",
             "import com.xa.mass.engine.TaskManager;",
             "import com.xa.mass.engine.TaskManagerResultIngestFacade;",
-            "import com.xa.mass.engine.TaskQueryService;",
+            "import com.xa.mass.engine.TaskQueryPort;",
             "import com.xa.mass.engine.TaskRuntimeRecoveryPort;",
             "import com.xa.mass.engine.TaskShellLifecycleMaintenancePort;",
             "import com.xa.mass.engine.TraceEventLogger;",
@@ -42,11 +42,9 @@ class MassEngineAssemblyBoundaryTest {
             "import com.xa.mass.engine.control.WorkerControlService;",
             "import com.xa.mass.worker.runtime.control.DefaultWorkerDispatchAvailabilityPolicy;",
             "import com.xa.mass.worker.runtime.control.WorkerDispatchEligibilityRuntime;",
-            "import com.xa.mass.engine.model.TaskAppendReceipt;",
+            "import com.xa.mass.engine.model.TaskAppendOutcome;",
+            "import com.xa.mass.engine.model.TaskCommandOutcome;",
             "import com.xa.mass.engine.model.TaskDefinitionPatch;",
-            "import com.xa.mass.engine.model.TaskResumeResult;",
-            "import com.xa.mass.engine.model.TaskStateResolutionResult;",
-            "import com.xa.mass.engine.model.TaskStateValidationResult;",
             "import com.xa.mass.engine.policy.ContractAwareTaskTerminalPolicy;",
             "import com.xa.mass.engine.rules.MatchingRuleEvaluator;",
             "import com.xa.mass.engine.rules.MatchingRuleSetProvider;",
@@ -116,7 +114,7 @@ class MassEngineAssemblyBoundaryTest {
 
         assertTrue(violations.isEmpty(),
                 "SDK main code must not mutate a Task aggregate and call updateTask(Task). "
-                        + "Use TaskCommandService.patchTaskDefinition or another intent-shaped command:\n"
+                        + "Use TaskCommandPort.patchTaskDefinition or another intent-shaped command:\n"
                         + String.join("\n", violations));
     }
 

@@ -223,11 +223,11 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
     }
 
     public TaskWorkStatsSnapshot runtimeStats(String taskId) {
-        return app.taskDiagnostics().getTaskWorkStats(taskId);
+        return app.getTaskWorkStats(taskId);
     }
 
     public List<TaskActiveLeaseSnapshot> activeLeases(String taskId) {
-        return app.taskDiagnostics().getActiveLeases(taskId);
+        return app.getActiveLeases(taskId);
     }
 
     public String waitForSingleActiveLeaseMessageId(String taskId,

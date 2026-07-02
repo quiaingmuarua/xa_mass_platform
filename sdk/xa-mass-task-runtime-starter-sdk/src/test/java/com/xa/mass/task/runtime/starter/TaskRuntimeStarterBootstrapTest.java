@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.xa.mass.task.runtime.AppendBatchStatus;
-import com.xa.mass.task.runtime.BacklogFrameV1;
+import com.xa.mass.task.runtime.AppendItemInput;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -19,7 +19,7 @@ class TaskRuntimeStarterBootstrapTest {
 
             var outcome = handle.runtime().appendBacklog(
                     "task-1",
-                    List.of(new BacklogFrameV1("message-1", null, Map.of(), null)),
+                    List.of(new AppendItemInput("message-1", null, Map.of(), null)),
                     10);
 
             assertThat(outcome.status()).isEqualTo(AppendBatchStatus.ALL_ACCEPTED);

@@ -1,16 +1,19 @@
 package com.xa.mass.starter.config;
 
 import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
+import com.xa.mass.engine.EngineRuntimeKernel;
 import com.xa.mass.engine.EngineRuntimeKernelConfig;
 import com.xa.mass.engine.ExponentialPollingIdleBackoffPolicy;
 import com.xa.mass.engine.PollingIdleBackoffPolicy;
 import com.xa.mass.engine.TaskManager;
-import com.xa.mass.engine.TaskCommandService;
+import com.xa.mass.engine.TaskAssignmentEventSink;
+import com.xa.mass.engine.TaskCommandPort;
+import com.xa.mass.engine.TaskEventListenerRegistrar;
 import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
 import com.xa.mass.engine.TaskDispatchWakeupPort;
 import com.xa.mass.engine.TaskLeaseMaintenancePort;
-import com.xa.mass.engine.TaskQueryService;
+import com.xa.mass.engine.TaskQueryPort;
 import com.xa.mass.engine.TaskManagerResultIngestFacade;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.engine.TaskRuntimeServingLane;
@@ -19,6 +22,8 @@ import com.xa.mass.engine.TaskShellLifecycleMaintenancePort;
 import com.xa.mass.engine.TraceEventLogger;
 import com.xa.mass.engine.WorkerControlRuntime;
 import com.xa.mass.engine.control.WorkerControlService;
+import com.xa.mass.engine.model.TaskStateResolutionResult;
+import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.worker.runtime.evidence.SelectedWorkerDeliveryTargetEvidence;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
@@ -38,6 +43,7 @@ import com.xa.mass.engine.policy.ContractAwareTaskTerminalPolicy;
 import com.xa.mass.kernel.spi.task.TaskShellRuntimeLifecycleQuery;
 import com.xa.mass.kernel.spi.task.TaskShellRuntimeStore;
 import com.xa.mass.sdk.model.TaskActiveLeaseSnapshot;
+import com.xa.mass.sdk.TaskReadOperations;
 import com.xa.mass.sdk.model.TaskResultItemSnapshot;
 import com.xa.mass.sdk.model.TaskResultWindowSnapshot;
 import com.xa.mass.sdk.model.TaskWorkFinalSnapshot;
@@ -72,6 +78,7 @@ import com.xa.mass.task.runtime.starter.TaskRuntimePortSet;
 import com.xa.mass.task.runtime.starter.TaskRuntimeStarter;
 import com.xa.mass.task.runtime.FinalResultRow;
 import com.xa.mass.task.runtime.ResultApplySource;
+import com.xa.mass.task.runtime.TaskRuntimeResultWindowReadModel;
 import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.trace.sink.NoopExecutionEventSink;
 import com.xa.mass.worker.runtime.resource.WorkerHeartbeatRuntime;
@@ -94,7 +101,7 @@ import java.util.function.Function;
  * managers are derived helpers over storage contracts, not independent config
  * slots with their own truth.
  */
-public class EngineConfig implements EngineRuntimeKernelConfig {
+public class EngineConfig {
 
     private static final Function<String, WorkerReachabilityState> UNKNOWN_WORKER_REACHABILITY =
             workerId -> WorkerReachabilityState.UNKNOWN;
@@ -103,9 +110,9 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
     private int workerThreads = 8;
 
     private TaskManager taskManager;
-    private TaskCommandService taskCommandService;
+    private TaskCommandPort taskCommandPort;
     private TaskEventService taskEventService;
-    private TaskQueryService taskQueryService;
+    private TaskQueryPort taskQueryPort;
     private TaskResultIngestFacade taskResultIngestFacade;
     private TaskAssignmentRuntimePort taskAssignmentRuntimePort;
     private TaskLeaseMaintenancePort taskLeaseMaintenancePort;
@@ -113,6 +120,7 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
     private TaskShellLifecycleMaintenancePort taskShellLifecycleMaintenancePort;
     private TaskRuntimeRecoveryPort taskRuntimeRecoveryPort;
     private TaskRuntimeServingLane taskRuntimeServingLane;
+    private TaskReadOperations taskReadOperations;
     private TraceEventLogger traceEventLogger;
     private TaskShellStore taskShellStore;
     private TaskRuntimeBootstrapConfig taskRuntimeBootstrapConfig = TaskRuntimeBootstrapConfig.memory();
@@ -158,9 +166,9 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
         this.enabled = source.enabled;
         this.workerThreads = source.workerThreads;
         this.taskManager = null;
-        this.taskCommandService = null;
+        this.taskCommandPort = null;
         this.taskEventService = null;
-        this.taskQueryService = null;
+        this.taskQueryPort = null;
         this.taskResultIngestFacade = null;
         this.taskAssignmentRuntimePort = null;
         this.taskLeaseMaintenancePort = null;
@@ -168,6 +176,7 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
         this.taskShellLifecycleMaintenancePort = null;
         this.taskRuntimeRecoveryPort = null;
         this.taskRuntimeServingLane = null;
+        this.taskReadOperations = null;
         this.taskShellStore = source.taskShellStore;
         this.taskRuntimeBootstrapConfig = source.taskRuntimeBootstrapConfig;
         this.taskRuntimeHandle = null;
@@ -219,19 +228,35 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
         this.workerThreads = workerThreads;
     }
 
-    public TaskCommandService getTaskCommandService() {
-        ensureTaskRuntimeServingLane();
-        return taskCommandService;
+    public EngineRuntimeKernel createRuntimeKernel() {
+        return new EngineRuntimeKernel(new KernelConfigView());
     }
 
-    public TaskEventService getTaskEventService() {
+    TaskCommandPort taskCommandPort() {
+        ensureTaskRuntimeServingLane();
+        return taskCommandPort;
+    }
+
+    public TaskCommandPort getTaskCommandPort() {
+        return taskCommandPort();
+    }
+
+    TaskEventService taskEventService() {
         ensureTaskRuntimeServingLane();
         return taskEventService;
     }
 
-    public TaskQueryService getTaskQueryService() {
+    public TaskEventListenerRegistrar getTaskEventListeners() {
+        return taskEventService();
+    }
+
+    public TaskAssignmentEventSink getTaskAssignmentEvents() {
+        return taskEventService();
+    }
+
+    TaskQueryPort taskQueryPort() {
         ensureTaskRuntimeServingLane();
-        return taskQueryService;
+        return taskQueryPort;
     }
 
     public TaskResultIngestFacade getTaskResultIngestFacade() {
@@ -241,7 +266,14 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
         return taskResultIngestFacade;
     }
 
-    public TaskResultWindowSnapshot readTaskResults(String taskId, long afterSeq, int limit) {
+    public TaskReadOperations getTaskReadOperations() {
+        if (taskReadOperations == null) {
+            taskReadOperations = new EngineTaskReadOperations(this);
+        }
+        return taskReadOperations;
+    }
+
+    TaskResultWindowSnapshot readTaskResults(String taskId, long afterSeq, int limit) {
         var window = ensureTaskRuntimeServingLane().readTaskResults(taskId, afterSeq, limit);
         return new TaskResultWindowSnapshot(
                 window.taskId(),
@@ -253,7 +285,7 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
                 window.totalVisible());
     }
 
-    public TaskWorkStatsSnapshot getTaskWorkStats(String taskId) {
+    TaskWorkStatsSnapshot getTaskWorkStats(String taskId) {
         var stats = ensureTaskRuntimeServingLane().getTaskRuntimeProgressSnapshot(taskId);
         if (stats == null) {
             return TaskWorkStatsSnapshot.EMPTY;
@@ -269,18 +301,26 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
                 stats.finalCount());
     }
 
-    public List<TaskActiveLeaseSnapshot> getActiveLeases(String taskId) {
+    TaskStateValidationResult validateTaskState(String taskId) {
+        return taskQueryPort().validateTaskState(taskId);
+    }
+
+    TaskStateResolutionResult resolveTaskState(String taskId) {
+        return taskQueryPort().resolveTaskState(taskId);
+    }
+
+    List<TaskActiveLeaseSnapshot> getActiveLeases(String taskId) {
         return ensureTaskRuntimeServingLane().getActiveLeaseCandidates(taskId).stream()
                 .map(EngineConfig::toActiveLeaseSnapshot)
                 .toList();
     }
 
-    public Optional<TaskWorkFinalSnapshot> getVisibleTaskResultByMessageId(String taskId, String messageId) {
+    Optional<TaskWorkFinalSnapshot> getVisibleTaskResultByMessageId(String taskId, String messageId) {
         return ensureTaskRuntimeServingLane().getVisibleTaskResultByMessageId(taskId, messageId)
                 .map(EngineConfig::toFinalSnapshot);
     }
 
-    public long countVisibleTaskResults(String taskId) {
+    long countVisibleTaskResults(String taskId) {
         return ensureTaskRuntimeServingLane().countVisibleTaskResults(taskId);
     }
 
@@ -348,7 +388,7 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
         setTaskRuntimeBootstrapConfig(TaskRuntimeBootstrapConfig.redis(redisUri, redisNamespace));
     }
 
-    public TaskShellStore getTaskShellStore() {
+    TaskShellStore getTaskShellStore() {
         return taskShellStore;
     }
 
@@ -398,7 +438,6 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
         return workerManager();
     }
 
-    @Override
     public WorkerSelectionRuntime getWorkerSelectionRuntime() {
         return workerManager();
     }
@@ -701,9 +740,9 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
             taskManager.shutdown();
             taskManager = null;
         }
-        taskCommandService = null;
+        taskCommandPort = null;
         taskEventService = null;
-        taskQueryService = null;
+        taskQueryPort = null;
         taskResultIngestFacade = null;
         taskAssignmentRuntimePort = null;
         taskLeaseMaintenancePort = null;
@@ -742,6 +781,114 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
         }
     }
 
+    private final class KernelConfigView implements EngineRuntimeKernelConfig {
+
+        @Override
+        public TaskCommandPort getTaskCommandPort() {
+            return taskCommandPort();
+        }
+
+        @Override
+        public TaskRuntimeRecoveryPort getTaskRuntimeRecoveryPort() {
+            return EngineConfig.this.getTaskRuntimeRecoveryPort();
+        }
+
+        @Override
+        public TaskLeaseMaintenancePort getTaskLeaseMaintenancePort() {
+            return EngineConfig.this.getTaskLeaseMaintenancePort();
+        }
+
+        @Override
+        public TaskDispatchWakeupPort getTaskDispatchWakeupPort() {
+            return EngineConfig.this.getTaskDispatchWakeupPort();
+        }
+
+        @Override
+        public TaskShellLifecycleMaintenancePort getTaskShellLifecycleMaintenancePort() {
+            return EngineConfig.this.getTaskShellLifecycleMaintenancePort();
+        }
+
+        @Override
+        public TaskAssignmentRuntimePort getTaskAssignmentRuntimePort() {
+            return EngineConfig.this.getTaskAssignmentRuntimePort();
+        }
+
+        @Override
+        public TaskEventService getTaskEventService() {
+            return taskEventService();
+        }
+
+        @Override
+        public WorkerAvailabilityWakeupRuntime getWorkerAvailabilityWakeupRuntime() {
+            return EngineConfig.this.getWorkerAvailabilityWakeupRuntime();
+        }
+
+        @Override
+        public WorkerSelectionRuntime getWorkerSelectionRuntime() {
+            return EngineConfig.this.getWorkerSelectionRuntime();
+        }
+
+        @Override
+        public WorkerControlRuntime getWorkerControlRuntime() {
+            return EngineConfig.this.getWorkerControlRuntime();
+        }
+
+        @Override
+        public AssignmentDiagnosticRecorder getRecordService() {
+            return EngineConfig.this.getRecordService();
+        }
+
+        @Override
+        public TraceEventLogger getTraceEventLogger() {
+            return EngineConfig.this.getTraceEventLogger();
+        }
+
+        @Override
+        public long getTaskMessageLeaseSeconds() {
+            return EngineConfig.this.getTaskMessageLeaseSeconds();
+        }
+
+        @Override
+        public long getAssignmentRetryDelayMillis() {
+            return EngineConfig.this.getAssignmentRetryDelayMillis();
+        }
+
+        @Override
+        public long getRuntimeReadyDispatchIntervalMillis() {
+            return EngineConfig.this.getRuntimeReadyDispatchIntervalMillis();
+        }
+
+        @Override
+        public long getRuntimeReadyDispatchIdleBackoffMaxMillis() {
+            return EngineConfig.this.getRuntimeReadyDispatchIdleBackoffMaxMillis();
+        }
+
+        @Override
+        public PollingIdleBackoffPolicy getRuntimeReadyDispatchIdleBackoffPolicy() {
+            return EngineConfig.this.getRuntimeReadyDispatchIdleBackoffPolicy();
+        }
+
+        @Override
+        public long getLeaseWatchdogIntervalSeconds() {
+            return EngineConfig.this.getLeaseWatchdogIntervalSeconds();
+        }
+
+        @Override
+        public long getWorkerCommandMaintenanceIntervalSeconds() {
+            return EngineConfig.this.getWorkerCommandMaintenanceIntervalSeconds();
+        }
+
+        @Override
+        public int getWorkerCommandMaintenanceScanLimit() {
+            return EngineConfig.this.getWorkerCommandMaintenanceScanLimit();
+        }
+
+        @Override
+        public int getWorkerCommandDeliveryMaxAttempts() {
+            return EngineConfig.this.getWorkerCommandDeliveryMaxAttempts();
+        }
+    }
+
     private TaskManager ensureTaskManager() {
         if (taskManager == null) {
             taskManager = new TaskManager(
@@ -758,26 +905,23 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
     private TaskRuntimeServingLane ensureTaskRuntimeServingLane() {
         if (taskRuntimeServingLane == null) {
             TaskManager manager = ensureTaskManager();
-            if (taskCommandService == null) {
-                taskCommandService = new TaskCommandService(manager);
+            if (taskCommandPort == null) {
+                taskCommandPort = manager;
             }
-            if (taskQueryService == null) {
-                taskQueryService = new TaskQueryService(manager);
+            if (taskQueryPort == null) {
+                taskQueryPort = manager;
             }
             if (taskEventService == null) {
                 taskEventService = new TaskEventService(manager);
             }
             var taskRuntimeHandle = ensureTaskRuntimeHandle();
             TaskRuntimePortSet taskRuntime = taskRuntimeHandle.runtime();
-            taskRuntimeServingLane = new TaskRuntimeServingLane(
+            taskRuntimeServingLane = manager.createTaskRuntimeServingLane(
                     taskRuntime,
                     taskRuntime,
                     taskRuntime,
                     taskRuntime,
-                    taskRuntimeHandle.resultWindowReadModel(),
-                    taskQueryService,
-                    taskCommandService,
-                    taskEventService,
+                    requireResultWindowReadModel(taskRuntime),
                     new ContractAwareTaskTerminalPolicy(),
                     null,
                     getTraceEventLogger(),
@@ -787,6 +931,13 @@ public class EngineConfig implements EngineRuntimeKernelConfig {
             manager.installTaskRuntimeServingLane(taskRuntimeServingLane);
         }
         return taskRuntimeServingLane;
+    }
+
+    private TaskRuntimeResultWindowReadModel requireResultWindowReadModel(TaskRuntimePortSet taskRuntime) {
+        if (taskRuntime instanceof TaskRuntimeResultWindowReadModel resultWindowReadModel) {
+            return resultWindowReadModel;
+        }
+        throw new IllegalStateException("Task runtime does not expose final-result window read model");
     }
 
     private TaskRuntimeHandle ensureTaskRuntimeHandle() {

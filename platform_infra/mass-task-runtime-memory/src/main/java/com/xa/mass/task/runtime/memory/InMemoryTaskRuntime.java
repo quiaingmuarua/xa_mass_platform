@@ -3,20 +3,16 @@ package com.xa.mass.task.runtime.memory;
 import com.xa.mass.task.runtime.ActiveLeaseRepairCandidate;
 import com.xa.mass.task.runtime.ActiveTaskWorkSnapshot;
 import com.xa.mass.task.runtime.AppendBatchOutcome;
-import com.xa.mass.task.runtime.BacklogFrameV1;
+import com.xa.mass.task.runtime.AppendItemInput;
 import com.xa.mass.task.runtime.ClaimReadyOutcome;
 import com.xa.mass.task.runtime.ClaimedWorkItem;
-import com.xa.mass.task.runtime.DiscardTaskRuntimeOutcome;
-import com.xa.mass.task.runtime.DiscardTaskWorkOutcome;
 import com.xa.mass.task.runtime.FinalResultReadRequest;
 import com.xa.mass.task.runtime.FinalResultRow;
 import com.xa.mass.task.runtime.FinalResultWindow;
-import com.xa.mass.task.runtime.LeaseRepairBatch;
 import com.xa.mass.task.runtime.MessageFinalityOutcome;
 import com.xa.mass.task.runtime.MessageFinalityStatus;
 import com.xa.mass.task.runtime.ResultApplySource;
 import com.xa.mass.task.runtime.ResultCorrelationSnapshot;
-import com.xa.mass.task.runtime.RetryPromotionBatch;
 import com.xa.mass.task.runtime.RuntimeResultFact;
 import com.xa.mass.task.runtime.RetryMode;
 import com.xa.mass.task.runtime.RuntimeEpoch;
@@ -24,7 +20,6 @@ import com.xa.mass.task.runtime.RuntimeGate;
 import com.xa.mass.task.runtime.ScoreCandidate;
 import com.xa.mass.task.runtime.ScoreCandidateBatch;
 import com.xa.mass.task.runtime.SchedulerEligibilityPolicy;
-import com.xa.mass.task.runtime.TaskCloseAttemptOutcome;
 import com.xa.mass.task.runtime.TaskRuntimeConvergencePort;
 import com.xa.mass.task.runtime.TaskRuntimeProgressSnapshot;
 import com.xa.mass.task.runtime.TaskRuntimeReadPort;
@@ -67,7 +62,7 @@ public final class InMemoryTaskRuntime implements TaskRuntimeWorkPort,
     }
 
     @Override
-    public synchronized AppendBatchOutcome appendBacklog(String taskId, List<BacklogFrameV1> frames, int maxBatchSize) {
+    public synchronized AppendBatchOutcome appendBacklog(String taskId, List<AppendItemInput> frames, int maxBatchSize) {
         if (frames == null || frames.isEmpty()) {
             throw new IllegalArgumentException("frames must be non-empty");
         }
@@ -250,19 +245,19 @@ public final class InMemoryTaskRuntime implements TaskRuntimeWorkPort,
     }
 
     @Override
-    public synchronized RetryPromotionBatch promoteDueRetries(String laneKey,
-                                                              long nowMillis,
-                                                              int taskLimit,
-                                                              int itemLimit) {
-        return new RetryPromotionBatch(List.of());
+    public synchronized List<String> promoteDueRetries(String laneKey,
+                                                       long nowMillis,
+                                                       int taskLimit,
+                                                       int itemLimit) {
+        return List.of();
     }
 
     @Override
-    public synchronized LeaseRepairBatch scanExpiredLeases(String laneKey,
-                                                             long nowMillis,
-                                                             int taskLimit,
-                                                             int itemLimit) {
-        return new LeaseRepairBatch(expiredActiveLeases(Math.max(1, itemLimit), nowMillis));
+    public synchronized List<ActiveLeaseRepairCandidate> scanExpiredLeases(String laneKey,
+                                                                           long nowMillis,
+                                                                           int taskLimit,
+                                                                           int itemLimit) {
+        return expiredActiveLeases(Math.max(1, itemLimit), nowMillis);
     }
 
     @Override
@@ -275,36 +270,26 @@ public final class InMemoryTaskRuntime implements TaskRuntimeWorkPort,
     }
 
     @Override
-    public synchronized TaskCloseAttemptOutcome closeIfDrained(String taskId, String laneKey, RuntimeEpoch epoch) {
-        return TaskCloseAttemptOutcome.deferred(taskId, "close owner remains on the current serving path");
+    public synchronized boolean closeIfDrained(String taskId, String laneKey, RuntimeEpoch epoch) {
+        return false;
     }
 
     @Override
-    public synchronized DiscardTaskRuntimeOutcome discardRuntime(String taskId,
-                                                                 String laneKey,
-                                                                 RuntimeEpoch epoch,
-                                                                 String reason) {
-        var state = tasks.remove(taskId);
+    public synchronized void discardRuntime(String taskId,
+                                            String laneKey,
+                                            RuntimeEpoch epoch,
+                                            String reason) {
+        tasks.remove(taskId);
         dirtyTasks.remove(taskId);
-        if (state == null) {
-            return new DiscardTaskRuntimeOutcome(taskId, 0L, 0L, 0L);
-        }
-        return new DiscardTaskRuntimeOutcome(
-                taskId,
-                state.ready.size() + state.delayed.size(),
-                state.activeByMessageId.size(),
-                state.finalRowsByMessageId.size());
     }
 
     @Override
-    public synchronized DiscardTaskWorkOutcome discardWork(String taskId, RuntimeEpoch epoch, String reason) {
+    public synchronized void discardWork(String taskId, RuntimeEpoch epoch, String reason) {
         var state = tasks.get(taskId);
         dirtyTasks.remove(taskId);
         if (state == null) {
-            return new DiscardTaskWorkOutcome(taskId, 0L, 0L);
+            return;
         }
-        long readyCount = state.ready.size() + state.delayed.size();
-        long activeCount = state.activeByMessageId.size();
         state.ready.clear();
         state.delayed.clear();
         state.activeByMessageId.clear();
@@ -312,7 +297,6 @@ public final class InMemoryTaskRuntime implements TaskRuntimeWorkPort,
         if (state.finalRowsByMessageId.isEmpty()) {
             tasks.remove(taskId);
         }
-        return new DiscardTaskWorkOutcome(taskId, readyCount, activeCount);
     }
 
     private MessageFinalityOutcome applyResult(RuntimeResultFact fact, TaskRuntimeResultPolicyV1 policy) {

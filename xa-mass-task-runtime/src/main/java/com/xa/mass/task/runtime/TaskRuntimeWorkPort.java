@@ -4,7 +4,7 @@ import java.util.List;
 
 public interface TaskRuntimeWorkPort {
 
-    AppendBatchOutcome appendBacklog(String taskId, List<BacklogFrameV1> frames, int maxBatchSize);
+    AppendBatchOutcome appendBacklog(String taskId, List<AppendItemInput> frames, int maxBatchSize);
 
     ClaimReadyOutcome claimBacklog(ScoreCandidate candidate,
                                    List<WorkerReservationEvidence> reservations,

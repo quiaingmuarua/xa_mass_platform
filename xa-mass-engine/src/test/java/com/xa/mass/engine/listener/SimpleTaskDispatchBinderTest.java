@@ -7,10 +7,11 @@ import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.InMemoryTaskShellRuntimeStore;
-import com.xa.mass.engine.TaskCommandService;
+import com.xa.mass.engine.TaskCommandPort;
 import com.xa.mass.engine.TaskManager;
-import com.xa.mass.engine.TaskQueryService;
+import com.xa.mass.engine.TaskQueryPort;
 import com.xa.mass.engine.TaskRuntimeServingLane;
+import com.xa.mass.engine.TaskRuntimeServingLaneTestSupport;
 import com.xa.mass.engine.TaskEventService;
 import com.xa.mass.engine.policy.ContractAwareTaskTerminalPolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
@@ -48,8 +49,8 @@ public class SimpleTaskDispatchBinderTest {
     private AssignmentRecordService recordService;
     private TaskManager taskManager;
     private TaskRuntimeServingLane taskRuntimeServingLane;
-    private TaskCommandService taskCommands;
-    private TaskQueryService taskQueries;
+    private TaskCommandPort taskCommands;
+    private TaskQueryPort taskQueries;
     private SimpleTaskDispatchBinder listener;
 
     @BeforeEach
@@ -59,8 +60,8 @@ public class SimpleTaskDispatchBinderTest {
         var harness = servingLaneTaskManager();
         taskManager = harness.manager();
         taskRuntimeServingLane = harness.lane();
-        taskCommands = new TaskCommandService(taskManager);
-        taskQueries = new TaskQueryService(taskManager);
+        taskCommands = taskManager;
+        taskQueries = taskManager;
         when(workerSelectionRuntime.confirmSelected(any(SelectedWorkerHandle.class))).thenReturn(true);
         listener = newAssignmentListener();
     }
@@ -256,11 +257,17 @@ public class SimpleTaskDispatchBinderTest {
         spec.setBatchSize(1);
         spec.setDefaultMaxRetryCount(3);
         dto.setExecutionSpec(spec);
-        Task task = taskCommands.createTaskShell(dto);
+        var create = taskCommands.createTaskShell(dto);
+        assertTrue(create.accepted());
+        Task task = taskQueries.getTask(create.taskId());
+        assertNotNull(task);
+        assertTrue(taskCommands.approveTask(task.getTid()).accepted());
+        task = taskQueries.getTask(task.getTid());
+        assertNotNull(task);
         taskCommands.appendTaskItems(task.getTid(), IntStream.range(0, messageCount)
                 .mapToObj(i -> java.util.Map.<String, Object>of("target", "target-" + i))
                 .collect(Collectors.toCollection(ArrayList::new)));
-        assertTrue(taskCommands.sealTask(task.getTid()));
+        assertTrue(taskCommands.sealTask(task.getTid()).accepted());
         return taskQueries.getTask(task.getTid());
     }
 
@@ -298,18 +305,13 @@ public class SimpleTaskDispatchBinderTest {
                 storage,
                 new ContractAwareTaskTerminalPolicy(),
                 null);
-        var commands = new TaskCommandService(manager);
-        var queries = new TaskQueryService(manager);
-        var events = new TaskEventService(manager);
-        var lane = new TaskRuntimeServingLane(
+        var lane = TaskRuntimeServingLaneTestSupport.forTaskManager(
                 runtime,
                 runtime,
                 runtime,
                 runtime,
                 runtime,
-                queries,
-                commands,
-                events,
+                manager,
                 300L,
                 TaskManager.MAX_INGEST_BATCH_ITEMS,
                 86_400_000L);

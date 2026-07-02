@@ -2,8 +2,8 @@ package com.xa.mass.server.e2e.support;
 
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
-import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.sdk.model.TaskActiveLeaseSnapshot;
+import com.xa.mass.sdk.model.TaskStateValidationSnapshot;
 import com.xa.mass.sdk.model.TaskWorkStatsSnapshot;
 import com.xa.mass.storage.api.TaskShellStore;
 import com.xa.mass.workerpack.sample.client.SampleWorkerClient;
@@ -178,14 +178,12 @@ public abstract class AbstractSampleE2eTest {
         return (List<Map<String, Object>>) responseData(response).get("messages");
     }
 
-    protected TaskStateValidationResult validateTaskState(String taskId) {
-        return requireSdkApp().taskDiagnostics().validateTaskState(taskId);
+    protected TaskStateValidationSnapshot validateTaskState(String taskId) {
+        return requireSdkApp().validateTaskState(taskId);
     }
 
-    protected List<String> violations(TaskStateValidationResult validation) {
-        return validation.getViolations() == null
-                ? List.of()
-                : validation.getViolations().stream().map(Enum::name).toList();
+    protected List<String> violations(TaskStateValidationSnapshot validation) {
+        return validation.getViolations() == null ? List.of() : validation.getViolations();
     }
 
     protected String createTaskId(String sourceRef, String textContent, List<String> targets, int batchSize) {
@@ -441,8 +439,8 @@ public abstract class AbstractSampleE2eTest {
         Map<String, Object> task = task(detailResponse);
         return new RuntimeTaskSnapshot(
                 task,
-                List.copyOf(app.taskDiagnostics().getActiveLeases(taskId)),
-                app.taskDiagnostics().getTaskWorkStats(taskId));
+                List.copyOf(app.getActiveLeases(taskId)),
+                app.getTaskWorkStats(taskId));
     }
 
     protected void assertClientConnects(SampleWorkerClient client, String failureMessage) throws Exception {

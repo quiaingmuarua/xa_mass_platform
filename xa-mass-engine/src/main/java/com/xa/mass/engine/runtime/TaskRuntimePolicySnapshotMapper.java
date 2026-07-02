@@ -3,33 +3,20 @@ package com.xa.mass.engine.runtime;
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy;
-import com.xa.mass.task.runtime.AppendAdmissionPolicy;
 import com.xa.mass.task.runtime.ClaimLeasePolicy;
 import com.xa.mass.task.runtime.ResultFinalityPolicySnapshot;
 import com.xa.mass.task.runtime.RetryMode;
 import com.xa.mass.task.runtime.RetryPolicySnapshot;
-import com.xa.mass.task.runtime.RuntimeEpoch;
 
 public final class TaskRuntimePolicySnapshotMapper {
 
     private TaskRuntimePolicySnapshotMapper() {
     }
 
-    public static AppendAdmissionPolicy toAppendAdmissionPolicy(ResolvedTaskSchedulingPolicy policy,
-                                                                int maxAppendBatchSize) {
-        long maxReadyBacklog = AppendAdmissionPolicy.UNLIMITED_READY_BACKLOG;
-        if (policy != null && policy.backpressurePolicy() != null) {
-            maxReadyBacklog = policy.backpressurePolicy().maxReadyItemsPerTask();
-        }
-        return new AppendAdmissionPolicy(maxAppendBatchSize, maxReadyBacklog);
-    }
-
     public static ClaimLeasePolicy toClaimLeasePolicy(Task task,
                                                       ResolvedTaskSchedulingPolicy policy,
                                                       int workerReservationCount,
-                                                      long defaultLeaseSeconds,
-                                                      long attemptPolicyVersion,
-                                                      RuntimeEpoch expectedRuntimeEpoch) {
+                                                      long defaultLeaseSeconds) {
         ResolvedTaskSchedulingPolicy resolvedPolicy = resolvePolicy(task, policy);
         var claimPolicy = resolvedPolicy.claimPolicy();
         int batchSize = Math.max(1, resolvedPolicy.batchSize());
@@ -44,9 +31,7 @@ public final class TaskRuntimePolicySnapshotMapper {
         int maxItems = Math.max(1, perWorkerCapacity * Math.max(1, workerReservationCount));
         return new ClaimLeasePolicy(
                 maxItems,
-                leaseSeconds * 1_000L,
-                attemptPolicyVersion,
-                expectedRuntimeEpoch);
+                leaseSeconds * 1_000L);
     }
 
     public static RetryPolicySnapshot toRetryPolicySnapshot(ResolvedTaskSchedulingPolicy policy,
