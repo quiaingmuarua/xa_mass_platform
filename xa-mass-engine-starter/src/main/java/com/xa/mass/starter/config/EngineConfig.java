@@ -24,6 +24,7 @@ import com.xa.mass.engine.WorkerControlRuntime;
 import com.xa.mass.engine.control.WorkerControlService;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
+import com.xa.mass.base.model.Task;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.worker.runtime.evidence.SelectedWorkerDeliveryTargetEvidence;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
@@ -121,6 +122,8 @@ public class EngineConfig {
     private TaskRuntimeRecoveryPort taskRuntimeRecoveryPort;
     private TaskRuntimeServingLane taskRuntimeServingLane;
     private TaskReadOperations taskReadOperations;
+    private final TaskReadViewProjectionStore taskReadViewProjection = new TaskReadViewProjectionStore();
+    private boolean taskReadProjectionListenersInstalled;
     private TraceEventLogger traceEventLogger;
     private TaskShellStore taskShellStore;
     private TaskRuntimeBootstrapConfig taskRuntimeBootstrapConfig = TaskRuntimeBootstrapConfig.memory();
@@ -271,6 +274,10 @@ public class EngineConfig {
             taskReadOperations = new EngineTaskReadOperations(this);
         }
         return taskReadOperations;
+    }
+
+    TaskReadViewProjectionStore taskReadViewProjection() {
+        return taskReadViewProjection;
     }
 
     TaskResultWindowSnapshot readTaskResults(String taskId, long afterSeq, int limit) {
@@ -750,6 +757,7 @@ public class EngineConfig {
         taskShellLifecycleMaintenancePort = null;
         taskRuntimeRecoveryPort = null;
         taskRuntimeServingLane = null;
+        taskReadProjectionListenersInstalled = false;
         TaskRuntimeHandle handle = taskRuntimeHandle;
         taskRuntimeHandle = null;
         if (handle != null) {
@@ -906,13 +914,14 @@ public class EngineConfig {
         if (taskRuntimeServingLane == null) {
             TaskManager manager = ensureTaskManager();
             if (taskCommandPort == null) {
-                taskCommandPort = manager;
+                taskCommandPort = new TaskReadViewPublishingTaskCommandPort(manager, taskReadViewProjection);
             }
             if (taskQueryPort == null) {
                 taskQueryPort = manager;
             }
             if (taskEventService == null) {
                 taskEventService = new TaskEventService(manager);
+                installTaskReadProjectionListeners(taskEventService);
             }
             var taskRuntimeHandle = ensureTaskRuntimeHandle();
             TaskRuntimePortSet taskRuntime = taskRuntimeHandle.runtime();
@@ -931,6 +940,19 @@ public class EngineConfig {
             manager.installTaskRuntimeServingLane(taskRuntimeServingLane);
         }
         return taskRuntimeServingLane;
+    }
+
+    private void installTaskReadProjectionListeners(TaskEventListenerRegistrar eventListeners) {
+        if (taskReadProjectionListenersInstalled) {
+            return;
+        }
+        java.util.function.Consumer<Task> projectionListener = taskReadViewProjection::recordTaskSnapshot;
+        eventListeners.addTaskCreatedListener(projectionListener);
+        eventListeners.addTaskReadyListener(projectionListener);
+        eventListeners.addTaskDispatchListener(projectionListener);
+        eventListeners.addTaskAssignedListener(projectionListener);
+        eventListeners.addTaskTerminalListener(projectionListener);
+        taskReadProjectionListenersInstalled = true;
     }
 
     private TaskRuntimeResultWindowReadModel requireResultWindowReadModel(TaskRuntimePortSet taskRuntime) {

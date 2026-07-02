@@ -2,9 +2,6 @@ package com.xa.mass.storage.jdbc;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
-import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.UserRef;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.kernel.spi.rule.RuleType;
 
@@ -16,8 +13,6 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.time.LocalDateTime;
-import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -27,29 +22,6 @@ class JdbcStoragePostgresTest {
 
     @Container
     private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:15-alpine");
-
-    @Test
-    void taskStoragePersistsTaskShellTruthOnly() {
-        try (StorageFixture fixture = postgresFixture("task_storage")) {
-            JdbcTaskShellStore storage = new JdbcTaskShellStore(fixture.dataSource(), new PostgresJdbcDialect());
-            Task task = new Task("task-1", "demo", "demoApp", 1, Map.of("k", "v"), UserRef.of("u1"));
-            task.setStatus(TaskStatus.READY);
-            task.setStartTime(LocalDateTime.now().minusSeconds(20));
-            task.getExecutionSpec().setMaxRuntimeSeconds(1);
-
-            storage.saveTask(task);
-
-            assertThat(storage.getTask("task-1")).isPresent();
-            assertThat(storage.getTasksByStatus(TaskStatus.READY)).hasSize(1);
-            assertThat(storage.getTasksByProject("demoApp")).hasSize(1);
-            assertThat(storage.pollTasksPastMaxRuntimeDeadline(LocalDateTime.now(), 10)).hasSize(1);
-
-            JdbcTaskShellStore restartedStorage = new JdbcTaskShellStore(fixture.dataSource(), new PostgresJdbcDialect());
-            assertThat(restartedStorage.getTask("task-1")).isPresent();
-
-            assertThat(storage.deleteTask("task-1")).isTrue();
-        }
-    }
 
     @Test
     void ruleStoragePersistsRulesAsDefinitionStore() {

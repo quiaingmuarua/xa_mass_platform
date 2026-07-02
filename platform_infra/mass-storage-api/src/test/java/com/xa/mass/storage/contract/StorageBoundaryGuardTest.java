@@ -129,6 +129,37 @@ class StorageBoundaryGuardTest {
     }
 
     @Test
+    void testsDoNotPreserveTaskShellStorageCrudAsProductContract() throws IOException {
+        List<String> violations = new ArrayList<>();
+        for (Path root : storageTestRoots()) {
+            for (Path path : testJavaSourceFiles(root)) {
+                String fileName = path.getFileName().toString();
+                if (fileName.matches(".*TaskShell(?:Store|LifecycleQuery)ContractTest\\.java")
+                        || fileName.equals("InMemoryTaskShellStoreIndexTest.java")) {
+                    violations.add(path.toString());
+                    continue;
+                }
+                if (fileName.equals("StorageBoundaryGuardTest.java")) {
+                    continue;
+                }
+                String source = Files.readString(path, StandardCharsets.UTF_8);
+                if (source.contains("extends TaskShellStoreContractTest")
+                        || source.contains("extends TaskShellLifecycleQueryContractTest")
+                        || source.contains("getTasksByStatus_returnsOnlyMatchingStatus")
+                        || source.contains("updateTask_persistsChanges")
+                        || source.contains("pollTasksPastMaxRuntimeDeadlineUsesDeadlineIndex")) {
+                    violations.add(path.toString());
+                }
+            }
+        }
+
+        assertTrue(violations.isEmpty(),
+                "Task shell storage CRUD/query/index behavior is de-maintained; tests must not preserve it "
+                        + "as a product contract:\n"
+                        + String.join("\n", violations));
+    }
+
+    @Test
     void productionSourcesDoNotReintroduceBroadStorageVocabulary() throws IOException {
         List<String> violations = new ArrayList<>();
         for (Path root : productionSourceRoots()) {
@@ -183,6 +214,15 @@ class StorageBoundaryGuardTest {
         );
     }
 
+    private static List<Path> storageTestRoots() {
+        Path repoRoot = repoRoot();
+        return List.of(
+                repoRoot.resolve("platform_infra/mass-storage-api/src/test/java"),
+                repoRoot.resolve("platform_infra/mass-storage-memory/src/test/java"),
+                repoRoot.resolve("platform_infra/mass-storage-jdbc/src/test/java")
+        );
+    }
+
     private static Path repoRoot() {
         Path current = Path.of("").toAbsolutePath();
         while (current != null) {
@@ -205,6 +245,18 @@ class StorageBoundaryGuardTest {
                     .filter(Files::isRegularFile)
                     .filter(path -> path.toString().endsWith(".java"))
                     .filter(path -> path.toString().contains(Path.of("src", "main", "java").toString()))
+                    .toList();
+        }
+    }
+
+    private static List<Path> testJavaSourceFiles(Path root) throws IOException {
+        if (!Files.isDirectory(root)) {
+            return List.of();
+        }
+        try (Stream<Path> stream = Files.walk(root)) {
+            return stream
+                    .filter(Files::isRegularFile)
+                    .filter(path -> path.toString().endsWith(".java"))
                     .toList();
         }
     }

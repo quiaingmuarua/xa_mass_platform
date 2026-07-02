@@ -2,9 +2,7 @@ package com.xa.mass.starter.config;
 
 import com.google.gson.Gson;
 import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.model.Task;
-import com.xa.mass.engine.model.TaskStateResolutionResult;
-import com.xa.mass.engine.model.TaskStateValidationResult;
+import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.sdk.TaskReadOperations;
 import com.xa.mass.sdk.model.TaskAccessSnapshot;
 import com.xa.mass.sdk.model.TaskActiveLeaseSnapshot;
@@ -23,6 +21,7 @@ import com.xa.mass.sdk.model.TaskWorkStatsSnapshot;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -35,6 +34,8 @@ final class EngineTaskReadOperations implements TaskReadOperations {
 
     private static final int ARCHIVE_STREAM_WINDOW =
             Integer.getInteger("xa.mass.sdk.resultArchiveStreamWindow", 1000);
+    private static final int STATUS_SCAN_WINDOW =
+            Integer.getInteger("xa.mass.sdk.taskReadStatusScanWindow", 1000);
     private static final String RESULT_ARCHIVE_FORMAT = "ndjson";
     private static final String RESULT_ARCHIVE_CONTENT_TYPE = "application/x-ndjson";
     private static final String RESULT_ARCHIVE_CONTENT_ENCODING = "gzip";
@@ -48,38 +49,46 @@ final class EngineTaskReadOperations implements TaskReadOperations {
 
     @Override
     public TaskDetailSnapshot getTaskDetail(String taskId) {
-        return toTaskDetailSnapshot(getTask(requireTaskId(taskId)));
+        return config.taskReadViewProjection()
+                .get(requireTaskId(taskId))
+                .map(this::toTaskDetailSnapshot)
+                .orElse(null);
     }
 
     @Override
     public List<TaskSummarySnapshot> listTaskSummaries(int offset, int limit) {
-        return config.getTaskShellStore().listTasksPaged(offset, limit).stream()
-                .map(EngineTaskReadOperations::toTaskSummarySnapshot)
+        return config.taskReadViewProjection().list(offset, limit).stream()
+                .map(this::toTaskSummarySnapshot)
                 .toList();
     }
 
     @Override
     public List<TaskSummarySnapshot> getTaskSummariesByStatus(String status) {
-        return config.getTaskShellStore().getTasksByStatus(parseTaskStatus(status)).stream()
-                .map(EngineTaskReadOperations::toTaskSummarySnapshot)
+        TaskStatus parsedStatus = parseTaskStatus(status);
+        return config.taskReadViewProjection().listByStatus(parsedStatus, STATUS_SCAN_WINDOW).stream()
+                .map(this::toTaskSummarySnapshot)
                 .toList();
     }
 
     @Override
     public boolean taskExists(String taskId) {
-        return getTask(requireTaskId(taskId)) != null;
+        return config.taskReadViewProjection().get(requireTaskId(taskId)).isPresent();
     }
 
     @Override
     public TaskStateSnapshot getTaskState(String taskId) {
-        Task task = getTask(requireTaskId(taskId));
-        return task == null ? null : toTaskStateSnapshot(task);
+        return config.taskReadViewProjection()
+                .get(requireTaskId(taskId))
+                .map(EngineTaskReadOperations::toTaskStateSnapshot)
+                .orElse(null);
     }
 
     @Override
     public TaskAccessSnapshot getTaskAccess(String taskId) {
-        Task task = getTask(requireTaskId(taskId));
-        return task == null ? null : toTaskAccessSnapshot(task);
+        return config.taskReadViewProjection()
+                .get(requireTaskId(taskId))
+                .map(EngineTaskReadOperations::toTaskAccessSnapshot)
+                .orElse(null);
     }
 
     @Override
@@ -137,12 +146,58 @@ final class EngineTaskReadOperations implements TaskReadOperations {
 
     @Override
     public TaskStateValidationSnapshot validateTaskState(String taskId) {
-        return toValidationSnapshot(config.validateTaskState(requireTaskId(taskId)));
+        String normalizedTaskId = requireTaskId(taskId);
+        Optional<TaskReadViewProjectionStore.TaskReadViewRecord> record =
+                config.taskReadViewProjection().get(normalizedTaskId);
+        TaskWorkStatsSnapshot stats = getTaskWorkStats(normalizedTaskId);
+        if (record.isEmpty()) {
+            return new TaskStateValidationSnapshot(
+                    false,
+                    false,
+                    null,
+                    null,
+                    stats.totalCount(),
+                    stats.successCount(),
+                    stats.failedCount(),
+                    stats.processingCount(),
+                    "RUNTIME",
+                    List.of("TASK_NOT_FOUND"));
+        }
+        TaskReadViewProjectionStore.TaskReadViewRecord task = record.get();
+        List<String> violations = validationViolations(task, stats);
+        return new TaskStateValidationSnapshot(
+                violations.isEmpty(),
+                needsResolution(task, stats),
+                enumName(task.status()),
+                enumName(task.terminalReason()),
+                stats.totalCount(),
+                stats.successCount(),
+                stats.failedCount(),
+                stats.processingCount(),
+                "RUNTIME",
+                violations);
     }
 
     @Override
     public TaskStateResolutionSnapshot resolveTaskState(String taskId) {
-        return toResolutionSnapshot(config.resolveTaskState(requireTaskId(taskId)));
+        String normalizedTaskId = requireTaskId(taskId);
+        Optional<TaskReadViewProjectionStore.TaskReadViewRecord> record =
+                config.taskReadViewProjection().get(normalizedTaskId);
+        TaskWorkStatsSnapshot stats = getTaskWorkStats(normalizedTaskId);
+        if (record.isEmpty()) {
+            return new TaskStateResolutionSnapshot("TASK_NOT_FOUND", null, null, 0, 0, 0);
+        }
+        TaskReadViewProjectionStore.TaskReadViewRecord task = record.get();
+        String outcome = task.status() != null && task.status().isFinal()
+                ? "ALREADY_FINAL"
+                : "NOT_FINALIZED";
+        return new TaskStateResolutionSnapshot(
+                outcome,
+                enumName(task.status()),
+                enumName(task.terminalReason()),
+                stats.totalCount(),
+                stats.successCount(),
+                stats.failedCount());
     }
 
     @Override
@@ -156,111 +211,158 @@ final class EngineTaskReadOperations implements TaskReadOperations {
         return List.copyOf(config.getActiveLeases(requireTaskId(taskId)));
     }
 
-    private Task getTask(String taskId) {
-        return config.getTaskShellStore().getTask(taskId).orElse(null);
-    }
-
-    private static TaskStateValidationSnapshot toValidationSnapshot(TaskStateValidationResult result) {
-        if (result == null) {
-            return null;
-        }
-        return new TaskStateValidationSnapshot(
-                result.isValid(),
-                result.isNeedsResolution(),
-                enumName(result.getStatus()),
-                enumName(result.getTerminalReason()),
-                result.getTotalMessages(),
-                result.getSuccessMessages(),
-                result.getFailedMessages(),
-                result.getProcessingMessages(),
-                enumName(result.getScope()),
-                result.getViolations() == null
-                        ? List.of()
-                        : result.getViolations().stream().map(Enum::name).toList()
-        );
-    }
-
-    private static TaskStateResolutionSnapshot toResolutionSnapshot(TaskStateResolutionResult result) {
-        if (result == null) {
-            return null;
-        }
-        return new TaskStateResolutionSnapshot(
-                enumName(result.getOutcome()),
-                enumName(result.getStatus()),
-                enumName(result.getTerminalReason()),
-                result.getTotalMessages(),
-                result.getSuccessMessages(),
-                result.getFailedMessages()
-        );
-    }
-
-    private static TaskStateSnapshot toTaskStateSnapshot(Task task) {
-        return new TaskStateSnapshot(
-                task.getTid(),
-                enumName(task.getStatus()),
-                enumName(task.getTerminalReason()),
-                enumName(task.getIntakeStatus())
-        );
-    }
-
-    private static TaskAccessSnapshot toTaskAccessSnapshot(Task task) {
-        return new TaskAccessSnapshot(
-                task.getTid(),
-                task.getProject(),
-                copyMap(task.getSharedConfig()),
-                enumName(task.getIntakeStatus())
-        );
-    }
-
-    private static TaskSummarySnapshot toTaskSummarySnapshot(Task task) {
-        if (task == null) {
-            return null;
-        }
-        return new TaskSummarySnapshot(
-                task.getTid(),
-                task.getTaskName(),
-                task.getTenantId(),
-                task.getProject(),
-                task.getUser() == null ? null : task.getUser().getUserId(),
-                enumName(task.getContract()),
-                enumName(task.getStatus()),
-                enumName(task.getTerminalReason()),
-                toTaskExecutionOptions(task.getExecutionSpec()),
-                task.getTaskSuccessNumber(),
-                task.getTaskEligibleNumber(),
-                task.getUpdateTime()
-        );
-    }
-
-    private static TaskDetailSnapshot toTaskDetailSnapshot(Task task) {
-        if (task == null) {
-            return null;
-        }
+    private TaskDetailSnapshot toTaskDetailSnapshot(TaskReadViewProjectionStore.TaskReadViewRecord task) {
+        TaskWorkStatsSnapshot stats = getTaskWorkStats(task.taskId());
+        int totalCount = boundedInt(Math.max(task.taskTargetNumber(), stats.totalCount()));
+        int eligibleCount = boundedInt(Math.max(task.taskEligibleNumber(), stats.totalCount()));
+        int successCount = boundedInt(Math.max(task.taskSuccessNumber(), stats.successCount()));
+        int failedCount = boundedInt(stats.failedCount() + stats.expiredCount());
+        int nonSuccessCount = Math.max(task.taskNonSuccessNumber(), Math.max(eligibleCount - successCount, failedCount));
         return new TaskDetailSnapshot(
-                task.getTid(),
-                task.getTenantId(),
-                task.getTaskName(),
-                enumName(task.getContract()),
-                task.getProject(),
-                enumName(task.getStatus()),
-                task.getTaskTargetNumber(),
-                task.getTaskEligibleNumber(),
-                task.getTaskSuccessNumber(),
-                task.getTaskNonSuccessNumber(),
-                task.getMinRequiredWorkerCount(),
-                task.getPeakAssignedWorkerCount(),
-                copyMap(task.getSharedConfig()),
-                enumName(task.getHoldReason()),
-                toTaskExecutionOptions(task.getExecutionSpec()),
-                task.getSourceRef(),
-                enumName(task.getIntakeStatus()),
-                task.getUser() == null ? null : task.getUser().getUserId(),
-                task.getCreateTime(),
-                task.getUpdateTime(),
-                task.getStartTime(),
-                task.getEndTime(),
-                enumName(task.getTerminalReason())
+                task.taskId(),
+                task.tenantId(),
+                task.taskName(),
+                enumName(task.contract()),
+                task.project(),
+                enumName(task.status()),
+                totalCount,
+                eligibleCount,
+                successCount,
+                nonSuccessCount,
+                task.minRequiredWorkerCount(),
+                task.peakAssignedWorkerCount(),
+                copyMap(task.sharedConfig()),
+                enumName(task.holdReason()),
+                toTaskExecutionOptions(task.executionSpec()),
+                task.sourceRef(),
+                enumName(task.intakeStatus()),
+                task.userId(),
+                task.createTime(),
+                task.updateTime(),
+                task.startTime(),
+                task.endTime(),
+                enumName(task.terminalReason())
         );
+    }
+
+    private TaskSummarySnapshot toTaskSummarySnapshot(TaskReadViewProjectionStore.TaskReadViewRecord task) {
+        TaskWorkStatsSnapshot stats = getTaskWorkStats(task.taskId());
+        return new TaskSummarySnapshot(
+                task.taskId(),
+                task.taskName(),
+                task.tenantId(),
+                task.project(),
+                task.userId(),
+                enumName(task.contract()),
+                enumName(task.status()),
+                enumName(task.terminalReason()),
+                toTaskExecutionOptions(task.executionSpec()),
+                boundedInt(Math.max(task.taskSuccessNumber(), stats.successCount())),
+                boundedInt(Math.max(task.taskEligibleNumber(), stats.totalCount())),
+                task.updateTime()
+        );
+    }
+
+    private static TaskStateSnapshot toTaskStateSnapshot(TaskReadViewProjectionStore.TaskReadViewRecord task) {
+        return new TaskStateSnapshot(
+                task.taskId(),
+                enumName(task.status()),
+                enumName(task.terminalReason()),
+                enumName(task.intakeStatus())
+        );
+    }
+
+    private static TaskAccessSnapshot toTaskAccessSnapshot(TaskReadViewProjectionStore.TaskReadViewRecord task) {
+        return new TaskAccessSnapshot(
+                task.taskId(),
+                task.project(),
+                copyMap(task.sharedConfig()),
+                enumName(task.intakeStatus())
+        );
+    }
+
+    private static List<String> validationViolations(TaskReadViewProjectionStore.TaskReadViewRecord task,
+                                                     TaskWorkStatsSnapshot stats) {
+        List<String> violations = new ArrayList<>();
+        if (task.taskEligibleNumber() < 0) {
+            violations.add("NEGATIVE_ELIGIBLE_COUNT");
+        }
+        if (task.taskSuccessNumber() < 0) {
+            violations.add("NEGATIVE_SUCCESS_COUNT");
+        }
+        if (task.taskSuccessNumber() > task.taskEligibleNumber()) {
+            violations.add("SUCCESS_EXCEEDS_ELIGIBLE");
+        }
+        if (task.taskNonSuccessNumber() != task.taskEligibleNumber() - task.taskSuccessNumber()) {
+            violations.add("NON_SUCCESS_COUNT_MISMATCH");
+        }
+        if (task.status() == TaskStatus.BLOCKED && task.holdReason() == null) {
+            violations.add("BLOCKED_HOLD_REASON_MISSING");
+        }
+        if (task.status() != TaskStatus.BLOCKED && task.holdReason() != null) {
+            violations.add("HOLD_REASON_PRESENT_ON_NON_BLOCKED");
+        }
+        boolean finalStatus = task.status() != null && task.status().isFinal();
+        boolean hasTerminalReason = task.terminalReason() != null;
+        if (finalStatus && task.intakeStatus() == com.xa.mass.base.enums.task.TaskIntakeStatus.OPEN) {
+            violations.add("TERMINAL_TASK_WITH_OPEN_INTAKE");
+        }
+        if (finalStatus && !hasTerminalReason) {
+            violations.add("TERMINAL_REASON_MISSING");
+        }
+        if (!finalStatus && hasTerminalReason) {
+            violations.add("TERMINAL_REASON_PRESENT_ON_NON_TERMINAL");
+        }
+        if (finalStatus && hasTerminalReason) {
+            addTerminalReasonMismatch(task.terminalReason(), stats, violations);
+        }
+        return List.copyOf(violations);
+    }
+
+    private static void addTerminalReasonMismatch(TaskTerminalReason reason,
+                                                  TaskWorkStatsSnapshot stats,
+                                                  List<String> violations) {
+        switch (reason) {
+            case ALL_MESSAGES_SUCCEEDED -> {
+                if (!(stats.totalCount() > 0
+                        && stats.successCount() == stats.totalCount()
+                        && stats.failedCount() == 0
+                        && stats.expiredCount() == 0
+                        && stats.processingCount() == 0)) {
+                    violations.add("TERMINAL_REASON_MISMATCH_ALL_SUCCEEDED");
+                }
+            }
+            case ALL_MESSAGES_FAILED -> {
+                if (!(stats.totalCount() > 0
+                        && stats.failedCount() + stats.expiredCount() == stats.totalCount()
+                        && stats.successCount() == 0
+                        && stats.processingCount() == 0)) {
+                    violations.add("TERMINAL_REASON_MISMATCH_ALL_FAILED");
+                }
+            }
+            case MIXED_MESSAGE_RESULTS -> {
+                boolean mixed = stats.totalCount() > 0
+                        && stats.successCount() > 0
+                        && stats.failedCount() + stats.expiredCount() > 0
+                        && stats.finalCount() == stats.totalCount()
+                        && stats.processingCount() == 0;
+                if (!mixed) {
+                    violations.add("TERMINAL_REASON_MISMATCH_MIXED_RESULTS");
+                }
+            }
+            case MANUAL_CANCELLED, MAX_RUNTIME_REACHED, SUCCESS_RATE_REACHED, RETRY_BUDGET_EXHAUSTED -> {
+                // These reasons are allowed to close independently of the current runtime counter shape.
+            }
+        }
+    }
+
+    private static boolean needsResolution(TaskReadViewProjectionStore.TaskReadViewRecord task,
+                                           TaskWorkStatsSnapshot stats) {
+        return task.status() != null
+                && !task.status().isFinal()
+                && stats.totalCount() > 0
+                && stats.finalCount() == stats.totalCount()
+                && stats.processingCount() == 0;
     }
 
     private static TaskExecutionOptions toTaskExecutionOptions(com.xa.mass.base.model.TaskExecutionSpec spec) {
@@ -286,6 +388,10 @@ final class EngineTaskReadOperations implements TaskReadOperations {
 
     private static String enumName(Enum<?> value) {
         return value == null ? null : value.name();
+    }
+
+    private static int boundedInt(long value) {
+        return value > Integer.MAX_VALUE ? Integer.MAX_VALUE : (int) Math.max(0L, value);
     }
 
     private static Map<String, Object> copyMap(Map<String, Object> source) {

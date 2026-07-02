@@ -171,12 +171,13 @@ public class TaskApiController {
             PrincipalContext apiKeyViewer = resolveTaskViewerCredential(apiKeyHeader, authorizationHeader);
             String normalizedKeyword = keyword == null ? "" : keyword.trim().toLowerCase();
             String normalizedProject = project == null ? "" : project.trim();
-            // push status filter to storage when provided; otherwise use bounded page scan
+            String normalizedStatus = status == null ? "" : status.trim();
             List<TaskSummarySnapshot> candidates = status != null
                     ? taskReads.getTaskSummariesByStatus(status)
                     : taskReads.listTaskSummaries(offset, Math.min(limit, 1000));
             List<ApiTask> items = candidates.stream()
                     .filter(task -> canViewTaskSummary(task, apiKeyViewer))
+                    .filter(task -> matchesStatus(task.getStatus(), normalizedStatus))
                     .filter(task -> matchesProject(task.getProject(), normalizedProject))
                     .filter(task -> matchesKeyword(task.getTaskId(), task.getTaskName(), task.getProject(), normalizedKeyword))
                     .sorted(Comparator
@@ -848,6 +849,16 @@ public class TaskApiController {
             return false;
         }
         return taskProject.trim().equalsIgnoreCase(normalizedProject.trim());
+    }
+
+    private boolean matchesStatus(String taskStatus, String normalizedStatus) {
+        if (normalizedStatus == null || normalizedStatus.isBlank()) {
+            return true;
+        }
+        if (taskStatus == null || taskStatus.isBlank()) {
+            return false;
+        }
+        return taskStatus.trim().equalsIgnoreCase(normalizedStatus.trim());
     }
 
     private boolean containsIgnoreCase(String source, String normalizedKeyword) {

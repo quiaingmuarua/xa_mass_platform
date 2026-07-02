@@ -73,7 +73,7 @@ class TaskApiListControllerTest {
         pausedExecution.setBatchSize(1);
         TaskSummarySnapshot pausedTask = new TaskSummarySnapshot(
                 "task-002",
-                "Review backlog",
+                "Warm backlog",
                 "default",
                 "demoApp",
                 "agent",
@@ -86,7 +86,7 @@ class TaskApiListControllerTest {
                 LocalDateTime.of(2026, 4, 21, 8, 0)
         );
 
-        when(taskReads.getTaskSummariesByStatus("RUNNING")).thenReturn(List.of(runningTask));
+        when(taskReads.getTaskSummariesByStatus("RUNNING")).thenReturn(List.of(runningTask, pausedTask));
 
         mockMvc.perform(get("/api/v1/tasks")
                         .param("keyword", "warm")

@@ -179,26 +179,31 @@ class EngineStarterBackdoorGuardTest {
     }
 
     @Test
-    void unifiedTaskReadSurfaceLivesInSdkApiAndStarterImplementationOnly() {
+    void taskReadSurfaceDoesNotKeepDeletedEmbeddedImplementationAliases() {
         Path repo = EngineCallerSurfaceGuardSupport.repositoryRoot();
-        Path apiSurface = repo.resolve(
-                "sdk/xa-mass-embedded-sdk-api/src/main/java/com/xa/mass/sdk/TaskReadOperations.java");
         Path oldEmbeddedSurface = repo.resolve(
                 "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/TaskReadOperations.java");
         Path oldStarterImplementation = repo.resolve(
                 "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/StarterTaskReadOperations.java");
-        String engineReadImplementation = EngineCallerSurfaceGuardSupport.read(
-                "xa-mass-engine-starter/src/main/java/com/xa/mass/starter/config/EngineTaskReadOperations.java");
 
-        assertTrue(Files.isRegularFile(apiSurface),
-                "TaskReadOperations must be an SDK API contract, not an embedded-sdk implementation-local interface");
         assertFalse(Files.exists(oldEmbeddedSurface),
                 "embedded-sdk main must not keep its own TaskReadOperations interface");
         assertFalse(Files.exists(oldStarterImplementation),
                 "StarterTaskReadOperations must stay deleted; engine-starter owns the read implementation");
-        assertTrue(engineReadImplementation.contains("final class EngineTaskReadOperations implements TaskReadOperations"),
-                "EngineTaskReadOperations must remain the package-private engine-starter implementation");
-        assertFalse(engineReadImplementation.contains("public final class EngineTaskReadOperations"),
-                "EngineTaskReadOperations must not become a public starter-facing surface");
+    }
+
+    @Test
+    void taskReadProviderDoesNotUseTaskShellStoreAsReadOwner() {
+        String engineReadProvider = EngineCallerSurfaceGuardSupport.read(
+                "xa-mass-engine-starter/src/main/java/com/xa/mass/starter/config/EngineTaskReadOperations.java");
+
+        assertFalse(engineReadProvider.contains("TaskShellStore"),
+                "task read provider must not import or name TaskShellStore as its read owner");
+        assertFalse(engineReadProvider.contains("getTaskShellStore"),
+                "task read provider must not reach EngineConfig task shell storage for reads");
+        assertFalse(Pattern.compile("\\.\\s*(?:getTask|listTasksPaged|getTasksByStatus|getTasksByProject)\\s*\\(")
+                        .matcher(engineReadProvider)
+                        .find(),
+                "task read provider must not satisfy reads through TaskShellStore query methods");
     }
 }

@@ -2,44 +2,16 @@ package com.xa.mass.storage.jdbc;
 
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
-import com.xa.mass.base.enums.task.TaskStatus;
-import com.xa.mass.base.model.Task;
-import com.xa.mass.base.model.UserRef;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.kernel.spi.rule.RuleType;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
 
-import java.time.LocalDateTime;
-import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class JdbcStorageH2Test {
-
-    @Test
-    void taskStoragePersistsTaskShellTruthOnly() {
-        try (StorageFixture fixture = h2Fixture()) {
-            JdbcTaskShellStore storage = new JdbcTaskShellStore(fixture.dataSource(), new H2JdbcDialect());
-            Task task = new Task("task-1", "demo", "demoApp", 1, Map.of("k", "v"), UserRef.of("u1"));
-            task.setStatus(TaskStatus.READY);
-            task.setStartTime(LocalDateTime.now().minusSeconds(20));
-            task.getExecutionSpec().setMaxRuntimeSeconds(1);
-
-            storage.saveTask(task);
-
-            assertThat(storage.getTask("task-1")).isPresent();
-            assertThat(storage.getTasksByStatus(TaskStatus.READY)).hasSize(1);
-            assertThat(storage.getTasksByProject("demoApp")).hasSize(1);
-            assertThat(storage.pollTasksPastMaxRuntimeDeadline(LocalDateTime.now(), 10)).hasSize(1);
-
-            JdbcTaskShellStore restartedStorage = new JdbcTaskShellStore(fixture.dataSource(), new H2JdbcDialect());
-            assertThat(restartedStorage.getTask("task-1")).isPresent();
-
-            assertThat(storage.deleteTask("task-1")).isTrue();
-        }
-    }
 
     @Test
     void ruleStoragePersistsRulesAsDefinitionStore() {
