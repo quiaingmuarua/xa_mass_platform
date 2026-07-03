@@ -81,4 +81,48 @@ class MassSdkApplicationTaskReadBoundaryTest {
             app.stop();
         }
     }
+
+    @Test
+    void taskReadsProjectScoreBandLifecycleCommandsWithoutEngineLifecycleWrites() {
+        MassSdkApplication app = MassSdk.builder()
+                .transport(transport -> transport
+                        .webSocketAdapter(webSocket -> webSocket.enabled(false).serverEnabled(false)))
+                .engine(engine -> engine.enabled(true))
+                .build();
+        try {
+            app.start();
+
+            TaskShellSnapshot pausedTask = createReadBoundaryTask(app, "pause-source.csv");
+            assertTrue(app.approveTask(pausedTask.getTaskId()));
+            assertTrue(app.pauseTask(pausedTask.getTaskId()));
+            assertEquals("PAUSED", app.getTaskState(pausedTask.getTaskId()).getStatus());
+            assertTrue(app.getTaskSummariesByStatus("PAUSED").stream()
+                    .anyMatch(task -> pausedTask.getTaskId().equals(task.getTaskId())));
+            assertTrue(app.resumeTask(pausedTask.getTaskId()));
+            assertEquals("READY", app.getTaskState(pausedTask.getTaskId()).getStatus());
+
+            TaskShellSnapshot blockedTask = createReadBoundaryTask(app, "block-source.csv");
+            assertTrue(app.blockTask(blockedTask.getTaskId()));
+            assertEquals("BLOCKED", app.getTaskState(blockedTask.getTaskId()).getStatus());
+
+            TaskShellSnapshot rejectedTask = createReadBoundaryTask(app, "reject-source.csv");
+            assertTrue(app.rejectTask(rejectedTask.getTaskId()));
+            assertEquals("TERMINAL", app.getTaskState(rejectedTask.getTaskId()).getStatus());
+            assertTrue(app.getTaskSummariesByStatus("TERMINAL").stream()
+                    .anyMatch(task -> rejectedTask.getTaskId().equals(task.getTaskId())));
+        } finally {
+            app.stop();
+        }
+    }
+
+    private static TaskShellSnapshot createReadBoundaryTask(MassSdkApplication app, String sourceRef) {
+        return app.createTaskShell(MassTaskShellCreateRequest.builder()
+                .tenantId("tenant-a")
+                .project("demoApp")
+                .userId("owner-a")
+                .contract("BATCH")
+                .sourceRef(sourceRef)
+                .sharedConfig(Map.of("workerGroupId", "read-boundary-workers"))
+                .build());
+    }
 }

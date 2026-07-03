@@ -286,7 +286,7 @@ public class TaskAssignWorker {
                 task = signal.task();
                 String taskId = task != null ? task.getTid() : null;
                 TaskStatus initialStatus = task != null ? task.getStatus() : null;
-                if (initialStatus == TaskStatus.READY || initialStatus == TaskStatus.RUNNING) {
+                if (isNonTerminalProjection(initialStatus)) {
                     long assignmentStartedNanos = System.nanoTime();
                     boolean assigned = workerAssignListener.onTaskAssign(task);
                     long assignmentDurationMillis = elapsedMillis(assignmentStartedNanos);
@@ -302,8 +302,8 @@ public class TaskAssignWorker {
                 } else {
                     clearDeferredRequeue(taskId);
                     releaseTrackedTask(taskId);
-                    emitQueueSnapshot(task, initialStatus, laneState, "SKIPPED_NON_DISPATCHABLE", null,
-                            "task skipped because status is not READY or RUNNING", "SKIPPED");
+                    emitQueueSnapshot(task, initialStatus, laneState, "SKIPPED_TERMINAL", null,
+                            "task skipped because status is terminal", "SKIPPED");
                     notifyAssignmentProcessed(task, laneState);
                 }
             } catch (InterruptedException e) {
@@ -364,7 +364,7 @@ public class TaskAssignWorker {
             return false;
         }
         TaskStatus status = task.getStatus();
-        if (status != TaskStatus.RUNNING) {
+        if (!isNonTerminalProjection(status)) {
             return false;
         }
         return deferredRequeueTaskIds.add(task.getTid());
@@ -380,10 +380,10 @@ public class TaskAssignWorker {
             return false;
         }
         TaskStatus status = task.getStatus();
-        if (!running || (status != TaskStatus.READY && status != TaskStatus.RUNNING)) {
+        if (!running || !isNonTerminalProjection(status)) {
             releaseTrackedTask(taskId);
             emitQueueSnapshot(task, status, laneState, "REQUEUE_DROPPED", null,
-                    "deferred requeue was dropped because task is no longer dispatchable", "SKIPPED");
+                    "deferred requeue was dropped because task is terminal or worker is stopping", "SKIPPED");
             notifyAssignmentProcessed(task, laneState);
             return false;
         }
@@ -443,10 +443,10 @@ public class TaskAssignWorker {
                         "submit retry was dropped because assignment signal worker is stopping", "SKIPPED");
                 return;
             }
-            if (currentStatus != TaskStatus.READY && currentStatus != TaskStatus.RUNNING) {
+            if (!isNonTerminalProjection(currentStatus)) {
                 releaseTrackedTask(task.getTid());
                 completeUnprocessedTrackedTask(task, laneState, "RETRY_DROPPED",
-                        "submit retry was dropped because task is no longer dispatchable", "SKIPPED");
+                        "submit retry was dropped because task is terminal", "SKIPPED");
                 return;
             }
             if (enqueueSignal(task, AssignmentSignalReason.RETRY, laneState)) {
@@ -682,6 +682,10 @@ public class TaskAssignWorker {
 
     private static long elapsedMillis(long startedNanos) {
         return TimeUnit.NANOSECONDS.toMillis(Math.max(0L, System.nanoTime() - startedNanos));
+    }
+
+    private static boolean isNonTerminalProjection(TaskStatus status) {
+        return status == null || !status.isFinal();
     }
 
     private static final class WaitingRetry {

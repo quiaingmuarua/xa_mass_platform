@@ -279,20 +279,23 @@ Keep these facts fixed unless the owning global baselines change:
 - `AssignmentAllocationPolicy` owns allocation shape for a task-level assignment
   attempt; `TaskWorkerAssignListener` keeps cross-aggregate orchestration and
   trace ownership around that policy decision
-- `TaskManager` is the engine orchestration entry, not the place to keep raw
-  lock bookkeeping or compatibility CRUD owner behavior
-- `TaskManager` remains the engine-internal orchestration facade and
-  composition root; cross-module callers should not treat it as the default
-  engine API
+- `TaskManager` is old engine task orchestration residue during the lifecycle
+  cutover, not a target lifecycle owner or external task API
+- `TaskManager` / `TaskLifecycleService` must not receive new lifecycle command,
+  query, score-sync, or scheduling responsibilities; remaining use is frozen
+  until the engine cleanup roadmap physically removes it
 - `TaskConcurrencyStrategy` / `LocalTaskConcurrencyCoordinator` owns task/message locking plus coalesced progress
   reconciliation
 - `TaskManager` reaches task item runtime through `TaskRuntimeServingLane` and
   `xa-mass-task-runtime` ports for append, scheduler discovery, claim, lease,
   retry/finality, final-result reads, and progress; do not reintroduce old
   infra runtime stores or pass-through bridges
-- `TaskCommandPort` and `TaskQueryPort` are narrow engine-internal backing
-  seams for shell-facing command/query services; external SDK/server task
-  reads converge through SDK `TaskReadOperations`, not through `TaskQueryPort`
+- task lifecycle commands enter through the task-runtime starter command handle;
+  `TaskCommandPort` and `TaskQueryPort` are old-path quarantine seams, not
+  target public or cross-module task surfaces
+- external SDK/server reads converge through the starter-hosted
+  `TaskReadViewPort` while the SDK `TaskReadOperations` shape remains only as a
+  compatibility facade over that read-view path
 - `TaskResultIngestPort` is the narrow backing seam for transport-facing
   result ingress; keep callback acceptance off the raw `TaskManager` facade
 - `TaskAssignWorker` owns session/interactive assignment-signal admission;

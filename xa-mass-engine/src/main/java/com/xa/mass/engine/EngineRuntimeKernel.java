@@ -1,6 +1,5 @@
 package com.xa.mass.engine;
 
-import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBatchListener;
 import com.xa.mass.engine.assignment.DefaultAssignmentAllocationPolicy;
@@ -251,8 +250,8 @@ public class EngineRuntimeKernel {
             return;
         }
         for (Task task : runtimeRecoveryPort.getRuntimeDispatchableTasks(STARTUP_READY_TASK_SCAN_LIMIT)) {
-            TaskStatus status = task.getStatus();
-            if ((status == TaskStatus.READY || status == TaskStatus.RUNNING)
+            if (task != null
+                    && (task.getStatus() == null || !task.getStatus().isFinal())
                     && usesSignalDrivenDelayedDispatch(task)) {
                 assignWorker.submit(task);
             }

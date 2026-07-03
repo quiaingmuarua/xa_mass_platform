@@ -2,11 +2,11 @@
 
 Status: semantic task runtime owner module.
 
-This module owns task item/result convergence contracts. It defines public
-ports, runtime-owned values, receiver-consumed outcomes, and contract-test
-surfaces for accepted backlog append, task score visibility, claim, result
-finality, active-lease repair, progress snapshots, discard, and task-local
-final-result reads.
+This module owns task-runtime lifecycle and item/result convergence contracts.
+It defines public ports, runtime-owned values, receiver-consumed outcomes, and
+contract-test surfaces for score-band lifecycle state, accepted backlog append,
+task score visibility, claim, result finality, active-lease repair, progress
+snapshots, discard, and task-local final-result reads.
 
 This module must not own physical storage, Redis keys, Lua scripts, memory-map
 shape, Spring beans, process threads, engine shell policy, worker-runtime
@@ -61,9 +61,10 @@ repair through this owner, or delegate old result/repair callers to this owner.
   preserved for worker handler invocation, payload lookup, and engine dispatch
   binding. They are not worker-selection, transport-routing, or scheduling
   facts.
-- Message finality is task-runtime owned. Task terminal convergence remains an
-  engine/shell aggregate policy that consumes task-runtime outcome facts and
-  progress snapshots.
+- Message finality and runtime lifecycle score are task-runtime owned. Engine
+  may consume task-runtime outcome facts and progress snapshots for trace,
+  resource release, and read projection, but it must not maintain a second
+  lifecycle truth.
 - Retry promotion and expired-lease scan return bounded lists; close returns a
   primitive decision; discard mutations are `void`. Diagnostic mutation counts
   are not core runtime API.

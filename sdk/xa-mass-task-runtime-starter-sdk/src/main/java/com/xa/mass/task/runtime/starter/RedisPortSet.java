@@ -55,6 +55,11 @@ record RedisPortSet(RedisTaskRuntime delegate) implements TaskRuntimePortSet, Ta
     }
 
     @Override
+    public Optional<TaskScoreV1> taskScore(String taskId, String laneKey) {
+        return delegate.taskScore(taskId, laneKey);
+    }
+
+    @Override
     public Optional<ScoreCandidate> scoreCandidate(String taskId, String laneKey) {
         return delegate.scoreCandidate(taskId, laneKey);
     }

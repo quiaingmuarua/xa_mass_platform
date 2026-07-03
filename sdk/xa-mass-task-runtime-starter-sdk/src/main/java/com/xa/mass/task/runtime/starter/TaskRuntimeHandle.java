@@ -1,22 +1,26 @@
 package com.xa.mass.task.runtime.starter;
 
 import java.util.List;
+import com.xa.mass.task.runtime.command.TaskRuntimeCommandPort;
 
 public final class TaskRuntimeHandle implements AutoCloseable {
 
     private final TaskRuntimeBackendKind backendKind;
     private final TaskRuntimePortSet runtime;
+    private final TaskRuntimeCommandPort commands;
     private final TaskRuntimeLoopHost loopHost;
     private final AutoCloseable closeableRuntime;
 
     TaskRuntimeHandle(
             TaskRuntimeBackendKind backendKind,
             TaskRuntimePortSet runtime,
+            TaskRuntimeCommandPort commands,
             TaskRuntimeLoopHost loopHost,
             AutoCloseable closeableRuntime
     ) {
         this.backendKind = backendKind;
         this.runtime = runtime;
+        this.commands = commands;
         this.loopHost = loopHost;
         this.closeableRuntime = closeableRuntime;
     }
@@ -27,6 +31,10 @@ public final class TaskRuntimeHandle implements AutoCloseable {
 
     public TaskRuntimePortSet runtime() {
         return runtime;
+    }
+
+    public TaskRuntimeCommandPort commands() {
+        return commands;
     }
 
     public TaskRuntimeLoopHostStatus status() {

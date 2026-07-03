@@ -184,6 +184,12 @@ final class RedisScoreBandTaskRuntime implements TaskRuntimeWorkPort,
     }
 
     @Override
+    public Optional<TaskScoreV1> taskScore(String taskId, String laneKey) {
+        Double score = commands.zscore(keyspace.taskScoreKey(laneKey), keyCodec.encodeSegment(taskId));
+        return score == null ? Optional.empty() : Optional.of(new TaskScoreV1(score.longValue()));
+    }
+
+    @Override
     public Optional<ScoreCandidate> scoreCandidate(String taskId, String laneKey) {
         String encodedTaskId = keyCodec.encodeSegment(taskId);
         Double score = commands.zscore(keyspace.taskScoreKey(laneKey), encodedTaskId);
@@ -191,9 +197,6 @@ final class RedisScoreBandTaskRuntime implements TaskRuntimeWorkPort,
             return Optional.empty();
         }
         Map<String, String> meta = commands.hgetall(keyspace.taskMetaKey(taskId));
-        if (!RuntimeGate.OPEN.name().equals(meta.get("runtimeGate"))) {
-            return Optional.empty();
-        }
         return Optional.of(new ScoreCandidate(
                 taskId,
                 laneKey,
@@ -211,9 +214,6 @@ final class RedisScoreBandTaskRuntime implements TaskRuntimeWorkPort,
         for (var encodedTaskId : encodedTaskIds) {
             String taskId = keyCodec.decodeSegment(encodedTaskId);
             Map<String, String> meta = commands.hgetall(keyspace.taskMetaKey(taskId));
-            if (!RuntimeGate.OPEN.name().equals(meta.get("runtimeGate"))) {
-                continue;
-            }
             Double score = commands.zscore(keyspace.taskScoreKey(laneKey), encodedTaskId);
             candidates.add(new ScoreCandidate(
                     taskId,

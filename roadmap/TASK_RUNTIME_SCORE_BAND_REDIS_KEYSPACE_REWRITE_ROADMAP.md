@@ -69,10 +69,10 @@ scheduling status visibility, active lease recovery, retry visibility, result
 finality, and short-retained final rows. The Redis implementation owns only the
 physical storage mapping and atomic mutations for that contract.
 
-Task score is task-runtime status/gate truth:
+Task score is task-runtime lifecycle scheduling-status truth:
 
-- task status and runtime gate mutations control score membership and score
-  value;
+- task-runtime lifecycle commands, maintenance owners, result/finality owners,
+  and close/discard owners control score membership and score value;
 - append writes item backlog truth only;
 - backlog length must not be mirrored through a second task registry;
 - backlog, retry, active lease, and result keys each own their own local truth;
@@ -184,8 +184,9 @@ is pending.
 Current slice: **complete**. SBRK-0D old-surface cleanup is closed for core
 command-bucket DTOs and focused guard proof. SBRK-1 mutation boundaries are
 implemented for the Redis score-band path through owner-local Lua scripts.
-SBRK-2/SBRK-3 proof covers approved keyspace writes and append -> score scan ->
-claim -> result/retry/lease/close/discard behavior. SBRK-4/SBRK-5 cutover proof
+SBRK-2/SBRK-3 proof covers approved keyspace writes, independent score
+candidate discovery plus backlog claim, and result/retry/lease/close/discard
+behavior. SBRK-4/SBRK-5 cutover proof
 exists because `RedisTaskRuntime` delegates its grouped serving ports to
 `RedisScoreBandTaskRuntime`, Redis tests prove no old runtime keys are created,
 and ordered final-window reads are no longer part of `TaskRuntimePortSet`.
@@ -353,7 +354,7 @@ the keyspace gate is not complete.
 | Key | Redis type | Member/field type | Score/value type | Owner and role |
 | --- | --- | --- | --- | --- |
 | `<tr>:lanes` | SET | `LaneKey` | none | Low-cardinality lane discovery for scheduler/repair loops. Not a task registry. |
-| `<tr>:task:score:{laneKey}` | ZSET | `TaskIdKey` | `TaskScoreV1` score | The task-runtime status/gate scheduling index. Score is controlled by task status changes, not by backlog writes. |
+| `<tr>:task:score:{laneKey}` | ZSET | `TaskIdKey` | `TaskScoreV1` score | The task-runtime lifecycle scheduling-status index. Score is controlled by score-owner lifecycle/maintenance/result changes, not by backlog writes. |
 
 `LaneKey` is a low-cardinality task-runtime bucket id. First implementation can
 use `projectId`, or `default` when project partitioning is not ready. It is not
@@ -376,56 +377,63 @@ Rules:
 `TaskScoreV1`:
 
 ```text
-score >= TIME_SCORE_FLOOR: dispatch-visible task, evaluated at or after score millis
-0 <= score < TIME_SCORE_FLOOR: maintenance-visible task, not dispatch-visible
-score < 0: parked state, not dispatch-visible
+score >= TIME_SCORE_FLOOR: schedulable-time task, evaluated at or after score millis
+0 < score < TIME_SCORE_FLOOR: positive non-schedulable enum, not dispatch-visible
+score < 0: terminal/discarded/canceled/closed state, not transitionable and not dispatch-visible
 missing member: no scheduler-visible task state in this lane
 
 TIME_SCORE_FLOOR = 1_000_000_000_000
-MAINT_ACTIVE = 100
-PARKED_PAUSED = -10
-PARKED_BLOCKED = -20
-TERMINAL or discarded = ZREM, not parked score
+NON_SCHED_PENDING_APPROVAL = 100
+NON_SCHED_BLOCKED = 200
+NON_SCHED_REJECTED = 250
+NON_SCHED_ACTIVE_MAINTENANCE = 300
+TERMINAL_CLOSED = -100
+TERMINAL_DISCARDED = -200
 ```
 
-The score says "this task status is currently schedulable, parked, or scheduled
-for re-evaluation". It does not say "this task has N ready items". A dispatch
-evaluator may find an empty backlog and skip it. That is not a correctness bug.
-Retry promotion, lease repair, idle close, periodic checks, and wakeup hints are
-separate owner paths, not work for the dispatch evaluator.
+The score says "this task is on the schedulable-time axis, in a
+non-schedulable positive enum, or terminal". It does not say "this task has N
+ready items". A dispatch evaluator may find an empty backlog and skip it. That
+is not a correctness bug. Retry promotion, lease repair, idle close, periodic
+checks, and wakeup hints are separate owner paths, not work for the dispatch
+evaluator.
 
 V0 score visibility invariant:
 
-- tasks are created score-absent by default;
+- tasks are created as a positive non-schedulable enum by default;
 - only TaskScoreOwner may ZADD, update, park, or ZREM a task in
   `<tr>:task:score:{laneKey}`;
-- OPEN/schedulable tasks use a positive due-time score;
-- OPEN tasks with `rt`, retry, or close work but no dispatchable backlog use
-  `MAINT_ACTIVE`, so repair/retry/close owners can discover them without
-  keeping dispatch in an empty-scan loop;
-- PAUSED/BLOCKED tasks may use a negative parked score when maintenance owners
-  still need a bounded candidate universe;
-- TERMINAL/DISCARDED tasks are ZREM, not parked;
-- CloseOwner may request terminal ZREM only after backlog, retry, and `rt` are
-  empty, except hard discard fencing;
+- schedulable tasks use a timestamp score; `score <= now` is due for dispatch,
+  and `score > now` is scheduled future work;
+- pause is encoded by moving the timestamp forward using the runtime default
+  pause window, for example `now + defaultPauseMillis`; it is not a negative
+  parked state and does not accept caller-provided pause time;
+- indefinite manual hold is encoded as a positive non-schedulable enum, not as
+  a future timestamp that silently auto-resumes;
+- non-schedulable non-terminal tasks use positive enum scores, such as pending
+  approval, blocked/rejected, or active-maintenance-only;
+- TERMINAL/DISCARDED/CANCELED/CLOSED tasks use negative terminal scores and do
+  not transition back to non-terminal states;
+- retention cleanup may eventually remove a terminal score member, but
+  lifecycle convergence first records the negative terminal score;
 - if task-local `retry` or `rt` still contains owner work, TaskScoreOwner must
   keep the task score-visible in some non-terminal lane state until the owning
   repair/result/close path clears it.
 
-Dispatch reads only the schedulable positive band:
+Dispatch reads only the due schedulable timestamp band:
 `ZRANGEBYSCORE task:score:{laneKey} TIME_SCORE_FLOOR now`. RetryOwner,
-LeaseOwner, and CloseOwner may scan the non-negative maintenance universe:
-`ZRANGEBYSCORE task:score:{laneKey} 0 +inf`. They own their own cadence, limits,
-and mutations. If that becomes too expensive, the successor design must add a
-named retry/lease candidate key to the Target Redis Keyspace table before
-implementation; do not smuggle back
-`task:active:{laneKey}` as an unreviewed helper.
+LeaseOwner, and CloseOwner may scan positive enum and future timestamp ranges
+that their owner policy names. They own their own cadence, limits, and
+mutations. If that becomes too expensive, the successor design must add a named
+retry/lease candidate key to the Target Redis Keyspace table before
+implementation; do not smuggle back `task:active:{laneKey}` as an unreviewed
+helper.
 
 ### Task-Local Keys
 
 | Key | Redis type | Member/field type | Value type | Owner and role |
 | --- | --- | --- | --- | --- |
-| `<tr>:task:{taskIdKey}:meta` | HASH | metadata field name | primitive or compact sub-frame | Task-local runtime status, lane, policy, and gate fields. Scheduler reads selected fields. |
+| `<tr>:task:{taskIdKey}:meta` | HASH | metadata field name | primitive or compact sub-frame | Task-local lane, epoch, fence, score reason, policy, and dispatch-intent fields. Scheduler reads selected fields. |
 | `<tr>:task:{taskIdKey}:backlog` | LIST | list element | encoded backlog frame JSON | Raw accepted item backlog. Append writes here. Claim consumes from here. |
 | `<tr>:task:{taskIdKey}:retry:score` | ZSET | `MessageIdKey` | `nextSchedulableAtMillis` | Message-level delayed retry visibility for `DUE_TIME` retry mode only. |
 | `<tr>:task:{taskIdKey}:retry:item` | HASH | `MessageIdKey` | `RetryFrameV1` | Payload and retry evidence for delayed retry items. |
@@ -442,9 +450,10 @@ Recommended field groups:
 schemaVersion
 taskId
 laneBucketId
-runtimeGate              OPEN | PAUSED | BLOCKED | TERMINAL
 runtimeEpoch
 fenceToken               nullable
+scoreState               SCHEDULABLE_TIME | NON_SCHED_ENUM | TERMINAL
+scoreReason              PENDING_APPROVAL | MANUAL_HOLD | REVIEW_REJECTED | ACTIVE_MAINTENANCE | TERMINAL_CLOSED | ...
 dispatchIntent           workerGroupIds, targetWorkerId, routingCode, match rule evidence
 retryPolicy              retryMode, maxRetryCount, retryDelayMillis, backoff mode, version
 scorePolicy              positiveMatchDelay, emptyMatchDelay, contentionRecheckDelay, lease policy evidence
@@ -453,9 +462,10 @@ updatedAtMillis
 ```
 
 Nested groups such as `dispatchIntent`, `retryPolicy`, and `scorePolicy` may be
-stored as compact sub-frames, but hot fields such as `runtimeGate`,
-`runtimeEpoch`, `laneBucketId`, and `updatedAtMillis` must remain directly
-readable fields.
+stored as compact sub-frames, but hot fields such as `runtimeEpoch`,
+`laneBucketId`, `scoreState`, `scoreReason`, and `updatedAtMillis` must remain
+directly readable fields. `RuntimeGate` is old vocabulary; do not make it the
+target lifecycle truth or a required claim/discovery field.
 
 Dispatch evaluator flow should be:
 
@@ -471,10 +481,11 @@ if backlog is non-empty, call atomic claimBacklog(candidate, reservations, ...)
 `claimBacklog` is the atomic fence between score discovery and active lease
 creation. It must re-read the task-local meta and lane score in the same
 `LPOP backlog -> HSET rt` boundary, reject stale candidates when lane,
-`runtimeGate`, `runtimeEpoch`, `fenceToken`, or observed score no longer
-matches, and reject candidates whose observed score is outside the
-dispatch-visible band. This is not a second terminal/discard policy check; it is
-the consistency fence for the score fact that dispatch already consumed.
+`runtimeEpoch`, `fenceToken`, or observed score no longer matches, and reject
+candidates whose observed score is outside the dispatch-visible timestamp band.
+It must not require `RuntimeGate.OPEN`. This is not a second terminal/discard
+policy check; it is the consistency fence for the score fact that dispatch
+already consumed.
 
 Do not put raw item counters, payload, final result projections, server view
 fields, worker-runtime state, transport route fields, trace-only details, or
@@ -578,8 +589,9 @@ these logical frame types, not on JSON field names.
   cost.
 - No worker reverse index in core task-runtime truth unless a later API/state
   gate proves it protects a production invariant.
-- Task score and backlog length are separate. Task status/gate mutations own
-  score; append writes backlog.
+- Task score and backlog length are separate. Score-owner lifecycle,
+  maintenance, result, and close/discard mutations own score; append writes
+  backlog.
 - Dispatch evaluation does not own retry promotion, lease repair, or close.
   Retry and lease owners use the score-visible task universe in V0, but their
   mutations stay separate. Do not add a separate active-task or precise
@@ -674,7 +686,7 @@ truth.
 
 | Target port | Target methods | Key impact |
 | --- | --- | --- |
-| `TaskRuntimeWorkPort` | `appendBacklog(String taskId, List<AppendItemInput> items, int maxBatchSize)`; `claimBacklog(ScoreCandidate candidate, List<WorkerReservationEvidence> reservations, int maxItems, long leaseMillis, long nowMillis)` | Append writes only `backlog`. Claim atomically validates `ScoreCandidate` and moves `backlog -> rt`; its only score effect is dispatch-band to `MAINT_ACTIVE` when backlog drains and active work remains. No dirty, ids, retry, repair, terminal, or close. |
+| `TaskRuntimeWorkPort` | `appendBacklog(String taskId, List<AppendItemInput> items, int maxBatchSize)`; `claimBacklog(ScoreCandidate candidate, List<WorkerReservationEvidence> reservations, int maxItems, long leaseMillis, long nowMillis)` | Append writes only `backlog`. Claim atomically validates `ScoreCandidate` and moves `backlog -> rt`; its only score effect is dispatch-band to `NON_SCHED_ACTIVE_MAINTENANCE` when backlog drains and active work remains. No dirty, ids, retry, repair, terminal, or close. |
 | `TaskRuntimeScorePort` | `putRuntimeMeta(TaskRuntimeMetaV1 meta)`; `setTaskScore(String taskId, String laneKey, RuntimeEpoch epoch, TaskScoreV1 score)`; `removeTaskScore(String taskId, String laneKey, RuntimeEpoch epoch)`; `scoreCandidate(String taskId, String laneKey)`; `discoverSchedulable(String laneKey, long maxScore, int limit)` | Owns task-local `meta` and lane `task:score`. Discovery and point-read return opaque `ScoreCandidate`; callers do not fabricate score candidates. |
 | `TaskRuntimeConvergencePort` | `promoteDueRetries(String laneKey, long nowMillis, int taskLimit, int itemLimit)`; `scanExpiredLeases(String laneKey, long nowMillis, int taskLimit, int itemLimit)`; `applyResult(RuntimeResultFact fact)`; `closeIfDrained(String taskId, String laneKey, RuntimeEpoch epoch)`; `discardRuntime(String taskId, String laneKey, RuntimeEpoch epoch, String reason)`; `discardWork(String taskId, RuntimeEpoch epoch, String reason)` | Owns post-claim convergence. `scanExpiredLeases` is discovery-only; timeout mutation must enter through `applyResult(LEASE_TIMEOUT)` so engine/review events and runtime state converge through the same result boundary. |
 | `TaskRuntimeReadPort` | `finalResult(String taskId, String messageId)`; `resultCorrelation(String taskId, String messageId)`; `progressSnapshot(String taskId)`; `activeWorkForTask(String taskId, int limit)` | Task-local point reads only. No ordered final window, worker reverse lookup, global scan, or server view projection. |
@@ -694,7 +706,7 @@ projection that is explicitly outside the task-runtime score-band mechanism.
 | Current API | Target decision |
 | --- | --- |
 | `TaskRuntimeAppendPort#appendBatch(AppendBatchCommand)` | Expose as `TaskRuntimeWorkPort#appendBacklog(...)`; keep all-or-rejected batch semantics, but remove `ready` vocabulary and avoid expandable command DTOs. Old implementation may still write old keys until cutover. |
-| old append admission DTO backlog cap | Remove from target core API, or introduce a non-runtime `maxBacklogItems` intake rule only if a real backlog bound is implemented. `maxAppendBatchSize` is enough for the first cut. |
+| old append DTO backlog cap | Remove from target core API, or introduce a non-runtime `maxBacklogItems` bound only if a real backlog bound is implemented. `maxAppendBatchSize` is enough for the first cut. |
 | `TaskRuntimeSchedulerPort` | Expose as `TaskRuntimeScorePort`. `markTaskDirty` must not remain caller-visible core runtime API. |
 | `ClaimReadyCommand` / `claimReady` | Expose as `claimBacklog(...)`; consume `ScoreCandidate` evidence from score discovery or score-owner point-read instead of caller-built score fields. Old implementation may still read `ready` internally until cutover. |
 | `TaskRuntimeRepairPort#pollExpiredActiveLeases(...)` | Expose as `scanExpiredLeases(...)` for bounded expired-active discovery, then apply timeout through `applyResult(LEASE_TIMEOUT)`. Old implementation may still poll old active keys until cutover. |
@@ -1076,8 +1088,8 @@ This slice is discussion/design before serving cutover. It must answer at least:
 - which TaskScoreOwner mutation creates, updates, parks, or removes score
   membership;
 - where initial task-local metadata is created;
-- how append stays a backlog-only mutation and does not enroll or update task
-  score;
+- how append stays a backlog-only mutation and does not change task score
+  visibility;
 - how the dispatch evaluator stays thin: consume score candidate, skip empty
   backlog, claim backlog into `rt`, and dispatch;
 - how RetryOwner promotes due `retry:score` / `retry:item` entries back into
@@ -1094,30 +1106,41 @@ Required TaskScoreOwner transition table:
 
 | Trigger | Score mutation | Local-key precondition | Non-owner behavior |
 | --- | --- | --- | --- |
-| Task shell created | Score absent | Initial meta may be created | Append may write backlog later but does not enroll score. |
-| Runtime gate opens / resume / manual schedulable | ZADD positive due-time score | Task meta says OPEN and lane is known | Dispatch may evaluate only because score owner made it visible. |
-| Runtime gate paused or blocked | ZADD parked negative score when maintenance still needs visibility, otherwise ZREM if no runtime obligations remain | Task meta says PAUSED/BLOCKED | Dispatch does not read parked band. |
-| Backlog appended | No score mutation | Append writes backlog only | If task is not score-visible, appended backlog waits until gate/status owner opens it. |
-| Dispatch claim creates `rt` | No terminal/discard check in dispatch; if backlog drains while `rt` remains, atomically move score to `MAINT_ACTIVE` | Candidate came from score, lane/gate/epoch/fence/score still match, backlog had frames, claim writes `rt` | LeaseOwner/result path owns active item convergence; dispatch does not scan maintenance band. |
-| RetryOwner promotes due retry to backlog | RetryOwner updates retry/backlog and moves OPEN task score back to dispatch due-time | Due retry row exists | Dispatch still consumes backlog only. |
-| ResultOwner clears active item | ResultOwner updates `rt`, retry/result; it may move score to dispatch due-time when backlog exists, otherwise `MAINT_ACTIVE` until close | Active lease correlation matches or result is stale/duplicate | Result apply does not become scheduler owner or terminal owner. |
+| Task shell created | ZADD positive non-schedulable enum, such as `NON_SCHED_PENDING_APPROVAL` | Initial meta may be created | Append may write backlog later but does not change score visibility. |
+| Runtime opens / resume / manual schedulable | ZADD timestamp score in schedulable-time band | Task lane is known and owner policy chose a due time | Dispatch may evaluate only because score owner made it visible. |
+| Runtime pause event / scheduled delay | ZADD future timestamp score supplied by runtime default pause policy | Task lane is known | This is a time-bounded delay and will become due automatically. |
+| Runtime blocked, manual hold, or rejected | ZADD positive non-schedulable enum | Owner-local reason is recorded | Dispatch does not read enum band. |
+| Backlog appended | No score mutation | Append writes backlog only | Append never changes score visibility, opens, dirties, wakes, or rescans score. Backlog and score meet only when claim consumes a score candidate and backlog frame. |
+| Dispatch claim creates `rt` | No terminal/discard check in dispatch; if backlog drains while `rt` remains, atomically move score to `NON_SCHED_ACTIVE_MAINTENANCE` | Candidate came from score, lane/epoch/fence/score still match, backlog had frames, claim writes `rt` | LeaseOwner/result path owns active item convergence; dispatch does not scan maintenance enum by default. |
+| RetryOwner promotes due retry to backlog | RetryOwner updates retry/backlog and moves eligible task score back to dispatch due-time | Due retry row exists | Dispatch still consumes backlog only. |
+| ResultOwner clears active item | ResultOwner updates `rt`, retry/result; it may move score to dispatch due-time when backlog exists, otherwise `NON_SCHED_ACTIVE_MAINTENANCE` until close | Active lease correlation matches or result is stale/duplicate | Result apply does not become scheduler owner or terminal owner. |
 | LeaseOwner expires active item | LeaseOwner updates `rt` and retry/final state; score changes go through TaskScoreOwner | `rt` item is expired | Dispatch does not repair leases. |
-| Normal close request | ZREM only if backlog, retry, and `rt` are empty | CloseOwner proves empty local owner keys | Empty backlog alone is not close proof. |
-| Hard discard | Fence then ZREM and cleanup owned local keys | Discard owner sets fence/epoch | Stale claim/result/repair must reject by fence/epoch. |
+| Normal close request | ZADD negative terminal score only if backlog, retry, and `rt` are empty | CloseOwner proves empty local owner keys | Empty backlog alone is not close proof. |
+| Hard discard | Fence, ZADD negative terminal score, then cleanup owned local keys | Discard owner sets fence/epoch | Stale claim/result/repair must reject by fence/epoch. |
 
 Owner pseudocode:
 
 ```text
-TaskScoreOwner.setRuntimeGate(taskId, laneKey, epoch, gate, dueAtMillis):
-  HMSET <tr>:task:{taskId}:meta runtimeGate/laneBucketId/runtimeEpoch/updatedAt
-  if gate == OPEN:
-    ZADD <tr>:task:score:{laneKey} dueAtMillis taskId
-  else if gate == PAUSED or gate == BLOCKED:
-    ZADD negative parked score only when maintenance visibility is required
-    otherwise ZREM <tr>:task:score:{laneKey} taskId
-  else if gate == TERMINAL:
+TaskScoreOwner.setScoreState(taskId, laneKey, epoch, scoreState, scoreValue):
+  HMSET <tr>:task:{taskId}:meta scoreState/laneBucketId/runtimeEpoch/updatedAt
+  if scoreState == SCHEDULABLE_TIME:
+    require scoreValue >= TIME_SCORE_FLOOR
+    ZADD <tr>:task:score:{laneKey} scoreValue taskId
+  else if scoreState == PAUSED_DELAY:
+    require scoreValue >= TIME_SCORE_FLOOR
+    require scoreValue > now
+    ZADD <tr>:task:score:{laneKey} scoreValue taskId
+  else if scoreState == NON_SCHEDULABLE_ENUM:
+    require 0 < scoreValue < TIME_SCORE_FLOOR
+    ZADD <tr>:task:score:{laneKey} scoreValue taskId
+  else if scoreState == TERMINAL:
+    require scoreValue < 0
     require CloseOwner or DiscardOwner terminal precondition
-    ZREM <tr>:task:score:{laneKey} taskId
+    ZADD <tr>:task:score:{laneKey} scoreValue taskId
+
+TaskScoreOwner.openOrResume(taskId, laneKey, epoch, dueAtMillis):
+  require dueAtMillis >= TIME_SCORE_FLOOR
+    ZADD <tr>:task:score:{laneKey} dueAtMillis taskId
 
 AppendOwner.appendBatch(taskId, frames):
   RPUSH <tr>:task:{taskId}:backlog frames
@@ -1136,14 +1159,14 @@ DispatchOwner.evaluateTask(laneKey, taskId, now):
 ClaimOwner.claimBacklog(candidate, reservations, limit, leaseMillis, now):
   // one Lua/atomic boundary
   require candidate.observedScore >= TIME_SCORE_FLOOR
+  require candidate.observedScore <= now
   require meta.laneBucketId == candidate.laneKey
-  require meta.runtimeGate == OPEN
   require meta.runtimeEpoch/fenceToken == candidate.runtimeEpoch/fenceToken
   require ZSCORE task:score:{laneKey} taskId == candidate.observedScore
   frames = LPOP <tr>:task:{taskId}:backlog up to limit
   HSET <tr>:task:{taskId}:rt messageId -> RuntimeItemStateV1 for each frame
   if frames claimed and LLEN backlog == 0 and HLEN rt > 0:
-    ZADD <tr>:task:score:{laneKey} MAINT_ACTIVE taskId
+    ZADD <tr>:task:score:{laneKey} NON_SCHED_ACTIVE_MAINTENANCE taskId
   return claimed frames
 
 RetryOwner.promoteDueRetry(taskId, now):
@@ -1157,7 +1180,7 @@ RetryOwner.promoteDueRetry(taskId, now):
     ZADD <tr>:task:score:{laneKey} dueAt(now) taskId
 
 LeaseOwner.expireLeases(laneKey, now):
-  for taskId from owner-selected non-negative lane score candidates:
+  for taskId from owner-selected positive enum or future timestamp candidates:
     scan bounded <tr>:task:{taskId}:rt entries
     for expired entry:
       applyResult(LEASE_TIMEOUT) moves to retry or final according to retry policy
@@ -1172,25 +1195,25 @@ ResultOwner.applyResult(fact):
   if LLEN backlog > 0:
     ZADD <tr>:task:score:{laneKey} dueAt(now) taskId
   else:
-    ZADD <tr>:task:score:{laneKey} MAINT_ACTIVE taskId
+    ZADD <tr>:task:score:{laneKey} NON_SCHED_ACTIVE_MAINTENANCE taskId
 
 CloseOwner.tryClose(taskId):
   if LLEN backlog == 0 and ZCARD retry:score == 0 and HLEN rt == 0:
-    request TaskScoreOwner terminal ZREM
+    request TaskScoreOwner negative terminal score
   else:
     keep task non-terminal
 ```
 
 Expected atomicity direction:
 
-- append batch can be single-command or pipeline plus bounded admission; Lua is
-  not required for v0 append unless the admitted batch and a backlog limit must
-  become one atomic unit;
+- append batch can be single-command or pipeline plus a bounded append limit;
+  Lua is not required for v0 append unless the accepted batch and a backlog
+  limit must become one atomic unit;
 - score/status update is usually direct `HMSET + ZADD/ZREM`; Lua is required
   only when the score owner's own mutation needs an epoch/fence check, lane
   migration, or terminal precondition in the same atomic boundary;
 - claim uses Lua to keep `ScoreCandidate` fence validation, `LPOP backlog`,
-  `HSET rt`, and the dispatch-to-`MAINT_ACTIVE` score transition atomic; it
+  `HSET rt`, and the dispatch-to-`NON_SCHED_ACTIVE_MAINTENANCE` score transition atomic; it
   should not become a terminal/discard/retry/repair guard;
 - result apply / lease repair likely need Lua because they validate active lease
   correlation and move one item to final, retry, or stale rejection;
@@ -1237,7 +1260,7 @@ Scope:
   and logical frame round trip for every approved target key;
 - add negative tests proving append does not write `ids`, `dirty`, `tasks`, or
   per-item keys;
-- prove score enrollment is separate from append by seeding task-local meta and
+- prove score visibility is separate from append by seeding task-local meta and
   lane score through the score owner path;
 - do not use pure memory runtime as proof.
 
@@ -1245,7 +1268,7 @@ Acceptance:
 
 - a Redis-backed test can append a batch and observe only the approved backlog
   key plus any pre-existing task-local meta and lane score keys created by
-  scheduler enrollment;
+  score-owner visibility;
 - a Redis-backed test can seed lane score and task-local meta, then discover
   candidates through ZSET operations plus pipelined task-local meta field reads,
   not global task scanning or full payload parsing;
@@ -1293,9 +1316,9 @@ Scope:
 
 Acceptance:
 
-- append -> score scan -> thin dispatch evaluation -> backlog claim uses only
-  the new keyspace in Redis;
-- TaskScoreOwner enrollment is explicit in the proof: append alone cannot make
+- independent score discovery plus backlog claim uses only the new keyspace in
+  Redis;
+- TaskScoreOwner visibility is explicit in the proof: append alone cannot make
   a task schedulable;
 - claim creates recoverable `rt` state before dispatch handoff and rejects
   stale or non-dispatch-band `ScoreCandidate` evidence without moving backlog;
@@ -1306,7 +1329,7 @@ Acceptance:
 - LeaseOwner can converge expired `rt` entries without dispatch evaluation
   owning repair and without adding `task:active:{laneKey}` in V0;
 - a task with empty backlog and nonempty `rt` remains visible through
-  `MAINT_ACTIVE` for repair/close, while dispatch discovery ignores it;
+  `NON_SCHED_ACTIVE_MAINTENANCE` for repair/close, while dispatch discovery ignores it;
 - proof-path code writes no forbidden old keys;
 - existing serving path remains on the old implementation until SBRK-4 cutover;
 - proof-path code is not allowed to become a second production owner before
@@ -1335,10 +1358,10 @@ Scope:
 
 - switch the serving implementation behind the four grouped ports from old
   keys to score-band keys;
-- ensure append -> score discover -> claim -> dispatch handoff -> result apply
-  -> retry/lease repair -> close all use one runtime truth;
+- ensure backlog append, independent score discovery, claim, dispatch handoff,
+  result apply, retry/lease repair, and close all use one runtime truth;
 - disable or bypass old-key serving writers for the cutover lane;
-- prove TaskScoreOwner, not append, enrolls tasks into
+- prove TaskScoreOwner, not append, changes task score visibility in
   `<tr>:task:score:{laneKey}`;
 - keep old-key cleanup as SBRK-5 unless it is required to prevent double owner
   writes.
@@ -1351,11 +1374,11 @@ Acceptance:
   item, active lease, retry, or final result;
 - if the serving path creates new `rt`, result apply, retry promotion, lease
   repair, and close are all routed to the new mechanism in the same slice;
-- a serving path must not stop at append -> score discover -> claim if that
+- a serving path must not stop at score discovery plus backlog claim if that
   path can create production `rt`; creating `rt` without new result/retry/lease
   convergence is a double-owner bug, not an acceptable partial cutover;
-- append creates backlog only; a task with backlog but no score enrollment is
-  not schedulable until TaskScoreOwner opens it;
+- append creates backlog only; a task with backlog but no independent
+  score-owner visibility is not schedulable until TaskScoreOwner opens it;
 - focused Redis-backed integration proof covers the serving path, not only the
   adapter-local proof path.
 
@@ -1372,9 +1395,9 @@ Scope:
 
   | Family | Old path to close | Closed when |
   | --- | --- | --- |
-  | Work | `appendBatch`, `ready`, `ids`, append-side `tasks`/`dirty` writes | Accepted items enter only `backlog`; duplicate message ids remain undefined input; append does not enroll score. |
+  | Work | `appendBatch`, `ready`, `ids`, append-side `tasks`/`dirty` writes | Accepted items enter only `backlog`; duplicate message ids remain undefined input; append does not change score visibility. |
   | Score | `discoverEligibleTasks`, `markTaskDirty`, `tasks`, `dirty`, `eligibility` | Discovery reads only lane `task:score` plus task-local `meta`; dirty is absent from the API and keyspace. |
-  | Claim | `claimReady`, `ready -> active`, caller-built score/eligibility assumptions | Claim consumes fenced `ScoreCandidate` evidence, atomically moves `backlog -> rt`, and may move dispatch score to `MAINT_ACTIVE` for active-only repair visibility. |
+  | Claim | `claimReady`, `ready -> active`, caller-built score/eligibility assumptions | Claim consumes fenced `ScoreCandidate` evidence, atomically moves `backlog -> rt`, and may move dispatch score to `NON_SCHED_ACTIVE_MAINTENANCE` for active-only repair visibility. |
   | Convergence | `delayed`, `active`, result apply through old active/final scripts | Result, retry, lease repair, and close mutate only `rt`, `retry:*`, `result`, and score-owner state. |
   | Read | ordered `final:order` / `final:seq`, worker reverse active index | Core reads are task-local point reads and progress snapshots only. |
 
@@ -1466,8 +1489,8 @@ This roadmap is complete only when all of the following are true:
   test-local-only, implementation-local-only, temporary non-core read-model,
   SBRK-4 blocker, or SBRK-5 cleanup before Redis mechanism implementation is
   expanded;
-- append -> score scan -> thin dispatch evaluation -> claim -> dispatch handoff
-  -> result apply has one Redis-backed proof through the score-band keyspace;
+- independent score discovery plus backlog claim -> dispatch handoff -> result
+  apply has one Redis-backed proof through the score-band keyspace;
 - claim proof rejects stale `ScoreCandidate` evidence and non-dispatch-band
   maintenance candidates without moving backlog;
 - retry promotion has one Redis-backed proof through retry keys back to backlog,
@@ -1476,7 +1499,7 @@ This roadmap is complete only when all of the following are true:
   `rt`, without dispatch evaluation owning repair and without
   `task:active:{laneKey}` in V0;
 - empty-backlog active tasks remain repair/close-visible through
-  `MAINT_ACTIVE`, while dispatch discovery ignores that maintenance band;
+  `NON_SCHED_ACTIVE_MAINTENANCE`, while dispatch discovery ignores that maintenance band;
 - the pre-convergence matrix and final closure matrix are closed for core
   ordered final-read exposure, worker-active reads, dirty hints, global task
   discovery, and append side writes;

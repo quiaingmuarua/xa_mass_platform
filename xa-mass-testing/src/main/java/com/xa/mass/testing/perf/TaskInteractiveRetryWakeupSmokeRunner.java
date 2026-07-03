@@ -15,7 +15,6 @@ import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.TaskAssignmentEventSink;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
-import com.xa.mass.engine.TaskCommandPort;
 import com.xa.mass.engine.TaskEventListenerRegistrar;
 import com.xa.mass.engine.TaskDispatchWakeupPort;
 import com.xa.mass.engine.TaskLeaseMaintenancePort;
@@ -27,11 +26,15 @@ import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
 import com.xa.mass.engine.service.AssignmentRecordService;
-import com.xa.mass.sdk.TaskReadOperations;
 import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.storage.memory.InMemoryWorkerDeclarationStore;
 import com.xa.mass.engine.watchdog.RuntimeReadyDispatchPump;
 import com.xa.mass.sdk.model.TaskWorkStatsSnapshot;
+import com.xa.mass.task.runtime.AppendBatchOutcome;
+import com.xa.mass.task.runtime.AppendBatchStatus;
+import com.xa.mass.task.runtime.AppendItemInput;
+import com.xa.mass.task.runtime.command.TaskRuntimeCommandPort;
+import com.xa.mass.task.runtime.starter.TaskReadViewPort;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import com.xa.mass.worker.runtime.resource.WorkerResourceDeclarationRuntime;
@@ -98,9 +101,8 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
         private SmokeReport run() throws Exception {
             InMemoryTaskShellStore taskStorage = new InMemoryTaskShellStore();
             EngineConfig engineConfig = buildEngineConfig(taskStorage);
-            TaskCommandPort taskCommands = engineConfig.getTaskCommandPort();
             TaskEventListenerRegistrar taskEvents = engineConfig.getTaskEventListeners();
-            TaskReadOperations taskReads = engineConfig.getTaskReadOperations();
+            TaskReadViewPort taskReads = engineConfig.getTaskReadViewPort();
             TaskAssignmentEventSink taskAssignmentEvents = engineConfig.getTaskAssignmentEvents();
             TaskResultIngestFacade taskResultIngestFacade = engineConfig.getTaskResultIngestFacade();
             TaskAssignmentRuntimePort assignmentRuntimePort = engineConfig.getTaskAssignmentRuntimePort();
@@ -200,20 +202,22 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
                 assignWorker.start();
                 PerfTaskRuntimeLoopSupport.start(engineConfig, runtimeReadyDispatchPump);
 
-                Task bulkTask = materializeTask(taskCommands, taskStorage, buildBulkRequest(config));
+                Task bulkTask = materializeTask(engineConfig, taskStorage, buildBulkRequest(config));
                 workloadByTaskId.put(bulkTask.getTid(), bulkTask.getExecutionSpec().getWorkloadClass());
                 timing.onCreated(bulkTask);
-                require(taskCommands.approveTask(bulkTask.getTid()).accepted(), "bulk task should approve");
+                require(engineConfig.getTaskRuntimeCommandPort().approve(bulkTask.getTid()).accepted(),
+                        "bulk task should approve");
                 timing.onApproved(bulkTask);
                 require(timing.awaitBulkFirstDispatch(config.awaitSeconds(), TimeUnit.SECONDS),
                         "bulk task should start dispatching before interactive submission");
 
                 Thread.sleep(config.interactiveSubmitDelayMillis());
 
-                Task interactiveTask = materializeTask(taskCommands, taskStorage, buildInteractiveRequest(config));
+                Task interactiveTask = materializeTask(engineConfig, taskStorage, buildInteractiveRequest(config));
                 workloadByTaskId.put(interactiveTask.getTid(), interactiveTask.getExecutionSpec().getWorkloadClass());
                 timing.onCreated(interactiveTask);
-                require(taskCommands.approveTask(interactiveTask.getTid()).accepted(), "interactive task should approve");
+                require(engineConfig.getTaskRuntimeCommandPort().approve(interactiveTask.getTid()).accepted(),
+                        "interactive task should approve");
                 timing.onApproved(interactiveTask);
 
                 require(timing.awaitInteractiveFailure(config.awaitSeconds(), TimeUnit.SECONDS),
@@ -263,7 +267,7 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
         }
 
         private void handleBinding(TaskResultIngestFacade taskResultIngestFacade,
-                                   TaskReadOperations taskReads,
+                                   TaskReadViewPort taskReads,
                                    RetryTiming timing,
                                    Map<String, AtomicInteger> interactiveAttempts,
                                    Map<String, TaskWorkloadClass> workloadByTaskId,
@@ -348,21 +352,33 @@ public final class TaskInteractiveRetryWakeupSmokeRunner {
             return new TaskCreatePlan(shell, buildInputs("interactive", 1), false);
         }
 
-        private static Task materializeTask(TaskCommandPort taskCommands,
+        private static Task materializeTask(EngineConfig engineConfig,
                                             InMemoryTaskShellStore taskStorage,
                                             TaskCreatePlan request) {
-            TaskCommandOutcome create = taskCommands.createTaskShell(request.shell());
+            String taskId = UUID.randomUUID().toString();
+            TaskCommandOutcome create = engineConfig.createTaskShellDescriptor(request.shell(), taskId);
             require(create.accepted(), "task shell should be created");
-            Task task = taskStorage.getTask(create.taskId()).orElse(null);
+            Task task = taskStorage.getTask(taskId).orElse(null);
             require(task != null, "created task should be readable");
+            TaskRuntimeCommandPort taskCommands = engineConfig.getTaskRuntimeCommandPort();
+            require(taskCommands.create(taskId).accepted(), "task runtime meta should be created");
             if (!request.inputs().isEmpty()) {
-                require(taskCommands.appendTaskItems(task.getTid(), request.inputs()).accepted(),
+                AppendBatchOutcome append = taskCommands.append(
+                        task.getTid(),
+                        toAppendItems(task.getTid(), request.inputs()),
+                        request.inputs().size());
+                require(append.status() == AppendBatchStatus.ALL_ACCEPTED,
                         "task items should append");
             }
-            if (!request.keepIntakeOpen()) {
-                require(taskCommands.sealTask(task.getTid()).accepted(), "task should seal after ingest");
-            }
             return task;
+        }
+
+        private static List<AppendItemInput> toAppendItems(String taskId, List<Map<String, Object>> inputs) {
+            List<AppendItemInput> appendItems = new ArrayList<>(inputs.size());
+            for (int i = 0; i < inputs.size(); i++) {
+                appendItems.add(new AppendItemInput(taskId + "-message-" + i, inputs.get(i)));
+            }
+            return appendItems;
         }
 
         private record TaskCreatePlan(TaskShellCreateRequestDto shell,

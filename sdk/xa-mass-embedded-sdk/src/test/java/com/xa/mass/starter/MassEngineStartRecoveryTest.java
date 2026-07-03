@@ -7,6 +7,7 @@ import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.engine.TaskCommandPort;
+import com.xa.mass.engine.model.TaskCommandOutcome;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import com.xa.mass.worker.runtime.resource.WorkerResourceDeclarationRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
@@ -16,6 +17,7 @@ import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import org.junit.jupiter.api.Test;
 
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -34,7 +36,6 @@ class MassEngineStartRecoveryTest {
         EngineConfig config = new EngineConfig();
         InMemoryTaskShellStore taskStore = new InMemoryTaskShellStore();
         config.setTaskShellStore(taskStore);
-        TaskCommandPort taskCommands = config.getTaskCommandPort();
         registerSelectableWorker(config, "worker-1", "demo-workers");
 
         TaskShellCreateRequestDto dto = new TaskShellCreateRequestDto();
@@ -44,13 +45,7 @@ class MassEngineStartRecoveryTest {
         dto.setSharedConfig(Map.of(TaskSharedConfig.WORKER_GROUP_ID, "demo-workers"));
         dto.setExecutionSpec(taskExecutionSpec(1, 3));
 
-        var create = taskCommands.createTaskShell(dto);
-        assertTrue(create.accepted());
-        Task task = taskStore.getTask(create.taskId()).orElse(null);
-        assertNotNull(task);
-        taskCommands.appendTaskItems(task.getTid(), List.of(Map.of("payload", "hello")));
-        assertTrue(taskCommands.sealTask(task.getTid()).accepted());
-        assertTrue(taskCommands.approveTask(task.getTid()).accepted());
+        Task task = createApprovedRuntimeTask(config, taskStore, dto, "startup-message-1");
 
         Task runningTask = taskStore.getTask(task.getTid()).orElse(null);
         assertNotNull(runningTask);
@@ -91,7 +86,6 @@ class MassEngineStartRecoveryTest {
             EngineConfig config = new EngineConfig();
             InMemoryTaskShellStore taskStore = new InMemoryTaskShellStore();
             config.setTaskShellStore(taskStore);
-            TaskCommandPort taskCommands = config.getTaskCommandPort();
             TaskResultIngestFacade resultIngestFacade = config.getTaskResultIngestFacade();
             registerSelectableWorker(config, "worker-1", "demo-workers");
             config.setRuntimeReadyDispatchIntervalMillis(50L);
@@ -103,13 +97,7 @@ class MassEngineStartRecoveryTest {
             dto.setSharedConfig(Map.of(TaskSharedConfig.WORKER_GROUP_ID, "demo-workers"));
             dto.setExecutionSpec(taskExecutionSpec(1, 3));
 
-            var create = taskCommands.createTaskShell(dto);
-            assertTrue(create.accepted());
-            Task task = taskStore.getTask(create.taskId()).orElse(null);
-            assertNotNull(task);
-            taskCommands.appendTaskItems(task.getTid(), List.of(Map.of("payload", "hello")));
-            assertTrue(taskCommands.sealTask(task.getTid()).accepted());
-            assertTrue(taskCommands.approveTask(task.getTid()).accepted());
+            Task task = createApprovedRuntimeTask(config, taskStore, dto, "retry-message-1");
 
             Task runningTask = taskStore.getTask(task.getTid()).orElse(null);
             assertNotNull(runningTask);
@@ -196,6 +184,31 @@ class MassEngineStartRecoveryTest {
         spec.setBatchSize(batchSize);
         spec.setDefaultMaxRetryCount(defaultMaxRetryCount);
         return spec;
+    }
+
+    private static Task createApprovedRuntimeTask(EngineConfig config,
+                                                  InMemoryTaskShellStore taskStore,
+                                                  TaskShellCreateRequestDto dto,
+                                                  String messageId) {
+        TaskCommandPort taskCommands = internalTaskCommandPort(config);
+        TaskCommandOutcome create = taskCommands.createTaskShell(dto);
+        assertTrue(create.accepted());
+        Task task = taskStore.getTask(create.taskId()).orElse(null);
+        assertNotNull(task);
+        assertTrue(taskCommands.appendTaskItems(task.getTid(), List.of(Map.of("payload", "hello"))).accepted());
+        assertTrue(taskCommands.sealTask(task.getTid()).accepted());
+        assertTrue(taskCommands.approveTask(task.getTid()).accepted());
+        return task;
+    }
+
+    private static TaskCommandPort internalTaskCommandPort(EngineConfig config) {
+        try {
+            Method method = EngineConfig.class.getDeclaredMethod("taskCommandPort");
+            method.setAccessible(true);
+            return (TaskCommandPort) method.invoke(config);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Failed to reach old engine command quarantine port", e);
+        }
     }
 
     private static void restoreProperty(String key, String previousValue) {

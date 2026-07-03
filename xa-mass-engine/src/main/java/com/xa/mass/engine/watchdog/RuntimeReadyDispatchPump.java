@@ -1,6 +1,5 @@
 package com.xa.mass.engine.watchdog;
 
-import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.runtime.VirtualThreadRuntimeTaskExecutor;
 import com.xa.mass.engine.EngineRuntimeLoop;
@@ -166,10 +165,9 @@ public class RuntimeReadyDispatchPump implements EngineRuntimeLoop {
         if (task == null) {
             return false;
         }
-        TaskStatus status = task.getStatus();
         return schedulingPlaneResolver.resolve(task).taskSchedulingPolicy().dispatchCadence()
                 == DispatchCadence.RUNTIME_READY_POLLING
-                && (status == TaskStatus.READY || status == TaskStatus.RUNNING);
+                && (task.getStatus() == null || !task.getStatus().isFinal());
     }
 
     private PollingResourceKey pollingResourceKey(Task task) {

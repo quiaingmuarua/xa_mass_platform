@@ -20,7 +20,6 @@ import com.xa.mass.api.review.TaskReviewWorkTerminalEvent;
 import com.xa.mass.api.sync.SyncTaskResultBridge;
 import com.xa.mass.api.sync.TaskSyncRequestSupervisor;
 import com.xa.mass.sdk.TaskAdminOperations;
-import com.xa.mass.sdk.TaskReadOperations;
 import com.xa.mass.sdk.TaskStageEvidenceOperations;
 import com.xa.mass.sdk.auth.AuthProvider;
 import com.xa.mass.sdk.auth.PrincipalContext;
@@ -50,6 +49,7 @@ import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.TaskStateSnapshot;
 import com.xa.mass.sdk.model.TaskItemBatchAppendReceipt;
 import com.xa.mass.sdk.model.TaskWorkFinalSnapshot;
+import com.xa.mass.task.runtime.starter.TaskReadViewPort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -95,7 +95,7 @@ class TaskApiControllerTest {
     private static final String TASK_ID = "task-001";
 
     @Mock
-    private TaskReadOperations taskReads;
+    private TaskReadViewPort taskReads;
 
     @Mock
     private TaskAdminOperations taskAdmin;

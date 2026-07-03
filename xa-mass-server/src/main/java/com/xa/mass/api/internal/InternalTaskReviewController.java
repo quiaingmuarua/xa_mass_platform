@@ -5,8 +5,8 @@ import com.xa.mass.api.review.TaskReviewReadModel;
 import com.xa.mass.api.review.TaskReviewReadModel.TaskReviewItem;
 import com.xa.mass.api.review.TaskReviewReadModel.TaskReviewSnapshot;
 import com.xa.mass.api.review.TaskReviewReadModel.TaskReviewStats;
-import com.xa.mass.sdk.TaskReadOperations;
 import com.xa.mass.sdk.model.TaskDetailSnapshot;
+import com.xa.mass.task.runtime.starter.TaskReadViewPort;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -33,10 +33,10 @@ public class InternalTaskReviewController {
     private static final com.fasterxml.jackson.databind.ObjectMapper RESPONSE_OBJECT_MAPPER =
             new com.fasterxml.jackson.databind.ObjectMapper();
 
-    private final TaskReadOperations taskReads;
+    private final TaskReadViewPort taskReads;
     private final TaskReviewReadModel taskReviewReadModel;
 
-    public InternalTaskReviewController(TaskReadOperations taskReads,
+    public InternalTaskReviewController(TaskReadViewPort taskReads,
                                         TaskReviewReadModel taskReviewReadModel) {
         this.taskReads = taskReads;
         this.taskReviewReadModel = taskReviewReadModel;

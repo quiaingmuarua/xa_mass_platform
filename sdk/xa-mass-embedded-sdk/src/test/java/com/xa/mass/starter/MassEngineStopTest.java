@@ -59,7 +59,7 @@ class MassEngineStopTest {
         assertDoesNotThrow(() -> engine.start());
         assertTrue(engine.isRunning());
         assertNotNull(readField(engine, "runtimeKernel"));
-        assertSame(config.getTaskCommandPort(), readField(engine, "taskCommands"));
+        assertNotNull(readField(engine, "taskCommands"));
 
         engine.stop();
     }
@@ -72,11 +72,11 @@ class MassEngineStopTest {
         try {
             engine.start();
 
-            assertEquals(0, listenerSnapshot(config).taskCreatedListeners());
-            assertEquals(0, listenerSnapshot(config).taskAssignedListeners());
-            assertEquals(1, listenerSnapshot(config).taskReadyListeners());
-            assertEquals(1, listenerSnapshot(config).taskDispatchListeners());
-            assertEquals(1, listenerSnapshot(config).taskTerminalListeners());
+            assertEquals(1, listenerSnapshot(config).taskCreatedListeners());
+            assertEquals(1, listenerSnapshot(config).taskAssignedListeners());
+            assertEquals(2, listenerSnapshot(config).taskReadyListeners());
+            assertEquals(2, listenerSnapshot(config).taskDispatchListeners());
+            assertEquals(2, listenerSnapshot(config).taskTerminalListeners());
             assertEquals(1, listenerSnapshot(config).taskWorkAttemptClosedListeners());
         } finally {
             engine.stop();
@@ -98,9 +98,9 @@ class MassEngineStopTest {
 
         engine.start();
         try {
-            assertEquals(1, listenerSnapshot(config).taskReadyListeners());
-            assertEquals(1, listenerSnapshot(config).taskDispatchListeners());
-            assertEquals(1, listenerSnapshot(config).taskTerminalListeners());
+            assertEquals(2, listenerSnapshot(config).taskReadyListeners());
+            assertEquals(2, listenerSnapshot(config).taskDispatchListeners());
+            assertEquals(2, listenerSnapshot(config).taskTerminalListeners());
             assertEquals(1, listenerSnapshot(config).taskWorkAttemptClosedListeners());
         } finally {
             engine.stop();
@@ -115,8 +115,8 @@ class MassEngineStopTest {
 
         engine.start();
         try {
-            assertEquals(1, listenerSnapshot(config).taskCreatedListeners());
-            assertEquals(1, listenerSnapshot(config).taskAssignedListeners());
+            assertEquals(2, listenerSnapshot(config).taskCreatedListeners());
+            assertEquals(2, listenerSnapshot(config).taskAssignedListeners());
         } finally {
             engine.stop();
         }

@@ -16,12 +16,17 @@ import com.xa.mass.engine.stage.TaskStageEvidenceResult;
 import com.xa.mass.engine.stage.TaskStageProjection;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.kernel.spi.rule.RuleType;
-import com.xa.mass.sdk.TaskReadOperations;
 import com.xa.mass.sdk.worker.EmbeddedPullWorkerSessions;
 import com.xa.mass.sdk.worker.EmbeddedPullWorkerSession;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeRole;
+import com.xa.mass.task.runtime.AppendBatchOutcome;
+import com.xa.mass.task.runtime.AppendBatchStatus;
+import com.xa.mass.task.runtime.AppendItemInput;
+import com.xa.mass.task.runtime.command.TaskRuntimeCommandPort;
+import com.xa.mass.task.runtime.command.TaskRuntimeCommandOutcome;
+import com.xa.mass.task.runtime.starter.TaskReadViewPort;
 import com.xa.mass.transport.WorkerTransportHints;
 import com.xa.mass.transport.starter.AssignedDeliverySink;
 import com.xa.mass.transport.starter.CurrentSessionDisconnectHandler;
@@ -54,8 +59,10 @@ import org.slf4j.MDC;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Function;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 /**
@@ -65,6 +72,8 @@ import java.util.List;
 public class MassApplication {
 
     private static final Logger logger = LoggerFactory.getLogger(MassApplication.class);
+    private static final int DEFAULT_APPEND_BATCH_LIMIT =
+            Integer.getInteger("xa.mass.task.runtime.maxAppendBatchItems", 10_000);
 
     private final TransportConfig transportConfig;
     private final EngineConfig engineConfig;
@@ -553,15 +562,36 @@ public class MassApplication {
     }
 
     public TaskCommandOutcome createTaskShell(TaskShellCreateRequestDto dto) {
-        return requireStartedEngine().createTaskShell(dto);
+        requireStartedEngine();
+        String taskId = UUID.randomUUID().toString();
+        TaskCommandOutcome descriptorOutcome = engineConfig.createTaskShellDescriptor(dto, taskId);
+        if (!descriptorOutcome.accepted()) {
+            return descriptorOutcome;
+        }
+        TaskRuntimeCommandOutcome runtimeOutcome = taskRuntimeCommands().create(taskId);
+        if (!runtimeOutcome.accepted()) {
+            return toTaskCommandOutcome(runtimeOutcome);
+        }
+        return descriptorOutcome;
     }
 
-    public TaskReadOperations taskReads() {
-        return requireStartedEngine().taskReads();
+    public TaskReadViewPort taskReadView() {
+        requireStartedEngine();
+        return engineConfig.getTaskReadViewPort();
+    }
+
+    public TaskRuntimeCommandPort taskRuntimeCommands() {
+        return engineConfig.getTaskRuntimeCommandPort();
     }
 
     public TaskAppendOutcome appendTaskItems(String taskId, List<Map<String, Object>> items) {
-        return requireStartedEngine().appendTaskItems(taskId, items);
+        requireStartedEngine();
+        List<AppendItemInput> appendItems = toAppendItems(items);
+        AppendBatchOutcome outcome = taskRuntimeCommands().append(taskId, appendItems, DEFAULT_APPEND_BATCH_LIMIT);
+        if (outcome.status() == AppendBatchStatus.ALL_ACCEPTED) {
+            return TaskAppendOutcome.accepted(outcome.taskId(), outcome.acceptedMessageIds().size(), outcome.acceptedMessageIds());
+        }
+        return TaskAppendOutcome.rejected(taskId, outcome.status().name(), outcome.reason());
     }
 
     public TaskCommandOutcome patchTaskDefinition(String taskId, TaskDefinitionPatch patch) {
@@ -569,31 +599,32 @@ public class MassApplication {
     }
 
     public TaskCommandOutcome approveTask(String taskId) {
-        return requireStartedEngine().approveTask(taskId);
+        return executeTaskRuntimeCommand(commands -> commands.approve(taskId));
     }
 
     public TaskCommandOutcome rejectTask(String taskId) {
-        return requireStartedEngine().rejectTask(taskId);
+        return executeTaskRuntimeCommand(commands -> commands.reject(taskId));
     }
 
     public TaskCommandOutcome blockTask(String taskId) {
-        return requireStartedEngine().blockTask(taskId);
+        return executeTaskRuntimeCommand(commands -> commands.block(taskId));
     }
 
     public TaskCommandOutcome pauseTask(String taskId) {
-        return requireStartedEngine().pauseTask(taskId);
+        return executeTaskRuntimeCommand(commands -> commands.pause(taskId));
     }
 
     public TaskCommandOutcome resumeTask(String taskId) {
-        return requireStartedEngine().resumeTask(taskId);
+        return executeTaskRuntimeCommand(commands -> commands.resume(taskId));
     }
 
     public TaskCommandOutcome cancelTask(String taskId) {
-        return requireStartedEngine().cancelTask(taskId);
+        return executeTaskRuntimeCommand(commands -> commands.cancel(taskId));
     }
 
     public TaskCommandOutcome terminateTask(String taskId, TaskTerminalReason reason) {
-        return requireStartedEngine().terminateTask(taskId, reason);
+        TaskTerminalReason terminalReason = reason == null ? TaskTerminalReason.MANUAL_CANCELLED : reason;
+        return executeTaskRuntimeCommand(commands -> commands.terminate(taskId, terminalReason.name()));
     }
 
     public TaskCommandOutcome sealTask(String taskId) {
@@ -719,6 +750,62 @@ public class MassApplication {
 
     public WorkerReachabilityState workerReachability(String workerId) {
         return requireStartedEngine().workerReachability(workerId);
+    }
+
+    private TaskCommandOutcome executeTaskRuntimeCommand(
+            Function<TaskRuntimeCommandPort, TaskRuntimeCommandOutcome> command
+    ) {
+        requireStartedEngine();
+        return toTaskCommandOutcome(command.apply(taskRuntimeCommands()));
+    }
+
+    private TaskCommandOutcome toTaskCommandOutcome(TaskRuntimeCommandOutcome outcome) {
+        if (outcome.accepted() && outcome.applied()) {
+            return TaskCommandOutcome.applied(outcome.taskId(), outcome.reasonCode(), outcome.message());
+        }
+        if (outcome.accepted()) {
+            return TaskCommandOutcome.alreadyApplied(outcome.taskId(), outcome.reasonCode(), outcome.message());
+        }
+        return TaskCommandOutcome.conflict(outcome.taskId(), outcome.reasonCode(), outcome.message());
+    }
+
+    private List<AppendItemInput> toAppendItems(List<Map<String, Object>> items) {
+        if (items == null || items.isEmpty()) {
+            return List.of();
+        }
+        return items.stream()
+                .map(this::toAppendItem)
+                .toList();
+    }
+
+    private AppendItemInput toAppendItem(Map<String, Object> item) {
+        Map<String, Object> input = item == null ? Map.of() : Map.copyOf(item);
+        return new AppendItemInput(
+                UUID.randomUUID().toString(),
+                extractText(input, "eventCode"),
+                stripAppendControlFields(input),
+                extractText(input, "payloadRef"));
+    }
+
+    private static Map<String, Object> stripAppendControlFields(Map<String, Object> input) {
+        if (input == null || input.isEmpty()) {
+            return Map.of();
+        }
+        LinkedHashMap<String, Object> payload = new LinkedHashMap<>(input);
+        payload.remove("eventCode");
+        payload.remove("payloadRef");
+        return payload.isEmpty() ? Map.of() : Map.copyOf(payload);
+    }
+
+    private static String extractText(Map<String, Object> input, String key) {
+        if (input == null || input.isEmpty()) {
+            return null;
+        }
+        Object value = input.get(key);
+        if (!(value instanceof String text) || text.isBlank()) {
+            return null;
+        }
+        return text.trim();
     }
 
     private MassEngine requireConfiguredEngine() {

@@ -28,6 +28,17 @@ public abstract class TaskRuntimePortContractTest {
     }
 
     @Test
+    void appendWithoutScoreDoesNotCreateSchedulableCandidate() {
+        var runtime = createRuntime();
+
+        var append = runtime.appendBacklog("task-1", List.of(frame("message-1", Map.of("value", 1))), 10);
+
+        assertThat(append.status()).isEqualTo(AppendBatchStatus.ALL_ACCEPTED);
+        assertThat(runtime.taskScore("task-1", LANE)).isEmpty();
+        assertThat(runtime.discoverSchedulable(LANE, DUE, 10).candidates()).isEmpty();
+    }
+
+    @Test
     void appendRejectsOversizedBatchBeforePartialOwnership() {
         var runtime = createRuntime();
 
@@ -253,6 +264,25 @@ public abstract class TaskRuntimePortContractTest {
         assertThat(expired)
                 .extracting(ActiveLeaseRepairCandidate::messageId)
                 .containsExactly("message-1");
+    }
+
+    @Test
+    void closeIfDrainedClosesScoreOnlyAfterMutableWorkIsGone() {
+        var runtime = createRuntime();
+        appendOne(runtime, "task-1", "message-1", 1L);
+
+        assertThat(runtime.closeIfDrained("task-1", LANE, RuntimeEpoch.of("task-1", 1L))).isFalse();
+
+        var item = claimOne(runtime, "task-1", "worker-1", 1L, 1_000L).claimedItems().getFirst();
+        assertThat(runtime.closeIfDrained("task-1", LANE, RuntimeEpoch.of("task-1", 1L))).isFalse();
+
+        runtime.applyResult(resultFact(item, true, 500L));
+
+        assertThat(runtime.closeIfDrained("task-1", LANE, RuntimeEpoch.of("task-1", 1L))).isTrue();
+        assertThat(runtime.discoverSchedulable(LANE, DUE, 10).candidates()).isEmpty();
+        assertThat(runtime.readFinalResults(new FinalResultReadRequest("task-1", 0, 10)).rows())
+                .extracting(FinalResultRow::messageId, FinalResultRow::workerId)
+                .containsExactly(tuple("message-1", "worker-1"));
     }
 
     @Test

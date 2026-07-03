@@ -1,6 +1,7 @@
 package com.xa.mass.task.runtime.starter;
 
 import com.xa.mass.task.runtime.memory.InMemoryTaskRuntime;
+import com.xa.mass.task.runtime.command.TaskRuntimeLifecycleCommandService;
 import com.xa.mass.task.runtime.redis.RedisTaskRuntime;
 import io.lettuce.core.RedisClient;
 
@@ -34,6 +35,11 @@ public final class TaskRuntimeStarter {
         var handle = new TaskRuntimeHandle(
                 effectiveConfig.backendKind(),
                 backend.runtime(),
+                new TaskRuntimeLifecycleCommandService(
+                        backend.runtime(),
+                        TaskRuntimeLifecycleCommandService.DEFAULT_LANE_KEY,
+                        clock == null ? System::currentTimeMillis : clock,
+                        TaskRuntimeLifecycleCommandService.DEFAULT_PAUSE_DELAY_MILLIS),
                 loopHost,
                 backend.closeable());
         handle.start();

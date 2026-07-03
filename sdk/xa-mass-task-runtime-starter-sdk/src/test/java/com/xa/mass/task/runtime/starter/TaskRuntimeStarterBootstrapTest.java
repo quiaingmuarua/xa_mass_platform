@@ -23,6 +23,8 @@ class TaskRuntimeStarterBootstrapTest {
                     10);
 
             assertThat(outcome.status()).isEqualTo(AppendBatchStatus.ALL_ACCEPTED);
+
+            assertThat(handle.commands().approve("task-command-1").accepted()).isTrue();
         }
     }
 

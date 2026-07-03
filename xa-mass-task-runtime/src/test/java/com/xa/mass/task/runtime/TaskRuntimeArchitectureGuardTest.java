@@ -8,6 +8,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import com.xa.mass.task.runtime.command.TaskRuntimeCommandPort;
 import org.junit.jupiter.api.Test;
 
 class TaskRuntimeArchitectureGuardTest {
@@ -16,7 +17,8 @@ class TaskRuntimeArchitectureGuardTest {
             TaskRuntimeReadPort.class,
             TaskRuntimeWorkPort.class,
             TaskRuntimeScorePort.class,
-            TaskRuntimeConvergencePort.class
+            TaskRuntimeConvergencePort.class,
+            TaskRuntimeCommandPort.class
     );
 
     private static final List<String> DELETED_OLD_PORTS = List.of(

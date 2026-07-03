@@ -60,9 +60,23 @@ class ServerMainSourceArchitectureGuardTest {
         String source = Files.readString(controller, StandardCharsets.UTF_8);
 
         assertTrue(!source.contains("TaskMessageProjection"),
-                "TaskApiController result endpoints must use TaskReadOperations, not TaskMessageProjection");
+                "TaskApiController result endpoints must use TaskReadViewPort, not TaskMessageProjection");
         assertTrue(!source.contains("getTaskMessageProjections"),
                 "TaskApiController must not read TaskDetailStore projection rows for public results");
+    }
+
+    @Test
+    void taskReadControllersUseApprovedTaskReadViewPort() throws IOException {
+        for (String controllerPath : List.of(
+                "com/xa/mass/api/internal/TaskApiController.java",
+                "com/xa/mass/api/internal/InternalTaskReviewController.java")) {
+            Path controller = SERVER_MAIN_SOURCE_ROOT.resolve(controllerPath);
+            String source = Files.readString(controller, StandardCharsets.UTF_8);
+            assertTrue(source.contains("import com.xa.mass.task.runtime.starter.TaskReadViewPort;"),
+                    controllerPath + " must consume the approved TaskReadViewPort");
+            assertTrue(!source.contains("import com.xa.mass.sdk.TaskReadOperations;"),
+                    controllerPath + " must not type server reads against TaskReadOperations");
+        }
     }
 
     @Test

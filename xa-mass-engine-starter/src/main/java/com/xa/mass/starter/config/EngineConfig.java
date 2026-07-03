@@ -24,7 +24,15 @@ import com.xa.mass.engine.WorkerControlRuntime;
 import com.xa.mass.engine.control.WorkerControlService;
 import com.xa.mass.engine.model.TaskStateResolutionResult;
 import com.xa.mass.engine.model.TaskStateValidationResult;
+import com.xa.mass.engine.model.TaskCommandOutcome;
+import com.xa.mass.base.enums.task.TaskContract;
+import com.xa.mass.base.enums.task.TaskIntakeStatus;
+import com.xa.mass.base.model.ProjectRef;
 import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskExecutionSpec;
+import com.xa.mass.base.model.TaskShellCreateRequestDto;
+import com.xa.mass.base.model.TenantConstants;
+import com.xa.mass.base.model.UserRef;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.worker.runtime.evidence.SelectedWorkerDeliveryTargetEvidence;
 import com.xa.mass.worker.runtime.evidence.WorkerReachabilityState;
@@ -41,10 +49,10 @@ import com.xa.mass.engine.rules.RuleEvaluatorRegistries;
 import com.xa.mass.engine.service.AssignmentDiagnosticRecorder;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.policy.ContractAwareTaskTerminalPolicy;
+import com.xa.mass.engine.runtime.scheduling.TaskPolicyPresetDefinition;
 import com.xa.mass.kernel.spi.task.TaskShellRuntimeLifecycleQuery;
 import com.xa.mass.kernel.spi.task.TaskShellRuntimeStore;
 import com.xa.mass.sdk.model.TaskActiveLeaseSnapshot;
-import com.xa.mass.sdk.TaskReadOperations;
 import com.xa.mass.sdk.model.TaskResultItemSnapshot;
 import com.xa.mass.sdk.model.TaskResultWindowSnapshot;
 import com.xa.mass.sdk.model.TaskWorkFinalSnapshot;
@@ -72,14 +80,17 @@ import com.xa.mass.storage.memory.InMemoryRuleStorage;
 import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.storage.memory.InMemoryWorkerDeclarationStore;
 import com.xa.mass.starter.EngineRuntimeBridge;
+import com.xa.mass.task.runtime.command.TaskRuntimeCommandPort;
 import com.xa.mass.task.runtime.starter.TaskRuntimeBootstrapConfig;
 import com.xa.mass.task.runtime.starter.TaskRuntimeHandle;
 import com.xa.mass.task.runtime.starter.TaskRuntimeLoop;
 import com.xa.mass.task.runtime.starter.TaskRuntimePortSet;
 import com.xa.mass.task.runtime.starter.TaskRuntimeStarter;
+import com.xa.mass.task.runtime.starter.TaskReadViewPort;
 import com.xa.mass.task.runtime.FinalResultRow;
 import com.xa.mass.task.runtime.ResultApplySource;
 import com.xa.mass.task.runtime.TaskRuntimeResultWindowReadModel;
+import com.xa.mass.task.runtime.TaskScoreV1;
 import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.trace.sink.NoopExecutionEventSink;
 import com.xa.mass.worker.runtime.resource.WorkerHeartbeatRuntime;
@@ -121,7 +132,7 @@ public class EngineConfig {
     private TaskShellLifecycleMaintenancePort taskShellLifecycleMaintenancePort;
     private TaskRuntimeRecoveryPort taskRuntimeRecoveryPort;
     private TaskRuntimeServingLane taskRuntimeServingLane;
-    private TaskReadOperations taskReadOperations;
+    private TaskReadViewPort taskReadViewPort;
     private final TaskReadViewProjectionStore taskReadViewProjection = new TaskReadViewProjectionStore();
     private boolean taskReadProjectionListenersInstalled;
     private TraceEventLogger traceEventLogger;
@@ -179,7 +190,7 @@ public class EngineConfig {
         this.taskShellLifecycleMaintenancePort = null;
         this.taskRuntimeRecoveryPort = null;
         this.taskRuntimeServingLane = null;
-        this.taskReadOperations = null;
+        this.taskReadViewPort = null;
         this.taskShellStore = source.taskShellStore;
         this.taskRuntimeBootstrapConfig = source.taskRuntimeBootstrapConfig;
         this.taskRuntimeHandle = null;
@@ -240,10 +251,6 @@ public class EngineConfig {
         return taskCommandPort;
     }
 
-    public TaskCommandPort getTaskCommandPort() {
-        return taskCommandPort();
-    }
-
     TaskEventService taskEventService() {
         ensureTaskRuntimeServingLane();
         return taskEventService;
@@ -269,15 +276,23 @@ public class EngineConfig {
         return taskResultIngestFacade;
     }
 
-    public TaskReadOperations getTaskReadOperations() {
-        if (taskReadOperations == null) {
-            taskReadOperations = new EngineTaskReadOperations(this);
+    public TaskReadViewPort getTaskReadViewPort() {
+        if (taskReadViewPort == null) {
+            taskReadViewPort = new EngineTaskReadOperations(this);
         }
-        return taskReadOperations;
+        return taskReadViewPort;
     }
 
     TaskReadViewProjectionStore taskReadViewProjection() {
         return taskReadViewProjection;
+    }
+
+    Optional<TaskScoreV1> taskRuntimeScore(String taskId, String laneKey) {
+        TaskRuntimeHandle handle = taskRuntimeHandle;
+        if (handle == null) {
+            return Optional.empty();
+        }
+        return handle.runtime().taskScore(taskId, laneKey);
     }
 
     TaskResultWindowSnapshot readTaskResults(String taskId, long afterSeq, int limit) {
@@ -375,6 +390,32 @@ public class EngineConfig {
 
     public TaskRuntimeBootstrapConfig getTaskRuntimeBootstrapConfig() {
         return taskRuntimeBootstrapConfig;
+    }
+
+    public TaskRuntimeCommandPort getTaskRuntimeCommandPort() {
+        return ensureTaskRuntimeHandle().commands();
+    }
+
+    public TaskCommandOutcome createTaskShellDescriptor(TaskShellCreateRequestDto dto, String taskId) {
+        String normalizedTaskId = requireTaskId(taskId);
+        validateTaskShellCreateRequest(dto);
+        UserRef user = UserRef.of(dto.getUserId());
+        Task task = new Task(
+                normalizedTaskId,
+                deriveTaskName(dto, normalizedTaskId),
+                dto.getProject(),
+                0,
+                dto.getSharedConfig() != null ? dto.getSharedConfig() : new java.util.HashMap<>(),
+                user
+        );
+        task.setTenantId(dto.getTenantId());
+        task.setContract(dto.getContract());
+        task.setExecutionSpec(TaskExecutionSpec.normalized(dto.getExecutionSpec()));
+        task.setSourceRef(normalizeSourceRef(dto.getSourceRef()));
+        task.setIntakeStatus(TaskIntakeStatus.OPEN);
+        taskShellStore.saveTask(task);
+        taskReadViewProjection.recordTaskSnapshot(task);
+        return TaskCommandOutcome.applied(normalizedTaskId, "TASK_CREATED", "Task shell created");
     }
 
     public void setTaskRuntimeBootstrapConfig(TaskRuntimeBootstrapConfig taskRuntimeBootstrapConfig) {
@@ -895,6 +936,70 @@ public class EngineConfig {
         public int getWorkerCommandDeliveryMaxAttempts() {
             return EngineConfig.this.getWorkerCommandDeliveryMaxAttempts();
         }
+    }
+
+    private void validateTaskShellCreateRequest(TaskShellCreateRequestDto dto) {
+        if (dto == null) {
+            throw new IllegalArgumentException("task request body is required");
+        }
+        ProjectRef.require(dto.getProject());
+        UserRef.requireUserId(dto.getUserId());
+        if (dto.getTenantId() == null || dto.getTenantId().isBlank()) {
+            dto.setTenantId(TenantConstants.DEFAULT_TENANT_ID);
+        }
+        TaskExecutionSpec normalizedSpec = TaskExecutionSpec.normalized(dto.getExecutionSpec());
+        TaskContract contract = dto.getContract() == null
+                ? TaskPolicyPresetDefinition.defaultContract(null)
+                : dto.getContract();
+        normalizedSpec.setWorkloadClass(resolveWorkloadClass(contract, normalizedSpec));
+        dto.setContract(contract);
+        dto.setExecutionSpec(normalizedSpec);
+    }
+
+    private com.xa.mass.base.enums.task.TaskWorkloadClass resolveWorkloadClass(TaskContract contract,
+                                                                               TaskExecutionSpec normalizedSpec) {
+        if (normalizedSpec != null && normalizedSpec.getWorkloadClass() != null) {
+            return normalizedSpec.getWorkloadClass();
+        }
+        return TaskPolicyPresetDefinition.forContract(contract).defaultRuntimeProfile().workloadClass();
+    }
+
+    private String deriveTaskName(TaskShellCreateRequestDto dto, String taskId) {
+        String project = dto.getProject() != null ? dto.getProject().trim() : "task";
+        TaskContract contract = TaskPolicyPresetDefinition.defaultContract(dto.getContract());
+        String normalizedContract = contract.name().toLowerCase(java.util.Locale.ROOT);
+        String profile = dto.getExecutionSpec() != null && dto.getExecutionSpec().getProfile() != null
+                ? dto.getExecutionSpec().getProfile().name().toLowerCase(java.util.Locale.ROOT)
+                : "standard";
+        String sourceRef = normalizeSourceRef(dto.getSourceRef());
+        String sourceHint = sourceRef == null ? null : basename(sourceRef);
+        String shortTaskId = taskId.length() <= 8 ? taskId : taskId.substring(0, 8);
+        if (sourceHint != null && !sourceHint.isBlank()) {
+            return project + "-" + normalizedContract + "-" + profile + "-" + sourceHint + "-" + shortTaskId;
+        }
+        return project + "-" + normalizedContract + "-" + profile + "-" + shortTaskId;
+    }
+
+    private String basename(String value) {
+        String normalized = value.replace('\\', '/');
+        int slash = normalized.lastIndexOf('/');
+        String leaf = slash >= 0 ? normalized.substring(slash + 1) : normalized;
+        String sanitized = leaf.replaceAll("[^A-Za-z0-9._-]", "-");
+        return sanitized.isBlank() ? null : sanitized;
+    }
+
+    private String normalizeSourceRef(String sourceRef) {
+        if (sourceRef == null || sourceRef.isBlank()) {
+            return null;
+        }
+        return sourceRef.trim();
+    }
+
+    private static String requireTaskId(String taskId) {
+        if (taskId == null || taskId.isBlank()) {
+            throw new IllegalArgumentException("taskId is required");
+        }
+        return taskId.trim();
     }
 
     private TaskManager ensureTaskManager() {

@@ -109,7 +109,6 @@ public final class InMemoryTaskRuntime implements TaskRuntimeWorkPort,
         }
         var eligibility = state.eligibility;
         if (eligibility == null
-                || eligibility.runtimeGate() != RuntimeGate.OPEN
                 || !Objects.equals(eligibility.dispatchLane(), candidate.laneKey())) {
             return new ClaimReadyOutcome(candidate.taskId(), List.of(), "score candidate metadata mismatch");
         }
@@ -159,12 +158,12 @@ public final class InMemoryTaskRuntime implements TaskRuntimeWorkPort,
     public synchronized void setTaskScore(String taskId, String laneKey, RuntimeEpoch epoch, TaskScoreV1 score) {
         TaskRuntimeResultPolicyV1 resultPolicy = taskState(taskId).resultPolicy;
         RuntimeGate gate = RuntimeGate.OPEN;
-        long nextEligibleAtMillis = 0L;
+        long nextEligibleAtMillis = TaskScoreV1.dueAt(0L).score();
         if (score != null) {
-            nextEligibleAtMillis = Math.max(0L, score.score());
-            if (score.isPausedParked()) {
-                gate = RuntimeGate.PAUSED;
-            } else if (score.isBlockedParked()) {
+            nextEligibleAtMillis = score.score();
+            if (score.isTerminalBand()) {
+                gate = RuntimeGate.TERMINAL;
+            } else if (score.isPositiveNonSchedulableBand() && !score.isMaintenanceBand()) {
                 gate = RuntimeGate.BLOCKED;
             }
         }
@@ -188,7 +187,7 @@ public final class InMemoryTaskRuntime implements TaskRuntimeWorkPort,
                 laneKey,
                 RuntimeGate.TERMINAL,
                 epoch,
-                Long.MAX_VALUE,
+                TaskScoreV1.cancelledTerminal().score(),
                 0L,
                 0L,
                 0L,
@@ -196,10 +195,19 @@ public final class InMemoryTaskRuntime implements TaskRuntimeWorkPort,
     }
 
     @Override
+    public synchronized Optional<TaskScoreV1> taskScore(String taskId, String laneKey) {
+        var state = tasks.get(taskId);
+        if (state == null || state.eligibility == null
+                || !Objects.equals(state.eligibility.dispatchLane(), laneKey)) {
+            return Optional.empty();
+        }
+        return Optional.of(new TaskScoreV1(state.eligibility.nextEligibleAtMillis()));
+    }
+
+    @Override
     public synchronized Optional<ScoreCandidate> scoreCandidate(String taskId, String laneKey) {
         var state = tasks.get(taskId);
         if (state == null || state.eligibility == null
-                || state.eligibility.runtimeGate() != RuntimeGate.OPEN
                 || !new TaskScoreV1(state.eligibility.nextEligibleAtMillis()).isSchedulableBand()
                 || !Objects.equals(state.eligibility.dispatchLane(), laneKey)) {
             return Optional.empty();
@@ -228,8 +236,8 @@ public final class InMemoryTaskRuntime implements TaskRuntimeWorkPort,
                 dirtyTasks.remove(taskId);
                 continue;
             }
-            var eligibility = state.eligibility == null ? defaultEligibility() : state.eligibility;
-            if (eligibility.runtimeGate() != RuntimeGate.OPEN
+            var eligibility = state.eligibility;
+            if (eligibility == null
                     || !new TaskScoreV1(eligibility.nextEligibleAtMillis()).isSchedulableBand()
                     || eligibility.nextEligibleAtMillis() > maxScore
                     || !Objects.equals(eligibility.dispatchLane(), laneKey)) {
@@ -271,7 +279,15 @@ public final class InMemoryTaskRuntime implements TaskRuntimeWorkPort,
 
     @Override
     public synchronized boolean closeIfDrained(String taskId, String laneKey, RuntimeEpoch epoch) {
-        return false;
+        var state = tasks.get(taskId);
+        if (state == null) {
+            return true;
+        }
+        if (!state.ready.isEmpty() || !state.delayed.isEmpty() || !state.activeByMessageId.isEmpty()) {
+            return false;
+        }
+        removeTaskScore(taskId, laneKey, state.runtimeEpoch);
+        return true;
     }
 
     @Override

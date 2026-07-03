@@ -85,6 +85,11 @@ public final class RedisTaskRuntime implements TaskRuntimeWorkPort,
     }
 
     @Override
+    public Optional<TaskScoreV1> taskScore(String taskId, String laneKey) {
+        return delegate.taskScore(taskId, laneKey);
+    }
+
+    @Override
     public Optional<ScoreCandidate> scoreCandidate(String taskId, String laneKey) {
         return delegate.scoreCandidate(taskId, laneKey);
     }
