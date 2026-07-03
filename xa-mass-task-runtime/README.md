@@ -2,11 +2,11 @@
 
 Status: semantic task runtime owner module.
 
-This module owns task item/result convergence contracts. It defines public
-ports, runtime-owned values, receiver-consumed outcomes, and contract-test
-surfaces for accepted backlog append, task score visibility, claim, result
-finality, active-lease repair, progress snapshots, discard, and task-local
-final-result reads.
+This module owns task-runtime lifecycle and item/result convergence contracts.
+It defines public ports, runtime-owned values, receiver-consumed outcomes, and
+contract-test surfaces for score-band lifecycle state, accepted backlog append,
+task score visibility, claim, result finality, active-lease repair, progress
+snapshots, discard, and task-local final-result reads.
 
 This module must not own physical storage, Redis keys, Lua scripts, memory-map
 shape, Spring beans, process threads, engine shell policy, worker-runtime
@@ -32,7 +32,7 @@ repair through this owner, or delegate old result/repair callers to this owner.
 | Port | Runtime owner action | Old path targeted for closure |
 | --- | --- | --- |
 | `TaskRuntimeWorkPort` | append caller-owned backlog items and atomically claim backlog into active runtime state | old append/claim command buckets, caller-built runtime frames, and ready/active vocabulary |
-| `TaskRuntimeScorePort` | own task-local runtime meta and task score visibility, including score candidate discovery/point-read | old scheduler discovery, dirty hints, eligibility snapshots, and caller-built score fields |
+| `TaskRuntimeScorePort` | own task-local runtime meta and named score transitions, including score candidate discovery/point-read | old scheduler discovery, dirty hints, eligibility snapshots, raw score writers, and caller-built score fields |
 | `TaskRuntimeConvergencePort` | own result apply, retry promotion, lease repair, close, and discard convergence | old result, repair, and discard command buckets |
 | `TaskRuntimeReadPort` | expose task-local point reads for final result, result correlation, progress, and active work by task | old mixed result read/write port, worker reverse active reads, and progress-only port |
 | `TaskRuntimeResultWindowReadModel` | non-core ordered final-result read window while server/engine view callers are converged | old ordered final-result projection; not core score-band runtime truth |
@@ -44,14 +44,16 @@ repair through this owner, or delegate old result/repair callers to this owner.
 - Append input is `AppendItemInput` only: caller-owned message identity,
   handler/event carrier, payload JSON, and payload reference. Runtime-owned
   backlog frame fields are encoded inside physical implementations.
-- Append does not synchronously rewrite scheduler lane score. Scheduler
-  discovery and owner-local recovery keep accepted backlog discoverable.
-- Dispatch discovery reads only dispatch-visible task scores. Active-only tasks
-  may remain maintenance-visible for repair/close, but they must not be returned
-  as dispatch candidates.
-- Claim must fence the score fact it consumes: lane, runtime gate, epoch,
-  fence token, and observed score must still match before physical runtimes move
-  backlog into active runtime state.
+- Append does not rewrite scheduler lane score. Accepted backlog becomes
+  dispatch-visible only after the lifecycle/scheduler score owner writes a due
+  score through the named score transition.
+- Dispatch discovery reads due scores only. A score-visible task is not a
+  work-ready promise; backlog availability is resolved by claim, and no-work
+  claim does not rewrite task score.
+- Claim must fence the score fact it consumes: lane, epoch, fence token, and
+  observed due score must still match before physical runtimes move backlog
+  into active runtime state. `RuntimeGate` is projection residue, not dispatch
+  truth.
 - Worker reservation evidence must exist before claim can create an active
   lease; task-runtime must not create unbound active leases.
 - `ClaimLeasePolicy.maxItems` is the total item claim limit. Reservations are
@@ -61,9 +63,10 @@ repair through this owner, or delegate old result/repair callers to this owner.
   preserved for worker handler invocation, payload lookup, and engine dispatch
   binding. They are not worker-selection, transport-routing, or scheduling
   facts.
-- Message finality is task-runtime owned. Task terminal convergence remains an
-  engine/shell aggregate policy that consumes task-runtime outcome facts and
-  progress snapshots.
+- Message finality and runtime lifecycle score are task-runtime owned. Engine
+  may consume task-runtime outcome facts and progress snapshots for trace,
+  resource release, and read projection, but it must not maintain a second
+  lifecycle truth.
 - Retry promotion and expired-lease scan return bounded lists; close returns a
   primitive decision; discard mutations are `void`. Diagnostic mutation counts
   are not core runtime API.

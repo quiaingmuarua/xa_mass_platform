@@ -6,12 +6,18 @@ description: Roadmap and boundary convergence skill. Use when the user asks to d
 # Roadmap Refinement
 
 Use this skill to turn vague or drifting roadmap/boundary work into an
-executable, code-grounded convergence plan. Default to owner review: inspect
-live code and verified behavior before refining plans.
+executable, code-grounded convergence plan. Use owner review for
+Review/Design/Edit; for Implementation, default to executing the active
+roadmap cursor.
 
 Use it for roadmap or boundary discussions when the user is shaping execution
 rules, goal-mode work, owner constraints, proof/guard policy, or whether a
 design concern should become roadmap guidance.
+
+This skill exists to end roadmap discussion, not prolong it. Every roadmap
+discussion must end in one decision: reject, narrow, patch, or execute. For an
+`active` roadmap, the default decision is execute the current cursor/cutpoint
+unless code, proof, owner boundary, or stop triggers invalidate the contract.
 
 ## Modes
 
@@ -22,8 +28,8 @@ design concern should become roadmap guidance.
   create the file when requested.
 - **Edit**: fix, update, repair, rewrite, or revise a roadmap. Edit docs
   directly; create inventory only when needed.
-- **Implementation**: execute an approved slice only. Stop if scope, owner,
-  blast radius, or current code no longer matches the roadmap.
+- **Implementation**: execute the approved current cursor/cutpoint only. Stop
+  if scope, owner, blast radius, or current code no longer matches the roadmap.
 
 Keep mode boundaries sharp: Review/Design/Edit produce or repair planning
 artifacts; Implementation treats an `active` roadmap as the execution contract.
@@ -31,7 +37,8 @@ Do not use Implementation time to keep improving roadmap wording unless current
 code or proof invalidates the contract.
 
 Use the lightest response shape that fits. Multi-module owner reviews should be
-findings-first.
+findings-first. Implementation updates should report action, proof, and next
+cursor, not re-argue the roadmap.
 
 ## Core Semantics
 
@@ -48,6 +55,11 @@ findings-first.
   cleanup, guards, docs, archive, or known residual phases remain; `complete`
   means completion criteria, residue scan, and fact migration are done;
   `superseded` means no longer current.
+- Declare artifact role before execution: `active-contract`,
+  `design-reference`, `inventory`, or `archive-ledger`. Only
+  `active-contract` may drive goal-mode implementation. Keep it
+  cursor/cutpoint-driven; owner background, target-state essays, proof history,
+  and completion evidence belong in the other roles.
 
 ## Owner Gate
 
@@ -56,7 +68,7 @@ named abstraction as real just because it was proposed. During Implementation,
 treat an `active` roadmap as the contract; re-challenge only when current code,
 proof, owner boundary, or stop triggers invalidate that contract.
 
-Ask first:
+For Review/Design/Edit, ask first:
 
 - Who is the named owner?
 - What production invariant does it protect, and how does production fail
@@ -124,6 +136,10 @@ editing: imports, public signatures, call sites, test-only usage, dependencies,
 controller/API routes, SDK shapes, architecture guards, owner docs, active
 roadmaps, acceptance criteria, recent commits, and archive state when status may
 be stale.
+
+During Implementation, keep evidence gathering to the active cursor/cutpoint,
+touched files, and required proof. Expand only from failing evidence, stop
+triggers, or owner-doc references needed to complete the current slice.
 
 Identify the target core mechanism before judging progress: the required
 hot-path port, queue, index/key, state machine, or owner store, and whether
@@ -200,6 +216,29 @@ Use this shape flexibly:
 - roadmap completion criteria distinct from slice acceptance
 - verification candidates
 - "Do Not Start With" warnings for tempting wrong-order shortcuts
+
+For an `active-contract`, require the minimum execution contract:
+
+- status
+- current cursor
+- cutpoint
+- old path to close
+- target mechanism/path
+- allowed changes
+- forbidden drift
+- exit proof
+- next cursor
+- deferred residue
+- stop triggers
+
+If `old path to close` and `exit proof` are missing, do not treat the artifact
+as active implementation input.
+
+A roadmap should be good enough to execute, not exhaustive. Prefer a narrow
+cutpoint with proof over a broader document that invites more discussion.
+Do not store implementation history, broad proof catalogs, or owner essays in an
+`active-contract`; move them to inventory, proof registry, owner docs, or
+archive-ledger after proof.
 
 For active long roadmaps, link only the paired inventory and directly relevant
 prerequisite roadmaps or blueprints. Do not link generic owner/proof/testing
@@ -288,6 +327,9 @@ require a later slice to restore compilation or runtime correctness.
   or wrong mechanism handled the behavior? If yes, add a mechanism-specific
   assertion, negative guard, or old-path disablement before calling it owner
   proof.
+- A slice is not successful because the target mechanism exists. It succeeds
+  only when the production cutpoint enters that mechanism and the old path can
+  no longer satisfy the exit proof.
 - Guard stable owner invariants and forbidden regressions, not temporary class
   names, lifecycle states, or provisional implementation shape.
 - Useful guards include forbidden imports, dependency-scope checks,
@@ -296,10 +338,12 @@ require a later slice to restore compilation or runtime correctness.
 
 When executing a slice:
 
-1. Confirm scope, acceptance, and verification.
+1. Confirm scope, current cursor, cutpoint, old path to close, target
+   mechanism/path, and exit proof.
 2. Check the worktree and preserve unrelated user changes.
 3. Establish a baseline when risk justifies it.
-4. Implement only the current slice.
+4. Implement only the current slice; prefer closing or disabling the named old
+   path over adding new structure.
 5. Stop for owner coordination if roadmap definition is materially unclear or
    wrong, owner boundary changes, blast radius expands, or code conflicts with
    the slice.
@@ -317,11 +361,14 @@ When executing a slice:
    `mechanism-cutover`, closed one named cutpoint with proof, stopped because
    owner/cutpoint is unclear, or deferred residue to `batched-cleanup`. If none
    is true, stop and re-anchor instead of continuing.
-8. Update contracts, docs, guards, and verification in the same slice when code
+8. If the diff only improves docs, inventory, proof catalogs, or owner wording
+   without moving or closing the named cutpoint, report it as Review/Edit or
+   residue work, not Implementation success.
+9. Update contracts, docs, guards, and verification in the same slice when code
    changes them.
-9. If the slice closes a roadmap gap or changes status, update roadmap wording
+10. If the slice closes a roadmap gap or changes status, update roadmap wording
    from plan-state to evidence-state.
-10. After rename, dependency, boundary, or compatibility-removal work, suggest or
+11. After rename, dependency, boundary, or compatibility-removal work, suggest or
    run `roadmap-residue-scan` before declaring completion.
 
 ## Delivery
@@ -358,7 +405,11 @@ code behavior changed.
   scheduling truth.
 - Coupling snapshot viewers, read models, schemas, public DTOs, or policy /
   lifecycle / dispatch dependencies into the mainline as diagnostics.
+- Treating an `active-contract` as a design reference, proof archive, or
+  implementation diary.
 - Letting non-owners maintain lifecycle truth or promise strong consistency.
+- Writing a correct target-state document while the current diff does not close
+  a production old path.
 - Treating rename-only, local variable cleanup, test-name/vocabulary changes,
   docs wording cleanup, guards, diagnostics, or local polish as pre-converge or
   mainline work. They are residue/cleanup; if a change actually moves owner

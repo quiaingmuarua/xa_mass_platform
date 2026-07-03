@@ -56,12 +56,21 @@ final class TaskRuntimeRedisKeyspaceProofHarness {
         ));
     }
 
-    void setTaskScore(String taskId, String laneKey, RuntimeEpoch epoch, TaskScoreV1 score) {
+    void markDispatchDue(String taskId, String laneKey, RuntimeEpoch epoch, long nowMillis) {
         commands.sadd(keyspace.lanesKey(), laneKey);
         commands.zadd(
                 keyspace.taskScoreKey(laneKey),
-                score == null ? TaskScoreV1.TIME_SCORE_FLOOR : score.score(),
+                TaskScoreV1.dueAt(nowMillis).score(),
                 codec.encodeSegment(taskId));
+        commands.hset(keyspace.taskMetaKey(taskId), Map.of(
+                "schemaVersion", "1",
+                "taskId", taskId,
+                "laneBucketId", laneKey,
+                "runtimeGate", "OPEN",
+                "runtimeEpoch", Long.toString(epoch.epoch()),
+                "fenceToken", epoch.fenceToken() == null ? "" : epoch.fenceToken(),
+                "updatedAtMillis", Long.toString(clock.getAsLong())
+        ));
     }
 
     void appendBacklog(String taskId, List<AppendItemInput> frames) {
@@ -83,9 +92,6 @@ final class TaskRuntimeRedisKeyspaceProofHarness {
         for (var encodedTaskId : encodedTaskIds) {
             String taskId = codec.decodeSegment(encodedTaskId);
             Map<String, String> meta = commands.hgetall(keyspace.taskMetaKey(taskId));
-            if (!"OPEN".equals(meta.get("runtimeGate"))) {
-                continue;
-            }
             long epoch = parseLong(meta.get("runtimeEpoch"));
             Double score = commands.zscore(keyspace.taskScoreKey(laneKey), encodedTaskId);
             candidates.add(new ScoreCandidate(

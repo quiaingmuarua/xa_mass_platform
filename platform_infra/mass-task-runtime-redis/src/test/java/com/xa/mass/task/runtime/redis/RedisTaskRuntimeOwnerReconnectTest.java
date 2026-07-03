@@ -11,7 +11,6 @@ import com.xa.mass.task.runtime.RuntimeGate;
 import com.xa.mass.task.runtime.RuntimeResultFact;
 import com.xa.mass.task.runtime.TaskRuntimeMetaV1;
 import com.xa.mass.task.runtime.TaskRuntimeResultPolicyV1;
-import com.xa.mass.task.runtime.TaskScoreV1;
 import com.xa.mass.task.runtime.WorkerReservationEvidence;
 import io.lettuce.core.RedisClient;
 import java.util.List;
@@ -51,7 +50,7 @@ class RedisTaskRuntimeOwnerReconnectTest {
         redisUri = RedisTaskRuntimeTestSupport.redisUri();
         namespace = RedisTaskRuntimeTestSupport.namespace("owner-reconnect");
         redisClient = RedisTaskRuntimeTestSupport.createClientOrSkip("task runtime redis owner reconnect test");
-        var clock = new AtomicLong(0L);
+        var clock = new AtomicLong(DUE);
         runtime = new RedisTaskRuntime(redisClient, namespace, clock::get);
         String taskId = "task-owner-reconnect";
         var epoch = enrollOpenTask(taskId);
@@ -66,7 +65,7 @@ class RedisTaskRuntimeOwnerReconnectTest {
 
         runtime.close();
         runtime = new RedisTaskRuntime(redisClient, namespace, clock::get);
-        clock.set(1_001L);
+        clock.set(DUE + 1_001L);
 
         var expired = runtime.scanExpiredLeases(LANE, clock.get(), 10, 10);
         assertThat(expired)
@@ -129,7 +128,7 @@ class RedisTaskRuntimeOwnerReconnectTest {
                         false,
                         true,
                         86_400_000L)));
-        runtime.setTaskScore(taskId, LANE, epoch, new TaskScoreV1(DUE));
+        runtime.markDispatchDue(taskId, LANE, epoch, DUE);
         return epoch;
     }
 
@@ -140,7 +139,7 @@ class RedisTaskRuntimeOwnerReconnectTest {
                 List.of(new WorkerReservationEvidence(workerId, "group-1", "reservation-" + workerId, "target")),
                 1,
                 leaseMillis,
-                0L);
+                DUE);
         assertThat(claim.claimedItems()).hasSize(1);
         return claim.claimedItems().getFirst();
     }

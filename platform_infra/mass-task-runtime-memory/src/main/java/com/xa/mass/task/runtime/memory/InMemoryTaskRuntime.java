@@ -100,7 +100,7 @@ public final class InMemoryTaskRuntime implements TaskRuntimeWorkPort,
         if (reservations == null || reservations.isEmpty()) {
             throw new IllegalArgumentException("reservations must be non-empty");
         }
-        if (!candidate.observedScore().isSchedulableBand()) {
+        if (!candidate.observedScore().isDueAt(nowMillis)) {
             return new ClaimReadyOutcome(candidate.taskId(), List.of(), "score candidate is not dispatch-visible");
         }
         var state = tasks.get(candidate.taskId());
@@ -109,12 +109,11 @@ public final class InMemoryTaskRuntime implements TaskRuntimeWorkPort,
         }
         var eligibility = state.eligibility;
         if (eligibility == null
-                || eligibility.runtimeGate() != RuntimeGate.OPEN
                 || !Objects.equals(eligibility.dispatchLane(), candidate.laneKey())) {
             return new ClaimReadyOutcome(candidate.taskId(), List.of(), "score candidate metadata mismatch");
         }
         var currentScore = new TaskScoreV1(eligibility.nextEligibleAtMillis());
-        if (!currentScore.isSchedulableBand() || currentScore.score() != candidate.observedScore().score()) {
+        if (!currentScore.isDueAt(nowMillis) || currentScore.score() != candidate.observedScore().score()) {
             return new ClaimReadyOutcome(candidate.taskId(), List.of(), "score candidate mismatch");
         }
         if (!sameEpoch(state.runtimeEpoch, candidate.runtimeEpoch())) {
@@ -133,15 +132,6 @@ public final class InMemoryTaskRuntime implements TaskRuntimeWorkPort,
         }
         if (state.ready.isEmpty()) {
             dirtyTasks.remove(candidate.taskId());
-            if (!state.activeByMessageId.isEmpty() && state.eligibility != null) {
-                state.eligibility = new SchedulerEligibilityPolicy(
-                        state.eligibility.runtimeGate(),
-                        state.eligibility.dispatchLane(),
-                        TaskScoreV1.MAINT_ACTIVE,
-                        state.eligibility.positiveMatchDelayMillis(),
-                        state.eligibility.emptyMatchDelayMillis(),
-                        state.eligibility.contentionRecheckDelayMillis());
-            }
         }
         return new ClaimReadyOutcome(candidate.taskId(), claimed, "");
     }
@@ -156,59 +146,41 @@ public final class InMemoryTaskRuntime implements TaskRuntimeWorkPort,
     }
 
     @Override
-    public synchronized void setTaskScore(String taskId, String laneKey, RuntimeEpoch epoch, TaskScoreV1 score) {
-        TaskRuntimeResultPolicyV1 resultPolicy = taskState(taskId).resultPolicy;
-        RuntimeGate gate = RuntimeGate.OPEN;
-        long nextEligibleAtMillis = 0L;
-        if (score != null) {
-            nextEligibleAtMillis = Math.max(0L, score.score());
-            if (score.isPausedParked()) {
-                gate = RuntimeGate.PAUSED;
-            } else if (score.isBlockedParked()) {
-                gate = RuntimeGate.BLOCKED;
-            }
-        }
-        putRuntimeMeta(new TaskRuntimeMetaV1(
-                taskId,
-                laneKey,
-                gate,
-                epoch,
-                nextEligibleAtMillis,
-                0L,
-                0L,
-                0L,
-                resultPolicy));
+    public synchronized void seedNonSchedulable(String taskId, String laneKey, RuntimeEpoch epoch) {
+        writeScore(taskId, laneKey, epoch, TaskScoreV1.createdNonSchedulable(), RuntimeGate.BLOCKED);
     }
 
     @Override
-    public synchronized void removeTaskScore(String taskId, String laneKey, RuntimeEpoch epoch) {
-        TaskRuntimeResultPolicyV1 resultPolicy = taskState(taskId).resultPolicy;
-        putRuntimeMeta(new TaskRuntimeMetaV1(
-                taskId,
-                laneKey,
-                RuntimeGate.TERMINAL,
-                epoch,
-                Long.MAX_VALUE,
-                0L,
-                0L,
-                0L,
-                resultPolicy));
+    public synchronized void markDispatchDue(String taskId, String laneKey, RuntimeEpoch epoch, long nowMillis) {
+        writeScore(taskId, laneKey, epoch, TaskScoreV1.dueAt(nowMillis), RuntimeGate.OPEN);
+    }
+
+    @Override
+    public synchronized void markSchedulerHold(String taskId, String laneKey, RuntimeEpoch epoch) {
+        writeScore(taskId, laneKey, epoch, TaskScoreV1.schedulerHold(), RuntimeGate.PAUSED);
+    }
+
+    @Override
+    public synchronized void markTerminalRetained(String taskId, String laneKey, RuntimeEpoch epoch) {
+        writeScore(taskId, laneKey, epoch, TaskScoreV1.terminalClosed(), RuntimeGate.TERMINAL);
     }
 
     @Override
     public synchronized Optional<ScoreCandidate> scoreCandidate(String taskId, String laneKey) {
         var state = tasks.get(taskId);
         if (state == null || state.eligibility == null
-                || state.eligibility.runtimeGate() != RuntimeGate.OPEN
-                || !new TaskScoreV1(state.eligibility.nextEligibleAtMillis()).isSchedulableBand()
                 || !Objects.equals(state.eligibility.dispatchLane(), laneKey)) {
+            return Optional.empty();
+        }
+        var score = new TaskScoreV1(state.eligibility.nextEligibleAtMillis());
+        if (!score.isSchedulableTimeBand()) {
             return Optional.empty();
         }
         return Optional.of(new ScoreCandidate(
                 taskId,
                 laneKey,
                 state.runtimeEpoch,
-                TaskScoreV1.dueAt(state.eligibility.nextEligibleAtMillis())));
+                score));
     }
 
     @Override
@@ -224,14 +196,12 @@ public final class InMemoryTaskRuntime implements TaskRuntimeWorkPort,
             }
             var taskId = entry.getKey();
             var state = entry.getValue();
-            if (state.ready.isEmpty()) {
-                dirtyTasks.remove(taskId);
+            var eligibility = state.eligibility;
+            if (eligibility == null) {
                 continue;
             }
-            var eligibility = state.eligibility == null ? defaultEligibility() : state.eligibility;
-            if (eligibility.runtimeGate() != RuntimeGate.OPEN
-                    || !new TaskScoreV1(eligibility.nextEligibleAtMillis()).isSchedulableBand()
-                    || eligibility.nextEligibleAtMillis() > maxScore
+            var score = new TaskScoreV1(eligibility.nextEligibleAtMillis());
+            if (!score.isDueAt(maxScore)
                     || !Objects.equals(eligibility.dispatchLane(), laneKey)) {
                 continue;
             }
@@ -239,7 +209,7 @@ public final class InMemoryTaskRuntime implements TaskRuntimeWorkPort,
                     taskId,
                     laneKey,
                     state.runtimeEpoch,
-                    TaskScoreV1.dueAt(eligibility.nextEligibleAtMillis())));
+                    score));
         }
         return new ScoreCandidateBatch(candidates);
     }
@@ -271,7 +241,15 @@ public final class InMemoryTaskRuntime implements TaskRuntimeWorkPort,
 
     @Override
     public synchronized boolean closeIfDrained(String taskId, String laneKey, RuntimeEpoch epoch) {
-        return false;
+        var state = tasks.get(taskId);
+        if (state == null
+                || !state.ready.isEmpty()
+                || !state.delayed.isEmpty()
+                || !state.activeByMessageId.isEmpty()) {
+            return false;
+        }
+        markTerminalRetained(taskId, laneKey, epoch);
+        return true;
     }
 
     @Override
@@ -333,14 +311,6 @@ public final class InMemoryTaskRuntime implements TaskRuntimeWorkPort,
             } else {
                 state.ready.addLast(retry);
                 dirtyTasks.add(fact.taskId());
-                var eligibility = state.eligibility == null ? defaultEligibility() : state.eligibility;
-                state.eligibility = new SchedulerEligibilityPolicy(
-                        eligibility.runtimeGate(),
-                        eligibility.dispatchLane(),
-                        TaskScoreV1.TIME_SCORE_FLOOR,
-                        eligibility.positiveMatchDelayMillis(),
-                        eligibility.emptyMatchDelayMillis(),
-                        eligibility.contentionRecheckDelayMillis());
             }
             return MessageFinalityOutcome.retryScheduled(
                     fact.taskId(),
@@ -476,6 +446,24 @@ public final class InMemoryTaskRuntime implements TaskRuntimeWorkPort,
 
     private TaskState taskState(String taskId) {
         return tasks.computeIfAbsent(taskId, ignored -> new TaskState(RuntimeEpoch.of(taskId, 0L)));
+    }
+
+    private void writeScore(String taskId,
+                            String laneKey,
+                            RuntimeEpoch epoch,
+                            TaskScoreV1 score,
+                            RuntimeGate projectionGate) {
+        TaskRuntimeResultPolicyV1 resultPolicy = taskState(taskId).resultPolicy;
+        putRuntimeMeta(new TaskRuntimeMetaV1(
+                taskId,
+                laneKey,
+                projectionGate,
+                epoch,
+                score.score(),
+                0L,
+                0L,
+                0L,
+                resultPolicy));
     }
 
     private void promoteDueRetries(long nowMillis) {

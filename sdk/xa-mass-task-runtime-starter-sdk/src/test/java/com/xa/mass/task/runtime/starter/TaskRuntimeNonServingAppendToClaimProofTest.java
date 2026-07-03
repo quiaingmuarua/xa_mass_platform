@@ -24,9 +24,9 @@ class TaskRuntimeNonServingAppendToClaimProofTest {
 
             runtime.putRuntimeMeta(TaskRuntimeMetaV1.fromPolicy(
                     "task-1",
-                    new SchedulerEligibilityPolicy(RuntimeGate.OPEN, "default", 0L, 0L, 0L, 0L),
+                    new SchedulerEligibilityPolicy(RuntimeGate.OPEN, "default", TaskScoreV1.TIME_SCORE_FLOOR, 0L, 0L, 0L),
                     epoch));
-            runtime.setTaskScore("task-1", "default", epoch, TaskScoreV1.dueAt(0L));
+            runtime.markDispatchDue("task-1", "default", epoch, TaskScoreV1.TIME_SCORE_FLOOR);
 
             var append = runtime.appendBacklog(
                     "task-1",
@@ -49,7 +49,7 @@ class TaskRuntimeNonServingAppendToClaimProofTest {
                             "adapter-mailbox-ref-1")),
                     1,
                     30_000L,
-                    0L);
+                    TaskScoreV1.TIME_SCORE_FLOOR);
 
             assertThat(claim.accepted()).isTrue();
             assertThat(claim.claimedItems()).hasSize(1);

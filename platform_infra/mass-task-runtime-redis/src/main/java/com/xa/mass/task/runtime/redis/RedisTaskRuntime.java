@@ -21,7 +21,6 @@ import com.xa.mass.task.runtime.TaskRuntimeReadPort;
 import com.xa.mass.task.runtime.TaskRuntimeResultWindowReadModel;
 import com.xa.mass.task.runtime.TaskRuntimeScorePort;
 import com.xa.mass.task.runtime.TaskRuntimeWorkPort;
-import com.xa.mass.task.runtime.TaskScoreV1;
 import com.xa.mass.task.runtime.WorkerReservationEvidence;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
@@ -75,13 +74,23 @@ public final class RedisTaskRuntime implements TaskRuntimeWorkPort,
     }
 
     @Override
-    public void setTaskScore(String taskId, String laneKey, RuntimeEpoch epoch, TaskScoreV1 score) {
-        delegate.setTaskScore(taskId, laneKey, epoch, score);
+    public void seedNonSchedulable(String taskId, String laneKey, RuntimeEpoch epoch) {
+        delegate.seedNonSchedulable(taskId, laneKey, epoch);
     }
 
     @Override
-    public void removeTaskScore(String taskId, String laneKey, RuntimeEpoch epoch) {
-        delegate.removeTaskScore(taskId, laneKey, epoch);
+    public void markDispatchDue(String taskId, String laneKey, RuntimeEpoch epoch, long nowMillis) {
+        delegate.markDispatchDue(taskId, laneKey, epoch, nowMillis);
+    }
+
+    @Override
+    public void markSchedulerHold(String taskId, String laneKey, RuntimeEpoch epoch) {
+        delegate.markSchedulerHold(taskId, laneKey, epoch);
+    }
+
+    @Override
+    public void markTerminalRetained(String taskId, String laneKey, RuntimeEpoch epoch) {
+        delegate.markTerminalRetained(taskId, laneKey, epoch);
     }
 
     @Override

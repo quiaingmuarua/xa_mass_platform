@@ -115,7 +115,7 @@ final class RedisScoreBandTaskRuntime implements TaskRuntimeWorkPort,
         if (reservations == null || reservations.isEmpty()) {
             throw new IllegalArgumentException("reservations must be non-empty");
         }
-        if (!candidate.observedScore().isSchedulableBand()) {
+        if (!candidate.observedScore().isDueAt(nowMillis)) {
             return new ClaimReadyOutcome(candidate.taskId(), List.of(), "score candidate is not dispatch-visible");
         }
         String taskId = candidate.taskId();
@@ -138,7 +138,6 @@ final class RedisScoreBandTaskRuntime implements TaskRuntimeWorkPort,
                 Long.toString(candidate.runtimeEpoch().epoch()),
                 candidate.runtimeEpoch().fenceToken() == null ? "" : candidate.runtimeEpoch().fenceToken(),
                 Long.toString(candidate.observedScore().score()),
-                Long.toString(TaskScoreV1.MAINT_ACTIVE),
                 Long.toString(TaskScoreV1.TIME_SCORE_FLOOR),
                 Long.toString(nowMillis),
                 Long.toString(Math.max(1L, leaseMillis)),
@@ -170,35 +169,42 @@ final class RedisScoreBandTaskRuntime implements TaskRuntimeWorkPort,
     }
 
     @Override
-    public void setTaskScore(String taskId, String laneKey, RuntimeEpoch epoch, TaskScoreV1 score) {
-        commands.sadd(keyspace.lanesKey(), laneKey);
-        commands.zadd(
-                keyspace.taskScoreKey(laneKey),
-                score == null ? TaskScoreV1.TIME_SCORE_FLOOR : score.score(),
-                keyCodec.encodeSegment(taskId));
+    public void seedNonSchedulable(String taskId, String laneKey, RuntimeEpoch epoch) {
+        writeScore(taskId, laneKey, epoch, TaskScoreV1.createdNonSchedulable(), RuntimeGate.BLOCKED);
     }
 
     @Override
-    public void removeTaskScore(String taskId, String laneKey, RuntimeEpoch epoch) {
-        commands.zrem(keyspace.taskScoreKey(laneKey), keyCodec.encodeSegment(taskId));
+    public void markDispatchDue(String taskId, String laneKey, RuntimeEpoch epoch, long nowMillis) {
+        writeScore(taskId, laneKey, epoch, TaskScoreV1.dueAt(nowMillis), RuntimeGate.OPEN);
+    }
+
+    @Override
+    public void markSchedulerHold(String taskId, String laneKey, RuntimeEpoch epoch) {
+        writeScore(taskId, laneKey, epoch, TaskScoreV1.schedulerHold(), RuntimeGate.PAUSED);
+    }
+
+    @Override
+    public void markTerminalRetained(String taskId, String laneKey, RuntimeEpoch epoch) {
+        writeScore(taskId, laneKey, epoch, TaskScoreV1.terminalClosed(), RuntimeGate.TERMINAL);
     }
 
     @Override
     public Optional<ScoreCandidate> scoreCandidate(String taskId, String laneKey) {
         String encodedTaskId = keyCodec.encodeSegment(taskId);
         Double score = commands.zscore(keyspace.taskScoreKey(laneKey), encodedTaskId);
-        if (score == null || score.longValue() < TaskScoreV1.TIME_SCORE_FLOOR) {
+        if (score == null) {
+            return Optional.empty();
+        }
+        var observedScore = new TaskScoreV1(score.longValue());
+        if (!observedScore.isSchedulableTimeBand()) {
             return Optional.empty();
         }
         Map<String, String> meta = commands.hgetall(keyspace.taskMetaKey(taskId));
-        if (!RuntimeGate.OPEN.name().equals(meta.get("runtimeGate"))) {
-            return Optional.empty();
-        }
         return Optional.of(new ScoreCandidate(
                 taskId,
                 laneKey,
                 RuntimeEpoch.of(taskId, longValue(meta.get("runtimeEpoch")), meta.get("fenceToken")),
-                new TaskScoreV1(score.longValue())));
+                observedScore));
     }
 
     @Override
@@ -211,9 +217,6 @@ final class RedisScoreBandTaskRuntime implements TaskRuntimeWorkPort,
         for (var encodedTaskId : encodedTaskIds) {
             String taskId = keyCodec.decodeSegment(encodedTaskId);
             Map<String, String> meta = commands.hgetall(keyspace.taskMetaKey(taskId));
-            if (!RuntimeGate.OPEN.name().equals(meta.get("runtimeGate"))) {
-                continue;
-            }
             Double score = commands.zscore(keyspace.taskScoreKey(laneKey), encodedTaskId);
             candidates.add(new ScoreCandidate(
                     taskId,
@@ -235,13 +238,10 @@ final class RedisScoreBandTaskRuntime implements TaskRuntimeWorkPort,
                     new String[]{
                             keyspace.taskRetryScoreKey(taskId),
                             keyspace.taskRetryItemKey(taskId),
-                            keyspace.taskBacklogKey(taskId),
-                            keyspace.taskScoreKey(laneKey)
+                            keyspace.taskBacklogKey(taskId)
                     },
                     Long.toString(nowMillis),
-                    Integer.toString(Math.max(1, itemLimit)),
-                    encodedTaskId,
-                    Long.toString(TaskScoreV1.dueAt(nowMillis).score()));
+                    Integer.toString(Math.max(1, itemLimit)));
             for (String encodedMessageId : decodeStringList(promotedJson)) {
                 promoted.add(keyCodec.decodeSegment(encodedMessageId));
             }
@@ -321,8 +321,7 @@ final class RedisScoreBandTaskRuntime implements TaskRuntimeWorkPort,
                         keyspace.taskResultKey(taskId),
                         keyspace.taskRetryScoreKey(taskId),
                         keyspace.taskRetryItemKey(taskId),
-                        keyspace.taskBacklogKey(taskId),
-                        keyspace.taskScoreKey(laneKey)
+                        keyspace.taskBacklogKey(taskId)
                 },
                 encodedMessageId,
                 taskId,
@@ -337,10 +336,7 @@ final class RedisScoreBandTaskRuntime implements TaskRuntimeWorkPort,
                 Long.toString(observedAtMillis),
                 Boolean.toString(retryAllowed),
                 Long.toString(retryAtMillis),
-                Long.toString(finalExpiresAt),
-                keyCodec.encodeSegment(taskId),
-                Long.toString(TaskScoreV1.MAINT_ACTIVE),
-                Long.toString(TaskScoreV1.dueAt(Math.max(observedAtMillis, retryAtMillis)).score()));
+                Long.toString(finalExpiresAt));
         Map<String, Object> outcome = decode(outcomeJson);
         String status = stringValue(outcome.get("status"));
         if ("LOGICAL_FINAL".equals(status)) {
@@ -397,7 +393,8 @@ final class RedisScoreBandTaskRuntime implements TaskRuntimeWorkPort,
                         keyspace.taskRuntimeStateKey(taskId),
                         keyspace.taskScoreKey(laneKey)
                 },
-                keyCodec.encodeSegment(taskId));
+                keyCodec.encodeSegment(taskId),
+                Long.toString(TaskScoreV1.terminalClosed().score()));
         return closed != null && closed == 1L;
     }
 
@@ -506,6 +503,24 @@ final class RedisScoreBandTaskRuntime implements TaskRuntimeWorkPort,
     private String laneKeyForTask(String taskId) {
         String laneKey = commands.hget(keyspace.taskMetaKey(taskId), "laneBucketId");
         return laneKey == null || laneKey.isBlank() ? "default" : laneKey;
+    }
+
+    private void writeScore(String taskId,
+                            String laneKey,
+                            RuntimeEpoch epoch,
+                            TaskScoreV1 score,
+                            RuntimeGate projectionGate) {
+        commands.sadd(keyspace.lanesKey(), laneKey);
+        commands.zadd(keyspace.taskScoreKey(laneKey), score.score(), keyCodec.encodeSegment(taskId));
+        var fields = new LinkedHashMap<String, String>();
+        fields.put("schemaVersion", "1");
+        fields.put("taskId", taskId);
+        fields.put("laneBucketId", laneKey);
+        fields.put("runtimeGate", projectionGate.name());
+        fields.put("runtimeEpoch", Long.toString(epoch.epoch()));
+        fields.put("fenceToken", epoch.fenceToken() == null ? "" : epoch.fenceToken());
+        fields.put("updatedAtMillis", Long.toString(clock.getAsLong()));
+        commands.hset(keyspace.taskMetaKey(taskId), fields);
     }
 
     private TaskRuntimeResultPolicyV1 readResultPolicy(String taskId) {

@@ -17,7 +17,6 @@ import com.xa.mass.task.runtime.ScoreCandidateBatch;
 import com.xa.mass.task.runtime.TaskRuntimeMetaV1;
 import com.xa.mass.task.runtime.TaskRuntimeProgressSnapshot;
 import com.xa.mass.task.runtime.TaskRuntimeResultWindowReadModel;
-import com.xa.mass.task.runtime.TaskScoreV1;
 import com.xa.mass.task.runtime.WorkerReservationEvidence;
 import com.xa.mass.task.runtime.redis.RedisTaskRuntime;
 import java.util.List;
@@ -45,13 +44,23 @@ record RedisPortSet(RedisTaskRuntime delegate) implements TaskRuntimePortSet, Ta
     }
 
     @Override
-    public void setTaskScore(String taskId, String laneKey, RuntimeEpoch epoch, TaskScoreV1 score) {
-        delegate.setTaskScore(taskId, laneKey, epoch, score);
+    public void seedNonSchedulable(String taskId, String laneKey, RuntimeEpoch epoch) {
+        delegate.seedNonSchedulable(taskId, laneKey, epoch);
     }
 
     @Override
-    public void removeTaskScore(String taskId, String laneKey, RuntimeEpoch epoch) {
-        delegate.removeTaskScore(taskId, laneKey, epoch);
+    public void markDispatchDue(String taskId, String laneKey, RuntimeEpoch epoch, long nowMillis) {
+        delegate.markDispatchDue(taskId, laneKey, epoch, nowMillis);
+    }
+
+    @Override
+    public void markSchedulerHold(String taskId, String laneKey, RuntimeEpoch epoch) {
+        delegate.markSchedulerHold(taskId, laneKey, epoch);
+    }
+
+    @Override
+    public void markTerminalRetained(String taskId, String laneKey, RuntimeEpoch epoch) {
+        delegate.markTerminalRetained(taskId, laneKey, epoch);
     }
 
     @Override

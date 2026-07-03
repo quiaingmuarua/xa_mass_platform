@@ -9,6 +9,13 @@ not complete while `TaskShellStore`, `TaskShellRuntimeStore`,
 shell stores, or `taskShellStore(...)` assembly APIs remain in maintained
 production command/lifecycle paths.
 
+The read-provider replacement is already a closed enabling slice, not the
+design source for the remaining work. Do not continue polishing
+`TaskReadOperations` or embedded-SDK read facades in this roadmap unless a core
+server/SDK contract breaks. The remaining mainline is deletion/de-scoping of
+`TaskShellStore`, `TaskShellRuntimeStore`, and storage-shaped engine task
+dependencies.
+
 Contract impact: storage/API maintenance contract revision. This roadmap owns
 the removal or narrowing of task shell storage CRUD/query as a maintained API
 surface, starting with engine's internal storage-task dependency. The primary
@@ -20,7 +27,10 @@ removing `EngineConfig.ensureTaskManager()`. It requires that any remaining
 `TaskManager` path no longer depends on storage task CRUD/query. TRLC is the
 score-band/lifecycle reference when command semantics need alignment, but this
 roadmap must not drift into a read-only cleanup while that engine-internal
-storage task chain remains.
+storage task chain remains. TRLC is also the controlling roadmap for lifecycle
+state, status transition, terminal, score-band, and deadline-maintenance owner
+decisions; TSDC must not invent a storage/read-view replacement for those
+truths.
 Task persistence is explicitly out of scope. Server route, request, and
 response DTO contracts are not changed by this roadmap; list/paging/filter
 parameters may use the documented v0 bounded candidate-set semantics.
@@ -81,12 +91,13 @@ This roadmap exists because `TaskShellStore` and `TaskShellRuntimeStore` make
 storage look like the task CRUD owner. That is the wrong maintenance contract.
 The target is to remove that storage-shaped task owner surface. The
 `TaskReadOperations` provider cutover exists only to make server/SDK reads stop
-depending on `TaskShellStore` before deletion. The next mainline is engine
-internal storage-task removal, not more read-view polish. The target is not to
-delete `TaskManager` in this roadmap, not to invent a renamed storage CRUD
-replacement, and not to push pure server/operator presentation fields into
-task-runtime. Read-view metadata projection owns the read metadata copy;
-task-runtime owns runtime facts. Storage view may still serve as a read
+depending on `TaskShellStore` before deletion. It is a compatibility facade, not
+the owner model and not the source for new task-runtime API design. The next
+mainline is engine internal storage-task removal, not more read-view polish. The
+target is not to delete `TaskManager` in this roadmap, not to invent a renamed
+storage CRUD replacement, and not to push pure server/operator presentation
+fields into task-runtime. Read-view metadata projection owns the read metadata
+copy; task-runtime owns runtime facts. Storage view may still serve as a read
 projection/cache, but never as lifecycle/runtime truth.
 
 ## Current Gap
@@ -169,6 +180,12 @@ storage view:
   task-runtime core hot-path truth. They can be read directly by task view code;
   the first implementation may write them from create/update command handling
   without introducing a separate storage owner.
+- Command handling may read read-view metadata lenses as descriptor/input facts,
+  such as project, shared config, execution spec, contract, source ref, default
+  retry, and worker-group selector inputs. This is allowed only to remove the
+  storage task row dependency. Metadata lenses must not own lifecycle/status,
+  terminal reason, score-band visibility, dispatch eligibility, result finality,
+  retry state, or worker assignment.
 - Storage view is optional read projection/cache for server/operator needs. It
   must not be the owner of descriptor metadata, lifecycle, score, dispatch,
   result finality, retry, or terminal decisions.
@@ -196,9 +213,11 @@ SDK boundary decision:
   `TaskStageEvidenceOperations` method semantics should remain server-compatible
   unless a separate API roadmap explicitly changes them.
 - `TaskReadOperations` is this roadmap's server-compatible migration facade,
-  not the final external read contract. Replace its provider before deleting
-  storage CRUD/query, so server behavior can stay stable while the source of
-  truth moves.
+  not the final external read contract and not the source of new task-runtime
+  API design. Replace its provider before deleting storage CRUD/query, so server
+  behavior can stay stable while the source of truth moves. Do not add fields or
+  methods here to compensate for storage deletion unless a core server/SDK
+  contract fails.
 - Do not add or preserve guards that make the long-term location or class name
   of `TaskReadOperations` / `EngineTaskReadOperations` mandatory. Guards in
   this roadmap must protect provider ownership and forbidden storage calls, not
@@ -693,6 +712,10 @@ Acceptance:
 Goal: remove engine's internal dependency on storage-shaped task CRUD/query.
 This is the mainline after the read-provider isolation slice. `TaskManager` may
 remain; `taskStorage` and storage-backed deadline polling may not.
+This slice is TRLC-dependent for any lifecycle/status/terminal fact it touches:
+if removing storage CRUD requires deciding how lifecycle state is written,
+projected, rescored, or repaired, stop and route that decision through TRLC
+instead of adding a temporary storage/read-view lifecycle owner.
 
 Scope:
 
@@ -706,8 +729,9 @@ Scope:
   construct a `TaskManager` with `TaskShellRuntimeStore` /
   `TaskShellRuntimeLifecycleQuery`.
 - Split current `Task` row facts by owner, not by a new CRUD interface:
-  - existence and descriptor metadata: read projection/lenses or command input,
-    never `getTask()` returning base `Task`
+  - existence and descriptor metadata: read projection/lenses or command input;
+    command handling may read metadata lenses for descriptor/input facts, but
+    never through `getTask()` returning base `Task`
   - intake gate and lifecycle/terminal state: task-runtime owner facts and
     score-band transitions
   - append admission inputs such as default retry and worker-group selectors:
@@ -741,6 +765,8 @@ Acceptance:
   `saveTask`, `updateTask`, `deleteTask`, `listTasks*`, or
   `pollTasksPastMaxRuntimeDeadline` over base `Task`.
 - `TaskLifecycleService.storeTask(...)` no longer writes a storage task row.
+- Command paths may read metadata lenses for descriptor/input facts, but no
+  command path uses metadata lenses as lifecycle/status/terminal/score truth.
 - Existing create/append/seal/approve/pause/resume/block/cancel/terminate
   behavior remains covered while storage writes are removed.
 - `LeaseExpireWatchdog` does not source max-runtime candidates from storage
@@ -825,6 +851,7 @@ Stop and re-plan if a slice requires any of these:
 - sourcing server list/query from fat `Task` storage indexes instead of a
   read-model/projection surface
 - turning `TaskReadViewPort` into a mutation path
+- using read-view metadata lenses as lifecycle/status/terminal/score truth
 - changing server route/request/response DTO contract to make provider
   migration easier
 - deleting a storage API while `TaskReadOperations` still depends on it as the

@@ -37,7 +37,6 @@ import com.xa.mass.task.runtime.TaskRuntimeScorePort;
 import com.xa.mass.task.runtime.TaskRuntimeWorkPort;
 import com.xa.mass.task.runtime.TaskRuntimeResultPolicyV1;
 import com.xa.mass.task.runtime.TaskRuntimeResultWindowReadModel;
-import com.xa.mass.task.runtime.TaskScoreV1;
 import com.xa.mass.task.runtime.WorkerReservationEvidence;
 
 import java.time.Instant;
@@ -197,7 +196,6 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
             throw new IllegalStateException("task-runtime append failed: status="
                     + outcome.status() + ", reason=" + outcome.reason());
         }
-        updateSchedulerEligibility(task, epoch);
     }
 
     void validateRuntimeAppendAdmission(Task task, int itemCount) {
@@ -530,12 +528,6 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
         if (decision.progressDirty()) {
             stateResolver.updateTaskProgress(fact.taskId());
         }
-        if (decision.retryScheduled()) {
-            rescoreTaskForRetry(task, fact.taskId());
-            if (task != null && decision.retryAtMillis() <= nowMillis()) {
-                requestTaskDispatch(task);
-            }
-        }
         return decision;
     }
 
@@ -818,32 +810,11 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
                 0L,
                 resultPolicy));
         switch (gate) {
-            case OPEN -> scorePort.setTaskScore(
-                    taskId,
-                    laneKey,
-                    epoch,
-                    TaskScoreV1.dueAt(nowMillis()));
-            case PAUSED -> scorePort.setTaskScore(
-                    taskId,
-                    laneKey,
-                    epoch,
-                    TaskScoreV1.pausedParked());
-            case BLOCKED -> scorePort.setTaskScore(
-                    taskId,
-                    laneKey,
-                    epoch,
-                    TaskScoreV1.blockedParked());
-            case TERMINAL, DISCARDED -> scorePort.removeTaskScore(taskId, laneKey, epoch);
+            case OPEN -> scorePort.markDispatchDue(taskId, laneKey, epoch, nowMillis());
+            case PAUSED -> scorePort.markSchedulerHold(taskId, laneKey, epoch);
+            case BLOCKED -> scorePort.seedNonSchedulable(taskId, laneKey, epoch);
+            case TERMINAL, DISCARDED -> scorePort.markTerminalRetained(taskId, laneKey, epoch);
         }
-    }
-
-    private void rescoreTaskForRetry(Task task, String taskId) {
-        Task target = task != null ? task : loadTask(taskId);
-        if (target != null) {
-            updateSchedulerEligibility(target, epoch(taskId));
-            return;
-        }
-        scorePort.setTaskScore(taskId, "default", epoch(taskId), TaskScoreV1.dueAt(nowMillis()));
     }
 
     private long nowMillis() {

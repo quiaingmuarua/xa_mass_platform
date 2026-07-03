@@ -9,7 +9,6 @@ import com.xa.mass.task.runtime.RuntimeEpoch;
 import com.xa.mass.task.runtime.RuntimeResultFact;
 import com.xa.mass.task.runtime.RuntimeGate;
 import com.xa.mass.task.runtime.TaskRuntimeMetaV1;
-import com.xa.mass.task.runtime.TaskScoreV1;
 import com.xa.mass.task.runtime.WorkerReservationEvidence;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
@@ -60,7 +59,7 @@ class RedisTaskRuntimeScoreBandAdvanceCandidateTest {
         String taskId = "task-serving";
         var epoch = RuntimeEpoch.of(taskId, 1L);
         runtime.putRuntimeMeta(new TaskRuntimeMetaV1(taskId, LANE, RuntimeGate.OPEN, epoch, DUE, 0L, 0L, 0L));
-        runtime.setTaskScore(taskId, LANE, epoch, new TaskScoreV1(DUE));
+        runtime.markDispatchDue(taskId, LANE, epoch, DUE);
         runtime.appendBacklog(taskId, List.of(new AppendItemInput(
                 "message-1",
                 "handler.demo",

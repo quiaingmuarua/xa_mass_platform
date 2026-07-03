@@ -30,13 +30,12 @@ final class RedisScoreBandTaskRuntimeScripts {
             local runtimeEpoch = tonumber(ARGV[3]) or 0
             local fenceToken = ARGV[4]
             local observedScore = tonumber(ARGV[5]) or 0
-            local maintenanceScore = tonumber(ARGV[6]) or 100
-            local dispatchScoreFloor = tonumber(ARGV[7]) or 1000000000000
-            local nowMillis = tonumber(ARGV[8]) or 0
-            local leaseMillis = tonumber(ARGV[9]) or 1
-            local maxItems = tonumber(ARGV[10]) or 1
-            local reservations = cjson.decode(ARGV[11])
-            local leaseTokens = cjson.decode(ARGV[12])
+            local dispatchScoreFloor = tonumber(ARGV[6]) or 1000000000000
+            local nowMillis = tonumber(ARGV[7]) or 0
+            local leaseMillis = tonumber(ARGV[8]) or 1
+            local maxItems = tonumber(ARGV[9]) or 1
+            local reservations = cjson.decode(ARGV[10])
+            local leaseTokens = cjson.decode(ARGV[11])
             local claimed = {}
             local encodedTaskId = encode_segment(taskId)
 
@@ -49,16 +48,12 @@ final class RedisScoreBandTaskRuntimeScripts {
             end
 
             local metaLane = redis.call('HGET', KEYS[3], 'laneBucketId')
-            local metaGate = redis.call('HGET', KEYS[3], 'runtimeGate')
             local metaEpoch = tonumber(redis.call('HGET', KEYS[3], 'runtimeEpoch') or '-1')
             local metaFence = redis.call('HGET', KEYS[3], 'fenceToken') or ''
             local currentScore = tonumber(redis.call('ZSCORE', KEYS[4], encodedTaskId) or '')
 
             if metaLane ~= laneKey then
                 return stale('lane mismatch')
-            end
-            if metaGate ~= 'OPEN' then
-                return stale('runtime gate mismatch')
             end
             if metaEpoch ~= runtimeEpoch then
                 return stale('runtime epoch mismatch')
@@ -71,6 +66,9 @@ final class RedisScoreBandTaskRuntimeScripts {
             end
             if observedScore < dispatchScoreFloor then
                 return stale('score band mismatch')
+            end
+            if observedScore > nowMillis then
+                return stale('score is not due')
             end
 
             if #reservations == 0 then
@@ -133,10 +131,6 @@ final class RedisScoreBandTaskRuntimeScripts {
                 }
             end
 
-            if #claimed > 0 and redis.call('LLEN', KEYS[1]) == 0 and redis.call('HLEN', KEYS[2]) > 0 then
-                redis.call('ZADD', KEYS[4], maintenanceScore, encodedTaskId)
-            end
-
             return cjson.encode({
                 status = #claimed > 0 and 'CLAIMED' or 'EMPTY',
                 reason = #claimed > 0 and '' or 'no backlog',
@@ -147,8 +141,6 @@ final class RedisScoreBandTaskRuntimeScripts {
     static final String PROMOTE_DUE_RETRIES = """
             local nowMillis = tonumber(ARGV[1]) or 0
             local itemLimit = tonumber(ARGV[2]) or 1
-            local encodedTaskId = ARGV[3]
-            local dispatchScore = tonumber(ARGV[4]) or 1000000000000
             local dueIds = redis.call('ZRANGEBYSCORE', KEYS[1], '-inf', nowMillis, 'LIMIT', 0, itemLimit)
             local promoted = {}
 
@@ -160,10 +152,6 @@ final class RedisScoreBandTaskRuntimeScripts {
                 end
                 redis.call('ZREM', KEYS[1], encodedMessageId)
                 redis.call('HDEL', KEYS[2], encodedMessageId)
-            end
-
-            if #promoted > 0 then
-                redis.call('ZADD', KEYS[4], dispatchScore, encodedTaskId)
             end
 
             return cjson.encode(promoted)
@@ -184,17 +172,6 @@ final class RedisScoreBandTaskRuntimeScripts {
             local retryAllowed = ARGV[12] == 'true'
             local retryAtMillis = tonumber(ARGV[13]) or 0
             local finalExpiresAt = tonumber(ARGV[14]) or 0
-            local encodedTaskId = ARGV[15]
-            local maintenanceScore = tonumber(ARGV[16]) or 100
-            local dispatchScore = tonumber(ARGV[17]) or 1000000000000
-
-            local function refresh_task_score()
-                if redis.call('LLEN', KEYS[5]) > 0 then
-                    redis.call('ZADD', KEYS[6], dispatchScore, encodedTaskId)
-                else
-                    redis.call('ZADD', KEYS[6], maintenanceScore, encodedTaskId)
-                end
-            end
 
             local activeJson = redis.call('HGET', KEYS[1], encodedMessageId)
             if not activeJson then
@@ -243,7 +220,6 @@ final class RedisScoreBandTaskRuntimeScripts {
                     expiresAtMillis = finalExpiresAt
                 }
                 redis.call('HSET', KEYS[2], encodedMessageId, cjson.encode(finalResult))
-                refresh_task_score()
                 return cjson.encode({
                     status = 'LOGICAL_FINAL',
                     finalResultExpiresAtMillis = finalExpiresAt
@@ -261,11 +237,9 @@ final class RedisScoreBandTaskRuntimeScripts {
             local retryFrameJson = cjson.encode(retryFrame)
             if retryAtMillis <= observedAtMillis then
                 redis.call('RPUSH', KEYS[5], retryFrameJson)
-                redis.call('ZADD', KEYS[6], dispatchScore, encodedTaskId)
             else
                 redis.call('ZADD', KEYS[3], retryAtMillis, encodedMessageId)
                 redis.call('HSET', KEYS[4], encodedMessageId, retryFrameJson)
-                redis.call('ZADD', KEYS[6], maintenanceScore, encodedTaskId)
             end
 
             return cjson.encode({
@@ -276,11 +250,12 @@ final class RedisScoreBandTaskRuntimeScripts {
             """;
 
     static final String CLOSE_IF_DRAINED = """
+            local terminalScore = tonumber(ARGV[2]) or -1
             if redis.call('LLEN', KEYS[1]) == 0
                     and redis.call('ZCARD', KEYS[2]) == 0
                     and redis.call('HLEN', KEYS[3]) == 0
                     and redis.call('HLEN', KEYS[4]) == 0 then
-                redis.call('ZREM', KEYS[5], ARGV[1])
+                redis.call('ZADD', KEYS[5], terminalScore, ARGV[1])
                 return 1
             end
             return 0

@@ -111,7 +111,7 @@ class RedisScoreBandTaskRuntimeTest {
 
         assertThat(retry.status()).isEqualTo(MessageFinalityStatus.RETRY_SCHEDULED);
         assertThat(commands().zscore(runtime.keyspace().taskScoreKey(LANE), taskId))
-                .isEqualTo((double) TaskScoreV1.MAINT_ACTIVE);
+                .isEqualTo((double) DUE);
         assertThat(commands().type(runtime.keyspace().taskRetryScoreKey(taskId))).isEqualTo("zset");
         assertThat(commands().type(runtime.keyspace().taskRetryItemKey(taskId))).isEqualTo("hash");
 
@@ -119,7 +119,7 @@ class RedisScoreBandTaskRuntimeTest {
         var promoted = runtime.promoteDueRetries(LANE, clock.get(), 10, 10);
         assertThat(promoted).containsExactly("message-1");
         assertThat(commands().zscore(runtime.keyspace().taskScoreKey(LANE), taskId))
-                .isGreaterThanOrEqualTo((double) TaskScoreV1.TIME_SCORE_FLOOR);
+                .isEqualTo((double) DUE);
         assertThat(commands().zcard(runtime.keyspace().taskRetryScoreKey(taskId))).isZero();
         assertThat(commands().hlen(runtime.keyspace().taskRetryItemKey(taskId))).isZero();
         assertThat(commands().llen(runtime.keyspace().taskBacklogKey(taskId))).isEqualTo(1L);
@@ -154,8 +154,10 @@ class RedisScoreBandTaskRuntimeTest {
         runtime.appendBacklog(taskId, List.of(frame("message-1")), 10);
         claimOne(taskId, "worker-1", 100L);
         assertThat(commands().zscore(runtime.keyspace().taskScoreKey(LANE), taskId))
-                .isEqualTo((double) TaskScoreV1.MAINT_ACTIVE);
-        assertThat(runtime.discoverSchedulable(LANE, DUE, 10).candidates()).isEmpty();
+                .isEqualTo((double) DUE);
+        assertThat(runtime.discoverSchedulable(LANE, DUE, 10).candidates())
+                .extracting(ScoreCandidate::taskId)
+                .containsExactly(taskId);
         clock.addAndGet(500L);
 
         var repaired = runtime.scanExpiredLeases(LANE, clock.get(), 10, 10);
@@ -221,14 +223,14 @@ class RedisScoreBandTaskRuntimeTest {
     }
 
     @Test
-    void scoreBandRuntimeRejectsMaintenanceBandCandidateWithoutMovingBacklog() {
-        start("score-band-runtime-maintenance-candidate");
-        String taskId = "task-maintenance-candidate";
+    void scoreBandRuntimeRejectsSchedulerHoldCandidateWithoutMovingBacklog() {
+        start("score-band-runtime-hold-candidate");
+        String taskId = "task-hold-candidate";
         var epoch = enrollOpenTask(taskId, RuntimeEpoch.of(taskId, 1L, "fence-1"));
 
         runtime.appendBacklog(taskId, List.of(frame("message-1")), 10);
         var rejected = runtime.claimBacklog(
-                new ScoreCandidate(taskId, LANE, epoch, TaskScoreV1.maintActive()),
+                new ScoreCandidate(taskId, LANE, epoch, TaskScoreV1.schedulerHold()),
                 List.of(reservation("worker-1")),
                 1,
                 5_000L,
@@ -310,7 +312,8 @@ class RedisScoreBandTaskRuntimeTest {
         commands().hdel(runtime.keyspace().taskRetryItemKey(taskId), "message-1");
         var closed = runtime.closeIfDrained(taskId, LANE, epoch);
         assertThat(closed).isTrue();
-        assertThat(commands().zscore(runtime.keyspace().taskScoreKey(LANE), taskId)).isNull();
+        assertThat(commands().zscore(runtime.keyspace().taskScoreKey(LANE), taskId))
+                .isEqualTo((double) TaskScoreV1.terminalClosed().score());
         assertNoForbiddenOldKeys();
     }
 
@@ -410,7 +413,7 @@ class RedisScoreBandTaskRuntimeTest {
                         false,
                         true,
                         86_400_000L)));
-        runtime.setTaskScore(taskId, LANE, epoch, new TaskScoreV1(DUE));
+        runtime.markDispatchDue(taskId, LANE, epoch, DUE);
         return epoch;
     }
 

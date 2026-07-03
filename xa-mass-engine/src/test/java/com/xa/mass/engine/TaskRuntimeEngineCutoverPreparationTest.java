@@ -54,6 +54,7 @@ class TaskRuntimeEngineCutoverPreparationTest {
                 0L,
                 0L,
                 resultPolicy(policy)));
+        runtime.markDispatchDue("task-1", "default", epoch, DUE);
         var ingressItem = RuntimeTaskIngressItem.fromInput(
                 "task-1",
                 "message-1",
@@ -80,7 +81,7 @@ class TaskRuntimeEngineCutoverPreparationTest {
                 List.of(TaskRuntimeWorkerReservationMapper.toReservationEvidence(selectedWorker, "batch-1")),
                 claimPolicy.maxItems(),
                 claimPolicy.leaseMillis(),
-                1L);
+                DUE);
 
         assertThat(claim.accepted()).isTrue();
         var claimed = claim.claimedItems().getFirst();
@@ -108,7 +109,7 @@ class TaskRuntimeEngineCutoverPreparationTest {
                 Map.of("ok", true),
                 "",
                 epoch,
-                1_500L));
+                DUE + 500L));
         var decision = TaskRuntimeResultDecisionMapper.toEngineDecision(result);
         TaskRuntimeProgressSnapshot stats = runtime.progressSnapshot("task-1");
 
@@ -143,6 +144,7 @@ class TaskRuntimeEngineCutoverPreparationTest {
                 0L,
                 0L,
                 resultPolicy(policy)));
+        runtime.markDispatchDue("task-1", "default", epoch, DUE);
         runtime.appendBacklog(
                 "task-1",
                 List.of(new AppendItemInput("message-1", "", Map.of("value", 1), null)),
@@ -155,7 +157,7 @@ class TaskRuntimeEngineCutoverPreparationTest {
                 List.of(TaskRuntimeWorkerReservationMapper.toReservationEvidence(selectedWorker, "batch-1")),
                 claimPolicy.maxItems(),
                 claimPolicy.leaseMillis(),
-                1L)
+                DUE)
                 .claimedItems()
                 .getFirst();
         var dispatchBinding = TaskRuntimeDispatchBindingMapper.fromTaskRuntimeClaim(task, claimed);
@@ -163,7 +165,7 @@ class TaskRuntimeEngineCutoverPreparationTest {
         var outcome = runtime.applyResult(TaskRuntimeResultFactMapper.fromDispatchSubmitFailure(
                 dispatchBinding,
                 epoch,
-                1_500L,
+                DUE + 500L,
                 "dispatch submit failed"));
         var decision = TaskRuntimeResultDecisionMapper.toEngineDecision(outcome);
         var progress = runtime.progressSnapshot("task-1");

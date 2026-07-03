@@ -6,7 +6,6 @@ import com.xa.mass.task.runtime.AppendItemInput;
 import com.xa.mass.task.runtime.RuntimeEpoch;
 import com.xa.mass.task.runtime.RuntimeGate;
 import com.xa.mass.task.runtime.TaskRuntimeMetaV1;
-import com.xa.mass.task.runtime.TaskScoreV1;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import java.util.List;
@@ -59,11 +58,11 @@ class RedisTaskRuntimeScoreBandKeyspaceProofTest {
                 0L,
                 0L,
                 0L));
-        harness.setTaskScore(
+        harness.markDispatchDue(
                 taskId,
                 laneKey,
                 epoch,
-                new TaskScoreV1(TaskRuntimeRedisKeyspaceProofHarness.TIME_SCORE_FLOOR));
+                TaskRuntimeRedisKeyspaceProofHarness.TIME_SCORE_FLOOR);
         harness.appendBacklog(taskId, List.of(new AppendItemInput(
                 "message-1",
                 "handler.demo",

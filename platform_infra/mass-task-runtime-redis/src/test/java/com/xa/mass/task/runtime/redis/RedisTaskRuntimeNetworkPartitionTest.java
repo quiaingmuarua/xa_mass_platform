@@ -11,7 +11,6 @@ import com.xa.mass.task.runtime.RuntimeGate;
 import com.xa.mass.task.runtime.RuntimeResultFact;
 import com.xa.mass.task.runtime.TaskRuntimeMetaV1;
 import com.xa.mass.task.runtime.TaskRuntimeResultPolicyV1;
-import com.xa.mass.task.runtime.TaskScoreV1;
 import com.xa.mass.task.runtime.WorkerReservationEvidence;
 import io.lettuce.core.RedisClient;
 import java.io.IOException;
@@ -45,7 +44,7 @@ class RedisTaskRuntimeNetworkPartitionTest {
     private String namespace;
     private RedisTaskRuntime runtime;
     private RedisTcpProxy proxy;
-    private final AtomicLong clock = new AtomicLong();
+    private final AtomicLong clock = new AtomicLong(DUE);
 
     @AfterEach
     void cleanup() {
@@ -86,7 +85,7 @@ class RedisTaskRuntimeNetworkPartitionTest {
         proxy = RedisTcpProxy.start(redisAddress.host(), redisAddress.port(), proxyPort);
         redisClient = RedisClient.create(proxiedRedisUri);
         runtime = new RedisTaskRuntime(redisClient, namespace, clock::get);
-        clock.set(1_001L);
+        clock.set(DUE + 1_001L);
 
         var expired = runtime.scanExpiredLeases(LANE, clock.get(), 10, 10);
         assertThat(expired)
@@ -149,7 +148,7 @@ class RedisTaskRuntimeNetworkPartitionTest {
                         false,
                         true,
                         86_400_000L)));
-        runtime.setTaskScore(taskId, LANE, epoch, new TaskScoreV1(DUE));
+        runtime.markDispatchDue(taskId, LANE, epoch, DUE);
         return epoch;
     }
 

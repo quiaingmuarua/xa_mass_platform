@@ -17,11 +17,14 @@ public abstract class TaskRuntimePortContractTest {
     @Test
     void appendAndScoreDiscoveryStayDecoupledButDiscoverable() {
         var runtime = createRuntime();
-        runtime.putRuntimeMeta(openMeta("task-1", 1L));
 
         var append = runtime.appendBacklog("task-1", List.of(frame("message-1", Map.of("value", 1))), 10);
 
         assertThat(append.status()).isEqualTo(AppendBatchStatus.ALL_ACCEPTED);
+        assertThat(runtime.discoverSchedulable(LANE, DUE, 10).candidates()).isEmpty();
+
+        runtime.markDispatchDue("task-1", LANE, RuntimeEpoch.of("task-1", 1L), DUE);
+
         assertThat(runtime.discoverSchedulable(LANE, DUE, 10).candidates())
                 .extracting(ScoreCandidate::taskId)
                 .containsExactly("task-1");
@@ -38,7 +41,6 @@ public abstract class TaskRuntimePortContractTest {
         assertThat(append.status()).isEqualTo(AppendBatchStatus.REJECTED_BEFORE_RUNTIME);
         assertThat(append.acceptedMessageIds()).isEmpty();
 
-        runtime.putRuntimeMeta(openMeta("task-1", 1L));
         assertThat(runtime.discoverSchedulable(LANE, DUE, 10).candidates()).isEmpty();
     }
 
@@ -75,7 +77,7 @@ public abstract class TaskRuntimePortContractTest {
                         123L)),
                 1,
                 1_000L,
-                0L);
+                DUE);
 
         assertThat(claim.claimedItems())
                 .extracting(ClaimedWorkItem::workerReservationToken, ClaimedWorkItem::scoreBandClaimScore)
@@ -91,6 +93,7 @@ public abstract class TaskRuntimePortContractTest {
     void claimPreservesHandlerAndPayloadReferenceCarrierFields() {
         var runtime = createRuntime();
         runtime.putRuntimeMeta(openMeta("task-1", 1L));
+        runtime.markDispatchDue("task-1", LANE, RuntimeEpoch.of("task-1", 1L), DUE);
         var append = runtime.appendBacklog("task-1", List.of(new AppendItemInput(
                 "message-1",
                 "demo.event",
@@ -111,6 +114,7 @@ public abstract class TaskRuntimePortContractTest {
     void claimUsesMaxItemsAsTotalBatchAndReusesReservationsRoundRobin() {
         var runtime = createRuntime();
         runtime.putRuntimeMeta(openMeta("task-1", 1L));
+        runtime.markDispatchDue("task-1", LANE, RuntimeEpoch.of("task-1", 1L), DUE);
         var append = runtime.appendBacklog("task-1", List.of(
                 frame("message-1", Map.of()),
                 frame("message-2", Map.of()),
@@ -126,7 +130,7 @@ public abstract class TaskRuntimePortContractTest {
                         new WorkerReservationEvidence("worker-2", "group-1", "reservation-2", "target-2", "batch-2")),
                 5,
                 1_000L,
-                0L);
+                DUE);
 
         assertThat(claim.claimedItems()).hasSize(5);
         assertThat(claim.claimedItems())
@@ -147,27 +151,27 @@ public abstract class TaskRuntimePortContractTest {
         appendOne(runtime, "task-1", "message-1", 2L);
 
         var rejected = runtime.claimBacklog(
-                new ScoreCandidate("task-1", LANE, RuntimeEpoch.of("task-1", 1L), TaskScoreV1.dueAt(0L)),
+                new ScoreCandidate("task-1", LANE, RuntimeEpoch.of("task-1", 1L), TaskScoreV1.dueAt(DUE)),
                 List.of(new WorkerReservationEvidence("worker-1", "group-1", "reservation-1", "target-1")),
                 1,
                 1_000L,
-                0L);
+                DUE);
 
         assertThat(rejected.accepted()).isFalse();
         assertThat(runtime.activeWorkForTask("task-1", 10).activeItems()).isEmpty();
     }
 
     @Test
-    void maintenanceScoreCandidateDoesNotClaimBacklog() {
+    void schedulerHoldCandidateDoesNotClaimBacklog() {
         var runtime = createRuntime();
         appendOne(runtime, "task-1", "message-1", 1L);
 
         var rejected = runtime.claimBacklog(
-                new ScoreCandidate("task-1", LANE, RuntimeEpoch.of("task-1", 1L), TaskScoreV1.maintActive()),
+                new ScoreCandidate("task-1", LANE, RuntimeEpoch.of("task-1", 1L), TaskScoreV1.schedulerHold()),
                 List.of(new WorkerReservationEvidence("worker-1", "group-1", "reservation-1", "target-1")),
                 1,
                 1_000L,
-                0L);
+                DUE);
 
         assertThat(rejected.accepted()).isFalse();
         assertThat(rejected.rejectionReason()).contains("dispatch-visible");
@@ -205,6 +209,7 @@ public abstract class TaskRuntimePortContractTest {
     void failedResultCanScheduleRetryWithoutLosingItemOwnership() {
         var runtime = createRuntime();
         runtime.putRuntimeMeta(openMeta("task-1", 1L, retryPolicy(1)));
+        runtime.markDispatchDue("task-1", LANE, RuntimeEpoch.of("task-1", 1L), DUE);
         assertThat(runtime.appendBacklog("task-1", List.of(frame("message-1", Map.of())), 10).status())
                 .isEqualTo(AppendBatchStatus.ALL_ACCEPTED);
         var item = claimOne(runtime, "task-1", "worker-1", 1L, 1_000L).claimedItems().getFirst();
@@ -248,7 +253,7 @@ public abstract class TaskRuntimePortContractTest {
         appendOne(runtime, "task-1", "message-1", 1L);
         claimOne(runtime, "task-1", "worker-1", 1L, 1_000L);
 
-        var expired = runtime.scanExpiredLeases(LANE, 1_001L, 10, 10);
+        var expired = runtime.scanExpiredLeases(LANE, DUE + 1_001L, 10, 10);
 
         assertThat(expired)
                 .extracting(ActiveLeaseRepairCandidate::messageId)
@@ -293,6 +298,7 @@ public abstract class TaskRuntimePortContractTest {
 
     private static void appendOne(TaskRuntimePorts runtime, String taskId, String messageId, long epoch) {
         runtime.putRuntimeMeta(openMeta(taskId, epoch));
+        runtime.markDispatchDue(taskId, LANE, RuntimeEpoch.of(taskId, epoch), DUE);
         var outcome = runtime.appendBacklog(taskId, List.of(frame(messageId, Map.of("messageId", messageId))), 10);
         assertThat(outcome.status()).isEqualTo(AppendBatchStatus.ALL_ACCEPTED);
     }
@@ -309,7 +315,7 @@ public abstract class TaskRuntimePortContractTest {
                 List.of(new WorkerReservationEvidence(workerId, "group-1", "reservation-" + workerId, "target-1")),
                 1,
                 leaseMillis,
-                0L);
+                DUE);
     }
 
     private static RuntimeResultFact resultFact(ClaimedWorkItem item, boolean success, long observedAtMillis) {

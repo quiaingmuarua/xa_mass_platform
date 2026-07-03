@@ -30,7 +30,7 @@ class TaskRuntimeRecoveryPortTest {
     }
 
     @Test
-    void runtimeRecoveryOnlyReturnsTasksWithRuntimeReadyBacklog() {
+    void runtimeRecoveryReturnsScoreVisibleTasksAndClaimResolvesBacklogAvailability() {
         harness = new Harness();
 
         Task first = harness.createReadyTask("runtime-ready-first");
@@ -40,7 +40,7 @@ class TaskRuntimeRecoveryPortTest {
         TaskRuntimeRecoveryPort recoveryPort = harness.servingLane;
         List<Task> recovered = recoveryPort.getRuntimeDispatchableTasks(10);
 
-        assertEquals(List.of(second.getTid()), recovered.stream().map(Task::getTid).toList());
+        assertEquals(List.of(first.getTid(), second.getTid()), recovered.stream().map(Task::getTid).toList());
     }
 
     @Test
