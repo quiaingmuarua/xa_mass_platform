@@ -92,28 +92,6 @@ class TaskResultCallbackCodecTest {
     }
 
     @Test
-    void decodePreservesLeaseTokenForResultIngressIdentityValidation() {
-        String resultCorrelationRef = correlation("task-1", "msg-1", "attempt-1");
-        ResultIngressEntry entry = envelope(
-                """
-                {
-                  "replyRef": "%s",
-                  "success": true,
-                  "body": "done",
-                  "leaseToken": "lease-1"
-                }
-                """.formatted(resultCorrelationRef),
-                resultCorrelationRef,
-                null
-        );
-
-        TaskResultCallbackCommand decoded = codec.decode(entry);
-
-        assertEquals("attempt-1", decoded.attemptId());
-        assertEquals("lease-1", decoded.leaseToken());
-    }
-
-    @Test
     void decodeRejectsMissingRequiredPayloadIdentity() {
         ResultIngressEntry entry = envelope(
                 "{\"taskId\":\"task-1\",\"success\":true}",

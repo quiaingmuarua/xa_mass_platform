@@ -8,8 +8,6 @@ Current module family:
 - `../xa-mass-kernel-spi` (repo-level kernel contract module)
 - `mass-runtime-api`
 - `mass-runtime-memory`
-- `mass-task-runtime-memory`
-- `mass-task-runtime-redis`
 - `mass-runtime-redis`
 - `mass-storage-api`
 - `mass-storage-memory`
@@ -55,24 +53,19 @@ with the owning module README under `mass-storage-memory/` or
 Current truth for this conservative first slice:
 
 - `mass-queue-primitives` owns narrow keyed queue/blocking-poll/backpressure mechanics shared by runtime modules without redefining task or transport semantics
-- `mass-runtime-api` owns shared worker-runtime SPI only:
-  `WorkerRegistry` / `WorkerSlot`, low-level worker registry primitives, and
-  the worker-runtime-owned `WorkerScoreBandSlotRuntime` score/meta
-  state-machine contract used by memory and Redis implementations. Old
-  `TaskWorkRuntime` / `TaskResultRuntime` contracts have been removed from this
-  module; task item scheduling/runtime truth now belongs to
-  `../xa-mass-task-runtime` and its adapter modules.
-- `mass-runtime-memory` owns the in-memory worker-runtime SPI implementations
-  used by the embedded default path and focused worker-runtime tests.
-- `mass-task-runtime-memory` owns the first in-memory implementation of the
-  new `xa-mass-task-runtime` public ports. It is a contract-proof adapter, not
-  the semantic owner and not the current embedded default path.
-- `mass-task-runtime-redis` owns the first Redis implementation of the new
-  `xa-mass-task-runtime` public ports. It keeps Redis keyspace, Lua scripts,
-  and codec details private to the adapter module.
-- `mass-runtime-redis` owns Redis-backed worker-runtime SPI implementations and
-  shared Redis queue primitives. It no longer owns task item scheduling/runtime
-  implementations; Redis task-runtime state lives in `mass-task-runtime-redis`.
+- `mass-runtime-api` owns the shared runtime contracts and related value types:
+  `TaskWorkRuntime` for queue/lease/retry/apply truth and
+  `TaskResultRuntime` for stable-final result-read truth, repair staging,
+  task-local result sequence, and barriers; it also owns the shared
+  `WorkerRegistry` / `WorkerSlot` contract, low-level worker registry
+  primitives, and the worker-runtime-owned `WorkerScoreBandSlotRuntime`
+  score/meta state-machine contract used by memory and Redis implementations.
+  Higher level worker-plane contracts live in `xa-mass-worker-runtime`
+- `mass-runtime-memory` owns the in-memory runtime implementations used by the
+  embedded default path and focused runtime tests
+- `mass-runtime-redis` now owns the Redis-backed runtime implementations plus
+  their keyspace/index baseline; it is the current compose/local distributed
+  verification path and an explicit embedded/server runtime selection
 - `../xa-mass-kernel-spi` owns the kernel-facing task shell ports and
   worker-matching rule value contracts consumed by engine/runtime callers
 - `mass-storage-api` owns persistence/control-plane storage contracts such as
@@ -124,10 +117,7 @@ Current implementation drift agents must keep explicit:
 
 Boundary to keep stable:
 
-- task-runtime modules own task item queue, lease, retry, final-result,
-  progress, and discard truth; worker-runtime modules own worker registry,
-  worker locks, dispatch gates, reachability, and worker attributes; shared
-  infra queue modules own only generic queue mechanics
+- runtime modules own queue, lease, delayed, expiry, counter, and backpressure truth
 - storage modules own durable control-plane truth
 - worker runtime registry, worker locks, dispatch gates, reachability, and
   worker attributes are runtime truth; DB query needs should be fed through

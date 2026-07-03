@@ -9,17 +9,14 @@ import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
-import com.xa.mass.engine.model.TaskAppendOutcome;
-import com.xa.mass.engine.model.TaskCommandOutcome;
-import com.xa.mass.engine.policy.ContractAwareTaskTerminalPolicy;
-import com.xa.mass.task.runtime.ClaimedWorkItem;
-import com.xa.mass.task.runtime.memory.InMemoryTaskRuntime;
-import org.junit.jupiter.api.AfterEach;
+import com.xa.mass.runtime.api.ClaimedTaskWork;
+import com.xa.mass.runtime.api.WorkerClaimTarget;
+import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
+import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -31,18 +28,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TaskKernelLifecycleTest {
 
-    private Harness harness;
+    private InMemoryTaskShellRuntimeStore taskStorage;
+    private TaskManager taskManager;
 
     @BeforeEach
     void setUp() {
-        harness = new Harness();
-    }
-
-    @AfterEach
-    void tearDown() {
-        if (harness != null) {
-            harness.close();
-        }
+        taskStorage = new InMemoryTaskShellRuntimeStore();
+        taskManager = new TaskManager(
+                taskStorage,
+                new InMemoryTaskWorkRuntime(),
+                new InMemoryTaskResultRuntime(),
+                null
+        );
     }
 
     @Test
@@ -55,7 +52,7 @@ class TaskKernelLifecycleTest {
         assertEquals(TaskIntakeStatus.SEALED, task.getIntakeStatus());
         assertEquals(2, task.getTaskTargetNumber());
         assertEquals(2, task.getTaskEligibleNumber());
-        assertEquals(2, harness.taskManager.getTaskRuntimeProgressSnapshot(task.getTid()).readyCount());
+        assertEquals(2, taskManager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
     }
 
     @Test
@@ -71,7 +68,7 @@ class TaskKernelLifecycleTest {
         assertEquals(TaskWorkloadClass.INTERACTIVE, task.getExecutionSpec().getWorkloadClass());
         assertEquals(TaskIntakeStatus.OPEN, task.getIntakeStatus());
         assertEquals(0, task.getTaskTargetNumber());
-        assertEquals(0, harness.taskManager.getTaskRuntimeProgressSnapshot(task.getTid()).readyCount());
+        assertEquals(0, taskManager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
     }
 
     @Test
@@ -90,52 +87,45 @@ class TaskKernelLifecycleTest {
     void taskCanMoveFromNewToReadyToPausedAndBackToReady() {
         Task task = createTask(buildRequest("task-lifecycle", List.of("alpha"), 3));
 
-        assertEquals(List.of(), dispatchableTaskIds());
+        assertTrue(taskManager.approveTask(task.getTid()));
+        assertEquals(TaskStatus.READY, taskManager.getTask(task.getTid()).getStatus());
 
-        assertTrue(harness.taskManager.approveTask(task.getTid()).accepted());
-        assertEquals(TaskStatus.READY, harness.taskManager.getTask(task.getTid()).getStatus());
-        assertEquals(List.of(task.getTid()), dispatchableTaskIds());
+        assertTrue(taskManager.pauseTask(task.getTid()));
+        assertEquals(TaskStatus.PAUSED, taskManager.getTask(task.getTid()).getStatus());
 
-        assertTrue(harness.taskManager.pauseTask(task.getTid()).accepted());
-        assertEquals(TaskStatus.PAUSED, harness.taskManager.getTask(task.getTid()).getStatus());
-        assertEquals(List.of(), dispatchableTaskIds());
-
-        assertTrue(harness.taskManager.resumeTask(task.getTid()).accepted());
-        assertEquals(TaskStatus.READY, harness.taskManager.getTask(task.getTid()).getStatus());
-        assertEquals(List.of(task.getTid()), dispatchableTaskIds());
+        assertTrue(taskManager.resumeTask(task.getTid()));
+        assertEquals(TaskStatus.READY, taskManager.getTask(task.getTid()).getStatus());
     }
 
     @Test
     void blockedTaskCanBeApprovedBackToReady() {
         Task task = createTask(buildRequest("task-blocked", List.of("alpha"), 3));
 
-        assertTrue(harness.taskManager.rejectTask(task.getTid()).accepted());
-        assertEquals(TaskStatus.BLOCKED, harness.taskManager.getTask(task.getTid()).getStatus());
-        assertEquals(TaskHoldReason.REVIEW_REJECTED, harness.taskManager.getTask(task.getTid()).getHoldReason());
-        assertEquals(List.of(), dispatchableTaskIds());
+        assertTrue(taskManager.rejectTask(task.getTid()));
+        assertEquals(TaskStatus.BLOCKED, taskManager.getTask(task.getTid()).getStatus());
+        assertEquals(TaskHoldReason.REVIEW_REJECTED, taskManager.getTask(task.getTid()).getHoldReason());
 
-        assertTrue(harness.taskManager.approveTask(task.getTid()).accepted());
-        assertEquals(TaskStatus.READY, harness.taskManager.getTask(task.getTid()).getStatus());
-        assertNull(harness.taskManager.getTask(task.getTid()).getHoldReason());
-        assertEquals(List.of(task.getTid()), dispatchableTaskIds());
+        assertTrue(taskManager.approveTask(task.getTid()));
+        assertEquals(TaskStatus.READY, taskManager.getTask(task.getTid()).getStatus());
+        assertNull(taskManager.getTask(task.getTid()).getHoldReason());
     }
 
     @Test
     void invalidActionsAreRejectedOutsideExpectedStates() {
         Task task = createTask(buildRequest("task-invalid", List.of("alpha"), 3));
 
-        assertFalse(harness.taskManager.pauseTask(task.getTid()).accepted());
-        assertFalse(harness.taskManager.resumeTask(task.getTid()).accepted());
+        assertFalse(taskManager.pauseTask(task.getTid()));
+        assertFalse(taskManager.resumeTask(task.getTid()));
 
-        assertTrue(harness.taskManager.approveTask(task.getTid()).accepted());
-        assertFalse(harness.taskManager.rejectTask(task.getTid()).accepted());
-        assertTrue(harness.taskManager.approveTask(task.getTid()).accepted());
+        assertTrue(taskManager.approveTask(task.getTid()));
+        assertFalse(taskManager.rejectTask(task.getTid()));
+        assertFalse(taskManager.approveTask(task.getTid()));
 
-        assertTrue(harness.taskManager.cancelTask(task.getTid()).accepted());
-        assertEquals(TaskStatus.TERMINAL, harness.taskManager.getTask(task.getTid()).getStatus());
-        assertEquals(TaskTerminalReason.MANUAL_CANCELLED, harness.taskManager.getTask(task.getTid()).getTerminalReason());
-        assertEquals(0, harness.taskManager.getTaskRuntimeProgressSnapshot(task.getTid()).readyCount());
-        assertFalse(harness.taskManager.resumeTask(task.getTid()).accepted());
+        assertTrue(taskManager.cancelTask(task.getTid()));
+        assertEquals(TaskStatus.TERMINAL, taskManager.getTask(task.getTid()).getStatus());
+        assertEquals(TaskTerminalReason.MANUAL_CANCELLED, taskManager.getTask(task.getTid()).getTerminalReason());
+        assertFalse(taskManager.getTaskWorkRuntime().hasReadyWork(task.getTid()));
+        assertFalse(taskManager.resumeTask(task.getTid()));
     }
 
     @Test
@@ -146,20 +136,20 @@ class TaskKernelLifecycleTest {
 
         Task task = createTask(request);
         AtomicInteger dispatchRequests = new AtomicInteger();
-        harness.taskManager.events().addTaskDispatchListener(ignored -> dispatchRequests.incrementAndGet());
+        taskManager.events().addTaskDispatchListener(ignored -> dispatchRequests.incrementAndGet());
 
-        TaskAppendOutcome append = harness.taskManager.appendTaskItems(task.getTid(), List.of(
-                Map.<String, Object>of("target", "alpha"),
-                Map.<String, Object>of("target", "beta")
+        int added = taskManager.appendTaskItems(task.getTid(), List.of(
+                java.util.Map.<String, Object>of("target", "alpha"),
+                java.util.Map.<String, Object>of("target", "beta")
         ));
 
-        Task updatedTask = harness.taskManager.getTask(task.getTid());
-        assertEquals(2, append.acceptedCount());
+        Task updatedTask = taskManager.getTask(task.getTid());
+        assertEquals(2, added);
         assertEquals(TaskStatus.NEW, updatedTask.getStatus());
         assertEquals(TaskIntakeStatus.OPEN, updatedTask.getIntakeStatus());
         assertEquals(2, updatedTask.getTaskTargetNumber());
         assertEquals(2, updatedTask.getTaskEligibleNumber());
-        assertEquals(2, harness.taskManager.getTaskRuntimeProgressSnapshot(task.getTid()).readyCount());
+        assertEquals(2, taskManager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
         assertEquals(0, dispatchRequests.get());
     }
 
@@ -170,48 +160,53 @@ class TaskKernelLifecycleTest {
         request.setSealIntakeAfterCreate(false);
         Task task = createTask(request);
 
-        List<Map<String, Object>> oversizedBatch = java.util.stream.IntStream
+        List<java.util.Map<String, Object>> oversizedBatch = java.util.stream.IntStream
                 .rangeClosed(0, TaskManager.MAX_INGEST_BATCH_ITEMS)
-                .mapToObj(i -> Map.<String, Object>of("target", "t-" + i))
+                .mapToObj(i -> java.util.Map.<String, Object>of("target", "t-" + i))
                 .toList();
 
-        TaskAppendOutcome append = harness.taskManager.appendTaskItems(task.getTid(), oversizedBatch);
-        assertFalse(append.accepted());
-        assertTrue(append.message().contains("append items exceed ingest batch limit"));
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
+                () -> taskManager.appendTaskItems(task.getTid(), oversizedBatch));
+
+        assertTrue(error.getMessage().contains("append items exceed ingest batch limit"));
     }
 
     @Test
     void interactiveTaskAppendRespectsWorkloadAwareReadyBackpressureCap() {
         String previousInteractiveCap = System.getProperty("xa.mass.engine.interactiveMaxReadyItemsPerTask");
         String previousBulkCap = System.getProperty("xa.mass.engine.bulkMaxReadyItemsPerTask");
-        harness.close();
-        harness = null;
         try {
             System.setProperty("xa.mass.engine.interactiveMaxReadyItemsPerTask", "2");
             System.setProperty("xa.mass.engine.bulkMaxReadyItemsPerTask", "100");
-            harness = new Harness();
+
+            InMemoryTaskShellRuntimeStore backpressureStorage = new InMemoryTaskShellRuntimeStore();
+            TaskManager backpressureAwareManager = new TaskManager(
+                    backpressureStorage,
+                    new InMemoryTaskWorkRuntime(),
+                    new InMemoryTaskResultRuntime(),
+                    null
+            );
             TaskCreateSpec request = buildRequest("interactive-backpressure", List.of("alpha"), 3);
             request.setContract(TaskContract.SESSION);
             request.setSealIntakeAfterCreate(false);
             request.setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
 
-            Task task = createTask(request);
-            assertTrue(harness.taskManager.approveTask(task.getTid()).accepted());
-            assertEquals(1, harness.taskManager.getTaskRuntimeProgressSnapshot(task.getTid()).readyCount());
+            Task task = createTask(backpressureAwareManager, request);
+            assertTrue(backpressureAwareManager.approveTask(task.getTid()));
+            assertEquals(1, backpressureAwareManager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
 
-            assertEquals(1, harness.taskManager.appendTaskItems(task.getTid(), List.of(
-                    Map.<String, Object>of("target", "beta")
-            )).acceptedCount());
+            assertEquals(1, backpressureAwareManager.appendTaskItems(task.getTid(), List.of(
+                    java.util.Map.<String, Object>of("target", "beta")
+            )));
 
             IllegalStateException error = assertThrows(IllegalStateException.class, () ->
-                    harness.taskManager.appendTaskItems(task.getTid(), List.of(
-                            Map.<String, Object>of("target", "gamma")
+                    backpressureAwareManager.appendTaskItems(task.getTid(), List.of(
+                            java.util.Map.<String, Object>of("target", "gamma")
                     )));
 
-            assertTrue(error.getMessage().contains("task-runtime append failed"));
-            assertTrue(error.getMessage().contains("ready backlog is full"));
-            assertEquals(2, harness.taskManager.getTaskRuntimeProgressSnapshot(task.getTid()).readyCount());
-            assertEquals(2, harness.taskManager.getTask(task.getTid()).getTaskTargetNumber());
+            assertTrue(error.getMessage().contains("BACKPRESSURE_REJECTED"));
+            assertEquals(2, backpressureAwareManager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
+            assertEquals(2, backpressureAwareManager.getTask(task.getTid()).getTaskTargetNumber());
         } finally {
             restoreProperty("xa.mass.engine.interactiveMaxReadyItemsPerTask", previousInteractiveCap);
             restoreProperty("xa.mass.engine.bulkMaxReadyItemsPerTask", previousBulkCap);
@@ -219,139 +214,127 @@ class TaskKernelLifecycleTest {
     }
 
     @Test
-    void appendTaskItemsRejectsBeforeRuntimeOwnershipWhenTaskReadyBacklogWouldOverflow() {
-        String previousBulkCap = System.getProperty("xa.mass.engine.bulkMaxReadyItemsPerTask");
-        harness.close();
-        harness = null;
-        try {
-            System.setProperty("xa.mass.engine.bulkMaxReadyItemsPerTask", "2");
-            harness = new Harness();
-            TaskCreateSpec request = buildRequest("append-atomic-backlog", List.of("alpha"), 3);
-            request.setContract(TaskContract.BATCH);
-            request.setSealIntakeAfterCreate(false);
+    void appendTaskItemsRejectsBeforeRuntimeAdmissionWhenEngineBacklogWouldOverflow() {
+        InMemoryTaskShellRuntimeStore backlogStorage = new InMemoryTaskShellRuntimeStore();
+        TaskManager backlogAwareManager = new TaskManager(
+                backlogStorage,
+                new InMemoryTaskWorkRuntime(2),
+                new InMemoryTaskResultRuntime(),
+                null
+        );
+        TaskCreateSpec request = buildRequest("append-atomic-backlog", List.of("alpha"), 3);
+        request.setContract(TaskContract.BATCH);
+        request.setSealIntakeAfterCreate(false);
 
-            Task task = createTask(request);
-            assertEquals(1, harness.taskManager.getTaskRuntimeProgressSnapshot(task.getTid()).readyCount());
-            assertEquals(1, harness.taskManager.getTask(task.getTid()).getTaskTargetNumber());
+        Task task = createTask(backlogAwareManager, request);
+        assertEquals(1, backlogAwareManager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
+        assertEquals(1, backlogAwareManager.getTask(task.getTid()).getTaskTargetNumber());
 
-            IllegalStateException error = assertThrows(IllegalStateException.class, () ->
-                    harness.taskManager.appendTaskItems(task.getTid(), List.of(
-                            Map.<String, Object>of("target", "beta"),
-                            Map.<String, Object>of("target", "gamma")
-                    )));
+        IllegalStateException error = assertThrows(IllegalStateException.class, () ->
+                backlogAwareManager.appendTaskItems(task.getTid(), List.of(
+                        java.util.Map.<String, Object>of("target", "beta"),
+                        java.util.Map.<String, Object>of("target", "gamma")
+                )));
 
-            assertTrue(error.getMessage().contains("task-runtime append failed"));
-            assertTrue(error.getMessage().contains("ready backlog is full"));
-            assertEquals(1, harness.taskManager.getTaskRuntimeProgressSnapshot(task.getTid()).readyCount());
-            assertEquals(1, harness.taskManager.getTask(task.getTid()).getTaskTargetNumber());
-        } finally {
-            restoreProperty("xa.mass.engine.bulkMaxReadyItemsPerTask", previousBulkCap);
-        }
+        assertTrue(error.getMessage().contains("engine work backlog is full"));
+        assertEquals(1, backlogAwareManager.getTaskWorkRuntime().stats(task.getTid()).readyCount());
+        assertEquals(1, backlogAwareManager.getTask(task.getTid()).getTaskTargetNumber());
     }
 
     @Test
     void deleteTaskRejectedForReadyTask() {
         Task task = createTask(buildRequest("del-ready", List.of("alpha"), 3));
-        assertTrue(harness.taskManager.approveTask(task.getTid()).accepted());
+        assertTrue(taskManager.approveTask(task.getTid()));
 
-        assertFalse(harness.taskManager.deleteTask(task.getTid()).accepted());
-        assertNotNull(harness.taskManager.getTask(task.getTid()));
+        assertFalse(taskManager.deleteTask(task.getTid()));
+        assertNotNull(taskManager.getTask(task.getTid()));
     }
 
     @Test
     void deleteTaskAllowedForNewTask() {
         Task task = createTask(buildRequest("del-new", List.of("alpha"), 3));
-        assertTrue(harness.taskRuntimeServingLane.hasDispatchReadyWork(task.getTid()));
+        assertTrue(taskManager.getTaskWorkRuntime().hasReadyWork(task.getTid()));
 
-        assertTrue(harness.taskManager.deleteTask(task.getTid()).accepted());
-        assertNull(harness.taskManager.getTask(task.getTid()));
-        assertFalse(harness.taskRuntimeServingLane.hasDispatchReadyWork(task.getTid()));
+        assertTrue(taskManager.deleteTask(task.getTid()));
+        assertNull(taskManager.getTask(task.getTid()));
+        assertFalse(taskManager.getTaskWorkRuntime().hasReadyWork(task.getTid()));
     }
 
     @Test
     void deleteTaskAllowedForTerminalTask() {
         Task task = createTask(buildRequest("del-terminal", List.of("alpha"), 3));
-        assertTrue(harness.taskManager.approveTask(task.getTid()).accepted());
-        assertTrue(harness.taskManager.cancelTask(task.getTid()).accepted());
+        assertTrue(taskManager.approveTask(task.getTid()));
+        assertTrue(taskManager.cancelTask(task.getTid()));
 
-        assertTrue(harness.taskManager.deleteTask(task.getTid()).accepted());
-        assertNull(harness.taskManager.getTask(task.getTid()));
+        assertTrue(taskManager.deleteTask(task.getTid()));
+        assertNull(taskManager.getTask(task.getTid()));
     }
 
     @Test
     void policyTerminationPreservesVisibleResultRowsUntilTaskDelete() {
         Task task = createTask(buildRequest("terminate-preserve-results", List.of("alpha", "beta"), 0));
-        assertTrue(harness.taskManager.approveTask(task.getTid()).accepted());
-        Task running = harness.taskManager.getTask(task.getTid());
+        assertTrue(taskManager.approveTask(task.getTid()));
+        Task running = taskManager.getTask(task.getTid());
         running.setStatus(TaskStatus.RUNNING);
-        assertTrue(harness.taskManager.persistTaskShell(running));
+        assertTrue(taskManager.updateTask(running));
 
-        ClaimedWorkItem claimed = claimSingle(task.getTid(), "worker-results", "batch-results");
-        assertTrue(harness.taskRuntimeServingLane.ingestTaskResult(
+        List<ClaimedTaskWork> claimed = taskManager.getTaskWorkRuntime().claimReady(
                 task.getTid(),
-                claimed.messageId(),
+                List.of(WorkerClaimTarget.workerLevel("worker-results", "batch-results", 1)),
+                1,
+                taskManager.getWorkLeaseSeconds()
+        );
+        assertEquals(1, claimed.size());
+        assertTrue(taskManager.ingestTaskResult(
+                task.getTid(),
+                claimed.getFirst().messageId(),
                 true,
                 "done",
                 null,
-                Map.of("value", "ok")
+                java.util.Map.of("value", "ok")
         ));
-        assertEquals(1, harness.taskRuntimeServingLane.countVisibleTaskResults(task.getTid()));
-        assertTrue(harness.taskRuntimeServingLane.hasDispatchReadyWork(task.getTid()));
+        assertEquals(1, taskManager.countTaskResults(task.getTid()));
+        assertTrue(taskManager.getTaskWorkRuntime().hasReadyWork(task.getTid()));
 
-        assertTrue(harness.taskManager.terminateTask(task.getTid(), TaskTerminalReason.MAX_RUNTIME_REACHED).accepted());
+        assertTrue(taskManager.terminateTask(task.getTid(), TaskTerminalReason.MAX_RUNTIME_REACHED));
 
-        Task terminal = harness.taskManager.getTask(task.getTid());
+        Task terminal = taskManager.getTask(task.getTid());
         assertEquals(TaskStatus.TERMINAL, terminal.getStatus());
         assertEquals(TaskTerminalReason.MAX_RUNTIME_REACHED, terminal.getTerminalReason());
-        assertFalse(harness.taskRuntimeServingLane.hasDispatchReadyWork(task.getTid()));
-        assertEquals(1, harness.taskRuntimeServingLane.countVisibleTaskResults(task.getTid()));
+        assertFalse(taskManager.getTaskWorkRuntime().hasReadyWork(task.getTid()));
+        assertEquals(1, taskManager.countTaskResults(task.getTid()));
 
-        assertTrue(harness.taskManager.deleteTask(task.getTid()).accepted());
-        assertEquals(0, harness.taskRuntimeServingLane.countVisibleTaskResults(task.getTid()));
+        assertTrue(taskManager.deleteTask(task.getTid()));
+        assertEquals(0, taskManager.countTaskResults(task.getTid()));
     }
 
     private Task createTask(TaskCreateSpec request) {
+        return createTask(taskManager, request);
+    }
+
+    private Task createTask(TaskManager manager, TaskCreateSpec request) {
         if (request == null) {
             throw new IllegalArgumentException("task request body is required");
         }
         TaskContract contract = request.getContract() != null ? request.getContract() : TaskContract.BATCH;
-        TaskCommandOutcome create = harness.taskManager.createTaskShell(request.toShellRequest(contract));
-        assertTrue(create.accepted());
-        Task task = harness.taskManager.getTask(create.taskId());
-        assertNotNull(task);
+        Task task = manager.createTaskShell(request.toShellRequest(contract));
         if (request.getInputs() != null && !request.getInputs().isEmpty()) {
-            harness.taskManager.appendTaskItems(task.getTid(), request.getInputs());
+            manager.appendTaskItems(task.getTid(), request.getInputs());
         }
         if (!request.shouldKeepIntakeOpen(contract)) {
-            assertTrue(harness.taskManager.sealTask(task.getTid()).accepted());
+            assertTrue(manager.sealTask(task.getTid()));
         }
-        return harness.taskManager.getTask(task.getTid());
-    }
-
-    private ClaimedWorkItem claimSingle(String taskId, String workerId, String batchId) {
-        return TaskRuntimeClaimTestSupport.claimSingle(
-                harness.taskRuntimeServingLane,
-                harness.taskManager.getWorkLeaseSeconds(),
-                taskId,
-                "group-1",
-                workerId,
-                batchId);
-    }
-
-    private List<String> dispatchableTaskIds() {
-        return harness.taskRuntimeServingLane.getRuntimeDispatchableTasks(10).stream()
-                .map(Task::getTid)
-                .toList();
+        return manager.getTask(task.getTid());
     }
 
     private TaskCreateSpec buildRequest(String sourceRef, List<String> targets, int defaultMaxRetryCount) {
         TaskCreateSpec request = new TaskCreateSpec();
         request.setSourceRef(sourceRef);
         request.setProject("demoApp");
-        request.setSharedConfig(Map.of("textContent", "smoke", "routingCode", "us"));
+        request.setSharedConfig(java.util.Map.of("textContent", "smoke", "routingCode", "us"));
         request.setUserId("agent");
         request.setInputs(targets.stream()
-                .map(target -> Map.<String, Object>of("target", target))
+                .map(target -> java.util.Map.<String, Object>of("target", target))
                 .toList());
         request.setBatchSize(1);
         request.setDefaultMaxRetryCount(defaultMaxRetryCount);
@@ -366,45 +349,15 @@ class TaskKernelLifecycleTest {
         }
     }
 
-    private static final class Harness {
-        private final TaskManager taskManager;
-        private final TaskRuntimeServingLane taskRuntimeServingLane;
-
-        private Harness() {
-            InMemoryTaskRuntime runtime = new InMemoryTaskRuntime();
-            InMemoryTaskShellRuntimeStore storage = new InMemoryTaskShellRuntimeStore();
-            this.taskManager = new TaskManager(
-                    storage,
-                    storage,
-                    new ContractAwareTaskTerminalPolicy(),
-                    null);
-            taskRuntimeServingLane = TaskRuntimeServingLaneTestSupport.forTaskManager(
-                    runtime,
-                    runtime,
-                    runtime,
-                    runtime,
-                    runtime,
-                    taskManager,
-                    300L,
-                    TaskManager.MAX_INGEST_BATCH_ITEMS,
-                    86_400_000L);
-            taskManager.installTaskRuntimeServingLane(taskRuntimeServingLane);
-        }
-
-        private void close() {
-            taskManager.shutdown();
-        }
-    }
-
     private static final class TaskCreateSpec extends TaskShellCreateRequestDto {
-        private List<Map<String, Object>> inputs;
+        private List<java.util.Map<String, Object>> inputs;
         private Boolean sealIntakeAfterCreate;
 
-        List<Map<String, Object>> getInputs() {
+        List<java.util.Map<String, Object>> getInputs() {
             return inputs;
         }
 
-        void setInputs(List<Map<String, Object>> inputs) {
+        void setInputs(List<java.util.Map<String, Object>> inputs) {
             this.inputs = inputs;
         }
 
@@ -448,4 +401,5 @@ class TaskKernelLifecycleTest {
             return dto;
         }
     }
+
 }

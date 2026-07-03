@@ -7,7 +7,7 @@ import java.util.Objects;
  */
 public final class RedisWorkerRegistryKeyspace {
 
-    public static final String DEFAULT_NAMESPACE = "xa:mass:runtime:worker";
+    public static final String DEFAULT_NAMESPACE = RedisTaskWorkKeyspace.DEFAULT_NAMESPACE + ":worker";
     private final String namespace;
 
     public RedisWorkerRegistryKeyspace() {

@@ -1,8 +1,10 @@
 package com.xa.mass.engine;
 
 import com.xa.mass.base.runtime.result.TaskResultCorrelation;
-import com.xa.mass.task.runtime.ActiveLeaseRepairCandidate;
+import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import org.junit.jupiter.api.Test;
+
+import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -39,18 +41,20 @@ class TaskResultCorrelationSupportTest {
         assertNull(correlation.workerId());
     }
 
-    private ActiveLeaseRepairCandidate lease() {
-        return new ActiveLeaseRepairCandidate(
+    private ActiveLeaseRecord lease() {
+        return new ActiveLeaseRecord(
                 "task-1",
                 "msg-1",
                 "lease-1",
                 "worker-1",
-                "",
-                "batch-1",
-                "",
                 null,
-                1,
-                System.currentTimeMillis() + 30_000L
+                "batch-1",
+                null,
+                null,
+                null,
+                0,
+                Instant.now(),
+                Instant.now()
         );
     }
 }

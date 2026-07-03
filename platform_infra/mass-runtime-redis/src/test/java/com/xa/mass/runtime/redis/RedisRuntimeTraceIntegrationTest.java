@@ -1,0 +1,290 @@
+package com.xa.mass.runtime.redis;
+
+import com.xa.mass.base.enums.task.TaskStatus;
+import com.xa.mass.base.enums.task.TaskTerminalReason;
+import com.xa.mass.base.model.Task;
+import com.xa.mass.base.model.TaskExecutionSpec;
+import com.xa.mass.base.model.TaskShellCreateRequestDto;
+import com.xa.mass.engine.TaskCommandService;
+import com.xa.mass.engine.TaskLeaseMaintenancePort;
+import com.xa.mass.engine.TaskManager;
+import com.xa.mass.engine.TaskManagerResultIngestFacade;
+import com.xa.mass.engine.TaskQueryService;
+import com.xa.mass.runtime.api.ClaimedTaskWork;
+import com.xa.mass.runtime.api.RecentFinalWorkReceipt;
+import com.xa.mass.runtime.api.ResultApplyStatus;
+import com.xa.mass.runtime.api.TaskWorkResult;
+import com.xa.mass.runtime.api.WorkerClaimTarget;
+import com.xa.mass.storage.memory.InMemoryTaskShellStore;
+import com.xa.mass.trace.sink.ExecutionEvent;
+import com.xa.mass.trace.sink.ExecutionEventSink;
+import com.xa.mass.trace.sink.ExecutionEventType;
+import io.lettuce.core.RedisClient;
+import io.lettuce.core.api.StatefulRedisConnection;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class RedisRuntimeTraceIntegrationTest {
+
+    private RedisClient redisClient;
+    private StatefulRedisConnection<String, String> redisConnection;
+    private String redisUri;
+    private String runtimeNamespace;
+    private RedisTaskWorkRuntime runtime;
+    private InMemoryTaskShellStore taskStorage;
+    private TaskManager taskManager;
+    private TaskCommandService taskCommands;
+    private TaskQueryService taskQueries;
+    private TaskManagerResultIngestFacade resultFacade;
+    private TaskLeaseMaintenancePort maintenancePort;
+    private RecordingExecutionEventSink traceSink;
+    private AtomicReference<Instant> now;
+
+    @BeforeEach
+    void setUp() {
+        redisUri = RedisRuntimeTestSupport.redisUri();
+        redisClient = RedisRuntimeTestSupport.createClientOrSkip("integration test");
+        redisConnection = redisClient.connect();
+        now = new AtomicReference<>(Instant.parse("2026-05-06T00:00:00Z"));
+        runtimeNamespace = RedisRuntimeTestSupport.namespace("redis-trace");
+        runtime = new RedisTaskWorkRuntime(
+                redisConnection,
+                new RedisTaskWorkKeyspace(runtimeNamespace),
+                1024,
+                now::get
+        );
+        taskStorage = new InMemoryTaskShellStore();
+        traceSink = new RecordingExecutionEventSink();
+        RedisTaskResultRuntime resultRuntime = new RedisTaskResultRuntime(
+                redisConnection,
+                new RedisTaskResultKeyspace(runtimeNamespace + ":result"),
+                now::get
+        );
+        taskManager = new TaskManager(taskStorage, runtime, resultRuntime, traceSink);
+        taskCommands = new TaskCommandService(taskManager);
+        taskQueries = new TaskQueryService(taskManager);
+        resultFacade = new TaskManagerResultIngestFacade(taskManager);
+        maintenancePort = taskManager;
+    }
+
+    @AfterEach
+    void tearDown() {
+        if (runtime != null) {
+            runtime.shutdown();
+        }
+        RedisRuntimeTestSupport.cleanupNamespace(redisUri, runtimeNamespace);
+        if (redisConnection != null && redisConnection.isOpen()) {
+            redisConnection.close();
+        }
+        if (redisClient != null) {
+            redisClient.shutdown();
+        }
+    }
+
+    @Test
+    void successfulResultOnRedisRuntimeFinalizesTaskAndEmitsCanonicalTrace() {
+        RunningTaskFixture fixture = createAssignedTask("redis-success-trace", 0);
+
+        boolean handled = resultFacade.ingestTaskResult(
+                fixture.task().getTid(),
+                fixture.messageId(),
+                true,
+                "ok-redis",
+                null,
+                Map.of("status", "SUCCESS", "mockData", "ok-redis")
+        );
+
+        assertTrue(handled);
+        assertEquals(TaskStatus.TERMINAL, taskQueries.getTask(fixture.task().getTid()).getStatus());
+        assertFalse(runtime.hasReadyWork(fixture.task().getTid()));
+        assertTrue(runtime.activeLeases(fixture.task().getTid()).isEmpty());
+        assertEquals(1, runtime.stats(fixture.task().getTid()).successCount());
+        assertEquals(1, runtime.stats(fixture.task().getTid()).finalCount());
+
+        assertTraceContains(fixture.task().getTid(), fixture.messageId(), ExecutionEventType.CALLBACK_ACCEPTED);
+        assertTraceContains(fixture.task().getTid(), fixture.messageId(), ExecutionEventType.TASK_WORK_ATTEMPT_CLOSED);
+        assertTraceContains(fixture.task().getTid(), fixture.messageId(), ExecutionEventType.TASK_WORK_LOGICALLY_FINAL);
+        assertTraceContainsTaskEvent(fixture.task().getTid(), ExecutionEventType.TASK_TERMINAL_CLOSED);
+    }
+
+    @Test
+    void duplicateCallbackOnRedisRuntimeKeepsFirstFinalResultAndEmitsDuplicateTrace() {
+        RunningTaskFixture fixture = createAssignedTask("redis-duplicate-trace", 0);
+
+        boolean firstHandled = resultFacade.ingestTaskResult(
+                fixture.task().getTid(),
+                fixture.messageId(),
+                true,
+                "ok-first",
+                null,
+                Map.of("status", "SUCCESS", "mockData", "ok-first")
+        );
+        boolean duplicateHandled = resultFacade.ingestTaskResult(
+                fixture.task().getTid(),
+                fixture.messageId(),
+                false,
+                "boom-duplicate",
+                "IGNORED_DUPLICATE",
+                Map.of("status", "FAILED", "mockData", "boom-duplicate")
+        );
+
+        assertTrue(firstHandled);
+        assertTrue(duplicateHandled);
+        RecentFinalWorkReceipt receipt = runtime.getRecentFinalReceipt(fixture.task().getTid(), fixture.messageId())
+                .orElseThrow();
+        assertEquals(0, receipt.retryCount());
+        assertEquals(1, runtime.stats(fixture.task().getTid()).successCount());
+        assertEquals(0, runtime.stats(fixture.task().getTid()).failedCount());
+
+        assertTraceContains(fixture.task().getTid(), fixture.messageId(), ExecutionEventType.CALLBACK_ACCEPTED);
+        assertTraceContains(fixture.task().getTid(), fixture.messageId(), ExecutionEventType.CALLBACK_IGNORED_DUPLICATE);
+    }
+
+    @Test
+    void callbackAfterRuntimeLeaseAlreadyConvergedIsRejectedAndEmitsNoActiveLeaseTrace() {
+        RunningTaskFixture fixture = createAssignedTask("redis-no-active-lease-trace", 0);
+
+        ResultApplyStatus runtimeStatus = runtime.applyResult(TaskWorkResult.success(
+                fixture.task().getTid(),
+                fixture.messageId(),
+                fixture.claimedWork().leaseToken(),
+                "runtime-only-success",
+                Map.of("status", "SUCCESS", "mockData", "runtime-only-success")
+        )).status();
+
+        boolean handled = resultFacade.ingestTaskResult(
+                fixture.task().getTid(),
+                fixture.messageId(),
+                true,
+                "late-after-runtime",
+                null,
+                Map.of("status", "SUCCESS", "mockData", "late-after-runtime")
+        );
+
+        assertEquals(ResultApplyStatus.SUCCESS_APPLIED, runtimeStatus);
+        assertTrue(handled);
+        assertTrue(runtime.activeLeases(fixture.task().getTid()).isEmpty());
+
+        assertTraceContains(fixture.task().getTid(), fixture.messageId(), ExecutionEventType.CALLBACK_IGNORED_DUPLICATE);
+        assertTraceDoesNotContain(fixture.task().getTid(), fixture.messageId(), ExecutionEventType.CALLBACK_ACCEPTED);
+    }
+
+    @Test
+    void callbackOnAlreadyTerminalTaskIsIgnoredAsLateAndEmitsLateTrace() {
+        RunningTaskFixture fixture = createAssignedTask("redis-late-callback-trace", 0);
+        fixture.task().setStatus(TaskStatus.TERMINAL);
+        fixture.task().setTerminalReason(TaskTerminalReason.MANUAL_CANCELLED);
+        taskStorage.updateTask(fixture.task());
+
+        boolean handled = resultFacade.ingestTaskResult(
+                fixture.task().getTid(),
+                fixture.messageId(),
+                true,
+                "late-terminal",
+                null,
+                Map.of("status", "SUCCESS", "mockData", "late-terminal")
+        );
+
+        assertTrue(handled);
+        assertEquals(TaskStatus.TERMINAL, taskQueries.getTask(fixture.task().getTid()).getStatus());
+        assertEquals(1, runtime.activeLeases(fixture.task().getTid()).size());
+
+        assertTraceContains(fixture.task().getTid(), fixture.messageId(), ExecutionEventType.CALLBACK_IGNORED_LATE);
+        assertTraceDoesNotContain(fixture.task().getTid(), fixture.messageId(), ExecutionEventType.CALLBACK_ACCEPTED);
+    }
+
+    @Test
+    void leaseExpiryOnRedisRuntimeRequeuesWorkAndEmitsRetryTrace() {
+        RunningTaskFixture fixture = createAssignedTask("redis-expire-retry-trace", 1);
+
+        boolean expired = maintenancePort.expireLeasedWork(fixture.task().getTid(), fixture.messageId());
+
+        assertTrue(expired);
+        assertTrue(runtime.hasReadyWork(fixture.task().getTid()));
+        assertEquals(1, runtime.stats(fixture.task().getTid()).readyCount());
+
+        assertTraceContains(fixture.task().getTid(), fixture.messageId(), ExecutionEventType.LEASE_EXPIRED);
+        assertTraceContains(fixture.task().getTid(), fixture.messageId(), ExecutionEventType.TASK_WORK_RETRY_RESET);
+        assertTraceContains(fixture.task().getTid(), fixture.messageId(), ExecutionEventType.TASK_WORK_ATTEMPT_CLOSED);
+        assertTraceDoesNotContain(fixture.task().getTid(), fixture.messageId(), ExecutionEventType.TASK_WORK_LOGICALLY_FINAL);
+        assertTraceDoesNotContain(fixture.task().getTid(), fixture.messageId(), ExecutionEventType.TASK_WORK_STATUS_TRANSITION);
+    }
+
+    private RunningTaskFixture createAssignedTask(String taskName, int maxRetryCount) {
+        TaskShellCreateRequestDto dto = new TaskShellCreateRequestDto();
+        dto.setSourceRef(taskName);
+        dto.setProject("demoApp");
+        dto.setSharedConfig(Map.of(
+                "textContent", "hello",
+                "routingCode", "us",
+                "_sdk", Map.of("eventCode", "crawler.fetch-page")
+        ));
+        dto.setUserId("agent");
+        TaskExecutionSpec spec = new TaskExecutionSpec();
+        spec.setBatchSize(1);
+        spec.setDefaultMaxRetryCount(maxRetryCount);
+        dto.setExecutionSpec(spec);
+        Task task = taskCommands.createTaskShell(dto);
+        taskCommands.appendTaskItems(task.getTid(), List.<Map<String, Object>>of(Map.of("target", "alpha")));
+        assertTrue(taskCommands.sealTask(task.getTid()));
+        taskCommands.approveTask(task.getTid());
+        task.setStatus(TaskStatus.RUNNING);
+
+        ClaimedTaskWork claimed = runtime.claimReady(
+                task.getTid(),
+                List.of(WorkerClaimTarget.workerLevel("worker-1", "batch-0", 1)),
+                1,
+                300
+        ).getFirst();
+        return new RunningTaskFixture(task, claimed.messageId(), claimed);
+    }
+
+    private void assertTraceContains(String taskId, String messageId, ExecutionEventType eventType) {
+        assertTrue(traceSink.events.stream().anyMatch(event ->
+                        event.getEventType() == eventType
+                                && event.getIdentity() != null
+                                && taskId.equals(event.getIdentity().taskId())
+                                && messageId.equals(event.getIdentity().messageId())),
+                "Expected trace event " + eventType + " for taskId=" + taskId + ", messageId=" + messageId);
+    }
+
+    private void assertTraceContainsTaskEvent(String taskId, ExecutionEventType eventType) {
+        assertTrue(traceSink.events.stream().anyMatch(event ->
+                        event.getEventType() == eventType
+                                && event.getIdentity() != null
+                                && taskId.equals(event.getIdentity().taskId())),
+                "Expected task-level trace event " + eventType + " for taskId=" + taskId);
+    }
+
+    private void assertTraceDoesNotContain(String taskId, String messageId, ExecutionEventType eventType) {
+        assertFalse(traceSink.events.stream().anyMatch(event ->
+                        event.getEventType() == eventType
+                                && event.getIdentity() != null
+                                && taskId.equals(event.getIdentity().taskId())
+                                && messageId.equals(event.getIdentity().messageId())),
+                "Did not expect trace event " + eventType + " for taskId=" + taskId + ", messageId=" + messageId);
+    }
+
+    private record RunningTaskFixture(Task task,
+                                      String messageId,
+                                      ClaimedTaskWork claimedWork) {
+    }
+
+    private static final class RecordingExecutionEventSink implements ExecutionEventSink {
+        private final List<ExecutionEvent> events = new ArrayList<>();
+
+        @Override
+        public void emit(ExecutionEvent event) {
+            events.add(event);
+        }
+    }
+}

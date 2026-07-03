@@ -3,7 +3,7 @@ package com.xa.mass.server.e2e.support;
 import com.xa.mass.api.review.TaskReviewReadModel;
 import com.xa.mass.api.review.TaskReviewReadModel.TaskReviewAttempt;
 import com.xa.mass.api.review.TaskReviewReadModel.TaskReviewItem;
-import com.xa.mass.sdk.model.TaskActiveLeaseSnapshot;
+import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpMethod;
 
@@ -96,8 +96,8 @@ public abstract class ReviewReadModelSampleE2eTest extends AbstractSampleE2eTest
     private List<Map<String, Object>> fetchCompatibilityMessages(String taskId,
                                                                  Map<String, Object> taskView,
                                                                  int limit) {
-        Map<String, TaskActiveLeaseSnapshot> activeLeaseByMessageId = new LinkedHashMap<>();
-        for (TaskActiveLeaseSnapshot activeLease : app.getActiveLeases(taskId)) {
+        Map<String, ActiveLeaseRecord> activeLeaseByMessageId = new LinkedHashMap<>();
+        for (ActiveLeaseRecord activeLease : taskWorkRuntime.activeLeases(taskId)) {
             if (activeLease != null
                     && activeLease.messageId() != null
                     && !activeLease.messageId().isBlank()) {
@@ -107,7 +107,7 @@ public abstract class ReviewReadModelSampleE2eTest extends AbstractSampleE2eTest
         List<Map<String, Object>> messages = new java.util.ArrayList<>();
         Set<String> seenMessageIds = new java.util.LinkedHashSet<>();
         for (TaskReviewItem projection : taskReviewReadModel.loadItems(taskId, limit)) {
-            TaskActiveLeaseSnapshot activeLease = activeLeaseByMessageId.get(projection.messageId());
+            ActiveLeaseRecord activeLease = activeLeaseByMessageId.get(projection.messageId());
             Map<String, Object> message = new LinkedHashMap<>();
             message.put("messageId", projection.messageId());
             message.put("taskId", taskId);
@@ -135,7 +135,7 @@ public abstract class ReviewReadModelSampleE2eTest extends AbstractSampleE2eTest
             messages.add(message);
             seenMessageIds.add(projection.messageId());
         }
-        for (TaskActiveLeaseSnapshot activeLease : activeLeaseByMessageId.values()) {
+        for (ActiveLeaseRecord activeLease : activeLeaseByMessageId.values()) {
             if (activeLease == null
                     || seenMessageIds.contains(activeLease.messageId())) {
                 continue;
@@ -167,7 +167,7 @@ public abstract class ReviewReadModelSampleE2eTest extends AbstractSampleE2eTest
 
     private static String overlayStatus(Map<String, Object> taskView,
                                         TaskReviewItem projection,
-                                        TaskActiveLeaseSnapshot activeLease) {
+                                        ActiveLeaseRecord activeLease) {
         String baseStatus = projection != null ? projection.status() : null;
         if (isFinalStatus(baseStatus)) {
             return baseStatus;

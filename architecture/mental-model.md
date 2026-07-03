@@ -12,14 +12,13 @@ The current execution mainline is:
 ```text
 Task shell
   -> item append
-  -> xa-mass-task-runtime accepted backlog
+  -> TaskWorkRuntime enqueue
   -> assignment and matching
-  -> xa-mass-task-runtime claim / lease
   -> dispatch binder
   -> transport delivery
   -> worker execution
   -> result ingest
-  -> xa-mass-task-runtime visible final row
+  -> TaskResultRuntime visible final row
   -> task progress / terminal convergence
 ```
 
@@ -161,7 +160,7 @@ still owns worker selection and assignment.
 ### Result
 
 Public result reads are runtime-owned stable-final rows from
-`xa-mass-task-runtime`.
+`TaskResultRuntime`.
 
 Server review/export materialization is lagging operator material. It must not
 be the public `/results` or SDK result query truth.
@@ -173,8 +172,8 @@ Keep these boundaries in mind:
 | Area | Owner | Meaning |
 | --- | --- | --- |
 | task lifecycle | engine | task status, terminal policy, intake, control commands |
-| ready/lease/retry | `xa-mass-task-runtime` | hot-path executable work truth |
-| public results | `xa-mass-task-runtime` | stable-final rows and result sequence |
+| ready/lease/retry | `TaskWorkRuntime` | hot-path executable work truth |
+| public results | `TaskResultRuntime` | stable-final rows and result sequence |
 | capability candidate source | WorkerGroup / WorkerCandidateIndex | declared worker capability narrowing |
 | runtime worker selection | engine + worker runtime | eligibility component, ranking, affinity, metrics, reserve, and admission orchestration |
 | delivery and presence | transport | adapter routing, delivery, worker reachability |

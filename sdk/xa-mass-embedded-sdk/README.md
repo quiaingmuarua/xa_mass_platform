@@ -19,17 +19,7 @@ embedded adapter startup and transport runtime assembly boundary lives behind
 `xa-mass-transport-adapter-starter`. The embedded SDK does not directly depend
 on concrete transport runtime, polling, socket, or WebSocket implementation
 modules; it passes adapter/backend declarations to adapter-starter and keeps
-task/result translation in SDK starter code. Migrated task-runtime serving
-paths select memory or Redis backends through embedded engine options that
-delegate to `xa-mass-task-runtime-starter-sdk`; embedded SDK callers should not
-import task-runtime ports, Redis keyspace internals, or old runtime stores.
-Runtime stats and active-lease reads exposed through diagnostics are
-owner-backed debug projections for the selected serving lane, not a new public
-task runtime mutation surface. The embedded SDK exposes task shell, result,
-archive, and bounded diagnostic reads through the single `TaskReadOperations`
-surface. The interface lives in `xa-mass-embedded-sdk-api`; `MassSdkApplication`
-implements it and delegates to the engine-starter read implementation. It
-returns SDK-owned snapshots instead of exposing `mass-runtime-api` runtime DTOs.
+task/result translation in SDK starter code.
 
 ## Dependency
 
@@ -162,11 +152,11 @@ result callback correlation remains a starter-owned bridge detail. Worker runtim
 behavior remain owned by worker-runtime scheduling/admission, not by transport
 endpoint leasing.
 
-Task result reads are part of `TaskReadOperations`, together with task shell,
-access/state, archive, and bounded diagnostic reads. `readTaskResults(...)`
-and archive streaming read committed stable-final rows from task-runtime; they
-do not read server review materialization. Memory task-runtime remains
-local/dev truth, while Redis task-runtime is the cross-process result read
+Task result reads are exposed through `TaskResultQueryOperations`, separate
+from task aggregate query. `readTaskResults(...)` and archive streaming read
+committed stable-final rows from `TaskResultRuntime`; they do not read
+server review materialization. Memory result runtime is volatile
+local/dev truth, while Redis result runtime is the cross-process result read
 truth.
 
 Owner-backed worker-control and stage-evidence APIs are exposed through SDK
@@ -330,15 +320,15 @@ its own permissions, project scopes, and event scopes.
 The returned `MassSdkApplication` exposes:
 
 - lifecycle: `start()`, `stop()`, `isRunning()`
-- task write operations after `start()`: `createTaskShell(...)`, `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)`, `executeTaskCommand(taskId, MassTaskCommandRequest)`
-- task read operations after `start()`: `getTaskDetail(...)`, `listTaskSummaries(...)`, `getTaskSummariesByStatus(...)`, `getTaskState(...)`, `getTaskAccess(...)`, `readTaskResults(...)`, `getTaskResultArchiveManifest(...)`, `writeTaskResultArchiveContent(...)`, `getTaskWorkStats(...)`, `getActiveLeases(...)`
+- mainline task operations after `start()`: `createTaskShell(...)`, `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)`, `executeTaskCommand(taskId, MassTaskCommandRequest)`, `getTaskDetail(...)`, `listTaskSummaries(...)`, `getTaskSummariesByStatus(...)`, `getTaskState(...)`, `getTaskAccess(...)`
+- diagnostic-only task state helpers require the explicit `app.taskDiagnostics()` surface; they are not part of the recommended task shell / ingest mainline
 - operator/runtime read diagnostics require the explicit `app.runtimeDiagnostics()` surface; they are not part of the task/worker mainline
 - raw transport side-channel access remains internal/operator-only below the stable SDK surface; product or server code should not depend on `sdk.internal`
 - worker mainline after `start()`: `registerWorker(...)`, `getWorker(...)`, `getAllWorkers()`, `isWorkerReachable(...)`
 - worker client/mainline after `start()`: `pullWorker(...)`, `workerOnline(...)`, `workerHeartbeat(...)`, `workerOffline(...)`, `pollActions(...)`, `submitActionReply(...)`
 - resource/control-plane operations through `ResourceOperations`: `registerProject(...)`, `registerEventDefinition(...)`, `registerCredentialPrincipal(...)`, `listProjects()`, `getProject(...)`, `listEvents()`, `getEvent(...)`, `getEventsForProject(...)`, `listCredentialPrincipals()`, `getCredentialPrincipal(...)`, `authenticateCredential(...)`, `hasProject(...)`, `hasEvent(...)`, `hasCredentialPrincipal(...)`, `projectSupportsEvent(...)`; credential principal list/get return `CredentialPrincipalProfile` without raw credentials
 - stable runtime bootstrap surface after `start()`: open mainline registration/mutation methods such as `registerWorker(...)`, `createTaskShell(...)`, `appendTaskItems(taskId, MassTaskItemBatchAppendRequest)`, `executeTaskCommand(taskId, MassTaskCommandRequest)`, `replaceDefaultRules(...)`; WorkerContext registration is no longer an SDK surface
-- embedded bootstrap is explicit through the normal engine store/runtime options; mock/demo bootstrap is not a separate SDK-owned data-provider lane
+- new bootstrap integration seam: `EngineOptions.bootstrapDataProvider(...)` accepts a pluggable `MassBootstrapDataProvider`
 
 Current SDK contracts:
 
@@ -349,20 +339,14 @@ Current SDK contracts:
 | resources | `ResourceOperations` owns project/event resources plus credential-principal projection for embedded runtimes; project is a first-class control-plane binding and enabled projects also bind into engine task creation and worker capability checks. |
 | business events | default catalog ships no business task events; embedding apps or dev fixtures register event codes explicitly |
 | credential principals | in-memory principal/API-key binding only, not a full user subsystem; queries return `CredentialPrincipalProfile`, not raw credentials |
-| diagnostics/detail | bounded runtime validation/resolution and runtime stats are read-only methods on `TaskReadOperations`. SDK mainline no longer exposes task-item or attempt detail query APIs; production detail belongs in logs, trace, audit sinks, or async persistence |
+| diagnostics/detail | bounded runtime validation/resolution stays behind `app.taskDiagnostics()` instead of the default `MassSdkApplication` task mainline. SDK mainline no longer exposes task-item or attempt detail query APIs; production detail belongs in logs, trace, audit sinks, or async persistence |
 | removed paths | direct engine/manager/runtime escape hatches are removed; queue/session/raw transport debug methods are also off the stable `MassSdkApplication` main surface |
-| startup/bootstrap | operations fail fast without a started engine; mock/demo bootstrap belongs outside SDK public engine assembly |
+| startup/bootstrap | operations fail fast without a started engine; mock/demo bootstrap belongs outside SDK via `MassBootstrapDataProvider` / `MassRuntimeControl` |
 
-For embedded runtime wiring, keep task lifecycle commands on the task-runtime
-starter command handle and task reads on the starter-hosted `TaskReadViewPort`.
-Do not make `TaskManager`, `TaskLifecycleService`, engine `TaskCommandPort`, or
-`TaskQueryPort` the SDK task command/read surface. Task descriptor storage,
-worker declaration storage, and rule storage remain assembly inputs, but
-runtime backlog/score/claim/result/finality truth belongs to the selected
-task-runtime backend.
-For migrated task item serving paths, select the task-runtime backend through
-`memoryTaskRuntime()` or `redisTaskRuntime(redisUri, namespace)`; do not inject
-task-runtime ports or Redis task-runtime keyspace details through SDK callers.
+For embedded runtime wiring, keep the mainline on storage/runtime contracts
+such as `taskShellStore(...)`, `taskWorkRuntime(...)`,
+`workerDeclarationStore(...)`, and `ruleStorage(...)`. Do not make `TaskManager` or
+`WorkerManager` the default SDK assembly surface.
 Shell-mainline SDK create maps onto `TaskShellCreateRequestDto`; worker registration/query helpers use `WorkerDeclarationStore`
 for control-plane truth instead of treating `WorkerManager` as the default SDK
 dependency; SDK rule list/replace helpers now use `RuleStorage` directly

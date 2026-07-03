@@ -490,10 +490,9 @@ The split runtime uses three transport/runtime channels:
 
 These queues are runtime-state queues. They must be bounded and must preserve
 backpressure instead of growing without limit. They also must not be treated as
-durable task lifecycle truth. The task-runtime owner remains responsible for
-accepted ready backlog, delayed visibility, active lease, retry timing, result
-application, retained final rows, and terminal convergence inputs. Transport
-queues are final-hop handoff state, not task-runtime lifecycle truth.
+durable task lifecycle truth. `TaskWorkRuntime` remains the only owner of ready
+membership, delayed visibility, active lease, retry timing, result application,
+and terminal convergence.
 
 `AdapterMailboxDispatchBatch` is the producer and process-boundary handoff payload.
 It contains one `adapterMailboxKey` and flat `DispatchMessage`

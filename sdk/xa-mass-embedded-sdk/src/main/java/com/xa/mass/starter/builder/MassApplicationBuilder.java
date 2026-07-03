@@ -1,8 +1,11 @@
 package com.xa.mass.starter.builder;
 
 import com.xa.mass.engine.PollingIdleBackoffPolicy;
+import com.xa.mass.runtime.api.TaskResultRuntime;
+import com.xa.mass.runtime.api.TaskWorkRuntime;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.runtime.worker.slot.WorkerScoreBandSlotRuntime;
+import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.storage.api.TaskShellStore;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationStore;
@@ -397,18 +400,23 @@ public class MassApplicationBuilder {
             return this;
         }
 
+        public EngineBuilder bootstrapDataProvider(MassBootstrapDataProvider bootstrapDataProvider) {
+            config.setBootstrapDataProvider(bootstrapDataProvider);
+            return this;
+        }
+
         public EngineBuilder taskShellStore(TaskShellStore taskShellStore) {
             config.setTaskShellStore(taskShellStore);
             return this;
         }
 
-        public EngineBuilder memoryTaskRuntime() {
-            config.useMemoryTaskRuntime();
+        public EngineBuilder taskWorkRuntime(TaskWorkRuntime taskWorkRuntime) {
+            config.setTaskWorkRuntime(taskWorkRuntime);
             return this;
         }
 
-        public EngineBuilder redisTaskRuntime(String redisUri, String redisNamespace) {
-            config.useRedisTaskRuntime(redisUri, redisNamespace);
+        public EngineBuilder taskResultRuntime(TaskResultRuntime taskResultRuntime) {
+            config.setTaskResultRuntime(taskResultRuntime);
             return this;
         }
 

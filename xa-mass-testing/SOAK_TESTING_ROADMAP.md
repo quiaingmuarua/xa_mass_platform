@@ -47,7 +47,7 @@ target/soak-traces/<runId>/
 
 Proof surface:
 
-- task-runtime stats
+- `TaskWorkRuntime` stats
 - active lease drain
 - SDK `readTaskResults(...)` sequential windows
 - worker receive/result metrics

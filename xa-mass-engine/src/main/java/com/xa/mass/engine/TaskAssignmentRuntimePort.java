@@ -3,9 +3,9 @@ package com.xa.mass.engine;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchDeliveryFailure;
-import com.xa.mass.task.runtime.ClaimLeasePolicy;
-import com.xa.mass.task.runtime.ClaimReadyOutcome;
-import com.xa.mass.task.runtime.WorkerReservationEvidence;
+import com.xa.mass.runtime.api.ClaimedTaskWork;
+import com.xa.mass.runtime.api.TaskWorkClaimOptions;
+import com.xa.mass.runtime.api.WorkerClaimTarget;
 
 import java.util.List;
 
@@ -22,11 +22,13 @@ public interface TaskAssignmentRuntimePort {
 
     int countActiveDispatchWorkers(String taskId);
 
-    boolean persistAssignmentState(Task task);
+    long getWorkLeaseSeconds();
 
-    ClaimReadyOutcome claimReady(String taskId,
-                                 List<WorkerReservationEvidence> workerReservations,
-                                 ClaimLeasePolicy leasePolicy);
+    boolean updateTask(Task task);
+
+    List<ClaimedTaskWork> claimReady(String taskId,
+                                     List<WorkerClaimTarget> claimTargets,
+                                     TaskWorkClaimOptions claimOptions);
 
     boolean compensateDispatchSubmitFailure(Task task,
                                             List<TaskDispatchBinding> dispatchBindings,

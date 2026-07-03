@@ -3,8 +3,8 @@ package com.xa.mass.engine;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
-import com.xa.mass.task.runtime.ActiveLeaseRepairCandidate;
-import com.xa.mass.task.runtime.TaskRuntimeProgressSnapshot;
+import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.worker.runtime.control.WorkerDispatchBlockSignal;
 import com.xa.mass.worker.runtime.control.WorkerDispatchBlockSource;
 import org.junit.jupiter.api.Test;
@@ -37,13 +37,13 @@ class TaskSchedulingGateAndTargetingTest {
                 0,
                 1
         );
-        assertTrue(harness.taskManager.approveTask(task.getTid()).accepted());
+        assertTrue(harness.taskManager.approveTask(task.getTid()));
 
         assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
 
         assertEquals(TaskStatus.READY, harness.taskManager.getTask(task.getTid()).getStatus());
         assertEquals(1, harness.stats(task.getTid()).readyCount());
-        assertEquals(0, harness.stats(task.getTid()).activeCount());
+        assertEquals(0, harness.stats(task.getTid()).inflightCount());
         assertTrue(harness.activeLeases(task.getTid()).isEmpty());
         assertFalse(harness.workerManager.hasWorkerExclusiveLease("worker-blocked"));
         assertTrue(harness.workerRecords(task.getTid(), "worker-blocked").isEmpty());
@@ -65,16 +65,16 @@ class TaskSchedulingGateAndTargetingTest {
                 ),
                 1
         );
-        assertTrue(harness.taskManager.approveTask(task.getTid()).accepted());
+        assertTrue(harness.taskManager.approveTask(task.getTid()));
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
 
-        List<ActiveLeaseRepairCandidate> activeLeases = harness.activeLeases(task.getTid());
+        List<ActiveLeaseRecord> activeLeases = harness.activeLeases(task.getTid());
         assertEquals(1, activeLeases.size());
         assertEquals("worker-selected", activeLeases.getFirst().workerId());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(task.getTid()).getStatus());
         assertEquals(0, harness.stats(task.getTid()).readyCount());
-        assertEquals(1, harness.stats(task.getTid()).activeCount());
+        assertEquals(1, harness.stats(task.getTid()).inflightCount());
         assertTrue(harness.workerRecords(task.getTid(), "worker-other").isEmpty());
         assertFalse(harness.workerManager.hasWorkerExclusiveLease("worker-other"));
     }
@@ -92,15 +92,15 @@ class TaskSchedulingGateAndTargetingTest {
                 Map.of(TaskSharedConfig.ROUTING_CODE, "us"),
                 2
         );
-        assertTrue(harness.taskManager.approveTask(task.getTid()).accepted());
+        assertTrue(harness.taskManager.approveTask(task.getTid()));
 
         assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
 
         Task gatedTask = harness.taskManager.getTask(task.getTid());
-        TaskRuntimeProgressSnapshot gatedStats = harness.stats(task.getTid());
+        TaskWorkStats gatedStats = harness.stats(task.getTid());
         assertEquals(TaskStatus.READY, gatedTask.getStatus());
         assertEquals(2, gatedStats.readyCount());
-        assertEquals(0, gatedStats.activeCount());
+        assertEquals(0, gatedStats.inflightCount());
         assertTrue(harness.activeLeases(task.getTid()).isEmpty());
         assertEquals(1, harness.selectionReasonCount(task.getTid(), "routing code mismatch"));
 
@@ -108,15 +108,15 @@ class TaskSchedulingGateAndTargetingTest {
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
 
-        List<ActiveLeaseRepairCandidate> activeLeases = harness.activeLeases(task.getTid());
+        List<ActiveLeaseRecord> activeLeases = harness.activeLeases(task.getTid());
         Set<String> leasedWorkers = activeLeases.stream()
-                .map(ActiveLeaseRepairCandidate::workerId)
+                .map(ActiveLeaseRecord::workerId)
                 .collect(Collectors.toSet());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(task.getTid()).getStatus());
         assertEquals(2, activeLeases.size());
         assertEquals(Set.of("worker-us-1", "worker-us-2"), leasedWorkers);
         assertEquals(0, harness.stats(task.getTid()).readyCount());
-        assertEquals(2, harness.stats(task.getTid()).activeCount());
+        assertEquals(2, harness.stats(task.getTid()).inflightCount());
     }
 
     @Test
@@ -140,28 +140,28 @@ class TaskSchedulingGateAndTargetingTest {
                 Map.of(TaskSharedConfig.ROUTING_CODE, "us"),
                 1
         );
-        assertTrue(harness.taskManager.approveTask(gatedTask.getTid()).accepted());
-        assertTrue(harness.taskManager.approveTask(competingTask.getTid()).accepted());
+        assertTrue(harness.taskManager.approveTask(gatedTask.getTid()));
+        assertTrue(harness.taskManager.approveTask(competingTask.getTid()));
 
         assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(gatedTask.getTid())));
 
         assertEquals(TaskStatus.READY, harness.taskManager.getTask(gatedTask.getTid()).getStatus());
         assertEquals(2, harness.stats(gatedTask.getTid()).readyCount());
-        assertEquals(0, harness.stats(gatedTask.getTid()).activeCount());
+        assertEquals(0, harness.stats(gatedTask.getTid()).inflightCount());
         assertTrue(harness.activeLeases(gatedTask.getTid()).isEmpty());
         assertFalse(harness.workerManager.hasWorkerExclusiveLease("worker-us"));
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(competingTask.getTid())));
 
-        List<ActiveLeaseRepairCandidate> competingLeases = harness.activeLeases(competingTask.getTid());
+        List<ActiveLeaseRecord> competingLeases = harness.activeLeases(competingTask.getTid());
         assertEquals(1, competingLeases.size());
         assertEquals("worker-us", competingLeases.getFirst().workerId());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(competingTask.getTid()).getStatus());
         assertEquals(0, harness.stats(competingTask.getTid()).readyCount());
-        assertEquals(1, harness.stats(competingTask.getTid()).activeCount());
+        assertEquals(1, harness.stats(competingTask.getTid()).inflightCount());
         assertEquals(TaskStatus.READY, harness.taskManager.getTask(gatedTask.getTid()).getStatus());
         assertEquals(2, harness.stats(gatedTask.getTid()).readyCount());
-        assertEquals(0, harness.stats(gatedTask.getTid()).activeCount());
+        assertEquals(0, harness.stats(gatedTask.getTid()).inflightCount());
     }
 
     @Test
@@ -194,11 +194,11 @@ class TaskSchedulingGateAndTargetingTest {
                 ),
                 1
         );
-        assertTrue(harness.taskManager.approveTask(task.getTid()).accepted());
+        assertTrue(harness.taskManager.approveTask(task.getTid()));
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
 
-        List<ActiveLeaseRepairCandidate> activeLeases = harness.activeLeases(task.getTid());
+        List<ActiveLeaseRecord> activeLeases = harness.activeLeases(task.getTid());
         assertEquals(1, activeLeases.size());
         assertEquals("worker-gold", activeLeases.getFirst().workerId());
 
@@ -222,7 +222,7 @@ class TaskSchedulingGateAndTargetingTest {
                 ),
                 1
         );
-        assertTrue(harness.taskManager.approveTask(runningTask.getTid()).accepted());
+        assertTrue(harness.taskManager.approveTask(runningTask.getTid()));
         Task waitingTask = harness.createBatchTask(
                 "target-worker-id-waiting",
                 List.of(harness.item("waiting")),
@@ -234,10 +234,10 @@ class TaskSchedulingGateAndTargetingTest {
                 ),
                 1
         );
-        assertTrue(harness.taskManager.approveTask(waitingTask.getTid()).accepted());
+        assertTrue(harness.taskManager.approveTask(waitingTask.getTid()));
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(runningTask.getTid())));
-        ActiveLeaseRepairCandidate runningLease = harness.activeLeases(runningTask.getTid()).getFirst();
+        ActiveLeaseRecord runningLease = harness.activeLeases(runningTask.getTid()).getFirst();
         assertEquals("worker-target", runningLease.workerId());
 
         assertFalse(harness.assignListener.onTaskAssign(harness.taskManager.getTask(waitingTask.getTid())));
@@ -248,7 +248,7 @@ class TaskSchedulingGateAndTargetingTest {
         assertEquals(1, harness.selectionReasonCount(waitingTask.getTid(),
                 "score-band acquire returned no eligible workers"));
 
-        assertTrue(harness.taskRuntimeServingLane.ingestTaskResult(
+        assertTrue(harness.taskManager.ingestTaskResult(
                 runningTask.getTid(),
                 runningLease.messageId(),
                 true,
@@ -260,7 +260,7 @@ class TaskSchedulingGateAndTargetingTest {
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(waitingTask.getTid())));
 
-        List<ActiveLeaseRepairCandidate> waitingLeases = harness.activeLeases(waitingTask.getTid());
+        List<ActiveLeaseRecord> waitingLeases = harness.activeLeases(waitingTask.getTid());
         assertEquals(1, waitingLeases.size());
         assertEquals("worker-target", waitingLeases.getFirst().workerId());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(waitingTask.getTid()).getStatus());

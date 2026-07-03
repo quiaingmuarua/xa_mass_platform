@@ -56,7 +56,7 @@ XA Mass Platform 是一个通用的分布式任务调度平台�?
   - 负责 task lifecycle、assignment、result、retry、release、terminal convergence
 - `platform_infra`
   - runtime / storage / trace 基础设施
-  - task runtime truth is owned by `xa-mass-task-runtime` owner ports; platform_infra provides adapters/storage/trace
+  - `TaskWorkRuntime` �?`TaskResultRuntime` 是当前热路径核心 truth
 - `transport`
   - worker delivery、presence、result ingress 的数据平�?
   - polling / websocket / socket �?peer adapters
@@ -77,13 +77,13 @@ XA Mass Platform 是一个通用的分布式任务调度平台�?
 ```text
 Task shell
   -> item append
-  -> task-runtime accepted backlog
+  -> TaskWorkRuntime enqueue
   -> assignment and matching
   -> dispatch binder
   -> transport delivery
   -> worker execution
   -> result ingest
-  -> task-runtime final result row
+  -> TaskResultRuntime visible final row
   -> task progress / terminal convergence
 ```
 
@@ -174,7 +174,7 @@ Worker
 public result read 已经收敛�?runtime-owned result truth�?
 
 ```text
-task-runtime
+TaskResultRuntime
   -> stable-final visible result rows
   -> task-local result seq
   -> repair / barrier truth
@@ -206,9 +206,9 @@ register event
 | 模块 | 作用 |
 | --- | --- |
 | `xa-mass-base` | shared base models、command/event runtime vocabulary、低�?channel primitives |
-| `platform_infra/mass-runtime-api` | remaining low-level runtime contracts outside task-runtime owner |
-| `platform_infra/mass-runtime-memory` | remaining memory runtime utilities outside task-runtime owner |
-| `platform_infra/mass-runtime-redis` | remaining Redis runtime utilities outside task-runtime owner |
+| `platform_infra/mass-runtime-api` | runtime queue/lease/counter/result contracts |
+| `platform_infra/mass-runtime-memory` | embedded / test 默认内存 runtime |
+| `platform_infra/mass-runtime-redis` | Redis-backed runtime 实现 |
 | `platform_infra/mass-storage-api` | task/worker/rule storage contracts |
 | `platform_infra/mass-storage-memory` | 内存 control-plane storage |
 | `platform_infra/mass-storage-jdbc` | JDBC control-plane storage |

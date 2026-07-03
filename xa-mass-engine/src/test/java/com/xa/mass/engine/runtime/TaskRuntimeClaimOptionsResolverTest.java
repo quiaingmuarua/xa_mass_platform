@@ -2,7 +2,7 @@ package com.xa.mass.engine.runtime;
 
 import com.xa.mass.base.enums.task.TaskWorkloadClass;
 import com.xa.mass.base.model.Task;
-import com.xa.mass.task.runtime.ClaimLeasePolicy;
+import com.xa.mass.runtime.api.TaskWorkClaimOptions;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -17,10 +17,11 @@ class TaskRuntimeClaimOptionsResolverTest {
         task.getExecutionSpec().setBatchSize(8);
         task.getExecutionSpec().setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
 
-        ClaimLeasePolicy options = resolver.resolve(task, 3, 300L);
+        TaskWorkClaimOptions options = resolver.resolve(task, 3, 300L);
 
+        assertEquals(1, options.perWorkerCapacity());
         assertEquals(3, options.maxItems());
-        assertEquals(30_000L, options.leaseMillis());
+        assertEquals(30L, options.leaseSeconds());
     }
 
     @Test
@@ -29,10 +30,11 @@ class TaskRuntimeClaimOptionsResolverTest {
         task.getExecutionSpec().setBatchSize(8);
         task.getExecutionSpec().setWorkloadClass(TaskWorkloadClass.INTERACTIVE);
 
-        ClaimLeasePolicy options = resolver.resolve(task, 2, 5L);
+        TaskWorkClaimOptions options = resolver.resolve(task, 2, 5L);
 
+        assertEquals(1, options.perWorkerCapacity());
         assertEquals(2, options.maxItems());
-        assertEquals(5_000L, options.leaseMillis());
+        assertEquals(5L, options.leaseSeconds());
     }
 
     @Test
@@ -41,10 +43,11 @@ class TaskRuntimeClaimOptionsResolverTest {
         task.getExecutionSpec().setBatchSize(4);
         task.getExecutionSpec().setWorkloadClass(TaskWorkloadClass.BULK);
 
-        ClaimLeasePolicy options = resolver.resolve(task, 3, 120L);
+        TaskWorkClaimOptions options = resolver.resolve(task, 3, 120L);
 
+        assertEquals(4, options.perWorkerCapacity());
         assertEquals(12, options.maxItems());
-        assertEquals(120_000L, options.leaseMillis());
+        assertEquals(120L, options.leaseSeconds());
     }
 }
 

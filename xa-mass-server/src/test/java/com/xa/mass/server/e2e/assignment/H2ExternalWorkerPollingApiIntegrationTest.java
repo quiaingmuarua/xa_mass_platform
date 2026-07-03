@@ -8,7 +8,7 @@ import com.xa.mass.server.e2e.support.ReviewReadModelSampleE2eTest;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.CredentialPrincipalRegistration;
 import com.xa.mass.sdk.auth.PrincipalContext;
-import com.xa.mass.sdk.model.TaskStateValidationSnapshot;
+import com.xa.mass.engine.model.TaskStateValidationResult;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -131,7 +131,7 @@ class H2ExternalWorkerPollingApiIntegrationTest extends ReviewReadModelSampleE2e
         Map<String, Object> createdDetail = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
         assertApiOk(createdDetail);
         assertEquals("NEW", task(createdDetail).get("status"));
-        TaskStateValidationSnapshot createdValidation = validateTaskState(taskId);
+        TaskStateValidationResult createdValidation = validateTaskState(taskId);
         assertTrue(createdValidation.isValid());
 
         assertApiOk(approveTask(taskId));
@@ -173,7 +173,7 @@ class H2ExternalWorkerPollingApiIntegrationTest extends ReviewReadModelSampleE2e
 
         Map<String, Object> terminalDetail = exchange("/api/v1/tasks/" + taskId, HttpMethod.GET, null);
         assertApiOk(terminalDetail);
-        TaskStateValidationSnapshot terminalValidation = validateTaskState(taskId);
+        TaskStateValidationResult terminalValidation = validateTaskState(taskId);
         assertTrue(terminalValidation.isValid());
         assertFalse(terminalValidation.isNeedsResolution());
 

@@ -59,9 +59,8 @@ What this module does not own:
 - `TaskApiController` records accepted append items through
   `TaskReviewReadModelWriter`; server startup listeners record attempt-closed
   and stable-final work notifications into the same read model
-- public result reads use SDK `TaskReadOperations` backed by
-  task-runtime stable-final rows; review read-model rows must not source
-  `/results`
+- public result reads still use SDK `TaskResultQueryOperations` backed by
+  `TaskResultRuntime`; review read-model rows must not source `/results`
 
 ## Security Wiring
 
@@ -419,8 +418,9 @@ Observability:
 | `mass.storage.jdbc.password` | empty | JDBC password |
 | `mass.local-schema-reset.enabled` | `true` | enables durable-local SQLite schema fingerprint sidecar checks before JDBC/Flyway startup |
 | `mass.local-schema-reset.reset-on-mismatch` | `true` in `durable-local`; `false` globally | destructive reset flag for allowlisted local SQLite file targets only |
-| `mass.runtime.mode` | `memory` | engine runtime backend; normal `memory-local` uses in-process task runtime, while normal `durable-local` uses Redis-backed task runtime plus Redis worker-runtime state |
-| `mass.runtime.redis.namespace` | `xa:mass:runtime:v1` | Redis namespace prefix when `mass.runtime.mode=redis`; task runtime uses the `:task-runtime` child namespace |
+| `mass.runtime.mode` | `memory` | engine runtime backend; normal `memory-local` uses `memory`, while normal `durable-local` uses Redis-backed work/result runtime |
+| `mass.runtime.redis.namespace` | `xa:mass:runtime:v1` | Redis namespace prefix when `mass.runtime.mode=redis` |
+| `mass.runtime.redis.max-queued-items` | `1000000` | runtime work backpressure cap for the Redis-backed work runtime |
 | `mass.transport.node-id` | random UUID | server transport runtime node id; set explicitly when comparing Redis endpoint-lease evidence across restarts |
 | `mass.transport.polling.buffer.store` | `memory` | polling-adapter pending pull-buffer backend; `memory` or `redis` |
 | `mass.transport.polling.buffer.max-queued-items` | `100000` | total polling pending pull-buffer cap |
@@ -581,7 +581,7 @@ Mainline stance:
   scenarios live in `ServerReviewReadModelResidueSuite`, and generic smoke/support
   cases tagged `secondary-proof` stay out of the mainline suite
 - `ServerLifecycleResultConvergenceSuite` asserts task aggregate plus
-  task-runtime stats/lease truth; diagnostic review read-model cases live in
+  `TaskWorkRuntime` stats/lease truth; diagnostic review read-model cases live in
   `ServerReviewReadModelAuditSuite`, while low-standard lifecycle smoke stays tagged
   `secondary-proof`
 - `ServerSupportCoverageSuite`, `ServerLifecycleSupportCoverageSuite`, and
@@ -605,8 +605,8 @@ What this module proves:
 - mainline boundary behavior for `project / submitter / worker / auth/IAM`
 - full-chain task shell -> item append -> dispatch -> result ingest ->
   convergence behavior
-- public result reads and archive endpoints use SDK `TaskReadOperations`
-  backed by task-runtime stable-final rows; controllers must not read
+- public result reads and archive endpoints use SDK `TaskResultQueryOperations`
+  backed by `TaskResultRuntime` stable-final rows; controllers must not read
   server-local review rows or retired projection rows for result truth
 - representative scheduling scenarios on the real host path, not the full
   competition matrix
@@ -696,16 +696,6 @@ High-signal classes:
   - `ExternalWorkerPublicContractTraceObservedIntegrationTest`
   - `ExternalWorkerPollingApiIntegrationTest`
   - `NodePollingWorkerBlackBoxIntegrationTest`
-  - `RedisRuntimeNodePollingWorkerBlackBoxIntegrationTest`
-  - `RedisRuntimeNodePollingLeaseExpiryRedispatchBlackBoxIntegrationTest`
-  - `RedisRuntimeNodePollingNetworkPartitionRedispatchBlackBoxIntegrationTest`
-  - `RedisRuntimeNodePollingLateResultReplayBlackBoxIntegrationTest`
-  - `RedisRuntimeNodeWebSocketWorkerBlackBoxIntegrationTest`
-  - `RedisRuntimeNodeWebSocketLeaseExpiryRedispatchBlackBoxIntegrationTest`
-  - `RedisRuntimeNodeWebSocketLateResultReplayBlackBoxIntegrationTest`
-  - `RedisRuntimeNodeSocketWorkerBlackBoxIntegrationTest`
-  - `RedisRuntimeNodeSocketLeaseExpiryRedispatchBlackBoxIntegrationTest`
-  - `RedisRuntimeNodeSocketLateResultReplayBlackBoxIntegrationTest`
   - `NodeWebSocketWorkerBlackBoxIntegrationTest`
   - `NodeSocketWorkerBlackBoxIntegrationTest`
   - `JavaScenarioLauncherBlackBoxIntegrationTest`

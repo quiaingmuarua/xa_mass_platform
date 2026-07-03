@@ -19,7 +19,9 @@ import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.EmbeddedPullWorkerSession;
-import com.xa.mass.sdk.model.TaskWorkStatsSnapshot;
+import com.xa.mass.runtime.api.TaskWorkRuntime;
+import com.xa.mass.runtime.api.TaskWorkStats;
+import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.testing.support.TestingPaths;
 import com.xa.mass.testing.support.WorkerRegistrationSpineSupport;
@@ -254,6 +256,7 @@ public final class SdkTransportLoadRunner {
         private EmbeddedRuntime buildRuntime(LoadConfig config) {
             int transportPort = config.transport() == WorkerTransportMode.WEBSOCKET ? findFreePort() : 0;
             InMemoryTaskShellStore taskStorage = new InMemoryTaskShellStore();
+            TaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
             MassSdkApplication app = MassSdk.builder()
                     .transport(transport -> transport
                             .webSocketAdapter(webSocket -> webSocket
@@ -266,9 +269,9 @@ public final class SdkTransportLoadRunner {
                                     .serverEnabled(config.transport() == WorkerTransportMode.SOCKET)))
                     .engine(engine -> engine.enabled(true)
                             .taskShellStore(taskStorage)
-                            .memoryTaskRuntime())
+                            .taskWorkRuntime(taskWorkRuntime))
                     .build();
-            return new EmbeddedRuntime(app, transportPort, ENDPOINT_PATH);
+            return new EmbeddedRuntime(app, taskWorkRuntime, transportPort, ENDPOINT_PATH);
         }
 
         private void bootstrapCatalog(MassSdkApplication app) {
@@ -486,7 +489,7 @@ public final class SdkTransportLoadRunner {
             long failed = 0;
             long expired = 0;
             for (String taskId : taskIds) {
-                TaskWorkStatsSnapshot stats = runtime.app().getTaskWorkStats(taskId);
+                TaskWorkStats stats = runtime.taskWorkRuntime().stats(taskId);
                 require(stats.totalCount() == config.messagesPerTask(),
                         "unexpected runtime work count for task=" + taskId + " total=" + stats.totalCount());
                 require(stats.finalCount() == stats.totalCount(),
@@ -1123,6 +1126,7 @@ public final class SdkTransportLoadRunner {
     }
 
     private record EmbeddedRuntime(MassSdkApplication app,
+                                   TaskWorkRuntime taskWorkRuntime,
                                    int transportPort,
                                    String endpointPath) {
         private URI serverUri(String workerId) {

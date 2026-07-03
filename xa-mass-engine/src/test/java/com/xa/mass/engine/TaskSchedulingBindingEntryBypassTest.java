@@ -5,8 +5,8 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.engine.listener.TaskAssignWorker;
 import com.xa.mass.engine.watchdog.RuntimeReadyDispatchPump;
-import com.xa.mass.task.runtime.ActiveLeaseRepairCandidate;
-import com.xa.mass.task.runtime.TaskRuntimeProgressSnapshot;
+import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.runtime.api.TaskWorkStats;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -35,10 +35,10 @@ class TaskSchedulingBindingEntryBypassTest {
                 ),
                 1
         );
-        assertTrue(harness.taskManager.approveTask(task.getTid()).accepted());
+        assertTrue(harness.taskManager.approveTask(task.getTid()));
 
         RuntimeReadyDispatchPump pump = new RuntimeReadyDispatchPump(
-                harness.taskRuntimeServingLane,
+                harness.taskManager,
                 dispatchable -> harness.assignListener.onTaskAssign(
                         harness.taskManager.getTask(dispatchable.getTid())),
                 50L,
@@ -48,16 +48,14 @@ class TaskSchedulingBindingEntryBypassTest {
         );
 
         try {
+            pump.start();
             awaitCondition(
-                    () -> {
-                        pump.runOnce();
-                        return hasActiveLease(harness, task.getTid(), "worker-selected")
+                    () -> hasActiveLease(harness, task.getTid(), "worker-selected")
                             && harness.taskManager.getTask(task.getTid()).getStatus() == TaskStatus.RUNNING
                             && harness.stats(task.getTid()).readyCount() == 0
-                            && harness.stats(task.getTid()).activeCount() == 1
+                            && harness.stats(task.getTid()).inflightCount() == 1
                             && harness.successfulMessageAssignments(task.getTid(), "worker-selected") == 1
-                            && hasDispatchBinding(harness, task.getTid(), "worker-selected");
-                    },
+                            && hasDispatchBinding(harness, task.getTid(), "worker-selected"),
                     "runtime-ready pump should bind only the selected worker group"
             );
         } finally {
@@ -85,7 +83,7 @@ class TaskSchedulingBindingEntryBypassTest {
                 ),
                 1
         );
-        assertTrue(harness.taskManager.approveTask(task.getTid()).accepted());
+        assertTrue(harness.taskManager.approveTask(task.getTid()));
 
         TaskAssignWorker assignWorker = new TaskAssignWorker(harness.assignListener, 5_000L);
         TaskDispatchWakeupBridge wakeupBridge = new TaskDispatchWakeupBridge(assignWorker, () -> {
@@ -138,15 +136,15 @@ class TaskSchedulingBindingEntryBypassTest {
                 ),
                 1
         );
-        assertTrue(harness.taskManager.approveTask(task.getTid()).accepted());
+        assertTrue(harness.taskManager.approveTask(task.getTid()));
 
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
-        ActiveLeaseRepairCandidate firstLease = singleLease(harness, task.getTid());
+        ActiveLeaseRecord firstLease = singleLease(harness, task.getTid());
         assertEquals("worker-target", firstLease.workerId());
-        assertEquals(1, firstLease.attemptNo());
+        assertEquals(0, firstLease.retryCount());
         assertNoWorkerAttemptOrBinding(harness, task.getTid(), "worker-backup");
 
-        assertTrue(harness.taskRuntimeServingLane.expireLeasedWork(task.getTid(), firstLease.messageId()));
+        assertTrue(harness.taskManager.expireLeasedWork(task.getTid(), firstLease.messageId()));
         assertSelectedCounters(harness, task.getTid(), 1, 0);
         assertTrue(harness.activeLeases(task.getTid()).isEmpty());
         assertFalse(harness.workerManager.hasWorkerExclusiveLease("worker-target"));
@@ -160,10 +158,10 @@ class TaskSchedulingBindingEntryBypassTest {
         harness.workerManager.releaseWorkerExclusiveLease("worker-target");
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
 
-        ActiveLeaseRepairCandidate redispatchedLease = singleLease(harness, task.getTid());
+        ActiveLeaseRecord redispatchedLease = singleLease(harness, task.getTid());
         assertEquals(firstLease.messageId(), redispatchedLease.messageId());
         assertEquals("worker-target", redispatchedLease.workerId());
-        assertEquals(2, redispatchedLease.attemptNo());
+        assertEquals(1, redispatchedLease.retryCount());
         assertSelectedCounters(harness, task.getTid(), 0, 1);
         assertNoWorkerAttemptOrBinding(harness, task.getTid(), "worker-backup");
     }
@@ -173,7 +171,7 @@ class TaskSchedulingBindingEntryBypassTest {
                                                        String workerId,
                                                        int readyCount,
                                                        int inflightCount) {
-        ActiveLeaseRepairCandidate lease = singleLease(harness, taskId);
+        ActiveLeaseRecord lease = singleLease(harness, taskId);
         assertEquals(workerId, lease.workerId());
         assertEquals(TaskStatus.RUNNING, harness.taskManager.getTask(taskId).getStatus());
         assertSelectedCounters(harness, taskId, readyCount, inflightCount);
@@ -186,9 +184,9 @@ class TaskSchedulingBindingEntryBypassTest {
                                                String taskId,
                                                int readyCount,
                                                int inflightCount) {
-        TaskRuntimeProgressSnapshot stats = harness.stats(taskId);
+        TaskWorkStats stats = harness.stats(taskId);
         assertEquals(readyCount, stats.readyCount());
-        assertEquals(inflightCount, stats.activeCount());
+        assertEquals(inflightCount, stats.inflightCount());
     }
 
     private static void assertNoWorkerAttemptOrBinding(TaskSchedulingTestHarness harness,
@@ -200,8 +198,8 @@ class TaskSchedulingBindingEntryBypassTest {
         assertFalse(harness.workerManager.hasWorkerExclusiveLease(workerId));
     }
 
-    private static ActiveLeaseRepairCandidate singleLease(TaskSchedulingTestHarness harness, String taskId) {
-        List<ActiveLeaseRepairCandidate> activeLeases = harness.activeLeases(taskId);
+    private static ActiveLeaseRecord singleLease(TaskSchedulingTestHarness harness, String taskId) {
+        List<ActiveLeaseRecord> activeLeases = harness.activeLeases(taskId);
         assertEquals(1, activeLeases.size());
         return activeLeases.getFirst();
     }

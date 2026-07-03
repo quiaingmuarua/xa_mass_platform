@@ -7,6 +7,7 @@ import com.xa.mass.command.core.CommandDefinition;
 import com.xa.mass.command.model.CommandContext;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import com.xa.mass.sdk.MassBootstrapDataProvider;
 import com.xa.mass.sdk.MassSdkApplication;
 import com.xa.mass.sdk.auth.CredentialPrincipalRegistration;
 import com.xa.mass.sdk.auth.PrincipalContext;
@@ -57,7 +58,7 @@ public class TestDevBootstrapConfiguration {
 
     @Bean
     @ConditionalOnProperty(prefix = "mass.mock.bootstrap", name = "enabled", havingValue = "true", matchIfMissing = true)
-    public MockRuntimeDataLoader mockRuntimeDataLoader() {
+    public MassBootstrapDataProvider mockRuntimeDataLoader() {
         return new MockRuntimeDataLoader(
                 workersConfigPath,
                 tasksConfigPath,
@@ -72,8 +73,8 @@ public class TestDevBootstrapConfiguration {
     @Order(10)
     @ConditionalOnProperty(prefix = "mass.mock.bootstrap", name = "enabled", havingValue = "true", matchIfMissing = true)
     public CommandLineRunner testFixtureLoadRunner(MassSdkApplication app,
-                                                   MockRuntimeDataLoader mockRuntimeDataLoader) {
-        return args -> mockRuntimeDataLoader.loadInto(app);
+                                                   MassBootstrapDataProvider bootstrapDataProvider) {
+        return args -> bootstrapDataProvider.loadInto(app);
     }
 
     @Bean

@@ -1,7 +1,7 @@
 package com.xa.mass.testing.chaos;
 
 import com.xa.mass.sdk.model.TaskShellSnapshot;
-import com.xa.mass.sdk.model.TaskWorkStatsSnapshot;
+import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.testing.chaos.support.CapturingExecutionEventSink;
 import com.xa.mass.testing.chaos.support.ChaosReportWriter;
 import com.xa.mass.testing.chaos.support.ChaosRuntimeHarness;
@@ -148,7 +148,7 @@ public final class SdkPollingMessageRetryExhaustedChaosRunner {
                         config.timeoutSeconds(),
                         "retry-exhausted task must converge to TERMINAL"
                 );
-                TaskWorkStatsSnapshot finalStats = runtime.waitForRuntimeStats(
+                TaskWorkStats finalStats = runtime.waitForRuntimeStats(
                         task.getTaskId(),
                         MESSAGE_COUNT,
                         0,

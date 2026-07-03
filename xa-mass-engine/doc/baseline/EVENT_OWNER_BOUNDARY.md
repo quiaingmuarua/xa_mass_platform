@@ -132,7 +132,7 @@ task result, or scheduling lifecycle truth by itself.
 
 ## Hard Boundaries
 
-- Worker command ack/status must not enter task-runtime result/finality truth.
+- Worker command ack/status must not enter `TaskResultRuntime`.
 - Worker command catalog truth is deliberately small in the current baseline:
   only `DRAIN` and `PING` command requests are accepted by
   `WorkerCommandLifecycleOwner`.

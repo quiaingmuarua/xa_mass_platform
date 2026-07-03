@@ -3,54 +3,59 @@ package com.xa.mass.engine;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
-import com.xa.mass.engine.model.TaskCommandOutcome;
-import com.xa.mass.engine.policy.ContractAwareTaskTerminalPolicy;
-import com.xa.mass.task.runtime.AppendItemInput;
-import com.xa.mass.task.runtime.RuntimeEpoch;
-import com.xa.mass.task.runtime.memory.InMemoryTaskRuntime;
-import org.junit.jupiter.api.AfterEach;
+import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.runtime.api.ClaimedTaskWork;
+import com.xa.mass.runtime.api.ResultApplyOutcome;
+import com.xa.mass.runtime.api.TaskWorkClaimOptions;
+import com.xa.mass.runtime.api.TaskWorkEnvelope;
+import com.xa.mass.runtime.api.TaskWorkResult;
+import com.xa.mass.runtime.api.TaskWorkRuntime;
+import com.xa.mass.runtime.api.TaskWorkRuntimeStats;
+import com.xa.mass.runtime.api.TaskWorkStats;
+import com.xa.mass.runtime.api.WorkEnqueueOptions;
+import com.xa.mass.runtime.api.WorkEnqueueOutcome;
+import com.xa.mass.runtime.api.WorkerClaimTarget;
+import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
+import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.List;
-import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TaskRuntimeRecoveryPortTest {
 
-    private Harness harness;
-
-    @AfterEach
-    void tearDown() {
-        if (harness != null) {
-            harness.close();
-        }
-    }
-
     @Test
-    void runtimeRecoveryReturnsScoreVisibleTasksAndClaimResolvesBacklogAvailability() {
-        harness = new Harness();
+    void runtimeRecoveryOnlyReturnsTasksAdvertisedByRuntimeReadySet() {
+        InMemoryTaskShellRuntimeStore storage = new InMemoryTaskShellRuntimeStore();
+        ReadyTaskIdsOverrideRuntime runtime = new ReadyTaskIdsOverrideRuntime();
+        TaskManager manager = new TaskManager(storage, runtime, new InMemoryTaskResultRuntime(), null);
 
-        Task first = harness.createReadyTask("runtime-ready-first");
-        Task second = harness.createReadyTask("runtime-ready-second");
-        harness.claimReadyWork(first);
+        Task first = createTask(manager, buildRequest("runtime-ready-first"));
+        Task second = createTask(manager, buildRequest("runtime-ready-second"));
+        manager.approveTask(first.getTid());
+        manager.approveTask(second.getTid());
+        runtime.setReadyTaskIds(List.of(second.getTid()));
 
-        TaskRuntimeRecoveryPort recoveryPort = harness.servingLane;
+        TaskRuntimeRecoveryPort recoveryPort = manager;
         List<Task> recovered = recoveryPort.getRuntimeDispatchableTasks(10);
 
-        assertEquals(List.of(first.getTid(), second.getTid()), recovered.stream().map(Task::getTid).toList());
+        assertEquals(List.of(second.getTid()), recovered.stream().map(Task::getTid).toList());
     }
 
     @Test
     void runtimeRecoveryDropsRuntimeResidueThatNoLongerHasTaskShellTruth() {
-        harness = new Harness();
+        InMemoryTaskShellRuntimeStore storage = new InMemoryTaskShellRuntimeStore();
+        ReadyTaskIdsOverrideRuntime runtime = new ReadyTaskIdsOverrideRuntime();
+        TaskManager manager = new TaskManager(storage, runtime, new InMemoryTaskResultRuntime(), null);
 
-        Task task = harness.createReadyTask("runtime-ready-live");
-        harness.appendRuntimeResidueWithoutTaskShell("missing-task-shell");
+        Task task = createTask(manager, buildRequest("runtime-ready-live"));
+        manager.approveTask(task.getTid());
+        runtime.setReadyTaskIds(List.of(task.getTid(), "missing-task-shell"));
 
-        TaskRuntimeRecoveryPort recoveryPort = harness.servingLane;
+        TaskRuntimeRecoveryPort recoveryPort = manager;
         List<Task> recovered = recoveryPort.getRuntimeDispatchableTasks(10);
 
         assertEquals(List.of(task.getTid()), recovered.stream().map(Task::getTid).toList());
@@ -62,12 +67,20 @@ class TaskRuntimeRecoveryPortTest {
         dto.setProject("demoApp");
         dto.setUserId("agent");
         return new TaskCreateSpec(dto, List.of(
-                Map.of("target", taskName + "-a"),
-                Map.of("target", taskName + "-b")
+                java.util.Map.of("target", taskName + "-a"),
+                java.util.Map.of("target", taskName + "-b")
         ));
     }
 
-    private record TaskCreateSpec(TaskShellCreateRequestDto shell, List<Map<String, Object>> inputs) {
+    private static Task createTask(TaskManager manager, TaskCreateSpec request) {
+        request.shell().setExecutionSpec(taskExecutionSpec(3));
+        Task task = manager.createTaskShell(request.shell());
+        manager.appendTaskItems(task.getTid(), request.inputs());
+        manager.sealTask(task.getTid());
+        return manager.getTask(task.getTid());
+    }
+
+    private record TaskCreateSpec(TaskShellCreateRequestDto shell, List<java.util.Map<String, Object>> inputs) {
     }
 
     private static TaskExecutionSpec taskExecutionSpec(int defaultMaxRetryCount) {
@@ -76,66 +89,83 @@ class TaskRuntimeRecoveryPortTest {
         return spec;
     }
 
-    private static final class Harness {
-        private final InMemoryTaskRuntime runtime = new InMemoryTaskRuntime();
-        private final TaskManager manager;
-        private final TaskRuntimeServingLane servingLane;
+    private static final class ReadyTaskIdsOverrideRuntime implements TaskWorkRuntime {
 
-        private Harness() {
-            InMemoryTaskShellRuntimeStore storage = new InMemoryTaskShellRuntimeStore();
-            this.manager = new TaskManager(
-                    storage,
-                    storage,
-                    new ContractAwareTaskTerminalPolicy(),
-                    null);
-            this.servingLane = TaskRuntimeServingLaneTestSupport.forTaskManager(
-                    runtime,
-                    runtime,
-                    runtime,
-                    runtime,
-                    runtime,
-                    manager,
-                    300L,
-                    TaskManager.MAX_INGEST_BATCH_ITEMS,
-                    86_400_000L);
-            manager.installTaskRuntimeServingLane(servingLane);
+        private final InMemoryTaskWorkRuntime delegate = new InMemoryTaskWorkRuntime();
+        private volatile List<String> readyTaskIds = List.of();
+
+        void setReadyTaskIds(List<String> readyTaskIds) {
+            this.readyTaskIds = List.copyOf(readyTaskIds);
         }
 
-        private Task createReadyTask(String taskName) {
-            TaskCreateSpec request = buildRequest(taskName);
-            request.shell().setExecutionSpec(taskExecutionSpec(3));
-            TaskCommandOutcome create = manager.createTaskShell(request.shell());
-            assertTrue(create.accepted());
-            Task task = manager.getTask(create.taskId());
-            assertNotNull(task);
-            manager.approveTask(task.getTid());
-            manager.appendTaskItems(task.getTid(), request.inputs());
-            manager.sealTask(task.getTid());
-            return manager.getTask(task.getTid());
+        @Override
+        public WorkEnqueueOutcome enqueue(TaskWorkEnvelope item, WorkEnqueueOptions options) {
+            return delegate.enqueue(item, options);
         }
 
-        private void claimReadyWork(Task task) {
-            TaskRuntimeClaimTestSupport.claim(
-                    servingLane,
-                    task.getTid(),
-                    "group-1",
-                    "worker-1",
-                    "batch-1",
-                    "selection-1",
-                    1L,
-                    2,
-                    manager.getWorkLeaseSeconds());
+        @Override
+        public List<String> readyTaskIds(int limit) {
+            if (limit <= 0) {
+                return List.of();
+            }
+            return readyTaskIds.stream().limit(limit).toList();
         }
 
-        private void appendRuntimeResidueWithoutTaskShell(String taskId) {
-            runtime.appendBacklog(
-                    taskId,
-                    List.of(new AppendItemInput("message-missing-shell", "", Map.of("value", "orphan"), null)),
-                    10);
+        @Override
+        public List<ClaimedTaskWork> claimReady(String taskId,
+                                                List<WorkerClaimTarget> workers,
+                                                TaskWorkClaimOptions options) {
+            return delegate.claimReady(taskId, workers, options);
         }
 
-        private void close() {
-            manager.shutdown();
+        @Override
+        public ResultApplyOutcome applyResult(TaskWorkResult result) {
+            return delegate.applyResult(result);
+        }
+
+        @Override
+        public List<ActiveLeaseRecord> pollExpiredLeases(int limit, Instant now) {
+            return delegate.pollExpiredLeases(limit, now);
+        }
+
+        @Override
+        public List<ActiveLeaseRecord> activeLeases(String taskId) {
+            return delegate.activeLeases(taskId);
+        }
+
+        @Override
+        public Optional<ActiveLeaseRecord> getActiveLease(String taskId, String messageId) {
+            return delegate.getActiveLease(taskId, messageId);
+        }
+
+        @Override
+        public boolean hasReadyWork(String taskId) {
+            return delegate.hasReadyWork(taskId);
+        }
+
+        @Override
+        public boolean hasActiveLeaseForWorker(String taskId, String workerId) {
+            return delegate.hasActiveLeaseForWorker(taskId, workerId);
+        }
+
+        @Override
+        public TaskWorkStats stats(String taskId) {
+            return delegate.stats(taskId);
+        }
+
+        @Override
+        public TaskWorkRuntimeStats stats() {
+            return delegate.stats();
+        }
+
+        @Override
+        public long discardTask(String taskId) {
+            return delegate.discardTask(taskId);
+        }
+
+        @Override
+        public void shutdown() {
+            delegate.shutdown();
         }
     }
 }

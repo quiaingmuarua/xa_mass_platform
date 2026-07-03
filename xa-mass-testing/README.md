@@ -61,8 +61,8 @@ Testing-policy note:
 - do not use this module as the first home for ordinary worker/task matching correctness; that belongs in engine acceptance first
 - do not add local projection-first tests in engine/transport when the real risk belongs here
 - compatibility projection may still appear in reports or explicit audit/residue checks, but it is not the primary correctness surface for runtime convergence
-- chaos smoke correctness assertions must be runtime/aggregate/trace first: task-runtime diagnostic snapshots, active leases, task terminal state, and `ExecutionEvent` transitions are the proof surface; compatibility message/attempt views are report payload only unless the runner is explicitly about legacy projection audit
-- transport load correctness assertions must use task terminal state, task-runtime final counters, delivery diagnostics, and worker receive/result metrics; compatibility projection must not define transport-load pass/fail
+- chaos smoke correctness assertions must be runtime/aggregate/trace first: `TaskWorkRuntime` stats, active leases, task terminal state, and `ExecutionEvent` transitions are the proof surface; compatibility message/attempt views are report payload only unless the runner is explicitly about legacy projection audit
+- transport load correctness assertions must use task terminal state, `TaskWorkRuntime` final counters, delivery diagnostics, and worker receive/result metrics; compatibility projection must not define transport-load pass/fail
 
 ## Proof Class Map
 
@@ -140,7 +140,7 @@ into the platform confidence smoke.
 | `perf` | `com.xa.mass.testing.perf.TaskFlowLoadModelRunner` | callback cost, progress recompute, release/refill cost, runtime backend selection, counter drift | `target/perf-reports/` |
 | `perf smoke bundle` | `scripts/run-perf-smokes.sh` | current workspace perf smoke fast path for workload mix plus delayed interactive retry wakeup | `target/perf-reports/` |
 | `perf smoke: workload mix` | `com.xa.mass.testing.perf.TaskWorkloadMixSmokeRunner` | interactive assignment latency under bulk background pressure; the runner reserves an interactive lane worker so the smoke measures lane isolation instead of bulk worker starvation | `target/perf-reports/` |
-| `perf smoke: interactive retry wakeup` | `com.xa.mass.testing.perf.TaskInteractiveRetryWakeupSmokeRunner` | delayed interactive retry visibility and redispatch observability under bulk background pressure; the runner starts the runtime ready pump so delayed retry truth is consumed from task-runtime scheduler discovery rather than inferred from projection | `target/perf-reports/` |
+| `perf smoke: interactive retry wakeup` | `com.xa.mass.testing.perf.TaskInteractiveRetryWakeupSmokeRunner` | delayed interactive retry visibility and redispatch observability under bulk background pressure; the runner starts the runtime ready pump so delayed retry truth is consumed from `TaskWorkRuntime` rather than inferred from projection | `target/perf-reports/` |
 | `SDK transport harness` | `scripts/run-sdk-transport-load.sh` | embedded runtime composition across polling / websocket / socket, with runtime-counter finality and source guardrails against projection-first pass/fail | `target/concurrency-reports/` |
 | `polling scheduling soak` | `scripts/run-polling-scheduling-soak.sh` | manual/scheduled polling-worker pressure on engine scheduling; proves structured runtime invariants, configured success/failure and late-worker-join profiles, result sequential read, active lease drain, and canonical trace validate/stats | `target/soak-reports/`, `target/soak-traces/` |
 | `polling scheduling fast soak` | `scripts/run-polling-scheduling-fast-soak.sh` | scheduled/manual polling soak profile with mixed results, late worker join, result sequential read, canonical trace validation, and optional trace analyzer proof; not a PR gate | `target/soak-reports/`, `target/soak-traces/` |
@@ -192,7 +192,7 @@ Override them with environment variables:
 - `XA_MASS_INTERACTIVE_RETRY_DELAY_MILLIS`
 - `MASS_RETRYWAKEUP_SMOKE_MIN_DELAY_MILLIS`
 
-`scripts/run-perf-smokes.sh` also enforces that perf smoke runners stay runtime/timing-first. The smoke runners must not read review rows, projection-derived stats, or storage metrics as their proof surface. Full load reports such as `TaskFlowLoadModelRunner` use task-runtime final counters plus task-runtime stable-final result count for pass/fail.
+`scripts/run-perf-smokes.sh` also enforces that perf smoke runners stay runtime/timing-first. The smoke runners must not read review rows, projection-derived stats, or storage metrics as their proof surface. Full load reports such as `TaskFlowLoadModelRunner` use `TaskWorkRuntime` final counters plus `TaskResultRuntime` stable-final result count for pass/fail.
 
 Current perf smoke modeling:
 
@@ -200,7 +200,7 @@ Current perf smoke modeling:
 - workload mix reads project support from WorkerGroup capability truth, not from worker declaration residue
 - workload mix uses a one-item interactive task because the smoke measures first-dispatch latency, not multi-round dispatch
 - `scripts/run-perf-smokes.sh` defaults the workload-mix runner to `workload-mix-slow-bulk-interactive-isolation`; set `MASS_WORKLOAD_SMOKE_SCENARIO_ID` or `-Dmass.workload.smoke.scenarioId=...` to override it deliberately. The runner writes `workerProfile=SLOW_BULK` and `faultShape=slow-bulk-interactive-isolation` in the report.
-- interactive retry wakeup starts `RuntimeReadyDispatchPump`; delayed retry visibility is therefore proven through task-runtime ready truth
+- interactive retry wakeup starts `RuntimeReadyDispatchPump`; delayed retry visibility is therefore proven through runtime ready truth
 
 Perf load model:
 
@@ -208,14 +208,14 @@ Perf load model:
 ./mvnw -q -pl xa-mass-testing -am -DskipTests install
 ./mvnw -q -pl xa-mass-testing -Dexec.classpathScope=compile -Dmaven.test.skip=true org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.perf.TaskFlowLoadModelRunner -Dmass.load.runtimeBackend=memory
 ./mvnw -q -pl xa-mass-testing -Dexec.classpathScope=compile -Dmaven.test.skip=true org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.perf.TaskFlowLoadModelRunner -Dmass.load.runtimeBackend=redis -Dmass.load.redisUri=redis://localhost:6379
-./mvnw -q -pl xa-mass-testing -Dexec.classpathScope=compile -Dmaven.test.skip=true org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.perf.TaskFlowLoadModelRunner -Dmass.load.runtimeBackend=memory -Dmass.load.expireFirstAttemptEveryNth=5 -Dmass.load.duplicateResultEveryNth=3 -Dmass.load.duplicateWakeupsOnApprove=4
+./mvnw -q -pl xa-mass-testing -Dexec.classpathScope=compile -Dmaven.test.skip=true org.codehaus.mojo:exec-maven-plugin:3.5.0:java -Dexec.mainClass=com.xa.mass.testing.perf.TaskFlowLoadModelRunner -Dmass.load.runtimeBackend=memory -Dmass.load.expireFirstAttemptEveryNth=5 -Dmass.load.staleResultEveryNth=7 -Dmass.load.duplicateResultEveryNth=3 -Dmass.load.duplicateWakeupsOnApprove=4
 ```
 
 `TaskFlowLoadModelRunner` is the shared runtime-selection proof for `TRS-D2`.
 It uses explicit WorkerGroup selector truth and starts `RuntimeReadyDispatchPump`,
-so BATCH refill is driven by task-runtime scheduler discovery. The report
+so BATCH refill is driven by `TaskWorkRuntime.readyTaskIds(...)`. The report
 includes `runtimeProof.finalResultCount`, `duplicateDispatchItems`,
-`duplicateResultItems`, `expiredLeaseItems`,
+`duplicateResultItems`, `staleResultItems`, `expiredLeaseItems`,
 `processingCounterDrift`, `resultCounterDrift`, `firstDispatchLagMillis`, and
 `claimedMessagesPerSecond`. Duplicate-result proof is opt-in through
 `mass.load.duplicateResultEveryNth` or
@@ -229,10 +229,10 @@ retry faults are disabled. Lease-expiry/refill proof is opt-in through
 `mass.load.expireFirstAttemptEveryNth` or
 `MASS_PERF_TASK_FLOW_EXPIRE_FIRST_ATTEMPT_EVERY_NTH`; it expires selected
 first-attempt leases through `TaskLeaseMaintenancePort` and requires the
-normal retry/refill path to converge. Stale/late result proof is intentionally
-not part of this load runner; use the dedicated engine stale-lease proof and
-external worker late replay E2Es instead of adding a synthetic-only load-model
-runtime hook.
+normal retry/refill path to converge. Stale-result proof is opt-in through
+`mass.load.staleResultEveryNth` or `MASS_PERF_TASK_FLOW_STALE_RESULT_EVERY_NTH`;
+it submits a wrong-token runtime result before the real callback and requires
+the runtime stale counter to move without changing final convergence.
 Redis runs use a safe default `xa:mass:perf:*` namespace and clean it before and
 after the run; override with `mass.load.redisNamespace` when a retained namespace
 is needed.
@@ -410,7 +410,7 @@ For clean CI evidence, workflows pass scoped input directories such as
 `--chaos-dir`, `--perf-dir`, and `--soak-dir`. An unscoped local summary is an
 aggregate view and may include stale `target/` artifacts from earlier runs.
 
-The polling scheduling soak is a manual or scheduled lane, not a PR gate. It drives SDK polling workers through the engine scheduling mainline and writes report JSON plus canonical trace JSONL under `target/soak-reports/` and `target/soak-traces/`. Its pass/fail proof is runtime/aggregate/result/trace-first: task terminal state, task-runtime counters, active lease drain, SDK result windows, worker metrics, `JsonlExecutionEventSink` drop count, and `xa-mass-trace` validation/stats. The report includes `proof.runtimeInvariants`, a structured issue list that identifies whether failure came from task terminal count, runtime work counters, visible results, active lease drain, trace validation/drop, late-worker participation, trace analyzer failure, or worker failures. The `proof` bundle also groups `resultSequentialRead`, `workerMetrics`, `workerLifecycle`, `deliveryDiagnostics`, `trace`, and `failureSamples` so scheduled runs have one stable diagnostic entry point. Set `-Dmass.soak.failureEveryNth=N` to run mixed-result or all-failed profiles; the runner verifies expected terminal reasons and success/failed runtime counters from that profile and, when trace is enabled, binds a representative sample task into the named `mixed-result-terminal-convergence` or `all-failed-terminal-convergence` analyzer. Set `-Dmass.soak.processingJitterMillis=N -Dmass.soak.processingJitterSeed=S` to make processing jitter deterministic and report-visible in `config` and `proof.matrixProfile`. Set `-Dmass.soak.scenarioId=polling-soak-noisy-mixed-result` to select the current scenario-ledger noisy mixed-result row inside the runner; it defaults to deterministic jitter seed `20260602`, jitter bound `25ms`, and `failureEveryNth=5`, while explicit JVM properties still override those defaults. This row is seeded mixed-result soak proof, not dropped-result/retry proof. Set `-Dmass.soak.initialWorkerCount=N -Dmass.soak.lateWorkerStartAfterMillis=M -Dmass.soak.requireLateWorkerWork=true` to run a late-worker-join profile where only part of the polling fleet is online at the start; when trace is enabled, the runner records an actual late-worker task sample and runs the `late-worker-backfill` trace analyzer into `proof.trace.analyses`. Named soak analyzers receive the trace sink dropped count, so known dropped trace events cannot silently pass analyzer proof. See [`SOAK_TESTING_ROADMAP.md`](SOAK_TESTING_ROADMAP.md).
+The polling scheduling soak is a manual or scheduled lane, not a PR gate. It drives SDK polling workers through the engine scheduling mainline and writes report JSON plus canonical trace JSONL under `target/soak-reports/` and `target/soak-traces/`. Its pass/fail proof is runtime/aggregate/result/trace-first: task terminal state, `TaskWorkRuntime` counters, active lease drain, SDK result windows, worker metrics, `JsonlExecutionEventSink` drop count, and `xa-mass-trace` validation/stats. The report includes `proof.runtimeInvariants`, a structured issue list that identifies whether failure came from task terminal count, runtime work counters, visible results, active lease drain, trace validation/drop, late-worker participation, trace analyzer failure, or worker failures. The `proof` bundle also groups `resultSequentialRead`, `workerMetrics`, `workerLifecycle`, `deliveryDiagnostics`, `trace`, and `failureSamples` so scheduled runs have one stable diagnostic entry point. Set `-Dmass.soak.failureEveryNth=N` to run mixed-result or all-failed profiles; the runner verifies expected terminal reasons and success/failed runtime counters from that profile and, when trace is enabled, binds a representative sample task into the named `mixed-result-terminal-convergence` or `all-failed-terminal-convergence` analyzer. Set `-Dmass.soak.processingJitterMillis=N -Dmass.soak.processingJitterSeed=S` to make processing jitter deterministic and report-visible in `config` and `proof.matrixProfile`. Set `-Dmass.soak.scenarioId=polling-soak-noisy-mixed-result` to select the current scenario-ledger noisy mixed-result row inside the runner; it defaults to deterministic jitter seed `20260602`, jitter bound `25ms`, and `failureEveryNth=5`, while explicit JVM properties still override those defaults. This row is seeded mixed-result soak proof, not dropped-result/retry proof. Set `-Dmass.soak.initialWorkerCount=N -Dmass.soak.lateWorkerStartAfterMillis=M -Dmass.soak.requireLateWorkerWork=true` to run a late-worker-join profile where only part of the polling fleet is online at the start; when trace is enabled, the runner records an actual late-worker task sample and runs the `late-worker-backfill` trace analyzer into `proof.trace.analyses`. Named soak analyzers receive the trace sink dropped count, so known dropped trace events cannot silently pass analyzer proof. See [`SOAK_TESTING_ROADMAP.md`](SOAK_TESTING_ROADMAP.md).
 
 WebSocket disconnect chaos:
 

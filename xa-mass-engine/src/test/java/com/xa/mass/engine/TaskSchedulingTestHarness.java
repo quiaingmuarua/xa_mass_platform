@@ -17,7 +17,6 @@ import com.xa.mass.engine.listener.SimpleTaskDispatchBinder;
 import com.xa.mass.engine.listener.TaskResourceReleaseListener;
 import com.xa.mass.engine.listener.TaskWorkerAssignListener;
 import com.xa.mass.engine.model.AssignmentRecord;
-import com.xa.mass.engine.policy.ContractAwareTaskTerminalPolicy;
 import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.engine.strategy.DefaultSchedulingPlaneResolver;
 import com.xa.mass.engine.testutil.WorkerTestFixture;
@@ -26,9 +25,10 @@ import com.xa.mass.worker.runtime.resource.NodeGroupBindingRecord;
 import com.xa.mass.worker.runtime.WorkerManager;
 import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
-import com.xa.mass.task.runtime.ActiveLeaseRepairCandidate;
-import com.xa.mass.task.runtime.TaskRuntimeProgressSnapshot;
-import com.xa.mass.task.runtime.memory.InMemoryTaskRuntime;
+import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.runtime.api.TaskWorkStats;
+import com.xa.mass.runtime.memory.InMemoryTaskResultRuntime;
+import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.worker.runtime.WorkerStateProjectionOwner;
 import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleOwner;
 import com.xa.mass.worker.runtime.control.DefaultWorkerDispatchAvailabilityPolicy;
@@ -41,7 +41,6 @@ import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 
-import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 final class TaskSchedulingTestHarness {
@@ -51,8 +50,6 @@ final class TaskSchedulingTestHarness {
 
     final InMemoryTaskShellRuntimeStore taskStorage;
     final TaskManager taskManager;
-    final InMemoryTaskRuntime taskRuntime;
-    final TaskRuntimeServingLane taskRuntimeServingLane;
     final WorkerManager workerManager;
     final AssignmentRecordService assignmentRecords;
     final List<TaskDispatchBinding> dispatches;
@@ -61,24 +58,12 @@ final class TaskSchedulingTestHarness {
 
     TaskSchedulingTestHarness() {
         this.taskStorage = new InMemoryTaskShellRuntimeStore();
-        this.taskRuntime = new InMemoryTaskRuntime();
         this.taskManager = new TaskManager(
                 taskStorage,
-                taskStorage,
-                new ContractAwareTaskTerminalPolicy(),
+                new InMemoryTaskWorkRuntime(),
+                new InMemoryTaskResultRuntime(),
                 null
         );
-        this.taskRuntimeServingLane = TaskRuntimeServingLaneTestSupport.forTaskManager(
-                taskRuntime,
-                taskRuntime,
-                taskRuntime,
-                taskRuntime,
-                taskRuntime,
-                taskManager,
-                taskManager.getWorkLeaseSeconds(),
-                1_000,
-                86_400_000L);
-        taskManager.installTaskRuntimeServingLane(taskRuntimeServingLane);
         this.workerManager = new WorkerManager(
                 new InMemoryWorkerDeclarationRuntimeStore(),
                 new InMemoryWorkerRegistry(),
@@ -96,16 +81,15 @@ final class TaskSchedulingTestHarness {
         installDefaultWorkerRegistrationSpine();
 
         SimpleTaskDispatchBinder binder = new SimpleTaskDispatchBinder(
-                taskRuntimeServingLane,
+                taskManager,
                 workerManager,
                 assignmentRecords,
-                (context, bindings) -> dispatches.addAll(bindings),
-                taskManager::getWorkLeaseSeconds
+                (context, bindings) -> dispatches.addAll(bindings)
         );
         this.assignListener = new TaskWorkerAssignListener(
                 workerManager,
                 binder,
-                taskRuntimeServingLane,
+                taskManager,
                 taskManager.events(),
                 TraceEventLogger.noop(),
                 assignmentRecords,
@@ -116,8 +100,8 @@ final class TaskSchedulingTestHarness {
         );
 
         TaskResourceReleaseListener releaseListener = new TaskResourceReleaseListener(
-                taskRuntimeServingLane,
-                taskRuntimeServingLane,
+                taskManager,
+                taskManager,
                 workerManager);
         taskManager.events().addTaskWorkAttemptClosedListener(releaseListener::onTaskWorkAttemptClosed);
         taskManager.events().addTaskTerminalListener(releaseListener::onTaskTerminal);
@@ -125,7 +109,7 @@ final class TaskSchedulingTestHarness {
 
     Task createReadyBatchTask(String sourceRef, List<Map<String, Object>> items) {
         Task task = createBatchTask(sourceRef, items, 0, 1);
-        assertTrue(taskManager.approveTask(task.getTid()).accepted());
+        assertTrue(taskManager.approveTask(task.getTid()));
         return taskManager.getTask(task.getTid());
     }
 
@@ -145,7 +129,7 @@ final class TaskSchedulingTestHarness {
         executionSpec.setDefaultMaxRetryCount(defaultMaxRetryCount);
         request.setExecutionSpec(executionSpec);
 
-        Task task = createTask(request);
+        Task task = taskManager.createTaskShell(request);
         if (items != null && !items.isEmpty()) {
             taskManager.appendTaskItems(task.getTid(), items);
         }
@@ -184,24 +168,16 @@ final class TaskSchedulingTestHarness {
         executionSpec.setDefaultMaxRetryCount(defaultMaxRetryCount);
         request.setExecutionSpec(executionSpec);
 
-        Task task = createTask(request);
+        Task task = taskManager.createTaskShell(request);
         if (minRequiredWorkerCount > 0) {
             task.setMinRequiredWorkerCount(minRequiredWorkerCount);
-            assertTrue(taskManager.persistTaskShell(task));
+            assertTrue(taskManager.updateTask(task));
         }
         if (items != null && !items.isEmpty()) {
             taskManager.appendTaskItems(task.getTid(), items);
         }
-        assertTrue(taskManager.sealTask(task.getTid()).accepted());
+        assertTrue(taskManager.sealTask(task.getTid()));
         return taskManager.getTask(task.getTid());
-    }
-
-    private Task createTask(TaskShellCreateRequestDto request) {
-        var outcome = taskManager.createTaskShell(request);
-        assertTrue(outcome.accepted());
-        Task task = taskManager.getTask(outcome.taskId());
-        assertNotNull(task);
-        return task;
     }
 
     WorkerTestFixture addWorker(String workerId, String routingCode) {
@@ -270,12 +246,12 @@ final class TaskSchedulingTestHarness {
         workerManager.refreshWorkerHeartbeat(worker.getWorkerId(), observedAtMillis);
     }
 
-    TaskRuntimeProgressSnapshot stats(String taskId) {
-        return taskManager.getTaskRuntimeProgressSnapshot(taskId);
+    TaskWorkStats stats(String taskId) {
+        return taskManager.getTaskWorkRuntime().stats(taskId);
     }
 
-    List<ActiveLeaseRepairCandidate> activeLeases(String taskId) {
-        return taskRuntimeServingLane.getActiveLeases(taskId);
+    List<ActiveLeaseRecord> activeLeases(String taskId) {
+        return taskManager.getTaskWorkRuntime().activeLeases(taskId);
     }
 
     AssignmentRecord record(String taskId, String workerId) {

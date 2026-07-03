@@ -12,13 +12,18 @@ import com.xa.mass.engine.assignment.AssignmentRefillDecision;
 import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourceUsage;
 import com.xa.mass.engine.util.TraceEventLogCapture;
-import com.xa.mass.task.runtime.ActiveLeaseRepairCandidate;
+import com.xa.mass.runtime.api.TaskWorkEnvelope;
+import com.xa.mass.runtime.api.WorkEnqueueOptions;
+import com.xa.mass.runtime.api.WorkerClaimTarget;
+import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.worker.runtime.selection.SelectedWorkerEvidence;
 import com.xa.mass.worker.runtime.selection.WorkerSelectionRuntime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.mock;
@@ -45,7 +50,7 @@ public class TaskResourceReleaseListenerTest {
     @Test
     void terminalTaskRecordsSelectedFinalAndReleasesExclusiveLock() {
         Task task = task("task-1", TaskStatus.TERMINAL, true);
-        when(leaseMaintenancePort.getActiveLeaseCandidates("task-1"))
+        when(leaseMaintenancePort.getActiveLeases("task-1"))
                 .thenReturn(activeLeases("task-1", "msg-1", "worker-1"));
 
         listener.onTaskTerminal(task);
@@ -59,7 +64,7 @@ public class TaskResourceReleaseListenerTest {
     @Test
     void terminalBackgroundTaskRecordsFinalWithoutReleasingExclusiveLock() {
         Task task = task("task-1", TaskStatus.TERMINAL, false);
-        when(leaseMaintenancePort.getActiveLeaseCandidates("task-1"))
+        when(leaseMaintenancePort.getActiveLeases("task-1"))
                 .thenReturn(activeLeases("task-1", "msg-1", "worker-1"));
 
         listener.onTaskTerminal(task);
@@ -132,7 +137,7 @@ public class TaskResourceReleaseListenerTest {
                 workerSelectionRuntime,
                 new TraceEventLogger(new com.xa.mass.trace.sink.NoopExecutionEventSink())
         );
-        when(leaseMaintenancePort.getActiveLeaseCandidates("task-1"))
+        when(leaseMaintenancePort.getActiveLeases("task-1"))
                 .thenReturn(activeLeases("task-1", "msg-1", "worker-1"));
 
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
@@ -170,20 +175,18 @@ public class TaskResourceReleaseListenerTest {
         );
     }
 
-    private static List<ActiveLeaseRepairCandidate> activeLeases(String taskId,
-                                                                 String messageId,
-                                                                 String workerId) {
-        return List.of(new ActiveLeaseRepairCandidate(
-                taskId,
-                messageId,
-                "lease-" + messageId,
-                workerId,
-                "group-a",
-                "batch-1",
-                null,
-                null,
+    private static List<com.xa.mass.runtime.api.ActiveLeaseRecord> activeLeases(String taskId,
+                                                                                String messageId,
+                                                                                String workerId) {
+        InMemoryTaskWorkRuntime runtime = new InMemoryTaskWorkRuntime();
+        runtime.enqueue(new TaskWorkEnvelope(taskId, messageId, "demo.event",
+                        Map.of("target", messageId), null, 0, 3, null, null, Instant.now()),
+                WorkEnqueueOptions.DEFAULT);
+        runtime.claimReady(taskId,
+                List.of(WorkerClaimTarget.groupScoped("group-a", workerId, "batch-1", 1, java.util.Set.of())),
                 1,
-                System.currentTimeMillis() + 30_000L));
+                30);
+        return runtime.activeLeases(taskId);
     }
 
     private static final class NonExclusiveResourcePolicy implements WorkerDispatchResourcePolicy {

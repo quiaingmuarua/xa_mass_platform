@@ -13,7 +13,7 @@ import com.xa.mass.engine.resource.WorkerDispatchResourceReleaser;
 import com.xa.mass.engine.resource.WorkerDispatchResourcePolicy;
 import com.xa.mass.engine.resource.WorkerDispatchResourceUsage;
 import com.xa.mass.engine.TraceEventLogger;
-import com.xa.mass.task.runtime.ActiveLeaseRepairCandidate;
+import com.xa.mass.runtime.api.ActiveLeaseRecord;
 import com.xa.mass.worker.runtime.selection.SelectedWorkerEvidence;
 import com.xa.mass.worker.runtime.selection.WorkerSelectionRuntime;
 
@@ -87,10 +87,10 @@ public class TaskResourceReleaseListener {
             return;
         }
 
-        List<ActiveLeaseRepairCandidate> leases = leaseMaintenancePort.getActiveLeaseCandidates(task.getTid());
+        List<ActiveLeaseRecord> leases = leaseMaintenancePort.getActiveLeases(task.getTid());
         Set<String> exclusiveWorkerIds = new LinkedHashSet<>();
 
-        for (ActiveLeaseRepairCandidate lease : leases) {
+        for (ActiveLeaseRecord lease : leases) {
             if (lease == null || lease.workerId() == null || lease.workerId().isBlank()) {
                 continue;
             }
@@ -141,13 +141,13 @@ public class TaskResourceReleaseListener {
     }
 
     private static SelectedWorkerEvidence selectedWorkerEvidence(String taskId,
-                                                                 ActiveLeaseRepairCandidate lease,
+                                                                 ActiveLeaseRecord lease,
                                                                  boolean exclusiveWorkerLock) {
         return new SelectedWorkerEvidence(
                 lease.workerId(),
                 lease.workerGroupId(),
                 taskId,
-                lease.workerReservationToken(),
+                lease.selectionToken(),
                 lease.scoreBandClaimScore(),
                 exclusiveWorkerLock);
     }

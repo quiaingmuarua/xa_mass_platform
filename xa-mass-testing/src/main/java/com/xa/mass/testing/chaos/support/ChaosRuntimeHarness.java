@@ -10,15 +10,19 @@ import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
-import com.xa.mass.sdk.model.TaskWorkFinalSnapshot;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.TaskStateSnapshot;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
 import com.xa.mass.sdk.worker.EmbeddedPullWorkerSession;
-import com.xa.mass.sdk.model.TaskActiveLeaseSnapshot;
-import com.xa.mass.sdk.model.TaskWorkStatsSnapshot;
+import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.runtime.api.RecentFinalWorkReceipt;
+import com.xa.mass.runtime.api.TaskWorkRuntime;
+import com.xa.mass.runtime.api.TaskWorkStats;
+import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
+import com.xa.mass.runtime.redis.RedisTaskResultRuntime;
+import com.xa.mass.runtime.redis.RedisTaskWorkRuntime;
 import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.testing.support.WorkerRegistrationSpineSupport;
 import com.xa.mass.trace.sink.ExecutionEventSink;
@@ -39,6 +43,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
     private static final List<TaskMode> DEFAULT_TASK_MODES = List.of(TaskMode.SINGLE_RUN, TaskMode.STREAMING);
 
     private final MassSdkApplication app;
+    private final TaskWorkRuntime taskWorkRuntime;
     private final InMemoryTaskShellStore taskStorage;
     private final int transportPort;
     private final String endpointPath;
@@ -47,12 +52,14 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
     private final Map<String, String> workerGroupIdByWorkerId = new LinkedHashMap<>();
 
     private ChaosRuntimeHarness(MassSdkApplication app,
+                                TaskWorkRuntime taskWorkRuntime,
                                 InMemoryTaskShellStore taskStorage,
                                 int transportPort,
                                 String endpointPath,
                                 ExecutionEventSink traceSink,
                                 PollingRedisRuntimeConfig pollingRedisConfig) {
         this.app = app;
+        this.taskWorkRuntime = taskWorkRuntime;
         this.taskStorage = taskStorage;
         this.transportPort = transportPort;
         this.endpointPath = endpointPath;
@@ -68,6 +75,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                                                       ExecutionEventSink traceSink) {
         int transportPort = ChaosSupport.findFreePort();
         InMemoryTaskShellStore taskStorage = new InMemoryTaskShellStore();
+        TaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
         MassSdk.Builder builder = MassSdk.builder()
                 .transport(transport -> transport
                         .webSocketAdapter(webSocket -> webSocket
@@ -81,12 +89,12 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                             .leaseWatchdogIntervalSeconds(config.leaseWatchdogIntervalSeconds())
                             .taskMessageLeaseSeconds(config.taskMessageLeaseSeconds())
                             .taskShellStore(taskStorage)
-                            .memoryTaskRuntime();
+                            .taskWorkRuntime(taskWorkRuntime);
                     if (traceSink != null) {
                         engine.executionEventSink(traceSink);
                     }
                 });
-        return createBootstrappedHarness(builder.build(), taskStorage, transportPort, config.endpointPath(), traceSink, null);
+        return createBootstrappedHarness(builder.build(), taskWorkRuntime, taskStorage, transportPort, config.endpointPath(), traceSink, null);
     }
 
     public static ChaosRuntimeHarness createPolling(PollingRuntimeConfig config) {
@@ -96,6 +104,7 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
     public static ChaosRuntimeHarness createPolling(PollingRuntimeConfig config,
                                                     ExecutionEventSink traceSink) {
         InMemoryTaskShellStore taskStorage = new InMemoryTaskShellStore();
+        TaskWorkRuntime taskWorkRuntime = new InMemoryTaskWorkRuntime();
         MassSdk.Builder builder = MassSdk.builder()
                 .transport(transport -> transport
                         .webSocketAdapter(webSocket -> webSocket
@@ -108,12 +117,12 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                             .leaseWatchdogIntervalSeconds(config.leaseWatchdogIntervalSeconds())
                             .taskMessageLeaseSeconds(config.taskMessageLeaseSeconds())
                             .taskShellStore(taskStorage)
-                            .memoryTaskRuntime();
+                            .taskWorkRuntime(taskWorkRuntime);
                     if (traceSink != null) {
                         engine.executionEventSink(traceSink);
                     }
                 });
-        return createBootstrappedHarness(builder.build(), taskStorage, 0, "", traceSink, null);
+        return createBootstrappedHarness(builder.build(), taskWorkRuntime, taskStorage, 0, "", traceSink, null);
     }
 
     public static ChaosRuntimeHarness createPollingRedis(PollingRedisRuntimeConfig config,
@@ -124,6 +133,15 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
     private static ChaosRuntimeHarness createPollingRedis(PollingRedisRuntimeConfig config,
                                                           InMemoryTaskShellStore taskStorage,
                                                           ExecutionEventSink traceSink) {
+        TaskWorkRuntime taskWorkRuntime = new RedisTaskWorkRuntime(
+                config.redisUri(),
+                config.redisNamespace(),
+                config.maxQueuedItems()
+        );
+        RedisTaskResultRuntime taskResultRuntime = new RedisTaskResultRuntime(
+                config.redisUri(),
+                config.redisNamespace() + ":result"
+        );
         MassSdk.Builder builder = MassSdk.builder()
                 .transport(transport -> transport
                         .webSocketAdapter(webSocket -> webSocket
@@ -136,22 +154,24 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                             .leaseWatchdogIntervalSeconds(config.leaseWatchdogIntervalSeconds())
                             .taskMessageLeaseSeconds(config.taskMessageLeaseSeconds())
                             .taskShellStore(taskStorage)
-                            .redisTaskRuntime(config.redisUri(), config.redisNamespace());
+                            .taskWorkRuntime(taskWorkRuntime)
+                            .taskResultRuntime(taskResultRuntime);
                     if (traceSink != null) {
                         engine.executionEventSink(traceSink);
                     }
                 });
-        return createBootstrappedHarness(builder.build(), taskStorage, 0, "", traceSink, config);
+        return createBootstrappedHarness(builder.build(), taskWorkRuntime, taskStorage, 0, "", traceSink, config);
     }
 
     private static ChaosRuntimeHarness createBootstrappedHarness(MassSdkApplication app,
+                                                                 TaskWorkRuntime taskWorkRuntime,
                                                                  InMemoryTaskShellStore taskStorage,
                                                                  int transportPort,
                                                                  String endpointPath,
                                                                  ExecutionEventSink traceSink,
                                                                  PollingRedisRuntimeConfig pollingRedisConfig) {
         bootstrapCatalog(app);
-        return new ChaosRuntimeHarness(app, taskStorage, transportPort, endpointPath, traceSink, pollingRedisConfig);
+        return new ChaosRuntimeHarness(app, taskWorkRuntime, taskStorage, transportPort, endpointPath, traceSink, pollingRedisConfig);
     }
 
     private static void bootstrapCatalog(MassSdkApplication app) {
@@ -222,23 +242,23 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
         return app;
     }
 
-    public TaskWorkStatsSnapshot runtimeStats(String taskId) {
-        return app.getTaskWorkStats(taskId);
+    public TaskWorkStats runtimeStats(String taskId) {
+        return taskWorkRuntime.stats(taskId);
     }
 
-    public List<TaskActiveLeaseSnapshot> activeLeases(String taskId) {
-        return app.getActiveLeases(taskId);
+    public List<ActiveLeaseRecord> activeLeases(String taskId) {
+        return taskWorkRuntime.activeLeases(taskId);
     }
 
     public String waitForSingleActiveLeaseMessageId(String taskId,
                                                     int timeoutSeconds,
                                                     String failureMessage) throws Exception {
         ChaosSupport.waitForCondition(
-                () -> !activeLeases(taskId).isEmpty(),
+                () -> !taskWorkRuntime.activeLeases(taskId).isEmpty(),
                 timeoutSeconds,
                 failureMessage
         );
-        List<TaskActiveLeaseSnapshot> leases = activeLeases(taskId);
+        List<ActiveLeaseRecord> leases = taskWorkRuntime.activeLeases(taskId);
         ChaosSupport.require(!leases.isEmpty(), failureMessage);
         String messageId = leases.getFirst().messageId();
         ChaosSupport.require(messageId != null && !messageId.isBlank(),
@@ -246,26 +266,26 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
         return messageId;
     }
 
-    public Optional<TaskWorkFinalSnapshot> recentFinalReceipt(String taskId, String messageId) {
-        return app.getTaskWorkFinal(taskId, messageId);
+    public Optional<RecentFinalWorkReceipt> recentFinalReceipt(String taskId, String messageId) {
+        return taskWorkRuntime.getRecentFinalReceipt(taskId, messageId);
     }
 
-    public TaskWorkStatsSnapshot waitForRuntimeStats(String taskId,
-                                                     long totalCount,
-                                                     long successCount,
-                                                     long failedCount,
-                                                     long expiredCount,
-                                                     int timeoutSeconds,
-                                                     String failureMessage) throws Exception {
+    public TaskWorkStats waitForRuntimeStats(String taskId,
+                                             long totalCount,
+                                             long successCount,
+                                             long failedCount,
+                                             long expiredCount,
+                                             int timeoutSeconds,
+                                             String failureMessage) throws Exception {
         ChaosSupport.waitForCondition(() -> {
-            TaskWorkStatsSnapshot stats = runtimeStats(taskId);
+            TaskWorkStats stats = taskWorkRuntime.stats(taskId);
             return stats.totalCount() == totalCount
                     && stats.successCount() == successCount
                     && stats.failedCount() == failedCount
                     && stats.expiredCount() == expiredCount
                     && stats.finalCount() == totalCount;
         }, timeoutSeconds, failureMessage);
-        return runtimeStats(taskId);
+        return taskWorkRuntime.stats(taskId);
     }
 
     public void start() {
@@ -403,8 +423,9 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                                              int timeoutSeconds,
                                              String failureMessage) throws Exception {
         ChaosSupport.waitForCondition(() -> {
-            return activeLeases(taskId).stream()
-                    .anyMatch(lease -> messageId.equals(lease.messageId()) && workerId.equals(lease.workerId()));
+            return taskWorkRuntime.getActiveLease(taskId, messageId)
+                    .map(lease -> workerId.equals(lease.workerId()))
+                    .orElse(false);
         }, timeoutSeconds, failureMessage);
     }
 
@@ -415,10 +436,10 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                                     String failureMessage) throws Exception {
         ChaosSupport.waitForCondition(
                 () -> {
-                    boolean activeRetryReached = activeLeases(taskId).stream()
-                            .filter(lease -> messageId.equals(lease.messageId()))
-                            .anyMatch(lease -> lease.retryCount() + 1 >= minimumAttempts);
-                    boolean finalRetryReached = recentFinalReceipt(taskId, messageId)
+                    boolean activeRetryReached = taskWorkRuntime.getActiveLease(taskId, messageId)
+                            .map(lease -> lease.retryCount() + 1 >= minimumAttempts)
+                            .orElse(false);
+                    boolean finalRetryReached = taskWorkRuntime.getRecentFinalReceipt(taskId, messageId)
                             .map(receipt -> receipt.retryCount() + 1 >= minimumAttempts)
                             .orElse(false);
                     return activeRetryReached || finalRetryReached;
@@ -451,8 +472,8 @@ public final class ChaosRuntimeHarness implements AutoCloseable {
                 task.getStatus(),
                 task.getTerminalReason(),
                 TaskOutcomeSnapshot.RuntimeWorkOutcomeSnapshot.from(
-                        runtimeStats(taskId),
-                        activeLeases(taskId)
+                        taskWorkRuntime.stats(taskId),
+                        taskWorkRuntime.activeLeases(taskId)
                 ),
                 List.of()
         );

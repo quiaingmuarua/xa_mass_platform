@@ -181,8 +181,8 @@ The result path is runtime-first:
 ```text
 worker result
   -> result ingest
-  -> xa-mass-task-runtime apply
-  -> xa-mass-task-runtime stable-final row
+  -> TaskWorkRuntime apply
+  -> TaskResultRuntime stable-final row
   -> progress / terminal convergence
 ```
 

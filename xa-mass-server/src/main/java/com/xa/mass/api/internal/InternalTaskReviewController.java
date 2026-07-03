@@ -5,7 +5,7 @@ import com.xa.mass.api.review.TaskReviewReadModel;
 import com.xa.mass.api.review.TaskReviewReadModel.TaskReviewItem;
 import com.xa.mass.api.review.TaskReviewReadModel.TaskReviewSnapshot;
 import com.xa.mass.api.review.TaskReviewReadModel.TaskReviewStats;
-import com.xa.mass.sdk.TaskReadOperations;
+import com.xa.mass.sdk.TaskQueryOperations;
 import com.xa.mass.sdk.model.TaskDetailSnapshot;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpHeaders;
@@ -33,12 +33,12 @@ public class InternalTaskReviewController {
     private static final com.fasterxml.jackson.databind.ObjectMapper RESPONSE_OBJECT_MAPPER =
             new com.fasterxml.jackson.databind.ObjectMapper();
 
-    private final TaskReadOperations taskReads;
+    private final TaskQueryOperations taskQueries;
     private final TaskReviewReadModel taskReviewReadModel;
 
-    public InternalTaskReviewController(TaskReadOperations taskReads,
+    public InternalTaskReviewController(TaskQueryOperations taskQueries,
                                         TaskReviewReadModel taskReviewReadModel) {
-        this.taskReads = taskReads;
+        this.taskQueries = taskQueries;
         this.taskReviewReadModel = taskReviewReadModel;
     }
 
@@ -119,7 +119,7 @@ public class InternalTaskReviewController {
 
     private TaskDetailSnapshot requireTaskDetail(String taskId) {
         ensureTaskReviewReadModelConfigured();
-        TaskDetailSnapshot task = taskReads.getTaskDetail(taskId);
+        TaskDetailSnapshot task = taskQueries.getTaskDetail(taskId);
         if (task == null) {
             throw new TaskReviewException(404, "Task not found: " + taskId);
         }

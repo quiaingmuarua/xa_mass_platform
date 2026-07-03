@@ -5,7 +5,7 @@ import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.model.TaskStateValidationResult;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
 import com.xa.mass.engine.TraceEventLogger;
-import com.xa.mass.task.runtime.TaskRuntimeProgressSnapshot;
+import com.xa.mass.runtime.api.TaskWorkStats;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -48,13 +48,13 @@ class TaskStateValidator {
         if (task == null) {
             return new RuntimeValidationSnapshot(
                     null,
-                    emptyProgressSnapshot(taskId),
+                    TaskWorkStats.EMPTY,
                     List.of(TaskStateValidationResult.ViolationCode.TASK_NOT_FOUND),
                     false
             );
         }
 
-        TaskRuntimeProgressSnapshot stats = getTaskRuntimeProgressSnapshot(taskId);
+        TaskWorkStats stats = getTaskWorkStats(taskId);
         List<TaskStateValidationResult.ViolationCode> violations = new ArrayList<>();
         if (task.getTaskEligibleNumber() < 0) {
             violations.add(TaskStateValidationResult.ViolationCode.NEGATIVE_ELIGIBLE_COUNT);
@@ -158,21 +158,21 @@ class TaskStateValidator {
         return stateRuntime.getTask(taskId);
     }
 
-    private TaskRuntimeProgressSnapshot getTaskRuntimeProgressSnapshot(String taskId) {
-        return stateRuntime.getTaskRuntimeProgressSnapshot(taskId);
+    private TaskWorkStats getTaskWorkStats(String taskId) {
+        return stateRuntime.getTaskWorkStats(taskId);
     }
 
-    private TaskTerminalPolicyDecision evaluateTerminalPolicy(Task task, TaskRuntimeProgressSnapshot stats) {
+    private TaskTerminalPolicyDecision evaluateTerminalPolicy(Task task, TaskWorkStats stats) {
         return stateRuntime.evaluateTerminalPolicy(task, stats);
     }
 
     record RuntimeValidationSnapshot(Task task,
-                                     TaskRuntimeProgressSnapshot stats,
+                                     TaskWorkStats stats,
                                      List<TaskStateValidationResult.ViolationCode> violations,
                                      boolean needsResolution) {
 
         RuntimeValidationSnapshot {
-            stats = stats == null ? emptyProgressSnapshot(task != null ? task.getTid() : null) : stats;
+            stats = stats == null ? TaskWorkStats.EMPTY : stats;
             violations = violations == null ? List.of() : List.copyOf(violations);
         }
 
@@ -190,10 +190,6 @@ class TaskStateValidator {
                     violations
             );
         }
-    }
-
-    private static TaskRuntimeProgressSnapshot emptyProgressSnapshot(String taskId) {
-        return TaskRuntimeProgressSnapshot.empty(taskId == null || taskId.isBlank() ? "unknown" : taskId);
     }
 }
 

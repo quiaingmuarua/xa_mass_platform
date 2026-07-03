@@ -114,11 +114,11 @@ class TransportConvergenceArchitectureGuardTest {
                 "notifyDispatchWakeup("
         );
         assertNoProductionSourceContains(
-                List.of(repoRoot().resolve("xa-mass-engine-starter/src/main/java/com/xa/mass/starter/MassEngine.java")),
+                List.of(repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/MassEngine.java")),
                 "getWorkerPresenceRuntime().setDispatchWakeupCallback"
         );
         assertNoProductionSourceContains(
-                List.of(repoRoot().resolve("xa-mass-engine-starter/src/main/java/com/xa/mass/starter/config/EngineConfig.java")),
+                List.of(repoRoot().resolve("sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/config/EngineConfig.java")),
                 "public InMemoryWorkerPresenceRuntime getWorkerPresenceRuntime",
                 "getWorkerPresenceRuntime()"
         );

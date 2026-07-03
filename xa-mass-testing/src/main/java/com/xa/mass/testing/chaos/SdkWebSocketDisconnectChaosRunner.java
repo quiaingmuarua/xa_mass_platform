@@ -2,8 +2,8 @@ package com.xa.mass.testing.chaos;
 
 import com.google.gson.JsonObject;
 import com.xa.mass.base.model.TaskSharedConfig;
-import com.xa.mass.sdk.model.TaskWorkFinalSnapshot;
-import com.xa.mass.sdk.model.TaskWorkStatsSnapshot;
+import com.xa.mass.runtime.api.RecentFinalWorkReceipt;
+import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
 import com.xa.mass.sdk.model.TaskStateSnapshot;
 import com.xa.mass.testing.chaos.support.CapturingExecutionEventSink;
@@ -159,7 +159,7 @@ public final class SdkWebSocketDisconnectChaosRunner {
 
                 String chaosMessageId = activeChaosWorker.capturedMessageId();
                 ChaosSupport.require(chaosMessageId != null, "chaos worker should capture the delayed message id");
-                TaskWorkFinalSnapshot chaosReceipt =
+                RecentFinalWorkReceipt chaosReceipt =
                         runtime.recentFinalReceipt(chaosTask.getTaskId(), chaosMessageId).orElse(null);
                 ChaosSupport.require(chaosReceipt != null, "chaos task should have a runtime final receipt");
                 ChaosSupport.require(chaosReceipt.retryCount() == 0,
@@ -265,7 +265,7 @@ public final class SdkWebSocketDisconnectChaosRunner {
                     config.timeoutSeconds(),
                     label + " must converge"
             );
-            TaskWorkStatsSnapshot stats = runtime.waitForRuntimeStats(
+            TaskWorkStats stats = runtime.waitForRuntimeStats(
                     taskId,
                     config.messagesPerTask(),
                     config.messagesPerTask(),

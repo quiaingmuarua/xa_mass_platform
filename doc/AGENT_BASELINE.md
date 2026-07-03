@@ -59,8 +59,10 @@ Kernel truth is split across:
 
 - `Task.contract` for public/runtime preset input
 - `Task.intakeStatus` for append-window truth
-- `xa-mass-task-runtime` for accepted ready backlog, leases, retry/finality,
-  final-result rows, progress, and runtime discard truth
+- `TaskWorkRuntime` for ready work, leases, retry, expiry, counters, and
+  backpressure truth
+- `TaskResultRuntime` and engine result services for stable-final result rows
+  and result-side barriers
 
 Runtime seams are transport-neutral: task dispatch, result ingest, and system
 events. Runtime entry is SDK-first. `xa-mass-server` is the reference host,
@@ -164,7 +166,7 @@ Worker, adapter, and transport boundaries:
 
 Runtime and query boundaries:
 
-- runtime admission happens through `xa-mass-task-runtime`, not through a
+- runtime admission happens through `TaskWorkRuntime`, not through a
   task-message CRUD mainline
 - result convergence is runtime-first; verify the split from
   [TASK_LIFECYCLE_BASELINE.md](./TASK_LIFECYCLE_BASELINE.md) plus current

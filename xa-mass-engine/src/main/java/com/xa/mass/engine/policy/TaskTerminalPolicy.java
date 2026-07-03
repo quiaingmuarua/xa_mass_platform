@@ -3,7 +3,7 @@ package com.xa.mass.engine.policy;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
 import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy.IdleClosePolicy;
-import com.xa.mass.task.runtime.TaskRuntimeProgressSnapshot;
+import com.xa.mass.runtime.api.TaskWorkStats;
 
 /**
  * Decides whether the current task/message aggregate should keep running or
@@ -14,5 +14,5 @@ import com.xa.mass.task.runtime.TaskRuntimeProgressSnapshot;
  */
 public interface TaskTerminalPolicy {
 
-    TaskTerminalPolicyDecision evaluate(Task task, TaskRuntimeProgressSnapshot stats, IdleClosePolicy idleClosePolicy);
+    TaskTerminalPolicyDecision evaluate(Task task, TaskWorkStats stats, IdleClosePolicy idleClosePolicy);
 }

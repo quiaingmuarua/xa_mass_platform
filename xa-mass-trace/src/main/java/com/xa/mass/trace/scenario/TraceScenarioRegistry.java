@@ -16,7 +16,6 @@ public final class TraceScenarioRegistry {
                 new DuplicateCallbackReplayScenarioAnalyzer(),
                 new LateStaleResultReplayScenarioAnalyzer(),
                 new ExternalWorkerPublicContractSuccessScenarioAnalyzer(),
-                new TaskRuntimeExternalWorkerSuccessScenarioAnalyzer(),
                 new AssignmentSuccessBindingScenarioAnalyzer(),
                 new AssignmentMinWorkerGateScenarioAnalyzer(),
                 new AssignmentRetryRedispatchScenarioAnalyzer(),

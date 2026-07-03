@@ -1,7 +1,7 @@
 package com.xa.mass.testing.chaos.support;
 
-import com.xa.mass.sdk.model.TaskActiveLeaseSnapshot;
-import com.xa.mass.sdk.model.TaskWorkStatsSnapshot;
+import com.xa.mass.runtime.api.ActiveLeaseRecord;
+import com.xa.mass.runtime.api.TaskWorkStats;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -41,13 +41,12 @@ public record TaskOutcomeSnapshot(String taskId,
                                              long activeLeaseCount,
                                              List<ActiveLeaseOutcomeSnapshot> activeLeases) {
         private static RuntimeWorkOutcomeSnapshot empty() {
-            return from(TaskWorkStatsSnapshot.EMPTY, List.of());
+            return from(TaskWorkStats.EMPTY, List.of());
         }
 
-        public static RuntimeWorkOutcomeSnapshot from(TaskWorkStatsSnapshot stats,
-                                                       List<TaskActiveLeaseSnapshot> activeLeases) {
-            TaskWorkStatsSnapshot effectiveStats = stats != null ? stats : TaskWorkStatsSnapshot.EMPTY;
-            List<TaskActiveLeaseSnapshot> effectiveLeases = activeLeases != null ? activeLeases : List.of();
+        public static RuntimeWorkOutcomeSnapshot from(TaskWorkStats stats, List<ActiveLeaseRecord> activeLeases) {
+            TaskWorkStats effectiveStats = stats != null ? stats : TaskWorkStats.EMPTY;
+            List<ActiveLeaseRecord> effectiveLeases = activeLeases != null ? activeLeases : List.of();
             return new RuntimeWorkOutcomeSnapshot(
                     effectiveStats.totalCount(),
                     effectiveStats.readyCount(),
@@ -83,7 +82,7 @@ public record TaskOutcomeSnapshot(String taskId,
                                              String batchId,
                                              int retryCount,
                                              String leaseExpireAt) {
-        public static ActiveLeaseOutcomeSnapshot fromLease(TaskActiveLeaseSnapshot lease) {
+        public static ActiveLeaseOutcomeSnapshot fromLease(ActiveLeaseRecord lease) {
             return new ActiveLeaseOutcomeSnapshot(
                     lease.messageId(),
                     lease.workerId(),

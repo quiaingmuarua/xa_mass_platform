@@ -4,7 +4,7 @@ import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.engine.model.TaskTerminalPolicyDecision;
 import com.xa.mass.engine.runtime.scheduling.ResolvedTaskSchedulingPolicy.IdleClosePolicy;
-import com.xa.mass.task.runtime.TaskRuntimeProgressSnapshot;
+import com.xa.mass.runtime.api.TaskWorkStats;
 
 /**
  * Batch task terminal policy: a task reaches TERMINAL only when all engine
@@ -13,7 +13,7 @@ import com.xa.mass.task.runtime.TaskRuntimeProgressSnapshot;
 public class AllWorkFinalTaskTerminalPolicy implements TaskTerminalPolicy {
 
     @Override
-    public TaskTerminalPolicyDecision evaluate(Task task, TaskRuntimeProgressSnapshot stats, IdleClosePolicy idleClosePolicy) {
+    public TaskTerminalPolicyDecision evaluate(Task task, TaskWorkStats stats, IdleClosePolicy idleClosePolicy) {
         if (task == null || idleClosePolicy == null || !idleClosePolicy.enabled()) {
             return TaskTerminalPolicyDecision.keepRunning();
         }
@@ -29,7 +29,7 @@ public class AllWorkFinalTaskTerminalPolicy implements TaskTerminalPolicy {
         return TaskTerminalPolicyDecision.finalizeToTerminal(determineTerminalReason(stats));
     }
 
-    private TaskTerminalReason determineTerminalReason(TaskRuntimeProgressSnapshot stats) {
+    private TaskTerminalReason determineTerminalReason(TaskWorkStats stats) {
         if (stats.successCount() == stats.totalCount()) {
             return TaskTerminalReason.ALL_MESSAGES_SUCCEEDED;
         }

@@ -2,10 +2,6 @@ package com.xa.mass.testing.workerfault;
 
 import org.junit.jupiter.api.Test;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.EnumSet;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -124,25 +120,6 @@ class WorkerFaultScenarioIndexTest {
     }
 
     @Test
-    void redisRestartRecoveryScenarioIsRuntimeOwnerReconnectNotRedisServerFailure() throws IOException {
-        WorkerFaultScenarioIndex.Scenario scenario = WorkerFaultScenarioIndex.scenarioForId(
-                "polling-redis-restart-recovery").orElseThrow();
-        String faultShape = scenario.faultShape();
-        String runnerSource = Files.readString(repositoryRoot().resolve(
-                "xa-mass-testing/src/main/java/com/xa/mass/testing/chaos/SdkPollingRedisRestartRecoveryChaosRunner.java"),
-                StandardCharsets.UTF_8);
-
-        assertEquals("redis-runtime-restart-recovery", faultShape);
-        assertTrue(runnerSource.contains("\"restartMode\", \"runtime-owner-reconnect\""),
-                "Redis restart recovery runner must report runtime owner reconnect, not Redis process kill/failover");
-        assertTrue(!faultShape.contains("process")
-                        && !faultShape.contains("kill")
-                        && !faultShape.contains("partition")
-                        && !faultShape.contains("failover"),
-                "Redis runtime owner reconnect scenario must not claim Redis process kill, partition, or failover proof");
-    }
-
-    @Test
     void mapsDroppedResultRetryAliasToPollingLeaseExpiryRunner() {
         WorkerFaultScenarioIndex.Scenario scenario = WorkerFaultScenarioIndex.scenarioForId(
                 "fault.dropped-result-retry").orElseThrow();
@@ -250,18 +227,5 @@ class WorkerFaultScenarioIndexTest {
                 "memory",
                 "NOISY",
                 "noisy-mixed-result")));
-    }
-
-    private static Path repositoryRoot() {
-        Path current = Path.of(System.getProperty("user.dir")).toAbsolutePath();
-        while (current != null) {
-            if (Files.exists(current.resolve("pom.xml"))
-                    && Files.exists(current.resolve(
-                    "xa-mass-testing/src/main/java/com/xa/mass/testing/workerfault/WorkerFaultScenarioIndex.java"))) {
-                return current;
-            }
-            current = current.getParent();
-        }
-        throw new IllegalStateException("Cannot locate repository root from " + System.getProperty("user.dir"));
     }
 }

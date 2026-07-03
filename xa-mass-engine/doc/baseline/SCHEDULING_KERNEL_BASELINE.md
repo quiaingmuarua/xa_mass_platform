@@ -46,7 +46,7 @@ assignment signal
 | resource usage | `WorkerDispatchResourcePolicy` | ranking, terminal policy |
 | cleanup | `WorkerDispatchResourceReleaser` | refill formulas |
 | refill | `AssignmentRefillPolicy` | release mechanics |
-| runtime/result truth | `xa-mass-task-runtime` via `TaskRuntimeServingLane` | projection-driven dispatch truth |
+| runtime/result truth | `TaskWorkRuntime` / `TaskResultRuntime` | projection-driven dispatch truth |
 
 The current matching strategy still combines rule execution, ranking, capacity
 reservation, and optional exclusive-lock acquisition. That is the current
@@ -124,8 +124,8 @@ Risky pairs that require explicit tests when changed:
 
 ## Hard Boundaries
 
-- `xa-mass-task-runtime` owns ready/delayed/lease/retry/progress truth.
-- `xa-mass-task-runtime` owns stable-final result truth.
+- `TaskWorkRuntime` owns ready/delayed/lease/retry/counter truth.
+- `TaskResultRuntime` owns stable-final result truth.
 - compatibility projection is residue, not scheduling truth.
 - trace proves decisions but does not own them.
 - server DTOs and SDK snapshots do not define kernel semantics.

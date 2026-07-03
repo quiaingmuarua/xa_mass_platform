@@ -297,22 +297,6 @@ class TraceOperatorServiceIntegrationTest {
     }
 
     @Test
-    void analyzeRunsTaskRuntimeExternalWorkerSuccessScenarioAgainstCanonicalSinkOutput() throws Exception {
-        writeTaskRuntimeExternalWorkerSuccessTrace(tempDir, "task-runtime-worker-success", "worker-runtime-1");
-        awaitJsonlFiles(tempDir, 1);
-
-        TraceAnalyzeResponse response = operatorService.analyze(
-                new TraceAnalyzeRequest(tempDir.toString(),
-                        "task-runtime-external-worker-success",
-                        "task-runtime-worker-success,worker-runtime-1"));
-
-        assertTrue(response.ok(), response.issues().toString());
-        assertEquals("task-runtime-external-worker-success", response.scenarioId());
-        assertEquals(1L, response.eventTypeCounts().get("DISPATCH_BINDING_SUMMARY"));
-        assertEquals(1L, response.eventTypeCounts().get("TASK_TERMINAL_CLOSED"));
-    }
-
-    @Test
     void analyzeRunsAssignmentMinWorkerGateScenarioAgainstCanonicalSinkOutput() throws Exception {
         writeAssignmentMinGateTrace(tempDir, "task-min-gate");
         awaitJsonlFiles(tempDir, 1);
@@ -656,7 +640,6 @@ class TraceOperatorServiceIntegrationTest {
         assertTrue(operatorService.scenarioIds().contains("all-failed-terminal-convergence"));
         assertTrue(operatorService.scenarioIds().contains("duplicate-callback-replay"));
         assertTrue(operatorService.scenarioIds().contains("late-stale-result-replay"));
-        assertTrue(operatorService.scenarioIds().contains("task-runtime-external-worker-success"));
         assertTrue(operatorService.scenarioIds().contains("assignment-success-binding"));
         assertTrue(operatorService.scenarioIds().contains("assignment-min-worker-gate"));
         assertTrue(operatorService.scenarioIds().contains("assignment-retry-redispatch"));
@@ -685,7 +668,7 @@ class TraceOperatorServiceIntegrationTest {
                     .traceId("trace-1")
                     .identity(identity -> identity.taskId("task-1").messageId("msg-1").attemptId("attempt-1"))
                     .outcome(true, null, "accepted")
-                    .attrs(Map.of("reason", "result-ingested", "source", "TaskRuntimeServingLane"))
+                    .attrs(Map.of("reason", "result-ingested", "source", "TaskResultService"))
                     .build());
             sink.emit(ExecutionEvent.builder()
                     .eventType(ExecutionEventType.TASK_TERMINAL_CLOSED)
@@ -747,14 +730,14 @@ class TraceOperatorServiceIntegrationTest {
                 .traceId("trace-replay")
                 .identity(identity -> identity.taskId("task-replay").messageId("msg-1").attemptId("attempt-1"))
                 .outcome(true, null, "accepted")
-                .attrs(Map.of("reason", "accepted", "source", "TaskRuntimeServingLane"))
+                .attrs(Map.of("reason", "accepted", "source", "TaskResultService"))
                 .build());
         sink.emit(ExecutionEvent.builder()
                 .eventType(ExecutionEventType.CALLBACK_ACCEPTED)
                 .traceId("trace-replay")
                 .identity(identity -> identity.taskId("task-replay").messageId("msg-2").attemptId("attempt-2"))
                 .outcome(true, null, "accepted")
-                .attrs(Map.of("reason", "accepted", "source", "TaskRuntimeServingLane"))
+                .attrs(Map.of("reason", "accepted", "source", "TaskResultService"))
                 .build());
         sink.emit(ExecutionEvent.builder()
                 .eventType(ExecutionEventType.TASK_TERMINAL_CLOSED)
@@ -797,7 +780,7 @@ class TraceOperatorServiceIntegrationTest {
                     .traceId("trace-late-stale")
                     .identity(identity -> identity.taskId(taskId).messageId("msg-1").attemptId("attempt-1"))
                     .transition("EXPIRED", "INIT", "retry reset after expiry")
-                    .attrs(Map.of("reason", "retry reset after expiry", "source", "TaskRuntimeServingLane"))
+                    .attrs(Map.of("reason", "retry reset after expiry", "source", "TaskResultService"))
                     .build());
             sink.emit(ExecutionEvent.builder()
                     .timestamp(Instant.parse("2026-05-20T00:00:03Z"))
@@ -805,7 +788,7 @@ class TraceOperatorServiceIntegrationTest {
                     .traceId("trace-late-stale")
                     .identity(identity -> identity.taskId(taskId).messageId("msg-1").attemptId("attempt-2").workerId("worker-steady"))
                     .outcome(true, null, "accepted takeover result")
-                    .attrs(Map.of("reason", "accepted takeover result", "source", "TaskRuntimeServingLane"))
+                    .attrs(Map.of("reason", "accepted takeover result", "source", "TaskResultService"))
                     .build());
             sink.emit(ExecutionEvent.builder()
                     .timestamp(Instant.parse("2026-05-20T00:00:04Z"))
@@ -829,7 +812,7 @@ class TraceOperatorServiceIntegrationTest {
                             "reason", suppressAsLate
                                     ? "late stale callback suppressed"
                                     : "stale callback rejected as missing lease",
-                            "source", "TaskRuntimeServingLane"))
+                            "source", "TaskResultService"))
                     .build());
         }
     }
@@ -922,7 +905,7 @@ class TraceOperatorServiceIntegrationTest {
                     .traceId("trace-bad-sequence")
                     .identity(identity -> identity.taskId(taskId).messageId("msg-1").attemptId("attempt-1"))
                     .outcome(true, null, "accepted")
-                    .attrs(Map.of("reason", "accepted", "source", "TaskRuntimeServingLane"))
+                    .attrs(Map.of("reason", "accepted", "source", "TaskResultService"))
                     .build());
         }
     }
@@ -1017,99 +1000,6 @@ class TraceOperatorServiceIntegrationTest {
                     .identity(identity -> identity.taskId(taskId).messageId("msg-1").attemptId("attempt-1").workerId("worker-1"))
                     .transition("LEASED", "DISPATCHED", "attempt dispatched")
                     .attrs(Map.of("trigger", "BIND_TASK_MESSAGE", "source", "SimpleTaskDispatchBinder", "reason", "attempt dispatched", "result", "SUCCESS", "attemptNo", 1))
-                    .build());
-        }
-    }
-
-    private void writeTaskRuntimeExternalWorkerSuccessTrace(Path outputDir,
-                                                            String taskId,
-                                                            String workerId) throws Exception {
-        String messageId = "msg-task-runtime";
-        String attemptId = "attempt-task-runtime";
-        String workerGroupId = "runtime-group";
-        try (JsonlExecutionEventSink sink = new JsonlExecutionEventSink(outputDir.toString(), 128, 10_000)) {
-            sink.emit(ExecutionEvent.builder()
-                    .eventType(ExecutionEventType.WORKER_MATCH_ACCEPTED)
-                    .timestamp(Instant.parse("2026-05-18T00:00:00Z"))
-                    .identity(identity -> identity.taskId(taskId).workerId(workerId))
-                    .attrs(attrs(
-                            "source", "RuntimeWorkerSelection",
-                            "reason", "worker-runtime selected worker",
-                            "result", "SUCCESS",
-                            "workerGroupId", workerGroupId,
-                            "workerCandidateSource", "GROUP_SELECTOR"))
-                    .build());
-            sink.emit(ExecutionEvent.builder()
-                    .eventType(ExecutionEventType.DISPATCH_BINDING_SUMMARY)
-                    .timestamp(Instant.parse("2026-05-18T00:00:01Z"))
-                    .identity(identity -> identity.taskId(taskId))
-                    .attrs(attrs(
-                            "trigger", "ON_MSG_ASSIGN",
-                            "source", "SimpleTaskDispatchBinder",
-                            "reason", "runtime work bound to dispatch slots",
-                            "result", "SUCCESS",
-                            "dispatchedMessageCount", 1,
-                            "matchedWorkerCount", 1,
-                            "dispatchSlotCount", 1))
-                    .build());
-            sink.emit(ExecutionEvent.builder()
-                    .eventType(ExecutionEventType.TASK_WORK_ATTEMPT_STATUS_TRANSITION)
-                    .timestamp(Instant.parse("2026-05-18T00:00:02Z"))
-                    .identity(identity -> identity
-                            .taskId(taskId)
-                            .messageId(messageId)
-                            .attemptId(attemptId)
-                            .workerId(workerId))
-                    .transition("CREATED", "LEASED", "attempt leased for dispatch")
-                    .attrs(attrs(
-                            "trigger", "BIND_TASK_MESSAGE",
-                            "source", "SimpleTaskDispatchBinder",
-                            "reason", "attempt leased for dispatch",
-                            "result", "SUCCESS",
-                            "workerGroupId", workerGroupId,
-                            "workerCandidateSource", "GROUP_SELECTOR",
-                            "eventBindingKey", "project:event"))
-                    .build());
-            sink.emit(ExecutionEvent.builder()
-                    .eventType(ExecutionEventType.TASK_WORK_ATTEMPT_STATUS_TRANSITION)
-                    .timestamp(Instant.parse("2026-05-18T00:00:03Z"))
-                    .identity(identity -> identity
-                            .taskId(taskId)
-                            .messageId(messageId)
-                            .attemptId(attemptId)
-                            .workerId(workerId))
-                    .transition("LEASED", "DISPATCHED", "attempt dispatched")
-                    .attrs(attrs(
-                            "trigger", "BIND_TASK_MESSAGE",
-                            "source", "SimpleTaskDispatchBinder",
-                            "reason", "attempt dispatched",
-                            "result", "SUCCESS",
-                            "workerGroupId", workerGroupId,
-                            "workerCandidateSource", "GROUP_SELECTOR",
-                            "eventBindingKey", "project:event"))
-                    .build());
-            sink.emit(ExecutionEvent.builder()
-                    .eventType(ExecutionEventType.TASK_STATUS_TRANSITION)
-                    .timestamp(Instant.parse("2026-05-18T00:00:04Z"))
-                    .identity(identity -> identity.taskId(taskId))
-                    .transition("READY", "RUNNING", "selected workers dispatched")
-                    .attrs(attrs(
-                            "trigger", "ASSIGNMENT_SUCCEEDED",
-                            "source", "TaskWorkerAssignListener",
-                            "reason", "selected workers dispatched",
-                            "result", "SUCCESS"))
-                    .build());
-            sink.emit(ExecutionEvent.builder()
-                    .eventType(ExecutionEventType.TASK_TERMINAL_CLOSED)
-                    .timestamp(Instant.parse("2026-05-18T00:00:05Z"))
-                    .identity(identity -> identity.taskId(taskId))
-                    .transition("RUNNING", "TERMINAL", "all work items finalized")
-                    .attrs(attrs(
-                            "trigger", "RESOLVE_TASK_STATE",
-                            "source", "TaskManager",
-                            "reason", "all work items finalized",
-                            "result", "SUCCESS",
-                            "terminalReason", "ALL_MESSAGES_SUCCEEDED"))
                     .build());
         }
     }

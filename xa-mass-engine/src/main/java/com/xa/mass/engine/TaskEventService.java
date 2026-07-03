@@ -99,30 +99,6 @@ public class TaskEventService implements TaskEventListenerRegistrar, TaskAssignm
         assignmentEventSink.publishTaskAssigned(task);
     }
 
-    void publishTaskDispatchRequested(Task task) {
-        if (registrar instanceof TaskEventPublisher publisher) {
-            publisher.publishTaskDispatchRequested(task);
-        }
-    }
-
-    void publishTaskTerminal(Task task) {
-        if (registrar instanceof TaskEventPublisher publisher) {
-            publisher.publishTaskTerminal(task);
-        }
-    }
-
-    void publishTaskWorkAttemptClosed(Task task, TaskWorkAttemptClosedEvent event) {
-        if (registrar instanceof TaskEventPublisher publisher) {
-            publisher.publishTaskWorkAttemptClosed(task, event);
-        }
-    }
-
-    void publishTaskWorkLogicallyFinal(Task task, TaskWorkLogicallyFinalEvent event) {
-        if (registrar instanceof TaskEventPublisher publisher) {
-            publisher.publishTaskWorkLogicallyFinal(task, event);
-        }
-    }
-
     public TaskEventListenerSnapshot listenerSnapshot() {
         if (registrar instanceof TaskEventPublisher publisher) {
             return publisher.listenerSnapshot();

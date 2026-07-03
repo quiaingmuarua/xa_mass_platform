@@ -5,8 +5,6 @@ const workerId = process.env.WORKER_ID;
 const workerGroupId = stringValue(process.env.MASS_WORKER_GROUP_ID ?? process.env.WORKER_GROUP_ID);
 const socketHost = process.env.SOCKET_HOST ?? "127.0.0.1";
 const socketPort = Number(process.env.SOCKET_PORT);
-const dispatchFaultMode = stringValue(process.env.MASS_DISPATCH_FAULT) ?? "";
-const resultDelayMs = intEnv("MASS_RESULT_DELAY_MS", 5000);
 
 if (!workerId || !workerGroupId || !socketHost || !Number.isFinite(socketPort) || socketPort <= 0) {
   console.error("WORKER_ID, MASS_WORKER_GROUP_ID, SOCKET_HOST and positive SOCKET_PORT are required");
@@ -14,7 +12,6 @@ if (!workerId || !workerGroupId || !socketHost || !Number.isFinite(socketPort) |
 }
 
 let socket;
-let receivedActionCount = 0;
 
 function log(message) {
   console.log(`[node-socket-worker:${workerId}] ${message}`);
@@ -24,11 +21,7 @@ function sendFrame(frame) {
   if (!socket || socket.destroyed) {
     return;
   }
-  writeFrame(socket, frame);
-}
-
-function writeFrame(targetSocket, frame) {
-  targetSocket.write(`${JSON.stringify(frame)}\n`);
+  socket.write(`${JSON.stringify(frame)}\n`);
 }
 
 function buildTaskResult(taskFrame, result) {
@@ -103,36 +96,6 @@ async function handleFrame(rawFrame) {
   const eventCode = action?.eventCode;
   const handler = eventCode ? taskHandlers.get(eventCode) : null;
   log(`received action frame replyRef=${action?.replyRef ?? "<none>"} eventCode=${eventCode ?? "<none>"}`);
-  receivedActionCount += 1;
-
-  if (dispatchFaultMode === "exit-before-result" && receivedActionCount === 1) {
-    log(`fault exit-before-result replyRef=${action?.replyRef ?? "<none>"}`);
-    setTimeout(() => process.exit(2), 50);
-    if (socket && !socket.destroyed) {
-      socket.destroy();
-    }
-    return;
-  }
-
-  if (dispatchFaultMode === "late-result-after-lease-expiry" && receivedActionCount === 1) {
-    const result = handler
-      ? await handler(action)
-      : {
-          success: false,
-          resultCode: "UNSUPPORTED_EVENT_CODE",
-          result: {
-            detail: `Unsupported eventCode: ${eventCode ?? "<missing>"}`,
-          },
-        };
-    log(`fault late-result-after-lease-expiry replyRef=${action?.replyRef ?? "<none>"} delayMs=${resultDelayMs}`);
-    if (socket && !socket.destroyed) {
-      socket.destroy();
-    }
-    await sleep(resultDelayMs);
-    await sendLateReplay(action, result);
-    process.exit(0);
-    return;
-  }
 
   if (!handler) {
     sendFrame(buildTaskResult(action, {
@@ -147,20 +110,6 @@ async function handleFrame(rawFrame) {
 
   const result = await handler(action);
   sendFrame(buildTaskResult(action, result));
-}
-
-function sendLateReplay(action, result) {
-  return new Promise((resolve, reject) => {
-    const replaySocket = net.createConnection({ host: socketHost, port: socketPort }, () => {
-      writeFrame(replaySocket, { type: "hello", workerId, workerGroupId });
-      writeFrame(replaySocket, buildTaskResult(action, result));
-      log(`fault late-result-after-lease-expiry submitted result replyRef=${action?.replyRef ?? "<none>"}`);
-      replaySocket.end();
-      setTimeout(resolve, 200);
-    });
-    replaySocket.on("error", reject);
-    replaySocket.on("close", resolve);
-  });
 }
 
 function stringValue(value) {
@@ -181,15 +130,6 @@ function parseJson(body) {
 
 function actionBody(action) {
   return parseJson(action?.body);
-}
-
-function intEnv(name, fallback) {
-  const parsed = Number.parseInt(process.env[name] ?? "", 10);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
-}
-
-function sleep(delayMillis) {
-  return new Promise((resolve) => setTimeout(resolve, delayMillis));
 }
 
 function shutdown(exitCode) {

@@ -12,8 +12,8 @@ Kernel convergence must stay runtime-first:
 
 ```text
 contract / intake truth
-  + xa-mass-task-runtime ready / delayed / lease / final truth
-  + xa-mass-task-runtime stable-final truth
+  + TaskWorkRuntime ready / delayed / lease / final truth
+  + TaskResultRuntime stable-final truth
   -> task aggregate convergence
 ```
 
@@ -46,13 +46,13 @@ Logical ownership is defined by this matrix and suite membership first.
 
 | Invariant | Owner boundary | Primary tests | Proof surface | Current status |
 | --- | --- | --- | --- | --- |
-| Task shell creation preserves contract, workload, intake-window, and runtime-ready truth | task lifecycle + runtime admission | `TaskKernelLifecycleTest` | task aggregate, task-runtime progress snapshot | Covered |
+| Task shell creation preserves contract, workload, intake-window, and runtime-ready truth | task lifecycle + runtime admission | `TaskKernelLifecycleTest` | task aggregate, `TaskWorkRuntime` ready count | Covered |
 | Intake commands obey task-state legality and terminal commands drain runtime-ready work | task lifecycle | `TaskKernelLifecycleTest` | task status, hold/terminal reason, runtime ready truth | Covered |
 | Open batch intake does not auto-terminal until sealed; session seal closes append without auto-terminal | contract preset input + intake + idle-close policy | `TaskIdleClosePolicyBehaviorTest` | task aggregate status, intake status, terminal reason | Covered |
 | Runtime recovery advertises only dispatchable task shells backed by runtime-ready truth | recovery port + task shell truth | `TaskRuntimeRecoveryPortTest` | recovered task ids vs runtime ready-set ids | Covered |
 | Retry expiry re-enters work or finalizes according to retry policy without double finalization | work runtime + retry/finality policy | `TaskRedispatchCompetitionTest` | ready/inflight/final counters, terminal reason, active lease truth | Covered through scheduling lane |
 | Result finality releases worker resources and allows waiting work to continue | result convergence + release owner | `TaskRedispatchCompetitionTest`, `TaskResourceReleaseListenerTest` | terminal reason, worker unlock/load release, later dispatch | Covered through scheduling lane |
-| Stable-final runtime result commit and duplicate result idempotency converge without projection fallback | result runtime + serving lane | `TaskResultRuntimeConvergenceTest` | task-runtime final-result rows, repair candidates, task aggregate | Covered |
+| Stable-final runtime result commit, repair barriers, and duplicate result idempotency converge without projection fallback | result runtime + engine repair pump | `TaskResultRuntimeConvergenceTest` | `TaskResultRuntime` visible rows, repair candidates, task aggregate | Covered |
 | Callback / expiry races produce one logical final outcome and coalesced progress | result ingest + task concurrency owner | `TaskResultConcurrencyConvergenceTest` | task aggregate, event counts, runtime/result finality | Covered |
 | Kernel mainline suite must stay free of compatibility projection proof | suite guard | `EngineKernelConvergenceArchitectureGuardTest` | selected-suite source scan | Covered |
 

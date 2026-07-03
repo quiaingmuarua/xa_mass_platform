@@ -17,7 +17,7 @@ import com.xa.mass.worker.runtime.selection.SelectedWorkerHandle;
 import com.xa.mass.worker.runtime.selection.SelectedWorkerTraceEvidence;
 import com.xa.mass.worker.runtime.report.WorkerCapabilityReportResult;
 import com.xa.mass.worker.runtime.report.WorkerStateProjectionResult;
-import com.xa.mass.task.runtime.TaskRuntimeProgressSnapshot;
+import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.trace.sink.ExecutionEvent;
 import com.xa.mass.trace.sink.ExecutionEventSink;
 import com.xa.mass.trace.sink.ExecutionEventType;
@@ -193,34 +193,13 @@ public final class TraceEventLogger {
     }
 
     public void taskWorkRetryReset(TaskWorkTraceView workView,
-                                   String attemptId,
-                                   String workerId,
-                                   String batchId,
-                                   Long workRetryDelayMillis,
-                                   String trigger,
-                                   String source,
-                                   String reason) {
-        taskWorkRetryReset(
-                workView,
-                attemptId,
-                workerId,
-                batchId,
-                null,
-                workRetryDelayMillis,
-                trigger,
-                source,
-                reason);
-    }
-
-    public void taskWorkRetryReset(TaskWorkTraceView workView,
-                                   String attemptId,
-                                   String workerId,
-                                   String batchId,
-                                   MessageStatus fromStatus,
-                                   Long workRetryDelayMillis,
-                                   String trigger,
-                                   String source,
-                                   String reason) {
+                                  String attemptId,
+                                  String workerId,
+                                  String batchId,
+                                  Long workRetryDelayMillis,
+                                  String trigger,
+                                  String source,
+                                  String reason) {
         if (workView == null) {
             return;
         }
@@ -230,7 +209,7 @@ public final class TraceEventLogger {
                         .messageId(workView.messageId())
                         .attemptId(attemptId != null ? attemptId : workView.latestAttemptId())
                         .workerId(workerId != null ? workerId : workView.latestAttemptWorkerId()))
-                .transition(retryResetSourceStatus(fromStatus), MessageStatus.INIT.name(), reason)
+                .transition("FAILED_OR_EXPIRED", MessageStatus.INIT.name(), reason)
                 .attrs(attrs(
                         "trigger", trigger,
                         "source", source,
@@ -582,7 +561,7 @@ public final class TraceEventLogger {
     }
 
     public void taskProgressSnapshot(Task task,
-                                     TaskRuntimeProgressSnapshot stats,
+                                     TaskWorkStats stats,
                                      String resolutionOutcome,
                                      boolean needsTerminalClosure,
                                      String trigger,
@@ -615,9 +594,9 @@ public final class TraceEventLogger {
                 "expiredMessages", stats.expiredCount(),
                 "processingMessages", stats.processingCount(),
                 "finalMessages", stats.finalCount(),
-                "pendingMessages", pendingCount(stats),
-                "successRate", formatDouble(successRate(stats)),
-                "failureRate", formatDouble(failureRate(stats)),
+                "pendingMessages", stats.pendingCount(),
+                "successRate", formatDouble(stats.successRate()),
+                "failureRate", formatDouble(stats.failureRate()),
                 "resolutionOutcome", resolutionOutcome,
                 "needsTerminalClosure", needsTerminalClosure
         );
@@ -960,26 +939,8 @@ public final class TraceEventLogger {
         return value != null ? value.name() : null;
     }
 
-    private static String retryResetSourceStatus(MessageStatus fromStatus) {
-        return fromStatus != null ? fromStatus.name() : "FAILED_OR_EXPIRED";
-    }
-
     private static String formatDouble(double value) {
         return String.format(java.util.Locale.ROOT, "%.1f", value);
-    }
-
-    private static long pendingCount(TaskRuntimeProgressSnapshot stats) {
-        return Math.max(stats.totalCount() - stats.finalCount(), 0L);
-    }
-
-    private static double successRate(TaskRuntimeProgressSnapshot stats) {
-        return stats.totalCount() == 0 ? 0.0 : (double) stats.successCount() / stats.totalCount() * 100.0;
-    }
-
-    private static double failureRate(TaskRuntimeProgressSnapshot stats) {
-        return stats.totalCount() == 0
-                ? 0.0
-                : (double) (stats.failedCount() + stats.expiredCount()) / stats.totalCount() * 100.0;
     }
 
     private static void putTaskRuntimeProfile(Map<String, Object> attrs, Task task) {

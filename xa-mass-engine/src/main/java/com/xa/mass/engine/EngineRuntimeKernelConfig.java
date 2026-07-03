@@ -13,7 +13,7 @@ import com.xa.mass.worker.runtime.selection.WorkerSelectionRuntime;
  */
 public interface EngineRuntimeKernelConfig {
 
-    TaskCommandPort getTaskCommandPort();
+    TaskCommandService getTaskCommandService();
 
     TaskRuntimeRecoveryPort getTaskRuntimeRecoveryPort();
 
@@ -36,8 +36,6 @@ public interface EngineRuntimeKernelConfig {
     AssignmentDiagnosticRecorder getRecordService();
 
     TraceEventLogger getTraceEventLogger();
-
-    long getTaskMessageLeaseSeconds();
 
     long getAssignmentRetryDelayMillis();
 

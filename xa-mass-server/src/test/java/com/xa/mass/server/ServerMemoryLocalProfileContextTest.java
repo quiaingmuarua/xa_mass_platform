@@ -1,18 +1,15 @@
 package com.xa.mass.server;
 
+import com.xa.mass.runtime.memory.InMemoryTaskWorkRuntime;
 import com.xa.mass.server.e2e.support.AbstractSampleE2eTest;
 import com.xa.mass.storage.jdbc.JdbcStorageRuntime;
-import com.xa.mass.starter.config.EngineConfig;
-import com.xa.mass.task.runtime.starter.TaskRuntimeBackendKind;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.context.ApplicationContext;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -36,9 +33,6 @@ class ServerMemoryLocalProfileContextTest extends AbstractSampleE2eTest {
     @Autowired
     private JdbcStorageRuntime jdbcStorageRuntime;
 
-    @Autowired
-    private ApplicationContext applicationContext;
-
     @DynamicPropertySource
     static void registerProperties(DynamicPropertyRegistry registry) {
         registerWebSocketProperties(registry, WEBSOCKET_PORT);
@@ -48,15 +42,6 @@ class ServerMemoryLocalProfileContextTest extends AbstractSampleE2eTest {
     @Test
     void memoryLocalStartsWithH2ControlPlaneAndMemoryRuntime() {
         assertThat(jdbcStorageRuntime.isEnabled()).isTrue();
-        assertThat(applicationContext.containsBean("taskWorkRuntime")).isFalse();
-        assertThat(applicationContext.containsBean("taskResultRuntime")).isFalse();
-        assertThat(runtimeEngineConfig().getTaskRuntimeBootstrapConfig().backendKind())
-                .isEqualTo(TaskRuntimeBackendKind.MEMORY);
-    }
-
-    private EngineConfig runtimeEngineConfig() {
-        Object delegate = ReflectionTestUtils.getField(app, "delegate");
-        Object engine = ReflectionTestUtils.getField(delegate, "engine");
-        return (EngineConfig) ReflectionTestUtils.getField(engine, "config");
+        assertThat(taskWorkRuntime).isInstanceOf(InMemoryTaskWorkRuntime.class);
     }
 }

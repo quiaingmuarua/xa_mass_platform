@@ -26,27 +26,22 @@
         <module>platform_infra/mass-queue-primitives</module>
         <module>platform_infra/mass-runtime-api</module>
         <module>platform_infra/mass-runtime-memory</module>
-        <module>platform_infra/mass-task-runtime-memory</module>
-        <module>platform_infra/mass-task-runtime-redis</module>
         <module>platform_infra/mass-runtime-redis</module>
         <module>platform_infra/mass-storage-api</module>
         <module>platform_infra/mass-storage-memory</module>
         <module>platform_infra/mass-storage-jdbc</module>
         <module>platform_infra/mass-trace-sink</module>
         <module>xa-mass-trace</module>
-        <module>xa-mass-task-runtime</module>
         <module>xa-mass-worker-runtime</module>
         <module>transport/transport_api</module>
         <module>transport/polling-adapter</module>
         <module>transport/transport_runtime</module>
         <module>transport/socket-adapter</module>
         <module>xa-mass-engine</module>
-        <module>xa-mass-engine-starter</module>
         <module>transport/websocket-adapter</module>
         <module>transport/adapter-starter</module>
         <module>sdk/xa-mass-public-contract</module>
         <module>sdk/xa-mass-embedded-sdk-api</module>
-        <module>sdk/xa-mass-task-runtime-starter-sdk</module>
         <module>sdk/xa-mass-embedded-sdk</module>
         <module>sdk/xa-mass-java-sdk</module>
         <module>integrations/xa-mass-scenario-launcher</module>

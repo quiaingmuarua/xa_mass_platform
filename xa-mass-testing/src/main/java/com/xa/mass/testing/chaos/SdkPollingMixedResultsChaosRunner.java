@@ -2,7 +2,7 @@ package com.xa.mass.testing.chaos;
 
 import com.google.gson.Gson;
 import com.xa.mass.sdk.model.TaskShellSnapshot;
-import com.xa.mass.sdk.model.TaskWorkStatsSnapshot;
+import com.xa.mass.runtime.api.TaskWorkStats;
 import com.xa.mass.testing.chaos.support.ChaosTraceArtifacts;
 import com.xa.mass.testing.chaos.support.ChaosReportWriter;
 import com.xa.mass.testing.chaos.support.ChaosRuntimeHarness;
@@ -144,7 +144,7 @@ public final class SdkPollingMixedResultsChaosRunner {
                         config.timeoutSeconds(),
                         "mixed-results task must converge to TERMINAL"
                 );
-                TaskWorkStatsSnapshot finalStats = runtime.waitForRuntimeStats(
+                TaskWorkStats finalStats = runtime.waitForRuntimeStats(
                         task.getTaskId(),
                         MESSAGE_COUNT,
                         SUCCESS_COUNT,

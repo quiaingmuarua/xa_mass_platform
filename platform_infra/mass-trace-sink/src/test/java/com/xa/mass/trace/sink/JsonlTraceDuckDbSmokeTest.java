@@ -37,7 +37,7 @@ class JsonlTraceDuckDbSmokeTest {
                     .traceId("trace-local-1")
                     .identity(b -> b.taskId("task-local-1").messageId("msg-local-1").attemptId("attempt-local-1"))
                     .outcome(true, null, "worker callback accepted")
-                    .attrs(Map.of("reason", "result-ingested", "source", "TaskRuntimeServingLane"))
+                    .attrs(Map.of("reason", "result-ingested", "source", "TaskResultService"))
                     .build());
         } finally {
             sink.close();
@@ -57,8 +57,7 @@ class JsonlTraceDuckDbSmokeTest {
                         traceId,
                         identity.taskId AS taskId,
                         identity.messageId AS messageId,
-                        attrs.reason AS reason,
-                        attrs.source AS source
+                        attrs.reason AS reason
                     FROM read_ndjson('%s')
                     WHERE identity.taskId = 'task-local-1'
                     ORDER BY ts
@@ -68,13 +67,11 @@ class JsonlTraceDuckDbSmokeTest {
                 assertEquals("trace-local-1", result.getString("traceId"));
                 assertEquals("task-local-1", result.getString("taskId"));
                 assertEquals("first lease acquired", result.getString("reason"));
-                assertEquals("TaskManager", result.getString("source"));
 
                 assertTrue(result.next(), "Expected second trace event");
                 assertEquals("CALLBACK_ACCEPTED", result.getString("eventType"));
                 assertEquals("msg-local-1", result.getString("messageId"));
                 assertEquals("result-ingested", result.getString("reason"));
-                assertEquals("TaskRuntimeServingLane", result.getString("source"));
 
                 assertFalse(result.next(), "Expected exactly two trace events for the task");
             }

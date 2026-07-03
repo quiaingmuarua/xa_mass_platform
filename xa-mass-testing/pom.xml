@@ -23,12 +23,12 @@
         </dependency>
         <dependency>
             <groupId>com.xa.mass</groupId>
-            <artifactId>xa-mass-task-runtime-starter-sdk</artifactId>
+            <artifactId>mass-runtime-memory</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>com.xa.mass</groupId>
-            <artifactId>mass-runtime-memory</artifactId>
+            <artifactId>mass-runtime-redis</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>
