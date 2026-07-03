@@ -15,9 +15,9 @@ class DefaultAssignmentRefillPolicyTest {
     private final DefaultAssignmentRefillPolicy policy = new DefaultAssignmentRefillPolicy();
 
     @Test
-    void nonTerminalTaskWithReadyWorkRequestsDispatch() {
+    void runningTaskWithReadyWorkRequestsDispatch() {
         AssignmentRefillDecision decision = policy.decide(new AssignmentRefillRequest(
-                task(TaskStatus.PAUSED),
+                task(TaskStatus.RUNNING),
                 () -> true
         ));
 
@@ -27,7 +27,7 @@ class DefaultAssignmentRefillPolicyTest {
     }
 
     @Test
-    void taskWithoutReadyWorkSkipsRefill() {
+    void runningTaskWithoutReadyWorkSkipsRefill() {
         AssignmentRefillDecision decision = policy.decide(new AssignmentRefillRequest(
                 task(TaskStatus.RUNNING),
                 () -> false
@@ -39,7 +39,7 @@ class DefaultAssignmentRefillPolicyTest {
     }
 
     @Test
-    void terminalProjectionSkipsWithoutReadingReadyWork() {
+    void nonRunningTaskSkipsWithoutReadingReadyWork() {
         AtomicBoolean readyWorkRead = new AtomicBoolean(false);
 
         AssignmentRefillDecision decision = policy.decide(new AssignmentRefillRequest(
@@ -52,7 +52,7 @@ class DefaultAssignmentRefillPolicyTest {
 
         assertEquals(AssignmentRefillOutcome.SKIP, decision.outcome());
         assertFalse(readyWorkRead.get());
-        assertTrue(decision.reason().contains("terminal"));
+        assertTrue(decision.reason().contains("not running"));
     }
 
     private Task task(TaskStatus status) {

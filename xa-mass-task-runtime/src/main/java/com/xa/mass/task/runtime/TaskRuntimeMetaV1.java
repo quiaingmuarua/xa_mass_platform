@@ -36,6 +36,7 @@ public record TaskRuntimeMetaV1(
         laneKey = TaskRuntimeContractChecks.requireText(laneKey, "laneKey");
         runtimeGate = runtimeGate == null ? RuntimeGate.OPEN : runtimeGate;
         runtimeEpoch = runtimeEpoch == null ? RuntimeEpoch.of(taskId, 0L) : runtimeEpoch;
+        nextEligibleAtMillis = Math.max(0L, nextEligibleAtMillis);
         positiveMatchDelayMillis = Math.max(0L, positiveMatchDelayMillis);
         emptyMatchDelayMillis = Math.max(0L, emptyMatchDelayMillis);
         contentionRecheckDelayMillis = Math.max(0L, contentionRecheckDelayMillis);

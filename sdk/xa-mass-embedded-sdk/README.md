@@ -353,13 +353,10 @@ Current SDK contracts:
 | removed paths | direct engine/manager/runtime escape hatches are removed; queue/session/raw transport debug methods are also off the stable `MassSdkApplication` main surface |
 | startup/bootstrap | operations fail fast without a started engine; mock/demo bootstrap belongs outside SDK public engine assembly |
 
-For embedded runtime wiring, keep task lifecycle commands on the task-runtime
-starter command handle and task reads on the starter-hosted `TaskReadViewPort`.
-Do not make `TaskManager`, `TaskLifecycleService`, engine `TaskCommandPort`, or
-`TaskQueryPort` the SDK task command/read surface. Task descriptor storage,
-worker declaration storage, and rule storage remain assembly inputs, but
-runtime backlog/score/claim/result/finality truth belongs to the selected
-task-runtime backend.
+For embedded runtime wiring, keep the mainline on storage/runtime contracts
+such as `taskShellStore(...)`, `taskWorkRuntime(...)`,
+`workerDeclarationStore(...)`, and `ruleStorage(...)`. Do not make `TaskManager` or
+`WorkerManager` the default SDK assembly surface.
 For migrated task item serving paths, select the task-runtime backend through
 `memoryTaskRuntime()` or `redisTaskRuntime(redisUri, namespace)`; do not inject
 task-runtime ports or Redis task-runtime keyspace details through SDK callers.

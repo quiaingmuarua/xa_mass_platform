@@ -4,8 +4,6 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -40,49 +38,6 @@ class EngineStarterBackdoorGuardTest {
 
         assertFalse(embeddedStarter.contains("getEngine().getConfig()"));
         assertFalse(sdkFacade.contains("getEngine().getConfig()"));
-    }
-
-    @Test
-    void engineConfigDoesNotExposeOldEngineTaskCommandPortAsPublicStarterSurface() {
-        String source = EngineCallerSurfaceGuardSupport.read(
-                "xa-mass-engine-starter/src/main/java/com/xa/mass/starter/config/EngineConfig.java");
-        int internalKernelConfigStart = source.indexOf("private final class KernelConfigView");
-        String starterFacingSource = internalKernelConfigStart >= 0 ? source.substring(0, internalKernelConfigStart) : source;
-
-        assertFalse(Pattern.compile("\\bpublic\\s+TaskCommandPort\\s+getTaskCommandPort\\s*\\(")
-                        .matcher(starterFacingSource)
-                        .find(),
-                "EngineConfig must not expose old engine TaskCommandPort as a starter-facing lifecycle command path");
-    }
-
-    @Test
-    void nonAssemblyCodeDoesNotConsumeRawTaskRuntimePortSet() {
-        List<String> checkedRoots = List.of(
-                "sdk/xa-mass-embedded-sdk/src/main/java",
-                "xa-mass-server/src/main/java",
-                "xa-mass-testing/src/main/java"
-        );
-        List<String> forbidden = List.of(
-                "com.xa.mass.task.runtime.starter.TaskRuntimeHandle",
-                "com.xa.mass.task.runtime.starter.TaskRuntimePortSet"
-        );
-        List<String> violations = new ArrayList<>();
-
-        for (String root : checkedRoots) {
-            for (Path path : EngineCallerSurfaceGuardSupport.javaSourceFiles(root)) {
-                String source = EngineCallerSurfaceGuardSupport.read(path);
-                for (String token : forbidden) {
-                    if (source.contains(token)) {
-                        violations.add(path + " imports raw task-runtime assembly surface: " + token);
-                    }
-                }
-            }
-        }
-
-        assertTrue(violations.isEmpty(),
-                "Only task-runtime starter internals and engine-starter assembly may consume raw TaskRuntimeHandle/"
-                        + "TaskRuntimePortSet; external code must use TaskRuntimeCommandPort or TaskReadViewPort:\n"
-                        + String.join("\n", violations));
     }
 
     @Test
@@ -180,27 +135,15 @@ class EngineStarterBackdoorGuardTest {
                 "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/MassSdkApplication.java");
         String engineConfig = EngineCallerSurfaceGuardSupport.read(
                 "xa-mass-engine-starter/src/main/java/com/xa/mass/starter/config/EngineConfig.java");
-        String taskReadViewPort = EngineCallerSurfaceGuardSupport.read(
-                "sdk/xa-mass-task-runtime-starter-sdk/src/main/java/com/xa/mass/task/runtime/starter/TaskReadViewPort.java");
 
-        assertTrue(Pattern.compile("\\bpublic\\s+TaskReadViewPort\\s+taskReadView\\s*\\(")
+        assertTrue(Pattern.compile("\\bpublic\\s+TaskReadOperations\\s+taskReads\\s*\\(")
                         .matcher(massApplication)
                         .find(),
-                "MassApplication must expose task reads through the approved TaskReadViewPort entry");
-        assertTrue(Pattern.compile("\\bpublic\\s+TaskReadViewPort\\s+getTaskReadViewPort\\s*\\(")
+                "MassApplication must expose task reads through the unified TaskReadOperations entry");
+        assertTrue(Pattern.compile("\\bpublic\\s+TaskReadOperations\\s+getTaskReadOperations\\s*\\(")
                         .matcher(engineConfig)
                         .find(),
-                "EngineConfig must expose one approved task read-view entry for starter assembly");
-        assertFalse(Pattern.compile("\\bpublic\\s+TaskReadOperations\\s+taskReads\\s*\\(")
-                        .matcher(massApplication)
-                        .find(),
-                "MassApplication must not keep TaskReadOperations as a starter read backdoor");
-        assertFalse(Pattern.compile("\\bpublic\\s+TaskReadOperations\\s+getTaskReadOperations\\s*\\(")
-                        .matcher(engineConfig)
-                        .find(),
-                "EngineConfig must not keep TaskReadOperations as a starter read backdoor");
-        assertTrue(taskReadViewPort.contains("extends TaskReadOperations"),
-                "TaskReadViewPort must be the approved read-view surface while reusing current SDK snapshots");
+                "EngineConfig must expose one unified task read entry for starter assembly");
         assertFalse(Pattern.compile("\\bpublic\\s+TaskShellStore\\s+getTaskShellStore\\s*\\(")
                         .matcher(engineConfig)
                         .find(),
@@ -232,9 +175,7 @@ class EngineStarterBackdoorGuardTest {
                         + "getVisibleTaskResultByMessageId|countVisibleTaskResults|"
                         + "validateTaskState|resolveTaskState|getTaskWorkStats|getActiveLeases)\\s*\\(");
         assertFalse(rawDelegateRead.matcher(sdkFacade).find(),
-                "MassSdkApplication task reads must route through TaskReadViewPort, not MassApplication raw reads");
-        assertTrue(sdkFacade.contains("delegate.taskReadView()"),
-                "MassSdkApplication must consume the approved TaskReadViewPort under its TaskReadOperations facade");
+                "MassSdkApplication task reads must route through TaskReadOperations, not MassApplication raw reads");
     }
 
     @Test
@@ -258,16 +199,8 @@ class EngineStarterBackdoorGuardTest {
 
         assertFalse(engineReadProvider.contains("TaskShellStore"),
                 "task read provider must not import or name TaskShellStore as its read owner");
-        assertFalse(engineReadProvider.contains("TaskManager"),
-                "task read provider must not route TaskReadViewPort through TaskManager");
-        assertFalse(engineReadProvider.contains("TaskQueryPort"),
-                "task read provider must not route TaskReadViewPort through TaskQueryPort");
         assertFalse(engineReadProvider.contains("getTaskShellStore"),
                 "task read provider must not reach EngineConfig task shell storage for reads");
-        assertFalse(engineReadProvider.contains("taskQueryPort"),
-                "task read provider must not reach EngineConfig task query port for reads");
-        assertFalse(engineReadProvider.contains("ensureTaskManager"),
-                "task read provider must not construct or reach TaskManager for reads");
         assertFalse(Pattern.compile("\\.\\s*(?:getTask|listTasksPaged|getTasksByStatus|getTasksByProject)\\s*\\(")
                         .matcher(engineReadProvider)
                         .find(),

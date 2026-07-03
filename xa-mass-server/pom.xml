@@ -92,11 +92,6 @@
         </dependency>
         <dependency>
             <groupId>com.xa.mass</groupId>
-            <artifactId>xa-mass-task-runtime-starter-sdk</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.xa.mass</groupId>
             <artifactId>xa-mass-worker-pack</artifactId>
             <version>${project.version}</version>
         </dependency>

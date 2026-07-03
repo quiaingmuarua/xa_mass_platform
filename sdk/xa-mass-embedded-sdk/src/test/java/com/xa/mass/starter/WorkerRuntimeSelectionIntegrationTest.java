@@ -4,13 +4,9 @@ import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskSharedConfig;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.base.runtime.dispatch.TaskDispatchBinding;
-import com.xa.mass.engine.model.TaskCommandOutcome;
+import com.xa.mass.engine.TaskCommandPort;
 import com.xa.mass.runtime.memory.InMemoryWorkerRegistry;
 import com.xa.mass.runtime.redis.RedisWorkerRegistry;
-import com.xa.mass.task.runtime.AppendBatchOutcome;
-import com.xa.mass.task.runtime.AppendBatchStatus;
-import com.xa.mass.task.runtime.AppendItemInput;
-import com.xa.mass.task.runtime.command.TaskRuntimeCommandPort;
 import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 import com.xa.mass.runtime.worker.WorkerRegistry;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
@@ -84,6 +80,7 @@ class WorkerRuntimeSelectionIntegrationTest {
                 }
             });
 
+            TaskCommandPort taskCommands = config.getTaskCommandPort();
             TaskShellCreateRequestDto dto = new TaskShellCreateRequestDto();
             dto.setUserId("user-wrx");
             dto.setProject("demoApp");
@@ -91,18 +88,14 @@ class WorkerRuntimeSelectionIntegrationTest {
             dto.setSharedConfig(Map.of(TaskSharedConfig.WORKER_GROUP_ID, "wrx-selection-workers"));
             dto.setExecutionSpec(taskExecutionSpec());
 
-            String taskId = UUID.randomUUID().toString();
-            TaskCommandOutcome create = config.createTaskShellDescriptor(dto, taskId);
+            var create = taskCommands.createTaskShell(dto);
             assertTrue(create.accepted());
-            TaskRuntimeCommandPort taskCommands = config.getTaskRuntimeCommandPort();
-            assertTrue(taskCommands.create(taskId).accepted());
+            String taskId = create.taskId();
+            assertNotNull(taskId);
             taskIdRef.set(taskId);
-            AppendBatchOutcome append = taskCommands.append(
-                    taskId,
-                    List.of(new AppendItemInput("wrx-message-1", Map.of("payload", "runtime-selection"))),
-                    10);
-            assertEquals(AppendBatchStatus.ALL_ACCEPTED, append.status());
-            assertTrue(taskCommands.approve(taskId).accepted());
+            taskCommands.appendTaskItems(taskId, List.of(Map.of("payload", "runtime-selection")));
+            assertTrue(taskCommands.sealTask(taskId).accepted());
+            assertTrue(taskCommands.approveTask(taskId).accepted());
 
             assertTrue(dispatchLatch.await(5, TimeUnit.SECONDS));
             List<TaskDispatchBinding> dispatchBindings = dispatchBindingsRef.get();

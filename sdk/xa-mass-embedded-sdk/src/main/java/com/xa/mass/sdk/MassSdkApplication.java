@@ -10,15 +10,11 @@ import com.xa.mass.worker.runtime.command.WorkerCommandLifecycleResult;
 import com.xa.mass.worker.runtime.command.WorkerCommandRecord;
 import com.xa.mass.worker.runtime.command.WorkerCommandRequest;
 import com.xa.mass.worker.runtime.command.WorkerCommandStatus;
+import com.xa.mass.engine.model.TaskAppendOutcome;
 import com.xa.mass.engine.model.TaskCommandOutcome;
 import com.xa.mass.engine.model.TaskDefinitionPatch;
 import com.xa.mass.engine.stage.TaskStageEvidenceResult;
 import com.xa.mass.engine.stage.TaskStageProjection;
-import com.xa.mass.task.runtime.AppendBatchOutcome;
-import com.xa.mass.task.runtime.AppendBatchStatus;
-import com.xa.mass.task.runtime.AppendItemInput;
-import com.xa.mass.task.runtime.command.TaskRuntimeCommandOutcome;
-import com.xa.mass.task.runtime.starter.TaskReadViewPort;
 import com.xa.mass.worker.runtime.resource.EventBinding;
 import com.xa.mass.worker.runtime.resource.WorkerGroupRecord;
 import com.xa.mass.worker.runtime.resource.AdapterNodeRecord;
@@ -59,7 +55,7 @@ import java.util.*;
  * runtime, but the stable embedding path stays on {@code com.xa.mass.sdk.*}
  * methods rather than exposing starter/runtime internals directly.
  */
-public final class MassSdkApplication implements MassRuntimeControl, TaskReadViewPort, TaskAdminOperations,
+public final class MassSdkApplication implements MassRuntimeControl, TaskReadOperations, TaskAdminOperations,
         WorkerInspectionOperations, WorkerQueryOperations, WorkerRegistryOperations,
         WorkerTopologyOperations,
         WorkerClientOperations, WorkerAdminOperations,
@@ -67,9 +63,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskReadVie
         ResourceOperations, CredentialAuthProjectionWriter, AuthProvider, PrincipalDirectory,
         ExternalWorkerOperations, AuthorizationPolicy,
         RuleOperations {
-
-    private static final int DEFAULT_APPEND_BATCH_LIMIT =
-            Integer.getInteger("xa.mass.task.runtime.maxAppendBatchItems", 10_000);
 
     private final MassApplication delegate;
     private final ProjectEventCatalogRegistry bootstrapProjectCatalogRegistry;
@@ -147,8 +140,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskReadVie
         return delegate;
     }
 
-    private TaskReadViewPort taskReads() {
-        TaskReadViewPort reads = delegate.taskReadView();
+    private TaskReadOperations taskReads() {
+        TaskReadOperations reads = delegate.taskReads();
         if (reads == null) {
             throw new IllegalStateException("Task read surface is unavailable for this SDK application");
         }
@@ -247,15 +240,13 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskReadVie
 
     public SdkTaskResumeResult resumeTaskDetailed(String taskId) {
         String normalizedTaskId = requireTaskId(taskId);
-        TaskCommandResult result = executeTaskCommand(
-                normalizedTaskId,
-                MassTaskCommandRequest.builder().command("RESUME").build());
+        TaskCommandOutcome result = delegate.resumeTask(normalizedTaskId);
         TaskDetailSnapshot task = taskReads().getTaskDetail(normalizedTaskId);
         return new SdkTaskResumeResult(
-                result.isAccepted(),
+                result.accepted(),
                 task != null ? task.getStatus() : null,
                 task != null ? task.getTerminalReason() : null,
-                result.isAccepted() && task != null
+                result.accepted() && task != null
                         && "TERMINAL".equalsIgnoreCase(task.getStatus())
         );
     }
@@ -265,7 +256,7 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskReadVie
     }
 
     public boolean cancelTask(String taskId) {
-        return executeTaskCommand(taskId, MassTaskCommandRequest.builder().command("CANCEL").build()).isAccepted();
+        return delegate.cancelTask(requireTaskId(taskId)).accepted();
     }
 
     public boolean terminateTask(String taskId, String reason) {
@@ -278,17 +269,12 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskReadVie
     @Override
     public TaskItemBatchAppendReceipt appendTaskItemsWithReceipt(String taskId, MassTaskItemBatchAppendRequest request) {
         Objects.requireNonNull(request, "request");
-        requireStartedEngine();
         String normalizedTaskId = requireTaskId(taskId);
         resolveWorkerGroupSelectorForAppend(normalizedTaskId, request.getEventCode());
         List<Map<String, Object>> converted = requireAppendItems(request.getItems(), request.getEventCode());
-        AppendBatchOutcome outcome = delegate.taskRuntimeCommands()
-                .append(normalizedTaskId, toAppendItems(converted), DEFAULT_APPEND_BATCH_LIMIT);
+        TaskAppendOutcome outcome = delegate.appendTaskItems(normalizedTaskId, converted);
         requireAcceptedAppend(outcome);
-        return new TaskItemBatchAppendReceipt(
-                outcome.taskId(),
-                outcome.acceptedMessageIds().size(),
-                outcome.acceptedMessageIds());
+        return new TaskItemBatchAppendReceipt(outcome.taskId(), outcome.acceptedCount(), outcome.messageIds());
     }
 
     @Override
@@ -349,33 +335,17 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskReadVie
                     null, "Task not found", "TASK_NOT_FOUND");
         }
 
-        if (isDirectTaskRuntimeCommand(normalizedCommand)) {
-            TaskRuntimeCommandOutcome outcome = executeTaskRuntimeCommand(normalizedTaskId, normalizedCommand, request);
-            TaskDetailSnapshot after = taskReads().getTaskDetail(normalizedTaskId);
-            TaskDetailSnapshot visibleTask = after != null ? after : before;
-            if (outcome.accepted()) {
-                return toTaskCommandResult(
-                        normalizedTaskId,
-                        normalizedCommand,
-                        true,
-                        true,
-                        visibleTask,
-                        projectedStatus(normalizedCommand, visibleTask),
-                        null,
-                        null);
-            }
-            return toTaskCommandResult(
-                    normalizedTaskId,
-                    normalizedCommand,
-                    false,
-                    true,
-                    visibleTask,
-                    visibleTask != null ? visibleTask.getStatus() : null,
-                    outcome.message() != null ? outcome.message() : "Task command is not allowed in the current state",
-                    outcome.reasonCode() != null ? outcome.reasonCode() : "COMMAND_NOT_ALLOWED");
-        }
-
         TaskCommandOutcome outcome = switch (normalizedCommand) {
+            case "APPROVE" -> delegate.approveTask(normalizedTaskId);
+            case "REJECT" -> delegate.rejectTask(normalizedTaskId);
+            case "BLOCK" -> executeBlockTask(normalizedTaskId, before);
+            case "PAUSE" -> delegate.pauseTask(normalizedTaskId);
+            case "RESUME" -> delegate.resumeTask(normalizedTaskId);
+            case "TERMINATE" -> delegate.terminateTask(
+                    normalizedTaskId,
+                    parseTaskTerminalReason(request.getReason(),
+                            com.xa.mass.base.enums.task.TaskTerminalReason.MANUAL_CANCELLED)
+            );
             case "SEAL" -> delegate.sealTask(normalizedTaskId);
             default -> throw new IllegalArgumentException("Unsupported task command: " + normalizedCommand);
         };
@@ -1621,42 +1591,15 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskReadVie
         return delegate.worker(workerId).orElse(null);
     }
 
-    private boolean isDirectTaskRuntimeCommand(String command) {
-        return "APPROVE".equals(command)
-                || "REJECT".equals(command)
-                || "BLOCK".equals(command)
-                || "PAUSE".equals(command)
-                || "RESUME".equals(command)
-                || "CANCEL".equals(command)
-                || "TERMINATE".equals(command);
-    }
-
-    private TaskRuntimeCommandOutcome executeTaskRuntimeCommand(String taskId,
-                                                               String command,
-                                                               MassTaskCommandRequest request) {
-        return switch (command) {
-            case "APPROVE" -> delegate.taskRuntimeCommands().approve(taskId);
-            case "REJECT" -> delegate.taskRuntimeCommands().reject(taskId);
-            case "BLOCK" -> delegate.taskRuntimeCommands().block(taskId);
-            case "PAUSE" -> delegate.taskRuntimeCommands().pause(taskId);
-            case "RESUME" -> delegate.taskRuntimeCommands().resume(taskId);
-            case "CANCEL" -> delegate.taskRuntimeCommands().cancel(taskId);
-            case "TERMINATE" -> delegate.taskRuntimeCommands().terminate(taskId,
-                    parseTaskTerminalReason(request.getReason(),
-                            com.xa.mass.base.enums.task.TaskTerminalReason.MANUAL_CANCELLED).name());
-            default -> throw new IllegalArgumentException("Unsupported task runtime command: " + command);
-        };
-    }
-
-    private String projectedStatus(String command, TaskDetailSnapshot task) {
-        return switch (command) {
-            case "APPROVE" -> "READY";
-            case "REJECT", "BLOCK" -> "BLOCKED";
-            case "PAUSE" -> "PAUSED";
-            case "RESUME" -> "READY";
-            case "CANCEL", "TERMINATE" -> "TERMINAL";
-            default -> task != null ? task.getStatus() : null;
-        };
+    private TaskCommandOutcome executeBlockTask(String taskId, TaskDetailSnapshot currentTask) {
+        TaskCommandOutcome blockOutcome = delegate.blockTask(taskId);
+        if (blockOutcome.accepted()) {
+            return blockOutcome;
+        }
+        if (currentTask != null && "NEW".equalsIgnoreCase(currentTask.getStatus())) {
+            return delegate.rejectTask(taskId);
+        }
+        return blockOutcome;
     }
 
     private void requireAcceptedCommand(TaskCommandOutcome outcome) {
@@ -1666,8 +1609,8 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskReadVie
         throw new IllegalStateException(commandFailureMessage(outcome));
     }
 
-    private void requireAcceptedAppend(AppendBatchOutcome outcome) {
-        if (outcome != null && outcome.status() == AppendBatchStatus.ALL_ACCEPTED) {
+    private void requireAcceptedAppend(TaskAppendOutcome outcome) {
+        if (outcome != null && outcome.accepted()) {
             return;
         }
         throw new IllegalStateException(appendFailureMessage(outcome));
@@ -1683,11 +1626,14 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskReadVie
         return outcome.reasonCode() != null ? outcome.reasonCode() : "Task command failed";
     }
 
-    private String appendFailureMessage(AppendBatchOutcome outcome) {
+    private String appendFailureMessage(TaskAppendOutcome outcome) {
         if (outcome == null) {
             return "Task append failed";
         }
-        return outcome.reason() == null || outcome.reason().isBlank() ? outcome.status().name() : outcome.reason();
+        if (outcome.message() != null) {
+            return outcome.message();
+        }
+        return outcome.reasonCode() != null ? outcome.reasonCode() : "Task append failed";
     }
 
     private TaskCommandResult toTaskCommandResult(String taskId,
@@ -1703,28 +1649,6 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskReadVie
                 accepted,
                 taskExists,
                 task != null ? task.getStatus() : null,
-                task != null ? task.getIntakeStatus() : null,
-                task != null ? task.getTerminalReason() : null,
-                task != null ? task.getHoldReason() : null,
-                failureReason,
-                reasonCode
-        );
-    }
-
-    private TaskCommandResult toTaskCommandResult(String taskId,
-                                                  String command,
-                                                  boolean accepted,
-                                                  boolean taskExists,
-                                                  TaskDetailSnapshot task,
-                                                  String status,
-                                                  String failureReason,
-                                                  String reasonCode) {
-        return new TaskCommandResult(
-                taskId,
-                command,
-                accepted,
-                taskExists,
-                status,
                 task != null ? task.getIntakeStatus() : null,
                 task != null ? task.getTerminalReason() : null,
                 task != null ? task.getHoldReason() : null,
@@ -1968,44 +1892,5 @@ public final class MassSdkApplication implements MassRuntimeControl, TaskReadVie
             }
         }
         return List.copyOf(normalized);
-    }
-
-    private List<AppendItemInput> toAppendItems(List<Map<String, Object>> items) {
-        if (items == null || items.isEmpty()) {
-            return List.of();
-        }
-        return items.stream()
-                .map(this::toAppendItem)
-                .toList();
-    }
-
-    private AppendItemInput toAppendItem(Map<String, Object> item) {
-        Map<String, Object> input = item == null ? Map.of() : Map.copyOf(item);
-        return new AppendItemInput(
-                UUID.randomUUID().toString(),
-                extractText(input, "eventCode"),
-                stripAppendControlFields(input),
-                extractText(input, "payloadRef"));
-    }
-
-    private static Map<String, Object> stripAppendControlFields(Map<String, Object> input) {
-        if (input == null || input.isEmpty()) {
-            return Map.of();
-        }
-        LinkedHashMap<String, Object> payload = new LinkedHashMap<>(input);
-        payload.remove("eventCode");
-        payload.remove("payloadRef");
-        return payload.isEmpty() ? Map.of() : Map.copyOf(payload);
-    }
-
-    private static String extractText(Map<String, Object> input, String key) {
-        if (input == null || input.isEmpty()) {
-            return null;
-        }
-        Object value = input.get(key);
-        if (!(value instanceof String text) || text.isBlank()) {
-            return null;
-        }
-        return text.trim();
     }
 }

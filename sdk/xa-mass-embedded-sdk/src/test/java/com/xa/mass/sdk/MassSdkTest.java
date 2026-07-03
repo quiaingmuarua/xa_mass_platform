@@ -25,6 +25,7 @@ import com.xa.mass.engine.TaskShellLifecycleMaintenancePort;
 import com.xa.mass.engine.TaskRuntimeRecoveryPort;
 import com.xa.mass.base.model.TaskExecutionSpec;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
+import com.xa.mass.engine.model.TaskAppendOutcome;
 import com.xa.mass.engine.model.TaskCommandOutcome;
 import com.xa.mass.engine.model.TaskDefinitionPatch;
 import com.xa.mass.worker.runtime.resource.EventBinding;
@@ -55,7 +56,6 @@ import com.xa.mass.sdk.event.PlatformEventCodes;
 import com.xa.mass.sdk.event.EventDefinition;
 import com.xa.mass.sdk.model.AdapterNodeRegistration;
 import com.xa.mass.sdk.model.MassTaskItemBatchAppendRequest;
-import com.xa.mass.sdk.model.MassTaskCommandRequest;
 import com.xa.mass.sdk.model.MassTaskShellCreateRequest;
 import com.xa.mass.sdk.model.MassTaskUpdateRequest;
 import com.xa.mass.sdk.model.NodeGroupBindingRegistration;
@@ -65,7 +65,6 @@ import com.xa.mass.sdk.model.TaskDetailSnapshot;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.TaskResultItemSnapshot;
 import com.xa.mass.sdk.model.TaskResultWindowSnapshot;
-import com.xa.mass.sdk.model.TaskCommandResult;
 import com.xa.mass.sdk.model.WorkerEventBinding;
 import com.xa.mass.sdk.model.WorkerGroupDeclaration;
 import com.xa.mass.sdk.model.WorkerRegistration;
@@ -77,14 +76,9 @@ import com.xa.mass.starter.MassApplication;
 import com.xa.mass.starter.MassEngine;
 import com.xa.mass.starter.builder.MassApplicationBuilder;
 import com.xa.mass.starter.config.EngineConfig;
-import com.xa.mass.task.runtime.starter.TaskReadViewPort;
 import com.xa.mass.starter.config.TransportConfig;
 import com.xa.mass.starter.config.TransportRuntimeRole;
-import com.xa.mass.task.runtime.AppendBatchOutcome;
-import com.xa.mass.task.runtime.AppendItemInput;
 import com.xa.mass.task.runtime.starter.TaskRuntimeBackendKind;
-import com.xa.mass.task.runtime.command.TaskRuntimeCommandOutcome;
-import com.xa.mass.task.runtime.command.TaskRuntimeCommandPort;
 import com.xa.mass.transport.runtime.lease.CurrentSessionDisconnectSink;
 import com.xa.mass.transport.polling.delivery.InMemoryPollingPendingDeliveryBuffer;
 import com.xa.mass.transport.polling.delivery.PollingPendingDeliveryBuffer;
@@ -876,11 +870,10 @@ class MassSdkTest {
         );
         Assertions.assertEquals(2, dto.getExecutionSpec().getBatchSize());
         Assertions.assertEquals(600, dto.getExecutionSpec().getMaxRuntimeSeconds());
-        List<AppendItemInput> appendItems = captureAppendItems(delegate, "task-001");
-        Assertions.assertEquals(List.of("demo.dispatch", "demo.dispatch"),
-                appendItems.stream().map(AppendItemInput::eventCode).toList());
-        Assertions.assertEquals(List.of(Map.of("target", "target-a"), Map.of("target", "target-b")),
-                appendItems.stream().map(AppendItemInput::payloadJson).toList());
+        verify(delegate).appendTaskItems("task-001", List.of(
+                Map.of("target", "target-a", "eventCode", "demo.dispatch"),
+                Map.of("target", "target-b", "eventCode", "demo.dispatch")
+        ));
     }
 
     @Test
@@ -927,10 +920,8 @@ class MassSdkTest {
 
         when(delegate.isEngineRunning()).thenReturn(true);
         stubTaskReads(delegate, task);
-        TaskRuntimeCommandPort taskRuntimeCommands = mock(TaskRuntimeCommandPort.class);
-        when(delegate.taskRuntimeCommands()).thenReturn(taskRuntimeCommands);
-        when(taskRuntimeCommands.resume("task-1")).thenReturn(
-                TaskRuntimeCommandOutcome.applied("task-1", "TASK_RESUMED", "Task resumed"));
+        when(delegate.resumeTask("task-1")).thenReturn(
+                TaskCommandOutcome.applied("task-1", "TASK_RESUMED_TO_READY", "Task resumed to READY"));
         when(delegate.patchTaskDefinition(any(), any())).thenReturn(
                 TaskCommandOutcome.applied("task-1", "TASK_DEFINITION_PATCHED", "Task definition patched"));
 
@@ -947,50 +938,13 @@ class MassSdkTest {
         assertEquals("READY", resumeResult.status());
         assertTrue(updated);
         assertEquals("before", task.getTaskName());
-        verify(taskRuntimeCommands).resume("task-1");
-        verify(delegate, never()).resumeTask("task-1");
+        verify(delegate).resumeTask("task-1");
         ArgumentCaptor<TaskDefinitionPatch> patchCaptor = ArgumentCaptor.forClass(TaskDefinitionPatch.class);
         verify(delegate).patchTaskDefinition(eq("task-1"), patchCaptor.capture());
         TaskDefinitionPatch patch = patchCaptor.getValue();
         assertEquals("testApp", patch.project());
         assertEquals("user-2", patch.userId());
         assertEquals(Map.of("routingCode", "us"), patch.sharedConfig());
-    }
-
-    @Test
-    void taskTerminalCommandsUseTaskRuntimeCommandSurface() {
-        MassApplication delegate = mock(MassApplication.class);
-        Task task = new Task();
-        task.setTid("task-1");
-        task.setProject("demoApp");
-        task.setStatus(TaskStatus.READY);
-        task.setUser(UserRef.of("user-1"));
-
-        when(delegate.isEngineRunning()).thenReturn(true);
-        stubTaskReads(delegate, task);
-        TaskRuntimeCommandPort taskRuntimeCommands = mock(TaskRuntimeCommandPort.class);
-        when(delegate.taskRuntimeCommands()).thenReturn(taskRuntimeCommands);
-        when(taskRuntimeCommands.cancel("task-1")).thenReturn(
-                TaskRuntimeCommandOutcome.applied("task-1", "TASK_CANCELLED", "Task cancelled"));
-        when(taskRuntimeCommands.terminate("task-1", "MAX_RUNTIME_REACHED")).thenReturn(
-                TaskRuntimeCommandOutcome.applied("task-1", "TASK_TERMINATED", "Task terminated"));
-
-        MassSdkApplication app = new MassSdkApplication(delegate);
-
-        assertTrue(app.cancelTask("task-1"));
-        TaskCommandResult terminateResult = app.executeTaskCommand(
-                "task-1",
-                MassTaskCommandRequest.builder()
-                        .command("TERMINATE")
-                        .reason("MAX_RUNTIME_REACHED")
-                        .build());
-
-        assertTrue(terminateResult.isAccepted());
-        assertEquals("TERMINAL", terminateResult.getStatus());
-        verify(taskRuntimeCommands).cancel("task-1");
-        verify(taskRuntimeCommands).terminate("task-1", "MAX_RUNTIME_REACHED");
-        verify(delegate, never()).cancelTask("task-1");
-        verify(delegate, never()).terminateTask(anyString(), any());
     }
 
     @Test
@@ -1080,7 +1034,7 @@ class MassSdkTest {
         config.setTaskShellStore(new InMemoryTaskShellStore());
 
         try {
-            assertNotNull(config.getTaskRuntimeCommandPort());
+            assertNotNull(config.getTaskCommandPort());
         } finally {
             config.shutdownTaskRuntime();
         }
@@ -1187,13 +1141,10 @@ class MassSdkTest {
                 ),
                 dto.getSharedConfig()
         );
-        List<AppendItemInput> appendItems = captureAppendItems(delegate, "task-stream-001");
-        Assertions.assertEquals(List.of("crawler.fetch-page", "crawler.fetch-page"),
-                appendItems.stream().map(AppendItemInput::eventCode).toList());
-        Assertions.assertEquals(List.of(
-                        Map.of("url", "https://example.test/page-1"),
-                        Map.of("url", "https://example.test/page-2")),
-                appendItems.stream().map(AppendItemInput::payloadJson).toList());
+        verify(delegate).appendTaskItems("task-stream-001", List.of(
+                Map.of("url", "https://example.test/page-1", "eventCode", "crawler.fetch-page"),
+                Map.of("url", "https://example.test/page-2", "eventCode", "crawler.fetch-page")
+        ));
     }
 
     @Test
@@ -1267,7 +1218,7 @@ class MassSdkTest {
                                 .items(List.of(Map.of("url", "https://example.test")))
                                 .build()));
         assertTrue(error.getMessage().contains("No worker group selector resolved"));
-        verify(delegate, never()).taskRuntimeCommands();
+        verify(delegate, never()).appendTaskItems(any(), any());
     }
 
     @Test
@@ -1301,9 +1252,10 @@ class MassSdkTest {
                 .build());
 
         assertEquals(2, added);
-        List<AppendItemInput> appendItems = captureAppendItems(delegate, "task-map-001");
-        assertEquals(List.of(Map.of("target", "hello"), Map.of("target", "world")),
-                appendItems.stream().map(AppendItemInput::payloadJson).toList());
+        verify(delegate).appendTaskItems("task-map-001", List.of(
+                Map.of("target", "hello"),
+                Map.of("target", "world")
+        ));
     }
 
     @Test
@@ -2374,16 +2326,13 @@ class MassSdkTest {
                 .items(List.of(Map.of("target", "https://example.test")))
                 .build());
 
-        List<AppendItemInput> mapAppend = captureAppendItems(delegate, "task-map-002");
-        assertEquals(List.of("demo.dispatch", "demo.dispatch"),
-                mapAppend.stream().map(AppendItemInput::eventCode).toList());
-        assertEquals(List.of(Map.of("target", "hello"), Map.of("target", "world")),
-                mapAppend.stream().map(AppendItemInput::payloadJson).toList());
-        List<AppendItemInput> jsonAppend = captureAppendItems(delegate, "task-json-002");
-        assertEquals(List.of("crawler.fetch-page"),
-                jsonAppend.stream().map(AppendItemInput::eventCode).toList());
-        assertEquals(List.of(Map.of("target", "https://example.test")),
-                jsonAppend.stream().map(AppendItemInput::payloadJson).toList());
+        verify(delegate).appendTaskItems("task-map-002", List.of(
+                Map.of("target", "hello", "eventCode", "demo.dispatch"),
+                Map.of("target", "world", "eventCode", "demo.dispatch")
+        ));
+        verify(delegate).appendTaskItems("task-json-002", List.of(
+                Map.of("target", "https://example.test", "eventCode", "crawler.fetch-page")
+        ));
     }
 
     @Test
@@ -2774,28 +2723,17 @@ class MassSdkTest {
     }
 
     private static void stubAppendReceipts(MassApplication delegate) {
-        TaskRuntimeCommandPort taskRuntimeCommands = mock(TaskRuntimeCommandPort.class);
-        when(delegate.taskRuntimeCommands()).thenReturn(taskRuntimeCommands);
-        when(taskRuntimeCommands.append(any(), any(), anyInt()))
+        when(delegate.appendTaskItems(any(), any()))
                 .thenAnswer(invocation -> {
                     String taskId = invocation.getArgument(0, String.class);
-                    List<AppendItemInput> items = invocation.getArgument(1, List.class);
-                    return AppendBatchOutcome.allAccepted(
-                            taskId,
-                            items.stream().map(AppendItemInput::messageId).toList());
+                    List<?> items = invocation.getArgument(1, List.class);
+                    return TaskAppendOutcome.accepted(taskId, items.size(), List.of());
                 });
     }
 
-    @SuppressWarnings("unchecked")
-    private static List<AppendItemInput> captureAppendItems(MassApplication delegate, String taskId) {
-        ArgumentCaptor<List> captor = ArgumentCaptor.forClass(List.class);
-        verify(delegate.taskRuntimeCommands()).append(eq(taskId), captor.capture(), anyInt());
-        return List.copyOf((List<AppendItemInput>) captor.getValue());
-    }
-
     private static TaskReadOperations stubTaskReads(MassApplication delegate, Task... tasks) {
-        TaskReadViewPort taskReads = mock(TaskReadViewPort.class);
-        when(delegate.taskReadView()).thenReturn(taskReads);
+        TaskReadOperations taskReads = mock(TaskReadOperations.class);
+        when(delegate.taskReads()).thenReturn(taskReads);
         if (tasks != null) {
             for (Task task : tasks) {
                 if (task == null || task.getTid() == null) {

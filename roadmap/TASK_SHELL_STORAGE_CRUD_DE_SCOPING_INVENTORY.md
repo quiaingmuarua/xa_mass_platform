@@ -58,8 +58,8 @@ must not be reassembled behind another CRUD interface.
 | Current fact in `Task` row | Current use | Target owner/source | Closure slice | Status |
 | --- | --- | --- | --- | --- |
 | task existence after create | command lookup, post-command readbacks, delete | read projection point lookup plus runtime owner existence where needed; no `getTask()` returning base `Task` | TSDC-4 | open |
-| descriptor metadata: name/project/tenant/user/contract/source/shared config | access checks, read snapshots, append selector input | read-view metadata projection/lenses and command input; command may read these as descriptor/input facts only | TSDC-4 | open |
-| execution spec/default retry/max runtime | append item construction, deadline candidate calculation, view output | metadata lens for append defaults; non-storage runtime/lifecycle evidence for max-runtime candidates; metadata lens must not own lifecycle truth | TSDC-4 | open |
+| descriptor metadata: name/project/tenant/user/contract/source/shared config | access checks, read snapshots, append selector input | read-view metadata projection/lenses and command input | TSDC-4 | open |
+| execution spec/default retry/max runtime | append item construction, deadline candidate calculation, view output | descriptor metadata lens for append defaults; non-storage runtime/lifecycle evidence for max-runtime candidates | TSDC-4 | open |
 | intake status open/sealed | append admission and state/read snapshots | task-runtime owner fact plus read projection publication | TSDC-4 | open |
 | lifecycle/status/terminal reason | command transition checks, dispatch eligibility, read state | task-runtime owner fact/score-band plus read projection publication | TSDC-4 | open |
 | counters: target/eligible/progress-like fields | read display and legacy command side effects | runtime work/result facts for real progress; read projection for display counters where still needed | TSDC-4 / read-index residue | open |

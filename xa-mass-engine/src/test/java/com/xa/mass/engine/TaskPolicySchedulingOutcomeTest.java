@@ -5,8 +5,6 @@ import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
 import com.xa.mass.base.model.Task;
 import com.xa.mass.task.runtime.ActiveLeaseRepairCandidate;
-import com.xa.mass.task.runtime.RuntimeEpoch;
-import com.xa.mass.task.runtime.TaskScoreV1;
 import com.xa.mass.task.runtime.TaskRuntimeProgressSnapshot;
 import org.junit.jupiter.api.Test;
 
@@ -86,16 +84,6 @@ class TaskPolicySchedulingOutcomeTest {
         assertEquals(0, drainedStats.activeCount());
 
         assertEquals(1, harness.taskManager.appendTaskItems(task.getTid(), List.of(harness.item("second"))).acceptedCount());
-        assertTrue(harness.taskRuntime
-                .discoverSchedulable("default", System.currentTimeMillis(), 10)
-                .candidates()
-                .isEmpty());
-
-        harness.taskRuntime.setTaskScore(
-                task.getTid(),
-                "default",
-                RuntimeEpoch.of(task.getTid(), 1L),
-                TaskScoreV1.dueAt(System.currentTimeMillis()));
         assertTrue(harness.assignListener.onTaskAssign(harness.taskManager.getTask(task.getTid())));
 
         List<ActiveLeaseRepairCandidate> activeLeases = harness.activeLeases(task.getTid());

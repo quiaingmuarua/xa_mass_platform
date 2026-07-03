@@ -6,10 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Arrays;
 import org.junit.jupiter.api.Test;
-
-import com.xa.mass.task.runtime.command.TaskRuntimeCommandPort;
 
 class TaskRuntimeContractShapeTest {
 
@@ -109,15 +106,5 @@ class TaskRuntimeContractShapeTest {
         assertThat(fact.source()).isEqualTo(ResultApplySource.WORKER_RESULT);
         assertThat(fact.observedAtMillis()).isZero();
         assertThat(readRequest.limit()).isEqualTo(50);
-    }
-
-    @Test
-    void pauseCommandIsEventOnlyAndDoesNotExposeCallerProvidedTime() {
-        var pauseMethods = Arrays.stream(TaskRuntimeCommandPort.class.getMethods())
-                .filter(method -> method.getName().equals("pause"))
-                .toList();
-
-        assertThat(pauseMethods).hasSize(1);
-        assertThat(pauseMethods.get(0).getParameterTypes()).containsExactly(String.class);
     }
 }

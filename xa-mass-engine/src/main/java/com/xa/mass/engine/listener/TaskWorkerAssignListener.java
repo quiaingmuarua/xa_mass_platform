@@ -112,14 +112,15 @@ public class TaskWorkerAssignListener {
      */
     public boolean onTaskAssign(Task task) {
         TaskStatus initialStatus = task.getStatus();
-        if (initialStatus != null && initialStatus.isFinal()) {
+        if (initialStatus != TaskStatus.READY && initialStatus != TaskStatus.RUNNING) {
             traceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
-                    "task status is terminal: " + initialStatus, null);
+                    "task status is not dispatchable: " + initialStatus, null);
             emitAssignmentSummary(task, initialStatus, 0, 0, 0, 0,
                     0, 0, 0, 0,
-                    "task status is terminal: " + initialStatus, "SKIPPED");
+                    "task status is not dispatchable: " + initialStatus, "SKIPPED");
             return false;
         }
+
         int readyWorkCount = assignmentRuntime.countDispatchReadyWork(task.getTid());
         if (readyWorkCount <= 0) {
             traceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
@@ -154,10 +155,7 @@ public class TaskWorkerAssignListener {
         log.info("[WorkerAssign] Worker-runtime selected {} workers for task {}",
                 selectedWorkers.size(), task.getTid());
 
-        AssignmentAllocationDecision allocationDecision = allocationPolicy.decide(
-                allocationPlan,
-                task.getStatus(),
-                selectedWorkers);
+        AssignmentAllocationDecision allocationDecision = allocationPolicy.decide(allocationPlan, task.getStatus(), selectedWorkers);
         if (allocationDecision.outcome() == AssignmentAllocationOutcome.BUDGET_EXHAUSTED) {
             traceEventLogger.dispatchSkipped(task, "ON_TASK_ASSIGN", "TaskWorkerAssignListener",
                     allocationDecision.reason(), allocationPlan.requiredStartWorkerCount());
@@ -231,12 +229,19 @@ public class TaskWorkerAssignListener {
                 "selected workers produced dispatchable work");
 
         task.setPeakAssignedWorkerCount(Math.max(task.getPeakAssignedWorkerCount(), (int) usedWorkerCount));
-        TaskStatus projectedStatus = projectDispatchedStatus(task, initialStatus);
-        if (projectedStatus != initialStatus) {
+        if (initialStatus == TaskStatus.READY && !task.transitionTo(TaskStatus.RUNNING)) {
+            log.warn("[WorkerAssign] Failed to transition task {} from READY to RUNNING", task.getTid());
+            releaseLocksIfExclusive(task, dispatchCandidates);
+            emitAssignmentSummary(task, initialStatus, readyWorkCount, allocationPlan,
+                    selectedWorkers.size(), dispatchCandidates.size(), dispatchedBindings.size(), (int) usedWorkerCount,
+                    "task failed to transition from READY to RUNNING after dispatch", "FAILED");
+            return false;
+        }
+        if (initialStatus == TaskStatus.READY) {
             traceEventLogger.taskStatusTransition(
                     task.getTid(),
                     initialStatus,
-                    projectedStatus,
+                    task.getStatus(),
                     "ASSIGNMENT_SUCCEEDED",
                     "TaskWorkerAssignListener",
                     "selected workers dispatched"
@@ -248,17 +253,6 @@ public class TaskWorkerAssignListener {
         assignmentRuntime.persistAssignmentState(task);
         assignmentEventSink.publishTaskAssigned(task);
         return true;
-    }
-
-    private TaskStatus projectDispatchedStatus(Task task, TaskStatus initialStatus) {
-        if (initialStatus == TaskStatus.NEW && !task.transitionTo(TaskStatus.READY)) {
-            log.warn("[WorkerAssign] Failed to project task {} from NEW to READY after dispatch", task.getTid());
-        }
-        if ((initialStatus == TaskStatus.READY || initialStatus == TaskStatus.NEW)
-                && !task.transitionTo(TaskStatus.RUNNING)) {
-            log.warn("[WorkerAssign] Failed to project task {} to RUNNING after dispatch", task.getTid());
-        }
-        return task.getStatus();
     }
 
     private WorkerSelectionRequest selectionRequest(Task task, AssignmentAllocationPlan allocationPlan) {

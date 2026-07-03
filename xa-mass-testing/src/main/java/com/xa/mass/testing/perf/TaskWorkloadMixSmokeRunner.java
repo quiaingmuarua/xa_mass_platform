@@ -17,6 +17,7 @@ import com.xa.mass.base.runtime.result.TaskResultIngestFacade;
 import com.xa.mass.base.model.TaskShellCreateRequestDto;
 import com.xa.mass.engine.TaskAssignmentEventSink;
 import com.xa.mass.engine.TaskAssignmentRuntimePort;
+import com.xa.mass.engine.TaskCommandPort;
 import com.xa.mass.engine.model.TaskCommandOutcome;
 import com.xa.mass.engine.TaskEventListenerRegistrar;
 import com.xa.mass.engine.TaskDispatchWakeupPort;
@@ -30,10 +31,6 @@ import com.xa.mass.engine.service.AssignmentRecordService;
 import com.xa.mass.storage.memory.InMemoryTaskShellStore;
 import com.xa.mass.storage.memory.InMemoryWorkerDeclarationStore;
 import com.xa.mass.engine.watchdog.RuntimeReadyDispatchPump;
-import com.xa.mass.task.runtime.AppendBatchOutcome;
-import com.xa.mass.task.runtime.AppendBatchStatus;
-import com.xa.mass.task.runtime.AppendItemInput;
-import com.xa.mass.task.runtime.command.TaskRuntimeCommandPort;
 import com.xa.mass.worker.runtime.admission.WorkerAdmissionRuntime;
 import com.xa.mass.worker.runtime.resource.WorkerDeclarationRecord;
 import com.xa.mass.worker.runtime.resource.WorkerResourceDeclarationRuntime;
@@ -98,6 +95,7 @@ public final class TaskWorkloadMixSmokeRunner {
         private SmokeReport run() throws Exception {
             InMemoryTaskShellStore taskStorage = new InMemoryTaskShellStore();
             EngineConfig engineConfig = buildEngineConfig(taskStorage);
+            TaskCommandPort taskCommands = engineConfig.getTaskCommandPort();
             TaskEventListenerRegistrar taskEvents = engineConfig.getTaskEventListeners();
             TaskAssignmentEventSink taskAssignmentEvents = engineConfig.getTaskAssignmentEvents();
             TaskResultIngestFacade taskResultIngestFacade = engineConfig.getTaskResultIngestFacade();
@@ -178,11 +176,10 @@ public final class TaskWorkloadMixSmokeRunner {
                 });
                 PerfTaskRuntimeLoopSupport.start(engineConfig, runtimeReadyDispatchPump);
 
-                Task bulkTask = materializeTask(engineConfig, taskStorage, buildBulkRequest(config));
+                Task bulkTask = materializeTask(taskCommands, taskStorage, buildBulkRequest(config));
                 workloadByTaskId.put(bulkTask.getTid(), bulkTask.getExecutionSpec().getWorkloadClass());
                 timing.onCreated(bulkTask);
-                require(engineConfig.getTaskRuntimeCommandPort().approve(bulkTask.getTid()).accepted(),
-                        "bulk task should approve");
+                require(taskCommands.approveTask(bulkTask.getTid()).accepted(), "bulk task should approve");
                 timing.onApproved(bulkTask);
                 require(assignmentRuntimePort.countDispatchReadyWork(bulkTask.getTid()) > 0,
                         "bulk task should have runtime-ready work after approval");
@@ -194,11 +191,10 @@ public final class TaskWorkloadMixSmokeRunner {
 
                 Thread.sleep(config.interactiveSubmitDelayMillis());
 
-                Task interactiveTask = materializeTask(engineConfig, taskStorage, buildInteractiveRequest(config));
+                Task interactiveTask = materializeTask(taskCommands, taskStorage, buildInteractiveRequest(config));
                 workloadByTaskId.put(interactiveTask.getTid(), interactiveTask.getExecutionSpec().getWorkloadClass());
                 timing.onCreated(interactiveTask);
-                require(engineConfig.getTaskRuntimeCommandPort().approve(interactiveTask.getTid()).accepted(),
-                        "interactive task should approve");
+                require(taskCommands.approveTask(interactiveTask.getTid()).accepted(), "interactive task should approve");
                 timing.onApproved(interactiveTask);
                 require(assignmentRuntimePort.countDispatchReadyWork(interactiveTask.getTid()) > 0,
                         "interactive task should have runtime-ready work after approval");
@@ -299,33 +295,21 @@ public final class TaskWorkloadMixSmokeRunner {
             return new TaskCreatePlan(shell, buildInputs("interactive", config.interactiveMessages()), false);
         }
 
-        private static Task materializeTask(EngineConfig engineConfig,
+        private static Task materializeTask(TaskCommandPort taskCommands,
                                             InMemoryTaskShellStore taskStorage,
                                             TaskCreatePlan request) {
-            String taskId = UUID.randomUUID().toString();
-            TaskCommandOutcome create = engineConfig.createTaskShellDescriptor(request.shell(), taskId);
+            TaskCommandOutcome create = taskCommands.createTaskShell(request.shell());
             require(create.accepted(), "task shell should be created");
-            Task task = taskStorage.getTask(taskId).orElse(null);
+            Task task = taskStorage.getTask(create.taskId()).orElse(null);
             require(task != null, "created task should be readable");
-            TaskRuntimeCommandPort taskCommands = engineConfig.getTaskRuntimeCommandPort();
-            require(taskCommands.create(taskId).accepted(), "task runtime meta should be created");
             if (!request.inputs().isEmpty()) {
-                AppendBatchOutcome append = taskCommands.append(
-                        task.getTid(),
-                        toAppendItems(task.getTid(), request.inputs()),
-                        request.inputs().size());
-                require(append.status() == AppendBatchStatus.ALL_ACCEPTED,
+                require(taskCommands.appendTaskItems(task.getTid(), request.inputs()).accepted(),
                         "task items should append");
             }
-            return task;
-        }
-
-        private static List<AppendItemInput> toAppendItems(String taskId, List<Map<String, Object>> inputs) {
-            List<AppendItemInput> appendItems = new ArrayList<>(inputs.size());
-            for (int i = 0; i < inputs.size(); i++) {
-                appendItems.add(new AppendItemInput(taskId + "-message-" + i, inputs.get(i)));
+            if (!request.keepIntakeOpen()) {
+                require(taskCommands.sealTask(task.getTid()).accepted(), "task should seal after ingest");
             }
-            return appendItems;
+            return task;
         }
 
         private record TaskCreatePlan(TaskShellCreateRequestDto shell,

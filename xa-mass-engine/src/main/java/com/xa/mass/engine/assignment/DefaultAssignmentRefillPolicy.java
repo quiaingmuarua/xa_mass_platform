@@ -5,6 +5,10 @@ import com.xa.mass.base.model.Task;
 
 /**
  * Default-compatible refill policy.
+ *
+ * <p>The policy preserves the existing behavior: a RUNNING task with
+ * runtime-ready work should re-enter assignment after a worker slot is
+ * released.</p>
  */
 public final class DefaultAssignmentRefillPolicy implements AssignmentRefillPolicy {
 
@@ -14,13 +18,12 @@ public final class DefaultAssignmentRefillPolicy implements AssignmentRefillPoli
         if (task == null) {
             return AssignmentRefillDecision.skip("task is absent");
         }
-        TaskStatus status = task.getStatus();
-        if (status != null && status.isFinal()) {
-            return AssignmentRefillDecision.skip("task is terminal: " + status);
+        if (task.getStatus() != TaskStatus.RUNNING) {
+            return AssignmentRefillDecision.skip("task status is not running: " + task.getStatus());
         }
         if (!request.hasDispatchReadyWork()) {
             return AssignmentRefillDecision.skip("no runtime-ready work for refill");
         }
-        return AssignmentRefillDecision.requestDispatch("task has runtime-ready work after resource release");
+        return AssignmentRefillDecision.requestDispatch("running task has runtime-ready work after resource release");
     }
 }

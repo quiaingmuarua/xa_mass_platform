@@ -17,6 +17,7 @@ import com.xa.mass.engine.stage.TaskStageEvidenceService;
 import com.xa.mass.engine.stage.TaskStageProjection;
 import com.xa.mass.kernel.spi.rule.RuleDefinition;
 import com.xa.mass.kernel.spi.rule.RuleType;
+import com.xa.mass.sdk.TaskReadOperations;
 import com.xa.mass.starter.config.EngineConfig;
 import com.xa.mass.storage.api.RuleStorage;
 import com.xa.mass.task.runtime.starter.TaskRuntimeLoop;
@@ -200,6 +201,11 @@ public class MassEngine {
 
     public TaskResultIngestFacade taskResultIngestFacade() {
         return config.getTaskResultIngestFacade();
+    }
+
+    TaskReadOperations taskReads() {
+        ensureRunning();
+        return config.getTaskReadOperations();
     }
 
     public void blockWorkerDispatch(String deliveryBucketId,

@@ -3,6 +3,7 @@ package com.xa.mass.starter.config;
 import com.google.gson.Gson;
 import com.xa.mass.base.enums.task.TaskStatus;
 import com.xa.mass.base.enums.task.TaskTerminalReason;
+import com.xa.mass.sdk.TaskReadOperations;
 import com.xa.mass.sdk.model.TaskAccessSnapshot;
 import com.xa.mass.sdk.model.TaskActiveLeaseSnapshot;
 import com.xa.mass.sdk.model.TaskDetailSnapshot;
@@ -16,8 +17,6 @@ import com.xa.mass.sdk.model.TaskStateValidationSnapshot;
 import com.xa.mass.sdk.model.TaskSummarySnapshot;
 import com.xa.mass.sdk.model.TaskWorkFinalSnapshot;
 import com.xa.mass.sdk.model.TaskWorkStatsSnapshot;
-import com.xa.mass.task.runtime.TaskScoreV1;
-import com.xa.mass.task.runtime.starter.TaskReadViewPort;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -31,7 +30,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.zip.GZIPOutputStream;
 
-final class EngineTaskReadOperations implements TaskReadViewPort {
+final class EngineTaskReadOperations implements TaskReadOperations {
 
     private static final int ARCHIVE_STREAM_WINDOW =
             Integer.getInteger("xa.mass.sdk.resultArchiveStreamWindow", 1000);
@@ -66,8 +65,7 @@ final class EngineTaskReadOperations implements TaskReadViewPort {
     @Override
     public List<TaskSummarySnapshot> getTaskSummariesByStatus(String status) {
         TaskStatus parsedStatus = parseTaskStatus(status);
-        return config.taskReadViewProjection().list(0, STATUS_SCAN_WINDOW).stream()
-                .filter(task -> parsedStatus == null || projectedStatus(task) == parsedStatus)
+        return config.taskReadViewProjection().listByStatus(parsedStatus, STATUS_SCAN_WINDOW).stream()
                 .map(this::toTaskSummarySnapshot)
                 .toList();
     }
@@ -81,7 +79,7 @@ final class EngineTaskReadOperations implements TaskReadViewPort {
     public TaskStateSnapshot getTaskState(String taskId) {
         return config.taskReadViewProjection()
                 .get(requireTaskId(taskId))
-                .map(this::toTaskStateSnapshot)
+                .map(EngineTaskReadOperations::toTaskStateSnapshot)
                 .orElse(null);
     }
 
@@ -226,7 +224,7 @@ final class EngineTaskReadOperations implements TaskReadViewPort {
                 task.taskName(),
                 enumName(task.contract()),
                 task.project(),
-                enumName(projectedStatus(task)),
+                enumName(task.status()),
                 totalCount,
                 eligibleCount,
                 successCount,
@@ -256,7 +254,7 @@ final class EngineTaskReadOperations implements TaskReadViewPort {
                 task.project(),
                 task.userId(),
                 enumName(task.contract()),
-                enumName(projectedStatus(task)),
+                enumName(task.status()),
                 enumName(task.terminalReason()),
                 toTaskExecutionOptions(task.executionSpec()),
                 boundedInt(Math.max(task.taskSuccessNumber(), stats.successCount())),
@@ -265,37 +263,13 @@ final class EngineTaskReadOperations implements TaskReadViewPort {
         );
     }
 
-    private TaskStateSnapshot toTaskStateSnapshot(TaskReadViewProjectionStore.TaskReadViewRecord task) {
+    private static TaskStateSnapshot toTaskStateSnapshot(TaskReadViewProjectionStore.TaskReadViewRecord task) {
         return new TaskStateSnapshot(
                 task.taskId(),
-                enumName(projectedStatus(task)),
+                enumName(task.status()),
                 enumName(task.terminalReason()),
                 enumName(task.intakeStatus())
         );
-    }
-
-    private TaskStatus projectedStatus(TaskReadViewProjectionStore.TaskReadViewRecord task) {
-        if (task == null || task.status() == null || task.status().isFinal()) {
-            return task != null ? task.status() : null;
-        }
-        Optional<TaskScoreV1> runtimeScore = config.taskRuntimeScore(task.taskId(), "default");
-        if (runtimeScore.isEmpty()) {
-            return task.status();
-        }
-        TaskScoreV1 score = runtimeScore.get();
-        if (score.isTerminalBand()) {
-            return TaskStatus.TERMINAL;
-        }
-        if (score.isPositiveNonSchedulableBand() && !score.isMaintenanceBand()) {
-            if (score.score() == TaskScoreV1.NON_SCHED_CREATED) {
-                return task.status();
-            }
-            return TaskStatus.BLOCKED;
-        }
-        if (score.isSchedulableBand()) {
-            return score.score() > System.currentTimeMillis() ? TaskStatus.PAUSED : TaskStatus.READY;
-        }
-        return task.status();
     }
 
     private static TaskAccessSnapshot toTaskAccessSnapshot(TaskReadViewProjectionStore.TaskReadViewRecord task) {

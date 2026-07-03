@@ -59,20 +59,17 @@ Engine hot paths must treat these runtime semantics as authoritative:
 
 ## Engine Role
 
-Engine remains the orchestration owner around task-runtime truth:
+Engine remains the shell and orchestration owner:
 
-- task descriptor metadata, intake-window residue, and projection support;
+- task shell lifecycle, intake, control commands, and terminal aggregate policy;
 - scheduling policy resolution and worker selection orchestration;
 - dispatch binding and trace emission;
-- consumption of task-runtime outcomes into task progress, terminal projection,
-  resource release, and trace.
+- consumption of task-runtime outcomes into task progress and terminal
+  convergence.
 
 `TaskRuntimeServingLane` is the engine-side serving boundary to the
 task-runtime ports. `TaskManager` must not reintroduce old direct
 `TaskWorkRuntime` / `TaskResultRuntime` stores or a parallel result helper path.
-Lifecycle command truth for approve/reject/block/pause/resume/cancel/terminate
-belongs to the task-runtime command surface and score-band state machine, not
-to `TaskManager` or `TaskLifecycleService`.
 
 ## Storage And Review Non-Truth
 

@@ -28,9 +28,8 @@ import java.util.List;
  *       {@link TaskTerminalReason#MAX_RUNTIME_REACHED}.</li>
  * </ol>
  *
- * <p>The task-runtime owns lease repair/finality. Engine hosts this loop as
- * orchestration and consumes runtime outcomes for resource release, trace, and
- * projection; it must not derive lifecycle truth from shell status here.
+ * <p>The engine owns the lease-repair decision, but the starter owns loop
+ * scheduling and thread lifecycle through {@link #runOnce()}.
  */
 public class LeaseExpireWatchdog implements EngineRuntimeLoop {
 

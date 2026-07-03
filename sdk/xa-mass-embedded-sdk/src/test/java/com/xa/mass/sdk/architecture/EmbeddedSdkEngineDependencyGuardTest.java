@@ -65,38 +65,4 @@ class EmbeddedSdkEngineDependencyGuardTest {
                 "embedded-sdk main sources must not reach engine through getEngine()/getConfig():\n"
                         + String.join("\n", violations));
     }
-
-    @Test
-    void simpleTaskLifecycleCommandsDoNotRouteThroughEngineCommandPath() {
-        String sdk = EngineCallerSurfaceGuardSupport.read(
-                "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/sdk/MassSdkApplication.java");
-        String starter = EngineCallerSurfaceGuardSupport.read(
-                "sdk/xa-mass-embedded-sdk/src/main/java/com/xa/mass/starter/MassApplication.java");
-        List<String> sdkForbidden = List.of(
-                "approveTask(",
-                "rejectTask(",
-                "blockTask(",
-                "pauseTask(",
-                "resumeTask(",
-                "appendTaskItems(",
-                "cancelTask(",
-                "terminateTask(");
-        List<String> starterForbidden = new ArrayList<>(sdkForbidden);
-        starterForbidden.add("createTaskShell(");
-        List<String> violations = new ArrayList<>();
-        for (String token : sdkForbidden) {
-            if (sdk.contains("delegate." + token)) {
-                violations.add("MassSdkApplication contains delegate." + token);
-            }
-        }
-        for (String token : starterForbidden) {
-            if (starter.contains("requireStartedEngine()." + token)) {
-                violations.add("MassApplication contains requireStartedEngine()." + token);
-            }
-        }
-
-        assertTrue(violations.isEmpty(),
-                "cutover lifecycle commands must use task-runtime command handle, not engine command path:\n"
-                        + String.join("\n", violations));
-    }
 }

@@ -542,56 +542,7 @@ class EngineSchedulingCoreArchitectureGuardTest {
 
         assertTrue(violations.isEmpty(),
                 "Claim, retry, result finality, and backpressure consumers must use resolved task "
-                + "policy fields instead of raw preset/profile semantics:\n"
-                + String.join("\n", violations));
-    }
-
-    @Test
-    void taskAssignWorkerDoesNotGateAssignmentQueueByReadyRunningShellStatus() throws IOException {
-        Path assignWorkerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/listener/TaskAssignWorker.java");
-        String source = readSource(assignWorkerPath);
-
-        List<String> violations = new ArrayList<>();
-        Pattern readyRunningGate = Pattern.compile(String.join("|", List.of(
-                "initialStatus\\s*==\\s*TaskStatus\\.READY\\s*\\|\\|\\s*initialStatus\\s*==\\s*TaskStatus\\.RUNNING",
-                "status\\s*!=\\s*TaskStatus\\.READY\\s*&&\\s*status\\s*!=\\s*TaskStatus\\.RUNNING",
-                "currentStatus\\s*!=\\s*TaskStatus\\.READY\\s*&&\\s*currentStatus\\s*!=\\s*TaskStatus\\.RUNNING",
-                "READY\\s+or\\s+RUNNING",
-                "SKIPPED_NON_DISPATCHABLE"
-        )));
-        if (readyRunningGate.matcher(source).find()) {
-            violations.add(assignWorkerPath + " gates assignment queue admission by READY/RUNNING shell status");
-        }
-        if (!source.contains("isNonTerminalProjection")) {
-            violations.add(assignWorkerPath + " must use terminal-only shell projection filtering");
-        }
-
-        assertTrue(violations.isEmpty(),
-                "TaskAssignWorker consumes already-selected assignment signals. Runtime score candidates own "
-                        + "dispatch eligibility, so the assignment queue must not reintroduce READY/RUNNING "
-                        + "shell-status truth:\n" + String.join("\n", violations));
-    }
-
-    @Test
-    void taskWorkerAssignListenerDoesNotMakeShellRunningProjectionDispatchTruth() throws IOException {
-        Path listenerPath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/listener/TaskWorkerAssignListener.java");
-        String source = readSource(listenerPath);
-
-        List<String> violations = new ArrayList<>();
-        Pattern transitionFailureGate = Pattern.compile(String.join("|", List.of(
-                "task failed to transition",
-                "task failed to project.*FAILED"
-        )));
-        if (transitionFailureGate.matcher(source).find()) {
-            violations.add(listenerPath + " lets shell status projection failure cancel already-bound dispatch");
-        }
-        if (!source.contains("projectDispatchedStatus")) {
-            violations.add(listenerPath + " must keep shell RUNNING updates as projection-only");
-        }
-
-        assertTrue(violations.isEmpty(),
-                "Worker assignment success is owned by worker selection plus dispatch binding. Shell RUNNING "
-                        + "status is read projection residue and must not decide dispatch truth:\n"
+                        + "policy fields instead of raw preset/profile semantics:\n"
                         + String.join("\n", violations));
     }
 
@@ -2349,63 +2300,6 @@ class EngineSchedulingCoreArchitectureGuardTest {
                 "Group-selector-first scheduling must not reintroduce event/project/all-worker "
                         + "candidate-source fallbacks. Engine should produce a worker selection request; "
                         + "worker-runtime score-band selection owns acquire:\n"
-                        + String.join("\n", violations));
-    }
-
-    @Test
-    void assignmentAllocationAndRefillDoNotUseShellReadyRunningAsDispatchTruth() throws IOException {
-        Path allocationPolicyPath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/assignment/DefaultAssignmentAllocationPolicy.java");
-        Path refillPolicyPath = MAIN_SOURCE_ROOT.resolve(
-                "com/xa/mass/engine/assignment/DefaultAssignmentRefillPolicy.java");
-
-        String allocationPolicy = Files.readString(allocationPolicyPath, StandardCharsets.UTF_8);
-        String refillPolicy = Files.readString(refillPolicyPath, StandardCharsets.UTF_8);
-
-        List<String> violations = new ArrayList<>();
-        for (String forbidden : List.of("TaskStatus.READY", "TaskStatus.RUNNING")) {
-            if (allocationPolicy.contains(forbidden)) {
-                violations.add(allocationPolicyPath + " uses shell " + forbidden + " as allocation truth");
-            }
-            if (refillPolicy.contains(forbidden)) {
-                violations.add(refillPolicyPath + " uses shell " + forbidden + " as refill truth");
-            }
-        }
-
-        assertTrue(violations.isEmpty(),
-                "Assignment allocation/refill must use runtime-ready work and active-worker facts; "
-                        + "READY/RUNNING shell status is projection only:\n"
-                        + String.join("\n", violations));
-    }
-
-    @Test
-    void dispatchWakeupDoesNotRewriteSchedulerEligibilityFromShellStatus() throws IOException {
-        Path servingLanePath = MAIN_SOURCE_ROOT.resolve("com/xa/mass/engine/TaskRuntimeServingLane.java");
-        String servingLane = Files.readString(servingLanePath, StandardCharsets.UTF_8);
-        String appendIngress = sourceMethod(servingLane, "void appendRuntimeIngressItems");
-        String requestDispatch = sourceMethod(servingLane, "public void requestTaskDispatch");
-        String retryRescore = sourceMethod(servingLane, "private void rescoreTaskForRetry");
-
-        List<String> violations = new ArrayList<>();
-        if (appendIngress.contains("updateSchedulerEligibility(")
-                || appendIngress.contains("scorePort.")
-                || appendIngress.contains(".isActive()")) {
-            violations.add(servingLanePath + " derives task score from append ingress");
-        }
-        if (requestDispatch.contains("updateSchedulerEligibility(")) {
-            violations.add(servingLanePath + " rewrites task score inside requestTaskDispatch");
-        }
-        if (requestDispatch.contains(".isActive()")) {
-            violations.add(servingLanePath + " uses shell active status as dispatch wakeup truth");
-        }
-        if (retryRescore.contains("updateSchedulerEligibility(") || retryRescore.contains("loadTask(")) {
-            violations.add(servingLanePath + " derives retry score from shell task state");
-        }
-
-        assertTrue(violations.isEmpty(),
-                "Append ingress and dispatch wakeup are not lifecycle/rescore owners. Append must only write "
-                        + "accepted backlog; dispatch wakeup must publish only for non-terminal tasks; "
-                        + "retry rescore must use result-owned retryAt rather than shell state:\n"
                         + String.join("\n", violations));
     }
 

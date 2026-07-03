@@ -46,7 +46,7 @@ public final class DefaultAssignmentAllocationPolicy implements AssignmentAlloca
         int desiredDispatchWorkerCount = budgetDecision.workerBudget() == null
                 ? rawDesiredDispatchWorkerCount
                 : Math.min(rawDesiredDispatchWorkerCount, budgetDecision.availableWorkerCount());
-        int requiredStartWorkerCount = request.currentTaskWorkerCount() <= 0
+        int requiredStartWorkerCount = request.initialStatus() == TaskStatus.READY
                 ? Math.max(taskPolicy.minRequiredWorkerCount(), 1)
                 : 1;
         int baseline = Math.max(requiredStartWorkerCount, desiredDispatchWorkerCount);
@@ -95,18 +95,18 @@ public final class DefaultAssignmentAllocationPolicy implements AssignmentAlloca
                     "no selected workers"
             );
         }
-        if (plan.currentTaskWorkerCount() <= 0 && selected.size() < plan.requiredStartWorkerCount()) {
+        if (plan.initialStatus() == TaskStatus.READY && selected.size() < plan.requiredStartWorkerCount()) {
             return new AssignmentAllocationDecision(
                     AssignmentAllocationOutcome.BELOW_MIN_START_GATE,
                     List.of(),
                     "selected workers below minimum start gate"
             );
         }
-        if (currentStatus != null && currentStatus.isFinal()) {
+        if (currentStatus != plan.initialStatus()) {
             return new AssignmentAllocationDecision(
                     AssignmentAllocationOutcome.TASK_STATUS_CHANGED,
                     List.of(),
-                    "task became terminal during worker selection: " + currentStatus
+                    "task status changed during worker selection from " + plan.initialStatus() + " to " + currentStatus
             );
         }
 

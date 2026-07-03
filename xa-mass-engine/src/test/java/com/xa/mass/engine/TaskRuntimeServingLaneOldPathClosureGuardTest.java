@@ -499,13 +499,6 @@ class TaskRuntimeServingLaneOldPathClosureGuardTest {
         assertTrue(portSource.contains("List<ActiveLeaseRepairCandidate> getActiveLeaseCandidates")
                         && portSource.contains("List<ActiveLeaseRepairCandidate> pollExpiredLeaseCandidates"),
                 "TaskLeaseMaintenancePort must expose task-runtime repair candidate methods for active lease repair");
-
-        String watchdogSource = Files.readString(leaseWatchdog, StandardCharsets.UTF_8);
-        assertTrue(!watchdogSource.contains("engine owns the lease-repair decision")
-                        && !watchdogSource.contains("TaskResultService")
-                        && !watchdogSource.contains("TaskResultRuntime"),
-                "LeaseExpireWatchdog hosts the maintenance tick only; lease repair/finality must stay on "
-                        + "task-runtime maintenance/result ports");
     }
 
     @Test

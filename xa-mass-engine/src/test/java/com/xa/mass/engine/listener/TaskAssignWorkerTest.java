@@ -205,7 +205,7 @@ public class TaskAssignWorkerTest {
     }
 
     @Test
-    void nonTerminalTaskIsProcessedWithoutReadyRunningShellGate() throws InterruptedException {
+    void nonReadyTaskIsSkippedAndNotCounted() throws InterruptedException {
         CountDownLatch processedLatch = new CountDownLatch(2);
         worker.addAssignmentQueueListener(new TaskAssignmentQueueListener() {
             @Override public void onTaskAssignmentProcessed(Task t) { processedLatch.countDown(); }
@@ -220,31 +220,16 @@ public class TaskAssignWorkerTest {
         assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(readyTask("processed")));
 
         assertTrue(processedLatch.await(3, TimeUnit.SECONDS));
-        assertEquals(2, assigned.size());
-        assertEquals("skipped", assigned.get(0).getTid());
-        assertEquals("processed", assigned.get(1).getTid());
+        assertEquals(1, assigned.size());
+        assertEquals("processed", assigned.get(0).getTid());
     }
 
     @Test
-    void terminalTaskIsSkippedByAssignmentQueue() throws InterruptedException {
-        CountDownLatch processedLatch = new CountDownLatch(1);
-        worker.addAssignmentQueueListener(new TaskAssignmentQueueListener() {
-            @Override public void onTaskAssignmentProcessed(Task t) { processedLatch.countDown(); }
-            @Override public void onAssignmentQueueDrained() {}
-        });
-
-        assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(terminalTask("terminal")));
-
-        assertTrue(processedLatch.await(3, TimeUnit.SECONDS));
-        assertTrue(assigned.isEmpty());
-    }
-
-    @Test
-    void duplicateSubmitForSameNonTerminalTaskDefersRequeueWhileAlreadyTracked() throws InterruptedException {
+    void duplicateSubmitForSameTaskIsSkippedWhileAlreadyTracked() throws InterruptedException {
         worker.stop();
 
         AtomicInteger attempts = new AtomicInteger();
-        CountDownLatch assignedLatch = new CountDownLatch(2);
+        CountDownLatch assignedLatch = new CountDownLatch(1);
         CountDownLatch firstAttemptEntered = new CountDownLatch(1);
         CountDownLatch releaseFirstAttempt = new CountDownLatch(1);
         TaskWorkerAssignListener slowListener = mock(TaskWorkerAssignListener.class);
@@ -265,15 +250,15 @@ public class TaskAssignWorkerTest {
         try (TraceEventLogCapture capture = new TraceEventLogCapture()) {
             assertEquals(TaskAssignWorker.SubmitResult.ACCEPTED, worker.submitDetailed(task));
             assertTrue(firstAttemptEntered.await(3, TimeUnit.SECONDS), "first assignment attempt should start");
-            assertEquals(TaskAssignWorker.SubmitResult.DEFERRED_REQUEUE_MARKED, worker.submitDetailed(task));
+            assertEquals(TaskAssignWorker.SubmitResult.DEDUP_SKIPPED, worker.submitDetailed(task));
             releaseFirstAttempt.countDown();
 
-            assertTrue(assignedLatch.await(3, TimeUnit.SECONDS), "Task should process deferred requeue after current attempt");
-            assertEquals(2, attempts.get());
+            assertTrue(assignedLatch.await(3, TimeUnit.SECONDS), "Task should still be processed once");
+            assertEquals(1, attempts.get());
             capture.assertHasEvent("ASSIGNMENT_QUEUE_SNAPSHOT", mdc ->
                     "dedup".equals(mdc.get("taskId"))
-                            && "REQUEUE_MARKED".equals(mdc.get("queueAction"))
-                            && "DEFERRED".equals(mdc.get("result")));
+                            && "DEDUP_SKIPPED".equals(mdc.get("queueAction"))
+                            && "SKIPPED".equals(mdc.get("result")));
         }
     }
 
@@ -541,16 +526,18 @@ public class TaskAssignWorkerTest {
     }
 
     @Test
-    void submitAllDrainsEvenWhenOneTaskIsSkippedAsTerminal() throws InterruptedException {
+    void submitAllDrainsEvenWhenOneTaskIsSkippedAsNonDispatchable() throws InterruptedException {
         CountDownLatch allDoneLatch = new CountDownLatch(1);
         worker.addAssignmentQueueListener(new TaskAssignmentQueueListener() {
             @Override public void onTaskAssignmentProcessed(Task t) {}
             @Override public void onAssignmentQueueDrained() { allDoneLatch.countDown(); }
         });
 
-        Task terminalTask = terminalTask("skipped-batch");
+        Task newTask = new Task();
+        newTask.setTid("skipped-batch");
+        newTask.setStatus(TaskStatus.NEW);
 
-        worker.submitAll(List.of(terminalTask, readyTask("processed-batch")));
+        worker.submitAll(List.of(newTask, readyTask("processed-batch")));
 
         assertTrue(allDoneLatch.await(5, TimeUnit.SECONDS),
                 "submitAll should still drain when one task is skipped");
@@ -633,13 +620,6 @@ public class TaskAssignWorkerTest {
         Task t = new Task();
         t.setTid(tid);
         t.setStatus(TaskStatus.RUNNING);
-        return t;
-    }
-
-    private Task terminalTask(String tid) {
-        Task t = new Task();
-        t.setTid(tid);
-        t.setStatus(TaskStatus.TERMINAL);
         return t;
     }
 

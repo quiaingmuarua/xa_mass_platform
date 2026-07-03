@@ -38,11 +38,6 @@
         </dependency>
         <dependency>
             <groupId>com.xa.mass</groupId>
-            <artifactId>xa-mass-task-runtime</artifactId>
-            <version>${project.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.xa.mass</groupId>
             <artifactId>xa-mass-worker-runtime</artifactId>
             <version>${project.version}</version>
         </dependency>

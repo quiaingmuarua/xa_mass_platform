@@ -188,6 +188,7 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
             throw new IllegalArgumentException("ingressItems must be a non-empty list");
         }
         validateRuntimeAppendAdmission(task, ingressItems.size());
+        var epoch = epoch(task.getTid());
         var outcome = workPort.appendBacklog(
                 task.getTid(),
                 TaskRuntimeAppendItemMapper.toAppendItems(ingressItems),
@@ -196,6 +197,7 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
             throw new IllegalStateException("task-runtime append failed: status="
                     + outcome.status() + ", reason=" + outcome.reason());
         }
+        updateSchedulerEligibility(task, epoch);
     }
 
     void validateRuntimeAppendAdmission(Task task, int itemCount) {
@@ -394,7 +396,8 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
         if (task == null || task.getTid() == null || task.getTid().isBlank()) {
             return;
         }
-        if (task.getStatus() == null || !task.getStatus().isFinal()) {
+        updateSchedulerEligibility(task, epoch(task.getTid()));
+        if (task.getStatus() != null && task.getStatus().isActive()) {
             taskDispatchRequestedPublisher.accept(task);
         }
     }
@@ -521,30 +524,19 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
         if (decision.accepted() && decision.retryScheduled()) {
             publishRetryResetTrace(fact, active, decision);
         }
-        boolean logicalFinal = decision.accepted() && decision.status() == MessageFinalityStatus.LOGICAL_FINAL;
-        if (logicalFinal) {
+        if (decision.accepted() && decision.status() == MessageFinalityStatus.LOGICAL_FINAL) {
             publishLogicalFinal(task, fact, active, decision);
         }
-        TaskStateResolutionResult resolution = null;
         if (decision.progressDirty()) {
-            resolution = stateResolver.resolveTaskState(fact.taskId());
-        }
-        if (logicalFinal && isTerminalResolution(resolution)) {
-            convergencePort.closeIfDrained(fact.taskId(), "default", fact.runtimeEpoch());
+            stateResolver.updateTaskProgress(fact.taskId());
         }
         if (decision.retryScheduled()) {
-            rescoreTaskForRetry(fact.taskId(), fact.runtimeEpoch(), decision.retryAtMillis());
+            rescoreTaskForRetry(task, fact.taskId());
             if (task != null && decision.retryAtMillis() <= nowMillis()) {
                 requestTaskDispatch(task);
             }
         }
         return decision;
-    }
-
-    private boolean isTerminalResolution(TaskStateResolutionResult resolution) {
-        return resolution != null
-                && (resolution.getOutcome() == TaskStateResolutionResult.Outcome.FINALIZED_TO_TERMINAL
-                || resolution.getOutcome() == TaskStateResolutionResult.Outcome.ALREADY_FINAL);
     }
 
     private void publishAttemptClosed(Task task,
@@ -835,18 +827,23 @@ public final class TaskRuntimeServingLane implements TaskAssignmentRuntimePort,
                     taskId,
                     laneKey,
                     epoch,
-                    TaskScoreV1.manualBlocked());
+                    TaskScoreV1.pausedParked());
             case BLOCKED -> scorePort.setTaskScore(
                     taskId,
                     laneKey,
                     epoch,
-                    TaskScoreV1.manualBlocked());
+                    TaskScoreV1.blockedParked());
             case TERMINAL, DISCARDED -> scorePort.removeTaskScore(taskId, laneKey, epoch);
         }
     }
 
-    private void rescoreTaskForRetry(String taskId, RuntimeEpoch epoch, long retryAtMillis) {
-        scorePort.setTaskScore(taskId, "default", epoch, TaskScoreV1.dueAt(retryAtMillis));
+    private void rescoreTaskForRetry(Task task, String taskId) {
+        Task target = task != null ? task : loadTask(taskId);
+        if (target != null) {
+            updateSchedulerEligibility(target, epoch(taskId));
+            return;
+        }
+        scorePort.setTaskScore(taskId, "default", epoch(taskId), TaskScoreV1.dueAt(nowMillis()));
     }
 
     private long nowMillis() {

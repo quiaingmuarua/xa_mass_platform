@@ -30,6 +30,7 @@ import com.xa.mass.api.review.TaskReviewReadModelWriter;
 import com.xa.mass.api.sync.SyncTaskResultBridge;
 import com.xa.mass.api.sync.TaskSyncRequestSupervisor;
 import com.xa.mass.sdk.TaskAdminOperations;
+import com.xa.mass.sdk.TaskReadOperations;
 import com.xa.mass.sdk.TaskStageEvidenceOperations;
 import com.xa.mass.sdk.auth.PrincipalContext;
 import com.xa.mass.sdk.authz.PlatformAction;
@@ -38,7 +39,6 @@ import com.xa.mass.sdk.authz.TaskOwnershipSupport;
 import com.xa.mass.sdk.catalog.ProjectDefinition;
 import com.xa.mass.sdk.catalog.ControlPlaneCatalog;
 import com.xa.mass.sdk.model.*;
-import com.xa.mass.task.runtime.starter.TaskReadViewPort;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -81,7 +81,7 @@ public class TaskApiController {
     private static final com.fasterxml.jackson.databind.ObjectMapper RESPONSE_OBJECT_MAPPER =
             new com.fasterxml.jackson.databind.ObjectMapper();
 
-    private final TaskReadViewPort taskReads;
+    private final TaskReadOperations taskReads;
     private final TaskAdminOperations taskAdmin;
     private final ControlPlaneCatalog catalog;
     private final ApiAuthService apiAuthService;
@@ -95,7 +95,7 @@ public class TaskApiController {
     private TaskReviewReadModelWriter taskReviewReadModelWriter;
 
     @Autowired
-    public TaskApiController(TaskReadViewPort taskReads,
+    public TaskApiController(TaskReadOperations taskReads,
                              TaskAdminOperations taskAdmin,
                              ControlPlaneCatalog catalog,
                              ApiAuthService apiAuthService,
@@ -115,7 +115,7 @@ public class TaskApiController {
                 taskStageEvidenceProvider == null ? null : taskStageEvidenceProvider.getIfAvailable());
     }
 
-    public TaskApiController(TaskReadViewPort taskReads,
+    public TaskApiController(TaskReadOperations taskReads,
                              TaskAdminOperations taskAdmin,
                              ControlPlaneCatalog catalog,
                              ApiAuthService apiAuthService,

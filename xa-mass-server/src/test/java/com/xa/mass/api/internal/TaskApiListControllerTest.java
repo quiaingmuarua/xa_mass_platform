@@ -4,10 +4,10 @@ import com.xa.mass.api.auth.ApiAuthTestSupport;
 import com.xa.mass.api.auth.ApiAuthorizationService;
 import com.xa.mass.api.auth.TaskSecurityViewSupport;
 import com.xa.mass.sdk.TaskAdminOperations;
+import com.xa.mass.sdk.TaskReadOperations;
 import com.xa.mass.sdk.catalog.DefaultProjectEventCatalogFactory;
 import com.xa.mass.sdk.model.TaskExecutionOptions;
 import com.xa.mass.sdk.model.TaskSummarySnapshot;
-import com.xa.mass.task.runtime.starter.TaskReadViewPort;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,7 +28,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class TaskApiListControllerTest {
 
     @Mock
-    private TaskReadViewPort taskReads;
+    private TaskReadOperations taskReads;
 
     @Mock
     private TaskAdminOperations taskAdmin;

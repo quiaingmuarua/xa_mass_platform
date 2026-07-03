@@ -23,7 +23,6 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 
@@ -80,11 +79,6 @@ class TaskRuntimeServingLaneTest {
         assertThat(refreshed.getTaskSuccessNumber()).isEqualTo(1);
         assertThat(harness.lane.countDispatchReadyWork(task.getTid())).isZero();
         assertThat(harness.lane.countActiveDispatchWorkers(task.getTid())).isZero();
-        assertThat(harness.runtime.activeWorkForTask(task.getTid(), 10).activeItems()).isEmpty();
-        assertThat(harness.runtime.progressSnapshot(task.getTid()).readyCount()).isZero();
-        assertThat(harness.runtime.progressSnapshot(task.getTid()).delayedCount()).isZero();
-        assertThat(harness.runtime.taskScore(task.getTid(), "default"))
-                .hasValueSatisfying(score -> assertThat(score.isTerminalBand()).isTrue());
         assertThat(closedAttempts).hasSize(1);
         assertThat(finalMessages).hasSize(1);
         assertThat(claimed.getFirst().scoreBandClaimScore()).isEqualTo(123L);
@@ -247,7 +241,6 @@ class TaskRuntimeServingLaneTest {
                 1,
                 1L).claimedItems();
 
-        task.setStatus(TaskStatus.PAUSED);
         clock.set(TEST_NOW_MILLIS + 2_000L);
 
         assertThat(harness.lane.expireLeasedWork(task.getTid(), claimed.getFirst().messageId())).isTrue();
@@ -262,11 +255,6 @@ class TaskRuntimeServingLaneTest {
         assertThat(retryReset.getTransition().dst()).isEqualTo("INIT");
         assertThat(retryReset.getAttrs()).containsEntry("source", "TaskRuntimeServingLane");
         assertThat(retryReset.getAttrs()).containsEntry("trigger", "LEASE_TIMEOUT");
-        assertThat(harness.runtime.taskScore(task.getTid(), "default"))
-                .hasValueSatisfying(score -> {
-                    assertThat(score.isSchedulableBand()).isTrue();
-                    assertThat(score.score()).isGreaterThanOrEqualTo(clock.get());
-                });
     }
 
     @Test
@@ -350,24 +338,6 @@ class TaskRuntimeServingLaneTest {
         assertThat(harness.lane.readTaskResults(task.getTid(), 0, 10).rows())
                 .extracting(row -> row.messageId())
                 .containsExactly(firstClaim.getFirst().messageId());
-    }
-
-    @Test
-    void dispatchWakeupPublishesForNonTerminalProjectionWithoutRewritingRuntimeScore() {
-        AtomicLong clock = new AtomicLong(TEST_NOW_MILLIS);
-        Harness harness = new Harness(clock);
-        Task task = harness.createApprovedBatchTask("serving-wakeup");
-        harness.appendRuntimeItems(task, List.of(Map.of("eventCode", "demo.event", "value", 1)));
-        TaskScoreV1 scoreBefore = harness.runtime.taskScore(task.getTid(), "default").orElseThrow();
-        AtomicInteger dispatchRequests = new AtomicInteger();
-        harness.events.addTaskDispatchListener(ignored -> dispatchRequests.incrementAndGet());
-
-        task.setStatus(TaskStatus.PAUSED);
-        harness.lane.requestTaskDispatch(task);
-
-        assertThat(dispatchRequests).hasValue(1);
-        assertThat(harness.runtime.taskScore(task.getTid(), "default"))
-                .hasValue(scoreBefore);
     }
 
     private static List<ClaimedWorkItem> claimThroughLane(Harness harness,

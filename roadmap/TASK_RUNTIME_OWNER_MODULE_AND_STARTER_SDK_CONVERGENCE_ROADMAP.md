@@ -374,7 +374,7 @@ the old engine ports:
 
 | Mechanism | New runtime responsibility | Main old ports closed or narrowed |
 | --- | --- | --- |
-| Intake / Append Commit | accepted item identity, all-or-rejected batch append, ready backlog frame creation only; no score, dirty, or wakeup ownership | `TaskCommandPort.appendTaskItems*`, old `TaskWorkRuntime.enqueue` path |
+| Intake / Append Commit | accepted item identity, all-or-rejected batch append, ready backlog frame creation; optional dirty/wakeup hint only | `TaskCommandPort.appendTaskItems*`, old `TaskWorkRuntime.enqueue` path |
 | Task Scheduler / Lane Acquire | scheduler-owned task-level eligibility discovery, lane scoring, due lane acquisition, runtime gate/fence validation, dispatchable-lane recovery | `TaskDispatchWakeupPort`, `TaskRuntimeRecoveryPort`, old `readyTaskIds` recovery |
 | Worker Reservation Then Claim | consume worker-runtime reservation/admission evidence, convert ready frame to active lease, release reservation on rejected claim | `TaskAssignmentRuntimePort.claimReady`, dispatch compensation hooks |
 | Result Apply / Finality Outcome | result callback application, retry/finality, duplicate/late/stale classification, compact outcome facts | `TaskResultIngestPort`, old `TaskResultService` result helper path now deleted |
@@ -483,25 +483,25 @@ is deliberately all-or-rejected:
   was accepted.
 
 First version does not provide caller idempotency keys, classified partial
-append, or a heavy half-commit recovery protocol. If response emission or
-aggregate counter update fails after runtime acceptance, the accepted batch
-must remain discoverable from task-runtime ready truth. Any later counter
+append, or a heavy half-commit recovery protocol. If response emission,
+aggregate counter update, or wakeup fails after runtime acceptance, the accepted
+batch must remain discoverable from task-runtime ready truth. Any later counter
 or receipt reconciliation must be owner-local and bounded; it must not require
 re-appending duplicate work or adding a bridge that writes second runtime truth.
 
 ## Scheduler Discovery First Version
 
-Append intake does not update task-level lane score and does not own wakeup or
-dirty-hint semantics. The first scheduler discovery mechanism is task-level and
-weakly consistent:
+Append intake does not update task-level lane score. The first scheduler
+discovery mechanism is task-level and weakly consistent:
 
+- append may emit a best-effort dirty/wakeup hint that carries only `taskId`;
 - scheduler owns dirty backlog discovery, gate checks, lane scoring, and due
   acquisition;
 - scheduler validates task shell/gate/policy state and ready backlog existence
   before claim;
 - claim and result/retry/repair mutations may refresh task-level eligibility
   after they change backlog, active lease, retry, or gate facts;
-- bounded scheduler recovery must eventually
+- if a dirty hint or wakeup is lost, bounded scheduler recovery must eventually
   rediscover accepted ready backlog.
 
 The public contract is not a Redis data-structure contract. Memory and Redis
@@ -525,8 +525,8 @@ slices unless code proof exposes a concrete contradiction:
 - Caller idempotency keys, classified partial append, and heavy append
   half-commit recovery are out of the first contract. Runtime replay
   idempotency by `taskId + messageId` remains required.
-- Append writes ready backlog truth only. It does not emit a public
-  dirty/wakeup contract, update task lane score, task shell status, or per-item
+- Append writes ready backlog truth and may emit a best-effort dirty/wakeup
+  hint. It does not update task lane score, task shell status, or per-item
   scheduler entries. Scheduler/recovery owns task-level score refresh.
 - Ready backlog length and task shell status are separate facts. A large ready
   LIST is not a task status model and must not create one scheduler record per
@@ -1084,7 +1084,7 @@ DISCARDED
   exactly-once submit. Caller API idempotency is deferred, but runtime replay of
   the same accepted `taskId + messageId` remains idempotent.
 - Define low-cost aggregate/counter defense for accepted runtime batches when
-  shell counters or append receipt fail after runtime acceptance. The
+  shell counters, append receipt, or wakeup fail after runtime acceptance. The
   first contract may rely on scheduler-owned backlog discovery/recovery and
   bounded owner-local reconciliation; append intake must not become the owner of
   task-level lane score. It must not add a cross-module bridge or second runtime
@@ -1160,8 +1160,8 @@ Scope:
   dedupe key. Runtime-level replay for the same accepted `taskId + messageId`
   remains idempotent.
 - Do not require classified partial append or heavy half-commit recovery in the
-  first memory proof. Accepted append must remain discoverable through
-  scheduler/recovery without append owning score, dirty, or wakeup semantics.
+  first memory proof. A failed wakeup after accepted append must still leave the
+  batch discoverable through scheduler/recovery.
 - The first memory proof covers result success, retryable failure,
   late/duplicate result classification, active-lease repair discovery, progress
   snapshots, bounded final reads, and discard through public task-runtime ports. Transport

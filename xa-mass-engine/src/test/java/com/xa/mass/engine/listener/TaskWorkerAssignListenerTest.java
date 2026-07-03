@@ -126,24 +126,6 @@ public class TaskWorkerAssignListenerTest {
     }
 
     @Test
-    void dispatchesNonTerminalShellProjectionWhenRuntimeWorkIsReady() {
-        Task task = task("task-paused-projection", TaskStatus.PAUSED, 1, 1);
-        SelectedWorkerHandle selected = handle("worker-1", task.getTid(), true);
-        when(assignmentRuntime.countDispatchReadyWork(task.getTid())).thenReturn(1);
-        when(assignmentRuntime.countActiveDispatchWorkers(task.getTid())).thenReturn(0);
-        when(workerSelectionRuntime.selectAndReserve(any(WorkerSelectionRequest.class)))
-                .thenReturn(selection(selected));
-        when(dispatchBinder.bindDispatches(task, List.of(selected)))
-                .thenReturn(List.of(binding(task.getTid(), "worker-1")));
-        when(assignmentRuntime.persistAssignmentState(task)).thenReturn(true);
-
-        assertTrue(listener.onTaskAssign(task));
-
-        verify(dispatchBinder).bindDispatches(task, List.of(selected));
-        verify(assignmentEvents).publishTaskAssigned(task);
-    }
-
-    @Test
     void emitsAcceptedWorkerMatchTraceForSelectedWorkers() {
         RecordingEventSink sink = new RecordingEventSink();
         listener = new TaskWorkerAssignListener(

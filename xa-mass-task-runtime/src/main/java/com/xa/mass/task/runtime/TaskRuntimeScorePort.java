@@ -10,8 +10,6 @@ public interface TaskRuntimeScorePort {
 
     void removeTaskScore(String taskId, String laneKey, RuntimeEpoch epoch);
 
-    Optional<TaskScoreV1> taskScore(String taskId, String laneKey);
-
     Optional<ScoreCandidate> scoreCandidate(String taskId, String laneKey);
 
     ScoreCandidateBatch discoverSchedulable(String laneKey, long maxScore, int limit);
