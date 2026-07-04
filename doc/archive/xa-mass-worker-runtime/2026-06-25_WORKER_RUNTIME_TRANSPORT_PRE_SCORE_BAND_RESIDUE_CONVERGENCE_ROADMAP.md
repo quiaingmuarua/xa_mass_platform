@@ -45,8 +45,8 @@ the score-band registry is introduced.
 
 ## References
 
-- [Score-Band Resource Slot Scheduling Blueprint](../../../architecture/score-band-resource-slot-scheduling-blueprint.md)
-- [Score-Band Worker Runtime Redis Shape](../../../architecture/score-band-worker-runtime-redis-shape.md)
+- [Score-Band Resource Slot Scheduling Blueprint](../../../blueprint/score-band/score-band-resource-slot-scheduling-blueprint.md)
+- [Score-Band Worker Runtime Redis Shape](../../../blueprint/score-band/score-band-worker-runtime-redis-shape.md)
 - [Worker Runtime Dispatch Eligibility Signal Convergence Roadmap](2026-06-26_WORKER_RUNTIME_NEGATIVE_SIGNAL_DISPATCH_ELIGIBILITY_CONVERGENCE_ROADMAP.md)
 - [Worker Runtime Bounded Candidate Acquisition Roadmap](../../../roadmap/WORKER_RUNTIME_BOUNDED_CANDIDATE_ACQUISITION_ROADMAP.md)
 - [Worker Runtime / Transport Pre-Score-Band Residue Inventory](./2026-06-25_WORKER_RUNTIME_TRANSPORT_PRE_SCORE_BAND_RESIDUE_INVENTORY.md)
@@ -72,16 +72,16 @@ matcher leases eligible slots from supply and binds them to demand
 
 Relevant blueprint sections:
 
-- [Core mechanism](../architecture/score-band-resource-slot-scheduling-blueprint.md#core-mechanism):
+- [Core mechanism](../../../blueprint/score-band/score-band-resource-slot-scheduling-blueprint.md#core-mechanism):
   score-band resource availability is supply-owned.
-- [Demand-Guided Sparse Acquire](../architecture/score-band-resource-slot-scheduling-blueprint.md#demand-guided-sparse-acquire):
+- [Demand-Guided Sparse Acquire](../../../blueprint/score-band/score-band-resource-slot-scheduling-blueprint.md#demand-guided-sparse-acquire):
   task demand compiles into an acquire plan; tasks must not query workers,
   choose bucket keys, or create placement tag specs at runtime.
-- [Transport To Worker-Runtime](../architecture/score-band-resource-slot-scheduling-blueprint.md#transport-to-worker-runtime):
+- [Transport To Worker-Runtime](../../../blueprint/score-band/score-band-resource-slot-scheduling-blueprint.md#transport-to-worker-runtime):
   heartbeat, transport refresh, session keepalive, and connected are
   transport-local freshness events, not worker-runtime scheduling reopen
   events.
-- [Worker Runtime Redis Shape](../architecture/score-band-worker-runtime-redis-shape.md):
+- [Worker Runtime Redis Shape](../../../blueprint/score-band/score-band-worker-runtime-redis-shape.md):
   worker scheduling state should split into eligibility index, scheduling
   metadata, and lease/hold state; transport/session facts stay out of
   scheduling metadata.

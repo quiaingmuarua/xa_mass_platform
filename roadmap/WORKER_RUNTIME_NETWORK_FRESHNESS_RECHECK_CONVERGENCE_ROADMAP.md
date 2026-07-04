@@ -340,7 +340,7 @@ Scope:
 - Update:
   - `xa-mass-worker-runtime/README.md`;
   - `xa-mass-worker-runtime/CONTRACTS.md`;
-  - `architecture/score-band-resource-slot-scheduling-blueprint.md`;
+  - `blueprint/score-band/score-band-resource-slot-scheduling-blueprint.md`;
   - `doc/PROOF_REGISTRY.md`;
   - repo owner-rule references.
 - Add guards against:

@@ -7,6 +7,16 @@ directional blueprint for the next task-runtime convergence work. The current
 first Redis implementation lives in
 [`../platform_infra/mass-task-runtime-redis`](../platform_infra/mass-task-runtime-redis).
 
+Boundary note:
+
+- [Task Score-Band Scheduling](./task-score-band-scheduling.md) defines the
+  task active-acquisition score mechanism.
+- This document also covers concrete work-item and result-adjacent Redis shapes
+  because those structures must coexist in a task runtime implementation.
+- The presence of claim, lease, retry, or result sections here must not be read
+  as task score-band owning those facts. Work-item claim/lease and result
+  finality remain separate owner planes.
+
 The design borrows the score-band idea from
 [`score-band-resource-slot-scheduling-blueprint.md`](./score-band-resource-slot-scheduling-blueprint.md),
 but task work has a different cardinality profile from worker slots:
@@ -188,7 +198,7 @@ Semantics:
 - `TaskRuntimeMeta` is the current policy snapshot for future claims.
 - `RuntimeItemState` stores the policy versions and resolved attempt values used
   when the item was claimed.
-- pause/block parks the task lane score and stops new claims, but does not
+- pause/block holds the task lane score and stops new claims, but does not
   revoke active leases.
 - active results are validated against the active lease snapshot, not against a
   newer match policy.
@@ -654,19 +664,32 @@ Task score uses the same high-level band idea as resource slots, but it is a
 task-lane next-action index, not an item queue and not task shell status:
 
 ```text
-PARKED_BAND       score < 0
-LOW_RECHECK_BAND  reserved; first slice should not need it
-ELIGIBLE_BAND     TIME_SCORE_FLOOR <= score <= now
-FUTURE_BAND       score > now
+score absent
+  undefined to score-band; not service discovery and not terminal proof
+
+score < 0
+  retained closed marker for terminal / closed / discarded tasks
+
+0 <= score < TIME_SCORE_FLOOR
+  live but not schedulable by the hot path; enum-like codes owned by task
+  runtime lifecycle command policy
+
+TIME_SCORE_FLOOR <= score <= now
+  eligible for one bounded scheduling attempt
+
+score > now
+  future scheduling visibility; retry backoff, empty-match recheck, contention
+  delay, scheduled retry, or long scheduler hold
 ```
 
 Recommended first-slice constants:
 
 ```text
-PARKED_PAUSED       = -10
-PARKED_BLOCKED      = -20
-PARKED_TERMINAL     = remove member instead of writing parked score
-TIME_SCORE_FLOOR    = 1_000_000_000_000
+CLOSED_TERMINAL      = -10
+CLOSED_DISCARDED     = -20
+CREATED_UNAPPROVED   = 10
+TIME_SCORE_FLOOR     = 1_000_000_000_000
+SCHEDULER_HOLD_FLOOR = safe far-future epoch millis
 ```
 
 Score meanings:
@@ -684,11 +707,11 @@ scheduled retry lane has delayed retry work and ready list has no immediate work
 ready list is non-empty, but no worker matched in the last scheduling round
   score = now + empty-match recheck delay
 
-task paused or blocked
-  score = parked code
+task paused or manually held
+  score = SCHEDULER_HOLD_FLOOR or another owner-approved future hold score
 
 task terminal or discarded
-  remove taskId from score ZSET
+  score = retained closed marker
 ```
 
 The score is an index. Before claim, engine/runtime must validate:
@@ -702,18 +725,25 @@ The score is an index. Before claim, engine/runtime must validate:
 
 ### Score rewrite rule
 
-Scheduler-owned runtime mutations that change task-level eligibility, active
-leases, retry visibility, or task gate must rewrite the task lane score through
-one deterministic rule. Append intake is not a scheduler-owned mutation: it
-writes ready backlog truth and may emit only a best-effort dirty/wakeup hint.
+Task lane score is rewritten through one deterministic rule, but only from
+score-owner paths:
+
+- direct lifecycle/scheduling events such as approve, pause, resume, close, or
+  discard;
+- the scheduling/matching round after the task has been acquired from the
+  score range.
+
+Append intake is not a scheduler-owned mutation. It writes ready backlog truth
+and does not emit a generic score refresh.
 
 | Step | Condition | Score action |
 | --- | --- | --- |
-| 1 | task terminal or discarded | `ZREM taskId` |
-| 2 | runtime gate is paused or blocked | `ZADD PARKED_* taskId` |
-| 3 | otherwise compute `readyCandidate` from ready LIST / scheduled retry lane / retry backoff / last scheduling round | candidate timestamp or none |
-| 4 | candidate exists | `ZADD readyCandidate taskId` |
-| 5 | no candidate exists | `ZREM taskId` |
+| 1 | task terminal or discarded | `ZADD CLOSED_* taskId` |
+| 2 | task is live but not schedulable | `ZADD 0 <= code < TIME_SCORE_FLOOR taskId` |
+| 3 | runtime gate is paused or manually held | `ZADD SCHEDULER_HOLD_FLOOR taskId` |
+| 4 | otherwise compute `readyCandidate` from ready LIST / scheduled retry lane / retry backoff / last scheduling round | candidate timestamp or none |
+| 5 | candidate exists | `ZADD readyCandidate taskId` |
+| 6 | no candidate exists | `ZREM taskId` |
 
 `readyCandidate` is:
 
@@ -790,10 +820,10 @@ The score algorithm then applies these rules:
 
 ```text
 if TERMINAL:
-  remove score
+  score = retained closed marker
 
 if PARKED:
-  write parked score
+  score = SCHEDULER_HOLD_FLOOR or another owner-approved future hold score
 
 if EMPTY_MATCH:
   scoreRuntime.emptyMatchStreak = min(streak + 1, emptyMatchMaxStreak)
@@ -859,19 +889,23 @@ Task lane state is derived from `task:score` plus `TaskRuntimeMeta`.
 
 ```text
 NOT_INDEXED
-  no score-visible ready work, scheduled retry, recheck, or task discarded;
-  active leases may still exist in task:{taskId}:rt and are repaired separately
+  no score member; score-band gives no business interpretation. This is not
+  terminal proof. Active leases may still exist in task:{taskId}:rt and are
+  repaired separately
 
 ELIGIBLE
   score is in eligible window; task may be acquired for claim
 
 FUTURE
   score is a future timestamp; task-level retry backoff, empty-match recheck,
-  contention recheck, or scheduled retry is not due yet
+  contention recheck, scheduled retry, or long scheduler hold is not due yet
 
-PARKED
-  score is a negative parked code; task is paused, blocked, or intentionally
-  held out of hot-path dispatch
+CLOSED
+  score is a retained negative marker; task is terminal, closed, or discarded
+
+LIVE_NON_SCHEDULABLE
+  score is a non-negative enum-like code below TIME_SCORE_FLOOR; task is live
+  but not schedulable by the hot path
 ```
 
 The transition model is deliberately small:
@@ -879,7 +913,8 @@ The transition model is deliberately small:
 ```text
 event mutates local facts
   -> rewriteScore(taskId)
-  -> derive NOT_INDEXED / ELIGIBLE / FUTURE / PARKED from the new score
+  -> derive NOT_INDEXED / ELIGIBLE / FUTURE / LIVE_NON_SCHEDULABLE / CLOSED
+     from the new score
 ```
 
 Events do not hand-code every state-to-state path. They update only the fact
@@ -895,16 +930,17 @@ they own:
 | positive scheduling match | reset `scoreRuntime.emptyMatchStreak` |
 | pause or block | set runtime gate to parked |
 | resume or unblock | clear runtime gate and validate shell |
-| terminal or discard | write terminal fence, then delete task-local runtime keys and score/meta rows |
+| terminal or discard | write terminal fence and retained closed score, then delete task-local runtime keys and meta rows |
 
-Then `rewriteScore` maps the current facts back to one of the four lane states:
+Then `rewriteScore` maps the current facts back to one of the lane states:
 
 | Facts after mutation | Derived lane state |
 | --- | --- |
 | no score member | `NOT_INDEXED` |
 | score in eligible window | `ELIGIBLE` |
 | score is a future timestamp | `FUTURE` |
-| score is a parked code | `PARKED` |
+| score is a retained negative marker | `CLOSED` |
+| score is non-negative and below `TIME_SCORE_FLOOR` | `LIVE_NON_SCHEDULABLE` |
 
 Reason-specific timings are score candidates, not states:
 
@@ -1012,12 +1048,13 @@ Rules:
   needed;
 - no sparse runtime HASH field is created;
 - no item-level score is created;
-- append does not rewrite the task lane score. It may emit only a best-effort
-  dirty/wakeup hint for scheduler discovery;
+- append does not rewrite the task lane score and does not request a generic
+  score refresh;
 - append should not rewrite `TaskRuntimeMeta` except for first-time runtime
   initialization; task policy changes own metadata updates;
-- scheduler/recovery owns task-level lane scoring. It decides whether newly
-  appended raw work may wake a backed-off or parked task;
+- scheduler/matching rounds own live task score rewrite after a score-visible
+  task is acquired. Direct lifecycle events own explicit score changes such as
+  approve, pause, resume, close, or discard;
 - submit is at-least-once by default. If Redis commits the append but the
   response is lost, a caller retry without a stable idempotency key may append
   a second logical item;
@@ -1135,7 +1172,8 @@ if failure and retry exhausted:
 leave TaskRuntimeMeta unchanged unless a separate task policy or runtime-gate
 update owns that change
 remove taskId from task:active:{laneBucketId} when task:{taskId}:rt is empty
-rewrite task score through the rewrite rule
+do not rewrite live task score from result apply; direct terminal handoff may
+write retained closed score through the lifecycle/score owner
 ```
 
 Duplicate and late callbacks are handled by runtime result reads or recent-final
@@ -1223,14 +1261,15 @@ explicit policy upgrade; do not overload task lane score for that purpose.
 Pause/block:
 
 ```text
-ZADD task:score:{laneBucketId} PARKED_* taskId
+ZADD task:score:{laneBucketId} SCHEDULER_HOLD_FLOOR taskId
 HSET task:meta:{laneBucketId} taskId runtimeGate=PARKED, runtimeEpoch=runtimeEpoch+1
 ```
 
 Do not rewrite every raw ready item or runtime item. Active leases remain in
 `task:{taskId}:rt` and may still finish. Retry frames created while parked stay
 in the ready LIST or scheduled retry lane according to `retryMode`, but the
-parked score prevents new claims until resume.
+future hold score prevents new claims until resume or until an explicit policy
+chooses a different due time.
 
 Resume/unblock:
 
@@ -1250,7 +1289,7 @@ Terminal task cleanup is precise by `taskId`:
 
 ```text
 HSET task:meta:{laneBucketId} taskId runtimeGate=TERMINAL, runtimeEpoch=runtimeEpoch+1
-ZREM task:score:{laneBucketId} taskId
+ZADD task:score:{laneBucketId} CLOSED_* taskId
 ZREM task:active:{laneBucketId} taskId
 DEL task:{taskId}:ready
 DEL task:{taskId}:item-score
@@ -1263,8 +1302,9 @@ HDEL task:meta:{laneBucketId} taskId
 The terminal fence is the hard boundary. It must be visible to claim, result,
 and repair atomic mutations before physical cleanup is attempted. Physical key
 deletion is allowed to be best-effort delayed, but no new claim may pass the
-terminal fence. This cleanup does not scan the namespace and does not require
-one key per item.
+terminal fence. The retained closed score is scheduler-visible diagnostic
+evidence, not the lifecycle authority. This cleanup does not scan the namespace
+and does not require one key per item.
 
 ## Atomicity Boundaries
 
@@ -1305,7 +1345,7 @@ pause/block/resume:
 discard/terminal:
   terminal fence + runtimeEpoch advance before physical key deletion
   task-local key deletion including scheduled retry lane
-  score/active/meta removal
+  retained closed score + active/meta removal
 ```
 
 Do not add a distributed lock around task scheduling by default. The runtime
@@ -1353,6 +1393,9 @@ current task item runtime truth.
   accepts the item.
 - Do not make task lane score responsible for precise active lease timeout.
   Lease timeout is repaired from `task:{taskId}:rt` on a best-effort basis.
+- Do not use score absence as terminal proof; terminal, closed, or discarded
+  tasks should write a retained closed marker before cleanup/retention removes
+  that marker.
 - Do not add an active lease expiry ZSET unless a later policy explicitly
   requires near-exact timeout wakeup.
 - Do not let retry backoff or empty-match penalty hide an earlier ready or
@@ -1412,9 +1455,9 @@ A first implementation should prove:
 - lease timeout repair discovers active tasks through the active task registry,
   scans `task:{taskId}:rt`, and eventually expires leased messages without
   relying on task score for exact timeout wakeup;
-- pause/block parks the task without rewriting items;
-- terminal/discard writes a runtime fence before physical cleanup, then deletes
-  task-local runtime keys without namespace scan;
+- pause/block holds the task with a far-future score without rewriting items;
+- terminal/discard writes a runtime fence and retained closed score before
+  physical cleanup, then deletes task-local runtime keys without namespace scan;
 - memory and Redis implementations share the same `xa-mass-task-runtime` public
   contract
   behavior.

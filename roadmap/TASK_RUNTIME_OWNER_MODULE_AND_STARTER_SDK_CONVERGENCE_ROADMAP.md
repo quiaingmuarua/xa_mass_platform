@@ -13,7 +13,7 @@ Read with:
 - [INFRA_TRUTH_LAYERS.md](../doc/INFRA_TRUTH_LAYERS.md)
 - [platform_infra/README.md](../platform_infra/README.md)
 - [sdk/README.md](../sdk/README.md)
-- [score-band-task-runtime-redis-shape.md](../architecture/score-band-task-runtime-redis-shape.md)
+- [score-band-task-runtime-redis-shape.md](../blueprint/score-band/score-band-task-runtime-redis-shape.md)
 - [EMBEDDED_RUNTIME_SDK_BOUNDARY_CONVERGENCE_ROADMAP.md](EMBEDDED_RUNTIME_SDK_BOUNDARY_CONVERGENCE_ROADMAP.md)
 
 ## Current Code Observations
@@ -30,7 +30,7 @@ Read with:
 - Current embedded SDK / starter assembly owns much of the process bootstrap
   and runtime thread creation.
 - The target Redis shape in
-  `architecture/score-band-task-runtime-redis-shape.md` is a physical
+  `blueprint/score-band/score-band-task-runtime-redis-shape.md` is a physical
   implementation reference. It must not become the public task-runtime module
   contract.
 - The older Redis task-runtime roadmap described a Stream / at-least-once
@@ -481,8 +481,9 @@ Scope:
   `platform_infra/mass-task-runtime-redis`.
 - Put Redis keyspace, codec, Lua/CAS, and physical score/list/hash decisions
   only in the Redis implementation module.
-- Use `score-band-task-runtime-redis-shape.md` as the Redis implementation
-  direction, but do not expose its key names or data structures to callers.
+- Use `blueprint/score-band/score-band-task-runtime-redis-shape.md` as the
+  Redis implementation direction, but do not expose its key names or data
+  structures to callers.
 - Prove active-lease discoverability through a task-level active registry or
   equivalent bounded-discovery mechanism. The first Redis proof does not require
   exact lease-expiry ordering.

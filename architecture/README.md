@@ -23,17 +23,7 @@ Use this guide when you want to answer practical questions:
      a worker
 2. [Mental Model](./mental-model.md)
    - human-level architecture map and owner boundaries
-3. [Score-Band Resource Slot Scheduling Blueprint](./score-band-resource-slot-scheduling-blueprint.md)
-   - target scheduling mechanism blueprint for supply-side resource-slot
-     leasing; not current implementation truth
-4. [Score-Band Worker Runtime Redis Shape](./score-band-worker-runtime-redis-shape.md)
-   - concrete first-slice Redis runtime structure reference for score-band
-     worker resources; not current implementation truth
-5. [Score-Band Task Runtime Redis Shape](./score-band-task-runtime-redis-shape.md)
-   - target Redis runtime structure reference for task raw backlog, sparse
-     runtime item state, task score lanes, and short-retained results; not
-     current implementation truth
-6. [Add Worker And Event](./add-worker-and-event.md)
+3. [Add Worker And Event](./add-worker-and-event.md)
    - register an event, bind it to a project, register a worker, and process
      items by `eventCode`
 
@@ -85,13 +75,11 @@ Future worker-selection work can add worker metrics, task-type affinity,
 historical performance, or domain-specific scoring without changing the
 task/worker/runtime ownership model.
 
-The target scheduling mechanism is described in
-[Score-Band Resource Slot Scheduling Blueprint](./score-band-resource-slot-scheduling-blueprint.md).
-That document is a mechanism blueprint, not current implementation truth.
-The concrete first-slice Redis shape reference is
-[Score-Band Worker Runtime Redis Shape](./score-band-worker-runtime-redis-shape.md).
-The target task runtime Redis shape is described in
-[Score-Band Task Runtime Redis Shape](./score-band-task-runtime-redis-shape.md).
+Agent-first target mechanism blueprints live under
+[Blueprints](../blueprint/README.md). Score-band scheduling direction is under
+[Score-Band Scheduling](../blueprint/score-band/README.md). Those documents are
+not human onboarding docs and not current implementation truth; they exist to
+align future roadmap/code work on target runtime mechanisms.
 
 Scheduling policy boundary:
 

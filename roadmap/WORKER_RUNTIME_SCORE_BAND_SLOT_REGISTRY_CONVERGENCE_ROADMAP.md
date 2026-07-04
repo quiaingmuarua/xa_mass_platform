@@ -16,8 +16,8 @@ workers from task-runtime lease truth through `TaskAssignmentRuntimePort`.
 
 This is the first implementation roadmap derived from:
 
-- [Score-Band Resource Slot Scheduling Blueprint](../architecture/score-band-resource-slot-scheduling-blueprint.md)
-- [Score-Band Worker Runtime Redis Shape](../architecture/score-band-worker-runtime-redis-shape.md)
+- [Score-Band Resource Slot Scheduling Blueprint](../blueprint/score-band/score-band-resource-slot-scheduling-blueprint.md)
+- [Score-Band Worker Runtime Redis Shape](../blueprint/score-band/score-band-worker-runtime-redis-shape.md)
 
 This roadmap covers Program 1 plus the minimum internal Program 2 acquire
 pivot: worker execution slot score-band state machine, the worker-runtime Redis

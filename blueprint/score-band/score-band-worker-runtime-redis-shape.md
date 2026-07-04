@@ -2,10 +2,12 @@
 
 Status: target runtime design reference, not current implementation truth.
 
-This document is the concrete Redis structure reference for the
-[Score-Band Resource Slot Scheduling Blueprint](./score-band-resource-slot-scheduling-blueprint.md).
-It exists separately because Redis runtime shape is implementation-specific
-enough to evolve without making the mechanism blueprint harder to read.
+This document is the concrete Redis structure reference for
+[Worker Score-Band Scheduling](./worker-score-band-scheduling.md), with
+[Score-Band Resource Slot Scheduling Blueprint](./score-band-resource-slot-scheduling-blueprint.md)
+as earlier background. It exists separately because Redis runtime shape is
+implementation-specific enough to evolve without making the mechanism note
+harder to read.
 
 ## Purpose
 
@@ -173,10 +175,18 @@ low-recheck, eligible, and future/unavailable state through the score value.
 Do not add a first-slice `hold` hash, `WorkerHoldState`, lease token, session
 generation, or current hold owner record. Worker is the schedulable unit; a
 delayed close/release must not be able to make an unavailable worker available.
-Positive events such as release, final, heartbeat, connected, or freshness may
-only request worker-runtime recheck. Worker-runtime may write an eligible score
-only after validating declaration, group membership, gates, capacity, recovery
-mode, and owner-approved metadata.
+Routine observations such as heartbeat, connected, keepalive, or transport
+freshness are not generic score-refresh triggers. They remain transport or
+worker-runtime evidence until a directly related owner event or an acquired
+candidate validation path needs them.
+
+Worker score changes outside the acquire range should come from direct owner
+events such as verified available, explicit disable/drain, fast-close, or
+verified reopen. Worker-runtime may write an eligible score only after
+validating declaration, group membership, gates, capacity, recovery mode, and
+owner-approved metadata. Workers already in the acquire range may be rewritten
+by the scheduling/admission round that observed useful evidence such as
+contention, capacity, cooldown, or failed validation.
 
 Reason, owner action, failed recheck count, and reopen policy are trace or
 diagnostic evidence in the first slice. If a later proof needs a repair/debug
