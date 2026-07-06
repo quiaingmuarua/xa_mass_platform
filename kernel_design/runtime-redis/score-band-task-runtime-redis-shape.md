@@ -36,9 +36,8 @@ This shape targets:
 - no Redis Stream/Pending Entry List as the task claim owner;
 - result storage grouped by task, not one result key per item.
 
-`xa-mass-task-runtime` public ports are the runtime contracts. Engine code
-should not know whether Redis uses LIST, HASH, ZSET, Lua, or a future
-implementation detail.
+Kernel runtime interfaces are the contracts. Scheduling code should not know
+whether Redis uses LIST, HASH, ZSET, Lua, or a future implementation detail.
 
 ## Production Bias
 
@@ -98,8 +97,8 @@ message-level due time must use `DUE_TIME`.
 
 ```text
 runtime transition no-loss
-  an engine or adapter process may crash between claim, dispatch, result, retry,
-  and expiry without losing the item
+  a scheduler or adapter process may crash between claim, dispatch, result,
+  retry, and expiry without losing the item
 
 Redis durability no-loss
   Redis itself must persist the mutation before acknowledging it
@@ -159,7 +158,7 @@ Best-effort commitments:
 
 `claimExpiresAtMillis` is stored inside `RuntimeItemState` only for
 time-bounded work. It is claim evidence and a repair threshold, not a separate
-lease owner. Result apply loads the current `rt` row and compares the returned
+timeout owner. Result apply loads the current `rt` row and compares the returned
 worker and optional `claimExpiresAtMillis` against that row. If the current row
 still matches, the result may converge the item. Once repair moves the item to
 retry backlog or a final result row, the old result has no matching current row.
@@ -256,9 +255,9 @@ sharedConfig
 terminalReason
 ```
 
-Redis may cache a runtime gate or next-action hint, but the engine must validate
-the task shell before dispatching. A Redis score hit is a candidate, not a
-lifecycle authority.
+Redis may cache a runtime gate or next-action hint, but the kernel scheduler
+must validate the task shell before dispatching. A Redis score hit is a
+candidate, not a lifecycle authority.
 
 ## Core Shape
 
@@ -671,7 +670,7 @@ score < 0
   runtime lifecycle command policy
 
 TIME_SCORE_FLOOR <= score <= now
-  eligible for one bounded scheduling attempt
+  eligible for one bounded scheduling round
 
 score > now
   future scheduling visibility; retry backoff, empty-match recheck, contention
@@ -710,7 +709,7 @@ task terminal or discarded
   score = retained closed marker
 ```
 
-The score is an index. Before claim, engine/runtime must validate:
+The score is an index. Before claim, the kernel runtime must validate:
 
 - task still exists;
 - task shell is not terminal;
@@ -785,7 +784,7 @@ The mechanism still needs a no-permanent-starvation floor:
 This is not a guarantee that small tasks have equal latency under a large
 backlog. It is only the mechanism-level guarantee that score-visible eligible
 work and due retry are not permanently suppressed by one large task. Expired
-leases remain recoverable through the separate repair loop, not through task
+claims remain recoverable through the separate repair loop, not through task
 score fairness.
 
 ### Scheduling-round algorithm
@@ -1003,7 +1002,7 @@ worker failure, retry budget remains, delayed
   DUE_TIME: CLAIMED -> SCHEDULED_RETRY, with item-score set to nextSchedulableAtMillis
 
 scheduled retry due
-  SCHEDULED_RETRY -> READY_BACKLOG or LEASED through the normal scheduling/claim path
+  SCHEDULED_RETRY -> READY_BACKLOG or CLAIMED through the normal scheduling/claim path
 
 worker failure, retry exhausted
   CLAIMED -> FINAL
@@ -1223,19 +1222,19 @@ Processing order:
 The expensive part is bounded by the due scheduled retry read and the claim
 batch size, not raw backlog size.
 
-### Lease timeout repair
+### Claim timeout repair
 
-Active lease timeout is repaired eventually from `task:{taskId}:rt`; task lane
+Active claim timeout is repaired eventually from `task:{taskId}:rt`; task lane
 score does not guarantee exact timeout wakeup.
 
-`RuntimeItemState.leaseExpireAtMillis` is the soft deadline after which a
-repair loop may expire the attempt:
+`RuntimeItemState.claimExpiresAtMillis` is the optional deadline after which a
+repair loop may expire the current claim:
 
 ```text
 read bounded task ids from task:active:{laneBucketId}
 for each taskId:
   scan task:{taskId}:rt within a bounded repair budget
-  for each RuntimeItemState where leaseExpireAtMillis <= now:
+  for each RuntimeItemState where claimExpiresAtMillis <= now:
     expire through the same result apply / retry / finality path
     validate runtimeEpoch and current active worker identity before mutating
     remove or update rt only inside the result/retry/finality atomic boundary
@@ -1253,8 +1252,8 @@ current active row may still converge the item. If repair already moved the
 item to retry backlog or a final row, there is no matching active row for the
 old result.
 
-Do not add a lease-expiry ZSET in the first slice. If a later task type needs
-near-exact timeout wakeup, add a separate active-lease expiry index as an
+Do not add a claim-expiry ZSET in the first slice. If a later task type needs
+near-exact timeout wakeup, add a separate active-claim expiry index as an
 explicit policy upgrade; do not overload task lane score for that purpose.
 
 ### Pause, block, resume
@@ -1266,7 +1265,7 @@ ZADD task:score:{laneBucketId} SCHEDULER_HOLD_FLOOR taskId
 HSET task:meta:{laneBucketId} taskId runtimeGate=PARKED, runtimeEpoch=runtimeEpoch+1
 ```
 
-Do not rewrite every raw ready item or runtime item. Active leases remain in
+Do not rewrite every raw ready item or runtime item. Current claims remain in
 `task:{taskId}:rt` and may still finish. Retry frames created while parked stay
 in the ready LIST or scheduled retry lane according to `retryMode`, but the
 future hold score prevents new claims until resume or until an explicit policy
@@ -1321,20 +1320,20 @@ append:
   no task score rewrite in the append mutation
 
 claim:
-  validate task score, runtime gate, runtimeEpoch, and workerReservationToken
+  validate task score, runtime gate, runtimeEpoch, and selected worker admission
   ready LIST pop and/or due item-score claim
   runtime HASH write
   active task registry update
   no task score refresh
 
 result apply:
-  runtime HASH runtimeEpoch and current active worker validation
+  runtime HASH runtimeEpoch, current worker, and optional claim-expiry validation
   retry/final mutation
   item-score/item cleanup
   active task registry maintenance
   no live task score refresh
 
-lease timeout repair mutation:
+claim timeout repair mutation:
   validate runtimeEpoch and current active worker identity
   move expired active runtime item through the same retry/final mutation path
   active task registry maintenance
@@ -1356,13 +1355,13 @@ state transition itself should be the concurrency control.
 
 Redis Stream is not the first choice for this task runtime lane because:
 
-- stream pending-entry state becomes a second lease owner;
+- stream pending-entry state becomes a second claim owner;
 - retry and expiry would need to reconcile stream PEL with task-level backoff
-  and active lease state;
+  and active claim state;
 - trimming and replay semantics are more history-oriented than this hot path
   needs;
 - task results are short-retained runtime state, not a durable event ledger;
-- raw LIST plus active-lease HASH keeps failure handling explicit.
+- raw LIST plus current-claim HASH keeps failure handling explicit.
 
 A stream may still be useful later for trace or repair evidence, but not as the
 current task item runtime truth.
@@ -1378,13 +1377,13 @@ current task item runtime truth.
 - Do not rely on shell validation alone to block terminal/discard races; Redis
   runtime fence validation is required in claim, result, and repair mutations.
 - Do not claim work unless the runtime gate is open, `runtimeEpoch` matches, and
-  a valid worker reservation token already exists.
-- Do not leave active leased items discoverable only by caller-known `taskId`.
+  selected worker admission evidence is valid.
+- Do not leave current claimed items discoverable only by caller-known `taskId`.
   A task with non-empty `rt` must be represented in the active task registry.
 - Do not use task-local `item-score` for normal ready backlog. It is allowed
   only for `retryMode=DUE_TIME` delayed/scheduled retry visibility.
 - Do not let the scheduled retry lane dispatch directly to adapters; due retry
-  frames must enter the same scheduling/claim/lease path as normal ready work.
+  frames must enter the same scheduling/claim path as normal ready work.
 - Do not promote best-effort timing into a hard runtime guarantee without a
   task policy that explicitly opts into the higher-cost mechanism.
 - Do not put item counters or due timestamps in `TaskRuntimeMeta` as scheduling
@@ -1392,12 +1391,12 @@ current task item runtime truth.
 - Do not keep retryable ready items in the runtime HASH after requeue.
 - Do not generate `messageId` during claim; identity is created when append
   accepts the item.
-- Do not make task lane score responsible for precise active lease timeout.
-  Lease timeout is repaired from `task:{taskId}:rt` on a best-effort basis.
+- Do not make task lane score responsible for precise active claim timeout.
+  Claim timeout is repaired from `task:{taskId}:rt` on a best-effort basis.
 - Do not use score absence as terminal proof; terminal, closed, or discarded
   tasks should write a retained closed marker before cleanup/retention removes
   that marker.
-- Do not add an active lease expiry ZSET unless a later policy explicitly
+- Do not add an active claim expiry ZSET unless a later policy explicitly
   requires near-exact timeout wakeup.
 - Do not let retry backoff or empty-match penalty hide an earlier ready or
   scheduled retry candidate; task score must wake at the earliest score-visible
@@ -1429,7 +1428,7 @@ A first implementation should prove:
 - claim reuses append-generated `messageId` and creates sparse runtime state
   only for claimed items;
 - claim rejects stale runtime epochs, closed runtime gates, and missing or
-  mismatched worker reservation tokens before consuming ready or due frames;
+  mismatched worker admission evidence before consuming ready or due frames;
 - claimed work adds the task to the active task registry, and result/retry/final
   convergence removes it when `rt` is empty;
 - result success removes sparse runtime state and writes one task-local result
@@ -1443,7 +1442,7 @@ A first implementation should prove:
   runtime state without creating task-local `item-score` entries;
 - `DUE_TIME` retry writes one `item-score` member and one `item` hash field for
   the delayed retry message, then deletes both on success or final failure;
-- due `DUE_TIME` retry frames enter the same scheduling/claim/lease path as
+- due `DUE_TIME` retry frames enter the same scheduling/claim path as
   ready LIST frames;
 - empty-match scheduling rounds write a future recheck score and increment only
   bounded score-runtime penalty state;
@@ -1453,12 +1452,11 @@ A first implementation should prove:
   rewritten to a next eligible score after each round;
 - the scheduler can acquire a bounded batch of eligible tasks so one large
   backlog does not permanently hide other due tasks;
-- lease timeout repair discovers active tasks through the active task registry,
-  scans `task:{taskId}:rt`, and eventually expires leased messages without
+- claim timeout repair discovers active tasks through the active task registry,
+  scans `task:{taskId}:rt`, and eventually expires claimed messages without
   relying on task score for exact timeout wakeup;
 - pause/block holds the task with a far-future score without rewriting items;
 - terminal/discard writes a runtime fence and retained closed score before
   physical cleanup, then deletes task-local runtime keys without namespace scan;
-- memory and Redis implementations share the same `xa-mass-task-runtime` public
-  contract
+- memory and Redis implementations share the same kernel runtime contract
   behavior.

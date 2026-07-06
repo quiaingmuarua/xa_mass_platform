@@ -225,7 +225,7 @@ sourceType
 ownerAction
 rawEventName
 ownerRef
-attemptId
+correlationId
 observedAt
 ```
 

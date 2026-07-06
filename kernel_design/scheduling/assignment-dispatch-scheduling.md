@@ -7,7 +7,7 @@ current implementation truth and not an implementation roadmap.
 ## Purpose
 
 Assignment-dispatch scheduling turns one scheduling opportunity into concrete
-dispatch seeds:
+deliver seeds:
 
 ```text
 schedulable task
@@ -80,7 +80,7 @@ them as small dataclasses. They are not public API DTOs.
 2. compile worker demand from task policy and item/capability requirements
 3. acquire candidate workers from worker-score-band scheduling
 4. validate worker group, capability, filters, priority, and capacity
-5. reserve/admit one or more workers for this scheduling round
+5. admit/hold one or more workers for this scheduling round
 6. claim current work hash rows from the work-item owner
 7. compensate worker admission if claim fails
 8. resolve transport delivery lane for the selected worker
@@ -106,7 +106,7 @@ which candidate wins by priority/ranking?
 can the winning worker be admitted now?
 ```
 
-The plane may produce no dispatch seed. No-dispatch outcomes are normal
+The plane may produce no deliver seed. No-dispatch outcomes are normal
 scheduling evidence, not errors.
 
 Typical no-dispatch outcomes:
@@ -151,8 +151,8 @@ rewrite task score through task-score owner
 
 Do not make task score-band pop work. Do not make worker score-band claim work.
 
-Claim is intentionally thin. It does not create an `Attempt`, a separate active
-lease owner, or a scheduling id. It writes the current work hash row and
+Claim is intentionally thin. It does not create an `Attempt`, a separate
+timeout owner, or a scheduling id. It writes the current work hash row and
 returns the same claim evidence inside the deliver seed.
 
 ## Deliver Seed

@@ -148,7 +148,8 @@ ZRANGEBYSCORE task:score:{laneBucketId}
 Acquire returns candidate task ids only. It does not prove work exists, reserve
 a worker, or accept a result.
 
-After acquire, the engine asks the owning planes to validate their own facts:
+After acquire, the kernel scheduler asks the owning planes to validate their
+own facts:
 
 ```text
 task lifecycle owner:
@@ -177,7 +178,7 @@ An acquired score with no claimable work is a stale or no-work candidate. It is
 classified by the scheduling round and rewritten by the score owner; append,
 result, and read paths do not directly refresh the live score.
 
-## Engine Scheduling Protocol
+## Kernel Scheduling Protocol
 
 The target protocol deliberately keeps score-band, work-item ownership,
 worker-runtime, and transport separate:

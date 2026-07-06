@@ -40,7 +40,7 @@ worker-score-band-scheduling
 
 assignment-dispatch-scheduling
   joins a schedulable task, admitted worker/resource, claimed work hash row,
-  and transport route evidence into a concrete dispatch seed
+  and transport route evidence into a concrete deliver seed
 
 result-routing-scheduling
   compares incoming result evidence with current work hash truth and routes it
@@ -127,7 +127,7 @@ final work result
 Answers:
 
 ```text
-given a schedulable task and admissible worker, what concrete dispatch seed
+given a schedulable task and admissible worker, what concrete deliver seed
 should be produced?
 ```
 
@@ -185,8 +185,8 @@ owner and not a transport parser.
 2. [Worker Score-Band Scheduling](worker-score-band-scheduling.md)
    - target worker/resource eligibility score mechanism.
 3. [Assignment-Dispatch Scheduling](assignment-dispatch-scheduling.md)
-   - how one task scheduling round chooses workers, claims work, and produces
-     dispatch seeds.
+  - how one task scheduling round chooses workers, claims work, and produces
+     deliver seeds.
 4. [Result-Routing Scheduling](result-routing-scheduling.md)
    - how result evidence is routed to finality, retry, no-op, or unresolved
      handling.

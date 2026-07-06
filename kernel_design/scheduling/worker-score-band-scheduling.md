@@ -153,17 +153,17 @@ owner-approved placement attributes
 Only after validation and admission may the worker become a selected worker
 for a scheduling round.
 
-## Engine Scheduling Protocol
+## Kernel Scheduling Protocol
 
 Worker score-band participates only in the worker side of a scheduling round:
 
 ```text
-1. engine obtains a task scheduling round from task score-band
+1. kernel scheduler obtains a task scheduling round from task score-band
 2. policy compiles worker demand / placement constraints
 3. worker-runtime acquires bounded worker candidates from score-band
 4. worker-runtime validates metadata, reachability, readiness, and capacity
 5. worker-runtime admits or rejects the worker
-6. engine dispatches only after work-item claim and worker admission both hold
+6. kernel scheduler dispatches only after work-item claim and worker admission both hold
 ```
 
 Worker score-band does not inspect task backlog, claim task items, or write task
