@@ -863,8 +863,10 @@ validation, and owner claim.
 
 ## Worker Runtime Redis Shape
 
-Concrete Redis runtime shape is split into a separate reference:
-[Score-Band Worker Runtime Redis Shape](./score-band-worker-runtime-redis-shape.md).
+Concrete Redis runtime shape is not owned by this architecture explanation.
+Current Java implementation work must define any Redis keyspace through the
+owning runtime roadmap or implementation contract, not by citing the isolated
+new-kernel design workspace.
 
 The mechanism-level boundary remains:
 

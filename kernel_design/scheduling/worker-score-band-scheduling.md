@@ -31,7 +31,7 @@ It does not answer:
 ```text
 is the transport session connected?
 which task should use this worker?
-is capacity finally reserved?
+is capacity currently admitted?
 is worker metadata valid for a specific task?
 ```
 
@@ -53,7 +53,7 @@ Worker-runtime owns scheduling eligibility:
 worker metadata validation
 readiness / dispatch gate interpretation
 reachability interpretation for scheduling
-capacity / reservation admission
+capacity / admission hold
 score-band placement
 verified reopen after recovery
 ```
@@ -75,8 +75,7 @@ Rules:
 - score absence has no business meaning to score-band;
 - score-band does not explain service discovery or why a worker is absent;
 - acquire is a bounded range query;
-- acquired workers still require worker-runtime validation and admission before
-  reservation;
+- acquired workers still require worker-runtime validation before admission;
 - transport heartbeat, keepalive, connected, and freshness observations are not
   generic score-refresh triggers.
 
@@ -85,7 +84,7 @@ Conceptual flow:
 ```text
 worker score acquire
   -> worker metadata / gate / reachability / capacity validation
-  -> worker admission / reservation
+  -> worker admission / hold when needed
   -> optional score rewrite for contention, cooldown, or failed validation
   -> selected worker handle returned to scheduling
 ```
@@ -147,19 +146,19 @@ worker group / capability membership
 approved scheduling metadata
 reachability evidence
 readiness / dispatch gate
-capacity / reservation availability
+capacity / admission availability
 owner-approved placement attributes
 ```
 
-Only after validation and reservation may the worker become a selected worker
-for a task attempt.
+Only after validation and admission may the worker become a selected worker
+for a scheduling round.
 
 ## Engine Scheduling Protocol
 
 Worker score-band participates only in the worker side of a scheduling round:
 
 ```text
-1. engine obtains a task scheduling attempt from task score-band
+1. engine obtains a task scheduling round from task score-band
 2. policy compiles worker demand / placement constraints
 3. worker-runtime acquires bounded worker candidates from score-band
 4. worker-runtime validates metadata, reachability, readiness, and capacity
@@ -182,7 +181,7 @@ admission round that observed them:
 ```text
 worker score due
   -> worker-runtime acquires candidate
-  -> validation / admission / reservation produces evidence
+  -> validation / admission / hold produces evidence
   -> worker-runtime may rewrite score
 ```
 
@@ -193,7 +192,7 @@ the acquire range. The rewrite exists for:
 capacity contention
 cooldown
 failed validation
-reservation interval
+admission hold interval
 admission fairness
 anti-spin
 ```
@@ -255,7 +254,7 @@ direct worker-runtime owner event
 
 acquired admission round
   -> validate worker candidate
-  -> reserve or reject
+  -> admit, hold, or reject
   -> classify evidence
   -> rewrite score
 ```
@@ -272,13 +271,13 @@ explicit disable / drain / operator park
 recoverable disconnect / missing endpoint
   -> low-recheck score or direct fast-close score, depending on policy
 
-capacity full / reserved / cooldown
+capacity full / held / cooldown
   -> future score
 
 admission failed stale metadata
   -> low-recheck or parked score, depending on owner policy
 
-reservation succeeded
+admission hold succeeded
   -> future score if the worker should not be immediately reacquired
 ```
 
@@ -296,8 +295,8 @@ disable / drain / fast-close
 verified reopen
   validation evidence + score write
 
-reserve/admit
-  capacity/reservation mutation + score rewrite when needed
+admit/hold
+  capacity/admission mutation + score rewrite when needed
 
 release/final
   capacity truth update only; score rewrite belongs to a later acquired
@@ -320,7 +319,7 @@ Rules:
   out-of-range score if the owner fact is current;
 - score due but reachability/readiness validation fails: reject and rewrite to
   low-recheck, parked, or future according to policy;
-- score due but capacity is full: reject or reserve-fail and future-score;
+- score due but capacity is full: reject or admission-fail and future-score;
 - stale positive event cannot reopen a worker directly;
 - transport connected is not enough to write eligible score.
 
@@ -335,7 +334,7 @@ Policy owns:
 ```text
 eligible score placement
 cooldown duration
-reservation interval
+admission hold interval
 low-recheck priority
 failed recheck threshold
 park / unpark rules
@@ -362,6 +361,6 @@ no broad refresh from low-value transport observations
 - Do not create per-task worker candidate keys.
 - Do not fan out score across placement-tag buckets in the first slice.
 - Do not store transport/session evidence in worker scheduling metadata.
-- Do not make score replace capacity/reservation validation.
+- Do not make score replace capacity/admission validation.
 - Do not let read projections or trace materialization drive worker score.
 - Do not force task score ranges onto worker-runtime bands.

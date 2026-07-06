@@ -23,7 +23,7 @@ which task ids have score in the acquire range now?
 Task score answers:
 
 ```text
-should this task enter a bounded scheduling attempt now?
+should this task enter a bounded scheduling round now?
 ```
 
 It does not answer:
@@ -55,7 +55,7 @@ What must not be copied into task score-band:
 ```text
 ready backlog ownership
 item claim ownership
-item lease ownership
+current work occupancy ownership
 scheduled retry frame ownership
 result finality ownership
 result read-model ownership
@@ -116,7 +116,7 @@ score < 0
 
 TIME_SCORE_FLOOR <= score <= now
   due scheduling visibility
-  task may be acquired for one bounded scheduling attempt
+  task may be acquired for one bounded scheduling round
 
 score > now
   future scheduling visibility
@@ -154,8 +154,8 @@ After acquire, the engine asks the owning planes to validate their own facts:
 task lifecycle owner:
   task shell exists
   task shell is not terminal
-  lifecycle gate / epoch permits a scheduling attempt
-  policy snapshot is current enough for the attempt
+  lifecycle gate / epoch permits a scheduling round
+  policy snapshot is current enough for the round
 
 work-item owner:
   claimable work exists now, or no-work evidence is returned
@@ -198,8 +198,8 @@ has enough worker-admission evidence to avoid consuming work without a viable
 dispatch path.
 
 If final item claim fails after worker admission, the scheduling round releases
-or compensates the worker reservation through worker-runtime and classifies the
-round evidence. Task score-band does not own that compensation state.
+or compensates worker admission through worker-runtime and classifies the round
+evidence. Task score-band does not own that compensation state.
 
 ## Score Update Discipline
 
@@ -347,7 +347,8 @@ Separate owner boundaries:
 
 ```text
 work-item owner
-  owns item readiness, claim, lease, retry frame, and claim compensation
+  owns item readiness, current work hash claim, retry frame, and claim
+  compensation
 
 result owner
   owns result finality, recent-final barriers, and result read projection
@@ -410,8 +411,8 @@ no broad refresh from low-value events
 - Do not use score absence as terminal proof.
 - Do not let append write or refresh task score.
 - Do not let result/retry write live task score.
-- Do not put work-item claim, item lease, retry-frame mutation, or result
-  finality inside task score-band atomicity.
+- Do not put work-item claim, current work occupancy, retry-frame mutation, or
+  result finality inside task score-band atomicity.
 - Do not use current implementation classes as target owner proof for this
   mechanism; this document defines the new owner split.
 - Do not create a second serving ready-task scheduling index after score
@@ -419,6 +420,6 @@ no broad refresh from low-value events
 - Do not let `Task.status`, read projections, or trace materialization drive
   dispatch.
 - Do not let task score select workers.
-- Do not make task score responsible for precise active lease timeout.
-- Do not use Redis Stream / PEL as the task lease owner in this shape.
+- Do not make task score responsible for precise active claim timeout.
+- Do not use Redis Stream / PEL as the task claim owner in this shape.
 - Do not explain service discovery from score-band absence.

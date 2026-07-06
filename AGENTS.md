@@ -212,8 +212,6 @@ Start here based on the change:
   [doc/FRONTEND_BACKEND_CONTRACT.md](doc/FRONTEND_BACKEND_CONTRACT.md)
 - active cross-module roadmap or decision work:
   [roadmap/README.md](roadmap/README.md)
-- target mechanism blueprints for large cross-module architecture directions:
-  [blueprint/README.md](blueprint/README.md)
 - legacy/compatibility/deprecation work:
   [DEPRECATION_LEDGER.md](DEPRECATION_LEDGER.md)
 
@@ -332,10 +330,13 @@ Hard rules for new or updated docs:
   `doc/` unless it is a cross-module contract or constraint
 - root [README.md](README.md) is only for current facts, entry lanes, and
   top-level directory rationale; do not grow it into a roadmap or design log
-- [blueprint/](blueprint/README.md) is agent-first target mechanism and
-  runtime/state-transition design context for large cross-module directions;
-  it is not current implementation truth, not acceptance proof, and not a
-  substitute for a scoped roadmap before execution
+- `kernel_design/` is an isolated new-kernel design workspace for scheduling
+  mechanisms, runtime/state-transition notes, and future Python executable-spec
+  preparation. Do not cite or link its internal documents from current Java
+  implementation docs, active roadmaps, architecture explanations, proof
+  registries, or acceptance runbooks. It is not current Java implementation
+  truth, not acceptance proof, and not a substitute for a scoped roadmap or
+  executable-spec plan before execution.
 - [architecture/](architecture/README.md) is human-facing explanation and
   onboarding material, not implementation truth or acceptance proof
 - SDK, public-contract, or integrations boundary changes must update

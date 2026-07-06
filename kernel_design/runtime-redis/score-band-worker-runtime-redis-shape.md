@@ -3,11 +3,9 @@
 Status: target runtime design reference, not current implementation truth.
 
 This document is the concrete Redis structure reference for
-[Worker Score-Band Scheduling](./worker-score-band-scheduling.md), with
-[Score-Band Resource Slot Scheduling Blueprint](./score-band-resource-slot-scheduling-blueprint.md)
-as earlier background. It exists separately because Redis runtime shape is
-implementation-specific enough to evolve without making the mechanism note
-harder to read.
+[Worker Score-Band Scheduling](../scheduling/worker-score-band-scheduling.md).
+It exists separately because Redis runtime shape is implementation-specific
+enough to evolve without making the mechanism note harder to read.
 
 ## Purpose
 
@@ -190,8 +188,8 @@ contention, capacity, cooldown, or failed validation.
 
 Reason, owner action, failed recheck count, and reopen policy are trace or
 diagnostic evidence in the first slice. If a later proof needs a repair/debug
-projection for these fields, add it through a separate roadmap and keep it out
-of hot-path acquire truth.
+projection for these fields, add it through a separate executable-spec plan and
+keep it out of hot-path acquire truth.
 
 ## Transition Evidence
 
@@ -212,8 +210,8 @@ wr:{prefix}:transition
 ```
 
 The first score-band Redis slice does not need this stream. Do not include it in
-Redis completion criteria unless a later roadmap proves a concrete repair or
-debug owner.
+Redis completion criteria unless a later executable-spec plan proves a concrete
+repair or debug owner.
 
 Suggested evidence fields:
 

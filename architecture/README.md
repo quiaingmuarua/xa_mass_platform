@@ -75,11 +75,9 @@ Future worker-selection work can add worker metrics, task-type affinity,
 historical performance, or domain-specific scoring without changing the
 task/worker/runtime ownership model.
 
-Agent-first target mechanism blueprints live under
-[Blueprints](../blueprint/README.md). Score-band scheduling direction is under
-[Score-Band Scheduling](../blueprint/score-band/README.md). Those documents are
-not human onboarding docs and not current implementation truth; they exist to
-align future roadmap/code work on target runtime mechanisms.
+New-kernel design notes are intentionally isolated from this architecture guide.
+This guide explains the current Java project mental model and must not cite the
+destructive rewrite design space as implementation direction or proof.
 
 Scheduling policy boundary:
 

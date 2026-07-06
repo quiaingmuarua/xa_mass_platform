@@ -19,7 +19,6 @@ For agents and contributors:
 - [doc/TASK_LIFECYCLE_BASELINE.md](./doc/TASK_LIFECYCLE_BASELINE.md)
 - [doc/README.md](./doc/README.md) - expanded global doc map when needed
 - [transport/AGENTS.md](./transport/AGENTS.md)
-- [blueprint/README.md](./blueprint/README.md) - agent-first target mechanism workspace for large cross-module architecture changes
 
 For humans:
 
@@ -228,9 +227,9 @@ Module truth comes from the root `pom.xml`. Do not treat removed historical modu
 
 Top-level non-reactor directories are intentionally narrow:
 
-- `blueprint/`: agent-first target mechanism and runtime/state-transition
-  design workspace for cross-module architecture directions that are larger
-  than one roadmap; not current implementation truth
+- `kernel_design/`: new-kernel design workspace for scheduling mechanisms,
+  runtime/state-transition notes, and future Python executable-spec
+  preparation; isolated from current Java implementation docs and roadmaps
 - `architecture/`: human-facing onboarding and mental model, linked from this
   README because it is a cross-module entry point
 - `roadmap/`: active cross-module planning, inventories, and decision records;
