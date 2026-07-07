@@ -760,9 +760,10 @@ PRE_REVIEW(3) -> READY_APPROVED(2) -> RUNNING_VISIBLE(1) -> TERMINAL(<0)
 
 Lifecycle progress moves toward lower tag / terminal score. Scheduling
 suppression, retry, hold, and lease move inside the same tag by writing a later
-`epochSecond`; the common case is a same-band epoch rewrite that preserves
-suffix. Release/resume is the only path that may lower `epochSecond`, and only
-with exact `observedLeaseScore`.
+`epochSecond`; the common case is a same-band epoch bump/rewrite that preserves
+suffix. Relative bumps may use `ZINCRBY deltaSeconds * SUFFIX_FACTOR` after
+terminal, band, and future-hold boundary checks. Release/resume is the only path
+that may lower `epochSecond`, and only with exact `observedLeaseScore`.
 `READY_APPROVED` is optional: a validated owner transition may move directly
 from `PRE_REVIEW` to `RUNNING_VISIBLE`. The kernel only rejects movement from a
 lower tag back to a higher tag.
@@ -1564,9 +1565,10 @@ The segmented score format is intended to keep normal acquisition simple:
 active scans are plain numeric `ZRANGEBYSCORE` calls over one tag segment plus
 `LIMIT`. Lua should not be used just to discover whether a candidate belongs to
 `RUNNING_VISIBLE` or `READY_APPROVED`; the range already answers that.
-Lua/transactions are reserved for same-band epoch rewrites, general positive
-rewrites, terminal closes, observed-lease release/resume, and mutations that
-must update task-local runtime keys together with score/meta/fence values.
+Lua/transactions are reserved for same-band epoch bumps/rewrites, general
+positive rewrites, terminal closes, observed-lease release/resume, and
+mutations that must update task-local runtime keys together with score, meta,
+or fence values.
 
 Required atomic boundaries:
 

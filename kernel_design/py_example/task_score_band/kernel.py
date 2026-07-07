@@ -171,6 +171,23 @@ class TaskScoreBandKernel(ABC):
         pass
 
     @abstractmethod
+    def bump_same_band_epoch(
+        self,
+        *,
+        task_id: TaskId,
+        expected_band: TaskScoreBand,
+        max_bumpable_epoch_second: EpochSecond,
+        delta_seconds: int,
+    ) -> TaskScoreTransitionResult:
+        """Relatively move epochSecond right while preserving tag and suffix.
+
+        This is the narrowest high-frequency primitive. It rejects terminal,
+        stale band, non-positive delta, and future/paused scores beyond
+        max_bumpable_epoch_second.
+        """
+        pass
+
+    @abstractmethod
     def close_score(
         self,
         *,

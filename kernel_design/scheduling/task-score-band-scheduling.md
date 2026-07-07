@@ -563,7 +563,39 @@ bounded scheduling round result
 Owner validation happens before the kernel primitive. Do not name business
 events inside the kernel rule.
 
-Hot-path same-band epoch rewrite primitive:
+Hot-path same-band epoch bump primitive:
+
+```text
+bump_same_band_epoch(
+  taskId,
+  expectedBand,
+  maxBumpableEpochSecond,
+  deltaSeconds
+):
+  storedScore = read_current_score(taskId)
+
+  if storedScore < 0:
+    reject TERMINAL_IMMUTABLE
+
+  current = decode_positive(storedScore)
+  require band(current.tag) == expectedBand
+  require current.tag in {RUNNING_VISIBLE_TAG, READY_APPROVED_TAG, PRE_REVIEW_TAG}
+  require 0 <= current.epochSecond <= MAX_EPOCH_SECOND
+  require 0 <= current.suffix <= MAX_SUFFIX
+  require current.epochSecond <= maxBumpableEpochSecond
+  require deltaSeconds > 0
+  require current.epochSecond + deltaSeconds <= MAX_EPOCH_SECOND
+
+  write score(current.tag, current.epochSecond + deltaSeconds, current.suffix)
+```
+
+This is the preferred primitive when relative delay is enough. A Redis
+implementation can use `ZINCRBY deltaSeconds * SUFFIX_FACTOR` after the hard
+score-boundary checks. It does not perform owner validation and does not need
+exact observed-score fencing; ordinary stale competition may fail or only delay
+the task by a small bounded amount.
+
+Absolute same-band epoch rewrite primitive:
 
 ```text
 rewrite_same_band_epoch(taskId, expectedBand, targetEpochSecond):
@@ -584,8 +616,8 @@ rewrite_same_band_epoch(taskId, expectedBand, targetEpochSecond):
 ```
 
 This is the preferred primitive when the caller only needs to move the same tag
-rightward in time. It preserves suffix and avoids the broader target-band /
-target-suffix surface.
+rightward to a chosen absolute time. It preserves suffix and avoids the broader
+target-band / target-suffix surface.
 
 General positive rewrite primitive:
 
@@ -617,7 +649,8 @@ rewrite_score(taskId, expectedBand, targetBand?, targetEpochSecond, targetSuffix
 ```
 
 If `rewrite_score` is called without `targetBand` and `targetSuffix`, it is
-equivalent to `rewrite_same_band_epoch` and should use the same hot path.
+equivalent to `rewrite_same_band_epoch` and should use the absolute same-band
+hot path.
 
 Terminal close is separate because it is destructive and final:
 
@@ -762,7 +795,8 @@ is rejected, routed to a new task, or handled by an explicit owner transition.
 The target protocol deliberately keeps score-band, work-item ownership,
 worker-runtime, and transport separate. The active loop belongs to
 assignment-dispatch; task score-band only supplies query plus same-band epoch
-rewrite, general positive rewrite, terminal close, and lease-release primitives:
+bump/rewrite, general positive rewrite, terminal close, and lease-release
+primitives:
 
 ```text
 1. choose task score scan range and limit according to active band order
@@ -872,8 +906,8 @@ on the kernel primitive.
 
 | Category | May write task score? | Allowed shape |
 | --- | --- | --- |
-| score-acquired assignment-dispatch round | yes | Decode score, validate owner facts, run the band action, then call same-band epoch rewrite, general positive rewrite, terminal close, or lease release. |
-| owner command | yes | Validate owner facts, then call same-band epoch rewrite, general positive rewrite, terminal close, or lease release. |
+| score-acquired assignment-dispatch round | yes | Decode score, validate owner facts, run the band action, then call same-band epoch bump/rewrite, general positive rewrite, terminal close, or lease release. |
+| owner command | yes | Validate owner facts, then call same-band epoch bump/rewrite, general positive rewrite, terminal close, or lease release. |
 | owner-evidence-write | no direct live score | Update its own truth only; later scheduling or an owner command may observe it. |
 | read projection / trace | no | Observability only. |
 
@@ -940,8 +974,8 @@ result owner
 
 task score owner
   owns the score value, decode rules, bounded query primitive, and
-  same-band epoch rewrite / positive rewrite / terminal close / lease-release
-  primitives
+  same-band epoch bump/rewrite / positive rewrite / terminal close /
+  lease-release primitives
 
 assignment-dispatch
   owns scan range choice, batch limit, candidate classification, and request for
@@ -1021,7 +1055,7 @@ Mechanism owns:
 linear score axis
 state-aware bounded range + limit query
 owner validation after acquire
-same-band epoch rewrite / positive rewrite / terminal close / lease release
+same-band epoch bump/rewrite / positive rewrite / terminal close / lease release
 task scheduling visibility transition boundaries
 no event-driven scheduling dependency
 no broad refresh from low-value observations

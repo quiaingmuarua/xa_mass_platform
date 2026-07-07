@@ -169,6 +169,63 @@ redis.call("ZADD", key, next_score, task_id)
 return {"transitioned", next_score}
 """
 
+    _BUMP_SAME_BAND_EPOCH_SCRIPT: ClassVar[str] = """
+local key = KEYS[1]
+local task_id = ARGV[1]
+local expected_tag = tonumber(ARGV[2])
+local max_bumpable_epoch_second = tonumber(ARGV[3])
+local delta_seconds = tonumber(ARGV[4])
+local tag_factor = tonumber(ARGV[5])
+local suffix_factor = tonumber(ARGV[6])
+local max_epoch_second = tonumber(ARGV[7])
+local max_suffix = tonumber(ARGV[8])
+
+local stored = redis.call("ZSCORE", key, task_id)
+if not stored then
+  return {"stale"}
+end
+
+local stored_score = tonumber(stored)
+if stored_score <= 0 then
+  return {"stale", stored_score}
+end
+
+local stored_tag = math.floor(stored_score / tag_factor)
+local rest = stored_score % tag_factor
+local stored_epoch_second = math.floor(rest / suffix_factor)
+local stored_suffix = rest % suffix_factor
+
+if stored_tag ~= 1 and stored_tag ~= 2 and stored_tag ~= 3 then
+  return {"stale", stored_score}
+end
+if stored_epoch_second < 0 or stored_epoch_second > max_epoch_second then
+  return {"stale", stored_score}
+end
+if stored_suffix < 0 or stored_suffix > max_suffix then
+  return {"stale", stored_score}
+end
+if stored_tag ~= expected_tag then
+  return {"stale", stored_score}
+end
+if stored_epoch_second > max_bumpable_epoch_second then
+  return {"stale", stored_score}
+end
+if delta_seconds <= 0 then
+  return {"invalid"}
+end
+if stored_epoch_second + delta_seconds > max_epoch_second then
+  return {"invalid"}
+end
+
+local next_score = redis.call(
+  "ZINCRBY",
+  key,
+  delta_seconds * suffix_factor,
+  task_id
+)
+return {"transitioned", tonumber(next_score)}
+"""
+
     def __init__(
         self,
         redis_client: Any,
@@ -319,6 +376,45 @@ return {"transitioned", next_score}
                 task_id,
                 expected_tag,
                 target_epoch_second,
+                self.tag_factor,
+                self.suffix_factor,
+                self.MAX_EPOCH_SECOND,
+                self.MAX_SUFFIX,
+            )
+        )
+
+    def bump_same_band_epoch(
+        self,
+        *,
+        task_id: TaskId,
+        expected_band: TaskScoreBand,
+        max_bumpable_epoch_second: EpochSecond,
+        delta_seconds: int,
+    ) -> TaskScoreTransitionResult:
+        if expected_band == TaskScoreBand.TERMINAL:
+            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
+        if not (
+            self.MIN_EPOCH_SECOND
+            <= max_bumpable_epoch_second
+            <= self.MAX_EPOCH_SECOND
+        ):
+            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
+        if delta_seconds <= 0:
+            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
+
+        expected_tag = self._tag_from_band(expected_band)
+        if expected_tag is None:
+            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
+
+        return self._script_result(
+            self.redis.eval(
+                self._BUMP_SAME_BAND_EPOCH_SCRIPT,
+                1,
+                self.score_key,
+                task_id,
+                expected_tag,
+                max_bumpable_epoch_second,
+                delta_seconds,
                 self.tag_factor,
                 self.suffix_factor,
                 self.MAX_EPOCH_SECOND,

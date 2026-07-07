@@ -173,7 +173,7 @@ Owns:
 task scheduling visibility score
 task score-state interpretation
 bounded score query primitive
-same-band epoch rewrite / positive rewrite / terminal close / lease-release
+same-band epoch bump/rewrite / positive rewrite / terminal close / lease-release
 primitives
 running-stage future-score placement for pause / contention / no-worker delay
 ```

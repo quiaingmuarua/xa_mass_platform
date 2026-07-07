@@ -343,6 +343,12 @@ Required collaborators:
 
 ```text
 task_score.query(range, limit)
+task_score.bump_same_band_epoch(
+  task_id,
+  expected_band,
+  max_bumpable_epoch_second,
+  delta_seconds
+)
 task_score.rewrite_same_band_epoch(
   task_id,
   expected_band,
