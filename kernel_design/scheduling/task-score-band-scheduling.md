@@ -80,7 +80,8 @@ Core mechanics:
 tag decides lifecycle direction
 epochSecond decides same-band lease / recheck / freshness direction
 suffix decides same-band budget / tie-break / owner-local code
-expected-score prevents stale overwrite
+write-time stored-score/CAS prevents stale overwrite
+terminal close and lease release use exact observed-score fences
 transition direction rule prevents lifecycle regression
 ```
 
@@ -92,7 +93,7 @@ PRE_REVIEW(3) -> READY_APPROVED(2) -> RUNNING_VISIBLE(1) -> TERMINAL(<0)
 
 Scheduling suppression, retry, hold, and lease move right inside the same band
 by writing a later `epochSecond`. Release/resume is the only right-to-left lease
-shortcut and must carry the exact `expectedLeaseScore`.
+shortcut and must carry the exact `observedLeaseScore`.
 
 Rules:
 
@@ -103,7 +104,7 @@ Rules:
 - task score-band does not own pagination cursors, scan ordering, or no-op
   pacing;
 - dispatch-visible candidates must be classified and moved, closed, cleaned, or
-  rejected by expected-score protection;
+  rejected by the score-write stale fence;
 - acquired tasks still require lifecycle/gate validation and work-item owner
   validation before dispatch;
 - append, result, retry frame write, and result lookup are not score refresh
@@ -119,7 +120,7 @@ assignment-dispatch pacing round
   -> worker score-band acquire / admission
   -> dispatch selected work through transport
   -> scheduling round classifies evidence
-  -> task score expected-score update for fairness / anti-spin / future retry
+  -> task score rewrite/close/release for fairness / anti-spin / future retry
 ```
 
 The score value is the task-side scheduling clock. The task-score owner stores
@@ -272,7 +273,7 @@ suffix = score % SUFFIX_FACTOR
 second. For `PRE_REVIEW`, it is the owner mutation freshness second. Kernel code
 does not interpret review business flow; it only rejects stale positive writes
 whose target `epochSecond` is not newer than the stored `epochSecond`, except
-for expected-score release/resume.
+for observed-score release/resume.
 `suffix` is a bounded two-digit same-band remaining schedule budget. `00` means
 same-band budget exhausted; `01..99` means that many same-band scheduling
 rewrites remain for scheduling bands. For `PRE_REVIEW`, `suffix` is an
@@ -387,7 +388,7 @@ ready scan:
 
 Do not collapse these into one broad scan from `RUNNING_VISIBLE_TAG` through
 `READY_APPROVED_TAG`. A paused active tag uses `PAUSE_EPOCH_SECOND` and must
-stay invisible until released by expected-score resume. Terminal scores are
+stay invisible until released by observed-score resume. Terminal scores are
 negative and must not enter the active assignment-dispatch batch.
 
 Assignment-dispatch chooses the scan horizon per band. Normally each scan uses
@@ -407,7 +408,7 @@ rewrite score within the same band
 move to another band
 write negative terminal score
 clean stale residue
-fail expected-score / CAS because newer score already won
+fail the score-write stale fence because newer score already won
 ```
 
 Keeping the same score after a successful acquire is not the normal path. A
@@ -470,16 +471,16 @@ RUNNING_VISIBLE exhausted after NO_WORKER / contention
 Release/resume is the explicit exception. It releases a known lease/hold score:
 
 ```text
-stored score must still equal expectedLeaseScore
-target score is derived from expectedLeaseScore with a release epochSecond
-target suffix is copied from expectedLeaseScore
+stored score must still equal observedLeaseScore
+target score is derived from observedLeaseScore with a release epochSecond
+target suffix is copied from observedLeaseScore
 otherwise return STALE / NOOP and keep the newer hold
 ```
 
 Pause/block/hold uses the ordinary freshness rule: write the same active tag
 with a future `epochSecond`; hard pause writes `PAUSE_EPOCH_SECOND`.
 Release/resume uses
-`expectedLeaseScore` as the stale fence; matching that exact score proves no
+`observedLeaseScore` as the stale fence; matching that exact score proves no
 newer hold, terminal close, or scheduling rewrite has happened.
 
 `PRE_REVIEW` same-band owner transitions obey the same positive-write freshness
@@ -508,12 +509,13 @@ millisecond precision.
 
 Cross-band writes, such as `PRE_REVIEW -> RUNNING_VISIBLE` or
 `READY_APPROVED -> RUNNING_VISIBLE`, are allowed only by the transition
-direction rule and expected-score / CAS protection. External callers do not
-provide `suffix`. Cross-band owner transitions initialize suffix from policy;
-ordinary same-band owner transitions preserve suffix unless the current band
-owner defines suffix as owner-local state, such as `PRE_REVIEW`. A budget reset
-is a separate owner-authorized reset transition, not release/resume and not a
-generic event side effect.
+direction rule and the write-time stale fence. `targetSuffix` is a score
+coordinate chosen only after owner or policy validation; if omitted, the
+primitive preserves the stored suffix. Cross-band owner transitions initialize
+suffix from policy. Ordinary same-band owner transitions preserve suffix unless
+the current band owner defines suffix as owner-local state, such as
+`PRE_REVIEW`. A budget reset is a separate owner-authorized reset transition,
+not release/resume and not a generic event side effect.
 
 After acquire, decode `tag` and `suffix`:
 
@@ -538,7 +540,7 @@ Temporary restriction is deliberately not listed as a band. Pause/block writes
 the same active tag with a future `epochSecond`; hard pause writes
 `PAUSE_EPOCH_SECOND = 9_999_999_999`. Ordinary future holds eventually become
 due and are interpreted as the original band. Hard pause is released through the
-lease-release primitive with exact `expectedLeaseScore`. Deadline-style task
+lease-release primitive with exact `observedLeaseScore`. Deadline-style task
 closure is not part of the first score-band model; closure is driven by
 exhausted same-band budget.
 
@@ -547,11 +549,13 @@ exhausted same-band budget.
 Transition validation is expressed as direction rules, not business-event
 enumerations. Product commands, scheduling rounds, and business events validate
 their own owner facts before asking the kernel to write a score. Kernel
-transition code sees only stored/proposed score coordinates:
+transition code sees only the stored score and requested target coordinates:
 
 ```text
 storedScore
-proposedScore
+targetBand?
+targetEpochSecond
+targetSuffix?
 owner validation
 bounded scheduling round result
 ```
@@ -559,44 +563,84 @@ bounded scheduling round result
 Owner validation happens before the kernel primitive. Do not name business
 events inside the kernel rule.
 
-Primary transition primitive:
+Hot-path same-band epoch rewrite primitive:
 
 ```text
-validate_transition(storedScore, proposedScore):
+rewrite_same_band_epoch(taskId, expectedBand, targetEpochSecond):
+  storedScore = read_current_score(taskId)
+
   if storedScore < 0:
     reject TERMINAL_IMMUTABLE
 
-  if proposedScore < 0:
-    allow TERMINAL
-    return
+  current = decode_positive(storedScore)
+  require band(current.tag) == expectedBand
+  require current.tag in {RUNNING_VISIBLE_TAG, READY_APPROVED_TAG, PRE_REVIEW_TAG}
+  require 0 <= current.epochSecond <= MAX_EPOCH_SECOND
+  require 0 <= targetEpochSecond <= MAX_EPOCH_SECOND
+  require 0 <= current.suffix <= MAX_SUFFIX
+  require targetEpochSecond > current.epochSecond
+
+  write score(current.tag, targetEpochSecond, current.suffix)
+```
+
+This is the preferred primitive when the caller only needs to move the same tag
+rightward in time. It preserves suffix and avoids the broader target-band /
+target-suffix surface.
+
+General positive rewrite primitive:
+
+```text
+rewrite_score(taskId, expectedBand, targetBand?, targetEpochSecond, targetSuffix?):
+  storedScore = read_current_score(taskId)
+
+  if storedScore < 0:
+    reject TERMINAL_IMMUTABLE
 
   current = decode_positive(storedScore)
-  target = decode_positive(proposedScore)
+  require band(current.tag) == expectedBand
+
+  targetTag = tag(targetBand or expectedBand)
+  targetSuffix = targetSuffix if supplied else current.suffix
 
   require current.tag in {RUNNING_VISIBLE_TAG, READY_APPROVED_TAG, PRE_REVIEW_TAG}
-  require target.tag in {RUNNING_VISIBLE_TAG, READY_APPROVED_TAG, PRE_REVIEW_TAG}
+  require targetTag in {RUNNING_VISIBLE_TAG, READY_APPROVED_TAG, PRE_REVIEW_TAG}
   require 0 <= current.epochSecond <= MAX_EPOCH_SECOND
-  require 0 <= target.epochSecond <= MAX_EPOCH_SECOND
+  require 0 <= targetEpochSecond <= MAX_EPOCH_SECOND
   require 0 <= current.suffix <= MAX_SUFFIX
-  require 0 <= target.suffix <= MAX_SUFFIX
-  require target.epochSecond > current.epochSecond
+  require 0 <= targetSuffix <= MAX_SUFFIX
+  require targetEpochSecond > current.epochSecond
 
-  if target.tag > current.tag:
+  if targetTag > current.tag:
     reject LIFECYCLE_REGRESSION
 
-  allow
+  write score(targetTag, targetEpochSecond, targetSuffix)
+```
+
+If `rewrite_score` is called without `targetBand` and `targetSuffix`, it is
+equivalent to `rewrite_same_band_epoch` and should use the same hot path.
+
+Terminal close is separate because it is destructive and final:
+
+```text
+close_score(taskId, observedScore, terminalScore):
+  storedScore = read_current_score(taskId)
+  require storedScore == observedScore
+  require observedScore > 0
+  require terminalScore < 0
+  write terminalScore
 ```
 
 Lease release is a separate primitive because it is the only legal way to move
 the same tag to an earlier `epochSecond`:
 
 ```text
-release_lease(storedScore, expectedLeaseScore, releaseEpochSecond):
-  require storedScore == expectedLeaseScore
-  expected = decode_positive(expectedLeaseScore)
-  require expected.tag in {RUNNING_VISIBLE_TAG, READY_APPROVED_TAG}
+release_lease(taskId, observedLeaseScore, releaseEpochSecond):
+  storedScore = read_current_score(taskId)
+  require storedScore == observedLeaseScore
+  observed = decode_positive(observedLeaseScore)
+  require observed.tag in {RUNNING_VISIBLE_TAG, READY_APPROVED_TAG}
   require 0 <= releaseEpochSecond <= MAX_EPOCH_SECOND
-  return score(expected.tag, releaseEpochSecond, expected.suffix)
+  write score(observed.tag, releaseEpochSecond, observed.suffix)
 ```
 
 The release primitive has no business-event meaning. It only proves that the
@@ -628,7 +672,7 @@ task score.
 Because temporary restriction is represented as the same active band with a
 future `epochSecond`, the tag direction rule alone does not distinguish held
 mode from ordinary future scheduling. The required protection is
-single-task write ordering or an expected-score check. If assignment-dispatch
+single-task write ordering or a write-time stale fence. If assignment-dispatch
 acquired an active score and a same-task owner transition has already written a
 newer lease score or terminal score, the stale rewrite must fail instead of
 replacing that newer score.
@@ -717,8 +761,8 @@ is rejected, routed to a new task, or handled by an explicit owner transition.
 
 The target protocol deliberately keeps score-band, work-item ownership,
 worker-runtime, and transport separate. The active loop belongs to
-assignment-dispatch; task score-band only supplies query and expected-score
-update primitives:
+assignment-dispatch; task score-band only supplies query plus same-band epoch
+rewrite, general positive rewrite, terminal close, and lease-release primitives:
 
 ```text
 1. choose task score scan range and limit according to active band order
@@ -763,7 +807,7 @@ assignment-dispatch round that observed them:
 task score due
   -> assignment-dispatch acquires task
   -> lifecycle / work-item / worker-runtime validation produces evidence
-  -> score owner writes the next score through expected-score protection
+  -> score owner writes the next score through the score-write stale fence
 ```
 
 This rewrite is not required to make the task schedulable; the task was already
@@ -784,7 +828,7 @@ large-backlog requeue
 scheduled retry visibility
 ```
 
-If the stored score has already changed, the expected-score update fails and the
+If the stored score has already changed, the score-write stale fence fails and the
 newer score wins. That also counts as consuming the acquired candidate.
 
 ### Owner-Transition Writes
@@ -828,8 +872,8 @@ on the kernel primitive.
 
 | Category | May write task score? | Allowed shape |
 | --- | --- | --- |
-| score-acquired assignment-dispatch round | yes | Decode score, validate owner facts, run the band action, then call the ordinary transition primitive with expected-score protection. |
-| owner command | yes | Validate owner facts, then call the ordinary transition primitive or the lease-release primitive. |
+| score-acquired assignment-dispatch round | yes | Decode score, validate owner facts, run the band action, then call same-band epoch rewrite, general positive rewrite, terminal close, or lease release. |
+| owner command | yes | Validate owner facts, then call same-band epoch rewrite, general positive rewrite, terminal close, or lease release. |
 | owner-evidence-write | no direct live score | Update its own truth only; later scheduling or an owner command may observe it. |
 | read projection / trace | no | Observability only. |
 
@@ -840,16 +884,17 @@ Task score transitions are fact-driven, not external-event-driven:
 ```text
 1. decode the stored current score into currentBand at write time
 2. validate owner facts required by that band
-3. choose target score according to the transition direction rule
-4. encode target score
+3. choose target coordinates according to the transition direction rule
+4. encode target score inside the score primitive
 5. reject negative-to-positive rewrite, stale epochSecond, or higher-tag
    cross-band movement
 6. write score with the owner facts that the score protects
 ```
 
-For release/resume, use the lease-release primitive instead of the ordinary
-transition primitive. It is intentionally separate because it may lower
-`epochSecond` after exact `expectedLeaseScore` match.
+For release/resume, use the lease-release primitive instead of ordinary positive
+rewrite. It is intentionally separate because it may lower
+`epochSecond` after exact `observedLeaseScore` match. Terminal close is also
+separate because final negative scores require an exact observed-score fence.
 
 ## Atomicity Boundaries
 
@@ -895,7 +940,8 @@ result owner
 
 task score owner
   owns the score value, decode rules, bounded query primitive, and
-  expected-score update primitive
+  same-band epoch rewrite / positive rewrite / terminal close / lease-release
+  primitives
 
 assignment-dispatch
   owns scan range choice, batch limit, candidate classification, and request for
@@ -905,7 +951,7 @@ assignment-dispatch
 Do not add a distributed lock around task scheduling by default. The owner-local
 transition should carry the concurrency control for its own facts.
 Multiple tasks may be processed concurrently. For one task, score writes must be
-serialized by a per-task writer or guarded by an expected-score check. The
+serialized by a per-task writer or guarded by a score-write stale fence. The
 required invariant is that a stale scheduling round cannot overwrite a newer
 budget rewrite, temporary restriction score, or terminal score.
 
@@ -975,7 +1021,7 @@ Mechanism owns:
 linear score axis
 state-aware bounded range + limit query
 owner validation after acquire
-expected-score score update
+same-band epoch rewrite / positive rewrite / terminal close / lease release
 task scheduling visibility transition boundaries
 no event-driven scheduling dependency
 no broad refresh from low-value observations
@@ -991,7 +1037,7 @@ no broad refresh from low-value observations
   retention may physically remove residue but must not move it back into a
   positive band.
 - Do not lower `epochSecond` on a positive score write except for release/resume
-  with exact `expectedLeaseScore` match.
+  with exact `observedLeaseScore` match.
 - Do not let append write or refresh task score.
 - Do not let result/retry write live task score.
 - Do not put a timer, periodic recheck loop, or pagination cursor inside the
@@ -1001,9 +1047,9 @@ no broad refresh from low-value observations
   keeping `RUNNING_VISIBLE` consumption first.
 - Do not let dispatch-visible `RUNNING_VISIBLE` candidates spin at the same
   dominant score after classification; rewrite, move, close, clean, or lose to
-  expected-score protection. `READY_APPROVED` and `RUNNING_VISIBLE` same-band
+  the score-write stale fence. `READY_APPROVED` and `RUNNING_VISIBLE` same-band
   false classifications must also be consumed by `suffix - 1`, exhausted
-  action, or expected-score loss.
+  action, or stale-fence loss.
 - Do not use event delivery as the only trigger for scheduling, retry, or
   no-work closure.
 - Do not use an event queue as ready-task backlog or as a second scheduling
@@ -1019,7 +1065,7 @@ no broad refresh from low-value observations
   epoch.
 - Do not rely on tag direction alone to protect temporary restriction mode;
   because it preserves the same active tag, use per-task write ordering or
-  expected-score protection.
+  a score-write stale fence.
 - Do not close `RUNNING_VISIBLE` after a no-work classification without applying
   the owner policy to the decoded suffix budget and current work evidence.
 - Do not put work-item claim, current work occupancy, retry-frame mutation, or

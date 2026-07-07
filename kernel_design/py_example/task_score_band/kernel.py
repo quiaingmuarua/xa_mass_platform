@@ -133,18 +133,52 @@ class TaskScoreBandKernel(ABC):
         pass
 
     @abstractmethod
-    def transition_score(
+    def rewrite_score(
         self,
         *,
         task_id: TaskId,
-        expected_score: Score,
-        next_score: Score,
+        expected_band: TaskScoreBand,
+        target_epoch_second: EpochSecond,
+        target_band: TaskScoreBand | None = None,
+        target_suffix: Suffix | None = None,
     ) -> TaskScoreTransitionResult:
-        """CAS ordinary score transition.
+        """Rewrite a positive score after reading the stored score.
 
-        Positive writes must keep or lower the tag and must use a newer
-        epochSecond. Negative next_score closes the task score as terminal.
+        Ordinary positive rewrites do not trust a caller-supplied full
+        expected score. The implementation reads the stored score, checks the
+        expected band, then writes a target score only when:
+
+        - target tag keeps or lowers lifecycle direction;
+        - target epochSecond is newer than the stored epochSecond;
+        - suffix is preserved unless target_suffix is supplied.
         """
+        pass
+
+    @abstractmethod
+    def rewrite_same_band_epoch(
+        self,
+        *,
+        task_id: TaskId,
+        expected_band: TaskScoreBand,
+        target_epoch_second: EpochSecond,
+    ) -> TaskScoreTransitionResult:
+        """Rewrite only epochSecond while preserving stored tag and suffix.
+
+        This is the hot-path primitive for same-band recheck, retry, hold, and
+        lease pacing. It still reads the stored score and rejects stale band or
+        non-increasing epochSecond.
+        """
+        pass
+
+    @abstractmethod
+    def close_score(
+        self,
+        *,
+        task_id: TaskId,
+        observed_score: Score,
+        terminal_score: Score,
+    ) -> TaskScoreTransitionResult:
+        """Close to a negative terminal score using an exact observed fence."""
         pass
 
     @abstractmethod
@@ -152,12 +186,12 @@ class TaskScoreBandKernel(ABC):
         self,
         *,
         task_id: TaskId,
-        expected_lease_score: Score,
+        observed_lease_score: Score,
         release_epoch_second: EpochSecond,
     ) -> TaskScoreTransitionResult:
-        """CAS release of an exact held score.
+        """Release an exact held score.
 
-        The release target derives tag and suffix from expected_lease_score and
+        The release target derives tag and suffix from observed_lease_score and
         only changes epochSecond. It does not reset same-band budget.
         """
         pass

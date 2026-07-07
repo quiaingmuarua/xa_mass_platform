@@ -751,7 +751,8 @@ Core directional constraints:
 tag decides lifecycle direction
 epochSecond decides same-band lease / recheck / freshness direction
 suffix decides same-band budget / tie-break / owner-local code
-expected-score prevents stale overwrite
+write-time stored-score/CAS prevents stale overwrite
+terminal close and lease release use exact observed-score fences
 transition direction rule prevents lifecycle regression
 
 PRE_REVIEW(3) -> READY_APPROVED(2) -> RUNNING_VISIBLE(1) -> TERMINAL(<0)
@@ -759,8 +760,9 @@ PRE_REVIEW(3) -> READY_APPROVED(2) -> RUNNING_VISIBLE(1) -> TERMINAL(<0)
 
 Lifecycle progress moves toward lower tag / terminal score. Scheduling
 suppression, retry, hold, and lease move inside the same tag by writing a later
-`epochSecond`. Release/resume is the only path that may lower `epochSecond`, and
-only with exact `expectedLeaseScore`.
+`epochSecond`; the common case is a same-band epoch rewrite that preserves
+suffix. Release/resume is the only path that may lower `epochSecond`, and only
+with exact `observedLeaseScore`.
 `READY_APPROVED` is optional: a validated owner transition may move directly
 from `PRE_REVIEW` to `RUNNING_VISIBLE`. The kernel only rejects movement from a
 lower tag back to a higher tag.
@@ -909,17 +911,19 @@ and does not emit a generic score refresh.
 Positive non-terminal writes must write an `epochSecond` later than the stored
 score by default. Same-band scheduling rewrites also decrement suffix by one.
 Manual release/resume is the only exception: it writes a same-tag release score
-derived from `expectedLeaseScore`, usually with `epochSecond = now`, only when
-the stored score still equals `expectedLeaseScore`, and it copies suffix from
-`expectedLeaseScore`. That exact score match is the stale fence. Same-task score refresh is intentionally second-granularity;
+derived from `observedLeaseScore`, usually with `epochSecond = now`, only when
+the stored score still equals `observedLeaseScore`, and it copies suffix from
+`observedLeaseScore`. That exact score match is the stale fence. Same-task
+score refresh is intentionally second-granularity;
 multiple non-release updates in the same second are rejected, coalesced, or
 retried later by the owner.
 `PRE_REVIEW` same-band owner transitions are not scheduling rewrites: the review
 owner validates the business state and writes a larger owner mutation
 `epochSecond`; suffix is an owner-defined review state code.
 Cross-band owner transitions initialize suffix from policy; external callers do
-not provide it. Budget reset is a separate owner-authorized transition, not
-release/resume.
+not provide it without owner validation. If target suffix is omitted, the score
+primitive preserves the stored suffix. Budget reset is a separate
+owner-authorized transition, not release/resume.
 
 Immediate ready LIST work still wins inside the running claim source. Scheduled
 retry due time is used when the task has no immediate ready frame or when the
@@ -1497,7 +1501,7 @@ HSET task:meta:{laneBucketId} taskId
 Pause/block is an ordinary positive write: `holdEpochSecond` must be greater
 than the stored `epochSecond`. Hard pause writes
 `holdEpochSecond = PAUSE_EPOCH_SECOND = 9_999_999_999`, and release can use
-the exact held score as `expectedLeaseScore`.
+the exact held score as `observedLeaseScore`.
 
 Do not rewrite every raw ready item or runtime item. Current claims remain in
 `task:{taskId}:rt` and may still finish. Retry frames created while parked stay
@@ -1511,8 +1515,8 @@ Resume/unblock:
 
 ```text
 validate task shell
-validate stored score == expectedLeaseScore
-derive release tag and suffix from expectedLeaseScore
+validate stored score == observedLeaseScore
+derive release tag and suffix from observedLeaseScore
 inspect ready LIST, scheduled retry lane, and TaskRuntimeMeta
 advance or validate runtimeEpoch
 rewrite score to score(expectedTag, resumeEpochSecond, expectedSuffix)
@@ -1520,12 +1524,12 @@ rewrite score to score(expectedTag, resumeEpochSecond, expectedSuffix)
 
 Manual resume/release is an acceleration path, not the default correctness path.
 It is the only path that may lower `epochSecond`, and only when the stored score
-matches `expectedLeaseScore` exactly. If it does not happen, an ordinary future
+matches `observedLeaseScore` exactly. If it does not happen, an ordinary future
 hold eventually becomes due and the normal band scan interprets the task as its
 original active band; a hard pause remains parked at `PAUSE_EPOCH_SECOND` until
 released. After resume, both newly appended items and retry frames are handled
 under the current `TaskRuntimeMeta`. A stale resume that does not match
-`expectedLeaseScore` must be a no-op or stale failure; it must not overwrite a
+`observedLeaseScore` must be a no-op or stale failure; it must not overwrite a
 newer hold, terminal close, or scheduling rewrite.
 
 ### Terminal and discard
@@ -1560,9 +1564,9 @@ The segmented score format is intended to keep normal acquisition simple:
 active scans are plain numeric `ZRANGEBYSCORE` calls over one tag segment plus
 `LIMIT`. Lua should not be used just to discover whether a candidate belongs to
 `RUNNING_VISIBLE` or `READY_APPROVED`; the range already answers that.
-Lua/transactions are reserved for expected-score writes,
-expected-lease release/resume, and mutations that must update task-local runtime
-keys together with score/meta/fence values.
+Lua/transactions are reserved for same-band epoch rewrites, general positive
+rewrites, terminal closes, observed-lease release/resume, and mutations that
+must update task-local runtime keys together with score/meta/fence values.
 
 Required atomic boundaries:
 

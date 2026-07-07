@@ -173,7 +173,8 @@ Owns:
 task scheduling visibility score
 task score-state interpretation
 bounded score query primitive
-expected-score score update primitive
+same-band epoch rewrite / positive rewrite / terminal close / lease-release
+primitives
 running-stage future-score placement for pause / contention / no-worker delay
 ```
 
@@ -206,8 +207,9 @@ lease / recheck moves right:
 ```
 
 `tag` owns lifecycle direction, `epochSecond` owns same-band freshness /
-recheck, `suffix` owns budget or owner-local code, expected-score prevents stale
-overwrite, and the transition direction rule blocks lifecycle regression.
+recheck, `suffix` owns budget or owner-local code, the score-write stale fence
+prevents stale overwrite, and the transition direction rule blocks lifecycle
+regression.
 Downward lifecycle jumps are allowed; `READY_APPROVED` is an optional
 intermediate band, not a required checkpoint.
 
