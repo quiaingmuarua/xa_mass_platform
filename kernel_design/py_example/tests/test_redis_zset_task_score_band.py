@@ -58,14 +58,12 @@ class FakeRedis:
 
         if "local initial_score" in script:
             return self._eval_initialize(key, argv)
+        if "local terminal_score" in script:
+            return self._eval_close_positive(key, argv)
         if "local observed_score" in script:
             return self._eval_cas_update(key, argv)
-        if "local target_suffix" in script:
-            return self._eval_rewrite_positive(key, argv)
-        if "local delta_seconds" in script:
-            return self._eval_bump_same_band_epoch(key, argv)
-        if "local expected_tag" in script:
-            return self._eval_rewrite_same_band_epoch(key, argv)
+        if "local min_expected_score" in script:
+            return self._eval_mint_from_range(key, argv)
         raise ValueError("unsupported fake redis script")
 
     def _eval_initialize(self, key: str, argv: tuple[object, ...]) -> list[object]:
@@ -93,141 +91,41 @@ class FakeRedis:
         self.zadd(key, {task_id: next_score})
         return ["transitioned", next_score]
 
-    def _eval_rewrite_same_band_epoch(
-        self,
-        key: str,
-        argv: tuple[object, ...],
-    ) -> list[object]:
+    def _eval_close_positive(self, key: str, argv: tuple[object, ...]) -> list[object]:
         task_id = str(argv[0])
-        expected_tag = int(argv[1])
-        target_epoch_second = int(argv[2])
-        tag_factor = int(argv[3])
-        suffix_factor = int(argv[4])
-        max_epoch_second = int(argv[5])
-        max_suffix = int(argv[6])
+        terminal_score = int(argv[1])
 
         stored = self.zscore(key, task_id)
         if stored is None:
             return ["stale"]
-        if stored <= 0:
-            return ["stale", stored]
+        if stored < 0:
+            return ["noop", stored]
 
-        stored_tag = stored // tag_factor
-        rest = stored % tag_factor
-        stored_epoch_second = rest // suffix_factor
-        stored_suffix = rest % suffix_factor
+        self.zadd(key, {task_id: terminal_score})
+        return ["transitioned", terminal_score]
 
-        if stored_tag not in {1, 2, 3}:
-            return ["stale", stored]
-        if not 0 <= stored_epoch_second <= max_epoch_second:
-            return ["stale", stored]
-        if not 0 <= stored_suffix <= max_suffix:
-            return ["stale", stored]
-        if stored_tag != expected_tag:
-            return ["stale", stored]
-        if target_epoch_second <= stored_epoch_second:
-            return ["invalid"]
-
-        next_score = (
-            stored_tag * tag_factor
-            + target_epoch_second * suffix_factor
-            + stored_suffix
-        )
-        self.zadd(key, {task_id: next_score})
-        return ["transitioned", next_score]
-
-    def _eval_bump_same_band_epoch(
+    def _eval_mint_from_range(
         self,
         key: str,
         argv: tuple[object, ...],
     ) -> list[object]:
         task_id = str(argv[0])
-        expected_tag = int(argv[1])
-        max_bumpable_epoch_second = int(argv[2])
-        delta_seconds = int(argv[3])
-        tag_factor = int(argv[4])
-        suffix_factor = int(argv[5])
-        max_epoch_second = int(argv[6])
-        max_suffix = int(argv[7])
-
-        stored = self.zscore(key, task_id)
-        if stored is None:
-            return ["stale"]
-        if stored <= 0:
-            return ["stale", stored]
-
-        stored_tag = stored // tag_factor
-        rest = stored % tag_factor
-        stored_epoch_second = rest // suffix_factor
-        stored_suffix = rest % suffix_factor
-
-        if stored_tag not in {1, 2, 3}:
-            return ["stale", stored]
-        if not 0 <= stored_epoch_second <= max_epoch_second:
-            return ["stale", stored]
-        if not 0 <= stored_suffix <= max_suffix:
-            return ["stale", stored]
-        if stored_tag != expected_tag:
-            return ["stale", stored]
-        if stored_epoch_second > max_bumpable_epoch_second:
-            return ["stale", stored]
-        if delta_seconds <= 0:
-            return ["invalid"]
-        if stored_epoch_second + delta_seconds > max_epoch_second:
-            return ["invalid"]
-
-        next_score = stored + delta_seconds * suffix_factor
-        self.zadd(key, {task_id: next_score})
-        return ["transitioned", next_score]
-
-    def _eval_rewrite_positive(
-        self,
-        key: str,
-        argv: tuple[object, ...],
-    ) -> list[object]:
-        task_id = str(argv[0])
-        expected_tag = int(argv[1])
-        target_tag = int(argv[2])
-        target_epoch_second = int(argv[3])
+        min_expected_score = int(argv[1])
+        max_expected_score = int(argv[2])
+        target_score_base = int(argv[3])
         target_suffix = int(argv[4])
-        tag_factor = int(argv[5])
-        suffix_factor = int(argv[6])
-        max_epoch_second = int(argv[7])
-        max_suffix = int(argv[8])
+        suffix_factor = int(argv[5])
 
         stored = self.zscore(key, task_id)
         if stored is None:
             return ["stale"]
-        if stored <= 0:
+        if stored < min_expected_score or stored > max_expected_score:
             return ["stale", stored]
 
-        stored_tag = stored // tag_factor
-        rest = stored % tag_factor
-        stored_epoch_second = rest // suffix_factor
-        stored_suffix = rest % suffix_factor
-
-        if stored_tag not in {1, 2, 3}:
-            return ["stale", stored]
-        if not 0 <= stored_epoch_second <= max_epoch_second:
-            return ["stale", stored]
-        if not 0 <= stored_suffix <= max_suffix:
-            return ["stale", stored]
-        if stored_tag != expected_tag:
-            return ["stale", stored]
-        if target_tag > stored_tag:
-            return ["invalid"]
-        if target_epoch_second <= stored_epoch_second:
-            return ["invalid"]
         if target_suffix < 0:
-            target_suffix = stored_suffix
-        if target_suffix > max_suffix:
-            return ["invalid"]
+            target_suffix = stored % suffix_factor
 
-        next_score = (
-            target_tag * tag_factor
-            + target_epoch_second * suffix_factor
-            + target_suffix
-        )
+        next_score = target_score_base + target_suffix
         self.zadd(key, {task_id: next_score})
         return ["transitioned", next_score]
 
@@ -347,7 +245,7 @@ class RedisZsetTaskScoreBandKernelTest(unittest.TestCase):
             target_suffix=4,
         )
 
-        self.assertEqual(TaskScoreTransitionStatus.INVALID, result.status)
+        self.assertEqual(TaskScoreTransitionStatus.STALE, result.status)
 
     def test_rewrite_same_band_epoch_preserves_suffix(self) -> None:
         running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 7)
@@ -376,7 +274,7 @@ class RedisZsetTaskScoreBandKernelTest(unittest.TestCase):
             target_epoch_second=1_000,
         )
 
-        self.assertEqual(TaskScoreTransitionStatus.INVALID, result.status)
+        self.assertEqual(TaskScoreTransitionStatus.STALE, result.status)
 
     def test_bump_same_band_epoch_preserves_suffix(self) -> None:
         running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 7)
@@ -393,6 +291,23 @@ class RedisZsetTaskScoreBandKernelTest(unittest.TestCase):
         self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, result.status)
         self.assertIsNotNone(state)
         self.assertEqual(TaskScoreBand.RUNNING_VISIBLE, state.band)
+        self.assertEqual(1_002, state.epoch_second)
+        self.assertEqual(7, state.suffix)
+
+    def test_bump_same_band_epoch_mints_target_from_range(self) -> None:
+        running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 998, 7)
+        self.kernel.initialize_scores(initial_scores={"task": running})
+
+        result = self.kernel.bump_same_band_epoch(
+            task_id="task",
+            expected_band=TaskScoreBand.RUNNING_VISIBLE,
+            max_bumpable_epoch_second=1_000,
+            delta_seconds=2,
+        )
+        state = self.kernel.get_score_states(task_ids=["task"])["task"]
+
+        self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, result.status)
+        self.assertIsNotNone(state)
         self.assertEqual(1_002, state.epoch_second)
         self.assertEqual(7, state.suffix)
 
@@ -438,14 +353,13 @@ class RedisZsetTaskScoreBandKernelTest(unittest.TestCase):
 
         self.assertEqual(TaskScoreTransitionStatus.STALE, result.status)
 
-    def test_close_score_requires_exact_observed_score(self) -> None:
+    def test_close_score_closes_positive_score(self) -> None:
         running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 7)
         terminal = -1_001_00
         self.kernel.initialize_scores(initial_scores={"task": running})
 
         result = self.kernel.close_score(
             task_id="task",
-            observed_score=running,
             terminal_score=terminal,
         )
         state = self.kernel.get_score_states(task_ids=["task"])["task"]
@@ -455,22 +369,41 @@ class RedisZsetTaskScoreBandKernelTest(unittest.TestCase):
         self.assertEqual(TaskScoreBand.TERMINAL, state.band)
         self.assertEqual(terminal, state.score)
 
-    def test_close_score_rejects_stale_observed_score(self) -> None:
+    def test_close_score_overrides_changed_positive_score(self) -> None:
         running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 7)
-        stale_running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 999, 7)
+        terminal = -1_001_00
         self.kernel.initialize_scores(initial_scores={"task": running})
+        self.kernel.bump_same_band_epoch(
+            task_id="task",
+            expected_band=TaskScoreBand.RUNNING_VISIBLE,
+            max_bumpable_epoch_second=1_000,
+            delta_seconds=2,
+        )
 
         result = self.kernel.close_score(
             task_id="task",
-            observed_score=stale_running,
-            terminal_score=-1_001_00,
+            terminal_score=terminal,
         )
         state = self.kernel.get_score_states(task_ids=["task"])["task"]
 
-        self.assertEqual(TaskScoreTransitionStatus.STALE, result.status)
+        self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, result.status)
         self.assertIsNotNone(state)
-        self.assertEqual(TaskScoreBand.RUNNING_VISIBLE, state.band)
-        self.assertEqual(running, state.score)
+        self.assertEqual(TaskScoreBand.TERMINAL, state.band)
+        self.assertEqual(terminal, state.score)
+
+    def test_close_score_noops_when_already_terminal(self) -> None:
+        terminal = -1_001_00
+        self.kernel.initialize_scores(initial_scores={"task": terminal})
+
+        result = self.kernel.close_score(
+            task_id="task",
+            terminal_score=-1_002_00,
+        )
+        state = self.kernel.get_score_states(task_ids=["task"])["task"]
+
+        self.assertEqual(TaskScoreTransitionStatus.NOOP, result.status)
+        self.assertIsNotNone(state)
+        self.assertEqual(terminal, state.score)
 
     def test_release_score_lease_preserves_suffix(self) -> None:
         paused = self.score(
@@ -490,6 +423,22 @@ class RedisZsetTaskScoreBandKernelTest(unittest.TestCase):
         self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, result.status)
         self.assertIsNotNone(state)
         self.assertEqual(1_000, state.epoch_second)
+        self.assertEqual(4, state.suffix)
+
+    def test_release_score_lease_rejects_later_epoch(self) -> None:
+        held = self.score(self.kernel.RUNNING_VISIBLE_TAG, 2_000, 4)
+        self.kernel.initialize_scores(initial_scores={"task": held})
+
+        result = self.kernel.release_score_lease(
+            task_id="task",
+            observed_lease_score=held,
+            release_epoch_second=2_001,
+        )
+        state = self.kernel.get_score_states(task_ids=["task"])["task"]
+
+        self.assertEqual(TaskScoreTransitionStatus.INVALID, result.status)
+        self.assertIsNotNone(state)
+        self.assertEqual(2_000, state.epoch_second)
         self.assertEqual(4, state.suffix)
 
 

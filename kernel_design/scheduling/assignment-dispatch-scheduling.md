@@ -361,7 +361,7 @@ task_score.rewrite(
   target_band?,
   target_suffix?
 )
-task_score.close(task_id, observed_score, terminal_score)
+task_score.close(task_id, terminal_score)
 task_score.release_lease(task_id, observed_lease_score, release_epoch_second)
 worker_score.acquire_due(demand)
 work_items.claim(task_id, worker_id)

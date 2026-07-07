@@ -81,7 +81,8 @@ tag decides lifecycle direction
 epochSecond decides same-band lease / recheck / freshness direction
 suffix decides same-band budget / tie-break / owner-local code
 write-time stored-score/CAS prevents stale overwrite
-terminal close and lease release use exact observed-score fences
+terminal close is a high-priority positive-to-negative write
+lease release uses an exact observed-score fence
 transition direction rule prevents lifecycle regression
 ```
 
@@ -376,13 +377,13 @@ is running consumption/recheck first, then ready activation:
 running scan:
   ZRANGEBYSCORE task:score
     score(RUNNING_VISIBLE_TAG, 0, 0)
-    score(RUNNING_VISIBLE_TAG, currentEpochSecond, 99)
+    score(RUNNING_VISIBLE_TAG, currentEpochSecond, MAX_SUFFIX)
     LIMIT batchSize
 
 ready scan:
   ZRANGEBYSCORE task:score
     score(READY_APPROVED_TAG, 0, 0)
-    score(READY_APPROVED_TAG, readyScanHorizonEpochSecond, 99)
+    score(READY_APPROVED_TAG, readyScanHorizonEpochSecond, MAX_SUFFIX)
     LIMIT batchSize
 ```
 
@@ -563,102 +564,87 @@ bounded scheduling round result
 Owner validation happens before the kernel primitive. Do not name business
 events inside the kernel rule.
 
-Hot-path same-band epoch bump primitive:
+Internal positive mint primitive:
 
 ```text
-bump_same_band_epoch(
+mint_from_range(
   taskId,
-  expectedBand,
-  maxBumpableEpochSecond,
-  deltaSeconds
+  minExpectedScore,
+  maxExpectedScore,
+  targetScoreBase,
+  targetSuffix?
 ):
-  storedScore = read_current_score(taskId)
+  lua:
+    storedScore = read_current_score(taskId)
+    require minExpectedScore <= storedScore <= maxExpectedScore
+    suffix = targetSuffix if supplied else storedScore % SUFFIX_FACTOR
+    write targetScoreBase + suffix
+```
 
-  if storedScore < 0:
-    reject TERMINAL_IMMUTABLE
+All positive rewrites should compile to this private primitive inside the
+kernel implementation. Public callers do not compute scores, score ranges, or
+target bases, and no public port should accept `minExpectedScore`,
+`maxExpectedScore`, or `targetScoreBase`. The kernel implementation derives the
+exact score range and target base from band / epoch / suffix intent, so Lua only
+checks range membership and preserves or substitutes suffix. It does not perform
+owner validation and does not need exact observed-score fencing; ordinary stale
+competition may fail or only delay the task by a small bounded amount.
 
-  current = decode_positive(storedScore)
-  require band(current.tag) == expectedBand
-  require current.tag in {RUNNING_VISIBLE_TAG, READY_APPROVED_TAG, PRE_REVIEW_TAG}
-  require 0 <= current.epochSecond <= MAX_EPOCH_SECOND
-  require 0 <= current.suffix <= MAX_SUFFIX
-  require current.epochSecond <= maxBumpableEpochSecond
+Score range coordinates are trusted kernel-internal protocol values. If a
+caller can pass `minExpectedScore`, `maxExpectedScore`, or `targetScoreBase`
+directly, the boundary is already broken. The performance model depends on
+stable safe public methods plus a small trusted implementation protocol, not
+zero-trust validation at every internal layer.
+
+```text
+bump_same_band_epoch(expectedBand, maxBumpableEpochSecond, deltaSeconds):
   require deltaSeconds > 0
-  require current.epochSecond + deltaSeconds <= MAX_EPOCH_SECOND
-
-  write score(current.tag, current.epochSecond + deltaSeconds, current.suffix)
+  tag = tag(expectedBand)
+  mint_from_range(
+    minExpectedScore = score(tag, 0, 0),
+    maxExpectedScore = score(tag, maxBumpableEpochSecond, MAX_SUFFIX),
+    targetScoreBase = score(tag, maxBumpableEpochSecond + deltaSeconds, 0),
+    targetSuffix = keep
+  )
 ```
 
-This is the preferred primitive when relative delay is enough. A Redis
-implementation can use `ZINCRBY deltaSeconds * SUFFIX_FACTOR` after the hard
-score-boundary checks. It does not perform owner validation and does not need
-exact observed-score fencing; ordinary stale competition may fail or only delay
-the task by a small bounded amount.
-
-Absolute same-band epoch rewrite primitive:
-
 ```text
-rewrite_same_band_epoch(taskId, expectedBand, targetEpochSecond):
-  storedScore = read_current_score(taskId)
-
-  if storedScore < 0:
-    reject TERMINAL_IMMUTABLE
-
-  current = decode_positive(storedScore)
-  require band(current.tag) == expectedBand
-  require current.tag in {RUNNING_VISIBLE_TAG, READY_APPROVED_TAG, PRE_REVIEW_TAG}
-  require 0 <= current.epochSecond <= MAX_EPOCH_SECOND
-  require 0 <= targetEpochSecond <= MAX_EPOCH_SECOND
-  require 0 <= current.suffix <= MAX_SUFFIX
-  require targetEpochSecond > current.epochSecond
-
-  write score(current.tag, targetEpochSecond, current.suffix)
+rewrite_same_band_epoch(expectedBand, targetEpochSecond):
+  tag = tag(expectedBand)
+  mint_from_range(
+    minExpectedScore = score(tag, 0, 0),
+    maxExpectedScore = score(tag, targetEpochSecond - 1, MAX_SUFFIX),
+    targetScoreBase = score(tag, targetEpochSecond, 0),
+    targetSuffix = keep
+  )
 ```
 
-This is the preferred primitive when the caller only needs to move the same tag
-rightward to a chosen absolute time. It preserves suffix and avoids the broader
-target-band / target-suffix surface.
-
-General positive rewrite primitive:
-
 ```text
-rewrite_score(taskId, expectedBand, targetBand?, targetEpochSecond, targetSuffix?):
-  storedScore = read_current_score(taskId)
-
-  if storedScore < 0:
-    reject TERMINAL_IMMUTABLE
-
-  current = decode_positive(storedScore)
-  require band(current.tag) == expectedBand
-
+rewrite_score(expectedBand, targetBand?, targetEpochSecond, targetSuffix?):
+  expectedTag = tag(expectedBand)
   targetTag = tag(targetBand or expectedBand)
-  targetSuffix = targetSuffix if supplied else current.suffix
+  require targetTag <= expectedTag
 
-  require current.tag in {RUNNING_VISIBLE_TAG, READY_APPROVED_TAG, PRE_REVIEW_TAG}
-  require targetTag in {RUNNING_VISIBLE_TAG, READY_APPROVED_TAG, PRE_REVIEW_TAG}
-  require 0 <= current.epochSecond <= MAX_EPOCH_SECOND
-  require 0 <= targetEpochSecond <= MAX_EPOCH_SECOND
-  require 0 <= current.suffix <= MAX_SUFFIX
-  require 0 <= targetSuffix <= MAX_SUFFIX
-  require targetEpochSecond > current.epochSecond
-
-  if targetTag > current.tag:
-    reject LIFECYCLE_REGRESSION
-
-  write score(targetTag, targetEpochSecond, targetSuffix)
+  mint_from_range(
+    minExpectedScore = score(expectedTag, 0, 0),
+    maxExpectedScore = score(expectedTag, targetEpochSecond - 1, MAX_SUFFIX),
+    targetScoreBase = score(targetTag, targetEpochSecond, 0),
+    targetSuffix = targetSuffix or keep
+  )
 ```
 
 If `rewrite_score` is called without `targetBand` and `targetSuffix`, it is
 equivalent to `rewrite_same_band_epoch` and should use the absolute same-band
 hot path.
 
-Terminal close is separate because it is destructive and final:
+Terminal close is separate because it is destructive, final, and high priority:
 
 ```text
-close_score(taskId, observedScore, terminalScore):
+close_score(taskId, terminalScore):
   storedScore = read_current_score(taskId)
-  require storedScore == observedScore
-  require observedScore > 0
+  if storedScore < 0:
+    return NOOP
+  require storedScore > 0
   require terminalScore < 0
   write terminalScore
 ```
@@ -673,6 +659,7 @@ release_lease(taskId, observedLeaseScore, releaseEpochSecond):
   observed = decode_positive(observedLeaseScore)
   require observed.tag in {RUNNING_VISIBLE_TAG, READY_APPROVED_TAG}
   require 0 <= releaseEpochSecond <= MAX_EPOCH_SECOND
+  require releaseEpochSecond <= observed.epochSecond
   write score(observed.tag, releaseEpochSecond, observed.suffix)
 ```
 
@@ -928,7 +915,8 @@ Task score transitions are fact-driven, not external-event-driven:
 For release/resume, use the lease-release primitive instead of ordinary positive
 rewrite. It is intentionally separate because it may lower
 `epochSecond` after exact `observedLeaseScore` match. Terminal close is also
-separate because final negative scores require an exact observed-score fence.
+separate because final negative scores are high-priority writes over any current
+positive score and no-op if the score is already terminal.
 
 ## Atomicity Boundaries
 

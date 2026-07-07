@@ -57,8 +57,13 @@ class TaskScoreBandKernel(ABC):
     - no business event names;
     - no transition-source parameter;
     - no candidate DTOs;
+    - no internal score range coordinates;
     - no append/result/worker truth mutation;
     - no pagination cursor owned by task score.
+
+    Internal Redis/Lua coordinates such as minExpectedScore, maxExpectedScore,
+    and targetScoreBase are implementation-private protocol values. If a caller
+    can pass them directly, the kernel boundary has already been broken.
     """
 
     RUNNING_VISIBLE_TAG: ClassVar[int] = 1
@@ -192,10 +197,9 @@ class TaskScoreBandKernel(ABC):
         self,
         *,
         task_id: TaskId,
-        observed_score: Score,
         terminal_score: Score,
     ) -> TaskScoreTransitionResult:
-        """Close to a negative terminal score using an exact observed fence."""
+        """Close any positive score to a negative terminal score."""
         pass
 
     @abstractmethod
@@ -209,6 +213,7 @@ class TaskScoreBandKernel(ABC):
         """Release an exact held score.
 
         The release target derives tag and suffix from observed_lease_score and
-        only changes epochSecond. It does not reset same-band budget.
+        may only move epochSecond nearer or keep it unchanged. It does not reset
+        same-band budget.
         """
         pass

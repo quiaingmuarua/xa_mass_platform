@@ -752,7 +752,8 @@ tag decides lifecycle direction
 epochSecond decides same-band lease / recheck / freshness direction
 suffix decides same-band budget / tie-break / owner-local code
 write-time stored-score/CAS prevents stale overwrite
-terminal close and lease release use exact observed-score fences
+terminal close is a high-priority positive-to-negative write
+lease release uses an exact observed-score fence
 transition direction rule prevents lifecycle regression
 
 PRE_REVIEW(3) -> READY_APPROVED(2) -> RUNNING_VISIBLE(1) -> TERMINAL(<0)
@@ -761,9 +762,12 @@ PRE_REVIEW(3) -> READY_APPROVED(2) -> RUNNING_VISIBLE(1) -> TERMINAL(<0)
 Lifecycle progress moves toward lower tag / terminal score. Scheduling
 suppression, retry, hold, and lease move inside the same tag by writing a later
 `epochSecond`; the common case is a same-band epoch bump/rewrite that preserves
-suffix. Relative bumps may use `ZINCRBY deltaSeconds * SUFFIX_FACTOR` after
-terminal, band, and future-hold boundary checks. Release/resume is the only path
-that may lower `epochSecond`, and only with exact `observedLeaseScore`.
+suffix. Relative bumps should be compiled inside the kernel implementation into
+`minExpectedScore`, `maxExpectedScore`, and `targetScoreBase`; those values are
+not public caller inputs. Lua only verifies that the stored score is in range
+and then writes `targetScoreBase + suffix`.
+Release/resume is the only path that may lower `epochSecond`, and only with
+exact `observedLeaseScore`.
 `READY_APPROVED` is optional: a validated owner transition may move directly
 from `PRE_REVIEW` to `RUNNING_VISIBLE`. The kernel only rejects movement from a
 lower tag back to a higher tag.
@@ -832,13 +836,13 @@ every candidate to discover its band:
 running scan:
   ZRANGEBYSCORE task:score
     score(RUNNING_VISIBLE_TAG, 0, 0)
-    score(RUNNING_VISIBLE_TAG, currentEpochSecond, 99)
+    score(RUNNING_VISIBLE_TAG, currentEpochSecond, MAX_SUFFIX)
     LIMIT batchSize
 
 ready-approved scan:
   ZRANGEBYSCORE task:score
     score(READY_APPROVED_TAG, 0, 0)
-    score(READY_APPROVED_TAG, readyScanHorizonEpochSecond, 99)
+    score(READY_APPROVED_TAG, readyScanHorizonEpochSecond, MAX_SUFFIX)
     LIMIT batchSize
 ```
 
@@ -853,7 +857,7 @@ The score is an index. Before claim, the kernel runtime must validate:
 - task still exists;
 - task shell is not terminal;
 - decoded positive score uses a known tag, `0 <= epochSecond <=
-  MAX_EPOCH_SECOND`, and `0 <= suffix <= 99`;
+  MAX_EPOCH_SECOND`, and `0 <= suffix <= MAX_SUFFIX`;
 - task score state is dispatch-eligible;
 - `READY_APPROVED` activation conditions are satisfied before entering running;
 - future active-band scores are not treated as ordinary immediate
@@ -1490,11 +1494,11 @@ Pause/block:
 
 ```text
 validate current score state is an active band
-expectedScore = current score
-heldScore = score(currentActiveTag, holdEpochSecond, suffix)
-ZADD task:score:{laneBucketId}
-  heldScore
-  taskId
+rewrite same active band through mint_from_range:
+  minExpectedScore = score(currentActiveTag, 0, 0)
+  maxExpectedScore = score(currentActiveTag, holdEpochSecond - 1, MAX_SUFFIX)
+  targetScoreBase = score(currentActiveTag, holdEpochSecond, 0)
+  targetSuffix = keep
 HSET task:meta:{laneBucketId} taskId
   runtimeEpoch=runtimeEpoch+1
 ```
@@ -1518,6 +1522,7 @@ Resume/unblock:
 validate task shell
 validate stored score == observedLeaseScore
 derive release tag and suffix from observedLeaseScore
+validate releaseEpochSecond <= decoded observedLeaseScore epochSecond
 inspect ready LIST, scheduled retry lane, and TaskRuntimeMeta
 advance or validate runtimeEpoch
 rewrite score to score(expectedTag, resumeEpochSecond, expectedSuffix)
@@ -1565,8 +1570,12 @@ The segmented score format is intended to keep normal acquisition simple:
 active scans are plain numeric `ZRANGEBYSCORE` calls over one tag segment plus
 `LIMIT`. Lua should not be used just to discover whether a candidate belongs to
 `RUNNING_VISIBLE` or `READY_APPROVED`; the range already answers that.
-Lua/transactions are reserved for same-band epoch bumps/rewrites, general
-positive rewrites, terminal closes, observed-lease release/resume, and
+Normal positive writes should compile inside the kernel implementation to the
+private `mint_from_range` primitive: the implementation computes
+`minExpectedScore`, `maxExpectedScore`, and `targetScoreBase`; public callers
+never pass those range coordinates. Lua only verifies range membership and
+preserves or substitutes suffix. Lua/transactions are reserved for this
+positive range-mint, terminal closes, observed-lease release/resume, and
 mutations that must update task-local runtime keys together with score, meta,
 or fence values.
 
@@ -1600,8 +1609,8 @@ claim timeout repair mutation:
   no live task score refresh
 
 pause/block/resume:
-  runtimeEpoch + same-active-band future/nearer score update with expected
-  lease-score protection
+  pause/block uses same-active-band future score through positive range-mint
+  resume/release uses exact observed-lease-score protection
 
 discard/terminal:
   terminal fence + runtimeEpoch advance before physical key deletion

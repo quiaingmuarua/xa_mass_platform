@@ -57,128 +57,33 @@ redis.call("ZADD", key, next_score, task_id)
 return {"transitioned", next_score}
 """
 
-    _REWRITE_POSITIVE_SCRIPT: ClassVar[str] = """
+    _CLOSE_POSITIVE_SCRIPT: ClassVar[str] = """
 local key = KEYS[1]
 local task_id = ARGV[1]
-local expected_tag = tonumber(ARGV[2])
-local target_tag = tonumber(ARGV[3])
-local target_epoch_second = tonumber(ARGV[4])
+local terminal_score = tonumber(ARGV[2])
+
+local stored = redis.call("ZSCORE", key, task_id)
+if not stored then
+  return {"stale"}
+end
+
+local stored_score = tonumber(stored)
+if stored_score < 0 then
+  return {"noop", stored_score}
+end
+
+redis.call("ZADD", key, terminal_score, task_id)
+return {"transitioned", terminal_score}
+"""
+
+    _MINT_FROM_RANGE_SCRIPT: ClassVar[str] = """
+local key = KEYS[1]
+local task_id = ARGV[1]
+local min_expected_score = tonumber(ARGV[2])
+local max_expected_score = tonumber(ARGV[3])
+local target_score_base = tonumber(ARGV[4])
 local target_suffix = tonumber(ARGV[5])
-local tag_factor = tonumber(ARGV[6])
-local suffix_factor = tonumber(ARGV[7])
-local max_epoch_second = tonumber(ARGV[8])
-local max_suffix = tonumber(ARGV[9])
-
-local stored = redis.call("ZSCORE", key, task_id)
-if not stored then
-  return {"stale"}
-end
-
-local stored_score = tonumber(stored)
-if stored_score <= 0 then
-  return {"stale", stored_score}
-end
-
-local stored_tag = math.floor(stored_score / tag_factor)
-local rest = stored_score % tag_factor
-local stored_epoch_second = math.floor(rest / suffix_factor)
-local stored_suffix = rest % suffix_factor
-
-if stored_tag ~= 1 and stored_tag ~= 2 and stored_tag ~= 3 then
-  return {"stale", stored_score}
-end
-if stored_epoch_second < 0 or stored_epoch_second > max_epoch_second then
-  return {"stale", stored_score}
-end
-if stored_suffix < 0 or stored_suffix > max_suffix then
-  return {"stale", stored_score}
-end
-if stored_tag ~= expected_tag then
-  return {"stale", stored_score}
-end
-
-if target_tag > stored_tag then
-  return {"invalid"}
-end
-if target_epoch_second <= stored_epoch_second then
-  return {"invalid"}
-end
-if target_suffix < 0 then
-  target_suffix = stored_suffix
-end
-if target_suffix > max_suffix then
-  return {"invalid"}
-end
-
-local next_score = (
-  target_tag * tag_factor
-  + target_epoch_second * suffix_factor
-  + target_suffix
-)
-redis.call("ZADD", key, next_score, task_id)
-return {"transitioned", next_score}
-"""
-
-    _REWRITE_SAME_BAND_EPOCH_SCRIPT: ClassVar[str] = """
-local key = KEYS[1]
-local task_id = ARGV[1]
-local expected_tag = tonumber(ARGV[2])
-local target_epoch_second = tonumber(ARGV[3])
-local tag_factor = tonumber(ARGV[4])
-local suffix_factor = tonumber(ARGV[5])
-local max_epoch_second = tonumber(ARGV[6])
-local max_suffix = tonumber(ARGV[7])
-
-local stored = redis.call("ZSCORE", key, task_id)
-if not stored then
-  return {"stale"}
-end
-
-local stored_score = tonumber(stored)
-if stored_score <= 0 then
-  return {"stale", stored_score}
-end
-
-local stored_tag = math.floor(stored_score / tag_factor)
-local rest = stored_score % tag_factor
-local stored_epoch_second = math.floor(rest / suffix_factor)
-local stored_suffix = rest % suffix_factor
-
-if stored_tag ~= 1 and stored_tag ~= 2 and stored_tag ~= 3 then
-  return {"stale", stored_score}
-end
-if stored_epoch_second < 0 or stored_epoch_second > max_epoch_second then
-  return {"stale", stored_score}
-end
-if stored_suffix < 0 or stored_suffix > max_suffix then
-  return {"stale", stored_score}
-end
-if stored_tag ~= expected_tag then
-  return {"stale", stored_score}
-end
-if target_epoch_second <= stored_epoch_second then
-  return {"invalid"}
-end
-
-local next_score = (
-  stored_tag * tag_factor
-  + target_epoch_second * suffix_factor
-  + stored_suffix
-)
-redis.call("ZADD", key, next_score, task_id)
-return {"transitioned", next_score}
-"""
-
-    _BUMP_SAME_BAND_EPOCH_SCRIPT: ClassVar[str] = """
-local key = KEYS[1]
-local task_id = ARGV[1]
-local expected_tag = tonumber(ARGV[2])
-local max_bumpable_epoch_second = tonumber(ARGV[3])
-local delta_seconds = tonumber(ARGV[4])
-local tag_factor = tonumber(ARGV[5])
 local suffix_factor = tonumber(ARGV[6])
-local max_epoch_second = tonumber(ARGV[7])
-local max_suffix = tonumber(ARGV[8])
 
 local stored = redis.call("ZSCORE", key, task_id)
 if not stored then
@@ -186,43 +91,16 @@ if not stored then
 end
 
 local stored_score = tonumber(stored)
-if stored_score <= 0 then
+if stored_score < min_expected_score or stored_score > max_expected_score then
   return {"stale", stored_score}
 end
 
-local stored_tag = math.floor(stored_score / tag_factor)
-local rest = stored_score % tag_factor
-local stored_epoch_second = math.floor(rest / suffix_factor)
-local stored_suffix = rest % suffix_factor
-
-if stored_tag ~= 1 and stored_tag ~= 2 and stored_tag ~= 3 then
-  return {"stale", stored_score}
-end
-if stored_epoch_second < 0 or stored_epoch_second > max_epoch_second then
-  return {"stale", stored_score}
-end
-if stored_suffix < 0 or stored_suffix > max_suffix then
-  return {"stale", stored_score}
-end
-if stored_tag ~= expected_tag then
-  return {"stale", stored_score}
-end
-if stored_epoch_second > max_bumpable_epoch_second then
-  return {"stale", stored_score}
-end
-if delta_seconds <= 0 then
-  return {"invalid"}
-end
-if stored_epoch_second + delta_seconds > max_epoch_second then
-  return {"invalid"}
+if target_suffix < 0 then
+  target_suffix = stored_score % suffix_factor
 end
 
-local next_score = redis.call(
-  "ZINCRBY",
-  key,
-  delta_seconds * suffix_factor,
-  task_id
-)
+local next_score = target_score_base + target_suffix
+redis.call("ZADD", key, next_score, task_id)
 return {"transitioned", tonumber(next_score)}
 """
 
@@ -272,7 +150,7 @@ return {"transitioned", tonumber(next_score)}
         running_limit = limit
         running = self._range_task_ids(
             self._score(self.RUNNING_VISIBLE_TAG, 0, 0),
-            self._score(self.RUNNING_VISIBLE_TAG, now_epoch_second, 99),
+            self._score(self.RUNNING_VISIBLE_TAG, now_epoch_second, self.MAX_SUFFIX),
             running_limit,
         )
         remaining = limit - len(running)
@@ -281,7 +159,7 @@ return {"transitioned", tonumber(next_score)}
 
         ready = self._range_task_ids(
             self._score(self.READY_APPROVED_TAG, 0, 0),
-            self._score(self.READY_APPROVED_TAG, now_epoch_second, 99),
+            self._score(self.READY_APPROVED_TAG, now_epoch_second, self.MAX_SUFFIX),
             remaining,
         )
         return [*running, *ready]
@@ -296,7 +174,7 @@ return {"transitioned", tonumber(next_score)}
         now_epoch_second = self._current_epoch_second()
         return self._range_task_ids(
             self._score(self.RUNNING_VISIBLE_TAG, 0, 0),
-            self._score(self.RUNNING_VISIBLE_TAG, now_epoch_second, 99),
+            self._score(self.RUNNING_VISIBLE_TAG, now_epoch_second, self.MAX_SUFFIX),
             limit,
         )
 
@@ -363,24 +241,22 @@ return {"transitioned", tonumber(next_score)}
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
         if not self.MIN_EPOCH_SECOND <= target_epoch_second <= self.MAX_EPOCH_SECOND:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
+        if target_epoch_second <= self.MIN_EPOCH_SECOND:
+            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
 
         expected_tag = self._tag_from_band(expected_band)
         if expected_tag is None:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
-
-        return self._script_result(
-            self.redis.eval(
-                self._REWRITE_SAME_BAND_EPOCH_SCRIPT,
-                1,
-                self.score_key,
-                task_id,
+        return self._mint_from_range(
+            task_id=task_id,
+            min_expected_score=self._score(expected_tag, self.MIN_EPOCH_SECOND, 0),
+            max_expected_score=self._score(
                 expected_tag,
-                target_epoch_second,
-                self.tag_factor,
-                self.suffix_factor,
-                self.MAX_EPOCH_SECOND,
+                target_epoch_second - 1,
                 self.MAX_SUFFIX,
-            )
+            ),
+            target_score_base=self._score(expected_tag, target_epoch_second, 0),
+            target_suffix=None,
         )
 
     def bump_same_band_epoch(
@@ -401,40 +277,39 @@ return {"transitioned", tonumber(next_score)}
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
         if delta_seconds <= 0:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
+        target_epoch_second = max_bumpable_epoch_second + delta_seconds
+        if target_epoch_second > self.MAX_EPOCH_SECOND:
+            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
 
         expected_tag = self._tag_from_band(expected_band)
         if expected_tag is None:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
+        min_expected_score = self._score(expected_tag, self.MIN_EPOCH_SECOND, 0)
+        max_expected_score = self._score(
+            expected_tag,
+            max_bumpable_epoch_second,
+            self.MAX_SUFFIX,
+        )
+        target_score_base = self._score(expected_tag, target_epoch_second, 0)
 
-        return self._script_result(
-            self.redis.eval(
-                self._BUMP_SAME_BAND_EPOCH_SCRIPT,
-                1,
-                self.score_key,
-                task_id,
-                expected_tag,
-                max_bumpable_epoch_second,
-                delta_seconds,
-                self.tag_factor,
-                self.suffix_factor,
-                self.MAX_EPOCH_SECOND,
-                self.MAX_SUFFIX,
-            )
+        return self._mint_from_range(
+            task_id=task_id,
+            min_expected_score=min_expected_score,
+            max_expected_score=max_expected_score,
+            target_score_base=target_score_base,
+            target_suffix=None,
         )
 
     def close_score(
         self,
         *,
         task_id: TaskId,
-        observed_score: Score,
         terminal_score: Score,
     ) -> TaskScoreTransitionResult:
-        if observed_score < self.MUTABLE_SCORE_MIN:
-            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
         if terminal_score > self.TERMINAL_SCORE_MAX:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
 
-        return self._cas_update(task_id, observed_score, terminal_score)
+        return self._close_positive_score(task_id, terminal_score)
 
     def release_score_lease(
         self,
@@ -447,10 +322,12 @@ return {"transitioned", tonumber(next_score)}
         if observed is None:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
 
-        tag, _, suffix = observed
+        tag, observed_epoch_second, suffix = observed
         if tag not in {self.RUNNING_VISIBLE_TAG, self.READY_APPROVED_TAG}:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
         if not self.MIN_EPOCH_SECOND <= release_epoch_second <= self.MAX_EPOCH_SECOND:
+            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
+        if release_epoch_second > observed_epoch_second:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
 
         release_score = self._score(tag, release_epoch_second, suffix)
@@ -488,6 +365,21 @@ return {"transitioned", tonumber(next_score)}
             )
         )
 
+    def _close_positive_score(
+        self,
+        task_id: TaskId,
+        terminal_score: Score,
+    ) -> TaskScoreTransitionResult:
+        return self._script_result(
+            self.redis.eval(
+                self._CLOSE_POSITIVE_SCRIPT,
+                1,
+                self.score_key,
+                task_id,
+                terminal_score,
+            )
+        )
+
     def _rewrite_positive_score(
         self,
         *,
@@ -501,21 +393,43 @@ return {"transitioned", tonumber(next_score)}
         target_tag = self._tag_from_band(target_band or expected_band)
         if expected_tag is None or target_tag is None:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
+        if target_tag > expected_tag:
+            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
+        if target_epoch_second <= self.MIN_EPOCH_SECOND:
+            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
 
+        return self._mint_from_range(
+            task_id=task_id,
+            min_expected_score=self._score(expected_tag, self.MIN_EPOCH_SECOND, 0),
+            max_expected_score=self._score(
+                expected_tag,
+                target_epoch_second - 1,
+                self.MAX_SUFFIX,
+            ),
+            target_score_base=self._score(target_tag, target_epoch_second, 0),
+            target_suffix=target_suffix,
+        )
+
+    def _mint_from_range(
+        self,
+        *,
+        task_id: TaskId,
+        min_expected_score: Score,
+        max_expected_score: Score,
+        target_score_base: Score,
+        target_suffix: Suffix | None,
+    ) -> TaskScoreTransitionResult:
         return self._script_result(
             self.redis.eval(
-                self._REWRITE_POSITIVE_SCRIPT,
+                self._MINT_FROM_RANGE_SCRIPT,
                 1,
                 self.score_key,
                 task_id,
-                expected_tag,
-                target_tag,
-                target_epoch_second,
+                min_expected_score,
+                max_expected_score,
+                target_score_base,
                 -1 if target_suffix is None else target_suffix,
-                self.tag_factor,
                 self.suffix_factor,
-                self.MAX_EPOCH_SECOND,
-                self.MAX_SUFFIX,
             )
         )
 
