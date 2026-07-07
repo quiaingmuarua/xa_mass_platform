@@ -383,6 +383,23 @@ class RedisZsetTaskScoreBandKernelTest(unittest.TestCase):
         self.assertEqual(1_000, state.epoch_second)
         self.assertEqual(0, state.suffix)
 
+    def test_rewrite_same_band_epoch_rejects_pre_review_suffix_delta(self) -> None:
+        pre_review = self.score(self.kernel.PRE_REVIEW_TAG, 1_000, 3)
+        self.store_score("task", pre_review)
+
+        result = self.kernel.rewrite_same_band_epoch(
+            task_id="task",
+            expected_band=TaskScoreBand.PRE_REVIEW,
+            target_epoch_second=1_002,
+            suffix_delta=-1,
+        )
+        state = self.kernel.get_score_states(task_ids=["task"])["task"]
+
+        self.assertEqual(TaskScoreTransitionStatus.INVALID, result.status)
+        self.assertIsNotNone(state)
+        self.assertEqual(1_000, state.epoch_second)
+        self.assertEqual(3, state.suffix)
+
     def test_rewrite_same_band_epoch_rejects_future_hold(self) -> None:
         paused = self.score(self.kernel.RUNNING_VISIBLE_TAG, 2_000, 7)
         self.store_score("task", paused)

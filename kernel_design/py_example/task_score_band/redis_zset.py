@@ -252,6 +252,8 @@ return {"transitioned", tonumber(next_score)}
         expected_tag = self._tag_from_band(expected_band)
         if expected_tag is None:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
+        if expected_tag == self.PRE_REVIEW_TAG and suffix_delta != 0:
+            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
         return self._mint_from_range(
             task_id=task_id,
             min_expected_score=self._score(expected_tag, self.MIN_EPOCH_SECOND, 0),

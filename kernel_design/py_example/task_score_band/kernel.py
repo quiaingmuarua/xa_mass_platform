@@ -179,7 +179,8 @@ class TaskScoreBandKernel(ABC):
         Epoch input is absolute. The kernel does not expose a stable
         epoch-delta API. Owners that need delay-based behavior compute the
         target epoch before calling this method. Suffix may be adjusted by
-        suffix_delta because it is same-band budget / owner-local code.
+        suffix_delta for scheduling bands. PRE_REVIEW suffix is a review-state
+        code and must not be changed by suffix_delta.
         """
         pass
 

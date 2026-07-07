@@ -767,6 +767,9 @@ absolute epoch before calling the kernel. Kernel-internal writes compile into
 `minExpectedScore`, `maxExpectedScore`, and `targetScoreBase`; those values are
 not public caller inputs. Lua only verifies that the stored score is in range
 and then writes `targetScoreBase + suffix`.
+Suffix delta is only for scheduling-band budget changes.
+`PRE_REVIEW` suffix is a review-state code and must be changed only by an
+owner-validated rewrite with explicit target suffix.
 Score range coordinates are trusted kernel-internal protocol values. If a
 caller can pass them directly, the kernel API boundary is already broken.
 Release/resume is the only path that may lower `epochSecond`, and only with

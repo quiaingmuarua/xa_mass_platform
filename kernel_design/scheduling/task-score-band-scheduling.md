@@ -614,7 +614,10 @@ rewrite_same_band_epoch(expectedBand, targetEpochSecond, suffixDelta = 0):
 `targetEpochSecond` is absolute. The kernel does not expose a stable epoch-delta
 API. If a business owner wants `now + delay`, that owner computes the absolute
 target epoch before calling the kernel. The kernel only applies delta to suffix
-because suffix is same-band budget / owner-local code.
+for scheduling bands, where suffix is same-band budget / owner-local code.
+`PRE_REVIEW` suffix is an owner-defined review-state code; do not change it by
+`suffixDelta`. Use an owner-validated positive rewrite with explicit
+`targetSuffix` for pre-review state changes.
 
 ```text
 rewrite_score(expectedBand, targetBand?, targetEpochSecond, targetSuffix?):
