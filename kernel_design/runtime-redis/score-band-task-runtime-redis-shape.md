@@ -766,6 +766,8 @@ suffix. Relative bumps should be compiled inside the kernel implementation into
 `minExpectedScore`, `maxExpectedScore`, and `targetScoreBase`; those values are
 not public caller inputs. Lua only verifies that the stored score is in range
 and then writes `targetScoreBase + suffix`.
+Score range coordinates are trusted kernel-internal protocol values. If a
+caller can pass them directly, the kernel API boundary is already broken.
 Release/resume is the only path that may lower `epochSecond`, and only with
 exact `observedLeaseScore`.
 `READY_APPROVED` is optional: a validated owner transition may move directly
@@ -1578,6 +1580,12 @@ preserves or substitutes suffix. Lua/transactions are reserved for this
 positive range-mint, terminal closes, observed-lease release/resume, and
 mutations that must update task-local runtime keys together with score, meta,
 or fence values.
+
+The Redis/Lua protocol is trusted inside the kernel implementation. It is not a
+zero-trust public contract and must not be promoted into a public task-score
+port. Safe external behavior comes from narrow public methods that accept
+semantic inputs, not from letting callers provide raw range coordinates and
+then defending against them in Lua.
 
 Required atomic boundaries:
 
