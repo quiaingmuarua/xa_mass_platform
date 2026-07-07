@@ -99,7 +99,7 @@ generic "handle result" calls.
 6. classify result against finality and retry policy
 7. atomically remove/update the current work hash row
 8. write final receipt, schedule retry frame, or record no-op
-9. emit score rewrite requests only through owner-specific events
+9. emit score rewrite requests only through owner-specific handoffs
 10. return routing outcome
 ```
 

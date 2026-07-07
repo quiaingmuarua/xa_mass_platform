@@ -42,6 +42,117 @@ claim/result mutations, and invariant checks. Do not introduce production-style
 framework layers, bridge modules, CRUD owners, attempt aggregates, or lifecycle
 facades just to make the design look complete.
 
+The kernel is score-band scheduled, not event triggered:
+
+```text
+score-bands are the scheduling clock
+score-bands decide bounded acquire / recheck opportunities
+owners validate truth before moving state
+policies map evidence to the next score
+external events only provide business evidence or optional acceleration
+```
+
+The kernel must close its own loop without ordinary external events:
+
+```text
+task score-band recheck
+worker score-band acquire / admission
+assignment-dispatch bounded claim
+result-routing current hash compare
+retry / empty-running / timeout / repair
+terminal / policy closure
+```
+
+## Event Cost And Correctness Contract
+
+External event emission is high-cost and opt-in. The default kernel design is
+no event emission for ordinary observations or high-frequency mutations.
+
+```text
+event emission is high-cost
+event emission must be explicitly justified
+event emission must fast-fail
+event emission is allowed only for key owner state changes
+external events must not be required for correctness
+external events must not be required for automatic liveness
+external events must not be the only state-transition trigger
+external events may only accelerate scheduling that already has a fallback
+```
+
+The kernel must still converge when ordinary external observations are not
+emitted, or when an explicitly allowed event is lost, duplicated, delayed, or
+delivered out of order.
+
+Allowed event emission must satisfy all of these constraints:
+
+```text
+owner-local state has already changed
+the change is a key state transition, not routine evidence
+the event carries evidence only, not truth
+the event only shortens scheduling / recheck latency
+the scheduler has a non-event fallback path
+the emit path is bounded and fast-fail
+emit failure cannot roll back or block the owner state transition
+there is a cheaper score/recheck/repair path for correctness and liveness
+```
+
+Every event-accelerated path must still be reachable through owner-local
+scheduling:
+
+```text
+score scan
+score-state recheck
+current-truth validation
+bounded repair
+policy timeout / closure
+```
+
+Forbidden event shapes:
+
+```text
+per-append wakeup fanout
+per-heartbeat scheduling wakeup
+per-result global reschedule
+unbounded event queue as scheduling backlog
+retrying emit until success inside the owner mutation
+event-only scheduling with no score/recheck fallback
+```
+
+These shapes create avalanche risk: a burst of routine observations can create
+more scheduling pressure than the scheduler itself can bound. Event delivery
+may be dropped, coalesced, sampled, or rate-limited without changing kernel
+correctness.
+
+Routine observations and high-frequency writes must not emit by default:
+
+```text
+append
+heartbeat / keepalive
+transport ack
+read-model update
+trace materialization
+generic dirty marker
+```
+
+The hard rule is:
+
+```text
+Events may report that truth moved, but only owners may move truth.
+```
+
+Explicit human gates are the exception because they intentionally suspend
+automatic liveness:
+
+```text
+manual review
+approval / rejection
+manual resume / cancel
+operator-required unresolved handling
+```
+
+These are not ordinary evidence events. They are authoritative commands whose
+owner transaction still validates the current state before changing truth.
+
 ## Design Standard
 
 Design notes describe the production-grade target design, not the current

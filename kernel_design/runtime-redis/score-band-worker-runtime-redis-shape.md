@@ -174,17 +174,18 @@ Do not add a first-slice `hold` hash, `WorkerHoldState`, lease token, session
 generation, or current hold owner record. Worker is the schedulable unit; a
 delayed close/release must not be able to make an unavailable worker available.
 Routine observations such as heartbeat, connected, keepalive, or transport
-freshness are not generic score-refresh triggers. They remain transport or
-worker-runtime evidence until a directly related owner event or an acquired
-candidate validation path needs them.
+freshness are not generic score-refresh triggers and do not emit default
+wakeups. They remain transport or worker-runtime evidence until a directly
+related owner command, owner-validated transition, or acquired candidate
+validation path needs them.
 
 Worker score changes outside the acquire range should come from direct owner
-events such as verified available, explicit disable/drain, fast-close, or
-verified reopen. Worker-runtime may write an eligible score only after
-validating declaration, group membership, gates, capacity, recovery mode, and
-owner-approved metadata. Workers already in the acquire range may be rewritten
-by the scheduling/admission round that observed useful evidence such as
-contention, capacity, cooldown, or failed validation.
+commands or owner-validated transitions such as verified available, explicit
+disable/drain, fast-close, or verified reopen. Worker-runtime may write an
+eligible score only after validating declaration, group membership, gates,
+capacity, recovery mode, and owner-approved metadata. Workers already in the
+acquire range may be rewritten by the scheduling/admission round that observed
+useful evidence such as contention, capacity, cooldown, or failed validation.
 
 Reason, owner action, failed recheck count, and reopen policy are trace or
 diagnostic evidence in the first slice. If a later proof needs a repair/debug

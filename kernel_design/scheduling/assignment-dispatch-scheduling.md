@@ -76,21 +76,78 @@ them as small dataclasses. They are not public API DTOs.
 ## Mainline
 
 ```text
-1. receive a task candidate from task-score-band scheduling
-2. compile worker demand from task policy and item/capability requirements
-3. acquire candidate workers from worker-score-band scheduling
-4. validate worker group, capability, filters, priority, and capacity
-5. admit/hold one or more workers for this scheduling round
-6. claim current work hash rows from the work-item owner
-7. compensate worker admission if claim fails
-8. resolve transport delivery lane for the selected worker
-9. emit deliver seed
-10. classify round evidence for task/worker score rewrites
+1. choose task score scan range and batch limit
+2. acquire task candidates from task-score-band query(range, limit)
+3. compile worker demand from task policy and item/capability requirements
+4. acquire candidate workers from worker-score-band scheduling
+5. validate worker group, capability, filters, priority, and capacity
+6. admit/hold one or more workers for this scheduling round
+7. claim current work hash rows from the work-item owner
+8. compensate worker admission if claim fails
+9. resolve transport delivery lane for the selected worker
+10. produce deliver seed
+11. classify round evidence and request task/worker score rewrites
 ```
 
 The deliver seed is the last object produced by scheduling. Transport receives
 already selected work and executes delivery; transport must not choose a
 different worker.
+
+Assignment-dispatch is the running-state pacer. Task score-band does not run a
+separate timer, recheck job, or pagination cursor for running tasks;
+assignment-dispatch consumes bounded task-score queries and writes score-owner
+evidence after a bounded round:
+
+```text
+query task score range + limit per active band
+  -> default order: RUNNING_VISIBLE, EMPTY_RUNNING, READY_APPROVED
+  -> classify every successfully acquired candidate
+
+RUNNING_VISIBLE scan
+  -> scheduling evaluates runnable task facts
+  -> claim work only after worker admission evidence is sufficient
+  -> produce deliver seed when work and worker admission both succeed
+  -> rewrite to RUNNING_VISIBLE or EMPTY_RUNNING
+
+deliver seed produced
+  -> running policy rewrites task score for next dispatch opportunity
+
+no ready work
+  -> task score becomes EMPTY_RUNNING with idle close deadline
+
+EMPTY_RUNNING scan
+  -> if backlog / retry / dispatchable work appears, continue toward dispatch
+  -> if still empty before idleCloseEpochSecond, keep score unchanged or
+     same-band lease-rewrite by policy
+  -> if still empty at or after idleCloseEpochSecond, close through task
+     score/lifecycle owner
+
+READY_APPROVED scan
+  -> scheduling evaluates pre-running open facts
+  -> if ready, rewrite to RUNNING_VISIBLE
+  -> if not ready before readyDeadlineEpochSecond, keep score unchanged or
+     same-band lease-rewrite by policy
+  -> if not ready at or after readyDeadlineEpochSecond, close to TERMINAL
+  -> do not produce a deliver seed in READY_APPROVED
+```
+
+No task-score pagination is required. Assignment-dispatch owns scan range,
+ordering, quota, horizon, and idle backoff. A pre-deadline `READY_APPROVED` or
+`EMPTY_RUNNING` candidate may be classified as no-op and either keep the same
+score or same-band lease-rewrite to a later epoch/suffix by policy; that is
+bounded idle fallback work when no higher-priority running consumption is
+available. Dispatch-visible `RUNNING_VISIBLE` candidates must still be moved,
+rewritten, closed, cleaned, or rejected by expected-score protection.
+Assignment-dispatch must not collapse active task acquisition into one broad
+score range that reaches negative terminal markers or inactive bands.
+
+Append, result notification, trace, and read projection do not refresh task
+score directly. Later transport delivery evidence also does not refresh task
+score directly; the score rewrite belongs to the assignment-dispatch round that
+successfully produced the deliver seed or classified a no-dispatch outcome.
+Activation fact updates behave the same way: they update owner truth, while the
+due scheduling round decides whether `READY_APPROVED` becomes
+`RUNNING_VISIBLE`.
 
 ## Candidate Worker Discovery
 
@@ -138,7 +195,7 @@ Claim sequence:
 task candidate acquired
   -> worker candidate admitted
   -> work hash claim writes current occupancy
-  -> deliver seed emitted
+  -> deliver seed produced
 ```
 
 If claim fails after worker admission:
@@ -202,10 +259,17 @@ while preserving explicit method boundaries.
 Task-side examples:
 
 ```text
-NO_READY_WORK -> task score remove or future retry time
-NO_WORKER_CANDIDATE -> task score future empty-match recheck
-WORKER_CONTENDED -> task score future contention recheck
-WORK_CLAIMED_MORE_REMAINS -> task score now or policy delay
+ACTIVATION_WAIT_NOT_EXPIRED -> keep score or same-band lease rewrite
+ACTIVATION_DEADLINE_EXPIRED -> TERMINAL
+ACTIVATION_READY -> RUNNING_VISIBLE due score
+EMPTY_WAIT_NOT_EXPIRED -> keep score or same-band lease rewrite
+EMPTY_DEADLINE_EXPIRED -> TERMINAL
+NO_READY_WORK -> EMPTY_RUNNING with idle close deadline, or RUNNING_VISIBLE delayed by scheduled retry evidence
+NO_WORKER_CANDIDATE -> RUNNING_VISIBLE with future no-worker-match recheck
+WORKER_CONTENDED -> RUNNING_VISIBLE with future contention recheck
+WORK_CLAIMED_MORE_REMAINS -> RUNNING_VISIBLE at now or policy delay
+WORK_CLAIMED_NO_READY_REMAINS -> EMPTY_RUNNING with idle close deadline unless scheduled retry evidence keeps RUNNING_VISIBLE delayed
+PAUSE_OR_BLOCK -> same active band with future or far-future epochSecond
 ```
 
 Worker-side examples:
@@ -260,13 +324,14 @@ Rules:
 The first Python kernel can keep this plane small:
 
 ```text
-schedule_one(task_candidate) -> list[DeliverSeed]
+schedule_once(range, limit) -> list[DeliverSeed]
 ```
 
 Required collaborators:
 
 ```text
-task_score.acquire_due()
+task_score.query(range, limit)
+task_score.try_update(expected_score, next_score)
 worker_score.acquire_due(demand)
 work_items.claim(task_id, worker_id)
 transport.resolve_delivery(worker_id)
@@ -279,6 +344,11 @@ the owner handoff first.
 ## Guardrails
 
 - Do not let assignment-dispatch refresh task score because append happened.
+- Do not keep a task-score pagination cursor; use bounded range + limit queries
+  and consume dispatch-visible candidates by score rewrite, band move, close,
+  cleanup, or expected-score failure. Pre-deadline `READY_APPROVED` and
+  `EMPTY_RUNNING` false checks may no-op as bounded idle fallback after
+  higher-priority running consumption.
 - Do not let assignment-dispatch select workers from transport sessions.
 - Do not let transport choose backup workers.
 - Do not claim work before worker admission unless the claim owner has an

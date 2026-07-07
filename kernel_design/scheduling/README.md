@@ -67,6 +67,96 @@ task score acquire
 Each arrow is a handoff between owners. A later implementation may optimize
 the handoff, but it must not merge owner truth.
 
+## Score-Band Closure
+
+The scheduling kernel is driven by score-band transitions:
+
+```text
+task score-band
+  -> worker score-band
+  -> assignment-dispatch
+  -> result-routing
+  -> task / worker score rewrite
+```
+
+These bands and bounded owner handoffs are the kernel's liveness base. Business
+events may add evidence, but they do not become a scheduling plane.
+
+Without ordinary external events, the kernel must still close the loop:
+
+```text
+task score due
+  -> owner validation
+  -> worker admission
+  -> work claim / no-work classification
+  -> result compare or repair
+  -> retry / finality / next score
+```
+
+## Event Cost And Liveness Discipline
+
+Scheduling planes must not depend on ordinary external events for correctness
+or automatic liveness. They also must not emit events by default for ordinary
+observations or high-frequency mutations:
+
+```text
+append
+worker heartbeat
+transport ack / reject callback
+routine result notification
+trace materialization
+read-model update
+generic dirty marker
+```
+
+Event emission is a high-cost mechanism. It is allowed only for key owner state
+changes, and only after the owner transition has already committed:
+
+```text
+terminal close
+manual decision accepted
+verified worker unavailable / reopened
+runtime recovery entered / exited
+operator-visible unresolved state created
+```
+
+Even then, emission is evidence only. It must be bounded and fast-fail; failure
+to emit cannot roll back or block the owner transition. If an allowed event is
+dropped, repeated, delayed, or reordered, owner state machines must still
+converge through score recheck, current-truth validation, bounded repair, or
+explicit policy closure.
+
+Allowed events can only accelerate scheduling. They must not be the scheduling
+mechanism:
+
+```text
+event arrives
+  -> optionally shorten or request an owner-local recheck
+  -> owner validates current truth
+  -> score/state decides the next scheduling action
+
+event missing
+  -> bounded scheduler scan / recheck / repair still reaches the same state
+```
+
+Do not build a path where scheduling only happens because an event was emitted.
+High-frequency event sources must be drop-tolerant, coalesced, sampled, or
+rate-limited. A burst of append/result/heartbeat/transport observations must
+not create a larger scheduling backlog than the bounded scheduler can absorb.
+
+Human-required gates are different:
+
+```text
+PRE_REVIEW approval / rejection
+manual resume / cancel
+manual unresolved-result decision
+operator-required intervention
+```
+
+Those states intentionally do not promise automatic liveness. The manual
+command is authoritative input, but the owning plane still validates current
+truth before moving state.
+
 ## Plane Boundaries
 
 ### Task Score-Band Scheduling
@@ -81,9 +171,10 @@ Owns:
 
 ```text
 task scheduling visibility score
-task acquire range
-task scheduling hold / future / parked placement
-task scheduling-round rewrite after evidence is classified
+task score-state interpretation
+bounded score query primitive
+expected-score score update primitive
+running-stage future-score placement for pause / contention / no-worker delay
 ```
 
 Does not own:
@@ -94,6 +185,33 @@ work hash claim / current occupancy
 worker selection
 transport delivery
 result finality
+timer / pacing loop
+candidate classification after acquire
+```
+
+Task score-band uses five score states. Temporary hold is not a separate band;
+pause/block is represented as the same active band with a future or far-future
+`epochSecond`.
+
+```text
+PRE_REVIEW
+  create / prepare / pending approval; not acquired
+
+READY_APPROVED
+  approved but not yet running; scans evaluate pre-open worker-candidate /
+  policy facts; false before deadline keeps or same-band lease-rewrites score,
+  false at deadline closes
+
+RUNNING_VISIBLE
+  active running state; may enter assignment-dispatch after validation
+
+EMPTY_RUNNING
+  active running state with no current work; scans evaluate backlog / retry /
+  dispatchable work facts; false before deadline keeps or same-band
+  lease-rewrites score, false at deadline closes
+
+TERMINAL
+  final / cancelled / rejected / empty-timeout / discarded
 ```
 
 ### Worker Score-Band Scheduling
@@ -185,7 +303,7 @@ owner and not a transport parser.
 2. [Worker Score-Band Scheduling](worker-score-band-scheduling.md)
    - target worker/resource eligibility score mechanism.
 3. [Assignment-Dispatch Scheduling](assignment-dispatch-scheduling.md)
-  - how one task scheduling round chooses workers, claims work, and produces
+   - how one task scheduling round chooses workers, claims work, and produces
      deliver seeds.
 4. [Result-Routing Scheduling](result-routing-scheduling.md)
    - how result evidence is routed to finality, retry, no-op, or unresolved

@@ -153,8 +153,61 @@ Best-effort commitments:
   `claimExpiresAtMillis`;
 - pause/block/resume takes effect at the next runtime boundary and does not
   revoke current claims;
-- empty-match recheck, retry backoff, and terminal cleanup timing are runtime
-  convergence targets, not financial-grade timing guarantees.
+- no-worker-match recheck, empty-running recheck, retry backoff, and terminal
+  cleanup timing are runtime convergence targets, not financial-grade timing
+  guarantees.
+
+External event emission is high-cost and disabled by default for routine
+runtime activity:
+
+```text
+append
+routine result notification
+transport callback
+worker availability change
+timer callback
+trace / projection update
+```
+
+These observations must not emit wakeups or dirty hints as a default mechanism.
+If a later executable spec introduces event emission, it must be limited to key
+owner state changes, bounded, fast-fail, and evidence-only. Emit failure must
+not block or roll back the owner state transition. Correctness and automatic
+liveness must still come from score-state recheck, task-local current truth
+validation, bounded repair, or explicit policy closure. Human-required states
+such as pending approval or manual unresolved review are the explicit
+exception: they intentionally wait for an authoritative human command, and that
+command still validates current state before mutating truth.
+
+This Redis shape is score-band scheduled, not event triggered. The primary
+runtime loop is:
+
+```text
+task:score due
+  -> task-local state validation
+  -> ready / scheduled retry / empty-running / rt inspection
+  -> bounded claim, retry, finality, repair, or next score
+```
+
+Event emission can only accelerate that existing scheduling loop. It must not
+hold scheduling backlog or become the only dispatch trigger:
+
+```text
+allowed event delivered
+  -> optional early owner-local recheck
+
+allowed event dropped / coalesced / delayed
+  -> task:score scan, task-local recheck, and repair still converge
+
+event queue overload
+  -> drop or coalesce events
+  -> never backpressure append/result/claim owner mutations
+```
+
+The Redis scheduling base is the score/state structure itself: `task:score`,
+task-local ready/scheduled retry structures, `task:{taskId}:rt`, and bounded
+repair. Do not add a per-item or per-result event queue to make scheduling
+correct.
 
 `claimExpiresAtMillis` is stored inside `RuntimeItemState` only for
 time-bounded work. It is claim evidence and a repair threshold, not a separate
@@ -255,7 +308,7 @@ sharedConfig
 terminalReason
 ```
 
-Redis may cache a runtime gate or next-action hint, but the kernel scheduler
+Redis may cache a runtime gate or next-action hint, but assignment-dispatch
 must validate the task shell before dispatching. A Redis score hit is a
 candidate, not a lifecycle authority.
 
@@ -386,9 +439,9 @@ timestamps in metadata.
     "healthyMatchWorkerThreshold": 4,
     "healthyMatchRecheckDelayMillis": 0,
     "scarceMatchRecheckDelayMillis": 200,
-    "emptyMatchBaseDelayMillis": 1000,
-    "emptyMatchMaxDelayMillis": 30000,
-    "emptyMatchMaxStreak": 6,
+    "noWorkerMatchBaseDelayMillis": 1000,
+    "noWorkerMatchMaxDelayMillis": 30000,
+    "idleCloseDelayMillis": 300000,
     "contentionRecheckDelayMillis": 500,
     "claimTimeoutMillis": {
       "healthyMatch": 10000,
@@ -397,9 +450,7 @@ timestamps in metadata.
     },
     "policyVersion": 3
   },
-  "scoreRuntime": {
-    "emptyMatchStreak": 0
-  },
+  "scoreRuntime": {},
   "runtimeGate": "OPEN",
   "runtimeEpoch": 42,
   "updatedAtMillis": 1760000000000
@@ -419,10 +470,12 @@ Field rules:
 - `scorePolicy` contains the compact task-lane scheduling algorithm knobs. It
   decides recheck delay and optional claim timeout from scheduling-round
   evidence, but it does not store the next due time.
-- `scoreRuntime` is small dynamic score-algorithm state, such as consecutive
-  empty-match penalty. It must not contain item counts or next timestamps.
-- `runtimeGate` is a runtime scheduling gate such as `OPEN` or `PARKED`; it is
-  not `Task.status`.
+- `scoreRuntime` is optional small dynamic score-algorithm state such as bounded
+  penalty counters. Temporary hold and empty-running close time are encoded in
+  the score, not duplicated as runtime timestamps.
+- `runtimeGate` is an optional runtime fence such as `OPEN`; task
+  dispatch visibility is still derived from task score state, not from
+  `Task.status`.
 - `runtimeEpoch` is a runtime fence. Claim, result, repair, pause/resume, and
   discard mutations must validate the expected epoch inside their Redis atomic
   boundary. Terminal/discard advances the epoch or writes a terminal fence
@@ -447,6 +500,17 @@ Append intake owns this LIST write only. It must not be required to rewrite
 task-level scheduling score, task status, or lane state when the backlog length
 changes. Scheduler-owned discovery, lane scoring, and wakeup repair are separate
 task-level mechanisms.
+
+If the task is already `EMPTY_RUNNING`, append does not move the idle-close
+deadline or request a wakeup. The item may be discovered by a normal
+`EMPTY_RUNNING` scan before or at the idle-close deadline. If the idle-close
+round has already closed the task, append eligibility is a task intake/lifecycle
+decision and cannot retroactively reopen the old score.
+
+Activation fact changes follow the same rule. They update the owning fact, but
+they do not rewrite the task score directly. A normal `READY_APPROVED` scan
+reads those facts and decides whether to keep `READY_APPROVED`, promote the task
+to `RUNNING_VISIBLE`, or close it after the ready due deadline.
 
 `ReadyItemFrame` is intentionally close to the original task item. It carries
 the append-generated logical `messageId` plus the opaque payload. The runtime
@@ -659,103 +723,172 @@ Task score uses the same high-level band idea as resource slots, but it is a
 task-lane next-action index, not an item queue and not task shell status:
 
 ```text
-score absent
-  undefined to score-band; not service discovery and not terminal proof
+active score = tag * TAG_FACTOR + epochSecond * SUFFIX_FACTOR + suffix
 
-score < 0
-  retained closed marker for terminal / closed / discarded tasks
+tag
+  active band segment; tag 0 is deliberately unused
 
-0 <= score < TIME_SCORE_FLOOR
-  live but not schedulable by the hot path; enum-like codes owned by task
-  runtime lifecycle command policy
+epochSecond
+  due / deadline / holdUntil / leaseUntil / far-future pause coordinate
 
-TIME_SCORE_FLOOR <= score <= now
-  eligible for one bounded scheduling round
-
-score > now
-  future scheduling visibility; retry backoff, empty-match recheck, contention
-  delay, scheduled retry, or long scheduler hold
+suffix
+  two-digit same-second ordering field; retry / ordinal / priority / tie-break
+  hint only, not retry truth
 ```
 
 Recommended first-slice constants:
 
 ```text
-CLOSED_TERMINAL      = -10
-CLOSED_DISCARDED     = -20
-CREATED_UNAPPROVED   = 10
-TIME_SCORE_FLOOR     = 1_000_000_000_000
-SCHEDULER_HOLD_FLOOR = safe far-future epoch millis
+PRE_REVIEW_MIN       = -10
+PRE_REVIEW_MAX       = -1
+RUNNING_VISIBLE_TAG  = 1
+EMPTY_RUNNING_TAG    = 2
+READY_APPROVED_TAG   = 3
+SUFFIX_FACTOR        = 100
+TAG_FACTOR           = 10_000_000_000 * SUFFIX_FACTOR
+TERMINAL score       = -closedScoreKey
+closedScoreKey       = closedEpochSecond * SUFFIX_FACTOR + suffix
+closedScoreKey       > 10
 ```
 
-Score meanings:
+Use `score(TAG, epochSecond, suffix)` below as shorthand for the active formula.
+With a 10-digit epoch second and two-digit suffix, the encoded value remains
+well under Redis sorted-set double exact-integer limits. If a later policy
+changes the time coordinate width or suffix width, exact score representation
+must be re-checked before implementation.
 
 ```text
-ready list has dispatchable item
-  score = max(TIME_SCORE_FLOOR, now)
+score absent
+  undefined to score-band; not service discovery and not terminal proof
 
-ready list has retryable work but task-level backoff is active
-  score = retry visible time
+PRE_REVIEW
+  -10 <= score <= -1
+  create / prepare / pending approval; not acquired
 
-scheduled retry lane has delayed retry work and ready list has no immediate work
-  score = earliest item-score nextSchedulableAtMillis
+RUNNING_VISIBLE
+  score = score(RUNNING_VISIBLE_TAG, nextDispatchEpochSecond, suffix)
+  dispatch-capable after owner validation and work hash claim
 
-ready list is non-empty, but no worker matched in the last scheduling round
-  score = now + empty-match recheck delay
+EMPTY_RUNNING
+  score = score(EMPTY_RUNNING_TAG, idleCloseEpochSecond, suffix)
+  running but no work found; acquired for post-running continue-condition check
+  false before due keeps the same score or lease-rewrites within the same band;
+  false at or after due closes to TERMINAL
 
-task paused or manually held
-  score = SCHEDULER_HOLD_FLOOR or another owner-approved future hold score
+READY_APPROVED
+  score = score(READY_APPROVED_TAG, readyDeadlineEpochSecond, suffix)
+  approved but not yet running; acquired for pre-running open-condition check
+  false before due keeps the same score or lease-rewrites within the same band;
+  false at or after due closes to TERMINAL
 
-task terminal or discarded
-  score = retained closed marker
+TERMINAL
+  score = -closedScoreKey
+  final reason belongs to result/meta/trace, not score
+```
+
+Active band order is consumption-first:
+
+```text
+RUNNING_VISIBLE < EMPTY_RUNNING < READY_APPROVED
+```
+
+Redis range scans use the tag segment directly. The hot path should not decode
+every candidate to discover its band:
+
+```text
+running scan:
+  ZRANGEBYSCORE task:score
+    score(RUNNING_VISIBLE_TAG, 0, 0)
+    score(RUNNING_VISIBLE_TAG, currentEpochSecond, 99)
+    LIMIT batchSize
+
+empty-running scan:
+  ZRANGEBYSCORE task:score
+    score(EMPTY_RUNNING_TAG, 0, 0)
+    score(EMPTY_RUNNING_TAG, emptyScanHorizonEpochSecond, 99)
+    LIMIT batchSize
+
+ready-approved scan:
+  ZRANGEBYSCORE task:score
+    score(READY_APPROVED_TAG, 0, 0)
+    score(READY_APPROVED_TAG, readyScanHorizonEpochSecond, 99)
+    LIMIT batchSize
 ```
 
 The score is an index. Before claim, the kernel runtime must validate:
 
 - task still exists;
 - task shell is not terminal;
-- task is not paused or blocked;
-- intake and terminal policies still allow work;
-- ready LIST, scheduled retry lane, task-level retry backoff, or recheck reason
-  still matches the score hint.
+- task score state is dispatch-eligible;
+- `READY_APPROVED` activation conditions are satisfied before entering running;
+- future active-band scores are not treated as ordinary immediate
+  dispatch unless the assignment-dispatch policy explicitly chose a future
+  pre-allocation horizon;
+- ready LIST, scheduled retry lane, empty-running state, task-level retry
+  backoff, or recheck reason still matches the score hint.
 
 ### Score rewrite rule
 
 Task lane score is rewritten through one deterministic rule, but only from
 score-owner paths:
 
-- direct lifecycle/scheduling events such as approve, pause, resume, close, or
-  discard;
-- the scheduling/matching round after the task has been acquired from the
-  score range.
+- direct lifecycle/scheduling commands or owner-validated transitions such as
+  approve, activation, pause, resume, close, or discard;
+- the assignment-dispatch round after the task has been acquired from the score
+  range.
 
 Append intake is not a scheduler-owned mutation. It writes ready backlog truth
 and does not emit a generic score refresh.
 
 | Step | Condition | Score action |
 | --- | --- | --- |
-| 1 | task terminal or discarded | `ZADD CLOSED_* taskId` |
-| 2 | task is live but not schedulable | `ZADD 0 <= code < TIME_SCORE_FLOOR taskId` |
-| 3 | runtime gate is paused or manually held | `ZADD SCHEDULER_HOLD_FLOOR taskId` |
-| 4 | otherwise compute `readyCandidate` from ready LIST / scheduled retry lane / retry backoff / last scheduling round | candidate timestamp or none |
-| 5 | candidate exists | `ZADD readyCandidate taskId` |
-| 6 | no candidate exists | `ZREM taskId` |
+| 1 | task terminal, rejected, idle-close, cancelled, or discarded | write negative `closedScoreKey` score |
+| 2 | task created but not approved | write `PRE_REVIEW` code |
+| 3 | task approved and waiting for pre-running open deadline | write `score(READY_APPROVED_TAG, readyDeadlineEpochSecond, suffix)` |
+| 3a | `READY_APPROVED` is scanned before due and pre-running open conditions are still false | keep the same score or same-band lease rewrite |
+| 3b | `READY_APPROVED` is scanned at or after due and pre-running open conditions are still false | write negative `closedScoreKey` score |
+| 4 | active task is explicitly held | rewrite the same active band with future or far-future `epochSecond` |
+| 5 | active task has dispatchable work or a due retry candidate | write `score(RUNNING_VISIBLE_TAG, nextDispatchEpochSecond, suffix)` |
+| 6 | active task has no current work | write `score(EMPTY_RUNNING_TAG, idleCloseEpochSecond, suffix)` |
+| 7a | `EMPTY_RUNNING` is scanned before due and still has no work | keep the same score or same-band lease rewrite |
+| 7b | `EMPTY_RUNNING` is scanned at or after due and still has no work | write negative `closedScoreKey` score |
 
-`readyCandidate` is:
+`RUNNING_VISIBLE` score candidates are:
+
+| Running condition | Candidate |
+| --- | --- |
+| ready LIST has dispatchable work | `score(RUNNING_VISIBLE_TAG, nextDispatchEpochSecond, suffix)` |
+| `retryMode=DUE_TIME` and scheduled retry lane has due entries | `score(RUNNING_VISIBLE_TAG, nextDispatchEpochSecond, suffix)` for the same scheduling round |
+| task-level retry backoff blocks fresh wakeup | `score(RUNNING_VISIBLE_TAG, retryVisibleEpochSecond, suffix)` |
+| last scheduling round found no eligible worker | `score(RUNNING_VISIBLE_TAG, workerRecheckEpochSecond, suffix)` |
+| last scheduling round was contended | `score(RUNNING_VISIBLE_TAG, contentionRecheckEpochSecond, suffix)` |
+| pause/block/future restriction while running-visible | `score(RUNNING_VISIBLE_TAG, futureEpochSecond, suffix)` |
+
+`EMPTY_RUNNING` score candidates are:
+
+| Empty condition | Candidate |
+| --- | --- |
+| first no-work round after running | `score(EMPTY_RUNNING_TAG, idleCloseEpochSecond, suffix)` |
+| pause/block/future restriction while empty-running | `score(EMPTY_RUNNING_TAG, futureEpochSecond, suffix)` |
+| idle close due and still empty | negative `closedScoreKey` |
+
+`READY_APPROVED` score candidates are:
 
 | Ready condition | Candidate |
 | --- | --- |
-| ready LIST has dispatchable work | `max(TIME_SCORE_FLOOR, now + positiveMatchDelay)` |
-| `retryMode=DUE_TIME` and scheduled retry lane has entries | earliest `item-score` due time, unless ready LIST has immediate work |
-| task-level retry backoff blocks fresh wakeup | `retryVisibleAtMillis` |
-| last scheduling round found no eligible worker | `now + emptyMatchDelay` |
-| last scheduling round was contended | `now + contentionRecheckDelayMillis` |
-| no ready LIST work and no scheduled retry entry | none |
+| approval / pre-running activation deadline | `score(READY_APPROVED_TAG, readyDeadlineEpochSecond, suffix)` |
+| pre-running no-op pacing | `score(READY_APPROVED_TAG, nextReadyRecheckEpochSecond, suffix)` |
+| approval rejected or deadline expired | negative `closedScoreKey` |
 
-Immediate ready LIST work wins inside `readyCandidate`; scheduled retry due
-time is used when the task has no immediate ready frame or when the due retry
-frame is the only next ready source. This decides only when the task wakes.
-Once the task is awake, claim source policy still needs to prioritize or quota
-due scheduled retry frames so they are not starved by a large ready LIST.
+Same-band ordinary lease rewrites may only move `epochSecond` forward. Manual
+release/resume is the exception: it may move the same band to `now` or a nearer
+epoch only when the stored score still equals the expected lease score.
+
+Immediate ready LIST work still wins inside the running claim source. Scheduled
+retry due time is used when the task has no immediate ready frame or when the
+due retry frame is the only next ready source. This decides only when the task
+wakes. Once the task is awake, claim source policy still needs to prioritize or
+quota due scheduled retry frames so they are not starved by a large ready LIST.
 
 Active claim timeout is not a score candidate in this shape. Claimed items stay
 recoverable in `task:{taskId}:rt`; timeout is repaired by the best-effort claim
@@ -771,14 +904,13 @@ priority weights, per-project quotas, and round-robin cursors belong to later
 The mechanism still needs a no-permanent-starvation floor:
 
 - task score is the next eligible time, not a permanent `firstReadyAt`;
-- first scheduler discovery of a newly ready task uses the current ready time
+- first assignment-dispatch discovery of a newly ready task uses the current ready time
   so earlier-ready tasks compete first;
 - every claim round has a bounded `maxItems`;
 - after each claim round, a task with remaining backlog is scored at the next
-  eligible time, such as `now + positiveMatchDelay`, rather than keeping its
-  original first-ready score;
-- the scheduler must acquire a bounded batch of eligible task ids from the lane
-  score, not repeatedly drain one task while other due tasks remain visible;
+  running-visible time, rather than keeping its original first-ready score;
+- assignment-dispatch must acquire a bounded batch of eligible task ids from the
+  lane score, not repeatedly drain one task while other due tasks remain visible;
 - due scheduled retry candidates must not be hidden by a large ready backlog.
 
 This is not a guarantee that small tasks have equal latency under a large
@@ -789,25 +921,35 @@ score fairness.
 
 ### Scheduling-round algorithm
 
-After a task becomes due, scheduling produces a bounded round result:
+After a task score is acquired, scheduling produces a bounded round result.
+The result is evidence for the score-state rewrite, not an independent task
+lifecycle:
 
 ```text
+scoreState
+activationSatisfied?
 matchedWorkerCount
 admittedWorkerCount
 claimedItemCount
 readyRemaining
 dueScheduledRetryCount
+idleCloseAtRelativeMillis
 roundOutcome
 ```
 
 `roundOutcome` is one of:
 
 ```text
-CLAIMED
-EMPTY_MATCH
-CONTENDED
-NO_READY
-PARKED
+ACTIVATION_WAIT_NOT_EXPIRED
+ACTIVATION_DEADLINE_EXPIRED
+ACTIVATION_READY
+WORK_CLAIMED
+EMPTY_WAIT_NOT_EXPIRED
+EMPTY_DEADLINE_EXPIRED
+NO_WORK
+WORKER_NO_MATCH
+WORKER_CONTENDED
+PAUSE_OR_BLOCK
 TERMINAL
 ```
 
@@ -815,48 +957,60 @@ The score algorithm then applies these rules:
 
 ```text
 if TERMINAL:
-  score = retained closed marker
+  score = -closedScoreKey
 
-if PARKED:
-  score = SCHEDULER_HOLD_FLOOR or another owner-approved future hold score
+if PAUSE_OR_BLOCK:
+  score = score(currentActiveTag, futureEpochSecond, suffix)
 
-if EMPTY_MATCH:
-  scoreRuntime.emptyMatchStreak = min(streak + 1, emptyMatchMaxStreak)
-  delay = min(emptyMatchMaxDelayMillis,
-              emptyMatchBaseDelayMillis * 2^(streak - 1))
-  score = now + delay
+if scoreState == READY_APPROVED and ACTIVATION_WAIT_NOT_EXPIRED:
+  keep current score or rewrite score(READY_APPROVED_TAG, nextReadyRecheckEpochSecond, suffix)
 
-if CONTENDED:
-  scoreRuntime.emptyMatchStreak = 0
-  score = now + contentionRecheckDelayMillis
+if scoreState == READY_APPROVED and ACTIVATION_DEADLINE_EXPIRED:
+  score = -closedScoreKey
 
-if CLAIMED and readyRemaining:
-  scoreRuntime.emptyMatchStreak = 0
+if scoreState == READY_APPROVED and ACTIVATION_READY:
+  score = score(RUNNING_VISIBLE_TAG, nowEpochSecond, suffix)
+
+if scoreState == EMPTY_RUNNING and EMPTY_WAIT_NOT_EXPIRED:
+  keep current score or rewrite score(EMPTY_RUNNING_TAG, nextEmptyRecheckEpochSecond, suffix)
+
+if scoreState == EMPTY_RUNNING and EMPTY_DEADLINE_EXPIRED:
+  score = -closedScoreKey
+
+if scoreState == RUNNING_VISIBLE and NO_WORK:
+  idleCloseEpochSecond = nowEpochSecond + scorePolicy.idleCloseDelaySeconds
+  score = score(EMPTY_RUNNING_TAG, idleCloseEpochSecond, suffix)
+
+if scoreState == EMPTY_RUNNING and work appears:
+  score = score(RUNNING_VISIBLE_TAG, nowEpochSecond, suffix)
+
+if WORKER_NO_MATCH:
   delay = healthyMatchRecheckDelayMillis
           when matchedWorkerCount >= healthyMatchWorkerThreshold
           else scarceMatchRecheckDelayMillis
-  score = now + delay
+  score = score(RUNNING_VISIBLE_TAG, workerRecheckEpochSecond, suffix)
 
-if CLAIMED and no readyRemaining and no scheduled retry candidate:
-  scoreRuntime.emptyMatchStreak = 0
-  remove score
+if WORKER_CONTENDED:
+  score = score(RUNNING_VISIBLE_TAG, contentionRecheckEpochSecond, suffix)
 
-if CLAIMED and no readyRemaining and scheduled retry candidate exists:
-  scoreRuntime.emptyMatchStreak = 0
-  score = earliest scheduled retry candidate
+if WORK_CLAIMED and readyRemaining:
+  delay = healthyMatchRecheckDelayMillis
+          when matchedWorkerCount >= healthyMatchWorkerThreshold
+          else scarceMatchRecheckDelayMillis
+  score = score(RUNNING_VISIBLE_TAG, nextDispatchEpochSecond, suffix)
 
-if NO_READY and scheduled retry candidate exists:
-  score = earliest scheduled retry candidate
+if WORK_CLAIMED and no readyRemaining and scheduled retry candidate exists:
+  score = score(RUNNING_VISIBLE_TAG, scheduledRetryEpochSecond, suffix)
 
-if NO_READY and no scheduled retry candidate:
-  remove score
+if WORK_CLAIMED and no readyRemaining and no scheduled retry candidate:
+  idleCloseEpochSecond = nowEpochSecond + scorePolicy.idleCloseDelaySeconds
+  score = score(EMPTY_RUNNING_TAG, idleCloseEpochSecond, suffix)
 ```
 
-The empty-match path is the deliberate anti-spin penalty. A task with backlog
-but no matching worker is not scanned in a tight loop; it receives a future
-recheck score. A task with many matching workers gets a short or zero recheck
-delay so it can drain quickly. A task with only scarce matches receives a small
-positive delay to avoid monopolizing the lane.
+The no-worker path is the deliberate anti-spin penalty for active work. A task
+with backlog but no matching worker is not scanned in a tight loop; it remains
+`RUNNING_VISIBLE` with a future running score. `EMPTY_RUNNING` is reserved for
+the different fact that the active task has no current work.
 
 Optional claim timeout is resolved from the same scheduling evidence at claim
 time and then stored in `RuntimeItemState.claimPolicy.claimTimeoutMillis`:
@@ -872,9 +1026,10 @@ fallback
   claimTimeout = scorePolicy.claimTimeoutMillis.default
 ```
 
-No worker match creates no current claim. It only writes an empty-match recheck
-score. The active claim timeout and the task-lane recheck delay are related by
-the same policy, but they are separate runtime facts.
+No worker match creates no current claim. It only writes a no-worker-match
+recheck score inside `RUNNING_VISIBLE`. The active claim timeout and the task-lane
+recheck delay are related by the same policy, but they are separate runtime
+facts.
 
 ## State Machine
 
@@ -888,75 +1043,92 @@ NOT_INDEXED
   terminal proof. Current claims may still exist in task:{taskId}:rt and are
   repaired separately
 
-ELIGIBLE
-  score is in eligible window; task may be acquired for claim
+PRE_REVIEW
+  score is in the pending-review range; task is created/preparing/unapproved
+  and is not acquired
 
-FUTURE
-  score is a future timestamp; task-level retry backoff, empty-match recheck,
-  contention recheck, scheduled retry, or long scheduler hold is not due yet
+READY_APPROVED
+  score is in the ready-approved tag range; task is approved and may be
+  acquired only for activation-condition evaluation
 
-CLOSED
-  score is a retained negative marker; task is terminal, closed, or discarded
+RUNNING_VISIBLE
+  score is in the running range; task may be acquired for assignment-dispatch
+  only after owner validation, worker admission, and final work claim
 
-LIVE_NON_SCHEDULABLE
-  score is a non-negative enum-like code below TIME_SCORE_FLOOR; task is live
-  but not schedulable by the hot path
+EMPTY_RUNNING
+  score is in the empty-running range; task is running but has no current work
+  and may be scanned before or at the idle-close deadline
+
+TERMINAL
+  negative terminal score stores closed score key; final reason belongs to
+  result/meta/trace
 ```
 
 The transition model is deliberately small:
 
 ```text
-event mutates local facts
+owner input mutates local facts
   -> rewriteScore(taskId)
-  -> derive NOT_INDEXED / ELIGIBLE / FUTURE / LIVE_NON_SCHEDULABLE / CLOSED
-     from the new score
+  -> derive PRE_REVIEW / READY_APPROVED / RUNNING_VISIBLE / EMPTY_RUNNING /
+     TERMINAL from the new score plus minimal meta
 ```
 
-Events do not hand-code every state-to-state path. They update only the fact
-they own:
+Owner inputs do not hand-code every state-to-state path. They update only the
+fact they own:
 
-| Event | Fact mutation |
+| Owner input | Fact mutation |
 | --- | --- |
-| append | push `ReadyItemFrame` into ready LIST |
+| create | initialize `TaskRuntimeMeta` and write `PRE_REVIEW` score |
+| approve | write approval fact and `READY_APPROVED` score |
+| activation condition update | update activation owner truth only; due `READY_APPROVED` scheduling decides promotion |
+| append | push `ReadyItemFrame` into ready LIST; do not rewrite task score |
 | claim | move frames from ready LIST to sparse runtime HASH |
 | result success | remove sparse runtime state and write final result row |
 | retryable result or expiry | remove sparse runtime state, then either push retry frame to ready LIST (`FAST_READY`) or write scheduled retry lane (`DUE_TIME`) |
-| empty scheduling match | increment bounded `scoreRuntime.emptyMatchStreak` |
-| positive scheduling match | reset `scoreRuntime.emptyMatchStreak` |
-| pause or block | set runtime gate to parked |
-| resume or unblock | clear runtime gate and validate shell |
-| terminal or discard | write terminal fence and retained closed score, then delete task-local runtime keys and meta rows |
+| no work while running | write `EMPTY_RUNNING` with idle close score |
+| work appears while empty-running | write `RUNNING_VISIBLE` |
+| no worker match or contention | keep `RUNNING_VISIBLE` with a future running recheck score |
+| pause or hold | rewrite the same active band with future or far-future `epochSecond` |
+| resume or hold expiry | write a nearer same-band score after owner validation and expected lease-score match, or let the future epoch become due naturally |
+| terminal or discard | write terminal fence and terminal closed-at score, then delete task-local runtime keys and meta rows |
 
 Then `rewriteScore` maps the current facts back to one of the lane states:
 
 | Facts after mutation | Derived lane state |
 | --- | --- |
 | no score member | `NOT_INDEXED` |
-| score in eligible window | `ELIGIBLE` |
-| score is a future timestamp | `FUTURE` |
-| score is a retained negative marker | `CLOSED` |
-| score is non-negative and below `TIME_SCORE_FLOOR` | `LIVE_NON_SCHEDULABLE` |
+| pending approval / preparation | `PRE_REVIEW` |
+| approved, activation not yet satisfied | `READY_APPROVED` |
+| running with dispatchable or recheckable work path | `RUNNING_VISIBLE` |
+| running with no current work | `EMPTY_RUNNING` |
+| final / rejected / cancelled / discarded / idle-close | `TERMINAL` |
 
 Reason-specific timings are score candidates, not states:
 
 | Reason | Candidate |
 | --- | --- |
-| dispatchable ready backlog | `now + positiveMatchDelay` |
-| retry backoff | `retryVisibleAtMillis` |
-| scheduled retry due time | earliest `item-score` member score |
-| no matching worker | `now + emptyMatchDelay` |
-| worker contention | `now + contentionRecheckDelayMillis` |
+| activation / max-ready-stall / priority due | `score(READY_APPROVED_TAG, readyDeadlineEpochSecond, suffix)` |
+| dispatchable ready backlog | `score(RUNNING_VISIBLE_TAG, nextDispatchEpochSecond, suffix)` |
+| retry backoff | `score(RUNNING_VISIBLE_TAG, retryVisibleEpochSecond, suffix)` |
+| scheduled retry due time | `score(RUNNING_VISIBLE_TAG, scheduledRetryEpochSecond, suffix)` |
+| no matching worker | `score(RUNNING_VISIBLE_TAG, workerRecheckEpochSecond, suffix)` |
+| worker contention | `score(RUNNING_VISIBLE_TAG, contentionRecheckEpochSecond, suffix)` |
+| active hold | `score(currentActiveTag, futureEpochSecond, suffix)` |
+| no work while running | `score(EMPTY_RUNNING_TAG, idleCloseEpochSecond, suffix)` |
 
-The lane state may therefore change in several valid ways from the same event.
-For example, a claim can leave the task `ELIGIBLE` when ready backlog remains
-and delay is zero, move it to `FUTURE` when a scheduled retry or recheck
-candidate remains, or remove it to `NOT_INDEXED` when no score-visible work
-remains. Current claims can still exist after score removal; claim timeout repair
-observes them from `task:{taskId}:rt`.
+The lane state may therefore change in several valid ways from the same owner
+input.
+For example, a claim can keep the task `RUNNING_VISIBLE` when backlog remains,
+move it to `EMPTY_RUNNING` when no work remains, or keep it `RUNNING_VISIBLE`
+with a future running score when workers are contended. Current claims can
+still exist while the task is `EMPTY_RUNNING`; claim timeout repair observes
+them from `task:{taskId}:rt`.
 
-The implementation may store a small `scoreRuntime.emptyMatchStreak` to make
-empty-match penalty progressive, but it must not store a separate next due
-timestamp in metadata. The next due timestamp remains the ZSET score.
+The implementation may store small bounded score-runtime helper fields, but it
+must not store a separate hold band. Hold timing remains encoded in the ZSET
+score. If product policy needs a separate hard deadline while a task is held,
+that deadline belongs to policy/meta truth; the score carries only the next
+lease/recheck coordinate.
 
 ### Item state
 
@@ -1045,11 +1217,17 @@ Rules:
 - no item-level score is created;
 - append does not rewrite the task lane score and does not request a generic
   score refresh;
+- append does not emit a default wakeup or dirty hint;
 - append should not rewrite `TaskRuntimeMeta` except for first-time runtime
   initialization; task policy changes own metadata updates;
-- scheduler/matching rounds own live task score rewrite after a score-visible
-  task is acquired. Direct lifecycle events own explicit score changes such as
-  approve, pause, resume, close, or discard;
+- assignment-dispatch rounds own live task score rewrite after a score-visible
+  task is acquired. Direct lifecycle commands or owner-validated transitions own
+  explicit score changes such as approve, pause, resume, close, or discard;
+- if the task is `EMPTY_RUNNING`, append does not move the existing idle-close
+  score; the appended item may wait until that score is acquired;
+- if the task has already closed through idle-close, append cannot reopen or
+  backdate the old score. Intake/lifecycle policy must decide whether to reject
+  it or route it through an explicit new owner transition;
 - submit is at-least-once by default. If Redis commits the append but the
   response is lost, a caller retry without a stable idempotency key may append
   a second logical item;
@@ -1096,9 +1274,9 @@ for each source frame:
     HSET task:{taskId}:rt messageId RuntimeItemState(CLAIMED, retryCount=entry.retryCount, runtimeEpoch, selected worker, claimPolicy=current policy versions and optional timeout)
 ZADD task:active:{laneBucketId} coarseRepairCandidateAtMillis taskId
 rewrite task score through the score rewrite rule:
-  now + positiveMatchDelay, if ready LIST still non-empty after this bounded round
-  earliest item-score nextSchedulableAtMillis, if scheduled retry lane still has delayed entries and no earlier ready candidate exists
-  remove, if no ready or scheduled retry candidate remains
+  RUNNING_VISIBLE, if ready LIST still non-empty after this bounded round
+  RUNNING_VISIBLE, if scheduled retry lane has delayed entries and no earlier ready candidate exists
+  EMPTY_RUNNING, if no ready or scheduled retry candidate remains
 ```
 
 Claim returns deliver seed item values. For initial
@@ -1173,7 +1351,7 @@ leave TaskRuntimeMeta unchanged unless a separate task policy or runtime-gate
 update owns that change
 remove taskId from task:active:{laneBucketId} when task:{taskId}:rt is empty
 do not rewrite live task score from result apply; direct terminal handoff may
-write retained closed score through the lifecycle/score owner
+write terminal closed-at score through the lifecycle/score owner
 ```
 
 Duplicate and late callbacks are handled by runtime result reads or recent-final
@@ -1193,30 +1371,51 @@ owner if required.
 ### Due processing
 
 When a task score becomes due, the owner does not know whether the reason is
-ready backlog, scheduled retry, task-level retry backoff, or recheck until it
-validates task-local state.
+activation check, ready backlog, scheduled retry, task-level retry backoff,
+idle close, worker recheck, or contention recheck until it validates task-local
+state.
 
 Processing order:
 
 ```text
-1. Validate task shell, runtime gate, and task-local keys.
+1. Decode task score state and validate task shell, runtime fence, and
+   task-local keys.
 
-2. If retryMode=DUE_TIME:
+2. If score state is READY_APPROVED:
+      evaluate pre-running open conditions.
+      If satisfied, rewrite to RUNNING_VISIBLE.
+      If not satisfied before readyDeadlineEpochSecond, keep score unchanged or
+      same-band lease-rewrite according to policy.
+      If not satisfied at or after readyDeadlineEpochSecond, close to TERMINAL.
+      Stop; do not claim work or produce deliver seeds.
+
+3. If score state is EMPTY_RUNNING:
+      inspect ready LIST and due scheduled retry evidence.
+      If work appears, continue into the RUNNING_VISIBLE path.
+      If still empty before idleCloseEpochSecond, keep score unchanged or
+      same-band lease-rewrite according to policy.
+      If still empty at or after idleCloseEpochSecond, close to TERMINAL with
+      closedAt score.
+      Stop when no work appears.
+
+4. If retryMode=DUE_TIME:
      read bounded due messageIds from task:{taskId}:item-score where score <= now.
      If due entries exist, load their frames from task:{taskId}:item and make
      them available to the same scheduling/claim path.
      If no due entries exist and ready LIST is empty, keep the next
      item-score timestamp as the task lane score and stop.
 
-3. If task-level retry backoff or empty-match penalty is still active:
-     keep the future score selected by policy and stop.
+5. If task-level retry backoff, worker recheck, contention delay, or pause hold
+   is still active:
+      keep the policy-selected future same-band score and stop.
 
-4. If ready LIST is non-empty or due scheduled retry frames exist, and task
-   shell is dispatchable:
-     run a scheduling round, classify CLAIMED / EMPTY_MATCH / CONTENDED, and
-     claim source frames only when a worker was selected.
+6. If score state is RUNNING_VISIBLE, ready LIST is non-empty or due scheduled
+   retry frames exist, and task shell is dispatchable:
+     run a scheduling round, classify WORK_CLAIMED / WORKER_NO_MATCH /
+     WORKER_CONTENDED / NO_WORK, and claim source frames only when a worker was
+     selected.
 
-5. Rewrite or remove task score through the rewrite rule.
+7. Rewrite task score through the rewrite rule.
 ```
 
 The expensive part is bounded by the due scheduled retry read and the claim
@@ -1261,27 +1460,43 @@ explicit policy upgrade; do not overload task lane score for that purpose.
 Pause/block:
 
 ```text
-ZADD task:score:{laneBucketId} SCHEDULER_HOLD_FLOOR taskId
-HSET task:meta:{laneBucketId} taskId runtimeGate=PARKED, runtimeEpoch=runtimeEpoch+1
+validate current score state is an active band
+expectedScore = current score
+heldScore = score(currentActiveTag, futureEpochSecond, suffix)
+ZADD task:score:{laneBucketId}
+  heldScore
+  taskId
+HSET task:meta:{laneBucketId} taskId
+  runtimeEpoch=runtimeEpoch+1
 ```
 
 Do not rewrite every raw ready item or runtime item. Current claims remain in
 `task:{taskId}:rt` and may still finish. Retry frames created while parked stay
 in the ready LIST or scheduled retry lane according to `retryMode`, but the
-future hold score prevents new claims until resume or until an explicit policy
-chooses a different due time.
+future same-band score prevents new claims until that epoch becomes due, or
+until an owner-validated resume writes a nearer same-band score. `PRE_REVIEW`
+and `TERMINAL` must not be paused. If a product policy needs to preserve a
+separate hard deadline while the task is held, it must store that deadline as
+policy/meta truth; the score remains only the next scheduling lease coordinate.
 
 Resume/unblock:
 
 ```text
 validate task shell
+validate current score state is the same active band with a future epochSecond
+validate stored score == expectedLeaseScore
 inspect ready LIST, scheduled retry lane, and TaskRuntimeMeta
 advance or validate runtimeEpoch
-rewrite score to ELIGIBLE/FUTURE or remove
+rewrite score to score(currentActiveTag, resumeEpochSecond, suffix)
 ```
 
-After resume, both newly appended items and retry frames are claimed under the
-current `TaskRuntimeMeta`.
+Manual resume is an acceleration path, not the default correctness path. If it
+does not happen, the future epoch eventually becomes due and the normal band scan
+interprets the task as its original active band. After resume, both newly
+appended items and retry frames are handled under the current `TaskRuntimeMeta`.
+A stale resume that does not match `expectedLeaseScore` must be a no-op or stale
+failure; it must not overwrite a newer hold, terminal close, or scheduling
+rewrite.
 
 ### Terminal and discard
 
@@ -1289,7 +1504,7 @@ Terminal task cleanup is precise by `taskId`:
 
 ```text
 HSET task:meta:{laneBucketId} taskId runtimeGate=TERMINAL, runtimeEpoch=runtimeEpoch+1
-ZADD task:score:{laneBucketId} CLOSED_* taskId
+ZADD task:score:{laneBucketId} TERMINAL_* taskId
 ZREM task:active:{laneBucketId} taskId
 DEL task:{taskId}:ready
 DEL task:{taskId}:item-score
@@ -1302,22 +1517,31 @@ HDEL task:meta:{laneBucketId} taskId
 The terminal fence is the hard boundary. It must be visible to claim, result,
 and repair atomic mutations before physical cleanup is attempted. Physical key
 deletion is allowed to be best-effort delayed, but no new claim may pass the
-terminal fence. The retained closed score is scheduler-visible diagnostic
-evidence, not the lifecycle authority. This cleanup does not scan the namespace
-and does not require one key per item.
+terminal fence. The terminal score records closed time only; close reason lives
+in metadata, result, or trace. This cleanup does not scan the namespace and
+does not require one key per item.
 
 ## Atomicity Boundaries
 
 Use Lua, Redis transactions, or an equivalent compare-and-swap mechanism only
 where the state transition crosses multiple Redis values.
 
+The segmented score format is intended to keep normal acquisition simple:
+active scans are plain numeric `ZRANGEBYSCORE` calls over one tag segment plus
+`LIMIT`. Lua should not be used just to discover whether a candidate belongs to
+`RUNNING_VISIBLE`, `EMPTY_RUNNING`, or `READY_APPROVED`; the range already
+answers that. Lua/transactions are reserved for expected-score writes,
+expected-lease release/resume, and mutations that must update task-local runtime
+keys together with score/meta/fence values.
+
 Required atomic boundaries:
 
 ```text
 append:
   optional idempotency/backlog guard + ready LIST push
-  optional first-time TaskRuntimeMeta init or dirty marker
+  optional first-time TaskRuntimeMeta init only
   no task score rewrite in the append mutation
+  no default wakeup / dirty event emit
 
 claim:
   validate task score, runtime gate, runtimeEpoch, and selected worker admission
@@ -1340,12 +1564,13 @@ claim timeout repair mutation:
   no live task score refresh
 
 pause/block/resume:
-  runtime gate + runtimeEpoch + score update
+  runtimeEpoch + same-active-band future/nearer score update with expected
+  lease-score protection
 
 discard/terminal:
   terminal fence + runtimeEpoch advance before physical key deletion
   task-local key deletion including scheduled retry lane
-  retained closed score + active/meta removal
+  terminal closed-at score + active/meta removal
 ```
 
 Do not add a distributed lock around task scheduling by default. The runtime
@@ -1384,6 +1609,10 @@ current task item runtime truth.
   only for `retryMode=DUE_TIME` delayed/scheduled retry visibility.
 - Do not let the scheduled retry lane dispatch directly to adapters; due retry
   frames must enter the same scheduling/claim path as normal ready work.
+- Do not use an event queue as task scheduling backlog, retry backlog, or
+  ready-task index.
+- Do not rely on event delivery to start scheduling; `task:score` scan,
+  task-local recheck, and bounded repair are the fallback.
 - Do not promote best-effort timing into a hard runtime guarantee without a
   task policy that explicitly opts into the higher-cost mechanism.
 - Do not put item counters or due timestamps in `TaskRuntimeMeta` as scheduling
@@ -1394,17 +1623,17 @@ current task item runtime truth.
 - Do not make task lane score responsible for precise active claim timeout.
   Claim timeout is repaired from `task:{taskId}:rt` on a best-effort basis.
 - Do not use score absence as terminal proof; terminal, closed, or discarded
-  tasks should write a retained closed marker before cleanup/retention removes
-  that marker.
+  tasks should write a terminal closed-at score before cleanup/retention removes
+  that score.
 - Do not add an active claim expiry ZSET unless a later policy explicitly
   requires near-exact timeout wakeup.
-- Do not let retry backoff or empty-match penalty hide an earlier ready or
-  scheduled retry candidate; task score must wake at the earliest score-visible
-  candidate time.
+- Do not let retry backoff or no-worker-match penalty hide an earlier ready or
+  scheduled retry candidate; task score must wake at the earliest
+  score-visible candidate time.
 - Do not keep a task's original `firstReadyAt` score after a claim round when
   backlog remains; rewrite it to the next eligible time.
-- Do not let a scheduler loop repeatedly drain one task while other due task
-  ids remain visible in the same lane score batch.
+- Do not let an assignment-dispatch loop repeatedly drain one task while other
+  due task ids remain visible in the same lane score batch.
 - Do not claim zero Redis-node-loss unless the Redis durability configuration
   actually provides that acknowledgement contract.
 - Do not present append as exactly-once unless the API accepts a stable
@@ -1444,19 +1673,20 @@ A first implementation should prove:
   the delayed retry message, then deletes both on success or final failure;
 - due `DUE_TIME` retry frames enter the same scheduling/claim path as
   ready LIST frames;
-- empty-match scheduling rounds write a future recheck score and increment only
-  bounded score-runtime penalty state;
-- score rewrite picks the earliest ready/scheduled-retry/empty-match candidate
-  so due retry visibility is not starved;
+- no-worker-match scheduling rounds write a future `RUNNING_VISIBLE` recheck
+  score and increment only bounded score-runtime penalty state;
+- score rewrite picks the earliest ready/scheduled-retry/no-worker-match
+  candidate so due retry visibility is not starved;
 - claim rounds are bounded by `maxItems`, and a task with remaining backlog is
   rewritten to a next eligible score after each round;
-- the scheduler can acquire a bounded batch of eligible tasks so one large
+- assignment-dispatch can acquire a bounded batch of eligible tasks so one large
   backlog does not permanently hide other due tasks;
 - claim timeout repair discovers active tasks through the active task registry,
   scans `task:{taskId}:rt`, and eventually expires claimed messages without
   relying on task score for exact timeout wakeup;
-- pause/block holds the task with a far-future score without rewriting items;
-- terminal/discard writes a runtime fence and retained closed score before
+- pause/block holds only active tasks by writing a future same-band score
+  without rewriting items;
+- terminal/discard writes a runtime fence and terminal closed-at score before
   physical cleanup, then deletes task-local runtime keys without namespace scan;
 - memory and Redis implementations share the same kernel runtime contract
   behavior.

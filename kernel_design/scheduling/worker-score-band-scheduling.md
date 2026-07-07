@@ -58,12 +58,13 @@ score-band placement
 verified reopen after recovery
 ```
 
-Adapter events may be positive, neutral, or negative evidence, but only events
-that directly change scheduling eligibility should cross into worker-runtime.
-Raw `CONNECTED`, `WORKER_HEARTBEAT`, `SESSION_KEEPALIVE`, and
-`TRANSPORT_REFRESH` remain transport evidence unless worker-runtime explicitly
-uses them during validation. A worker becoming schedulable is a
-worker-runtime-verified fact, not a raw transport fact.
+Adapter observations may be positive, neutral, or negative evidence, but they
+should cross into worker-runtime only as validation inputs. They should not
+emit default worker-runtime wakeups. Raw `CONNECTED`, `WORKER_HEARTBEAT`,
+`SESSION_KEEPALIVE`, and `TRANSPORT_REFRESH` remain transport evidence unless
+worker-runtime explicitly reads them during validation. A worker becoming
+schedulable is a worker-runtime-verified fact, not a raw transport fact or a
+raw event side effect.
 
 ## Core Model
 
@@ -77,7 +78,18 @@ Rules:
 - acquire is a bounded range query;
 - acquired workers still require worker-runtime validation before admission;
 - transport heartbeat, keepalive, connected, and freshness observations are not
-  generic score-refresh triggers.
+  generic score-refresh triggers and do not emit default wakeups.
+
+Worker score-band is the worker-side scheduling clock. Transport/session
+observations may provide evidence for worker-runtime validation, but the worker
+does not become schedulable because an event arrived:
+
+```text
+transport evidence observed
+  -> worker-runtime may read it during validation
+  -> policy maps validated truth to a worker score
+  -> score-band decides the next acquire opportunity
+```
 
 Conceptual flow:
 
@@ -197,11 +209,11 @@ admission fairness
 anti-spin
 ```
 
-### Direct Owner Event Writes
+### Direct Owner Command / Transition Writes
 
 Workers outside the acquire range should not be periodically refreshed because
 unrelated evidence changed. Their score changes through directly related owner
-events:
+commands or owner-validated transitions:
 
 ```text
 verified available
@@ -214,7 +226,8 @@ group or worker policy change that directly affects eligibility
 
 ### Non-Triggers
 
-These update their own owner truth and do not trigger generic score refresh:
+These update their own owner truth and do not trigger generic score refresh or
+default event emission:
 
 ```text
 transport heartbeat
@@ -226,15 +239,16 @@ read-model update
 trace materialization
 ```
 
-They may be read when a direct owner event or acquired admission round computes
-a new score, but they do not by themselves drive score refresh.
+They may be read when an owner command, owner-validated transition, or acquired
+admission round computes a new score, but they do not by themselves drive score
+refresh.
 
-## Event Trigger Taxonomy
+## Input Write Taxonomy
 
-| Event kind | May write worker score? | Notes |
+| Input kind | May write worker score? | Notes |
 | --- | --- | --- |
-| explicit disable / enable | yes | direct eligibility owner event |
-| drain / undrain | yes | direct dispatch eligibility event |
+| explicit disable / enable | yes | direct eligibility owner command |
+| drain / undrain | yes | direct dispatch eligibility command |
 | verified available / reopen | yes | must validate owner facts first |
 | fast-close negative evidence | yes | direct negative close path |
 | worker admission round | yes | primary live rewrite path after acquire |
@@ -247,7 +261,7 @@ a new score, but they do not by themselves drive score refresh.
 Worker score transitions are owner-evidence-driven:
 
 ```text
-direct worker-runtime owner event
+direct worker-runtime owner command / transition
   -> mutate worker eligibility fact
   -> compute score
   -> write score
