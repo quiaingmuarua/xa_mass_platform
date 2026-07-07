@@ -74,6 +74,26 @@ visibility index for task ids.
 
 Task score is an acquire index, not task lifecycle truth.
 
+Core mechanics:
+
+```text
+tag decides lifecycle direction
+epochSecond decides same-band lease / recheck / freshness direction
+suffix decides same-band budget / tie-break / owner-local code
+expected-score prevents stale overwrite
+transition direction rule prevents lifecycle regression
+```
+
+Lifecycle progresses left by lower tag or terminal score:
+
+```text
+PRE_REVIEW(3) -> READY_APPROVED(2) -> RUNNING_VISIBLE(1) -> TERMINAL(<0)
+```
+
+Scheduling suppression, retry, hold, and lease move right inside the same band
+by writing a later `epochSecond`. Release/resume is the only right-to-left lease
+shortcut and must carry the exact `expectedLeaseScore`.
+
 Rules:
 
 - score is one sortable value owned by the task active-acquisition score owner;
@@ -151,13 +171,13 @@ The fallback scheduling path is mandatory:
 ```text
 task score acquire
   -> owner validation
-  -> work/retry/empty-running recheck
+  -> work/retry/no-work recheck
   -> score rewrite or terminal closure
 ```
 
 An event may at most ask the score owner to check sooner. It must not create the
 only path that discovers backlog, retry lease key, worker contention, or
-empty-running closure.
+no-work closure.
 
 Examples:
 
@@ -173,12 +193,13 @@ READY_APPROVED
   -> they do not directly promote the task
   -> scheduling acquire evaluates activation and writes RUNNING_VISIBLE if ready
 
-EMPTY_RUNNING
-  -> must eventually recheck from score state
+RUNNING_VISIBLE with no current work
+  -> remains RUNNING_VISIBLE with a later score and reduced suffix budget
   -> append does not have to wake it
-  -> work discovery and idle-close come from owner recheck / policy
-  -> append before idleCloseAt may wait until the idle-close score becomes due
-  -> append after idle-close closure must not reopen or backdate the old score
+  -> work discovery and no-work closure come from owner recheck / policy budget
+  -> append may wait until the next RUNNING_VISIBLE score becomes due
+  -> append after exhausted no-work closure must not reopen or backdate the old
+     score
 
 allowed key transition event, if introduced later
   -> may shorten recheck latency
@@ -196,23 +217,23 @@ result evidence
 
 Explicit human gates are the exception. `PRE_REVIEW` may require an approve or
 reject command because its policy is intentionally human-gated. That command is
-not ordinary evidence; it is an authoritative owner-transition that still validates
+not ordinary evidence; it is an authoritative owner command that still validates
 the current state before moving to `READY_APPROVED` or `TERMINAL`.
 
-## Transition Entry Classes
+## Score Write Categories
 
-Task score transitions have three entry classes:
+Task score writes come from several business-side categories, but those
+categories are not kernel transition inputs:
 
 ```text
 score-acquired scheduling round
   -> owned by assignment-dispatch-scheduling
-  -> handles epochSecond / lease bands
+  -> computes the next score after a bounded scheduling action
   -> READY_APPROVED: evaluate activation facts
   -> RUNNING_VISIBLE: attempt bounded assignment-dispatch
-  -> EMPTY_RUNNING: run idle-close check
 
-owner-transition
-  -> handles non-score-lease human gates and manual controls
+owner command
+  -> handles human gates and manual controls
   -> create, approve, reject, cancel, write temporary restriction, discard
 
 owner-evidence-write
@@ -224,18 +245,19 @@ owner-evidence-write
 The score lease coordinate itself is only a lease/recheck coordinate. The
 current epoch makes a score member acquirable; it does not complete the
 transition without owner validation.
-Non-score-lease gates remain blocked until an owner-transition changes the
-underlying fact.
+Non-score gates remain blocked until an owner command changes the underlying
+fact.
 
 ## Score Bands And Encoding
 
-Task score-band uses five score bands. Temporary restriction is not a separate
+Task score-band uses four score bands. Temporary restriction is not a separate
 band; pause/block/hold is represented by rewriting the same active band with a
-future or far-future lease key. These are scheduling visibility states, not a
+future lease key. A hard pause uses the maximum 10-digit `epochSecond`
+coordinate. These are scheduling visibility states, not a
 second business lifecycle. Kernel code should branch on the decoded band and
 owner validation result, not on concrete product events.
 
-Non-negative active scheduling bands use a fixed segmented numeric score:
+Positive non-terminal bands use a fixed segmented numeric score:
 
 ```text
 score = tag * TAG_FACTOR + epochSecond * SUFFIX_FACTOR + suffix
@@ -245,54 +267,65 @@ epochSecond = (score % TAG_FACTOR) / SUFFIX_FACTOR
 suffix = score % SUFFIX_FACTOR
 ```
 
-`epochSecond` is the sortable lease coordinate: due time, deadline, hold-until,
-recheck-at, or far-future pause. `suffix` is a bounded two-digit ordering field
-for same-second retry/ordinal/priority/tie-break decisions. It is not lifecycle
-truth and must not become the retry counter owner. The first slice keeps
-`suffix` in `00..99`.
+`epochSecond` is a sortable second-granularity coordinate. For
+`RUNNING_VISIBLE` and `READY_APPROVED`, it is the next scheduling/recheck
+second. For `PRE_REVIEW`, it is the owner mutation freshness second. Kernel code
+does not interpret review business flow; it only rejects stale positive writes
+whose target `epochSecond` is not newer than the stored `epochSecond`, except
+for expected-score release/resume.
+`suffix` is a bounded two-digit same-band remaining schedule budget. `00` means
+same-band budget exhausted; `01..99` means that many same-band scheduling
+rewrites remain for scheduling bands. For `PRE_REVIEW`, `suffix` is an
+owner-defined review state code. Kernel code does not validate suffix ordering.
+It is not work-item retry truth and must not become the item retry counter
+owner.
 
 ```text
-PRE_REVIEW_MIN = -10
-PRE_REVIEW_MAX = -1
-
 RUNNING_VISIBLE_TAG = 1
-EMPTY_RUNNING_TAG = 2
-READY_APPROVED_TAG = 3
+READY_APPROVED_TAG = 2
+PRE_REVIEW_TAG = 3
 
 SUFFIX_FACTOR = 100
-TAG_FACTOR = 10_000_000_000 * SUFFIX_FACTOR
+EPOCH_FACTOR = 10_000_000_000
+MAX_EPOCH_SECOND = 9_999_999_999
+PAUSE_EPOCH_SECOND = MAX_EPOCH_SECOND
+TAG_FACTOR = EPOCH_FACTOR * SUFFIX_FACTOR
 
 TERMINAL score = -closedScoreKey
-closedScoreKey = closedEpochSecond * SUFFIX_FACTOR + suffix
+closedScoreKey = closedEpochSecond * SUFFIX_FACTOR + closedSuffix
 closedScoreKey > 10
 ```
 
 Tag `0` is deliberately unused so decode never depends on a missing high-order
-tag. With a 10-digit epoch second and two-digit suffix, active scores remain
-well under Redis sorted-set double exact-integer limits. If the time coordinate
+tag. With a 10-digit `epochSecond` coordinate and two-digit suffix, positive
+scores remain
+well under Redis sorted-set double exact-integer limits. If the coordinate width
 or suffix width changes, the owner must re-check exact numeric representation.
 
 Use `score(TAG, epochSecond, suffix)` below as shorthand for the formula above.
 
 | Band | Score encoding | Acquirable by scheduling | Dispatch-eligible | Kernel action after acquire | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `PRE_REVIEW` | `-10 <= score <= -1` | no | no | none | Human / owner gate. May allow append, edit, and review outside score-band. |
-| `RUNNING_VISIBLE` | `score(RUNNING_VISIBLE_TAG, nextDispatchEpochSecond, suffix)` | when included by the running scan | yes, after owner validation and work claim | run bounded assignment-dispatch | Temporary restriction uses this same tag with a future or far-future `epochSecond`. When that epoch becomes due, running scan interprets it as normal `RUNNING_VISIBLE`. |
-| `EMPTY_RUNNING` | `score(EMPTY_RUNNING_TAG, idleCloseEpochSecond, suffix)` | when included by the empty scan horizon | only if continue facts are true | evaluate post-running continue facts | Post-running close-condition deadline. Before deadline, false continue facts may keep the same score or lease-rewrite within the same band. At or after deadline, false continue facts close to `TERMINAL`. |
-| `READY_APPROVED` | `score(READY_APPROVED_TAG, readyDeadlineEpochSecond, suffix)` | when included by the ready scan horizon | no | evaluate pre-running open facts only | Pre-running open-condition deadline. It must not create a deliver seed. Before deadline, false open facts may keep the same score or lease-rewrite within the same band. At or after deadline, false open facts close to `TERMINAL`. |
-| `TERMINAL` | negative closed score key | no | no | none | Negative score space is not scheduling-acquired. `closedScoreKey` must not collide with `PRE_REVIEW` enum values. Close reason belongs to meta/result/trace. |
+| `PRE_REVIEW` | `score(PRE_REVIEW_TAG, ownerMutationEpochSecond, reviewStateCode)` | no | no | none | Positive mutable state, not schedulable. The review owner defines and validates suffix state semantics. Kernel only requires positive non-release writes to carry a larger `epochSecond`. |
+| `RUNNING_VISIBLE` | `score(RUNNING_VISIBLE_TAG, nextDispatchOrRecheckEpochSecond, remainingBudget)` | when included by the running scan | yes, after owner validation, work evidence, worker admission, and work claim | run bounded assignment-dispatch | Also handles `NO_WORK`, `NO_WORKER`, and contention classifications. Temporary restriction uses this same tag with a future `epochSecond`; hard pause uses `PAUSE_EPOCH_SECOND`. |
+| `READY_APPROVED` | `score(READY_APPROVED_TAG, nextReadyRecheckEpochSecond, remainingBudget)` | when included by the ready scan horizon | no | evaluate pre-running open facts only | Pre-running open-condition recheck. It must not create a deliver seed. If still not open and budget remains, scheduling rewrites the same band with `remainingBudget - 1`. If budget is exhausted and still not open, write a same-band pause/hold score. |
+| `TERMINAL` | negative closed score key | no | no | none | Negative score space is final and immutable. Close reason belongs to meta/result/trace. |
 
 Band order is consumption-first:
 
 ```text
-RUNNING_VISIBLE < EMPTY_RUNNING < READY_APPROVED
+RUNNING_VISIBLE < READY_APPROVED < PRE_REVIEW
 ```
 
-This order improves active consumption priority. It is not permission to run one
-global range scan across tags. Assignment-dispatch must scan the allowed active
-bands through separate band ranges and policy-owned quotas. Negative scores are
-outside active scheduling by construction, so terminal state has both a sign
-barrier and a band allow-list barrier.
+This order keeps cross-band lifecycle movement numerically downward:
+`PRE_REVIEW -> READY_APPROVED -> RUNNING_VISIBLE -> TERMINAL`. Same-band
+recheck/hold writes may numerically increase because `epochSecond` moves
+forward; that is not lifecycle regression. The order is not permission to run
+one global positive range scan across tags. Assignment-dispatch must scan the
+allowed active bands through separate band ranges and policy-owned quotas.
+`PRE_REVIEW` is positive and mutable but not in the active scheduling
+allow-list. Negative scores are final and immutable, so terminal state has a
+sign barrier and a band allow-list barrier.
 
 The important split is:
 
@@ -305,48 +338,44 @@ dispatch-eligible
   seed creation
 ```
 
-`READY_APPROVED` and `EMPTY_RUNNING` are the same deadline template applied to
-two different running stages:
+`READY_APPROVED` and `RUNNING_VISIBLE` both use same-band recheck budgets, but
+they protect different allowed actions:
 
 ```text
 READY_APPROVED
   running pre-open condition
-  before due: scans may evaluate worker-candidate / open facts
-  before due and not open: keep the same score
-  at or after due and still not open: close to TERMINAL
+  when acquired: scans evaluate worker-candidate / open facts
+  ready: move to RUNNING_VISIBLE
+  not open and suffix > 00: rewrite READY_APPROVED with next epoch and suffix-1
+  not open and suffix == 00: pause/hold in READY_APPROVED
 
-EMPTY_RUNNING
-  running post-close condition
-  before due: scans may evaluate backlog / retry / dispatchable work facts
-  before due and still empty: keep the same score
-  at or after due and still empty: close to TERMINAL
+RUNNING_VISIBLE
+  running-stage dispatch/recheck condition
+  when acquired: scans work, worker, retry, contention, and dispatch facts
+  work dispatched: rewrite RUNNING_VISIBLE by policy
+  no work and suffix > 00: rewrite RUNNING_VISIBLE with next no-work-recheck epoch and suffix-1
+  no work and suffix == 00: close to TERMINAL
+  no worker / contention and suffix > 00: rewrite RUNNING_VISIBLE with next recheck epoch and suffix-1
+  no worker / contention and suffix == 00: pause/hold in RUNNING_VISIBLE
 ```
 
 `READY_APPROVED` is a real band because an approved task may still need
 pre-running open conditions before running, such as a candidate-work count
-range, batch-size threshold, max-ready-stall deadline, priority window, or
-policy gate. `readyDeadlineEpochSecond` is written by approval / activation
-policy. It is the deadline coordinate for the open-condition deadline, the same
-kind of score coordinate as `EMPTY_RUNNING.idleCloseEpochSecond`. The task does
-not derive this key from its own shell. Typical open facts include
-worker-candidate
-conditions such as minimum matching worker count. Acquiring `READY_APPROVED`
-evaluates open facts; it must not create a deliver seed.
+range, batch-size threshold, ready retry budget, priority window, or policy
+gate. `nextReadyRecheckEpochSecond` and the initial same-band budget are
+written by approval / activation policy. The task does not derive these values
+from its own shell. Typical open facts include worker-candidate conditions such
+as minimum matching worker count. Acquiring `READY_APPROVED` evaluates open
+facts; it must not create a deliver seed.
 
 Scheduling scan ranges are per active acquisition tag. The default active order
-is running consumption first, then empty-running recheck, then ready activation:
+is running consumption/recheck first, then ready activation:
 
 ```text
 running scan:
   ZRANGEBYSCORE task:score
     score(RUNNING_VISIBLE_TAG, 0, 0)
     score(RUNNING_VISIBLE_TAG, currentEpochSecond, 99)
-    LIMIT batchSize
-
-empty scan:
-  ZRANGEBYSCORE task:score
-    score(EMPTY_RUNNING_TAG, 0, 0)
-    score(EMPTY_RUNNING_TAG, emptyScanHorizonEpochSecond, 99)
     LIMIT batchSize
 
 ready scan:
@@ -357,16 +386,17 @@ ready scan:
 ```
 
 Do not collapse these into one broad scan from `RUNNING_VISIBLE_TAG` through
-`READY_APPROVED_TAG`. A far-future temporary restriction in any active tag must
-stay invisible until its own `epochSecond` is due. Terminal scores are negative
-and must not enter the active assignment-dispatch batch.
+`READY_APPROVED_TAG`. A paused active tag uses `PAUSE_EPOCH_SECOND` and must
+stay invisible until released by expected-score resume. Terminal scores are
+negative and must not enter the active assignment-dispatch batch.
 
-Assignment-dispatch chooses the scan horizon per band. For `READY_APPROVED` and
-`EMPTY_RUNNING`, the horizon may include scores whose decoded deadline is still
-in the future. A candidate whose `epochSecond` is greater than the current epoch
-is a pre-deadline evaluation: if the relevant facts are false, the score may be
-left unchanged or rewritten inside the same band by policy; if they are true,
-the task may move to `RUNNING_VISIBLE`.
+Assignment-dispatch chooses the scan horizon per band. Normally each scan uses
+`epochSecond <= now`. If a policy deliberately scans a small future horizon,
+that horizon must stay below `PAUSE_EPOCH_SECOND`; hard-pause scores are not
+future-prefetch candidates. A future horizon is an early recheck optimization,
+not a close-time decision. If the relevant facts remain false, same-band
+scheduling rewrites the score to the next `epochSecond` and decrements
+`suffix`; if the facts are true, the task may move to `RUNNING_VISIBLE`.
 
 There is no pagination cursor in the task-score owner. The caller repeats
 bounded range scans. A successfully acquired candidate must be consumed by one
@@ -374,127 +404,230 @@ of these outcomes:
 
 ```text
 rewrite score within the same band
-keep the same score after a pre-deadline false check
 move to another band
 write negative terminal score
 clean stale residue
 fail expected-score / CAS because newer score already won
 ```
 
-Keeping the same score after a pre-deadline false check is a deliberate
-closed-loop fallback, not a task-score starvation repair. Assignment-dispatch
-scans `RUNNING_VISIBLE` before `EMPTY_RUNNING` and `READY_APPROVED`, so no-op
-deadline checks must not block real running consumption. If there are no
-running tasks to consume, repeated `READY_APPROVED` / `EMPTY_RUNNING` no-op
-checks are bounded idle work: policy owns the horizon, quota, ordering, and
-backoff that decide how much idle recheck cost to spend.
+Keeping the same score after a successful acquire is not the normal path. A
+same-band false classification is consumed by writing a later `epochSecond` and
+`suffix - 1`, or by executing the exhausted action when `suffix == 00`.
+Assignment-dispatch scans `RUNNING_VISIBLE` before `READY_APPROVED`, so ready
+activation rechecks must not block real running consumption. Repeated no-work,
+no-worker, contention, and ready rechecks are bounded by suffix budget plus
+policy-owned horizon, quota, ordering, and backoff.
 
-Policy may alternatively consume a no-op candidate by rewriting the same band to
-a later `epochSecond` and/or suffix. That is a lease/pacing rewrite, not a
-lifecycle transition.
-
-Same-band ordinary lease rewrites obey:
+Same-band scheduling rewrites obey:
 
 ```text
 target tag == current tag
-target epochSecond >= current epochSecond
-suffix remains bounded and policy-owned
+current suffix > 00
+target epochSecond > acquire currentEpochSecond
+target suffix = current suffix - 1
 ```
 
-Release/resume is the explicit exception:
+Positive non-terminal writes obey the freshness rule by default:
 
 ```text
-target tag == current tag
-target epochSecond may move backward to now or a nearer time
+target epochSecond > stored epochSecond
+```
+
+This applies to scheduling rewrites, owner transitions, pause/block/hold, and
+cross-band lifecycle movement. Same-task score refresh is intentionally
+second-granularity. Multiple non-release updates for the same task within the
+same second must be rejected, coalesced, or retried later by the owner. Do not
+upgrade to millisecond precision until a concrete invariant needs it.
+
+Cross-band lifecycle transitions also obey the tag direction implied by the
+band order:
+
+```text
+PRE_REVIEW -> READY_APPROVED -> RUNNING_VISIBLE -> TERMINAL
+```
+
+`READY_APPROVED` is an optional intermediate band, not a required checkpoint.
+The kernel permits lifecycle jumps toward lower tags, such as
+`PRE_REVIEW -> RUNNING_VISIBLE`, when the business owner has already validated
+the required facts. It only rejects movement from a lower tag back to a higher
+tag, such as `RUNNING_VISIBLE -> READY_APPROVED`. Same-band recheck/hold writes
+may still raise the numeric score because `epochSecond` is later.
+
+If `suffix == 00`, scheduling must not write another ordinary same-band recheck.
+It must execute the exhausted action for the current band:
+
+```text
+READY_APPROVED exhausted
+  -> same-band pause/hold score
+
+RUNNING_VISIBLE exhausted after NO_WORK
+  -> TERMINAL
+
+RUNNING_VISIBLE exhausted after NO_WORKER / contention
+  -> same-band pause/hold score
+```
+
+Release/resume is the explicit exception. It releases a known lease/hold score:
+
+```text
 stored score must still equal expectedLeaseScore
+target score is derived from expectedLeaseScore with a release epochSecond
+target suffix is copied from expectedLeaseScore
 otherwise return STALE / NOOP and keep the newer hold
 ```
 
-Cross-band writes, such as `READY_APPROVED -> RUNNING_VISIBLE` or
-`EMPTY_RUNNING -> RUNNING_VISIBLE`, are allowed only by the transition matrix
-and expected-score / CAS protection.
+Pause/block/hold uses the ordinary freshness rule: write the same active tag
+with a future `epochSecond`; hard pause writes `PAUSE_EPOCH_SECOND`.
+Release/resume uses
+`expectedLeaseScore` as the stale fence; matching that exact score proves no
+newer hold, terminal close, or scheduling rewrite has happened.
 
-After acquire, decode `tag`. For deadline bands, the decoded `epochSecond` is
-the deadline coordinate:
+`PRE_REVIEW` same-band owner transitions obey the same positive-write freshness
+rule:
+
+```text
+target tag == PRE_REVIEW_TAG
+target epochSecond > current epochSecond
+suffix is owner-defined review state code
+owner validates the business state, material completeness, permission, and
+allowed suffix transition
+```
+
+The kernel does not know whether `suffix=30` means draft, uploaded, rejected, or
+submitted. Those names and allowed transitions belong to the review owner. The
+kernel only prevents an older `epochSecond` write from overwriting a newer
+`PRE_REVIEW` score. When two owner mutations occur in the same wall-clock
+second, the review owner should compute:
+
+```text
+nextOwnerMutationEpochSecond = max(nowEpochSecond, currentEpochSecond + 1)
+```
+
+This keeps the second-granularity score model monotonic without requiring
+millisecond precision.
+
+Cross-band writes, such as `PRE_REVIEW -> RUNNING_VISIBLE` or
+`READY_APPROVED -> RUNNING_VISIBLE`, are allowed only by the transition
+direction rule and expected-score / CAS protection. External callers do not
+provide `suffix`. Cross-band owner transitions initialize suffix from policy;
+ordinary same-band owner transitions preserve suffix unless the current band
+owner defines suffix as owner-local state, such as `PRE_REVIEW`. A budget reset
+is a separate owner-authorized reset transition, not release/resume and not a
+generic event side effect.
+
+After acquire, decode `tag` and `suffix`:
 
 ```text
 if acquired READY_APPROVED and open condition is satisfied:
   targetBand = RUNNING_VISIBLE
-if acquired READY_APPROVED and open condition is false before due:
-  keep score or same-band lease rewrite
-if acquired READY_APPROVED and open condition is still false at or after due:
+if acquired READY_APPROVED and open condition is false and suffix > 00:
+  targetBand = READY_APPROVED with next epochSecond and suffix-1
+if acquired READY_APPROVED and open condition is false and suffix == 00:
+  targetBand = READY_APPROVED paused/held score
+if acquired RUNNING_VISIBLE and no work exists and suffix > 00:
+  targetBand = RUNNING_VISIBLE with next no-work-recheck epochSecond and suffix-1
+if acquired RUNNING_VISIBLE and no work exists and suffix == 00:
   targetBand = TERMINAL
-if acquired EMPTY_RUNNING and work exists:
-  targetBand = RUNNING_VISIBLE
-if acquired EMPTY_RUNNING and still empty before due:
-  keep score or same-band lease rewrite
-if acquired EMPTY_RUNNING and still empty at or after due:
-  targetBand = TERMINAL
+if acquired RUNNING_VISIBLE and no worker / contention and suffix > 00:
+  targetBand = RUNNING_VISIBLE with next worker-recheck epochSecond and suffix-1
+if acquired RUNNING_VISIBLE and no worker / contention and suffix == 00:
+  targetBand = RUNNING_VISIBLE paused/held score
 ```
 
 Temporary restriction is deliberately not listed as a band. Pause/block writes
-the same active tag with a future `epochSecond`; far-future pause is one valid
-policy choice. When that epoch becomes due, the band scan acquires the score and
-interprets it as the original band. No external resume event is required for the
-default restore path. If a product needs to preserve a separate hard deadline
-while held, that deadline belongs to policy/meta truth; the score stores only
-the next scheduling lease coordinate.
+the same active tag with a future `epochSecond`; hard pause writes
+`PAUSE_EPOCH_SECOND = 9_999_999_999`. Ordinary future holds eventually become
+due and are interpreted as the original band. Hard pause is released through the
+lease-release primitive with exact `expectedLeaseScore`. Deadline-style task
+closure is not part of the first score-band model; closure is driven by
+exhausted same-band budget.
 
-## Band Transition Matrix
+## Transition Direction Rule
 
-The matrix is expressed in score-band terms and split by transition source
-class. Product commands and business events may update their own owner facts,
-but kernel transition code sees only:
+Transition validation is expressed as direction rules, not business-event
+enumerations. Product commands, scheduling rounds, and business events validate
+their own owner facts before asking the kernel to write a score. Kernel
+transition code sees only stored/proposed score coordinates:
 
 ```text
-currentBand
-transitionSourceClass
-targetBand
-decoded epochSecond
+storedScore
+proposedScore
 owner validation
 bounded scheduling round result
 ```
 
-Use `owner-transition` for external handlers after owner validation. Do not name
-business events inside the kernel matrix.
+Owner validation happens before the kernel primitive. Do not name business
+events inside the kernel rule.
 
-| From band | Scheduling-round allowed targets | Owner-transition allowed targets |
-| --- | --- | --- |
-| `PRE_REVIEW` | none | `READY_APPROVED`, `TERMINAL` |
-| `READY_APPROVED` | `READY_APPROVED`, `RUNNING_VISIBLE`, `TERMINAL` | `READY_APPROVED`, `TERMINAL` |
-| `RUNNING_VISIBLE` | `RUNNING_VISIBLE`, `EMPTY_RUNNING` | `RUNNING_VISIBLE`, `TERMINAL` |
-| `EMPTY_RUNNING` | `EMPTY_RUNNING`, `RUNNING_VISIBLE`, `TERMINAL` | `EMPTY_RUNNING`, `RUNNING_VISIBLE`, `TERMINAL` |
-| `TERMINAL` | none | none |
-
-The table is an allow-list. Any `currentBand + transitionSourceClass +
-targetBand` combination not listed above is invalid by default. Validation still
-belongs to the source class:
+Primary transition primitive:
 
 ```text
-scheduling-round
-  -> validate decoded epochSecond and facts required by the current band
-  -> READY_APPROVED may stay READY_APPROVED, promote to RUNNING_VISIBLE, or
-     close to TERMINAL
-  -> RUNNING_VISIBLE may rewrite only to RUNNING_VISIBLE or EMPTY_RUNNING
-  -> EMPTY_RUNNING may stay EMPTY_RUNNING, promote to RUNNING_VISIBLE, or
-     close to TERMINAL
+validate_transition(storedScore, proposedScore):
+  if storedScore < 0:
+    reject TERMINAL_IMMUTABLE
 
-owner-transition
-  -> validate the owner gate/control fact required by the target band
-  -> temporary restriction writes the same active band with a future or
-     far-future epochSecond
-  -> release/resume may write a nearer same-band score only when the stored
-     score still equals the expected lease score
+  if proposedScore < 0:
+    allow TERMINAL
+    return
+
+  current = decode_positive(storedScore)
+  target = decode_positive(proposedScore)
+
+  require current.tag in {RUNNING_VISIBLE_TAG, READY_APPROVED_TAG, PRE_REVIEW_TAG}
+  require target.tag in {RUNNING_VISIBLE_TAG, READY_APPROVED_TAG, PRE_REVIEW_TAG}
+  require 0 <= current.epochSecond <= MAX_EPOCH_SECOND
+  require 0 <= target.epochSecond <= MAX_EPOCH_SECOND
+  require 0 <= current.suffix <= MAX_SUFFIX
+  require 0 <= target.suffix <= MAX_SUFFIX
+  require target.epochSecond > current.epochSecond
+
+  if target.tag > current.tag:
+    reject LIFECYCLE_REGRESSION
+
+  allow
 ```
 
-The matrix is checked against the stored current band and transition source
-class at score-write time, not only against the band observed when
-assignment-dispatch acquired the candidate. The acquired band is evidence for a
-round; it is not authority to overwrite newer task score.
+Lease release is a separate primitive because it is the only legal way to move
+the same tag to an earlier `epochSecond`:
+
+```text
+release_lease(storedScore, expectedLeaseScore, releaseEpochSecond):
+  require storedScore == expectedLeaseScore
+  expected = decode_positive(expectedLeaseScore)
+  require expected.tag in {RUNNING_VISIBLE_TAG, READY_APPROVED_TAG}
+  require 0 <= releaseEpochSecond <= MAX_EPOCH_SECOND
+  return score(expected.tag, releaseEpochSecond, expected.suffix)
+```
+
+The release primitive has no business-event meaning. It only proves that the
+held score being released is still exactly the stored score. If another pause,
+terminal close, or scheduling rewrite happened first, the exact-score match
+fails and the release is stale.
+
+The derived view is:
+
+```text
+PRE_REVIEW(3)
+  normal target: PRE_REVIEW(3), READY_APPROVED(2), RUNNING_VISIBLE(1), TERMINAL(<0)
+
+READY_APPROVED(2)
+  normal target: READY_APPROVED(2), RUNNING_VISIBLE(1), TERMINAL(<0)
+
+RUNNING_VISIBLE(1)
+  normal target: RUNNING_VISIBLE(1), TERMINAL(<0)
+
+TERMINAL(<0)
+  no target
+```
+
+The rule is checked against the stored current score at write time, not only
+against the band observed when assignment-dispatch acquired the candidate. The
+acquired band is evidence for a round; it is not authority to overwrite newer
+task score.
 
 Because temporary restriction is represented as the same active band with a
-future or far-future `epochSecond`, the band matrix alone does not distinguish
-held mode from ordinary future scheduling. The required protection is
+future `epochSecond`, the tag direction rule alone does not distinguish held
+mode from ordinary future scheduling. The required protection is
 single-task write ordering or an expected-score check. If assignment-dispatch
 acquired an active score and a same-task owner transition has already written a
 newer lease score or terminal score, the stale rewrite must fail instead of
@@ -512,11 +645,8 @@ bounded work now. Active acquisition order is consumption-first:
 
 ```text
 RUNNING_VISIBLE
-  acquired for worker admission, work hash claim, and deliver seed creation
-
-EMPTY_RUNNING
-  acquired for post-running continue-condition evaluation; may dispatch if work
-  exists
+  acquired for work evidence, worker admission, work hash claim, deliver seed
+  creation, and no-work / no-worker recheck
 
 READY_APPROVED
   acquired for pre-running open-condition evaluation only
@@ -561,28 +691,27 @@ The score-band boundary is therefore:
 
 ```text
 score state says which bounded action may run
-RUNNING_VISIBLE may enter dispatch after validation
-EMPTY_RUNNING runs idle close due check and may enter dispatch if work exists
+RUNNING_VISIBLE may enter dispatch after validation, or consume a no-work /
+no-worker / contention classification through same-band rewrite
 READY_APPROVED runs activation check
 work-item owner proves whether there is claimable work now
 worker-runtime proves whether a concrete worker can be admitted now
 ```
 
-An acquired `RUNNING_VISIBLE` score with no claimable work transitions to
-`EMPTY_RUNNING` with an idle close score. An acquired `EMPTY_RUNNING` score may
-be either a pre-deadline horizon check or a due idle-close check: if work exists,
-assignment-dispatch may continue into the running dispatch path; if it is still
-empty before the idle-close key, the score is left unchanged; if it is still
-empty at or after the idle-close key, the task closes. Append, result, and read
-paths do not directly refresh the live score.
+An acquired `RUNNING_VISIBLE` score first asks the work-item owner for bounded
+work evidence. If no claimable work exists and `suffix > 00`, scheduling keeps
+the task in `RUNNING_VISIBLE`, writes the next no-work recheck epoch, and
+decrements `suffix`. If no claimable work exists and `suffix == 00`, the task
+closes. If work exists, assignment-dispatch continues through worker admission,
+final item claim, and deliver seed creation. Append, result, and read paths do
+not directly refresh the live score.
 
-This makes idle close a deliberate latency tradeoff. If an item is appended
-while the task is `EMPTY_RUNNING`, scheduling may discover it through an
-empty-scan horizon before the idle-close key, or later when the idle-close score
-becomes due. If the due round closes the task before a later append arrives,
-that ordering is accepted by score-band; intake/lifecycle policy must decide
-whether the append is rejected, routed to a new task, or handled by an explicit
-owner transition.
+This makes no-work closure a deliberate latency tradeoff. If an item is
+appended while the task is parked by a future `RUNNING_VISIBLE` no-work recheck
+score, scheduling may discover it later when that score becomes due. If the
+exhausted round closes the task before a later append arrives, that ordering is
+accepted by score-band; intake/lifecycle policy must decide whether the append
+is rejected, routed to a new task, or handled by an explicit owner transition.
 
 ## Assignment-Dispatch Protocol
 
@@ -597,22 +726,19 @@ update primitives:
 3. load task score state and validate gate / epoch
 4. if RUNNING_VISIBLE:
      ask work-item owner for bounded claimable-work evidence
+     if no work and suffix > 00, rewrite RUNNING_VISIBLE with next epoch and
+     suffix-1
+     if no work and suffix == 00, close to TERMINAL
      acquire and admit worker through worker score-band / worker-runtime
      let work-item owner perform the final item claim
      produce deliver seed for transport
-     rewrite to RUNNING_VISIBLE or EMPTY_RUNNING
-5. if EMPTY_RUNNING:
-     recheck work facts
-     if work appears, continue into the RUNNING_VISIBLE dispatch path
-     if still empty before idleCloseEpochSecond, keep score unchanged or
-     lease-rewrite within EMPTY_RUNNING
-     if still empty at or after idleCloseEpochSecond, close to TERMINAL
-6. if READY_APPROVED:
+     rewrite to RUNNING_VISIBLE after the round classification
+5. if READY_APPROVED:
      evaluate pre-running open conditions only
      if satisfied, write RUNNING_VISIBLE
-     if not satisfied before readyDeadlineEpochSecond, keep score unchanged or
-     lease-rewrite within READY_APPROVED
-     if not satisfied at or after readyDeadlineEpochSecond, close to TERMINAL
+     if not satisfied and suffix > 00, rewrite READY_APPROVED with next epoch
+     and suffix-1
+     if not satisfied and suffix == 00, write READY_APPROVED pause/hold score
 ```
 
 The work evidence read may be cheap and non-consuming. The final claim belongs
@@ -641,11 +767,10 @@ task score due
 ```
 
 This rewrite is not required to make the task schedulable; the task was already
-in the acquire range. It prevents dispatch-visible candidates from spinning at a
-dominant score after a real round classification. It does not force
-pre-deadline `READY_APPROVED` / `EMPTY_RUNNING` no-op candidates to rewrite
-their score. Those no-op checks are idle fallback work controlled by
-assignment-dispatch policy.
+in the acquire range. It prevents candidates from spinning at a dominant score
+after a real round classification. Same-band false classifications for
+`READY_APPROVED` and `RUNNING_VISIBLE` also consume budget by writing the next
+epoch and `suffix - 1`, unless the budget is already exhausted.
 
 The rewrite exists for:
 
@@ -666,18 +791,18 @@ newer score wins. That also counts as consuming the acquired candidate.
 
 Tasks outside the acquire range should not be periodically refreshed because
 unrelated evidence changed. Non-scheduling score writes are limited to explicit
-owner-transitions that move the current band through the transition matrix:
+owner commands that move the current band through the transition direction rule:
 
 ```text
-PRE_REVIEW -> READY_APPROVED | TERMINAL
+PRE_REVIEW -> PRE_REVIEW owner mutation | READY_APPROVED | TERMINAL
 active band -> same-band future lease score | same-band expected-lease release score | TERMINAL
 any non-terminal band -> TERMINAL
 ```
 
 Activation fact changes are not direct score writes. They update activation
-owner truth; an acquired `READY_APPROVED` scheduling round, either pre-deadline
-horizon or due, later reads those facts and decides whether the band remains
-`READY_APPROVED` or becomes `RUNNING_VISIBLE`.
+owner truth; an acquired `READY_APPROVED` scheduling round later reads those
+facts and decides whether the band remains `READY_APPROVED`, becomes
+`RUNNING_VISIBLE`, or holds because same-band budget is exhausted.
 
 ### Non-Triggers
 
@@ -693,16 +818,19 @@ trace materialization
 read-model projection
 ```
 
-They may be observed later when an owner-transition or
-acquired scheduling round computes a new score.
+They may be observed later when an owner command or acquired scheduling round
+computes a new score.
 
-## Score Write Source Classes
+## Score Write Categories
 
-| Source class | May write task score? | Allowed shape |
+These categories describe caller responsibility only. They are not a parameter
+on the kernel primitive.
+
+| Category | May write task score? | Allowed shape |
 | --- | --- | --- |
-| score-acquired assignment-dispatch round | yes | Decode band, validate owner facts, run the band action, then write a target band allowed by the matrix through expected-score protection. |
-| owner-transition | yes | Move only through the owner-transition targets allowed for the stored current band. |
-| owner-evidence-write | no direct live score | Update its own truth only; later scheduling or owner-transition may observe it. |
+| score-acquired assignment-dispatch round | yes | Decode score, validate owner facts, run the band action, then call the ordinary transition primitive with expected-score protection. |
+| owner command | yes | Validate owner facts, then call the ordinary transition primitive or the lease-release primitive. |
+| owner-evidence-write | no direct live score | Update its own truth only; later scheduling or an owner command may observe it. |
 | read projection / trace | no | Observability only. |
 
 ## Transition Execution Rules
@@ -712,10 +840,16 @@ Task score transitions are fact-driven, not external-event-driven:
 ```text
 1. decode the stored current score into currentBand at write time
 2. validate owner facts required by that band
-3. choose targetBand from the Band Transition Matrix currentBand row
+3. choose target score according to the transition direction rule
 4. encode target score
-5. write score with the owner facts that the score protects
+5. reject negative-to-positive rewrite, stale epochSecond, or higher-tag
+   cross-band movement
+6. write score with the owner facts that the score protects
 ```
+
+For release/resume, use the lease-release primitive instead of the ordinary
+transition primitive. It is intentionally separate because it may lower
+`epochSecond` after exact `expectedLeaseScore` match.
 
 ## Atomicity Boundaries
 
@@ -727,17 +861,20 @@ Important boundaries:
 
 ```text
 PRE_REVIEW gate command
-  owner gate fact + READY_APPROVED or TERMINAL score
+  owner review/control fact + PRE_REVIEW fresh score, READY_APPROVED score, or
+  TERMINAL score
 
 READY_APPROVED activation scheduling round
   read activation facts + write RUNNING_VISIBLE when satisfied
-  otherwise close to TERMINAL
+  otherwise decrement suffix and rewrite READY_APPROVED, or hold READY_APPROVED
+  when suffix is exhausted
 
 active-band temporary restriction
-  same active band + future or far-future epochSecond
+  same active band + future epochSecond; hard pause uses PAUSE_EPOCH_SECOND
 
 terminal close
-  terminal/closed fence + negative terminal score before physical cleanup
+  terminal/closed fence + negative immutable terminal score before physical
+  cleanup
 
 scheduling round rewrite
   acquired score state + round classification + next score
@@ -770,7 +907,7 @@ transition should carry the concurrency control for its own facts.
 Multiple tasks may be processed concurrently. For one task, score writes must be
 serialized by a per-task writer or guarded by an expected-score check. The
 required invariant is that a stale scheduling round cannot overwrite a newer
-temporary restriction score or terminal score.
+budget rewrite, temporary restriction score, or terminal score.
 
 ## Failure And Stale Handling
 
@@ -783,20 +920,21 @@ Rules:
   negative terminal score or clean according to owner policy;
 - `READY_APPROVED` acquired and open condition is satisfied: transition to
   `RUNNING_VISIBLE`;
-- `READY_APPROVED` acquired before `readyDeadlineEpochSecond` and open condition
-  is still false: keep the same score or lease-rewrite within `READY_APPROVED`;
-- `READY_APPROVED` acquired at or after `readyDeadlineEpochSecond` and open
-  condition is still false: close to `TERMINAL`;
-- `RUNNING_VISIBLE` acquired but the work-item owner reports no claimable work:
-  transition to `EMPTY_RUNNING`;
-- `EMPTY_RUNNING` acquired before `idleCloseEpochSecond` and still empty: keep
-  the same score or lease-rewrite within `EMPTY_RUNNING`;
-- `EMPTY_RUNNING` acquired at or after `idleCloseEpochSecond` and still empty:
-  close to `TERMINAL`; close reason is metadata/result/trace, not score;
-- `EMPTY_RUNNING` acquired and work exists: continue through the
-  `RUNNING_VISIBLE` dispatch path;
-- `RUNNING_VISIBLE` or `EMPTY_RUNNING` acquired but no worker matches: stay in
-  the active running state and future-score according to policy;
+- `READY_APPROVED` acquired and open condition is still false with `suffix >
+  00`: rewrite `READY_APPROVED` with a later epoch and `suffix - 1`;
+- `READY_APPROVED` acquired and open condition is still false with `suffix ==
+  00`: write a same-band pause/hold score;
+- `RUNNING_VISIBLE` acquired but the work-item owner reports no claimable work
+  and `suffix > 00`: rewrite `RUNNING_VISIBLE` with a later no-work recheck
+  epoch and `suffix - 1`;
+- `RUNNING_VISIBLE` acquired but the work-item owner reports no claimable work
+  and `suffix == 00`: close to `TERMINAL`; close reason is
+  metadata/result/trace, not score;
+- `RUNNING_VISIBLE` acquired but no worker matches and `suffix > 00`: stay in
+  `RUNNING_VISIBLE` with a future score according to policy;
+- `RUNNING_VISIBLE` acquired but no worker matches and `suffix == 00`: stay in
+  `RUNNING_VISIBLE` with a same-band hold/backpressure score according to
+  policy;
 - worker admission contends/fails: stay in the active running state and
   future-score according to policy;
 - stale scheduling rewrite observes that the stored current score is a newer
@@ -816,7 +954,7 @@ Policy owns:
 
 ```text
 no-worker-match delay
-idle close delay
+no-work recheck delay
 activation condition
 contention delay
 large-backlog requeue delay
@@ -825,7 +963,9 @@ scheduled retry score
 scan range / horizon choice
 batch limit
 temporary restriction epoch policy for active bands
-created/unapproved code values
+initial same-band budget per target band
+same-band exhausted action per source band
+pre-review epochSecond source and suffix state-code values
 terminal closed marker / closed score key
 ```
 
@@ -844,35 +984,44 @@ no broad refresh from low-value observations
 ## Guardrails
 
 - Do not use score absence as terminal proof.
+- Do not treat positive score as schedulable. Positive score means
+  non-terminal/mutable; scheduling eligibility still comes only from the active
+  tag allow-list.
+- Do not rewrite a negative terminal score. Terminal is final and immutable;
+  retention may physically remove residue but must not move it back into a
+  positive band.
+- Do not lower `epochSecond` on a positive score write except for release/resume
+  with exact `expectedLeaseScore` match.
 - Do not let append write or refresh task score.
 - Do not let result/retry write live task score.
 - Do not put a timer, periodic recheck loop, or pagination cursor inside the
   task-score owner.
-- Do not treat pre-deadline no-op as a task-score pagination problem.
-  Assignment-dispatch owns idle horizon, quota, ordering, and backoff while
+- Do not treat same-band false recheck as a task-score pagination problem.
+  Assignment-dispatch owns fallback horizon, quota, ordering, and backoff while
   keeping `RUNNING_VISIBLE` consumption first.
 - Do not let dispatch-visible `RUNNING_VISIBLE` candidates spin at the same
   dominant score after classification; rewrite, move, close, clean, or lose to
-  expected-score protection. `READY_APPROVED` and `EMPTY_RUNNING` may keep the
-  same score only when their deadline has not expired and their condition is
-  still false.
+  expected-score protection. `READY_APPROVED` and `RUNNING_VISIBLE` same-band
+  false classifications must also be consumed by `suffix - 1`, exhausted
+  action, or expected-score loss.
 - Do not use event delivery as the only trigger for scheduling, retry, or
-  empty-running closure.
+  no-work closure.
 - Do not use an event queue as ready-task backlog or as a second scheduling
   index.
 - Do not collapse active scheduling into one broad range scan across tags.
   Assignment-dispatch must scan active bands through separate band ranges and
-  must not include negative terminal markers in active acquire.
+  must not include terminal markers or positive inactive tags such as
+  `PRE_REVIEW` in active acquire.
 - Do not let `READY_APPROVED` enter worker admission, work claim, or deliver
   seed creation; assignment-dispatch may scan it only for activation checks.
 - Do not write a temporary restriction score for `PRE_REVIEW` or `TERMINAL`.
   Active bands may be held only by rewriting the same active band with a future
   epoch.
-- Do not rely on band matrix alone to protect temporary restriction mode;
+- Do not rely on tag direction alone to protect temporary restriction mode;
   because it preserves the same active tag, use per-task write ordering or
   expected-score protection.
-- Do not close `EMPTY_RUNNING` without applying the owner policy to the
-  decoded idle-close epoch and current work evidence.
+- Do not close `RUNNING_VISIBLE` after a no-work classification without applying
+  the owner policy to the decoded suffix budget and current work evidence.
 - Do not put work-item claim, current work occupancy, retry-frame mutation, or
   result finality inside task score-band atomicity.
 - Do not use current implementation classes as target owner proof for this

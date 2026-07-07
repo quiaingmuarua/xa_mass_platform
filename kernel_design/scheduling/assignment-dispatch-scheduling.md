@@ -100,46 +100,56 @@ evidence after a bounded round:
 
 ```text
 query task score range + limit per active band
-  -> default order: RUNNING_VISIBLE, EMPTY_RUNNING, READY_APPROVED
+  -> default order: RUNNING_VISIBLE, READY_APPROVED
   -> classify every successfully acquired candidate
 
 RUNNING_VISIBLE scan
   -> scheduling evaluates runnable task facts
   -> claim work only after worker admission evidence is sufficient
   -> produce deliver seed when work and worker admission both succeed
-  -> rewrite to RUNNING_VISIBLE or EMPTY_RUNNING
+  -> rewrite to RUNNING_VISIBLE or TERMINAL according to round classification
 
 deliver seed produced
   -> running policy rewrites task score for next dispatch opportunity
 
 no ready work
-  -> task score becomes EMPTY_RUNNING with idle close deadline
-
-EMPTY_RUNNING scan
-  -> if backlog / retry / dispatchable work appears, continue toward dispatch
-  -> if still empty before idleCloseEpochSecond, keep score unchanged or
-     same-band lease-rewrite by policy
-  -> if still empty at or after idleCloseEpochSecond, close through task
-     score/lifecycle owner
+  -> if suffix > 00, keep RUNNING_VISIBLE with next no-work recheck epoch and
+     suffix-1
+  -> if suffix == 00, close through task score/lifecycle owner
 
 READY_APPROVED scan
   -> scheduling evaluates pre-running open facts
   -> if ready, rewrite to RUNNING_VISIBLE
-  -> if not ready before readyDeadlineEpochSecond, keep score unchanged or
-     same-band lease-rewrite by policy
-  -> if not ready at or after readyDeadlineEpochSecond, close to TERMINAL
+  -> if not ready and suffix > 00, rewrite READY_APPROVED with next epoch and
+     suffix-1
+  -> if not ready and suffix == 00, write READY_APPROVED pause/hold score
   -> do not produce a deliver seed in READY_APPROVED
 ```
 
+Assignment-dispatch must treat lifecycle direction and lease direction as
+separate checks:
+
+```text
+cross-band lifecycle movement goes to a lower tag / terminal score
+same-band suppression, retry, hold, and lease write a later epochSecond
+release/resume may lower epochSecond only with exact expectedLeaseScore
+```
+
+Do not validate a requested task score with one global `nextScore < currentScore`
+or `nextScore > currentScore` rule. Decode tag, epochSecond, and suffix, then
+apply the transition direction rule and expected-score check.
+
 No task-score pagination is required. Assignment-dispatch owns scan range,
-ordering, quota, horizon, and idle backoff. A pre-deadline `READY_APPROVED` or
-`EMPTY_RUNNING` candidate may be classified as no-op and either keep the same
-score or same-band lease-rewrite to a later epoch/suffix by policy; that is
-bounded idle fallback work when no higher-priority running consumption is
-available. Dispatch-visible `RUNNING_VISIBLE` candidates must still be moved,
-rewritten, closed, cleaned, or rejected by expected-score protection.
+ordering, quota, horizon, and no-work/backoff policy. A `READY_APPROVED` candidate that
+remains in the same band must be consumed by writing a later epoch with `suffix
+- 1`, by executing the exhausted action, or by losing expected-score protection.
+Dispatch-visible `RUNNING_VISIBLE` candidates, including no-work
+classifications, must still be moved, rewritten, held, cleaned, closed, or
+rejected by expected-score protection.
 Assignment-dispatch must not collapse active task acquisition into one broad
-score range that reaches negative terminal markers or inactive bands.
+positive score range. Negative terminal markers are final and immutable;
+`PRE_REVIEW` is positive but inactive. Active acquisition must use the explicit
+`RUNNING_VISIBLE` / `READY_APPROVED` tag allow-list.
 
 Append, result notification, trace, and read projection do not refresh task
 score directly. Later transport delivery evidence also does not refresh task
@@ -259,17 +269,18 @@ while preserving explicit method boundaries.
 Task-side examples:
 
 ```text
-ACTIVATION_WAIT_NOT_EXPIRED -> keep score or same-band lease rewrite
-ACTIVATION_DEADLINE_EXPIRED -> TERMINAL
+ACTIVATION_STILL_WAITING and suffix > 00 -> READY_APPROVED with next epoch and suffix-1
+ACTIVATION_STILL_WAITING and suffix == 00 -> READY_APPROVED pause/hold
 ACTIVATION_READY -> RUNNING_VISIBLE due score
-EMPTY_WAIT_NOT_EXPIRED -> keep score or same-band lease rewrite
-EMPTY_DEADLINE_EXPIRED -> TERMINAL
-NO_READY_WORK -> EMPTY_RUNNING with idle close deadline, or RUNNING_VISIBLE delayed by scheduled retry evidence
-NO_WORKER_CANDIDATE -> RUNNING_VISIBLE with future no-worker-match recheck
-WORKER_CONTENDED -> RUNNING_VISIBLE with future contention recheck
+NO_READY_WORK and suffix > 00 -> RUNNING_VISIBLE with next no-work recheck and suffix-1, or RUNNING_VISIBLE delayed by scheduled retry evidence
+NO_READY_WORK and suffix == 00 -> TERMINAL
+NO_WORKER_CANDIDATE and suffix > 00 -> RUNNING_VISIBLE with future no-worker-match recheck and suffix-1
+NO_WORKER_CANDIDATE and suffix == 00 -> RUNNING_VISIBLE pause/hold
+WORKER_CONTENDED and suffix > 00 -> RUNNING_VISIBLE with future contention recheck and suffix-1
+WORKER_CONTENDED and suffix == 00 -> RUNNING_VISIBLE pause/hold
 WORK_CLAIMED_MORE_REMAINS -> RUNNING_VISIBLE at now or policy delay
-WORK_CLAIMED_NO_READY_REMAINS -> EMPTY_RUNNING with idle close deadline unless scheduled retry evidence keeps RUNNING_VISIBLE delayed
-PAUSE_OR_BLOCK -> same active band with future or far-future epochSecond
+WORK_CLAIMED_NO_READY_REMAINS -> RUNNING_VISIBLE with next no-work recheck unless scheduled retry evidence keeps RUNNING_VISIBLE delayed
+PAUSE_OR_BLOCK -> same active band with future epochSecond; hard pause uses 9_999_999_999
 ```
 
 Worker-side examples:
@@ -346,9 +357,10 @@ the owner handoff first.
 - Do not let assignment-dispatch refresh task score because append happened.
 - Do not keep a task-score pagination cursor; use bounded range + limit queries
   and consume dispatch-visible candidates by score rewrite, band move, close,
-  cleanup, or expected-score failure. Pre-deadline `READY_APPROVED` and
-  `EMPTY_RUNNING` false checks may no-op as bounded idle fallback after
-  higher-priority running consumption.
+  cleanup, or expected-score failure. `READY_APPROVED` same-band false checks
+  and `RUNNING_VISIBLE` no-work/no-worker/contention classifications must
+  consume suffix budget or execute the exhausted action after higher-priority
+  running consumption.
 - Do not let assignment-dispatch select workers from transport sessions.
 - Do not let transport choose backup workers.
 - Do not claim work before worker admission unless the claim owner has an

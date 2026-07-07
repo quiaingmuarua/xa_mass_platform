@@ -1,6 +1,5 @@
-from .task_score_band import (
+from .kernel import (
     EpochSecond,
-    RedisZsetTaskScoreBandKernel,
     Score,
     Suffix,
     TaskId,
@@ -10,13 +9,14 @@ from .task_score_band import (
     TaskScoreTransitionResult,
     TaskScoreTransitionStatus,
 )
+from .redis_zset import RedisZsetTaskScoreBandKernel
 
 __all__ = [
     "EpochSecond",
+    "RedisZsetTaskScoreBandKernel",
     "Score",
     "Suffix",
     "TaskId",
-    "RedisZsetTaskScoreBandKernel",
     "TaskScoreBand",
     "TaskScoreBandKernel",
     "TaskScoreState",

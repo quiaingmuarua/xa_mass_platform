@@ -189,29 +189,46 @@ timer / pacing loop
 candidate classification after acquire
 ```
 
-Task score-band uses five score states. Temporary hold is not a separate band;
-pause/block is represented as the same active band with a future or far-future
-`epochSecond`.
+Task score-band uses four score states. Temporary hold is not a separate band;
+pause/block is represented as the same active band with a future `epochSecond`;
+hard pause uses the maximum 10-digit coordinate `9_999_999_999`. Positive
+score means mutable, not
+automatically schedulable; assignment-dispatch only scans explicit active tags.
+
+The model has two independent directions:
+
+```text
+lifecycle progresses left:
+  PRE_REVIEW(3) -> READY_APPROVED(2) -> RUNNING_VISIBLE(1) -> TERMINAL(<0)
+
+lease / recheck moves right:
+  same tag + later epochSecond
+```
+
+`tag` owns lifecycle direction, `epochSecond` owns same-band freshness /
+recheck, `suffix` owns budget or owner-local code, expected-score prevents stale
+overwrite, and the transition direction rule blocks lifecycle regression.
+Downward lifecycle jumps are allowed; `READY_APPROVED` is an optional
+intermediate band, not a required checkpoint.
 
 ```text
 PRE_REVIEW
-  create / prepare / pending approval; not acquired
+  positive mutable create / prepare / pending approval state; not acquired;
+  epochSecond is an owner mutation freshness second; suffix is the
+  owner-defined review state code
 
 READY_APPROVED
   approved but not yet running; scans evaluate pre-open worker-candidate /
-  policy facts; false before deadline keeps or same-band lease-rewrites score,
-  false at deadline closes
+  policy facts; false with suffix > 00 rewrites same band with suffix-1,
+  false with suffix == 00 writes READY_APPROVED pause/hold
 
 RUNNING_VISIBLE
-  active running state; may enter assignment-dispatch after validation
-
-EMPTY_RUNNING
-  active running state with no current work; scans evaluate backlog / retry /
-  dispatchable work facts; false before deadline keeps or same-band
-  lease-rewrites score, false at deadline closes
+  active running state; may enter assignment-dispatch after validation; no-work,
+  no-worker, contention, retry, and hold rechecks remain in this band
 
 TERMINAL
-  final / cancelled / rejected / empty-timeout / discarded
+  negative immutable final / cancelled / rejected / no-work budget exhausted /
+  discarded
 ```
 
 ### Worker Score-Band Scheduling
