@@ -134,7 +134,12 @@ class TaskScoreBandKernel(ABC):
         *,
         initial_scores: Mapping[TaskId, Score],
     ) -> Mapping[TaskId, TaskScoreTransitionResult]:
-        """Create first scores in batch, only for tasks without stored scores."""
+        """Create first scores in batch, only for tasks without stored scores.
+
+        Implementations should prefer owner-internal bulk create-if-absent
+        primitives over per-task Lua. Per-task results may be derived from
+        batched reads before or after the bulk write.
+        """
         pass
 
     @abstractmethod

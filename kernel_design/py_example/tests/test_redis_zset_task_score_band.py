@@ -39,6 +39,7 @@ class FakeRedis:
     def __init__(self) -> None:
         self.zsets: dict[str, dict[str, int]] = {}
         self.now = 1_000
+        self.eval_count = 0
 
     def pipeline(self, transaction: bool = True) -> FakePipeline:
         return FakePipeline(self, transaction)
@@ -46,18 +47,30 @@ class FakeRedis:
     def zscore(self, key: str, member: str) -> int | None:
         return self.zsets.get(key, {}).get(member)
 
-    def zadd(self, key: str, mapping: dict[str, int]) -> int:
-        self.zsets.setdefault(key, {}).update(mapping)
-        return len(mapping)
+    def zadd(
+        self,
+        key: str,
+        mapping: dict[str, int],
+        *,
+        nx: bool = False,
+    ) -> int:
+        zset = self.zsets.setdefault(key, {})
+        added = 0
+        for member, score in mapping.items():
+            if nx and member in zset:
+                continue
+            if member not in zset:
+                added += 1
+            zset[member] = score
+        return added
 
     def eval(self, script: str, numkeys: int, *args: object) -> list[object]:
+        self.eval_count += 1
         if numkeys != 1:
             raise ValueError(f"unsupported fake eval key count: {numkeys}")
         key = str(args[0])
         argv = args[1:]
 
-        if "local initial_score" in script:
-            return self._eval_initialize(key, argv)
         if "local terminal_score" in script:
             return self._eval_close_positive(key, argv)
         if "local observed_score" in script:
@@ -65,17 +78,6 @@ class FakeRedis:
         if "local min_expected_score" in script:
             return self._eval_mint_from_range(key, argv)
         raise ValueError("unsupported fake redis script")
-
-    def _eval_initialize(self, key: str, argv: tuple[object, ...]) -> list[object]:
-        task_id = str(argv[0])
-        initial_score = int(argv[1])
-
-        stored = self.zscore(key, task_id)
-        if stored is not None:
-            return ["noop", stored]
-
-        self.zadd(key, {task_id: initial_score})
-        return ["transitioned", initial_score]
 
     def _eval_cas_update(self, key: str, argv: tuple[object, ...]) -> list[object]:
         task_id = str(argv[0])
@@ -184,6 +186,32 @@ class RedisZsetTaskScoreBandKernelTest(unittest.TestCase):
             ["running"],
             self.kernel.acquire_dispatch_work_tasks(limit=10),
         )
+
+    def test_initialize_scores_uses_bulk_zadd_nx(self) -> None:
+        existing = self.score(self.kernel.PRE_REVIEW_TAG, 900, 1)
+        requested = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 7)
+        invalid = self.score(9, 1_000, 0)
+        self.redis.zadd(self.kernel.score_key, {"existing": existing})
+
+        results = self.kernel.initialize_scores(
+            initial_scores={
+                "existing": requested,
+                "new": requested,
+                "invalid": invalid,
+            }
+        )
+        states = self.kernel.get_score_states(task_ids=["existing", "new"])
+
+        self.assertEqual(0, self.redis.eval_count)
+        self.assertEqual(TaskScoreTransitionStatus.NOOP, results["existing"].status)
+        self.assertEqual(existing, results["existing"].score)
+        self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, results["new"].status)
+        self.assertEqual(requested, results["new"].score)
+        self.assertEqual(TaskScoreTransitionStatus.INVALID, results["invalid"].status)
+        self.assertIsNotNone(states["existing"])
+        self.assertEqual(existing, states["existing"].score)
+        self.assertIsNotNone(states["new"])
+        self.assertEqual(requested, states["new"].score)
 
     def test_rewrite_allows_downward_lifecycle_jump(self) -> None:
         pre_review = self.score(self.kernel.PRE_REVIEW_TAG, 1_000, 7)

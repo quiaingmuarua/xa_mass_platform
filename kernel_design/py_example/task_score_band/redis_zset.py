@@ -23,20 +23,6 @@ class RedisZsetTaskScoreBandKernel(TaskScoreBandKernel):
     behind another framework.
     """
 
-    _INITIALIZE_SCRIPT: ClassVar[str] = """
-local key = KEYS[1]
-local task_id = ARGV[1]
-local initial_score = tonumber(ARGV[2])
-
-local stored = redis.call("ZSCORE", key, task_id)
-if stored then
-  return {"noop", tonumber(stored)}
-end
-
-redis.call("ZADD", key, initial_score, task_id)
-return {"transitioned", initial_score}
-"""
-
     _CAS_UPDATE_SCRIPT: ClassVar[str] = """
 local key = KEYS[1]
 local task_id = ARGV[1]
@@ -187,13 +173,39 @@ return {"transitioned", tonumber(next_score)}
             return {}
 
         results: dict[TaskId, TaskScoreTransitionResult] = {}
+        valid_scores: dict[TaskId, Score] = {}
         for task_id, initial_score in initial_scores.items():
             if not self._is_valid_initial_score(initial_score):
                 results[task_id] = TaskScoreTransitionResult(
                     TaskScoreTransitionStatus.INVALID
                 )
                 continue
-            results[task_id] = self._initialize_one(task_id, initial_score)
+            valid_scores[task_id] = initial_score
+
+        if not valid_scores:
+            return results
+
+        before_scores = self._raw_scores_for(tuple(valid_scores))
+        scores_to_create: dict[TaskId, Score] = {}
+        for task_id, stored_score in before_scores.items():
+            if stored_score is None:
+                scores_to_create[task_id] = valid_scores[task_id]
+            else:
+                results[task_id] = TaskScoreTransitionResult(
+                    TaskScoreTransitionStatus.NOOP,
+                    stored_score,
+                )
+
+        if not scores_to_create:
+            return results
+
+        self.redis.zadd(self.score_key, scores_to_create, nx=True)
+        created_scores = self._raw_scores_for(tuple(scores_to_create))
+        for task_id, requested_score in scores_to_create.items():
+            results[task_id] = self._initial_create_result(
+                created_scores[task_id],
+                requested_score,
+            )
         return results
 
     def rewrite_score(
@@ -333,21 +345,6 @@ return {"transitioned", tonumber(next_score)}
         release_score = self._score(tag, release_epoch_second, suffix)
         return self._cas_update(task_id, observed_lease_score, release_score)
 
-    def _initialize_one(
-        self,
-        task_id: TaskId,
-        initial_score: Score,
-    ) -> TaskScoreTransitionResult:
-        return self._script_result(
-            self.redis.eval(
-                self._INITIALIZE_SCRIPT,
-                1,
-                self.score_key,
-                task_id,
-                initial_score,
-            )
-        )
-
     def _cas_update(
         self,
         task_id: TaskId,
@@ -463,6 +460,37 @@ return {"transitioned", tonumber(next_score)}
             num=limit,
         )
         return [self._decode_task_id(raw_id) for raw_id in raw_ids]
+
+    def _raw_scores_for(self, task_ids: Sequence[TaskId]) -> dict[TaskId, Score | None]:
+        if not task_ids:
+            return {}
+
+        with self.redis.pipeline(transaction=False) as pipe:
+            for task_id in task_ids:
+                pipe.zscore(self.score_key, task_id)
+            raw_scores = pipe.execute()
+
+        return {
+            task_id: None if raw_score is None else self._score_to_int(raw_score)
+            for task_id, raw_score in zip(task_ids, raw_scores, strict=True)
+        }
+
+    def _initial_create_result(
+        self,
+        stored_score: Score | None,
+        requested_score: Score,
+    ) -> TaskScoreTransitionResult:
+        if stored_score is None:
+            return TaskScoreTransitionResult(TaskScoreTransitionStatus.STALE)
+        if stored_score == requested_score:
+            return TaskScoreTransitionResult(
+                TaskScoreTransitionStatus.TRANSITIONED,
+                stored_score,
+            )
+        return TaskScoreTransitionResult(
+            TaskScoreTransitionStatus.NOOP,
+            stored_score,
+        )
 
     def _decode_state(
         self,

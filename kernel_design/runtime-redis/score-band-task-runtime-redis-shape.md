@@ -1590,6 +1590,12 @@ then defending against them in Lua.
 Required atomic boundaries:
 
 ```text
+score initialization:
+  validate initial scores inside kernel implementation
+  batch ZADD NX for create-if-absent score placement
+  batch read back when per-task initialized/noop/invalid reporting is needed
+  no Lua for score-only initialization
+
 append:
   optional idempotency/backlog guard + ready LIST push
   optional first-time TaskRuntimeMeta init only
