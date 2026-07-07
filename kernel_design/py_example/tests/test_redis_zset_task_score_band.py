@@ -116,7 +116,9 @@ class FakeRedis:
         max_expected_score = int(argv[2])
         target_score_base = int(argv[3])
         target_suffix = int(argv[4])
-        suffix_factor = int(argv[5])
+        suffix_delta = int(argv[5])
+        suffix_factor = int(argv[6])
+        max_suffix = int(argv[7])
 
         stored = self.zscore(key, task_id)
         if stored is None:
@@ -124,8 +126,11 @@ class FakeRedis:
         if stored < min_expected_score or stored > max_expected_score:
             return ["stale", stored]
 
+        stored_suffix = stored % suffix_factor
         if target_suffix < 0:
-            target_suffix = stored % suffix_factor
+            target_suffix = stored_suffix + suffix_delta
+        if target_suffix < 0 or target_suffix > max_suffix:
+            return ["invalid", stored]
 
         next_score = target_score_base + target_suffix
         self.zadd(key, {task_id: next_score})
@@ -161,6 +166,9 @@ class RedisZsetTaskScoreBandKernelTest(unittest.TestCase):
     def score(self, tag: int, epoch_second: int, suffix: int) -> int:
         return tag * self.kernel.tag_factor + epoch_second * 100 + suffix
 
+    def store_score(self, task_id: str, score: int) -> None:
+        self.redis.zadd(self.kernel.score_key, {task_id: score})
+
     def test_acquire_prefers_running_then_ready_and_skips_pause(self) -> None:
         running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 999, 5)
         ready = self.score(self.kernel.READY_APPROVED_TAG, 999, 5)
@@ -170,14 +178,10 @@ class RedisZsetTaskScoreBandKernelTest(unittest.TestCase):
             5,
         )
 
-        results = self.kernel.initialize_scores(
-            initial_scores={"running": running, "ready": ready, "paused": paused}
-        )
+        self.store_score("running", running)
+        self.store_score("ready", ready)
+        self.store_score("paused", paused)
 
-        self.assertEqual(
-            TaskScoreTransitionStatus.TRANSITIONED,
-            results["running"].status,
-        )
         self.assertEqual(
             ["running", "ready"],
             self.kernel.acquire_worker_allocatable_tasks(limit=10),
@@ -187,35 +191,43 @@ class RedisZsetTaskScoreBandKernelTest(unittest.TestCase):
             self.kernel.acquire_dispatch_work_tasks(limit=10),
         )
 
-    def test_initialize_scores_uses_bulk_zadd_nx(self) -> None:
+    def test_initialize_score_enters_pre_review_with_internal_epoch(self) -> None:
         existing = self.score(self.kernel.PRE_REVIEW_TAG, 900, 1)
-        requested = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 7)
-        invalid = self.score(9, 1_000, 0)
         self.redis.zadd(self.kernel.score_key, {"existing": existing})
 
-        results = self.kernel.initialize_scores(
-            initial_scores={
-                "existing": requested,
-                "new": requested,
-                "invalid": invalid,
-            }
+        existing_result = self.kernel.initialize_score(
+            task_id="existing",
+            suffix=7,
+        )
+        new_result = self.kernel.initialize_score(
+            task_id="new",
+            suffix=7,
+        )
+        invalid_result = self.kernel.initialize_score(
+            task_id="invalid",
+            suffix=100,
         )
         states = self.kernel.get_score_states(task_ids=["existing", "new"])
 
         self.assertEqual(0, self.redis.eval_count)
-        self.assertEqual(TaskScoreTransitionStatus.NOOP, results["existing"].status)
-        self.assertEqual(existing, results["existing"].score)
-        self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, results["new"].status)
-        self.assertEqual(requested, results["new"].score)
-        self.assertEqual(TaskScoreTransitionStatus.INVALID, results["invalid"].status)
+        self.assertEqual(TaskScoreTransitionStatus.NOOP, existing_result.status)
+        self.assertEqual(existing, existing_result.score)
+        self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, new_result.status)
+        self.assertEqual(
+            self.score(self.kernel.PRE_REVIEW_TAG, self.redis.now, 7),
+            new_result.score,
+        )
+        self.assertEqual(TaskScoreTransitionStatus.INVALID, invalid_result.status)
         self.assertIsNotNone(states["existing"])
         self.assertEqual(existing, states["existing"].score)
         self.assertIsNotNone(states["new"])
-        self.assertEqual(requested, states["new"].score)
+        self.assertEqual(TaskScoreBand.PRE_REVIEW, states["new"].band)
+        self.assertEqual(self.redis.now, states["new"].epoch_second)
+        self.assertEqual(7, states["new"].suffix)
 
     def test_rewrite_allows_downward_lifecycle_jump(self) -> None:
         pre_review = self.score(self.kernel.PRE_REVIEW_TAG, 1_000, 7)
-        self.kernel.initialize_scores(initial_scores={"task": pre_review})
+        self.store_score("task", pre_review)
 
         result = self.kernel.rewrite_score(
             task_id="task",
@@ -233,7 +245,7 @@ class RedisZsetTaskScoreBandKernelTest(unittest.TestCase):
 
     def test_rewrite_rejects_lifecycle_regression(self) -> None:
         running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 7)
-        self.kernel.initialize_scores(initial_scores={"task": running})
+        self.store_score("task", running)
 
         result = self.kernel.rewrite_score(
             task_id="task",
@@ -246,7 +258,7 @@ class RedisZsetTaskScoreBandKernelTest(unittest.TestCase):
 
     def test_rewrite_allows_suffix_change_only_with_newer_epoch(self) -> None:
         ready = self.score(self.kernel.READY_APPROVED_TAG, 1_000, 5)
-        self.kernel.initialize_scores(initial_scores={"task": ready})
+        self.store_score("task", ready)
 
         result = self.kernel.rewrite_score(
             task_id="task",
@@ -264,7 +276,7 @@ class RedisZsetTaskScoreBandKernelTest(unittest.TestCase):
 
     def test_rewrite_rejects_suffix_change_without_newer_epoch(self) -> None:
         ready = self.score(self.kernel.READY_APPROVED_TAG, 1_000, 5)
-        self.kernel.initialize_scores(initial_scores={"task": ready})
+        self.store_score("task", ready)
 
         result = self.kernel.rewrite_score(
             task_id="task",
@@ -277,7 +289,7 @@ class RedisZsetTaskScoreBandKernelTest(unittest.TestCase):
 
     def test_rewrite_same_band_epoch_preserves_suffix(self) -> None:
         running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 7)
-        self.kernel.initialize_scores(initial_scores={"task": running})
+        self.store_score("task", running)
 
         result = self.kernel.rewrite_same_band_epoch(
             task_id="task",
@@ -294,7 +306,7 @@ class RedisZsetTaskScoreBandKernelTest(unittest.TestCase):
 
     def test_rewrite_same_band_epoch_rejects_non_increasing_epoch(self) -> None:
         running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 7)
-        self.kernel.initialize_scores(initial_scores={"task": running})
+        self.store_score("task", running)
 
         result = self.kernel.rewrite_same_band_epoch(
             task_id="task",
@@ -304,15 +316,14 @@ class RedisZsetTaskScoreBandKernelTest(unittest.TestCase):
 
         self.assertEqual(TaskScoreTransitionStatus.STALE, result.status)
 
-    def test_bump_same_band_epoch_preserves_suffix(self) -> None:
+    def test_rewrite_same_band_epoch_with_suffix_delta_zero_preserves_suffix(self) -> None:
         running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 7)
-        self.kernel.initialize_scores(initial_scores={"task": running})
+        self.store_score("task", running)
 
-        result = self.kernel.bump_same_band_epoch(
+        result = self.kernel.rewrite_same_band_epoch(
             task_id="task",
             expected_band=TaskScoreBand.RUNNING_VISIBLE,
-            max_bumpable_epoch_second=1_000,
-            delta_seconds=2,
+            target_epoch_second=1_002,
         )
         state = self.kernel.get_score_states(task_ids=["task"])["task"]
 
@@ -322,15 +333,14 @@ class RedisZsetTaskScoreBandKernelTest(unittest.TestCase):
         self.assertEqual(1_002, state.epoch_second)
         self.assertEqual(7, state.suffix)
 
-    def test_bump_same_band_epoch_mints_target_from_range(self) -> None:
+    def test_rewrite_same_band_epoch_uses_absolute_target_epoch(self) -> None:
         running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 998, 7)
-        self.kernel.initialize_scores(initial_scores={"task": running})
+        self.store_score("task", running)
 
-        result = self.kernel.bump_same_band_epoch(
+        result = self.kernel.rewrite_same_band_epoch(
             task_id="task",
             expected_band=TaskScoreBand.RUNNING_VISIBLE,
-            max_bumpable_epoch_second=1_000,
-            delta_seconds=2,
+            target_epoch_second=1_002,
         )
         state = self.kernel.get_score_states(task_ids=["task"])["task"]
 
@@ -339,15 +349,48 @@ class RedisZsetTaskScoreBandKernelTest(unittest.TestCase):
         self.assertEqual(1_002, state.epoch_second)
         self.assertEqual(7, state.suffix)
 
-    def test_bump_same_band_epoch_rejects_future_hold(self) -> None:
-        paused = self.score(self.kernel.RUNNING_VISIBLE_TAG, 2_000, 7)
-        self.kernel.initialize_scores(initial_scores={"task": paused})
+    def test_rewrite_same_band_epoch_applies_suffix_delta(self) -> None:
+        running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 7)
+        self.store_score("task", running)
 
-        result = self.kernel.bump_same_band_epoch(
+        result = self.kernel.rewrite_same_band_epoch(
             task_id="task",
             expected_band=TaskScoreBand.RUNNING_VISIBLE,
-            max_bumpable_epoch_second=1_000,
-            delta_seconds=2,
+            target_epoch_second=1_002,
+            suffix_delta=-1,
+        )
+        state = self.kernel.get_score_states(task_ids=["task"])["task"]
+
+        self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, result.status)
+        self.assertIsNotNone(state)
+        self.assertEqual(1_002, state.epoch_second)
+        self.assertEqual(6, state.suffix)
+
+    def test_rewrite_same_band_epoch_rejects_suffix_delta_underflow(self) -> None:
+        running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 0)
+        self.store_score("task", running)
+
+        result = self.kernel.rewrite_same_band_epoch(
+            task_id="task",
+            expected_band=TaskScoreBand.RUNNING_VISIBLE,
+            target_epoch_second=1_002,
+            suffix_delta=-1,
+        )
+        state = self.kernel.get_score_states(task_ids=["task"])["task"]
+
+        self.assertEqual(TaskScoreTransitionStatus.INVALID, result.status)
+        self.assertIsNotNone(state)
+        self.assertEqual(1_000, state.epoch_second)
+        self.assertEqual(0, state.suffix)
+
+    def test_rewrite_same_band_epoch_rejects_future_hold(self) -> None:
+        paused = self.score(self.kernel.RUNNING_VISIBLE_TAG, 2_000, 7)
+        self.store_score("task", paused)
+
+        result = self.kernel.rewrite_same_band_epoch(
+            task_id="task",
+            expected_band=TaskScoreBand.RUNNING_VISIBLE,
+            target_epoch_second=1_002,
         )
         state = self.kernel.get_score_states(task_ids=["task"])["task"]
 
@@ -356,22 +399,9 @@ class RedisZsetTaskScoreBandKernelTest(unittest.TestCase):
         self.assertEqual(2_000, state.epoch_second)
         self.assertEqual(7, state.suffix)
 
-    def test_bump_same_band_epoch_rejects_non_positive_delta(self) -> None:
-        running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 7)
-        self.kernel.initialize_scores(initial_scores={"task": running})
-
-        result = self.kernel.bump_same_band_epoch(
-            task_id="task",
-            expected_band=TaskScoreBand.RUNNING_VISIBLE,
-            max_bumpable_epoch_second=1_000,
-            delta_seconds=0,
-        )
-
-        self.assertEqual(TaskScoreTransitionStatus.INVALID, result.status)
-
     def test_rewrite_rejects_stale_expected_band(self) -> None:
         ready = self.score(self.kernel.READY_APPROVED_TAG, 1_000, 5)
-        self.kernel.initialize_scores(initial_scores={"task": ready})
+        self.store_score("task", ready)
 
         result = self.kernel.rewrite_score(
             task_id="task",
@@ -384,7 +414,7 @@ class RedisZsetTaskScoreBandKernelTest(unittest.TestCase):
     def test_close_score_closes_positive_score(self) -> None:
         running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 7)
         terminal = -1_001_00
-        self.kernel.initialize_scores(initial_scores={"task": running})
+        self.store_score("task", running)
 
         result = self.kernel.close_score(
             task_id="task",
@@ -400,12 +430,11 @@ class RedisZsetTaskScoreBandKernelTest(unittest.TestCase):
     def test_close_score_overrides_changed_positive_score(self) -> None:
         running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 7)
         terminal = -1_001_00
-        self.kernel.initialize_scores(initial_scores={"task": running})
-        self.kernel.bump_same_band_epoch(
+        self.store_score("task", running)
+        self.kernel.rewrite_same_band_epoch(
             task_id="task",
             expected_band=TaskScoreBand.RUNNING_VISIBLE,
-            max_bumpable_epoch_second=1_000,
-            delta_seconds=2,
+            target_epoch_second=1_002,
         )
 
         result = self.kernel.close_score(
@@ -421,7 +450,7 @@ class RedisZsetTaskScoreBandKernelTest(unittest.TestCase):
 
     def test_close_score_noops_when_already_terminal(self) -> None:
         terminal = -1_001_00
-        self.kernel.initialize_scores(initial_scores={"task": terminal})
+        self.store_score("task", terminal)
 
         result = self.kernel.close_score(
             task_id="task",
@@ -439,7 +468,7 @@ class RedisZsetTaskScoreBandKernelTest(unittest.TestCase):
             self.kernel.PAUSE_EPOCH_SECOND,
             4,
         )
-        self.kernel.initialize_scores(initial_scores={"task": paused})
+        self.store_score("task", paused)
 
         result = self.kernel.release_score_lease(
             task_id="task",
@@ -455,7 +484,7 @@ class RedisZsetTaskScoreBandKernelTest(unittest.TestCase):
 
     def test_release_score_lease_rejects_later_epoch(self) -> None:
         held = self.score(self.kernel.RUNNING_VISIBLE_TAG, 2_000, 4)
-        self.kernel.initialize_scores(initial_scores={"task": held})
+        self.store_score("task", held)
 
         result = self.kernel.release_score_lease(
             task_id="task",

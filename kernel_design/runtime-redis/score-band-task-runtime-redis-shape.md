@@ -761,8 +761,9 @@ PRE_REVIEW(3) -> READY_APPROVED(2) -> RUNNING_VISIBLE(1) -> TERMINAL(<0)
 
 Lifecycle progress moves toward lower tag / terminal score. Scheduling
 suppression, retry, hold, and lease move inside the same tag by writing a later
-`epochSecond`; the common case is a same-band epoch bump/rewrite that preserves
-suffix. Relative bumps should be compiled inside the kernel implementation into
+`epochSecond`; the common case is a same-band epoch/suffix rewrite. The target
+epoch is absolute. If an owner wants `now + delay`, that owner computes the
+absolute epoch before calling the kernel. Kernel-internal writes compile into
 `minExpectedScore`, `maxExpectedScore`, and `targetScoreBase`; those values are
 not public caller inputs. Lua only verifies that the stored score is in range
 and then writes `targetScoreBase + suffix`.
@@ -1591,9 +1592,9 @@ Required atomic boundaries:
 
 ```text
 score initialization:
-  validate initial scores inside kernel implementation
-  batch ZADD NX for create-if-absent score placement
-  batch read back when per-task initialized/noop/invalid reporting is needed
+  validate owner-defined PRE_REVIEW suffix inside kernel implementation
+  compute score(PRE_REVIEW_TAG, currentEpochSecond, suffix) internally
+  ZADD NX for create-if-absent score placement
   no Lua for score-only initialization
 
 append:

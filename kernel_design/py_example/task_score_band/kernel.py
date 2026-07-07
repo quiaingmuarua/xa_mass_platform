@@ -129,16 +129,17 @@ class TaskScoreBandKernel(ABC):
         pass
 
     @abstractmethod
-    def initialize_scores(
+    def initialize_score(
         self,
         *,
-        initial_scores: Mapping[TaskId, Score],
-    ) -> Mapping[TaskId, TaskScoreTransitionResult]:
-        """Create first scores in batch, only for tasks without stored scores.
+        task_id: TaskId,
+        suffix: Suffix,
+    ) -> TaskScoreTransitionResult:
+        """Create the first score for a task when no score exists.
 
-        Implementations should prefer owner-internal bulk create-if-absent
-        primitives over per-task Lua. Per-task results may be derived from
-        batched reads before or after the bulk write.
+        Initialization always enters PRE_REVIEW. The implementation owns the
+        initial band and epochSecond; callers only provide the owner-defined
+        PRE_REVIEW suffix / review-state code.
         """
         pass
 
@@ -171,29 +172,14 @@ class TaskScoreBandKernel(ABC):
         task_id: TaskId,
         expected_band: TaskScoreBand,
         target_epoch_second: EpochSecond,
+        suffix_delta: int = 0,
     ) -> TaskScoreTransitionResult:
-        """Rewrite only epochSecond while preserving stored tag and suffix.
+        """Rewrite same-band epochSecond and optionally adjust suffix.
 
-        This is the hot-path primitive for same-band recheck, retry, hold, and
-        lease pacing. It still reads the stored score and rejects stale band or
-        non-increasing epochSecond.
-        """
-        pass
-
-    @abstractmethod
-    def bump_same_band_epoch(
-        self,
-        *,
-        task_id: TaskId,
-        expected_band: TaskScoreBand,
-        max_bumpable_epoch_second: EpochSecond,
-        delta_seconds: int,
-    ) -> TaskScoreTransitionResult:
-        """Relatively move epochSecond right while preserving tag and suffix.
-
-        This is the narrowest high-frequency primitive. It rejects terminal,
-        stale band, non-positive delta, and future/paused scores beyond
-        max_bumpable_epoch_second.
+        Epoch input is absolute. The kernel does not expose a stable
+        epoch-delta API. Owners that need delay-based behavior compute the
+        target epoch before calling this method. Suffix may be adjusted by
+        suffix_delta because it is same-band budget / owner-local code.
         """
         pass
 

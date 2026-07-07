@@ -69,7 +69,9 @@ local min_expected_score = tonumber(ARGV[2])
 local max_expected_score = tonumber(ARGV[3])
 local target_score_base = tonumber(ARGV[4])
 local target_suffix = tonumber(ARGV[5])
-local suffix_factor = tonumber(ARGV[6])
+local suffix_delta = tonumber(ARGV[6])
+local suffix_factor = tonumber(ARGV[7])
+local max_suffix = tonumber(ARGV[8])
 
 local stored = redis.call("ZSCORE", key, task_id)
 if not stored then
@@ -81,8 +83,13 @@ if stored_score < min_expected_score or stored_score > max_expected_score then
   return {"stale", stored_score}
 end
 
+local stored_suffix = stored_score % suffix_factor
 if target_suffix < 0 then
-  target_suffix = stored_score % suffix_factor
+  target_suffix = stored_suffix + suffix_delta
+end
+
+if target_suffix < 0 or target_suffix > max_suffix then
+  return {"invalid", stored_score}
 end
 
 local next_score = target_score_base + target_suffix
@@ -164,49 +171,34 @@ return {"transitioned", tonumber(next_score)}
             limit,
         )
 
-    def initialize_scores(
+    def initialize_score(
         self,
         *,
-        initial_scores: Mapping[TaskId, Score],
-    ) -> Mapping[TaskId, TaskScoreTransitionResult]:
-        if not initial_scores:
-            return {}
+        task_id: TaskId,
+        suffix: Suffix,
+    ) -> TaskScoreTransitionResult:
+        if not self.MIN_SUFFIX <= suffix <= self.MAX_SUFFIX:
+            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
 
-        results: dict[TaskId, TaskScoreTransitionResult] = {}
-        valid_scores: dict[TaskId, Score] = {}
-        for task_id, initial_score in initial_scores.items():
-            if not self._is_valid_initial_score(initial_score):
-                results[task_id] = TaskScoreTransitionResult(
-                    TaskScoreTransitionStatus.INVALID
-                )
-                continue
-            valid_scores[task_id] = initial_score
-
-        if not valid_scores:
-            return results
-
-        before_scores = self._raw_scores_for(tuple(valid_scores))
-        scores_to_create: dict[TaskId, Score] = {}
-        for task_id, stored_score in before_scores.items():
-            if stored_score is None:
-                scores_to_create[task_id] = valid_scores[task_id]
-            else:
-                results[task_id] = TaskScoreTransitionResult(
-                    TaskScoreTransitionStatus.NOOP,
-                    stored_score,
-                )
-
-        if not scores_to_create:
-            return results
-
-        self.redis.zadd(self.score_key, scores_to_create, nx=True)
-        created_scores = self._raw_scores_for(tuple(scores_to_create))
-        for task_id, requested_score in scores_to_create.items():
-            results[task_id] = self._initial_create_result(
-                created_scores[task_id],
-                requested_score,
+        initial_score = self._score(
+            self.PRE_REVIEW_TAG,
+            self._current_epoch_second(),
+            suffix,
+        )
+        added_count = self.redis.zadd(self.score_key, {task_id: initial_score}, nx=True)
+        if added_count == 1:
+            return TaskScoreTransitionResult(
+                TaskScoreTransitionStatus.TRANSITIONED,
+                initial_score,
             )
-        return results
+
+        stored_score = self.redis.zscore(self.score_key, task_id)
+        if stored_score is None:
+            return TaskScoreTransitionResult(TaskScoreTransitionStatus.STALE)
+        return TaskScoreTransitionResult(
+            TaskScoreTransitionStatus.NOOP,
+            self._score_to_int(stored_score),
+        )
 
     def rewrite_score(
         self,
@@ -248,6 +240,7 @@ return {"transitioned", tonumber(next_score)}
         task_id: TaskId,
         expected_band: TaskScoreBand,
         target_epoch_second: EpochSecond,
+        suffix_delta: int = 0,
     ) -> TaskScoreTransitionResult:
         if expected_band == TaskScoreBand.TERMINAL:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
@@ -269,47 +262,7 @@ return {"transitioned", tonumber(next_score)}
             ),
             target_score_base=self._score(expected_tag, target_epoch_second, 0),
             target_suffix=None,
-        )
-
-    def bump_same_band_epoch(
-        self,
-        *,
-        task_id: TaskId,
-        expected_band: TaskScoreBand,
-        max_bumpable_epoch_second: EpochSecond,
-        delta_seconds: int,
-    ) -> TaskScoreTransitionResult:
-        if expected_band == TaskScoreBand.TERMINAL:
-            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
-        if not (
-            self.MIN_EPOCH_SECOND
-            <= max_bumpable_epoch_second
-            <= self.MAX_EPOCH_SECOND
-        ):
-            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
-        if delta_seconds <= 0:
-            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
-        target_epoch_second = max_bumpable_epoch_second + delta_seconds
-        if target_epoch_second > self.MAX_EPOCH_SECOND:
-            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
-
-        expected_tag = self._tag_from_band(expected_band)
-        if expected_tag is None:
-            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
-        min_expected_score = self._score(expected_tag, self.MIN_EPOCH_SECOND, 0)
-        max_expected_score = self._score(
-            expected_tag,
-            max_bumpable_epoch_second,
-            self.MAX_SUFFIX,
-        )
-        target_score_base = self._score(expected_tag, target_epoch_second, 0)
-
-        return self._mint_from_range(
-            task_id=task_id,
-            min_expected_score=min_expected_score,
-            max_expected_score=max_expected_score,
-            target_score_base=target_score_base,
-            target_suffix=None,
+            suffix_delta=suffix_delta,
         )
 
     def close_score(
@@ -415,6 +368,7 @@ return {"transitioned", tonumber(next_score)}
         max_expected_score: Score,
         target_score_base: Score,
         target_suffix: Suffix | None,
+        suffix_delta: int = 0,
     ) -> TaskScoreTransitionResult:
         return self._script_result(
             self.redis.eval(
@@ -426,7 +380,9 @@ return {"transitioned", tonumber(next_score)}
                 max_expected_score,
                 target_score_base,
                 -1 if target_suffix is None else target_suffix,
+                suffix_delta,
                 self.suffix_factor,
+                self.MAX_SUFFIX,
             )
         )
 
@@ -461,37 +417,6 @@ return {"transitioned", tonumber(next_score)}
         )
         return [self._decode_task_id(raw_id) for raw_id in raw_ids]
 
-    def _raw_scores_for(self, task_ids: Sequence[TaskId]) -> dict[TaskId, Score | None]:
-        if not task_ids:
-            return {}
-
-        with self.redis.pipeline(transaction=False) as pipe:
-            for task_id in task_ids:
-                pipe.zscore(self.score_key, task_id)
-            raw_scores = pipe.execute()
-
-        return {
-            task_id: None if raw_score is None else self._score_to_int(raw_score)
-            for task_id, raw_score in zip(task_ids, raw_scores, strict=True)
-        }
-
-    def _initial_create_result(
-        self,
-        stored_score: Score | None,
-        requested_score: Score,
-    ) -> TaskScoreTransitionResult:
-        if stored_score is None:
-            return TaskScoreTransitionResult(TaskScoreTransitionStatus.STALE)
-        if stored_score == requested_score:
-            return TaskScoreTransitionResult(
-                TaskScoreTransitionStatus.TRANSITIONED,
-                stored_score,
-            )
-        return TaskScoreTransitionResult(
-            TaskScoreTransitionStatus.NOOP,
-            stored_score,
-        )
-
     def _decode_state(
         self,
         task_id: TaskId,
@@ -513,11 +438,6 @@ return {"transitioned", tonumber(next_score)}
             epoch_second,
             suffix,
         )
-
-    def _is_valid_initial_score(self, score: Score) -> bool:
-        if score < 0:
-            return True
-        return self._decode_positive(score) is not None
 
     def _decode_positive(
         self,

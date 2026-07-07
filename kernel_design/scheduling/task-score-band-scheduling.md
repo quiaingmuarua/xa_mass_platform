@@ -572,12 +572,15 @@ mint_from_range(
   minExpectedScore,
   maxExpectedScore,
   targetScoreBase,
-  targetSuffix?
+  targetSuffix?,
+  suffixDelta = 0
 ):
   lua:
     storedScore = read_current_score(taskId)
     require minExpectedScore <= storedScore <= maxExpectedScore
-    suffix = targetSuffix if supplied else storedScore % SUFFIX_FACTOR
+    storedSuffix = storedScore % SUFFIX_FACTOR
+    suffix = targetSuffix if supplied else storedSuffix + suffixDelta
+    require 0 <= suffix <= MAX_SUFFIX
     write targetScoreBase + suffix
 ```
 
@@ -597,27 +600,21 @@ stable safe public methods plus a small trusted implementation protocol, not
 zero-trust validation at every internal layer.
 
 ```text
-bump_same_band_epoch(expectedBand, maxBumpableEpochSecond, deltaSeconds):
-  require deltaSeconds > 0
-  tag = tag(expectedBand)
-  mint_from_range(
-    minExpectedScore = score(tag, 0, 0),
-    maxExpectedScore = score(tag, maxBumpableEpochSecond, MAX_SUFFIX),
-    targetScoreBase = score(tag, maxBumpableEpochSecond + deltaSeconds, 0),
-    targetSuffix = keep
-  )
-```
-
-```text
-rewrite_same_band_epoch(expectedBand, targetEpochSecond):
+rewrite_same_band_epoch(expectedBand, targetEpochSecond, suffixDelta = 0):
   tag = tag(expectedBand)
   mint_from_range(
     minExpectedScore = score(tag, 0, 0),
     maxExpectedScore = score(tag, targetEpochSecond - 1, MAX_SUFFIX),
     targetScoreBase = score(tag, targetEpochSecond, 0),
-    targetSuffix = keep
+    targetSuffix = keep,
+    suffixDelta = suffixDelta
   )
 ```
+
+`targetEpochSecond` is absolute. The kernel does not expose a stable epoch-delta
+API. If a business owner wants `now + delay`, that owner computes the absolute
+target epoch before calling the kernel. The kernel only applies delta to suffix
+because suffix is same-band budget / owner-local code.
 
 ```text
 rewrite_score(expectedBand, targetBand?, targetEpochSecond, targetSuffix?):
@@ -781,9 +778,9 @@ is rejected, routed to a new task, or handled by an explicit owner transition.
 
 The target protocol deliberately keeps score-band, work-item ownership,
 worker-runtime, and transport separate. The active loop belongs to
-assignment-dispatch; task score-band only supplies query plus same-band epoch
-bump/rewrite, general positive rewrite, terminal close, and lease-release
-primitives:
+assignment-dispatch; task score-band only supplies query plus same-band
+epoch/suffix rewrite, general positive rewrite, terminal close, and
+lease-release primitives:
 
 ```text
 1. choose task score scan range and limit according to active band order
@@ -893,8 +890,8 @@ on the kernel primitive.
 
 | Category | May write task score? | Allowed shape |
 | --- | --- | --- |
-| score-acquired assignment-dispatch round | yes | Decode score, validate owner facts, run the band action, then call same-band epoch bump/rewrite, general positive rewrite, terminal close, or lease release. |
-| owner command | yes | Validate owner facts, then call same-band epoch bump/rewrite, general positive rewrite, terminal close, or lease release. |
+| score-acquired assignment-dispatch round | yes | Decode score, validate owner facts, run the band action, then call same-band epoch/suffix rewrite, general positive rewrite, terminal close, or lease release. |
+| owner command | yes | Validate owner facts, then call same-band epoch/suffix rewrite, general positive rewrite, terminal close, or lease release. |
 | owner-evidence-write | no direct live score | Update its own truth only; later scheduling or an owner command may observe it. |
 | read projection / trace | no | Observability only. |
 
@@ -962,7 +959,7 @@ result owner
 
 task score owner
   owns the score value, decode rules, bounded query primitive, and
-  same-band epoch bump/rewrite / positive rewrite / terminal close /
+  same-band epoch/suffix rewrite / positive rewrite / terminal close /
   lease-release primitives
 
 assignment-dispatch
@@ -1043,7 +1040,7 @@ Mechanism owns:
 linear score axis
 state-aware bounded range + limit query
 owner validation after acquire
-same-band epoch bump/rewrite / positive rewrite / terminal close / lease release
+same-band epoch/suffix rewrite / positive rewrite / terminal close / lease release
 task scheduling visibility transition boundaries
 no event-driven scheduling dependency
 no broad refresh from low-value observations
