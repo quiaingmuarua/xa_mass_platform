@@ -346,8 +346,13 @@ task_score.query(range, limit)
 task_score.rewrite_same_band_epoch(
   task_id,
   expected_band,
+  target_epoch_second
+)
+task_score.consume_same_band_budget(
+  task_id,
+  observed_score,
   target_epoch_second,
-  suffix_delta?
+  suffix_delta
 )
 task_score.rewrite(
   task_id,

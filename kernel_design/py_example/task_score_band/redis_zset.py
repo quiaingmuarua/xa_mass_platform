@@ -69,9 +69,8 @@ local min_expected_score = tonumber(ARGV[2])
 local max_expected_score = tonumber(ARGV[3])
 local target_score_base = tonumber(ARGV[4])
 local target_suffix = tonumber(ARGV[5])
-local suffix_delta = tonumber(ARGV[6])
-local suffix_factor = tonumber(ARGV[7])
-local max_suffix = tonumber(ARGV[8])
+local suffix_factor = tonumber(ARGV[6])
+local max_suffix = tonumber(ARGV[7])
 
 local stored = redis.call("ZSCORE", key, task_id)
 if not stored then
@@ -85,7 +84,7 @@ end
 
 local stored_suffix = stored_score % suffix_factor
 if target_suffix < 0 then
-  target_suffix = stored_suffix + suffix_delta
+  target_suffix = stored_suffix
 end
 
 if target_suffix < 0 or target_suffix > max_suffix then
@@ -240,7 +239,6 @@ return {"transitioned", tonumber(next_score)}
         task_id: TaskId,
         expected_band: TaskScoreBand,
         target_epoch_second: EpochSecond,
-        suffix_delta: int = 0,
     ) -> TaskScoreTransitionResult:
         if expected_band == TaskScoreBand.TERMINAL:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
@@ -252,8 +250,6 @@ return {"transitioned", tonumber(next_score)}
         expected_tag = self._tag_from_band(expected_band)
         if expected_tag is None:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
-        if expected_tag == self.PRE_REVIEW_TAG and suffix_delta != 0:
-            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
         return self._mint_from_range(
             task_id=task_id,
             min_expected_score=self._score(expected_tag, self.MIN_EPOCH_SECOND, 0),
@@ -264,8 +260,37 @@ return {"transitioned", tonumber(next_score)}
             ),
             target_score_base=self._score(expected_tag, target_epoch_second, 0),
             target_suffix=None,
-            suffix_delta=suffix_delta,
         )
+
+    def consume_same_band_budget(
+        self,
+        *,
+        task_id: TaskId,
+        observed_score: Score,
+        target_epoch_second: EpochSecond,
+        suffix_delta: int,
+    ) -> TaskScoreTransitionResult:
+        if suffix_delta >= 0:
+            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
+        if not self.MIN_EPOCH_SECOND <= target_epoch_second <= self.MAX_EPOCH_SECOND:
+            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
+
+        observed = self._decode_positive(observed_score)
+        if observed is None:
+            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
+
+        observed_tag, observed_epoch_second, observed_suffix = observed
+        if observed_tag not in {self.RUNNING_VISIBLE_TAG, self.READY_APPROVED_TAG}:
+            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
+        if target_epoch_second <= observed_epoch_second:
+            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
+
+        target_suffix = observed_suffix + suffix_delta
+        if target_suffix < self.MIN_SUFFIX or target_suffix > self.MAX_SUFFIX:
+            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
+
+        next_score = self._score(observed_tag, target_epoch_second, target_suffix)
+        return self._cas_update(task_id, observed_score, next_score)
 
     def close_score(
         self,
@@ -370,7 +395,6 @@ return {"transitioned", tonumber(next_score)}
         max_expected_score: Score,
         target_score_base: Score,
         target_suffix: Suffix | None,
-        suffix_delta: int = 0,
     ) -> TaskScoreTransitionResult:
         return self._script_result(
             self.redis.eval(
@@ -382,7 +406,6 @@ return {"transitioned", tonumber(next_score)}
                 max_expected_score,
                 target_score_base,
                 -1 if target_suffix is None else target_suffix,
-                suffix_delta,
                 self.suffix_factor,
                 self.MAX_SUFFIX,
             )

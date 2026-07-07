@@ -572,14 +572,13 @@ mint_from_range(
   minExpectedScore,
   maxExpectedScore,
   targetScoreBase,
-  targetSuffix?,
-  suffixDelta = 0
+  targetSuffix?
 ):
   lua:
     storedScore = read_current_score(taskId)
     require minExpectedScore <= storedScore <= maxExpectedScore
     storedSuffix = storedScore % SUFFIX_FACTOR
-    suffix = targetSuffix if supplied else storedSuffix + suffixDelta
+    suffix = targetSuffix if supplied else storedSuffix
     require 0 <= suffix <= MAX_SUFFIX
     write targetScoreBase + suffix
 ```
@@ -590,8 +589,8 @@ target bases, and no public port should accept `minExpectedScore`,
 `maxExpectedScore`, or `targetScoreBase`. The kernel implementation derives the
 exact score range and target base from band / epoch / suffix intent, so Lua only
 checks range membership and preserves or substitutes suffix. It does not perform
-owner validation and does not need exact observed-score fencing; ordinary stale
-competition may fail or only delay the task by a small bounded amount.
+owner validation and does not protect scheduling-round evidence. Any rewrite
+that consumes same-band suffix budget must use exact observed-score fencing.
 
 Score range coordinates are trusted kernel-internal protocol values. If a
 caller can pass `minExpectedScore`, `maxExpectedScore`, or `targetScoreBase`
@@ -600,24 +599,43 @@ stable safe public methods plus a small trusted implementation protocol, not
 zero-trust validation at every internal layer.
 
 ```text
-rewrite_same_band_epoch(expectedBand, targetEpochSecond, suffixDelta = 0):
+rewrite_same_band_epoch(expectedBand, targetEpochSecond):
   tag = tag(expectedBand)
   mint_from_range(
     minExpectedScore = score(tag, 0, 0),
     maxExpectedScore = score(tag, targetEpochSecond - 1, MAX_SUFFIX),
     targetScoreBase = score(tag, targetEpochSecond, 0),
-    targetSuffix = keep,
-    suffixDelta = suffixDelta
+    targetSuffix = keep
   )
 ```
 
 `targetEpochSecond` is absolute. The kernel does not expose a stable epoch-delta
 API. If a business owner wants `now + delay`, that owner computes the absolute
-target epoch before calling the kernel. The kernel only applies delta to suffix
-for scheduling bands, where suffix is same-band budget / owner-local code.
-`PRE_REVIEW` suffix is an owner-defined review-state code; do not change it by
-`suffixDelta`. Use an owner-validated positive rewrite with explicit
-`targetSuffix` for pre-review state changes.
+target epoch before calling the kernel. This range-mint path preserves stored
+suffix and is only for same-band epoch movement that does not consume
+scheduling-round budget.
+
+```text
+consume_same_band_budget(taskId, observedScore, targetEpochSecond, suffixDelta):
+  storedScore = read_current_score(taskId)
+  require storedScore == observedScore
+  observed = decode_positive(observedScore)
+  require observed.tag in {RUNNING_VISIBLE_TAG, READY_APPROVED_TAG}
+  require targetEpochSecond > observed.epochSecond
+  require suffixDelta < 0
+  targetSuffix = observed.suffix + suffixDelta
+  require 0 <= targetSuffix <= MAX_SUFFIX
+  write score(observed.tag, targetEpochSecond, targetSuffix)
+```
+
+Suffix budget consumption is scheduling-round evidence, not a broad same-band
+lease rewrite. It must carry the exact score observed when the round acquired or
+read the candidate. If a newer same-band score was written first, this operation
+is stale and must not overwrite that newer classification. `suffixDelta` is
+negative because this primitive only consumes budget; replenishment or review
+state changes use owner-validated positive rewrites with explicit `targetSuffix`.
+`PRE_REVIEW` suffix is an owner-defined review-state code and is never changed
+through this primitive.
 
 ```text
 rewrite_score(expectedBand, targetBand?, targetEpochSecond, targetSuffix?):

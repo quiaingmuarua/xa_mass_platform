@@ -172,15 +172,32 @@ class TaskScoreBandKernel(ABC):
         task_id: TaskId,
         expected_band: TaskScoreBand,
         target_epoch_second: EpochSecond,
-        suffix_delta: int = 0,
     ) -> TaskScoreTransitionResult:
-        """Rewrite same-band epochSecond and optionally adjust suffix.
+        """Rewrite same-band epochSecond while preserving stored suffix.
 
         Epoch input is absolute. The kernel does not expose a stable
         epoch-delta API. Owners that need delay-based behavior compute the
-        target epoch before calling this method. Suffix may be adjusted by
-        suffix_delta for scheduling bands. PRE_REVIEW suffix is a review-state
-        code and must not be changed by suffix_delta.
+        target epoch before calling this method. This operation is a same-band
+        range mint and does not consume scheduling-round suffix budget.
+        """
+        pass
+
+    @abstractmethod
+    def consume_same_band_budget(
+        self,
+        *,
+        task_id: TaskId,
+        observed_score: Score,
+        target_epoch_second: EpochSecond,
+        suffix_delta: int,
+    ) -> TaskScoreTransitionResult:
+        """Adjust scheduling-band suffix using an exact observed-score fence.
+
+        Suffix budget consumption is scheduling-round evidence. The stored score
+        must still equal observed_score, otherwise the round is stale and must
+        not overwrite newer same-band classification. suffix_delta must be
+        negative; budget replenishment is an explicit owner rewrite, not a
+        scheduling consumption primitive.
         """
         pass
 
