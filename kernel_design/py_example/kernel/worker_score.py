@@ -180,7 +180,7 @@ class WorkerScoreCore(ABC):
         This is the ordinary same-lane score update used for renew, retry,
         cooldown, manual hold, drain, maintenance, or policy hold. Implementations
         read the current stored score, preserve its polarity and dirty bit,
-        require target time to map at or after the stored time slot, and default
+        require target time to map after the stored time slot, and default
         target_lane_rank to the stored lane_rank. No observed-score CAS is
         required because this operation never lowers the score coordinate.
         """

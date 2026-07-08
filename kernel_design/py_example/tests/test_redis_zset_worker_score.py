@@ -75,7 +75,7 @@ class FakeRedis:
             return self._eval_renew_due_lease(key, argv)
         if "local now_min_abs_score" in script and "local stored_dirty" in script:
             return self._eval_mark_lease_dirty(key, argv)
-        if "local max_rewritable_abs_score" in script:
+        if "local target_min_abs_score" in script and "local target_lane_rank" in script:
             return self._eval_current_rewrite(key, argv)
         if "local observed_score" in script:
             return self._eval_cas_update(key, argv)
@@ -84,10 +84,9 @@ class FakeRedis:
     def _eval_current_rewrite(self, key: str, argv: tuple[object, ...]) -> list[object]:
         worker_id = str(argv[0])
         target_min_abs_score = int(argv[1])
-        max_rewritable_abs_score = int(argv[2])
-        target_lane_rank = int(argv[3])
-        slot_factor = int(argv[4])
-        dirty_factor = int(argv[5])
+        target_lane_rank = int(argv[2])
+        slot_factor = int(argv[3])
+        dirty_factor = int(argv[4])
 
         stored = self.zscore(key, worker_id)
         if stored is None:
@@ -101,7 +100,7 @@ class FakeRedis:
         stored_lane_rank = slot_remainder // dirty_factor
         stored_dirty = slot_remainder % dirty_factor
 
-        if abs_score > max_rewritable_abs_score:
+        if abs_score >= target_min_abs_score:
             return ["stale", stored]
         if target_lane_rank < 0:
             target_lane_rank = stored_lane_rank
@@ -385,6 +384,20 @@ class RedisZsetWorkerScoreCoreTest(unittest.TestCase):
             home_bucket_id=self.home_bucket_id,
             worker_id="worker",
             target_time_millis=self.millis(949),
+        )
+
+        self.assertEqual(WorkerScoreTransitionStatus.STALE, result.status)
+        self.assertEqual(current, result.score)
+
+    def test_rewrite_current_score_rejects_same_slot_rewrite(self) -> None:
+        current = self.score(WorkerScorePolarity.HOT_ACQUIRE, 950, 5)
+        self.store_score("worker", current)
+
+        result = self.kernel.rewrite_current_score(
+            home_bucket_id=self.home_bucket_id,
+            worker_id="worker",
+            target_time_millis=self.millis(950),
+            target_lane_rank=8,
         )
 
         self.assertEqual(WorkerScoreTransitionStatus.STALE, result.status)

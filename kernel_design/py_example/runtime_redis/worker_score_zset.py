@@ -24,10 +24,9 @@ class RedisZsetWorkerScoreCore(WorkerScoreCore):
 local key = KEYS[1]
 local worker_id = ARGV[1]
 local target_min_abs_score = tonumber(ARGV[2])
-local max_rewritable_abs_score = tonumber(ARGV[3])
-local target_lane_rank = tonumber(ARGV[4])
-local slot_factor = tonumber(ARGV[5])
-local dirty_factor = tonumber(ARGV[6])
+local target_lane_rank = tonumber(ARGV[3])
+local slot_factor = tonumber(ARGV[4])
+local dirty_factor = tonumber(ARGV[5])
 
 local stored = redis.call("ZSCORE", key, worker_id)
 if not stored then
@@ -45,7 +44,7 @@ local slot_remainder = abs_score % slot_factor
 local stored_lane_rank = math.floor(slot_remainder / dirty_factor)
 local stored_dirty = slot_remainder % dirty_factor
 
-if abs_score > max_rewritable_abs_score then
+if abs_score >= target_min_abs_score then
   return {"stale", stored_score}
 end
 
@@ -315,11 +314,6 @@ return {"transitioned", target_score}
                 self._score_key(home_bucket_id),
                 worker_id,
                 target_min_abs_score,
-                self._abs_score(
-                    target_time_slot,
-                    self.MAX_LANE_RANK,
-                    self.MAX_DIRTY,
-                ),
                 -1 if target_lane_rank is None else target_lane_rank,
                 self.slot_factor,
                 self.dirty_factor,

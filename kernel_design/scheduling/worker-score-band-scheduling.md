@@ -403,7 +403,7 @@ Default rewrite rule:
 same-polarity rewrite
   preserve sign
   rewrite abs(score) coordinate
-  normally require targetTimeMillis to map at or after currentTimeSlot
+  normally require targetTimeMillis to map after currentTimeSlot
   preserve dirty by default
 ```
 
@@ -514,7 +514,7 @@ Rules:
 targetTimeSlot = floor(targetTimeMillis / SLOT_MILLIS)
 storedScore must exist and be signed non-zero
 targetTimeMillis must be valid
-targetTimeSlot must not be less than stored timeSlot
+targetTimeSlot must be greater than stored timeSlot
 targetPolarity = stored polarity
 targetLaneRank defaults to stored laneRank
 targetDirty = stored dirty
@@ -523,7 +523,8 @@ write signed score(storedPolarity, targetTimeSlot, targetLaneRank, targetDirty)
 
 This primitive does not require `observedScore`. It only writes within the
 currently stored polarity and rejects lower timeSlot. Stale callers may lose
-freshness, but they cannot lower the time coordinate, clear dirty, or cross polarity.
+freshness, but they cannot lower or rewrite the same time coordinate, clear
+dirty, or cross polarity.
 
 Typical uses:
 
