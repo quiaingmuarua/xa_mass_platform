@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 
 from kernel_design.py_example import (
-    RedisZsetTaskScoreBandKernel,
+    RedisZsetTaskScoreBandCore,
     TaskScoreBand,
     TaskScoreTransitionStatus,
 )
@@ -157,10 +157,10 @@ class FakeRedis:
         return self.now, 0
 
 
-class RedisZsetTaskScoreBandKernelTest(unittest.TestCase):
+class RedisZsetTaskScoreBandCoreTest(unittest.TestCase):
     def setUp(self) -> None:
         self.redis = FakeRedis()
-        self.kernel = RedisZsetTaskScoreBandKernel(self.redis)
+        self.kernel = RedisZsetTaskScoreBandCore(self.redis)
 
     def score(self, tag: int, epoch_second: int, suffix: int) -> int:
         return tag * self.kernel.tag_factor + epoch_second * 100 + suffix

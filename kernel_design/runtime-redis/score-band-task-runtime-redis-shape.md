@@ -856,7 +856,12 @@ ready-approved scan:
 does not mean schedulable; schedulability comes from the explicit active tag
 allow-list.
 Any future scan horizon must stay below `PAUSE_EPOCH_SECOND`; hard-pause scores
-are not future-prefetch candidates.
+are not future-prefetch candidates. Hard pause is not an ordinary due-later
+delay: while a stored positive score has
+`epochSecond == PAUSE_EPOCH_SECOND`, ordinary scheduling and positive lifecycle
+rewrites must not consume suffix budget or advance the task to another positive
+band. It can leave held mode only through exact observed-score release/resume or
+owner terminal finality.
 
 The score is an index. Before claim, the kernel runtime must validate:
 
@@ -928,6 +933,12 @@ the stored score still equals `observedLeaseScore`, and it copies suffix from
 score refresh is intentionally second-granularity;
 multiple non-release updates in the same second are rejected, coalesced, or
 retried later by the owner.
+Release/resume is tag-preserving: `READY_APPROVED(PAUSE_EPOCH_SECOND, suffix)`
+releases to `READY_APPROVED(releaseEpochSecond, suffix)`, and
+`RUNNING_VISIBLE(PAUSE_EPOCH_SECOND, suffix)` releases to
+`RUNNING_VISIBLE(releaseEpochSecond, suffix)`. It must not release a
+`READY_APPROVED` hold directly into `RUNNING_VISIBLE`; activation validation
+must run after the original band becomes due again.
 `PRE_REVIEW` same-band owner transitions are not scheduling rewrites: the review
 owner validates the business state and writes a larger owner mutation
 `epochSecond`; suffix is an owner-defined review state code.
@@ -1514,6 +1525,12 @@ than the stored `epochSecond`. Hard pause writes
 `holdEpochSecond = PAUSE_EPOCH_SECOND = 9_999_999_999`, and release can use
 the exact held score as `observedLeaseScore`.
 
+For hard pause, the held score is not a runnable future score. Do not run
+activation checks, same-band budget consumption, worker admission, or cross-band
+positive progression from a stored `PAUSE_EPOCH_SECOND` score. Use exact
+observed-score release/resume to return the same tag to a nearer epoch, or use a
+terminal close when owner finality is accepted.
+
 Do not rewrite every raw ready item or runtime item. Current claims remain in
 `task:{taskId}:rt` and may still finish. Retry frames created while parked stay
 in the ready LIST or scheduled retry lane according to `retryMode`, but the
@@ -1632,6 +1649,8 @@ claim timeout repair mutation:
 pause/block/resume:
   pause/block uses same-active-band future score through positive range-mint
   resume/release uses exact observed-lease-score protection
+  hard pause does not permit scheduling-round suffix consumption or positive
+  cross-band progress until release
 
 discard/terminal:
   terminal fence + runtimeEpoch advance before physical key deletion

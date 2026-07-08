@@ -255,9 +255,25 @@ fact.
 Task score-band uses four score bands. Temporary restriction is not a separate
 band; pause/block/hold is represented by rewriting the same active band with a
 future lease key. A hard pause uses the maximum 10-digit `epochSecond`
-coordinate. These are scheduling visibility states, not a
-second business lifecycle. Kernel code should branch on the decoded band and
-owner validation result, not on concrete product events.
+coordinate. These are scheduling visibility states, not a second business
+lifecycle. Kernel code should branch on the decoded band and owner validation
+result, not on concrete product events.
+
+Hard pause is stronger than an ordinary future delay:
+
+```text
+ordinary future delay
+  same active tag, future epochSecond
+  becomes eligible for that same band's normal action when the epoch is due
+
+hard pause
+  same active tag, PAUSE_EPOCH_SECOND
+  never becomes due through normal scheduling
+  must not consume suffix budget
+  must not advance to another positive band
+  can only be released by exact observed-score resume, or closed by owner
+  terminal finality
+```
 
 Positive non-terminal bands use a fixed segmented numeric score:
 
@@ -483,6 +499,28 @@ with a future `epochSecond`; hard pause writes `PAUSE_EPOCH_SECOND`.
 Release/resume uses
 `observedLeaseScore` as the stale fence; matching that exact score proves no
 newer hold, terminal close, or scheduling rewrite has happened.
+
+Release/resume is tag-preserving. The target score is always derived from the
+observed held score:
+
+```text
+READY_APPROVED(PAUSE_EPOCH_SECOND, suffix)
+  -> READY_APPROVED(releaseEpochSecond, suffix)
+
+RUNNING_VISIBLE(PAUSE_EPOCH_SECOND, suffix)
+  -> RUNNING_VISIBLE(releaseEpochSecond, suffix)
+```
+
+It is never:
+
+```text
+READY_APPROVED(PAUSE_EPOCH_SECOND, suffix)
+  -> RUNNING_VISIBLE(releaseEpochSecond, suffix)
+```
+
+After release, the original band's normal owner validation runs again. A
+released `READY_APPROVED` task still needs activation validation before it can
+become `RUNNING_VISIBLE`.
 
 `PRE_REVIEW` same-band owner transitions obey the same positive-write freshness
 rule:
@@ -715,6 +753,18 @@ acquired an active score and a same-task owner transition has already written a
 newer lease score or terminal score, the stale rewrite must fail instead of
 replacing that newer score.
 
+If the stored positive score is a hard pause
+(`epochSecond == PAUSE_EPOCH_SECOND`), ordinary positive lifecycle and
+scheduling rewrites must fail. The only score writes that may change it are:
+
+```text
+release_lease with exact observedLeaseScore
+close_score to negative TERMINAL
+```
+
+That prevents a paused task from consuming suffix budget, running activation,
+or moving from `READY_APPROVED` to `RUNNING_VISIBLE` without an explicit resume.
+
 This permits multi-task concurrency while keeping single-task score writes
 ordered by the current band. A single task may be protected by a per-task writer
 or by a compare-and-set on the decoded current band; the kernel design does not
@@ -745,8 +795,11 @@ TERMINAL
 ```
 
 Temporary restriction is not listed here because it is not a state. It is the
-same active band with a future `epochSecond`. Before that epoch is due, the
-band scan does not return it; once due, it is interpreted as the same band.
+same active band with a future `epochSecond`. Before an ordinary future epoch is
+due, the band scan does not return it; once due, it is interpreted as the same
+band. Hard pause is the reserved `PAUSE_EPOCH_SECOND` form and is not an
+ordinary due-later delay. It leaves held mode only through exact observed-score
+release/resume or owner terminal finality.
 
 Acquire returns candidate task ids only. It does not prove work exists, admit a
 worker, claim work, or accept a result.
@@ -1103,6 +1156,9 @@ no broad refresh from low-value observations
 - Do not write a temporary restriction score for `PRE_REVIEW` or `TERMINAL`.
   Active bands may be held only by rewriting the same active band with a future
   epoch.
+- Do not treat hard pause as ordinary future delay. `PAUSE_EPOCH_SECOND` is a
+  reserved hard hold: no scheduling-round suffix consumption, no positive
+  cross-band progress, and no release to a different tag.
 - Do not rely on tag direction alone to protect temporary restriction mode;
   because it preserves the same active tag, use per-task write ordering or
   a score-write stale fence.

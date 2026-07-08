@@ -2,21 +2,21 @@ from __future__ import annotations
 
 from typing import Any, ClassVar, Mapping, Sequence
 
-from .kernel import (
+from ..kernel.task_score_band import (
     EpochSecond,
     Score,
     Suffix,
     TaskId,
     TaskScoreBand,
-    TaskScoreBandKernel,
+    TaskScoreBandCore,
     TaskScoreState,
     TaskScoreTransitionResult,
     TaskScoreTransitionStatus,
 )
 
 
-class RedisZsetTaskScoreBandKernel(TaskScoreBandKernel):
-    """Redis ZSET implementation of the task score-band kernel.
+class RedisZsetTaskScoreBandCore(TaskScoreBandCore):
+    """Redis ZSET implementation of the task score-band core.
 
     This class intentionally assumes a redis-py shaped client and one ZSET key.
     It is meant to make the score-band mechanics executable, not to hide Redis
@@ -101,8 +101,8 @@ return {"transitioned", tonumber(next_score)}
         redis_client: Any,
         *,
         score_key: str = "task:score",
-        tag_factor: int = TaskScoreBandKernel.DEFAULT_TAG_FACTOR,
-        suffix_factor: int = TaskScoreBandKernel.SUFFIX_FACTOR,
+        tag_factor: int = TaskScoreBandCore.DEFAULT_TAG_FACTOR,
+        suffix_factor: int = TaskScoreBandCore.SUFFIX_FACTOR,
     ) -> None:
         super().__init__(tag_factor=tag_factor, suffix_factor=suffix_factor)
         self.redis = redis_client

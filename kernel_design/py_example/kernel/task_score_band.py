@@ -47,8 +47,8 @@ class TaskScoreTransitionResult:
     score: Score | None = None
 
 
-class TaskScoreBandKernel(ABC):
-    """Task score-band kernel interface.
+class TaskScoreBandCore(ABC):
+    """Task score-band core interface.
 
     This is an executable-spec shaped interface, not a production storage
     implementation. Implementations may use memory, Redis, or another ordered
@@ -63,7 +63,7 @@ class TaskScoreBandKernel(ABC):
 
     Internal Redis/Lua coordinates such as minExpectedScore, maxExpectedScore,
     and targetScoreBase are implementation-private protocol values. If a caller
-    can pass them directly, the kernel boundary has already been broken.
+    can pass them directly, the core boundary has already been broken.
     """
 
     RUNNING_VISIBLE_TAG: ClassVar[int] = 1
