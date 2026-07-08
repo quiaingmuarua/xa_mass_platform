@@ -117,7 +117,6 @@ class FakeRedis:
         target_score_base = int(argv[3])
         target_suffix = int(argv[4])
         suffix_factor = int(argv[5])
-        max_suffix = int(argv[6])
 
         stored = self.zscore(key, task_id)
         if stored is None:
@@ -128,8 +127,6 @@ class FakeRedis:
         stored_suffix = stored % suffix_factor
         if target_suffix < 0:
             target_suffix = stored_suffix
-        if target_suffix < 0 or target_suffix > max_suffix:
-            return ["invalid", stored]
 
         next_score = target_score_base + target_suffix
         self.zadd(key, {task_id: next_score})

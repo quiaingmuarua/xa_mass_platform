@@ -71,11 +71,11 @@ class FakeRedis:
         key = str(args[0])
         argv = args[1:]
 
-        if "local now_time_slot" in script and "local target_time_slot" in script:
+        if "local now_min_abs_score" in script and "local target_min_abs_score" in script:
             return self._eval_renew_due_lease(key, argv)
-        if "local now_time_slot" in script and "local stored_dirty" in script:
+        if "local now_min_abs_score" in script and "local stored_dirty" in script:
             return self._eval_mark_lease_dirty(key, argv)
-        if "local target_time_slot" in script:
+        if "local max_rewritable_abs_score" in script:
             return self._eval_current_rewrite(key, argv)
         if "local observed_score" in script:
             return self._eval_cas_update(key, argv)
@@ -83,35 +83,33 @@ class FakeRedis:
 
     def _eval_current_rewrite(self, key: str, argv: tuple[object, ...]) -> list[object]:
         worker_id = str(argv[0])
-        target_time_slot = int(argv[1])
-        target_lane_rank = int(argv[2])
-        slot_factor = int(argv[3])
-        dirty_factor = int(argv[4])
+        target_min_abs_score = int(argv[1])
+        max_rewritable_abs_score = int(argv[2])
+        target_lane_rank = int(argv[3])
+        slot_factor = int(argv[4])
+        dirty_factor = int(argv[5])
 
         stored = self.zscore(key, worker_id)
         if stored is None:
             return ["stale"]
-        if stored == 0:
-            return ["invalid", stored]
-
-        sign = 1 if stored > 0 else -1
         abs_score = abs(stored)
-        stored_time_slot = abs_score // slot_factor
+        if abs_score <= 0:
+            return ["invalid", stored]
+        sign = stored // abs_score
+
         slot_remainder = abs_score % slot_factor
         stored_lane_rank = slot_remainder // dirty_factor
         stored_dirty = slot_remainder % dirty_factor
 
-        if target_time_slot < stored_time_slot:
+        if abs_score > max_rewritable_abs_score:
             return ["stale", stored]
         if target_lane_rank < 0:
             target_lane_rank = stored_lane_rank
 
         next_score = sign * (
-            target_time_slot * slot_factor
-            + target_lane_rank * dirty_factor
-            + stored_dirty
+            target_min_abs_score + target_lane_rank * dirty_factor + stored_dirty
         )
-        if next_score == 0:
+        if abs(next_score) <= 0:
             return ["invalid", stored]
 
         self.zadd(key, {worker_id: next_score})
@@ -119,64 +117,55 @@ class FakeRedis:
 
     def _eval_renew_due_lease(self, key: str, argv: tuple[object, ...]) -> list[object]:
         worker_id = str(argv[0])
-        target_time_slot = int(argv[1])
-        now_time_slot = int(argv[2])
+        now_min_abs_score = int(argv[1])
+        target_min_abs_score = int(argv[2])
         slot_factor = int(argv[3])
         dirty_factor = int(argv[4])
 
         stored = self.zscore(key, worker_id)
         if stored is None:
             return ["stale"]
-        if stored == 0:
-            return ["invalid", stored]
-
-        sign = 1 if stored > 0 else -1
         abs_score = abs(stored)
-        stored_time_slot = abs_score // slot_factor
+        if abs_score <= 0:
+            return ["invalid", stored]
+        sign = stored // abs_score
+
         slot_remainder = abs_score % slot_factor
         stored_lane_rank = slot_remainder // dirty_factor
 
-        if stored_time_slot >= now_time_slot:
-            return ["stale", stored]
-        if target_time_slot < now_time_slot:
+        if target_min_abs_score < now_min_abs_score:
             return ["invalid", stored]
+        if abs_score >= now_min_abs_score:
+            return ["stale", stored]
 
         next_score = sign * (
-            target_time_slot * slot_factor + stored_lane_rank * dirty_factor
+            target_min_abs_score + stored_lane_rank * dirty_factor
         )
-        if next_score == 0:
-            return ["invalid", stored]
 
         self.zadd(key, {worker_id: next_score})
         return ["transitioned", next_score]
 
     def _eval_mark_lease_dirty(self, key: str, argv: tuple[object, ...]) -> list[object]:
         worker_id = str(argv[0])
-        now_time_slot = int(argv[1])
-        slot_factor = int(argv[2])
-        dirty_factor = int(argv[3])
+        now_min_abs_score = int(argv[1])
+        dirty_factor = int(argv[2])
 
         stored = self.zscore(key, worker_id)
         if stored is None:
             return ["stale"]
-        if stored == 0:
-            return ["invalid", stored]
-
-        sign = 1 if stored > 0 else -1
         abs_score = abs(stored)
-        stored_time_slot = abs_score // slot_factor
-        slot_remainder = abs_score % slot_factor
-        stored_lane_rank = slot_remainder // dirty_factor
-        stored_dirty = slot_remainder % dirty_factor
+        if abs_score <= 0:
+            return ["invalid", stored]
+        sign = stored // abs_score
 
-        if stored_time_slot < now_time_slot:
+        stored_dirty = abs_score % dirty_factor
+
+        if abs_score < now_min_abs_score:
             return ["noop", stored]
         if stored_dirty == 1:
             return ["noop", stored]
 
-        next_score = sign * (
-            stored_time_slot * slot_factor + stored_lane_rank * dirty_factor + 1
-        )
+        next_score = sign * (abs_score + 1)
         self.zadd(key, {worker_id: next_score})
         return ["transitioned", next_score]
 

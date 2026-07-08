@@ -70,7 +70,6 @@ local max_expected_score = tonumber(ARGV[3])
 local target_score_base = tonumber(ARGV[4])
 local target_suffix = tonumber(ARGV[5])
 local suffix_factor = tonumber(ARGV[6])
-local max_suffix = tonumber(ARGV[7])
 
 local stored = redis.call("ZSCORE", key, task_id)
 if not stored then
@@ -85,10 +84,6 @@ end
 local stored_suffix = stored_score % suffix_factor
 if target_suffix < 0 then
   target_suffix = stored_suffix
-end
-
-if target_suffix < 0 or target_suffix > max_suffix then
-  return {"invalid", stored_score}
 end
 
 local next_score = target_score_base + target_suffix
@@ -420,7 +415,6 @@ return {"transitioned", tonumber(next_score)}
                 target_score_base,
                 -1 if target_suffix is None else target_suffix,
                 self.suffix_factor,
-                self.MAX_SUFFIX,
             )
         )
 

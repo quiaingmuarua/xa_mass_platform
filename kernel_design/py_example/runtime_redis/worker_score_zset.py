@@ -23,10 +23,11 @@ class RedisZsetWorkerScoreCore(WorkerScoreCore):
     _CURRENT_REWRITE_SCRIPT: ClassVar[str] = """
 local key = KEYS[1]
 local worker_id = ARGV[1]
-local target_time_slot = tonumber(ARGV[2])
-local target_lane_rank = tonumber(ARGV[3])
-local slot_factor = tonumber(ARGV[4])
-local dirty_factor = tonumber(ARGV[5])
+local target_min_abs_score = tonumber(ARGV[2])
+local max_rewritable_abs_score = tonumber(ARGV[3])
+local target_lane_rank = tonumber(ARGV[4])
+local slot_factor = tonumber(ARGV[5])
+local dirty_factor = tonumber(ARGV[6])
 
 local stored = redis.call("ZSCORE", key, worker_id)
 if not stored then
@@ -34,23 +35,17 @@ if not stored then
 end
 
 local stored_score = tonumber(stored)
-if stored_score == 0 then
+local abs_score = math.abs(stored_score)
+if abs_score <= 0 then
   return {"invalid", stored_score}
 end
+local sign = stored_score / abs_score
 
-local sign = 1
-local abs_score = stored_score
-if stored_score < 0 then
-  sign = -1
-  abs_score = -stored_score
-end
-
-local stored_time_slot = math.floor(abs_score / slot_factor)
 local slot_remainder = abs_score % slot_factor
 local stored_lane_rank = math.floor(slot_remainder / dirty_factor)
 local stored_dirty = slot_remainder % dirty_factor
 
-if target_time_slot < stored_time_slot then
+if abs_score > max_rewritable_abs_score then
   return {"stale", stored_score}
 end
 
@@ -59,8 +54,8 @@ if target_lane_rank < 0 then
 end
 
 local target_abs_score =
-  target_time_slot * slot_factor + target_lane_rank * dirty_factor + stored_dirty
-if target_abs_score == 0 then
+  target_min_abs_score + target_lane_rank * dirty_factor + stored_dirty
+if target_abs_score <= 0 then
   return {"invalid", stored_score}
 end
 local target_score = sign * target_abs_score
@@ -91,8 +86,8 @@ return {"transitioned", next_score}
     _RENEW_DUE_LEASE_SCRIPT: ClassVar[str] = """
 local key = KEYS[1]
 local worker_id = ARGV[1]
-local target_time_slot = tonumber(ARGV[2])
-local now_time_slot = tonumber(ARGV[3])
+local now_min_abs_score = tonumber(ARGV[2])
+local target_min_abs_score = tonumber(ARGV[3])
 local slot_factor = tonumber(ARGV[4])
 local dirty_factor = tonumber(ARGV[5])
 
@@ -102,34 +97,25 @@ if not stored then
 end
 
 local stored_score = tonumber(stored)
-if stored_score == 0 then
+local abs_score = math.abs(stored_score)
+if abs_score <= 0 then
   return {"invalid", stored_score}
 end
+local sign = stored_score / abs_score
 
-local sign = 1
-local abs_score = stored_score
-if stored_score < 0 then
-  sign = -1
-  abs_score = -stored_score
-end
-
-local stored_time_slot = math.floor(abs_score / slot_factor)
 local slot_remainder = abs_score % slot_factor
 local stored_lane_rank = math.floor(slot_remainder / dirty_factor)
 
-if stored_time_slot >= now_time_slot then
+if target_min_abs_score < now_min_abs_score then
+  return {"invalid", stored_score}
+end
+
+if abs_score >= now_min_abs_score then
   return {"stale", stored_score}
 end
 
-if target_time_slot < now_time_slot then
-  return {"invalid", stored_score}
-end
-
 local target_abs_score =
-  target_time_slot * slot_factor + stored_lane_rank * dirty_factor
-if target_abs_score == 0 then
-  return {"invalid", stored_score}
-end
+  target_min_abs_score + stored_lane_rank * dirty_factor
 local target_score = sign * target_abs_score
 redis.call("ZADD", key, target_score, worker_id)
 return {"transitioned", target_score}
@@ -138,9 +124,8 @@ return {"transitioned", target_score}
     _MARK_LEASE_DIRTY_SCRIPT: ClassVar[str] = """
 local key = KEYS[1]
 local worker_id = ARGV[1]
-local now_time_slot = tonumber(ARGV[2])
-local slot_factor = tonumber(ARGV[3])
-local dirty_factor = tonumber(ARGV[4])
+local now_min_abs_score = tonumber(ARGV[2])
+local dirty_factor = tonumber(ARGV[3])
 
 local stored = redis.call("ZSCORE", key, worker_id)
 if not stored then
@@ -148,23 +133,15 @@ if not stored then
 end
 
 local stored_score = tonumber(stored)
-if stored_score == 0 then
+local abs_score = math.abs(stored_score)
+if abs_score <= 0 then
   return {"invalid", stored_score}
 end
+local sign = stored_score / abs_score
 
-local sign = 1
-local abs_score = stored_score
-if stored_score < 0 then
-  sign = -1
-  abs_score = -stored_score
-end
+local stored_dirty = abs_score % dirty_factor
 
-local stored_time_slot = math.floor(abs_score / slot_factor)
-local slot_remainder = abs_score % slot_factor
-local stored_lane_rank = math.floor(slot_remainder / dirty_factor)
-local stored_dirty = slot_remainder % dirty_factor
-
-if stored_time_slot < now_time_slot then
+if abs_score < now_min_abs_score then
   return {"noop", stored_score}
 end
 
@@ -172,8 +149,7 @@ if stored_dirty == 1 then
   return {"noop", stored_score}
 end
 
-local target_abs_score =
-  stored_time_slot * slot_factor + stored_lane_rank * dirty_factor + 1
+local target_abs_score = abs_score + 1
 local target_score = sign * target_abs_score
 redis.call("ZADD", key, target_score, worker_id)
 return {"transitioned", target_score}
@@ -327,13 +303,23 @@ return {"transitioned", target_score}
             return WorkerScoreTransitionResult(WorkerScoreTransitionStatus.INVALID)
 
         target_time_slot = self._time_slot_from_millis(target_time_millis)
+        target_min_abs_score = self._abs_score(
+            target_time_slot,
+            self.MIN_LANE_RANK,
+            self.MIN_DIRTY,
+        )
         return self._script_result(
             self.redis.eval(
                 self._CURRENT_REWRITE_SCRIPT,
                 1,
                 self._score_key(home_bucket_id),
                 worker_id,
-                target_time_slot,
+                target_min_abs_score,
+                self._abs_score(
+                    target_time_slot,
+                    self.MAX_LANE_RANK,
+                    self.MAX_DIRTY,
+                ),
                 -1 if target_lane_rank is None else target_lane_rank,
                 self.slot_factor,
                 self.dirty_factor,
@@ -362,8 +348,16 @@ return {"transitioned", target_score}
                 1,
                 self._score_key(home_bucket_id),
                 worker_id,
-                target_time_slot,
-                now_time_slot,
+                self._abs_score(
+                    now_time_slot,
+                    self.MIN_LANE_RANK,
+                    self.MIN_DIRTY,
+                ),
+                self._abs_score(
+                    target_time_slot,
+                    self.MIN_LANE_RANK,
+                    self.MIN_DIRTY,
+                ),
                 self.slot_factor,
                 self.dirty_factor,
             )
@@ -381,8 +375,11 @@ return {"transitioned", target_score}
                 1,
                 self._score_key(home_bucket_id),
                 worker_id,
-                self._current_time_slot(),
-                self.slot_factor,
+                self._abs_score(
+                    self._current_time_slot(),
+                    self.MIN_LANE_RANK,
+                    self.MIN_DIRTY,
+                ),
                 self.dirty_factor,
             )
         )
