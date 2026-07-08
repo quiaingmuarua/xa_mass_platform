@@ -12,7 +12,7 @@ from .task_score_band import (
 from .worker_score import (
     HomeBucketId,
     LaneRank,
-    Version,
+    Dirty,
     WorkerId,
     WorkerScoreCore,
     WorkerScorePolarity,
@@ -33,7 +33,7 @@ __all__ = [
     "TaskScoreState",
     "TaskScoreTransitionResult",
     "TaskScoreTransitionStatus",
-    "Version",
+    "Dirty",
     "WorkerId",
     "WorkerScoreCore",
     "WorkerScorePolarity",

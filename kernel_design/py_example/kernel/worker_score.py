@@ -11,7 +11,7 @@ WorkerId = str
 Score = int
 EpochSecond = int
 LaneRank = int
-Version = int
+Dirty = int
 
 
 class WorkerScorePolarity(IntEnum):
@@ -40,7 +40,7 @@ class WorkerScoreState:
     polarity: WorkerScorePolarity
     epoch_second: EpochSecond
     lane_rank: LaneRank
-    version: Version
+    dirty: Dirty
 
 
 @dataclass(frozen=True)
@@ -56,7 +56,7 @@ class WorkerScoreCore(ABC):
 
     - positive score means HOT_ACQUIRE worker-acquire visibility;
     - negative score means RECOVERY_RECHECK recovery visibility;
-    - abs(score) carries epochSecond, laneRank, and version.
+    - abs(score) carries epochSecond, laneRank, and dirty.
 
     It is not a worker lifecycle state machine. There is no PARKED band,
     MANUAL_DISABLED band, transport session state, or task-demand truth here.
@@ -69,6 +69,9 @@ class WorkerScoreCore(ABC):
     - no transition-source parameter;
     - no candidate DTOs beyond (workerId, observedScore);
     - no internal score range coordinates;
+    - no caller-supplied cold epoch, scan bounds, polarity sign, dirty bit, or
+      encoded base/tag fields;
+    - no fake strategy knobs for unimplemented business workflows;
     - no task backlog, task score, or transport mutation;
     - no decoded observed-score construction by callers.
     """
@@ -84,16 +87,16 @@ class WorkerScoreCore(ABC):
     MIN_LANE_RANK: ClassVar[int] = 0
     MAX_LANE_RANK: ClassVar[int] = 99
     LANE_RANK_FACTOR: ClassVar[int] = 100
-    MIN_VERSION: ClassVar[int] = 0
-    MAX_VERSION: ClassVar[int] = 99
-    VERSION_FACTOR: ClassVar[int] = 100
-    SLOT_FACTOR: ClassVar[int] = LANE_RANK_FACTOR * VERSION_FACTOR
+    MIN_DIRTY: ClassVar[int] = 0
+    MAX_DIRTY: ClassVar[int] = 1
+    DIRTY_FACTOR: ClassVar[int] = 2
+    SLOT_FACTOR: ClassVar[int] = LANE_RANK_FACTOR * DIRTY_FACTOR
 
     def __init__(
         self,
         *,
         lane_rank_factor: int = LANE_RANK_FACTOR,
-        version_factor: int = VERSION_FACTOR,
+        dirty_factor: int = DIRTY_FACTOR,
     ) -> None:
         pass
 
@@ -122,9 +125,9 @@ class WorkerScoreCore(ABC):
         """Acquire due HOT_ACQUIRE worker candidates.
 
         The returned score is a complete signed observed-score fence. Callers
-        may pass it back to worker score primitives, but must not trim, decode,
-        construct, or reinterpret it outside worker-runtime score/admission
-        logic.
+        must not trim, decode, construct, or reinterpret it. Ordinary monotonic
+        score writes do not need it; lowering operations such as release or
+        recovery exhaustion use it as exact CAS protection.
         """
         pass
 
@@ -159,47 +162,60 @@ class WorkerScoreCore(ABC):
         pass
 
     @abstractmethod
-    def rewrite_observed_score(
+    def rewrite_current_score(
+        self,
+        *,
+        home_bucket_id: HomeBucketId,
+        worker_id: WorkerId,
+        target_epoch_second: EpochSecond,
+        target_lane_rank: LaneRank | None = None,
+    ) -> WorkerScoreTransitionResult:
+        """Rewrite the current score within the same polarity.
+
+        This is the ordinary same-lane score update used for renew, retry,
+        cooldown, manual hold, drain, maintenance, or policy hold. Implementations
+        read the current stored score, preserve its polarity and dirty bit,
+        require target_epoch_second >= stored epochSecond, and default
+        target_lane_rank to the stored lane_rank. No observed-score CAS is
+        required because this operation never lowers epochSecond.
+        """
+        pass
+
+    @abstractmethod
+    def toggle_current_polarity(
         self,
         *,
         home_bucket_id: HomeBucketId,
         worker_id: WorkerId,
         observed_score: Score,
-        target_polarity: WorkerScorePolarity,
-        target_epoch_second: EpochSecond,
-        target_lane_rank: LaneRank | None = None,
+        target_lane_rank: LaneRank,
     ) -> WorkerScoreTransitionResult:
-        """Rewrite through an exact signed observed-score fence.
+        """Move the current score to the opposite polarity.
 
-        Admission and recovery rounds use this after acquiring a worker.
-        Implementations must require storedScore == observedScore.
-
-        Same-polarity rewrite preserves lane_rank when target_lane_rank is omitted.
-        Polarity flip is an owner-validated availability transition and must
-        provide a target_lane_rank because HOT_ACQUIRE and RECOVERY_RECHECK lane_rank meanings are
-        lane-local. target_epoch_second must not be lower than the observed
-        epochSecond. Score version normally preserves the observed value; a
-        scheduling-signature refresh may change it inside worker-runtime owner
-        logic.
+        Implementations require storedScore == observed_score. The target
+        polarity is simply the opposite sign. epochSecond and dirty are
+        preserved; target_lane_rank is explicit because HOT_ACQUIRE and
+        RECOVERY_RECHECK lane_rank meanings are lane-local. Full observed-score
+        CAS is intentional here because cross-polarity writes are important
+        owner transitions.
         """
         pass
 
     @abstractmethod
-    def hold_current_polarity(
+    def exhaust_recovery_recheck(
         self,
         *,
         home_bucket_id: HomeBucketId,
         worker_id: WorkerId,
-        target_epoch_second: EpochSecond,
-        target_lane_rank: LaneRank | None = None,
+        observed_score: Score,
     ) -> WorkerScoreTransitionResult:
-        """Hold the currently stored polarity without reopening or blocking.
+        """Move RECOVERY_RECHECK outside the routine recovery window.
 
-        Manual disable, drain, maintenance, capacity hold, parked, and recovery
-        exhausted all fit this shape. The implementation reads the stored score,
-        preserves sign, requires target_epoch_second to be same or newer than the
-        stored epochSecond, and preserves lane_rank unless target_lane_rank is
-        supplied.
+        Recovery exhausted / cold parked is represented by a too-old
+        RECOVERY_RECHECK epoch, not a far-future epoch. Implementations must
+        require storedScore == observed_score and source polarity
+        RECOVERY_RECHECK. The implementation mints the cold epoch internally
+        using its recovery lookback policy. Dirty and lane_rank are preserved.
         """
         pass
 

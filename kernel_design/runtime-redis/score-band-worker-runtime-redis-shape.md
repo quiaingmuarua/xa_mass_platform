@@ -6,7 +6,7 @@ roadmap.
 
 This document is the Redis companion for
 [Worker Score-Band Scheduling](../scheduling/worker-score-band-scheduling.md).
-It records first-version key shape and atomicity expectations only.
+It records first-slice key shape and atomicity expectations only.
 
 ## Purpose
 
@@ -49,7 +49,7 @@ Score and scheduling metadata use the same `homeBucketId`.
 Use the signed numeric score format:
 
 ```text
-base = epochSecond * SLOT_FACTOR + laneRank * VERSION_FACTOR + version
+base = epochSecond * SLOT_FACTOR + laneRank * DIRTY_FACTOR + dirty
 score = polarity * base
 ```
 
@@ -69,11 +69,11 @@ score == 0
 Constants:
 
 ```text
-VERSION_FACTOR = 100
+DIRTY_FACTOR = 2
 LANE_RANK_FACTOR = 100
-SLOT_FACTOR = LANE_RANK_FACTOR * VERSION_FACTOR
+SLOT_FACTOR = LANE_RANK_FACTOR * DIRTY_FACTOR
 MAX_LANE_RANK = 99
-MAX_VERSION = 99
+MAX_DIRTY = 1
 MAX_EPOCH_SECOND = 9_999_999_999
 PAUSE_EPOCH_SECOND = MAX_EPOCH_SECOND
 MIN_BASE = 1
@@ -84,16 +84,17 @@ MIN_BASE = 1
 ```text
 epochSecond = abs(score) / SLOT_FACTOR
 slotRemainder = abs(score) % SLOT_FACTOR
-laneRank = slotRemainder / VERSION_FACTOR
-version = slotRemainder % VERSION_FACTOR
+laneRank = slotRemainder / DIRTY_FACTOR
+dirty = slotRemainder % DIRTY_FACTOR
 ```
 
 The zero coordinate is reserved. Redis members must not be written with score
 `0`.
 
-With a 10-digit `epochSecond`, `SLOT_FACTOR = 10_000` keeps the maximum worker
-score around `1e14`, below the Redis sorted-set double exact-integer practical
-limit. Do not increase version digits without rechecking numeric precision.
+With a 10-digit `epochSecond`, `SLOT_FACTOR = 200` keeps the maximum worker
+score around `2e12`, below the Redis sorted-set double exact-integer practical
+limit. Do not increase laneRank or dirty digits without rechecking numeric
+precision.
 
 `laneRank` is lane-local:
 
@@ -105,10 +106,26 @@ RECOVERY_RECHECK
   retry count / failed recheck count / remaining recovery budget
 ```
 
-`version` is a worker core scheduling metadata revision fence. It is 00..99 and
-stored inside the score only to make stale acquired rounds fail after
-platform-defined scheduling metadata changes. The full scheduling signature or
-hash belongs in worker-runtime metadata/evidence, not in the score.
+`dirty` is a one-bit worker core scheduling metadata dirty-page flag:
+
+```text
+0 = clean relative to current reservation/admission owner validation
+1 = scheduling-critical metadata changed while a persisted task-worker
+    candidate reservation / admission hold may continue from cached admission
+    facts
+```
+
+It is stored inside the score only so a reservation owner can notice that it
+must re-read and revalidate current worker-runtime scheduling metadata before
+continuing or pre-occupying the worker. Score-band itself does not create an
+`active lease`; `observedScore` is only a stale fence. If there is no persisted
+task-worker candidate reservation / admission hold, dirty should remain unused
+or deferred. Idle workers do not need dirty writes when metadata changes; the
+next scheduling validation reads current metadata. Already dispatched work is
+not interrupted through dirty; result / timeout / capacity release handles that
+in its owner path. Dirty is not a version, counter, hash, priority, lifecycle,
+or audit sequence. The full scheduling signature/hash belongs in worker-runtime
+metadata/evidence, not in the score.
 
 ## Key Shape
 
@@ -140,7 +157,7 @@ Hot eligible acquire:
 ```text
 ZRANGEBYSCORE wr:{prefix}:score:{homeBucketId}
   MIN_BASE
-  base(nowEpochSecond, MAX_LANE_RANK, MAX_VERSION)
+  base(nowEpochSecond, MAX_LANE_RANK, MAX_DIRTY)
   WITHSCORES
   LIMIT 0 limit
 ```
@@ -155,32 +172,34 @@ Recovery recheck acquire:
 
 ```text
 ZREVRANGEBYSCORE wr:{prefix}:score:{homeBucketId}
-  -MIN_BASE
-  -base(nowEpochSecond, MAX_LANE_RANK, MAX_VERSION)
+  -base(nowEpochSecond - recoveryLookbackSeconds, MIN_LANE_RANK, MIN_DIRTY)
+  -base(nowEpochSecond, MAX_LANE_RANK, MAX_DIRTY)
   WITHSCORES
   LIMIT 0 limit
 ```
 
-The reverse scan is intentional. RECOVERY_RECHECK scores are negative, so the oldest
-absolute due coordinates are closer to zero. Reverse order returns those first.
-A plain ascending negative scan would prefer larger absolute coordinates and can
-starve older due recovery candidates under `LIMIT`.
+The reverse scan is intentional. RECOVERY_RECHECK scores are negative and the
+routine recovery scan is bounded to a recent lookback window. Scores newer than
+`nowEpochSecond` are future retry delay / hold. Scores older than
+`nowEpochSecond - recoveryLookbackSeconds` are exhausted / cold parked and are
+outside routine recovery.
 
 Within the same `epochSecond`, reverse scan returns lower laneRank first. The
 first slice treats lower RECOVERY_RECHECK laneRank as closer to exhaustion and
 therefore more urgent. Within the same `epochSecond` and laneRank, reverse scan
-returns lower version first. Version is a stale fence, not a priority signal. If
+returns lower dirty first. Dirty is a stale fence, not a priority signal. If
 a later policy wants the opposite laneRank ordering, it must encode laneRank
 inversely rather than changing the scan primitive.
 
-`observedScore` is an opaque stale fence for the worker-runtime admission or
-recheck round. It is the complete signed score, including polarity,
-epochSecond, laneRank, and version. Do not trim the sign, version, or lower
-coordinates. It is not public worker lifecycle truth, and callers must not
-decode, construct, or use it as a lifecycle DTO; they may only pass it back to
-worker-runtime score primitives.
+`observedScore` is an opaque full-score fence returned with candidates. It is
+the complete signed score, including polarity, epochSecond, laneRank, and dirty.
+Do not trim the sign, dirty, or lower coordinates. It is not public worker
+lifecycle truth, and callers must not decode, construct, or use it as a
+lifecycle DTO. Ordinary monotonic score writes do not need it; lowering
+operations such as release or recovery exhaustion use it as exact CAS
+protection.
 
-The first version should be demand-driven or owner-controlled. Do not add a
+The first slice should be demand-driven or owner-controlled. Do not add a
 periodic recovery-recheck scanner until a later design proves the liveness invariant
 and cost. Parked inventory, if needed for diagnostics, is a bounded diagnostic
 query and must not become a hot-path maintenance loop.
@@ -208,7 +227,6 @@ approvedSchedulingAttributes
 placementTagValues
 metadataVersion
 schedulingSignatureHash
-scoreVersion
 ```
 
 Field roles:
@@ -227,15 +245,13 @@ placementTagValues
   compact owner-approved values for diagnostics and later auxiliary indexes
 
 metadataVersion
-  owner metadata replacement version; not a transport session generation
+  owner metadata replacement revision; not a transport session generation and
+  not a score-axis fence
 
 schedulingSignatureHash
-  platform-owned digest over scheduling-critical metadata; used to decide
-  whether the score version fence should be refreshed
-
-scoreVersion
-  last score-version fence written for the current scheduling signature; not a
-  standalone owner truth and not an audit sequence
+  platform-owned digest over scheduling-critical metadata; used by the
+  reservation owner to validate whether dirty may be cleared before continuing or
+  pre-occupying
 ```
 
 Do not store these in scheduling metadata:
@@ -260,7 +276,7 @@ current score
 decoded polarity
 decoded epochSecond
 decoded laneRank
-decoded version
+decoded dirty
 ```
 
 Transport/session/freshness evidence stays in transport-owned stores or trace.
@@ -278,88 +294,23 @@ absScore = abs(score)
 polarity = score > 0 ? HOT_ACQUIRE : RECOVERY_RECHECK
 epochSecond = absScore / SLOT_FACTOR
 slotRemainder = absScore % SLOT_FACTOR
-laneRank = slotRemainder / VERSION_FACTOR
-version = slotRemainder % VERSION_FACTOR
+laneRank = slotRemainder / DIRTY_FACTOR
+dirty = slotRemainder % DIRTY_FACTOR
 ```
 
 Score `0` is invalid. `absScore` must be at least `MIN_BASE`.
 
-### Observed Rewrite
+### Current Same-Polarity Rewrite
 
-Admission and recovery-recheck rounds must use exact observed-score CAS:
-
-```text
-rewrite_observed_worker_score(
-  key,
-  workerId,
-  observedScore,
-  targetScore
-)
-```
-
-Lua shape:
+Admission/recheck rounds, cooldown, manual hold, drain, maintenance, and policy
+hold all use current-read monotonic same-polarity rewrite:
 
 ```text
-stored = ZSCORE key workerId
-if stored == nil:
-  return STALE
-storedScore = tonumber(stored)
-if storedScore ~= observedScore:
-  return STALE with storedScore
-decode observedScore
-decode targetScore
-if targetScore == 0:
-  return INVALID
-if target.epochSecond < observed.epochSecond:
-  return INVALID
-if target.version != observed.version:
-  require caller already performed worker-runtime scheduling signature refresh
-ZADD key targetScore workerId
-return TRANSITIONED targetScore
-```
-
-Target score is computed by worker-runtime before calling the Redis primitive.
-The Redis primitive should not validate worker declaration, capacity, transport
-freshness, or placement policy. It should enforce score-axis shape and stale
-fence only.
-
-Before calling this primitive, worker-runtime must mint cross-polarity
-`targetScore` with an explicit policy-owned target laneRank. Redis receives only
-the final `targetScore`; it should not infer whether laneRank was intentionally
-chosen.
-
-The exact equality check must compare the full signed `observedScore`. A
-trimmed fence without sign is invalid because it cannot distinguish stale
-cross-polarity changes, such as `-base(epoch, laneRank, version)` being replaced
-by `+base(epoch, laneRank, version)`. A trimmed fence without version is also
-invalid because it cannot detect that worker scheduling metadata changed after
-acquire.
-
-Use this for:
-
-```text
-hot admission hold -> positive future score
-capacity full -> positive future score
-manual disable / drain observed as HOT_ACQUIRE -> positive PAUSE_EPOCH_SECOND score
-manual disable / drain observed as RECOVERY_RECHECK -> negative PAUSE_EPOCH_SECOND score
-disconnect with recovery window -> negative score
-recovery-recheck failed with budget -> negative next-recheck score
-recovery-recheck exhausted / parked -> negative PAUSE_EPOCH_SECOND score + owner evidence
-recovery-recheck recovery -> positive score after validation
-```
-
-### Current-Polarity Hold
-
-Owner paths that hold a worker without changing availability polarity use a
-current-read same-polarity write:
-
-```text
-hold_current_worker_polarity(
+rewrite_current_score(
   key,
   workerId,
   targetEpochSecond,
-  targetLaneRank,
-  targetVersion
+  targetLaneRank
 )
 ```
 
@@ -376,15 +327,26 @@ decode storedScore
 if targetEpochSecond < stored.epochSecond:
   return INVALID
 targetLaneRank = targetLaneRank or stored.laneRank
-targetVersion = targetVersion or stored.version
-targetScore = sign(storedScore) * base(targetEpochSecond, targetLaneRank, targetVersion)
+targetScore = sign(storedScore) *
+  base(targetEpochSecond, targetLaneRank, stored.dirty)
 ZADD key targetScore workerId
 return TRANSITIONED targetScore
 ```
 
-This primitive is for manual disable, drain, maintenance, owner hold, admission
-hold, or parked/recovery-exhausted far-future hold. It must not flip HOT_ACQUIRE to
-RECOVERY_RECHECK or RECOVERY_RECHECK to HOT_ACQUIRE.
+The Redis primitive should not validate worker declaration, capacity, transport
+freshness, or placement policy. It should enforce score-axis shape and stale
+fence only. It must not change polarity, clear dirty, or lower epochSecond. It
+does not require full observed-score CAS because epochSecond only moves forward.
+
+Use this for:
+
+```text
+hot admission hold -> positive future score
+capacity full -> positive future score
+manual disable / drain observed as HOT_ACQUIRE -> positive PAUSE_EPOCH_SECOND score
+manual disable / drain observed as RECOVERY_RECHECK -> negative PAUSE_EPOCH_SECOND score
+recovery-recheck failed with budget -> negative next-recheck score
+```
 
 ### Release / Enable
 
@@ -413,7 +375,7 @@ decode observedScore
 if releaseEpochSecond > observed.epochSecond:
   return INVALID
 targetScore = sign(observedScore) *
-  base(releaseEpochSecond, observed.laneRank, observed.version)
+  base(releaseEpochSecond, observed.laneRank, observed.dirty)
 ZADD key targetScore workerId
 return TRANSITIONED targetScore
 ```
@@ -422,23 +384,20 @@ This primitive preserves polarity. Releasing a negative RECOVERY_RECHECK hold on
 makes RECOVERY_RECHECK due for recovery validation; it does not produce a positive
 HOT_ACQUIRE score directly.
 
-If worker-runtime owner evidence marks the held negative score as parked,
-owner-reset-required, or recovery-exhausted, the caller must validate owner reset
-authorization in the same owner transition boundary before running this score
-release. Redis score CAS proves only that the held score is current; it does not
-prove that unpark is authorized.
+If worker-runtime owner evidence marks a held score as owner-reset-required,
+the caller must validate owner reset authorization in the same owner transition
+boundary before running this score release. Redis score CAS proves only that
+the held score is current; it does not prove that reset is authorized.
 
-### Polarity Flip
+### Polarity Move
 
-Polarity flip is an owner-validated availability transition:
+Polarity move is an owner-validated availability transition:
 
 ```text
-flip_worker_polarity(
+toggle_current_polarity(
   key,
   workerId,
-  expectedScore,
-  targetPolarity,
-  targetEpochSecond,
+  observedScore,
   targetLaneRank
 )
 ```
@@ -450,67 +409,138 @@ stored = ZSCORE key workerId
 if stored == nil:
   return STALE
 storedScore = tonumber(stored)
-if storedScore ~= expectedScore:
+if storedScore ~= observedScore:
   return STALE with storedScore
-decode storedScore
-if targetPolarity == polarity(storedScore):
+decode observedScore
+if observedScore == 0:
   return INVALID
-if targetEpochSecond < stored.epochSecond:
-  return INVALID
+targetPolarity = -observed.polarity
 targetScore = targetPolarity *
-  base(targetEpochSecond, targetLaneRank, stored.version)
+  base(observed.epochSecond, targetLaneRank, observed.dirty)
 ZADD key targetScore workerId
 return TRANSITIONED targetScore
 ```
 
 Use positive-to-negative for strong negative availability evidence. Use
-negative-to-positive only after worker-runtime verified reopen. Release is not a
-polarity flip. A parked RECOVERY_RECHECK score at `PAUSE_EPOCH_SECOND` must first be
-released to due RECOVERY_RECHECK; only after recovery validation passes may a
-separate polarity flip write a positive HOT_ACQUIRE score.
+negative-to-positive only after worker-runtime verified recovery. Release is not
+a polarity move.
 
-Polarity flip always requires exact `expectedScore` and an explicit
-policy-owned `targetLaneRank`. Do not inherit laneRank across polarity lanes.
+Polarity move uses full observed-score CAS. If any score coordinate already
+changed, return STALE instead of toggling again. `targetLaneRank` is explicit;
+do not inherit laneRank across polarity lanes. It preserves `epochSecond` and
+dirty. Preserving epoch keeps future manual holds effective across HOT_ACQUIRE
+-> RECOVERY_RECHECK and lets too-old recovered workers become immediately due
+after RECOVERY_RECHECK -> HOT_ACQUIRE.
 
-### Scheduling Signature Refresh
+### Recovery Exhausted / Cold Park
+
+Recovery exhausted writes RECOVERY_RECHECK to a too-old coordinate outside the
+routine recovery lookback window:
+
+```text
+exhaust_recovery_recheck(
+  key,
+  workerId,
+  observedScore
+)
+```
+
+Lua shape:
+
+```text
+stored = ZSCORE key workerId
+if stored == nil:
+  return STALE
+storedScore = tonumber(stored)
+if storedScore ~= observedScore:
+  return STALE with storedScore
+decode storedScore
+if polarity(storedScore) != RECOVERY_RECHECK:
+  return INVALID
+coldEpochSecond = mint internal cold epoch from recovery lookback policy
+targetLaneRank = stored.laneRank
+targetScore = -base(coldEpochSecond, targetLaneRank, stored.dirty)
+ZADD key targetScore workerId
+return TRANSITIONED targetScore
+```
+
+`coldEpochSecond` is not caller-supplied. The worker score implementation mints
+it from its recovery lookback policy and writes a coordinate older than the
+routine recovery lookback window. This is the RECOVERY_RECHECK exhausted / cold
+parked shape. Do not use a far-future epoch for exhausted recovery; a future
+epoch is for retry delay, manual disable, drain, maintenance, or other holds.
+
+### Deferred Dirty Marker
 
 Worker-runtime owns a platform-defined scheduling signature over fields that
-affect worker selection or admission. Redis score version is only a low-order
-stale fence for that signature.
+affect worker selection or admission. Redis dirty bit is only a one-bit
+dirty-page marker for that signature.
 
-Refresh flow:
+The first `WorkerScoreCore` surface does not expose a generic dirty mark /
+clear primitive. Add dirty mutation only with a real persisted candidate
+reservation owner.
+
+Metadata replacement flow while a persisted task-worker candidate reservation /
+admission hold exists:
 
 ```text
-compute platform-owned scheduling signature
-compare with wr:{prefix}:meta:{homeBucketId}[workerId].schedulingSignatureHash
-if unchanged:
-  do not bump score version
-if changed:
-  update schedulingSignatureHash in metadata/evidence
-  refresh score version through an atomic score write
+update worker-runtime metadataVersion / schedulingSignatureHash
+mark worker score dirty through an atomic score write
 ```
 
-The exact version bump rule is deferred to the executable spec, but the Redis
-shape must preserve these constraints:
+Metadata replacement without a persisted reservation / admission hold does not
+require a score dirty write. The next worker candidate validation must read
+current worker-runtime scheduling metadata before assignment. Existing
+dispatched work continues until result / timeout / capacity release evidence
+reaches its owner path.
+
+Dirty mark primitive:
 
 ```text
-do not set version = hash % N directly
-do not lower epochSecond during signature refresh
+mark_worker_score_dirty(
+  key,
+  workerId
+)
+```
+
+Lua shape:
+
+```text
+stored = ZSCORE key workerId
+if stored == nil:
+  return STALE
+storedScore = tonumber(stored)
+if storedScore == 0:
+  return INVALID
+decode storedScore
+if stored.dirty == 1:
+  return NOOP storedScore
+targetScore = sign(storedScore) *
+  base(stored.epochSecond, stored.laneRank, 1)
+ZADD key targetScore workerId
+return TRANSITIONED targetScore
+```
+
+Dirty mark constraints:
+
+```text
+do not lower epochSecond
 do not change polarity because metadata changed
-do not treat version as priority, reason, or audit sequence
-do not allow rollover to recreate a live old observedScore coordinate
+do not change laneRank because metadata changed
+do not treat dirty as priority, reason, lifecycle, or audit sequence
+non-reservation owners may only write dirty = 1
 ```
 
-Typical score effect:
+Dirty clear is not a metadata-owner operation. Only the reservation owner may clear
+dirty to `0`, and only after re-reading and validating current
+`schedulingSignatureHash` / scheduling metadata before continuing or
+pre-occupying the worker. Redis score equality is a stale fence, not proof that
+the validation happened; that proof belongs to the worker-runtime owner wrapper
+around the reservation-specific primitive.
 
-```text
-sign, epochSecond, laneRank preserved
-version changes to the next owner-approved fence value
-```
-
-Signature refresh may be combined atomically with metadata replacement when the
-metadata change itself is the cause. It is not triggered by raw transport
-events, heartbeat, session refresh, trace, or display-only field changes.
+Dirty mark may be combined atomically with metadata replacement when metadata
+change itself is the cause. It is not triggered by raw transport events,
+heartbeat, session refresh, trace, or display-only field changes.
 
 ## Dynamic State Boundary
 
@@ -527,43 +557,46 @@ current hold owner record
 Future HOT_ACQUIRE unavailability is represented by:
 
 ```text
-+base(futureEpochSecond, laneRank, version)
++base(futureEpochSecond, laneRank, dirty)
 ```
 
 Manual disable / drain / maintenance hold preserves current polarity:
 
 ```text
 HOT_ACQUIRE current score:
-  +base(epochSecond, laneRank, version) -> +base(PAUSE_EPOCH_SECOND, laneRank, version)
+  +base(epochSecond, laneRank, dirty) -> +base(PAUSE_EPOCH_SECOND, laneRank, dirty)
 
 RECOVERY_RECHECK current score:
-  -base(epochSecond, laneRank, version) -> -base(PAUSE_EPOCH_SECOND, laneRank, version)
+  -base(epochSecond, laneRank, dirty) -> -base(PAUSE_EPOCH_SECOND, laneRank, dirty)
 ```
 
 Recoverable negative state is represented by:
 
 ```text
--base(nextReconnectRecheckEpochSecond, remainingRecheckLaneRank, version)
+-base(nextReconnectRecheckEpochSecond, remainingRecheckLaneRank, dirty)
 ```
 
 RECOVERY_RECHECK is for confirmed negative connectivity or reachability evidence that
 still has a recovery window. It does not enter hot eligible acquire. Recheck
-validation may move it back to HOT_ACQUIRE, rewrite RECOVERY_RECHECK with lower budget, or
-write RECOVERY_RECHECK far-future hold when recovery is exhausted.
+validation may move it back to HOT_ACQUIRE, rewrite RECOVERY_RECHECK with lower
+budget, write a future retry delay, or write a too-old cold coordinate when
+recovery is exhausted.
 
-Parked is represented by:
+Recovery exhausted / cold parked is represented by:
 
 ```text
--base(PAUSE_EPOCH_SECOND, laneRank, version)
+-base(coldTooOldEpochSecond, laneRank, dirty)
 owner evidence = parked / owner-reset-required / recovery-exhausted / policy hold
 ```
 
-There is no PARKED band. Reason, reopen policy, and operator note are
+There is no PARKED band. Too-old RECOVERY_RECHECK falls outside the routine
+recovery lookback window. Reason, reopen policy, and operator note are
 diagnostics or owner evidence, not score hot-path truth in the first slice.
 Ordinary reconnect or heartbeat evidence must not rewrite negative score back to
-positive HOT_ACQUIRE. Reopen requires release to due RECOVERY_RECHECK followed by
-worker-runtime verified polarity flip. Release of a parked hold must validate
-owner reset authorization outside the score value before writing the release.
+positive HOT_ACQUIRE. Verified recovery moves RECOVERY_RECHECK to HOT_ACQUIRE
+without changing epochSecond; a too-old recovered worker therefore becomes
+immediately due in HOT_ACQUIRE. A future manual hold remains future after a
+polarity move and still requires release/enable.
 
 ## Capacity / Admission Boundary
 
@@ -638,30 +671,38 @@ resource's home bucket.
 - `polarity` is derived from ZSET score sign; do not store it as independent
   truth.
 - `score` lives in score ZSETs; do not copy it into metadata.
-- `observedScore` must be returned by acquire and used as the admission stale
-  fence.
+- `observedScore` must be returned by acquire for exact epoch-lowering
+  operations such as release and recovery exhaustion.
 - `observedScore` must remain the full signed score including polarity,
-  epochSecond, laneRank, and version. Do not trim it to epoch/laneRank/version, and
+  epochSecond, laneRank, and dirty. Do not trim it to epoch/laneRank/dirty, and
   do not let callers construct or decode it.
-- Score version is a short stale fence for platform-owned scheduling metadata
+- Do not expose kernel-owned encoding details as caller parameters: scan ranges,
+  cold epoch, polarity sign, dirty bit, base, or factor constants. Redis scripts
+  may compute them internally from stable owner policy.
+- Do not add fake business strategy knobs to Redis score primitives before a
+  real caller workflow owns the value.
+- Dirty bit is a deferred short stale fence for platform-owned scheduling metadata
   signature changes. Do not derive it directly from hash modulo, and do not use
   it as priority, reason, audit sequence, or lifecycle state.
-- Admission/recheck rewrites must use exact observed-score CAS, not broad
-  range-mint.
+- Epoch-lowering operations must use exact observed-score CAS, not broad
+  range-mint. Monotonic current-score writes use current-read validation and
+  must not lower epochSecond.
 - Normal writes must not lower `epochSecond`; only release / enable may lower a
   held score through exact observed-score CAS, preserving polarity.
-- Release of parked / owner-reset-required holds must validate owner evidence
+- Release of owner-reset-required holds must validate owner evidence
   and reset authorization; score CAS alone is not authorization.
-- Polarity flip must use exact expected-score CAS and explicit target laneRank.
+- Polarity move must use exact expected-score CAS and explicit target laneRank,
+  and must preserve epochSecond.
 - Worker metadata is for placement and validation, not transport/session proof.
 - Do not add worker lifecycle tags.
-- Do not add `PARKED_TAG`; parked is negative far-future hold plus owner
-  evidence.
+- Do not add `PARKED_TAG`; recovery exhausted / cold parked is a too-old
+  RECOVERY_RECHECK coordinate plus owner evidence. Manual disable / drain /
+  maintenance holds may still use far-future epochSecond.
 - Do not add `FUTURE_BAND`; use future epochSecond inside the current polarity.
 - Do not add `MANUAL_DISABLED_BAND`; manual disable is same-polarity hold.
 - Do not add a hold hash in the first slice.
 - Do not let transport write worker score keys directly.
-- Do not let positive transport evidence flip RECOVERY_RECHECK to HOT_ACQUIRE directly.
+- Do not let positive transport evidence move RECOVERY_RECHECK to HOT_ACQUIRE directly.
 - Do not create per-task worker candidate keys.
 - Do not create placement-tag score fanout in the first slice.
 - Do not add broad background repair scans without a later executable design.
