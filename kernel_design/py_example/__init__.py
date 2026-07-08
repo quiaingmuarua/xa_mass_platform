@@ -1,5 +1,5 @@
 from .kernel import (
-    EpochSecond,
+    TimeMillis,
     HomeBucketId,
     LaneRank,
     Score,
@@ -18,16 +18,17 @@ from .kernel import (
     WorkerScoreTransitionResult,
     WorkerScoreTransitionStatus,
 )
-from .runtime_redis import RedisZsetTaskScoreBandCore
+from .runtime_redis import RedisZsetTaskScoreBandCore, RedisZsetWorkerScoreCore
 
 __all__ = [
-    "EpochSecond",
+    "TimeMillis",
     "HomeBucketId",
     "LaneRank",
     "Score",
     "Suffix",
     "TaskId",
     "RedisZsetTaskScoreBandCore",
+    "RedisZsetWorkerScoreCore",
     "TaskScoreBand",
     "TaskScoreBandCore",
     "TaskScoreState",

@@ -1,5 +1,5 @@
 from .task_score_band import (
-    EpochSecond,
+    TimeMillis,
     Score,
     Suffix,
     TaskId,
@@ -22,7 +22,7 @@ from .worker_score import (
 )
 
 __all__ = [
-    "EpochSecond",
+    "TimeMillis",
     "HomeBucketId",
     "LaneRank",
     "Score",

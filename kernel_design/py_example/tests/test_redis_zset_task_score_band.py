@@ -38,7 +38,7 @@ class FakePipeline:
 class FakeRedis:
     def __init__(self) -> None:
         self.zsets: dict[str, dict[str, int]] = {}
-        self.now = 1_000
+        self.now_millis = 100_000
         self.eval_count = 0
 
     def pipeline(self, transaction: bool = True) -> FakePipeline:
@@ -154,7 +154,11 @@ class FakeRedis:
         return [member for _, member in rows[start : start + num]]
 
     def time(self) -> tuple[int, int]:
-        return self.now, 0
+        return self.now_millis // 1_000, (self.now_millis % 1_000) * 1_000
+
+    @property
+    def now_slot(self) -> int:
+        return self.now_millis // 100
 
 
 class RedisZsetTaskScoreBandCoreTest(unittest.TestCase):
@@ -162,8 +166,11 @@ class RedisZsetTaskScoreBandCoreTest(unittest.TestCase):
         self.redis = FakeRedis()
         self.kernel = RedisZsetTaskScoreBandCore(self.redis)
 
-    def score(self, tag: int, epoch_second: int, suffix: int) -> int:
-        return tag * self.kernel.tag_factor + epoch_second * 100 + suffix
+    def score(self, tag: int, time_slot: int, suffix: int) -> int:
+        return tag * self.kernel.tag_factor + time_slot * 100 + suffix
+
+    def millis(self, time_slot: int) -> int:
+        return time_slot * self.kernel.SLOT_MILLIS
 
     def store_score(self, task_id: str, score: int) -> None:
         self.redis.zadd(self.kernel.score_key, {task_id: score})
@@ -172,15 +179,23 @@ class RedisZsetTaskScoreBandCoreTest(unittest.TestCase):
         self,
     ) -> None:
         running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 999, 5)
+        running_current_second = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 1)
         pre_dispatch_visible = self.score(self.kernel.PRE_DISPATCH_VISIBLE_TAG, 999, 5)
+        pre_dispatch_current_second = self.score(
+            self.kernel.PRE_DISPATCH_VISIBLE_TAG,
+            1_000,
+            1,
+        )
         paused = self.score(
             self.kernel.RUNNING_VISIBLE_TAG,
-            self.kernel.PAUSE_EPOCH_SECOND,
+            self.kernel.PAUSE_TIME_SLOT,
             5,
         )
 
         self.store_score("running", running)
+        self.store_score("running-current-second", running_current_second)
         self.store_score("pre-dispatch-visible", pre_dispatch_visible)
+        self.store_score("pre-dispatch-current-second", pre_dispatch_current_second)
         self.store_score("paused", paused)
 
         self.assertEqual(
@@ -192,7 +207,7 @@ class RedisZsetTaskScoreBandCoreTest(unittest.TestCase):
             self.kernel.acquire_dispatch_work_tasks(limit=10),
         )
 
-    def test_initialize_score_enters_pre_review_with_internal_epoch(self) -> None:
+    def test_initialize_score_enters_pre_review_with_internal_time(self) -> None:
         existing = self.score(self.kernel.PRE_REVIEW_TAG, 900, 1)
         self.redis.zadd(self.kernel.score_key, {"existing": existing})
 
@@ -215,7 +230,7 @@ class RedisZsetTaskScoreBandCoreTest(unittest.TestCase):
         self.assertEqual(existing, existing_result.score)
         self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, new_result.status)
         self.assertEqual(
-            self.score(self.kernel.PRE_REVIEW_TAG, self.redis.now, 7),
+            self.score(self.kernel.PRE_REVIEW_TAG, self.redis.now_slot, 7),
             new_result.score,
         )
         self.assertEqual(TaskScoreTransitionStatus.INVALID, invalid_result.status)
@@ -223,7 +238,7 @@ class RedisZsetTaskScoreBandCoreTest(unittest.TestCase):
         self.assertEqual(existing, states["existing"].score)
         self.assertIsNotNone(states["new"])
         self.assertEqual(TaskScoreBand.PRE_REVIEW, states["new"].band)
-        self.assertEqual(self.redis.now, states["new"].epoch_second)
+        self.assertEqual(self.redis.now_millis, states["new"].time_millis)
         self.assertEqual(7, states["new"].suffix)
 
     def test_rewrite_allows_downward_lifecycle_jump(self) -> None:
@@ -234,7 +249,7 @@ class RedisZsetTaskScoreBandCoreTest(unittest.TestCase):
             task_id="task",
             expected_band=TaskScoreBand.PRE_REVIEW,
             target_band=TaskScoreBand.RUNNING_VISIBLE,
-            target_epoch_second=1_001,
+            target_time_millis=self.millis(1_001),
             target_suffix=9,
         )
         state = self.kernel.get_score_states(task_ids=["task"])["task"]
@@ -252,19 +267,19 @@ class RedisZsetTaskScoreBandCoreTest(unittest.TestCase):
             task_id="task",
             expected_band=TaskScoreBand.RUNNING_VISIBLE,
             target_band=TaskScoreBand.PRE_DISPATCH_VISIBLE,
-            target_epoch_second=1_001,
+            target_time_millis=self.millis(1_001),
         )
 
         self.assertEqual(TaskScoreTransitionStatus.INVALID, result.status)
 
-    def test_rewrite_allows_suffix_change_only_with_newer_epoch(self) -> None:
+    def test_rewrite_allows_suffix_change_only_with_newer_time(self) -> None:
         pre_dispatch_visible = self.score(self.kernel.PRE_DISPATCH_VISIBLE_TAG, 1_000, 5)
         self.store_score("task", pre_dispatch_visible)
 
         result = self.kernel.rewrite_score(
             task_id="task",
             expected_band=TaskScoreBand.PRE_DISPATCH_VISIBLE,
-            target_epoch_second=1_001,
+            target_time_millis=self.millis(1_001),
             target_suffix=4,
         )
         state = self.kernel.get_score_states(task_ids=["task"])["task"]
@@ -272,82 +287,82 @@ class RedisZsetTaskScoreBandCoreTest(unittest.TestCase):
         self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, result.status)
         self.assertIsNotNone(state)
         self.assertEqual(TaskScoreBand.PRE_DISPATCH_VISIBLE, state.band)
-        self.assertEqual(1_001, state.epoch_second)
+        self.assertEqual(self.millis(1_001), state.time_millis)
         self.assertEqual(4, state.suffix)
 
-    def test_rewrite_rejects_suffix_change_without_newer_epoch(self) -> None:
+    def test_rewrite_rejects_suffix_change_without_newer_time(self) -> None:
         pre_dispatch_visible = self.score(self.kernel.PRE_DISPATCH_VISIBLE_TAG, 1_000, 5)
         self.store_score("task", pre_dispatch_visible)
 
         result = self.kernel.rewrite_score(
             task_id="task",
             expected_band=TaskScoreBand.PRE_DISPATCH_VISIBLE,
-            target_epoch_second=1_000,
+            target_time_millis=self.millis(1_000),
             target_suffix=4,
         )
 
         self.assertEqual(TaskScoreTransitionStatus.STALE, result.status)
 
-    def test_rewrite_same_band_epoch_preserves_suffix(self) -> None:
+    def test_rewrite_same_band_time_millis_preserves_suffix(self) -> None:
         running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 7)
         self.store_score("task", running)
 
-        result = self.kernel.rewrite_same_band_epoch(
+        result = self.kernel.rewrite_same_band_time_millis(
             task_id="task",
             expected_band=TaskScoreBand.RUNNING_VISIBLE,
-            target_epoch_second=1_001,
+            target_time_millis=self.millis(1_001),
         )
         state = self.kernel.get_score_states(task_ids=["task"])["task"]
 
         self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, result.status)
         self.assertIsNotNone(state)
         self.assertEqual(TaskScoreBand.RUNNING_VISIBLE, state.band)
-        self.assertEqual(1_001, state.epoch_second)
+        self.assertEqual(self.millis(1_001), state.time_millis)
         self.assertEqual(7, state.suffix)
 
-    def test_rewrite_same_band_epoch_rejects_non_increasing_epoch(self) -> None:
+    def test_rewrite_same_band_time_millis_rejects_non_increasing_time(self) -> None:
         running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 7)
         self.store_score("task", running)
 
-        result = self.kernel.rewrite_same_band_epoch(
+        result = self.kernel.rewrite_same_band_time_millis(
             task_id="task",
             expected_band=TaskScoreBand.RUNNING_VISIBLE,
-            target_epoch_second=1_000,
+            target_time_millis=self.millis(1_000),
         )
 
         self.assertEqual(TaskScoreTransitionStatus.STALE, result.status)
 
-    def test_rewrite_same_band_epoch_preserves_suffix_on_later_epoch(self) -> None:
+    def test_rewrite_same_band_time_millis_preserves_suffix_on_later_time(self) -> None:
         running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 7)
         self.store_score("task", running)
 
-        result = self.kernel.rewrite_same_band_epoch(
+        result = self.kernel.rewrite_same_band_time_millis(
             task_id="task",
             expected_band=TaskScoreBand.RUNNING_VISIBLE,
-            target_epoch_second=1_002,
+            target_time_millis=self.millis(1_002),
         )
         state = self.kernel.get_score_states(task_ids=["task"])["task"]
 
         self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, result.status)
         self.assertIsNotNone(state)
         self.assertEqual(TaskScoreBand.RUNNING_VISIBLE, state.band)
-        self.assertEqual(1_002, state.epoch_second)
+        self.assertEqual(self.millis(1_002), state.time_millis)
         self.assertEqual(7, state.suffix)
 
-    def test_rewrite_same_band_epoch_uses_absolute_target_epoch(self) -> None:
+    def test_rewrite_same_band_time_millis_uses_absolute_target_time(self) -> None:
         running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 998, 7)
         self.store_score("task", running)
 
-        result = self.kernel.rewrite_same_band_epoch(
+        result = self.kernel.rewrite_same_band_time_millis(
             task_id="task",
             expected_band=TaskScoreBand.RUNNING_VISIBLE,
-            target_epoch_second=1_002,
+            target_time_millis=self.millis(1_002),
         )
         state = self.kernel.get_score_states(task_ids=["task"])["task"]
 
         self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, result.status)
         self.assertIsNotNone(state)
-        self.assertEqual(1_002, state.epoch_second)
+        self.assertEqual(self.millis(1_002), state.time_millis)
         self.assertEqual(7, state.suffix)
 
     def test_rewrite_observed_same_band_suffix_applies_suffix_delta(self) -> None:
@@ -357,14 +372,14 @@ class RedisZsetTaskScoreBandCoreTest(unittest.TestCase):
         result = self.kernel.rewrite_observed_same_band_suffix(
             task_id="task",
             observed_score=running,
-            target_epoch_second=1_002,
+            target_time_millis=self.millis(1_002),
             suffix_delta=-1,
         )
         state = self.kernel.get_score_states(task_ids=["task"])["task"]
 
         self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, result.status)
         self.assertIsNotNone(state)
-        self.assertEqual(1_002, state.epoch_second)
+        self.assertEqual(self.millis(1_002), state.time_millis)
         self.assertEqual(6, state.suffix)
 
     def test_rewrite_observed_same_band_suffix_rejects_zero_delta(self) -> None:
@@ -374,14 +389,14 @@ class RedisZsetTaskScoreBandCoreTest(unittest.TestCase):
         result = self.kernel.rewrite_observed_same_band_suffix(
             task_id="task",
             observed_score=running,
-            target_epoch_second=1_002,
+            target_time_millis=self.millis(1_002),
             suffix_delta=0,
         )
         state = self.kernel.get_score_states(task_ids=["task"])["task"]
 
         self.assertEqual(TaskScoreTransitionStatus.INVALID, result.status)
         self.assertIsNotNone(state)
-        self.assertEqual(1_000, state.epoch_second)
+        self.assertEqual(self.millis(1_000), state.time_millis)
         self.assertEqual(7, state.suffix)
 
     def test_rewrite_observed_same_band_suffix_rejects_positive_delta(self) -> None:
@@ -391,14 +406,14 @@ class RedisZsetTaskScoreBandCoreTest(unittest.TestCase):
         result = self.kernel.rewrite_observed_same_band_suffix(
             task_id="task",
             observed_score=running,
-            target_epoch_second=1_002,
+            target_time_millis=self.millis(1_002),
             suffix_delta=1,
         )
         state = self.kernel.get_score_states(task_ids=["task"])["task"]
 
         self.assertEqual(TaskScoreTransitionStatus.INVALID, result.status)
         self.assertIsNotNone(state)
-        self.assertEqual(1_000, state.epoch_second)
+        self.assertEqual(self.millis(1_000), state.time_millis)
         self.assertEqual(7, state.suffix)
 
     def test_rewrite_observed_same_band_suffix_rejects_stale_observed_score(
@@ -412,14 +427,14 @@ class RedisZsetTaskScoreBandCoreTest(unittest.TestCase):
         result = self.kernel.rewrite_observed_same_band_suffix(
             task_id="task",
             observed_score=observed,
-            target_epoch_second=2_000,
+            target_time_millis=self.millis(2_000),
             suffix_delta=-1,
         )
         state = self.kernel.get_score_states(task_ids=["task"])["task"]
 
         self.assertEqual(TaskScoreTransitionStatus.STALE, result.status)
         self.assertIsNotNone(state)
-        self.assertEqual(1_500, state.epoch_second)
+        self.assertEqual(self.millis(1_500), state.time_millis)
         self.assertEqual(9, state.suffix)
 
     def test_rewrite_observed_same_band_suffix_rejects_suffix_delta_underflow(self) -> None:
@@ -429,14 +444,14 @@ class RedisZsetTaskScoreBandCoreTest(unittest.TestCase):
         result = self.kernel.rewrite_observed_same_band_suffix(
             task_id="task",
             observed_score=running,
-            target_epoch_second=1_002,
+            target_time_millis=self.millis(1_002),
             suffix_delta=-1,
         )
         state = self.kernel.get_score_states(task_ids=["task"])["task"]
 
         self.assertEqual(TaskScoreTransitionStatus.INVALID, result.status)
         self.assertIsNotNone(state)
-        self.assertEqual(1_000, state.epoch_second)
+        self.assertEqual(self.millis(1_000), state.time_millis)
         self.assertEqual(0, state.suffix)
 
     def test_rewrite_observed_same_band_suffix_rejects_pre_review_score(self) -> None:
@@ -446,30 +461,30 @@ class RedisZsetTaskScoreBandCoreTest(unittest.TestCase):
         result = self.kernel.rewrite_observed_same_band_suffix(
             task_id="task",
             observed_score=pre_review,
-            target_epoch_second=1_002,
+            target_time_millis=self.millis(1_002),
             suffix_delta=-1,
         )
         state = self.kernel.get_score_states(task_ids=["task"])["task"]
 
         self.assertEqual(TaskScoreTransitionStatus.INVALID, result.status)
         self.assertIsNotNone(state)
-        self.assertEqual(1_000, state.epoch_second)
+        self.assertEqual(self.millis(1_000), state.time_millis)
         self.assertEqual(3, state.suffix)
 
-    def test_rewrite_same_band_epoch_rejects_future_hold(self) -> None:
+    def test_rewrite_same_band_time_millis_rejects_future_hold(self) -> None:
         paused = self.score(self.kernel.RUNNING_VISIBLE_TAG, 2_000, 7)
         self.store_score("task", paused)
 
-        result = self.kernel.rewrite_same_band_epoch(
+        result = self.kernel.rewrite_same_band_time_millis(
             task_id="task",
             expected_band=TaskScoreBand.RUNNING_VISIBLE,
-            target_epoch_second=1_002,
+            target_time_millis=self.millis(1_002),
         )
         state = self.kernel.get_score_states(task_ids=["task"])["task"]
 
         self.assertEqual(TaskScoreTransitionStatus.STALE, result.status)
         self.assertIsNotNone(state)
-        self.assertEqual(2_000, state.epoch_second)
+        self.assertEqual(self.millis(2_000), state.time_millis)
         self.assertEqual(7, state.suffix)
 
     def test_rewrite_rejects_stale_expected_band(self) -> None:
@@ -479,7 +494,7 @@ class RedisZsetTaskScoreBandCoreTest(unittest.TestCase):
         result = self.kernel.rewrite_score(
             task_id="task",
             expected_band=TaskScoreBand.RUNNING_VISIBLE,
-            target_epoch_second=1_001,
+            target_time_millis=self.millis(1_001),
         )
 
         self.assertEqual(TaskScoreTransitionStatus.STALE, result.status)
@@ -504,10 +519,10 @@ class RedisZsetTaskScoreBandCoreTest(unittest.TestCase):
         running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 7)
         terminal = -1_001_00
         self.store_score("task", running)
-        self.kernel.rewrite_same_band_epoch(
+        self.kernel.rewrite_same_band_time_millis(
             task_id="task",
             expected_band=TaskScoreBand.RUNNING_VISIBLE,
-            target_epoch_second=1_002,
+            target_time_millis=self.millis(1_002),
         )
 
         result = self.kernel.close_score(
@@ -538,7 +553,7 @@ class RedisZsetTaskScoreBandCoreTest(unittest.TestCase):
     def test_release_observed_score_hold_preserves_suffix(self) -> None:
         paused = self.score(
             self.kernel.RUNNING_VISIBLE_TAG,
-            self.kernel.PAUSE_EPOCH_SECOND,
+            self.kernel.PAUSE_TIME_SLOT,
             4,
         )
         self.store_score("task", paused)
@@ -546,29 +561,29 @@ class RedisZsetTaskScoreBandCoreTest(unittest.TestCase):
         result = self.kernel.release_observed_score_hold(
             task_id="task",
             observed_hold_score=paused,
-            release_epoch_second=1_000,
+            release_time_millis=self.millis(1_000),
         )
         state = self.kernel.get_score_states(task_ids=["task"])["task"]
 
         self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, result.status)
         self.assertIsNotNone(state)
-        self.assertEqual(1_000, state.epoch_second)
+        self.assertEqual(self.millis(1_000), state.time_millis)
         self.assertEqual(4, state.suffix)
 
-    def test_release_observed_score_hold_rejects_later_epoch(self) -> None:
+    def test_release_observed_score_hold_rejects_later_time(self) -> None:
         held = self.score(self.kernel.RUNNING_VISIBLE_TAG, 2_000, 4)
         self.store_score("task", held)
 
         result = self.kernel.release_observed_score_hold(
             task_id="task",
             observed_hold_score=held,
-            release_epoch_second=2_001,
+            release_time_millis=self.millis(2_001),
         )
         state = self.kernel.get_score_states(task_ids=["task"])["task"]
 
         self.assertEqual(TaskScoreTransitionStatus.INVALID, result.status)
         self.assertIsNotNone(state)
-        self.assertEqual(2_000, state.epoch_second)
+        self.assertEqual(self.millis(2_000), state.time_millis)
         self.assertEqual(4, state.suffix)
 
 

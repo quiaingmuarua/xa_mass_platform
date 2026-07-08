@@ -78,7 +78,8 @@ Core mechanics:
 
 ```text
 tag decides lifecycle direction
-epochSecond decides same-band hold / recheck / freshness direction
+timeMillis decides caller-facing hold / recheck / freshness intent
+timeSlot is the internal sortable coordinate derived from timeMillis
 suffix decides same-band budget / tie-break / owner-local code
 write-time stored-score/CAS prevents stale overwrite
 terminal close is a high-priority positive-to-negative write
@@ -93,7 +94,7 @@ PRE_REVIEW(3) -> PRE_DISPATCH_VISIBLE(2) -> RUNNING_VISIBLE(1) -> TERMINAL(<0)
 ```
 
 Scheduling suppression, retry, and hold move right inside the same band
-by writing a later `epochSecond`. Release/resume is the only right-to-left hold
+by writing a later time coordinate. Release/resume is the only right-to-left hold
 shortcut and must carry the exact `observedHoldScore`.
 
 Rules:
@@ -116,7 +117,7 @@ Conceptual flow:
 ```text
 assignment-dispatch pacing round
   -> task score query(range, limit)
-  -> task lifecycle / gate / epoch validation
+  -> task lifecycle / gate / time-coordinate validation
   -> work-item owner reports or claims claimable work
   -> worker score-band acquire / admission
   -> dispatch selected work through transport
@@ -245,7 +246,7 @@ owner-evidence-write
 ```
 
 The score hold coordinate itself is only a hold/recheck coordinate. The
-current epoch makes a score member acquirable; it does not complete the
+current time coordinate makes a score member acquirable; it does not complete the
 transition without owner validation.
 Non-score gates remain blocked until an owner command changes the underlying
 fact.
@@ -254,7 +255,7 @@ fact.
 
 Task score-band uses four score bands. Temporary restriction is not a separate
 band; pause/block/hold is represented by rewriting the same active band with a
-future hold coordinate. A hard pause uses the maximum 10-digit `epochSecond`
+future hold coordinate. A hard pause uses the maximum internal `timeSlot`
 coordinate. These are scheduling visibility states, not a second business
 lifecycle. Kernel code should branch on the decoded band and owner validation
 result, not on concrete product events.
@@ -263,11 +264,11 @@ Hard pause is stronger than an ordinary future delay:
 
 ```text
 ordinary future delay
-  same active tag, future epochSecond
-  becomes eligible for that same band's normal action when the epoch is due
+  same active tag, future timeSlot
+  becomes eligible for that same band's normal action when the time coordinate is due
 
 hard pause
-  same active tag, PAUSE_EPOCH_SECOND
+  same active tag, PAUSE_TIME_SLOT
   never becomes due through normal scheduling
   must not consume suffix budget
   must not advance to another positive band
@@ -278,18 +279,24 @@ hard pause
 Positive non-terminal bands use a fixed segmented numeric score:
 
 ```text
-score = tag * TAG_FACTOR + epochSecond * SUFFIX_FACTOR + suffix
+timeSlot = floor(timeMillis / SLOT_MILLIS)
+score = tag * TAG_FACTOR + timeSlot * SUFFIX_FACTOR + suffix
 
 tag = score / TAG_FACTOR
-epochSecond = (score % TAG_FACTOR) / SUFFIX_FACTOR
+timeSlot = (score % TAG_FACTOR) / SUFFIX_FACTOR
 suffix = score % SUFFIX_FACTOR
 ```
 
-`epochSecond` is a sortable second-granularity coordinate. For
+Public kernel interfaces use millisecond timestamps. Redis score encoding uses
+an internal fixed-width `timeSlot`; first version uses `TIME_SCALE = 10`, so
+`SLOT_MILLIS = 100`. Decoded score state returns the slot start as
+`timeMillis = timeSlot * SLOT_MILLIS`.
+
+`timeSlot` is a sortable slot-granularity coordinate. For
 `RUNNING_VISIBLE` and `PRE_DISPATCH_VISIBLE`, it is the next scheduling/recheck
-second. For `PRE_REVIEW`, it is the owner mutation freshness second. Kernel code
+time. For `PRE_REVIEW`, it is the owner mutation freshness coordinate. Kernel code
 does not interpret review business flow; it only rejects stale positive writes
-whose target `epochSecond` is not newer than the stored `epochSecond`, except
+whose target `timeSlot` is not newer than the stored `timeSlot`, except
 for observed-score release/resume.
 `suffix` is a bounded two-digit same-band remaining schedule budget. `00` means
 same-band budget exhausted; `01..99` means that many same-band scheduling
@@ -304,29 +311,33 @@ PRE_DISPATCH_VISIBLE_TAG = 2
 PRE_REVIEW_TAG = 3
 
 SUFFIX_FACTOR = 100
-EPOCH_FACTOR = 10_000_000_000
-MAX_EPOCH_SECOND = 9_999_999_999
-PAUSE_EPOCH_SECOND = MAX_EPOCH_SECOND
-TAG_FACTOR = EPOCH_FACTOR * SUFFIX_FACTOR
+TIME_SCALE = 10
+SLOT_MILLIS = 100
+TIME_SLOT_FACTOR = 100_000_000_000
+MAX_TIME_SLOT = 99_999_999_999
+PAUSE_TIME_SLOT = MAX_TIME_SLOT
+PAUSE_TIME_MILLIS = PAUSE_TIME_SLOT * SLOT_MILLIS
+TAG_FACTOR = TIME_SLOT_FACTOR * SUFFIX_FACTOR
 
 TERMINAL score = -closedScoreKey
-closedScoreKey = closedEpochSecond * SUFFIX_FACTOR + closedSuffix
+closedScoreKey = closedTimeSlot * SUFFIX_FACTOR + closedSuffix
 closedScoreKey > 10
 ```
 
 Tag `0` is deliberately unused so decode never depends on a missing high-order
-tag. With a 10-digit `epochSecond` coordinate and two-digit suffix, positive
+tag. With the fixed-width `timeSlot` coordinate and two-digit suffix, positive
 scores remain
 well under Redis sorted-set double exact-integer limits. If the coordinate width
 or suffix width changes, the owner must re-check exact numeric representation.
+Changing slot granularity is an encoding change, not a public API change.
 
-Use `score(TAG, epochSecond, suffix)` below as shorthand for the formula above.
+Use `score(TAG, timeSlot, suffix)` below as shorthand for the formula above.
 
 | Band | Score encoding | Acquirable by scheduling | Dispatch-eligible | Kernel action after acquire | Notes |
 | --- | --- | --- | --- | --- | --- |
-| `PRE_REVIEW` | `score(PRE_REVIEW_TAG, ownerMutationEpochSecond, reviewStateCode)` | no | no | none | Positive mutable state, not schedulable. The review owner defines and validates suffix state semantics. Kernel only requires positive non-release writes to carry a larger `epochSecond`. |
-| `RUNNING_VISIBLE` | `score(RUNNING_VISIBLE_TAG, nextDispatchOrRecheckEpochSecond, remainingBudget)` | when included by the running scan | yes, after owner validation, work evidence, worker admission, and work claim | run bounded assignment-dispatch | Also handles `NO_WORK`, `NO_WORKER`, and contention classifications. Temporary restriction uses this same tag with a future `epochSecond`; hard pause uses `PAUSE_EPOCH_SECOND`. |
-| `PRE_DISPATCH_VISIBLE` | `score(PRE_DISPATCH_VISIBLE_TAG, nextReadyRecheckEpochSecond, remainingBudget)` | when included by the ready scan horizon | no | evaluate pre-running open facts only | Pre-running open-condition recheck. It must not create a deliver seed. If still not open and budget remains, scheduling rewrites the same band with `remainingBudget - 1`. If budget is exhausted and still not open, write a same-band pause/hold score. |
+| `PRE_REVIEW` | `score(PRE_REVIEW_TAG, ownerMutationTimeSlot, reviewStateCode)` | no | no | none | Positive mutable state, not schedulable. The review owner defines and validates suffix state semantics. Kernel only requires positive non-release writes to carry a larger `timeSlot`. |
+| `RUNNING_VISIBLE` | `score(RUNNING_VISIBLE_TAG, nextDispatchOrRecheckTimeSlot, remainingBudget)` | when included by the running scan | yes, after owner validation, work evidence, worker admission, and work claim | run bounded assignment-dispatch | Also handles `NO_WORK`, `NO_WORKER`, and contention classifications. Temporary restriction uses this same tag with a future `timeSlot`; hard pause uses `PAUSE_TIME_SLOT`. |
+| `PRE_DISPATCH_VISIBLE` | `score(PRE_DISPATCH_VISIBLE_TAG, nextReadyRecheckTimeSlot, remainingBudget)` | when included by the ready scan horizon | no | evaluate pre-running open facts only | Pre-running open-condition recheck. It must not create a deliver seed. If still not open and budget remains, scheduling rewrites the same band with `remainingBudget - 1`. If budget is exhausted and still not open, write a same-band pause/hold score. |
 | `TERMINAL` | negative closed score key | no | no | none | Negative score space is final and immutable. Close reason belongs to meta/result/trace. |
 
 Band order is consumption-first:
@@ -337,7 +348,7 @@ RUNNING_VISIBLE < PRE_DISPATCH_VISIBLE < PRE_REVIEW
 
 This order keeps cross-band lifecycle movement numerically downward:
 `PRE_REVIEW -> PRE_DISPATCH_VISIBLE -> RUNNING_VISIBLE -> TERMINAL`. Same-band
-recheck/hold writes may numerically increase because `epochSecond` moves
+recheck/hold writes may numerically increase because `timeSlot` moves
 forward; that is not lifecycle regression. The order is not permission to run
 one global positive range scan across tags. Assignment-dispatch must scan the
 allowed active bands through separate band ranges and policy-owned quotas.
@@ -364,23 +375,23 @@ PRE_DISPATCH_VISIBLE
   running pre-open condition
   when acquired: scans evaluate worker-candidate / open facts
   ready: move to RUNNING_VISIBLE
-  not open and suffix > 00: rewrite PRE_DISPATCH_VISIBLE with next epoch and suffix-1
+  not open and suffix > 00: rewrite PRE_DISPATCH_VISIBLE with next time coordinate and suffix-1
   not open and suffix == 00: pause/hold in PRE_DISPATCH_VISIBLE
 
 RUNNING_VISIBLE
   running-stage dispatch/recheck condition
   when acquired: scans work, worker, retry, contention, and dispatch facts
   work dispatched: rewrite RUNNING_VISIBLE by policy
-  no work and suffix > 00: rewrite RUNNING_VISIBLE with next no-work-recheck epoch and suffix-1
+  no work and suffix > 00: rewrite RUNNING_VISIBLE with next no-work-recheck time coordinate and suffix-1
   no work and suffix == 00: close to TERMINAL
-  no worker / contention and suffix > 00: rewrite RUNNING_VISIBLE with next recheck epoch and suffix-1
+  no worker / contention and suffix > 00: rewrite RUNNING_VISIBLE with next recheck time coordinate and suffix-1
   no worker / contention and suffix == 00: pause/hold in RUNNING_VISIBLE
 ```
 
 `PRE_DISPATCH_VISIBLE` is a real band because an approved task may still need
 pre-running open conditions before running, such as a candidate-work count
 range, batch-size threshold, ready retry budget, priority window, or policy
-gate. `nextReadyRecheckEpochSecond` and the initial same-band budget are
+gate. `nextReadyRecheckTimeSlot` and the initial same-band budget are
 written by approval / activation policy. The task does not derive these values
 from its own shell. Typical open facts include worker-candidate conditions such
 as minimum matching worker count. Acquiring `PRE_DISPATCH_VISIBLE` evaluates open
@@ -393,27 +404,29 @@ is running consumption/recheck first, then ready activation:
 running scan:
   ZRANGEBYSCORE task:score
     score(RUNNING_VISIBLE_TAG, 0, 0)
-    score(RUNNING_VISIBLE_TAG, currentEpochSecond, MAX_SUFFIX)
+    score(RUNNING_VISIBLE_TAG, currentTimeSlot - 1, MAX_SUFFIX)
     LIMIT batchSize
 
 ready scan:
   ZRANGEBYSCORE task:score
     score(PRE_DISPATCH_VISIBLE_TAG, 0, 0)
-    score(PRE_DISPATCH_VISIBLE_TAG, readyScanHorizonEpochSecond, MAX_SUFFIX)
+    score(PRE_DISPATCH_VISIBLE_TAG, readyScanHorizonTimeSlot - 1, MAX_SUFFIX)
     LIMIT batchSize
 ```
 
 Do not collapse these into one broad scan from `RUNNING_VISIBLE_TAG` through
-`PRE_DISPATCH_VISIBLE_TAG`. A paused active tag uses `PAUSE_EPOCH_SECOND` and must
+`PRE_DISPATCH_VISIBLE_TAG`. A paused active tag uses `PAUSE_TIME_SLOT` and must
 stay invisible until released by observed-score resume. Terminal scores are
 negative and must not enter the active assignment-dispatch batch.
 
 Assignment-dispatch chooses the scan horizon per band. Normally each scan uses
-`epochSecond <= now`. If a policy deliberately scans a small future horizon,
-that horizon must stay below `PAUSE_EPOCH_SECOND`; hard-pause scores are not
+`timeSlot < nowSlot`; the current slot is not consumed so slot-granularity
+refreshes do not create same-slot acquire/rewrite ambiguity. If a policy
+deliberately scans a small future horizon,
+that horizon must stay below `PAUSE_TIME_SLOT`; hard-pause scores are not
 future-prefetch candidates. A future horizon is an early recheck optimization,
 not a close-time decision. If the relevant facts remain false, same-band
-scheduling rewrites the score to the next `epochSecond` and decrements
+scheduling rewrites the score to the next `timeSlot` and decrements
 `suffix`; if the facts are true, the task may move to `RUNNING_VISIBLE`.
 
 There is no pagination cursor in the task-score owner. The caller repeats
@@ -429,7 +442,7 @@ fail the score-write stale fence because newer score already won
 ```
 
 Keeping the same score after a successful acquire is not the normal path. A
-same-band false classification is consumed by writing a later `epochSecond` and
+same-band false classification is consumed by writing a later `timeSlot` and
 `suffix - 1`, or by executing the exhausted action when `suffix == 00`.
 Assignment-dispatch scans `RUNNING_VISIBLE` before `PRE_DISPATCH_VISIBLE`, so ready
 activation rechecks must not block real running consumption. Repeated no-work,
@@ -441,21 +454,22 @@ Same-band scheduling rewrites obey:
 ```text
 target tag == current tag
 current suffix > 00
-target epochSecond > acquire currentEpochSecond
+target timeSlot > acquire currentTimeSlot
 target suffix = current suffix - 1
 ```
 
 Positive non-terminal writes obey the freshness rule by default:
 
 ```text
-target epochSecond > stored epochSecond
+target timeSlot > stored timeSlot
 ```
 
 This applies to scheduling rewrites, owner transitions, pause/block/hold, and
 cross-band lifecycle movement. Same-task score refresh is intentionally
-second-granularity. Multiple non-release updates for the same task within the
-same second must be rejected, coalesced, or retried later by the owner. Do not
-upgrade to millisecond precision until a concrete invariant needs it.
+slot-granularity. Multiple non-release updates for the same task within the
+same internal slot must be rejected, coalesced, or retried later by the owner.
+Public APIs still accept millisecond timestamps; the kernel converts them to
+the internal slot before applying monotonicity.
 
 Cross-band lifecycle transitions also obey the tag direction implied by the
 band order:
@@ -469,7 +483,7 @@ The kernel permits lifecycle jumps toward lower tags, such as
 `PRE_REVIEW -> RUNNING_VISIBLE`, when the business owner has already validated
 the required facts. It only rejects movement from a lower tag back to a higher
 tag, such as `RUNNING_VISIBLE -> PRE_DISPATCH_VISIBLE`. Same-band recheck/hold writes
-may still raise the numeric score because `epochSecond` is later.
+may still raise the numeric score because `timeSlot` is later.
 
 If `suffix == 00`, scheduling must not write another ordinary same-band recheck.
 It must execute the exhausted action for the current band:
@@ -489,13 +503,13 @@ Release/resume is the explicit exception. It releases a known held score:
 
 ```text
 stored score must still equal observedHoldScore
-target score is derived from observedHoldScore with a release epochSecond
+target score is derived from observedHoldScore with a release timeMillis
 target suffix is copied from observedHoldScore
 otherwise return STALE / NOOP and keep the newer hold
 ```
 
 Pause/block/hold uses the ordinary freshness rule: write the same active tag
-with a future `epochSecond`; hard pause writes `PAUSE_EPOCH_SECOND`.
+with a future `timeSlot`; hard pause writes `PAUSE_TIME_SLOT`.
 Release/resume uses
 `observedHoldScore` as the stale fence; matching that exact score proves no
 newer hold, terminal close, or scheduling rewrite has happened.
@@ -504,18 +518,18 @@ Release/resume is tag-preserving. The target score is always derived from the
 observed held score:
 
 ```text
-PRE_DISPATCH_VISIBLE(PAUSE_EPOCH_SECOND, suffix)
-  -> PRE_DISPATCH_VISIBLE(releaseEpochSecond, suffix)
+PRE_DISPATCH_VISIBLE(PAUSE_TIME_SLOT, suffix)
+  -> PRE_DISPATCH_VISIBLE(releaseTimeSlot, suffix)
 
-RUNNING_VISIBLE(PAUSE_EPOCH_SECOND, suffix)
-  -> RUNNING_VISIBLE(releaseEpochSecond, suffix)
+RUNNING_VISIBLE(PAUSE_TIME_SLOT, suffix)
+  -> RUNNING_VISIBLE(releaseTimeSlot, suffix)
 ```
 
 It is never:
 
 ```text
-PRE_DISPATCH_VISIBLE(PAUSE_EPOCH_SECOND, suffix)
-  -> RUNNING_VISIBLE(releaseEpochSecond, suffix)
+PRE_DISPATCH_VISIBLE(PAUSE_TIME_SLOT, suffix)
+  -> RUNNING_VISIBLE(releaseTimeSlot, suffix)
 ```
 
 After release, the original band's normal owner validation runs again. A
@@ -527,7 +541,7 @@ rule:
 
 ```text
 target tag == PRE_REVIEW_TAG
-target epochSecond > current epochSecond
+target timeSlot > current timeSlot
 suffix is owner-defined review state code
 owner validates the business state, material completeness, permission, and
 allowed suffix transition
@@ -535,16 +549,16 @@ allowed suffix transition
 
 The kernel does not know whether `suffix=30` means draft, uploaded, rejected, or
 submitted. Those names and allowed transitions belong to the review owner. The
-kernel only prevents an older `epochSecond` write from overwriting a newer
-`PRE_REVIEW` score. When two owner mutations occur in the same wall-clock
-second, the review owner should compute:
+kernel only prevents an older internal `timeSlot` write from overwriting a newer
+`PRE_REVIEW` score. When two owner mutations occur in the same internal slot,
+the review owner should compute a later millisecond timestamp that maps to the
+next slot:
 
 ```text
-nextOwnerMutationEpochSecond = max(nowEpochSecond, currentEpochSecond + 1)
+nextOwnerMutationTimeMillis >= (currentTimeSlot + 1) * SLOT_MILLIS
 ```
 
-This keeps the second-granularity score model monotonic without requiring
-millisecond precision.
+This keeps the score model monotonic without exposing a slot API.
 
 Cross-band writes, such as `PRE_REVIEW -> RUNNING_VISIBLE` or
 `PRE_DISPATCH_VISIBLE -> RUNNING_VISIBLE`, are allowed only by the transition
@@ -562,22 +576,22 @@ After acquire, decode `tag` and `suffix`:
 if acquired PRE_DISPATCH_VISIBLE and open condition is satisfied:
   targetBand = RUNNING_VISIBLE
 if acquired PRE_DISPATCH_VISIBLE and open condition is false and suffix > 00:
-  targetBand = PRE_DISPATCH_VISIBLE with next epochSecond and suffix-1
+  targetBand = PRE_DISPATCH_VISIBLE with next timeSlot and suffix-1
 if acquired PRE_DISPATCH_VISIBLE and open condition is false and suffix == 00:
   targetBand = PRE_DISPATCH_VISIBLE paused/held score
 if acquired RUNNING_VISIBLE and no work exists and suffix > 00:
-  targetBand = RUNNING_VISIBLE with next no-work-recheck epochSecond and suffix-1
+  targetBand = RUNNING_VISIBLE with next no-work-recheck timeSlot and suffix-1
 if acquired RUNNING_VISIBLE and no work exists and suffix == 00:
   targetBand = TERMINAL
 if acquired RUNNING_VISIBLE and no worker / contention and suffix > 00:
-  targetBand = RUNNING_VISIBLE with next worker-recheck epochSecond and suffix-1
+  targetBand = RUNNING_VISIBLE with next worker-recheck timeSlot and suffix-1
 if acquired RUNNING_VISIBLE and no worker / contention and suffix == 00:
   targetBand = RUNNING_VISIBLE paused/held score
 ```
 
 Temporary restriction is deliberately not listed as a band. Pause/block writes
-the same active tag with a future `epochSecond`; hard pause writes
-`PAUSE_EPOCH_SECOND = 9_999_999_999`. Ordinary future holds eventually become
+the same active tag with a future `timeSlot`; hard pause writes
+`PAUSE_TIME_SLOT = 99_999_999_999`. Ordinary future holds eventually become
 due and are interpreted as the original band. Hard pause is released through the
 score-hold release primitive with exact `observedHoldScore`. Deadline-style task
 closure is not part of the first score-band model; closure is driven by
@@ -593,7 +607,7 @@ transition code sees only the stored score and requested target coordinates:
 ```text
 storedScore
 targetBand?
-targetEpochSecond
+targetTimeMillis
 targetSuffix?
 owner validation
 bounded scheduling round result
@@ -625,7 +639,7 @@ All positive rewrites should compile to this private primitive inside the
 kernel implementation. Public callers do not compute scores, score ranges, or
 target bases, and no public port should accept `minExpectedScore`,
 `maxExpectedScore`, or `targetScoreBase`. The kernel implementation derives the
-exact score range and target base from band / epoch / suffix intent, so Lua only
+exact score range and target base from band / time / suffix intent, so Lua only
 checks range membership and preserves or substitutes suffix. It does not perform
 owner validation and does not protect scheduling-round evidence. Any rewrite
 that consumes same-band suffix budget must use exact observed-score fencing.
@@ -637,33 +651,36 @@ stable safe public methods plus a small trusted implementation protocol, not
 zero-trust validation at every internal layer.
 
 ```text
-rewrite_same_band_epoch(expectedBand, targetEpochSecond):
+rewrite_same_band_time_millis(expectedBand, targetTimeMillis):
+  targetTimeSlot = floor(targetTimeMillis / SLOT_MILLIS)
   tag = tag(expectedBand)
   mint_from_range(
     minExpectedScore = score(tag, 0, 0),
-    maxExpectedScore = score(tag, targetEpochSecond - 1, MAX_SUFFIX),
-    targetScoreBase = score(tag, targetEpochSecond, 0),
+    maxExpectedScore = score(tag, targetTimeSlot - 1, MAX_SUFFIX),
+    targetScoreBase = score(tag, targetTimeSlot, 0),
     targetSuffix = keep
   )
 ```
 
-`targetEpochSecond` is absolute. The kernel does not expose a stable epoch-delta
-API. If a business owner wants `now + delay`, that owner computes the absolute
-target epoch before calling the kernel. This range-mint path preserves stored
-suffix and is only for same-band epoch movement that does not consume
+`targetTimeMillis` is absolute. The kernel does not expose a stable
+time-slot-delta API. If a business owner wants `now + delay`, that owner
+computes the absolute target millisecond timestamp before calling the kernel.
+This range-mint path preserves stored suffix and is only for same-band time
+movement that does not consume
 scheduling-round budget.
 
 ```text
-rewrite_observed_same_band_suffix(taskId, observedScore, targetEpochSecond, suffixDelta):
+rewrite_observed_same_band_suffix(taskId, observedScore, targetTimeMillis, suffixDelta):
+  targetTimeSlot = floor(targetTimeMillis / SLOT_MILLIS)
   storedScore = read_current_score(taskId)
   require storedScore == observedScore
   observed = decode_positive(observedScore)
   require observed.tag in {RUNNING_VISIBLE_TAG, PRE_DISPATCH_VISIBLE_TAG}
-  require targetEpochSecond > observed.epochSecond
+  require targetTimeSlot > observed.timeSlot
   require suffixDelta < 0
   targetSuffix = observed.suffix + suffixDelta
   require 0 <= targetSuffix <= MAX_SUFFIX
-  write score(observed.tag, targetEpochSecond, targetSuffix)
+  write score(observed.tag, targetTimeSlot, targetSuffix)
 ```
 
 Observed suffix rewrite is scheduling-round evidence, not a broad same-band
@@ -676,21 +693,22 @@ positive rewrites with explicit `targetSuffix`. `PRE_REVIEW` suffix is an
 owner-defined review-state code and is never changed through this primitive.
 
 ```text
-rewrite_score(expectedBand, targetBand?, targetEpochSecond, targetSuffix?):
+rewrite_score(expectedBand, targetBand?, targetTimeMillis, targetSuffix?):
+  targetTimeSlot = floor(targetTimeMillis / SLOT_MILLIS)
   expectedTag = tag(expectedBand)
   targetTag = tag(targetBand or expectedBand)
   require targetTag <= expectedTag
 
   mint_from_range(
     minExpectedScore = score(expectedTag, 0, 0),
-    maxExpectedScore = score(expectedTag, targetEpochSecond - 1, MAX_SUFFIX),
-    targetScoreBase = score(targetTag, targetEpochSecond, 0),
+    maxExpectedScore = score(expectedTag, targetTimeSlot - 1, MAX_SUFFIX),
+    targetScoreBase = score(targetTag, targetTimeSlot, 0),
     targetSuffix = targetSuffix or keep
   )
 ```
 
 If `rewrite_score` is called without `targetBand` and `targetSuffix`, it is
-equivalent to `rewrite_same_band_epoch` and should use the absolute same-band
+equivalent to `rewrite_same_band_time_millis` and should use the absolute same-band
 hot path.
 
 Terminal close is separate because it is destructive, final, and high priority:
@@ -706,17 +724,18 @@ close_score(taskId, terminalScore):
 ```
 
 Score hold release is a separate primitive because it is the only legal way to move
-the same tag to an earlier `epochSecond`:
+the same tag to an earlier `timeSlot`:
 
 ```text
-release_observed_score_hold(taskId, observedHoldScore, releaseEpochSecond):
+release_observed_score_hold(taskId, observedHoldScore, releaseTimeMillis):
+  releaseTimeSlot = floor(releaseTimeMillis / SLOT_MILLIS)
   storedScore = read_current_score(taskId)
   require storedScore == observedHoldScore
   observed = decode_positive(observedHoldScore)
   require observed.tag in {RUNNING_VISIBLE_TAG, PRE_DISPATCH_VISIBLE_TAG}
-  require 0 <= releaseEpochSecond <= MAX_EPOCH_SECOND
-  require releaseEpochSecond <= observed.epochSecond
-  write score(observed.tag, releaseEpochSecond, observed.suffix)
+  require 0 <= releaseTimeSlot <= MAX_TIME_SLOT
+  require releaseTimeSlot <= observed.timeSlot
+  write score(observed.tag, releaseTimeSlot, observed.suffix)
 ```
 
 The release primitive has no business-event meaning. It only proves that the
@@ -746,7 +765,7 @@ acquired band is evidence for a round; it is not authority to overwrite newer
 task score.
 
 Because temporary restriction is represented as the same active band with a
-future `epochSecond`, the tag direction rule alone does not distinguish held
+future `timeSlot`, the tag direction rule alone does not distinguish held
 mode from ordinary future scheduling. The required protection is
 single-task write ordering or a write-time stale fence. If assignment-dispatch
 acquired an active score and a same-task owner transition has already written a
@@ -754,7 +773,7 @@ newer hold score or terminal score, the stale rewrite must fail instead of
 replacing that newer score.
 
 If the stored positive score is a hard pause
-(`epochSecond == PAUSE_EPOCH_SECOND`), ordinary positive lifecycle and
+(`timeSlot == PAUSE_TIME_SLOT`), ordinary positive lifecycle and
 scheduling rewrites must fail. The only score writes that may change it are:
 
 ```text
@@ -795,9 +814,9 @@ TERMINAL
 ```
 
 Temporary restriction is not listed here because it is not a state. It is the
-same active band with a future `epochSecond`. Before an ordinary future epoch is
+same active band with a future `timeSlot`. Before an ordinary future time is
 due, the band scan does not return it; once due, it is interpreted as the same
-band. Hard pause is the reserved `PAUSE_EPOCH_SECOND` form and is not an
+band. Hard pause is the reserved `PAUSE_TIME_SLOT` form and is not an
 ordinary due-later delay. It leaves held mode only through exact observed-score
 release/resume or owner terminal finality.
 
@@ -811,7 +830,7 @@ facts:
 task lifecycle owner:
   task shell exists
   task shell is not terminal
-  lifecycle gate / epoch permits a scheduling round
+  lifecycle gate / time coordinate permits a scheduling round
   policy snapshot is current enough for the round
 
 work-item owner:
@@ -835,7 +854,7 @@ worker-runtime proves whether a concrete worker can be admitted now
 
 An acquired `RUNNING_VISIBLE` score first asks the work-item owner for bounded
 work evidence. If no claimable work exists and `suffix > 00`, scheduling keeps
-the task in `RUNNING_VISIBLE`, writes the next no-work recheck epoch, and
+the task in `RUNNING_VISIBLE`, writes the next no-work recheck time, and
 decrements `suffix`. If no claimable work exists and `suffix == 00`, the task
 closes. If work exists, assignment-dispatch continues through worker admission,
 final item claim, and deliver seed creation. Append, result, and read paths do
@@ -853,16 +872,16 @@ is rejected, routed to a new task, or handled by an explicit owner transition.
 The target protocol deliberately keeps score-band, work-item ownership,
 worker-runtime, and transport separate. The active loop belongs to
 assignment-dispatch; task score-band only supplies query plus same-band
-epoch/suffix rewrite, general positive rewrite, terminal close, and
+time/suffix rewrite, general positive rewrite, terminal close, and
 score-hold release primitives:
 
 ```text
 1. choose task score scan range and limit according to active band order
 2. acquire task ids from task score-band query(range, limit)
-3. load task score state and validate gate / epoch
+3. load task score state and validate gate / time coordinate
 4. if RUNNING_VISIBLE:
      ask work-item owner for bounded claimable-work evidence
-     if no work and suffix > 00, rewrite RUNNING_VISIBLE with next epoch and
+     if no work and suffix > 00, rewrite RUNNING_VISIBLE with next time and
      suffix-1
      if no work and suffix == 00, close to TERMINAL
      acquire and admit worker through worker score-band / worker-runtime
@@ -872,7 +891,7 @@ score-hold release primitives:
 5. if PRE_DISPATCH_VISIBLE:
      evaluate pre-running open conditions only
      if satisfied, write RUNNING_VISIBLE
-     if not satisfied and suffix > 00, rewrite PRE_DISPATCH_VISIBLE with next epoch
+     if not satisfied and suffix > 00, rewrite PRE_DISPATCH_VISIBLE with next time
      and suffix-1
      if not satisfied and suffix == 00, write PRE_DISPATCH_VISIBLE pause/hold score
 ```
@@ -906,7 +925,7 @@ This rewrite is not required to make the task schedulable; the task was already
 in the acquire range. It prevents candidates from spinning at a dominant score
 after a real round classification. Same-band false classifications for
 `PRE_DISPATCH_VISIBLE` and `RUNNING_VISIBLE` also consume budget by writing the next
-epoch and `suffix - 1`, unless the budget is already exhausted.
+time coordinate and `suffix - 1`, unless the budget is already exhausted.
 
 The rewrite exists for:
 
@@ -964,8 +983,8 @@ on the kernel primitive.
 
 | Category | May write task score? | Allowed shape |
 | --- | --- | --- |
-| score-acquired assignment-dispatch round | yes | Decode score, validate owner facts, run the band action, then call same-band epoch/suffix rewrite, general positive rewrite, terminal close, or score hold release. |
-| owner command | yes | Validate owner facts, then call same-band epoch/suffix rewrite, general positive rewrite, terminal close, or score hold release. |
+| score-acquired assignment-dispatch round | yes | Decode score, validate owner facts, run the band action, then call same-band time/suffix rewrite, general positive rewrite, terminal close, or score hold release. |
+| owner command | yes | Validate owner facts, then call same-band time/suffix rewrite, general positive rewrite, terminal close, or score hold release. |
 | owner-evidence-write | no direct live score | Update its own truth only; later scheduling or an owner command may observe it. |
 | read projection / trace | no | Observability only. |
 
@@ -978,14 +997,14 @@ Task score transitions are fact-driven, not external-event-driven:
 2. validate owner facts required by that band
 3. choose target coordinates according to the transition direction rule
 4. encode target score inside the score primitive
-5. reject negative-to-positive rewrite, stale epochSecond, or higher-tag
+5. reject negative-to-positive rewrite, stale timeSlot, or higher-tag
    cross-band movement
 6. write score with the owner facts that the score protects
 ```
 
 For release/resume, use the score-hold release primitive instead of ordinary positive
 rewrite. It is intentionally separate because it may lower
-`epochSecond` after exact `observedHoldScore` match. Terminal close is also
+`timeSlot` after exact `observedHoldScore` match. Terminal close is also
 separate because final negative scores are high-priority writes over any current
 positive score and no-op if the score is already terminal.
 
@@ -1008,7 +1027,7 @@ PRE_DISPATCH_VISIBLE activation scheduling round
   when suffix is exhausted
 
 active-band temporary restriction
-  same active band + future epochSecond; hard pause uses PAUSE_EPOCH_SECOND
+  same active band + future timeSlot; hard pause uses PAUSE_TIME_SLOT
 
 terminal close
   terminal/closed fence + negative immutable terminal score before physical
@@ -1033,7 +1052,7 @@ result owner
 
 task score owner
   owns the score value, decode rules, bounded query primitive, and
-  same-band epoch/suffix rewrite / positive rewrite / terminal close /
+  same-band time/suffix rewrite / positive rewrite / terminal close /
   score-hold release primitives
 
 assignment-dispatch
@@ -1060,12 +1079,12 @@ Rules:
 - `PRE_DISPATCH_VISIBLE` acquired and open condition is satisfied: transition to
   `RUNNING_VISIBLE`;
 - `PRE_DISPATCH_VISIBLE` acquired and open condition is still false with `suffix >
-  00`: rewrite `PRE_DISPATCH_VISIBLE` with a later epoch and `suffix - 1`;
+  00`: rewrite `PRE_DISPATCH_VISIBLE` with a later time and `suffix - 1`;
 - `PRE_DISPATCH_VISIBLE` acquired and open condition is still false with `suffix ==
   00`: write a same-band pause/hold score;
 - `RUNNING_VISIBLE` acquired but the work-item owner reports no claimable work
   and `suffix > 00`: rewrite `RUNNING_VISIBLE` with a later no-work recheck
-  epoch and `suffix - 1`;
+  time and `suffix - 1`;
 - `RUNNING_VISIBLE` acquired but the work-item owner reports no claimable work
   and `suffix == 00`: close to `TERMINAL`; close reason is
   metadata/result/trace, not score;
@@ -1101,10 +1120,10 @@ healthy/scarce match delay
 scheduled retry score
 scan range / horizon choice
 batch limit
-temporary restriction epoch policy for active bands
+temporary restriction time policy for active bands
 initial same-band budget per target band
 same-band exhausted action per source band
-pre-review epochSecond source and suffix state-code values
+pre-review timeSlot source and suffix state-code values
 terminal closed marker / closed score key
 ```
 
@@ -1114,7 +1133,7 @@ Mechanism owns:
 linear score axis
 state-aware bounded range + limit query
 owner validation after acquire
-same-band epoch/suffix rewrite / positive rewrite / terminal close / score hold release
+same-band time/suffix rewrite / positive rewrite / terminal close / score hold release
 task scheduling visibility transition boundaries
 no event-driven scheduling dependency
 no broad refresh from low-value observations
@@ -1129,7 +1148,7 @@ no broad refresh from low-value observations
 - Do not rewrite a negative terminal score. Terminal is final and immutable;
   retention may physically remove residue but must not move it back into a
   positive band.
-- Do not lower `epochSecond` on a positive score write except for release/resume
+- Do not lower `timeSlot` on a positive score write except for release/resume
   with exact `observedHoldScore` match.
 - Do not let append write or refresh task score.
 - Do not let result/retry write live task score.
@@ -1155,8 +1174,8 @@ no broad refresh from low-value observations
   seed creation; assignment-dispatch may scan it only for activation checks.
 - Do not write a temporary restriction score for `PRE_REVIEW` or `TERMINAL`.
   Active bands may be held only by rewriting the same active band with a future
-  epoch.
-- Do not treat hard pause as ordinary future delay. `PAUSE_EPOCH_SECOND` is a
+  time coordinate.
+- Do not treat hard pause as ordinary future delay. `PAUSE_TIME_SLOT` is a
   reserved hard hold: no scheduling-round suffix consumption, no positive
   cross-band progress, and no release to a different tag.
 - Do not rely on tag direction alone to protect temporary restriction mode;

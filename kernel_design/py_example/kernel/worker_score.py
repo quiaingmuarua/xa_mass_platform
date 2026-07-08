@@ -9,7 +9,7 @@ from typing import ClassVar, Mapping, Sequence
 HomeBucketId = str
 WorkerId = str
 Score = int
-EpochSecond = int
+TimeMillis = int
 LaneRank = int
 Dirty = int
 
@@ -38,7 +38,7 @@ class WorkerScoreState:
     worker_id: WorkerId
     score: Score
     polarity: WorkerScorePolarity
-    epoch_second: EpochSecond
+    time_millis: TimeMillis
     lane_rank: LaneRank
     dirty: Dirty
 
@@ -56,7 +56,7 @@ class WorkerScoreCore(ABC):
 
     - positive score means HOT_ACQUIRE worker-acquire visibility;
     - negative score means RECOVERY_RECHECK recovery visibility;
-    - abs(score) carries epochSecond, laneRank, and dirty.
+    - abs(score) carries the internal time coordinate, laneRank, and dirty.
 
     It is not a worker lifecycle state machine. There is no PARKED band,
     MANUAL_DISABLED band, transport session state, or task-demand truth here.
@@ -69,8 +69,8 @@ class WorkerScoreCore(ABC):
     - no transition-source parameter;
     - no candidate DTOs beyond (workerId, observedScore);
     - no internal score range coordinates;
-    - no caller-supplied cold epoch, scan bounds, polarity sign, dirty bit, or
-      encoded base/tag fields;
+    - no caller-supplied cold time slot, scan bounds, polarity sign, dirty bit,
+      or encoded base/tag fields;
     - no fake strategy knobs for unimplemented business workflows;
     - no task backlog, task score, or transport mutation;
     - no decoded observed-score construction by callers.
@@ -81,9 +81,14 @@ class WorkerScoreCore(ABC):
 
     ZERO_SCORE: ClassVar[int] = 0
     MIN_BASE: ClassVar[int] = 1
-    MIN_EPOCH_SECOND: ClassVar[int] = 0
-    MAX_EPOCH_SECOND: ClassVar[int] = 9_999_999_999
-    PAUSE_EPOCH_SECOND: ClassVar[int] = MAX_EPOCH_SECOND
+    MIN_TIME_SLOT: ClassVar[int] = 0
+    TIME_SCALE: ClassVar[int] = 10
+    SLOT_MILLIS: ClassVar[int] = 1_000 // TIME_SCALE
+    MAX_TIME_SLOT: ClassVar[int] = 99_999_999_999
+    PAUSE_TIME_SLOT: ClassVar[int] = MAX_TIME_SLOT
+    MIN_TIME_MILLIS: ClassVar[int] = MIN_TIME_SLOT * SLOT_MILLIS
+    MAX_TIME_MILLIS: ClassVar[int] = MAX_TIME_SLOT * SLOT_MILLIS
+    PAUSE_TIME_MILLIS: ClassVar[int] = MAX_TIME_MILLIS
     MIN_LANE_RANK: ClassVar[int] = 0
     MAX_LANE_RANK: ClassVar[int] = 99
     LANE_RANK_FACTOR: ClassVar[int] = 100
@@ -156,8 +161,8 @@ class WorkerScoreCore(ABC):
         """Create the first score for a validated worker.
 
         Initialization enters HOT_ACQUIRE. The implementation owns the initial
-        epochSecond; caller-provided lane_rank is policy-owned ordering / budget /
-        tie-break input.
+        time coordinate; caller-provided lane_rank is policy-owned ordering /
+        budget / tie-break input.
         """
         pass
 
@@ -167,7 +172,7 @@ class WorkerScoreCore(ABC):
         *,
         home_bucket_id: HomeBucketId,
         worker_id: WorkerId,
-        target_epoch_second: EpochSecond,
+        target_time_millis: TimeMillis,
         target_lane_rank: LaneRank | None = None,
     ) -> WorkerScoreTransitionResult:
         """Rewrite the current score within the same polarity.
@@ -175,9 +180,43 @@ class WorkerScoreCore(ABC):
         This is the ordinary same-lane score update used for renew, retry,
         cooldown, manual hold, drain, maintenance, or policy hold. Implementations
         read the current stored score, preserve its polarity and dirty bit,
-        require target_epoch_second >= stored epochSecond, and default
+        require target time to map at or after the stored time slot, and default
         target_lane_rank to the stored lane_rank. No observed-score CAS is
-        required because this operation never lowers epochSecond.
+        required because this operation never lowers the score coordinate.
+        """
+        pass
+
+    @abstractmethod
+    def renew_current_lease(
+        self,
+        *,
+        home_bucket_id: HomeBucketId,
+        worker_id: WorkerId,
+        target_time_millis: TimeMillis,
+    ) -> WorkerScoreTransitionResult:
+        """Renew a due worker score as the current lease owner.
+
+        This is the only API that clears dirty. Implementations read the
+        current stored score, require stored time slot < current time slot,
+        require target_time_millis > current time millis, preserve polarity and
+        lane_rank, and write dirty=0. It is intentionally narrower than
+        rewrite_current_score.
+        """
+        pass
+
+    @abstractmethod
+    def mark_current_lease_dirty(
+        self,
+        *,
+        home_bucket_id: HomeBucketId,
+        worker_id: WorkerId,
+    ) -> WorkerScoreTransitionResult:
+        """Mark the current or future-held score dirty.
+
+        This is the non-lease-owner side of the dirty fence. Implementations
+        read the current stored score, only set dirty=1, and preserve polarity,
+        score time coordinate, and lane_rank. Expired scores can be left
+        unchanged because no active score lease needs a dirty fence.
         """
         pass
 
@@ -193,7 +232,7 @@ class WorkerScoreCore(ABC):
         """Move the current score to the opposite polarity.
 
         Implementations require storedScore == observed_score. The target
-        polarity is simply the opposite sign. epochSecond and dirty are
+        polarity is simply the opposite sign. Time coordinate and dirty are
         preserved; target_lane_rank is explicit because HOT_ACQUIRE and
         RECOVERY_RECHECK lane_rank meanings are lane-local. Full observed-score
         CAS is intentional here because cross-polarity writes are important
@@ -212,9 +251,9 @@ class WorkerScoreCore(ABC):
         """Move RECOVERY_RECHECK outside the routine recovery window.
 
         Recovery exhausted / cold parked is represented by a too-old
-        RECOVERY_RECHECK epoch, not a far-future epoch. Implementations must
+        RECOVERY_RECHECK time coordinate, not a far-future hold. Implementations must
         require storedScore == observed_score and source polarity
-        RECOVERY_RECHECK. The implementation mints the cold epoch internally
+        RECOVERY_RECHECK. The implementation mints the cold coordinate internally
         using its recovery lookback policy. Dirty and lane_rank are preserved.
         """
         pass
@@ -226,11 +265,12 @@ class WorkerScoreCore(ABC):
         home_bucket_id: HomeBucketId,
         worker_id: WorkerId,
         observed_score: Score,
-        release_epoch_second: EpochSecond,
+        release_time_millis: TimeMillis,
     ) -> WorkerScoreTransitionResult:
         """Release an exact held score while preserving polarity.
 
-        Release is the only ordinary operation allowed to lower epochSecond. It
+        Release is the only ordinary operation allowed to lower the score time
+        coordinate. It
         is not a RECOVERY_RECHECK -> HOT_ACQUIRE reopen. If observed_score is negative, the
         worker remains in RECOVERY_RECHECK and still requires recovery validation
         before hot admission.

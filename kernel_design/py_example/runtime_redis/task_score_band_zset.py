@@ -3,10 +3,10 @@ from __future__ import annotations
 from typing import Any, ClassVar, Mapping, Sequence
 
 from ..kernel.task_score_band import (
-    EpochSecond,
     Score,
     Suffix,
     TaskId,
+    TimeMillis,
     TaskScoreBand,
     TaskScoreBandCore,
     TaskScoreState,
@@ -138,11 +138,15 @@ return {"transitioned", tonumber(next_score)}
         if limit <= 0:
             return []
 
-        now_epoch_second = self._current_epoch_second()
+        now_time_slot = self._current_time_slot()
+        due_time_slot = now_time_slot - 1
+        if due_time_slot < self.MIN_TIME_SLOT:
+            return []
+
         running_limit = limit
         running = self._range_task_ids(
             self._score(self.RUNNING_VISIBLE_TAG, 0, 0),
-            self._score(self.RUNNING_VISIBLE_TAG, now_epoch_second, self.MAX_SUFFIX),
+            self._score(self.RUNNING_VISIBLE_TAG, due_time_slot, self.MAX_SUFFIX),
             running_limit,
         )
         remaining = limit - len(running)
@@ -151,7 +155,7 @@ return {"transitioned", tonumber(next_score)}
 
         pre_dispatch_visible = self._range_task_ids(
             self._score(self.PRE_DISPATCH_VISIBLE_TAG, 0, 0),
-            self._score(self.PRE_DISPATCH_VISIBLE_TAG, now_epoch_second, self.MAX_SUFFIX),
+            self._score(self.PRE_DISPATCH_VISIBLE_TAG, due_time_slot, self.MAX_SUFFIX),
             remaining,
         )
         return [*running, *pre_dispatch_visible]
@@ -163,10 +167,14 @@ return {"transitioned", tonumber(next_score)}
     ) -> Sequence[TaskId]:
         if limit <= 0:
             return []
-        now_epoch_second = self._current_epoch_second()
+        now_time_slot = self._current_time_slot()
+        due_time_slot = now_time_slot - 1
+        if due_time_slot < self.MIN_TIME_SLOT:
+            return []
+
         return self._range_task_ids(
             self._score(self.RUNNING_VISIBLE_TAG, 0, 0),
-            self._score(self.RUNNING_VISIBLE_TAG, now_epoch_second, self.MAX_SUFFIX),
+            self._score(self.RUNNING_VISIBLE_TAG, due_time_slot, self.MAX_SUFFIX),
             limit,
         )
 
@@ -181,7 +189,7 @@ return {"transitioned", tonumber(next_score)}
 
         initial_score = self._score(
             self.PRE_REVIEW_TAG,
-            self._current_epoch_second(),
+            self._current_time_slot(),
             suffix,
         )
         added_count = self.redis.zadd(self.score_key, {task_id: initial_score}, nx=True)
@@ -204,7 +212,7 @@ return {"transitioned", tonumber(next_score)}
         *,
         task_id: TaskId,
         expected_band: TaskScoreBand,
-        target_epoch_second: EpochSecond,
+        target_time_millis: TimeMillis,
         target_band: TaskScoreBand | None = None,
         target_suffix: Suffix | None = None,
     ) -> TaskScoreTransitionResult:
@@ -212,39 +220,42 @@ return {"transitioned", tonumber(next_score)}
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
         if target_band == TaskScoreBand.TERMINAL:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
-        if not self.MIN_EPOCH_SECOND <= target_epoch_second <= self.MAX_EPOCH_SECOND:
+        if not self._valid_time_millis(target_time_millis):
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
         if target_suffix is not None and not (
             self.MIN_SUFFIX <= target_suffix <= self.MAX_SUFFIX
         ):
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
+
+        target_time_slot = self._time_slot_from_millis(target_time_millis)
         if target_band is None and target_suffix is None:
-            return self.rewrite_same_band_epoch(
+            return self.rewrite_same_band_time_millis(
                 task_id=task_id,
                 expected_band=expected_band,
-                target_epoch_second=target_epoch_second,
+                target_time_millis=target_time_millis,
             )
 
         return self._rewrite_positive_score(
             task_id=task_id,
             expected_band=expected_band,
-            target_epoch_second=target_epoch_second,
+            target_time_slot=target_time_slot,
             target_band=target_band,
             target_suffix=target_suffix,
         )
 
-    def rewrite_same_band_epoch(
+    def rewrite_same_band_time_millis(
         self,
         *,
         task_id: TaskId,
         expected_band: TaskScoreBand,
-        target_epoch_second: EpochSecond,
+        target_time_millis: TimeMillis,
     ) -> TaskScoreTransitionResult:
         if expected_band == TaskScoreBand.TERMINAL:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
-        if not self.MIN_EPOCH_SECOND <= target_epoch_second <= self.MAX_EPOCH_SECOND:
+        if not self._valid_time_millis(target_time_millis):
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
-        if target_epoch_second <= self.MIN_EPOCH_SECOND:
+        target_time_slot = self._time_slot_from_millis(target_time_millis)
+        if target_time_slot <= self.MIN_TIME_SLOT:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
 
         expected_tag = self._tag_from_band(expected_band)
@@ -252,13 +263,13 @@ return {"transitioned", tonumber(next_score)}
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
         return self._mint_from_range(
             task_id=task_id,
-            min_expected_score=self._score(expected_tag, self.MIN_EPOCH_SECOND, 0),
+            min_expected_score=self._score(expected_tag, self.MIN_TIME_SLOT, 0),
             max_expected_score=self._score(
                 expected_tag,
-                target_epoch_second - 1,
+                target_time_slot - 1,
                 self.MAX_SUFFIX,
             ),
-            target_score_base=self._score(expected_tag, target_epoch_second, 0),
+            target_score_base=self._score(expected_tag, target_time_slot, 0),
             target_suffix=None,
         )
 
@@ -267,29 +278,30 @@ return {"transitioned", tonumber(next_score)}
         *,
         task_id: TaskId,
         observed_score: Score,
-        target_epoch_second: EpochSecond,
+        target_time_millis: TimeMillis,
         suffix_delta: int,
     ) -> TaskScoreTransitionResult:
         if suffix_delta >= 0:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
-        if not self.MIN_EPOCH_SECOND <= target_epoch_second <= self.MAX_EPOCH_SECOND:
+        if not self._valid_time_millis(target_time_millis):
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
 
         observed = self._decode_positive(observed_score)
         if observed is None:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
 
-        observed_tag, observed_epoch_second, observed_suffix = observed
+        observed_tag, observed_time_slot, observed_suffix = observed
+        target_time_slot = self._time_slot_from_millis(target_time_millis)
         if observed_tag not in {self.RUNNING_VISIBLE_TAG, self.PRE_DISPATCH_VISIBLE_TAG}:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
-        if target_epoch_second <= observed_epoch_second:
+        if target_time_slot <= observed_time_slot:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
 
         target_suffix = observed_suffix + suffix_delta
         if target_suffix < self.MIN_SUFFIX or target_suffix > self.MAX_SUFFIX:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
 
-        next_score = self._score(observed_tag, target_epoch_second, target_suffix)
+        next_score = self._score(observed_tag, target_time_slot, target_suffix)
         return self._cas_update(task_id, observed_score, next_score)
 
     def close_score(
@@ -308,21 +320,22 @@ return {"transitioned", tonumber(next_score)}
         *,
         task_id: TaskId,
         observed_hold_score: Score,
-        release_epoch_second: EpochSecond,
+        release_time_millis: TimeMillis,
     ) -> TaskScoreTransitionResult:
         observed = self._decode_positive(observed_hold_score)
         if observed is None:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
 
-        tag, observed_epoch_second, suffix = observed
+        tag, observed_time_slot, suffix = observed
         if tag not in {self.RUNNING_VISIBLE_TAG, self.PRE_DISPATCH_VISIBLE_TAG}:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
-        if not self.MIN_EPOCH_SECOND <= release_epoch_second <= self.MAX_EPOCH_SECOND:
+        if not self._valid_time_millis(release_time_millis):
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
-        if release_epoch_second > observed_epoch_second:
+        release_time_slot = self._time_slot_from_millis(release_time_millis)
+        if release_time_slot > observed_time_slot:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
 
-        release_score = self._score(tag, release_epoch_second, suffix)
+        release_score = self._score(tag, release_time_slot, suffix)
         return self._cas_update(task_id, observed_hold_score, release_score)
 
     def _cas_update(
@@ -362,7 +375,7 @@ return {"transitioned", tonumber(next_score)}
         *,
         task_id: TaskId,
         expected_band: TaskScoreBand,
-        target_epoch_second: EpochSecond,
+        target_time_slot: int,
         target_band: TaskScoreBand | None,
         target_suffix: Suffix | None,
     ) -> TaskScoreTransitionResult:
@@ -372,18 +385,18 @@ return {"transitioned", tonumber(next_score)}
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
         if target_tag > expected_tag:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
-        if target_epoch_second <= self.MIN_EPOCH_SECOND:
+        if target_time_slot <= self.MIN_TIME_SLOT:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
 
         return self._mint_from_range(
             task_id=task_id,
-            min_expected_score=self._score(expected_tag, self.MIN_EPOCH_SECOND, 0),
+            min_expected_score=self._score(expected_tag, self.MIN_TIME_SLOT, 0),
             max_expected_score=self._score(
                 expected_tag,
-                target_epoch_second - 1,
+                target_time_slot - 1,
                 self.MAX_SUFFIX,
             ),
-            target_score_base=self._score(target_tag, target_epoch_second, 0),
+            target_score_base=self._score(target_tag, target_time_slot, 0),
             target_suffix=target_suffix,
         )
 
@@ -455,42 +468,42 @@ return {"transitioned", tonumber(next_score)}
         if decoded is None:
             raise ValueError(f"invalid positive task score: task_id={task_id!r}")
 
-        tag, epoch_second, suffix = decoded
+        tag, time_slot, suffix = decoded
         return TaskScoreState(
             task_id,
             score,
             self._band_from_tag(tag),
-            epoch_second,
+            self._time_millis_from_slot(time_slot),
             suffix,
         )
 
     def _decode_positive(
         self,
         score: Score,
-    ) -> tuple[int, EpochSecond, int] | None:
+    ) -> tuple[int, int, int] | None:
         if score <= 0:
             return None
 
         tag = score // self.tag_factor
         rest = score % self.tag_factor
-        epoch_second = rest // self.suffix_factor
+        time_slot = rest // self.suffix_factor
         suffix = rest % self.suffix_factor
 
         if tag not in self.VALID_POSITIVE_TAGS:
             return None
-        if not self.MIN_EPOCH_SECOND <= epoch_second <= self.MAX_EPOCH_SECOND:
+        if not self.MIN_TIME_SLOT <= time_slot <= self.MAX_TIME_SLOT:
             return None
         if not self.MIN_SUFFIX <= suffix <= self.MAX_SUFFIX:
             return None
-        return tag, epoch_second, suffix
+        return tag, time_slot, suffix
 
     def _score(
         self,
         tag: int,
-        epoch_second: EpochSecond,
+        time_slot: int,
         suffix: int,
     ) -> Score:
-        return tag * self.tag_factor + epoch_second * self.suffix_factor + suffix
+        return tag * self.tag_factor + time_slot * self.suffix_factor + suffix
 
     def _band_from_tag(self, tag: int) -> TaskScoreBand:
         if tag == self.RUNNING_VISIBLE_TAG:
@@ -510,9 +523,20 @@ return {"transitioned", tonumber(next_score)}
             return self.PRE_REVIEW_TAG
         return None
 
-    def _current_epoch_second(self) -> EpochSecond:
-        seconds, _ = self.redis.time()
-        return int(seconds)
+    def _current_time_slot(self) -> int:
+        seconds, microseconds = self.redis.time()
+        return int(seconds) * self.TIME_SCALE + int(microseconds) // (
+            1_000_000 // self.TIME_SCALE
+        )
+
+    def _time_slot_from_millis(self, time_millis: TimeMillis) -> int:
+        return int(time_millis) // self.SLOT_MILLIS
+
+    def _time_millis_from_slot(self, time_slot: int) -> TimeMillis:
+        return int(time_slot) * self.SLOT_MILLIS
+
+    def _valid_time_millis(self, time_millis: int) -> bool:
+        return self.MIN_TIME_MILLIS <= time_millis <= self.MAX_TIME_MILLIS
 
     def _score_to_int(self, raw_score: Any) -> Score:
         score = int(raw_score)
