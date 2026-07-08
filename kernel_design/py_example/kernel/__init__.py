@@ -11,6 +11,8 @@ from .task_score_band import (
 )
 from .worker_score import (
     HomeBucketId,
+    LaneRank,
+    Version,
     WorkerId,
     WorkerScoreCore,
     WorkerScorePolarity,
@@ -22,6 +24,7 @@ from .worker_score import (
 __all__ = [
     "EpochSecond",
     "HomeBucketId",
+    "LaneRank",
     "Score",
     "Suffix",
     "TaskId",
@@ -30,6 +33,7 @@ __all__ = [
     "TaskScoreState",
     "TaskScoreTransitionResult",
     "TaskScoreTransitionStatus",
+    "Version",
     "WorkerId",
     "WorkerScoreCore",
     "WorkerScorePolarity",

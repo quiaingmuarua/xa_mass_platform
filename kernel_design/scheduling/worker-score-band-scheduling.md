@@ -69,19 +69,19 @@ Worker score is a signed acquisition coordinate:
 
 ```text
 score = polarity * base
-base = epochSecond * SUFFIX_FACTOR + suffix
+base = epochSecond * SLOT_FACTOR + laneRank * VERSION_FACTOR + version
 ```
 
 The sign is the worker scheduling lane:
 
 ```text
 score > 0
-  HOT polarity
+  HOT_ACQUIRE polarity
   only candidate source for assignment-dispatch worker hot acquire
 
 score < 0
-  LOW_RECHECK polarity
-  only candidate source for worker-runtime low-frequency recovery validation
+  RECOVERY_RECHECK polarity
+  only candidate source for worker-runtime recovery-recheck validation
 
 score == 0
   invalid / reserved
@@ -90,15 +90,20 @@ score == 0
 `abs(score)` is decoded the same way for both polarities:
 
 ```text
-epochSecond = abs(score) / SUFFIX_FACTOR
-suffix = abs(score) % SUFFIX_FACTOR
+epochSecond = abs(score) / SLOT_FACTOR
+slotRemainder = abs(score) % SLOT_FACTOR
+laneRank = slotRemainder / VERSION_FACTOR
+version = slotRemainder % VERSION_FACTOR
 ```
 
 First-slice constants:
 
 ```text
-SUFFIX_FACTOR = 100
-MAX_SUFFIX = 99
+VERSION_FACTOR = 100
+LANE_RANK_FACTOR = 100
+SLOT_FACTOR = LANE_RANK_FACTOR * VERSION_FACTOR
+MAX_LANE_RANK = 99
+MAX_VERSION = 99
 MAX_EPOCH_SECOND = 9_999_999_999
 PAUSE_EPOCH_SECOND = MAX_EPOCH_SECOND
 MIN_BASE = 1
@@ -111,41 +116,63 @@ minimum score, use `MIN_BASE`, not `0`.
 `epochSecond` means:
 
 ```text
-HOT
+HOT_ACQUIRE
   next time the worker may enter hot admission
   examples: capacity cooldown, admission hold, occupancy interval, drain,
   manual disable, maintenance hold
 
-LOW_RECHECK
+RECOVERY_RECHECK
   next time worker-runtime may run recovery validation
   examples: disconnect recheck, stale endpoint recovery, reconnect backoff,
   parked / recovery exhausted far-future hold
 ```
 
-`suffix` is lane-local:
+`laneRank` is lane-local:
 
 ```text
-HOT
+HOT_ACQUIRE
   priority / fairness / same-second tie-break / admission anti-spin hint
 
-LOW_RECHECK
+RECOVERY_RECHECK
   retry count / failed recheck count / remaining recovery budget
 ```
 
+`version` is a worker-runtime score fence:
+
+```text
+version
+  worker core scheduling metadata revision fence
+  00..99 rolling coordinate
+  prevents stale acquired rounds from writing after platform-defined
+  scheduling-critical metadata changed
+```
+
+The score version is not a metadata hash and not a lifecycle state. Platform
+policy owns the critical scheduling signature definition. The full signature or
+hash lives in worker-runtime metadata/evidence; score `version` is only the
+low-order fence that changes when that platform-owned signature changes.
+
+Scheduling-critical metadata may include worker group membership, approved
+scheduling attributes, capacity profile, dispatch gate generation, admission
+policy, or other platform-defined fields that affect worker selection or
+admission. It must not include transport heartbeat, session id, latency sample,
+connection id, trace fields, diagnostic details, or high-frequency load
+counters.
+
 Reason codes, reconnect source, operator notes, owner-reset policy, and
 diagnostics stay in worker-runtime evidence, trace, or optional diagnostics.
-Score suffix may bound scheduling/recheck work; it must not become a hidden
-reason owner.
+Score laneRank and version may bound scheduling/recheck work and stale writes;
+they must not become hidden reason owners.
 
 ## Polarity Lanes
 
-### HOT
+### HOT_ACQUIRE
 
-HOT is the only worker lane assignment-dispatch may use for worker candidate
+HOT_ACQUIRE is the only worker lane assignment-dispatch may use for worker candidate
 acquisition.
 
 ```text
-score = +base(epochSecond, suffix)
+score = +base(epochSecond, laneRank, version)
 ```
 
 Interpretation:
@@ -159,27 +186,27 @@ epochSecond > now
 ```
 
 Manual disable, drain, maintenance, capacity cooldown, and admission hold do not
-mean network unavailable. They are same-polarity HOT rewrites with a later
+mean network unavailable. They are same-polarity HOT_ACQUIRE rewrites with a later
 `epochSecond`. A hard manual hold uses:
 
 ```text
-+base(PAUSE_EPOCH_SECOND, suffix)
++base(PAUSE_EPOCH_SECOND, laneRank, version)
 ```
 
 Release of that hold preserves polarity:
 
 ```text
-+base(PAUSE_EPOCH_SECOND, suffix)
-  -> +base(releaseEpochSecond, suffix)
++base(PAUSE_EPOCH_SECOND, laneRank, version)
+  -> +base(releaseEpochSecond, laneRank, version)
 ```
 
-### LOW_RECHECK
+### RECOVERY_RECHECK
 
-LOW_RECHECK is the recovery validation lane. It is not a worker selection lane
+RECOVERY_RECHECK is the recovery validation lane. It is not a worker selection lane
 and must not return a selected worker handle.
 
 ```text
-score = -base(epochSecond, suffix)
+score = -base(epochSecond, laneRank, version)
 ```
 
 Typical inputs:
@@ -192,19 +219,19 @@ recoverable dispatch gate block caused by reachability uncertainty
 failed hot admission validation that requires recovery
 ```
 
-LOW_RECHECK means worker-runtime must validate owner facts before reopening hot
-admission. A due LOW_RECHECK candidate may:
+RECOVERY_RECHECK means worker-runtime must validate owner facts before reopening hot
+admission. A due RECOVERY_RECHECK candidate may:
 
 ```text
 pass recovery validation
-  -> flip polarity to HOT after declaration, gate, reachability, capacity, and
+  -> flip polarity to HOT_ACQUIRE after declaration, gate, reachability, capacity, and
      policy validation
 
 fail recovery validation with budget remaining
-  -> stay LOW_RECHECK with later epochSecond and updated suffix
+  -> stay RECOVERY_RECHECK with later epochSecond and updated laneRank
 
 exhaust recovery / owner park
-  -> stay LOW_RECHECK with far-future epochSecond and owner evidence explaining
+  -> stay RECOVERY_RECHECK with far-future epochSecond and owner evidence explaining
      why recovery is not currently due
 ```
 
@@ -212,38 +239,38 @@ exhaust recovery / owner park
 
 There is no PARKED band.
 
-Parked is a LOW_RECHECK far-future hold plus owner evidence:
+Parked is a RECOVERY_RECHECK far-future hold plus owner evidence:
 
 ```text
-score = -base(PAUSE_EPOCH_SECOND, suffix)
+score = -base(PAUSE_EPOCH_SECOND, laneRank, version)
 owner evidence = parked / owner-reset-required / recovery-exhausted / policy hold
 ```
 
 This is intentionally analogous to a paused disconnected worker. It is outside
-hot admission and outside routine low-recheck due ranges, but it does not create
+hot admission and outside routine recovery-recheck due ranges, but it does not create
 a third scheduling lane. Worker id remains long-lived; score does not say the
 worker was deleted or terminal.
 
-Release of parked LOW_RECHECK preserves polarity:
+Release of parked RECOVERY_RECHECK preserves polarity:
 
 ```text
--base(PAUSE_EPOCH_SECOND, suffix)
-  -> -base(releaseEpochSecond, suffix)
+-base(PAUSE_EPOCH_SECOND, laneRank, version)
+  -> -base(releaseEpochSecond, laneRank, version)
 ```
 
-It does not reopen HOT. HOT reopen requires a verified polarity flip after
+It does not reopen HOT_ACQUIRE. HOT_ACQUIRE reopen requires a verified polarity flip after
 worker-runtime validation. Because polarity flip must not lower `epochSecond`,
 parked recovery is intentionally two-step:
 
 ```text
-release parked LOW_RECHECK hold
-  -> due LOW_RECHECK
+release parked RECOVERY_RECHECK hold
+  -> due RECOVERY_RECHECK
 
 recovery validation passes
-  -> HOT
+  -> HOT_ACQUIRE
 ```
 
-There is no direct parked-to-HOT shortcut in the score mechanism.
+There is no direct parked-to-HOT_ACQUIRE shortcut in the score mechanism.
 
 Parked release is not a generic hold release. If owner evidence marks the
 worker as parked, owner-reset-required, or recovery-exhausted, release must
@@ -256,30 +283,30 @@ does not prove the operator or policy is allowed to unpark the worker.
 Hot worker acquisition:
 
 ```text
-acquire_hot_workers(homeBucketId, limit)
+acquire_hot_acquire_candidates(homeBucketId, limit)
   -> list[(workerId, observedScore)]
 ```
 
 Score range:
 
 ```text
-MIN_BASE <= score <= base(nowEpochSecond, MAX_SUFFIX)
+MIN_BASE <= score <= base(nowEpochSecond, MAX_LANE_RANK, MAX_VERSION)
 ```
 
 Only positive due scores are returned. Assignment-dispatch may use these
 candidates only after worker-runtime validation and admission.
 
-Low recheck acquisition:
+Recovery recheck acquisition:
 
 ```text
-acquire_low_recheck_workers(homeBucketId, limit)
+acquire_recovery_recheck_candidates(homeBucketId, limit)
   -> list[(workerId, observedScore)]
 ```
 
-Due LOW_RECHECK has negative score with due absolute coordinate:
+Due RECOVERY_RECHECK has negative score with due absolute coordinate:
 
 ```text
--base(nowEpochSecond, MAX_SUFFIX) <= score <= -MIN_BASE
+-base(nowEpochSecond, MAX_LANE_RANK, MAX_VERSION) <= score <= -MIN_BASE
 ```
 
 Because Redis sorted-set order is numeric ascending, a plain ascending scan
@@ -288,27 +315,29 @@ ordering is oldest/smallest absolute due coordinate first, so Redis should use a
 reverse scan over the negative range:
 
 ```text
-ZREVRANGEBYSCORE key -MIN_BASE -base(nowEpochSecond, MAX_SUFFIX) LIMIT 0 limit
+ZREVRANGEBYSCORE key -MIN_BASE -base(nowEpochSecond, MAX_LANE_RANK, MAX_VERSION) LIMIT 0 limit
 ```
 
-Within the same `epochSecond`, reverse scan returns lower suffix first because
-LOW_RECHECK scores are negative. First-slice policy should treat lower
-LOW_RECHECK suffix as more urgent / closer to exhaustion. If a later policy
-wants higher retry budget to run first, it must encode the suffix in reverse
-order instead of changing the scan primitive.
+Within the same `epochSecond`, reverse scan returns lower laneRank first because
+RECOVERY_RECHECK scores are negative. Within the same `epochSecond` and laneRank,
+it returns lower version first. First-slice policy should treat lower
+RECOVERY_RECHECK laneRank as more urgent / closer to exhaustion. Version is only a
+stale fence and must not be used as a priority signal. If a later policy wants
+higher retry budget to run first, it must encode the laneRank in reverse order
+instead of changing the scan primitive.
 
-First version should prefer demand-driven or owner-controlled low recheck. Do
-not add a periodic worker-wide low-recheck scanner until a later design proves
+First version should prefer demand-driven or owner-controlled recovery recheck. Do
+not add a periodic worker-wide recovery-recheck scanner until a later design proves
 the liveness invariant and cost. Without demand or an owner-controlled recheck
-round, LOW_RECHECK has no wall-clock guarantee to become HOT or parked exactly
+round, RECOVERY_RECHECK has no wall-clock guarantee to become HOT_ACQUIRE or parked exactly
 at its due second.
 
 `observedScore` is an opaque stale fence for the worker-runtime admission or
 recheck round. It is the complete signed score, including polarity,
-epochSecond, and suffix. Do not trim the sign or expose an epoch/suffix-only
-fence. It is not a public lifecycle DTO and should not be decoded, constructed,
-or interpreted outside worker-runtime score/admission logic. Callers may only
-keep it and pass it back to the score owner.
+epochSecond, laneRank, and version. Do not trim the sign, version, or any lower
+coordinate. It is not a public lifecycle DTO and should not be decoded,
+constructed, or interpreted outside worker-runtime score/admission logic.
+Callers may only keep it and pass it back to the score owner.
 
 ## Candidate Validation
 
@@ -319,6 +348,7 @@ worker declaration exists
 worker belongs to homeBucketId / workerGroupId
 worker group capability and task demand are compatible
 approved scheduling metadata is current enough
+score version still matches the current platform-owned scheduling signature
 dispatch gate permits scheduling
 reachability evidence is acceptable by policy
 capacity/admission is available
@@ -339,6 +369,7 @@ same-polarity rewrite
   preserve sign
   rewrite abs(score) coordinate
   normally require targetEpochSecond >= currentEpochSecond
+  preserve version unless worker-runtime refreshes platform scheduling signature
 ```
 
 Most changes are same-polarity rewrites:
@@ -364,12 +395,12 @@ release is not a reopen and not a sign flip
 Polarity flip rule:
 
 ```text
-HOT -> LOW_RECHECK
+HOT_ACQUIRE -> RECOVERY_RECHECK
   strong negative availability transition
   examples: confirmed disconnect, trusted unavailable, owner-validated
   unreachable
 
-LOW_RECHECK -> HOT
+RECOVERY_RECHECK -> HOT_ACQUIRE
   verified reopen transition
   requires declaration, membership, gate, reachability, capacity/admission, and
   policy validation
@@ -378,11 +409,13 @@ LOW_RECHECK -> HOT
 Default polarity flip may preserve `epochSecond` unless policy explicitly
 chooses a later one. It must not lower `epochSecond`; release is the only
 ordinary way to lower `epochSecond`. Polarity flip must not implicitly inherit
-suffix across lanes. HOT suffix and LOW_RECHECK suffix have different meanings,
-so the target suffix must be minted explicitly by policy.
+laneRank across lanes. HOT_ACQUIRE laneRank and RECOVERY_RECHECK laneRank have different meanings,
+so the target laneRank must be minted explicitly by policy.
+Polarity flip normally preserves score version. A version change belongs to the
+worker scheduling-signature refresh boundary, not to raw availability evidence.
 
 Raw network-ok, heartbeat, reconnect, keepalive, or latency evidence cannot flip
-LOW_RECHECK to HOT by itself. They are validation inputs only.
+RECOVERY_RECHECK to HOT_ACQUIRE by itself. They are validation inputs only.
 
 ## Score Primitives
 
@@ -400,7 +433,8 @@ rewrite_observed_worker_score(
   observedScore,
   targetPolarity,
   targetEpochSecond,
-  targetSuffix?
+  targetLaneRank?,
+  targetVersion?
 )
 ```
 
@@ -408,32 +442,37 @@ Rules:
 
 ```text
 storedScore must equal observedScore
-observedScore must decode to HOT or LOW_RECHECK
-targetPolarity must be HOT or LOW_RECHECK
+observedScore must decode to HOT_ACQUIRE or RECOVERY_RECHECK
+targetPolarity must be HOT_ACQUIRE or RECOVERY_RECHECK
 targetEpochSecond must be valid
 targetEpochSecond must not be less than observed epochSecond
 if targetPolarity == observed polarity:
-  targetSuffix defaults to observed suffix
+  targetLaneRank defaults to observed laneRank
 if targetPolarity != observed polarity:
-  targetSuffix must be supplied by policy
-write signed score(targetPolarity, targetEpochSecond, targetSuffix)
+  targetLaneRank must be supplied by policy
+targetVersion defaults to observed version
+targetVersion may differ only when worker-runtime is also refreshing the
+platform-owned scheduling signature in the same owner transition boundary
+write signed score(targetPolarity, targetEpochSecond, targetLaneRank, targetVersion)
 ```
 
 The exact comparison includes the sign. This prevents stale cross-polarity
-writes, such as an old LOW_RECHECK round overwriting a newer HOT score that
-happens to share the same epochSecond and suffix.
+writes, such as an old RECOVERY_RECHECK round overwriting a newer HOT_ACQUIRE score that
+happens to share the same epochSecond, laneRank, and version. It also prevents an
+old acquired round from writing after a scheduling-critical metadata refresh
+changed score version.
 
 Typical uses:
 
 ```text
-capacity full -> HOT with future epochSecond
-admission hold -> HOT with future epochSecond
-manual disable / drain observed as HOT -> HOT(PAUSE_EPOCH_SECOND)
-manual disable / drain observed as LOW_RECHECK -> LOW_RECHECK(PAUSE_EPOCH_SECOND)
-disconnect with recovery window -> LOW_RECHECK
-low-recheck failed with budget -> LOW_RECHECK with later epoch/suffix
-low-recheck exhausted / parked -> LOW_RECHECK(PAUSE_EPOCH_SECOND) + owner evidence
-verified recovery -> HOT
+capacity full -> HOT_ACQUIRE with future epochSecond
+admission hold -> HOT_ACQUIRE with future epochSecond
+manual disable / drain observed as HOT_ACQUIRE -> HOT_ACQUIRE(PAUSE_EPOCH_SECOND)
+manual disable / drain observed as RECOVERY_RECHECK -> RECOVERY_RECHECK(PAUSE_EPOCH_SECOND)
+disconnect with recovery window -> RECOVERY_RECHECK
+recovery-recheck failed with budget -> RECOVERY_RECHECK with later epoch/laneRank
+recovery-recheck exhausted / parked -> RECOVERY_RECHECK(PAUSE_EPOCH_SECOND) + owner evidence
+verified recovery -> HOT_ACQUIRE
 ```
 
 ### Same-Polarity Hold
@@ -446,7 +485,8 @@ hold_current_worker_polarity(
   homeBucketId,
   workerId,
   targetEpochSecond,
-  targetSuffix?
+  targetLaneRank?,
+  targetVersion?
 )
 ```
 
@@ -456,13 +496,14 @@ Rules:
 storedScore must exist and be signed non-zero
 targetEpochSecond >= stored epochSecond
 target polarity = stored polarity
-targetSuffix defaults to stored suffix
+targetLaneRank defaults to stored laneRank
+targetVersion defaults to stored version
 write same-polarity score
 ```
 
 Use this for manual disable, drain, maintenance, owner hold, capacity hold, or
-parked/recovery-exhausted far-future hold. It must not flip LOW_RECHECK to HOT
-or HOT to LOW_RECHECK.
+parked/recovery-exhausted far-future hold. It must not flip RECOVERY_RECHECK to HOT_ACQUIRE
+or HOT_ACQUIRE to RECOVERY_RECHECK.
 
 ### Release
 
@@ -482,26 +523,27 @@ Rules:
 
 ```text
 storedScore must equal observedScore
-observedScore must decode to HOT or LOW_RECHECK
+observedScore must decode to HOT_ACQUIRE or RECOVERY_RECHECK
 releaseEpochSecond <= observed epochSecond
-targetSuffix = observed suffix
-write observed polarity with releaseEpochSecond and targetSuffix
+targetLaneRank = observed laneRank
+targetVersion = observed version
+write observed polarity with releaseEpochSecond, targetLaneRank, and targetVersion
 ```
 
 Release does not reopen a worker:
 
 ```text
-+base(PAUSE_EPOCH_SECOND, suffix)
-  -> +base(releaseEpochSecond, suffix)
++base(PAUSE_EPOCH_SECOND, laneRank, version)
+  -> +base(releaseEpochSecond, laneRank, version)
 
--base(PAUSE_EPOCH_SECOND, suffix)
-  -> -base(releaseEpochSecond, suffix)
+-base(PAUSE_EPOCH_SECOND, laneRank, version)
+  -> -base(releaseEpochSecond, laneRank, version)
 ```
 
-If the released score is LOW_RECHECK, the worker still has to pass recovery
-validation before returning to HOT acquisition.
+If the released score is RECOVERY_RECHECK, the worker still has to pass recovery
+validation before returning to HOT_ACQUIRE acquisition.
 
-If owner evidence says the LOW_RECHECK far-future hold is parked,
+If owner evidence says the RECOVERY_RECHECK far-future hold is parked,
 owner-reset-required, or recovery-exhausted, release also requires owner reset
 authorization. That authorization is not encoded in the score; it belongs to
 worker-runtime owner evidence and must be checked before writing the release.
@@ -517,7 +559,8 @@ flip_worker_polarity(
   expectedScore,
   targetPolarity,
   targetEpochSecond,
-  targetSuffix
+  targetLaneRank,
+  targetVersion?
 )
 ```
 
@@ -527,34 +570,90 @@ Rules:
 storedScore must equal expectedScore
 targetPolarity must differ from stored polarity
 targetEpochSecond >= stored epochSecond
-targetSuffix is policy-owned
-write signed score(targetPolarity, targetEpochSecond, targetSuffix)
+targetLaneRank is policy-owned
+targetVersion defaults to stored version
+write signed score(targetPolarity, targetEpochSecond, targetLaneRank, targetVersion)
 ```
 
-Use HOT -> LOW_RECHECK for strong negative availability evidence. Use
-LOW_RECHECK -> HOT only after worker-runtime verified reopen. Do not use release
-for sign flips. A parked LOW_RECHECK score at `PAUSE_EPOCH_SECOND` must be
-released to due LOW_RECHECK before it can pass recovery validation and flip to
-HOT; polarity flip is not allowed to lower the held epoch.
+Use HOT_ACQUIRE -> RECOVERY_RECHECK for strong negative availability evidence. Use
+RECOVERY_RECHECK -> HOT_ACQUIRE only after worker-runtime verified reopen. Do not use release
+for sign flips. A parked RECOVERY_RECHECK score at `PAUSE_EPOCH_SECOND` must be
+released to due RECOVERY_RECHECK before it can pass recovery validation and flip to
+HOT_ACQUIRE; polarity flip is not allowed to lower the held epoch.
 
 Polarity flip is the strongest score transition and always uses an exact
 expected-score fence. A current-read blind flip is not allowed.
+
+### Scheduling Signature Refresh
+
+Worker scheduling metadata can change without any network event. Worker-runtime
+owns a platform-defined scheduling signature over critical worker fields. The
+signature definition is built into platform policy, not supplied by external
+events or arbitrary business callers.
+
+Typical signature inputs:
+
+```text
+worker group membership
+approved scheduling attributes
+capacity profile id
+dispatch gate generation
+admission policy id
+placement / home-bucket fields that affect candidate validity
+```
+
+Excluded inputs:
+
+```text
+heartbeat
+session id
+connection id
+latency sample
+trace / diagnostic fields
+high-frequency load counters
+display-only worker fields
+```
+
+When worker-runtime detects that the platform-owned scheduling signature changed:
+
+```text
+stored signature hash changes in worker metadata/evidence
+score version is refreshed as a short rolling fence
+polarity is preserved
+laneRank is preserved unless the owner policy explicitly changes lane-local budget
+epochSecond must not be lowered by the refresh
+```
+
+The exact score-version bump rule is intentionally left open for the executable
+spec slice. It may use a rolling increment, but it must preserve score-axis
+safety:
+
+```text
+do not set score version to hash % N directly
+do not let version rollover recreate an old observedScore under the same
+epochSecond/laneRank/polarity coordinate
+do not let metadata refresh become an unbounded high-frequency score writer
+```
+
+This refresh exists only to make old acquired rounds stale after critical
+scheduling metadata changes. It does not replace admission validation, metadata
+truth, trace, or audit history.
 
 ## Transition Matrix
 
 | Current polarity | Validated outcome | Target score | Rule |
 | --- | --- | --- | --- |
-| HOT | candidate remains usable and no delay is needed | no rewrite, or HOT(nextEpoch, suffix) | same polarity |
-| HOT | capacity full / contention / claim interval | HOT(nextEpoch, suffix) | nextEpoch > currentEpoch |
-| HOT | manual disable / drain / maintenance hold | HOT(PAUSE_EPOCH_SECOND, suffix) | same polarity hold |
-| HOT | confirmed disconnect / trusted unavailable | LOW_RECHECK(epoch, suffix) or LOW_RECHECK(nextEpoch, suffix) | owner-validated sign flip |
-| LOW_RECHECK | recovery validation passes | HOT(nextHotEpoch, hotSuffix) | owner-validated sign flip |
-| LOW_RECHECK | recovery validation fails and budget remains | LOW_RECHECK(nextRecheckEpoch, suffix') | same polarity |
-| LOW_RECHECK | recovery exhausted / parked / owner hold | LOW_RECHECK(PAUSE_EPOCH_SECOND, suffix) | same polarity hold + owner evidence |
-| LOW_RECHECK | manual disable / drain / maintenance hold | LOW_RECHECK(PAUSE_EPOCH_SECOND, suffix) | same polarity hold |
+| HOT_ACQUIRE | candidate remains usable and no delay is needed | no rewrite, or HOT_ACQUIRE(nextEpoch, laneRank, version) | same polarity |
+| HOT_ACQUIRE | capacity full / contention / claim interval | HOT_ACQUIRE(nextEpoch, laneRank, version) | nextEpoch > currentEpoch |
+| HOT_ACQUIRE | manual disable / drain / maintenance hold | HOT_ACQUIRE(PAUSE_EPOCH_SECOND, laneRank, version) | same polarity hold |
+| HOT_ACQUIRE | confirmed disconnect / trusted unavailable | RECOVERY_RECHECK(epoch, laneRank, version) or RECOVERY_RECHECK(nextEpoch, laneRank, version) | owner-validated sign flip |
+| RECOVERY_RECHECK | recovery validation passes | HOT_ACQUIRE(nextHotEpoch, hotLaneRank, version) | owner-validated sign flip |
+| RECOVERY_RECHECK | recovery validation fails and budget remains | RECOVERY_RECHECK(nextRecheckEpoch, laneRank', version) | same polarity |
+| RECOVERY_RECHECK | recovery exhausted / parked / owner hold | RECOVERY_RECHECK(PAUSE_EPOCH_SECOND, laneRank, version) | same polarity hold + owner evidence |
+| RECOVERY_RECHECK | manual disable / drain / maintenance hold | RECOVERY_RECHECK(PAUSE_EPOCH_SECOND, laneRank, version) | same polarity hold |
 
 There is no PARKED row because PARKED is not a polarity or band. It is owner
-evidence attached to a LOW_RECHECK far-future hold.
+evidence attached to a RECOVERY_RECHECK far-future hold.
 
 ## Assignment-Dispatch Protocol
 
@@ -563,7 +662,7 @@ Worker score-band participates in assignment-dispatch like this:
 ```text
 task score acquires due task candidate
 assignment-dispatch resolves worker demand
-worker-runtime acquire_hot_workers(homeBucketId, limit)
+worker-runtime acquire_hot_acquire_candidates(homeBucketId, limit)
 worker-runtime validates candidates
 worker-runtime admits one or more selected workers
 task-runtime claims work item
@@ -582,7 +681,7 @@ write task score
 create per-task worker candidate sets
 ```
 
-LOW_RECHECK acquisition is a worker-runtime recovery validation path, not an
+RECOVERY_RECHECK acquisition is a worker-runtime recovery validation path, not an
 assignment-dispatch worker selection path.
 
 ## Input Write Taxonomy
@@ -590,13 +689,14 @@ assignment-dispatch worker selection path.
 | Input kind | May write worker score? | Required path |
 | --- | --- | --- |
 | hot acquire admission round | yes | observed-score rewrite |
-| low-recheck validation round | yes | observed-score rewrite |
-| capacity full / contention | yes | same-polarity HOT rewrite |
+| recovery-recheck validation round | yes | observed-score rewrite |
+| capacity full / contention | yes | same-polarity HOT_ACQUIRE rewrite |
 | manual disable / drain / maintenance | yes | same-polarity hold |
 | manual enable / release | yes | exact observed-score same-polarity release |
-| confirmed disconnect / trusted unavailable | yes | owner-validated HOT -> LOW_RECHECK polarity flip |
-| verified owner reopen | yes | owner-validated LOW_RECHECK -> HOT polarity flip |
-| parked / recovery exhausted | yes | LOW_RECHECK far-future hold + owner evidence |
+| platform scheduling metadata signature changed | yes | worker-runtime signature refresh; preserves polarity; refreshes score version fence |
+| confirmed disconnect / trusted unavailable | yes | owner-validated HOT_ACQUIRE -> RECOVERY_RECHECK polarity flip |
+| verified owner reopen | yes | owner-validated RECOVERY_RECHECK -> HOT_ACQUIRE polarity flip |
+| parked / recovery exhausted | yes | RECOVERY_RECHECK far-future hold + owner evidence |
 | transport heartbeat / keepalive | no | evidence only |
 | raw connected / session refresh | no | evidence only |
 | result arrival / task finality | no | capacity/admission may update; no generic score refresh |
@@ -617,10 +717,10 @@ manual disable / drain / maintenance:
   owner gate fact and same-polarity hold score write
 
 trusted reachability block:
-  owner block fact and HOT -> LOW_RECHECK polarity flip
+  owner block fact and HOT_ACQUIRE -> RECOVERY_RECHECK polarity flip
 
 verified reopen:
-  validated owner facts and LOW_RECHECK -> HOT polarity flip
+  validated owner facts and RECOVERY_RECHECK -> HOT_ACQUIRE polarity flip
 
 pause release / enable:
   exact observed-score release preserving polarity
@@ -638,27 +738,27 @@ Rules:
 ```text
 score due but worker declaration missing
   reject candidate; clean opportunistically only when the index is a confirmed
-  orphan, otherwise write LOW_RECHECK hold by owner policy
+  orphan, otherwise write RECOVERY_RECHECK hold by owner policy
 
 score due but worker disabled/draining
   stale candidate or owner mismatch; rewrite same polarity to far-future hold
   if the owner hold fact is current
 
-HOT score due but reachability/readiness validation fails strongly
-  flip to LOW_RECHECK by owner policy
+HOT_ACQUIRE score due but reachability/readiness validation fails strongly
+  flip to RECOVERY_RECHECK by owner policy
 
-LOW_RECHECK score due but recovery validation fails
-  rewrite LOW_RECHECK with next recheck epoch, or LOW_RECHECK far-future hold if
+RECOVERY_RECHECK score due but recovery validation fails
+  rewrite RECOVERY_RECHECK with next recheck epoch, or RECOVERY_RECHECK far-future hold if
   exhausted
 
 score due but capacity is full
-  rewrite HOT with future epoch or reject according to admission policy
+  rewrite HOT_ACQUIRE with future epoch or reject according to admission policy
 
 stale observed-score rewrite
   return STALE / no-op; do not overwrite newer score
 
 raw positive transport evidence
-  never flips LOW_RECHECK to HOT directly
+  never flips RECOVERY_RECHECK to HOT_ACQUIRE directly
 ```
 
 Stale handling must be bounded. Do not scan all workers to repair score.
@@ -673,8 +773,9 @@ Mechanism owns:
 ```text
 signed score encoding
 positive hot acquire range
-negative low-recheck acquire range
+negative recovery-recheck acquire range
 observed-score stale fence
+score version fence for platform-owned scheduling metadata refresh
 same-polarity release
 owner-validated polarity flip boundary
 home bucket score key
@@ -684,13 +785,15 @@ no transport-driven positive refresh
 Policy owns:
 
 ```text
-initial HOT score
-candidate ranking / suffix meaning
+initial HOT_ACQUIRE score
+candidate ranking / laneRank meaning
+platform scheduling signature policy
+score version refresh rule
 cooldown duration
 admission hold interval
 manual hold / enable rule
-LOW_RECHECK retry cadence
-LOW_RECHECK initial retry budget
+RECOVERY_RECHECK retry cadence
+RECOVERY_RECHECK initial retry budget
 parked / owner-reset evidence and release rule
 negative evidence mapping
 capacity contention delay
@@ -712,8 +815,8 @@ transition Redis stream
 per-task worker candidate keys
 placement-tag score fanout
 transport/session evidence in worker metadata
-HOT suffix as failure retry truth
-score suffix as reason / reconnect source truth
+HOT_ACQUIRE laneRank as failure retry truth
+score laneRank as reason / reconnect source truth
 background worker-wide repair scan
 slot registry redesign
 ```
@@ -722,17 +825,23 @@ slot registry redesign
 
 - Do not use score absence as worker lifecycle proof.
 - Do not let transport heartbeat, session keepalive, or raw connected events
-  write HOT.
+  write HOT_ACQUIRE.
 - Do not add worker lifecycle tags. Sign is acquisition polarity; abs(score) is
-  the time/suffix coordinate.
-- Do not add a PARKED band. Parked is LOW_RECHECK far-future hold plus owner
+  the time/laneRank coordinate.
+- Do not add a PARKED band. Parked is RECOVERY_RECHECK far-future hold plus owner
   evidence.
 - Do not add `MANUAL_DISABLED_BAND`; manual disable is same-polarity hold.
 - Do not make score replace capacity/admission validation.
 - Do not return candidates without a complete signed observed-score fence to
   worker-runtime admission.
-- Do not trim `observedScore` to epoch/suffix. It must remain the full signed
-  score including polarity, and callers must not construct or decode it.
+- Do not trim `observedScore` to epoch/laneRank/version. It must remain the full
+  signed score including polarity, epochSecond, laneRank, and version; callers
+  must not construct or decode it.
+- Do not set score version directly from a hash modulo. Store the full
+  scheduling signature/hash in worker-runtime metadata or evidence and use score
+  version only as a short stale fence.
+- Do not let heartbeat, session refresh, trace, diagnostics, or display-only
+  metadata bump score version.
 - Do not use broad range-mint for acquired admission rewrites.
 - Do not create per-task worker candidate keys.
 - Do not fan out score across placement-tag buckets in the first slice.
