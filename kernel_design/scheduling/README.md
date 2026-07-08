@@ -173,7 +173,7 @@ Owns:
 task scheduling visibility score
 task score-state interpretation
 bounded score query primitive
-same-band epoch/suffix rewrite / positive rewrite / terminal close / lease-release
+same-band epoch/suffix rewrite / positive rewrite / terminal close / score-hold release
 primitives
 running-stage future-score placement for pause / contention / no-worker delay
 ```
@@ -200,9 +200,9 @@ The model has two independent directions:
 
 ```text
 lifecycle progresses left:
-  PRE_REVIEW(3) -> READY_APPROVED(2) -> RUNNING_VISIBLE(1) -> TERMINAL(<0)
+  PRE_REVIEW(3) -> PRE_DISPATCH_VISIBLE(2) -> RUNNING_VISIBLE(1) -> TERMINAL(<0)
 
-lease / recheck moves right:
+hold / recheck moves right:
   same tag + later epochSecond
 ```
 
@@ -210,7 +210,7 @@ lease / recheck moves right:
 recheck, `suffix` owns budget or owner-local code, the score-write stale fence
 prevents stale overwrite, and the transition direction rule blocks lifecycle
 regression.
-Downward lifecycle jumps are allowed; `READY_APPROVED` is an optional
+Downward lifecycle jumps are allowed; `PRE_DISPATCH_VISIBLE` is an optional
 intermediate band, not a required checkpoint.
 
 ```text
@@ -219,10 +219,10 @@ PRE_REVIEW
   epochSecond is an owner mutation freshness second; suffix is the
   owner-defined review state code
 
-READY_APPROVED
+PRE_DISPATCH_VISIBLE
   approved but not yet running; scans evaluate pre-open worker-candidate /
   policy facts; false with suffix > 00 rewrites same band with suffix-1,
-  false with suffix == 00 writes READY_APPROVED pause/hold
+  false with suffix == 00 writes PRE_DISPATCH_VISIBLE pause/hold
 
 RUNNING_VISIBLE
   active running state; may enter assignment-dispatch after validation; no-work,

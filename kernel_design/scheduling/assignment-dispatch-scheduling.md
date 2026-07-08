@@ -100,7 +100,7 @@ evidence after a bounded round:
 
 ```text
 query task score range + limit per active band
-  -> default order: RUNNING_VISIBLE, READY_APPROVED
+  -> default order: RUNNING_VISIBLE, PRE_DISPATCH_VISIBLE
   -> classify every successfully acquired candidate
 
 RUNNING_VISIBLE scan
@@ -117,22 +117,22 @@ no ready work
      suffix-1
   -> if suffix == 00, close through task score/lifecycle owner
 
-READY_APPROVED scan
+PRE_DISPATCH_VISIBLE scan
   -> scheduling evaluates pre-running open facts
   -> if ready, rewrite to RUNNING_VISIBLE
-  -> if not ready and suffix > 00, rewrite READY_APPROVED with next epoch and
+  -> if not ready and suffix > 00, rewrite PRE_DISPATCH_VISIBLE with next epoch and
      suffix-1
-  -> if not ready and suffix == 00, write READY_APPROVED pause/hold score
-  -> do not produce a deliver seed in READY_APPROVED
+  -> if not ready and suffix == 00, write PRE_DISPATCH_VISIBLE pause/hold score
+  -> do not produce a deliver seed in PRE_DISPATCH_VISIBLE
 ```
 
-Assignment-dispatch must treat lifecycle direction and lease direction as
+Assignment-dispatch must treat lifecycle direction and hold/recheck direction as
 separate checks:
 
 ```text
 cross-band lifecycle movement goes to a lower tag / terminal score
-same-band suppression, retry, hold, and lease write a later epochSecond
-release/resume may lower epochSecond only with exact observedLeaseScore
+same-band suppression, retry, and hold write a later epochSecond
+release/resume may lower epochSecond only with exact observedHoldScore
 ```
 
 Do not validate a requested task score with one global `nextScore < currentScore`
@@ -140,7 +140,7 @@ or `nextScore > currentScore` rule. Decode tag, epochSecond, and suffix, then
 apply the transition direction rule and write-time stale fence.
 
 No task-score pagination is required. Assignment-dispatch owns scan range,
-ordering, quota, horizon, and no-work/backoff policy. A `READY_APPROVED` candidate that
+ordering, quota, horizon, and no-work/backoff policy. A `PRE_DISPATCH_VISIBLE` candidate that
 remains in the same band must be consumed by writing a later epoch with `suffix
 - 1`, by executing the exhausted action, or by losing the write-time stale
 fence.
@@ -150,14 +150,14 @@ rejected by the score-write fence.
 Assignment-dispatch must not collapse active task acquisition into one broad
 positive score range. Negative terminal markers are final and immutable;
 `PRE_REVIEW` is positive but inactive. Active acquisition must use the explicit
-`RUNNING_VISIBLE` / `READY_APPROVED` tag allow-list.
+`RUNNING_VISIBLE` / `PRE_DISPATCH_VISIBLE` tag allow-list.
 
 Append, result notification, trace, and read projection do not refresh task
 score directly. Later transport delivery evidence also does not refresh task
 score directly; the score rewrite belongs to the assignment-dispatch round that
 successfully produced the deliver seed or classified a no-dispatch outcome.
 Activation fact updates behave the same way: they update owner truth, while the
-due scheduling round decides whether `READY_APPROVED` becomes
+due scheduling round decides whether `PRE_DISPATCH_VISIBLE` becomes
 `RUNNING_VISIBLE`.
 
 ## Candidate Worker Discovery
@@ -270,8 +270,8 @@ while preserving explicit method boundaries.
 Task-side examples:
 
 ```text
-ACTIVATION_STILL_WAITING and suffix > 00 -> READY_APPROVED with next epoch and suffix-1
-ACTIVATION_STILL_WAITING and suffix == 00 -> READY_APPROVED pause/hold
+ACTIVATION_STILL_WAITING and suffix > 00 -> PRE_DISPATCH_VISIBLE with next epoch and suffix-1
+ACTIVATION_STILL_WAITING and suffix == 00 -> PRE_DISPATCH_VISIBLE pause/hold
 ACTIVATION_READY -> RUNNING_VISIBLE due score
 NO_READY_WORK and suffix > 00 -> RUNNING_VISIBLE with next no-work recheck and suffix-1, or RUNNING_VISIBLE delayed by scheduled retry evidence
 NO_READY_WORK and suffix == 00 -> TERMINAL
@@ -348,7 +348,7 @@ task_score.rewrite_same_band_epoch(
   expected_band,
   target_epoch_second
 )
-task_score.consume_same_band_budget(
+task_score.rewrite_observed_same_band_suffix(
   task_id,
   observed_score,
   target_epoch_second,
@@ -362,7 +362,7 @@ task_score.rewrite(
   target_suffix?
 )
 task_score.close(task_id, terminal_score)
-task_score.release_lease(task_id, observed_lease_score, release_epoch_second)
+task_score.release_observed_score_hold(task_id, observed_hold_score, release_epoch_second)
 worker_score.acquire_due(demand)
 work_items.claim(task_id, worker_id)
 transport.resolve_delivery(worker_id)
@@ -377,7 +377,7 @@ the owner handoff first.
 - Do not let assignment-dispatch refresh task score because append happened.
 - Do not keep a task-score pagination cursor; use bounded range + limit queries
   and consume dispatch-visible candidates by score rewrite, band move, close,
-  cleanup, or stale-fence failure. `READY_APPROVED` same-band false checks
+  cleanup, or stale-fence failure. `PRE_DISPATCH_VISIBLE` same-band false checks
   and `RUNNING_VISIBLE` no-work/no-worker/contention classifications must
   consume suffix budget or execute the exhausted action after higher-priority
   running consumption.

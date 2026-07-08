@@ -21,7 +21,7 @@ class TaskScoreBand(Enum):
 
     PRE_REVIEW = "pre_review"
     RUNNING_VISIBLE = "running_visible"
-    READY_APPROVED = "ready_approved"
+    PRE_DISPATCH_VISIBLE = "pre_dispatch_visible"
     TERMINAL = "terminal"
 
 
@@ -67,10 +67,10 @@ class TaskScoreBandCore(ABC):
     """
 
     RUNNING_VISIBLE_TAG: ClassVar[int] = 1
-    READY_APPROVED_TAG: ClassVar[int] = 2
+    PRE_DISPATCH_VISIBLE_TAG: ClassVar[int] = 2
     PRE_REVIEW_TAG: ClassVar[int] = 3
     VALID_POSITIVE_TAGS: ClassVar[frozenset[int]] = frozenset(
-        {RUNNING_VISIBLE_TAG, READY_APPROVED_TAG, PRE_REVIEW_TAG}
+        {RUNNING_VISIBLE_TAG, PRE_DISPATCH_VISIBLE_TAG, PRE_REVIEW_TAG}
     )
 
     TERMINAL_SCORE_MAX: ClassVar[int] = -1
@@ -107,15 +107,17 @@ class TaskScoreBandCore(ABC):
         pass
 
     @abstractmethod
-    def acquire_worker_allocatable_tasks(
+    def acquire_active_task_candidates(
         self,
         *,
         limit: int,
     ) -> Sequence[TaskId]:
-        """Acquire due RUNNING_VISIBLE and READY_APPROVED task ids.
+        """Acquire due active task score candidates.
 
         The implementation owns band-range scans and limit enforcement. It must
         not return PRE_REVIEW, TERMINAL, hard-paused, or non-due future scores.
+        PRE_DISPATCH_VISIBLE candidates still require activation validation and
+        must not enter worker admission, work claim, or deliver seed creation.
         """
         pass
 
@@ -183,7 +185,7 @@ class TaskScoreBandCore(ABC):
         pass
 
     @abstractmethod
-    def consume_same_band_budget(
+    def rewrite_observed_same_band_suffix(
         self,
         *,
         task_id: TaskId,
@@ -191,13 +193,12 @@ class TaskScoreBandCore(ABC):
         target_epoch_second: EpochSecond,
         suffix_delta: int,
     ) -> TaskScoreTransitionResult:
-        """Adjust scheduling-band suffix using an exact observed-score fence.
+        """Rewrite same-band suffix using an exact observed-score fence.
 
-        Suffix budget consumption is scheduling-round evidence. The stored score
-        must still equal observed_score, otherwise the round is stale and must
-        not overwrite newer same-band classification. suffix_delta must be
-        negative; budget replenishment is an explicit owner rewrite, not a
-        scheduling consumption primitive.
+        The stored score must still equal observed_score, otherwise the round is
+        stale and must not overwrite newer same-band classification.
+        suffix_delta must be negative; positive suffix movement is an explicit
+        owner rewrite, not this observed-round primitive.
         """
         pass
 
@@ -212,17 +213,17 @@ class TaskScoreBandCore(ABC):
         pass
 
     @abstractmethod
-    def release_score_lease(
+    def release_observed_score_hold(
         self,
         *,
         task_id: TaskId,
-        observed_lease_score: Score,
+        observed_hold_score: Score,
         release_epoch_second: EpochSecond,
     ) -> TaskScoreTransitionResult:
         """Release an exact held score.
 
-        The release target derives tag and suffix from observed_lease_score and
+        The release target derives tag and suffix from observed_hold_score and
         may only move epochSecond nearer or keep it unchanged. It does not reset
-        same-band budget.
+        same-band suffix.
         """
         pass

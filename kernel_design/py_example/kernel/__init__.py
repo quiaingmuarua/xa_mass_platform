@@ -9,9 +9,19 @@ from .task_score_band import (
     TaskScoreTransitionResult,
     TaskScoreTransitionStatus,
 )
+from .worker_score import (
+    HomeBucketId,
+    WorkerId,
+    WorkerScoreCore,
+    WorkerScorePolarity,
+    WorkerScoreState,
+    WorkerScoreTransitionResult,
+    WorkerScoreTransitionStatus,
+)
 
 __all__ = [
     "EpochSecond",
+    "HomeBucketId",
     "Score",
     "Suffix",
     "TaskId",
@@ -20,4 +30,10 @@ __all__ = [
     "TaskScoreState",
     "TaskScoreTransitionResult",
     "TaskScoreTransitionStatus",
+    "WorkerId",
+    "WorkerScoreCore",
+    "WorkerScorePolarity",
+    "WorkerScoreState",
+    "WorkerScoreTransitionResult",
+    "WorkerScoreTransitionStatus",
 ]

@@ -130,7 +130,7 @@ return {"transitioned", tonumber(next_score)}
             )
         return states
 
-    def acquire_worker_allocatable_tasks(
+    def acquire_active_task_candidates(
         self,
         *,
         limit: int,
@@ -149,12 +149,12 @@ return {"transitioned", tonumber(next_score)}
         if remaining <= 0:
             return running
 
-        ready = self._range_task_ids(
-            self._score(self.READY_APPROVED_TAG, 0, 0),
-            self._score(self.READY_APPROVED_TAG, now_epoch_second, self.MAX_SUFFIX),
+        pre_dispatch_visible = self._range_task_ids(
+            self._score(self.PRE_DISPATCH_VISIBLE_TAG, 0, 0),
+            self._score(self.PRE_DISPATCH_VISIBLE_TAG, now_epoch_second, self.MAX_SUFFIX),
             remaining,
         )
-        return [*running, *ready]
+        return [*running, *pre_dispatch_visible]
 
     def acquire_dispatch_work_tasks(
         self,
@@ -262,7 +262,7 @@ return {"transitioned", tonumber(next_score)}
             target_suffix=None,
         )
 
-    def consume_same_band_budget(
+    def rewrite_observed_same_band_suffix(
         self,
         *,
         task_id: TaskId,
@@ -280,7 +280,7 @@ return {"transitioned", tonumber(next_score)}
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
 
         observed_tag, observed_epoch_second, observed_suffix = observed
-        if observed_tag not in {self.RUNNING_VISIBLE_TAG, self.READY_APPROVED_TAG}:
+        if observed_tag not in {self.RUNNING_VISIBLE_TAG, self.PRE_DISPATCH_VISIBLE_TAG}:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
         if target_epoch_second <= observed_epoch_second:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
@@ -303,19 +303,19 @@ return {"transitioned", tonumber(next_score)}
 
         return self._close_positive_score(task_id, terminal_score)
 
-    def release_score_lease(
+    def release_observed_score_hold(
         self,
         *,
         task_id: TaskId,
-        observed_lease_score: Score,
+        observed_hold_score: Score,
         release_epoch_second: EpochSecond,
     ) -> TaskScoreTransitionResult:
-        observed = self._decode_positive(observed_lease_score)
+        observed = self._decode_positive(observed_hold_score)
         if observed is None:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
 
         tag, observed_epoch_second, suffix = observed
-        if tag not in {self.RUNNING_VISIBLE_TAG, self.READY_APPROVED_TAG}:
+        if tag not in {self.RUNNING_VISIBLE_TAG, self.PRE_DISPATCH_VISIBLE_TAG}:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
         if not self.MIN_EPOCH_SECOND <= release_epoch_second <= self.MAX_EPOCH_SECOND:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
@@ -323,7 +323,7 @@ return {"transitioned", tonumber(next_score)}
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
 
         release_score = self._score(tag, release_epoch_second, suffix)
-        return self._cas_update(task_id, observed_lease_score, release_score)
+        return self._cas_update(task_id, observed_hold_score, release_score)
 
     def _cas_update(
         self,
@@ -495,8 +495,8 @@ return {"transitioned", tonumber(next_score)}
     def _band_from_tag(self, tag: int) -> TaskScoreBand:
         if tag == self.RUNNING_VISIBLE_TAG:
             return TaskScoreBand.RUNNING_VISIBLE
-        if tag == self.READY_APPROVED_TAG:
-            return TaskScoreBand.READY_APPROVED
+        if tag == self.PRE_DISPATCH_VISIBLE_TAG:
+            return TaskScoreBand.PRE_DISPATCH_VISIBLE
         if tag == self.PRE_REVIEW_TAG:
             return TaskScoreBand.PRE_REVIEW
         raise ValueError(f"unknown task score tag: {tag}")
@@ -504,8 +504,8 @@ return {"transitioned", tonumber(next_score)}
     def _tag_from_band(self, band: TaskScoreBand) -> int | None:
         if band == TaskScoreBand.RUNNING_VISIBLE:
             return self.RUNNING_VISIBLE_TAG
-        if band == TaskScoreBand.READY_APPROVED:
-            return self.READY_APPROVED_TAG
+        if band == TaskScoreBand.PRE_DISPATCH_VISIBLE:
+            return self.PRE_DISPATCH_VISIBLE_TAG
         if band == TaskScoreBand.PRE_REVIEW:
             return self.PRE_REVIEW_TAG
         return None
