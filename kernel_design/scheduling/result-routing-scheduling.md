@@ -253,7 +253,7 @@ task_score.close_or_notify(...)
 ```
 
 Result routing must not call worker score directly. It emits release evidence
-for the worker-runtime / reservation owner; that owner decides whether capacity
+for the worker-runtime / assignment owner; that owner decides whether capacity
 or admission score should be released.
 
 Keep it synchronous and in-memory first. Do not introduce queues or background

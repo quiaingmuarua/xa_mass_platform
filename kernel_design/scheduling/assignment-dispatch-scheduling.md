@@ -85,6 +85,7 @@ TaskWorkerAssignmentPlan
   taskId
   workerGroupId
   workerConstraintQuery
+  validationDependencySet
   candidate workers or selected worker
   observed task / worker fences
   planEpoch
@@ -114,8 +115,16 @@ not consume or extend it before expiry, the plan must be treated as stale.
 
 Worker candidate freshness is score-fenced, not version-fenced. A plan may keep
 the complete `observedWorkerScore`. It must not require assignment-dispatch to
-understand worker metadata versions, dirty bits, score suffixes, or capacity
-internals.
+understand worker metadata replacement details, dirty bits, score suffixes, or
+capacity internals.
+
+`validationDependencySet` is internal evidence about which worker metadata,
+dynamic attributes, group membership facts, gates, or policy facts were used by
+`WorkerCandidateMatcher` / worker-runtime validation for this plan. It is not a
+public DTO, not a new runtime owner, and not a query API. It exists so a later
+dynamic attribute executable spec can decide whether an update can affect this
+specific plan. If a changed dependency is not in the set, it should not mark
+the plan's worker score dirty.
 
 ## Pacer A: Worker Allocation
 

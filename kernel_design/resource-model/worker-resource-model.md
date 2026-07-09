@@ -352,6 +352,13 @@ Assignment-dispatch and worker score primitives must not interpret dynamic
 attribute payloads directly, and dynamic attribute updates must not drive
 worker availability by themselves.
 
+Dynamic attribute changes do not automatically mark worker score dirty. A
+handler should consider dirty only when the changed attribute participates in
+the `WorkerConstraintQuery` / matcher validation dependency set of an existing
+assignment plan or hot score lease continuation, and the new value invalidates
+or may invalidate the recorded match evidence. If there is no such
+continuation, the next matcher read observes the new value directly.
+
 Concurrent execution control is one expected use of dynamic attributes. For
 example, a worker may project `runningCount`, `freeSlots`, load, or local
 queue-depth attributes. These values can narrow or rank candidate workers

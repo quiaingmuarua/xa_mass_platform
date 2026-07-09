@@ -117,26 +117,26 @@ RECOVERY_RECHECK
   retry count / failed recheck count / remaining recovery budget
 ```
 
-`dirty` is a one-bit worker core scheduling metadata dirty-page flag:
+`dirty` is an assignment-continuation stale hint embedded in the worker score:
 
 ```text
-0 = clean relative to current reservation/admission owner validation
-1 = scheduling-critical metadata changed while a persisted task-worker
-    candidate reservation / admission hold may continue from cached admission
-    facts
+0 = clean relative to the current hot score lease / assignment continuation
+1 = a validation dependency used by a persisted task-worker assignment plan or
+    hot score lease continuation may have changed enough to invalidate cached
+    match facts
 ```
 
-It is stored inside the score only so a reservation owner can notice that it
+It is stored inside the score only so an assignment owner can notice that it
 must re-read and revalidate current worker-runtime scheduling metadata before
-continuing or pre-occupying the worker. Score-band itself does not create an
-`active lease`; `observedScore` is only a stale fence. If there is no persisted
-task-worker candidate reservation / admission hold, dirty should remain unused
-or deferred. Idle workers do not need dirty writes when metadata changes; the
-next scheduling validation reads current metadata. Already dispatched work is
-not interrupted through dirty; result / timeout / capacity release handles that
-in its owner path. Dirty is not a version, counter, hash, priority, lifecycle,
-or audit sequence. The full scheduling signature/hash belongs in worker-runtime
-metadata/evidence, not in the score.
+continuing from a persisted plan. Score-band itself does not create an `active
+lease`; `observedScore` is only a stale fence. If there is no persisted
+task-worker assignment plan or hot score lease continuation, dirty should remain
+unused or deferred. Idle workers do not need dirty writes when metadata changes;
+the next scheduling validation reads current metadata. Already dispatched work
+is not interrupted through dirty; result / timeout / capacity release handles
+that in its owner path. Dirty is not a version, counter, hash, priority,
+lifecycle, or audit sequence. The full scheduling signature/hash belongs in
+worker-runtime metadata/evidence, not in the score.
 
 ## Key Shape
 
@@ -236,7 +236,6 @@ workerGroupId
 capacityLimit
 approvedSchedulingAttributes
 placementTagValues
-metadataVersion
 schedulingSignatureHash
 ```
 
@@ -255,14 +254,10 @@ approvedSchedulingAttributes
 placementTagValues
   compact owner-approved values for diagnostics and later auxiliary indexes
 
-metadataVersion
-  owner metadata replacement revision; not a transport session generation and
-  not a score-axis fence
-
 schedulingSignatureHash
   platform-owned digest over scheduling-critical metadata; used by the
-  reservation owner to validate whether dirty may be cleared before continuing or
-  pre-occupying
+  assignment owner to validate whether a persisted assignment continuation must
+  be discarded, rematched, or revalidated before hot lease continuation
 ```
 
 Do not store these in scheduling metadata:
@@ -487,19 +482,19 @@ Worker-runtime owns a platform-defined scheduling signature over fields that
 affect worker selection or admission. Redis dirty bit is only a one-bit
 dirty-page marker for that signature.
 
-The first `WorkerScoreCore` surface does not expose a generic dirty mark /
-clear primitive. Add dirty mutation only with a real persisted candidate
-reservation owner.
+`WorkerScoreCore` must not expose a generic dirty clear primitive. Dirty
+mutation is valid only when there is a real persisted assignment plan or hot
+score lease continuation that can consume the stale hint.
 
-Metadata replacement flow while a persisted task-worker candidate reservation /
-admission hold exists:
+Metadata replacement flow while a persisted task-worker assignment plan or hot
+score lease continuation exists:
 
 ```text
-update worker-runtime metadataVersion / schedulingSignatureHash
+update worker-runtime schedulingSignatureHash / scheduling metadata
 mark worker score dirty through an atomic score write
 ```
 
-Metadata replacement without a persisted reservation / admission hold does not
+Metadata replacement without a persisted assignment continuation does not
 require a score dirty write. The next worker candidate validation must read
 current worker-runtime scheduling metadata before assignment. Existing
 dispatched work continues until result / timeout / capacity release evidence
@@ -508,7 +503,7 @@ reaches its owner path.
 Dirty mark primitive:
 
 ```text
-mark_worker_score_dirty(
+mark_current_lease_dirty(
   key,
   workerId
 )
@@ -539,19 +534,23 @@ do not lower epochSecond
 do not change polarity because metadata changed
 do not change laneRank because metadata changed
 do not treat dirty as priority, reason, lifecycle, or audit sequence
-non-reservation owners may only write dirty = 1
+non-lease owners may only write dirty = 1
 ```
 
-Dirty clear is not a metadata-owner operation. Only the reservation owner may clear
-dirty to `0`, and only after re-reading and validating current
-`schedulingSignatureHash` / scheduling metadata before continuing or
-pre-occupying the worker. Redis score equality is a stale fence, not proof that
-the validation happened; that proof belongs to the worker-runtime owner wrapper
-around the reservation-specific primitive.
+Dirty clear is not a metadata-owner operation. Due HOT_ACQUIRE lease acquisition
+may clear dirty only after reading and validating current
+`schedulingSignatureHash` / scheduling metadata. Active hot lease renewal must
+return STALE on dirty and force the caller to discard or rematch the persisted
+plan. Redis score equality is a stale fence, not proof that validation happened;
+that proof belongs to the worker-runtime / assignment owner wrapper around the
+hot lease primitive.
 
-Dirty mark may be combined atomically with metadata replacement when metadata
-change itself is the cause. It is not triggered by raw transport events,
-heartbeat, session refresh, trace, or display-only field changes.
+Dirty mark may be combined atomically with metadata replacement when the changed
+field is part of the persisted continuation's validationDependencySet and the
+new value invalidates, or may invalidate, recorded match evidence. It is not
+triggered by raw transport events, heartbeat, session refresh, trace,
+display-only field changes, or dynamic attribute changes that are unrelated to
+the recorded `WorkerConstraintQuery` / matcher validation evidence.
 
 ## Dynamic State Boundary
 

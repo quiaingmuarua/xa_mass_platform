@@ -145,28 +145,29 @@ RECOVERY_RECHECK
   retry count / failed recheck count / remaining recovery budget
 ```
 
-`dirty` is a reservation-local stale hint embedded in the worker score:
+`dirty` is an assignment-continuation stale hint embedded in the worker score:
 
 ```text
 dirty = 0
-  clean relative to the current reservation/admission owner
+  clean relative to the current hot score lease / assignment continuation
 
 dirty = 1
-  scheduling-critical metadata changed while a persisted task-worker candidate
-  reservation / admission hold may continue from cached admission facts; the
-  reservation owner must revalidate before continuing or renewing a lease
+  a validation dependency used by a persisted task-worker assignment plan or
+  hot score lease continuation may have changed enough to invalidate cached
+  match facts; the assignment owner must revalidate before continuing
 ```
 
 The dirty bit is not a metadata hash, not a counter, not a lifecycle state, not
 a global worker state, and not a version. Platform policy owns the critical
 scheduling signature definition. The full signature or hash lives in
 worker-runtime metadata/evidence; score `dirty` only tells a real persisted
-candidate reservation that its cached admission facts may be stale.
+assignment continuation that its cached match / admission facts may be stale.
 
 Score-band itself does not create an `active lease`. `observedScore` returned
-by acquire is only a stale fence for the acquired candidate, not a lease, lock,
+by acquire is only a stale fence for the acquired candidate, not a durable lock
 or reservation. If the first executable slice has no persisted task-worker
-candidate reservation / admission hold, dirty should remain unused or deferred.
+assignment plan / hot score lease continuation, dirty should remain unused or
+deferred.
 
 Scheduling-critical metadata may include worker group membership, approved
 scheduling attributes, capacity profile, dispatch gate generation, admission
@@ -178,8 +179,8 @@ counters.
 Reason codes, reconnect source, operator notes, owner-reset policy, and
 diagnostics stay in worker-runtime evidence, trace, or optional diagnostics.
 Score laneRank may bound scheduling/recheck work. Dirty only marks that a
-persisted candidate reservation needs metadata revalidation; it must not become
-a hidden reason owner.
+persisted assignment continuation needs metadata revalidation; it must not
+become a hidden reason owner.
 
 ## Polarity Lanes
 
@@ -381,8 +382,9 @@ worker declaration exists
 worker belongs to homeBucketId / workerGroupId
 worker group capability and task demand are compatible
 approved scheduling metadata is current enough
-if dirty == 1 and the caller is continuing from a persisted task-worker
-candidate reservation, reservation owner revalidates current scheduling metadata
+if dirty == 1 and the caller is continuing from a persisted assignment plan /
+hot score lease continuation, assignment owner discards / rematches or
+revalidates through the allowed hot lease transition
 dispatch gate permits scheduling
 reachability evidence is acceptable by policy
 capacity/admission is available
@@ -771,9 +773,33 @@ current platform-owned scheduling metadata / signature
 non-lease owners must never clear dirty
 ```
 
-If dirty is already `1`, further metadata changes keep it at `1`. Dirty is a
-reservation-local stale hint, not a change counter. The metadata
+If dirty is already `1`, further metadata changes keep it at `1`. Dirty is an
+assignment-continuation stale hint, not a change counter. The metadata
 signature/hash is the fact that prevents incorrectly clearing newer changes.
+
+Dirty should be written only when all of these are true:
+
+```text
+1. a task-worker assignment plan or hot score lease continuation still exists
+2. the changed field is part of that continuation's validationDependencySet
+3. the changed value invalidates, or may invalidate, the recorded
+   WorkerConstraintQuery / matcher validation evidence
+```
+
+If the changed attribute is not referenced by the continuation's
+`WorkerConstraintQuery`, matcher validation, group membership check, gate,
+capacity profile, or other owner-approved validation dependency, it should not
+mark dirty. If the worker is already executing dispatched work and the hot score
+lease has been released, dirty should not interrupt execution; result, timeout,
+capacity evidence, and the next scheduling round handle the new facts.
+
+`validationDependencySet` is conceptual first-slice evidence, not a public DTO
+and not a new interface. It records which worker metadata / dynamic attributes /
+policy facts were used to validate the match so an attribute update handler can
+decide whether dirty is necessary. If an implementation cannot cheaply prove a
+changed dependency still satisfies the recorded query, it may conservatively
+mark dirty. If it can prove the dependency remains valid, no dirty write is
+needed.
 
 ## Transition Matrix
 
@@ -915,7 +941,7 @@ signed score encoding
 positive hot acquire range
 negative recovery-recheck acquire range
 observed-score stale fence
-deferred dirty bit mark / reservation-owner clear protocol
+deferred dirty bit mark / hot lease clear protocol
 same-polarity release
 owner-validated polarity move boundary preserving timeSlot
 RECOVERY_RECHECK lookback-window acquisition
@@ -930,8 +956,8 @@ Policy owns:
 initial HOT_ACQUIRE score
 candidate ranking / laneRank meaning
 platform scheduling signature policy
-deferred dirty mark / reservation-owner clear rule, only if a persisted candidate
-reservation exists
+deferred dirty mark / hot lease clear rule, only if a persisted assignment
+continuation exists
 cooldown duration
 admission hold interval
 manual hold / enable rule
