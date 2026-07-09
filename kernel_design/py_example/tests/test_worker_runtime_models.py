@@ -6,9 +6,12 @@ from dataclasses import fields
 from kernel_design.py_example import (
     DynamicAttributeHandler,
     DynamicAttributeReadResult,
+    WorkerAdmissionRuntime,
     WorkerDescriptor,
     WorkerDemand,
+    WorkerDynamicAttributeRuntime,
     WorkerGroupDescriptor,
+    WorkerResourceCatalog,
     WorkerRuntimeResult,
     WorkerRuntimeStatus,
 )
@@ -85,6 +88,38 @@ class WorkerRuntimeModelTest(unittest.TestCase):
         self.assertEqual(demand.worker_group_id, "image-workers")
         self.assertEqual(demand.target_worker_id, "worker-1")
         self.assertEqual(demand.required_dynamic_attributes, {})
+
+    def test_worker_runtime_interfaces_are_split_by_caller_surface(self) -> None:
+        self.assertEqual(
+            WorkerResourceCatalog.__abstractmethods__,
+            {
+                "get_worker_descriptors",
+                "get_worker_group_descriptors",
+                "refresh_worker_static_attributes",
+                "register_worker_descriptor",
+                "register_worker_group_descriptor",
+                "update_worker_system_attributes",
+            },
+        )
+        self.assertEqual(
+            WorkerDynamicAttributeRuntime.__abstractmethods__,
+            {
+                "read_worker_dynamic_attribute",
+                "register_dynamic_attribute_handler",
+                "update_worker_dynamic_attribute",
+            },
+        )
+        self.assertEqual(
+            WorkerAdmissionRuntime.__abstractmethods__,
+            {
+                "admit_worker",
+                "release_admission",
+                "revalidate_admission",
+                "validate_worker_match",
+            },
+        )
+        self.assertFalse(hasattr(WorkerAdmissionRuntime, "register_worker_descriptor"))
+        self.assertFalse(hasattr(WorkerAdmissionRuntime, "update_worker_dynamic_attribute"))
 
     def test_dynamic_attribute_value_lives_behind_handler(self) -> None:
         descriptor = WorkerDescriptor(

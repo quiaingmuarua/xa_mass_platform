@@ -152,26 +152,13 @@ class DynamicAttributeHandler(ABC):
         pass
 
 
-class WorkerRuntimeCore(ABC):
-    """Worker-runtime owner interface for the executable spec.
+class WorkerResourceCatalog(ABC):
+    """Worker-runtime metadata/query projection surface.
 
-    The interface deliberately separates:
-
-    - descriptor metadata/query projection;
-    - dynamic attribute allowlist and handler-owned values;
-    - binary worker admission/reservation.
-
-    It does not expose transport session truth, worker score encoding, capacity
-    pool internals, or per-event binding rows.
+    This is the registration/connect/bootstrap-facing surface. It owns worker
+    group descriptors, worker descriptors, and low-frequency metadata updates.
+    It does not expose dynamic attribute values or admission reservations.
     """
-
-    @abstractmethod
-    def register_dynamic_attribute_handler(
-        self,
-        *,
-        handler: DynamicAttributeHandler,
-    ) -> WorkerRuntimeResult:
-        pass
 
     @abstractmethod
     def register_worker_group_descriptor(
@@ -231,6 +218,23 @@ class WorkerRuntimeCore(ABC):
         """Worker register/connect metadata refresh after platform validation."""
         pass
 
+
+class WorkerDynamicAttributeRuntime(ABC):
+    """Worker-runtime dynamic attribute surface.
+
+    This is the high-frequency attribute update/read surface. Each dynamic
+    attribute value lives behind its handler-owned storage/index. Descriptor
+    dynamic_attributes only gates whether an update may be accepted.
+    """
+
+    @abstractmethod
+    def register_dynamic_attribute_handler(
+        self,
+        *,
+        handler: DynamicAttributeHandler,
+    ) -> WorkerRuntimeResult:
+        pass
+
     @abstractmethod
     def update_worker_dynamic_attribute(
         self,
@@ -256,6 +260,15 @@ class WorkerRuntimeCore(ABC):
     ) -> DynamicAttributeReadResult:
         """Point-read a dynamic attribute owner value for validation/query use."""
         pass
+
+
+class WorkerAdmissionRuntime(ABC):
+    """Worker-runtime admission/reservation surface.
+
+    Assignment-dispatch should depend on this narrow surface. It validates
+    descriptor/dynamic evidence through worker-runtime and creates binary
+    reservations for scheduler-visible worker resources.
+    """
 
     @abstractmethod
     def validate_worker_match(
