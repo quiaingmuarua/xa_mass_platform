@@ -19,7 +19,7 @@ The resource model is intentionally a short tree:
 ```text
 Project / workload -> allowed WorkerGroups
 Task                -> exactly one selected WorkerGroup
-Task demand         -> WorkerDescriptor attributes inside selected WorkerGroup
+WorkerConstraintQuery -> worker identity / attribute predicates inside selected WorkerGroup
 Work / item / seed  -> worker-local EventHandler
 Transport           -> internal delivery resource
 ```
@@ -33,9 +33,10 @@ The selected `workerGroupId` is immutable while the task is running. If work
 must use a different worker group, create a different task or stop/cancel and
 recreate the task; do not hot-swap worker groups during dispatch.
 
-`Task demand -> WorkerDescriptor attributes` is matching inside the selected
-worker group. It narrows workers by targetWorkerId, placement, static/system
-attributes, or projected dynamic query attributes.
+`WorkerConstraintQuery -> worker identity / attribute predicates` is matching
+inside the selected worker group. It narrows workers by reserved `worker.id`,
+placement, static/system attributes, or explicitly supported projected dynamic
+query attributes.
 
 `Work / item / seed -> EventHandler` is handler invocation inside the selected
 worker. The work item's `eventCode` validates against the selected
@@ -195,6 +196,66 @@ Version compatibility is metadata validation through `staticAttributes`.
 Assignment-dispatch must not interpret version fields directly as runtime
 availability. Current usability still belongs to worker-runtime admission.
 
+## WorkerConstraintQuery
+
+`WorkerConstraintQuery` is a small Mongo-like predicate tool for candidate
+filtering and admission validation inside an already selected worker group. It
+is not a task policy owner, not a worker-group selector, and not a handler
+routing contract.
+
+The query is an implicit `AND` over fields:
+
+```python
+WorkerConstraintQuery({
+  "worker.id": {"$in": ["worker-1", "worker-2"]},
+  "system.tier": {"$eq": "premium"},
+  "static.runtime": {"$in": ["python", "java"]},
+  "dynamic.battery": {"$gte": 20},
+})
+```
+
+Supported fields:
+
+```text
+worker.id
+system.*
+static.*
+dynamic.*
+```
+
+`worker.id` is a reserved identity predicate. It is a hard filter over candidate
+workers and only supports `$eq` / `$in`. It is not a descriptor attribute.
+
+`workerGroupId` is not a query field. It remains an outer parameter because it
+chooses the worker universe, score bucket, and runtime namespace.
+
+`eventCode` is not a query field. It validates the selected group's event-code
+promise and later routes work to a worker-local handler; it does not match
+individual workers.
+
+Supported v0 operators:
+
+```text
+$eq / $equal
+$ne
+$gt / $gte
+$lt / $lte
+$in
+$exists
+```
+
+Do not add these in v0:
+
+```text
+$or
+$and as explicit node
+$not
+$regex
+$where / function expression
+implicit type conversion
+deep object traversal
+```
+
 ## Dynamic Attribute Boundary
 
 Dynamic attributes are separated from `WorkerDescriptor` because each dynamic
@@ -273,7 +334,7 @@ The stable model has three resource/handler relationships:
 ```text
 Project / workload -> allowed WorkerGroups
 Task                -> selected WorkerGroup
-Task demand         -> WorkerDescriptor attributes inside selected WorkerGroup
+WorkerConstraintQuery -> worker identity / attribute predicates inside selected WorkerGroup
 Work / item / seed  -> EventHandler
 ```
 
@@ -285,15 +346,16 @@ not query worker groups on every scheduling round.
 allowed set. It is exactly one group in v0 and immutable while the task is
 running.
 
-`Task demand -> WorkerDescriptor attributes` is worker matching inside the
-selected worker group. Task demand may constrain targetWorkerId, placement,
-static attributes, system attributes, or explicitly supported projected dynamic
-attributes. These constraints narrow worker candidates; they do not replace
-worker-runtime admission.
+`WorkerConstraintQuery -> worker identity / attribute predicates` is worker
+matching inside the selected worker group. The query may constrain `worker.id`,
+placement, static attributes, system attributes, or explicitly supported
+projected dynamic attributes. These constraints narrow worker candidates; they
+do not replace worker-runtime admission.
 
-`targetWorkerId` is only a hard filter inside the task's selected
-`workerGroupId`. It still must pass worker score acquire and worker-runtime
-admission. It is not a worker group selector and not a transport target.
+`worker.id` inside `WorkerConstraintQuery` is only a hard filter inside the
+task's selected `workerGroupId`. It still must pass worker score acquire and
+worker-runtime admission. It is not a worker group selector and not a transport
+target.
 
 Dynamic attribute matching is deliberately narrow in v0. Assignment-dispatch
 must not perform arbitrary dynamic-attribute multi-index queries. The default
@@ -324,7 +386,7 @@ project/workload binding
 task eventCode
   -> validates against WorkerGroupDescriptor.eventCodes
 pre-bound workerGroupId
-  -> WorkerDescriptor static/system/query attributes filter and rank candidates
+  -> WorkerConstraintQuery filters identity/static/system/query attributes
   -> worker-runtime admission validates current usability/capacity/reservation
 ```
 
@@ -376,6 +438,8 @@ metadataRevision as public descriptor field
 metadataSignature as public descriptor field
 dynamic attribute function refs carried by WorkerDescriptor
 dynamic attribute current values inside WorkerDescriptor
+eventCode inside WorkerConstraintQuery
+workerGroupId inside WorkerConstraintQuery
 adapter session / mailbox / connection state inside WorkerDescriptor
 runtime score / dirty / admission fields inside WorkerDescriptor
 ```

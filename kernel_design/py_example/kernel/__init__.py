@@ -20,6 +20,7 @@ from .worker_score import (
     WorkerScoreTransitionResult,
     WorkerScoreTransitionStatus,
 )
+from .worker_constraint_query import WorkerConstraintQuery
 from .worker_runtime import (
     AttributeName,
     AttributeValue,
@@ -28,7 +29,6 @@ from .worker_runtime import (
     WorkerAdmission,
     WorkerAdmissionResult,
     WorkerAdmissionRuntime,
-    WorkerDemand,
     WorkerDescriptor,
     WorkerGroupDescriptor,
     WorkerGroupId,
@@ -65,7 +65,7 @@ __all__ = [
     "WorkerAdmission",
     "WorkerAdmissionResult",
     "WorkerAdmissionRuntime",
-    "WorkerDemand",
+    "WorkerConstraintQuery",
     "WorkerDescriptor",
     "WorkerGroupDescriptor",
     "WorkerGroupId",

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
 from typing import Callable, Mapping, Sequence
 
+from .worker_constraint_query import WorkerConstraintQuery
 from .worker_score import Score, TimeMillis, WorkerId
 
 
@@ -55,23 +56,6 @@ class WorkerDescriptor:
     system_attributes: Mapping[str, AttributeValue]
     static_attributes: Mapping[str, AttributeValue]
     dynamic_attributes: frozenset[AttributeName]
-
-
-@dataclass(frozen=True)
-class WorkerDemand:
-    """Narrow worker demand compiled from task/project policy.
-
-    This is assignment-dispatch input to worker-runtime validation. It narrows
-    candidates inside an already selected worker group and must not select a
-    worker group by itself.
-    """
-
-    worker_group_id: WorkerGroupId
-    event_code: EventCode
-    target_worker_id: WorkerId | None = None
-    required_system_attributes: Mapping[str, AttributeValue] = field(default_factory=dict)
-    required_static_attributes: Mapping[str, AttributeValue] = field(default_factory=dict)
-    required_dynamic_attributes: Mapping[str, AttributeValue] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -211,21 +195,23 @@ class WorkerAdmissionRuntime(ABC):
     """
 
     @abstractmethod
-    def validate_worker_match(
+    def validate_worker_candidates(
         self,
         *,
-        worker_id: WorkerId,
-        demand: WorkerDemand,
-    ) -> WorkerMatchResult:
-        """Validate descriptor-level matching inside the selected worker group."""
+        worker_group_id: WorkerGroupId,
+        worker_ids: Sequence[WorkerId],
+        constraints: WorkerConstraintQuery,
+    ) -> Mapping[WorkerId, WorkerMatchResult]:
+        """Validate candidate workers inside the selected worker group."""
         pass
 
     @abstractmethod
     def admit_worker(
         self,
         *,
+        worker_group_id: WorkerGroupId,
         worker_id: WorkerId,
-        demand: WorkerDemand,
+        constraints: WorkerConstraintQuery,
         observed_worker_score: Score,
         lease_expires_at_millis: TimeMillis,
     ) -> WorkerAdmissionResult:

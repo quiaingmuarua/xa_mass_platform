@@ -13,7 +13,7 @@ It is not one monolithic pacer. The target design has two independent pacers:
 
 ```text
 WorkerAllocationPacer
-  task scheduling candidate -> worker demand -> candidate worker plan
+  task scheduling candidate -> worker constraint query -> candidate worker plan
 
 WorkDispatchPacer
   active task + candidate worker plan -> work claim -> deliver seed
@@ -63,12 +63,14 @@ TaskSchedulingCandidate
   observedTaskScore
   task scheduling policy snapshot
 
-WorkerDemand
+WorkerGroupSelection
   immutable task workerGroupId
-  eventCode / handler requirement
-  worker match rules
+
+WorkerConstraintQuery
+  worker identity / attribute predicates
+
+RankingPolicy
   priority / ranking rules
-  optional target worker constraint
 
 WorkerCandidate
   workerId or workerResourceId
@@ -80,7 +82,8 @@ WorkerCandidate
 
 TaskWorkerAssignmentPlan
   taskId
-  workerDemand
+  workerGroupId
+  workerConstraintQuery
   candidate workers or selected worker
   observed task / worker fences
   optional workerReservationHandle
@@ -128,8 +131,7 @@ Mainline:
 1. choose task score scan range and allocation batch limit
 2. acquire task candidates from task score-band
 3. validate task candidate and policy snapshot
-4. compile WorkerDemand from immutable task workerGroupId, task policy, and
-   item event/match requirement
+4. compile WorkerConstraintQuery from worker identity / attribute constraints
 5. derive home bucket / resource universe from the pre-bound workerGroupId
 6. discover worker candidates
 7. validate hard match rules
@@ -154,16 +156,14 @@ has transport accepted delivery?
 is the result final?
 ```
 
-### Worker Demand
+### Worker Constraint Query
 
-Worker demand is compiled from task-side policy and work event/match needs:
+Worker constraint query is compiled from worker identity and attribute match
+needs:
 
 ```text
-workerGroupId selected at task create/admission and immutable while running
-eventCode / handler requirement
-targetWorkerId, if explicitly constrained
-match rules
-priority / ranking rules
+worker.id $eq / $in, if explicitly constrained
+system/static/dynamic attribute predicates
 placement / attribute constraints
 ```
 
@@ -172,7 +172,8 @@ create/admission selects exactly one `workerGroupId` from that allowed set. The
 task's selected `workerGroupId` is immutable while the task is running.
 Assignment-dispatch may validate `eventCode` against the selected group
 declaration, but it must not query worker groups, switch worker groups, or do
-fallback group selection as a hot-path discovery step.
+fallback group selection as a hot-path discovery step. `eventCode` does not
+participate in individual worker matching.
 
 Hard match rules filter the candidate universe. Priority rules rank only among
 workers that already satisfy hard match rules. Priority must not make an
@@ -186,7 +187,7 @@ First version discovery should be simple:
 homeBucketId = pre-bound workerGroupId or owner-defined worker home bucket
 worker_score.acquire_hot_acquire_candidates(homeBucketId, limit)
 for each worker candidate:
-  validate worker group / eventCode / match rules / metadata
+  validate worker group / constraint query / metadata
   record complete observed worker score
   rank by priority rules
 ```
@@ -203,10 +204,9 @@ groups.
 Optional later discovery modes:
 
 ```text
-eventCode index
 attribute / placement index
-target-worker point lookup
-precomputed demand bucket
+worker.id point lookup
+precomputed constraint bucket
 ```
 
 These indexes are hints only. They must not own worker truth, score truth,
@@ -439,9 +439,9 @@ worker_score.rewrite_current_score(...)
 worker_score.renew_current_lease(...)
 worker_score.release_score_hold(...)
 
-worker_runtime.validate_match(worker, demand)
-worker_runtime.rank_candidates(candidates, demand)
-worker_runtime.admit_worker(candidate, demand)
+worker_runtime.validate_worker_candidates(workerGroupId, workerIds, constraints)
+assignment_dispatch.rank_candidates(candidates, rankingPolicy)
+worker_runtime.admit_worker(workerGroupId, workerId, constraints, observedWorkerScore)
 worker_runtime.revalidate_candidate(workerReservationHandle, observedWorkerScore)
 worker_runtime.release_admission(admission)
 
