@@ -64,8 +64,8 @@ TaskSchedulingCandidate
   task scheduling policy snapshot
 
 WorkerDemand
-  workerGroup requirement
-  capability / event requirement
+  immutable task workerGroupId
+  eventCode / handler requirement
   worker match rules
   priority / ranking rules
   optional target worker constraint
@@ -94,8 +94,8 @@ ClaimableWorkEvidence
   optional earliest retry / no-work evidence
 
 TransportDeliveryPlan
-  adapter id or adapter family
-  delivery queue key for already selected worker
+  selected worker id
+  transport-resolved delivery handle, opaque to scheduling
   transport-local delivery evidence
 ```
 
@@ -128,8 +128,9 @@ Mainline:
 1. choose task score scan range and allocation batch limit
 2. acquire task candidates from task score-band
 3. validate task candidate and policy snapshot
-4. compile WorkerDemand from task policy and item/capability requirement
-5. choose worker group / home bucket / resource universe
+4. compile WorkerDemand from immutable task workerGroupId, task policy, and
+   item event/match requirement
+5. derive home bucket / resource universe from the pre-bound workerGroupId
 6. discover worker candidates
 7. validate hard match rules
 8. apply priority / ranking rules
@@ -155,16 +156,23 @@ is the result final?
 
 ### Worker Demand
 
-Worker demand is compiled from task-side policy and work/capability needs:
+Worker demand is compiled from task-side policy and work event/match needs:
 
 ```text
-workerGroupId / workerGroupIds
-capability / eventCode requirement
+workerGroupId selected at task create/admission and immutable while running
+eventCode / handler requirement
 targetWorkerId, if explicitly constrained
 match rules
 priority / ranking rules
 placement / attribute constraints
 ```
+
+Project / workload configuration declares the allowed worker groups. Task
+create/admission selects exactly one `workerGroupId` from that allowed set. The
+task's selected `workerGroupId` is immutable while the task is running.
+Assignment-dispatch may validate `eventCode` against the selected group
+declaration, but it must not query worker groups, switch worker groups, or do
+fallback group selection as a hot-path discovery step.
 
 Hard match rules filter the candidate universe. Priority rules rank only among
 workers that already satisfy hard match rules. Priority must not make an
@@ -175,10 +183,10 @@ ineligible worker eligible.
 First version discovery should be simple:
 
 ```text
-homeBucketId = workerGroupId or owner-defined worker home bucket
+homeBucketId = pre-bound workerGroupId or owner-defined worker home bucket
 worker_score.acquire_hot_acquire_candidates(homeBucketId, limit)
 for each worker candidate:
-  validate worker group / capability / match rules / metadata
+  validate worker group / eventCode / match rules / metadata
   record complete observed worker score
   rank by priority rules
 ```
@@ -186,10 +194,16 @@ for each worker candidate:
 This mode may scan more workers than an indexed design, but it has one clear
 truth source: the worker score bucket plus worker-runtime validation.
 
+The work item's `eventCode` routes to a worker-local `EventHandler` after a
+worker is selected. It is not a worker group selector. If the project/task needs
+multiple worker groups for different event families, model that as multiple
+tasks or explicit task creation choices, not one task that dispatches across
+groups.
+
 Optional later discovery modes:
 
 ```text
-capability index
+eventCode index
 attribute / placement index
 target-worker point lookup
 precomputed demand bucket
@@ -223,7 +237,7 @@ capacity/admission truth. Score `dirty` is not a worker-global state or version;
 it is only a reservation-local stale hint embedded in the observed score.
 Assignment-dispatch only keeps the full observed score and the opaque
 reservation/admission handle returned by worker-runtime.
-If worker group membership, capability declaration, match metadata, dispatch
+If worker group membership, eventCode declaration, match metadata, dispatch
 gate, resource policy, or capacity declaration changes, worker-runtime decides
 whether the existing reservation remains valid. The next admission renewal or
 dispatch revalidation must read current worker-runtime evidence instead of
@@ -309,14 +323,18 @@ DeliverSeed
   payload or payloadRef
   claimExpiresAtMillis?
   runtimeEpoch?
-  transportAdapterId or adapterFamily
-  deliveryQueueKey
   createdAt
 ```
 
-`workerId` is the selected execution identity. `deliveryQueueKey` is transport
-queue placement for already selected work. It must not become worker selection
-truth.
+`workerId` is the selected execution identity. Adapter id, adapter family,
+session id, mailbox, route, and delivery queue key are transport-internal
+delivery resolution facts. They are not scheduling-owned fields and must not
+become worker selection truth. If worker matching needs a network category, use
+worker attributes such as `networkType`, not adapter/session identifiers.
+
+`eventCode` is carried so the selected worker can invoke the worker-local
+`EventHandler`. It must already be valid for the task's selected worker group;
+transport must not reinterpret it as a worker or worker-group selector.
 
 The seed carries evidence, not truth. Current truth remains in the work hash:
 

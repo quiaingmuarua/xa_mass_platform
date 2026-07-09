@@ -179,6 +179,9 @@ what exists today.
 - [Kernel Core Scheduling](scheduling/README.md)
   - four scheduling planes for the new kernel core: task score-band, worker
     score-band, assignment-dispatch, and result-routing.
+- [Worker Resource Model](resource-model/worker-resource-model.md)
+  - v0 metadata/query projection for worker groups, workers, and dynamic
+    attribute allowlists.
 
 ## Boundary
 
