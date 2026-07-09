@@ -273,6 +273,6 @@ class WorkerScoreCore(ABC):
         coordinate. It
         is not a RECOVERY_RECHECK -> HOT_ACQUIRE reopen. If observed_score is negative, the
         worker remains in RECOVERY_RECHECK and still requires recovery validation
-        before hot reservation.
+        before hot score acquire.
         """
         pass

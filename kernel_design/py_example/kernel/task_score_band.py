@@ -122,7 +122,7 @@ class TaskScoreBandCore(ABC):
         The implementation owns band-range scans and limit enforcement. It must
         not return PRE_REVIEW, TERMINAL, hard-paused, or non-due future scores.
         PRE_DISPATCH_VISIBLE candidates still require activation validation and
-        must not enter worker reservation, work claim, or deliver seed creation.
+        must not enter worker score lease, work claim, or deliver seed creation.
         """
         pass
 

@@ -60,15 +60,18 @@ physical runtime process
   -> logical worker B in workerGroupB
 ```
 
-In v0, a `Worker` is the scheduler-visible exclusive execution resource, such
-as one exclusive thread / handler lane / execution slot. CPU time-slicing is
-outside this model. If multiple logical workers share a physical device such as
-a GPU, that is not represented as multi-group worker ownership in v0; expose it
-later through dynamic query attributes or a dedicated runtime owner only after
-an executable spec proves the need.
+In v0, a `Worker` is the scheduler-visible execution identity. It may still
+process multiple work items concurrently. Worker score lease / hold protects
+only the short assignment decision window; it is not an execution-duration lock
+and should be released after assignment / deliver seed creation succeeds.
 
-This keeps score ownership, reservation, capacity, dirty handling, and release
-semantics single-group and single-resource from the scheduler's point of view.
+Concurrency and capacity are policy inputs, not worker score truth. Represent
+them through static attributes, projected dynamic attributes such as
+`runningCount` / `freeSlots`, worker-side backpressure, and assignment policy.
+Do not keep a worker score lease open merely to express in-flight execution.
+
+This keeps score ownership, dirty handling, and release semantics single-group
+and admission-fence oriented from the scheduler's point of view.
 
 ## WorkerGroupDescriptor
 
@@ -86,19 +89,19 @@ not select or query worker groups during dispatch.
 
 `attributes` are metadata/query fields. They may describe grouping, display,
 classification, policy hints, or operator-facing facts. They are not live
-worker reservation truth.
+worker score lease truth.
 
 `eventCodes` declares the task item event families this worker group can
 handle. It validates that the project-bound worker group is allowed to serve the
 task item's event, but it is not a per-dispatch group discovery mechanism and
-not proof that a specific worker is currently reachable, reserved, or able to
+not proof that a specific worker is currently reachable, score-leased, or able to
 receive work.
 
 WorkerGroupDescriptor does not own:
 
 ```text
 worker hot/recovery score
-worker runtime reservation
+worker score lease / hold
 worker capacity truth
 transport session truth
 adapter mailbox truth
@@ -154,7 +157,7 @@ customTraits
 Version and handler-bundle compatibility fields belong in `staticAttributes`
 when they are needed. They are ordinary low-frequency metadata, not first-layer
 descriptor fields, not metadata revisions, not stale fences, and not
-reservation tokens.
+score lease tokens.
 
 `dynamicAttributes` is an allowlist of dynamic attribute names that this worker
 is allowed to update. It is not the current value of those attributes.
@@ -194,13 +197,14 @@ v0.
 
 Version compatibility is metadata validation through `staticAttributes`.
 Assignment-dispatch must not interpret version fields directly as runtime
-availability. Current usability still belongs to worker-runtime reservation.
+availability. Current usability still belongs to worker-runtime score lease /
+hold.
 
 ## WorkerConstraintQuery
 
 `WorkerConstraintQuery` is a small Mongo-like predicate tool for candidate
 filtering and matching inside an already selected worker group. It is not a
-task policy owner, not a worker-group selector, not a reservation contract, and
+task policy owner, not a worker-group selector, not a score lease contract, and
 not a handler routing contract.
 
 The v0 query surface is intentionally narrow, but it is still a real mechanism.
@@ -314,11 +318,24 @@ worker-runtime receives or evaluates an attribute update
   -> function writes its own query storage/index
 ```
 
-Dynamic attribute update is an internal worker-runtime function call, not an
-external runtime port and not a global event bus. It must be bounded,
-point-write oriented, fast-fail, and idempotent where possible. Routine
-high-frequency updates such as heartbeat, load, or network observations must
-not emit global scheduling events by default.
+Dynamic attribute update is an internal worker-runtime function route, not an
+external public API and not a global event bus. It must be bounded, point-write
+oriented, fast-fail, and idempotent where possible. Routine high-frequency
+updates such as heartbeat, load, or network observations must not emit global
+scheduling events by default.
+
+The first Python kernel surface exposes this as a narrow
+`WorkerDynamicAttributeRuntime.update_worker_dynamic_attributes(...)` ingress.
+That method validates the worker descriptor and the `dynamicAttributes`
+allowlist, then dispatches accepted attributes to owner-local handlers. It does
+not expose dynamic attribute query values and does not write worker score leases
+directly.
+
+`WorkerDynamicAttributeRuntime` is separate from `WorkerResourceCatalog`.
+Catalog owns worker resource declarations and low-frequency descriptor
+metadata. Dynamic attribute runtime owns only update routing and handler
+dispatch for projected, policy-readable facts. It must not become a second
+worker descriptor store, worker lifecycle owner, score owner, or policy engine.
 
 Dynamic attributes are query/projection facts. A `heartbeat` dynamic attribute
 does not require a second heartbeat owner. If adapter/session runtime already
@@ -328,12 +345,18 @@ worker availability truth.
 
 If a dynamic attribute is relevant to scheduling policy, the worker-runtime
 matching path may point-read the attribute owner's current value before
-reservation. Only bounded candidate matching should receive
-`WorkerConstraintQuery`; worker reservation and revalidation should not
+score lease. Only bounded candidate matching should receive
+`WorkerConstraintQuery`; worker score lease / hold writes should not
 receive raw constraint queries.
 Assignment-dispatch and worker score primitives must not interpret dynamic
 attribute payloads directly, and dynamic attribute updates must not drive
 worker availability by themselves.
+
+Concurrent execution control is one expected use of dynamic attributes. For
+example, a worker may project `runningCount`, `freeSlots`, load, or local
+queue-depth attributes. These values can narrow or rank candidate workers
+through policy / matching, while worker score lease remains only the short
+assignment fence.
 
 ## Scheduling Boundary
 
@@ -358,17 +381,17 @@ running.
 matching inside the selected worker group. The query may constrain `worker.id`,
 placement, static attributes, system attributes, or explicitly supported
 projected dynamic attributes. These constraints narrow worker candidates; they
-do not replace worker-runtime reservation.
+do not replace worker-runtime score lease.
 
 `worker.id` inside `WorkerConstraintQuery` is only a hard filter inside the
 task's selected `workerGroupId`. It still must pass worker score acquire and
-worker-runtime reservation. It is not a worker group selector and not a transport
+worker-runtime score lease. It is not a worker group selector and not a transport
 target.
 
 Dynamic attribute matching is deliberately narrow in v0. Assignment-dispatch
 must not perform arbitrary dynamic-attribute multi-index queries. The default
 path is owner-approved candidate matching point-reading the dynamic attribute
-owner's current value before reservation. If a later executable spec needs
+owner's current value before score lease. If a later executable spec needs
 candidate discovery such as `battery > 20`, the dynamic attribute query function
 must expose a bounded candidate index explicitly.
 
@@ -389,14 +412,14 @@ partition candidates by worker group before calling it. The matcher returns one
 ordered `(candidateId, matchedWorkerIds)` entry for every input candidate.
 Empty `matchedWorkerIds` means no match. It matches only the supplied worker
 ids and does not carry `observedWorkerScore`; assignment-dispatch keeps score
-fences from worker score acquire as sidecar evidence for later reservation. It
+fences from worker score acquire as sidecar evidence for later score lease. It
 must not become `find_all_matching_workers(query)` or a global worker query
 service.
 
-`WorkerReservationRuntime` starts only after matching and ranking. It owns the
-short-lived reservation handle, score-fence revalidation, and compensation
-path. It must not accept `WorkerConstraintQuery` and must not become a second
-candidate matcher.
+There is no separate reservation surface in v0. Worker occupation uses
+`WorkerScoreCore` score lease / hold primitives directly. If a later executable
+spec proves a cross-round reservation record is required, add that owner then.
+Do not keep a placeholder reservation surface now.
 
 `Work / item / seed -> EventHandler` is worker-local execution routing. The
 item `eventCode` resolves the handler only after the task has a selected worker
@@ -412,7 +435,7 @@ selection facts.
 Descriptor metadata is the low-frequency query and matching surface used by
 worker allocation inside a pre-bound worker group. Its purpose is to help
 assignment-dispatch find a small set of plausible workers before runtime
-reservation. It does not decide which worker group a task may use:
+score lease. It does not decide which worker group a task may use:
 
 ```text
 project/workload binding
@@ -421,7 +444,7 @@ task eventCode
   -> validates against WorkerGroupDescriptor.eventCodes
 pre-bound workerGroupId
   -> WorkerConstraintQuery filters identity/static/system/query attributes
-  -> worker-runtime reservation validates current usability/capacity/resource hold
+  -> WorkerScoreCore score lease validates current usability/capacity/resource hold
 ```
 
 Scheduling must not stop at descriptor matches. It reads worker-runtime owner
@@ -430,20 +453,21 @@ surfaces before producing a selected worker:
 ```text
 task inherited workerGroupId -> worker score home bucket
 worker score -> hot/recovery acquisition coordinate
-worker-runtime reservation -> current usability/capacity/resource hold decision
+WorkerScoreCore lease / hold -> current usability/capacity/resource hold decision
 assignment-dispatch -> selected worker + work claim + deliver seed
 ```
 
 Descriptor metadata can be used by worker-runtime validation, policy mapping,
 query views, and diagnostics. It is a candidate discovery / matching input; it
-must not become a second reservation owner.
+must not become a second score lease owner.
 
-In v0, worker reservation is a binary hold of one scheduler-visible worker
-resource. A selected worker is either reserved for the current assignment or it
-is not. Do not model capacity pools inside
-`WorkerDescriptor`. If a physical worker can handle multiple concurrent lanes,
-represent those lanes as multiple logical workers until an executable spec
-proves a real capacity owner is needed.
+In v0, worker occupation is a short score lease / hold of one
+scheduler-visible worker identity during assignment. A selected worker is
+score-leased for the current assignment window or it is not. The lease should be
+released after assignment / deliver seed creation, so it does not serialize all
+work execution for that worker. Do not model capacity pools inside
+`WorkerDescriptor`; express concurrent capacity through attributes and policy
+until an executable spec proves a separate capacity owner is needed.
 
 The worker score model remains separate:
 
@@ -451,12 +475,15 @@ The worker score model remains separate:
 WorkerDescriptor
   metadata and dynamic attribute allowlist
 
+WorkerDynamicAttributeRuntime
+  dynamic attribute update route and owner-local handler dispatch
+
 WorkerScore
   HOT_ACQUIRE / RECOVERY_RECHECK acquisition coordinate
 
-WorkerRuntimeAdmission
+WorkerScoreLease
   validates metadata, optional dynamic query attributes, reachability, capacity,
-  and reservation
+  and score lease / hold
 ```
 
 ## Deliberate Non-Goals
@@ -475,7 +502,7 @@ dynamic attribute current values inside WorkerDescriptor
 eventCode inside WorkerConstraintQuery
 workerGroupId inside WorkerConstraintQuery
 adapter session / mailbox / connection state inside WorkerDescriptor
-runtime score / dirty / reservation fields inside WorkerDescriptor
+runtime score / dirty / score lease fields inside WorkerDescriptor
 ```
 
 If the executable spec needs stale metadata fencing, worker-runtime may compute
@@ -491,11 +518,11 @@ Add `WorkerGroupMembership` only when one of these becomes unavoidable:
 the same worker must have different weight per group
 the same worker must be enabled in one group and disabled in another
 the same worker needs different quota/capacity per group
-the same worker needs different reservation lane per group
+the same worker needs different score lease lane per group
 ```
 
 Add public metadata revision/signature only when an executable spec proves a
-stale-fence invariant that cannot be handled inside worker-runtime reservation.
+stale-fence invariant that cannot be handled by score fence / score lease.
 
 Add event binding rows only when `WorkerGroupDescriptor.eventCodes` is too weak
 to express group-level event ownership. Do not add them to handle ordinary
@@ -522,5 +549,5 @@ class WorkerDescriptor:
 ```
 
 The Python executable spec may start with this shape directly. Runtime score,
-reservation, dynamic attribute indexes, and transport session facts should remain
+score lease, dynamic attribute indexes, and transport session facts should remain
 separate owner structures.

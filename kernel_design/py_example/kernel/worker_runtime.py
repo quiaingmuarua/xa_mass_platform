@@ -6,7 +6,7 @@ from enum import Enum
 from typing import Callable, Mapping, Sequence
 
 from .worker_constraint_query import WorkerConstraintQuery
-from .worker_score import Score, TimeMillis, WorkerId
+from .worker_score import TimeMillis, WorkerId
 
 
 WorkerGroupId = str
@@ -14,7 +14,6 @@ EventCode = str
 AttributeName = str
 AttributeValue = object
 DynamicAttributePayload = object
-ReservationId = str
 CandidateId = str
 WorkerCandidateConstraint = tuple[CandidateId, WorkerConstraintQuery]
 WorkerCandidateMatch = tuple[CandidateId, tuple[WorkerId, ...]]
@@ -62,33 +61,8 @@ class WorkerDescriptor:
 
 
 @dataclass(frozen=True)
-class WorkerReservationHandle:
-    """Opaque reservation handle returned by worker-runtime reservation."""
-
-    reservation_id: ReservationId
-
-
-@dataclass(frozen=True)
-class WorkerReservation:
-    """Binary reservation of one scheduler-visible worker resource."""
-
-    handle: WorkerReservationHandle
-    worker_id: WorkerId
-    worker_group_id: WorkerGroupId
-    observed_worker_score: Score
-    lease_expires_at_millis: TimeMillis
-
-
-@dataclass(frozen=True)
 class WorkerRuntimeResult:
     status: WorkerRuntimeStatus
-    reason: str | None = None
-
-
-@dataclass(frozen=True)
-class WorkerReservationResult:
-    status: WorkerRuntimeStatus
-    reservation: WorkerReservation | None = None
     reason: str | None = None
 
 
@@ -115,12 +89,40 @@ DynamicAttributeQueryRegistry = Mapping[AttributeName, DynamicAttributeQueryFn]
 # They are not public ports and are not externally registered plugin surfaces.
 
 
+class WorkerDynamicAttributeRuntime(ABC):
+    """Worker-runtime dynamic attribute update route.
+
+    Dynamic attributes are a policy extension route backed by owner-local
+    handlers. This surface accepts bounded point updates and dispatches them to
+    the internal function table. It does not expose dynamic attribute query
+    values, worker lifecycle truth, or worker score lease mutation authority.
+    """
+
+    @abstractmethod
+    def update_worker_dynamic_attributes(
+        self,
+        *,
+        worker_id: WorkerId,
+        updates: Mapping[AttributeName, DynamicAttributePayload],
+        observed_at_millis: TimeMillis,
+    ) -> Mapping[AttributeName, WorkerRuntimeResult]:
+        """Update accepted dynamic attributes through owner-local handlers.
+
+        Implementations must reject unknown attributes and attributes not listed
+        in the worker descriptor's dynamic_attributes allowlist. Accepted
+        updates are dispatched to the owner-local dynamic attribute function
+        table. This method is not a query surface and must not rewrite worker
+        score leases directly.
+        """
+        pass
+
+
 class WorkerResourceCatalog(ABC):
-    """Worker-runtime metadata/query projection surface.
+    """Worker-runtime resource declaration surface.
 
     This is the registration/connect/bootstrap-facing surface. It owns worker
     group descriptors, worker descriptors, and low-frequency metadata updates.
-    It does not expose dynamic attribute values or worker reservations.
+    It does not expose dynamic attribute values or worker score leases.
     """
 
     @abstractmethod
@@ -190,7 +192,7 @@ class WorkerCandidateMatcher(ABC):
     is represented by input order. The matcher returns one match row for every
     input candidate in that same order. It must not discover workers outside the
     supplied worker_ids, rank workers, carry observed worker scores, or create
-    reservations.
+    score leases / holds.
     """
 
     @abstractmethod
@@ -213,51 +215,4 @@ class WorkerCandidateMatcher(ABC):
         correlation ids; worker-runtime must not interpret them as task
         lifecycle truth.
         """
-        pass
-
-
-class WorkerReservationRuntime(ABC):
-    """Worker-runtime short-lived reservation surface.
-
-    Assignment-dispatch should depend on this narrow surface after matching and
-    ranking. It creates, revalidates, and releases binary reservations for
-    scheduler-visible worker resources. It does not accept WorkerConstraintQuery
-    and must not become a second candidate matcher.
-    """
-
-    @abstractmethod
-    def reserve_worker(
-        self,
-        *,
-        worker_group_id: WorkerGroupId,
-        worker_id: WorkerId,
-        observed_worker_score: Score,
-        lease_expires_at_millis: TimeMillis,
-    ) -> WorkerReservationResult:
-        """Reserve one scheduler-visible worker resource.
-
-        observed_worker_score is an opaque score fence captured from worker
-        score acquire. Worker-runtime may store and compare it, but callers must
-        not decode it through this interface.
-        """
-        pass
-
-    @abstractmethod
-    def revalidate_reservation(
-        self,
-        *,
-        handle: WorkerReservationHandle,
-        observed_worker_score: Score,
-    ) -> WorkerReservationResult:
-        """Revalidate an existing reservation before work claim / dispatch."""
-        pass
-
-    @abstractmethod
-    def release_reservation(
-        self,
-        *,
-        handle: WorkerReservationHandle,
-        reason: str | None = None,
-    ) -> WorkerRuntimeResult:
-        """Release or compensate a binary worker reservation."""
         pass

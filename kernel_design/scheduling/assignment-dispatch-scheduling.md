@@ -29,7 +29,7 @@ task can dispatch a concrete work item now
 
 Worker allocation answers whether a task has matching worker resources.
 Work dispatch answers whether a current work item can be claimed and delivered
-to an already selected/reserved worker.
+to an already selected and score-leased worker.
 
 The two pacers can run at different cadence and with different batch limits.
 They are independent scheduling entries, not necessarily independent threads.
@@ -78,10 +78,8 @@ RankingPolicy
 WorkerCandidate
   workerId or workerResourceId
   observedWorkerScore
-  optional workerReservationHandle
-  workerReservationExpiresAt
   worker metadata snapshot
-  reservation evidence
+  score lease / hold evidence
 
 TaskWorkerAssignmentPlan
   taskId
@@ -89,8 +87,6 @@ TaskWorkerAssignmentPlan
   workerConstraintQuery
   candidate workers or selected worker
   observed task / worker fences
-  optional workerReservationHandle
-  workerReservationExpiresAt
   planEpoch
   expiresAt
 
@@ -112,15 +108,14 @@ as small dataclasses. They are not public API DTOs.
 must have a fence or expiry and must be safe to discard. Current truth remains
 with task score-band, worker-runtime, work-item runtime, and transport.
 
-Worker candidates inside a plan are leased candidates, not owned assignments.
-The lease is intentionally short. If WorkDispatchPacer does not consume or
-extend it before expiry, worker-runtime may release the candidate and the plan
-must be treated as stale.
+Worker candidates inside a plan are score-leased candidates, not owned
+assignments. The score lease is intentionally short. If WorkDispatchPacer does
+not consume or extend it before expiry, the plan must be treated as stale.
 
 Worker candidate freshness is score-fenced, not version-fenced. A plan may keep
-the complete `observedWorkerScore` and an opaque worker-runtime reservation or
-reservation handle. It must not require assignment-dispatch to understand
-worker metadata versions, dirty bits, score suffixes, or capacity internals.
+the complete `observedWorkerScore`. It must not require assignment-dispatch to
+understand worker metadata versions, dirty bits, score suffixes, or capacity
+internals.
 
 ## Pacer A: Worker Allocation
 
@@ -143,7 +138,7 @@ Mainline:
 8. match worker candidates against the ordered constraint batch through
    worker-runtime
 9. apply priority / ranking rules
-10. optionally reserve or produce a fenced candidate plan
+10. optionally score-lease the selected worker or produce a fenced candidate plan
 11. classify evidence and request owner score rewrites for no-match,
     contention, or stale cases
 12. publish TaskWorkerAssignmentPlan for the dispatch pacer
@@ -166,7 +161,7 @@ is the result final?
 ### Worker Constraint Query
 
 Worker constraint query is compiled from worker identity and attribute match
-needs. It is applied before worker reservation:
+needs. It is applied before worker score lease:
 
 ```text
 worker.id $eq / $in, if explicitly constrained
@@ -195,13 +190,11 @@ assignment-dispatch must partition task candidates by `workerGroupId` before
 calling the matcher. The matcher returns one `(candidateId, matchedWorkerIds)`
 entry for every input candidate in candidate order; empty `matchedWorkerIds`
 means no match.
-Worker reservation and revalidation validate concrete worker ids, score
-fences, capacity, and reservation state; they do not re-run the query DSL.
-`WorkerReservationRuntime` owns short-lived worker reservation handles and
-compensation. It must not accept `WorkerConstraintQuery`.
+Worker score lease / hold validation must use concrete worker ids and score
+fences. It must not re-run the query DSL.
 The matcher does not return or own `observedWorkerScore`; assignment-dispatch
 keeps the observed score from worker score acquire as
-`observedWorkerScoreByWorkerId` and passes it later to reservation.
+`observedWorkerScoreByWorkerId` and passes it later to worker score lease.
 
 ### Candidate Discovery
 
@@ -213,7 +206,7 @@ worker_score.acquire_hot_acquire_candidates(homeBucketId, limit)
 observedWorkerScoreByWorkerId = {workerId: observedWorkerScore, ...}
 worker_candidate_matcher.match_worker_candidates(workerGroupId, workerIds, candidateConstraints)
 for each matched candidate worker:
-  validate worker group / metadata / reservation evidence as needed
+  validate worker group / metadata / score lease evidence as needed
   join complete observed worker score from observedWorkerScoreByWorkerId
   rank by priority rules
 ```
@@ -238,42 +231,44 @@ precomputed constraint bucket
 These indexes are hints only. They must not own worker truth, score truth,
 capacity truth, or transport reachability. Every candidate found through an
 index must still be validated by worker-runtime against current score,
-metadata, gates, and reservation state.
+metadata, gates, and score lease state.
 
-### Capacity And Reservation
+### Capacity And Score Lease
 
-`capacityLimit` is declaration/configuration metadata. Current capacity,
-reservation, locks, and resource hold truth belong to worker-runtime.
+`capacityLimit` is declaration/configuration metadata. Current load and
+capacity can be projected through dynamic attributes such as `runningCount`,
+`freeSlots`, local queue depth, or load. These values narrow / rank candidate
+workers through worker-runtime matching and assignment policy.
 
 WorkerAllocationPacer may use metadata for cheap ranking or filtering, but final
-capacity reservation must be performed by worker-runtime. If the allocation pacer
-creates a reservation, that reservation must be fenced and either consumed by
-WorkDispatchPacer or compensated on expiry/stale failure.
+assignment admission must still be protected by worker score lease / hold in
+v0. The score lease is a short assignment fence, not an execution-duration lock
+and not the owner of in-flight concurrency counters. If the allocation pacer
+creates a score lease, that lease must be fenced and either consumed by
+WorkDispatchPacer or released / expired on stale failure.
 
-The worker reservation fence includes:
+The worker score lease fence includes:
 
 ```text
 observedWorkerScore
-optional workerReservationHandle
-workerReservationExpiresAt
+workerScoreLeaseExpiresAt
 ```
 
-Worker-runtime owns the current scheduling metadata signature and
-capacity/reservation truth. Score `dirty` is not a worker-global state or version;
-it is only a reservation-local stale hint embedded in the observed score.
-Assignment-dispatch only keeps the full observed score and the opaque
-reservation handle returned by worker-runtime.
+Worker-runtime owns the current scheduling metadata signature, dynamic capacity
+evidence, and score lease truth. Score `dirty` is not a worker-global state or
+version; it is only a score-lease-local stale hint embedded in the observed
+score. Assignment-dispatch keeps the full observed score as an opaque fence.
 If worker group membership, eventCode declaration, match metadata, dispatch
-gate, resource policy, or capacity declaration changes, worker-runtime decides
-whether the existing reservation remains valid. The next reservation renewal or
-dispatch revalidation must read current worker-runtime evidence instead of
-trusting cached worker metadata.
+gate, resource policy, capacity declaration, or dynamic capacity projection
+changes, worker-runtime decides whether the existing score lease remains valid.
+The next score lease renewal or dispatch revalidation must read current
+worker-runtime evidence instead of trusting cached worker metadata.
 
 ## Pacer B: Work Dispatch
 
 WorkDispatchPacer starts from active assignment plans and current task work. It
 does not do broad worker discovery. It may revalidate or finalize worker
-reservation before claiming work.
+score lease before claiming work.
 
 Mainline:
 
@@ -281,10 +276,10 @@ Mainline:
 1. read active TaskWorkerAssignmentPlan entries
 2. validate plan fence / expiry
 3. point-read and revalidate task score is still dispatch-visible
-4. revalidate selected worker or candidate worker score fence, reservation, and
-   reservation owner evidence are still valid
+4. revalidate selected worker or candidate worker score fence and score lease
+   evidence are still valid
 5. claim current work hash rows from the work-item owner
-6. compensate worker reservation if claim fails
+6. release or compensate worker score lease if claim fails
 7. resolve transport delivery lane for the selected worker
 8. produce DeliverSeed
 9. classify round evidence and request task/worker score rewrites
@@ -309,22 +304,22 @@ what result finality means?
 Work claim belongs to the work-item owner.
 
 WorkDispatchPacer may ask for cheap claimable-work evidence before final worker
-reservation, but the final claim must happen only when there is enough worker
-reservation evidence to avoid consuming work with no viable dispatch path.
+score lease, but the final claim must happen only when there is enough worker
+score lease evidence to avoid consuming work with no viable dispatch path.
 
 Claim sequence:
 
 ```text
 assignment plan selected
-  -> worker reservation finalized or revalidated
+  -> worker score lease finalized or revalidated
   -> work hash claim writes current occupancy
   -> deliver seed produced
 ```
 
-If claim fails after worker reservation:
+If claim fails after worker score lease:
 
 ```text
-release / compensate worker reservation
+release / compensate worker score lease
 classify dispatch round as no-ready or stale
 rewrite task score through task-score owner
 ```
@@ -419,16 +414,16 @@ task score due but task gate closed
 worker score due but worker metadata stale
 assignment plan expires before work claim
 worker candidate lease expires before work claim
-worker reservation revalidation fails after allocation
-worker reserved but work claim fails
+worker score lease revalidation fails after allocation
+worker score-leased but work claim fails
 work claimed but transport delivery lane rejects
-worker reservation expires before deliver seed is accepted
+worker score lease expires before deliver seed is accepted
 ```
 
 Rules:
 
 - every stale outcome must be bounded;
-- every partial worker reservation must have a compensation path;
+- every partial worker score lease must have a compensation path;
 - no scheduling round may create an unowned active claim;
 - no scheduling round may dispatch without a selected worker and current work
   hash claim evidence;
@@ -476,18 +471,19 @@ for workerGroupId, taskCandidates in assignment_dispatch.partition_by_worker_gro
     candidateConstraints
   )
   for candidateId, matchedWorkerIds in candidateMatches:
-    assignment_dispatch.rank_candidates(candidateId, matchedWorkerIds, rankingPolicy)
-    worker_reservation_runtime.reserve_worker(
-      workerGroupId,
-      workerId,
-      observedWorkerScore,
-      workerReservationExpiresAt
+    selectedWorkerId = assignment_dispatch.rank_candidates(
+      candidateId,
+      matchedWorkerIds,
+      rankingPolicy
     )
-    worker_reservation_runtime.revalidate_reservation(
-      workerReservationHandle,
-      observedWorkerScore
+    observedWorkerScore = observedWorkerScoreByWorkerId[selectedWorkerId]
+    leaseResult = worker_score.renew_current_lease(
+      home_bucket_id,
+      selectedWorkerId,
+      workerScoreLeaseExpiresAt
     )
-    worker_reservation_runtime.release_reservation(workerReservationHandle)
+    if leaseResult is stale:
+      classify stale and do not create an assignment plan
 
 assignment_plans.put(plan)
 assignment_plans.acquire_due(limit)
@@ -495,6 +491,13 @@ assignment_plans.complete_or_expire(plan)
 
 work_items.peek_claimable(task_id)
 work_items.claim(task_id, worker_id)
+if work claim fails after worker score lease:
+  worker_score.release_score_hold(
+    home_bucket_id,
+    worker_id,
+    observedWorkerScore,
+    releaseTimeMillis
+  )
 
 transport.resolve_delivery(worker_id)
 ```
@@ -524,7 +527,7 @@ necessarily a thread.
   must validate through worker-runtime.
 - Do not let assignment-dispatch select workers from transport sessions.
 - Do not let transport choose backup workers.
-- Do not claim work before worker reservation unless the claim owner has an
+- Do not claim work before worker score lease unless the claim owner has an
   explicit reversible claim model.
 - Do not create deliver seeds without a current work hash claim.
 - Do not make result finality a dispatch concern.
