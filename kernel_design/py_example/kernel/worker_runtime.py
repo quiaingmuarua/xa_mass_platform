@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Mapping, Sequence
+from typing import Callable, Mapping, Sequence
 
 from .worker_score import Score, TimeMillis, WorkerId
 
@@ -120,36 +120,19 @@ class DynamicAttributeReadResult:
     reason: str | None = None
 
 
-class DynamicAttributeHandler(ABC):
-    """Owner-local handler for one dynamic attribute.
+DynamicAttributeUpdateFn = Callable[
+    [WorkerId, DynamicAttributePayload, TimeMillis],
+    WorkerRuntimeResult,
+]
+DynamicAttributeQueryFn = Callable[
+    [WorkerId],
+    DynamicAttributeReadResult,
+]
+DynamicAttributeUpdateRegistry = Mapping[AttributeName, DynamicAttributeUpdateFn]
+DynamicAttributeQueryRegistry = Mapping[AttributeName, DynamicAttributeQueryFn]
 
-    A dynamic attribute handler owns validation and its query/index storage.
-    WorkerDescriptor.dynamic_attributes only says whether a worker may send an
-    update for this attribute.
-    """
-
-    @property
-    @abstractmethod
-    def attribute_name(self) -> AttributeName:
-        pass
-
-    @abstractmethod
-    def update(
-        self,
-        *,
-        worker_id: WorkerId,
-        payload: DynamicAttributePayload,
-        observed_at_millis: TimeMillis,
-    ) -> WorkerRuntimeResult:
-        pass
-
-    @abstractmethod
-    def read(
-        self,
-        *,
-        worker_id: WorkerId,
-    ) -> DynamicAttributeReadResult:
-        pass
+# Dynamic attribute registries are worker-runtime internal function tables.
+# They are not public ports and are not externally registered plugin surfaces.
 
 
 class WorkerResourceCatalog(ABC):
@@ -216,49 +199,6 @@ class WorkerResourceCatalog(ABC):
         attributes: Mapping[str, AttributeValue],
     ) -> WorkerRuntimeResult:
         """Worker register/connect metadata refresh after platform validation."""
-        pass
-
-
-class WorkerDynamicAttributeRuntime(ABC):
-    """Worker-runtime dynamic attribute surface.
-
-    This is the high-frequency attribute update/read surface. Each dynamic
-    attribute value lives behind its handler-owned storage/index. Descriptor
-    dynamic_attributes only gates whether an update may be accepted.
-    """
-
-    @abstractmethod
-    def register_dynamic_attribute_handler(
-        self,
-        *,
-        handler: DynamicAttributeHandler,
-    ) -> WorkerRuntimeResult:
-        pass
-
-    @abstractmethod
-    def update_worker_dynamic_attribute(
-        self,
-        *,
-        worker_id: WorkerId,
-        attribute_name: AttributeName,
-        payload: DynamicAttributePayload,
-        observed_at_millis: TimeMillis,
-    ) -> WorkerRuntimeResult:
-        """Route a dynamic attribute update to its owner-local handler.
-
-        Implementations must require attribute_name to be present in
-        WorkerDescriptor.dynamic_attributes before calling the handler.
-        """
-        pass
-
-    @abstractmethod
-    def read_worker_dynamic_attribute(
-        self,
-        *,
-        worker_id: WorkerId,
-        attribute_name: AttributeName,
-    ) -> DynamicAttributeReadResult:
-        """Point-read a dynamic attribute owner value for validation/query use."""
         pass
 
 

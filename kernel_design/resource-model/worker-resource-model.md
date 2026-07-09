@@ -198,7 +198,7 @@ availability. Current usability still belongs to worker-runtime admission.
 ## Dynamic Attribute Boundary
 
 Dynamic attributes are separated from `WorkerDescriptor` because each dynamic
-attribute may need a different storage/index shape and update handler.
+attribute may need a different storage/index shape and update function.
 
 ```text
 heartbeat -> zset(workerId -> lastSeenTime)
@@ -217,14 +217,17 @@ dynamicAttributes cannot be used as direct scheduling truth
 dynamicAttributes cannot prove worker availability
 ```
 
-Dynamic attribute values are owned by attribute handlers:
+Dynamic attribute values are owned by built-in attribute functions:
 
 ```text
-DynamicAttributeHandlerRegistry
-  attrName -> built-in handler
+update_dynamic_attributes_dict
+  attrName -> update function
+
+query_dynamic_attributes_dict
+  attrName -> query function
 ```
 
-The handler owns:
+The function owns:
 
 ```text
 payload validation
@@ -233,25 +236,27 @@ query storage/index shape
 fast point-write behavior
 ```
 
-## Dynamic Attribute Update Flow
+## Dynamic Attribute Internal Flow
 
 ```text
-updateWorkerDynamicAttribute(workerId, attrName, payload, observedAt)
+worker-runtime receives or evaluates an attribute update
   -> read WorkerDescriptor
   -> require attrName in WorkerDescriptor.dynamicAttributes
-  -> resolve built-in DynamicAttributeHandler(attrName)
-  -> handler validate / normalize payload
-  -> handler writes its own query storage/index
+  -> route by attrName or owner-defined attribute prefix
+  -> resolve update_dynamic_attributes_dict[attrName]
+  -> function validate / normalize payload
+  -> function writes its own query storage/index
 ```
 
-Dynamic attribute update is event-handler-like, but it is not a global event
-bus. It must be bounded, point-write oriented, fast-fail, and idempotent where
-possible. Routine high-frequency updates such as heartbeat, load, or network
-observations must not emit global scheduling events by default.
+Dynamic attribute update is an internal worker-runtime function call, not an
+external runtime port and not a global event bus. It must be bounded,
+point-write oriented, fast-fail, and idempotent where possible. Routine
+high-frequency updates such as heartbeat, load, or network observations must
+not emit global scheduling events by default.
 
 Dynamic attributes are query/projection facts. A `heartbeat` dynamic attribute
 does not require a second heartbeat owner. If adapter/session runtime already
-has heartbeat or reachability information, the dynamic attribute handler may
+has heartbeat or reachability information, the dynamic attribute function may
 point-read or project that existing fact for query use. It must not become the
 worker availability truth.
 
@@ -294,7 +299,7 @@ Dynamic attribute matching is deliberately narrow in v0. Assignment-dispatch
 must not perform arbitrary dynamic-attribute multi-index queries. The default
 path is worker-runtime admission point-reading the dynamic attribute owner's
 current value. If a later executable spec needs candidate discovery such as
-`battery > 20`, the dynamic attribute handler must expose a bounded candidate
+`battery > 20`, the dynamic attribute query function must expose a bounded candidate
 index explicitly.
 
 `Work / item / seed -> EventHandler` is worker-local execution routing. The
@@ -369,7 +374,7 @@ dynamic group selector
 group-local worker rank / quota / lane
 metadataRevision as public descriptor field
 metadataSignature as public descriptor field
-handler refs carried by WorkerDescriptor
+dynamic attribute function refs carried by WorkerDescriptor
 dynamic attribute current values inside WorkerDescriptor
 adapter session / mailbox / connection state inside WorkerDescriptor
 runtime score / dirty / admission fields inside WorkerDescriptor

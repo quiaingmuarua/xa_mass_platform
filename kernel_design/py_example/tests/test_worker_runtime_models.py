@@ -4,52 +4,15 @@ import unittest
 from dataclasses import fields
 
 from kernel_design.py_example import (
-    DynamicAttributeHandler,
-    DynamicAttributeReadResult,
     WorkerAdmissionRuntime,
     WorkerDescriptor,
     WorkerDemand,
-    WorkerDynamicAttributeRuntime,
     WorkerGroupDescriptor,
     WorkerResourceCatalog,
     WorkerRuntimeResult,
     WorkerRuntimeStatus,
 )
-
-
-class RecordingDynamicAttributeHandler(DynamicAttributeHandler):
-    def __init__(self, attribute_name: str) -> None:
-        self._attribute_name = attribute_name
-        self.values: dict[str, tuple[object, int]] = {}
-
-    @property
-    def attribute_name(self) -> str:
-        return self._attribute_name
-
-    def update(
-        self,
-        *,
-        worker_id: str,
-        payload: object,
-        observed_at_millis: int,
-    ) -> WorkerRuntimeResult:
-        self.values[worker_id] = (payload, observed_at_millis)
-        return WorkerRuntimeResult(status=WorkerRuntimeStatus.OK)
-
-    def read(
-        self,
-        *,
-        worker_id: str,
-    ) -> DynamicAttributeReadResult:
-        value = self.values.get(worker_id)
-        if value is None:
-            return DynamicAttributeReadResult(status=WorkerRuntimeStatus.NOT_FOUND)
-        payload, observed_at_millis = value
-        return DynamicAttributeReadResult(
-            status=WorkerRuntimeStatus.OK,
-            value=payload,
-            observed_at_millis=observed_at_millis,
-        )
+from kernel_design.py_example.kernel.worker_runtime import DynamicAttributeReadResult
 
 
 class WorkerRuntimeModelTest(unittest.TestCase):
@@ -89,7 +52,7 @@ class WorkerRuntimeModelTest(unittest.TestCase):
         self.assertEqual(demand.target_worker_id, "worker-1")
         self.assertEqual(demand.required_dynamic_attributes, {})
 
-    def test_worker_runtime_interfaces_are_split_by_caller_surface(self) -> None:
+    def test_worker_runtime_interfaces_expose_only_catalog_and_admission(self) -> None:
         self.assertEqual(
             WorkerResourceCatalog.__abstractmethods__,
             {
@@ -99,14 +62,6 @@ class WorkerRuntimeModelTest(unittest.TestCase):
                 "register_worker_descriptor",
                 "register_worker_group_descriptor",
                 "update_worker_system_attributes",
-            },
-        )
-        self.assertEqual(
-            WorkerDynamicAttributeRuntime.__abstractmethods__,
-            {
-                "read_worker_dynamic_attribute",
-                "register_dynamic_attribute_handler",
-                "update_worker_dynamic_attribute",
             },
         )
         self.assertEqual(
@@ -120,8 +75,9 @@ class WorkerRuntimeModelTest(unittest.TestCase):
         )
         self.assertFalse(hasattr(WorkerAdmissionRuntime, "register_worker_descriptor"))
         self.assertFalse(hasattr(WorkerAdmissionRuntime, "update_worker_dynamic_attribute"))
+        self.assertFalse(hasattr(WorkerAdmissionRuntime, "read_worker_dynamic_attribute"))
 
-    def test_dynamic_attribute_value_lives_behind_handler(self) -> None:
+    def test_dynamic_attribute_value_lives_behind_function_table(self) -> None:
         descriptor = WorkerDescriptor(
             worker_id="worker-1",
             worker_group_id="image-workers",
@@ -129,14 +85,36 @@ class WorkerRuntimeModelTest(unittest.TestCase):
             static_attributes={"runtimeVersion": "1.0.0"},
             dynamic_attributes=frozenset({"battery"}),
         )
-        handler = RecordingDynamicAttributeHandler("battery")
+        values: dict[str, tuple[object, int]] = {}
 
-        result = handler.update(
-            worker_id=descriptor.worker_id,
-            payload=87,
-            observed_at_millis=10_000,
+        def update_battery(
+            worker_id: str,
+            payload: object,
+            observed_at_millis: int,
+        ) -> WorkerRuntimeResult:
+            values[worker_id] = (payload, observed_at_millis)
+            return WorkerRuntimeResult(status=WorkerRuntimeStatus.OK)
+
+        def query_battery(worker_id: str) -> DynamicAttributeReadResult:
+            value = values.get(worker_id)
+            if value is None:
+                return DynamicAttributeReadResult(status=WorkerRuntimeStatus.NOT_FOUND)
+            payload, observed_at_millis = value
+            return DynamicAttributeReadResult(
+                status=WorkerRuntimeStatus.OK,
+                value=payload,
+                observed_at_millis=observed_at_millis,
+            )
+
+        update_dynamic_attributes_dict = {"battery": update_battery}
+        query_dynamic_attributes_dict = {"battery": query_battery}
+
+        result = update_dynamic_attributes_dict["battery"](
+            descriptor.worker_id,
+            87,
+            10_000,
         )
-        read = handler.read(worker_id=descriptor.worker_id)
+        read = query_dynamic_attributes_dict["battery"](descriptor.worker_id)
 
         self.assertEqual(result.status, WorkerRuntimeStatus.OK)
         self.assertEqual(read.status, WorkerRuntimeStatus.OK)
