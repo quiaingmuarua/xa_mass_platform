@@ -1,12 +1,23 @@
 # Score-Band Worker Runtime Redis Shape
 
-Status: target Redis shape reference for the new kernel workspace. This
-document is not current Java implementation truth and is not an implementation
-roadmap.
+Status: superseded Redis shape draft. This document is not active execution
+input, current Java implementation truth, or an implementation roadmap.
+
+This draft still contains the older `epochSecond` / `PAUSE_EPOCH_SECOND`
+vocabulary. Do not implement Redis worker score behavior from those terms.
+The current worker score design lives in:
+
+- [Worker Score-Band Scheduling](../scheduling/worker-score-band-scheduling.md)
+- [worker_score.py](../py_example/kernel/worker_score.py)
+- [worker_score_zset.py](../py_example/runtime_redis/worker_score_zset.py)
+
+The active model uses public `timeMillis`, internal `timeSlot =
+floor(timeMillis / SLOT_MILLIS)`, signed score polarity, and `abs(score)` as
+the sortable coordinate.
 
 This document is the Redis companion for
 [Worker Score-Band Scheduling](../scheduling/worker-score-band-scheduling.md).
-It records first-slice key shape and atomicity expectations only.
+It is retained as historical shape context only.
 
 ## Purpose
 

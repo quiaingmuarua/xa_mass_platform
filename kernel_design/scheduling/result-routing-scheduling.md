@@ -247,9 +247,14 @@ work_hash.get_current(task_id, work_item_id)
 work_hash.compare_and_apply(...)
 retry_store.schedule(...)
 final_store.record(...)
-worker_score.release(...)
+worker_runtime.record_release_evidence(...)
+worker_runtime.release_admission(...)
 task_score.close_or_notify(...)
 ```
+
+Result routing must not call worker score directly. It emits release evidence
+for the worker-runtime / reservation owner; that owner decides whether capacity
+or admission score should be released.
 
 Keep it synchronous and in-memory first. Do not introduce queues or background
 repair loops before the routing outcomes are deterministic.

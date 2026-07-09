@@ -145,7 +145,7 @@ RECOVERY_RECHECK
   retry count / failed recheck count / remaining recovery budget
 ```
 
-`dirty` is a worker-runtime dirty page bit:
+`dirty` is a reservation-local stale hint embedded in the worker score:
 
 ```text
 dirty = 0
@@ -154,14 +154,14 @@ dirty = 0
 dirty = 1
   scheduling-critical metadata changed while a persisted task-worker candidate
   reservation / admission hold may continue from cached admission facts; the
-  reservation owner must revalidate before continuing or pre-occupying
+  reservation owner must revalidate before continuing or renewing a lease
 ```
 
-The dirty bit is not a metadata hash, not a counter, and not a lifecycle state.
-Platform policy owns the critical scheduling signature definition. The full
-signature or hash lives in worker-runtime metadata/evidence; score `dirty` is
-only a one-bit stale hint for a real persisted candidate reservation that might
-otherwise continue from old admission facts.
+The dirty bit is not a metadata hash, not a counter, not a lifecycle state, not
+a global worker state, and not a version. Platform policy owns the critical
+scheduling signature definition. The full signature or hash lives in
+worker-runtime metadata/evidence; score `dirty` only tells a real persisted
+candidate reservation that its cached admission facts may be stale.
 
 Score-band itself does not create an `active lease`. `observedScore` returned
 by acquire is only a stale fence for the acquired candidate, not a lease, lock,
@@ -381,9 +381,8 @@ worker declaration exists
 worker belongs to homeBucketId / workerGroupId
 worker group capability and task demand are compatible
 approved scheduling metadata is current enough
-if dirty == 1 and the caller is continuing / pre-occupying from a persisted
-task-worker candidate reservation, reservation owner revalidates current
-scheduling metadata
+if dirty == 1 and the caller is continuing from a persisted task-worker
+candidate reservation, reservation owner revalidates current scheduling metadata
 dispatch gate permits scheduling
 reachability evidence is acceptable by policy
 capacity/admission is available
@@ -681,7 +680,8 @@ persisted task-worker candidate reservation / admission hold:
 
 If the runtime has only an in-memory scheduling round and no persisted
 reservation / admission hold, there is no dirty consumer to protect. Do not
-invent an `active lease` just to justify dirty.
+invent an `active lease` just to justify dirty. Dirty is meaningful only while
+a real reservation / lease owner can observe it before continuing.
 
 `WorkerScoreCore` does not expose a generic dirty clear method. It exposes two
 bounded primitives:
@@ -702,8 +702,16 @@ renew_current_lease(homeBucketId, workerId, targetTimeMillis)
   writes dirty = 0
 ```
 
-Dirty clear is only available as part of lease renewal. There is no standalone
-`clear_dirty` operation.
+Despite the current method name, `renew_current_lease` is due-score lease
+acquisition / renewal only. A future-held or currently occupied score must be
+rejected instead of being refreshed.
+
+Dirty clear is only available as part of obtaining or renewing a current lease.
+There is no standalone `clear_dirty` operation. A future-held score may become
+dirty while the reservation exists; the dirty bit only needs to be observed by
+the owner of that reservation when it next obtains / renews the lease. If no
+owner is occupying or extending that score, the dirty bit has no independent
+scheduling meaning.
 
 Typical signature inputs:
 
@@ -745,14 +753,15 @@ Dirty clear is stricter:
 only the reservation owner may write dirty = 0 through lease renewal
 reservation owner may clear dirty only after reading and validating current
 platform-owned scheduling metadata / signature
-if the reservation owner needs to pre-occupy or continue using the worker, it clears
-dirty to 0 in the same owner transition that proves the reservation/admission is valid
+if the reservation owner needs to continue using the worker, it clears dirty to
+0 in the same owner transition that obtains / renews the lease and proves the
+reservation/admission is valid
 non-reservation owners must never clear dirty
 ```
 
 If dirty is already `1`, further metadata changes keep it at `1`. Dirty is a
-page flag, not a change counter. The metadata signature/hash is the fact that
-prevents incorrectly clearing newer changes.
+reservation-local stale hint, not a change counter. The metadata
+signature/hash is the fact that prevents incorrectly clearing newer changes.
 
 ## Transition Matrix
 

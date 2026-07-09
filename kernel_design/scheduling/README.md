@@ -191,9 +191,10 @@ candidate classification after acquire
 ```
 
 Task score-band uses four score states. Temporary hold is not a separate band;
-pause/block is represented as the same active band with a future `epochSecond`;
-hard pause uses the maximum 10-digit coordinate `9_999_999_999`. Positive
-score means mutable, not
+pause/block is represented as the same active band with a future internal
+`timeSlot`; hard pause uses the score-band pause slot. Public APIs speak
+`timeMillis`; score encoding converts it to `timeSlot =
+floor(timeMillis / SLOT_MILLIS)`. Positive score means mutable, not
 automatically schedulable; assignment-dispatch only scans explicit active tags.
 
 The model has two independent directions:
@@ -203,10 +204,10 @@ lifecycle progresses left:
   PRE_REVIEW(3) -> PRE_DISPATCH_VISIBLE(2) -> RUNNING_VISIBLE(1) -> TERMINAL(<0)
 
 hold / recheck moves right:
-  same tag + later epochSecond
+  same tag + later timeSlot
 ```
 
-`tag` owns lifecycle direction, `epochSecond` owns same-band freshness /
+`tag` owns lifecycle direction, `timeSlot` owns same-band freshness /
 recheck, `suffix` owns budget or owner-local code, the score-write stale fence
 prevents stale overwrite, and the transition direction rule blocks lifecycle
 regression.
@@ -216,7 +217,7 @@ intermediate band, not a required checkpoint.
 ```text
 PRE_REVIEW
   positive mutable create / prepare / pending approval state; not acquired;
-  epochSecond is an owner mutation freshness second; suffix is the
+  timeSlot is an owner mutation freshness coordinate; suffix is the
   owner-defined review state code
 
 PRE_DISPATCH_VISIBLE

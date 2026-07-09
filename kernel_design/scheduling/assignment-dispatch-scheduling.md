@@ -73,8 +73,8 @@ WorkerDemand
 WorkerCandidate
   workerId or workerResourceId
   observedWorkerScore
-  observedWorkerVersion
-  workerCandidateLeaseExpiresAt
+  optional workerReservationHandle
+  workerReservationExpiresAt
   worker metadata snapshot
   validation / admission evidence
 
@@ -83,8 +83,8 @@ TaskWorkerAssignmentPlan
   workerDemand
   candidate workers or selected worker
   observed task / worker fences
-  observedWorkerVersion
-  workerCandidateLeaseExpiresAt
+  optional workerReservationHandle
+  workerReservationExpiresAt
   planEpoch
   expiresAt
 
@@ -110,6 +110,11 @@ Worker candidates inside a plan are leased candidates, not owned assignments.
 The lease is intentionally short. If WorkDispatchPacer does not consume or
 extend it before expiry, worker-runtime may release the candidate and the plan
 must be treated as stale.
+
+Worker candidate freshness is score-fenced, not version-fenced. A plan may keep
+the complete `observedWorkerScore` and an opaque worker-runtime reservation or
+admission handle. It must not require assignment-dispatch to understand worker
+metadata versions, dirty bits, score suffixes, or capacity internals.
 
 ## Pacer A: Worker Allocation
 
@@ -174,7 +179,7 @@ homeBucketId = workerGroupId or owner-defined worker home bucket
 worker_score.acquire_hot_acquire_candidates(homeBucketId, limit)
 for each worker candidate:
   validate worker group / capability / match rules / metadata
-  record observed worker score and worker metadata version
+  record complete observed worker score
   rank by priority rules
 ```
 
@@ -209,15 +214,20 @@ The worker reservation/admission fence includes:
 
 ```text
 observedWorkerScore
-observedWorkerVersion
-workerCandidateLeaseExpiresAt
+optional workerReservationHandle
+workerReservationExpiresAt
 ```
 
-`observedWorkerVersion` protects the case where the worker remains online and
-score-visible, but core scheduling attributes changed. Examples include worker
-group membership, capability declaration, match metadata, dispatch gate,
-resource policy, or capacity declaration. Such changes must invalidate old
-candidate plans even when the worker score itself is still hot.
+Worker-runtime owns the current scheduling metadata signature and
+capacity/admission truth. Score `dirty` is not a worker-global state or version;
+it is only a reservation-local stale hint embedded in the observed score.
+Assignment-dispatch only keeps the full observed score and the opaque
+reservation/admission handle returned by worker-runtime.
+If worker group membership, capability declaration, match metadata, dispatch
+gate, resource policy, or capacity declaration changes, worker-runtime decides
+whether the existing reservation remains valid. The next admission renewal or
+dispatch revalidation must read current worker-runtime evidence instead of
+trusting cached worker metadata.
 
 ## Pacer B: Work Dispatch
 
@@ -231,7 +241,7 @@ Mainline:
 1. read active TaskWorkerAssignmentPlan entries
 2. validate plan fence / expiry
 3. point-read and revalidate task score is still dispatch-visible
-4. revalidate selected worker or candidate worker lease, score, version, and
+4. revalidate selected worker or candidate worker score fence, reservation, and
    admission are still valid
 5. claim current work hash rows from the work-item owner
 6. compensate worker admission if claim fails
@@ -266,7 +276,7 @@ Claim sequence:
 
 ```text
 assignment plan selected
-  -> worker candidate lease / version / admission finalized or revalidated
+  -> worker reservation/admission finalized or revalidated
   -> work hash claim writes current occupancy
   -> deliver seed produced
 ```
@@ -332,7 +342,7 @@ while preserving explicit method boundaries.
 Task-side examples:
 
 ```text
-ACTIVATION_STILL_WAITING and suffix > 00 -> PRE_DISPATCH_VISIBLE with next epoch and suffix-1
+ACTIVATION_STILL_WAITING and suffix > 00 -> PRE_DISPATCH_VISIBLE with next time slot and suffix-1
 ACTIVATION_STILL_WAITING and suffix == 00 -> PRE_DISPATCH_VISIBLE pause/hold
 ACTIVATION_READY -> RUNNING_VISIBLE due score
 NO_READY_WORK and suffix > 00 -> RUNNING_VISIBLE with next no-work recheck and suffix-1, or RUNNING_VISIBLE delayed by scheduled retry evidence
@@ -343,7 +353,7 @@ WORKER_CONTENDED and suffix > 00 -> RUNNING_VISIBLE with future contention reche
 WORKER_CONTENDED and suffix == 00 -> RUNNING_VISIBLE pause/hold
 WORK_CLAIMED_MORE_REMAINS -> RUNNING_VISIBLE at now or policy delay
 WORK_CLAIMED_NO_READY_REMAINS -> RUNNING_VISIBLE with next no-work recheck unless scheduled retry evidence keeps RUNNING_VISIBLE delayed
-PAUSE_OR_BLOCK -> same active band with future epochSecond; hard pause uses 9_999_999_999
+PAUSE_OR_BLOCK -> same active band with a future time slot; hard pause uses the score-band pause slot
 ```
 
 Worker-side examples:
@@ -365,7 +375,7 @@ task score due but task gate closed
 worker score due but worker metadata stale
 assignment plan expires before work claim
 worker candidate lease expires before work claim
-worker metadata version changes after allocation
+worker reservation/admission revalidation fails after allocation
 worker admitted but work claim fails
 work claimed but transport delivery lane rejects
 worker admission expires before deliver seed is accepted
@@ -400,21 +410,21 @@ Required collaborators:
 ```text
 task_score.acquire_active_task_candidates(limit)
 task_score.get_score_states(task_ids)
-task_score.rewrite_same_band_epoch(...)
+task_score.rewrite_same_band_time_millis(...)
 task_score.rewrite_observed_same_band_suffix(...)
-task_score.rewrite(...)
-task_score.close(...)
+task_score.rewrite_score(...)
+task_score.close_score(...)
 task_score.release_observed_score_hold(...)
 
 worker_score.acquire_hot_acquire_candidates(home_bucket_id, limit)
-worker_score.rewrite_observed_score(...)
-worker_score.hold_current_polarity(...)
+worker_score.rewrite_current_score(...)
+worker_score.renew_current_lease(...)
 worker_score.release_score_hold(...)
 
 worker_runtime.validate_match(worker, demand)
 worker_runtime.rank_candidates(candidates, demand)
 worker_runtime.admit_worker(candidate, demand)
-worker_runtime.revalidate_candidate(candidate_lease, observed_worker_version)
+worker_runtime.revalidate_candidate(workerReservationHandle, observedWorkerScore)
 worker_runtime.release_admission(admission)
 
 assignment_plans.put(plan)
@@ -426,6 +436,10 @@ work_items.claim(task_id, worker_id)
 
 transport.resolve_delivery(worker_id)
 ```
+
+This handoff is still prose only. The next executable kernel slice should add a
+minimal in-memory assignment-dispatch spec under `py_example` before result
+routing grows new behavior.
 
 Do not add background loops, external queues, or Redis in the first cut. Prove
 the owner handoff first. The two pacers may run as two method calls in a
