@@ -6,6 +6,7 @@ from dataclasses import fields
 
 import kernel_design.py_example as py_example
 from kernel_design.py_example import (
+    ConstraintFieldResolution,
     WorkerCandidateMatcher,
     WorkerConstraintQuery,
     WorkerDescriptor,
@@ -64,6 +65,41 @@ class WorkerRuntimeModelTest(unittest.TestCase):
             WorkerConstraintQuery({"worker.group_id": {"$eq": "image-workers"}})
         with self.assertRaises(ValueError):
             WorkerConstraintQuery({"worker.id": {"$gt": "worker-1"}})
+
+    def test_worker_constraint_query_evaluates_stable_operator_semantics(self) -> None:
+        query = WorkerConstraintQuery(
+            {
+                "worker.id": {"$eq": "worker-1"},
+                "system.tier": {"$equal": "premium"},
+                "static.gpuCount": {"$gte": 2},
+                "static.region": {"$in": ["us-east", "us-west"]},
+                "dynamic.battery": {"$gt": 20},
+                "static.deprecated": {"$exists": False},
+            }
+        )
+        values = {
+            "worker.id": ConstraintFieldResolution.present_value("worker-1"),
+            "system.tier": ConstraintFieldResolution.present_value("premium"),
+            "static.gpuCount": ConstraintFieldResolution.present_value(4),
+            "static.region": ConstraintFieldResolution.present_value("us-east"),
+            "dynamic.battery": ConstraintFieldResolution.present_value(87),
+            "static.deprecated": ConstraintFieldResolution.missing(),
+        }
+
+        self.assertTrue(query.matches(lambda field_name: values[field_name]))
+
+    def test_worker_constraint_query_fails_unresolved_or_non_comparable_fields(self) -> None:
+        unresolved = WorkerConstraintQuery({"dynamic.battery": {"$exists": False}})
+        non_comparable = WorkerConstraintQuery({"static.gpuCount": {"$gte": 2}})
+
+        self.assertFalse(
+            unresolved.matches(lambda _: ConstraintFieldResolution.unresolved())
+        )
+        self.assertFalse(
+            non_comparable.matches(
+                lambda _: ConstraintFieldResolution.present_value("many")
+            )
+        )
 
     def test_worker_runtime_interfaces_expose_narrow_owner_surfaces(self) -> None:
         self.assertEqual(

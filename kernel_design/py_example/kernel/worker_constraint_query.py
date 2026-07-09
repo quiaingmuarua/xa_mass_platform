@@ -1,14 +1,17 @@
 from __future__ import annotations
 
-from collections.abc import Mapping as MappingABC, Sequence as SequenceABC
+from collections.abc import Sequence as SequenceABC
 from dataclasses import dataclass, field
 from typing import Mapping
 
+from .constraint_evaluator import (
+    ConstraintFieldResolver,
+    ConstraintOperator,
+    ConstraintValue,
+    evaluate_constraint_operator_map,
+    require_operator_map,
+)
 from .worker_score import WorkerId
-
-
-ConstraintOperator = str
-ConstraintValue = object
 
 
 _SUPPORTED_CONSTRAINT_OPERATORS = frozenset(
@@ -50,8 +53,7 @@ class WorkerConstraintQuery:
     def __post_init__(self) -> None:
         for field_name, operator_map in self.predicates.items():
             self._validate_field_name(field_name)
-            if not isinstance(operator_map, MappingABC) or not operator_map:
-                raise ValueError("constraint field requires a non-empty operator map")
+            require_operator_map(operator_map)
 
             if field_name == _WORKER_ID_CONSTRAINT_FIELD and len(operator_map) != 1:
                 raise ValueError("worker.id supports exactly one operator")
@@ -69,6 +71,16 @@ class WorkerConstraintQuery:
         values = operator_map["$in"]
         assert isinstance(values, SequenceABC)
         return frozenset(self._require_worker_id(value) for value in values)
+
+    def matches(self, resolve_field: ConstraintFieldResolver) -> bool:
+        """Evaluate this query through an owner-provided field resolver."""
+        return all(
+            evaluate_constraint_operator_map(
+                field=resolve_field(field_name),
+                operator_map=operator_map,
+            )
+            for field_name, operator_map in self.predicates.items()
+        )
 
     @staticmethod
     def _validate_field_name(field_name: str) -> None:

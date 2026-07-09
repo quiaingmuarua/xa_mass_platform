@@ -20,6 +20,11 @@ from .worker_score import (
     WorkerScoreTransitionResult,
     WorkerScoreTransitionStatus,
 )
+from .constraint_evaluator import (
+    ConstraintFieldResolution,
+    ConstraintFieldResolver,
+    evaluate_constraint_operator_map,
+)
 from .worker_constraint_query import WorkerConstraintQuery
 from .worker_runtime import (
     AttributeName,
@@ -58,6 +63,9 @@ __all__ = [
     "WorkerScoreState",
     "WorkerScoreTransitionResult",
     "WorkerScoreTransitionStatus",
+    "ConstraintFieldResolution",
+    "ConstraintFieldResolver",
+    "evaluate_constraint_operator_map",
     "AttributeName",
     "AttributeValue",
     "CandidateId",

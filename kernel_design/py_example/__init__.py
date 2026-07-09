@@ -17,6 +17,9 @@ from .kernel import (
     WorkerScoreState,
     WorkerScoreTransitionResult,
     WorkerScoreTransitionStatus,
+    ConstraintFieldResolution,
+    ConstraintFieldResolver,
+    evaluate_constraint_operator_map,
     AttributeName,
     AttributeValue,
     CandidateId,
@@ -34,7 +37,13 @@ from .kernel import (
     WorkerRuntimeResult,
     WorkerRuntimeStatus,
 )
-from .runtime_redis import RedisZsetTaskScoreBandCore, RedisZsetWorkerScoreCore
+from .runtime_redis import (
+    RedisWorkerCandidateMatcher,
+    RedisWorkerDynamicAttributeRuntime,
+    RedisWorkerResourceCatalog,
+    RedisZsetTaskScoreBandCore,
+    RedisZsetWorkerScoreCore,
+)
 
 __all__ = [
     "TimeMillis",
@@ -45,6 +54,9 @@ __all__ = [
     "TaskId",
     "RedisZsetTaskScoreBandCore",
     "RedisZsetWorkerScoreCore",
+    "RedisWorkerCandidateMatcher",
+    "RedisWorkerDynamicAttributeRuntime",
+    "RedisWorkerResourceCatalog",
     "TaskScoreBand",
     "TaskScoreBandCore",
     "TaskScoreState",
@@ -57,6 +69,9 @@ __all__ = [
     "WorkerScoreState",
     "WorkerScoreTransitionResult",
     "WorkerScoreTransitionStatus",
+    "ConstraintFieldResolution",
+    "ConstraintFieldResolver",
+    "evaluate_constraint_operator_map",
     "AttributeName",
     "AttributeValue",
     "CandidateId",
