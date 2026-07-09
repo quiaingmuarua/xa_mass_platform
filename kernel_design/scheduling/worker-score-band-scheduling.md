@@ -673,45 +673,57 @@ already dispatched work is running:
   do not interrupt through dirty; wait for result / timeout / capacity release
   path and validate current metadata before the next assignment
 
-persisted task-worker candidate reservation / admission hold:
-  metadata update may mark dirty = 1 so that the reservation owner cannot
+persisted task-worker assignment plan / hot score lease continuation:
+  metadata update may mark dirty = 1 so that the assignment owner cannot
   continue from cached candidate facts without revalidation
 ```
 
 If the runtime has only an in-memory scheduling round and no persisted
-reservation / admission hold, there is no dirty consumer to protect. Do not
-invent an `active lease` just to justify dirty. Dirty is meaningful only while
-a real reservation / lease owner can observe it before continuing.
+assignment plan / hot score lease continuation, there may be no dirty consumer
+to protect. Do not invent a score lease just to justify dirty. Dirty is
+meaningful only when a real lease owner or stale observed-score continuation can
+observe it before continuing.
 
 `WorkerScoreCore` does not expose a generic dirty clear method. It exposes two
-bounded primitives:
+hot assignment lease primitives plus one dirty marker:
 
 ```text
 mark_current_lease_dirty(homeBucketId, workerId)
   reads the current score
-  if timeSlot >= nowSlot and dirty == 0, writes dirty = 1
+  if dirty == 0, writes dirty = 1
   preserves polarity, timeSlot, and laneRank
-  expired or already-dirty scores are no-op
+  already-dirty scores are no-op
+  applies to both due and future scores
 
-renew_current_lease(homeBucketId, workerId, targetTimeMillis)
+acquire_due_hot_score_lease(homeBucketId, workerId, observedScore, targetTimeMillis)
+  observedScore must decode to HOT_ACQUIRE
+  storedScore must equal observedScore
+  observed timeSlot must be < nowSlot
   targetTimeSlot = floor(targetTimeMillis / SLOT_MILLIS)
-  reads the current score
-  requires stored timeSlot < nowSlot
   requires targetTimeMillis > nowMillis
-  preserves polarity and laneRank
-  writes dirty = 0
+  caller must have validated current descriptor / dynamic metadata after
+  observing this score
+  writes HOT_ACQUIRE(targetTimeSlot, observed laneRank, dirty=0)
+
+renew_active_hot_score_lease(homeBucketId, workerId, observedScore, targetTimeMillis)
+  observedScore must decode to HOT_ACQUIRE
+  storedScore must equal observedScore
+  observed timeSlot must be >= nowSlot
+  observed dirty must be 0
+  targetTimeSlot must be > observed timeSlot
+  writes HOT_ACQUIRE(targetTimeSlot, observed laneRank, dirty=0)
+  if observed dirty is 1, returns STALE and caller must discard / rematch
 ```
 
-Despite the current method name, `renew_current_lease` is due-score lease
-acquisition / renewal only. A future-held or currently occupied score must be
-rejected instead of being refreshed.
+RECOVERY_RECHECK scores must not pass either hot score lease primitive. Recovery
+validation must first move the worker back to HOT_ACQUIRE through owner-validated
+polarity transition.
 
-Dirty clear is only available as part of obtaining or renewing a current lease.
-There is no standalone `clear_dirty` operation. A future-held score may become
-dirty while the reservation exists; the dirty bit only needs to be observed by
-the owner of that reservation when it next obtains / renews the lease. If no
-owner is occupying or extending that score, the dirty bit has no independent
-scheduling meaning.
+Dirty clear is only available as part of a hot score lease transition. There is
+no standalone `clear_dirty` operation. A future-held score may become dirty
+while an assignment plan exists; active lease renewal must treat dirty as STALE,
+discard the plan, and force a fresh worker match. If no owner is occupying or
+extending that score, the dirty bit has no independent scheduling meaning.
 
 Typical signature inputs:
 
@@ -737,11 +749,11 @@ display-only worker fields
 ```
 
 When platform-owned scheduling-critical metadata changes while a persisted
-task-worker candidate reservation / admission hold exists:
+task-worker assignment plan / hot score lease continuation exists:
 
 ```text
 stored signature hash changes in worker metadata/evidence
-non-reservation owner may only set score dirty = 1
+non-lease owner may only set score dirty = 1
 polarity is preserved
 laneRank is preserved
 timeSlot is preserved unless the owner policy also writes an allowed hold
@@ -750,13 +762,13 @@ timeSlot is preserved unless the owner policy also writes an allowed hold
 Dirty clear is stricter:
 
 ```text
-only the reservation owner may write dirty = 0 through lease renewal
-reservation owner may clear dirty only after reading and validating current
-platform-owned scheduling metadata / signature
-if the reservation owner needs to continue using the worker, it clears dirty to
-0 in the same owner transition that obtains / renews the lease and proves the
-reservation/admission is valid
-non-reservation owners must never clear dirty
+only a hot score lease owner may write dirty = 0 through
+`acquire_due_hot_score_lease`
+active hot lease renewal must not clear dirty; dirty active renewal returns
+STALE and forces a fresh match
+the due hot lease owner may clear dirty only after reading and validating
+current platform-owned scheduling metadata / signature
+non-lease owners must never clear dirty
 ```
 
 If dirty is already `1`, further metadata changes keep it at `1`. Dirty is a
@@ -813,14 +825,15 @@ assignment-dispatch worker selection path.
 
 | Input kind | May write worker score? | Required path |
 | --- | --- | --- |
-| hot acquire admission round | yes | due-score `renew_current_lease` or same-polarity rewrite |
+| hot acquire admission round | yes | `acquire_due_hot_score_lease` after post-observation validation, or same-polarity rewrite |
 | recovery-recheck validation round | yes | same-polarity rewrite / polarity move / cold park |
 | capacity full / contention | yes | same-polarity HOT_ACQUIRE rewrite |
 | manual disable / drain / maintenance | yes | same-polarity hold |
 | manual enable / release | yes | exact observed-score same-polarity release |
-| platform scheduling metadata signature changed while persisted task-worker candidate reservation exists | yes | `mark_current_lease_dirty` may only set dirty = 1 |
-| platform scheduling metadata signature changed while no persisted reservation exists | no score write required | metadata/evidence only; next candidate validation reads current metadata |
-| reservation owner revalidated current scheduling metadata | yes | reservation owner may clear dirty = 0 only through `renew_current_lease` |
+| platform scheduling metadata signature changed while persisted task-worker assignment plan / hot score lease continuation exists | yes | `mark_current_lease_dirty` may only set dirty = 1 |
+| platform scheduling metadata signature changed while no persisted assignment plan / hot score lease continuation exists | no score write required | metadata/evidence only; next candidate validation reads current metadata |
+| assignment owner revalidated current scheduling metadata for due HOT_ACQUIRE score | yes | owner may clear dirty = 0 only through `acquire_due_hot_score_lease` |
+| assignment owner extends active clean HOT_ACQUIRE lease | yes | `renew_active_hot_score_lease`; dirty returns STALE and forces rematch |
 | confirmed disconnect / trusted unavailable | yes | owner-validated HOT_ACQUIRE -> RECOVERY_RECHECK polarity move preserving time coordinate |
 | verified owner reopen | yes | owner-validated RECOVERY_RECHECK -> HOT_ACQUIRE polarity move preserving time coordinate |
 | recovery exhausted / cold parked | yes | RECOVERY_RECHECK too-old cold coordinate + owner evidence |
@@ -978,11 +991,14 @@ slot registry redesign
   as a one-bit revalidation flag.
 - Do not let heartbeat, session refresh, trace, diagnostics, or display-only
   metadata bump dirty bit.
-- Do not invent an `active lease` as a score-band concept. Dirty only has a
-  consumer if a real persisted candidate reservation / admission hold exists.
-- Do not let non-reservation owners clear dirty. Only the reservation owner may
-  clear dirty through `renew_current_lease` after validating current platform
-  scheduling metadata.
+- Do not invent a score lease just to justify dirty. Dirty only has a consumer
+  if a real persisted assignment plan / hot score lease continuation exists.
+- Do not let non-lease owners clear dirty. Due HOT_ACQUIRE lease acquisition may
+  clear dirty only through `acquire_due_hot_score_lease` after validating current
+  platform scheduling metadata; active renewal must return STALE on dirty.
+- Do not use RECOVERY_RECHECK scores as assignment leases. Recovery validation
+  must move the worker back to HOT_ACQUIRE before any hot score lease primitive
+  can run.
 - Do not use broad range-mint for acquired admission rewrites.
 - Do not create per-task worker candidate keys.
 - Do not fan out score across placement-tag buckets in the first slice.

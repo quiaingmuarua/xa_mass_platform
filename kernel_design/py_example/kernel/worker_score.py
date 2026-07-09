@@ -187,20 +187,40 @@ class WorkerScoreCore(ABC):
         pass
 
     @abstractmethod
-    def renew_current_lease(
+    def acquire_due_hot_score_lease(
         self,
         *,
         home_bucket_id: HomeBucketId,
         worker_id: WorkerId,
+        observed_score: Score,
         target_time_millis: TimeMillis,
     ) -> WorkerScoreTransitionResult:
-        """Renew a due worker score as the current lease owner.
+        """Acquire a due HOT_ACQUIRE worker score after current validation.
 
-        This is the only API that clears dirty. Implementations read the
-        current stored score, require stored time slot < current time slot,
-        require target_time_millis > current time millis, preserve polarity and
-        lane_rank, and write dirty=0. It is intentionally narrower than
-        rewrite_current_score.
+        Implementations require storedScore == observed_score and observed
+        polarity == HOT_ACQUIRE and observed time slot < current time slot. The
+        caller must have validated current descriptor / dynamic metadata after
+        observing this score. Dirty may be cleared by this transition because
+        validation happened before the observed-score CAS lease write.
+        """
+        pass
+
+    @abstractmethod
+    def renew_active_hot_score_lease(
+        self,
+        *,
+        home_bucket_id: HomeBucketId,
+        worker_id: WorkerId,
+        observed_score: Score,
+        target_time_millis: TimeMillis,
+    ) -> WorkerScoreTransitionResult:
+        """Extend a still-active HOT_ACQUIRE score lease without rematching.
+
+        Implementations require storedScore == observed_score, observed time
+        polarity == HOT_ACQUIRE, observed time slot >= current time slot,
+        dirty == 0, and target time slot after the observed time slot. Dirty
+        returns STALE because active renewal does not prove current descriptor /
+        dynamic metadata validity.
         """
         pass
 
@@ -215,8 +235,9 @@ class WorkerScoreCore(ABC):
 
         This is the non-lease-owner side of the dirty fence. Implementations
         read the current stored score, only set dirty=1, and preserve polarity,
-        score time coordinate, and lane_rank. Expired scores can be left
-        unchanged because no active score lease needs a dirty fence.
+        score time coordinate, and lane_rank. This also applies to due scores:
+        a match result captured before a metadata change must not be able to
+        acquire a lease and clear dirty with stale validation evidence.
         """
         pass
 

@@ -254,6 +254,20 @@ observedWorkerScore
 workerScoreLeaseExpiresAt
 ```
 
+Worker score lease has two explicit transitions:
+
+```text
+acquire_due_hot_score_lease(observedWorkerScore, leaseUntil)
+  after WorkerCandidateMatcher has validated current descriptor / dynamic
+  metadata for a due HOT_ACQUIRE worker score. It uses observed-score CAS and
+  may clear dirty because validation happened before the CAS write.
+
+renew_active_hot_score_lease(observedLeasedWorkerScore, leaseUntil)
+  before work claim / dispatch when an assignment plan already holds a short
+  active lease. It uses observed-score CAS and returns STALE on dirty because it
+  does not re-run matching.
+```
+
 Worker-runtime owns the current scheduling metadata signature, dynamic capacity
 evidence, and score lease truth. Score `dirty` is not a worker-global state or
 version; it is only a score-lease-local stale hint embedded in the observed
@@ -261,8 +275,9 @@ score. Assignment-dispatch keeps the full observed score as an opaque fence.
 If worker group membership, eventCode declaration, match metadata, dispatch
 gate, resource policy, capacity declaration, or dynamic capacity projection
 changes, worker-runtime decides whether the existing score lease remains valid.
-The next score lease renewal or dispatch revalidation must read current
-worker-runtime evidence instead of trusting cached worker metadata.
+The next due-score lease must use the post-match observed score. The next active
+score lease renewal must return STALE when dirty is present, forcing the plan to
+be discarded and matched again.
 
 ## Pacer B: Work Dispatch
 
@@ -276,8 +291,8 @@ Mainline:
 1. read active TaskWorkerAssignmentPlan entries
 2. validate plan fence / expiry
 3. point-read and revalidate task score is still dispatch-visible
-4. revalidate selected worker or candidate worker score fence and score lease
-   evidence are still valid
+4. renew selected worker active score lease with observed-score CAS; dirty or
+   stale means discard plan and return to worker matching
 5. claim current work hash rows from the work-item owner
 6. release or compensate worker score lease if claim fails
 7. resolve transport delivery lane for the selected worker
@@ -311,7 +326,7 @@ Claim sequence:
 
 ```text
 assignment plan selected
-  -> worker score lease finalized or revalidated
+  -> worker active score lease renewed with observed-score CAS
   -> work hash claim writes current occupancy
   -> deliver seed produced
 ```
@@ -457,7 +472,8 @@ task_score.release_observed_score_hold(...)
 
 worker_score.acquire_hot_acquire_candidates(home_bucket_id, limit)
 worker_score.rewrite_current_score(...)
-worker_score.renew_current_lease(...)
+worker_score.acquire_due_hot_score_lease(...)
+worker_score.renew_active_hot_score_lease(...)
 worker_score.release_score_hold(...)
 
 for workerGroupId, taskCandidates in assignment_dispatch.partition_by_worker_group(tasks):
@@ -477,25 +493,36 @@ for workerGroupId, taskCandidates in assignment_dispatch.partition_by_worker_gro
       rankingPolicy
     )
     observedWorkerScore = observedWorkerScoreByWorkerId[selectedWorkerId]
-    leaseResult = worker_score.renew_current_lease(
+    leaseResult = worker_score.acquire_due_hot_score_lease(
       home_bucket_id,
       selectedWorkerId,
+      observedWorkerScore,
       workerScoreLeaseExpiresAt
     )
     if leaseResult is stale:
       classify stale and do not create an assignment plan
+    if leaseResult is transitioned:
+      create assignment plan with leaseResult.score as observedLeasedWorkerScore
 
 assignment_plans.put(plan)
 assignment_plans.acquire_due(limit)
 assignment_plans.complete_or_expire(plan)
 
 work_items.peek_claimable(task_id)
+leaseRenewResult = worker_score.renew_active_hot_score_lease(
+  home_bucket_id,
+  selectedWorkerId,
+  observedLeasedWorkerScore,
+  nextWorkerScoreLeaseExpiresAt
+)
+if leaseRenewResult is stale:
+  discard plan and re-enter worker matching
 work_items.claim(task_id, worker_id)
 if work claim fails after worker score lease:
   worker_score.release_score_hold(
     home_bucket_id,
     worker_id,
-    observedWorkerScore,
+    leaseRenewResult.score,
     releaseTimeMillis
   )
 
