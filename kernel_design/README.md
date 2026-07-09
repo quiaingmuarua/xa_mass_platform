@@ -11,11 +11,25 @@ Treat this workspace as kernel-core design notes for a clean rewrite,
 including the planned Python kernel core, not as a roadmap for incrementally
 repairing the current codebase.
 
+This is not a simplified-kernel exercise. It is a stricter clean-kernel redesign
+after months of accumulated implementation complexity. Fewer interfaces mean
+higher ownership pressure on each interface, not lower design quality.
+
+Every interface should be able to explain:
+
+```text
+why it exists
+who owns it
+which mechanism it protects
+which facts it refuses to carry
+which callers or owners it refuses to replace
+```
+
 It is a place to keep target mechanisms, runtime memory models,
 state-transition models, and owner-boundary design that are larger than one
 module owner doc and broader than a single roadmap.
 
-The goal is fast, consistent agent alignment before executable specs or code
+The goal is precise, consistent agent alignment before executable specs or code
 changes. A kernel design note should make clear:
 
 ```text
@@ -41,6 +55,25 @@ Scheduling mechanisms should be mostly score-band state transitions, bounded
 claim/result mutations, and invariant checks. Do not introduce production-style
 framework layers, bridge modules, CRUD owners, attempt aggregates, or lifecycle
 facades just to make the design look complete.
+
+Small kernel does not mean reduced mechanism quality. The standard is:
+
+```text
+v0 can have narrow policy coverage
+v0 must not use the wrong mechanism to get a quick loop
+mechanism boundaries must stay owner-correct
+truth, evidence, policy, transport, query, and diagnostics must stay separate
+unsupported policy features are explicit omissions, not design shortcuts
+```
+
+Examples:
+
+```text
+limited DSL operators are acceptable; making eventCode a worker-match field is not
+simple retry policy is acceptable; hiding retry truth in task score is not
+in-process handoff is acceptable; merging owner truth is not
+bounded fallback is acceptable; event-only liveness is not
+```
 
 The kernel is score-band scheduled, not event triggered:
 

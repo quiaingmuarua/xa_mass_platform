@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import inspect
 import unittest
 from dataclasses import fields
 
+import kernel_design.py_example as py_example
 from kernel_design.py_example import (
-    WorkerAdmissionRuntime,
+    WorkerCandidateMatcher,
     WorkerConstraintQuery,
     WorkerDescriptor,
     WorkerGroupDescriptor,
     WorkerResourceCatalog,
+    WorkerReservationRuntime,
     WorkerRuntimeResult,
     WorkerRuntimeStatus,
 )
@@ -62,7 +65,7 @@ class WorkerRuntimeModelTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             WorkerConstraintQuery({"worker.id": {"$gt": "worker-1"}})
 
-    def test_worker_runtime_interfaces_expose_only_catalog_and_admission(self) -> None:
+    def test_worker_runtime_interfaces_expose_catalog_matcher_and_reservation(self) -> None:
         self.assertEqual(
             WorkerResourceCatalog.__abstractmethods__,
             {
@@ -75,17 +78,58 @@ class WorkerRuntimeModelTest(unittest.TestCase):
             },
         )
         self.assertEqual(
-            WorkerAdmissionRuntime.__abstractmethods__,
+            WorkerReservationRuntime.__abstractmethods__,
             {
-                "admit_worker",
-                "release_admission",
-                "revalidate_admission",
-                "validate_worker_candidates",
+                "release_reservation",
+                "reserve_worker",
+                "revalidate_reservation",
             },
         )
-        self.assertFalse(hasattr(WorkerAdmissionRuntime, "register_worker_descriptor"))
-        self.assertFalse(hasattr(WorkerAdmissionRuntime, "update_worker_dynamic_attribute"))
-        self.assertFalse(hasattr(WorkerAdmissionRuntime, "read_worker_dynamic_attribute"))
+        self.assertEqual(
+            WorkerCandidateMatcher.__abstractmethods__,
+            {"match_worker_candidates"},
+        )
+        self.assertFalse(hasattr(WorkerReservationRuntime, "register_worker_descriptor"))
+        self.assertFalse(
+            hasattr(WorkerReservationRuntime, "update_worker_dynamic_attribute")
+        )
+        self.assertFalse(hasattr(WorkerReservationRuntime, "read_worker_dynamic_attribute"))
+        self.assertFalse(hasattr(WorkerReservationRuntime, "validate_worker_candidates"))
+        self.assertFalse(hasattr(py_example, "WorkerAdmission"))
+        self.assertFalse(hasattr(py_example, "WorkerAdmissionResult"))
+        self.assertFalse(hasattr(py_example, "WorkerAdmissionRuntime"))
+        self.assertFalse(hasattr(py_example, "WorkerMatchResult"))
+        self.assertFalse(hasattr(py_example, "WorkerValidationResult"))
+
+    def test_worker_candidate_matcher_batches_constraint_queries(self) -> None:
+        match_params = set(
+            inspect.signature(WorkerCandidateMatcher.match_worker_candidates).parameters
+        )
+        reserve_params = set(
+            inspect.signature(WorkerReservationRuntime.reserve_worker).parameters
+        )
+        revalidate_params = set(
+            inspect.signature(WorkerReservationRuntime.revalidate_reservation).parameters
+        )
+
+        self.assertEqual(
+            match_params,
+            {"self", "worker_group_id", "worker_ids", "candidate_constraints"},
+        )
+        self.assertEqual(
+            reserve_params,
+            {
+                "self",
+                "worker_group_id",
+                "worker_id",
+                "observed_worker_score",
+                "lease_expires_at_millis",
+            },
+        )
+        self.assertEqual(
+            revalidate_params,
+            {"self", "handle", "observed_worker_score"},
+        )
 
     def test_dynamic_attribute_value_lives_behind_function_table(self) -> None:
         descriptor = WorkerDescriptor(

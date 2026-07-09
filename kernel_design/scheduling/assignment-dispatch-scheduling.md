@@ -13,7 +13,7 @@ It is not one monolithic pacer. The target design has two independent pacers:
 
 ```text
 WorkerAllocationPacer
-  task scheduling candidate -> worker constraint query -> candidate worker plan
+  task scheduling candidates -> worker constraint batch -> candidate worker plans
 
 WorkDispatchPacer
   active task + candidate worker plan -> work claim -> deliver seed
@@ -29,7 +29,7 @@ task can dispatch a concrete work item now
 
 Worker allocation answers whether a task has matching worker resources.
 Work dispatch answers whether a current work item can be claimed and delivered
-to an already selected/admitted worker.
+to an already selected/reserved worker.
 
 The two pacers can run at different cadence and with different batch limits.
 They are independent scheduling entries, not necessarily independent threads.
@@ -66,8 +66,11 @@ TaskSchedulingCandidate
 WorkerGroupSelection
   immutable task workerGroupId
 
-WorkerConstraintQuery
-  worker identity / attribute predicates
+WorkerConstraintBatch
+  ordered unique candidateId + WorkerConstraintQuery entries
+
+WorkerCandidateMatchGraph
+  ordered candidateId -> matched worker ids; one row per input candidate
 
 RankingPolicy
   priority / ranking rules
@@ -78,7 +81,7 @@ WorkerCandidate
   optional workerReservationHandle
   workerReservationExpiresAt
   worker metadata snapshot
-  validation / admission evidence
+  reservation evidence
 
 TaskWorkerAssignmentPlan
   taskId
@@ -116,8 +119,8 @@ must be treated as stale.
 
 Worker candidate freshness is score-fenced, not version-fenced. A plan may keep
 the complete `observedWorkerScore` and an opaque worker-runtime reservation or
-admission handle. It must not require assignment-dispatch to understand worker
-metadata versions, dirty bits, score suffixes, or capacity internals.
+reservation handle. It must not require assignment-dispatch to understand
+worker metadata versions, dirty bits, score suffixes, or capacity internals.
 
 ## Pacer A: Worker Allocation
 
@@ -131,15 +134,19 @@ Mainline:
 1. choose task score scan range and allocation batch limit
 2. acquire task candidates from task score-band
 3. validate task candidate and policy snapshot
-4. compile WorkerConstraintQuery from worker identity / attribute constraints
-5. derive home bucket / resource universe from the pre-bound workerGroupId
-6. discover worker candidates
-7. validate hard match rules
-8. apply priority / ranking rules
-9. optionally reserve/admit or produce a fenced candidate plan
-10. classify evidence and request owner score rewrites for no-match,
+4. partition task candidates by the pre-bound workerGroupId
+5. compile an ordered WorkerConstraintQuery batch for each workerGroupId from
+   worker identity / attribute constraints
+6. derive home bucket / resource universe from the pre-bound workerGroupId
+7. discover a bounded worker candidate batch and keep
+   observedWorkerScoreByWorkerId as assignment-dispatch sidecar evidence
+8. match worker candidates against the ordered constraint batch through
+   worker-runtime
+9. apply priority / ranking rules
+10. optionally reserve or produce a fenced candidate plan
+11. classify evidence and request owner score rewrites for no-match,
     contention, or stale cases
-11. publish TaskWorkerAssignmentPlan for the dispatch pacer
+12. publish TaskWorkerAssignmentPlan for the dispatch pacer
 ```
 
 WorkerAllocationPacer answers:
@@ -159,7 +166,7 @@ is the result final?
 ### Worker Constraint Query
 
 Worker constraint query is compiled from worker identity and attribute match
-needs:
+needs. It is applied before worker reservation:
 
 ```text
 worker.id $eq / $in, if explicitly constrained
@@ -179,6 +186,23 @@ Hard match rules filter the candidate universe. Priority rules rank only among
 workers that already satisfy hard match rules. Priority must not make an
 ineligible worker eligible.
 
+`WorkerCandidateMatcher.match_worker_candidates` receives one selected
+`workerGroupId`, a bounded `workerIds` batch, and an ordered list of
+`(candidateId, WorkerConstraintQuery)` entries. `candidateId` must be unique
+inside one call. The ordered list preserves task / candidate priority without
+making worker-runtime own ranking. One call handles exactly one worker group;
+assignment-dispatch must partition task candidates by `workerGroupId` before
+calling the matcher. The matcher returns one `(candidateId, matchedWorkerIds)`
+entry for every input candidate in candidate order; empty `matchedWorkerIds`
+means no match.
+Worker reservation and revalidation validate concrete worker ids, score
+fences, capacity, and reservation state; they do not re-run the query DSL.
+`WorkerReservationRuntime` owns short-lived worker reservation handles and
+compensation. It must not accept `WorkerConstraintQuery`.
+The matcher does not return or own `observedWorkerScore`; assignment-dispatch
+keeps the observed score from worker score acquire as
+`observedWorkerScoreByWorkerId` and passes it later to reservation.
+
 ### Candidate Discovery
 
 First version discovery should be simple:
@@ -186,9 +210,11 @@ First version discovery should be simple:
 ```text
 homeBucketId = pre-bound workerGroupId or owner-defined worker home bucket
 worker_score.acquire_hot_acquire_candidates(homeBucketId, limit)
-for each worker candidate:
-  validate worker group / constraint query / metadata
-  record complete observed worker score
+observedWorkerScoreByWorkerId = {workerId: observedWorkerScore, ...}
+worker_candidate_matcher.match_worker_candidates(workerGroupId, workerIds, candidateConstraints)
+for each matched candidate worker:
+  validate worker group / metadata / reservation evidence as needed
+  join complete observed worker score from observedWorkerScoreByWorkerId
   rank by priority rules
 ```
 
@@ -212,19 +238,19 @@ precomputed constraint bucket
 These indexes are hints only. They must not own worker truth, score truth,
 capacity truth, or transport reachability. Every candidate found through an
 index must still be validated by worker-runtime against current score,
-metadata, gates, and admission state.
+metadata, gates, and reservation state.
 
-### Capacity And Admission
+### Capacity And Reservation
 
 `capacityLimit` is declaration/configuration metadata. Current capacity,
-reservation, locks, and admission truth belong to worker-runtime.
+reservation, locks, and resource hold truth belong to worker-runtime.
 
 WorkerAllocationPacer may use metadata for cheap ranking or filtering, but final
-capacity admission must be performed by worker-runtime. If the allocation pacer
+capacity reservation must be performed by worker-runtime. If the allocation pacer
 creates a reservation, that reservation must be fenced and either consumed by
 WorkDispatchPacer or compensated on expiry/stale failure.
 
-The worker reservation/admission fence includes:
+The worker reservation fence includes:
 
 ```text
 observedWorkerScore
@@ -233,13 +259,13 @@ workerReservationExpiresAt
 ```
 
 Worker-runtime owns the current scheduling metadata signature and
-capacity/admission truth. Score `dirty` is not a worker-global state or version;
+capacity/reservation truth. Score `dirty` is not a worker-global state or version;
 it is only a reservation-local stale hint embedded in the observed score.
 Assignment-dispatch only keeps the full observed score and the opaque
-reservation/admission handle returned by worker-runtime.
+reservation handle returned by worker-runtime.
 If worker group membership, eventCode declaration, match metadata, dispatch
 gate, resource policy, or capacity declaration changes, worker-runtime decides
-whether the existing reservation remains valid. The next admission renewal or
+whether the existing reservation remains valid. The next reservation renewal or
 dispatch revalidation must read current worker-runtime evidence instead of
 trusting cached worker metadata.
 
@@ -247,7 +273,7 @@ trusting cached worker metadata.
 
 WorkDispatchPacer starts from active assignment plans and current task work. It
 does not do broad worker discovery. It may revalidate or finalize worker
-admission before claiming work.
+reservation before claiming work.
 
 Mainline:
 
@@ -256,9 +282,9 @@ Mainline:
 2. validate plan fence / expiry
 3. point-read and revalidate task score is still dispatch-visible
 4. revalidate selected worker or candidate worker score fence, reservation, and
-   admission are still valid
+   reservation owner evidence are still valid
 5. claim current work hash rows from the work-item owner
-6. compensate worker admission if claim fails
+6. compensate worker reservation if claim fails
 7. resolve transport delivery lane for the selected worker
 8. produce DeliverSeed
 9. classify round evidence and request task/worker score rewrites
@@ -283,22 +309,22 @@ what result finality means?
 Work claim belongs to the work-item owner.
 
 WorkDispatchPacer may ask for cheap claimable-work evidence before final worker
-admission, but the final claim must happen only when there is enough worker
-admission evidence to avoid consuming work with no viable dispatch path.
+reservation, but the final claim must happen only when there is enough worker
+reservation evidence to avoid consuming work with no viable dispatch path.
 
 Claim sequence:
 
 ```text
 assignment plan selected
-  -> worker reservation/admission finalized or revalidated
+  -> worker reservation finalized or revalidated
   -> work hash claim writes current occupancy
   -> deliver seed produced
 ```
 
-If claim fails after worker admission:
+If claim fails after worker reservation:
 
 ```text
-release / compensate worker admission
+release / compensate worker reservation
 classify dispatch round as no-ready or stale
 rewrite task score through task-score owner
 ```
@@ -393,16 +419,16 @@ task score due but task gate closed
 worker score due but worker metadata stale
 assignment plan expires before work claim
 worker candidate lease expires before work claim
-worker reservation/admission revalidation fails after allocation
-worker admitted but work claim fails
+worker reservation revalidation fails after allocation
+worker reserved but work claim fails
 work claimed but transport delivery lane rejects
-worker admission expires before deliver seed is accepted
+worker reservation expires before deliver seed is accepted
 ```
 
 Rules:
 
 - every stale outcome must be bounded;
-- every partial worker admission must have a compensation path;
+- every partial worker reservation must have a compensation path;
 - no scheduling round may create an unowned active claim;
 - no scheduling round may dispatch without a selected worker and current work
   hash claim evidence;
@@ -439,11 +465,29 @@ worker_score.rewrite_current_score(...)
 worker_score.renew_current_lease(...)
 worker_score.release_score_hold(...)
 
-worker_runtime.validate_worker_candidates(workerGroupId, workerIds, constraints)
-assignment_dispatch.rank_candidates(candidates, rankingPolicy)
-worker_runtime.admit_worker(workerGroupId, workerId, constraints, observedWorkerScore)
-worker_runtime.revalidate_candidate(workerReservationHandle, observedWorkerScore)
-worker_runtime.release_admission(admission)
+for workerGroupId, taskCandidates in assignment_dispatch.partition_by_worker_group(tasks):
+  workerCandidates = worker_score.acquire_hot_acquire_candidates(home_bucket_id, limit)
+  workerIds = [workerId for workerId, observedWorkerScore in workerCandidates]
+  observedWorkerScoreByWorkerId = {workerId: observedWorkerScore, ...}
+  candidateConstraints = [(candidateId, constraints), ...]
+  candidateMatches = worker_candidate_matcher.match_worker_candidates(
+    workerGroupId,
+    workerIds,
+    candidateConstraints
+  )
+  for candidateId, matchedWorkerIds in candidateMatches:
+    assignment_dispatch.rank_candidates(candidateId, matchedWorkerIds, rankingPolicy)
+    worker_reservation_runtime.reserve_worker(
+      workerGroupId,
+      workerId,
+      observedWorkerScore,
+      workerReservationExpiresAt
+    )
+    worker_reservation_runtime.revalidate_reservation(
+      workerReservationHandle,
+      observedWorkerScore
+    )
+    worker_reservation_runtime.release_reservation(workerReservationHandle)
 
 assignment_plans.put(plan)
 assignment_plans.acquire_due(limit)
@@ -480,7 +524,7 @@ necessarily a thread.
   must validate through worker-runtime.
 - Do not let assignment-dispatch select workers from transport sessions.
 - Do not let transport choose backup workers.
-- Do not claim work before worker admission unless the claim owner has an
+- Do not claim work before worker reservation unless the claim owner has an
   explicit reversible claim model.
 - Do not create deliver seeds without a current work hash claim.
 - Do not make result finality a dispatch concern.

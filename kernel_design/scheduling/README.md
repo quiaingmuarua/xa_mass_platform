@@ -50,6 +50,19 @@ result-routing-scheduling
 These are scheduling planes, not modules. A first Python kernel can implement
 them in one package as long as the owner rules remain explicit.
 
+The first executable kernel may use simple policies, small operator sets, and
+in-process handoffs. That is a scope choice, not a license to use weaker
+mechanisms. V0 should be narrow capability over correct mechanism:
+
+```text
+simple policy mapping is allowed
+reduced strategy coverage is allowed
+owner-mixed truth is not allowed
+event-only liveness is not allowed
+query predicates as lifecycle truth are not allowed
+transport facts as worker selection truth are not allowed
+```
+
 ## Mainline
 
 ```text

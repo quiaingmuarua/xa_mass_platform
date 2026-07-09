@@ -15,6 +15,9 @@ AttributeName = str
 AttributeValue = object
 DynamicAttributePayload = object
 ReservationId = str
+CandidateId = str
+WorkerCandidateConstraint = tuple[CandidateId, WorkerConstraintQuery]
+WorkerCandidateMatch = tuple[CandidateId, tuple[WorkerId, ...]]
 
 
 class WorkerRuntimeStatus(Enum):
@@ -60,13 +63,13 @@ class WorkerDescriptor:
 
 @dataclass(frozen=True)
 class WorkerReservationHandle:
-    """Opaque reservation handle returned by worker-runtime admission."""
+    """Opaque reservation handle returned by worker-runtime reservation."""
 
     reservation_id: ReservationId
 
 
 @dataclass(frozen=True)
-class WorkerAdmission:
+class WorkerReservation:
     """Binary reservation of one scheduler-visible worker resource."""
 
     handle: WorkerReservationHandle
@@ -83,16 +86,9 @@ class WorkerRuntimeResult:
 
 
 @dataclass(frozen=True)
-class WorkerMatchResult:
+class WorkerReservationResult:
     status: WorkerRuntimeStatus
-    worker_id: WorkerId | None = None
-    reason: str | None = None
-
-
-@dataclass(frozen=True)
-class WorkerAdmissionResult:
-    status: WorkerRuntimeStatus
-    admission: WorkerAdmission | None = None
+    reservation: WorkerReservation | None = None
     reason: str | None = None
 
 
@@ -124,7 +120,7 @@ class WorkerResourceCatalog(ABC):
 
     This is the registration/connect/bootstrap-facing surface. It owns worker
     group descriptors, worker descriptors, and low-frequency metadata updates.
-    It does not expose dynamic attribute values or admission reservations.
+    It does not expose dynamic attribute values or worker reservations.
     """
 
     @abstractmethod
@@ -186,35 +182,58 @@ class WorkerResourceCatalog(ABC):
         pass
 
 
-class WorkerAdmissionRuntime(ABC):
-    """Worker-runtime admission/reservation surface.
+class WorkerCandidateMatcher(ABC):
+    """Worker-runtime bounded batch matching surface.
 
-    Assignment-dispatch should depend on this narrow surface. It validates
-    descriptor/dynamic evidence through worker-runtime and creates binary
-    reservations for scheduler-visible worker resources.
+    Assignment-dispatch supplies one selected worker group, a bounded worker id
+    batch, and one constraint query per dispatch candidate. Candidate priority
+    is represented by input order. The matcher returns one match row for every
+    input candidate in that same order. It must not discover workers outside the
+    supplied worker_ids, rank workers, carry observed worker scores, or create
+    reservations.
     """
 
     @abstractmethod
-    def validate_worker_candidates(
+    def match_worker_candidates(
         self,
         *,
         worker_group_id: WorkerGroupId,
         worker_ids: Sequence[WorkerId],
-        constraints: WorkerConstraintQuery,
-    ) -> Mapping[WorkerId, WorkerMatchResult]:
-        """Validate candidate workers inside the selected worker group."""
+        candidate_constraints: Sequence[WorkerCandidateConstraint],
+    ) -> Sequence[WorkerCandidateMatch]:
+        """Match bounded workers against a batch of candidate constraints.
+
+        One call handles one selected worker group only; callers must partition
+        candidates by worker_group_id before calling this method. Candidate ids
+        must be unique within one call. The result must contain exactly one row
+        for every input candidate; an empty matched-worker tuple means no match.
+        Returned worker ids must be a subset of worker_ids and should preserve
+        worker_ids order unless the worker-runtime matcher owns a named
+        non-ranking pruning rule. Candidate ids are opaque caller-owned
+        correlation ids; worker-runtime must not interpret them as task
+        lifecycle truth.
+        """
         pass
 
+
+class WorkerReservationRuntime(ABC):
+    """Worker-runtime short-lived reservation surface.
+
+    Assignment-dispatch should depend on this narrow surface after matching and
+    ranking. It creates, revalidates, and releases binary reservations for
+    scheduler-visible worker resources. It does not accept WorkerConstraintQuery
+    and must not become a second candidate matcher.
+    """
+
     @abstractmethod
-    def admit_worker(
+    def reserve_worker(
         self,
         *,
         worker_group_id: WorkerGroupId,
         worker_id: WorkerId,
-        constraints: WorkerConstraintQuery,
         observed_worker_score: Score,
         lease_expires_at_millis: TimeMillis,
-    ) -> WorkerAdmissionResult:
+    ) -> WorkerReservationResult:
         """Reserve one scheduler-visible worker resource.
 
         observed_worker_score is an opaque score fence captured from worker
@@ -224,17 +243,17 @@ class WorkerAdmissionRuntime(ABC):
         pass
 
     @abstractmethod
-    def revalidate_admission(
+    def revalidate_reservation(
         self,
         *,
         handle: WorkerReservationHandle,
         observed_worker_score: Score,
-    ) -> WorkerAdmissionResult:
+    ) -> WorkerReservationResult:
         """Revalidate an existing reservation before work claim / dispatch."""
         pass
 
     @abstractmethod
-    def release_admission(
+    def release_reservation(
         self,
         *,
         handle: WorkerReservationHandle,

@@ -67,7 +67,7 @@ a GPU, that is not represented as multi-group worker ownership in v0; expose it
 later through dynamic query attributes or a dedicated runtime owner only after
 an executable spec proves the need.
 
-This keeps score ownership, admission, capacity, dirty handling, and release
+This keeps score ownership, reservation, capacity, dirty handling, and release
 semantics single-group and single-resource from the scheduler's point of view.
 
 ## WorkerGroupDescriptor
@@ -86,19 +86,19 @@ not select or query worker groups during dispatch.
 
 `attributes` are metadata/query fields. They may describe grouping, display,
 classification, policy hints, or operator-facing facts. They are not live
-worker admission truth.
+worker reservation truth.
 
 `eventCodes` declares the task item event families this worker group can
 handle. It validates that the project-bound worker group is allowed to serve the
 task item's event, but it is not a per-dispatch group discovery mechanism and
-not proof that a specific worker is currently reachable, admitted, or able to
+not proof that a specific worker is currently reachable, reserved, or able to
 receive work.
 
 WorkerGroupDescriptor does not own:
 
 ```text
 worker hot/recovery score
-worker runtime admission
+worker runtime reservation
 worker capacity truth
 transport session truth
 adapter mailbox truth
@@ -153,8 +153,8 @@ customTraits
 
 Version and handler-bundle compatibility fields belong in `staticAttributes`
 when they are needed. They are ordinary low-frequency metadata, not first-layer
-descriptor fields, not metadata revisions, not stale fences, and not admission
-tokens.
+descriptor fields, not metadata revisions, not stale fences, and not
+reservation tokens.
 
 `dynamicAttributes` is an allowlist of dynamic attribute names that this worker
 is allowed to update. It is not the current value of those attributes.
@@ -194,14 +194,19 @@ v0.
 
 Version compatibility is metadata validation through `staticAttributes`.
 Assignment-dispatch must not interpret version fields directly as runtime
-availability. Current usability still belongs to worker-runtime admission.
+availability. Current usability still belongs to worker-runtime reservation.
 
 ## WorkerConstraintQuery
 
 `WorkerConstraintQuery` is a small Mongo-like predicate tool for candidate
-filtering and admission validation inside an already selected worker group. It
-is not a task policy owner, not a worker-group selector, and not a handler
-routing contract.
+filtering and matching inside an already selected worker group. It is not a
+task policy owner, not a worker-group selector, not a reservation contract, and
+not a handler routing contract.
+
+The v0 query surface is intentionally narrow, but it is still a real mechanism.
+Unsupported operators are explicit omissions until an executable spec proves
+the need; they should not be replaced with ad hoc maps, raw JSON interpretation,
+or owner-mixed shortcuts.
 
 The query is an implicit `AND` over fields:
 
@@ -321,8 +326,11 @@ has heartbeat or reachability information, the dynamic attribute function may
 point-read or project that existing fact for query use. It must not become the
 worker availability truth.
 
-If a dynamic attribute is relevant to scheduling policy, worker-runtime
-admission may point-read the attribute owner's current value during validation.
+If a dynamic attribute is relevant to scheduling policy, the worker-runtime
+matching path may point-read the attribute owner's current value before
+reservation. Only bounded candidate matching should receive
+`WorkerConstraintQuery`; worker reservation and revalidation should not
+receive raw constraint queries.
 Assignment-dispatch and worker score primitives must not interpret dynamic
 attribute payloads directly, and dynamic attribute updates must not drive
 worker availability by themselves.
@@ -350,19 +358,45 @@ running.
 matching inside the selected worker group. The query may constrain `worker.id`,
 placement, static attributes, system attributes, or explicitly supported
 projected dynamic attributes. These constraints narrow worker candidates; they
-do not replace worker-runtime admission.
+do not replace worker-runtime reservation.
 
 `worker.id` inside `WorkerConstraintQuery` is only a hard filter inside the
 task's selected `workerGroupId`. It still must pass worker score acquire and
-worker-runtime admission. It is not a worker group selector and not a transport
+worker-runtime reservation. It is not a worker group selector and not a transport
 target.
 
 Dynamic attribute matching is deliberately narrow in v0. Assignment-dispatch
 must not perform arbitrary dynamic-attribute multi-index queries. The default
-path is worker-runtime admission point-reading the dynamic attribute owner's
-current value. If a later executable spec needs candidate discovery such as
-`battery > 20`, the dynamic attribute query function must expose a bounded candidate
-index explicitly.
+path is owner-approved candidate matching point-reading the dynamic attribute
+owner's current value before reservation. If a later executable spec needs
+candidate discovery such as `battery > 20`, the dynamic attribute query function
+must expose a bounded candidate index explicitly.
+
+The first worker-runtime matching surface may expose a bounded batch matcher:
+
+```text
+match_worker_candidates(
+  workerGroupId,
+  workerIds,
+  [(candidateId, WorkerConstraintQuery), ...]
+)
+```
+
+The input is an ordered tuple list, not a map: candidate order may carry
+assignment priority. `candidateId` must be unique within one call. A matcher
+call handles exactly one selected `workerGroupId`; assignment-dispatch must
+partition candidates by worker group before calling it. The matcher returns one
+ordered `(candidateId, matchedWorkerIds)` entry for every input candidate.
+Empty `matchedWorkerIds` means no match. It matches only the supplied worker
+ids and does not carry `observedWorkerScore`; assignment-dispatch keeps score
+fences from worker score acquire as sidecar evidence for later reservation. It
+must not become `find_all_matching_workers(query)` or a global worker query
+service.
+
+`WorkerReservationRuntime` starts only after matching and ranking. It owns the
+short-lived reservation handle, score-fence revalidation, and compensation
+path. It must not accept `WorkerConstraintQuery` and must not become a second
+candidate matcher.
 
 `Work / item / seed -> EventHandler` is worker-local execution routing. The
 item `eventCode` resolves the handler only after the task has a selected worker
@@ -378,7 +412,7 @@ selection facts.
 Descriptor metadata is the low-frequency query and matching surface used by
 worker allocation inside a pre-bound worker group. Its purpose is to help
 assignment-dispatch find a small set of plausible workers before runtime
-admission. It does not decide which worker group a task may use:
+reservation. It does not decide which worker group a task may use:
 
 ```text
 project/workload binding
@@ -387,7 +421,7 @@ task eventCode
   -> validates against WorkerGroupDescriptor.eventCodes
 pre-bound workerGroupId
   -> WorkerConstraintQuery filters identity/static/system/query attributes
-  -> worker-runtime admission validates current usability/capacity/reservation
+  -> worker-runtime reservation validates current usability/capacity/resource hold
 ```
 
 Scheduling must not stop at descriptor matches. It reads worker-runtime owner
@@ -396,17 +430,17 @@ surfaces before producing a selected worker:
 ```text
 task inherited workerGroupId -> worker score home bucket
 worker score -> hot/recovery acquisition coordinate
-worker-runtime admission -> current usability/capacity decision
+worker-runtime reservation -> current usability/capacity/resource hold decision
 assignment-dispatch -> selected worker + work claim + deliver seed
 ```
 
 Descriptor metadata can be used by worker-runtime validation, policy mapping,
 query views, and diagnostics. It is a candidate discovery / matching input; it
-must not become a second admission owner.
+must not become a second reservation owner.
 
-In v0, admission is binary reservation of one scheduler-visible worker
-resource. A selected worker is either reserved/admitted for the current
-assignment or it is not. Do not model capacity pools inside
+In v0, worker reservation is a binary hold of one scheduler-visible worker
+resource. A selected worker is either reserved for the current assignment or it
+is not. Do not model capacity pools inside
 `WorkerDescriptor`. If a physical worker can handle multiple concurrent lanes,
 represent those lanes as multiple logical workers until an executable spec
 proves a real capacity owner is needed.
@@ -441,7 +475,7 @@ dynamic attribute current values inside WorkerDescriptor
 eventCode inside WorkerConstraintQuery
 workerGroupId inside WorkerConstraintQuery
 adapter session / mailbox / connection state inside WorkerDescriptor
-runtime score / dirty / admission fields inside WorkerDescriptor
+runtime score / dirty / reservation fields inside WorkerDescriptor
 ```
 
 If the executable spec needs stale metadata fencing, worker-runtime may compute
@@ -457,11 +491,11 @@ Add `WorkerGroupMembership` only when one of these becomes unavoidable:
 the same worker must have different weight per group
 the same worker must be enabled in one group and disabled in another
 the same worker needs different quota/capacity per group
-the same worker needs different admission lane per group
+the same worker needs different reservation lane per group
 ```
 
 Add public metadata revision/signature only when an executable spec proves a
-stale-fence invariant that cannot be handled inside worker-runtime admission.
+stale-fence invariant that cannot be handled inside worker-runtime reservation.
 
 Add event binding rows only when `WorkerGroupDescriptor.eventCodes` is too weak
 to express group-level event ownership. Do not add them to handle ordinary
@@ -488,5 +522,5 @@ class WorkerDescriptor:
 ```
 
 The Python executable spec may start with this shape directly. Runtime score,
-admission, dynamic attribute indexes, and transport session facts should remain
+reservation, dynamic attribute indexes, and transport session facts should remain
 separate owner structures.
