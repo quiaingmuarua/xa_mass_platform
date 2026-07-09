@@ -341,8 +341,9 @@ owner and not a transport parser.
 4. [Result-Routing Scheduling](result-routing-scheduling.md)
    - how result evidence is routed to finality, retry, no-op, or unresolved
      handling.
-5. [Score-Band Worker Runtime Redis Shape](../runtime-redis/score-band-worker-runtime-redis-shape.md)
-   - first-slice Redis structure reference for worker score-band runtime.
+5. [Worker Runtime Redis Shape](../runtime-redis/worker-runtime-redis-shape.md)
+   - first-slice Redis structure reference for worker-runtime resource catalog,
+     score acquisition, and dynamic attribute storage.
 6. [Score-Band Task Runtime Redis Shape](../runtime-redis/score-band-task-runtime-redis-shape.md)
    - Redis structure reference for task score lanes plus adjacent work-item and
      result structures.

@@ -27,9 +27,9 @@ class WorkerRuntimeModelTest(unittest.TestCase):
             {
                 "worker_id",
                 "worker_group_id",
-                "system_attributes",
+                "system_metadata",
                 "static_attributes",
-                "dynamic_attributes",
+                "dynamic_attribute_names",
             },
         )
 
@@ -74,7 +74,7 @@ class WorkerRuntimeModelTest(unittest.TestCase):
                 "refresh_worker_static_attributes",
                 "register_worker_descriptor",
                 "register_worker_group_descriptor",
-                "update_worker_system_attributes",
+                "update_worker_system_metadata",
             },
         )
         self.assertEqual(
@@ -122,9 +122,9 @@ class WorkerRuntimeModelTest(unittest.TestCase):
         descriptor = WorkerDescriptor(
             worker_id="worker-1",
             worker_group_id="image-workers",
-            system_attributes={},
+            system_metadata={},
             static_attributes={"runtimeVersion": "1.0.0"},
-            dynamic_attributes=frozenset({"battery"}),
+            dynamic_attribute_names=frozenset({"battery"}),
         )
         values: dict[str, tuple[object, int]] = {}
 
@@ -160,7 +160,7 @@ class WorkerRuntimeModelTest(unittest.TestCase):
         self.assertEqual(result.status, WorkerRuntimeStatus.OK)
         self.assertEqual(read.status, WorkerRuntimeStatus.OK)
         self.assertEqual(read.value, 87)
-        self.assertEqual(descriptor.dynamic_attributes, frozenset({"battery"}))
+        self.assertEqual(descriptor.dynamic_attribute_names, frozenset({"battery"}))
 
 
 if __name__ == "__main__":

@@ -115,9 +115,9 @@ dynamic attribute current values
 WorkerDescriptor
   workerId: string
   workerGroupId: string
-  systemAttributes: map<string, value>
+  systemMetadata: map<string, value>
   staticAttributes: map<string, value>
-  dynamicAttributes: set<string>
+  dynamicAttributeNames: set<string>
 ```
 
 `workerId` is the resource identity used by worker score and assignment.
@@ -128,7 +128,7 @@ First-layer descriptor fields intentionally stop at resource identity, group
 identity, and attribute buckets. Specific runtime, package, handler, or
 compatibility versions belong in `staticAttributes`.
 
-`systemAttributes` are platform-written metadata. They are writable, but should
+`systemMetadata` is platform-written metadata. It is writable, but should
 be low-frequency. Examples:
 
 ```text
@@ -159,13 +159,13 @@ when they are needed. They are ordinary low-frequency metadata, not first-layer
 descriptor fields, not metadata revisions, not stale fences, and not
 score lease tokens.
 
-`dynamicAttributes` is an allowlist of dynamic attribute names that this worker
-is allowed to update. It is not the current value of those attributes.
+`dynamicAttributeNames` is an allowlist of dynamic attribute names that this
+worker is allowed to update. It is not the current value of those attributes.
 
 Examples:
 
 ```text
-dynamicAttributes = {
+dynamicAttributeNames = {
   "heartbeat",
   "battery",
   "network",
@@ -277,14 +277,14 @@ network   -> hash(workerId -> networkType)
 load      -> hash / zset / bitmap, depending on policy
 ```
 
-`WorkerDescriptor.dynamicAttributes` only decides whether an update is allowed:
+`WorkerDescriptor.dynamicAttributeNames` only decides whether an update is allowed:
 
 ```text
-dynamicAttributes can accept or reject an update
-dynamicAttributes cannot represent current attribute value
-dynamicAttributes cannot replace worker score
-dynamicAttributes cannot be used as direct scheduling truth
-dynamicAttributes cannot prove worker availability
+dynamicAttributeNames can accept or reject an update
+dynamicAttributeNames cannot represent current attribute value
+dynamicAttributeNames cannot replace worker score
+dynamicAttributeNames cannot be used as direct scheduling truth
+dynamicAttributeNames cannot prove worker availability
 ```
 
 Dynamic attribute values are owned by built-in attribute functions:
@@ -311,7 +311,7 @@ fast point-write behavior
 ```text
 worker-runtime receives or evaluates an attribute update
   -> read WorkerDescriptor
-  -> require attrName in WorkerDescriptor.dynamicAttributes
+  -> require attrName in WorkerDescriptor.dynamicAttributeNames
   -> route by attrName or owner-defined attribute prefix
   -> resolve update_dynamic_attributes_dict[attrName]
   -> function validate / normalize payload
@@ -326,7 +326,7 @@ scheduling events by default.
 
 The first Python kernel surface exposes this as a narrow
 `WorkerDynamicAttributeRuntime.update_worker_dynamic_attributes(...)` ingress.
-That method validates the worker descriptor and the `dynamicAttributes`
+That method validates the worker descriptor and the `dynamicAttributeNames`
 allowlist, then dispatches accepted attributes to owner-local handlers. It does
 not expose dynamic attribute query values and does not write worker score leases
 directly.
@@ -423,10 +423,10 @@ fences from worker score acquire as sidecar evidence for later score lease. It
 must not become `find_all_matching_workers(query)` or a global worker query
 service.
 
-There is no separate reservation surface in v0. Worker occupation uses
-`WorkerScoreCore` score lease / hold primitives directly. If a later executable
-spec proves a cross-round reservation record is required, add that owner then.
-Do not keep a placeholder reservation surface now.
+There is no separate assignment-continuation surface in v0. Worker occupation
+uses `WorkerScoreCore` score lease / hold primitives directly. If a later
+executable spec proves a persisted cross-round assignment continuation is
+required, add that owner then. Do not keep a placeholder surface now.
 
 `Work / item / seed -> EventHandler` is worker-local execution routing. The
 item `eventCode` resolves the handler only after the task has a selected worker
@@ -550,9 +550,9 @@ class WorkerGroupDescriptor:
 class WorkerDescriptor:
     worker_id: str
     worker_group_id: str
-    system_attributes: Mapping[str, JsonValue]
+    system_metadata: Mapping[str, JsonValue]
     static_attributes: Mapping[str, JsonValue]
-    dynamic_attributes: frozenset[str]
+    dynamic_attribute_names: frozenset[str]
 ```
 
 The Python executable spec may start with this shape directly. Runtime score,

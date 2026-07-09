@@ -55,9 +55,9 @@ class WorkerDescriptor:
 
     worker_id: WorkerId
     worker_group_id: WorkerGroupId
-    system_attributes: Mapping[str, AttributeValue]
+    system_metadata: Mapping[str, AttributeValue]
     static_attributes: Mapping[str, AttributeValue]
-    dynamic_attributes: frozenset[AttributeName]
+    dynamic_attribute_names: frozenset[AttributeName]
 
 
 @dataclass(frozen=True)
@@ -109,7 +109,7 @@ class WorkerDynamicAttributeRuntime(ABC):
         """Update accepted dynamic attributes through owner-local handlers.
 
         Implementations must reject unknown attributes and attributes not listed
-        in the worker descriptor's dynamic_attributes allowlist. Accepted
+        in the worker descriptor's dynamic_attribute_names allowlist. Accepted
         updates are dispatched to the owner-local dynamic attribute function
         table. This method is not a query surface and must not rewrite worker
         score leases directly.
@@ -164,11 +164,11 @@ class WorkerResourceCatalog(ABC):
         pass
 
     @abstractmethod
-    def update_worker_system_attributes(
+    def update_worker_system_metadata(
         self,
         *,
         worker_id: WorkerId,
-        attributes: Mapping[str, AttributeValue],
+        metadata: Mapping[str, AttributeValue],
     ) -> WorkerRuntimeResult:
         """Platform-owned low-frequency metadata update."""
         pass
