@@ -38,7 +38,6 @@ from .kernel import (
     WorkerRuntimeStatus,
 )
 from .runtime_redis import (
-    RedisWorkerCandidateMatcher,
     RedisWorkerDynamicAttributeRuntime,
     RedisWorkerResourceCatalog,
     RedisZsetTaskScoreBandCore,
@@ -54,7 +53,6 @@ __all__ = [
     "TaskId",
     "RedisZsetTaskScoreBandCore",
     "RedisZsetWorkerScoreCore",
-    "RedisWorkerCandidateMatcher",
     "RedisWorkerDynamicAttributeRuntime",
     "RedisWorkerResourceCatalog",
     "TaskScoreBand",

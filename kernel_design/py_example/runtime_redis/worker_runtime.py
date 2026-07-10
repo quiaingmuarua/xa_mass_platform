@@ -5,20 +5,13 @@ from collections import defaultdict
 from collections.abc import Mapping as MappingABC, Sequence as SequenceABC
 from typing import Any, Mapping, Sequence
 
-from ..kernel.constraint_evaluator import ConstraintFieldResolution
-from ..kernel.worker_constraint_query import WorkerConstraintQuery
 from ..kernel.worker_score import WorkerId
 from ..kernel.worker_runtime import (
     AttributeName,
     AttributeValue,
-    CandidateId,
     DynamicAttributePayload,
-    DynamicAttributeQueryRegistry,
     DynamicAttributeReadResult,
     DynamicAttributeUpdateRegistry,
-    WorkerCandidateConstraint,
-    WorkerCandidateMatch,
-    WorkerCandidateMatcher,
     WorkerDescriptor,
     WorkerDynamicAttributeRuntime,
     WorkerGroupDescriptor,
@@ -408,103 +401,3 @@ class RedisWorkerDynamicAttributeRuntime(WorkerDynamicAttributeRuntime):
                 observed_at_millis,
             )
         return results
-
-
-class RedisWorkerCandidateMatcher(WorkerCandidateMatcher):
-    """Redis-backed bounded worker candidate matcher."""
-
-    def __init__(
-        self,
-        catalog: WorkerResourceCatalog,
-        query_dynamic_attributes_dict: DynamicAttributeQueryRegistry,
-    ) -> None:
-        self.catalog = catalog
-        self.query_dynamic_attributes_dict = query_dynamic_attributes_dict
-
-    def match_worker_candidates(
-        self,
-        *,
-        worker_group_id: WorkerGroupId,
-        worker_ids: Sequence[WorkerId],
-        candidate_constraints: Sequence[WorkerCandidateConstraint],
-    ) -> Sequence[WorkerCandidateMatch]:
-        self._validate_candidate_ids(candidate_constraints)
-        if not candidate_constraints:
-            return []
-
-        descriptor_rows = self.catalog.get_worker_descriptors(worker_ids=worker_ids)
-        descriptors = {
-            worker_id: descriptor
-            for worker_id, descriptor in descriptor_rows.items()
-            if descriptor is not None and descriptor.worker_group_id == worker_group_id
-        }
-
-        return [
-            (
-                candidate_id,
-                tuple(
-                    worker_id
-                    for worker_id in worker_ids
-                    if self._matches_worker(
-                        worker_id,
-                        descriptors.get(worker_id),
-                        constraints,
-                    )
-                ),
-            )
-            for candidate_id, constraints in candidate_constraints
-        ]
-
-    def _matches_worker(
-        self,
-        worker_id: WorkerId,
-        descriptor: WorkerDescriptor | None,
-        constraints: WorkerConstraintQuery,
-    ) -> bool:
-        if descriptor is None:
-            return False
-
-        return constraints.matches(
-            lambda field_name: self._resolve_field_value(
-                worker_id,
-                descriptor,
-                field_name,
-            )
-        )
-
-    def _resolve_field_value(
-        self,
-        worker_id: WorkerId,
-        descriptor: WorkerDescriptor,
-        field_name: str,
-    ) -> ConstraintFieldResolution:
-        if field_name == "worker.id":
-            return ConstraintFieldResolution.present_value(worker_id)
-        if field_name.startswith("system."):
-            key = field_name.removeprefix("system.")
-            if key not in descriptor.system_metadata:
-                return ConstraintFieldResolution.missing()
-            return ConstraintFieldResolution.present_value(descriptor.system_metadata[key])
-        if field_name.startswith("static."):
-            key = field_name.removeprefix("static.")
-            if key not in descriptor.static_attributes:
-                return ConstraintFieldResolution.missing()
-            return ConstraintFieldResolution.present_value(descriptor.static_attributes[key])
-        if field_name.startswith("dynamic."):
-            attr_name = field_name.removeprefix("dynamic.")
-            query_fn = self.query_dynamic_attributes_dict.get(attr_name)
-            if query_fn is None:
-                return ConstraintFieldResolution.unresolved()
-            result = query_fn(worker_id)
-            if result.status is not WorkerRuntimeStatus.OK:
-                return ConstraintFieldResolution.unresolved()
-            return ConstraintFieldResolution.present_value(result.value)
-        return ConstraintFieldResolution.missing()
-
-    @staticmethod
-    def _validate_candidate_ids(
-        candidate_constraints: Sequence[tuple[CandidateId, WorkerConstraintQuery]],
-    ) -> None:
-        candidate_ids = [candidate_id for candidate_id, _ in candidate_constraints]
-        if len(candidate_ids) != len(set(candidate_ids)):
-            raise ValueError("candidate ids must be unique within one match call")

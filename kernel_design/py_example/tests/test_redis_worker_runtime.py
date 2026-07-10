@@ -3,9 +3,9 @@ from __future__ import annotations
 import unittest
 
 from kernel_design.py_example import (
-    RedisWorkerCandidateMatcher,
     RedisWorkerDynamicAttributeRuntime,
     RedisWorkerResourceCatalog,
+    WorkerCandidateMatcher,
     WorkerConstraintQuery,
     WorkerDescriptor,
     WorkerGroupDescriptor,
@@ -322,7 +322,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
                 )
             return DynamicAttributeReadResult(WorkerRuntimeStatus.NOT_FOUND)
 
-        matcher = RedisWorkerCandidateMatcher(self.catalog, {"battery": query_battery})
+        matcher = WorkerCandidateMatcher(self.catalog, {"battery": query_battery})
         rows = matcher.match_worker_candidates(
             worker_group_id="image-workers",
             worker_ids=["worker-2", "outside", "worker-1"],
@@ -353,8 +353,8 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
     def test_candidate_matcher_fails_missing_dynamic_handler_or_value(self) -> None:
         self.register_group()
         self.register_worker(self.worker_descriptor("worker-1"))
-        matcher_without_handler = RedisWorkerCandidateMatcher(self.catalog, {})
-        matcher_without_value = RedisWorkerCandidateMatcher(
+        matcher_without_handler = WorkerCandidateMatcher(self.catalog, {})
+        matcher_without_value = WorkerCandidateMatcher(
             self.catalog,
             {
                 "battery": lambda worker_id: DynamicAttributeReadResult(
@@ -387,7 +387,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         self.register_group()
         self.register_worker(self.worker_descriptor("worker-1"))
         self.register_worker(self.worker_descriptor("worker-2"))
-        matcher = RedisWorkerCandidateMatcher(self.catalog, {})
+        matcher = WorkerCandidateMatcher(self.catalog, {})
 
         rows = matcher.match_worker_candidates(
             worker_group_id="image-workers",
@@ -396,6 +396,120 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         )
 
         self.assertEqual(rows, [("all", ("worker-1",))])
+
+    def test_candidate_matcher_requires_declared_dynamic_attribute(self) -> None:
+        self.register_group()
+        self.register_worker(
+            self.worker_descriptor(
+                "worker-1",
+                dynamic_attribute_names=frozenset(),
+            )
+        )
+        queried_worker_ids: list[str] = []
+
+        def query_battery(worker_id: str) -> DynamicAttributeReadResult:
+            queried_worker_ids.append(worker_id)
+            return DynamicAttributeReadResult(WorkerRuntimeStatus.OK, value=90)
+
+        matcher = WorkerCandidateMatcher(self.catalog, {"battery": query_battery})
+        rows = matcher.match_worker_candidates(
+            worker_group_id="image-workers",
+            worker_ids=["worker-1"],
+            candidate_constraints=[
+                (
+                    "needs-battery",
+                    WorkerConstraintQuery({"dynamic.battery": {"$gte": 20}}),
+                )
+            ],
+        )
+
+        self.assertEqual(rows, [("needs-battery", ())])
+        self.assertEqual(queried_worker_ids, [])
+
+    def test_candidate_matcher_reads_dynamic_attribute_once_per_batch(self) -> None:
+        self.register_group()
+        self.register_worker(self.worker_descriptor("worker-1"))
+        query_count = 0
+
+        def query_battery(worker_id: str) -> DynamicAttributeReadResult:
+            nonlocal query_count
+            query_count += 1
+            return DynamicAttributeReadResult(WorkerRuntimeStatus.OK, value=90)
+
+        matcher = WorkerCandidateMatcher(self.catalog, {"battery": query_battery})
+        rows = matcher.match_worker_candidates(
+            worker_group_id="image-workers",
+            worker_ids=["worker-1"],
+            candidate_constraints=[
+                (
+                    "candidate-1",
+                    WorkerConstraintQuery({"dynamic.battery": {"$gte": 20}}),
+                ),
+                (
+                    "candidate-2",
+                    WorkerConstraintQuery({"dynamic.battery": {"$lte": 100}}),
+                ),
+            ],
+        )
+
+        self.assertEqual(
+            rows,
+            [
+                ("candidate-1", ("worker-1",)),
+                ("candidate-2", ("worker-1",)),
+            ],
+        )
+        self.assertEqual(query_count, 1)
+
+    def test_candidate_matcher_applies_worker_id_filter_before_dynamic_read(self) -> None:
+        self.register_group()
+        self.register_worker(self.worker_descriptor("worker-1"))
+        self.register_worker(self.worker_descriptor("worker-2"))
+        queried_worker_ids: list[str] = []
+
+        def query_battery(worker_id: str) -> DynamicAttributeReadResult:
+            queried_worker_ids.append(worker_id)
+            return DynamicAttributeReadResult(WorkerRuntimeStatus.OK, value=90)
+
+        matcher = WorkerCandidateMatcher(self.catalog, {"battery": query_battery})
+        rows = matcher.match_worker_candidates(
+            worker_group_id="image-workers",
+            worker_ids=["worker-1", "worker-2"],
+            candidate_constraints=[
+                (
+                    "worker-1-only",
+                    WorkerConstraintQuery(
+                        {
+                            "dynamic.battery": {"$gte": 20},
+                            "worker.id": {"$eq": "worker-1"},
+                        }
+                    ),
+                )
+            ],
+        )
+
+        self.assertEqual(rows, [("worker-1-only", ("worker-1",))])
+        self.assertEqual(queried_worker_ids, ["worker-1"])
+
+    def test_candidate_matcher_rejects_duplicate_protocol_ids(self) -> None:
+        matcher = WorkerCandidateMatcher(self.catalog, {})
+
+        with self.assertRaises(ValueError):
+            matcher.match_worker_candidates(
+                worker_group_id="image-workers",
+                worker_ids=["worker-1", "worker-1"],
+                candidate_constraints=[("candidate-1", WorkerConstraintQuery.empty())],
+            )
+
+        with self.assertRaises(ValueError):
+            matcher.match_worker_candidates(
+                worker_group_id="image-workers",
+                worker_ids=["worker-1"],
+                candidate_constraints=[
+                    ("candidate-1", WorkerConstraintQuery.empty()),
+                    ("candidate-1", WorkerConstraintQuery.empty()),
+                ],
+            )
 
 
 if __name__ == "__main__":

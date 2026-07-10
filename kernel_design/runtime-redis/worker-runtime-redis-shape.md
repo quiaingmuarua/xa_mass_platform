@@ -406,6 +406,11 @@ matcher returns only matched worker ids
 assignment-dispatch keeps observedScore sidecar from score acquire
 ```
 
+`WorkerCandidateMatcher` is a storage-independent worker-runtime mechanism. It
+consumes `WorkerResourceCatalog` and dynamic query handlers; Redis-specific
+code owns descriptor persistence and handler storage only. Do not introduce
+storage-specific matcher subclasses.
+
 Dynamic attribute updates do not automatically write worker score. They may mark
 score dirty only after a later executable spec introduces a real persisted
 assignment plan or hot score lease continuation that can consume dirty.

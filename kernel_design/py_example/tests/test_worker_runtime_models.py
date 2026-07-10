@@ -117,10 +117,7 @@ class WorkerRuntimeModelTest(unittest.TestCase):
             WorkerDynamicAttributeRuntime.__abstractmethods__,
             {"update_worker_dynamic_attributes"},
         )
-        self.assertEqual(
-            WorkerCandidateMatcher.__abstractmethods__,
-            {"match_worker_candidates"},
-        )
+        self.assertFalse(inspect.isabstract(WorkerCandidateMatcher))
         self.assertFalse(hasattr(py_example, "WorkerAdmission"))
         self.assertFalse(hasattr(py_example, "WorkerAdmissionResult"))
         self.assertFalse(hasattr(py_example, "WorkerAdmissionRuntime"))

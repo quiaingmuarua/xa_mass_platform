@@ -182,37 +182,3 @@ class WorkerResourceCatalog(ABC):
     ) -> WorkerRuntimeResult:
         """Worker register/connect metadata refresh after platform validation."""
         pass
-
-
-class WorkerCandidateMatcher(ABC):
-    """Worker-runtime bounded batch matching surface.
-
-    Assignment-dispatch supplies one selected worker group, a bounded worker id
-    batch, and one constraint query per dispatch candidate. Candidate priority
-    is represented by input order. The matcher returns one match row for every
-    input candidate in that same order. It must not discover workers outside the
-    supplied worker_ids, rank workers, carry observed worker scores, or create
-    score leases / holds.
-    """
-
-    @abstractmethod
-    def match_worker_candidates(
-        self,
-        *,
-        worker_group_id: WorkerGroupId,
-        worker_ids: Sequence[WorkerId],
-        candidate_constraints: Sequence[WorkerCandidateConstraint],
-    ) -> Sequence[WorkerCandidateMatch]:
-        """Match bounded workers against a batch of candidate constraints.
-
-        One call handles one selected worker group only; callers must partition
-        candidates by worker_group_id before calling this method. Candidate ids
-        must be unique within one call. The result must contain exactly one row
-        for every input candidate; an empty matched-worker tuple means no match.
-        Returned worker ids must be a subset of worker_ids and should preserve
-        worker_ids order unless the worker-runtime matcher owns a named
-        non-ranking pruning rule. Candidate ids are opaque caller-owned
-        correlation ids; worker-runtime must not interpret them as task
-        lifecycle truth.
-        """
-        pass
