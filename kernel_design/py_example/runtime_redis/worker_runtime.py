@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from collections import defaultdict
 from collections.abc import Mapping as MappingABC, Sequence as SequenceABC
 from typing import Any, Mapping, Sequence
 
@@ -62,12 +61,6 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
         if self.redis.hget(self._groups_key(), descriptor.worker_group_id) is None:
             return WorkerRuntimeResult(WorkerRuntimeStatus.NOT_FOUND, "worker group not found")
 
-        existing_home = self._decode_optional_text(
-            self.redis.hget(self._worker_home_key(), descriptor.worker_id)
-        )
-        if existing_home is not None and existing_home != descriptor.worker_group_id:
-            return WorkerRuntimeResult(WorkerRuntimeStatus.CONFLICT, "worker group change is not supported")
-
         encoded = self._encode_worker_descriptor(descriptor)
         if encoded is None:
             return WorkerRuntimeResult(WorkerRuntimeStatus.INVALID, "invalid descriptor json")
@@ -76,11 +69,6 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
             self._workers_key(descriptor.worker_group_id),
             descriptor.worker_id,
             encoded,
-        )
-        self.redis.hset(
-            self._worker_home_key(),
-            descriptor.worker_id,
-            descriptor.worker_group_id,
         )
         return WorkerRuntimeResult(WorkerRuntimeStatus.OK)
 
@@ -101,47 +89,36 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
     def get_worker_descriptors(
         self,
         *,
+        worker_group_id: WorkerGroupId,
         worker_ids: Sequence[WorkerId],
     ) -> Mapping[WorkerId, WorkerDescriptor | None]:
         if not worker_ids:
             return {}
 
-        home_rows = self.redis.hmget(self._worker_home_key(), list(worker_ids))
-        grouped_worker_ids: dict[WorkerGroupId, list[WorkerId]] = defaultdict(list)
+        if not self._valid_id(worker_group_id):
+            return {worker_id: None for worker_id in worker_ids}
+
+        raw_rows = self.redis.hmget(
+            self._workers_key(worker_group_id),
+            list(worker_ids),
+        )
         result: dict[WorkerId, WorkerDescriptor | None] = {}
-
-        for worker_id, raw_home in zip(worker_ids, home_rows, strict=True):
-            worker_group_id = self._decode_optional_text(raw_home)
-            if worker_group_id is None:
+        for worker_id, raw_descriptor in zip(worker_ids, raw_rows, strict=True):
+            descriptor = self._decode_worker_descriptor(raw_descriptor)
+            if descriptor is None or descriptor.worker_group_id != worker_group_id:
                 result[worker_id] = None
-                continue
-            grouped_worker_ids[worker_group_id].append(worker_id)
-
-        for worker_group_id, group_worker_ids in grouped_worker_ids.items():
-            raw_rows = self.redis.hmget(
-                self._workers_key(worker_group_id),
-                group_worker_ids,
-            )
-            for worker_id, raw_descriptor in zip(
-                group_worker_ids,
-                raw_rows,
-                strict=True,
-            ):
-                descriptor = self._decode_worker_descriptor(raw_descriptor)
-                if descriptor is None or descriptor.worker_group_id != worker_group_id:
-                    result[worker_id] = None
-                else:
-                    result[worker_id] = descriptor
-
+            else:
+                result[worker_id] = descriptor
         return result
 
     def update_worker_system_metadata(
         self,
         *,
+        worker_group_id: WorkerGroupId,
         worker_id: WorkerId,
         metadata: Mapping[str, AttributeValue],
     ) -> WorkerRuntimeResult:
-        loaded = self._load_worker_descriptor(worker_id)
+        loaded = self._load_worker_descriptor(worker_group_id, worker_id)
         if loaded[0] is not WorkerRuntimeStatus.OK:
             return WorkerRuntimeResult(loaded[0], loaded[1])
         descriptor = loaded[2]
@@ -159,10 +136,11 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
     def refresh_worker_static_attributes(
         self,
         *,
+        worker_group_id: WorkerGroupId,
         worker_id: WorkerId,
         attributes: Mapping[str, AttributeValue],
     ) -> WorkerRuntimeResult:
-        loaded = self._load_worker_descriptor(worker_id)
+        loaded = self._load_worker_descriptor(worker_group_id, worker_id)
         if loaded[0] is not WorkerRuntimeStatus.OK:
             return WorkerRuntimeResult(loaded[0], loaded[1])
         descriptor = loaded[2]
@@ -179,16 +157,13 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
 
     def _load_worker_descriptor(
         self,
+        worker_group_id: WorkerGroupId,
         worker_id: WorkerId,
     ) -> tuple[WorkerRuntimeStatus, str | None, WorkerDescriptor | None]:
+        if not self._valid_id(worker_group_id):
+            return WorkerRuntimeStatus.INVALID, "invalid workerGroupId", None
         if not self._valid_id(worker_id):
             return WorkerRuntimeStatus.INVALID, "invalid workerId", None
-
-        worker_group_id = self._decode_optional_text(
-            self.redis.hget(self._worker_home_key(), worker_id)
-        )
-        if worker_group_id is None:
-            return WorkerRuntimeStatus.NOT_FOUND, "worker not found", None
 
         descriptor = self._decode_worker_descriptor(
             self.redis.hget(self._workers_key(worker_group_id), worker_id)
@@ -196,7 +171,7 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
         if descriptor is None:
             return WorkerRuntimeStatus.NOT_FOUND, "worker descriptor not found", None
         if descriptor.worker_group_id != worker_group_id:
-            return WorkerRuntimeStatus.CONFLICT, "worker home index mismatch", None
+            return WorkerRuntimeStatus.CONFLICT, "worker group mismatch", None
         return WorkerRuntimeStatus.OK, None, descriptor
 
     def _store_worker_descriptor(
@@ -218,9 +193,6 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
 
     def _workers_key(self, worker_group_id: WorkerGroupId) -> str:
         return f"wr:{self.prefix}:workers:{worker_group_id}"
-
-    def _worker_home_key(self) -> str:
-        return f"wr:{self.prefix}:worker-home"
 
     @staticmethod
     def _valid_id(value: str) -> bool:
@@ -359,6 +331,7 @@ class RedisWorkerDynamicAttributeRuntime(WorkerDynamicAttributeRuntime):
     def update_worker_dynamic_attributes(
         self,
         *,
+        worker_group_id: WorkerGroupId,
         worker_id: WorkerId,
         updates: Mapping[AttributeName, DynamicAttributePayload],
         observed_at_millis: int,
@@ -366,9 +339,10 @@ class RedisWorkerDynamicAttributeRuntime(WorkerDynamicAttributeRuntime):
         if not updates:
             return {}
 
-        descriptor = self.catalog.get_worker_descriptors(worker_ids=[worker_id]).get(
-            worker_id
-        )
+        descriptor = self.catalog.get_worker_descriptors(
+            worker_group_id=worker_group_id,
+            worker_ids=[worker_id],
+        ).get(worker_id)
         if descriptor is None:
             return {
                 attr_name: WorkerRuntimeResult(

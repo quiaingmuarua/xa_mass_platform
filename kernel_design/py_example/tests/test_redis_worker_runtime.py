@@ -120,7 +120,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         self.assertIsNone(rows["missing"])
         self.assertIn("image-workers", self.redis.hashes["wr:test:groups"])
 
-    def test_register_worker_descriptor_writes_group_hash_and_home_index(self) -> None:
+    def test_register_worker_descriptor_writes_selected_group_hash(self) -> None:
         self.register_group()
         descriptor = self.worker_descriptor(
             "worker-1",
@@ -129,13 +129,16 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         )
         self.register_worker(descriptor)
 
-        rows = self.catalog.get_worker_descriptors(worker_ids=["worker-1"])
+        rows = self.catalog.get_worker_descriptors(
+            worker_group_id="image-workers",
+            worker_ids=["worker-1"],
+        )
 
         self.assertEqual(rows["worker-1"], descriptor)
         self.assertIn("worker-1", self.redis.hashes["wr:test:workers:image-workers"])
         self.assertEqual(
-            "image-workers",
-            self.redis.hashes["wr:test:worker-home"]["worker-1"],
+            set(self.redis.hashes),
+            {"wr:test:groups", "wr:test:workers:image-workers"},
         )
 
     def test_register_worker_for_missing_group_is_not_found(self) -> None:
@@ -145,7 +148,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
 
         self.assertEqual(result.status, WorkerRuntimeStatus.NOT_FOUND)
 
-    def test_get_workers_batches_across_home_groups(self) -> None:
+    def test_get_workers_is_scoped_to_one_explicit_group(self) -> None:
         self.register_group()
         other_group = WorkerGroupDescriptor(
             worker_group_id="audio-workers",
@@ -162,12 +165,19 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         self.register_worker(audio_worker)
 
         rows = self.catalog.get_worker_descriptors(
+            worker_group_id="image-workers",
             worker_ids=["image-worker", "audio-worker", "missing"],
         )
 
         self.assertEqual(rows["image-worker"], image_worker)
-        self.assertEqual(rows["audio-worker"], audio_worker)
+        self.assertIsNone(rows["audio-worker"])
         self.assertIsNone(rows["missing"])
+
+        audio_rows = self.catalog.get_worker_descriptors(
+            worker_group_id="audio-workers",
+            worker_ids=["audio-worker"],
+        )
+        self.assertEqual(audio_rows["audio-worker"], audio_worker)
 
     def test_system_metadata_update_merges_without_touching_other_fields(self) -> None:
         self.register_group()
@@ -180,12 +190,14 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         )
 
         result = self.catalog.update_worker_system_metadata(
+            worker_group_id="image-workers",
             worker_id="worker-1",
             metadata={"tier": "premium"},
         )
-        descriptor = self.catalog.get_worker_descriptors(worker_ids=["worker-1"])[
-            "worker-1"
-        ]
+        descriptor = self.catalog.get_worker_descriptors(
+            worker_group_id="image-workers",
+            worker_ids=["worker-1"],
+        )["worker-1"]
 
         self.assertEqual(result.status, WorkerRuntimeStatus.OK)
         assert descriptor is not None
@@ -204,18 +216,48 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         )
 
         result = self.catalog.refresh_worker_static_attributes(
+            worker_group_id="image-workers",
             worker_id="worker-1",
             attributes={"runtime": "java"},
         )
-        descriptor = self.catalog.get_worker_descriptors(worker_ids=["worker-1"])[
-            "worker-1"
-        ]
+        descriptor = self.catalog.get_worker_descriptors(
+            worker_group_id="image-workers",
+            worker_ids=["worker-1"],
+        )["worker-1"]
 
         self.assertEqual(result.status, WorkerRuntimeStatus.OK)
         assert descriptor is not None
         self.assertEqual(descriptor.system_metadata, {"tier": "premium"})
         self.assertEqual(descriptor.static_attributes, {"runtime": "java"})
         self.assertEqual(descriptor.dynamic_attribute_names, frozenset({"battery"}))
+
+    def test_catalog_updates_do_not_discover_worker_group(self) -> None:
+        self.register_group()
+        original = self.worker_descriptor(
+            "worker-1",
+            system_metadata={"tier": "standard"},
+            static_attributes={"runtime": "python"},
+        )
+        self.register_worker(original)
+
+        metadata_result = self.catalog.update_worker_system_metadata(
+            worker_group_id="wrong-group",
+            worker_id="worker-1",
+            metadata={"tier": "premium"},
+        )
+        static_result = self.catalog.refresh_worker_static_attributes(
+            worker_group_id="wrong-group",
+            worker_id="worker-1",
+            attributes={"runtime": "java"},
+        )
+        stored = self.catalog.get_worker_descriptors(
+            worker_group_id="image-workers",
+            worker_ids=["worker-1"],
+        )["worker-1"]
+
+        self.assertEqual(metadata_result.status, WorkerRuntimeStatus.NOT_FOUND)
+        self.assertEqual(static_result.status, WorkerRuntimeStatus.NOT_FOUND)
+        self.assertEqual(stored, original)
 
     def test_dynamic_attribute_runtime_dispatches_allowed_updates(self) -> None:
         self.register_group()
@@ -236,6 +278,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         )
 
         result = runtime.update_worker_dynamic_attributes(
+            worker_group_id="image-workers",
             worker_id="worker-1",
             updates={"battery": 87},
             observed_at_millis=10_000,
@@ -259,24 +302,34 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         )
 
         missing_worker = runtime.update_worker_dynamic_attributes(
+            worker_group_id="image-workers",
             worker_id="missing",
             updates={"battery": 1},
             observed_at_millis=1,
         )
         rejected_attr = runtime.update_worker_dynamic_attributes(
+            worker_group_id="image-workers",
             worker_id="worker-1",
             updates={"load": 1},
             observed_at_millis=1,
         )
         missing_handler = runtime.update_worker_dynamic_attributes(
+            worker_group_id="image-workers",
             worker_id="worker-1",
             updates={"network": "wifi"},
+            observed_at_millis=1,
+        )
+        wrong_group = runtime.update_worker_dynamic_attributes(
+            worker_group_id="wrong-group",
+            worker_id="worker-1",
+            updates={"battery": 1},
             observed_at_millis=1,
         )
 
         self.assertEqual(missing_worker["battery"].status, WorkerRuntimeStatus.NOT_FOUND)
         self.assertEqual(rejected_attr["load"].status, WorkerRuntimeStatus.REJECTED)
         self.assertEqual(missing_handler["network"].status, WorkerRuntimeStatus.NOT_FOUND)
+        self.assertEqual(wrong_group["battery"].status, WorkerRuntimeStatus.NOT_FOUND)
 
     def test_candidate_matcher_matches_bounded_workers_and_preserves_order(self) -> None:
         self.register_group()

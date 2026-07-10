@@ -124,6 +124,13 @@ WorkerDescriptor
 
 `workerGroupId` is the only group relationship in v0.
 
+Worker catalog reads and updates require `workerGroupId + workerId`. A bounded
+batch contains one `workerGroupId` and many `workerIds`; callers must not submit
+an unscoped worker-id batch and ask the catalog to rediscover or regroup worker
+membership. `workerGroupId` is the logical resource locator. Group hashes,
+worker-id hash buckets, or other physical partitions remain implementation
+choices behind the catalog.
+
 First-layer descriptor fields intentionally stop at resource identity, group
 identity, and attribute buckets. Specific runtime, package, handler, or
 compatibility versions belong in `staticAttributes`.
@@ -349,9 +356,10 @@ scheduling events by default.
 
 The first Python kernel surface exposes this as a narrow
 `WorkerDynamicAttributeRuntime.update_worker_dynamic_attributes(...)` ingress.
-That method validates the worker descriptor and the `dynamicAttributeNames`
-allowlist, then dispatches accepted attributes to owner-local handlers. It does
-not expose dynamic attribute query values and does not write worker score leases
+That method requires `workerGroupId + workerId`, validates the worker descriptor
+and the `dynamicAttributeNames` allowlist, then dispatches accepted attributes
+to owner-local handlers. It does not expose dynamic attribute query values and
+does not write worker score leases
 directly.
 
 `WorkerDynamicAttributeRuntime` is separate from `WorkerResourceCatalog`.

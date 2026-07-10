@@ -102,17 +102,19 @@ class WorkerDynamicAttributeRuntime(ABC):
     def update_worker_dynamic_attributes(
         self,
         *,
+        worker_group_id: WorkerGroupId,
         worker_id: WorkerId,
         updates: Mapping[AttributeName, DynamicAttributePayload],
         observed_at_millis: TimeMillis,
     ) -> Mapping[AttributeName, WorkerRuntimeResult]:
         """Update accepted dynamic attributes through owner-local handlers.
 
-        Implementations must reject unknown attributes and attributes not listed
-        in the worker descriptor's dynamic_attribute_names allowlist. Accepted
-        updates are dispatched to the owner-local dynamic attribute function
-        table. This method is not a query surface and must not rewrite worker
-        score leases directly.
+        worker_group_id is the required logical resource locator; implementations
+        may choose a different physical bucket internally. They must reject
+        unknown attributes and attributes not listed in the worker descriptor's
+        dynamic_attribute_names allowlist. Accepted updates are dispatched to
+        the owner-local dynamic attribute function table. This method is not a
+        query surface and must not rewrite worker score leases directly.
         """
         pass
 
@@ -159,26 +161,30 @@ class WorkerResourceCatalog(ABC):
     def get_worker_descriptors(
         self,
         *,
+        worker_group_id: WorkerGroupId,
         worker_ids: Sequence[WorkerId],
     ) -> Mapping[WorkerId, WorkerDescriptor | None]:
+        """Read one bounded worker batch inside one explicit worker group."""
         pass
 
     @abstractmethod
     def update_worker_system_metadata(
         self,
         *,
+        worker_group_id: WorkerGroupId,
         worker_id: WorkerId,
         metadata: Mapping[str, AttributeValue],
     ) -> WorkerRuntimeResult:
-        """Platform-owned low-frequency metadata update."""
+        """Platform-owned metadata update inside an explicit worker group."""
         pass
 
     @abstractmethod
     def refresh_worker_static_attributes(
         self,
         *,
+        worker_group_id: WorkerGroupId,
         worker_id: WorkerId,
         attributes: Mapping[str, AttributeValue],
     ) -> WorkerRuntimeResult:
-        """Worker register/connect metadata refresh after platform validation."""
+        """Refresh static attributes inside an explicit worker group."""
         pass

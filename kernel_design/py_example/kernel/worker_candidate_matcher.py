@@ -53,7 +53,10 @@ class WorkerCandidateMatcher:
         if not candidate_constraints:
             return []
 
-        descriptor_rows = self.catalog.get_worker_descriptors(worker_ids=worker_ids)
+        descriptor_rows = self.catalog.get_worker_descriptors(
+            worker_group_id=worker_group_id,
+            worker_ids=worker_ids,
+        )
         descriptors = {
             worker_id: descriptor
             for worker_id, descriptor in descriptor_rows.items()

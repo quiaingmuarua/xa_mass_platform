@@ -123,35 +123,16 @@ Value shape:
 `dynamicAttributeNames` is an allowlist of updateable dynamic attribute names.
 It is not the current value of those attributes.
 
-### Worker Home Index
+`workerGroupId` is a required logical locator on worker descriptor read and
+update operations. The current Redis executable spec uses it directly in the
+hash key, but that is only a first-slice storage layout. A later implementation
+may resolve `(workerGroupId, workerId)` to a group bucket, worker-id hash bucket,
+or another physical partition without changing the catalog interface.
 
-```text
-wr:{prefix}:worker-home
-  HASH field = workerId
-  value = workerGroupId
-```
-
-Role:
-
-```text
-lookup index for APIs that receive only workerId
-```
-
-This index is not separate membership truth. Worker membership truth remains in
-`wr:{prefix}:workers:{workerGroupId}`. Runtime code must treat home-index and
-descriptor disagreement as `STALE` / `CONFLICT` and repair through the resource
-catalog owner, not through score primitives.
-
-Update rule:
-
-```text
-register / replace worker descriptor writes workers:{workerGroupId} and
-worker-home in the same owner operation
-```
-
-If Redis implementation cannot make the two writes atomic in the first slice,
-the read path must validate `descriptor.workerGroupId == worker-home[workerId]`
-before using the descriptor.
+There is no worker-to-group reverse lookup key in the runtime mainline. Global
+worker lookup, cross-group diagnostics, or global-id uniqueness would require a
+separate named read/index invariant; they must not make ordinary catalog reads
+rediscover information already supplied by the caller.
 
 ### Worker Score
 
@@ -358,9 +339,9 @@ Required first-slice operations:
 register_worker_group_descriptor(descriptor)
 register_worker_descriptor(descriptor)
 get_worker_group_descriptors(workerGroupIds)
-get_worker_descriptors(workerIds)
-update_worker_system_metadata(workerId, metadata)
-refresh_worker_static_attributes(workerId, attributes)
+get_worker_descriptors(workerGroupId, workerIds)
+update_worker_system_metadata(workerGroupId, workerId, metadata)
+refresh_worker_static_attributes(workerGroupId, workerId, attributes)
 ```
 
 Register worker group:
@@ -375,7 +356,6 @@ Register or replace worker:
 require workerGroupId exists
 validate worker descriptor against group event-code promise / platform policy
 HSET wr:{prefix}:workers:{workerGroupId} workerId descriptorJson
-HSET wr:{prefix}:worker-home workerId workerGroupId
 initialize HOT_ACQUIRE score only through WorkerScoreCore, not by descriptor hash write
 ```
 
@@ -388,8 +368,9 @@ multi-group movement in v0.
 Dynamic attribute update flow:
 
 ```text
-read worker-home[workerId]
-read workers:{workerGroupId}[workerId]
+receive workerGroupId + workerId
+read the implementation-owned descriptor bucket
+require descriptor.workerGroupId == requested workerGroupId
 require attrName in descriptor.dynamicAttributeNames
 resolve update_dynamic_attributes_dict[attrName]
 handler validates payload
@@ -503,7 +484,6 @@ Use atomic operations only where stale state can produce wrong admission:
 
 ```text
 score exact-CAS for release, polarity move, cold park, hot lease acquire/renew
-catalog descriptor + worker-home update in one owner operation where possible
 capacity + score update only after a later capacity owner proves the invariant
 ```
 

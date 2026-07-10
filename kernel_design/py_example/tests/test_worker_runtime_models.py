@@ -79,6 +79,31 @@ class WorkerRuntimeModelTest(unittest.TestCase):
             {"self", "worker_group_id", "worker_ids", "candidate_constraints"},
         )
 
+    def test_worker_catalog_requires_group_for_worker_location(self) -> None:
+        get_params = set(
+            inspect.signature(WorkerResourceCatalog.get_worker_descriptors).parameters
+        )
+        metadata_params = set(
+            inspect.signature(
+                WorkerResourceCatalog.update_worker_system_metadata
+            ).parameters
+        )
+        static_params = set(
+            inspect.signature(
+                WorkerResourceCatalog.refresh_worker_static_attributes
+            ).parameters
+        )
+
+        self.assertEqual(get_params, {"self", "worker_group_id", "worker_ids"})
+        self.assertEqual(
+            metadata_params,
+            {"self", "worker_group_id", "worker_id", "metadata"},
+        )
+        self.assertEqual(
+            static_params,
+            {"self", "worker_group_id", "worker_id", "attributes"},
+        )
+
     def test_dynamic_attribute_update_ingress_is_catalog_owned(self) -> None:
         update_params = set(
             inspect.signature(
@@ -88,7 +113,13 @@ class WorkerRuntimeModelTest(unittest.TestCase):
 
         self.assertEqual(
             update_params,
-            {"self", "worker_id", "updates", "observed_at_millis"},
+            {
+                "self",
+                "worker_group_id",
+                "worker_id",
+                "updates",
+                "observed_at_millis",
+            },
         )
         self.assertTrue(hasattr(py_example, "DynamicAttributePayload"))
 
