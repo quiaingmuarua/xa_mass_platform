@@ -94,7 +94,10 @@ class WorkerRuntimeModelTest(unittest.TestCase):
         )
         init_params = set(inspect.signature(WorkerCandidateMatcher.__init__).parameters)
 
-        self.assertEqual(init_params, {"self", "catalog", "dynamic_attributes"})
+        self.assertEqual(
+            init_params,
+            {"self", "catalog", "dynamic_attribute_runtime"},
+        )
         self.assertEqual(
             match_params,
             {"self", "worker_group_id", "worker_ids", "candidate_constraints"},

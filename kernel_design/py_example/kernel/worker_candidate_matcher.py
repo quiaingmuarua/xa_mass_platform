@@ -23,10 +23,10 @@ class WorkerCandidateMatcher:
     def __init__(
         self,
         catalog: WorkerResourceCatalog,
-        dynamic_attributes: WorkerDynamicAttributeRuntime,
+        dynamic_attribute_runtime: WorkerDynamicAttributeRuntime,
     ) -> None:
         self.catalog = catalog
-        self.dynamic_attributes = dynamic_attributes
+        self.dynamic_attribute_runtime = dynamic_attribute_runtime
 
     def match_worker_candidates(
         self,
@@ -39,7 +39,9 @@ class WorkerCandidateMatcher:
         if not candidate_constraints:
             return {}
 
-        candidates, dynamic_attributes = self._prepare_candidates(candidate_constraints)
+        candidates, required_dynamic_attributes = self._prepare_candidates(
+            candidate_constraints
+        )
         matched_worker_ids: WorkerCandidateMatches = {
             candidate_id: [] for candidate_id, _, _ in candidates
         }
@@ -57,7 +59,7 @@ class WorkerCandidateMatcher:
             worker_group_id,
             worker_ids,
             descriptors,
-            dynamic_attributes,
+            required_dynamic_attributes,
         )
         for worker_id in worker_ids:
             if remaining_capacity == 0:
@@ -68,7 +70,7 @@ class WorkerCandidateMatcher:
             context = self._build_context(
                 worker_id,
                 descriptor,
-                dynamic_attributes,
+                required_dynamic_attributes,
                 dynamic_rows,
             )
             for candidate_id, constraints, match_rules in candidates:
@@ -128,13 +130,13 @@ class WorkerCandidateMatcher:
         worker_group_id: WorkerGroupId,
         worker_ids: Sequence[WorkerId],
         descriptors: Mapping[WorkerId, WorkerDescriptor | None],
-        dynamic_attributes: Sequence[str],
+        required_dynamic_attributes: Sequence[str],
     ) -> dict[str, Mapping[WorkerId, DynamicAttributeReadResult]]:
         rows_by_attribute: dict[
             str,
             Mapping[WorkerId, DynamicAttributeReadResult],
         ] = {}
-        for attribute_name in dynamic_attributes:
+        for attribute_name in required_dynamic_attributes:
             supported_worker_ids = tuple(
                 worker_id
                 for worker_id in worker_ids
@@ -145,7 +147,7 @@ class WorkerCandidateMatcher:
                 )
             )
             rows_by_attribute[attribute_name] = (
-                self.dynamic_attributes.get_worker_dynamic_attribute_values(
+                self.dynamic_attribute_runtime.get_worker_dynamic_attribute_values(
                     worker_group_id=worker_group_id,
                     attribute_name=attribute_name,
                     worker_ids=supported_worker_ids,
@@ -157,14 +159,14 @@ class WorkerCandidateMatcher:
     def _build_context(
         worker_id: WorkerId,
         descriptor: WorkerDescriptor,
-        dynamic_attributes: Sequence[str],
+        required_dynamic_attributes: Sequence[str],
         dynamic_rows: Mapping[
             str,
             Mapping[WorkerId, DynamicAttributeReadResult],
         ],
     ) -> dict[str, object]:
         dynamic_values: dict[str, object] = {}
-        for attribute_name in dynamic_attributes:
+        for attribute_name in required_dynamic_attributes:
             result = dynamic_rows[attribute_name].get(worker_id)
             dynamic_values[attribute_name] = (
                 result.value

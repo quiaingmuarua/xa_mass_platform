@@ -139,14 +139,14 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         self,
         query_handlers: dict[str, _DynamicAttributeQueryHandler] | None = None,
     ) -> WorkerCandidateMatcher:
-        dynamic_attributes = RedisWorkerDynamicAttributeRuntime(
+        dynamic_attribute_runtime = RedisWorkerDynamicAttributeRuntime(
             self.catalog,
             {},
             query_handlers,
         )
         return WorkerCandidateMatcher(
             self.catalog,
-            dynamic_attributes,
+            dynamic_attribute_runtime,
         )
 
     def test_register_and_read_worker_group_descriptor(self) -> None:
