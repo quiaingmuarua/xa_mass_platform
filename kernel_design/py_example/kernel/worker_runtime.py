@@ -79,14 +79,16 @@ DynamicAttributeUpdateFn = Callable[
     WorkerRuntimeResult,
 ]
 DynamicAttributeQueryFn = Callable[
-    [WorkerId],
-    DynamicAttributeReadResult,
+    [WorkerGroupId, Sequence[WorkerId]],
+    Mapping[WorkerId, DynamicAttributeReadResult],
 ]
 DynamicAttributeUpdateRegistry = Mapping[AttributeName, DynamicAttributeUpdateFn]
 DynamicAttributeQueryRegistry = Mapping[AttributeName, DynamicAttributeQueryFn]
 
 # Dynamic attribute registries are worker-runtime internal function tables.
 # They are not public ports and are not externally registered plugin surfaces.
+# Query functions receive one logical worker group and one bounded worker-id
+# batch so each attribute owner can use its native batch-read primitive.
 
 
 class WorkerDynamicAttributeRuntime(ABC):

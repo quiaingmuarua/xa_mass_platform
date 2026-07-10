@@ -55,6 +55,8 @@ class WorkerConstraintQuery:
                 dynamic_fields[field_name] = field_name.removeprefix("dynamic.")
                 dynamic_predicates[field_name] = frozen_operator_map
                 continue
+            if field_name == _WORKER_ID_FIELD:
+                continue
             non_dynamic_predicates[field_name] = frozen_operator_map
 
         object.__setattr__(

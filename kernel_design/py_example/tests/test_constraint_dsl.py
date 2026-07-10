@@ -24,6 +24,11 @@ class ConstraintDslTest(unittest.TestCase):
         self.assertEqual(query.system_fields, {"system.tier": "tier"})
         self.assertEqual(query.static_fields, {"static.runtime": "runtime"})
         self.assertEqual(query.dynamic_fields, {"dynamic.battery": "battery"})
+        self.assertNotIn("workerId", query.non_dynamic_predicates)
+        self.assertEqual(
+            set(query.non_dynamic_predicates),
+            {"system.tier", "static.runtime"},
+        )
 
     def test_worker_query_rejects_invalid_shapes_during_construction(self) -> None:
         invalid_documents = [

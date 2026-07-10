@@ -362,18 +362,20 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             )
         )
 
-        def query_battery(worker_id: str) -> DynamicAttributeReadResult:
-            if worker_id == "worker-1":
-                return DynamicAttributeReadResult(
+        def query_battery(
+            worker_group_id: str,
+            worker_ids: tuple[str, ...],
+        ) -> dict[str, DynamicAttributeReadResult]:
+            self.assertEqual(worker_group_id, "image-workers")
+            values = {"worker-1": 90, "worker-2": 10}
+            return {
+                worker_id: DynamicAttributeReadResult(
                     WorkerRuntimeStatus.OK,
-                    value=90,
+                    value=values[worker_id],
                 )
-            if worker_id == "worker-2":
-                return DynamicAttributeReadResult(
-                    WorkerRuntimeStatus.OK,
-                    value=10,
-                )
-            return DynamicAttributeReadResult(WorkerRuntimeStatus.NOT_FOUND)
+                for worker_id in worker_ids
+                if worker_id in values
+            }
 
         matcher = WorkerCandidateMatcher(self.catalog, {"battery": query_battery})
         rows = matcher.match_worker_candidates(
@@ -410,9 +412,12 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         matcher_without_value = WorkerCandidateMatcher(
             self.catalog,
             {
-                "battery": lambda worker_id: DynamicAttributeReadResult(
-                    WorkerRuntimeStatus.NOT_FOUND
-                )
+                "battery": lambda _, worker_ids: {
+                    worker_id: DynamicAttributeReadResult(
+                        WorkerRuntimeStatus.NOT_FOUND
+                    )
+                    for worker_id in worker_ids
+                }
             },
         )
         constraints = [
@@ -463,9 +468,18 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         )
         queried_worker_ids: list[str] = []
 
-        def query_battery(worker_id: str) -> DynamicAttributeReadResult:
-            queried_worker_ids.append(worker_id)
-            return DynamicAttributeReadResult(WorkerRuntimeStatus.OK, value=90)
+        def query_battery(
+            worker_group_id: str,
+            worker_ids: tuple[str, ...],
+        ) -> dict[str, DynamicAttributeReadResult]:
+            queried_worker_ids.extend(worker_ids)
+            return {
+                worker_id: DynamicAttributeReadResult(
+                    WorkerRuntimeStatus.OK,
+                    value=90,
+                )
+                for worker_id in worker_ids
+            }
 
         matcher = WorkerCandidateMatcher(self.catalog, {"battery": query_battery})
         rows = matcher.match_worker_candidates(
@@ -485,17 +499,26 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
     def test_candidate_matcher_reads_dynamic_attribute_once_per_batch(self) -> None:
         self.register_group()
         self.register_worker(self.worker_descriptor("worker-1"))
-        query_count = 0
+        self.register_worker(self.worker_descriptor("worker-2"))
+        query_batches: list[tuple[str, tuple[str, ...]]] = []
 
-        def query_battery(worker_id: str) -> DynamicAttributeReadResult:
-            nonlocal query_count
-            query_count += 1
-            return DynamicAttributeReadResult(WorkerRuntimeStatus.OK, value=90)
+        def query_battery(
+            worker_group_id: str,
+            worker_ids: tuple[str, ...],
+        ) -> dict[str, DynamicAttributeReadResult]:
+            query_batches.append((worker_group_id, worker_ids))
+            return {
+                worker_id: DynamicAttributeReadResult(
+                    WorkerRuntimeStatus.OK,
+                    value=90,
+                )
+                for worker_id in worker_ids
+            }
 
         matcher = WorkerCandidateMatcher(self.catalog, {"battery": query_battery})
         rows = matcher.match_worker_candidates(
             worker_group_id="image-workers",
-            worker_ids=["worker-1"],
+            worker_ids=["worker-1", "worker-2"],
             candidate_constraints=[
                 (
                     "candidate-1",
@@ -511,11 +534,45 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         self.assertEqual(
             rows,
             [
-                ("candidate-1", ("worker-1",)),
-                ("candidate-2", ("worker-1",)),
+                ("candidate-1", ("worker-1", "worker-2")),
+                ("candidate-2", ("worker-1", "worker-2")),
             ],
         )
-        self.assertEqual(query_count, 1)
+        self.assertEqual(
+            query_batches,
+            [("image-workers", ("worker-1", "worker-2"))],
+        )
+
+    def test_candidate_matcher_fails_closed_for_missing_batch_rows(self) -> None:
+        self.register_group()
+        self.register_worker(self.worker_descriptor("worker-1"))
+        self.register_worker(self.worker_descriptor("worker-2"))
+
+        def query_battery(
+            worker_group_id: str,
+            worker_ids: tuple[str, ...],
+        ) -> dict[str, DynamicAttributeReadResult]:
+            self.assertEqual(worker_ids, ("worker-1", "worker-2"))
+            return {
+                "worker-1": DynamicAttributeReadResult(
+                    WorkerRuntimeStatus.OK,
+                    value=90,
+                )
+            }
+
+        matcher = WorkerCandidateMatcher(self.catalog, {"battery": query_battery})
+        rows = matcher.match_worker_candidates(
+            worker_group_id="image-workers",
+            worker_ids=["worker-1", "worker-2"],
+            candidate_constraints=[
+                (
+                    "needs-battery",
+                    WorkerConstraintQuery({"dynamic.battery": {"$gte": 20}}),
+                )
+            ],
+        )
+
+        self.assertEqual(rows, [("needs-battery", ("worker-1",))])
 
     def test_candidate_matcher_applies_worker_id_filter_before_dynamic_read(self) -> None:
         self.register_group()
@@ -523,9 +580,18 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         self.register_worker(self.worker_descriptor("worker-2"))
         queried_worker_ids: list[str] = []
 
-        def query_battery(worker_id: str) -> DynamicAttributeReadResult:
-            queried_worker_ids.append(worker_id)
-            return DynamicAttributeReadResult(WorkerRuntimeStatus.OK, value=90)
+        def query_battery(
+            worker_group_id: str,
+            worker_ids: tuple[str, ...],
+        ) -> dict[str, DynamicAttributeReadResult]:
+            queried_worker_ids.extend(worker_ids)
+            return {
+                worker_id: DynamicAttributeReadResult(
+                    WorkerRuntimeStatus.OK,
+                    value=90,
+                )
+                for worker_id in worker_ids
+            }
 
         matcher = WorkerCandidateMatcher(self.catalog, {"battery": query_battery})
         rows = matcher.match_worker_candidates(
@@ -557,9 +623,18 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         )
         queried_worker_ids: list[str] = []
 
-        def query_battery(worker_id: str) -> DynamicAttributeReadResult:
-            queried_worker_ids.append(worker_id)
-            return DynamicAttributeReadResult(WorkerRuntimeStatus.OK, value=90)
+        def query_battery(
+            worker_group_id: str,
+            worker_ids: tuple[str, ...],
+        ) -> dict[str, DynamicAttributeReadResult]:
+            queried_worker_ids.extend(worker_ids)
+            return {
+                worker_id: DynamicAttributeReadResult(
+                    WorkerRuntimeStatus.OK,
+                    value=90,
+                )
+                for worker_id in worker_ids
+            }
 
         matcher = WorkerCandidateMatcher(self.catalog, {"battery": query_battery})
         rows = matcher.match_worker_candidates(

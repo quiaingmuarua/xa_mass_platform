@@ -382,7 +382,9 @@ Dynamic attribute query flow for matching:
 ```text
 WorkerCandidateMatcher receives bounded workerIds and WorkerConstraintQuery
 descriptor predicates read workers:{workerGroupId}
-dynamic predicates point-read handler-owned dyn keys
+metadata predicates prune workers before dynamic IO
+dynamic predicates are grouped by attribute
+each dynamic handler batch-reads only its required bounded workerIds once
 matcher returns only matched worker ids
 assignment-dispatch keeps observedScore sidecar from score acquire
 ```

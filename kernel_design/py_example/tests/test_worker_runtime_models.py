@@ -141,16 +141,26 @@ class WorkerRuntimeModelTest(unittest.TestCase):
             values[worker_id] = (payload, observed_at_millis)
             return WorkerRuntimeResult(status=WorkerRuntimeStatus.OK)
 
-        def query_battery(worker_id: str) -> DynamicAttributeReadResult:
-            value = values.get(worker_id)
-            if value is None:
-                return DynamicAttributeReadResult(status=WorkerRuntimeStatus.NOT_FOUND)
-            payload, observed_at_millis = value
-            return DynamicAttributeReadResult(
-                status=WorkerRuntimeStatus.OK,
-                value=payload,
-                observed_at_millis=observed_at_millis,
-            )
+        def query_battery(
+            worker_group_id: str,
+            worker_ids: tuple[str, ...],
+        ) -> dict[str, DynamicAttributeReadResult]:
+            self.assertEqual(worker_group_id, descriptor.worker_group_id)
+            results: dict[str, DynamicAttributeReadResult] = {}
+            for worker_id in worker_ids:
+                value = values.get(worker_id)
+                if value is None:
+                    results[worker_id] = DynamicAttributeReadResult(
+                        status=WorkerRuntimeStatus.NOT_FOUND
+                    )
+                    continue
+                payload, observed_at_millis = value
+                results[worker_id] = DynamicAttributeReadResult(
+                    status=WorkerRuntimeStatus.OK,
+                    value=payload,
+                    observed_at_millis=observed_at_millis,
+                )
+            return results
 
         update_dynamic_attributes_dict = {"battery": update_battery}
         query_dynamic_attributes_dict = {"battery": query_battery}
@@ -160,7 +170,10 @@ class WorkerRuntimeModelTest(unittest.TestCase):
             87,
             10_000,
         )
-        read = query_dynamic_attributes_dict["battery"](descriptor.worker_id)
+        read = query_dynamic_attributes_dict["battery"](
+            descriptor.worker_group_id,
+            (descriptor.worker_id,),
+        )[descriptor.worker_id]
 
         self.assertEqual(result.status, WorkerRuntimeStatus.OK)
         self.assertEqual(read.status, WorkerRuntimeStatus.OK)

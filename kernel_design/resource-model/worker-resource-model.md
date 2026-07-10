@@ -262,8 +262,17 @@ does not know worker descriptors, handlers, Redis, or scheduling state.
 The matcher assembles this map in two stages. It first adds `workerId`, required
 system fields, and required static fields, then removes queries that fail those
 cheap predicates. It resolves and appends only the dynamic fields required by
-the remaining queries. Each required dynamic attribute is point-read at most
-once per worker inside one matcher call.
+the remaining queries. It groups those reads by dynamic attribute and invokes
+each attribute handler at most once per matcher call:
+
+```text
+query_dynamic_attribute(workerGroupId, boundedWorkerIds)
+  -> workerId -> DynamicAttributeReadResult
+```
+
+The handler may implement this with `HMGET`, `ZMSCORE`, bitmap operations, or
+another owner-specific bounded batch read. It must not discover workers outside
+the supplied ids.
 
 `workerGroupId` is not a query field. It remains an outer parameter because it
 chooses the worker universe, score bucket, and runtime namespace.
@@ -324,7 +333,7 @@ update_dynamic_attributes_dict
   attrName -> update function
 
 query_dynamic_attributes_dict
-  attrName -> query function
+  attrName -> bounded batch query function
 ```
 
 The function owns:
@@ -334,6 +343,7 @@ payload validation
 normalization
 query storage/index shape
 fast point-write behavior
+bounded batch-read behavior
 ```
 
 ## Dynamic Attribute Internal Flow
@@ -371,11 +381,11 @@ worker descriptor store, worker lifecycle owner, score owner, or policy engine.
 Dynamic attributes are query/projection facts. A `heartbeat` dynamic attribute
 does not require a second heartbeat owner. If adapter/session runtime already
 has heartbeat or reachability information, the dynamic attribute function may
-point-read or project that existing fact for query use. It must not become the
+batch-read or project that existing fact for query use. It must not become the
 worker availability truth.
 
 If a dynamic attribute is relevant to scheduling policy, the worker-runtime
-matching path may point-read the attribute owner's current value before
+matching path may batch-read the attribute owner's current values before
 score lease. Only bounded candidate matching should receive
 `WorkerConstraintQuery`; worker score lease / hold writes should not
 receive raw constraint queries.
@@ -428,10 +438,10 @@ target.
 
 Dynamic attribute matching is deliberately narrow in v0. Assignment-dispatch
 must not perform arbitrary dynamic-attribute multi-index queries. The default
-path is owner-approved candidate matching point-reading the dynamic attribute
-owner's current value before score lease. If a later executable spec needs
-candidate discovery such as `battery > 20`, the dynamic attribute query function
-must expose a bounded candidate index explicitly.
+path is owner-approved candidate matching batch-reading the dynamic attribute
+owner's current values for supplied worker ids before score lease. If a later
+executable spec needs candidate discovery such as `battery > 20`, the dynamic
+attribute query function must expose a bounded candidate index explicitly.
 
 The first worker-runtime matching surface may expose a bounded batch matcher:
 
