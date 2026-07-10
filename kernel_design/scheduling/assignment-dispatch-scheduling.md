@@ -183,6 +183,8 @@ match_rules = workerId + system.* + static.* + dynamic.* predicates
 `match_rules` is a structured map, not a JSON string. The independent
 constraint DSL compiles that map once per matcher call; worker-runtime supplies
 the worker context but does not own DSL syntax or operator evaluation.
+Qualified fields split only at the first `.`: `dynamic.battery.level` means
+domain `dynamic` and exact dynamic attribute name `battery.level`.
 
 `acquire_fields` is not a value projection or ranking input. It authorizes and
 budgets only the dynamic fields used by `match_rules`. Worker matcher

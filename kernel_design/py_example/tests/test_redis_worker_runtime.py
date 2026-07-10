@@ -647,6 +647,44 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             [("image-workers", ("worker-1", "worker-2"))],
         )
 
+    def test_candidate_matcher_splits_only_the_dynamic_domain_dot(self) -> None:
+        self.register_group()
+        self.register_worker(
+            self.worker_descriptor(
+                "worker-1",
+                dynamic_attribute_names=frozenset({"battery.level"}),
+            )
+        )
+        queried_worker_ids: list[str] = []
+
+        def query_battery_level(
+            worker_group_id: str,
+            worker_ids: Sequence[str],
+        ) -> dict[str, DynamicAttributeReadResult]:
+            queried_worker_ids.extend(worker_ids)
+            return {
+                worker_id: DynamicAttributeReadResult(
+                    WorkerRuntimeStatus.OK,
+                    value=87,
+                )
+                for worker_id in worker_ids
+            }
+
+        matcher = self.matcher({"battery.level": query_battery_level})
+        rows = matcher.match_worker_candidates(
+            worker_group_id="image-workers",
+            worker_ids=["worker-1"],
+            candidate_constraints={
+                "candidate-1": candidate_constraint(
+                    {"dynamic.battery.level": {"$gte": 80}},
+                    acquire_fields=("dynamic.battery.level",),
+                )
+            },
+        )
+
+        self.assertEqual(rows, {"candidate-1": ["worker-1"]})
+        self.assertEqual(queried_worker_ids, ["worker-1"])
+
     def test_candidate_matcher_enforces_per_candidate_worker_limit(self) -> None:
         self.register_group()
         for worker_id in ("worker-1", "worker-2", "worker-3"):

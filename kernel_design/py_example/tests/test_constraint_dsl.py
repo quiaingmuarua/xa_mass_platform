@@ -39,12 +39,14 @@ class ConstraintDslTest(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     ConstraintDsl.compile_match_rules(document)
 
-    def test_evaluate_match_rules_walks_arbitrary_context_paths(self) -> None:
+    def test_evaluate_match_rules_splits_only_the_first_dot(self) -> None:
         context = {
             "resource": {
-                "identity": {"id": "r-1"},
-                "traits": {"region": "east", "capacity": 4},
-            }
+                "identity.id": "r-1",
+                "traits.region": "east",
+                "traits.capacity": 4,
+            },
+            "dynamic": {"battery.level": 87},
         }
         rules = ConstraintDsl.compile_match_rules(
             {
@@ -52,6 +54,7 @@ class ConstraintDslTest(unittest.TestCase):
                 "resource.traits.region": {"$in": ["east", "west"]},
                 "resource.traits.capacity": {"$gte": 2},
                 "resource.traits.retired": {"$exists": False},
+                "dynamic.battery.level": {"$eq": 87},
             }
         )
 

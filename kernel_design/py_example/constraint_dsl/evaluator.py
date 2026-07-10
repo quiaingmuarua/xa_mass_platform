@@ -30,17 +30,18 @@ UNRESOLVED_VALUE = object()
 
 
 class ConstraintDsl:
-    """Stateless compiler and evaluator for field-path match rules."""
+    """Stateless compiler and evaluator for domain-qualified match rules."""
 
     @staticmethod
     def compile_match_rules(document: object) -> ConstraintMap:
-        """Validate and freeze one field-path match-rule document."""
+        """Validate and freeze one domain-qualified match-rule document."""
 
         rules = ConstraintDsl._validate_match_rules(document)
         compiled: dict[str, ConstraintOperatorMap] = {}
         for field_name, operator_map in rules.items():
-            if any(not path_part for path_part in field_name.split(".")):
-                raise ValueError("match rule fields require non-empty path parts")
+            domain, separator, field = field_name.partition(".")
+            if separator and (not domain or not field):
+                raise ValueError("qualified match rules require a domain and field")
             compiled[field_name] = MappingProxyType(
                 {
                     operator: tuple(value)
@@ -56,7 +57,7 @@ class ConstraintDsl:
         context: Mapping[str, ConstraintValue],
         match_rules: ConstraintMap,
     ) -> bool:
-        """Evaluate match rules against an arbitrary nested context map."""
+        """Evaluate rules by splitting each qualified field at its first dot."""
 
         for field_name, operator_map in match_rules.items():
             value = ConstraintDsl._resolve_context_value(context, field_name)
@@ -104,12 +105,14 @@ class ConstraintDsl:
         context: Mapping[str, ConstraintValue],
         field_name: str,
     ) -> ConstraintValue:
-        value: ConstraintValue = context
-        for path_part in field_name.split("."):
-            if not isinstance(value, MappingABC) or path_part not in value:
-                return _MISSING_VALUE
-            value = value[path_part]
-        return value
+        domain, separator, field = field_name.partition(".")
+        if not separator:
+            return context[field_name] if field_name in context else _MISSING_VALUE
+
+        domain_values = context.get(domain, _MISSING_VALUE)
+        if not isinstance(domain_values, MappingABC) or field not in domain_values:
+            return _MISSING_VALUE
+        return domain_values[field]
 
     @staticmethod
     def _matches_operator(

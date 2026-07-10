@@ -266,7 +266,7 @@ not persist across calls. When one candidate reaches its limit, later workers
 continue against the remaining candidates in resolved priority order.
 
 `match_rules` is the only rule map. The independent DSL compiles and evaluates
-arbitrary nested maps:
+domain-qualified fields against a two-level context map:
 
 ```python
 ConstraintDsl.evaluate_match_rules(
@@ -280,11 +280,13 @@ ConstraintDsl.evaluate_match_rules(
 )
 ```
 
-It resolves a field such as `resource.traits.runtime` by walking the context map
-path. `workerId`, `system`, `static`, and `dynamic` are not DSL-reserved names.
-The current worker matcher may choose those context domains, but that is a
-worker-runtime owner decision. The evaluator does not know descriptors,
-handlers, Redis, worker fields, or scheduling state.
+It splits only the first `.`. For example, `dynamic.battery.level` resolves
+domain `dynamic` and exact field name `battery.level`; it does not recursively
+walk `battery -> level`. An unqualified field such as `workerId` is read from
+the top-level context. `workerId`, `system`, `static`, and `dynamic` are not
+DSL-reserved names. The current worker matcher may choose those context domains,
+but that is a worker-runtime owner decision. The evaluator does not know
+descriptors, handlers, Redis, worker fields, or scheduling state.
 
 At the start of one bounded matcher call, the matcher validates the declared
 `acquire_fields`, compiles every `match_rules` map once, orders candidates by
