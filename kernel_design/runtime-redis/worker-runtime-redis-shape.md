@@ -383,13 +383,13 @@ Dynamic attribute query flow for matching:
 WorkerCandidateMatcher receives bounded workerIds and WorkerConstraintQuery
 worker matcher preparation requires acquire_fields == dynamic fields in match_rules
 missing declared dynamic handler is a configuration error
-descriptor predicates read workers:{workerGroupId}
-metadata predicates prune workers before dynamic IO
-workers not declaring a required dynamic field are rejected before handler IO
-surviving dynamic dependencies are grouped by attribute
-each dynamic handler batch-reads only its required bounded workerIds once
-missing / unresolved handler rows fail only their worker-candidate pair
-matcher returns only matched worker ids
+descriptors read workers:{workerGroupId} once
+declared acquire fields are deduplicated in candidate order
+each dynamic handler batch-reads descriptor-supported bounded workerIds once
+for each workerId, build one temporary context
+evaluate candidate constraints in order; first match consumes that worker
+missing / unsupported / unresolved handler rows fail closed when read
+matcher returns each workerId in at most one candidate result
 assignment-dispatch keeps observedScore sidecar from score acquire
 ```
 

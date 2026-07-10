@@ -399,7 +399,6 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             worker_group_id="image-workers",
             worker_ids=["worker-2", "outside", "worker-1"],
             candidate_constraints=[
-                ("all", WorkerConstraintQuery.empty()),
                 (
                     "premium-python-battery",
                     worker_query(
@@ -412,14 +411,15 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
                         acquire_fields=("dynamic.battery",),
                     ),
                 ),
+                ("all", WorkerConstraintQuery.empty()),
             ],
         )
 
         self.assertEqual(
             rows,
             [
-                ("all", ("worker-2", "worker-1")),
                 ("premium-python-battery", ("worker-1",)),
+                ("all", ("worker-2",)),
             ],
         )
 
@@ -599,7 +599,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             rows,
             [
                 ("candidate-1", ("worker-1", "worker-2")),
-                ("candidate-2", ("worker-1", "worker-2")),
+                ("candidate-2", ()),
             ],
         )
         self.assertEqual(
@@ -607,7 +607,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             [("image-workers", ("worker-1", "worker-2"))],
         )
 
-    def test_candidate_matcher_batches_only_metadata_survivors_per_field(self) -> None:
+    def test_candidate_matcher_batches_declared_fields_and_consumes_by_priority(self) -> None:
         self.register_group()
         dynamic_names = frozenset({"battery", "network"})
         self.register_worker(
@@ -656,13 +656,6 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             worker_ids=["worker-2", "worker-1"],
             candidate_constraints=[
                 (
-                    "battery",
-                    worker_query(
-                        {"dynamic.battery": {"$gte": 20}},
-                        acquire_fields=("dynamic.battery",),
-                    ),
-                ),
-                (
                     "python-network",
                     worker_query(
                         {
@@ -672,21 +665,28 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
                         acquire_fields=("dynamic.network",),
                     ),
                 ),
+                (
+                    "battery",
+                    worker_query(
+                        {"dynamic.battery": {"$gte": 20}},
+                        acquire_fields=("dynamic.battery",),
+                    ),
+                ),
             ],
         )
 
         self.assertEqual(
             rows,
             [
-                ("battery", ("worker-2", "worker-1")),
                 ("python-network", ("worker-1",)),
+                ("battery", ("worker-2",)),
             ],
         )
         self.assertEqual(
             query_batches,
             [
+                ("network", ("worker-2", "worker-1")),
                 ("battery", ("worker-2", "worker-1")),
-                ("network", ("worker-1",)),
             ],
         )
 
@@ -724,7 +724,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
 
         self.assertEqual(rows, [("needs-battery", ("worker-1",))])
 
-    def test_candidate_matcher_applies_worker_id_filter_before_dynamic_read(self) -> None:
+    def test_candidate_matcher_batches_acquire_before_worker_id_rule(self) -> None:
         self.register_group()
         self.register_worker(self.worker_descriptor("worker-1"))
         self.register_worker(self.worker_descriptor("worker-2"))
@@ -762,9 +762,9 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         )
 
         self.assertEqual(rows, [("worker-1-only", ("worker-1",))])
-        self.assertEqual(queried_worker_ids, ["worker-1"])
+        self.assertEqual(queried_worker_ids, ["worker-1", "worker-2"])
 
-    def test_candidate_matcher_rejects_metadata_before_dynamic_read(self) -> None:
+    def test_candidate_matcher_batches_acquire_before_static_rule(self) -> None:
         self.register_group()
         self.register_worker(
             self.worker_descriptor(
@@ -806,7 +806,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         )
 
         self.assertEqual(rows, [("python-with-battery", ())])
-        self.assertEqual(queried_worker_ids, [])
+        self.assertEqual(queried_worker_ids, ["worker-1"])
 
     def test_candidate_matcher_rejects_duplicate_protocol_ids(self) -> None:
         matcher = WorkerCandidateMatcher(self.catalog, {})

@@ -280,30 +280,30 @@ The current worker matcher may choose those context domains, but that is a
 worker-runtime owner decision. The evaluator does not know descriptors,
 handlers, Redis, worker fields, or scheduling state.
 
-At the start of one bounded matcher call, the matcher locally splits the same
-`match_rules` references into catalog-backed and dynamic rule maps. It first
-evaluates the catalog rules, fills `context["dynamic"]` through the declared
-`acquire_fields`, then evaluates the dynamic rules. The query does not retain
-matcher indexes or execution plans. Invalid dependency declarations fail before
-matcher execution.
+At the start of one bounded matcher call, the matcher validates the declared
+`acquire_fields`, builds their ordered union, and batch-reads each field once.
+`match_rules` remains intact and is evaluated once against a temporary context
+for the current worker. Invalid dependency declarations fail before matcher
+execution.
 
-The matcher assembles values in two stages:
+The matcher then consumes workers in input order:
 
 ```text
 descriptor batch
-  -> workerId / system / static / empty dynamic context
-  -> metadata-rule survivor pairs
-  -> dynamic acquire demand grouped by field
+  -> ordered acquire-field union
   -> one bounded handler call per required field
-  -> dynamic-rule final match over survivor pairs
+  -> for each workerId
+       build one temporary context
+       evaluate candidate constraints in input order
+       first match consumes the worker and stops candidate evaluation
 ```
 
-Before dynamic IO, the matcher requires every declared dynamic field to have a
-registered query handler and checks each surviving worker's
-`dynamicAttributeNames`. A missing handler is a matcher configuration error. A
-worker that does not declare the field is rejected for that candidate without
-calling the handler. A missing or unresolved handler result fails only that
-worker-candidate pair.
+Before dynamic IO, the matcher requires every declared field to have a
+registered query handler. Each field batch contains only bounded workers whose
+descriptor declares support for that field. A missing handler is a matcher
+configuration error. A missing, unsupported, or unresolved handler result is
+written into the temporary worker context as unresolved and fails closed for
+candidate rules that read it.
 
 ```text
 query_dynamic_attribute(workerGroupId, boundedWorkerIds)
@@ -313,8 +313,8 @@ query_dynamic_attribute(workerGroupId, boundedWorkerIds)
 The handler may implement this with `HMGET`, `ZMSCORE`, bitmap operations, or
 another owner-specific bounded batch read. It must not discover workers outside
 the supplied ids. Each declared field is called at most once per matcher call,
-and its worker batch contains only ordered, unique metadata survivors that
-declared support for that field.
+and its worker batch contains only ordered, unique workers that declared support
+for that field.
 
 `workerGroupId` is not a query field. It remains an outer parameter because it
 chooses the worker universe, score bucket, and runtime namespace.
@@ -481,9 +481,9 @@ target.
 Dynamic attribute matching is deliberately narrow in v0. Assignment-dispatch
 must not perform arbitrary dynamic-attribute multi-index queries. Each
 `WorkerConstraintQuery` explicitly declares its dynamic read dependencies in
-`acquire_fields`; the matcher validates the declaration, prefilters supplied
-worker ids by descriptor rules, then batch-reads the dynamic attribute owner's
-current values before score lease. If a later
+`acquire_fields`; the matcher validates the declaration and batch-reads each
+field for bounded workers whose descriptors declare support. The acquired values
+are read only while evaluating the current worker context. If a later
 executable spec needs candidate discovery such as `battery > 20`, the dynamic
 attribute query function must expose a bounded candidate index explicitly.
 
@@ -498,7 +498,9 @@ match_worker_candidates(
 ```
 
 The input is an ordered tuple list, not a map: candidate order may carry
-assignment priority. `candidateId` must be unique within one call. A matcher
+assignment priority. Each worker is consumed by the first matching candidate
+and cannot appear in another candidate result during the same call.
+`candidateId` must be unique within one call. A matcher
 call handles exactly one selected `workerGroupId`; assignment-dispatch must
 partition candidates by worker group before calling it. The matcher returns one
 ordered `(candidateId, matchedWorkerIds)` entry for every input candidate.

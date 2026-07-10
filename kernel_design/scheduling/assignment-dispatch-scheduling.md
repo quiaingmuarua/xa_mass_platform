@@ -198,16 +198,17 @@ ineligible worker eligible.
 `WorkerCandidateMatcher.match_worker_candidates` receives one selected
 `workerGroupId`, a bounded `workerIds` batch, and an ordered list of
 `(candidateId, WorkerConstraintQuery)` entries. `candidateId` must be unique
-inside one call. The ordered list preserves task / candidate priority without
-making worker-runtime own ranking. One call handles exactly one worker group;
+inside one call. The ordered list is the worker-consumption priority supplied by
+assignment-dispatch; worker-runtime evaluates it but does not invent or rerank
+that order. One call handles exactly one worker group;
 assignment-dispatch must partition task candidates by `workerGroupId` before
 calling the matcher. The matcher returns one `(candidateId, matchedWorkerIds)`
 entry for every input candidate in candidate order; empty `matchedWorkerIds`
-means no match.
-The matcher first evaluates descriptor-backed rules, then groups dynamic reads
-for surviving worker-candidate pairs. Each dynamic handler receives at most one
-ordered, unique worker batch per matcher call. A worker that does not declare a
-required field is rejected before dynamic IO.
+means no match. Worker ids are the outer loop: the first matching candidate
+consumes that worker, so one worker cannot appear in two candidate results.
+The matcher batches each declared acquire field once for descriptor-supported
+bounded workers, then builds only one temporary context for the current worker.
+It does not retain all worker contexts or run metadata/dynamic matching passes.
 Worker score lease / hold validation must use concrete worker ids and score
 fences. It must not re-run the query DSL.
 The matcher does not return or own `observedWorkerScore`; assignment-dispatch
