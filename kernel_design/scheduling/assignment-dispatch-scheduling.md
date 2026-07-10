@@ -66,8 +66,8 @@ TaskSchedulingCandidate
 WorkerGroupSelection
   immutable task workerGroupId
 
-WorkerConstraintBatch
-  ordered unique candidateId + WorkerConstraintQuery entries
+WorkerCandidateConstraintBatch
+  candidateId -> WorkerCandidateConstraint map
 
 WorkerCandidateMatchGraph
   ordered candidateId -> matched worker ids; one row per input candidate
@@ -84,7 +84,7 @@ WorkerCandidate
 TaskWorkerAssignmentPlan
   taskId
   workerGroupId
-  workerConstraintQuery
+  workerCandidateConstraint
   validationDependencySet
   candidate workers or selected worker
   observed task / worker fences
@@ -139,12 +139,12 @@ Mainline:
 2. acquire task candidates from task score-band
 3. validate task candidate and policy snapshot
 4. partition task candidates by the pre-bound workerGroupId
-5. compile an ordered WorkerConstraintQuery batch for each workerGroupId from
-   worker identity / attribute constraints and explicit dynamic acquire fields
+5. build a WorkerCandidateConstraint map for each workerGroupId from candidate
+   priority, worker limit, match rules, and explicit dynamic acquire fields
 6. derive home bucket / resource universe from the pre-bound workerGroupId
 7. discover a bounded worker candidate batch and keep
    observedWorkerScoreByWorkerId as assignment-dispatch sidecar evidence
-8. match worker candidates against the ordered constraint batch through
+8. match workers against the priority-ordered candidate constraints through
    worker-runtime
 9. apply priority / ranking rules
 10. optionally score-lease the selected worker or produce a fenced candidate plan
@@ -167,16 +167,22 @@ has transport accepted delivery?
 is the result final?
 ```
 
-### Worker Constraint Query
+### Worker Candidate Constraint
 
-Worker constraint query is compiled from worker identity and attribute match
-needs. Dynamic reads are declared explicitly because they are handler-owned IO,
-not descriptor fields. The query is applied before worker score lease:
+Each candidate constraint carries worker identity and attribute match needs.
+Dynamic reads are declared explicitly because they are handler-owned IO, not
+descriptor fields. The constraint is applied before worker score lease:
 
 ```text
+priority = candidate worker-consumption priority
+limit = maximum workers consumed by this candidate in one matcher call
 acquire_fields = exact dynamic.* dependency set
 match_rules = workerId + system.* + static.* + dynamic.* predicates
 ```
+
+`match_rules` is a structured map, not a JSON string. The independent
+constraint DSL compiles that map once per matcher call; worker-runtime supplies
+the worker context but does not own DSL syntax or operator evaluation.
 
 `acquire_fields` is not a value projection or ranking input. It authorizes and
 budgets only the dynamic fields used by `match_rules`. Worker matcher
@@ -196,21 +202,23 @@ workers that already satisfy hard match rules. Priority must not make an
 ineligible worker eligible.
 
 `WorkerCandidateMatcher.match_worker_candidates` receives one selected
-`workerGroupId`, a bounded `workerIds` batch, and an ordered list of
-`(candidateId, WorkerConstraintQuery)` entries. `candidateId` must be unique
-inside one call. The ordered list is the worker-consumption priority supplied by
-assignment-dispatch; worker-runtime evaluates it but does not invent or rerank
-that order. One call handles exactly one worker group;
+`workerGroupId`, a bounded `workerIds` batch, and a
+`candidateId -> WorkerCandidateConstraint` map. Each constraint carries
+`priority`, `limit`, `acquire_fields`, and `match_rules`. The matcher resolves worker
+consumption order by priority descending and `candidateId` ascending; map
+insertion order is not scheduling policy. One call handles exactly one worker group;
 assignment-dispatch must partition task candidates by `workerGroupId` before
-calling the matcher. The matcher returns one `(candidateId, matchedWorkerIds)`
-entry for every input candidate in candidate order; empty `matchedWorkerIds`
-means no match. Worker ids are the outer loop: the first matching candidate
-consumes that worker, so one worker cannot appear in two candidate results.
+calling the matcher. The matcher returns an insertion-ordered
+`candidateId -> matchedWorkerIds` map in resolved priority order containing
+every input candidate; an empty worker-id list means no match. Worker ids are
+the outer loop: candidates already at `limit` are skipped, and the first
+remaining match consumes that worker. One worker cannot appear in two candidate
+results, and candidate limits do not persist across matcher calls.
 The matcher batches each declared acquire field once for descriptor-supported
 bounded workers, then builds only one temporary context for the current worker.
 It does not retain all worker contexts or run metadata/dynamic matching passes.
 Worker score lease / hold validation must use concrete worker ids and score
-fences. It must not re-run the query DSL.
+fences. It must not re-run the constraint DSL.
 The matcher does not return or own `observedWorkerScore`; assignment-dispatch
 keeps the observed score from worker score acquire as
 `observedWorkerScoreByWorkerId` and passes it later to worker score lease.
@@ -499,13 +507,13 @@ for workerGroupId, taskCandidates in assignment_dispatch.partition_by_worker_gro
   workerCandidates = worker_score.acquire_hot_acquire_candidates(home_bucket_id, limit)
   workerIds = [workerId for workerId, observedWorkerScore in workerCandidates]
   observedWorkerScoreByWorkerId = {workerId: observedWorkerScore, ...}
-  candidateConstraints = [(candidateId, constraints), ...]
+  candidateConstraints = {candidateId: WorkerCandidateConstraint(...), ...}
   candidateMatches = worker_candidate_matcher.match_worker_candidates(
     workerGroupId,
     workerIds,
     candidateConstraints
   )
-  for candidateId, matchedWorkerIds in candidateMatches:
+  for candidateId, matchedWorkerIds in candidateMatches.items():
     selectedWorkerId = assignment_dispatch.rank_candidates(
       candidateId,
       matchedWorkerIds,

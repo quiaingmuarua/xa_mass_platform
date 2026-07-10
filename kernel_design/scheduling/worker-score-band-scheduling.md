@@ -783,11 +783,11 @@ Dirty should be written only when all of these are true:
 1. a task-worker assignment plan or hot score lease continuation still exists
 2. the changed field is part of that continuation's validationDependencySet
 3. the changed value invalidates, or may invalidate, the recorded
-   WorkerConstraintQuery / matcher validation evidence
+   candidate constraint / matcher validation evidence
 ```
 
 If the changed attribute is not referenced by the continuation's
-`WorkerConstraintQuery`, matcher validation, group membership check, gate,
+candidate `match_rules`, matcher validation, group membership check, gate,
 capacity profile, or other owner-approved validation dependency, it should not
 mark dirty. If the worker is already executing dispatched work and the hot score
 lease has been released, dirty should not interrupt execution; result, timeout,

@@ -6,6 +6,7 @@ from dataclasses import fields
 
 import kernel_design.py_example as py_example
 from kernel_design.py_example import (
+    WorkerCandidateConstraint,
     WorkerCandidateMatcher,
     WorkerDescriptor,
     WorkerDynamicAttributeRuntime,
@@ -18,6 +19,21 @@ from kernel_design.py_example.kernel.worker_runtime import DynamicAttributeReadR
 
 
 class WorkerRuntimeModelTest(unittest.TestCase):
+    def test_worker_candidate_constraint_is_bounded_priority_dto(self) -> None:
+        constraint = WorkerCandidateConstraint(
+            priority=100,
+            limit=2,
+            acquire_fields=("dynamic.battery",),
+            match_rules={"dynamic.battery": {"$gte": 20}},
+        )
+
+        self.assertEqual(
+            {field.name for field in fields(WorkerCandidateConstraint)},
+            {"priority", "limit", "acquire_fields", "match_rules"},
+        )
+        self.assertEqual(constraint.priority, 100)
+        self.assertEqual(constraint.limit, 2)
+
     def test_worker_descriptor_first_layer_shape_has_no_version_field(self) -> None:
         field_names = {field.name for field in fields(WorkerDescriptor)}
 

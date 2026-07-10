@@ -21,7 +21,6 @@ from .worker_score import (
     WorkerScoreTransitionStatus,
 )
 from .worker_candidate_matcher import WorkerCandidateMatcher
-from .worker_constraint_query import WorkerConstraintQuery
 from .worker_runtime import (
     AttributeName,
     AttributeValue,
@@ -29,7 +28,7 @@ from .worker_runtime import (
     DynamicAttributePayload,
     EventCode,
     WorkerCandidateConstraint,
-    WorkerCandidateMatch,
+    WorkerCandidateMatches,
     WorkerDescriptor,
     WorkerDynamicAttributeRuntime,
     WorkerGroupDescriptor,
@@ -64,9 +63,8 @@ __all__ = [
     "DynamicAttributePayload",
     "EventCode",
     "WorkerCandidateConstraint",
-    "WorkerCandidateMatch",
+    "WorkerCandidateMatches",
     "WorkerCandidateMatcher",
-    "WorkerConstraintQuery",
     "WorkerDescriptor",
     "WorkerDynamicAttributeRuntime",
     "WorkerGroupDescriptor",

@@ -36,7 +36,7 @@ class ConstraintDsl:
     def compile_match_rules(document: object) -> ConstraintMap:
         """Validate and freeze one field-path match-rule document."""
 
-        rules = ConstraintDsl._validate_constraint_map(document)
+        rules = ConstraintDsl._validate_match_rules(document)
         compiled: dict[str, ConstraintOperatorMap] = {}
         for field_name, operator_map in rules.items():
             if any(not path_part for path_part in field_name.split(".")):
@@ -74,14 +74,14 @@ class ConstraintDsl:
         return True
 
     @staticmethod
-    def _validate_constraint_map(constraints: object) -> ConstraintMap:
-        if not isinstance(constraints, MappingABC):
-            raise ValueError("constraint query must be a mapping")
-        for field_name, operator_map in constraints.items():
+    def _validate_match_rules(document: object) -> ConstraintMap:
+        if not isinstance(document, MappingABC):
+            raise ValueError("match rules must be a mapping")
+        for field_name, operator_map in document.items():
             if not isinstance(field_name, str) or not field_name:
                 raise ValueError("constraint field name must be a non-empty string")
             ConstraintDsl._validate_operator_map(operator_map)
-        return constraints
+        return document
 
     @staticmethod
     def _validate_operator_map(operator_map: object) -> ConstraintOperatorMap:

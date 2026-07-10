@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Callable, Mapping, Sequence
 
-from .worker_constraint_query import WorkerConstraintQuery
 from .worker_score import TimeMillis, WorkerId
 
 
@@ -15,8 +14,17 @@ AttributeName = str
 AttributeValue = object
 DynamicAttributePayload = object
 CandidateId = str
-WorkerCandidateConstraint = tuple[CandidateId, WorkerConstraintQuery]
-WorkerCandidateMatch = tuple[CandidateId, tuple[WorkerId, ...]]
+WorkerCandidateMatches = dict[CandidateId, list[WorkerId]]
+
+
+@dataclass(frozen=True)
+class WorkerCandidateConstraint:
+    """One candidate's match rules and per-call worker allocation bound."""
+
+    priority: int
+    limit: int
+    acquire_fields: tuple[str, ...]
+    match_rules: Mapping[str, object]
 
 
 class WorkerRuntimeStatus(Enum):

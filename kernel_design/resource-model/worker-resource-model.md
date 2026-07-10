@@ -19,7 +19,7 @@ The resource model is intentionally a short tree:
 ```text
 Project / workload -> allowed WorkerGroups
 Task                -> exactly one selected WorkerGroup
-WorkerConstraintQuery -> worker identity / attribute predicates inside selected WorkerGroup
+WorkerCandidateConstraint -> worker predicates inside selected WorkerGroup
 Work / item / seed  -> worker-local EventHandler
 Transport           -> internal delivery resource
 ```
@@ -33,8 +33,8 @@ The selected `workerGroupId` is immutable while the task is running. If work
 must use a different worker group, create a different task or stop/cancel and
 recreate the task; do not hot-swap worker groups during dispatch.
 
-`WorkerConstraintQuery -> worker identity / attribute predicates` is matching
-inside the selected worker group. It narrows workers by reserved `workerId`,
+`WorkerCandidateConstraint -> worker predicates` is matching inside the
+selected worker group. Its `match_rules` map narrows workers by `workerId`,
 placement, static/system attributes, or explicitly supported projected dynamic
 query attributes.
 
@@ -207,33 +207,32 @@ Assignment-dispatch must not interpret version fields directly as runtime
 availability. Current usability still belongs to worker-runtime score lease /
 hold.
 
-## WorkerConstraintQuery
+## WorkerCandidateConstraint
 
-`WorkerConstraintQuery` is a small Mongo-like predicate tool for candidate
-filtering and matching inside an already selected worker group. It is not a
-task policy owner, not a worker-group selector, not a score lease contract, and
-not a handler routing contract.
+`WorkerCandidateConstraint` is the matcher input owned by
+assignment-dispatch. It combines candidate consumption priority, explicit
+per-call worker limit, dynamic read dependencies, and one DSL rule map. It is
+not a task policy owner, worker-group selector, score lease contract, or handler
+routing contract.
 
-The v0 query surface is intentionally narrow, but it is still a real mechanism.
-Unsupported operators are explicit omissions until an executable spec proves
-the need; they should not be replaced with ad hoc maps, raw JSON interpretation,
-or owner-mixed shortcuts.
-
-The query separates dynamic read authorization from the implicit-`AND` match
-rules:
+One matcher call receives a candidate map. `match_rules` is already a
+structured map; callers do not pass a JSON string and the worker matcher does
+not own JSON parsing:
 
 ```python
-WorkerConstraintQuery({
-  "acquire_fields": [
-    "dynamic.battery",
-  ],
-  "match_rules": {
-    "workerId": {"$in": ["worker-1", "worker-2"]},
-    "system.tier": {"$eq": "premium"},
-    "static.runtime": {"$in": ["python", "java"]},
-    "dynamic.battery": {"$gte": 20},
-  },
-})
+candidate_constraints = {
+  "task-1": WorkerCandidateConstraint(
+    priority=100,
+    limit=2,
+    acquire_fields=("dynamic.battery",),
+    match_rules={
+      "workerId": {"$in": ["worker-1", "worker-2"]},
+      "system.tier": {"$eq": "premium"},
+      "static.runtime": {"$in": ["python", "java"]},
+      "dynamic.battery": {"$gte": 20},
+    },
+  ),
+}
 ```
 
 The current worker matcher context exposes these fields:
@@ -250,17 +249,24 @@ normal context value that may participate in the same DSL operators as any
 other value. It is not a descriptor attribute.
 
 `acquire_fields` is a worker-matching dependency and cost-authorization
-declaration. The generic query wrapper only requires unique field paths that
-are used by `match_rules`. During worker matcher preparation, v0 additionally
-requires the set to exactly equal the `dynamic.*` fields referenced by
+declaration. During worker matcher preparation, v0 requires the set to exactly
+equal the `dynamic.*` fields referenced by
 `match_rules`: an undeclared dynamic rule is forbidden, and an unused acquire
 field is forbidden. `workerId`, `system.*`, and `static.*` never belong in
 `acquire_fields` because the current worker owner supplies them with the
 descriptor batch.
 
-The query validates and freezes only `acquire_fields` and `match_rules`.
-`match_rules` is the only rule map. The DSL evaluator has one independent
-interface over arbitrary nested maps:
+`priority` controls worker consumption across candidate constraints. Larger
+values run first; equal values are ordered by `candidateId` ascending. Map
+insertion order is not scheduling policy.
+
+`limit` is the maximum number of workers that candidate may consume in this
+matcher call. It must be positive. It is not a worker discovery limit and does
+not persist across calls. When one candidate reaches its limit, later workers
+continue against the remaining candidates in resolved priority order.
+
+`match_rules` is the only rule map. The independent DSL compiles and evaluates
+arbitrary nested maps:
 
 ```python
 ConstraintDsl.evaluate_match_rules(
@@ -281,12 +287,12 @@ worker-runtime owner decision. The evaluator does not know descriptors,
 handlers, Redis, worker fields, or scheduling state.
 
 At the start of one bounded matcher call, the matcher validates the declared
-`acquire_fields`, builds their ordered union, and batch-reads each field once.
-`match_rules` remains intact and is evaluated once against a temporary context
-for the current worker. Invalid dependency declarations fail before matcher
-execution.
+`acquire_fields`, compiles every `match_rules` map once, orders candidates by
+priority, builds the ordered dynamic-field union, and batch-reads each field
+once. The compiled rules are evaluated against one temporary context for the
+current worker. Invalid dependency declarations fail before dynamic IO.
 
-The matcher then consumes workers in input order:
+The matcher then consumes worker ids in caller-supplied order:
 
 ```text
 descriptor batch
@@ -294,8 +300,9 @@ descriptor batch
   -> one bounded handler call per required field
   -> for each workerId
        build one temporary context
-       evaluate candidate constraints in input order
-       first match consumes the worker and stops candidate evaluation
+       evaluate candidate constraints in priority order
+       skip candidates already at limit
+       first remaining match consumes the worker and stops candidate evaluation
 ```
 
 Before dynamic IO, the matcher requires every declared field to have a
@@ -428,19 +435,18 @@ worker availability truth.
 
 If a dynamic attribute is relevant to scheduling policy, the worker-runtime
 matching path may batch-read the attribute owner's current values before
-score lease. Only bounded candidate matching should receive
-`WorkerConstraintQuery`; worker score lease / hold writes should not
-receive raw constraint queries.
+score lease. Only bounded candidate matching should receive candidate
+constraints; worker score lease / hold writes should not receive raw rule maps.
 Assignment-dispatch and worker score primitives must not interpret dynamic
 attribute payloads directly, and dynamic attribute updates must not drive
 worker availability by themselves.
 
 Dynamic attribute changes do not automatically mark worker score dirty. A
 handler should consider dirty only when the changed attribute participates in
-the `WorkerConstraintQuery` / matcher validation dependency set of an existing
+the candidate constraint / matcher validation dependency set of an existing
 assignment plan or hot score lease continuation, and the new value invalidates
-or may invalidate the recorded match evidence. If there is no such
-continuation, the next matcher read observes the new value directly.
+or may invalidate the recorded match evidence. If there is no such continuation,
+the next matcher read observes the new value directly.
 
 Concurrent execution control is one expected use of dynamic attributes. For
 example, a worker may project `runningCount`, `freeSlots`, load, or local
@@ -455,7 +461,7 @@ The stable model has three resource/handler relationships:
 ```text
 Project / workload -> allowed WorkerGroups
 Task                -> selected WorkerGroup
-WorkerConstraintQuery -> worker identity / attribute predicates inside selected WorkerGroup
+WorkerCandidateConstraint -> worker predicates inside selected WorkerGroup
 Work / item / seed  -> EventHandler
 ```
 
@@ -467,23 +473,22 @@ not query worker groups on every scheduling round.
 allowed set. It is exactly one group in v0 and immutable while the task is
 running.
 
-`WorkerConstraintQuery -> worker identity / attribute predicates` is worker
-matching inside the selected worker group. The query may constrain `workerId`,
-placement, static attributes, system attributes, or explicitly supported
-projected dynamic attributes. These constraints narrow worker candidates; they
-do not replace worker-runtime score lease.
+`WorkerCandidateConstraint -> worker predicates` is worker matching inside the
+selected worker group. Its `match_rules` may constrain `workerId`, placement,
+static attributes, system attributes, or explicitly supported projected
+dynamic attributes. These constraints narrow worker candidates; they do not
+replace worker-runtime score lease.
 
-`workerId` inside `WorkerConstraintQuery` is only a hard filter inside the
-task's selected `workerGroupId`. It still must pass worker score acquire and
-worker-runtime score lease. It is not a worker group selector and not a transport
-target.
+`workerId` inside `match_rules` is only a hard filter inside the task's selected
+`workerGroupId`. It still must pass worker score acquire and worker-runtime
+score lease. It is not a worker group selector and not a transport target.
 
 Dynamic attribute matching is deliberately narrow in v0. Assignment-dispatch
 must not perform arbitrary dynamic-attribute multi-index queries. Each
-`WorkerConstraintQuery` explicitly declares its dynamic read dependencies in
-`acquire_fields`; the matcher validates the declaration and batch-reads each
-field for bounded workers whose descriptors declare support. The acquired values
-are read only while evaluating the current worker context. If a later
+`WorkerCandidateConstraint` explicitly declares its dynamic read dependencies
+in `acquire_fields`; the matcher validates the declaration and batch-reads each
+field for bounded workers whose descriptors declare support. The acquired
+values are read only while evaluating the current worker context. If a later
 executable spec needs candidate discovery such as `battery > 20`, the dynamic
 attribute query function must expose a bounded candidate index explicitly.
 
@@ -493,22 +498,23 @@ The first worker-runtime matching surface may expose a bounded batch matcher:
 match_worker_candidates(
   workerGroupId,
   workerIds,
-  [(candidateId, WorkerConstraintQuery), ...]
+  {candidateId: WorkerCandidateConstraint, ...}
 )
 ```
 
-The input is an ordered tuple list, not a map: candidate order may carry
-assignment priority. Each worker is consumed by the first matching candidate
-and cannot appear in another candidate result during the same call.
-`candidateId` must be unique within one call. A matcher
-call handles exactly one selected `workerGroupId`; assignment-dispatch must
-partition candidates by worker group before calling it. The matcher returns one
-ordered `(candidateId, matchedWorkerIds)` entry for every input candidate.
-Empty `matchedWorkerIds` means no match. It matches only the supplied worker
-ids and does not carry `observedWorkerScore`; assignment-dispatch keeps score
-fences from worker score acquire as sidecar evidence for later score lease. It
-must not become `find_all_matching_workers(query)` or a global worker query
-service.
+The input map makes candidate identity unique. Each value carries explicit
+`priority`, `limit`, `acquire_fields`, and map-shaped `match_rules`. The matcher
+sorts by priority descending and `candidateId` ascending, then each worker is
+consumed by the first matching candidate with remaining capacity and cannot
+appear in another candidate result during the same call. A matcher call handles exactly one selected
+`workerGroupId`; assignment-dispatch must partition candidates by worker group
+before calling it. The matcher returns one insertion-ordered
+`candidateId -> matchedWorkerIds` map in resolved priority order, containing
+every input candidate. An empty worker-id list means no match. It matches only
+the supplied worker ids and does not carry `observedWorkerScore`;
+assignment-dispatch keeps score fences from worker score acquire as sidecar
+evidence for later score lease. It must not become
+`find_all_matching_workers(query)` or a global worker query service.
 
 There is no separate assignment-continuation surface in v0. Worker occupation
 uses `WorkerScoreCore` score lease / hold primitives directly. If a later
@@ -537,7 +543,7 @@ project/workload binding
 task eventCode
   -> validates against WorkerGroupDescriptor.eventCodes
 pre-bound workerGroupId
-  -> WorkerConstraintQuery filters identity/static/system/query attributes
+  -> WorkerCandidateConstraint.match_rules filters worker attributes
   -> WorkerScoreCore score lease validates current usability/capacity/resource hold
 ```
 
@@ -593,8 +599,8 @@ metadataRevision as public descriptor field
 metadataSignature as public descriptor field
 dynamic attribute function refs carried by WorkerDescriptor
 dynamic attribute current values inside WorkerDescriptor
-eventCode inside WorkerConstraintQuery
-workerGroupId inside WorkerConstraintQuery
+eventCode inside WorkerCandidateConstraint.match_rules
+workerGroupId inside WorkerCandidateConstraint.match_rules
 adapter session / mailbox / connection state inside WorkerDescriptor
 runtime score / dirty / score lease fields inside WorkerDescriptor
 ```

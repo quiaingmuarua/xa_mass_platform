@@ -195,7 +195,7 @@ register WorkerGroupDescriptor
 register WorkerDescriptor
 initialize HOT_ACQUIRE score
 acquire HOT_ACQUIRE candidates
-match bounded WorkerConstraintQuery inputs
+match bounded WorkerCandidateConstraint maps
 acquire_due_hot_score_lease
 renew_active_hot_score_lease
 release_score_hold / rewrite_current_score

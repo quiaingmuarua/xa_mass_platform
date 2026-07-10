@@ -2,15 +2,14 @@ from __future__ import annotations
 
 from typing import Mapping, Sequence
 
-from ..constraint_dsl import ConstraintDsl, UNRESOLVED_VALUE
-from .worker_constraint_query import WorkerConstraintQuery
+from ..constraint_dsl import ConstraintDsl, ConstraintMap, UNRESOLVED_VALUE
 from .worker_score import WorkerId
 from .worker_runtime import (
     CandidateId,
     DynamicAttributeQueryRegistry,
     DynamicAttributeReadResult,
     WorkerCandidateConstraint,
-    WorkerCandidateMatch,
+    WorkerCandidateMatches,
     WorkerDescriptor,
     WorkerGroupId,
     WorkerResourceCatalog,
@@ -19,7 +18,7 @@ from .worker_runtime import (
 
 
 class WorkerCandidateMatcher:
-    """Assign each bounded worker to its first matching candidate constraint."""
+    """Assign each bounded worker to its first matching non-full candidate."""
 
     def __init__(
         self,
@@ -34,15 +33,21 @@ class WorkerCandidateMatcher:
         *,
         worker_group_id: WorkerGroupId,
         worker_ids: Sequence[WorkerId],
-        candidate_constraints: Sequence[WorkerCandidateConstraint],
-    ) -> Sequence[WorkerCandidateMatch]:
-        self._validate_protocol_ids(worker_ids, candidate_constraints)
+        candidate_constraints: Mapping[CandidateId, WorkerCandidateConstraint],
+    ) -> WorkerCandidateMatches:
+        self._validate_worker_ids(worker_ids)
         if not candidate_constraints:
-            return []
+            return {}
 
-        dynamic_attributes = self._prepare_dynamic_attributes(candidate_constraints)
+        candidates, dynamic_attributes = self._prepare_candidates(candidate_constraints)
+        matched_worker_ids: WorkerCandidateMatches = {
+            candidate_id: [] for candidate_id, _, _ in candidates
+        }
         if not worker_ids:
-            return [(candidate_id, ()) for candidate_id, _ in candidate_constraints]
+            return matched_worker_ids
+        remaining_capacity = sum(
+            constraints.limit for _, constraints, _ in candidates
+        )
 
         descriptors = self.catalog.get_worker_descriptors(
             worker_group_id=worker_group_id,
@@ -54,11 +59,9 @@ class WorkerCandidateMatcher:
             descriptors,
             dynamic_attributes,
         )
-        matched_worker_ids: list[list[WorkerId]] = [
-            [] for _ in candidate_constraints
-        ]
-
         for worker_id in worker_ids:
+            if remaining_capacity == 0:
+                break
             descriptor = descriptors.get(worker_id)
             if descriptor is None or descriptor.worker_group_id != worker_group_id:
                 continue
@@ -68,29 +71,48 @@ class WorkerCandidateMatcher:
                 dynamic_attributes,
                 dynamic_rows,
             )
-            for candidate_index, (_, constraints) in enumerate(candidate_constraints):
-                if ConstraintDsl.evaluate_match_rules(context, constraints.match_rules):
-                    matched_worker_ids[candidate_index].append(worker_id)
+            for candidate_id, constraints, match_rules in candidates:
+                if len(matched_worker_ids[candidate_id]) >= constraints.limit:
+                    continue
+                if ConstraintDsl.evaluate_match_rules(context, match_rules):
+                    matched_worker_ids[candidate_id].append(worker_id)
+                    remaining_capacity -= 1
                     break
 
-        return [
-            (candidate_id, tuple(matched_worker_ids[candidate_index]))
-            for candidate_index, (candidate_id, _) in enumerate(candidate_constraints)
-        ]
+        return matched_worker_ids
 
-    def _prepare_dynamic_attributes(
+    def _prepare_candidates(
         self,
-        candidate_constraints: Sequence[WorkerCandidateConstraint],
-    ) -> tuple[str, ...]:
+        candidate_constraints: Mapping[CandidateId, WorkerCandidateConstraint],
+    ) -> tuple[
+        list[tuple[CandidateId, WorkerCandidateConstraint, ConstraintMap]],
+        tuple[str, ...],
+    ]:
+        candidates: list[
+            tuple[CandidateId, WorkerCandidateConstraint, ConstraintMap]
+        ] = []
         required_attributes: dict[str, None] = {}
         missing_handlers: set[str] = set()
-        for _, constraints in candidate_constraints:
+        ordered_constraints = sorted(
+            candidate_constraints.items(),
+            key=lambda item: (-item[1].priority, item[0]),
+        )
+        for candidate_id, constraints in ordered_constraints:
+            if not candidate_id:
+                raise ValueError("candidate id must be non-empty")
+            if constraints.limit <= 0:
+                raise ValueError("candidate limit must be positive")
+            match_rules = ConstraintDsl.compile_match_rules(constraints.match_rules)
             acquire_fields = set(constraints.acquire_fields)
+            if len(acquire_fields) != len(constraints.acquire_fields):
+                raise ValueError("acquire_fields must be unique")
+            if not acquire_fields.issubset(match_rules):
+                raise ValueError("every acquire field must be used by match_rules")
             if any(not field.startswith("dynamic.") for field in acquire_fields):
                 raise ValueError("worker matcher only acquires dynamic.* fields")
             if any(
                 field.startswith("dynamic.") and field not in acquire_fields
-                for field in constraints.match_rules
+                for field in match_rules
             ):
                 raise ValueError(
                     "dynamic match fields must be declared in acquire_fields"
@@ -100,13 +122,14 @@ class WorkerCandidateMatcher:
                 required_attributes.setdefault(attribute_name, None)
                 if attribute_name not in self.query_dynamic_attributes_dict:
                     missing_handlers.add(attribute_name)
+            candidates.append((candidate_id, constraints, match_rules))
 
         if missing_handlers:
             raise ValueError(
                 "missing dynamic attribute query handlers: "
                 + ", ".join(sorted(missing_handlers))
             )
-        return tuple(required_attributes)
+        return candidates, tuple(required_attributes)
 
     def _acquire_dynamic_rows(
         self,
@@ -165,12 +188,8 @@ class WorkerCandidateMatcher:
         }
 
     @staticmethod
-    def _validate_protocol_ids(
+    def _validate_worker_ids(
         worker_ids: Sequence[WorkerId],
-        candidate_constraints: Sequence[tuple[CandidateId, WorkerConstraintQuery]],
     ) -> None:
         if len(worker_ids) != len(set(worker_ids)):
             raise ValueError("worker ids must be unique within one match call")
-        candidate_ids = [candidate_id for candidate_id, _ in candidate_constraints]
-        if len(candidate_ids) != len(set(candidate_ids)):
-            raise ValueError("candidate ids must be unique within one match call")

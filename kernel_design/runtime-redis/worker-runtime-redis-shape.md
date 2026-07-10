@@ -380,16 +380,21 @@ handler writes its own dyn key
 Dynamic attribute query flow for matching:
 
 ```text
-WorkerCandidateMatcher receives bounded workerIds and WorkerConstraintQuery
+WorkerCandidateMatcher receives bounded workerIds and a candidate constraint map
+each WorkerCandidateConstraint carries priority, limit, acquire_fields, and match_rules
+match_rules is a structured map compiled by the independent constraint DSL
 worker matcher preparation requires acquire_fields == dynamic fields in match_rules
 missing declared dynamic handler is a configuration error
 descriptors read workers:{workerGroupId} once
-declared acquire fields are deduplicated in candidate order
+candidate order is priority descending, then candidateId ascending
+declared acquire fields are deduplicated in resolved candidate order
 each dynamic handler batch-reads descriptor-supported bounded workerIds once
 for each workerId, build one temporary context
-evaluate candidate constraints in order; first match consumes that worker
+skip candidates whose per-call limit is full
+evaluate remaining constraints in resolved priority order; first match consumes that worker
 missing / unsupported / unresolved handler rows fail closed when read
 matcher returns each workerId in at most one candidate result
+result shape is insertion-ordered candidateId -> workerIds map in resolved priority order
 assignment-dispatch keeps observedScore sidecar from score acquire
 ```
 

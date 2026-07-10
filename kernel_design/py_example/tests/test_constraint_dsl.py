@@ -27,6 +27,7 @@ class ConstraintDslTest(unittest.TestCase):
 
     def test_compile_match_rules_rejects_invalid_documents(self) -> None:
         invalid_documents = [
+            None,
             {"resource.": {"$eq": "gpu"}},
             {"resource.kind": {"$regex": "gpu.*"}},
             {"resource.kind": {"$in": "gpu"}},
