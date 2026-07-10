@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping as MappingABC, Sequence as SequenceABC
-from typing import Mapping
+from typing import Iterable, Mapping
 
 
 ConstraintOperator = str
@@ -64,7 +64,18 @@ def matches_mapping(
 ) -> bool:
     """Evaluate a validated flat rule map against one assembled flat value map."""
 
-    for field_name, operator_map in constraints.items():
+    return matches_fields(values, constraints, constraints)
+
+
+def matches_fields(
+    values: Mapping[str, ConstraintValue],
+    constraints: ConstraintMap,
+    field_names: Iterable[str],
+) -> bool:
+    """Evaluate selected fields from one validated rule map."""
+
+    for field_name in field_names:
+        operator_map = constraints[field_name]
         if field_name not in values:
             if len(operator_map) != 1 or operator_map.get("$exists") is not False:
                 return False

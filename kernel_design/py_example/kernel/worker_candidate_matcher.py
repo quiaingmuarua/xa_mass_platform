@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from typing import Mapping, Sequence
 
-from ..constraint_dsl import UNRESOLVED_VALUE, WorkerConstraintQuery, matches_mapping
+from ..constraint_dsl import (
+    UNRESOLVED_VALUE,
+    WorkerConstraintQuery,
+    matches_fields,
+)
 from .worker_score import WorkerId
 from .worker_runtime import (
     CandidateId,
@@ -54,15 +58,27 @@ class WorkerCandidateMatcher:
             worker_group_id=worker_group_id,
             worker_ids=worker_ids,
         )
-        system_fields, static_fields = self._collect_descriptor_fields(
-            candidate_constraints
+        catalog_match_fields = [
+            tuple(
+                field_name
+                for field_name in constraints.match_rules
+                if field_name not in constraints.acquire_fields
+            )
+            for _, constraints in candidate_constraints
+        ]
+        required_catalog_fields = tuple(
+            dict.fromkeys(
+                field_name
+                for fields in catalog_match_fields
+                for field_name in fields
+                if field_name != "workerId"
+            )
         )
-        flat_values_by_worker = self._assemble_metadata_values(
+        flat_values_by_worker = self._assemble_catalog_values(
             worker_group_id,
             worker_ids,
             descriptor_rows,
-            system_fields,
-            static_fields,
+            required_catalog_fields,
         )
 
         matched_worker_ids: list[list[WorkerId]] = [
@@ -77,17 +93,21 @@ class WorkerCandidateMatcher:
                 flat_values = flat_values_by_worker.get(worker_id)
                 if descriptor is None or flat_values is None:
                     continue
-                if not matches_mapping(flat_values, constraints.metadata_rules):
+                if not matches_fields(
+                    flat_values,
+                    constraints.match_rules,
+                    catalog_match_fields[candidate_index],
+                ):
                     continue
                 if not self._supports_dynamic_fields(descriptor, constraints):
                     continue
-                if not constraints.dynamic_rules:
+                if not constraints.acquire_fields:
                     matched_worker_ids[candidate_index].append(worker_id)
                     continue
 
                 pending_pairs.append((candidate_index, worker_id))
                 for field_name in constraints.acquire_fields:
-                    attribute_name = constraints.dynamic_fields[field_name]
+                    attribute_name = field_name.removeprefix("dynamic.")
                     dynamic_demand_by_attribute.setdefault(attribute_name, {})[
                         worker_id
                     ] = None
@@ -100,9 +120,10 @@ class WorkerCandidateMatcher:
 
         for candidate_index, worker_id in pending_pairs:
             constraints = candidate_constraints[candidate_index][1]
-            if matches_mapping(
+            if matches_fields(
                 flat_values_by_worker[worker_id],
-                constraints.dynamic_rules,
+                constraints.match_rules,
+                constraints.acquire_fields,
             ):
                 matched_worker_ids[candidate_index].append(worker_id)
 
@@ -116,10 +137,10 @@ class WorkerCandidateMatcher:
         candidate_constraints: Sequence[WorkerCandidateConstraint],
     ) -> None:
         missing_handlers = {
-            constraints.dynamic_fields[field_name]
+            field_name.removeprefix("dynamic.")
             for _, constraints in candidate_constraints
             for field_name in constraints.acquire_fields
-            if constraints.dynamic_fields[field_name]
+            if field_name.removeprefix("dynamic.")
             not in self.query_dynamic_attributes_dict
         }
         if missing_handlers:
@@ -154,59 +175,34 @@ class WorkerCandidateMatcher:
         constraints: WorkerConstraintQuery,
     ) -> bool:
         return all(
-            constraints.dynamic_fields[field_name]
-            in descriptor.dynamic_attribute_names
+            field_name.removeprefix("dynamic.") in descriptor.dynamic_attribute_names
             for field_name in constraints.acquire_fields
         )
 
     @staticmethod
-    def _collect_descriptor_fields(
-        candidate_constraints: Sequence[WorkerCandidateConstraint],
-    ) -> tuple[Mapping[str, str], Mapping[str, str]]:
-        system_fields: dict[str, str] = {}
-        static_fields: dict[str, str] = {}
-        for _, constraints in candidate_constraints:
-            system_fields.update(constraints.system_fields)
-            static_fields.update(constraints.static_fields)
-        return system_fields, static_fields
-
-    @classmethod
-    def _assemble_metadata_values(
-        cls,
+    def _assemble_catalog_values(
         worker_group_id: WorkerGroupId,
         worker_ids: Sequence[WorkerId],
         descriptor_rows: Mapping[WorkerId, WorkerDescriptor | None],
-        system_fields: Mapping[str, str],
-        static_fields: Mapping[str, str],
+        required_fields: Sequence[str],
     ) -> dict[WorkerId, dict[str, object]]:
         values_by_worker: dict[WorkerId, dict[str, object]] = {}
         for worker_id in worker_ids:
             descriptor = descriptor_rows.get(worker_id)
             if descriptor is None or descriptor.worker_group_id != worker_group_id:
                 continue
-            values_by_worker[worker_id] = cls._assemble_worker_metadata_values(
-                worker_id,
-                descriptor,
-                system_fields,
-                static_fields,
-            )
+            values: dict[str, object] = {"workerId": worker_id}
+            for field_name in required_fields:
+                namespace, attribute_name = field_name.split(".", 1)
+                source = (
+                    descriptor.system_metadata
+                    if namespace == "system"
+                    else descriptor.static_attributes
+                )
+                if attribute_name in source:
+                    values[field_name] = source[attribute_name]
+            values_by_worker[worker_id] = values
         return values_by_worker
-
-    @staticmethod
-    def _assemble_worker_metadata_values(
-        worker_id: WorkerId,
-        descriptor: WorkerDescriptor,
-        system_fields: Mapping[str, str],
-        static_fields: Mapping[str, str],
-    ) -> dict[str, object]:
-        flat_values: dict[str, object] = {"workerId": worker_id}
-        for field_name, attribute_name in system_fields.items():
-            if attribute_name in descriptor.system_metadata:
-                flat_values[field_name] = descriptor.system_metadata[attribute_name]
-        for field_name, attribute_name in static_fields.items():
-            if attribute_name in descriptor.static_attributes:
-                flat_values[field_name] = descriptor.static_attributes[attribute_name]
-        return flat_values
 
     @staticmethod
     def _validate_worker_ids(worker_ids: Sequence[WorkerId]) -> None:

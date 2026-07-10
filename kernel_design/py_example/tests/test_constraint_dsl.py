@@ -5,6 +5,7 @@ import unittest
 from kernel_design.py_example.constraint_dsl import (
     UNRESOLVED_VALUE,
     WorkerConstraintQuery,
+    matches_fields,
     matches_mapping,
 )
 
@@ -24,15 +25,10 @@ class ConstraintDslTest(unittest.TestCase):
         )
 
         self.assertEqual(query.acquire_fields, ("dynamic.battery",))
-        self.assertEqual(query.worker_id_filter(), frozenset({"worker-1", "worker-2"}))
-        self.assertEqual(query.system_fields, {"system.tier": "tier"})
-        self.assertEqual(query.static_fields, {"static.runtime": "runtime"})
-        self.assertEqual(query.dynamic_fields, {"dynamic.battery": "battery"})
         self.assertEqual(
-            set(query.metadata_rules),
-            {"workerId", "system.tier", "static.runtime"},
+            tuple(query.match_rules),
+            ("workerId", "system.tier", "static.runtime", "dynamic.battery"),
         )
-        self.assertEqual(set(query.dynamic_rules), {"dynamic.battery"})
 
     def test_worker_query_requires_exact_dynamic_dependency_declaration(self) -> None:
         invalid_documents = [
@@ -120,7 +116,6 @@ class ConstraintDslTest(unittest.TestCase):
         acquire_fields.append("dynamic.network")
         self.assertEqual(query.acquire_fields, ("dynamic.battery",))
         self.assertEqual(query.match_rules["system.tier"]["$eq"], "premium")
-        self.assertEqual(query.worker_id_filter(), frozenset({"worker-1"}))
         self.assertEqual(query.match_rules["workerId"]["$in"], ("worker-1",))
 
         with self.assertRaises(TypeError):
@@ -146,6 +141,19 @@ class ConstraintDslTest(unittest.TestCase):
         self.assertFalse(
             matches_mapping(values, {"static.gpuCount": {"$gte": "many"}})
         )
+
+    def test_mapping_evaluator_can_execute_one_compiled_field_stage(self) -> None:
+        values = {
+            "system.tier": "premium",
+            "dynamic.battery": 10,
+        }
+        match_rules = {
+            "system.tier": {"$eq": "premium"},
+            "dynamic.battery": {"$gte": 20},
+        }
+
+        self.assertTrue(matches_fields(values, match_rules, ("system.tier",)))
+        self.assertFalse(matches_fields(values, match_rules, ("dynamic.battery",)))
 
     def test_unresolved_value_fails_closed(self) -> None:
         self.assertFalse(

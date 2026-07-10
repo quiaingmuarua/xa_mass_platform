@@ -255,11 +255,15 @@ rule is forbidden, and an unused acquire field is forbidden. `workerId`,
 `system.*`, and `static.*` never belong in `acquire_fields` because they arrive
 with the descriptor batch.
 
-The query validates and freezes its complete structure during construction. It
-precompiles metadata rules, dynamic rules, and category field indexes. Invalid
-dependency declarations fail before matcher execution. The generic evaluator
-compares assembled flat values with those compiled rules; it does not know
-worker descriptors, handlers, Redis, or scheduling state.
+The query validates and freezes only `acquire_fields` and `match_rules`.
+`match_rules` is the only rule map. At the start of one bounded matcher call,
+the matcher derives the first-stage `workerId` / `system.*` / `static.*` field
+set from `match_rules`; `acquire_fields` directly selects the second-stage
+dynamic fields. The query does not retain matcher indexes or execution plans.
+Invalid dependency declarations fail before matcher execution. The generic
+evaluator compares assembled flat values with selected fields from
+`match_rules`; it does not know worker descriptors, handlers, Redis, or
+scheduling state.
 
 The matcher assembles values in two stages:
 
