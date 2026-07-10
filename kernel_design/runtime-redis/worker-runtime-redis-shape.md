@@ -372,7 +372,7 @@ receive workerGroupId + workerId
 read the implementation-owned descriptor bucket
 require descriptor.workerGroupId == requested workerGroupId
 require attrName in descriptor.dynamicAttributeNames
-resolve update_dynamic_attributes_dict[attrName]
+resolve concrete runtime _updateHandlers[attrName]
 handler validates payload
 handler writes its own dyn key
 ```
@@ -399,8 +399,11 @@ assignment-dispatch keeps observedScore sidecar from score acquire
 ```
 
 `WorkerCandidateMatcher` is a storage-independent worker-runtime mechanism. It
-consumes `WorkerResourceCatalog` and dynamic query handlers; Redis-specific
-code owns descriptor persistence and handler storage only. Do not introduce
+consumes `WorkerResourceCatalog` for one descriptor batch and
+`WorkerDynamicAttributeRuntime` for bounded dynamic reads. The matcher filters
+descriptor-supported worker ids from the loaded batch; the dynamic runtime
+hides query handlers and does not reread descriptors. Redis-specific code owns
+descriptor persistence and handler storage only. Do not introduce
 storage-specific matcher subclasses.
 
 Dynamic attribute updates do not automatically write worker score. They may mark

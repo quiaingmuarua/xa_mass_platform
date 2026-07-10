@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Callable, Mapping, Sequence
+from typing import Mapping, Sequence
 
 from .worker_score import TimeMillis, WorkerId
 
@@ -82,30 +82,13 @@ class DynamicAttributeReadResult:
     reason: str | None = None
 
 
-DynamicAttributeUpdateFn = Callable[
-    [WorkerId, DynamicAttributePayload, TimeMillis],
-    WorkerRuntimeResult,
-]
-DynamicAttributeQueryFn = Callable[
-    [WorkerGroupId, Sequence[WorkerId]],
-    Mapping[WorkerId, DynamicAttributeReadResult],
-]
-DynamicAttributeUpdateRegistry = Mapping[AttributeName, DynamicAttributeUpdateFn]
-DynamicAttributeQueryRegistry = Mapping[AttributeName, DynamicAttributeQueryFn]
-
-# Dynamic attribute registries are worker-runtime internal function tables.
-# They are not public ports and are not externally registered plugin surfaces.
-# Query functions receive one logical worker group and one bounded worker-id
-# batch so each attribute owner can use its native batch-read primitive.
-
-
 class WorkerDynamicAttributeRuntime(ABC):
-    """Worker-runtime dynamic attribute update route.
+    """Worker-runtime dynamic attribute owner route.
 
     Dynamic attributes are a policy extension route backed by owner-local
-    handlers. This surface accepts bounded point updates and dispatches them to
-    the internal function table. It does not expose dynamic attribute query
-    values, worker lifecycle truth, or worker score lease mutation authority.
+    handlers. This surface accepts bounded point updates and bounded owner reads
+    while hiding the internal function tables. It does not expose worker
+    lifecycle truth or worker score lease mutation authority.
     """
 
     @abstractmethod
@@ -125,6 +108,22 @@ class WorkerDynamicAttributeRuntime(ABC):
         dynamic_attribute_names allowlist. Accepted updates are dispatched to
         the owner-local dynamic attribute function table. This method is not a
         query surface and must not rewrite worker score leases directly.
+        """
+        pass
+
+    @abstractmethod
+    def get_worker_dynamic_attribute_values(
+        self,
+        *,
+        worker_group_id: WorkerGroupId,
+        attribute_name: AttributeName,
+        worker_ids: Sequence[WorkerId],
+    ) -> Mapping[WorkerId, DynamicAttributeReadResult]:
+        """Read one dynamic attribute for one bounded supported-worker batch.
+
+        The caller must derive worker_ids from an already loaded descriptor
+        batch. Implementations validate handler availability before reading and
+        must not discover workers outside the supplied ids.
         """
         pass
 

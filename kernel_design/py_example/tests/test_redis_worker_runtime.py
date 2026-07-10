@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import unittest
-from typing import Sequence
+from typing import Callable, Sequence
 
 from kernel_design.py_example import (
     RedisWorkerDynamicAttributeRuntime,
@@ -14,9 +14,14 @@ from kernel_design.py_example import (
     WorkerRuntimeStatus,
 )
 from kernel_design.py_example.kernel.worker_runtime import (
-    DynamicAttributeQueryFn,
     DynamicAttributeReadResult,
 )
+
+
+_DynamicAttributeQueryHandler = Callable[
+    [str, Sequence[str]],
+    dict[str, DynamicAttributeReadResult],
+]
 
 
 def candidate_constraint(
@@ -37,6 +42,7 @@ def candidate_constraint(
 class FakeRedis:
     def __init__(self) -> None:
         self.hashes: dict[str, dict[str, str]] = {}
+        self.hmget_calls: list[tuple[str, tuple[str, ...]]] = []
 
     def hset(
         self,
@@ -67,6 +73,7 @@ class FakeRedis:
         name: str,
         keys: list[str],
     ) -> list[str | None]:
+        self.hmget_calls.append((name, tuple(keys)))
         hash_row = self.hashes.get(name, {})
         return [hash_row.get(key) for key in keys]
 
@@ -127,6 +134,20 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
     ) -> None:
         result = self.catalog.register_worker_descriptor(descriptor=descriptor)
         self.assertEqual(result.status, WorkerRuntimeStatus.OK)
+
+    def matcher(
+        self,
+        query_handlers: dict[str, _DynamicAttributeQueryHandler] | None = None,
+    ) -> WorkerCandidateMatcher:
+        dynamic_attributes = RedisWorkerDynamicAttributeRuntime(
+            self.catalog,
+            {},
+            query_handlers,
+        )
+        return WorkerCandidateMatcher(
+            self.catalog,
+            dynamic_attributes,
+        )
 
     def test_register_and_read_worker_group_descriptor(self) -> None:
         self.register_group()
@@ -396,7 +417,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
                 if worker_id in values
             }
 
-        matcher = WorkerCandidateMatcher(self.catalog, {"battery": query_battery})
+        matcher = self.matcher({"battery": query_battery})
         rows = matcher.match_worker_candidates(
             worker_group_id="image-workers",
             worker_ids=["worker-2", "outside", "worker-1"],
@@ -426,8 +447,13 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
 
     def test_candidate_matcher_rejects_missing_dynamic_handler(self) -> None:
         self.register_group()
-        self.register_worker(self.worker_descriptor("worker-1"))
-        matcher_without_handler = WorkerCandidateMatcher(self.catalog, {})
+        self.register_worker(
+            self.worker_descriptor(
+                "worker-1",
+                dynamic_attribute_names=frozenset(),
+            )
+        )
+        matcher_without_handler = self.matcher()
         constraints = {
             "needs-battery": candidate_constraint(
                 {"dynamic.battery": {"$gte": 20}},
@@ -437,7 +463,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
 
         with self.assertRaisesRegex(
             ValueError,
-            "missing dynamic attribute query handlers: battery",
+            "missing dynamic attribute query handler: battery",
         ):
             matcher_without_handler.match_worker_candidates(
                 worker_group_id="image-workers",
@@ -446,7 +472,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             )
 
     def test_candidate_matcher_owns_dynamic_acquire_validation(self) -> None:
-        matcher = WorkerCandidateMatcher(self.catalog, {})
+        matcher = self.matcher()
         constraints = {
             "needs-battery": candidate_constraint(
                 {"dynamic.battery": {"$gte": 20}}
@@ -464,7 +490,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             )
 
     def test_candidate_matcher_validates_acquire_field_declarations(self) -> None:
-        matcher = WorkerCandidateMatcher(self.catalog, {})
+        matcher = self.matcher()
         invalid_constraints = (
             (
                 "candidate limit must be positive",
@@ -495,8 +521,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
     def test_candidate_matcher_fails_closed_for_unresolved_dynamic_value(self) -> None:
         self.register_group()
         self.register_worker(self.worker_descriptor("worker-1"))
-        matcher_without_value = WorkerCandidateMatcher(
-            self.catalog,
+        matcher_without_value = self.matcher(
             {
                 "battery": lambda _, worker_ids: {
                     worker_id: DynamicAttributeReadResult(
@@ -526,7 +551,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         self.register_group()
         self.register_worker(self.worker_descriptor("worker-1"))
         self.register_worker(self.worker_descriptor("worker-2"))
-        matcher = WorkerCandidateMatcher(self.catalog, {})
+        matcher = self.matcher()
 
         rows = matcher.match_worker_candidates(
             worker_group_id="image-workers",
@@ -559,7 +584,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
                 for worker_id in worker_ids
             }
 
-        matcher = WorkerCandidateMatcher(self.catalog, {"battery": query_battery})
+        matcher = self.matcher({"battery": query_battery})
         rows = matcher.match_worker_candidates(
             worker_group_id="image-workers",
             worker_ids=["worker-1"],
@@ -593,7 +618,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
                 for worker_id in worker_ids
             }
 
-        matcher = WorkerCandidateMatcher(self.catalog, {"battery": query_battery})
+        matcher = self.matcher({"battery": query_battery})
         rows = matcher.match_worker_candidates(
             worker_group_id="image-workers",
             worker_ids=["worker-1", "worker-2"],
@@ -627,7 +652,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         for worker_id in ("worker-1", "worker-2", "worker-3"):
             self.register_worker(self.worker_descriptor(worker_id))
 
-        matcher = WorkerCandidateMatcher(self.catalog, {})
+        matcher = self.matcher()
         rows = matcher.match_worker_candidates(
             worker_group_id="image-workers",
             worker_ids=["worker-1", "worker-2", "worker-3"],
@@ -666,7 +691,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
 
         def query_attribute(
             attribute_name: str,
-        ) -> DynamicAttributeQueryFn:
+        ) -> _DynamicAttributeQueryHandler:
             def query(
                 worker_group_id: str,
                 worker_ids: Sequence[str],
@@ -682,8 +707,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
 
             return query
 
-        matcher = WorkerCandidateMatcher(
-            self.catalog,
+        matcher = self.matcher(
             {
                 "battery": query_attribute("battery"),
                 "network": query_attribute("network"),
@@ -723,6 +747,10 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
                 ("battery", ("worker-2", "worker-1")),
             ],
         )
+        self.assertEqual(
+            self.redis.hmget_calls,
+            [("wr:test:workers:image-workers", ("worker-2", "worker-1"))],
+        )
 
     def test_candidate_matcher_fails_closed_for_missing_batch_rows(self) -> None:
         self.register_group()
@@ -741,7 +769,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
                 )
             }
 
-        matcher = WorkerCandidateMatcher(self.catalog, {"battery": query_battery})
+        matcher = self.matcher({"battery": query_battery})
         rows = matcher.match_worker_candidates(
             worker_group_id="image-workers",
             worker_ids=["worker-1", "worker-2"],
@@ -774,7 +802,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
                 for worker_id in worker_ids
             }
 
-        matcher = WorkerCandidateMatcher(self.catalog, {"battery": query_battery})
+        matcher = self.matcher({"battery": query_battery})
         rows = matcher.match_worker_candidates(
             worker_group_id="image-workers",
             worker_ids=["worker-1", "worker-2"],
@@ -815,7 +843,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
                 for worker_id in worker_ids
             }
 
-        matcher = WorkerCandidateMatcher(self.catalog, {"battery": query_battery})
+        matcher = self.matcher({"battery": query_battery})
         rows = matcher.match_worker_candidates(
             worker_group_id="image-workers",
             worker_ids=["worker-1"],
@@ -834,7 +862,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         self.assertEqual(queried_worker_ids, ["worker-1"])
 
     def test_candidate_matcher_rejects_duplicate_worker_ids(self) -> None:
-        matcher = WorkerCandidateMatcher(self.catalog, {})
+        matcher = self.matcher()
 
         with self.assertRaises(ValueError):
             matcher.match_worker_candidates(

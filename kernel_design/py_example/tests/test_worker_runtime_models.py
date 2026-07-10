@@ -72,7 +72,10 @@ class WorkerRuntimeModelTest(unittest.TestCase):
         )
         self.assertEqual(
             WorkerDynamicAttributeRuntime.__abstractmethods__,
-            {"update_worker_dynamic_attributes"},
+            {
+                "get_worker_dynamic_attribute_values",
+                "update_worker_dynamic_attributes",
+            },
         )
         self.assertFalse(inspect.isabstract(WorkerCandidateMatcher))
         self.assertFalse(hasattr(py_example, "WorkerAdmission"))
@@ -89,7 +92,9 @@ class WorkerRuntimeModelTest(unittest.TestCase):
         match_params = set(
             inspect.signature(WorkerCandidateMatcher.match_worker_candidates).parameters
         )
+        init_params = set(inspect.signature(WorkerCandidateMatcher.__init__).parameters)
 
+        self.assertEqual(init_params, {"self", "catalog", "dynamic_attributes"})
         self.assertEqual(
             match_params,
             {"self", "worker_group_id", "worker_ids", "candidate_constraints"},
@@ -120,10 +125,15 @@ class WorkerRuntimeModelTest(unittest.TestCase):
             {"self", "worker_group_id", "worker_id", "attributes"},
         )
 
-    def test_dynamic_attribute_update_ingress_is_catalog_owned(self) -> None:
+    def test_dynamic_attribute_runtime_exposes_bounded_owner_operations(self) -> None:
         update_params = set(
             inspect.signature(
                 WorkerDynamicAttributeRuntime.update_worker_dynamic_attributes
+            ).parameters
+        )
+        query_params = set(
+            inspect.signature(
+                WorkerDynamicAttributeRuntime.get_worker_dynamic_attribute_values
             ).parameters
         )
 
@@ -136,6 +146,10 @@ class WorkerRuntimeModelTest(unittest.TestCase):
                 "updates",
                 "observed_at_millis",
             },
+        )
+        self.assertEqual(
+            query_params,
+            {"self", "worker_group_id", "attribute_name", "worker_ids"},
         )
         self.assertTrue(hasattr(py_example, "DynamicAttributePayload"))
 
@@ -178,15 +192,15 @@ class WorkerRuntimeModelTest(unittest.TestCase):
                 )
             return results
 
-        update_dynamic_attributes_dict = {"battery": update_battery}
-        query_dynamic_attributes_dict = {"battery": query_battery}
+        update_dynamic_attribute_handlers = {"battery": update_battery}
+        query_dynamic_attribute_handlers = {"battery": query_battery}
 
-        result = update_dynamic_attributes_dict["battery"](
+        result = update_dynamic_attribute_handlers["battery"](
             descriptor.worker_id,
             87,
             10_000,
         )
-        read = query_dynamic_attributes_dict["battery"](
+        read = query_dynamic_attribute_handlers["battery"](
             descriptor.worker_group_id,
             (descriptor.worker_id,),
         )[descriptor.worker_id]

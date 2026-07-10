@@ -6,11 +6,11 @@ from ..constraint_dsl import ConstraintDsl, ConstraintMap, UNRESOLVED_VALUE
 from .worker_score import WorkerId
 from .worker_runtime import (
     CandidateId,
-    DynamicAttributeQueryRegistry,
     DynamicAttributeReadResult,
     WorkerCandidateConstraint,
     WorkerCandidateMatches,
     WorkerDescriptor,
+    WorkerDynamicAttributeRuntime,
     WorkerGroupId,
     WorkerResourceCatalog,
     WorkerRuntimeStatus,
@@ -23,10 +23,10 @@ class WorkerCandidateMatcher:
     def __init__(
         self,
         catalog: WorkerResourceCatalog,
-        query_dynamic_attributes_dict: DynamicAttributeQueryRegistry,
+        dynamic_attributes: WorkerDynamicAttributeRuntime,
     ) -> None:
         self.catalog = catalog
-        self.query_dynamic_attributes_dict = query_dynamic_attributes_dict
+        self.dynamic_attributes = dynamic_attributes
 
     def match_worker_candidates(
         self,
@@ -92,7 +92,6 @@ class WorkerCandidateMatcher:
             tuple[CandidateId, WorkerCandidateConstraint, ConstraintMap]
         ] = []
         required_attributes: dict[str, None] = {}
-        missing_handlers: set[str] = set()
         ordered_constraints = sorted(
             candidate_constraints.items(),
             key=lambda item: (-item[1].priority, item[0]),
@@ -120,15 +119,8 @@ class WorkerCandidateMatcher:
             for field_name in constraints.acquire_fields:
                 attribute_name = field_name.removeprefix("dynamic.")
                 required_attributes.setdefault(attribute_name, None)
-                if attribute_name not in self.query_dynamic_attributes_dict:
-                    missing_handlers.add(attribute_name)
             candidates.append((candidate_id, constraints, match_rules))
 
-        if missing_handlers:
-            raise ValueError(
-                "missing dynamic attribute query handlers: "
-                + ", ".join(sorted(missing_handlers))
-            )
         return candidates, tuple(required_attributes)
 
     def _acquire_dynamic_rows(
@@ -153,12 +145,11 @@ class WorkerCandidateMatcher:
                 )
             )
             rows_by_attribute[attribute_name] = (
-                self.query_dynamic_attributes_dict[attribute_name](
-                    worker_group_id,
-                    supported_worker_ids,
+                self.dynamic_attributes.get_worker_dynamic_attribute_values(
+                    worker_group_id=worker_group_id,
+                    attribute_name=attribute_name,
+                    worker_ids=supported_worker_ids,
                 )
-                if supported_worker_ids
-                else {}
             )
         return rows_by_attribute
 

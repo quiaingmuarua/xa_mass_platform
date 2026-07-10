@@ -104,7 +104,7 @@ WorkerResourceCatalog
   group descriptors, worker descriptors, low-frequency metadata
 
 WorkerDynamicAttributeRuntime
-  bounded dynamic attribute update ingress only
+  bounded dynamic attribute updates and owner reads; handler tables stay internal
 
 WorkerCandidateMatcher
   one worker group, bounded worker id batch, ordered candidate constraints

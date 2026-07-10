@@ -305,15 +305,17 @@ descriptor batch
        first remaining match consumes the worker and stops candidate evaluation
 ```
 
-Before dynamic IO, the matcher requires every declared field to have a
-registered query handler. Each field batch contains only bounded workers whose
-descriptor declares support for that field. A missing handler is a matcher
-configuration error. A missing, unsupported, or unresolved handler result is
-written into the temporary worker context as unresolved and fails closed for
-candidate rules that read it.
+Before dynamic IO, the matcher uses its already loaded descriptor batch to
+derive the bounded workers that declare support for each dynamic field. It then
+asks `WorkerDynamicAttributeRuntime` for that field. The runtime hides the
+registered query handler and validates handler availability even when the
+supported worker batch is empty. A missing handler is therefore a deterministic
+worker-runtime configuration error. A missing, unsupported, or unresolved
+handler result is written into the temporary worker context as unresolved and
+fails closed for candidate rules that read it.
 
 ```text
-query_dynamic_attribute(workerGroupId, boundedWorkerIds)
+get_worker_dynamic_attribute_values(workerGroupId, attributeName, boundedWorkerIds)
   -> workerId -> DynamicAttributeReadResult
 ```
 
@@ -375,15 +377,22 @@ dynamicAttributeNames cannot be used as direct scheduling truth
 dynamicAttributeNames cannot prove worker availability
 ```
 
-Dynamic attribute values are owned by built-in attribute functions:
+Dynamic attribute values are owned by built-in attribute functions hidden behind
+worker-runtime surfaces:
 
 ```text
-update_dynamic_attributes_dict
-  attrName -> update function
-
-query_dynamic_attributes_dict
-  attrName -> bounded batch query function
+WorkerDynamicAttributeRuntime instance
+  _updateHandlers: attrName -> update function
+  _queryHandlers: attrName -> bounded batch query function
 ```
+
+These private handler tables belong to the concrete runtime implementation.
+Their callable and mapping types are not kernel contracts.
+
+`WorkerCandidateMatcher` must not receive or store the query function table
+directly. It validates descriptor support through `dynamic_attribute_names`,
+then asks `WorkerDynamicAttributeRuntime` for one bounded dynamic attribute
+read. The runtime invokes the owner-local handler internally.
 
 The function owns:
 
@@ -402,7 +411,7 @@ worker-runtime receives or evaluates an attribute update
   -> read WorkerDescriptor
   -> require attrName in WorkerDescriptor.dynamicAttributeNames
   -> route by attrName or owner-defined attribute prefix
-  -> resolve update_dynamic_attributes_dict[attrName]
+  -> resolve concrete runtime _updateHandlers[attrName]
   -> function validate / normalize payload
   -> function writes its own query storage/index
 ```
@@ -413,17 +422,17 @@ oriented, fast-fail, and idempotent where possible. Routine high-frequency
 updates such as heartbeat, load, or network observations must not emit global
 scheduling events by default.
 
-The first Python kernel surface exposes this as a narrow
-`WorkerDynamicAttributeRuntime.update_worker_dynamic_attributes(...)` ingress.
-That method requires `workerGroupId + workerId`, validates the worker descriptor
-and the `dynamicAttributeNames` allowlist, then dispatches accepted attributes
-to owner-local handlers. It does not expose dynamic attribute query values and
-does not write worker score leases
-directly.
+The first Python kernel surface exposes bounded update and read operations
+through `WorkerDynamicAttributeRuntime`. Update requires
+`workerGroupId + workerId`, validates the worker descriptor and the
+`dynamicAttributeNames` allowlist, then dispatches accepted attributes to
+owner-local handlers. Read accepts one declared attribute and one bounded,
+descriptor-supported worker batch from the matcher. Neither operation writes
+worker score leases directly.
 
 `WorkerDynamicAttributeRuntime` is separate from `WorkerResourceCatalog`.
 Catalog owns worker resource declarations and low-frequency descriptor
-metadata. Dynamic attribute runtime owns only update routing and handler
+metadata. Dynamic attribute runtime owns bounded update/read routing and handler
 dispatch for projected, policy-readable facts. It must not become a second
 worker descriptor store, worker lifecycle owner, score owner, or policy engine.
 
@@ -576,7 +585,7 @@ WorkerDescriptor
   metadata and dynamic attribute allowlist
 
 WorkerDynamicAttributeRuntime
-  dynamic attribute update route and owner-local handler dispatch
+  bounded dynamic attribute update/read route and owner-local handler dispatch
 
 WorkerScore
   HOT_ACQUIRE / RECOVERY_RECHECK acquisition coordinate

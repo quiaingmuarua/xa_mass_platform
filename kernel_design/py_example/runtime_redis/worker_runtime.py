@@ -2,15 +2,14 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping as MappingABC, Sequence as SequenceABC
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
-from ..kernel.worker_score import WorkerId
+from ..kernel.worker_score import TimeMillis, WorkerId
 from ..kernel.worker_runtime import (
     AttributeName,
     AttributeValue,
     DynamicAttributePayload,
     DynamicAttributeReadResult,
-    DynamicAttributeUpdateRegistry,
     WorkerDescriptor,
     WorkerDynamicAttributeRuntime,
     WorkerGroupDescriptor,
@@ -19,6 +18,18 @@ from ..kernel.worker_runtime import (
     WorkerRuntimeResult,
     WorkerRuntimeStatus,
 )
+
+
+_DynamicAttributeUpdateFn = Callable[
+    [WorkerId, DynamicAttributePayload, TimeMillis],
+    WorkerRuntimeResult,
+]
+_DynamicAttributeQueryFn = Callable[
+    [WorkerGroupId, Sequence[WorkerId]],
+    Mapping[WorkerId, DynamicAttributeReadResult],
+]
+_DynamicAttributeUpdateHandlers = Mapping[AttributeName, _DynamicAttributeUpdateFn]
+_DynamicAttributeQueryHandlers = Mapping[AttributeName, _DynamicAttributeQueryFn]
 
 
 class RedisWorkerResourceCatalog(WorkerResourceCatalog):
@@ -318,15 +329,17 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
 
 
 class RedisWorkerDynamicAttributeRuntime(WorkerDynamicAttributeRuntime):
-    """Redis worker dynamic-attribute ingress backed by handler functions."""
+    """Redis worker dynamic-attribute owner backed by handler functions."""
 
     def __init__(
         self,
         catalog: WorkerResourceCatalog,
-        update_dynamic_attributes_dict: DynamicAttributeUpdateRegistry,
+        update_handlers: _DynamicAttributeUpdateHandlers,
+        query_handlers: _DynamicAttributeQueryHandlers | None = None,
     ) -> None:
         self.catalog = catalog
-        self.update_dynamic_attributes_dict = update_dynamic_attributes_dict
+        self._update_handlers = update_handlers
+        self._query_handlers = query_handlers or {}
 
     def update_worker_dynamic_attributes(
         self,
@@ -361,7 +374,7 @@ class RedisWorkerDynamicAttributeRuntime(WorkerDynamicAttributeRuntime):
                 )
                 continue
 
-            update_fn = self.update_dynamic_attributes_dict.get(attr_name)
+            update_fn = self._update_handlers.get(attr_name)
             if update_fn is None:
                 results[attr_name] = WorkerRuntimeResult(
                     WorkerRuntimeStatus.NOT_FOUND,
@@ -375,3 +388,23 @@ class RedisWorkerDynamicAttributeRuntime(WorkerDynamicAttributeRuntime):
                 observed_at_millis,
             )
         return results
+
+    def get_worker_dynamic_attribute_values(
+        self,
+        *,
+        worker_group_id: WorkerGroupId,
+        attribute_name: AttributeName,
+        worker_ids: Sequence[WorkerId],
+    ) -> Mapping[WorkerId, DynamicAttributeReadResult]:
+        query_fn = self._query_handlers.get(attribute_name)
+        if query_fn is None:
+            raise ValueError(f"missing dynamic attribute query handler: {attribute_name}")
+        if not worker_ids:
+            return {}
+
+        rows = query_fn(worker_group_id, worker_ids)
+        return {
+            worker_id: row
+            for worker_id in worker_ids
+            if (row := rows.get(worker_id)) is not None
+        }
