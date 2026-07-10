@@ -447,6 +447,25 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
                 candidate_constraints=constraints,
             )
 
+    def test_candidate_matcher_owns_dynamic_acquire_validation(self) -> None:
+        matcher = WorkerCandidateMatcher(self.catalog, {})
+        constraints = [
+            (
+                "needs-battery",
+                worker_query({"dynamic.battery": {"$gte": 20}}),
+            )
+        ]
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "dynamic match fields must be declared in acquire_fields",
+        ):
+            matcher.match_worker_candidates(
+                worker_group_id="image-workers",
+                worker_ids=["worker-1"],
+                candidate_constraints=constraints,
+            )
+
     def test_candidate_matcher_fails_closed_for_unresolved_dynamic_value(self) -> None:
         self.register_group()
         self.register_worker(self.worker_descriptor("worker-1"))

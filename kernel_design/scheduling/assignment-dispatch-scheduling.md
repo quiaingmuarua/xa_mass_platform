@@ -179,9 +179,9 @@ match_rules = workerId + system.* + static.* + dynamic.* predicates
 ```
 
 `acquire_fields` is not a value projection or ranking input. It authorizes and
-budgets only the dynamic fields used by `match_rules`. Query construction fails
-when a dynamic rule is undeclared or an acquire field is unused. Assignment-
-dispatch must not add speculative fields for later ranking.
+budgets only the dynamic fields used by `match_rules`. Worker matcher
+preparation fails when a dynamic rule is undeclared or an acquire field is
+unused. Assignment-dispatch must not add speculative fields for later ranking.
 
 Project / workload configuration declares the allowed worker groups. Task
 create/admission selects exactly one `workerGroupId` from that allowed set. The

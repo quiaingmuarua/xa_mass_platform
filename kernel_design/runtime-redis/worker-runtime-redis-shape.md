@@ -381,7 +381,7 @@ Dynamic attribute query flow for matching:
 
 ```text
 WorkerCandidateMatcher receives bounded workerIds and WorkerConstraintQuery
-query construction requires acquire_fields == dynamic fields in match_rules
+worker matcher preparation requires acquire_fields == dynamic fields in match_rules
 missing declared dynamic handler is a configuration error
 descriptor predicates read workers:{workerGroupId}
 metadata predicates prune workers before dynamic IO

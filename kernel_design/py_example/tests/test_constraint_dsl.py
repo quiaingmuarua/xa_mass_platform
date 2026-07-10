@@ -3,163 +3,74 @@ from __future__ import annotations
 import unittest
 
 from kernel_design.py_example.constraint_dsl import (
+    ConstraintDsl,
     UNRESOLVED_VALUE,
-    WorkerConstraintQuery,
-    matches_fields,
-    matches_mapping,
 )
 
 
 class ConstraintDslTest(unittest.TestCase):
-    def test_worker_query_compiles_declared_dynamic_dependencies(self) -> None:
-        query = WorkerConstraintQuery(
-            {
-                "acquire_fields": ["dynamic.battery"],
-                "match_rules": {
-                    "workerId": {"$in": ["worker-1", "worker-2"]},
-                    "system.tier": {"$eq": "premium"},
-                    "static.runtime": {"$in": ["python", "java"]},
-                    "dynamic.battery": {"$gte": 20},
-                },
-            }
-        )
+    def test_compile_match_rules_validates_copies_and_freezes_document(self) -> None:
+        accepted = ["gpu", "cpu"]
+        document = {
+            "resource.kind": {"$in": accepted},
+            "resource.capacity": {"$gte": 2},
+        }
 
-        self.assertEqual(query.acquire_fields, ("dynamic.battery",))
-        self.assertEqual(
-            tuple(query.match_rules),
-            ("workerId", "system.tier", "static.runtime", "dynamic.battery"),
-        )
+        rules = ConstraintDsl.compile_match_rules(document)
+        accepted.append("other")
+        document["resource.capacity"]["$gte"] = 10
 
-    def test_worker_query_requires_exact_dynamic_dependency_declaration(self) -> None:
+        self.assertEqual(rules["resource.kind"]["$in"], ("gpu", "cpu"))
+        self.assertEqual(rules["resource.capacity"]["$gte"], 2)
+        with self.assertRaises(TypeError):
+            rules["resource.kind"] = {"$eq": "gpu"}  # type: ignore[index]
+
+    def test_compile_match_rules_rejects_invalid_documents(self) -> None:
         invalid_documents = [
-            {
-                "acquire_fields": [],
-                "match_rules": {"dynamic.battery": {"$gte": 20}},
-            },
-            {
-                "acquire_fields": ["dynamic.battery"],
-                "match_rules": {},
-            },
-            {
-                "acquire_fields": ["dynamic.battery", "dynamic.battery"],
-                "match_rules": {"dynamic.battery": {"$gte": 20}},
-            },
-            {
-                "acquire_fields": ["static.runtime"],
-                "match_rules": {"static.runtime": {"$eq": "python"}},
-            },
+            {"resource.": {"$eq": "gpu"}},
+            {"resource.kind": {"$regex": "gpu.*"}},
+            {"resource.kind": {"$in": "gpu"}},
+            {"resource.kind": {"$exists": "yes"}},
         ]
 
         for document in invalid_documents:
             with self.subTest(document=document):
                 with self.assertRaises(ValueError):
-                    WorkerConstraintQuery(document)
+                    ConstraintDsl.compile_match_rules(document)
 
-    def test_worker_query_rejects_invalid_shapes_during_construction(self) -> None:
-        invalid_documents = [
-            {"workerId": {"$eq": "worker-1"}},
-            {"acquire_fields": [], "match_rules": {}, "unknown": True},
-            {"acquire_fields": "dynamic.battery", "match_rules": {}},
-            {"acquire_fields": [], "match_rules": {"$or": []}},
-            {
-                "acquire_fields": [],
-                "match_rules": {"system": {"tier": {"$eq": "premium"}}},
-            },
-            {
-                "acquire_fields": [],
-                "match_rules": {"workerGroupId": {"$eq": "image-workers"}},
-            },
-            {
-                "acquire_fields": [],
-                "match_rules": {"workerId": {"$gt": "worker-1"}},
-            },
-            {
-                "acquire_fields": [],
-                "match_rules": {"workerId": {"$in": "worker-1"}},
-            },
-            {
-                "acquire_fields": [],
-                "match_rules": {"system.": {"$eq": "premium"}},
-            },
-            {
-                "acquire_fields": [],
-                "match_rules": {"static.runtime": {"$regex": "py.*"}},
-            },
-            {
-                "acquire_fields": ["dynamic.battery"],
-                "match_rules": {"dynamic.battery": {"$exists": "yes"}},
-            },
-        ]
-
-        for document in invalid_documents:
-            with self.subTest(document=document):
-                with self.assertRaises(ValueError):
-                    WorkerConstraintQuery(document)
-
-    def test_worker_query_copies_and_freezes_validated_input(self) -> None:
-        allowed_worker_ids = ["worker-1"]
-        acquire_fields = ["dynamic.battery"]
-        match_rules = {
-            "workerId": {"$in": allowed_worker_ids},
-            "system.tier": {"$eq": "premium"},
-            "dynamic.battery": {"$gte": 20},
+    def test_evaluate_match_rules_walks_arbitrary_context_paths(self) -> None:
+        context = {
+            "resource": {
+                "identity": {"id": "r-1"},
+                "traits": {"region": "east", "capacity": 4},
+            }
         }
-        query = WorkerConstraintQuery(
+        rules = ConstraintDsl.compile_match_rules(
             {
-                "acquire_fields": acquire_fields,
-                "match_rules": match_rules,
+                "resource.identity.id": {"$eq": "r-1"},
+                "resource.traits.region": {"$in": ["east", "west"]},
+                "resource.traits.capacity": {"$gte": 2},
+                "resource.traits.retired": {"$exists": False},
             }
         )
 
-        match_rules["system.tier"]["$eq"] = "standard"
-        allowed_worker_ids.append("worker-2")
-        acquire_fields.append("dynamic.network")
-        self.assertEqual(query.acquire_fields, ("dynamic.battery",))
-        self.assertEqual(query.match_rules["system.tier"]["$eq"], "premium")
-        self.assertEqual(query.match_rules["workerId"]["$in"], ("worker-1",))
-
-        with self.assertRaises(TypeError):
-            query.match_rules["system.tier"] = {"$eq": "standard"}  # type: ignore[index]
-        with self.assertRaises(TypeError):
-            query.match_rules["system.tier"]["$eq"] = "standard"  # type: ignore[index]
-
-    def test_mapping_evaluator_matches_only_declared_fields(self) -> None:
-        values = {
-            "system.tier": "premium",
-            "static.region": "us-east",
-            "static.gpuCount": 4,
-            "unused": "ignored",
-        }
-        constraints = {
-            "system.tier": {"$equal": "premium"},
-            "static.region": {"$in": ["us-east", "us-west"]},
-            "static.gpuCount": {"$gte": 2},
-            "static.deprecated": {"$exists": False},
-        }
-
-        self.assertTrue(matches_mapping(values, constraints))
+        self.assertTrue(ConstraintDsl.evaluate_match_rules(context, rules))
         self.assertFalse(
-            matches_mapping(values, {"static.gpuCount": {"$gte": "many"}})
+            ConstraintDsl.evaluate_match_rules(
+                context,
+                ConstraintDsl.compile_match_rules(
+                    {"resource.traits.capacity": {"$gte": 10}}
+                ),
+            )
         )
-
-    def test_mapping_evaluator_can_execute_one_compiled_field_stage(self) -> None:
-        values = {
-            "system.tier": "premium",
-            "dynamic.battery": 10,
-        }
-        match_rules = {
-            "system.tier": {"$eq": "premium"},
-            "dynamic.battery": {"$gte": 20},
-        }
-
-        self.assertTrue(matches_fields(values, match_rules, ("system.tier",)))
-        self.assertFalse(matches_fields(values, match_rules, ("dynamic.battery",)))
 
     def test_unresolved_value_fails_closed(self) -> None:
         self.assertFalse(
-            matches_mapping(
-                {"dynamic.battery": UNRESOLVED_VALUE},
-                {"dynamic.battery": {"$exists": False}},
+            ConstraintDsl.evaluate_match_rules(
+                {"external": {"value": UNRESOLVED_VALUE}},
+                ConstraintDsl.compile_match_rules(
+                    {"external.value": {"$exists": False}}
+                ),
             )
         )
 

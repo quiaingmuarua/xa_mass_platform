@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections.abc import Mapping as MappingABC, Sequence as SequenceABC
-from typing import Iterable, Mapping
+from types import MappingProxyType
+from typing import Mapping
 
 
 ConstraintOperator = str
@@ -9,7 +10,7 @@ ConstraintValue = object
 ConstraintOperatorMap = Mapping[ConstraintOperator, ConstraintValue]
 ConstraintMap = Mapping[str, ConstraintOperatorMap]
 
-SUPPORTED_CONSTRAINT_OPERATORS = frozenset(
+_SUPPORTED_OPERATORS = frozenset(
     {
         "$eq",
         "$equal",
@@ -22,116 +23,133 @@ SUPPORTED_CONSTRAINT_OPERATORS = frozenset(
         "$exists",
     }
 )
+_MISSING_VALUE = object()
 
-# A missing key and a failed owner read are different. Missing may satisfy
-# `$exists: false`; unresolved must fail closed.
+# Missing may satisfy `$exists: false`; an owner read failure must fail closed.
 UNRESOLVED_VALUE = object()
 
 
-def validate_constraint_map(constraints: object) -> ConstraintMap:
-    """Validate a flat field-to-operator mapping."""
+class ConstraintDsl:
+    """Stateless compiler and evaluator for field-path match rules."""
 
-    if not isinstance(constraints, MappingABC):
-        raise ValueError("constraint query must be a mapping")
-    for field_name, operator_map in constraints.items():
-        if not isinstance(field_name, str) or not field_name:
-            raise ValueError("constraint field name must be a non-empty string")
-        validate_operator_map(operator_map)
-    return constraints
+    @staticmethod
+    def compile_match_rules(document: object) -> ConstraintMap:
+        """Validate and freeze one field-path match-rule document."""
 
+        rules = ConstraintDsl._validate_constraint_map(document)
+        compiled: dict[str, ConstraintOperatorMap] = {}
+        for field_name, operator_map in rules.items():
+            if any(not path_part for path_part in field_name.split(".")):
+                raise ValueError("match rule fields require non-empty path parts")
+            compiled[field_name] = MappingProxyType(
+                {
+                    operator: tuple(value)
+                    if operator == "$in" and isinstance(value, SequenceABC)
+                    else value
+                    for operator, value in operator_map.items()
+                }
+            )
+        return MappingProxyType(compiled)
 
-def validate_operator_map(operator_map: object) -> ConstraintOperatorMap:
-    if not isinstance(operator_map, MappingABC) or not operator_map:
-        raise ValueError("constraint field requires a non-empty operator map")
+    @staticmethod
+    def evaluate_match_rules(
+        context: Mapping[str, ConstraintValue],
+        match_rules: ConstraintMap,
+    ) -> bool:
+        """Evaluate match rules against an arbitrary nested context map."""
 
-    for operator, expected in operator_map.items():
-        if operator not in SUPPORTED_CONSTRAINT_OPERATORS:
-            raise ValueError(f"unsupported constraint operator: {operator}")
-        if operator == "$in":
-            if isinstance(expected, (str, bytes)) or not isinstance(
-                expected,
-                SequenceABC,
+        for field_name, operator_map in match_rules.items():
+            value = ConstraintDsl._resolve_context_value(context, field_name)
+            if value is _MISSING_VALUE:
+                if len(operator_map) != 1 or operator_map.get("$exists") is not False:
+                    return False
+                continue
+            if value is UNRESOLVED_VALUE:
+                return False
+            if not all(
+                ConstraintDsl._matches_operator(value, operator, expected)
+                for operator, expected in operator_map.items()
+            ):
+                return False
+        return True
+
+    @staticmethod
+    def _validate_constraint_map(constraints: object) -> ConstraintMap:
+        if not isinstance(constraints, MappingABC):
+            raise ValueError("constraint query must be a mapping")
+        for field_name, operator_map in constraints.items():
+            if not isinstance(field_name, str) or not field_name:
+                raise ValueError("constraint field name must be a non-empty string")
+            ConstraintDsl._validate_operator_map(operator_map)
+        return constraints
+
+    @staticmethod
+    def _validate_operator_map(operator_map: object) -> ConstraintOperatorMap:
+        if not isinstance(operator_map, MappingABC) or not operator_map:
+            raise ValueError("constraint field requires a non-empty operator map")
+        for operator, expected in operator_map.items():
+            if operator not in _SUPPORTED_OPERATORS:
+                raise ValueError(f"unsupported constraint operator: {operator}")
+            if operator == "$in" and (
+                isinstance(expected, (str, bytes))
+                or not isinstance(expected, SequenceABC)
             ):
                 raise ValueError("$in requires a non-string sequence")
-        if operator == "$exists" and not isinstance(expected, bool):
-            raise ValueError("$exists requires a boolean")
-    return operator_map
+            if operator == "$exists" and not isinstance(expected, bool):
+                raise ValueError("$exists requires a boolean")
+        return operator_map
 
+    @staticmethod
+    def _resolve_context_value(
+        context: Mapping[str, ConstraintValue],
+        field_name: str,
+    ) -> ConstraintValue:
+        value: ConstraintValue = context
+        for path_part in field_name.split("."):
+            if not isinstance(value, MappingABC) or path_part not in value:
+                return _MISSING_VALUE
+            value = value[path_part]
+        return value
 
-def matches_mapping(
-    values: Mapping[str, ConstraintValue],
-    constraints: ConstraintMap,
-) -> bool:
-    """Evaluate a validated flat rule map against one assembled flat value map."""
-
-    return matches_fields(values, constraints, constraints)
-
-
-def matches_fields(
-    values: Mapping[str, ConstraintValue],
-    constraints: ConstraintMap,
-    field_names: Iterable[str],
-) -> bool:
-    """Evaluate selected fields from one validated rule map."""
-
-    for field_name in field_names:
-        operator_map = constraints[field_name]
-        if field_name not in values:
-            if len(operator_map) != 1 or operator_map.get("$exists") is not False:
-                return False
-            continue
-
-        value = values[field_name]
-        if value is UNRESOLVED_VALUE:
-            return False
-        if not all(
-            _matches_operator(value, operator, expected)
-            for operator, expected in operator_map.items()
-        ):
-            return False
-    return True
-
-
-def _matches_operator(
-    value: ConstraintValue,
-    operator: ConstraintOperator,
-    expected: ConstraintValue,
-) -> bool:
-    if operator in {"$eq", "$equal"}:
-        return value == expected
-    if operator == "$ne":
-        return value != expected
-    if operator == "$in":
-        if isinstance(expected, (str, bytes)) or not isinstance(expected, SequenceABC):
-            return False
-        return value in expected
-    if operator == "$exists":
-        return bool(expected)
-    if operator == "$gt":
-        return _safe_compare(value, expected, ">")
-    if operator == "$gte":
-        return _safe_compare(value, expected, ">=")
-    if operator == "$lt":
-        return _safe_compare(value, expected, "<")
-    if operator == "$lte":
-        return _safe_compare(value, expected, "<=")
-    return False
-
-
-def _safe_compare(
-    value: ConstraintValue,
-    expected: ConstraintValue,
-    operator: str,
-) -> bool:
-    try:
-        if operator == ">":
-            return value > expected  # type: ignore[operator]
-        if operator == ">=":
-            return value >= expected  # type: ignore[operator]
-        if operator == "<":
-            return value < expected  # type: ignore[operator]
-        if operator == "<=":
-            return value <= expected  # type: ignore[operator]
-    except TypeError:
+    @staticmethod
+    def _matches_operator(
+        value: ConstraintValue,
+        operator: ConstraintOperator,
+        expected: ConstraintValue,
+    ) -> bool:
+        if operator in {"$eq", "$equal"}:
+            return value == expected
+        if operator == "$ne":
+            return value != expected
+        if operator == "$in":
+            return value in expected  # type: ignore[operator]
+        if operator == "$exists":
+            return bool(expected)
+        if operator == "$gt":
+            return ConstraintDsl._safe_compare(value, expected, ">")
+        if operator == "$gte":
+            return ConstraintDsl._safe_compare(value, expected, ">=")
+        if operator == "$lt":
+            return ConstraintDsl._safe_compare(value, expected, "<")
+        if operator == "$lte":
+            return ConstraintDsl._safe_compare(value, expected, "<=")
         return False
-    return False
+
+    @staticmethod
+    def _safe_compare(
+        value: ConstraintValue,
+        expected: ConstraintValue,
+        operator: str,
+    ) -> bool:
+        try:
+            if operator == ">":
+                return value > expected  # type: ignore[operator]
+            if operator == ">=":
+                return value >= expected  # type: ignore[operator]
+            if operator == "<":
+                return value < expected  # type: ignore[operator]
+            if operator == "<=":
+                return value <= expected  # type: ignore[operator]
+        except TypeError:
+            return False
+        return False

@@ -21,6 +21,7 @@ from .worker_score import (
     WorkerScoreTransitionStatus,
 )
 from .worker_candidate_matcher import WorkerCandidateMatcher
+from .worker_constraint_query import WorkerConstraintQuery
 from .worker_runtime import (
     AttributeName,
     AttributeValue,
@@ -65,6 +66,7 @@ __all__ = [
     "WorkerCandidateConstraint",
     "WorkerCandidateMatch",
     "WorkerCandidateMatcher",
+    "WorkerConstraintQuery",
     "WorkerDescriptor",
     "WorkerDynamicAttributeRuntime",
     "WorkerGroupDescriptor",

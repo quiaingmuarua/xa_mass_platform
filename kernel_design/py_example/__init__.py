@@ -1,6 +1,3 @@
-from .constraint_dsl import (
-    WorkerConstraintQuery,
-)
 from .kernel import (
     TimeMillis,
     HomeBucketId,
@@ -28,6 +25,7 @@ from .kernel import (
     WorkerCandidateConstraint,
     WorkerCandidateMatch,
     WorkerCandidateMatcher,
+    WorkerConstraintQuery,
     WorkerDescriptor,
     WorkerDynamicAttributeRuntime,
     WorkerGroupDescriptor,

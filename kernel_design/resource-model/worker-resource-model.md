@@ -236,7 +236,7 @@ WorkerConstraintQuery({
 })
 ```
 
-Supported fields:
+The current worker matcher context exposes these fields:
 
 ```text
 workerId
@@ -245,31 +245,53 @@ static.*
 dynamic.*
 ```
 
-`workerId` is a reserved identity predicate. It is a hard filter over candidate
-workers and only supports `$eq` / `$in`. It is not a descriptor attribute.
+These are worker-runtime owner fields, not DSL-reserved fields. `workerId` is a
+normal context value that may participate in the same DSL operators as any
+other value. It is not a descriptor attribute.
 
-`acquire_fields` is a dynamic dependency and cost-authorization declaration.
-It accepts only unique `dynamic.*` names. In v0, its field set must exactly
-equal the `dynamic.*` fields referenced by `match_rules`: an undeclared dynamic
-rule is forbidden, and an unused acquire field is forbidden. `workerId`,
-`system.*`, and `static.*` never belong in `acquire_fields` because they arrive
-with the descriptor batch.
+`acquire_fields` is a worker-matching dependency and cost-authorization
+declaration. The generic query wrapper only requires unique field paths that
+are used by `match_rules`. During worker matcher preparation, v0 additionally
+requires the set to exactly equal the `dynamic.*` fields referenced by
+`match_rules`: an undeclared dynamic rule is forbidden, and an unused acquire
+field is forbidden. `workerId`, `system.*`, and `static.*` never belong in
+`acquire_fields` because the current worker owner supplies them with the
+descriptor batch.
 
 The query validates and freezes only `acquire_fields` and `match_rules`.
-`match_rules` is the only rule map. At the start of one bounded matcher call,
-the matcher derives the first-stage `workerId` / `system.*` / `static.*` field
-set from `match_rules`; `acquire_fields` directly selects the second-stage
-dynamic fields. The query does not retain matcher indexes or execution plans.
-Invalid dependency declarations fail before matcher execution. The generic
-evaluator compares assembled flat values with selected fields from
-`match_rules`; it does not know worker descriptors, handlers, Redis, or
-scheduling state.
+`match_rules` is the only rule map. The DSL evaluator has one independent
+interface over arbitrary nested maps:
+
+```python
+ConstraintDsl.evaluate_match_rules(
+  {
+    "workerId": worker_id,
+    "system": descriptor.system_metadata,
+    "static": descriptor.static_attributes,
+    "dynamic": resolved_dynamic_values,
+  },
+  match_rules,
+)
+```
+
+It resolves a field such as `resource.traits.runtime` by walking the context map
+path. `workerId`, `system`, `static`, and `dynamic` are not DSL-reserved names.
+The current worker matcher may choose those context domains, but that is a
+worker-runtime owner decision. The evaluator does not know descriptors,
+handlers, Redis, worker fields, or scheduling state.
+
+At the start of one bounded matcher call, the matcher locally splits the same
+`match_rules` references into catalog-backed and dynamic rule maps. It first
+evaluates the catalog rules, fills `context["dynamic"]` through the declared
+`acquire_fields`, then evaluates the dynamic rules. The query does not retain
+matcher indexes or execution plans. Invalid dependency declarations fail before
+matcher execution.
 
 The matcher assembles values in two stages:
 
 ```text
 descriptor batch
-  -> workerId / system.* / static.* metadata values
+  -> workerId / system / static / empty dynamic context
   -> metadata-rule survivor pairs
   -> dynamic acquire demand grouped by field
   -> one bounded handler call per required field

@@ -3,10 +3,10 @@ from __future__ import annotations
 from typing import Mapping, Sequence
 
 from ..constraint_dsl import (
+    ConstraintDsl,
     UNRESOLVED_VALUE,
-    WorkerConstraintQuery,
-    matches_fields,
 )
+from .worker_constraint_query import WorkerConstraintQuery
 from .worker_score import WorkerId
 from .worker_runtime import (
     CandidateId,
@@ -50,6 +50,7 @@ class WorkerCandidateMatcher:
         if not candidate_constraints:
             return []
 
+        self._validate_dynamic_acquire_fields(candidate_constraints)
         self._require_dynamic_handlers(candidate_constraints)
         if not worker_ids:
             return [(candidate_id, ()) for candidate_id, _ in candidate_constraints]
@@ -58,27 +59,25 @@ class WorkerCandidateMatcher:
             worker_group_id=worker_group_id,
             worker_ids=worker_ids,
         )
-        catalog_match_fields = [
-            tuple(
-                field_name
-                for field_name in constraints.match_rules
+        catalog_rules_by_candidate = [
+            {
+                field_name: operator_map
+                for field_name, operator_map in constraints.match_rules.items()
                 if field_name not in constraints.acquire_fields
-            )
+            }
             for _, constraints in candidate_constraints
         ]
-        required_catalog_fields = tuple(
-            dict.fromkeys(
-                field_name
-                for fields in catalog_match_fields
-                for field_name in fields
-                if field_name != "workerId"
-            )
-        )
-        flat_values_by_worker = self._assemble_catalog_values(
+        dynamic_rules_by_candidate = [
+            {
+                field_name: constraints.match_rules[field_name]
+                for field_name in constraints.acquire_fields
+            }
+            for _, constraints in candidate_constraints
+        ]
+        contexts_by_worker, dynamic_values_by_worker = self._assemble_contexts(
             worker_group_id,
             worker_ids,
             descriptor_rows,
-            required_catalog_fields,
         )
 
         matched_worker_ids: list[list[WorkerId]] = [
@@ -90,13 +89,12 @@ class WorkerCandidateMatcher:
         for candidate_index, (_, constraints) in enumerate(candidate_constraints):
             for worker_id in worker_ids:
                 descriptor = descriptor_rows.get(worker_id)
-                flat_values = flat_values_by_worker.get(worker_id)
-                if descriptor is None or flat_values is None:
+                context = contexts_by_worker.get(worker_id)
+                if descriptor is None or context is None:
                     continue
-                if not matches_fields(
-                    flat_values,
-                    constraints.match_rules,
-                    catalog_match_fields[candidate_index],
+                if not ConstraintDsl.evaluate_match_rules(
+                    context,
+                    catalog_rules_by_candidate[candidate_index],
                 ):
                     continue
                 if not self._supports_dynamic_fields(descriptor, constraints):
@@ -115,15 +113,14 @@ class WorkerCandidateMatcher:
         self._append_dynamic_batches(
             worker_group_id,
             dynamic_demand_by_attribute,
-            flat_values_by_worker,
+            dynamic_values_by_worker,
         )
 
         for candidate_index, worker_id in pending_pairs:
             constraints = candidate_constraints[candidate_index][1]
-            if matches_fields(
-                flat_values_by_worker[worker_id],
-                constraints.match_rules,
-                constraints.acquire_fields,
+            if ConstraintDsl.evaluate_match_rules(
+                contexts_by_worker[worker_id],
+                dynamic_rules_by_candidate[candidate_index],
             ):
                 matched_worker_ids[candidate_index].append(worker_id)
 
@@ -149,21 +146,42 @@ class WorkerCandidateMatcher:
                 + ", ".join(sorted(missing_handlers))
             )
 
+    @staticmethod
+    def _validate_dynamic_acquire_fields(
+        candidate_constraints: Sequence[WorkerCandidateConstraint],
+    ) -> None:
+        for _, constraints in candidate_constraints:
+            acquire_fields = set(constraints.acquire_fields)
+            if any(
+                not field_name.startswith("dynamic.")
+                for field_name in acquire_fields
+            ):
+                raise ValueError(
+                    "worker matcher only acquires dynamic.* fields"
+                )
+            if any(
+                field_name.startswith("dynamic.")
+                and field_name not in acquire_fields
+                for field_name in constraints.match_rules
+            ):
+                raise ValueError(
+                    "dynamic match fields must be declared in acquire_fields"
+                )
+
     def _append_dynamic_batches(
         self,
         worker_group_id: WorkerGroupId,
         dynamic_demand_by_attribute: Mapping[str, Mapping[WorkerId, None]],
-        flat_values_by_worker: Mapping[WorkerId, dict[str, object]],
+        dynamic_values_by_worker: Mapping[WorkerId, dict[str, object]],
     ) -> None:
         for attribute_name, required_workers in dynamic_demand_by_attribute.items():
-            field_name = f"dynamic.{attribute_name}"
             query_results = self.query_dynamic_attributes_dict[attribute_name](
                 worker_group_id,
                 tuple(required_workers),
             )
             for worker_id in required_workers:
                 result = query_results.get(worker_id)
-                flat_values_by_worker[worker_id][field_name] = (
+                dynamic_values_by_worker[worker_id][attribute_name] = (
                     result.value
                     if result is not None and result.status is WorkerRuntimeStatus.OK
                     else UNRESOLVED_VALUE
@@ -180,29 +198,29 @@ class WorkerCandidateMatcher:
         )
 
     @staticmethod
-    def _assemble_catalog_values(
+    def _assemble_contexts(
         worker_group_id: WorkerGroupId,
         worker_ids: Sequence[WorkerId],
         descriptor_rows: Mapping[WorkerId, WorkerDescriptor | None],
-        required_fields: Sequence[str],
-    ) -> dict[WorkerId, dict[str, object]]:
-        values_by_worker: dict[WorkerId, dict[str, object]] = {}
+    ) -> tuple[
+        dict[WorkerId, dict[str, object]],
+        dict[WorkerId, dict[str, object]],
+    ]:
+        contexts_by_worker: dict[WorkerId, dict[str, object]] = {}
+        dynamic_values_by_worker: dict[WorkerId, dict[str, object]] = {}
         for worker_id in worker_ids:
             descriptor = descriptor_rows.get(worker_id)
             if descriptor is None or descriptor.worker_group_id != worker_group_id:
                 continue
-            values: dict[str, object] = {"workerId": worker_id}
-            for field_name in required_fields:
-                namespace, attribute_name = field_name.split(".", 1)
-                source = (
-                    descriptor.system_metadata
-                    if namespace == "system"
-                    else descriptor.static_attributes
-                )
-                if attribute_name in source:
-                    values[field_name] = source[attribute_name]
-            values_by_worker[worker_id] = values
-        return values_by_worker
+            dynamic_values: dict[str, object] = {}
+            contexts_by_worker[worker_id] = {
+                "workerId": worker_id,
+                "system": descriptor.system_metadata,
+                "static": descriptor.static_attributes,
+                "dynamic": dynamic_values,
+            }
+            dynamic_values_by_worker[worker_id] = dynamic_values
+        return contexts_by_worker, dynamic_values_by_worker
 
     @staticmethod
     def _validate_worker_ids(worker_ids: Sequence[WorkerId]) -> None:
