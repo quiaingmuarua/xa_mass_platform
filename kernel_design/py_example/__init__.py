@@ -32,6 +32,11 @@ from .kernel import (
     WorkerResourceCatalog,
     WorkerRuntimeResult,
     WorkerRuntimeStatus,
+    TaskAllocationRule,
+    TaskDescriptor,
+    TaskDescriptorRegistrationResult,
+    TaskDescriptorRegistrationStatus,
+    TaskResourceCatalog,
 )
 from .runtime_redis import (
     RedisWorkerDynamicAttributeRuntime,
@@ -78,4 +83,9 @@ __all__ = [
     "WorkerResourceCatalog",
     "WorkerRuntimeResult",
     "WorkerRuntimeStatus",
+    "TaskAllocationRule",
+    "TaskDescriptor",
+    "TaskDescriptorRegistrationResult",
+    "TaskDescriptorRegistrationStatus",
+    "TaskResourceCatalog",
 ]

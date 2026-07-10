@@ -17,18 +17,14 @@ Worker = one resource identity inside exactly one worker group
 The resource model is intentionally a short tree:
 
 ```text
-Project / workload -> allowed WorkerGroups
-Task                -> exactly one selected WorkerGroup
+Task admission      -> exactly one selected WorkerGroup
 WorkerCandidateConstraint -> worker predicates inside selected WorkerGroup
 Work / item / seed  -> worker-local EventHandler
 Transport           -> internal delivery resource
 ```
 
-`Project / workload -> allowed WorkerGroups` is operations configuration. A
-project may allow multiple worker groups.
-
-`Task -> selected WorkerGroup` is fixed at task create/admission time. In v0, a
-task selects exactly one `workerGroupId` from the project/workload allowed set.
+`Task admission -> selected WorkerGroup` is fixed at task create/admission time.
+In v0, admission accepts exactly one registered `workerGroupId`.
 The selected `workerGroupId` is immutable while the task is running. If work
 must use a different worker group, create a different task or stop/cancel and
 recreate the task; do not hot-swap worker groups during dispatch.
@@ -83,17 +79,16 @@ WorkerGroupDescriptor
 ```
 
 `workerGroupId` names a steady scheduling universe configured for operations.
-Project / workload binding chooses the worker group before task scheduling
-starts. A task inherits its project-bound `workerGroupId`; the task itself does
-not select or query worker groups during dispatch.
+Task admission fixes the worker group before task scheduling starts. The task
+does not select or query worker groups during dispatch.
 
 `attributes` are metadata/query fields. They may describe grouping, display,
 classification, policy hints, or operator-facing facts. They are not live
 worker score lease truth.
 
 `eventCodes` declares the task item event families this worker group can
-handle. It validates that the project-bound worker group is allowed to serve the
-task item's event, but it is not a per-dispatch group discovery mechanism and
+handle. It validates that the selected worker group can serve the task item's
+event, but it is not a per-dispatch group discovery mechanism and
 not proof that a specific worker is currently reachable, score-leased, or able to
 receive work.
 
@@ -123,6 +118,9 @@ WorkerDescriptor
 `workerId` is the resource identity used by worker score and assignment.
 
 `workerGroupId` is the only group relationship in v0.
+
+`workerGroupId` is globally unique. `workerId` is unique inside one
+`workerGroupId`; all worker catalog operations therefore carry both values.
 
 Worker catalog reads and updates require `workerGroupId + workerId`. A bounded
 batch contains one `workerGroupId` and many `workerIds`; callers must not submit
@@ -470,19 +468,14 @@ assignment fence.
 The stable model has three resource/handler relationships:
 
 ```text
-Project / workload -> allowed WorkerGroups
-Task                -> selected WorkerGroup
+Task admission      -> selected WorkerGroup
 WorkerCandidateConstraint -> worker predicates inside selected WorkerGroup
 Work / item / seed  -> EventHandler
 ```
 
-`Project / workload -> allowed WorkerGroups` is operations configuration. It is
-stable and should be resolved before task dispatch. Assignment-dispatch should
-not query worker groups on every scheduling round.
-
-`Task -> selected WorkerGroup` is chosen at task create/admission time from the
-allowed set. It is exactly one group in v0 and immutable while the task is
-running.
+`Task admission -> selected WorkerGroup` validates one registered group before
+task scheduling. It is exactly one group in v0 and immutable while the task is
+running. Assignment-dispatch does not query or choose groups on each round.
 
 `WorkerCandidateConstraint -> worker predicates` is worker matching inside the
 selected worker group. Its `match_rules` may constrain `workerId`, placement,
@@ -549,8 +542,8 @@ assignment-dispatch find a small set of plausible workers before runtime
 score lease. It does not decide which worker group a task may use:
 
 ```text
-project/workload binding
-  -> task inherits workerGroupId
+task admission
+  -> validates and fixes workerGroupId
 task eventCode
   -> validates against WorkerGroupDescriptor.eventCodes
 pre-bound workerGroupId
@@ -562,7 +555,7 @@ Scheduling must not stop at descriptor matches. It reads worker-runtime owner
 surfaces before producing a selected worker:
 
 ```text
-task inherited workerGroupId -> worker score home bucket
+task descriptor workerGroupId -> worker score home bucket
 worker score -> hot/recovery acquisition coordinate
 WorkerScoreCore lease / hold -> current usability/capacity/resource hold decision
 assignment-dispatch -> selected worker + work claim + deliver seed

@@ -312,7 +312,6 @@ Control-plane storage remains the owner of task shell facts:
 
 ```text
 taskId
-projectId
 taskName
 Task.status
 Task.intakeStatus
@@ -376,14 +375,15 @@ tr:{prefix}:task:score:{laneBucketId}
   score: task next-action score
 ```
 
-`laneBucketId` is the primary task-runtime partition. First slice can use:
+`laneBucketId` is an internal task-runtime partition. The first slice uses a
+deterministic low-cardinality bucket function:
 
 ```text
-laneBucketId = projectId
+laneBucketId = taskRuntimeBucket(taskId)
 ```
 
-or a deterministic low-cardinality default lane when project partitioning is
-not required. It is not a worker bucket and not a per-item shard.
+It is not product metadata, a worker bucket, or a per-item shard. Changing the
+bucket function is a runtime placement decision, not a Task model change.
 
 The score answers:
 
@@ -432,7 +432,7 @@ timestamps in metadata.
 ```json
 {
   "taskId": "task-1",
-  "laneBucketId": "project-a",
+  "laneBucketId": "lane-0",
   "dispatchIntent": {
     "workerGroupIds": ["group-a"],
     "targetWorkerId": null,
@@ -974,7 +974,7 @@ of precise claim-timeout discovery.
 ### Starvation boundary
 
 The first slice does not implement a full fairness scheduler. Fairness,
-priority weights, per-project quotas, and round-robin cursors belong to later
+priority weights, cross-scope quotas, and round-robin cursors belong to later
 `scorePolicy` work.
 
 The mechanism still needs a no-permanent-starvation floor:

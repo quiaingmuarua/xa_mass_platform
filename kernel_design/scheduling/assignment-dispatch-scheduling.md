@@ -4,6 +4,9 @@ Status: new-kernel mechanism note. This document describes the target
 assignment-dispatch scheduling plane for the clean kernel core. It is not
 current implementation truth and not an implementation roadmap.
 
+Current design state: phase-one batch allocation is being specified. No Python
+allocation interface or allocation-result storage shape is frozen yet.
+
 ## Purpose
 
 Assignment-dispatch scheduling is the bridge between task scheduling visibility,
@@ -13,10 +16,10 @@ It is not one monolithic pacer. The target design has two independent pacers:
 
 ```text
 WorkerAllocationPacer
-  task scheduling candidates -> worker constraint batch -> candidate worker plans
+  task scheduling candidates -> worker constraint batch -> allocation handoff
 
 WorkDispatchPacer
-  active task + candidate worker plan -> work claim -> deliver seed
+  dispatch-visible task + allocation handoff -> work claim -> deliver seed
 ```
 
 The separation is intentional:
@@ -33,8 +36,8 @@ to an already selected and score-leased worker.
 
 The two pacers can run at different cadence and with different batch limits.
 They are independent scheduling entries, not necessarily independent threads.
-The dispatch pacer consumes assignment plans; it must not become a second broad
-task-score scanner.
+The dispatch pacer consumes a point-readable allocation handoff for task ids
+selected by task score; it must not introduce a second global task index.
 
 ## Non-Owners
 
@@ -81,15 +84,11 @@ WorkerCandidate
   worker metadata snapshot
   score lease / hold evidence
 
-TaskWorkerAssignmentPlan
+TaskWorkerAllocationHandoff
   taskId
-  workerGroupId
-  workerCandidateConstraint
-  validationDependencySet
-  candidate workers or selected worker
-  observed task / worker fences
-  planEpoch
-  expiresAt
+  ordered worker entries
+  worker score fences
+  expiry / lease evidence when required
 
 ClaimableWorkEvidence
   taskId
@@ -102,55 +101,62 @@ TransportDeliveryPlan
   transport-local delivery evidence
 ```
 
-These are conceptual handoff shapes. The first Python kernel may implement them
-as small dataclasses. They are not public API DTOs.
+These are target vocabulary only. The current Python interface and concrete
+allocation-handoff record are not frozen.
 
-`TaskWorkerAssignmentPlan` is short-lived round evidence, not durable truth. It
-must have a fence or expiry and must be safe to discard. Current truth remains
-with task score-band, worker-runtime, work-item runtime, and transport.
+`TaskWorkerAllocationHandoff` is short-lived round evidence, not durable truth.
+It must have a fence or expiry and must be safe to discard. Current truth
+remains with task score-band, worker-runtime, work-item runtime, and transport.
 
-Worker candidates inside a plan are score-leased candidates, not owned
+If worker entries inside the handoff are score-leased, they are still not owned
 assignments. The score lease is intentionally short. If WorkDispatchPacer does
-not consume or extend it before expiry, the plan must be treated as stale.
+not consume or extend it before expiry, the handoff must be treated as stale.
 
-Worker candidate freshness is score-fenced, not version-fenced. A plan may keep
-the complete `observedWorkerScore`. It must not require assignment-dispatch to
-understand worker metadata replacement details, dirty bits, score suffixes, or
-capacity internals.
+Worker candidate freshness is score-fenced, not version-fenced. A handoff may
+keep the complete `observedWorkerScore` or leased score. It must not require
+assignment-dispatch to understand worker metadata replacement details, dirty
+bits, score suffixes, or capacity internals.
 
-`validationDependencySet` is internal evidence about which worker metadata,
-dynamic attributes, group membership facts, gates, or policy facts were used by
-`WorkerCandidateMatcher` / worker-runtime validation for this plan. It is not a
-public DTO, not a new runtime owner, and not a query API. It exists so a later
-dynamic attribute executable spec can decide whether an update can affect this
-specific plan. If a changed dependency is not in the set, it should not mark
-the plan's worker score dirty.
+`validationDependencySet` remains possible internal evidence about which worker
+metadata, dynamic attributes, group membership facts, gates, or policy facts
+were used by matching. It is not part of the current handoff contract and must
+not become a public DTO, new runtime owner, or reverse-query API.
 
 ## Pacer A: Worker Allocation
 
-WorkerAllocationPacer starts from task scheduling visibility and produces
-candidate worker plans. It does not claim work and does not create deliver
-seeds.
+WorkerAllocationPacer starts from task scheduling visibility and produces the
+transient allocation handoff. It does not claim work and does not create
+deliver seeds.
+
+The current design slice starts from a bounded task-id batch. It does not need a
+complete Task aggregate. It batch-reads stable allocation metadata from
+`TaskResourceCatalog` and builds matcher constraints directly from the inline
+allocation rule. The interface must not be frozen before the phase-two handoff
+is explicit.
 
 Mainline:
 
 ```text
-1. choose task score scan range and allocation batch limit
-2. acquire task candidates from task score-band
-3. validate task candidate and policy snapshot
-4. partition task candidates by the pre-bound workerGroupId
-5. build a WorkerCandidateConstraint map for each workerGroupId from candidate
-   priority, worker limit, match rules, and explicit dynamic acquire fields
-6. derive home bucket / resource universe from the pre-bound workerGroupId
-7. discover a bounded worker candidate batch and keep
+1. acquire one bounded task-id batch from task score-band
+2. batch-read TaskDescriptor rows from TaskResourceCatalog
+3. build one WorkerCandidateConstraint for each accepted task id
+4. partition tasks by `workerGroupId`
+5. build one `taskId -> WorkerCandidateConstraint` map for each partition
+6. let worker runtime resolve the group-local home bucket, discover one bounded
+   worker candidate batch, and keep
    observedWorkerScoreByWorkerId as assignment-dispatch sidecar evidence
-8. match workers against the priority-ordered candidate constraints through
+7. match workers against the priority-ordered task constraints through
    worker-runtime
-9. apply priority / ranking rules
-10. optionally score-lease the selected worker or produce a fenced candidate plan
-11. classify evidence and request owner score rewrites for no-match,
+8. for PRE_DISPATCH_VISIBLE tasks, validate
+   `matchedWorkerCount >= runningVisibleMinimumCandidateWorkers`
+9. request the task score owner transition satisfied tasks to RUNNING_VISIBLE;
+   already RUNNING_VISIBLE tasks skip this first-start condition
+10. classify eligible matched worker rows and perform the still-to-be-frozen
+    worker lease step
+11. process allocation results into the transient task-to-worker handoff
+12. request owner score rewrites for no-match,
     contention, or stale cases
-12. publish TaskWorkerAssignmentPlan for the dispatch pacer
+13. let the dispatch-work round consume the handoff by task id
 ```
 
 WorkerAllocationPacer answers:
@@ -191,9 +197,9 @@ budgets only the dynamic fields used by `match_rules`. Worker matcher
 preparation fails when a dynamic rule is undeclared or an acquire field is
 unused. Assignment-dispatch must not add speculative fields for later ranking.
 
-Project / workload configuration declares the allowed worker groups. Task
-create/admission selects exactly one `workerGroupId` from that allowed set. The
-task's selected `workerGroupId` is immutable while the task is running.
+Task create/admission validates and fixes exactly one registered
+`workerGroupId`. The task's selected `workerGroupId` is immutable while the task
+is running.
 Assignment-dispatch may validate `eventCode` against the selected group
 declaration, but it must not query worker groups, switch worker groups, or do
 fallback group selection as a hot-path discovery step. `eventCode` does not
@@ -230,7 +236,7 @@ keeps the observed score from worker score acquire as
 First version discovery should be simple:
 
 ```text
-homeBucketId = pre-bound workerGroupId or owner-defined worker home bucket
+homeBucketId = worker-runtime-owned lookup from workerGroupId
 worker_score.acquire_hot_acquire_candidates(homeBucketId, limit)
 observedWorkerScoreByWorkerId = {workerId: observedWorkerScore, ...}
 worker_candidate_matcher.match_worker_candidates(workerGroupId, workerIds, candidateConstraints)
@@ -244,7 +250,7 @@ This mode may scan more workers than an indexed design, but it has one clear
 truth source: the worker score bucket plus worker-runtime validation.
 
 The work item's `eventCode` routes to a worker-local `EventHandler` after a
-worker is selected. It is not a worker group selector. If the project/task needs
+worker is selected. It is not a worker group selector. If one use case needs
 multiple worker groups for different event families, model that as multiple
 tasks or explicit task creation choices, not one task that dispatches across
 groups.
@@ -292,7 +298,7 @@ acquire_due_hot_score_lease(observedWorkerScore, leaseUntil)
   may clear dirty because validation happened before the CAS write.
 
 renew_active_hot_score_lease(observedLeasedWorkerScore, leaseUntil)
-  before work claim / dispatch when an assignment plan already holds a short
+  before work claim / dispatch when an allocation handoff already holds a short
   active lease. It uses observed-score CAS and returns STALE on dirty because it
   does not re-run matching.
 ```
@@ -305,23 +311,24 @@ If worker group membership, eventCode declaration, match metadata, dispatch
 gate, resource policy, capacity declaration, or dynamic capacity projection
 changes, worker-runtime decides whether the existing score lease remains valid.
 The next due-score lease must use the post-match observed score. The next active
-score lease renewal must return STALE when dirty is present, forcing the plan to
-be discarded and matched again.
+score lease renewal must return STALE when dirty is present, forcing the handoff
+to be discarded and matched again.
 
 ## Pacer B: Work Dispatch
 
-WorkDispatchPacer starts from active assignment plans and current task work. It
-does not do broad worker discovery. It may revalidate or finalize worker
-score lease before claiming work.
+WorkDispatchPacer starts from task ids selected by
+`acquire_dispatch_work_tasks(limit)`, their point-readable allocation handoff,
+and current task work. It does not do broad worker discovery. It may revalidate
+or finalize worker score lease before claiming work.
 
 Mainline:
 
 ```text
-1. read active TaskWorkerAssignmentPlan entries
-2. validate plan fence / expiry
+1. acquire dispatch-visible task ids from task score-band
+2. point-read and validate each task allocation handoff fence / expiry
 3. point-read and revalidate task score is still dispatch-visible
 4. renew selected worker active score lease with observed-score CAS; dirty or
-   stale means discard plan and return to worker matching
+   stale means discard the handoff and return to worker matching
 5. claim current work hash rows from the work-item owner
 6. release or compensate worker score lease if claim fails
 7. resolve transport delivery lane for the selected worker
@@ -354,7 +361,7 @@ score lease evidence to avoid consuming work with no viable dispatch path.
 Claim sequence:
 
 ```text
-assignment plan selected
+task allocation handoff selected
   -> worker active score lease renewed with observed-score CAS
   -> work hash claim writes current occupancy
   -> deliver seed produced
@@ -456,7 +463,7 @@ Stale candidates are expected:
 ```text
 task score due but task gate closed
 worker score due but worker metadata stale
-assignment plan expires before work claim
+allocation handoff expires before work claim
 worker candidate lease expires before work claim
 worker score lease revalidation fails after allocation
 worker score-leased but work claim fails
@@ -473,106 +480,259 @@ Rules:
   hash claim evidence;
 - no scheduling round may retry by reinterpreting transport identifiers as
   worker-selection facts;
-- no assignment plan may outlive its fence/expiry as a hidden worker truth.
+- no allocation handoff may outlive its fence/expiry as hidden worker truth.
 
-## Python Kernel First Cut
+## Current Design Slice: Batch Task-Worker Allocation
 
-The first Python kernel should prove the two-pacer handoff without Redis,
-background threads, or external queues:
+This section is the active design contract for the next Python interface. It is
+deliberately more concrete than the target-plane description above, but it does
+not freeze storage or method signatures yet.
+
+### Main Decision
+
+Worker allocation is a batch join:
 
 ```text
-allocate_workers_once(task_range, task_limit, worker_limit)
-  -> list[TaskWorkerAssignmentPlan]
-
-dispatch_work_once(plan_limit)
-  -> list[DeliverSeed]
+bounded task ids
+  -> taskId -> WorkerCandidateConstraint
+  -> partition by workerGroupId
+  -> worker runtime resolves its home bucket
+  -> bounded workers for that partition
+  -> WorkerCandidateMatcher
+  -> taskId -> matched worker ids
+  -> allocation-result processing
 ```
 
-Required collaborators:
+For the first cut:
+
+```text
+CandidateId = TaskId
+```
+
+Do not call `WorkerCandidateMatcher` once per task. Per-task calls lose dynamic
+attribute batching and allow the same worker to be consumed independently by
+multiple tasks in what should be one allocation round. One matcher call must see
+all task constraints competing for the same worker partition.
+
+`taskBatchLimit` and `workerScanLimit` are independent controls. The task limit
+caps scheduling demand inspected in one round. The worker limit caps the worker
+universe read for one `workerGroupId` partition.
+
+### Required Task-Runtime Semantics
+
+The stable allocation metadata is defined by the
+[Task Resource Model](../resource-model/task-resource-model.md).
+
+The existing score primitive can provide the first bounded ids:
 
 ```text
 task_score.acquire_active_task_candidates(limit)
-task_score.get_score_states(task_ids)
-task_score.rewrite_same_band_time_millis(...)
-task_score.rewrite_observed_same_band_suffix(...)
-task_score.rewrite_score(...)
-task_score.close_score(...)
-task_score.release_observed_score_hold(...)
-
-worker_score.acquire_hot_acquire_candidates(home_bucket_id, limit)
-worker_score.rewrite_current_score(...)
-worker_score.acquire_due_hot_score_lease(...)
-worker_score.renew_active_hot_score_lease(...)
-worker_score.release_score_hold(...)
-
-for workerGroupId, taskCandidates in assignment_dispatch.partition_by_worker_group(tasks):
-  workerCandidates = worker_score.acquire_hot_acquire_candidates(home_bucket_id, limit)
-  workerIds = [workerId for workerId, observedWorkerScore in workerCandidates]
-  observedWorkerScoreByWorkerId = {workerId: observedWorkerScore, ...}
-  candidateConstraints = {candidateId: WorkerCandidateConstraint(...), ...}
-  candidateMatches = worker_candidate_matcher.match_worker_candidates(
-    workerGroupId,
-    workerIds,
-    candidateConstraints
-  )
-  for candidateId, matchedWorkerIds in candidateMatches.items():
-    selectedWorkerId = assignment_dispatch.rank_candidates(
-      candidateId,
-      matchedWorkerIds,
-      rankingPolicy
-    )
-    observedWorkerScore = observedWorkerScoreByWorkerId[selectedWorkerId]
-    leaseResult = worker_score.acquire_due_hot_score_lease(
-      home_bucket_id,
-      selectedWorkerId,
-      observedWorkerScore,
-      workerScoreLeaseExpiresAt
-    )
-    if leaseResult is stale:
-      classify stale and do not create an assignment plan
-    if leaseResult is transitioned:
-      create assignment plan with leaseResult.score as observedLeasedWorkerScore
-
-assignment_plans.put(plan)
-assignment_plans.acquire_due(limit)
-assignment_plans.complete_or_expire(plan)
-
-work_items.peek_claimable(task_id)
-leaseRenewResult = worker_score.renew_active_hot_score_lease(
-  home_bucket_id,
-  selectedWorkerId,
-  observedLeasedWorkerScore,
-  nextWorkerScoreLeaseExpiresAt
-)
-if leaseRenewResult is stale:
-  discard plan and re-enter worker matching
-work_items.claim(task_id, worker_id)
-if work claim fails after worker score lease:
-  worker_score.release_score_hold(
-    home_bucket_id,
-    worker_id,
-    leaseRenewResult.score,
-    releaseTimeMillis
-  )
-
-transport.resolve_delivery(worker_id)
+  -> taskIds
 ```
 
-This handoff is still prose only. The next executable kernel slice should add a
-minimal in-memory assignment-dispatch spec under `py_example` before result
-routing grows new behavior.
+Assignment-dispatch then needs one batch read that can resolve, for every task:
 
-Do not add background loops, external queues, or Redis in the first cut. Prove
-the owner handoff first. The two pacers may run as two method calls in a
-single-process executable spec; "pacer" means scheduling entry and cadence, not
-necessarily a thread.
+```text
+taskId
+workerGroupId
+candidate priority
+config["runningVisibleMinimumCandidateWorkers"]
+config["priority"]
+allocationRule.acquireFields
+allocationRule.matchRules
+```
+
+This does not require a complete Task aggregate or a task-runtime allocation
+projection. `TaskResourceCatalog.load_task_allocation_descriptors(taskIds)`
+returns the stable allocation metadata defined by the Task Resource Model. It is
+not a general Task read surface.
+
+The returned config is the descriptor snapshot resolved at registration.
+Assignment-dispatch does not query an external configuration source during a
+scheduling round.
+
+Task-runtime must not evaluate worker descriptors or dynamic worker values.
+Worker-runtime must not read Task metadata to construct constraints.
+
+### Inline Constraint Boundary
+
+`constraint_dsl` owns rule validation and evaluation. It remains independent of
+Task and Worker models. Assignment-dispatch performs only the direct value
+mapping:
+
+```text
+TaskDescriptor
+  -> config["priority"] + allocationRule
+  -> taskId -> WorkerCandidateConstraint
+```
+
+Assignment-dispatch parses and validates the two config values it owns;
+`acquire_fields` and `match_rules` come directly from the loaded allocation
+rule. One uniform allocation configuration supplies
+`WorkerCandidateConstraint.limit`, defaulting to `100` in the first cut. There
+is no allocation-rule name, handler registry, or separate rule-resolution
+owner.
+
+### Batch Round Pseudocode
+
+```python
+def allocate_candidate_workers(task_batch_limit, worker_scan_limit):
+    task_ids = task_score.acquire_active_task_candidates(
+        limit=task_batch_limit,
+    )
+    task_score_states = task_score.get_score_states(task_ids=task_ids)
+    task_descriptors = task_resource_catalog.load_task_allocation_descriptors(
+        task_ids=task_ids,
+    )
+    grouped_descriptors = group_by_worker_group(task_descriptors)
+
+    for worker_group_id, grouped_tasks in grouped_descriptors:
+        candidate_constraints = build_candidate_constraints(
+            grouped_tasks,
+            maximum_candidate_workers=allocation_config.maximum_candidate_workers,
+        )
+        home_bucket_id = worker_runtime.resolve_home_bucket(worker_group_id)
+
+        worker_candidates = worker_score.acquire_hot_acquire_candidates(
+            home_bucket_id=home_bucket_id,
+            limit=worker_scan_limit,
+        )
+        observed_worker_scores = {
+            worker_id: observed_score
+            for worker_id, observed_score in worker_candidates
+        }
+
+        matches = worker_candidate_matcher.match_worker_candidates(
+            worker_group_id=worker_group_id,
+            worker_ids=list(observed_worker_scores),
+            candidate_constraints=candidate_constraints,
+        )
+
+        running_visible_results = evaluate_running_visible_condition(
+            grouped_tasks=grouped_tasks,
+            task_score_states=task_score_states,
+            matches=matches,
+        )
+
+        allocation_results = resolve_worker_allocations(
+            grouped_tasks=grouped_tasks,
+            running_visible_results=running_visible_results,
+            matches=matches,
+            observed_worker_scores=observed_worker_scores,
+        )
+        process_worker_allocation_results(
+            grouped_tasks=grouped_tasks,
+            allocation_results=allocation_results,
+        )
+```
+
+The names in this pseudocode are conceptual. They are not committed Python
+interfaces.
+
+### Allocation Result Handoff
+
+`process_worker_allocation_results` is not presentation or diagnostics. It is
+the phase-one to phase-two scheduling handoff and therefore needs explicit
+runtime semantics.
+
+The current candidate shape is one ordered collection per task:
+
+```text
+taskId -> [worker allocation entry, ...]
+```
+
+A physical Redis `LIST` per task is a possible implementation, but the key type
+is not frozen. Before selecting `LIST`, the design must prove the required
+replace, consume, expiry, and compensation operations.
+
+The handoff is transient assignment-dispatch evidence. It is not Task truth,
+Worker truth, or a durable assignment record. It must not store full Task or
+Worker descriptors, dynamic values, or decoded score internals.
+
+At minimum, each worker entry needs enough information to preserve the worker
+score fence:
+
+```text
+workerId
+complete observedWorkerScore or complete leasedWorkerScore
+leaseUntilMillis when phase one already acquired a lease
+```
+
+Whether the store contains matched workers or already leased workers is not yet
+decided:
+
+```text
+Option A: store matched worker + observed score
+  phase two revalidates and acquires the worker lease
+  lower reservation pressure, but a wider stale window
+
+Option B: acquire worker lease before store
+  store worker + leased score
+  stronger handoff fence, but store failure requires release compensation and
+  leasing multiple workers for one task may over-reserve capacity
+```
+
+This decision must precede the kernel interface because it changes both the
+allocation result and the phase-two input.
+
+### Phase-Two Discovery
+
+Do not add an allocation queue or a second global task index in the first cut.
+Task score remains the scheduling pacer:
+
+```text
+task_score.acquire_dispatch_work_tasks(limit)
+  -> taskIds
+for each taskId
+  -> point-read taskId worker allocation handoff
+  -> validate fence / lease
+  -> claim work
+  -> create deliver seed
+```
+
+The per-task collection therefore does not need to discover tasks. It only
+provides the point-readable handoff after task score selects the task.
+
+### Store Semantics Still To Freeze
+
+Before a Redis key or Python interface is written, decide:
+
+```text
+replace versus append when allocation runs again for the same task
+ordered fallback list versus multiple concurrently usable workers
+matched score versus leased score in each entry
+TTL / expiry source
+empty result: delete, empty collection, or explicit short-lived marker
+atomic consume behavior for phase two
+store failure compensation after worker lease
+task terminal / pause cleanup of remaining entries
+```
+
+Repeated allocation must be idempotent. A retry must not append duplicate worker
+entries or leave an older leased score ahead of a newer fence.
+
+### Interface Freeze Condition
+
+Do not recreate `WorkerAllocationPacer` until all of these are answered:
+
+```text
+1. grouping key and independent task/worker limits
+2. match-only versus lease-before-store result
+3. per-task handoff record and replace/consume semantics
+4. task-score transition or validation between allocation and dispatch-work
+```
+
+Only then should method signatures be extracted from the pseudocode. No Task
+aggregate, assignment-plan store abstraction, ranking SPI, Redis key, or
+WorkDispatch implementation should be introduced earlier.
 
 ## Guardrails
 
 - Do not collapse worker allocation and work dispatch into one implicit
   `schedule_once` path.
-- Do not let WorkDispatchPacer perform broad task-score acquisition. It consumes
-  assignment plans and point-validates task score before claim.
+- Do not let WorkDispatchPacer introduce a second task index. It uses
+  `acquire_dispatch_work_tasks(limit)` and point-reads the allocation handoff
+  before claim.
 - Do not let assignment-dispatch refresh task score because append happened.
 - Do not keep a task-score pagination cursor; use bounded range + limit queries
   and consume dispatch-visible candidates by score rewrite, band move, close,

@@ -62,18 +62,22 @@ For worker-runtime work:
 7. [py_example/tests/test_worker_runtime_models.py](py_example/tests/test_worker_runtime_models.py)
 8. [py_example/tests/test_redis_zset_worker_score.py](py_example/tests/test_redis_zset_worker_score.py)
 
-For task score-band work:
+For task runtime or task score-band work:
 
-1. [scheduling/task-score-band-scheduling.md](scheduling/task-score-band-scheduling.md)
-2. [runtime-redis/score-band-task-runtime-redis-shape.md](runtime-redis/score-band-task-runtime-redis-shape.md)
-3. [py_example/kernel/task_score_band.py](py_example/kernel/task_score_band.py)
-4. [py_example/runtime_redis/task_score_band_zset.py](py_example/runtime_redis/task_score_band_zset.py)
-5. [py_example/tests/test_redis_zset_task_score_band.py](py_example/tests/test_redis_zset_task_score_band.py)
+1. [resource-model/task-resource-model.md](resource-model/task-resource-model.md)
+2. [scheduling/task-score-band-scheduling.md](scheduling/task-score-band-scheduling.md)
+3. [runtime-redis/score-band-task-runtime-redis-shape.md](runtime-redis/score-band-task-runtime-redis-shape.md)
+4. [py_example/kernel/task_runtime.py](py_example/kernel/task_runtime.py)
+5. [py_example/kernel/task_score_band.py](py_example/kernel/task_score_band.py)
+6. [py_example/runtime_redis/task_score_band_zset.py](py_example/runtime_redis/task_score_band_zset.py)
+7. [py_example/tests/test_task_runtime_models.py](py_example/tests/test_task_runtime_models.py)
+8. [py_example/tests/test_redis_zset_task_score_band.py](py_example/tests/test_redis_zset_task_score_band.py)
 
 For result or dispatch work:
 
-1. [scheduling/assignment-dispatch-scheduling.md](scheduling/assignment-dispatch-scheduling.md)
-2. [scheduling/result-routing-scheduling.md](scheduling/result-routing-scheduling.md)
+1. [resource-model/task-resource-model.md](resource-model/task-resource-model.md)
+2. [scheduling/assignment-dispatch-scheduling.md](scheduling/assignment-dispatch-scheduling.md)
+3. [scheduling/result-routing-scheduling.md](scheduling/result-routing-scheduling.md)
 
 ## 3. Owner Map
 

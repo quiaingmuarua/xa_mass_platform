@@ -215,6 +215,9 @@ what exists today.
 - [Worker Resource Model](resource-model/worker-resource-model.md)
   - v0 metadata/query projection for worker groups, workers, and dynamic
     attribute allowlists.
+- [Task Resource Model](resource-model/task-resource-model.md)
+  - v0 task allocation metadata, start conditions, allocation-rule routing,
+    and bounded task descriptor reads.
 
 ## Boundary
 

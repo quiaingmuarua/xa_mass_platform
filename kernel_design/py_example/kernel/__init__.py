@@ -37,6 +37,13 @@ from .worker_runtime import (
     WorkerRuntimeResult,
     WorkerRuntimeStatus,
 )
+from .task_runtime import (
+    TaskAllocationRule,
+    TaskDescriptor,
+    TaskDescriptorRegistrationResult,
+    TaskDescriptorRegistrationStatus,
+    TaskResourceCatalog,
+)
 
 __all__ = [
     "TimeMillis",
@@ -72,4 +79,9 @@ __all__ = [
     "WorkerResourceCatalog",
     "WorkerRuntimeResult",
     "WorkerRuntimeStatus",
+    "TaskAllocationRule",
+    "TaskDescriptor",
+    "TaskDescriptorRegistrationResult",
+    "TaskDescriptorRegistrationStatus",
+    "TaskResourceCatalog",
 ]
