@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Callable, Mapping, Sequence
 
-from .worker_constraint_query import WorkerConstraintQuery
+from ..constraint_dsl import WorkerConstraintQuery
 from .worker_score import TimeMillis, WorkerId
 
 

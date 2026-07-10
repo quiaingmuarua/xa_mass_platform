@@ -34,7 +34,7 @@ must use a different worker group, create a different task or stop/cancel and
 recreate the task; do not hot-swap worker groups during dispatch.
 
 `WorkerConstraintQuery -> worker identity / attribute predicates` is matching
-inside the selected worker group. It narrows workers by reserved `worker.id`,
+inside the selected worker group. It narrows workers by reserved `workerId`,
 placement, static/system attributes, or explicitly supported projected dynamic
 query attributes.
 
@@ -212,11 +212,11 @@ Unsupported operators are explicit omissions until an executable spec proves
 the need; they should not be replaced with ad hoc maps, raw JSON interpretation,
 or owner-mixed shortcuts.
 
-The query is an implicit `AND` over fields:
+The query is an implicit `AND` over validated flat fields:
 
 ```python
 WorkerConstraintQuery({
-  "worker.id": {"$in": ["worker-1", "worker-2"]},
+  "workerId": {"$in": ["worker-1", "worker-2"]},
   "system.tier": {"$eq": "premium"},
   "static.runtime": {"$in": ["python", "java"]},
   "dynamic.battery": {"$gte": 20},
@@ -226,14 +226,37 @@ WorkerConstraintQuery({
 Supported fields:
 
 ```text
-worker.id
+workerId
 system.*
 static.*
 dynamic.*
 ```
 
-`worker.id` is a reserved identity predicate. It is a hard filter over candidate
+`workerId` is a reserved identity predicate. It is a hard filter over candidate
 workers and only supports `$eq` / `$in`. It is not a descriptor attribute.
+
+The query validates and freezes its complete structure during construction. It
+also precompiles `system.*`, `static.*`, and `dynamic.*` into category field
+indexes. The matcher uses those indexes to assemble one flat value map per
+bounded worker from only the fields required by applicable candidate queries:
+
+```text
+workerId
+system.tier
+static.runtime
+dynamic.battery
+```
+
+System and static values come directly from their descriptor maps. Dynamic
+values are resolved by attribute handler and inserted into the same flat map.
+The generic evaluator compares that assembled map with each validated query; it
+does not know worker descriptors, handlers, Redis, or scheduling state.
+
+The matcher assembles this map in two stages. It first adds `workerId`, required
+system fields, and required static fields, then removes queries that fail those
+cheap predicates. It resolves and appends only the dynamic fields required by
+the remaining queries. Each required dynamic attribute is point-read at most
+once per worker inside one matcher call.
 
 `workerGroupId` is not a query field. It remains an outer parameter because it
 chooses the worker universe, score bucket, and runtime namespace.
@@ -385,12 +408,12 @@ allowed set. It is exactly one group in v0 and immutable while the task is
 running.
 
 `WorkerConstraintQuery -> worker identity / attribute predicates` is worker
-matching inside the selected worker group. The query may constrain `worker.id`,
+matching inside the selected worker group. The query may constrain `workerId`,
 placement, static attributes, system attributes, or explicitly supported
 projected dynamic attributes. These constraints narrow worker candidates; they
 do not replace worker-runtime score lease.
 
-`worker.id` inside `WorkerConstraintQuery` is only a hard filter inside the
+`workerId` inside `WorkerConstraintQuery` is only a hard filter inside the
 task's selected `workerGroupId`. It still must pass worker score acquire and
 worker-runtime score lease. It is not a worker group selector and not a transport
 target.

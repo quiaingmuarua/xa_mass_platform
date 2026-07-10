@@ -173,7 +173,7 @@ Worker constraint query is compiled from worker identity and attribute match
 needs. It is applied before worker score lease:
 
 ```text
-worker.id $eq / $in, if explicitly constrained
+workerId $eq / $in, if explicitly constrained
 system/static/dynamic attribute predicates
 placement / attribute constraints
 ```
@@ -233,7 +233,7 @@ Optional later discovery modes:
 
 ```text
 attribute / placement index
-worker.id point lookup
+workerId point lookup
 precomputed constraint bucket
 ```
 

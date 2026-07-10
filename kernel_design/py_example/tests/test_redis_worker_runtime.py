@@ -332,7 +332,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
                     "premium-python-battery",
                     WorkerConstraintQuery(
                         {
-                            "worker.id": {"$in": ["worker-1", "outside"]},
+                            "workerId": {"$in": ["worker-1", "outside"]},
                             "system.tier": {"$eq": "premium"},
                             "static.runtime": {"$eq": "python"},
                             "dynamic.battery": {"$gte": 20},
@@ -363,7 +363,10 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             },
         )
         constraints = [
-            ("needs-battery", WorkerConstraintQuery({"dynamic.battery": {"$gte": 20}}))
+            (
+                "needs-battery",
+                WorkerConstraintQuery({"dynamic.battery": {"$gte": 20}}),
+            )
         ]
 
         self.assertEqual(
@@ -480,8 +483,8 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
                     "worker-1-only",
                     WorkerConstraintQuery(
                         {
+                            "workerId": {"$eq": "worker-1"},
                             "dynamic.battery": {"$gte": 20},
-                            "worker.id": {"$eq": "worker-1"},
                         }
                     ),
                 )
@@ -490,6 +493,40 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
 
         self.assertEqual(rows, [("worker-1-only", ("worker-1",))])
         self.assertEqual(queried_worker_ids, ["worker-1"])
+
+    def test_candidate_matcher_rejects_metadata_before_dynamic_read(self) -> None:
+        self.register_group()
+        self.register_worker(
+            self.worker_descriptor(
+                "worker-1",
+                static_attributes={"runtime": "java"},
+            )
+        )
+        queried_worker_ids: list[str] = []
+
+        def query_battery(worker_id: str) -> DynamicAttributeReadResult:
+            queried_worker_ids.append(worker_id)
+            return DynamicAttributeReadResult(WorkerRuntimeStatus.OK, value=90)
+
+        matcher = WorkerCandidateMatcher(self.catalog, {"battery": query_battery})
+        rows = matcher.match_worker_candidates(
+            worker_group_id="image-workers",
+            worker_ids=["worker-1"],
+            candidate_constraints=[
+                (
+                    "python-with-battery",
+                    WorkerConstraintQuery(
+                        {
+                            "static.runtime": {"$eq": "python"},
+                            "dynamic.battery": {"$gte": 20},
+                        }
+                    ),
+                )
+            ],
+        )
+
+        self.assertEqual(rows, [("python-with-battery", ())])
+        self.assertEqual(queried_worker_ids, [])
 
     def test_candidate_matcher_rejects_duplicate_protocol_ids(self) -> None:
         matcher = WorkerCandidateMatcher(self.catalog, {})

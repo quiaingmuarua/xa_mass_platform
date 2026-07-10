@@ -1,3 +1,6 @@
+from .constraint_dsl import (
+    WorkerConstraintQuery,
+)
 from .kernel import (
     TimeMillis,
     HomeBucketId,
@@ -17,9 +20,6 @@ from .kernel import (
     WorkerScoreState,
     WorkerScoreTransitionResult,
     WorkerScoreTransitionStatus,
-    ConstraintFieldResolution,
-    ConstraintFieldResolver,
-    evaluate_constraint_operator_map,
     AttributeName,
     AttributeValue,
     CandidateId,
@@ -28,7 +28,6 @@ from .kernel import (
     WorkerCandidateConstraint,
     WorkerCandidateMatch,
     WorkerCandidateMatcher,
-    WorkerConstraintQuery,
     WorkerDescriptor,
     WorkerDynamicAttributeRuntime,
     WorkerGroupDescriptor,
@@ -67,9 +66,6 @@ __all__ = [
     "WorkerScoreState",
     "WorkerScoreTransitionResult",
     "WorkerScoreTransitionStatus",
-    "ConstraintFieldResolution",
-    "ConstraintFieldResolver",
-    "evaluate_constraint_operator_map",
     "AttributeName",
     "AttributeValue",
     "CandidateId",

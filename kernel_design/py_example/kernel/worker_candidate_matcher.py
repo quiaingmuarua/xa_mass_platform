@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from typing import Sequence
 
-from .constraint_evaluator import ConstraintFieldResolution
-from .worker_constraint_query import WorkerConstraintQuery
+from ..constraint_dsl import (
+    UNRESOLVED_VALUE,
+    WorkerConstraintQuery,
+    matches_mapping,
+)
 from .worker_score import WorkerId
 from .worker_runtime import (
-    AttributeName,
     CandidateId,
     DynamicAttributeQueryRegistry,
     WorkerCandidateConstraint,
@@ -16,12 +18,6 @@ from .worker_runtime import (
     WorkerResourceCatalog,
     WorkerRuntimeStatus,
 )
-
-
-DynamicResolutionCache = dict[
-    tuple[WorkerId, AttributeName],
-    ConstraintFieldResolution,
-]
 
 
 class WorkerCandidateMatcher:
@@ -63,85 +59,103 @@ class WorkerCandidateMatcher:
             for worker_id, descriptor in descriptor_rows.items()
             if descriptor is not None and descriptor.worker_group_id == worker_group_id
         }
-        dynamic_cache: DynamicResolutionCache = {}
+        matched_worker_ids: dict[CandidateId, list[WorkerId]] = {
+            candidate_id: [] for candidate_id, _ in candidate_constraints
+        }
+        for worker_id in worker_ids:
+            descriptor = descriptors.get(worker_id)
+            if descriptor is None:
+                continue
 
-        matches: list[WorkerCandidateMatch] = []
-        for candidate_id, constraints in candidate_constraints:
-            worker_id_filter = constraints.worker_id_filter()
-            matched_worker_ids = tuple(
-                worker_id
-                for worker_id in worker_ids
-                if (worker_id_filter is None or worker_id in worker_id_filter)
-                and self._matches_worker(
-                    worker_id,
-                    descriptors.get(worker_id),
-                    constraints,
-                    dynamic_cache,
-                )
-            )
-            matches.append((candidate_id, matched_worker_ids))
-        return matches
+            applicable_constraints = [
+                (candidate_id, constraints)
+                for candidate_id, constraints in candidate_constraints
+                if self._worker_id_matches(worker_id, constraints)
+            ]
+            if not applicable_constraints:
+                continue
 
-    def _matches_worker(
-        self,
-        worker_id: WorkerId,
-        descriptor: WorkerDescriptor | None,
-        constraints: WorkerConstraintQuery,
-        dynamic_cache: DynamicResolutionCache,
-    ) -> bool:
-        if descriptor is None:
-            return False
-
-        return constraints.matches(
-            lambda field_name: self._resolve_field_value(
+            flat_values = self._assemble_non_dynamic_flat_values(
                 worker_id,
                 descriptor,
-                field_name,
-                dynamic_cache,
+                applicable_constraints,
             )
-        )
+            metadata_matches = [
+                (candidate_id, constraints)
+                for candidate_id, constraints in applicable_constraints
+                if matches_mapping(flat_values, constraints.non_dynamic_predicates)
+            ]
+            if not metadata_matches:
+                continue
 
-    def _resolve_field_value(
+            self._append_dynamic_flat_values(
+                worker_id,
+                descriptor,
+                metadata_matches,
+                flat_values,
+            )
+            for candidate_id, constraints in metadata_matches:
+                if matches_mapping(flat_values, constraints.dynamic_predicates):
+                    matched_worker_ids[candidate_id].append(worker_id)
+
+        return [
+            (candidate_id, tuple(matched_worker_ids[candidate_id]))
+            for candidate_id, _ in candidate_constraints
+        ]
+
+    @staticmethod
+    def _worker_id_matches(
+        worker_id: WorkerId,
+        constraints: WorkerConstraintQuery,
+    ) -> bool:
+        worker_id_filter = constraints.worker_id_filter()
+        return worker_id_filter is None or worker_id in worker_id_filter
+
+    @staticmethod
+    def _assemble_non_dynamic_flat_values(
+        worker_id: WorkerId,
+        descriptor: WorkerDescriptor,
+        applicable_constraints: Sequence[WorkerCandidateConstraint],
+    ) -> dict[str, object]:
+        system_fields: dict[str, str] = {}
+        static_fields: dict[str, str] = {}
+        for _, constraints in applicable_constraints:
+            system_fields.update(constraints.system_fields)
+            static_fields.update(constraints.static_fields)
+
+        flat_values: dict[str, object] = {"workerId": worker_id}
+        for field_name, attribute_name in system_fields.items():
+            if attribute_name in descriptor.system_metadata:
+                flat_values[field_name] = descriptor.system_metadata[attribute_name]
+        for field_name, attribute_name in static_fields.items():
+            if attribute_name in descriptor.static_attributes:
+                flat_values[field_name] = descriptor.static_attributes[attribute_name]
+        return flat_values
+
+    def _append_dynamic_flat_values(
         self,
         worker_id: WorkerId,
         descriptor: WorkerDescriptor,
-        field_name: str,
-        dynamic_cache: DynamicResolutionCache,
-    ) -> ConstraintFieldResolution:
-        if field_name == "worker.id":
-            return ConstraintFieldResolution.present_value(worker_id)
-        if field_name.startswith("system."):
-            key = field_name.removeprefix("system.")
-            if key not in descriptor.system_metadata:
-                return ConstraintFieldResolution.missing()
-            return ConstraintFieldResolution.present_value(descriptor.system_metadata[key])
-        if field_name.startswith("static."):
-            key = field_name.removeprefix("static.")
-            if key not in descriptor.static_attributes:
-                return ConstraintFieldResolution.missing()
-            return ConstraintFieldResolution.present_value(descriptor.static_attributes[key])
-        if field_name.startswith("dynamic."):
-            attr_name = field_name.removeprefix("dynamic.")
-            if attr_name not in descriptor.dynamic_attribute_names:
-                return ConstraintFieldResolution.missing()
+        applicable_constraints: Sequence[WorkerCandidateConstraint],
+        flat_values: dict[str, object],
+    ) -> None:
+        dynamic_fields: dict[str, str] = {}
+        for _, constraints in applicable_constraints:
+            dynamic_fields.update(constraints.dynamic_fields)
 
-            cache_key = (worker_id, attr_name)
-            cached = dynamic_cache.get(cache_key)
-            if cached is not None:
-                return cached
-
-            query_fn = self.query_dynamic_attributes_dict.get(attr_name)
+        for field_name, attribute_name in dynamic_fields.items():
+            if attribute_name not in descriptor.dynamic_attribute_names:
+                continue
+            query_fn = self.query_dynamic_attributes_dict.get(attribute_name)
             if query_fn is None:
-                resolution = ConstraintFieldResolution.unresolved()
-            else:
-                result = query_fn(worker_id)
-                if result.status is WorkerRuntimeStatus.OK:
-                    resolution = ConstraintFieldResolution.present_value(result.value)
-                else:
-                    resolution = ConstraintFieldResolution.unresolved()
-            dynamic_cache[cache_key] = resolution
-            return resolution
-        return ConstraintFieldResolution.missing()
+                flat_values[field_name] = UNRESOLVED_VALUE
+                continue
+            result = query_fn(worker_id)
+            flat_values[field_name] = (
+                result.value
+                if result.status is WorkerRuntimeStatus.OK
+                else UNRESOLVED_VALUE
+            )
 
     @staticmethod
     def _validate_worker_ids(worker_ids: Sequence[WorkerId]) -> None:
