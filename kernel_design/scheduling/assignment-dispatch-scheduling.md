@@ -140,7 +140,7 @@ Mainline:
 3. validate task candidate and policy snapshot
 4. partition task candidates by the pre-bound workerGroupId
 5. compile an ordered WorkerConstraintQuery batch for each workerGroupId from
-   worker identity / attribute constraints
+   worker identity / attribute constraints and explicit dynamic acquire fields
 6. derive home bucket / resource universe from the pre-bound workerGroupId
 7. discover a bounded worker candidate batch and keep
    observedWorkerScoreByWorkerId as assignment-dispatch sidecar evidence
@@ -170,13 +170,18 @@ is the result final?
 ### Worker Constraint Query
 
 Worker constraint query is compiled from worker identity and attribute match
-needs. It is applied before worker score lease:
+needs. Dynamic reads are declared explicitly because they are handler-owned IO,
+not descriptor fields. The query is applied before worker score lease:
 
 ```text
-workerId $eq / $in, if explicitly constrained
-system/static/dynamic attribute predicates
-placement / attribute constraints
+acquire_fields = exact dynamic.* dependency set
+match_rules = workerId + system.* + static.* + dynamic.* predicates
 ```
+
+`acquire_fields` is not a value projection or ranking input. It authorizes and
+budgets only the dynamic fields used by `match_rules`. Query construction fails
+when a dynamic rule is undeclared or an acquire field is unused. Assignment-
+dispatch must not add speculative fields for later ranking.
 
 Project / workload configuration declares the allowed worker groups. Task
 create/admission selects exactly one `workerGroupId` from that allowed set. The
@@ -199,6 +204,10 @@ assignment-dispatch must partition task candidates by `workerGroupId` before
 calling the matcher. The matcher returns one `(candidateId, matchedWorkerIds)`
 entry for every input candidate in candidate order; empty `matchedWorkerIds`
 means no match.
+The matcher first evaluates descriptor-backed rules, then groups dynamic reads
+for surviving worker-candidate pairs. Each dynamic handler receives at most one
+ordered, unique worker batch per matcher call. A worker that does not declare a
+required field is rejected before dynamic IO.
 Worker score lease / hold validation must use concrete worker ids and score
 fences. It must not re-run the query DSL.
 The matcher does not return or own `observedWorkerScore`; assignment-dispatch

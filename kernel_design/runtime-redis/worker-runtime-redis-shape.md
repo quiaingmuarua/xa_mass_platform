@@ -381,10 +381,14 @@ Dynamic attribute query flow for matching:
 
 ```text
 WorkerCandidateMatcher receives bounded workerIds and WorkerConstraintQuery
+query construction requires acquire_fields == dynamic fields in match_rules
+missing declared dynamic handler is a configuration error
 descriptor predicates read workers:{workerGroupId}
 metadata predicates prune workers before dynamic IO
-dynamic predicates are grouped by attribute
+workers not declaring a required dynamic field are rejected before handler IO
+surviving dynamic dependencies are grouped by attribute
 each dynamic handler batch-reads only its required bounded workerIds once
+missing / unresolved handler rows fail only their worker-candidate pair
 matcher returns only matched worker ids
 assignment-dispatch keeps observedScore sidecar from score acquire
 ```
@@ -399,8 +403,9 @@ score dirty only after a later executable spec introduces a real persisted
 assignment plan or hot score lease continuation that can consume dirty.
 
 First slice should not create a dynamic-attribute global query service. Use
-bounded point reads during candidate matching. Add attribute fanout indexes only
-when a concrete executable spec proves that candidate discovery needs them.
+bounded handler-owned batch reads during candidate matching. Add attribute
+fanout indexes only when a concrete executable spec proves that candidate
+discovery needs them.
 
 ## Dirty Boundary
 

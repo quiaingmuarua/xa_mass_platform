@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from typing import Sequence
 
 from kernel_design.py_example import (
     RedisWorkerDynamicAttributeRuntime,
@@ -12,7 +13,23 @@ from kernel_design.py_example import (
     WorkerRuntimeResult,
     WorkerRuntimeStatus,
 )
-from kernel_design.py_example.kernel.worker_runtime import DynamicAttributeReadResult
+from kernel_design.py_example.kernel.worker_runtime import (
+    DynamicAttributeQueryFn,
+    DynamicAttributeReadResult,
+)
+
+
+def worker_query(
+    match_rules: dict[str, object] | None = None,
+    *,
+    acquire_fields: tuple[str, ...] = (),
+) -> WorkerConstraintQuery:
+    return WorkerConstraintQuery(
+        {
+            "acquire_fields": acquire_fields,
+            "match_rules": {} if match_rules is None else match_rules,
+        }
+    )
 
 
 class FakeRedis:
@@ -385,13 +402,14 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
                 ("all", WorkerConstraintQuery.empty()),
                 (
                     "premium-python-battery",
-                    WorkerConstraintQuery(
+                    worker_query(
                         {
                             "workerId": {"$in": ["worker-1", "outside"]},
                             "system.tier": {"$eq": "premium"},
                             "static.runtime": {"$eq": "python"},
                             "dynamic.battery": {"$gte": 20},
-                        }
+                        },
+                        acquire_fields=("dynamic.battery",),
                     ),
                 ),
             ],
@@ -405,10 +423,33 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             ],
         )
 
-    def test_candidate_matcher_fails_missing_dynamic_handler_or_value(self) -> None:
+    def test_candidate_matcher_rejects_missing_dynamic_handler(self) -> None:
         self.register_group()
         self.register_worker(self.worker_descriptor("worker-1"))
         matcher_without_handler = WorkerCandidateMatcher(self.catalog, {})
+        constraints = [
+            (
+                "needs-battery",
+                worker_query(
+                    {"dynamic.battery": {"$gte": 20}},
+                    acquire_fields=("dynamic.battery",),
+                ),
+            )
+        ]
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "missing dynamic attribute query handlers: battery",
+        ):
+            matcher_without_handler.match_worker_candidates(
+                worker_group_id="image-workers",
+                worker_ids=["worker-1"],
+                candidate_constraints=constraints,
+            )
+
+    def test_candidate_matcher_fails_closed_for_unresolved_dynamic_value(self) -> None:
+        self.register_group()
+        self.register_worker(self.worker_descriptor("worker-1"))
         matcher_without_value = WorkerCandidateMatcher(
             self.catalog,
             {
@@ -423,18 +464,13 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         constraints = [
             (
                 "needs-battery",
-                WorkerConstraintQuery({"dynamic.battery": {"$gte": 20}}),
+                worker_query(
+                    {"dynamic.battery": {"$gte": 20}},
+                    acquire_fields=("dynamic.battery",),
+                ),
             )
         ]
 
-        self.assertEqual(
-            [("needs-battery", ())],
-            matcher_without_handler.match_worker_candidates(
-                worker_group_id="image-workers",
-                worker_ids=["worker-1"],
-                candidate_constraints=constraints,
-            ),
-        )
         self.assertEqual(
             [("needs-battery", ())],
             matcher_without_value.match_worker_candidates(
@@ -488,7 +524,10 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             candidate_constraints=[
                 (
                     "needs-battery",
-                    WorkerConstraintQuery({"dynamic.battery": {"$gte": 20}}),
+                    worker_query(
+                        {"dynamic.battery": {"$gte": 20}},
+                        acquire_fields=("dynamic.battery",),
+                    ),
                 )
             ],
         )
@@ -522,11 +561,17 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             candidate_constraints=[
                 (
                     "candidate-1",
-                    WorkerConstraintQuery({"dynamic.battery": {"$gte": 20}}),
+                    worker_query(
+                        {"dynamic.battery": {"$gte": 20}},
+                        acquire_fields=("dynamic.battery",),
+                    ),
                 ),
                 (
                     "candidate-2",
-                    WorkerConstraintQuery({"dynamic.battery": {"$lte": 100}}),
+                    worker_query(
+                        {"dynamic.battery": {"$lte": 100}},
+                        acquire_fields=("dynamic.battery",),
+                    ),
                 ),
             ],
         )
@@ -541,6 +586,89 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         self.assertEqual(
             query_batches,
             [("image-workers", ("worker-1", "worker-2"))],
+        )
+
+    def test_candidate_matcher_batches_only_metadata_survivors_per_field(self) -> None:
+        self.register_group()
+        dynamic_names = frozenset({"battery", "network"})
+        self.register_worker(
+            self.worker_descriptor(
+                "worker-1",
+                static_attributes={"runtime": "python"},
+                dynamic_attribute_names=dynamic_names,
+            )
+        )
+        self.register_worker(
+            self.worker_descriptor(
+                "worker-2",
+                static_attributes={"runtime": "java"},
+                dynamic_attribute_names=dynamic_names,
+            )
+        )
+        query_batches: list[tuple[str, tuple[str, ...]]] = []
+
+        def query_attribute(
+            attribute_name: str,
+        ) -> DynamicAttributeQueryFn:
+            def query(
+                worker_group_id: str,
+                worker_ids: Sequence[str],
+            ) -> dict[str, DynamicAttributeReadResult]:
+                query_batches.append((attribute_name, tuple(worker_ids)))
+                return {
+                    worker_id: DynamicAttributeReadResult(
+                        WorkerRuntimeStatus.OK,
+                        value=90 if attribute_name == "battery" else "wifi",
+                    )
+                    for worker_id in worker_ids
+                }
+
+            return query
+
+        matcher = WorkerCandidateMatcher(
+            self.catalog,
+            {
+                "battery": query_attribute("battery"),
+                "network": query_attribute("network"),
+            },
+        )
+        rows = matcher.match_worker_candidates(
+            worker_group_id="image-workers",
+            worker_ids=["worker-2", "worker-1"],
+            candidate_constraints=[
+                (
+                    "battery",
+                    worker_query(
+                        {"dynamic.battery": {"$gte": 20}},
+                        acquire_fields=("dynamic.battery",),
+                    ),
+                ),
+                (
+                    "python-network",
+                    worker_query(
+                        {
+                            "static.runtime": {"$eq": "python"},
+                            "dynamic.network": {"$eq": "wifi"},
+                        },
+                        acquire_fields=("dynamic.network",),
+                    ),
+                ),
+            ],
+        )
+
+        self.assertEqual(
+            rows,
+            [
+                ("battery", ("worker-2", "worker-1")),
+                ("python-network", ("worker-1",)),
+            ],
+        )
+        self.assertEqual(
+            query_batches,
+            [
+                ("battery", ("worker-2", "worker-1")),
+                ("network", ("worker-1",)),
+            ],
         )
 
     def test_candidate_matcher_fails_closed_for_missing_batch_rows(self) -> None:
@@ -567,7 +695,10 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             candidate_constraints=[
                 (
                     "needs-battery",
-                    WorkerConstraintQuery({"dynamic.battery": {"$gte": 20}}),
+                    worker_query(
+                        {"dynamic.battery": {"$gte": 20}},
+                        acquire_fields=("dynamic.battery",),
+                    ),
                 )
             ],
         )
@@ -600,11 +731,12 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             candidate_constraints=[
                 (
                     "worker-1-only",
-                    WorkerConstraintQuery(
+                    worker_query(
                         {
                             "workerId": {"$eq": "worker-1"},
                             "dynamic.battery": {"$gte": 20},
-                        }
+                        },
+                        acquire_fields=("dynamic.battery",),
                     ),
                 )
             ],
@@ -643,11 +775,12 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             candidate_constraints=[
                 (
                     "python-with-battery",
-                    WorkerConstraintQuery(
+                    worker_query(
                         {
                             "static.runtime": {"$eq": "python"},
                             "dynamic.battery": {"$gte": 20},
-                        }
+                        },
+                        acquire_fields=("dynamic.battery",),
                     ),
                 )
             ],

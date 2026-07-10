@@ -219,14 +219,20 @@ Unsupported operators are explicit omissions until an executable spec proves
 the need; they should not be replaced with ad hoc maps, raw JSON interpretation,
 or owner-mixed shortcuts.
 
-The query is an implicit `AND` over validated flat fields:
+The query separates dynamic read authorization from the implicit-`AND` match
+rules:
 
 ```python
 WorkerConstraintQuery({
-  "workerId": {"$in": ["worker-1", "worker-2"]},
-  "system.tier": {"$eq": "premium"},
-  "static.runtime": {"$in": ["python", "java"]},
-  "dynamic.battery": {"$gte": 20},
+  "acquire_fields": [
+    "dynamic.battery",
+  ],
+  "match_rules": {
+    "workerId": {"$in": ["worker-1", "worker-2"]},
+    "system.tier": {"$eq": "premium"},
+    "static.runtime": {"$in": ["python", "java"]},
+    "dynamic.battery": {"$gte": 20},
+  },
 })
 ```
 
@@ -242,28 +248,36 @@ dynamic.*
 `workerId` is a reserved identity predicate. It is a hard filter over candidate
 workers and only supports `$eq` / `$in`. It is not a descriptor attribute.
 
+`acquire_fields` is a dynamic dependency and cost-authorization declaration.
+It accepts only unique `dynamic.*` names. In v0, its field set must exactly
+equal the `dynamic.*` fields referenced by `match_rules`: an undeclared dynamic
+rule is forbidden, and an unused acquire field is forbidden. `workerId`,
+`system.*`, and `static.*` never belong in `acquire_fields` because they arrive
+with the descriptor batch.
+
 The query validates and freezes its complete structure during construction. It
-also precompiles `system.*`, `static.*`, and `dynamic.*` into category field
-indexes. The matcher uses those indexes to assemble one flat value map per
-bounded worker from only the fields required by applicable candidate queries:
+precompiles metadata rules, dynamic rules, and category field indexes. Invalid
+dependency declarations fail before matcher execution. The generic evaluator
+compares assembled flat values with those compiled rules; it does not know
+worker descriptors, handlers, Redis, or scheduling state.
+
+The matcher assembles values in two stages:
 
 ```text
-workerId
-system.tier
-static.runtime
-dynamic.battery
+descriptor batch
+  -> workerId / system.* / static.* metadata values
+  -> metadata-rule survivor pairs
+  -> dynamic acquire demand grouped by field
+  -> one bounded handler call per required field
+  -> dynamic-rule final match over survivor pairs
 ```
 
-System and static values come directly from their descriptor maps. Dynamic
-values are resolved by attribute handler and inserted into the same flat map.
-The generic evaluator compares that assembled map with each validated query; it
-does not know worker descriptors, handlers, Redis, or scheduling state.
-
-The matcher assembles this map in two stages. It first adds `workerId`, required
-system fields, and required static fields, then removes queries that fail those
-cheap predicates. It resolves and appends only the dynamic fields required by
-the remaining queries. It groups those reads by dynamic attribute and invokes
-each attribute handler at most once per matcher call:
+Before dynamic IO, the matcher requires every declared dynamic field to have a
+registered query handler and checks each surviving worker's
+`dynamicAttributeNames`. A missing handler is a matcher configuration error. A
+worker that does not declare the field is rejected for that candidate without
+calling the handler. A missing or unresolved handler result fails only that
+worker-candidate pair.
 
 ```text
 query_dynamic_attribute(workerGroupId, boundedWorkerIds)
@@ -272,7 +286,9 @@ query_dynamic_attribute(workerGroupId, boundedWorkerIds)
 
 The handler may implement this with `HMGET`, `ZMSCORE`, bitmap operations, or
 another owner-specific bounded batch read. It must not discover workers outside
-the supplied ids.
+the supplied ids. Each declared field is called at most once per matcher call,
+and its worker batch contains only ordered, unique metadata survivors that
+declared support for that field.
 
 `workerGroupId` is not a query field. It remains an outer parameter because it
 chooses the worker universe, score bucket, and runtime namespace.
@@ -437,9 +453,11 @@ worker-runtime score lease. It is not a worker group selector and not a transpor
 target.
 
 Dynamic attribute matching is deliberately narrow in v0. Assignment-dispatch
-must not perform arbitrary dynamic-attribute multi-index queries. The default
-path is owner-approved candidate matching batch-reading the dynamic attribute
-owner's current values for supplied worker ids before score lease. If a later
+must not perform arbitrary dynamic-attribute multi-index queries. Each
+`WorkerConstraintQuery` explicitly declares its dynamic read dependencies in
+`acquire_fields`; the matcher validates the declaration, prefilters supplied
+worker ids by descriptor rules, then batch-reads the dynamic attribute owner's
+current values before score lease. If a later
 executable spec needs candidate discovery such as `battery > 20`, the dynamic
 attribute query function must expose a bounded candidate index explicitly.
 

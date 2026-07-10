@@ -1,13 +1,8 @@
 from __future__ import annotations
 
-from heapq import merge
 from typing import Mapping, Sequence
 
-from ..constraint_dsl import (
-    UNRESOLVED_VALUE,
-    WorkerConstraintQuery,
-    matches_mapping,
-)
+from ..constraint_dsl import UNRESOLVED_VALUE, WorkerConstraintQuery, matches_mapping
 from .worker_score import WorkerId
 from .worker_runtime import (
     CandidateId,
@@ -24,9 +19,9 @@ from .worker_runtime import (
 class WorkerCandidateMatcher:
     """Storage-independent bounded worker candidate matcher.
 
-    One call performs one descriptor batch read and at most one dynamic-owner
-    batch read per required dynamic attribute. It does not discover workers,
-    rank them, carry observed scores, or create score leases.
+    Descriptor predicates prune candidate-worker pairs before dynamic reads.
+    Each declared dynamic attribute is then batch-read at most once for the
+    workers still needed by those surviving pairs.
     """
 
     def __init__(
@@ -50,6 +45,8 @@ class WorkerCandidateMatcher:
         self._validate_candidate_ids(candidate_constraints)
         if not candidate_constraints:
             return []
+
+        self._require_dynamic_handlers(candidate_constraints)
         if not worker_ids:
             return [(candidate_id, ()) for candidate_id, _ in candidate_constraints]
 
@@ -60,95 +57,90 @@ class WorkerCandidateMatcher:
         system_fields, static_fields = self._collect_descriptor_fields(
             candidate_constraints
         )
-        unconstrained_indices, constrained_indices_by_worker = (
-            self._index_candidate_constraints(worker_ids, candidate_constraints)
-        )
-
-        flat_values_by_worker: dict[WorkerId, dict[str, object]] = {}
-        metadata_matches_by_worker: dict[WorkerId, tuple[int, ...]] = {}
-        dynamic_worker_ids: dict[str, list[WorkerId]] = {}
-
-        for worker_id in worker_ids:
-            descriptor = descriptor_rows.get(worker_id)
-            if descriptor is None or descriptor.worker_group_id != worker_group_id:
-                continue
-
-            explicit_indices = constrained_indices_by_worker.get(worker_id, ())
-            if not unconstrained_indices and not explicit_indices:
-                continue
-            applicable_indices = (
-                merge(unconstrained_indices, explicit_indices)
-                if explicit_indices
-                else iter(unconstrained_indices)
-            )
-            flat_values = self._assemble_non_dynamic_flat_values(
-                worker_id,
-                descriptor,
-                system_fields,
-                static_fields,
-            )
-            metadata_matches = tuple(
-                candidate_index
-                for candidate_index in applicable_indices
-                if matches_mapping(
-                    flat_values,
-                    candidate_constraints[candidate_index][1].non_dynamic_predicates,
-                )
-            )
-            if not metadata_matches:
-                continue
-
-            flat_values_by_worker[worker_id] = flat_values
-            metadata_matches_by_worker[worker_id] = metadata_matches
-            required_dynamic_fields: dict[str, str] = {}
-            for candidate_index in metadata_matches:
-                required_dynamic_fields.update(
-                    candidate_constraints[candidate_index][1].dynamic_fields
-                )
-            for attribute_name in required_dynamic_fields.values():
-                if attribute_name in descriptor.dynamic_attribute_names:
-                    dynamic_worker_ids.setdefault(attribute_name, []).append(worker_id)
-
-        self._append_dynamic_batches(
+        flat_values_by_worker = self._assemble_metadata_values(
             worker_group_id,
-            dynamic_worker_ids,
-            flat_values_by_worker,
+            worker_ids,
+            descriptor_rows,
+            system_fields,
+            static_fields,
         )
 
         matched_worker_ids: list[list[WorkerId]] = [
             [] for _ in candidate_constraints
         ]
-        for worker_id in worker_ids:
-            metadata_matches = metadata_matches_by_worker.get(worker_id)
-            if metadata_matches is None:
-                continue
-            flat_values = flat_values_by_worker[worker_id]
-            for candidate_index in metadata_matches:
-                constraints = candidate_constraints[candidate_index][1]
-                if matches_mapping(flat_values, constraints.dynamic_predicates):
+        pending_pairs: list[tuple[int, WorkerId]] = []
+        dynamic_demand_by_attribute: dict[str, dict[WorkerId, None]] = {}
+
+        for candidate_index, (_, constraints) in enumerate(candidate_constraints):
+            for worker_id in worker_ids:
+                descriptor = descriptor_rows.get(worker_id)
+                flat_values = flat_values_by_worker.get(worker_id)
+                if descriptor is None or flat_values is None:
+                    continue
+                if not matches_mapping(flat_values, constraints.metadata_rules):
+                    continue
+                if not self._supports_dynamic_fields(descriptor, constraints):
+                    continue
+                if not constraints.dynamic_rules:
                     matched_worker_ids[candidate_index].append(worker_id)
+                    continue
+
+                pending_pairs.append((candidate_index, worker_id))
+                for field_name in constraints.acquire_fields:
+                    attribute_name = constraints.dynamic_fields[field_name]
+                    dynamic_demand_by_attribute.setdefault(attribute_name, {})[
+                        worker_id
+                    ] = None
+
+        self._append_dynamic_batches(
+            worker_group_id,
+            dynamic_demand_by_attribute,
+            flat_values_by_worker,
+        )
+
+        for candidate_index, worker_id in pending_pairs:
+            constraints = candidate_constraints[candidate_index][1]
+            if matches_mapping(
+                flat_values_by_worker[worker_id],
+                constraints.dynamic_rules,
+            ):
+                matched_worker_ids[candidate_index].append(worker_id)
 
         return [
             (candidate_id, tuple(matched_worker_ids[candidate_index]))
             for candidate_index, (candidate_id, _) in enumerate(candidate_constraints)
         ]
 
+    def _require_dynamic_handlers(
+        self,
+        candidate_constraints: Sequence[WorkerCandidateConstraint],
+    ) -> None:
+        missing_handlers = {
+            constraints.dynamic_fields[field_name]
+            for _, constraints in candidate_constraints
+            for field_name in constraints.acquire_fields
+            if constraints.dynamic_fields[field_name]
+            not in self.query_dynamic_attributes_dict
+        }
+        if missing_handlers:
+            raise ValueError(
+                "missing dynamic attribute query handlers: "
+                + ", ".join(sorted(missing_handlers))
+            )
+
     def _append_dynamic_batches(
         self,
         worker_group_id: WorkerGroupId,
-        dynamic_worker_ids: Mapping[str, Sequence[WorkerId]],
+        dynamic_demand_by_attribute: Mapping[str, Mapping[WorkerId, None]],
         flat_values_by_worker: Mapping[WorkerId, dict[str, object]],
     ) -> None:
-        for attribute_name, required_worker_ids in dynamic_worker_ids.items():
+        for attribute_name, required_workers in dynamic_demand_by_attribute.items():
             field_name = f"dynamic.{attribute_name}"
-            query_fn = self.query_dynamic_attributes_dict.get(attribute_name)
-            if query_fn is None:
-                for worker_id in required_worker_ids:
-                    flat_values_by_worker[worker_id][field_name] = UNRESOLVED_VALUE
-                continue
-
-            query_results = query_fn(worker_group_id, tuple(required_worker_ids))
-            for worker_id in required_worker_ids:
+            query_results = self.query_dynamic_attributes_dict[attribute_name](
+                worker_group_id,
+                tuple(required_workers),
+            )
+            for worker_id in required_workers:
                 result = query_results.get(worker_id)
                 flat_values_by_worker[worker_id][field_name] = (
                     result.value
@@ -157,27 +149,14 @@ class WorkerCandidateMatcher:
                 )
 
     @staticmethod
-    def _index_candidate_constraints(
-        worker_ids: Sequence[WorkerId],
-        candidate_constraints: Sequence[WorkerCandidateConstraint],
-    ) -> tuple[tuple[int, ...], Mapping[WorkerId, tuple[int, ...]]]:
-        requested_worker_ids = set(worker_ids)
-        unconstrained_indices: list[int] = []
-        constrained_indices: dict[WorkerId, list[int]] = {}
-        for candidate_index, (_, constraints) in enumerate(candidate_constraints):
-            worker_id_filter = constraints.worker_id_filter()
-            if worker_id_filter is None:
-                unconstrained_indices.append(candidate_index)
-                continue
-            for worker_id in worker_id_filter:
-                if worker_id in requested_worker_ids:
-                    constrained_indices.setdefault(worker_id, []).append(candidate_index)
-        return (
-            tuple(unconstrained_indices),
-            {
-                worker_id: tuple(candidate_indices)
-                for worker_id, candidate_indices in constrained_indices.items()
-            },
+    def _supports_dynamic_fields(
+        descriptor: WorkerDescriptor,
+        constraints: WorkerConstraintQuery,
+    ) -> bool:
+        return all(
+            constraints.dynamic_fields[field_name]
+            in descriptor.dynamic_attribute_names
+            for field_name in constraints.acquire_fields
         )
 
     @staticmethod
@@ -191,8 +170,30 @@ class WorkerCandidateMatcher:
             static_fields.update(constraints.static_fields)
         return system_fields, static_fields
 
+    @classmethod
+    def _assemble_metadata_values(
+        cls,
+        worker_group_id: WorkerGroupId,
+        worker_ids: Sequence[WorkerId],
+        descriptor_rows: Mapping[WorkerId, WorkerDescriptor | None],
+        system_fields: Mapping[str, str],
+        static_fields: Mapping[str, str],
+    ) -> dict[WorkerId, dict[str, object]]:
+        values_by_worker: dict[WorkerId, dict[str, object]] = {}
+        for worker_id in worker_ids:
+            descriptor = descriptor_rows.get(worker_id)
+            if descriptor is None or descriptor.worker_group_id != worker_group_id:
+                continue
+            values_by_worker[worker_id] = cls._assemble_worker_metadata_values(
+                worker_id,
+                descriptor,
+                system_fields,
+                static_fields,
+            )
+        return values_by_worker
+
     @staticmethod
-    def _assemble_non_dynamic_flat_values(
+    def _assemble_worker_metadata_values(
         worker_id: WorkerId,
         descriptor: WorkerDescriptor,
         system_fields: Mapping[str, str],
