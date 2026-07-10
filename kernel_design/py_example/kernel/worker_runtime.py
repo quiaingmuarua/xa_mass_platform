@@ -23,7 +23,6 @@ class WorkerCandidateConstraint:
 
     priority: int
     limit: int
-    acquire_fields: tuple[str, ...]
     match_rules: Mapping[str, object]
 
 

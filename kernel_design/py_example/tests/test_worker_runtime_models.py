@@ -23,13 +23,12 @@ class WorkerRuntimeModelTest(unittest.TestCase):
         constraint = WorkerCandidateConstraint(
             priority=100,
             limit=2,
-            acquire_fields=("dynamic.battery",),
             match_rules={"dynamic.battery": {"$gte": 20}},
         )
 
         self.assertEqual(
             {field.name for field in fields(WorkerCandidateConstraint)},
-            {"priority", "limit", "acquire_fields", "match_rules"},
+            {"priority", "limit", "match_rules"},
         )
         self.assertEqual(constraint.priority, 100)
         self.assertEqual(constraint.limit, 2)

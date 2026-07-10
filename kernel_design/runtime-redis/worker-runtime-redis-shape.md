@@ -381,9 +381,9 @@ Dynamic attribute query flow for matching:
 
 ```text
 WorkerCandidateMatcher receives bounded workerIds and a candidate constraint map
-each WorkerCandidateConstraint carries priority, limit, acquire_fields, and match_rules
+each WorkerCandidateConstraint carries priority, limit, and match_rules
 match_rules is a structured map compiled by the independent constraint DSL
-worker matcher preparation requires acquire_fields == dynamic fields in match_rules
+worker matcher preparation derives dynamic fields from match_rules
 missing declared dynamic handler is a configuration error
 descriptors read workers:{workerGroupId} once
 candidate order is priority descending, then candidateId ascending

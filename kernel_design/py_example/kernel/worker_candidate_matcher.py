@@ -104,23 +104,10 @@ class WorkerCandidateMatcher:
             if constraints.limit <= 0:
                 raise ValueError("candidate limit must be positive")
             match_rules = ConstraintDsl.compile_match_rules(constraints.match_rules)
-            acquire_fields = set(constraints.acquire_fields)
-            if len(acquire_fields) != len(constraints.acquire_fields):
-                raise ValueError("acquire_fields must be unique")
-            if not acquire_fields.issubset(match_rules):
-                raise ValueError("every acquire field must be used by match_rules")
-            if any(not field.startswith("dynamic.") for field in acquire_fields):
-                raise ValueError("worker matcher only acquires dynamic.* fields")
-            if any(
-                field.startswith("dynamic.") and field not in acquire_fields
-                for field in match_rules
-            ):
-                raise ValueError(
-                    "dynamic match fields must be declared in acquire_fields"
-                )
-            for field_name in constraints.acquire_fields:
-                attribute_name = field_name.removeprefix("dynamic.")
-                required_attributes.setdefault(attribute_name, None)
+            for field_name in match_rules:
+                domain, separator, attribute_name = field_name.partition(".")
+                if separator and domain == "dynamic":
+                    required_attributes.setdefault(attribute_name, None)
             candidates.append((candidate_id, constraints, match_rules))
 
         return candidates, tuple(required_attributes)

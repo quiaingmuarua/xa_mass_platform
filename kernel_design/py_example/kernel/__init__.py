@@ -38,7 +38,6 @@ from .worker_runtime import (
     WorkerRuntimeStatus,
 )
 from .task_runtime import (
-    TaskAllocationRule,
     TaskDescriptor,
     TaskDescriptorRegistrationResult,
     TaskDescriptorRegistrationStatus,
@@ -79,7 +78,6 @@ __all__ = [
     "WorkerResourceCatalog",
     "WorkerRuntimeResult",
     "WorkerRuntimeStatus",
-    "TaskAllocationRule",
     "TaskDescriptor",
     "TaskDescriptorRegistrationResult",
     "TaskDescriptorRegistrationStatus",

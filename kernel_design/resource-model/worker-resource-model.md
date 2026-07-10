@@ -209,7 +209,7 @@ hold.
 
 `WorkerCandidateConstraint` is the matcher input owned by
 assignment-dispatch. It combines candidate consumption priority, explicit
-per-call worker limit, dynamic read dependencies, and one DSL rule map. It is
+per-call worker limit, and one DSL rule map. It is
 not a task policy owner, worker-group selector, score lease contract, or handler
 routing contract.
 
@@ -222,7 +222,6 @@ candidate_constraints = {
   "task-1": WorkerCandidateConstraint(
     priority=100,
     limit=2,
-    acquire_fields=("dynamic.battery",),
     match_rules={
       "workerId": {"$in": ["worker-1", "worker-2"]},
       "system.tier": {"$eq": "premium"},
@@ -246,13 +245,10 @@ These are worker-runtime owner fields, not DSL-reserved fields. `workerId` is a
 normal context value that may participate in the same DSL operators as any
 other value. It is not a descriptor attribute.
 
-`acquire_fields` is a worker-matching dependency and cost-authorization
-declaration. During worker matcher preparation, v0 requires the set to exactly
-equal the `dynamic.*` fields referenced by
-`match_rules`: an undeclared dynamic rule is forbidden, and an unused acquire
-field is forbidden. `workerId`, `system.*`, and `static.*` never belong in
-`acquire_fields` because the current worker owner supplies them with the
-descriptor batch.
+The matcher derives dynamic read dependencies from the compiled `dynamic.*`
+rule keys. `workerId`, `system.*`, and `static.*` are already supplied by the
+descriptor batch and require no handler read. The derived dependency union is
+internal matcher state, not a caller-provided constraint field.
 
 `priority` controls worker consumption across candidate constraints. Larger
 values run first; equal values are ordered by `candidateId` ascending. Map
@@ -286,17 +282,16 @@ DSL-reserved names. The current worker matcher may choose those context domains,
 but that is a worker-runtime owner decision. The evaluator does not know
 descriptors, handlers, Redis, worker fields, or scheduling state.
 
-At the start of one bounded matcher call, the matcher validates the declared
-`acquire_fields`, compiles every `match_rules` map once, orders candidates by
-priority, builds the ordered dynamic-field union, and batch-reads each field
-once. The compiled rules are evaluated against one temporary context for the
-current worker. Invalid dependency declarations fail before dynamic IO.
+At the start of one bounded matcher call, the matcher compiles every
+`match_rules` map once, orders candidates by priority, derives the ordered
+dynamic-field union, and batch-reads each field once. The compiled rules are
+evaluated against one temporary context for the current worker.
 
 The matcher then consumes worker ids in caller-supplied order:
 
 ```text
 descriptor batch
-  -> ordered acquire-field union
+  -> dynamic.* rule-key union
   -> one bounded handler call per required field
   -> for each workerId
        build one temporary context
@@ -489,9 +484,9 @@ score lease. It is not a worker group selector and not a transport target.
 
 Dynamic attribute matching is deliberately narrow in v0. Assignment-dispatch
 must not perform arbitrary dynamic-attribute multi-index queries. Each
-`WorkerCandidateConstraint` explicitly declares its dynamic read dependencies
-in `acquire_fields`; the matcher validates the declaration and batch-reads each
-field for bounded workers whose descriptors declare support. The acquired
+`WorkerCandidateConstraint.match_rules` map declares the predicates; the
+matcher derives its `dynamic.*` dependencies and batch-reads each field for
+bounded workers whose descriptors declare support. The acquired
 values are read only while evaluating the current worker context. If a later
 executable spec needs candidate discovery such as `battery > 20`, the dynamic
 attribute query function must expose a bounded candidate index explicitly.
@@ -507,7 +502,7 @@ match_worker_candidates(
 ```
 
 The input map makes candidate identity unique. Each value carries explicit
-`priority`, `limit`, `acquire_fields`, and map-shaped `match_rules`. The matcher
+`priority`, `limit`, and map-shaped `match_rules`. The matcher
 sorts by priority descending and `candidateId` ascending, then each worker is
 consumed by the first matching candidate with remaining capacity and cannot
 appear in another candidate result during the same call. A matcher call handles exactly one selected

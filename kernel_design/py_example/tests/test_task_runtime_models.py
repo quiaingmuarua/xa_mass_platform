@@ -6,7 +6,6 @@ from dataclasses import fields
 
 import kernel_design.py_example as py_example
 from kernel_design.py_example import (
-    TaskAllocationRule,
     TaskDescriptor,
     TaskDescriptorRegistrationResult,
     TaskDescriptorRegistrationStatus,
@@ -19,10 +18,7 @@ class TaskRuntimeModelTest(unittest.TestCase):
         descriptor = TaskDescriptor(
             task_id="task-1",
             worker_group_id="workers-a",
-            allocation_rule=TaskAllocationRule(
-                acquire_fields=("dynamic.battery",),
-                match_rules={"dynamic.battery": {"$gte": 20}},
-            ),
+            allocation_rule={"dynamic.battery": {"$gte": 20}},
             config={
                 "priority": "80",
                 "runningVisibleMinimumCandidateWorkers": "10",
@@ -32,10 +28,6 @@ class TaskRuntimeModelTest(unittest.TestCase):
         self.assertEqual(
             {field.name for field in fields(TaskDescriptor)},
             {"task_id", "worker_group_id", "allocation_rule", "config"},
-        )
-        self.assertEqual(
-            {field.name for field in fields(TaskAllocationRule)},
-            {"acquire_fields", "match_rules"},
         )
         self.assertEqual(descriptor.config["priority"], "80")
         self.assertFalse(hasattr(descriptor, "project_id"))
@@ -80,7 +72,6 @@ class TaskRuntimeModelTest(unittest.TestCase):
         self.assertFalse(hasattr(TaskResourceCatalog, "list_task_descriptors"))
 
     def test_task_runtime_contracts_are_package_exports(self) -> None:
-        self.assertIs(py_example.TaskAllocationRule, TaskAllocationRule)
         self.assertIs(py_example.TaskDescriptor, TaskDescriptor)
         self.assertIs(py_example.TaskResourceCatalog, TaskResourceCatalog)
 

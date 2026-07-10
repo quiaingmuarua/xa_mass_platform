@@ -10,20 +10,12 @@ from .worker_runtime import WorkerGroupId
 
 
 @dataclass(frozen=True)
-class TaskAllocationRule:
-    """Declarative worker constraint stored with one task descriptor."""
-
-    acquire_fields: tuple[str, ...]
-    match_rules: Mapping[str, object]
-
-
-@dataclass(frozen=True)
 class TaskDescriptor:
     """Stable task allocation metadata, separate from task runtime truth."""
 
     task_id: TaskId
     worker_group_id: WorkerGroupId
-    allocation_rule: TaskAllocationRule
+    allocation_rule: Mapping[str, object]
     config: Mapping[str, str]
 
 

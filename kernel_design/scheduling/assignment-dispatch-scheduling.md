@@ -176,13 +176,13 @@ is the result final?
 ### Worker Candidate Constraint
 
 Each candidate constraint carries worker identity and attribute match needs.
-Dynamic reads are declared explicitly because they are handler-owned IO, not
-descriptor fields. The constraint is applied before worker score lease:
+Dynamic reads remain handler-owned IO, but their required field set is derived
+from `dynamic.*` rule keys instead of repeated by the caller. The constraint is
+applied before worker score lease:
 
 ```text
 priority = candidate worker-consumption priority
 limit = maximum workers consumed by this candidate in one matcher call
-acquire_fields = exact dynamic.* dependency set
 match_rules = workerId + system.* + static.* + dynamic.* predicates
 ```
 
@@ -192,10 +192,9 @@ the worker context but does not own DSL syntax or operator evaluation.
 Qualified fields split only at the first `.`: `dynamic.battery.level` means
 domain `dynamic` and exact dynamic attribute name `battery.level`.
 
-`acquire_fields` is not a value projection or ranking input. It authorizes and
-budgets only the dynamic fields used by `match_rules`. Worker matcher
-preparation fails when a dynamic rule is undeclared or an acquire field is
-unused. Assignment-dispatch must not add speculative fields for later ranking.
+Worker matcher preparation derives and deduplicates the `dynamic.*` field union
+from compiled `match_rules`. Assignment-dispatch cannot request speculative
+dynamic reads outside the predicates it actually supplies.
 
 Task create/admission validates and fixes exactly one registered
 `workerGroupId`. The task's selected `workerGroupId` is immutable while the task
@@ -212,7 +211,7 @@ ineligible worker eligible.
 `WorkerCandidateMatcher.match_worker_candidates` receives one selected
 `workerGroupId`, a bounded `workerIds` batch, and a
 `candidateId -> WorkerCandidateConstraint` map. Each constraint carries
-`priority`, `limit`, `acquire_fields`, and `match_rules`. The matcher resolves worker
+`priority`, `limit`, and `match_rules`. The matcher resolves worker
 consumption order by priority descending and `candidateId` ascending; map
 insertion order is not scheduling policy. One call handles exactly one worker group;
 assignment-dispatch must partition task candidates by `workerGroupId` before
@@ -222,7 +221,7 @@ every input candidate; an empty worker-id list means no match. Worker ids are
 the outer loop: candidates already at `limit` are skipped, and the first
 remaining match consumes that worker. One worker cannot appear in two candidate
 results, and candidate limits do not persist across matcher calls.
-The matcher batches each declared acquire field once for descriptor-supported
+The matcher batches each derived dynamic field once for descriptor-supported
 bounded workers, then builds only one temporary context for the current worker.
 It does not retain all worker contexts or run metadata/dynamic matching passes.
 Worker score lease / hold validation must use concrete worker ids and score
@@ -538,8 +537,7 @@ workerGroupId
 candidate priority
 config["runningVisibleMinimumCandidateWorkers"]
 config["priority"]
-allocationRule.acquireFields
-allocationRule.matchRules
+allocationRule
 ```
 
 This does not require a complete Task aggregate or a task-runtime allocation
@@ -567,8 +565,8 @@ TaskDescriptor
 ```
 
 Assignment-dispatch parses and validates the two config values it owns;
-`acquire_fields` and `match_rules` come directly from the loaded allocation
-rule. One uniform allocation configuration supplies
+`match_rules` is the loaded allocation rule. One uniform allocation
+configuration supplies
 `WorkerCandidateConstraint.limit`, defaulting to `100` in the first cut. There
 is no allocation-rule name, handler registry, or separate rule-resolution
 owner.

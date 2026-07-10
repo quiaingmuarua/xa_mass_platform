@@ -37,9 +37,7 @@ allocation or dispatch round.
 TaskDescriptor
   taskId: string
   workerGroupId: string
-  allocationRule:
-    acquireFields: ordered unique list<string>
-    matchRules: map
+  allocationRule: match-rule map
   config: map<string, string>
     priority: decimal text, 1..100
     runningVisibleMinimumCandidateWorkers: positive decimal text
@@ -117,13 +115,9 @@ The first cut stores the declarative worker constraint inline. It does not store
 a named-rule indirection, executable function, registry reference, serialized
 class, or policy-owner handle.
 
-```text
-allocationRule.acquireFields
-  declares dynamic fields that must be acquired before evaluation
-
-allocationRule.matchRules
-  is the constraint_dsl rule evaluated against the worker context
-```
+`allocationRule` is the `constraint_dsl` match-rule map evaluated against the
+worker context. Dynamic read dependencies are derived from its `dynamic.*`
+keys; they are not stored as a second caller declaration.
 
 The rule is allocation intent, not executable owner truth. `constraint_dsl`
 validates and evaluates it. Task catalog does not interpret the rule, and
@@ -192,8 +186,7 @@ allocation configuration:
 ```text
 TaskDescriptor
   config["priority"] --------------------------> constraint.priority
-  allocationRule.acquireFields -----------------> constraint.acquire_fields
-  allocationRule.matchRules --------------------> constraint.match_rules
+  allocationRule ------------------------------> constraint.match_rules
 
 uniform allocation config
   maximumCandidateWorkers ---------------> constraint.limit
@@ -205,8 +198,7 @@ Conceptual result:
 WorkerCandidateConstraint(
     priority=int(descriptor.config["priority"]),
     limit=allocation_config.maximum_candidate_workers,
-    acquire_fields=descriptor.allocation_rule.acquire_fields,
-    match_rules=descriptor.allocation_rule.match_rules,
+    match_rules=descriptor.allocation_rule,
 )
 ```
 
@@ -299,8 +291,7 @@ config is not map<string, string>
 config contains an undeclared key
 config is missing either required key
 config["priority"] is not decimal text in 1..100
-allocationRule.acquireFields contains empty or duplicate names
-allocationRule.matchRules is not a valid constraint_dsl rule
+allocationRule is not a valid constraint_dsl rule
 config["runningVisibleMinimumCandidateWorkers"] is not decimal text in
   1..maximumCandidateWorkers
 ```
@@ -330,10 +321,7 @@ The JSON fields use the public descriptor names:
 
 ```json
 allocationRuleJson = {
-  "acquireFields": ["dynamic.battery"],
-  "matchRules": {
-    "dynamic.battery": {"$gte": 20}
-  }
+  "dynamic.battery": {"$gte": 20}
 }
 
 configJson = {
@@ -371,16 +359,10 @@ not use `HGETALL`, scan descriptor keys, or maintain a second descriptor index.
 
 ```python
 @dataclass(frozen=True)
-class TaskAllocationRule:
-    acquire_fields: tuple[str, ...]
-    match_rules: Mapping[str, object]
-
-
-@dataclass(frozen=True)
 class TaskDescriptor:
     task_id: str
     worker_group_id: str
-    allocation_rule: TaskAllocationRule
+    allocation_rule: Mapping[str, object]
     config: Mapping[str, str]
 ```
 
