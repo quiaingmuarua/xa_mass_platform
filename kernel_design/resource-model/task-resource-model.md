@@ -16,10 +16,10 @@ TaskWorkRuntime = task backlog and work truth, defined separately
 AssignmentDispatch = bounded consumer of task and worker owner facts
 ```
 
-`TaskResourceCatalog` owns descriptor registration and the bounded allocation
-descriptor load. It does not own general Task reads, task scheduling visibility,
-task state transitions,
-worker matching, allocation results, work items, or finality.
+`TaskCreationRuntime` owns score-leased Task creation. `TaskResourceCatalog`
+owns only the bounded allocation descriptor load. The catalog does not create
+Task identity or decide duplicate-create conflicts, and neither surface owns
+general Task reads, worker matching, allocation results, work items, or finality.
 
 For the first allocation cut, one task belongs to exactly one worker group:
 
@@ -124,8 +124,8 @@ validates and evaluates it. Task catalog does not interpret the rule, and
 worker runtime does not read Task metadata to discover it.
 
 `allocationRule` is separate from `config` because it may be replaced as one
-independent owner mutation later. The first cut still exposes create-only
-registration. A future replacement must be explicit and fenced; it must not
+independent owner mutation later. The first cut exposes no replacement
+operation. A future replacement must be explicit and fenced; it must not
 silently rewrite the whole descriptor or leave an older allocation handoff
 valid against a newer rule.
 
@@ -214,28 +214,30 @@ matcher or score primitives.
 Constraint construction is an in-memory transformation over one descriptor
 batch. It must not perform one catalog point read or one rule lookup per task.
 
-## TaskResourceCatalog
+## Task Runtime Surfaces
 
-The first catalog surface is intentionally narrow:
+The first mutation and read surfaces are intentionally separate:
 
 ```python
-register_task_descriptor(descriptor)
+create_task(descriptor) -> TaskCreationResult
 
 load_task_allocation_descriptors(
     task_ids: Sequence[TaskId],
 ) -> Mapping[TaskId, TaskDescriptor | None]
 ```
 
-`register_task_descriptor` is create-only. Duplicate registration conflicts;
-it must not silently replace allocation metadata. The first cut does not expose
-approval editing, update, replacement, or delete operations.
+`create_task` receives an owner-defined opaque suffix and initializes a
+`PRE_REVIEW` score lease before descriptor materialization. Kernel code does not
+name or interpret that suffix. The score is the Task identity and lifecycle
+coordination owner; the descriptor HASH cannot independently create a Task.
+Duplicate create conflicts after score initialization.
 
 `load_task_allocation_descriptors` is batch-only and assignment-specific. It
 avoids an N+1 Task read after score acquisition without creating a general Task
 query surface. Missing or invalid rows are represented as `None` and fail closed
 for that allocation round.
 
-The catalog does not expose:
+The catalog does not expose mutation. Neither surface exposes:
 
 ```text
 getTask point read as the allocation mainline
@@ -333,15 +335,36 @@ configJson = {
 `taskId` is derived from the requested key and reconstructed into the returned
 descriptor. It is not duplicated as a HASH field.
 
-Registration uses one atomic create-only operation:
+Creation is score-first:
 
 ```text
-if key exists -> CONFLICT
-else HSET all three fields -> CREATED
+initialize PRE_REVIEW + ownerSuffix at leaseUntil = now + duration
+  -> only one owner can hold that full score in the slot
+HSET all descriptor fields in one descriptor-owner command
+score-only exact observed-score release to the current 100ms timeSlot
+  -> release accepted: CREATED
+  -> release stale: descriptor remains provisional and later score owner converges
 ```
 
-A small owner-local Lua script or equivalent Redis transaction may protect this
-single-key create. It must not introduce update semantics.
+These are three owner-local operations, not one cross-key transaction. If the
+owner disappears before descriptor write, the score becomes due after its duration.
+That does not permit `initialize_score` again: later completion or recovery must
+use a separate owner transition against the existing `PRE_REVIEW` score.
+If the owner disappears after HSET but before release, descriptor metadata may
+temporarily exist under the future creation lease. Score remains the only
+scheduling truth. The descriptor HASH has no standalone create truth and no
+independent duplicate-registration truth. A descriptor HASH without a score
+member is orphan metadata; it cannot block score-owned creation and may be
+overwritten by the successful creation owner.
+
+Known failure release is best-effort and only reduces retry latency. A lost
+release does not require reliable event delivery, a retry queue, or a repair
+job; the duration-encoded `leaseUntil` makes the score due for later owner
+processing. Release writes the current slot but never reopens initialization.
+
+No Lua or transaction spans score and descriptor keys. The creation protocol
+therefore does not require Redis key colocation and does not merge score owner
+logic with descriptor storage logic.
 
 Bounded batch read uses a pipeline containing one `HMGET` per task key:
 
@@ -371,13 +394,13 @@ These are descriptor values, not lifecycle or allocation-result records.
 
 The interface skeleton is implemented in
 [`py_example/kernel/task_runtime.py`](../py_example/kernel/task_runtime.py). It
-contains only descriptor DTOs, create-only registration result, and the bounded
-`TaskResourceCatalog` surface. The Redis executable-spec implementation lives in
+contains the descriptor DTO, the narrow `TaskCreationRuntime`, and the bounded
+read-only `TaskResourceCatalog` surface. The Redis executable-spec implementation lives in
 [`py_example/runtime_redis/task_runtime.py`](../py_example/runtime_redis/task_runtime.py)
-and implements only the HASH create/load contract above.
+and implements score-leased creation plus HASH batch loading.
 [`py_example/tests/test_redis_task_runtime_integration.py`](../py_example/tests/test_redis_task_runtime_integration.py)
-is the real-Redis proof for Lua create atomicity, redis-py pipeline compatibility,
-binary response decoding, and corrupt-row isolation.
+is the real-Redis proof for one-owner-per-slot creation, stale-owner rejection,
+redis-py pipeline compatibility, binary response decoding, and corrupt-row isolation.
 
 The first cut deliberately uses string-only config values. Supporting both JSON
 numbers and strings would add two representations for the same setting without

@@ -141,12 +141,14 @@ class TaskScoreBandCore(ABC):
         *,
         task_id: TaskId,
         suffix: Suffix,
+        lease_duration_millis: TimeMillis,
     ) -> TaskScoreTransitionResult:
-        """Create the first score for a task when no score exists.
+        """Acquire the PRE_REVIEW initialization lease.
 
-        Initialization always enters PRE_REVIEW. The implementation owns the
-        initial band and time coordinate; callers only provide the
-        owner-defined PRE_REVIEW suffix / review-state code.
+        A missing score is initialized with a future lease-until coordinate.
+        Any existing score makes initialization fail, regardless of band,
+        suffix, or due time. The implementation converts lease duration into an
+        absolute future time slot; callers never construct the lease score.
         """
         pass
 

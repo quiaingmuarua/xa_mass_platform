@@ -23,6 +23,7 @@ which task ids have score in the acquire range now?
 Task score answers:
 
 ```text
+which lifecycle band currently owns this task?
 should this task enter a bounded scheduling round now?
 ```
 
@@ -36,7 +37,7 @@ It does not answer:
 
 ```text
 does the task have backlog?
-is the task terminal?
+why did the task become terminal?
 which worker should run it?
 is result finality accepted?
 ```
@@ -67,12 +68,14 @@ result finality ownership
 result read-model ownership
 ```
 
-Those are separate owners. Task score-band is only the active scheduling
-visibility index for task ids.
+Those are separate owners. Task score-band owns Task lifecycle coordination and
+the sortable scheduling visibility coordinate, not the complete business
+aggregate or terminal attribution.
 
 ## Core Model
 
-Task score is an acquire index, not task lifecycle truth.
+Task score is Task lifecycle coordination truth and the acquire index. It is not
+the complete Task business aggregate.
 
 Core mechanics:
 
@@ -107,8 +110,8 @@ Rules:
   pacing;
 - dispatch-visible candidates must be classified and moved, closed, cleaned, or
   rejected by the score-write stale fence;
-- acquired tasks still require lifecycle/gate validation and work-item owner
-  validation before dispatch;
+- acquired tasks still require descriptor and work-item owner validation before
+  dispatch; no second lifecycle gate may override the score band;
 - append, result, retry frame write, and result lookup are not score refresh
   triggers.
 
@@ -650,6 +653,29 @@ directly, the boundary is already broken. The performance model depends on
 stable safe public methods plus a small trusted implementation protocol, not
 zero-trust validation at every internal layer.
 
+Task creation uses a dedicated initialization lease rather than ordinary
+positive rewrite:
+
+```text
+initialize_score(taskId, suffix, leaseDurationMillis):
+  nowMillis = redisTimeMillis()
+  leaseUntilTimeSlot = floor((nowMillis + leaseDurationMillis) / SLOT_MILLIS)
+  if score missing:
+    write score(PRE_REVIEW_TAG, leaseUntilTimeSlot, suffix)
+    return leaseScore
+  return NOOP
+```
+
+Initialization is `ZADD NX`; it never interprets or rewrites an existing score.
+Duration locks the first owner event, but expiry does not authorize a second
+initialization. Descriptor write and score release are separate owner-local
+operations. The descriptor owner writes metadata first; score owner then makes
+an exact observed-score release to `currentTimeSlot`. Release is best-effort; if
+it is stale or lost, `leaseUntilTimeSlot` is the liveness fallback for a later
+owner transition. That transition is not `initialize_score`. No Lua spans the
+score and descriptor keys. This lease is Task creation coordination, not a
+scheduling hold and not an active-acquire state.
+
 ```text
 rewrite_same_band_time_millis(expectedBand, targetTimeMillis):
   targetTimeSlot = floor(targetTimeMillis / SLOT_MILLIS)
@@ -732,16 +758,21 @@ release_observed_score_hold(taskId, observedHoldScore, releaseTimeMillis):
   storedScore = read_current_score(taskId)
   require storedScore == observedHoldScore
   observed = decode_positive(observedHoldScore)
-  require observed.tag in {RUNNING_VISIBLE_TAG, PRE_DISPATCH_VISIBLE_TAG}
+  require observed.tag in {
+    RUNNING_VISIBLE_TAG,
+    PRE_DISPATCH_VISIBLE_TAG,
+    PRE_REVIEW_TAG only for an owner-validated initialization lease
+  }
   require 0 <= releaseTimeSlot <= MAX_TIME_SLOT
   require releaseTimeSlot <= observed.timeSlot
   write score(observed.tag, releaseTimeSlot, observed.suffix)
 ```
 
 The release primitive has no business-event meaning. It only proves that the
-held score being released is still exactly the stored score. If another pause,
-terminal close, or scheduling rewrite happened first, the exact-score match
-fails and the release is stale.
+held score being released is still exactly the stored score. If another owner,
+pause, terminal close, or scheduling rewrite happened first, the exact-score
+match fails and the release is stale. Initialization failure release is an
+acceleration path; duration expiry remains the correctness fallback.
 
 The derived view is:
 
@@ -1172,9 +1203,12 @@ no broad refresh from low-value observations
   `PRE_REVIEW` in active acquire.
 - Do not let `PRE_DISPATCH_VISIBLE` enter worker admission, work claim, or deliver
   seed creation; assignment-dispatch may scan it only for activation checks.
-- Do not write a temporary restriction score for `PRE_REVIEW` or `TERMINAL`.
-  Active bands may be held only by rewriting the same active band with a future
-  time coordinate.
+- Do not write a scheduling restriction score for `PRE_REVIEW` or `TERMINAL`.
+  The owner-local `PRE_REVIEW` creation lease is permitted only for
+  lease-controlled Task creation; kernel code stores its suffix opaquely and
+  never interprets it. It
+  never enters active acquire. Active bands may be held only by rewriting the
+  same active band with a future time coordinate.
 - Do not treat hard pause as ordinary future delay. `PAUSE_TIME_SLOT` is a
   reserved hard hold: no scheduling-round suffix consumption, no positive
   cross-band progress, and no release to a different tag.

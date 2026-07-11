@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Mapping, Sequence
 
-from .task_score_band import TaskId
+from .task_score_band import Suffix, TaskId
 from .worker_runtime import WorkerGroupId
 
 
@@ -19,33 +19,39 @@ class TaskDescriptor:
     config: Mapping[str, str]
 
 
-class TaskDescriptorRegistrationStatus(Enum):
-    REGISTERED = "registered"
+class TaskCreationStatus(Enum):
+    CREATED = "created"
+    RETRYABLE = "retryable"
     CONFLICT = "conflict"
     INVALID = "invalid"
 
 
 @dataclass(frozen=True)
-class TaskDescriptorRegistrationResult:
-    status: TaskDescriptorRegistrationStatus
+class TaskCreationResult:
+    status: TaskCreationStatus
     reason: str | None = None
 
 
+class TaskCreationRuntime(ABC):
+    """Score-owned Task creation surface."""
+
+    @abstractmethod
+    def create_task(
+        self,
+        *,
+        descriptor: TaskDescriptor,
+        suffix: Suffix,
+    ) -> TaskCreationResult:
+        """Create one Task through its initialization score lease."""
+        pass
+
+
 class TaskResourceCatalog(ABC):
-    """Create-only Task descriptor registration and bounded batch reads.
+    """Bounded allocation descriptor reads.
 
     This surface does not own task score, lifecycle, work, allocation handoff,
     result state, or query/list APIs. Task ids are globally unique.
     """
-
-    @abstractmethod
-    def register_task_descriptor(
-        self,
-        *,
-        descriptor: TaskDescriptor,
-    ) -> TaskDescriptorRegistrationResult:
-        """Create a validated descriptor without replacement semantics."""
-        pass
 
     @abstractmethod
     def load_task_allocation_descriptors(

@@ -178,20 +178,36 @@ return {"transitioned", tonumber(next_score)}
         *,
         task_id: TaskId,
         suffix: Suffix,
+        lease_duration_millis: TimeMillis,
     ) -> TaskScoreTransitionResult:
         if not self.MIN_SUFFIX <= suffix <= self.MAX_SUFFIX:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
+        if lease_duration_millis <= 0:
+            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
 
-        initial_score = self._score(
+        current_time_millis = self._current_time_millis()
+        current_time_slot = self._time_slot_from_millis(current_time_millis)
+        if current_time_slot <= self.MIN_TIME_SLOT:
+            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
+        lease_until_millis = current_time_millis + lease_duration_millis
+        lease_until_slot = self._time_slot_from_millis(lease_until_millis)
+        if lease_until_slot > self.MAX_TIME_SLOT:
+            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
+
+        lease_score = self._score(
             self.PRE_REVIEW_TAG,
-            self._current_time_slot(),
+            lease_until_slot,
             suffix,
         )
-        added_count = self.redis.zadd(self.score_key, {task_id: initial_score}, nx=True)
+        added_count = self.redis.zadd(
+            self.score_key,
+            {task_id: lease_score},
+            nx=True,
+        )
         if added_count == 1:
             return TaskScoreTransitionResult(
                 TaskScoreTransitionStatus.TRANSITIONED,
-                initial_score,
+                lease_score,
             )
 
         stored_score = self.redis.zscore(self.score_key, task_id)
@@ -322,7 +338,11 @@ return {"transitioned", tonumber(next_score)}
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
 
         tag, observed_time_slot, suffix = observed
-        if tag not in {self.RUNNING_VISIBLE_TAG, self.PRE_DISPATCH_VISIBLE_TAG}:
+        if tag not in {
+            self.RUNNING_VISIBLE_TAG,
+            self.PRE_DISPATCH_VISIBLE_TAG,
+            self.PRE_REVIEW_TAG,
+        }:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
         if not self._valid_time_millis(release_time_millis):
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
@@ -518,10 +538,11 @@ return {"transitioned", tonumber(next_score)}
         return None
 
     def _current_time_slot(self) -> int:
+        return self._time_slot_from_millis(self._current_time_millis())
+
+    def _current_time_millis(self) -> TimeMillis:
         seconds, microseconds = self.redis.time()
-        return int(seconds) * self.TIME_SCALE + int(microseconds) // (
-            1_000_000 // self.TIME_SCALE
-        )
+        return int(seconds) * 1_000 + int(microseconds) // 1_000
 
     def _time_slot_from_millis(self, time_millis: TimeMillis) -> int:
         return int(time_millis) // self.SLOT_MILLIS

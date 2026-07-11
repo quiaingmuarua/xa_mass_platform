@@ -204,39 +204,76 @@ class RedisZsetTaskScoreBandCoreTest(unittest.TestCase):
             self.kernel.acquire_dispatch_work_tasks(limit=10),
         )
 
-    def test_initialize_score_enters_pre_review_with_internal_time(self) -> None:
-        existing = self.score(self.kernel.PRE_REVIEW_TAG, 900, 1)
-        self.redis.zadd(self.kernel.score_key, {"existing": existing})
-
-        existing_result = self.kernel.initialize_score(
-            task_id="existing",
-            suffix=7,
-        )
+    def test_initialize_score_writes_duration_lease(self) -> None:
         new_result = self.kernel.initialize_score(
             task_id="new",
             suffix=7,
+            lease_duration_millis=3_000,
         )
-        invalid_result = self.kernel.initialize_score(
+        same_slot_result = self.kernel.initialize_score(
+            task_id="new",
+            suffix=7,
+            lease_duration_millis=3_000,
+        )
+        invalid_suffix_result = self.kernel.initialize_score(
             task_id="invalid",
             suffix=100,
+            lease_duration_millis=3_000,
         )
-        states = self.kernel.get_score_states(task_ids=["existing", "new"])
+        invalid_duration_result = self.kernel.initialize_score(
+            task_id="invalid-duration",
+            suffix=7,
+            lease_duration_millis=0,
+        )
+        states = self.kernel.get_score_states(task_ids=["new"])
 
         self.assertEqual(0, self.redis.eval_count)
-        self.assertEqual(TaskScoreTransitionStatus.NOOP, existing_result.status)
-        self.assertEqual(existing, existing_result.score)
         self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, new_result.status)
         self.assertEqual(
-            self.score(self.kernel.PRE_REVIEW_TAG, self.redis.now_slot, 7),
+            self.score(self.kernel.PRE_REVIEW_TAG, self.redis.now_slot + 30, 7),
             new_result.score,
         )
-        self.assertEqual(TaskScoreTransitionStatus.INVALID, invalid_result.status)
-        self.assertIsNotNone(states["existing"])
-        self.assertEqual(existing, states["existing"].score)
+        self.assertEqual(TaskScoreTransitionStatus.NOOP, same_slot_result.status)
+        self.assertEqual(TaskScoreTransitionStatus.INVALID, invalid_suffix_result.status)
+        self.assertEqual(
+            TaskScoreTransitionStatus.INVALID,
+            invalid_duration_result.status,
+        )
         self.assertIsNotNone(states["new"])
         self.assertEqual(TaskScoreBand.PRE_REVIEW, states["new"].band)
-        self.assertEqual(self.redis.now_millis, states["new"].time_millis)
+        self.assertEqual(self.redis.now_millis + 3_000, states["new"].time_millis)
         self.assertEqual(7, states["new"].suffix)
+
+    def test_existing_due_score_cannot_be_reinitialized(self) -> None:
+        first = self.kernel.initialize_score(
+            task_id="task",
+            suffix=1,
+            lease_duration_millis=3_000,
+        )
+        self.redis.now_millis += 3_000 + self.kernel.SLOT_MILLIS
+        second = self.kernel.initialize_score(
+            task_id="task",
+            suffix=1,
+            lease_duration_millis=3_000,
+        )
+
+        self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, first.status)
+        self.assertEqual(TaskScoreTransitionStatus.NOOP, second.status)
+        self.assertEqual(first.score, second.score)
+
+    def test_existing_score_fails_initialization_without_state_interpretation(self) -> None:
+        self.store_score(
+            "task",
+            self.score(self.kernel.PRE_REVIEW_TAG, self.redis.now_slot - 1, 7),
+        )
+
+        result = self.kernel.initialize_score(
+            task_id="task",
+            suffix=1,
+            lease_duration_millis=3_000,
+        )
+
+        self.assertEqual(TaskScoreTransitionStatus.NOOP, result.status)
 
     def test_rewrite_allows_downward_lifecycle_jump(self) -> None:
         pre_review = self.score(self.kernel.PRE_REVIEW_TAG, 1_000, 7)
@@ -566,6 +603,26 @@ class RedisZsetTaskScoreBandCoreTest(unittest.TestCase):
         self.assertIsNotNone(state)
         self.assertEqual(self.millis(1_000), state.time_millis)
         self.assertEqual(4, state.suffix)
+
+    def test_release_observed_pre_review_initialization_lease(self) -> None:
+        lease = self.score(
+            self.kernel.PRE_REVIEW_TAG,
+            self.redis.now_slot + 30,
+            1,
+        )
+        self.store_score("task", lease)
+
+        result = self.kernel.release_observed_score_hold(
+            task_id="task",
+            observed_hold_score=lease,
+            release_time_millis=self.redis.now_millis,
+        )
+        state = self.kernel.get_score_states(task_ids=["task"])["task"]
+
+        self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, result.status)
+        self.assertIsNotNone(state)
+        self.assertEqual(self.redis.now_millis, state.time_millis)
+        self.assertEqual(1, state.suffix)
 
     def test_release_observed_score_hold_rejects_later_time(self) -> None:
         held = self.score(self.kernel.RUNNING_VISIBLE_TAG, 2_000, 4)

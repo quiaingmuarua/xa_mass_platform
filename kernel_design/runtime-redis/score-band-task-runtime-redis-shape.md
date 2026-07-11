@@ -1146,7 +1146,7 @@ fact they own:
 
 | Owner input | Fact mutation |
 | --- | --- |
-| create | initialize `TaskRuntimeMeta` and write `PRE_REVIEW` score |
+| create | initialize `PRE_REVIEW + ownerSuffix`, write descriptor separately, then best-effort exact-score release |
 | pre-review owner mutation | validate review owner facts and rewrite `PRE_REVIEW` with a larger owner mutation `epochSecond` and owner-defined suffix state code |
 | approve | write approval fact and `PRE_DISPATCH_VISIBLE` score |
 | activation condition update | update activation owner truth only; due `PRE_DISPATCH_VISIBLE` scheduling decides promotion |
@@ -1627,11 +1627,20 @@ then defending against them in Lua.
 Required atomic boundaries:
 
 ```text
-score initialization:
-  validate owner-defined PRE_REVIEW suffix inside kernel implementation
-  compute score(PRE_REVIEW_TAG, currentEpochSecond, suffix) internally
-  ZADD NX for create-if-absent score placement
-  no Lua for score-only initialization
+score-leased Task creation:
+  caller supplies one opaque owner suffix
+  kernel stores and preserves suffix without interpreting it
+  compute leaseUntil = nowMillis + leaseDurationMillis internally
+  compute score(PRE_REVIEW_TAG, leaseUntilTimeSlot, suffix) internally
+  only a missing score may be initialized through ZADD NX
+  any existing score returns initialization failure without band interpretation
+  descriptor residue without a score is orphan metadata, not a create conflict
+  descriptor HSET is one descriptor-owner operation
+  release-to-current is a separate score-only exact CAS
+  no Lua or transaction spans score and descriptor keys
+  stale release leaves descriptor metadata provisional under current score truth
+  known failure release is best-effort; lease duration expiry is the fallback
+  later recovery uses an owner transition, never a second initialization
 
 append:
   optional idempotency/backlog guard + ready LIST push
