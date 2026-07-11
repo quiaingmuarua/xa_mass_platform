@@ -34,6 +34,7 @@ from .worker_runtime import (
     WorkerGroupDescriptor,
     WorkerGroupId,
     WorkerResourceCatalog,
+    WorkerRuntime,
     WorkerRuntimeResult,
     WorkerRuntimeStatus,
 )
@@ -77,6 +78,7 @@ __all__ = [
     "WorkerGroupDescriptor",
     "WorkerGroupId",
     "WorkerResourceCatalog",
+    "WorkerRuntime",
     "WorkerRuntimeResult",
     "WorkerRuntimeStatus",
     "TaskCreationResult",

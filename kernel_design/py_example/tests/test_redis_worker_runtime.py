@@ -6,6 +6,8 @@ from typing import Callable, Sequence
 from kernel_design.py_example import (
     RedisWorkerDynamicAttributeRuntime,
     RedisWorkerResourceCatalog,
+    RedisWorkerRuntime,
+    RedisZsetWorkerScoreCore,
     WorkerCandidateConstraint,
     WorkerCandidateMatcher,
     WorkerDescriptor,
@@ -40,7 +42,9 @@ def candidate_constraint(
 class FakeRedis:
     def __init__(self) -> None:
         self.hashes: dict[str, dict[str, str]] = {}
+        self.zsets: dict[str, dict[str, int]] = {}
         self.hmget_calls: list[tuple[str, tuple[str, ...]]] = []
+        self.now_millis = 100_000
 
     def hset(
         self,
@@ -88,6 +92,49 @@ class FakeRedis:
                 del hash_row[key]
         return removed
 
+    def zadd(
+        self,
+        name: str,
+        mapping: dict[str, int],
+        *,
+        nx: bool = False,
+    ) -> int:
+        zset = self.zsets.setdefault(name, {})
+        added = 0
+        for member, score in mapping.items():
+            if nx and member in zset:
+                continue
+            if member not in zset:
+                added += 1
+            zset[member] = score
+        return added
+
+    def zscore(self, name: str, member: str) -> int | None:
+        return self.zsets.get(name, {}).get(member)
+
+    def zrangebyscore(
+        self,
+        name: str,
+        min_score: int,
+        max_score: int,
+        *,
+        start: int = 0,
+        num: int | None = None,
+        withscores: bool = False,
+    ) -> list[object]:
+        rows = sorted(
+            (score, member)
+            for member, score in self.zsets.get(name, {}).items()
+            if min_score <= score <= max_score
+        )
+        sliced = rows[start:] if num is None else rows[start : start + num]
+        if withscores:
+            return [(member, score) for score, member in sliced]
+        return [member for _, member in sliced]
+
+    def time(self) -> tuple[int, int]:
+        return self.now_millis // 1_000, (self.now_millis % 1_000) * 1_000
+
     @staticmethod
     def _stringify(value: object) -> str:
         if isinstance(value, bytes):
@@ -96,9 +143,20 @@ class FakeRedis:
 
 
 class RedisWorkerRuntimeTest(unittest.TestCase):
+    LANE_RANK = 5
+
     def setUp(self) -> None:
         self.redis = FakeRedis()
         self.catalog = RedisWorkerResourceCatalog(self.redis, prefix="test")
+        self.score_band = RedisZsetWorkerScoreCore(
+            self.redis,
+            score_key_prefix="wr:test:score",
+        )
+        self.runtime = RedisWorkerRuntime(
+            self.redis,
+            self.score_band,
+            prefix="test",
+        )
         self.group = WorkerGroupDescriptor(
             worker_group_id="image-workers",
             attributes={"kind": "image"},
@@ -130,7 +188,10 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         self,
         descriptor: WorkerDescriptor,
     ) -> None:
-        result = self.catalog.register_worker_descriptor(descriptor=descriptor)
+        result = self.runtime.register_worker_descriptor(
+            descriptor=descriptor,
+            lane_rank=self.LANE_RANK,
+        )
         self.assertEqual(result.status, WorkerRuntimeStatus.OK)
 
     def matcher(
@@ -178,13 +239,64 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             set(self.redis.hashes),
             {"wr:test:groups", "wr:test:workers:image-workers"},
         )
+        self.assertIn(
+            "worker-1",
+            self.redis.zsets["wr:test:score:image-workers"],
+        )
 
     def test_register_worker_for_missing_group_is_not_found(self) -> None:
-        result = self.catalog.register_worker_descriptor(
+        result = self.runtime.register_worker_descriptor(
             descriptor=self.worker_descriptor("worker-1"),
+            lane_rank=self.LANE_RANK,
         )
 
         self.assertEqual(result.status, WorkerRuntimeStatus.NOT_FOUND)
+        self.assertEqual(self.redis.zsets, {})
+
+    def test_registered_worker_enters_hot_acquire_after_current_slot(self) -> None:
+        self.register_group()
+        self.register_worker(self.worker_descriptor("worker-1"))
+
+        self.assertEqual(
+            self.score_band.acquire_hot_acquire_candidates(
+                home_bucket_id="image-workers",
+                limit=10,
+            ),
+            [],
+        )
+
+        self.redis.now_millis += self.score_band.SLOT_MILLIS
+        candidates = self.score_band.acquire_hot_acquire_candidates(
+            home_bucket_id="image-workers",
+            limit=10,
+        )
+
+        self.assertEqual([worker_id for worker_id, _ in candidates], ["worker-1"])
+
+    def test_existing_worker_score_blocks_descriptor_replacement(self) -> None:
+        self.register_group()
+        original = self.worker_descriptor(
+            "worker-1",
+            static_attributes={"runtime": "python"},
+        )
+        self.register_worker(original)
+
+        result = self.runtime.register_worker_descriptor(
+            descriptor=self.worker_descriptor(
+                "worker-1",
+                static_attributes={"runtime": "java"},
+            ),
+            lane_rank=self.LANE_RANK,
+        )
+
+        self.assertEqual(result.status, WorkerRuntimeStatus.CONFLICT)
+        self.assertEqual(
+            self.catalog.get_worker_descriptors(
+                worker_group_id="image-workers",
+                worker_ids=["worker-1"],
+            )["worker-1"],
+            original,
+        )
 
     def test_get_workers_is_scoped_to_one_explicit_group(self) -> None:
         self.register_group()

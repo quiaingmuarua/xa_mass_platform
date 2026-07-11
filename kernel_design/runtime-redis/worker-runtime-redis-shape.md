@@ -47,6 +47,8 @@ score ZSET is acquisition truth only
 descriptor hashes are resource declaration truth
 dynamic attribute keys are handler-owned projections / indexes
 transport evidence is not stored in worker catalog or score keys
+worker registration is complete only after score-first registration writes the descriptor
+resource metadata updates do not require a worker score lease
 ```
 
 `homeBucketId` is a worker-runtime partition key. It is not a placement tag,
@@ -329,15 +331,19 @@ dirty mark only sets dirty = 1
 `rewrite_current_score` is monotonic and does not need `observedScore`.
 Lowering operations and polarity moves do need exact `observedScore`.
 
-## Catalog Operations
+## Worker Registration And Catalog Operations
 
-Resource catalog writes are owner operations, not score primitives.
+First worker registration belongs to `WorkerRuntime`, because descriptor-only
+registration creates an unschedulable worker. `WorkerResourceCatalog` remains
+the worker-group declaration, descriptor-read, and low-frequency metadata
+surface.
 
 Required first-slice operations:
 
 ```text
+WorkerRuntime.register_worker_descriptor(descriptor, laneRank)
+
 register_worker_group_descriptor(descriptor)
-register_worker_descriptor(descriptor)
 get_worker_group_descriptors(workerGroupIds)
 get_worker_descriptors(workerGroupId, workerIds)
 update_worker_system_metadata(workerGroupId, workerId, metadata)
@@ -350,17 +356,35 @@ Register worker group:
 HSET wr:{prefix}:groups workerGroupId descriptorJson
 ```
 
-Register or replace worker:
+Register worker:
 
 ```text
 require workerGroupId exists
 validate worker descriptor against group event-code promise / platform policy
-HSET wr:{prefix}:workers:{workerGroupId} workerId descriptorJson
-initialize HOT_ACQUIRE score only through WorkerScoreCore, not by descriptor hash write
+WorkerScoreCore.initialize_hot_acquire_score(workerGroupId, workerId, laneRank)
+  -> ZADD NX score first
+require score initialization succeeded
+HSET wr:{prefix}:workers:{workerGroupId} workerId descriptorJson second
 ```
 
+The score is the registration/existence fence for scheduling. A descriptor row
+without a score is incomplete residue and must not make the worker discoverable
+or block later score-owned repair. An existing score rejects repeated
+registration before descriptor replacement.
+
+This registration score is not a metadata-update lease. After registration,
+`update_worker_system_metadata`, `refresh_worker_static_attributes`, and dynamic
+attribute handlers update their owner data directly. Dirty marking, when a
+validated assignment continuation actually depends on a changed field, is a
+separate score-fence concern; it is not a prerequisite for resource updates.
+
+Registration does not use a cross-key Lua script or Redis transaction. Score
+and descriptor remain separate owner keys. A score with a missing descriptor
+fails closed during bounded descriptor validation and can be repaired by an
+owner command in a later slice.
+
 If a worker changes group in a later slice, that is a remove/register
-transition owned by resource catalog and score owner together. Do not implement
+transition owned by worker runtime and score owner together. Do not implement
 multi-group movement in v0.
 
 ## Dynamic Attribute Operations

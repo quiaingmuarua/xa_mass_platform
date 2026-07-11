@@ -4,6 +4,7 @@ from .worker_score_zset import RedisZsetWorkerScoreCore
 from .worker_runtime import (
     RedisWorkerDynamicAttributeRuntime,
     RedisWorkerResourceCatalog,
+    RedisWorkerRuntime,
 )
 
 __all__ = [
@@ -13,4 +14,5 @@ __all__ = [
     "RedisZsetWorkerScoreCore",
     "RedisWorkerDynamicAttributeRuntime",
     "RedisWorkerResourceCatalog",
+    "RedisWorkerRuntime",
 ]

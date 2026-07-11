@@ -220,7 +220,10 @@ batch. It must not perform one catalog point read or one rule lookup per task.
 The first mutation and read surfaces are intentionally separate:
 
 ```python
-create_task(descriptor) -> TaskCreationResult
+create_task(
+    descriptor: TaskDescriptor,
+    suffix: Suffix,
+) -> TaskCreationResult
 
 load_task_allocation_descriptors(
     task_ids: Sequence[TaskId],
@@ -232,6 +235,23 @@ load_task_allocation_descriptors(
 name or interpret that suffix. The score is the Task identity and lifecycle
 coordination owner; the descriptor HASH cannot independently create a Task.
 Duplicate create conflicts after score initialization.
+
+`TaskRuntime` depends on the `TaskScoreBandCore` contract, not on a concrete
+Redis score implementation. The Redis executable-spec assembly is:
+
+```python
+score_band: TaskScoreBandCore
+
+task_runtime = RedisTaskRuntime(
+    redis_client,
+    score_band,
+)
+```
+
+`RedisTaskRuntime` owns its descriptor Redis client explicitly. It must not
+obtain that client from `score_band`, depend on `RedisZsetTaskScoreBandCore`, or
+call score implementation private clock / encoding methods. Score time and
+score-coordinate calculation stay inside `TaskScoreBandCore`.
 
 `load_task_allocation_descriptors` is batch-only and assignment-specific. It
 avoids an N+1 Task read after score acquisition without creating a general Task

@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Mapping, Sequence
 
-from .worker_score import TimeMillis, WorkerId
+from .worker_score import LaneRank, TimeMillis, WorkerId
 
 
 WorkerGroupId = str
@@ -81,6 +81,20 @@ class DynamicAttributeReadResult:
     reason: str | None = None
 
 
+class WorkerRuntime(ABC):
+    """Worker runtime owner surface."""
+
+    @abstractmethod
+    def register_worker_descriptor(
+        self,
+        *,
+        descriptor: WorkerDescriptor,
+        lane_rank: LaneRank,
+    ) -> WorkerRuntimeResult:
+        """Register one worker through its first HOT_ACQUIRE score."""
+        pass
+
+
 class WorkerDynamicAttributeRuntime(ABC):
     """Worker-runtime dynamic attribute owner route.
 
@@ -130,9 +144,10 @@ class WorkerDynamicAttributeRuntime(ABC):
 class WorkerResourceCatalog(ABC):
     """Worker-runtime resource declaration surface.
 
-    This is the registration/connect/bootstrap-facing surface. It owns worker
-    group descriptors, worker descriptors, and low-frequency metadata updates.
-    It does not expose dynamic attribute values or worker score leases.
+    It owns worker-group declarations, bounded descriptor reads, and
+    low-frequency metadata updates. First worker registration belongs to
+    WorkerRuntime because registration must also establish the worker score.
+    This catalog does not expose dynamic attribute values or score mutation.
     """
 
     @abstractmethod
@@ -141,20 +156,6 @@ class WorkerResourceCatalog(ABC):
         *,
         descriptor: WorkerGroupDescriptor,
     ) -> WorkerRuntimeResult:
-        pass
-
-    @abstractmethod
-    def register_worker_descriptor(
-        self,
-        *,
-        descriptor: WorkerDescriptor,
-    ) -> WorkerRuntimeResult:
-        """Register or replace a worker descriptor after platform validation.
-
-        Implementations must validate the worker group exists and the worker can
-        satisfy the worker group's event-code promise. Version compatibility is
-        represented through static_attributes, not a top-level field.
-        """
         pass
 
     @abstractmethod

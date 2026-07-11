@@ -12,6 +12,7 @@ from kernel_design.py_example import (
     WorkerDynamicAttributeRuntime,
     WorkerGroupDescriptor,
     WorkerResourceCatalog,
+    WorkerRuntime,
     WorkerRuntimeResult,
     WorkerRuntimeStatus,
 )
@@ -59,12 +60,15 @@ class WorkerRuntimeModelTest(unittest.TestCase):
 
     def test_worker_runtime_interfaces_expose_narrow_owner_surfaces(self) -> None:
         self.assertEqual(
+            WorkerRuntime.__abstractmethods__,
+            {"register_worker_descriptor"},
+        )
+        self.assertEqual(
             WorkerResourceCatalog.__abstractmethods__,
             {
                 "get_worker_descriptors",
                 "get_worker_group_descriptors",
                 "refresh_worker_static_attributes",
-                "register_worker_descriptor",
                 "register_worker_group_descriptor",
                 "update_worker_system_metadata",
             },
@@ -86,6 +90,14 @@ class WorkerRuntimeModelTest(unittest.TestCase):
         self.assertFalse(hasattr(py_example, "WorkerReservationResult"))
         self.assertFalse(hasattr(py_example, "WorkerReservationRuntime"))
         self.assertFalse(hasattr(py_example, "WorkerValidationResult"))
+
+    def test_worker_registration_requires_score_ordering_input(self) -> None:
+        register_params = set(
+            inspect.signature(WorkerRuntime.register_worker_descriptor).parameters
+        )
+
+        self.assertEqual(register_params, {"self", "descriptor", "lane_rank"})
+        self.assertFalse(hasattr(WorkerResourceCatalog, "register_worker_descriptor"))
 
     def test_worker_candidate_matcher_batches_constraint_queries(self) -> None:
         match_params = set(

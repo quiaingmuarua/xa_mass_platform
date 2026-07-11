@@ -119,6 +119,13 @@ WorkerDescriptor
 
 `workerGroupId` is the only group relationship in v0.
 
+First registration is a `WorkerRuntime` operation, not a descriptor-catalog
+write. It initializes the worker's HOT_ACQUIRE score first and writes the
+descriptor second. A descriptor without a score is not a schedulable registered
+worker. `WorkerResourceCatalog` keeps bounded descriptor reads and
+low-frequency metadata updates; those updates do not require a worker score
+lease.
+
 `workerGroupId` is globally unique. `workerId` is unique inside one
 `workerGroupId`; all worker catalog operations therefore carry both values.
 
@@ -426,8 +433,9 @@ descriptor-supported worker batch from the matcher. Neither operation writes
 worker score leases directly.
 
 `WorkerDynamicAttributeRuntime` is separate from `WorkerResourceCatalog`.
-Catalog owns worker resource declarations and low-frequency descriptor
-metadata. Dynamic attribute runtime owns bounded update/read routing and handler
+`WorkerRuntime` owns score-first worker registration. Catalog owns worker-group
+declarations, bounded descriptor reads, and low-frequency descriptor metadata.
+Dynamic attribute runtime owns bounded update/read routing and handler
 dispatch for projected, policy-readable facts. It must not become a second
 worker descriptor store, worker lifecycle owner, score owner, or policy engine.
 
