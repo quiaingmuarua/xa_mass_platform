@@ -7,12 +7,13 @@ from unittest.mock import patch
 
 import kernel_design.py_example as py_example
 from kernel_design.py_example import (
-    RedisTaskCreationRuntime,
     RedisTaskResourceCatalog,
+    RedisTaskRuntime,
     RedisZsetTaskScoreBandCore,
     TaskCreationStatus,
     TaskDescriptor,
     TaskScoreBand,
+    TaskScoreTransitionResult,
     TaskScoreTransitionStatus,
 )
 
@@ -117,11 +118,15 @@ class RedisTaskRuntimeTest(unittest.TestCase):
 
     def setUp(self) -> None:
         self.redis = FakeRedis()
-        self.score_core = RedisZsetTaskScoreBandCore(
+        self.score_band = RedisZsetTaskScoreBandCore(
             self.redis,
             score_key="tr:test:task:score",
         )
-        self.creation = RedisTaskCreationRuntime(self.score_core, prefix="test")
+        self.runtime = RedisTaskRuntime(
+            self.redis,
+            self.score_band,
+            prefix="test",
+        )
         self.catalog = RedisTaskResourceCatalog(self.redis, prefix="test")
 
     @staticmethod
@@ -148,9 +153,9 @@ class RedisTaskRuntimeTest(unittest.TestCase):
     def test_create_task_commits_descriptor_under_score_lease(self) -> None:
         descriptor = self.descriptor("task-1")
 
-        result = self.creation.create_task(descriptor=descriptor, suffix=self.SUFFIX)
+        result = self.runtime.create_task(descriptor=descriptor, suffix=self.SUFFIX)
         rows = self.catalog.load_task_allocation_descriptors(task_ids=["task-1"])
-        state = self.score_core.get_score_states(task_ids=["task-1"])["task-1"]
+        state = self.score_band.get_score_states(task_ids=["task-1"])["task-1"]
 
         self.assertEqual(TaskCreationStatus.CREATED, result.status)
         self.assertEqual({"task-1": descriptor}, rows)
@@ -162,14 +167,14 @@ class RedisTaskRuntimeTest(unittest.TestCase):
     def test_duplicate_create_conflicts_without_touching_score(self) -> None:
         first = self.descriptor("task-1")
         second = self.descriptor("task-1", worker_group_id="audio-workers")
-        self.creation.create_task(descriptor=first, suffix=self.SUFFIX)
-        stored_score = self.redis.zscore(self.score_core.score_key, "task-1")
-        self.redis.now_millis += self.score_core.SLOT_MILLIS
+        self.runtime.create_task(descriptor=first, suffix=self.SUFFIX)
+        stored_score = self.redis.zscore(self.score_band.score_key, "task-1")
+        self.redis.now_millis += self.score_band.SLOT_MILLIS
 
-        result = self.creation.create_task(descriptor=second, suffix=self.SUFFIX)
+        result = self.runtime.create_task(descriptor=second, suffix=self.SUFFIX)
 
         self.assertEqual(TaskCreationStatus.CONFLICT, result.status)
-        self.assertEqual(stored_score, self.redis.zscore(self.score_core.score_key, "task-1"))
+        self.assertEqual(stored_score, self.redis.zscore(self.score_band.score_key, "task-1"))
         self.assertEqual(
             first,
             self.catalog.load_task_allocation_descriptors(task_ids=["task-1"])["task-1"],
@@ -183,7 +188,7 @@ class RedisTaskRuntimeTest(unittest.TestCase):
         }
         descriptor = self.descriptor("task-1")
 
-        result = self.creation.create_task(
+        result = self.runtime.create_task(
             descriptor=descriptor,
             suffix=self.SUFFIX,
         )
@@ -195,13 +200,13 @@ class RedisTaskRuntimeTest(unittest.TestCase):
         )
 
     def test_existing_score_conflicts_with_create(self) -> None:
-        self.score_core.initialize_score(
+        self.score_band.initialize_score(
             task_id="task-1",
             suffix=self.SUFFIX,
-            lease_duration_millis=self.creation.lease_duration_millis,
+            lease_duration_millis=self.runtime.lease_duration_millis,
         )
 
-        result = self.creation.create_task(
+        result = self.runtime.create_task(
             descriptor=self.descriptor("task-1"),
             suffix=self.SUFFIX,
         )
@@ -212,52 +217,52 @@ class RedisTaskRuntimeTest(unittest.TestCase):
     def test_descriptor_write_failure_best_effort_releases_score(self) -> None:
         descriptor = self.descriptor("task-1")
         with patch.object(
-            self.creation,
-            "_write_descriptor",
+            self.redis,
+            "hset",
             side_effect=RuntimeError("write failed"),
         ):
             with self.assertRaisesRegex(RuntimeError, "write failed"):
-                self.creation.create_task(
+                self.runtime.create_task(
                     descriptor=descriptor,
                     suffix=self.SUFFIX,
                 )
 
-        released = self.score_core.get_score_states(task_ids=["task-1"])["task-1"]
-        same_slot = self.score_core.initialize_score(
+        released = self.score_band.get_score_states(task_ids=["task-1"])["task-1"]
+        same_slot = self.score_band.initialize_score(
             task_id="task-1",
             suffix=self.SUFFIX,
-            lease_duration_millis=self.creation.lease_duration_millis,
+            lease_duration_millis=self.runtime.lease_duration_millis,
         )
-        self.redis.now_millis += self.score_core.SLOT_MILLIS
-        next_slot = self.score_core.initialize_score(
+        self.redis.now_millis += self.score_band.SLOT_MILLIS
+        next_slot = self.score_band.initialize_score(
             task_id="task-1",
             suffix=self.SUFFIX,
-            lease_duration_millis=self.creation.lease_duration_millis,
+            lease_duration_millis=self.runtime.lease_duration_millis,
         )
 
         self.assertIsNotNone(released)
         self.assertEqual(
-            self.redis.now_millis - self.score_core.SLOT_MILLIS,
+            self.redis.now_millis - self.score_band.SLOT_MILLIS,
             released.time_millis,
         )
         self.assertEqual(TaskScoreTransitionStatus.NOOP, same_slot.status)
         self.assertEqual(TaskScoreTransitionStatus.NOOP, next_slot.status)
 
     def test_expired_initialization_score_is_not_reinitialized(self) -> None:
-        first = self.score_core.initialize_score(
+        first = self.score_band.initialize_score(
             task_id="task-1",
             suffix=self.SUFFIX,
-            lease_duration_millis=self.creation.lease_duration_millis,
+            lease_duration_millis=self.runtime.lease_duration_millis,
         )
         self.redis.now_millis += (
-            self.creation.lease_duration_millis + self.score_core.SLOT_MILLIS
+            self.runtime.lease_duration_millis + self.score_band.SLOT_MILLIS
         )
 
-        result = self.creation.create_task(
+        result = self.runtime.create_task(
             descriptor=self.descriptor("task-1"),
             suffix=self.SUFFIX,
         )
-        current_score = self.redis.zscore(self.score_core.score_key, "task-1")
+        current_score = self.redis.zscore(self.score_band.score_key, "task-1")
 
         self.assertEqual(TaskCreationStatus.CONFLICT, result.status)
         self.assertEqual(first.score, current_score)
@@ -265,11 +270,13 @@ class RedisTaskRuntimeTest(unittest.TestCase):
     def test_descriptor_write_with_stale_release_is_retryable(self) -> None:
         descriptor = self.descriptor("task-1")
         with patch.object(
-            self.creation,
-            "_release_creation_lease",
-            return_value=TaskScoreTransitionStatus.STALE,
+            self.score_band,
+            "release_observed_score_hold",
+            return_value=TaskScoreTransitionResult(
+                TaskScoreTransitionStatus.STALE
+            ),
         ):
-            result = self.creation.create_task(
+            result = self.runtime.create_task(
                 descriptor=descriptor,
                 suffix=self.SUFFIX,
             )
@@ -279,37 +286,40 @@ class RedisTaskRuntimeTest(unittest.TestCase):
 
     def test_stale_release_does_not_overwrite_owner_transition(self) -> None:
         descriptor = self.descriptor("task-1")
-        old_lease = self.score_core.initialize_score(
+        old_lease = self.score_band.initialize_score(
             task_id="task-1",
             suffix=self.SUFFIX,
-            lease_duration_millis=self.creation.lease_duration_millis,
+            lease_duration_millis=self.runtime.lease_duration_millis,
         )
-        self.creation._write_descriptor(
-            descriptor=descriptor,
-            allocation_rule_json=json.dumps(dict(descriptor.allocation_rule)),
-            config_json=json.dumps(dict(descriptor.config)),
+        self.redis.hset(
+            "tc:test:task:task-1",
+            mapping={
+                "workerGroupId": descriptor.worker_group_id,
+                "allocationRuleJson": json.dumps(dict(descriptor.allocation_rule)),
+                "configJson": json.dumps(dict(descriptor.config)),
+            },
         )
-        replacement_score = self.score_core._score(
-            self.score_core.PRE_REVIEW_TAG,
-            self.score_core._current_time_slot() + 10,
+        replacement_score = self.score_band._score(
+            self.score_band.PRE_REVIEW_TAG,
+            self.score_band._current_time_slot() + 10,
             2,
         )
-        self.redis.zadd(self.score_core.score_key, {"task-1": replacement_score})
+        self.redis.zadd(self.score_band.score_key, {"task-1": replacement_score})
 
-        status = self.creation._release_creation_lease(
+        release = self.score_band.release_observed_score_hold(
             task_id=descriptor.task_id,
-            observed_lease_score=int(old_lease.score),
+            observed_hold_score=int(old_lease.score),
         )
 
-        self.assertEqual(TaskScoreTransitionStatus.STALE, status)
+        self.assertEqual(TaskScoreTransitionStatus.STALE, release.status)
         self.assertEqual(
             replacement_score,
-            self.redis.zscore(self.score_core.score_key, "task-1"),
+            self.redis.zscore(self.score_band.score_key, "task-1"),
         )
         self.assertIn("tc:test:task:task-1", self.redis.hashes)
 
     def test_non_json_descriptor_is_rejected_before_score_write(self) -> None:
-        result = self.creation.create_task(
+        result = self.runtime.create_task(
             descriptor=self.descriptor(
                 "task-1",
                 allocation_rule={"dynamic.battery": {"$eq": object()}},
@@ -324,9 +334,9 @@ class RedisTaskRuntimeTest(unittest.TestCase):
     def test_batch_load_is_bounded_and_deduplicated(self) -> None:
         task_1 = self.descriptor("task-1")
         task_2 = self.descriptor("task-2", worker_group_id="audio-workers")
-        self.creation.create_task(descriptor=task_1, suffix=self.SUFFIX)
-        self.redis.now_millis += self.score_core.SLOT_MILLIS
-        self.creation.create_task(descriptor=task_2, suffix=self.SUFFIX)
+        self.runtime.create_task(descriptor=task_1, suffix=self.SUFFIX)
+        self.redis.now_millis += self.score_band.SLOT_MILLIS
+        self.runtime.create_task(descriptor=task_2, suffix=self.SUFFIX)
 
         rows = self.catalog.load_task_allocation_descriptors(
             task_ids=["task-2", "missing", "task-1", "task-1"]
@@ -342,9 +352,9 @@ class RedisTaskRuntimeTest(unittest.TestCase):
     def test_corrupt_row_fails_only_that_task_closed(self) -> None:
         task_1 = self.descriptor("task-1")
         task_2 = self.descriptor("task-2")
-        self.creation.create_task(descriptor=task_1, suffix=self.SUFFIX)
-        self.redis.now_millis += self.score_core.SLOT_MILLIS
-        self.creation.create_task(descriptor=task_2, suffix=self.SUFFIX)
+        self.runtime.create_task(descriptor=task_1, suffix=self.SUFFIX)
+        self.redis.now_millis += self.score_band.SLOT_MILLIS
+        self.runtime.create_task(descriptor=task_2, suffix=self.SUFFIX)
         self.redis.hashes["tc:test:task:task-2"]["configJson"] = "{bad-json"
 
         rows = self.catalog.load_task_allocation_descriptors(
@@ -354,7 +364,7 @@ class RedisTaskRuntimeTest(unittest.TestCase):
         self.assertEqual({"task-1": task_1, "task-2": None}, rows)
 
     def test_exports_and_read_only_catalog_surface(self) -> None:
-        self.assertIs(py_example.RedisTaskCreationRuntime, RedisTaskCreationRuntime)
+        self.assertIs(py_example.RedisTaskRuntime, RedisTaskRuntime)
         self.assertIs(py_example.RedisTaskResourceCatalog, RedisTaskResourceCatalog)
         self.assertFalse(hasattr(RedisTaskResourceCatalog, "register_task_descriptor"))
 

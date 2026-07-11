@@ -7,13 +7,18 @@ from typing import Any, Mapping, Sequence
 
 from ..kernel.task_runtime import (
     TaskCreationResult,
-    TaskCreationRuntime,
     TaskCreationStatus,
     TaskDescriptor,
     TaskResourceCatalog,
+    TaskRuntime,
 )
-from ..kernel.task_score_band import Suffix, TaskId, TaskScoreTransitionStatus
-from .task_score_band_zset import RedisZsetTaskScoreBandCore
+from ..kernel.task_score_band import (
+    Score,
+    Suffix,
+    TaskId,
+    TaskScoreBandCore,
+    TaskScoreTransitionStatus,
+)
 
 
 def _task_descriptor_key(prefix: str, task_id: TaskId) -> str:
@@ -29,14 +34,15 @@ def _encode_json(payload: Mapping[str, object]) -> str:
     )
 
 
-class RedisTaskCreationRuntime(TaskCreationRuntime):
-    """Redis Task creation owner coordinated by the Task score lease."""
+class RedisTaskRuntime(TaskRuntime):
+    """Redis Task runtime owner."""
 
     DEFAULT_LEASE_DURATION_MILLIS = 3_000
 
     def __init__(
         self,
-        score_core: RedisZsetTaskScoreBandCore,
+        redis_client: Any,
+        score_band: TaskScoreBandCore,
         *,
         prefix: str = "default",
         lease_duration_millis: int = DEFAULT_LEASE_DURATION_MILLIS,
@@ -45,8 +51,8 @@ class RedisTaskCreationRuntime(TaskCreationRuntime):
             raise ValueError("prefix must be non-empty")
         if lease_duration_millis <= 0:
             raise ValueError("lease_duration_millis must be positive")
-        self.score_core = score_core
-        self.redis = score_core.redis
+        self.redis = redis_client
+        self.score_band = score_band
         self.prefix = prefix
         self.lease_duration_millis = lease_duration_millis
 
@@ -65,80 +71,74 @@ class RedisTaskCreationRuntime(TaskCreationRuntime):
                 "descriptor is not JSON serializable",
             )
 
-        lease = self.score_core.initialize_score(
+        initialization = self._initialize_task_score(
             task_id=descriptor.task_id,
             suffix=suffix,
-            lease_duration_millis=self.lease_duration_millis,
         )
-        if lease.status == TaskScoreTransitionStatus.INVALID:
-            return TaskCreationResult(
-                TaskCreationStatus.INVALID,
-                "task score is not an initialization state",
-            )
-        if lease.status == TaskScoreTransitionStatus.NOOP:
-            return TaskCreationResult(
-                TaskCreationStatus.CONFLICT,
-                "task score is already initialized",
-            )
-        if lease.status != TaskScoreTransitionStatus.TRANSITIONED or lease.score is None:
-            return TaskCreationResult(
-                TaskCreationStatus.RETRYABLE,
-                "task score initialization could not be confirmed",
-            )
+        if isinstance(initialization, TaskCreationResult):
+            return initialization
+        observed_lease_score = initialization
 
         try:
-            self._write_descriptor(
-                descriptor=descriptor,
-                allocation_rule_json=allocation_rule_json,
-                config_json=config_json,
+            self.redis.hset(
+                _task_descriptor_key(self.prefix, descriptor.task_id),
+                mapping={
+                    "workerGroupId": descriptor.worker_group_id,
+                    "allocationRuleJson": allocation_rule_json,
+                    "configJson": config_json,
+                },
             )
         except Exception:
             with suppress(Exception):
-                self._release_creation_lease(
+                self.score_band.release_observed_score_hold(
                     task_id=descriptor.task_id,
-                    observed_lease_score=lease.score,
+                    observed_hold_score=observed_lease_score,
                 )
             raise
 
-        release_status = self._release_creation_lease(
+        release = self.score_band.release_observed_score_hold(
             task_id=descriptor.task_id,
-            observed_lease_score=lease.score,
+            observed_hold_score=observed_lease_score,
         )
-        if release_status == TaskScoreTransitionStatus.TRANSITIONED:
+        if release.status == TaskScoreTransitionStatus.TRANSITIONED:
             return TaskCreationResult(TaskCreationStatus.CREATED)
         return TaskCreationResult(
             TaskCreationStatus.RETRYABLE,
             "task descriptor was written but score release was not accepted",
         )
 
-    def _write_descriptor(
-        self,
-        *,
-        descriptor: TaskDescriptor,
-        allocation_rule_json: str,
-        config_json: str,
-    ) -> None:
-        self.redis.hset(
-            _task_descriptor_key(self.prefix, descriptor.task_id),
-            mapping={
-                "workerGroupId": descriptor.worker_group_id,
-                "allocationRuleJson": allocation_rule_json,
-                "configJson": config_json,
-            },
-        )
-
-    def _release_creation_lease(
+    def _initialize_task_score(
         self,
         *,
         task_id: TaskId,
-        observed_lease_score: int,
-    ) -> TaskScoreTransitionStatus:
-        result = self.score_core.release_observed_score_hold(
+        suffix: Suffix,
+    ) -> Score | TaskCreationResult:
+        initialization = self.score_band.initialize_score(
             task_id=task_id,
-            observed_hold_score=observed_lease_score,
-            release_time_millis=self.score_core._current_time_millis(),
+            suffix=suffix,
+            lease_duration_millis=self.lease_duration_millis,
         )
-        return result.status
+        if initialization.status == TaskScoreTransitionStatus.TRANSITIONED:
+            if initialization.score is not None:
+                return initialization.score
+            return TaskCreationResult(
+                TaskCreationStatus.RETRYABLE,
+                "task score initialization returned no lease score",
+            )
+        if initialization.status == TaskScoreTransitionStatus.NOOP:
+            return TaskCreationResult(
+                TaskCreationStatus.CONFLICT,
+                "task score is already initialized",
+            )
+        if initialization.status == TaskScoreTransitionStatus.INVALID:
+            return TaskCreationResult(
+                TaskCreationStatus.INVALID,
+                "task score initialization was rejected",
+            )
+        return TaskCreationResult(
+            TaskCreationStatus.RETRYABLE,
+            "task score initialization could not be confirmed",
+        )
 
 
 class RedisTaskResourceCatalog(TaskResourceCatalog):

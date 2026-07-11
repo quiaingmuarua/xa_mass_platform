@@ -16,7 +16,8 @@ TaskWorkRuntime = task backlog and work truth, defined separately
 AssignmentDispatch = bounded consumer of task and worker owner facts
 ```
 
-`TaskCreationRuntime` owns score-leased Task creation. `TaskResourceCatalog`
+`TaskRuntime` owns score-leased Task creation and future Task runtime owner
+operations. `TaskResourceCatalog`
 owns only the bounded allocation descriptor load. The catalog does not create
 Task identity or decide duplicate-create conflicts, and neither surface owns
 general Task reads, worker matching, allocation results, work items, or finality.
@@ -394,7 +395,7 @@ These are descriptor values, not lifecycle or allocation-result records.
 
 The interface skeleton is implemented in
 [`py_example/kernel/task_runtime.py`](../py_example/kernel/task_runtime.py). It
-contains the descriptor DTO, the narrow `TaskCreationRuntime`, and the bounded
+contains the descriptor DTO, the Task owner `TaskRuntime`, and the bounded
 read-only `TaskResourceCatalog` surface. The Redis executable-spec implementation lives in
 [`py_example/runtime_redis/task_runtime.py`](../py_example/runtime_redis/task_runtime.py)
 and implements score-leased creation plus HASH batch loading.

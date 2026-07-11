@@ -12,8 +12,8 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
     redis_module = None  # type: ignore[assignment]
 
 from kernel_design.py_example import (
-    RedisTaskCreationRuntime,
     RedisTaskResourceCatalog,
+    RedisTaskRuntime,
     RedisZsetTaskScoreBandCore,
     TaskCreationStatus,
     TaskDescriptor,
@@ -44,12 +44,13 @@ class RedisTaskRuntimeIntegrationTest(unittest.TestCase):
     def setUp(self) -> None:
         self.prefix = f"integration-{uuid.uuid4().hex}"
         self.score_key = f"tr:{self.prefix}:task:score"
-        self.score_core = RedisZsetTaskScoreBandCore(
+        self.score_band = RedisZsetTaskScoreBandCore(
             self.redis,
             score_key=self.score_key,
         )
-        self.creation = RedisTaskCreationRuntime(
-            self.score_core,
+        self.runtime = RedisTaskRuntime(
+            self.redis,
+            self.score_band,
             prefix=self.prefix,
             lease_duration_millis=200,
         )
@@ -86,7 +87,7 @@ class RedisTaskRuntimeIntegrationTest(unittest.TestCase):
         descriptor = self.descriptor(task_id)
 
         def create_once(_: int) -> TaskCreationStatus:
-            return self.creation.create_task(
+            return self.runtime.create_task(
                 descriptor=descriptor,
                 suffix=self.SUFFIX,
             ).status
@@ -111,16 +112,16 @@ class RedisTaskRuntimeIntegrationTest(unittest.TestCase):
     def test_real_redis_expired_score_is_not_reinitialized(self) -> None:
         task_id = "task-stale"
         self.task_ids.add(task_id)
-        old_lease = self.score_core.initialize_score(
+        old_lease = self.score_band.initialize_score(
             task_id=task_id,
             suffix=self.SUFFIX,
-            lease_duration_millis=self.creation.lease_duration_millis,
+            lease_duration_millis=self.runtime.lease_duration_millis,
         )
         time.sleep(0.32)
-        repeated_initialization = self.score_core.initialize_score(
+        repeated_initialization = self.score_band.initialize_score(
             task_id=task_id,
             suffix=self.SUFFIX,
-            lease_duration_millis=self.creation.lease_duration_millis,
+            lease_duration_millis=self.runtime.lease_duration_millis,
         )
 
         self.assertEqual(
@@ -134,8 +135,8 @@ class RedisTaskRuntimeIntegrationTest(unittest.TestCase):
         first = self.descriptor("task-1")
         second = self.descriptor("task-2", worker_group_id="audio-workers")
         self.task_ids.update({first.task_id, second.task_id})
-        self.creation.create_task(descriptor=first, suffix=self.SUFFIX)
-        self.creation.create_task(descriptor=second, suffix=self.SUFFIX)
+        self.runtime.create_task(descriptor=first, suffix=self.SUFFIX)
+        self.runtime.create_task(descriptor=second, suffix=self.SUFFIX)
 
         rows = self.catalog.load_task_allocation_descriptors(
             task_ids=[second.task_id, "missing", first.task_id]
@@ -155,8 +156,8 @@ class RedisTaskRuntimeIntegrationTest(unittest.TestCase):
         first = self.descriptor("task-1")
         second = self.descriptor("task-2")
         self.task_ids.update({first.task_id, second.task_id})
-        self.creation.create_task(descriptor=first, suffix=self.SUFFIX)
-        self.creation.create_task(descriptor=second, suffix=self.SUFFIX)
+        self.runtime.create_task(descriptor=first, suffix=self.SUFFIX)
+        self.runtime.create_task(descriptor=second, suffix=self.SUFFIX)
         self.redis.hset(self._task_key(second.task_id), "configJson", "{bad-json")
 
         rows = self.catalog.load_task_allocation_descriptors(

@@ -39,10 +39,10 @@ from .worker_runtime import (
 )
 from .task_runtime import (
     TaskCreationResult,
-    TaskCreationRuntime,
     TaskCreationStatus,
     TaskDescriptor,
     TaskResourceCatalog,
+    TaskRuntime,
 )
 
 __all__ = [
@@ -80,8 +80,8 @@ __all__ = [
     "WorkerRuntimeResult",
     "WorkerRuntimeStatus",
     "TaskCreationResult",
-    "TaskCreationRuntime",
     "TaskCreationStatus",
     "TaskDescriptor",
     "TaskResourceCatalog",
+    "TaskRuntime",
 ]

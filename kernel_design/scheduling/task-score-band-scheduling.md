@@ -753,8 +753,8 @@ Score hold release is a separate primitive because it is the only legal way to m
 the same tag to an earlier `timeSlot`:
 
 ```text
-release_observed_score_hold(taskId, observedHoldScore, releaseTimeMillis):
-  releaseTimeSlot = floor(releaseTimeMillis / SLOT_MILLIS)
+release_observed_score_hold(taskId, observedHoldScore):
+  releaseTimeSlot = currentRedisTimeSlot()
   storedScore = read_current_score(taskId)
   require storedScore == observedHoldScore
   observed = decode_positive(observedHoldScore)

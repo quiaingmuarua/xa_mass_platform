@@ -595,7 +595,6 @@ class RedisZsetTaskScoreBandCoreTest(unittest.TestCase):
         result = self.kernel.release_observed_score_hold(
             task_id="task",
             observed_hold_score=paused,
-            release_time_millis=self.millis(1_000),
         )
         state = self.kernel.get_score_states(task_ids=["task"])["task"]
 
@@ -615,7 +614,6 @@ class RedisZsetTaskScoreBandCoreTest(unittest.TestCase):
         result = self.kernel.release_observed_score_hold(
             task_id="task",
             observed_hold_score=lease,
-            release_time_millis=self.redis.now_millis,
         )
         state = self.kernel.get_score_states(task_ids=["task"])["task"]
 
@@ -624,20 +622,19 @@ class RedisZsetTaskScoreBandCoreTest(unittest.TestCase):
         self.assertEqual(self.redis.now_millis, state.time_millis)
         self.assertEqual(1, state.suffix)
 
-    def test_release_observed_score_hold_rejects_later_time(self) -> None:
-        held = self.score(self.kernel.RUNNING_VISIBLE_TAG, 2_000, 4)
+    def test_release_observed_score_hold_rejects_expired_score(self) -> None:
+        held = self.score(self.kernel.RUNNING_VISIBLE_TAG, 999, 4)
         self.store_score("task", held)
 
         result = self.kernel.release_observed_score_hold(
             task_id="task",
             observed_hold_score=held,
-            release_time_millis=self.millis(2_001),
         )
         state = self.kernel.get_score_states(task_ids=["task"])["task"]
 
         self.assertEqual(TaskScoreTransitionStatus.INVALID, result.status)
         self.assertIsNotNone(state)
-        self.assertEqual(self.millis(2_000), state.time_millis)
+        self.assertEqual(self.millis(999), state.time_millis)
         self.assertEqual(4, state.suffix)
 
 

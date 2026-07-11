@@ -7,10 +7,10 @@ from dataclasses import fields
 import kernel_design.py_example as py_example
 from kernel_design.py_example import (
     TaskCreationResult,
-    TaskCreationRuntime,
     TaskCreationStatus,
     TaskDescriptor,
     TaskResourceCatalog,
+    TaskRuntime,
 )
 
 
@@ -45,10 +45,10 @@ class TaskRuntimeModelTest(unittest.TestCase):
             {"created", "retryable", "conflict", "invalid"},
         )
 
-    def test_task_creation_runtime_exposes_only_create(self) -> None:
-        self.assertEqual(TaskCreationRuntime.__abstractmethods__, {"create_task"})
+    def test_task_runtime_current_surface_exposes_only_create(self) -> None:
+        self.assertEqual(TaskRuntime.__abstractmethods__, {"create_task"})
         self.assertEqual(
-            set(inspect.signature(TaskCreationRuntime.create_task).parameters),
+            set(inspect.signature(TaskRuntime.create_task).parameters),
             {"self", "descriptor", "suffix"},
         )
 
@@ -73,7 +73,7 @@ class TaskRuntimeModelTest(unittest.TestCase):
         self.assertFalse(hasattr(TaskResourceCatalog, "register_task_descriptor"))
 
     def test_task_runtime_contracts_are_package_exports(self) -> None:
-        self.assertIs(py_example.TaskCreationRuntime, TaskCreationRuntime)
+        self.assertIs(py_example.TaskRuntime, TaskRuntime)
         self.assertIs(py_example.TaskDescriptor, TaskDescriptor)
         self.assertIs(py_example.TaskResourceCatalog, TaskResourceCatalog)
 

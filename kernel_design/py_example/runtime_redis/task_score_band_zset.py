@@ -331,7 +331,6 @@ return {"transitioned", tonumber(next_score)}
         *,
         task_id: TaskId,
         observed_hold_score: Score,
-        release_time_millis: TimeMillis,
     ) -> TaskScoreTransitionResult:
         observed = self._decode_positive(observed_hold_score)
         if observed is None:
@@ -344,8 +343,7 @@ return {"transitioned", tonumber(next_score)}
             self.PRE_REVIEW_TAG,
         }:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
-        if not self._valid_time_millis(release_time_millis):
-            return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
+        release_time_millis = self._current_time_millis()
         release_time_slot = self._time_slot_from_millis(release_time_millis)
         if release_time_slot > observed_time_slot:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)

@@ -32,8 +32,8 @@ class TaskCreationResult:
     reason: str | None = None
 
 
-class TaskCreationRuntime(ABC):
-    """Score-owned Task creation surface."""
+class TaskRuntime(ABC):
+    """Task runtime owner surface."""
 
     @abstractmethod
     def create_task(

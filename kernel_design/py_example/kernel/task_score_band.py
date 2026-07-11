@@ -226,12 +226,11 @@ class TaskScoreBandCore(ABC):
         *,
         task_id: TaskId,
         observed_hold_score: Score,
-        release_time_millis: TimeMillis,
     ) -> TaskScoreTransitionResult:
         """Release an exact held score.
 
-        The release target derives tag and suffix from observed_hold_score and
-        may only move time nearer or keep it unchanged. It does not reset
-        same-band suffix.
+        The score owner derives current time, tag, and suffix internally. The
+        release may only move time nearer or keep it unchanged. It does not
+        reset same-band suffix.
         """
         pass
