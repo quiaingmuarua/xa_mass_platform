@@ -126,9 +126,11 @@ worker runtime does not read Task metadata to discover it.
 
 `allocationRule` is separate from `config` because it may be replaced as one
 independent owner mutation later. The first cut exposes no replacement
-operation. A future replacement must be explicit and fenced; it must not
+operation. A future replacement must be explicit and fenced, but it must not
+acquire or rewrite task score merely to update resource metadata. It must not
 silently rewrite the whole descriptor or leave an older allocation handoff
-valid against a newer rule.
+valid against a newer rule. Task metadata mutation and scheduling visibility
+remain separate owner operations.
 
 ### config["runningVisibleMinimumCandidateWorkers"]
 

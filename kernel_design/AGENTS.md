@@ -95,6 +95,13 @@ bounded task acquire / recheck primitives
 It does not own item append, work hash claim, worker selection, transport
 delivery, or result finality.
 
+Score is not a resource mutation lock. Task/worker metadata writes, dynamic
+attribute writes, item append, result/evidence writes, projections, and trace
+must not acquire or refresh score. Initialization establishes the first score;
+the active scheduling plane is the only routine writer for acquirable scores;
+explicit lifecycle commands may invoke only declared approve/reject/pause/
+resume/close or availability transitions.
+
 Worker-runtime owns:
 
 ```text
@@ -248,6 +255,15 @@ python -m unittest \
   read-model update become scheduling wakeups by default.
 - Do not put transport identifiers into scheduling candidate truth.
 - Do not make score-band a read model, storage blob, or lifecycle facade.
+- Do not require a score read, lease, or rewrite before resource metadata,
+  dynamic attribute, backlog append, result/evidence, projection, or trace
+  mutation.
+- Do not let a resource mutation become a generic score refresh. Worker dirty
+  may only be an additional bounded stale hint for a real continuation and must
+  never gate or roll back the resource write.
+- Do not create a second routine writer for an acquirable score. Scheduling owns
+  cadence/budget rewrites; command handlers are limited to explicit lifecycle
+  transitions.
 - Do not make worker score own task demand, task backlog, or final result.
 - Do not make task score own work hash claim, retry frames, or result finality.
 - Do not introduce a second hot-path candidate index without naming its owner,

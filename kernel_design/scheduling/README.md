@@ -170,6 +170,47 @@ Those states intentionally do not promise automatic liveness. The manual
 command is authoritative input, but the owning plane still validates current
 truth before moving state.
 
+## Score Writer Authority
+
+Score coordinates do not serialize ordinary Task or Worker resource writes.
+
+```text
+resource mutation
+  writes owner truth directly
+  does not acquire score
+  does not refresh score
+  does not wait for dispatcher ownership
+
+item append
+  writes backlog truth directly
+  does not change task lifecycle or scheduling visibility
+
+score-acquired scheduling round
+  is the only routine writer for an acquirable score
+  may classify the round and write next time / budget / hold / lane
+
+explicit lifecycle command
+  may invoke only a declared transition such as approve, reject, pause,
+  resume, close, verified unavailable, or verified reopen
+```
+
+For task active bands and worker HOT acquisition, assignment-dispatch owns the
+routine scheduling intent. A worker recovery round owns only the
+RECOVERY_RECHECK classification it acquired. Resource owners cannot imitate
+either path by refreshing score after metadata, append, heartbeat, result, or
+projection writes.
+
+An explicit command may supersede an acquired round through the score stale
+fence. That is a high-priority lifecycle transition, not a second pacing loop:
+the command handler cannot consume routine scheduling budget, calculate retry
+cadence, or perform a generic same-band refresh.
+
+Worker dirty is the narrow exception to "resource writes do not touch score",
+but it is not a prerequisite or lock. The resource update commits first. If a
+real persisted assignment continuation used the changed field, the owner may
+separately mark that continuation stale; failure to mark dirty cannot reject or
+roll back the resource update.
+
 ## Plane Boundaries
 
 ### Task Score-Band Scheduling

@@ -124,7 +124,9 @@ write. It initializes the worker's HOT_ACQUIRE score first and writes the
 descriptor second. A descriptor without a score is not a schedulable registered
 worker. `WorkerResourceCatalog` keeps bounded descriptor reads and
 low-frequency metadata updates; those updates do not require a worker score
-lease.
+lease. The same rule applies to dynamic attribute updates: resource truth commits
+independently, while any justified dirty mark is an additional stale hint for a
+real persisted assignment continuation and cannot gate or roll back the update.
 
 `workerGroupId` is globally unique. `workerId` is unique inside one
 `workerGroupId`; all worker catalog operations therefore carry both values.

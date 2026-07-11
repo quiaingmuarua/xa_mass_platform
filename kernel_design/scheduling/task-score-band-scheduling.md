@@ -115,6 +115,19 @@ Rules:
 - append, result, retry frame write, and result lookup are not score refresh
   triggers.
 
+Score is not a Task resource mutation lease. Task metadata/configuration writes,
+item append, work/result evidence, projections, and trace commit through their
+own owners without reading, acquiring, or rewriting task score. Their success
+must not depend on dispatcher ownership of the current score.
+
+For `PRE_DISPATCH_VISIBLE` and `RUNNING_VISIBLE`, assignment-dispatch is the only
+routine score-intent writer. It owns recheck cadence, scheduling-budget
+consumption, ordinary future placement, and round classification. Explicit
+lifecycle commands may still use the declared owner-transition primitives for
+approve/reject/pause/resume/cancel/close. Those commands are high-priority
+state changes protected by the score stale fence; they are not allowed to
+perform generic scheduling refresh or become another pacing loop.
+
 Conceptual flow:
 
 ```text
@@ -1015,8 +1028,9 @@ on the kernel primitive.
 | Category | May write task score? | Allowed shape |
 | --- | --- | --- |
 | score-acquired assignment-dispatch round | yes | Decode score, validate owner facts, run the band action, then call same-band time/suffix rewrite, general positive rewrite, terminal close, or score hold release. |
-| owner command | yes | Validate owner facts, then call same-band time/suffix rewrite, general positive rewrite, terminal close, or score hold release. |
-| owner-evidence-write | no direct live score | Update its own truth only; later scheduling or an owner command may observe it. |
+| initialization owner | yes, once | Establish the first score during Task creation; it cannot reacquire or rewrite an existing score. |
+| owner command | yes, declared transitions only | Validate owner facts, then approve/reject/pause/resume/cancel/close through the matching transition primitive. It cannot perform generic cadence or budget rewrites. |
+| resource / backlog / evidence write | no direct live score | Metadata/config update, append, work/result evidence, retry frame, and similar writes update their own truth without a score lease. Later scheduling or an owner command may observe them. |
 | read projection / trace | no | Observability only. |
 
 ## Transition Execution Rules

@@ -52,6 +52,13 @@ This shape targets:
 Kernel runtime interfaces are the contracts. Scheduling code should not know
 whether Redis uses LIST, HASH, ZSET, Lua, or a future implementation detail.
 
+Task score is not a Redis mutation lock for adjacent owner keys. Descriptor or
+policy metadata update, item append, work/result mutation, projection, and trace
+write their own keys without reading, leasing, or rewriting task score.
+Assignment-dispatch is the only routine writer of acquired active scores;
+creation and explicit lifecycle commands use only their declared initialization
+or control-transition primitives.
+
 ## Production Bias
 
 The first production target is:
@@ -1613,10 +1620,11 @@ never pass those range coordinates. Lua only verifies range membership and
 preserves or substitutes suffix. Observed same-band suffix rewrite is a
 negative-delta operation and uses an exact observed-score CAS, because it is
 scheduling-round evidence and must not overwrite a newer same-band
-classification. Lua/transactions are reserved for this internal positive
-range-mint, terminal closes, observed-score release or observed suffix rewrite, and
-mutations that must update task-local runtime keys together with score, meta, or
-fence values.
+classification. Lua/transactions are reserved for score-only positive range
+mint, terminal close, observed-score release, observed suffix rewrite, and
+owner-local atomic mutations inside work/result structures. No Lua or
+transaction may span task score together with descriptor, work, result,
+projection, or trace keys merely to serialize ordinary owner mutations.
 
 The Redis/Lua protocol is trusted inside the kernel implementation. It is not a
 zero-trust public contract and must not be promoted into a public task-score

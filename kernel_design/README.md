@@ -85,6 +85,62 @@ policies map evidence to the next score
 external events only provide business evidence or optional acceleration
 ```
 
+## Score Mutation Authority
+
+Score is a scheduling coordinate, not a resource mutation lock. Ordinary owner
+truth must remain writable without reading, acquiring, leasing, or rewriting a
+task or worker score:
+
+```text
+task descriptor / allocation metadata update
+worker system / static / dynamic attribute update
+task item append
+work / result / transport evidence write
+read projection / trace materialization
+```
+
+Those writes may affect facts read by a later scheduling round, but they do not
+become score transitions and must not wait for score ownership. In particular,
+append owns backlog growth only. It does not make a task schedulable, refresh a
+task score, or emit a required wakeup.
+
+Score write authority is deliberately narrow:
+
+```text
+initialization owner
+  establishes the first score during task creation or worker registration
+
+scheduling plane
+  is the only routine writer while a score is in an acquirable scheduling lane
+  owns acquire classification, next time, retry/budget consumption, hold, and
+  ordinary same-lane rewrite
+
+lifecycle command owner
+  may perform only explicit control transitions such as approve, reject,
+  pause, resume, cancel, close, verified unavailable, or verified reopen
+```
+
+The lifecycle-command exception does not create a second scheduling mainline.
+It cannot calculate ordinary retry cadence, consume scheduling-round budget, or
+perform generic score refresh. It validates command-owner truth and invokes one
+declared transition primitive protected by current-score validation or an exact
+observed-score fence.
+
+Worker dirty is also not a resource-update lease. A worker attribute update
+commits independently. Only when a real persisted assignment continuation
+depends on the changed field may the owner additionally attempt a bounded dirty
+mark. Dirty failure cannot reject or roll back the attribute update.
+
+The hard owner rule is:
+
+```text
+resource owners write resource truth without a score lease
+backlog owners append work without score mutation
+scheduling owns routine acquirable-score evolution
+command owners own explicit lifecycle transitions only
+score never becomes a global mutation lock
+```
+
 The kernel must close its own loop without ordinary external events:
 
 ```text

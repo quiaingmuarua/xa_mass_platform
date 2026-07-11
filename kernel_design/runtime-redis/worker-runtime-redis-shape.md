@@ -154,6 +154,13 @@ Only `WorkerScoreCore` writes this key. Resource catalog, dynamic attribute
 handlers, transport, trace, result routing, and query projections must not write
 score directly.
 
+These resource/evidence owners also do not acquire a worker score lease before
+writing their own keys. HOT admission scheduling is the only routine writer of
+acquired positive scores, and recovery scheduling is the only routine writer of
+acquired negative scores. Registration initializes the first score; explicit
+hold/release or verified polarity commands are narrow control transitions, not
+generic metadata-update hooks.
+
 Score absence is not a normal unavailable state. It means the score has not been
 initialized, the worker was removed, or the index is orphaned and needs
 owner-local repair.

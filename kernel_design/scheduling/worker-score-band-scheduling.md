@@ -169,6 +169,15 @@ or reservation. If the first executable slice has no persisted task-worker
 assignment plan / hot score lease continuation, dirty should remain unused or
 deferred.
 
+Worker score is not a Worker resource mutation lease. Registration establishes
+the first HOT_ACQUIRE score, but later system/static/dynamic attribute writes,
+handler-owned projections, heartbeat evidence, and diagnostics update their own
+truth without acquiring or renewing worker score. HOT admission scheduling is
+the only routine writer of acquired HOT scores; recovery scheduling is the only
+routine writer of acquired RECOVERY_RECHECK scores. Explicit owner commands may
+hold/release or perform verified polarity transitions, but cannot become a
+generic score-refresh path.
+
 Scheduling-critical metadata may include worker group membership, approved
 scheduling attributes, capacity profile, dispatch gate generation, admission
 policy, or other platform-defined fields that affect worker selection or
@@ -676,9 +685,16 @@ already dispatched work is running:
   path and validate current metadata before the next assignment
 
 persisted task-worker assignment plan / hot score lease continuation:
-  metadata update may mark dirty = 1 so that the assignment owner cannot
+  metadata update commits independently, then may mark dirty = 1 so that the assignment owner cannot
   continue from cached candidate facts without revalidation
 ```
+
+Dirty marking is an additional bounded stale-fence write, never a precondition
+for the metadata update. A stale, failed, or skipped dirty mark must not reject,
+roll back, or delay resource truth. If that best-effort rule is insufficient for
+a named continuation invariant, the continuation owner needs a stronger
+owner-local protocol; the resource update still must not acquire the worker
+score as a global lock.
 
 If the runtime has only an in-memory scheduling round and no persisted
 assignment plan / hot score lease continuation, there may be no dirty consumer
