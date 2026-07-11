@@ -277,10 +277,10 @@ a status index, active-task query, scheduling queue, or background scanner.
 ## Validation
 
 The TaskDescriptor validation contract is the single owner of descriptor schema
-rules. Task admission runs it before registration; catalog registration and
-Redis decode reuse the same validation instead of defining copies.
-Assignment-dispatch may fail closed on an invalid decoded row, but it does not
-redefine these rules.
+rules. Task admission runs it before registration. Redis trusts that internal
+contract and does not recompile the DSL or reinterpret config semantics on
+write/read. Assignment-dispatch fails closed if a consumed value cannot be used,
+but it does not redefine these rules.
 
 Validation rejects:
 
@@ -351,9 +351,10 @@ HMGET tc:{prefix}:task:{taskId}
 ```
 
 This is one client round trip over a bounded task-id batch, not one Redis
-command round trip per task. Missing keys, missing required fields, malformed
-integers, or invalid JSON fail that task closed. The allocation hot path does
-not use `HGETALL`, scan descriptor keys, or maintain a second descriptor index.
+command round trip per task. Missing fields, malformed JSON, or non-object JSON
+fail that task closed. Redis does not rerun DSL/config semantic validation on
+every read. The allocation hot path does not use `HGETALL`, scan descriptor
+keys, or maintain a second descriptor index.
 
 ## Minimal Python Shape
 
@@ -371,7 +372,12 @@ These are descriptor values, not lifecycle or allocation-result records.
 The interface skeleton is implemented in
 [`py_example/kernel/task_runtime.py`](../py_example/kernel/task_runtime.py). It
 contains only descriptor DTOs, create-only registration result, and the bounded
-`TaskResourceCatalog` surface. No storage implementation exists in this slice.
+`TaskResourceCatalog` surface. The Redis executable-spec implementation lives in
+[`py_example/runtime_redis/task_runtime.py`](../py_example/runtime_redis/task_runtime.py)
+and implements only the HASH create/load contract above.
+[`py_example/tests/test_redis_task_runtime_integration.py`](../py_example/tests/test_redis_task_runtime_integration.py)
+is the real-Redis proof for Lua create atomicity, redis-py pipeline compatibility,
+binary response decoding, and corrupt-row isolation.
 
 The first cut deliberately uses string-only config values. Supporting both JSON
 numbers and strings would add two representations for the same setting without

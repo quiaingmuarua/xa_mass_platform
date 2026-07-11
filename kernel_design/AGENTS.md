@@ -69,9 +69,12 @@ For task runtime or task score-band work:
 3. [runtime-redis/score-band-task-runtime-redis-shape.md](runtime-redis/score-band-task-runtime-redis-shape.md)
 4. [py_example/kernel/task_runtime.py](py_example/kernel/task_runtime.py)
 5. [py_example/kernel/task_score_band.py](py_example/kernel/task_score_band.py)
-6. [py_example/runtime_redis/task_score_band_zset.py](py_example/runtime_redis/task_score_band_zset.py)
-7. [py_example/tests/test_task_runtime_models.py](py_example/tests/test_task_runtime_models.py)
-8. [py_example/tests/test_redis_zset_task_score_band.py](py_example/tests/test_redis_zset_task_score_band.py)
+6. [py_example/runtime_redis/task_runtime.py](py_example/runtime_redis/task_runtime.py)
+7. [py_example/runtime_redis/task_score_band_zset.py](py_example/runtime_redis/task_score_band_zset.py)
+8. [py_example/tests/test_task_runtime_models.py](py_example/tests/test_task_runtime_models.py)
+9. [py_example/tests/test_redis_task_runtime.py](py_example/tests/test_redis_task_runtime.py)
+10. [py_example/tests/test_redis_task_runtime_integration.py](py_example/tests/test_redis_task_runtime_integration.py)
+11. [py_example/tests/test_redis_zset_task_score_band.py](py_example/tests/test_redis_zset_task_score_band.py)
 
 For result or dispatch work:
 
@@ -216,6 +219,14 @@ Fast Python validation:
 python -m unittest discover -s kernel_design/py_example/tests
 python -m compileall -q kernel_design/py_example
 git diff --check -- kernel_design
+```
+
+Real Redis TaskResourceCatalog proof requires a reachable Redis URI:
+
+```text
+KERNEL_DESIGN_REDIS_URL=redis://localhost:6379/15 \
+python -m unittest \
+  kernel_design.py_example.tests.test_redis_task_runtime_integration
 ```
 
 For focused worker-runtime checks:

@@ -38,6 +38,7 @@ from .kernel import (
     TaskResourceCatalog,
 )
 from .runtime_redis import (
+    RedisTaskResourceCatalog,
     RedisWorkerDynamicAttributeRuntime,
     RedisWorkerResourceCatalog,
     RedisZsetTaskScoreBandCore,
@@ -52,6 +53,7 @@ __all__ = [
     "Suffix",
     "TaskId",
     "RedisZsetTaskScoreBandCore",
+    "RedisTaskResourceCatalog",
     "RedisZsetWorkerScoreCore",
     "RedisWorkerDynamicAttributeRuntime",
     "RedisWorkerResourceCatalog",
