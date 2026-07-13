@@ -163,11 +163,13 @@ scheduling signature definition. The full signature or hash lives in
 worker-runtime metadata/evidence; score `dirty` only tells a real persisted
 assignment continuation that its cached match / admission facts may be stale.
 
-Score-band itself does not create an `active lease`. `observedScore` returned
-by acquire is only a stale fence for the acquired candidate, not a durable lock
-or reservation. If the first executable slice has no persisted task-worker
-assignment plan / hot score lease continuation, dirty should remain unused or
-deferred.
+HOT candidate scan itself does not create an active lease and returns Worker ids
+only. After a current match, `acquire_due_hot_score_lease` atomically checks the
+stored HOT due coordinate and writes a future score. That newly written score
+is the short allocation lease carried by `CandidateWorkerEntry`; no pre-lease
+score observation crosses the matcher interface. If the first executable slice
+has no persisted task-worker assignment plan / hot score lease continuation,
+dirty should remain unused or deferred.
 
 Worker score is not a Worker resource mutation lease. Registration establishes
 the first HOT_ACQUIRE score, but later system/static/dynamic attribute writes,
@@ -315,7 +317,7 @@ Hot worker acquisition:
 
 ```text
 acquire_hot_acquire_candidates(homeBucketId, limit)
-  -> list[(workerId, observedScore)]
+  -> list[workerId]
 ```
 
 Score range:
@@ -374,13 +376,12 @@ the liveness invariant and cost. Without demand or an owner-controlled recheck
 round, RECOVERY_RECHECK has no wall-clock guarantee to become HOT_ACQUIRE or
 parked exactly when its coordinate becomes due.
 
-`observedScore` is an opaque full-score fence returned with candidates. It is
-the complete signed score, including polarity, timeSlot, laneRank, and dirty.
-Do not trim the sign, dirty, or any lower coordinate. It is not a public
-lifecycle DTO and should not be decoded, constructed, or interpreted outside
-worker-runtime score/admission logic. Ordinary monotonic score writes do not
-need it; lowering operations such as release or recovery exhaustion use it as
-exact CAS protection.
+`observedScore` remains an opaque full-score fence for operations that lower or
+replace a specific existing coordinate, including release, polarity move,
+recovery exhaustion, and active lease renewal. Recovery recheck acquisition may
+return it for those owner transitions. HOT candidate scan and due HOT lease
+acquisition neither expose nor accept it. No caller should decode, construct,
+or trim an observed score.
 
 ## Candidate Validation
 
@@ -713,15 +714,16 @@ mark_current_lease_dirty(homeBucketId, workerId)
   already-dirty scores are no-op
   applies to both due and future scores
 
-acquire_due_hot_score_lease(homeBucketId, workerId, observedScore, targetTimeMillis)
-  observedScore must decode to HOT_ACQUIRE
-  storedScore must equal observedScore
-  observed timeSlot must be < nowSlot
+acquire_due_hot_score_lease(homeBucketId, workerId, targetTimeMillis)
+  atomically reads storedScore
+  storedScore must be positive HOT_ACQUIRE
+  stored timeSlot must be < nowSlot
   targetTimeSlot = floor(targetTimeMillis / SLOT_MILLIS)
-  requires targetTimeMillis > nowMillis
-  caller must have validated current descriptor / dynamic metadata after
-  observing this score
-  writes HOT_ACQUIRE(targetTimeSlot, observed laneRank, dirty=0)
+  targetTimeSlot must be > nowSlot
+  caller performs the current first-stage descriptor / dynamic metadata match
+  writes HOT_ACQUIRE(targetTimeSlot, stored laneRank, dirty=0)
+  after the first writer succeeds, concurrent callers observe a future score
+  and return STALE
 
 renew_active_hot_score_lease(homeBucketId, workerId, observedScore, targetTimeMillis)
   observedScore must decode to HOT_ACQUIRE
@@ -784,8 +786,9 @@ only a hot score lease owner may write dirty = 0 through
 `acquire_due_hot_score_lease`
 active hot lease renewal must not clear dirty; dirty active renewal returns
 STALE and forces a fresh match
-the due hot lease owner may clear dirty only after reading and validating
-current platform-owned scheduling metadata / signature
+the due hot lease owner may clear dirty after the current first-stage match;
+the resulting candidate remains evidence and dispatch revalidates current
+metadata before Work assignment
 non-lease owners must never clear dirty
 ```
 
@@ -868,7 +871,7 @@ assignment-dispatch worker selection path.
 
 | Input kind | May write worker score? | Required path |
 | --- | --- | --- |
-| hot acquire admission round | yes | `acquire_due_hot_score_lease` after post-observation validation, or same-polarity rewrite |
+| hot acquire admission round | yes | current match followed by atomic stored-score due lease, or same-polarity rewrite |
 | recovery-recheck validation round | yes | same-polarity rewrite / polarity move / cold park |
 | capacity full / contention | yes | same-polarity HOT_ACQUIRE rewrite |
 | manual disable / drain / maintenance | yes | same-polarity hold |
@@ -890,6 +893,10 @@ assignment-dispatch worker selection path.
 Use atomic write/CAS where stale intermediate state would allow wrong admission:
 
 ```text
+due HOT allocation lease:
+  atomically require current stored score is positive and due, then write the
+  future lease; no pre-lease observedScore is required
+
 time-lowering operations:
   score CAS with complete signed observedScore
 
@@ -957,7 +964,7 @@ Mechanism owns:
 signed score encoding
 positive hot acquire range
 negative recovery-recheck acquire range
-observed-score stale fence
+observed-score stale fence for active renewal, lowering, and polarity moves
 deferred dirty bit mark / hot lease clear protocol
 same-polarity release
 owner-validated polarity move boundary preserving timeSlot
@@ -1020,11 +1027,11 @@ slot registry redesign
   drain / maintenance holds may still use far-future timeSlot.
 - Do not add `MANUAL_DISABLED_BAND`; manual disable is same-polarity hold.
 - Do not make score replace capacity/admission validation.
-- Do not return candidates without a complete signed observed-score fence to
-  worker-runtime admission.
-- Do not trim `observedScore` to time/laneRank/dirty. It must remain the full
-  signed score including polarity, timeSlot, laneRank, and dirty; callers
-  must not construct or decode it.
+- Do not return HOT candidate score observations across the matcher boundary;
+  HOT scan returns Worker ids and due lease reads current score atomically.
+- Where an operation explicitly requires `observedScore`, do not trim it to
+  time/laneRank/dirty. It remains the full signed score and callers must not
+  construct or decode it.
 - Do not expose kernel-owned encoding details as public parameters: scan range,
   cold coordinate, polarity sign, dirty bit, base, or factor constants.
 - Do not add fake business strategy knobs to score-core methods before a real
@@ -1042,7 +1049,8 @@ slot registry redesign
 - Do not use RECOVERY_RECHECK scores as assignment leases. Recovery validation
   must move the worker back to HOT_ACQUIRE before any hot score lease primitive
   can run.
-- Do not use broad range-mint for acquired admission rewrites.
+- Do not split the HOT due predicate and future lease write into separate Redis
+  operations.
 - Do not create per-task worker candidate keys.
 - Do not fan out score across placement-tag buckets in the first slice.
 - Do not store transport/session evidence in worker scheduling metadata.

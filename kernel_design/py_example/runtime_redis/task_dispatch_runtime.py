@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping as MappingABC
-from typing import Any, Sequence
+from typing import Any, Mapping, Sequence
 
 from ..kernel.task_dispatch_runtime import (
     CandidateWorkerEntry,
@@ -53,28 +53,45 @@ class RedisTaskDispatchRuntime(TaskDispatchRuntime):
         if not candidate_workers:
             return
 
-        self.redis.zadd(
-            self._candidate_key(task_id),
-            {
-                self._encode_entry(entry): expires_at_millis
-                for entry in candidate_workers
-            },
-        )
+        now_millis = self._current_time_millis()
+        if expires_at_millis <= now_millis:
+            raise ValueError("candidate batch expiry must be in the future")
 
-    def candidate_worker_count(
+        key = self._candidate_key(task_id)
+        with self.redis.pipeline(transaction=False) as pipe:
+            pipe.zremrangebyscore(key, "-inf", now_millis)
+            pipe.zadd(
+                key,
+                {
+                    self._encode_entry(entry): expires_at_millis
+                    for entry in candidate_workers
+                },
+            )
+            pipe.execute()
+
+    def candidate_worker_counts(
         self,
         *,
-        task_id: TaskId,
-    ) -> int:
-        self._validate_task_id(task_id)
+        task_ids: Sequence[TaskId],
+    ) -> Mapping[TaskId, int]:
+        unique_task_ids = tuple(dict.fromkeys(task_ids))
+        for task_id in unique_task_ids:
+            self._validate_task_id(task_id)
+        if not unique_task_ids:
+            return {}
+
         now_millis = self._current_time_millis()
-        return int(
-            self.redis.zcount(
-                self._candidate_key(task_id),
-                f"({now_millis}",
-                "+inf",
-            )
-        )
+        with self.redis.pipeline(transaction=False) as pipe:
+            for task_id in unique_task_ids:
+                key = self._candidate_key(task_id)
+                pipe.zremrangebyscore(key, "-inf", now_millis)
+                pipe.zcount(key, f"({now_millis}", "+inf")
+            results = pipe.execute()
+
+        return {
+            task_id: int(results[index * 2 + 1])
+            for index, task_id in enumerate(unique_task_ids)
+        }
 
     def consume_candidate_workers(
         self,

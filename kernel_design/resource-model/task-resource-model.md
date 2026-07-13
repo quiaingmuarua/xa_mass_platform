@@ -41,6 +41,7 @@ TaskDescriptor
   allocationRule: match-rule map
   config: map<string, string>
     priority: decimal text, 1..100
+    maximumCandidateWorkers: positive decimal text
     runningVisibleMinimumCandidateWorkers: positive decimal text
 ```
 
@@ -59,7 +60,7 @@ hidden defaults.
 | Config key | Required/default | Validation owner | Consumer | Validation |
 | --- | --- | --- | --- | --- |
 | `priority` | required, no default | TaskDescriptor contract | assignment-dispatch constraint construction | decimal text in `1..100` |
-| `maximumCandidateWorkers` | required, no default | TaskDescriptor contract | allocation matcher limit per Task and round | positive decimal text |
+| `maximumCandidateWorkers` | required, no default | TaskDescriptor contract | best-effort live candidate collection target | positive decimal text |
 | `runningVisibleMinimumCandidateWorkers` | required, no default | TaskDescriptor contract | pre-dispatch activation check | decimal text in `1..maximumCandidateWorkers` |
 
 ### taskId
@@ -169,21 +170,30 @@ RUNNING_VISIBLE + worker count later below configured minimum
 Running availability, no-work behavior, pause, and terminal policy remain task
 score/work scheduling concerns.
 
-`maximumCandidateWorkers` is Task-owned allocation configuration. It bounds the
-matcher output for this Task in one allocation round:
+`maximumCandidateWorkers` is Task-owned allocation configuration. Before one
+allocation match, the pacer reads the current non-expired candidate count and
+derives the remaining target:
 
 ```text
-WorkerCandidateConstraint.limit = maximumCandidateWorkers
+remainingCandidateWorkers =
+  max(0, maximumCandidateWorkers - currentLiveCandidateCount)
+
+WorkerCandidateConstraint.limit = remainingCandidateWorkers
 ```
 
 `TaskDispatchRuntime` does not receive, enforce, or reinterpret this value. It
 stores every successfully leased candidate entry supplied by the pacer under
-one batch expiry. Its non-expired candidate count may be read later by an
-independent activation/score classification, but it is not current
-Worker-validity proof. Allocation
-does not subtract prior occupancy from the matcher limit. Descriptor admission
-must reject a minimum above the Task maximum; otherwise one bounded allocation
-result cannot satisfy the first activation condition.
+one batch expiry. Its batched non-expired candidate count may be read by both
+allocation and independent activation/score classification, but it is not
+current Worker-validity proof.
+
+This is a best-effort collection target, not a cross-pacer atomic hard cap.
+Concurrent allocation rounds can observe the same prior count and temporarily
+overshoot. Making it a hard cap would require candidate-slot reservation before
+Worker matching or runtime-side post-match rejection; the first adds another
+allocation owner and the second discards already leased expensive candidates.
+Neither mechanism belongs in the first cut. Descriptor admission still rejects
+a minimum above the Task maximum.
 
 The built-in activation check is intentionally unbudgeted. If the minimum is
 not satisfied, the Task remains `PRE_DISPATCH_VISIBLE`; activation does not
@@ -202,7 +212,8 @@ The phase-one constraint is built directly from the descriptor:
 ```text
 TaskDescriptor
   config["priority"] --------------------------> constraint.priority
-  config["maximumCandidateWorkers"] ----------> constraint.limit
+  config["maximumCandidateWorkers"]
+    - current live candidate count ------------> constraint.limit
   allocationRule ------------------------------> constraint.match_rules
 ```
 
@@ -211,7 +222,11 @@ Conceptual result:
 ```python
 WorkerCandidateConstraint(
     priority=int(descriptor.config["priority"]),
-    limit=int(descriptor.config["maximumCandidateWorkers"]),
+    limit=max(
+        0,
+        int(descriptor.config["maximumCandidateWorkers"])
+        - current_live_candidate_count,
+    ),
     match_rules=descriptor.allocation_rule,
 )
 ```
@@ -317,10 +332,11 @@ a status index, active-task query, scheduling queue, or background scanner.
 ## Validation
 
 The TaskDescriptor validation contract is the single owner of descriptor schema
-rules. Task admission runs it before registration. Redis trusts that internal
-contract and does not recompile the DSL or reinterpret config semantics on
-write/read. Assignment-dispatch fails closed if a consumed value cannot be used,
-but it does not redefine these rules.
+rules. Descriptor construction validates identity and config; Task admission
+compiles the DSL before score initialization. Redis decode reconstructs that
+same descriptor contract, while the bounded matcher compiles the stored rule
+for evaluation and isolates a corrupt rule to its candidate. These checks do
+not define a second config schema inside assignment-dispatch.
 
 Validation rejects:
 
@@ -366,6 +382,7 @@ allocationRuleJson = {
 
 configJson = {
   "priority": "80",
+  "maximumCandidateWorkers": "20",
   "runningVisibleMinimumCandidateWorkers": "10"
 }
 ```
@@ -412,10 +429,12 @@ HMGET tc:{prefix}:task:{taskId}
 ```
 
 This is one client round trip over a bounded task-id batch, not one Redis
-command round trip per task. Missing fields, malformed JSON, or non-object JSON
-fail that task closed. Redis does not rerun DSL/config semantic validation on
-every read. The allocation hot path does not use `HGETALL`, scan descriptor
-keys, or maintain a second descriptor index.
+command round trip per task. Missing fields, malformed JSON, non-object JSON,
+or invalid config values fail that task closed. DSL syntax is validated before
+creation and compiled by the bounded matcher; a corrupt rule is isolated to
+that candidate instead of aborting its Worker-group batch. The allocation hot
+path does not use `HGETALL`, scan descriptor keys, or maintain a second
+descriptor index.
 
 ## Minimal Python Shape
 

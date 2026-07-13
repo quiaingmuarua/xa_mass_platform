@@ -74,6 +74,7 @@ class RedisTaskRuntimeIntegrationTest(unittest.TestCase):
             allocation_rule={"dynamic.battery": {"$gte": 20}},
             config={
                 "priority": "80",
+                "maximumCandidateWorkers": "20",
                 "runningVisibleMinimumCandidateWorkers": "10",
             },
         )

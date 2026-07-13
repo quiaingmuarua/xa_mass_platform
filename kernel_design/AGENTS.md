@@ -125,7 +125,8 @@ WorkerDynamicAttributeRuntime
   bounded dynamic attribute updates and owner reads; handler tables stay internal
 
 WorkerCandidateMatcher
-  one worker group, bounded worker id batch, ordered candidate constraints
+  one worker group, caller-supplied bounded worker id batch, ordered candidate
+  constraints, match, and due-score lease
 
 WorkerScoreCore
   HOT_ACQUIRE / RECOVERY_RECHECK score acquisition and transitions
@@ -174,8 +175,9 @@ Hot score lease rules:
 
 ```text
 acquire_due_hot_score_lease(...)
-  requires observed score to be due HOT_ACQUIRE
-  may clear dirty only after current validation
+  atomically requires the current stored score to be due HOT_ACQUIRE
+  receives no caller-supplied observed score and may clear dirty after the
+  first-stage match
 
 renew_active_hot_score_lease(...)
   requires clean active HOT_ACQUIRE observed score
@@ -185,8 +187,10 @@ RECOVERY_RECHECK
   must not pass either hot lease primitive
 ```
 
-`observedScore` is an opaque full-score fence. Do not decode, trim, construct,
-or reinterpret it outside worker score logic.
+`observedScore` remains an opaque full-score fence for active renewal, release,
+polarity move, and recovery exhaustion. HOT candidate scan and due lease
+acquisition do not expose or accept it. Do not decode, trim, construct, or
+reinterpret observed scores outside worker score logic.
 
 Dirty is an assignment-continuation stale hint, not a worker-global version:
 

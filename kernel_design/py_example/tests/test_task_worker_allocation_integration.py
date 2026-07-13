@@ -198,9 +198,9 @@ class AssignmentDispatchIntegrationTest(unittest.TestCase):
         running_state = self.task_score.get_score_states(
             task_ids=(self.task_id,)
         )[self.task_id]
-        queued_candidate_count = self.dispatch_runtime.candidate_worker_count(
-            task_id=self.task_id,
-        )
+        queued_candidate_count = self.dispatch_runtime.candidate_worker_counts(
+            task_ids=(self.task_id,),
+        )[self.task_id]
         entries = self.dispatch_runtime.consume_candidate_workers(
             task_id=self.task_id,
             limit=10,

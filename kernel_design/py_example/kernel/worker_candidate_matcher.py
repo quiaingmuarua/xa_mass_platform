@@ -5,7 +5,6 @@ from typing import Mapping, Sequence
 from ..constraint_dsl import ConstraintDsl, ConstraintMap, UNRESOLVED_VALUE
 from .task_dispatch_runtime import CandidateWorkerEntry
 from .worker_score import (
-    Score,
     TimeMillis,
     WorkerId,
     WorkerScoreCore,
@@ -43,13 +42,14 @@ class WorkerCandidateMatcher:
         self,
         *,
         worker_group_id: WorkerGroupId,
-        observed_score_by_worker_id: Mapping[WorkerId, Score],
+        worker_ids: Sequence[WorkerId],
         candidate_constraints: Mapping[CandidateId, WorkerCandidateConstraint],
         lease_until_millis: TimeMillis,
     ) -> WorkerCandidateMatches:
-        worker_ids = tuple(observed_score_by_worker_id)
         if not candidate_constraints:
             return {}
+
+        worker_ids = tuple(dict.fromkeys(worker_ids))
 
         candidates, required_dynamic_attributes = self._prepare_candidates(
             candidate_constraints
@@ -57,6 +57,10 @@ class WorkerCandidateMatcher:
         matched_workers: WorkerCandidateMatches = {
             candidate_id: [] for candidate_id, _, _ in candidates
         }
+        for candidate_id in candidate_constraints:
+            matched_workers.setdefault(candidate_id, [])
+        if not candidates:
+            return matched_workers
         if not worker_ids:
             return matched_workers
         remaining_capacity = sum(
@@ -92,7 +96,6 @@ class WorkerCandidateMatcher:
                     lease = self.worker_score.acquire_due_hot_score_lease(
                         home_bucket_id=worker_group_id,
                         worker_id=worker_id,
-                        observed_score=observed_score_by_worker_id[worker_id],
                         target_time_millis=lease_until_millis,
                     )
                     if (
@@ -132,7 +135,12 @@ class WorkerCandidateMatcher:
                 raise ValueError("candidate id must be non-empty")
             if constraints.limit <= 0:
                 raise ValueError("candidate limit must be positive")
-            match_rules = ConstraintDsl.compile_match_rules(constraints.match_rules)
+            try:
+                match_rules = ConstraintDsl.compile_match_rules(
+                    constraints.match_rules
+                )
+            except ValueError:
+                continue
             for field_name in match_rules:
                 domain, separator, attribute_name = field_name.partition(".")
                 if separator and domain == "dynamic":

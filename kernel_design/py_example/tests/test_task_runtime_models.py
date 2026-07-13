@@ -22,6 +22,7 @@ class TaskRuntimeModelTest(unittest.TestCase):
             allocation_rule={"dynamic.battery": {"$gte": 20}},
             config={
                 "priority": "80",
+                "maximumCandidateWorkers": "20",
                 "runningVisibleMinimumCandidateWorkers": "10",
             },
         )
@@ -44,6 +45,33 @@ class TaskRuntimeModelTest(unittest.TestCase):
             {status.value for status in TaskCreationStatus},
             {"created", "retryable", "conflict", "invalid"},
         )
+
+    def test_task_descriptor_rejects_invalid_allocation_contracts(self) -> None:
+        base_config = {
+            "priority": "80",
+            "maximumCandidateWorkers": "10",
+            "runningVisibleMinimumCandidateWorkers": "2",
+        }
+
+        invalid_configs = (
+            {**base_config, "priority": "0"},
+            {**base_config, "maximumCandidateWorkers": "many"},
+            {
+                **base_config,
+                "runningVisibleMinimumCandidateWorkers": "11",
+            },
+            {key: value for key, value in base_config.items() if key != "priority"},
+            {**base_config, "unknown": "1"},
+        )
+        for config in invalid_configs:
+            with self.subTest(config=config), self.assertRaises(ValueError):
+                TaskDescriptor(
+                    task_id="task-1",
+                    worker_group_id="workers-a",
+                    allocation_rule={"static.runtime": {"$eq": "python"}},
+                    config=config,
+                )
+
 
     def test_task_runtime_current_surface_exposes_only_create(self) -> None:
         self.assertEqual(TaskRuntime.__abstractmethods__, {"create_task"})

@@ -114,7 +114,7 @@ class WorkerRuntimeModelTest(unittest.TestCase):
             {
                 "self",
                 "worker_group_id",
-                "observed_score_by_worker_id",
+                "worker_ids",
                 "candidate_constraints",
                 "lease_until_millis",
             },

@@ -146,6 +146,7 @@ class RedisTaskRuntimeTest(unittest.TestCase):
             ),
             config={
                 "priority": "80",
+                "maximumCandidateWorkers": "20",
                 "runningVisibleMinimumCandidateWorkers": "10",
             },
         )
@@ -323,6 +324,21 @@ class RedisTaskRuntimeTest(unittest.TestCase):
             descriptor=self.descriptor(
                 "task-1",
                 allocation_rule={"dynamic.battery": {"$eq": object()}},
+            ),
+            suffix=self.SUFFIX,
+        )
+
+        self.assertEqual(TaskCreationStatus.INVALID, result.status)
+        self.assertEqual({}, self.redis.zsets)
+        self.assertEqual({}, self.redis.hashes)
+
+    def test_invalid_constraint_dsl_is_rejected_before_score_write(self) -> None:
+        result = self.runtime.create_task(
+            descriptor=self.descriptor(
+                "task-1",
+                allocation_rule={
+                    "dynamic.battery": {"$unknown": 20},
+                },
             ),
             suffix=self.SUFFIX,
         )

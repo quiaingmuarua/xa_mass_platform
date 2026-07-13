@@ -5,6 +5,7 @@ from collections.abc import Mapping as MappingABC
 from contextlib import suppress
 from typing import Any, Mapping, Sequence
 
+from ..constraint_dsl import ConstraintDsl
 from ..kernel.task_runtime import (
     TaskCreationResult,
     TaskCreationStatus,
@@ -63,12 +64,13 @@ class RedisTaskRuntime(TaskRuntime):
         suffix: Suffix,
     ) -> TaskCreationResult:
         try:
+            ConstraintDsl.compile_match_rules(descriptor.allocation_rule)
             allocation_rule_json = _encode_json(descriptor.allocation_rule)
             config_json = _encode_json(descriptor.config)
         except (TypeError, ValueError):
             return TaskCreationResult(
                 TaskCreationStatus.INVALID,
-                "descriptor is not JSON serializable",
+                "descriptor allocation rule is invalid or not JSON serializable",
             )
 
         initialization = self._initialize_task_score(
@@ -203,9 +205,12 @@ class RedisTaskResourceCatalog(TaskResourceCatalog):
             or not isinstance(config, MappingABC)
         ):
             return None
-        return TaskDescriptor(
-            task_id=task_id,
-            worker_group_id=worker_group_id,
-            allocation_rule=dict(allocation_rule),
-            config=dict(config),
-        )
+        try:
+            return TaskDescriptor(
+                task_id=task_id,
+                worker_group_id=worker_group_id,
+                allocation_rule=dict(allocation_rule),
+                config=dict(config),
+            )
+        except ValueError:
+            return None

@@ -3,7 +3,7 @@ from __future__ import annotations
 import inspect
 import unittest
 from dataclasses import fields
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 from kernel_design.py_example import (
     CandidateWorkerEntry,
@@ -31,7 +31,7 @@ class AssignmentDispatchTest(unittest.TestCase):
             TaskDispatchRuntime.__abstractmethods__,
             {
                 "append_candidate_workers",
-                "candidate_worker_count",
+                "candidate_worker_counts",
                 "consume_candidate_workers",
             },
         )
@@ -46,10 +46,10 @@ class AssignmentDispatchTest(unittest.TestCase):
         self.assertEqual(
             set(
                 inspect.signature(
-                    TaskDispatchRuntime.candidate_worker_count
+                    TaskDispatchRuntime.candidate_worker_counts
                 ).parameters
             ),
-            {"self", "task_id"},
+            {"self", "task_ids"},
         )
         self.assertEqual(
             set(
@@ -125,8 +125,8 @@ class AssignmentDispatchTest(unittest.TestCase):
             ),
         }
         worker_score.acquire_hot_acquire_candidates.return_value = (
-            ("worker-1", 1_001),
-            ("worker-2", 1_002),
+            "worker-1",
+            "worker-2",
         )
         worker_matcher.match_worker_candidates.return_value = {
             "running-task": [self._reservation("worker-1", score=2_001)],
@@ -146,10 +146,8 @@ class AssignmentDispatchTest(unittest.TestCase):
             "candidate_constraints"
         ]
         self.assertEqual(
-            worker_matcher.match_worker_candidates.call_args.kwargs[
-                "observed_score_by_worker_id"
-            ],
-            {"worker-1": 1_001, "worker-2": 1_002},
+            worker_matcher.match_worker_candidates.call_args.kwargs["worker_ids"],
+            ("worker-1", "worker-2"),
         )
         self.assertGreater(
             worker_matcher.match_worker_candidates.call_args.kwargs[
@@ -196,21 +194,19 @@ class AssignmentDispatchTest(unittest.TestCase):
         task_catalog.load_task_allocation_descriptors.return_value = {
             "task-1": self._descriptor("task-1", minimum_workers=5)
         }
-        worker_score.acquire_hot_acquire_candidates.return_value = (
-            ("worker-1", 1_001),
-        )
+        worker_score.acquire_hot_acquire_candidates.return_value = ("worker-1",)
         worker_matcher.match_worker_candidates.return_value = {
             "task-1": [self._reservation("worker-1", score=2_001)]
         }
-        runtime.candidate_worker_count.return_value = 9
-
         published = pacer.allocate_candidate_workers(config=self._allocation_config())
 
         self.assertEqual(published, 1)
         task_score.get_score_states.assert_not_called()
         task_score.rewrite_score.assert_not_called()
         task_score.rewrite_observed_same_band_suffix.assert_not_called()
-        runtime.candidate_worker_count.assert_not_called()
+        runtime.candidate_worker_counts.assert_called_once_with(
+            task_ids=("task-1",)
+        )
         constraints = worker_matcher.match_worker_candidates.call_args.kwargs[
             "candidate_constraints"
         ]
@@ -220,6 +216,117 @@ class AssignmentDispatchTest(unittest.TestCase):
         self.assertEqual(rewrite["task_id"], "task-1")
         self.assertEqual(rewrite["expected_band"], TaskScoreBand.RUNNING_VISIBLE)
 
+    def test_allocation_matches_only_remaining_task_candidate_capacity(
+        self,
+    ) -> None:
+        pacer, task_score, task_catalog, worker_score, worker_matcher, _ = (
+            self._allocation_pacer()
+        )
+        task_score.acquire_band_task_candidates.side_effect = (("task-1",), ())
+        task_catalog.load_task_allocation_descriptors.return_value = {
+            "task-1": self._descriptor("task-1", minimum_workers=1)
+        }
+        worker_score.acquire_hot_acquire_candidates.return_value = ("worker-1",)
+        worker_matcher.match_worker_candidates.return_value = {"task-1": []}
+        pacer.dispatch_runtime.candidate_worker_counts.return_value = {
+            "task-1": 7
+        }
+
+        pacer.allocate_candidate_workers(config=self._allocation_config())
+
+        constraints = worker_matcher.match_worker_candidates.call_args.kwargs[
+            "candidate_constraints"
+        ]
+        self.assertEqual(constraints["task-1"].limit, 3)
+
+    def test_allocation_at_candidate_capacity_skips_worker_scan_and_rotates(
+        self,
+    ) -> None:
+        pacer, task_score, task_catalog, worker_score, worker_matcher, runtime = (
+            self._allocation_pacer()
+        )
+        task_score.acquire_band_task_candidates.side_effect = (("task-1",), ())
+        task_catalog.load_task_allocation_descriptors.return_value = {
+            "task-1": self._descriptor("task-1", minimum_workers=1)
+        }
+        runtime.candidate_worker_counts.return_value = {"task-1": 10}
+
+        published = pacer.allocate_candidate_workers(
+            config=self._allocation_config()
+        )
+
+        self.assertEqual(published, 0)
+        worker_score.acquire_hot_acquire_candidates.assert_not_called()
+        worker_matcher.match_worker_candidates.assert_not_called()
+        task_score.rewrite_same_band_time_millis.assert_called_once()
+
+    def test_missing_descriptor_is_rotated_out_of_the_score_head(self) -> None:
+        pacer, task_score, task_catalog, worker_score, _, _ = (
+            self._allocation_pacer()
+        )
+        task_score.acquire_band_task_candidates.side_effect = (("task-1",), ())
+        task_catalog.load_task_allocation_descriptors.return_value = {
+            "task-1": None
+        }
+
+        published = pacer.allocate_candidate_workers(
+            config=self._allocation_config()
+        )
+
+        self.assertEqual(published, 0)
+        worker_score.acquire_hot_acquire_candidates.assert_not_called()
+        task_score.rewrite_same_band_time_millis.assert_called_once()
+
+    def test_append_failure_releases_all_unpublished_worker_leases(self) -> None:
+        pacer, task_score, task_catalog, worker_score, worker_matcher, runtime = (
+            self._allocation_pacer()
+        )
+        task_score.acquire_band_task_candidates.side_effect = (
+            ("task-1", "task-2"),
+            (),
+        )
+        task_catalog.load_task_allocation_descriptors.return_value = {
+            "task-1": self._descriptor("task-1", minimum_workers=1),
+            "task-2": self._descriptor("task-2", minimum_workers=1),
+        }
+        worker_score.acquire_hot_acquire_candidates.return_value = (
+            "worker-1",
+            "worker-2",
+        )
+        worker_matcher.match_worker_candidates.return_value = {
+            "task-1": [self._reservation("worker-1", score=2_001)],
+            "task-2": [self._reservation("worker-2", score=2_002)],
+        }
+        runtime.append_candidate_workers.side_effect = RuntimeError("write failed")
+
+        with self.assertRaisesRegex(RuntimeError, "write failed"):
+            pacer.allocate_candidate_workers(config=self._allocation_config())
+
+        release_calls = worker_score.release_score_hold.call_args_list
+        self.assertEqual(len(release_calls), 2)
+        self.assertEqual(
+            [
+                call(
+                    home_bucket_id="image-workers",
+                    worker_id="worker-1",
+                    observed_score=2_001,
+                    release_time_millis=release_calls[0].kwargs[
+                        "release_time_millis"
+                    ],
+                ),
+                call(
+                    home_bucket_id="image-workers",
+                    worker_id="worker-2",
+                    observed_score=2_002,
+                    release_time_millis=release_calls[1].kwargs[
+                        "release_time_millis"
+                    ],
+                ),
+            ],
+            release_calls,
+        )
+        task_score.rewrite_same_band_time_millis.assert_not_called()
+
     def test_candidate_publication_is_not_gated_by_time_rewrite_result(self) -> None:
         pacer, task_score, task_catalog, worker_score, worker_matcher, runtime = (
             self._allocation_pacer()
@@ -228,9 +335,7 @@ class AssignmentDispatchTest(unittest.TestCase):
         task_catalog.load_task_allocation_descriptors.return_value = {
             "task-1": self._descriptor("task-1", minimum_workers=1)
         }
-        worker_score.acquire_hot_acquire_candidates.return_value = (
-            ("worker-1", 1_001),
-        )
+        worker_score.acquire_hot_acquire_candidates.return_value = ("worker-1",)
         worker_matcher.match_worker_candidates.return_value = {
             "task-1": [self._reservation("worker-1", score=2_001)]
         }
@@ -253,11 +358,12 @@ class AssignmentDispatchTest(unittest.TestCase):
             "task-1": self._descriptor("task-1", minimum_workers=1)
         }
         worker_score.acquire_hot_acquire_candidates.return_value = ()
+        worker_matcher.match_worker_candidates.return_value = {"task-1": []}
 
         published = pacer.allocate_candidate_workers(config=self._allocation_config())
 
         self.assertEqual(published, 0)
-        worker_matcher.match_worker_candidates.assert_not_called()
+        worker_matcher.match_worker_candidates.assert_called_once()
         runtime.append_candidate_workers.assert_not_called()
         task_score.rewrite_observed_same_band_suffix.assert_not_called()
         task_score.rewrite_same_band_time_millis.assert_called_once()
@@ -268,7 +374,7 @@ class AssignmentDispatchTest(unittest.TestCase):
         task_catalog.load_task_allocation_descriptors.return_value = {
             "task-1": self._descriptor("task-1", minimum_workers=3)
         }
-        runtime.candidate_worker_count.return_value = 3
+        runtime.candidate_worker_counts.return_value = {"task-1": 3}
         task_score.rewrite_score.return_value = TaskScoreTransitionResult(
             TaskScoreTransitionStatus.TRANSITIONED
         )
@@ -296,7 +402,7 @@ class AssignmentDispatchTest(unittest.TestCase):
         task_catalog.load_task_allocation_descriptors.return_value = {
             "task-1": self._descriptor("task-1", minimum_workers=3)
         }
-        runtime.candidate_worker_count.return_value = 2
+        runtime.candidate_worker_counts.return_value = {"task-1": 2}
 
         transitioned = pacer.activate_running_visible_tasks(
             config=TaskRunningActivationConfig(
@@ -320,7 +426,7 @@ class AssignmentDispatchTest(unittest.TestCase):
         task_catalog.load_task_allocation_descriptors.return_value = {
             "task-1": descriptor
         }
-        runtime.candidate_worker_count.return_value = 100
+        runtime.candidate_worker_counts.return_value = {"task-1": 100}
 
         transitioned = pacer.activate_running_visible_tasks(
             config=TaskRunningActivationConfig(
@@ -339,7 +445,7 @@ class AssignmentDispatchTest(unittest.TestCase):
         task_catalog.load_task_allocation_descriptors.return_value = {
             "task-1": self._descriptor("task-1", minimum_workers=1)
         }
-        runtime.candidate_worker_count.return_value = 1
+        runtime.candidate_worker_counts.return_value = {"task-1": 1}
         task_score.rewrite_score.return_value = TaskScoreTransitionResult(
             TaskScoreTransitionStatus.STALE
         )
@@ -369,6 +475,7 @@ class AssignmentDispatchTest(unittest.TestCase):
         worker_score = Mock(spec=WorkerScoreCore)
         worker_matcher = Mock(spec=WorkerCandidateMatcher)
         runtime = Mock(spec=TaskDispatchRuntime)
+        runtime.candidate_worker_counts.return_value = {}
         return (
             TaskWorkerAllocationPacer(
                 task_score,
@@ -398,6 +505,7 @@ class AssignmentDispatchTest(unittest.TestCase):
         task_score = Mock(spec=TaskScoreBandCore)
         task_catalog = Mock(spec=TaskResourceCatalog)
         runtime = Mock(spec=TaskDispatchRuntime)
+        runtime.candidate_worker_counts.return_value = {}
         return (
             TaskRunningActivationPacer(
                 task_score,

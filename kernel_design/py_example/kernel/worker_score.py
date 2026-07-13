@@ -67,7 +67,7 @@ class WorkerScoreCore(ABC):
 
     - no business event names;
     - no transition-source parameter;
-    - no candidate DTOs beyond (workerId, observedScore);
+    - no hot candidate DTOs beyond WorkerId;
     - no internal score range coordinates;
     - no caller-supplied cold time slot, scan bounds, polarity sign, dirty bit,
       or encoded base/tag fields;
@@ -126,13 +126,12 @@ class WorkerScoreCore(ABC):
         *,
         home_bucket_id: HomeBucketId,
         limit: int,
-    ) -> Sequence[tuple[WorkerId, Score]]:
+    ) -> Sequence[WorkerId]:
         """Acquire due HOT_ACQUIRE worker candidates.
 
-        The returned score is a complete signed observed-score fence. Callers
-        must not trim, decode, construct, or reinterpret it. Ordinary monotonic
-        score writes do not need it; lowering operations such as release or
-        recovery exhaustion use it as exact CAS protection.
+        This first-stage scan returns Worker ids only. The score owner performs
+        the later due check atomically when acquiring a HOT lease; callers do
+        not carry score observations through matching.
         """
         pass
 
@@ -192,16 +191,15 @@ class WorkerScoreCore(ABC):
         *,
         home_bucket_id: HomeBucketId,
         worker_id: WorkerId,
-        observed_score: Score,
         target_time_millis: TimeMillis,
     ) -> WorkerScoreTransitionResult:
-        """Acquire a due HOT_ACQUIRE worker score after current validation.
+        """Atomically acquire the current due HOT_ACQUIRE worker score.
 
-        Implementations require storedScore == observed_score and observed
-        polarity == HOT_ACQUIRE and observed time slot < current time slot. The
-        caller must have validated current descriptor / dynamic metadata after
-        observing this score. Dirty may be cleared by this transition because
-        validation happened before the observed-score CAS lease write.
+        Implementations read the current score at write time, require positive
+        HOT polarity and a stored time slot before the current slot, then mint
+        a future lease while preserving lane rank and clearing dirty. Concurrent
+        callers are excluded by the atomic due check: after one write, the
+        stored score is future-held and later callers return STALE.
         """
         pass
 

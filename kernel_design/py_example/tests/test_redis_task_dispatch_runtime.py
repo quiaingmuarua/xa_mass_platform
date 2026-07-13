@@ -31,6 +31,18 @@ class FakeRedis:
             score > lower_bound for score in self.zsets.get(key, {}).values()
         )
 
+    def zremrangebyscore(self, key: str, minimum: str, maximum: int) -> int:
+        assert minimum == "-inf"
+        row = self.zsets.get(key, {})
+        expired = [member for member, score in row.items() if score <= maximum]
+        for member in expired:
+            del row[member]
+        return len(expired)
+
+    def pipeline(self, *, transaction: bool) -> FakePipeline:
+        assert transaction is False
+        return FakePipeline(self)
+
     def eval(
         self,
         script: str,
@@ -52,6 +64,46 @@ class FakeRedis:
         for member in selected:
             del row[member]
         return selected
+
+
+class FakePipeline:
+    def __init__(self, redis: FakeRedis) -> None:
+        self.redis = redis
+        self.commands: list[tuple[str, tuple[object, ...]]] = []
+
+    def __enter__(self) -> FakePipeline:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        pass
+
+    def zremrangebyscore(
+        self,
+        key: str,
+        minimum: str,
+        maximum: int,
+    ) -> FakePipeline:
+        self.commands.append(("zremrangebyscore", (key, minimum, maximum)))
+        return self
+
+    def zadd(self, key: str, mapping: dict[str, int]) -> FakePipeline:
+        self.commands.append(("zadd", (key, mapping)))
+        return self
+
+    def zcount(
+        self,
+        key: str,
+        minimum: str,
+        maximum: str,
+    ) -> FakePipeline:
+        self.commands.append(("zcount", (key, minimum, maximum)))
+        return self
+
+    def execute(self) -> list[object]:
+        return [
+            getattr(self.redis, method)(*args)
+            for method, args in self.commands
+        ]
 
 
 class RedisTaskDispatchRuntimeTest(unittest.TestCase):
@@ -80,7 +132,9 @@ class RedisTaskDispatchRuntimeTest(unittest.TestCase):
             ["worker-1", "worker-2", "worker-3"],
         )
         self.assertEqual(
-            self.runtime.candidate_worker_count(task_id="task-1"),
+            self.runtime.candidate_worker_counts(task_ids=("task-1",))[
+                "task-1"
+            ],
             3,
         )
         self.assertEqual(
@@ -110,7 +164,9 @@ class RedisTaskDispatchRuntimeTest(unittest.TestCase):
         )
         self.assertEqual(self.redis.zsets[self.key], {})
         self.assertEqual(
-            self.runtime.candidate_worker_count(task_id="task-1"),
+            self.runtime.candidate_worker_counts(task_ids=("task-1",))[
+                "task-1"
+            ],
             0,
         )
 
@@ -127,7 +183,9 @@ class RedisTaskDispatchRuntimeTest(unittest.TestCase):
         )
 
         self.assertEqual(
-            self.runtime.candidate_worker_count(task_id="task-1"),
+            self.runtime.candidate_worker_counts(task_ids=("task-1",))[
+                "task-1"
+            ],
             1,
         )
         self.assertEqual(
@@ -136,11 +194,11 @@ class RedisTaskDispatchRuntimeTest(unittest.TestCase):
         )
 
     def test_expired_old_lease_does_not_duplicate_new_live_candidate(self) -> None:
-        self.runtime.append_candidate_workers(
-            task_id="task-1",
-            candidate_workers=(self._entry("worker-1", 300),),
-            expires_at_millis=self.redis.now_millis,
-        )
+        self.redis.zsets[self.key] = {
+            RedisTaskDispatchRuntime._encode_entry(
+                self._entry("worker-1", 300)
+            ): self.redis.now_millis,
+        }
         self.runtime.append_candidate_workers(
             task_id="task-1",
             candidate_workers=(self._entry("worker-1", 500),),
@@ -148,13 +206,39 @@ class RedisTaskDispatchRuntimeTest(unittest.TestCase):
         )
 
         self.assertEqual(
-            self.runtime.candidate_worker_count(task_id="task-1"),
+            self.runtime.candidate_worker_counts(task_ids=("task-1",))[
+                "task-1"
+            ],
             1,
         )
         self.assertEqual(
             self.runtime.consume_candidate_workers(task_id="task-1", limit=2),
             (self._entry("worker-1", 500),),
         )
+
+    def test_batch_count_cleans_expired_members_for_each_task(self) -> None:
+        second_key = "ad:test:task:task-2:candidate-workers"
+        self.redis.zsets[self.key] = {
+            RedisTaskDispatchRuntime._encode_entry(
+                self._entry("expired-1", 100)
+            ): self.redis.now_millis,
+            RedisTaskDispatchRuntime._encode_entry(
+                self._entry("live-1", 200)
+            ): self.redis.now_millis + 1_000,
+        }
+        self.redis.zsets[second_key] = {
+            RedisTaskDispatchRuntime._encode_entry(
+                self._entry("expired-2", 300)
+            ): self.redis.now_millis - 1,
+        }
+
+        counts = self.runtime.candidate_worker_counts(
+            task_ids=("task-1", "task-2", "task-1"),
+        )
+
+        self.assertEqual(counts, {"task-1": 1, "task-2": 0})
+        self.assertEqual(len(self.redis.zsets[self.key]), 1)
+        self.assertEqual(self.redis.zsets[second_key], {})
 
     def test_runtime_validates_task_id_and_consume_limit(self) -> None:
         with self.assertRaises(ValueError):
@@ -170,9 +254,15 @@ class RedisTaskDispatchRuntimeTest(unittest.TestCase):
                 expires_at_millis=0,
             )
         with self.assertRaises(ValueError):
+            self.runtime.append_candidate_workers(
+                task_id="task-1",
+                candidate_workers=(self._entry("worker-1", 100),),
+                expires_at_millis=self.redis.now_millis,
+            )
+        with self.assertRaises(ValueError):
             self.runtime.consume_candidate_workers(task_id="task-1", limit=0)
         with self.assertRaises(ValueError):
-            self.runtime.candidate_worker_count(task_id="")
+            self.runtime.candidate_worker_counts(task_ids=("",))
 
     @staticmethod
     def _entry(worker_id: str, worker_lease_score: int) -> CandidateWorkerEntry:

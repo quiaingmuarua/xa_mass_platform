@@ -120,10 +120,10 @@ from producing two Worker lease renewals. No Task lock is required.
 
 TaskWorkerAllocationPacer appends every successfully leased entry from its
 bounded batch to the Task collection with one batch expiry. Runtime does not
-trim to a Task policy limit. It excludes expired entries before count and
-consume, but expiry proves only that the allocation handoff window is still
-open. Current Worker score, dirty, and matching attributes are checked after
-atomic consume.
+trim to a Task policy limit. It removes expired entries on touched append,
+batched count, and consume paths, but expiry proves only that the allocation
+handoff window is still open. Current Worker score, dirty, and matching
+attributes are checked after atomic consume.
 
 The core consume interface is single Task:
 

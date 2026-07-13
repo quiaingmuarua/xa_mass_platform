@@ -56,18 +56,20 @@ TaskResourceCatalog
 
 WorkerScoreCore
   acquire_hot_acquire_candidates(homeBucketId, limit)
-  acquire_due_hot_score_lease(homeBucketId, workerId, observedScore, targetTimeMillis)
+  release_score_hold(homeBucketId, workerId, observedScore, releaseTimeMillis)
+  acquires the bounded matcher input and compensates leased entries that were not published
 
 WorkerCandidateMatcher
   match_worker_candidates(
     workerGroupId,
-    observedScoreByWorkerId,
+    workerIds,
     candidateConstraints,
     leaseUntilMillis,
   )
 
 TaskDispatchRuntime
   append_candidate_workers(taskId, entries, expiresAtMillis)
+  candidate_worker_counts(taskIds)
 
 TaskWorkerAllocationConfig
   taskBatchLimit
@@ -118,10 +120,12 @@ per Task:
 ```text
 bounded Task ids
   -> batch TaskDescriptor read
+  -> batch current non-expired candidate counts
   -> partition by workerGroupId
   -> workerGroupId -> taskId -> WorkerCandidateConstraint
-  -> bounded Worker score candidates for that group
-  -> one WorkerCandidateMatcher call
+  -> bounded due HOT Worker ids for that group
+  -> one WorkerCandidateMatcher call with those Worker ids
+  -> matcher-owned match and due-score lease
   -> taskId -> leased CandidateWorkerEntry values
 ```
 
@@ -131,19 +135,19 @@ First cut identity is direct:
 CandidateId = TaskId
 ```
 
-Task and Worker limits are independent:
+Task and Worker scans are bounded independently:
 
 ```text
 taskBatchLimit
   bounds scheduling demand inspected in one allocation round
 
 workerScanLimit
-  bounds Worker universe read for one workerGroupId partition
+  bounds Worker score candidates supplied to one Worker-group matcher call
 ```
 
 ## Constraint Construction
 
-Each loaded `TaskDescriptor` maps directly to one
+Each loaded `TaskDescriptor` with remaining candidate capacity maps to one
 `WorkerCandidateConstraint`:
 
 ```text
@@ -151,7 +155,8 @@ priority
   parsed from TaskDescriptor.config["priority"]
 
 limit
-  TaskDescriptor.config["maximumCandidateWorkers"]
+  maximumCandidateWorkers - current non-expired candidate count
+  skip the Task when the remaining count is zero
 
 match_rules
   TaskDescriptor.allocationRule
@@ -168,24 +173,30 @@ TaskWorkerAllocationPacer maps values but does not implement DSL parsing.
 For each Worker-group partition:
 
 ```text
-homeBucketId = worker-runtime resolution from workerGroupId
-workerCandidates = workerScore.acquire_hot_acquire_candidates(limit)
-observedWorkerScoreByWorkerId = complete returned score sidecar
+workerIds = workerScore.acquire_hot_acquire_candidates(
+  workerGroupId,
+  workerScanLimit,
+)
 reservations = workerCandidateMatcher.match_worker_candidates(
-  observedWorkerScoreByWorkerId,
+  workerGroupId,
+  workerIds,
   leaseUntilMillis,
   ...
 )
 ```
 
-The matcher consumes each bounded Worker at most once in one batch according to
+The allocation pacer resolves `workerGroupId` to the current v0 home bucket and
+acquires at most `workerScanLimit` due HOT Worker ids. The matcher consumes only
+that supplied batch and considers each Worker at most once according to
 candidate priority and candidate limit. After a constraint match, it attempts
-`acquire_due_hot_score_lease` with the acquired complete score. Only a successful
-exact-score lease creates a `CandidateWorkerEntry`; a concurrent or stale Worker
-cannot appear in the returned reservation map.
+`acquire_due_hot_score_lease`. Worker score atomically reads the current score,
+requires positive HOT polarity and a due timeSlot, and writes the future lease.
+Only a successful lease creates a `CandidateWorkerEntry`; after the first
+concurrent writer moves the score into the future, later writers return STALE.
 
-Allocation must not decode observed Worker score. The caller supplies one
-`leaseUntilMillis` derived from `workerLeaseDurationMillis`; this value belongs
+No pre-lease Worker score crosses the matcher interface. The caller supplies one
+`leaseUntilMillis` per Worker-group match, derived immediately before that
+bounded group call from `workerLeaseDurationMillis`; this value belongs
 to the Worker score mutation and is not copied into the candidate entry. The
 matcher owns the match-then-lease sequence. The same value is supplied to
 `TaskDispatchRuntime` as the current batch expiry, so candidate expiry never
@@ -194,7 +205,7 @@ outlives the lease that prevented duplicate allocation.
 ## PRE_DISPATCH_VISIBLE
 
 Allocation does not evaluate the first-running condition. It stores every
-matched candidate entry up to the Task's single-round matcher limit:
+matched candidate entry up to the Task's current remaining candidate target:
 
 ```text
 PRE_DISPATCH_VISIBLE allocation
@@ -279,11 +290,13 @@ returns only whether activation is allowed; it does not read or write Task
 score, candidate queues, Redis, or lifecycle state. This keeps condition
 extension separate from pacer mechanics without adding an ABC or bridge.
 
-The current executable count is raw unique collection size, not a current
-Worker-validity count. If `runningVisibleMinimumCandidateWorkers` is required to
-mean currently valid Workers, activation needs a named Worker revalidation
-result before transition. `candidate_worker_count` must not silently absorb
-score, dirty, descriptor, or dynamic-attribute checks.
+The current executable count is batched raw unique collection size, not a
+current Worker-validity count. It is point-in-time allocation evidence and may
+change before the Task score transition. If
+`runningVisibleMinimumCandidateWorkers` is required to mean guaranteed current
+Workers, activation needs a named Worker revalidation/reservation result before
+transition. `candidate_worker_counts` must not silently absorb score, dirty,
+descriptor, or dynamic-attribute checks.
 
 It does not call `allocate_candidate_workers`, and allocation does not call it.
 
@@ -326,9 +339,10 @@ task_dispatch_runtime.append_candidate_workers(
 ```
 
 The pacer may loop or a concrete runtime may pipeline calls for many Tasks, but
-cross-Task success is partial and non-atomic. The Task descriptor bounds the
-matcher output for one allocation batch. `TaskDispatchRuntime` stores every
-entry passed to it and owns only batch-expiry indexing, live count, and bounded
+cross-Task success is partial and non-atomic. The Task descriptor plus current
+live count bounds the matcher output for one allocation batch.
+`TaskDispatchRuntime` stores every entry passed to it and owns only batch-expiry
+indexing, owner-local expired-member cleanup, batched live count, and bounded
 atomic consume.
 
 ## Interface
@@ -361,17 +375,16 @@ are strategy executors, not ABC owner surfaces.
 The config contains round policy only. It does not carry runtime owners,
 Redis keys, clocks, score ranges, preloaded Task/Worker observations, or
 Task-specific candidate limits. `maximumCandidateWorkers` belongs to the
-`TaskDescriptor` and becomes the single-round `WorkerCandidateConstraint.limit`.
-It is not a `TaskDispatchRuntime` argument or persistent queue-cap contract.
+`TaskDescriptor`; allocation subtracts the current batched live-entry count and
+uses the remaining value as `WorkerCandidateConstraint.limit`. It is not an
+append argument or a runtime-owned policy decision. Because allocation rounds
+do not lock a Task, the resulting collection bound is best-effort under
+concurrent pacers rather than a cross-key atomic hard cap.
 
 ## Conceptual Round
 
 ```python
 def allocate_candidate_workers(config):
-    allocation_millis = now_millis()
-    lease_until_millis = (
-        allocation_millis + config.worker_lease_duration_millis
-    )
     task_band_by_id = acquire_running_then_pre_dispatch(
         task_batch_limit=config.task_batch_limit,
     )
@@ -379,21 +392,27 @@ def allocate_candidate_workers(config):
     descriptors = task_catalog.load_task_allocation_descriptors(
         task_ids=task_ids,
     )
+    candidate_counts = task_dispatch_runtime.candidate_worker_counts(
+        task_ids=task_ids,
+    )
 
     grouped_constraints = prepare_and_group(
         task_ids,
         descriptors,
+        candidate_counts,
     )
 
     for worker_group_id, constraints in grouped_constraints:
-        worker_candidates = worker_score.acquire_hot_acquire_candidates(
+        lease_until_millis = (
+            now_millis() + config.worker_lease_duration_millis
+        )
+        worker_ids = worker_score.acquire_hot_acquire_candidates(
             home_bucket_id=worker_group_id,
             limit=config.worker_scan_limit,
         )
-        observed_scores = dict(worker_candidates)
         matches = worker_matcher.match_worker_candidates(
             worker_group_id=worker_group_id,
-            observed_score_by_worker_id=observed_scores,
+            worker_ids=worker_ids,
             candidate_constraints=constraints,
             lease_until_millis=lease_until_millis,
         )
@@ -401,12 +420,13 @@ def allocate_candidate_workers(config):
             matches,
             expires_at_millis=lease_until_millis,
         )
-        for task_id in constraints:
-            task_score.rewrite_same_band_time_millis(
-                task_id=task_id,
-                expected_band=task_band_by_id[task_id],
-                target_time_millis=allocation_millis,
-            )
+
+    for task_id, expected_band in task_band_by_id.items():
+        task_score.rewrite_same_band_time_millis(
+            task_id=task_id,
+            expected_band=expected_band,
+            target_time_millis=now_millis(),
+        )
 ```
 
 The direct `workerGroupId == homeBucketId` mapping is the current v0 worker
@@ -433,14 +453,16 @@ py_example/kernel/task_dispatch_runtime.py
 
 ```text
 Task descriptor missing/corrupt
-  skip this Task; descriptor owner/recovery handles the missing fact
+  do not match it; still rotate its acquired same-band time so it cannot remain
+  the permanent score head; descriptor owner/recovery handles the missing fact
 
 Worker score changes before allocation lease
-  matcher exact CAS rejects this Worker; no reservation is published
+  the atomic due check reads current truth; future-held or non-HOT scores are
+  rejected and no reservation is published
 
 candidate collection publication fails
-  this Task's later same-band time rewrite is not attempted; the short Worker
-  lease expires without a cross-key rollback protocol
+  best-effort release every exact Worker lease not yet published by that group,
+  then propagate the failure; already-published Task entries remain valid
 
 same-band time rewrite is stale or rejected
   keep already-published candidate evidence; do not roll it back

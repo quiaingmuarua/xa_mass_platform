@@ -110,9 +110,13 @@ class FakeRedis:
         return added
 
     def eval(self, script: str, numkeys: int, *args: object) -> list[object]:
-        if numkeys != 1 or "local observed_score" not in script:
+        if numkeys != 1:
             raise ValueError("unsupported fake redis script")
         key = str(args[0])
+        if "local now_min_score" in script:
+            return self._acquire_due_hot_lease(key, args[1:])
+        if "local observed_score" not in script:
+            raise ValueError("unsupported fake redis script")
         worker_id = str(args[1])
         observed_score = int(args[2])
         next_score = int(args[3])
@@ -121,6 +125,30 @@ class FakeRedis:
             return ["stale"]
         if stored != observed_score:
             return ["stale", stored]
+        self.zadd(key, {worker_id: next_score})
+        return ["transitioned", next_score]
+
+    def _acquire_due_hot_lease(
+        self,
+        key: str,
+        argv: tuple[object, ...],
+    ) -> list[object]:
+        worker_id = str(argv[0])
+        now_min_score = int(argv[1])
+        target_min_score = int(argv[2])
+        slot_factor = int(argv[3])
+        dirty_factor = int(argv[4])
+        stored = self.zscore(key, worker_id)
+        if stored is None:
+            return ["stale"]
+        if stored <= 0:
+            return ["invalid", stored]
+        if stored >= now_min_score:
+            return ["stale", stored]
+        if target_min_score <= now_min_score:
+            return ["invalid", stored]
+        lane_rank = (stored % slot_factor) // dirty_factor
+        next_score = target_min_score + lane_rank * dirty_factor
         self.zadd(key, {worker_id: next_score})
         return ["transitioned", next_score]
 
@@ -229,23 +257,18 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         matcher: WorkerCandidateMatcher,
         *,
         worker_group_id: str = "image-workers",
-        worker_ids: Sequence[str],
+        worker_ids: Sequence[str] | None = None,
         candidate_constraints: dict[str, WorkerCandidateConstraint],
     ):
         self.redis.now_millis += self.score_band.SLOT_MILLIS
-        observed_score_by_worker_id: dict[str, int] = {}
-        for worker_id in worker_ids:
-            observed_score_by_worker_id[worker_id] = next(
-                (
-                    row[worker_id]
-                    for row in self.redis.zsets.values()
-                    if worker_id in row
-                ),
-                1,
+        if worker_ids is None:
+            worker_ids = self.score_band.acquire_hot_acquire_candidates(
+                home_bucket_id=worker_group_id,
+                limit=100,
             )
         return matcher.match_worker_candidates(
             worker_group_id=worker_group_id,
-            observed_score_by_worker_id=observed_score_by_worker_id,
+            worker_ids=worker_ids,
             candidate_constraints=candidate_constraints,
             lease_until_millis=self.redis.now_millis + 1_000,
         )
@@ -320,7 +343,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             limit=10,
         )
 
-        self.assertEqual([worker_id for worker_id, _ in candidates], ["worker-1"])
+        self.assertEqual(candidates, ["worker-1"])
 
     def test_existing_worker_score_blocks_descriptor_replacement(self) -> None:
         self.register_group()
@@ -626,7 +649,6 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             self.match_candidates(
                 matcher_without_handler,
                 worker_group_id="image-workers",
-                worker_ids=["worker-1"],
                 candidate_constraints=constraints,
             )
 
@@ -652,7 +674,6 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         rows = self.match_candidates(
             matcher,
             worker_group_id="image-workers",
-            worker_ids=["worker-1"],
             candidate_constraints={
                 "needs-battery": candidate_constraint(
                     {"dynamic.battery": {"$gte": 20}}
@@ -673,11 +694,32 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             self.match_candidates(
                 matcher,
                 worker_group_id="image-workers",
-                worker_ids=["worker-1"],
                 candidate_constraints={
                     "candidate-1": candidate_constraint(limit=0)
                 },
             )
+
+    def test_candidate_matcher_isolates_one_corrupt_rule(self) -> None:
+        self.register_group()
+        self.register_worker(self.worker_descriptor("worker-1"))
+        matcher = self.matcher()
+
+        rows = self.match_candidates(
+            matcher,
+            worker_group_id="image-workers",
+            candidate_constraints={
+                "corrupt": candidate_constraint(
+                    {"static.runtime": {"$unknown": "python"}},
+                    priority=100,
+                ),
+                "valid": candidate_constraint(priority=0),
+            },
+        )
+
+        self.assertEqual(
+            self.reservation_ids(rows),
+            {"corrupt": [], "valid": ["worker-1"]},
+        )
 
     def test_candidate_matcher_fails_closed_for_unresolved_dynamic_value(self) -> None:
         self.register_group()
@@ -703,7 +745,6 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             self.match_candidates(
                 matcher_without_value,
                 worker_group_id="image-workers",
-                worker_ids=["worker-1"],
                 candidate_constraints=constraints,
             ),
         )
@@ -750,7 +791,6 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         rows = self.match_candidates(
             matcher,
             worker_group_id="image-workers",
-            worker_ids=["worker-1"],
             candidate_constraints={
                 "needs-battery": candidate_constraint(
                     {"dynamic.battery": {"$gte": 20}},
@@ -784,7 +824,6 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         rows = self.match_candidates(
             matcher,
             worker_group_id="image-workers",
-            worker_ids=["worker-1", "worker-2"],
             candidate_constraints={
                 "candidate-2": candidate_constraint(
                     {"dynamic.battery": {"$lte": 100}},
@@ -835,7 +874,6 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         rows = self.match_candidates(
             matcher,
             worker_group_id="image-workers",
-            worker_ids=["worker-1"],
             candidate_constraints={
                 "candidate-1": candidate_constraint(
                     {"dynamic.battery.level": {"$gte": 80}},
@@ -858,7 +896,6 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         rows = self.match_candidates(
             matcher,
             worker_group_id="image-workers",
-            worker_ids=["worker-1", "worker-2", "worker-3"],
             candidate_constraints={
                 "fallback": candidate_constraint(priority=0, limit=2),
                 "preferred": candidate_constraint(priority=100, limit=1),
@@ -975,7 +1012,6 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         rows = self.match_candidates(
             matcher,
             worker_group_id="image-workers",
-            worker_ids=["worker-1", "worker-2"],
             candidate_constraints={
                 "needs-battery": candidate_constraint(
                     {"dynamic.battery": {"$gte": 20}},
@@ -1011,7 +1047,6 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         rows = self.match_candidates(
             matcher,
             worker_group_id="image-workers",
-            worker_ids=["worker-1", "worker-2"],
             candidate_constraints={
                 "worker-1-only": candidate_constraint(
                     {
@@ -1055,7 +1090,6 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         rows = self.match_candidates(
             matcher,
             worker_group_id="image-workers",
-            worker_ids=["worker-1"],
             candidate_constraints={
                 "python-with-battery": candidate_constraint(
                     {
@@ -1079,12 +1113,10 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
 
         first = self.match_candidates(
             matcher,
-            worker_ids=["worker-1"],
             candidate_constraints={"candidate-1": candidate_constraint()},
         )
         second = self.match_candidates(
             matcher,
-            worker_ids=["worker-1"],
             candidate_constraints={"candidate-2": candidate_constraint()},
         )
 

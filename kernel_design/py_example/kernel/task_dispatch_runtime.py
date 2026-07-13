@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Sequence
+from typing import Mapping, Sequence
 
 from .task_score_band import TaskId, TimeMillis
 from .worker_runtime import WorkerGroupId
@@ -34,12 +34,12 @@ class TaskDispatchRuntime(ABC):
         pass
 
     @abstractmethod
-    def candidate_worker_count(
+    def candidate_worker_counts(
         self,
         *,
-        task_id: TaskId,
-    ) -> int:
-        """Return the current non-expired candidate count for one Task."""
+        task_ids: Sequence[TaskId],
+    ) -> Mapping[TaskId, int]:
+        """Return current non-expired candidate counts for a bounded Task batch."""
         pass
 
     @abstractmethod

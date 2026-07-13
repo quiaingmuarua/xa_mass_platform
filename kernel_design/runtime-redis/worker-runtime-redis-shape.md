@@ -274,12 +274,13 @@ ZRANGEBYSCORE wr:{prefix}:score:{workerGroupId}
 Return:
 
 ```text
-list[(workerId, observedScore)]
+list[workerId]
 ```
 
-`observedScore` is the complete signed score. It is an opaque stale fence for
-exact-CAS operations. Callers must not trim, decode, construct, or persist it as
-public worker lifecycle truth.
+Redis may use `WITHSCORES` internally for decoding/tests, but the HOT acquire
+surface returns Worker ids only. Due lease acquisition reads current score
+again inside its atomic score-owner script; no pre-lease score observation is
+exposed to assignment-dispatch or matcher callers.
 
 Recovery recheck:
 
@@ -314,7 +315,7 @@ Required first-slice primitives:
 ```text
 initialize_hot_acquire_score(workerGroupId, workerId, laneRank)
 rewrite_current_score(workerGroupId, workerId, targetTimeMillis, targetLaneRank?)
-acquire_due_hot_score_lease(workerGroupId, workerId, observedScore, targetTimeMillis)
+acquire_due_hot_score_lease(workerGroupId, workerId, targetTimeMillis)
 renew_active_hot_score_lease(workerGroupId, workerId, observedScore, targetTimeMillis)
 mark_current_lease_dirty(workerGroupId, workerId)
 toggle_current_polarity(workerGroupId, workerId, observedScore, targetLaneRank)
@@ -331,7 +332,8 @@ polarity move preserves timeSlot and dirty
 polarity move uses exact observedScore CAS
 RECOVERY_RECHECK cannot be hot leased
 active hot lease renewal returns STALE on dirty
-due hot lease acquisition may clear dirty only after current validation
+due hot lease atomically requires current stored score to be positive and due,
+then writes the future score and may clear dirty after the first-stage match
 dirty mark only sets dirty = 1
 ```
 
@@ -411,11 +413,12 @@ handler writes its own dyn key
 Dynamic attribute query flow for matching:
 
 ```text
-WorkerCandidateMatcher receives bounded workerIds and a candidate constraint map
+WorkerCandidateMatcher receives workerGroupId, bounded workerIds, and a candidate constraint map
 each WorkerCandidateConstraint carries priority, limit, and match_rules
 match_rules is a structured map compiled by the independent constraint DSL
 worker matcher preparation derives dynamic fields from match_rules
 missing declared dynamic handler is a configuration error
+assignment-dispatch acquires bounded due HOT workerIds before calling matcher
 descriptors read workers:{workerGroupId} once
 candidate order is priority descending, then candidateId ascending
 declared acquire fields are deduplicated in resolved candidate order
@@ -426,13 +429,13 @@ evaluate remaining constraints in resolved priority order; first match consumes 
 missing / unsupported / unresolved handler rows fail closed when read
 matcher returns each workerId in at most one candidate result
 result shape is insertion-ordered candidateId -> workerIds map in resolved priority order
-assignment-dispatch keeps observedScore sidecar from score acquire
+only a successful matcher-internal due HOT lease creates CandidateWorkerEntry
 ```
 
 `WorkerCandidateMatcher` is a storage-independent worker-runtime mechanism. It
 consumes `WorkerResourceCatalog` for one descriptor batch and
 `WorkerDynamicAttributeRuntime` for bounded dynamic reads. The matcher filters
-descriptor-supported worker ids from the loaded batch; the dynamic runtime
+descriptor-supported worker ids from its supplied batch; the dynamic runtime
 hides query handlers and does not reread descriptors. Redis-specific code owns
 descriptor persistence and handler storage only. Do not introduce
 storage-specific matcher subclasses.

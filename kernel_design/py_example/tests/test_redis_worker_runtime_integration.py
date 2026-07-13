@@ -93,7 +93,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
         )
 
         self.assertEqual(registered.status, WorkerRuntimeStatus.OK)
-        self.assertEqual([worker_id for worker_id, _ in candidates], [worker.worker_id])
+        self.assertEqual(candidates, [worker.worker_id])
         self.assertEqual(descriptors[worker.worker_id], worker)
 
 

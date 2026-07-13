@@ -215,11 +215,12 @@ separate running activation
 ```
 
 There is no score/collection commit protocol. Publication occurs before the
-same-band time rewrite for one Task. A failed publication does not require a
-score rollback; a stale/rejected time rewrite does not roll back already
-published candidate evidence. If a lifecycle command wins after publication,
-the Task leaves the dispatch scan and the collection becomes unreachable
-residue for later Task physical cleanup.
+same-band time rewrite. A failed publication does not require a Task-score
+rollback; allocation best-effort releases exact Worker leases that have not yet
+been published and propagates the runtime failure. A stale/rejected time rewrite
+does not roll back already published candidate evidence. If a lifecycle command
+wins after publication, the Task leaves the dispatch scan and the collection
+becomes unreachable residue for later Task physical cleanup.
 
 Work dispatch consumes entries using an owner-local atomic pop/claim primitive.
 Multiple WorkDispatchPacer workers may run concurrently without a Task lock;
@@ -229,31 +230,37 @@ The atomic boundary is one Task queue:
 
 ```text
 append_candidate_workers(taskId, entries, expiresAtMillis)
-candidate_worker_count(taskId)
+candidate_worker_counts(taskIds)
 consume_candidate_workers(taskId, limit)
 ```
 
 Append stores every candidate supplied by the caller under one batch expiry.
 Runtime does not choose a collection length or trim to Task policy.
-`candidate_worker_count` counts only non-expired entries. It still does not
-prove current Worker validity, lease ownership, dirty state, or constraint
-match and is not a capacity or lifecycle decision.
+Append and batched count remove physically expired members from the touched
+Task keys; consume also removes expiry before pop. This owner-local cleanup
+avoids a background scanner. `candidate_worker_counts` returns only non-expired
+entry counts. It still does not prove current Worker validity, lease ownership,
+dirty state, or constraint match and is not a capacity or lifecycle decision.
 
-`maximumCandidateWorkers` is the Task-owned per-round matcher bound:
+`maximumCandidateWorkers` is the Task-owned best-effort live collection target:
 
 ```text
-WorkerCandidateConstraint.limit = Task.maximumCandidateWorkers
+WorkerCandidateConstraint.limit =
+  max(0, Task.maximumCandidateWorkers - currentLiveCandidateCount)
 ```
 
-`candidate_worker_count` is available to independent running activation and
-diagnostics. Candidate allocation does not read it, turn it into a persistent
-queue cap, or use it as permission for a lifecycle transition.
+Candidate allocation reads the bounded count batch before matching. Runtime
+still does not enforce or reinterpret the Task limit during append. Concurrent
+allocation pacers may observe the same prior count and temporarily overshoot;
+the first cut accepts this rather than adding candidate-slot reservation or
+discarding already leased Workers after matching.
 
 The current built-in activation policy uses this live-entry count as its first
-executable approximation. It does not prove the configured minimum is still
-valid after Worker score, dirty, or attribute changes. Strong current-validity
-semantics require an explicit Worker revalidation result; they must not be
-hidden inside `TaskDispatchRuntime` count.
+executable approximation. It is point-in-time allocation evidence and does not
+prove the configured minimum remains valid through the Task score transition
+or after Worker score, dirty, or attribute changes. Strong current-validity
+semantics require an explicit Worker revalidation/reservation result; they must
+not be hidden inside `TaskDispatchRuntime` count.
 
 The first executable
 `TaskRunningActivationPacer.activate_running_visible_tasks(config)` scans one
@@ -278,8 +285,11 @@ atomicity across Task queues.
 ## Worker Fence
 
 Allocation leases a Worker immediately after its constraints match. The matcher
-uses the complete HOT-acquire score as exact CAS evidence and returns a
-`CandidateWorkerEntry` only after `acquire_due_hot_score_lease` succeeds.
+passes only the Worker id to score owner and returns a `CandidateWorkerEntry`
+only after `acquire_due_hot_score_lease` atomically confirms that the current
+score is positive HOT, due, and can move to the requested future lease. The
+newly written score, not a pre-match observation, becomes
+`CandidateWorkerEntry.workerLeaseScore`.
 
 Work dispatch must recheck the consumed Worker against current Worker truth:
 
@@ -316,14 +326,15 @@ Neither pacer depends on an event from the other.
 
 ```text
 allocation faster than dispatch
-  producer match policy controls each publication size; the queue may accumulate
-  until dispatch consumes it
+  producer subtracts the current live-entry count before matching; concurrent
+  rounds may temporarily overshoot the best-effort Task target
 
 dispatch faster than allocation
   empty/missing collections are bounded no-op results
 
 collection write lost
-  the short Worker lease expires; a later bounded allocation round may reserve it again
+  allocation best-effort releases unpublished exact leases; timeout remains the
+  fallback and a later bounded round may reserve the Worker again
 
 candidate Worker stale
   dispatch drops entry; later allocation produces fresh evidence

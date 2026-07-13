@@ -506,7 +506,7 @@ The first worker-runtime matching surface may expose a bounded batch matcher:
 ```text
 match_worker_candidates(
   workerGroupId,
-  observedScoreByWorkerId,
+  workerIds,
   {candidateId: WorkerCandidateConstraint, ...},
   leaseUntilMillis,
 )
@@ -516,13 +516,17 @@ The input map makes candidate identity unique. Each value carries explicit
 `priority`, `limit`, and map-shaped `match_rules`. The matcher
 sorts by priority descending and `candidateId` ascending, then each worker is
 considered by the first matching candidate with remaining capacity. The
-matcher then performs exact-score `acquire_due_hot_score_lease`; only a
-successful lease consumes the Worker and creates `CandidateWorkerEntry`. A
+matcher then asks Worker score to atomically lease the current due HOT score;
+only a successful lease consumes the Worker and creates
+`CandidateWorkerEntry`. No pre-lease score observation crosses this interface. A
 matcher call handles exactly one selected `workerGroupId`; assignment-dispatch
-must partition candidates by Worker group before calling it. The matcher
+must partition candidates by Worker group and acquire a bounded Worker-id batch
+before calling it. The matcher owns descriptor reads, dynamic reads, matching,
+and due-score lease for only those supplied Worker ids.
+The matcher
 returns one insertion-ordered `candidateId -> CandidateWorkerEntry[]` map in
 resolved priority order, containing every input candidate. An empty entry list
-means no reservation. It matches only the supplied Worker observations and
+means no reservation. It must not acquire or discover additional Workers and
 must not become
 `find_all_matching_workers(query)` or a global worker query service.
 
