@@ -206,6 +206,7 @@ append item
   -> does not write task score
   -> does not emit a default wakeup
   -> does not become RUNNING_VISIBLE correctness
+  -> guarantees accepted backlog persistence only, not eventual consumption
 
 PRE_DISPATCH_VISIBLE
   -> activation facts may change outside the score owner
@@ -217,8 +218,8 @@ RUNNING_VISIBLE with no current work
   -> append does not have to wake it
   -> work discovery and no-work closure come from owner recheck / policy budget
   -> append may wait until the next RUNNING_VISIBLE score becomes due
-  -> append after exhausted no-work closure must not reopen or backdate the old
-     score
+  -> append after exhausted no-work closure is invalid residue and must not
+     reopen or backdate the old score
 
 allowed key transition event, if introduced later
   -> may shorten recheck latency
@@ -904,12 +905,21 @@ closes. If work exists, assignment-dispatch continues through worker admission,
 final item claim, and deliver seed creation. Append, result, and read paths do
 not directly refresh the live score.
 
+The append owner does not prove Task liveness before persisting backlog. Its
+success contract ends at accepted-item persistence. Ingress/product policy may
+reject append using a bounded Task status cache, close-append tag, or tombstone,
+but stale policy observation may still admit a late item. That item has no
+consumption guarantee and cannot reopen a terminal score. TTL, repeated cleanup,
+generation-scoped keys, or another retention mechanism owns orphan backlog
+removal after physical cleanup races.
+
 This makes no-work closure a deliberate latency tradeoff. If an item is
 appended while the task is parked by a future `RUNNING_VISIBLE` no-work recheck
 score, scheduling may discover it later when that score becomes due. If the
 exhausted round closes the task before a later append arrives, that ordering is
-accepted by score-band; intake/lifecycle policy must decide whether the append
-is rejected, routed to a new task, or handled by an explicit owner transition.
+accepted by score-band. Ingress policy may reject the append before persistence;
+if stale ingress evidence accepts it, the item remains terminal residue and
+does not create an owner transition.
 
 ## Assignment-Dispatch Protocol
 
@@ -1196,6 +1206,9 @@ no broad refresh from low-value observations
 - Do not lower `timeSlot` on a positive score write except for release/resume
   with exact `observedHoldScore` match.
 - Do not let append write or refresh task score.
+- Do not make append prove Task liveness or promise eventual consumption.
+- Do not reopen a terminal Task because a late item exists in backlog. Ingress
+  owns append eligibility and retention owns invalid terminal residue.
 - Do not let result/retry write live task score.
 - Do not put a timer, periodic recheck loop, or pagination cursor inside the
   task-score owner.

@@ -104,6 +104,39 @@ become score transitions and must not wait for score ownership. In particular,
 append owns backlog growth only. It does not make a task schedulable, refresh a
 task score, or emit a required wakeup.
 
+Append acceptance is deliberately narrow:
+
+```text
+append accepted
+  = backlog owner persisted one item
+
+append accepted
+  != task is live or schedulable
+  != dispatcher will consume the item
+  != item is guaranteed to produce a result
+  != terminal Task must reopen
+```
+
+Ingress/product policy, currently expected at the server boundary, decides
+whether a caller may append to a closed or intake-disabled Task. It may use a
+bounded status cache, close-append tag, tombstone, or another business-owned
+gate. Small observation delay is acceptable: a late item accepted after Task
+terminal is invalid residue, not a kernel lifecycle failure. Task score remains
+terminal and the item must not recreate scheduling visibility.
+
+Physical cleanup races are retention concerns. If terminal cleanup removes a
+backlog key and a delayed append recreates it, retention may use TTL, repeated
+cleanup, generation-scoped keys, or an ingress tombstone. The kernel must not
+solve this by making every append read or lease task score.
+
+```text
+ingress owner decides append eligibility
+backlog owner guarantees accepted-item persistence only
+task score owns scheduling visibility
+dispatcher owns consumption opportunity
+retention owner removes terminal residue
+```
+
 Score write authority is deliberately narrow:
 
 ```text
@@ -140,6 +173,10 @@ scheduling owns routine acquirable-score evolution
 command owners own explicit lifecycle transitions only
 score never becomes a global mutation lock
 ```
+
+The kernel protects scheduling invariants, not every product-level acceptance
+promise. It must not absorb business fallback logic merely to guarantee that
+every accepted item is eventually consumed.
 
 The kernel must close its own loop without ordinary external events:
 
@@ -274,6 +311,14 @@ what exists today.
 - [Task Resource Model](resource-model/task-resource-model.md)
   - v0 task allocation metadata, start conditions, allocation-rule routing,
     and bounded task descriptor reads.
+- [Assignment-Dispatch Scheduling](scheduling/assignment-dispatch-scheduling.md)
+  - shared owner contract for two mandatory independent pacers.
+- [Task-Worker Allocation Pacer](scheduling/task-worker-allocation-pacer.md)
+  - oldest-first allocation fairness, batch matching, activation, and candidate
+    publication.
+- [Work Dispatch Pacer](scheduling/work-dispatch-pacer.md)
+  - newest-first candidate consumption, Worker short lease, Work claim, and
+    DeliverSeed creation without Task-score writes.
 
 ## Boundary
 

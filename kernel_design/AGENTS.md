@@ -80,7 +80,9 @@ For result or dispatch work:
 
 1. [resource-model/task-resource-model.md](resource-model/task-resource-model.md)
 2. [scheduling/assignment-dispatch-scheduling.md](scheduling/assignment-dispatch-scheduling.md)
-3. [scheduling/result-routing-scheduling.md](scheduling/result-routing-scheduling.md)
+3. [scheduling/task-worker-allocation-pacer.md](scheduling/task-worker-allocation-pacer.md)
+4. [scheduling/work-dispatch-pacer.md](scheduling/work-dispatch-pacer.md)
+5. [scheduling/result-routing-scheduling.md](scheduling/result-routing-scheduling.md)
 
 ## 3. Owner Map
 
@@ -258,6 +260,12 @@ python -m unittest \
 - Do not require a score read, lease, or rewrite before resource metadata,
   dynamic attribute, backlog append, result/evidence, projection, or trace
   mutation.
+- Treat append success as accepted backlog persistence only. Do not infer that
+  the Task is live, schedulable, guaranteed to consume the item, or required to
+  reopen. Ingress owns append eligibility; retention owns terminal residue.
+- Do not make kernel append compensate for stale server intake decisions. A
+  late append after terminal may be discarded and must never refresh or reopen
+  task score.
 - Do not let a resource mutation become a generic score refresh. Worker dirty
   may only be an additional bounded stale hint for a real continuation and must
   never gate or roll back the resource write.

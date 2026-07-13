@@ -528,8 +528,10 @@ task-level mechanisms.
 If the task is already waiting on a future `RUNNING_VISIBLE` no-work recheck
 score, append does not move that score or request a wakeup. The item may be
 discovered by a normal `RUNNING_VISIBLE` scan when that score is acquired. If an
-exhausted no-work round has already closed the task, append eligibility is a
-task intake/lifecycle decision and cannot retroactively reopen the old score.
+exhausted no-work round has already closed the task, append eligibility is an
+ingress/product decision. An item accepted under stale ingress evidence is
+terminal residue with no consumption guarantee and cannot retroactively reopen
+the old score.
 
 Activation fact changes follow the same rule. They update the owning fact, but
 they do not rewrite the task score directly. A normal `PRE_DISPATCH_VISIBLE` scan
@@ -1292,6 +1294,8 @@ Rules:
 - append does not rewrite the task lane score and does not request a generic
   score refresh;
 - append does not emit a default wakeup or dirty hint;
+- append acknowledgement guarantees accepted backlog persistence only; it does
+  not guarantee Task liveness, scheduling, claim, dispatch, or final result;
 - append should not rewrite `TaskRuntimeMeta` except for first-time runtime
   initialization; task policy changes own metadata updates;
 - assignment-dispatch rounds own live task score rewrite after a score-visible
@@ -1301,8 +1305,11 @@ Rules:
   append does not move that existing score; the appended item may wait until
   that score is acquired;
 - if the task has already closed through exhausted no-work budget, append cannot
-  reopen or backdate the old score. Intake/lifecycle policy must decide whether
-  to reject it or route it through an explicit new owner transition;
+  reopen or backdate the old score. Ingress policy may reject it before
+  persistence, but accepted backlog does not create a lifecycle transition;
+- if stale ingress policy admits an item after terminal, the item is invalid
+  residue. Task score remains terminal and retention owns TTL, repeated cleanup,
+  generation-scoped deletion, or another bounded residue policy;
 - submit is at-least-once by default. If Redis commits the append but the
   response is lost, a caller retry without a stable idempotency key may append
   a second logical item;
@@ -1655,6 +1662,7 @@ append:
   optional first-time TaskRuntimeMeta init only
   no task score rewrite in the append mutation
   no default wakeup / dirty event emit
+  accepted means persisted backlog only; consumption is not guaranteed
 
 claim:
   validate task score, runtime gate, runtimeEpoch, and selected worker admission

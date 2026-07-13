@@ -184,6 +184,7 @@ resource mutation
 item append
   writes backlog truth directly
   does not change task lifecycle or scheduling visibility
+  guarantees queue acceptance only, not eventual consumption
 
 score-acquired scheduling round
   is the only routine writer for an acquirable score
@@ -210,6 +211,13 @@ but it is not a prerequisite or lock. The resource update commits first. If a
 real persisted assignment continuation used the changed field, the owner may
 separately mark that continuation stale; failure to mark dirty cannot reject or
 roll back the resource update.
+
+Append eligibility is outside the scheduling planes. The ingress/product owner
+may reject a terminal or intake-disabled Task through a cache, close-append tag,
+or tombstone. If stale ingress evidence allows a late append, scheduling keeps
+the terminal score unchanged and retention later removes the invalid backlog
+residue. The kernel does not owe eventual consumption for every accepted item
+and must not reopen a Task to provide that business guarantee.
 
 ## Plane Boundaries
 
@@ -319,27 +327,30 @@ final work result
 Answers:
 
 ```text
-given a schedulable task and admissible worker, what concrete deliver seed
-should be produced?
+which bounded Task-Worker candidates should be published now?
+which recent candidate can become a current Work claim and DeliverSeed now?
 ```
 
 Owns:
 
 ```text
-candidate worker selection for one task scheduling round
-worker group / capability / priority rule application
+two mandatory independent pacers
+oldest-first Task-Worker allocation and Task fairness rewrite intent
+newest-first candidate-worker consumption
+worker group / constraint / priority rule application during allocation
+Worker short lease timing during dispatch
 final work claim timing
 deliver seed creation from current work hash evidence
-transport adapter queue choice for already selected work
 ```
 
 Does not own:
 
 ```text
-task score lifecycle
+task score truth; WorkDispatchPacer is Task-score read-only
 worker score lifecycle
 result finality
 transport session internals
+transport adapter queue choice
 ```
 
 ### Result-Routing Scheduling
@@ -377,15 +388,20 @@ owner and not a transport parser.
 2. [Worker Score-Band Scheduling](worker-score-band-scheduling.md)
    - target worker/resource eligibility score mechanism.
 3. [Assignment-Dispatch Scheduling](assignment-dispatch-scheduling.md)
-   - how one task scheduling round chooses workers, claims work, and produces
-     deliver seeds.
-4. [Result-Routing Scheduling](result-routing-scheduling.md)
+   - shared owner and protocol contract for two mandatory independent pacers.
+4. [Task-Worker Allocation Pacer](task-worker-allocation-pacer.md)
+   - oldest-first Task allocation, batch Worker matching, activation checks,
+     Task timeSlot fairness, and candidate-worker publication.
+5. [Work Dispatch Pacer](work-dispatch-pacer.md)
+   - newest-first candidate consumption, Worker short lease, Work claim, and
+     DeliverSeed creation; Task score is read-only.
+6. [Result-Routing Scheduling](result-routing-scheduling.md)
    - how result evidence is routed to finality, retry, no-op, or unresolved
      handling.
-5. [Worker Runtime Redis Shape](../runtime-redis/worker-runtime-redis-shape.md)
+7. [Worker Runtime Redis Shape](../runtime-redis/worker-runtime-redis-shape.md)
    - first-slice Redis structure reference for worker-runtime resource catalog,
      score acquisition, and dynamic attribute storage.
-6. [Score-Band Task Runtime Redis Shape](../runtime-redis/score-band-task-runtime-redis-shape.md)
+8. [Score-Band Task Runtime Redis Shape](../runtime-redis/score-band-task-runtime-redis-shape.md)
    - Redis structure reference for task score lanes plus adjacent work-item and
      result structures.
 
