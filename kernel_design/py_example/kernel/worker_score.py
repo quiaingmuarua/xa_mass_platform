@@ -67,7 +67,7 @@ class WorkerScoreCore(ABC):
 
     - no business event names;
     - no transition-source parameter;
-    - no hot candidate DTOs beyond WorkerId;
+    - acquired HOT candidates are returned only as WorkerId plus opaque score;
     - no internal score range coordinates;
     - no caller-supplied cold time slot, scan bounds, polarity sign, dirty bit,
       or encoded base/tag fields;
@@ -126,12 +126,14 @@ class WorkerScoreCore(ABC):
         *,
         home_bucket_id: HomeBucketId,
         limit: int,
-    ) -> Sequence[WorkerId]:
-        """Acquire due HOT_ACQUIRE worker candidates.
+    ) -> Mapping[WorkerId, Score]:
+        """Return bounded due HOT_ACQUIRE Workers by id and observed score.
 
-        This first-stage scan returns Worker ids only. The score owner performs
-        the later due check atomically when acquiring a HOT lease; callers do
-        not carry score observations through matching.
+        This is a read-only score query. Callers may retain each score only as
+        the expected fence for `acquire_observed_hot_score_lease`; they must not
+        decode or rewrite it. Concurrent rounds may observe the same Worker,
+        but only one can later acquire its lease through exact score CAS. The
+        mapping does not expose scan order as a public contract.
         """
         pass
 
@@ -186,20 +188,19 @@ class WorkerScoreCore(ABC):
         pass
 
     @abstractmethod
-    def acquire_due_hot_score_lease(
+    def acquire_observed_hot_score_lease(
         self,
         *,
         home_bucket_id: HomeBucketId,
         worker_id: WorkerId,
+        observed_score: Score,
         target_time_millis: TimeMillis,
     ) -> WorkerScoreTransitionResult:
-        """Atomically acquire the current due HOT_ACQUIRE worker score.
+        """Lease one observed due HOT_ACQUIRE score through exact CAS.
 
-        Implementations read the current score at write time, require positive
-        HOT polarity and a stored time slot before the current slot, then mint
-        a future lease while preserving lane rank and clearing dirty. Concurrent
-        callers are excluded by the atomic due check: after one write, the
-        stored score is future-held and later callers return STALE.
+        Implementations validate the opaque observation as a due HOT score,
+        require the target to be a future time slot, preserve lane rank, clear
+        dirty, and write only when storedScore still equals observed_score.
         """
         pass
 
@@ -233,9 +234,10 @@ class WorkerScoreCore(ABC):
 
         This is the non-lease-owner side of the dirty fence. Implementations
         read the current stored score, only set dirty=1, and preserve polarity,
-        score time coordinate, and lane_rank. This also applies to due scores:
-        a match result captured before a metadata change must not be able to
-        acquire a lease and clear dirty with stale validation evidence.
+        score time coordinate, and lane_rank. This applies to both due scores
+        and future-held allocation leases. A relevant metadata change after
+        point lease marks the lease dirty so later dispatch renewal or
+        revalidation cannot continue from stale match evidence.
         """
         pass
 

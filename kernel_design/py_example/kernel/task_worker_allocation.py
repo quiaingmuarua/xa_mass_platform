@@ -19,7 +19,12 @@ from .worker_runtime import (
     WorkerCandidateConstraint,
     WorkerGroupId,
 )
-from .worker_score import WorkerScoreCore
+from .worker_score import (
+    Score,
+    WorkerId,
+    WorkerScoreCore,
+    WorkerScoreTransitionStatus,
+)
 
 
 @dataclass(frozen=True)
@@ -127,18 +132,23 @@ class TaskWorkerAllocationPacer:
         )
         published_tasks = 0
         for worker_group_id, candidate_constraints in grouped_constraints.items():
-            worker_ids = self.worker_score.acquire_hot_acquire_candidates(
+            observed_score_by_worker_id = self.worker_score.acquire_hot_acquire_candidates(
                 home_bucket_id=worker_group_id,
                 limit=config.worker_scan_limit,
+            )
+            match_result = self.worker_matcher.match_worker_candidates(
+                worker_group_id=worker_group_id,
+                worker_ids=tuple(observed_score_by_worker_id),
+                candidate_constraints=candidate_constraints,
             )
             lease_until_millis = (
                 self._current_time_millis()
                 + config.worker_lease_duration_millis
             )
-            entries_by_task = self.worker_matcher.match_worker_candidates(
+            entries_by_task = self._lease_candidate_entries_by_task(
                 worker_group_id=worker_group_id,
-                worker_ids=worker_ids,
-                candidate_constraints=candidate_constraints,
+                matches=match_result.matches,
+                observed_score_by_worker_id=observed_score_by_worker_id,
                 lease_until_millis=lease_until_millis,
             )
             published_tasks += self._publish_group_candidates(
@@ -193,6 +203,38 @@ class TaskWorkerAllocationPacer:
             group = grouped_tasks.setdefault(descriptor.worker_group_id, {})
             group[task_id] = constraint
         return grouped_tasks
+
+    def _lease_candidate_entries_by_task(
+        self,
+        *,
+        worker_group_id: WorkerGroupId,
+        matches: Mapping[TaskId, Sequence[WorkerId]],
+        observed_score_by_worker_id: Mapping[WorkerId, Score],
+        lease_until_millis: TimeMillis,
+    ) -> dict[TaskId, tuple[CandidateWorkerEntry, ...]]:
+        entries_by_task: dict[TaskId, tuple[CandidateWorkerEntry, ...]] = {}
+        for task_id, worker_ids in matches.items():
+            entries: list[CandidateWorkerEntry] = []
+            for worker_id in worker_ids:
+                lease = self.worker_score.acquire_observed_hot_score_lease(
+                    home_bucket_id=worker_group_id,
+                    worker_id=worker_id,
+                    observed_score=observed_score_by_worker_id[worker_id],
+                    target_time_millis=lease_until_millis,
+                )
+                if (
+                    lease.status is WorkerScoreTransitionStatus.TRANSITIONED
+                    and lease.score is not None
+                ):
+                    entries.append(
+                        CandidateWorkerEntry(
+                            worker_id=worker_id,
+                            worker_group_id=worker_group_id,
+                            worker_lease_score=lease.score,
+                        )
+                    )
+            entries_by_task[task_id] = tuple(entries)
+        return entries_by_task
 
     def _publish_group_candidates(
         self,

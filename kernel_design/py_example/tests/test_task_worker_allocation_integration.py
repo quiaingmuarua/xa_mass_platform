@@ -102,7 +102,6 @@ class AssignmentDispatchIntegrationTest(unittest.TestCase):
             WorkerCandidateMatcher(
                 self.worker_catalog,
                 dynamic_runtime,
-                self.worker_score,
             ),
             self.dispatch_runtime,
         )

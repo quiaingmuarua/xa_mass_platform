@@ -7,9 +7,9 @@ This directory is primarily for the next kernel design. The current Java
 project is a historical reference for failure modes, invariants, and
 anti-patterns; it is not the architecture to preserve.
 
-Treat this workspace as kernel-core design notes for a clean rewrite,
-including the planned Python kernel core, not as a roadmap for incrementally
-repairing the current codebase.
+Treat this workspace as kernel-core design notes and Python executable specs
+for a clean rewrite, not as a roadmap for incrementally repairing the current
+codebase.
 
 This is not a simplified-kernel exercise. It is a stricter clean-kernel redesign
 after months of accumulated implementation complexity. Fewer interfaces mean
@@ -29,8 +29,8 @@ It is a place to keep target mechanisms, runtime memory models,
 state-transition models, and owner-boundary design that are larger than one
 module owner doc and broader than a single roadmap.
 
-The goal is precise, consistent agent alignment before executable specs or code
-changes. A kernel design note should make clear:
+The goal is precise, consistent agent alignment before and during executable
+spec changes. A kernel design note should make clear:
 
 ```text
 what the target mechanism is
@@ -300,6 +300,82 @@ by defining the cleaner target owner split and runtime mechanism. Do not
 normalize current design debt into the target architecture just because it is
 what exists today.
 
+### Interface Contract Standard
+
+Kernel interfaces are design artifacts, not conveniences shaped around the
+current implementation. Once caller, owner, inputs, output, side effects, and
+concurrency semantics have been aligned, that contract is frozen until an
+explicit interface decision changes it.
+
+Before adding or changing a kernel-facing method, record this contract:
+
+| Question | Required answer |
+| --- | --- |
+| Owner | Which owner is allowed to perform the operation? |
+| Caller | Which scheduling plane or owner invokes it? |
+| Inputs | Which values can the caller construct, validate, and legitimately own? |
+| Output | Which fact or bounded evidence does the result represent? |
+| Side effects | Which owner truth, score, lease, queue, or key may change? |
+| Bounds | What limits scans, batches, retries, or memory growth? |
+| Concurrency | Is the operation best-effort, monotonic, lease-guarded, or exact CAS? |
+| Refusals | Which adjacent policy or owner responsibility must remain outside? |
+
+The implementation must follow these rules:
+
+```text
+caller-owned bounded input stays an explicit input
+callee-owned internal truth stays hidden
+policy chooses bounds and mapping
+mechanism validates and performs only its declared mutation
+removing a helper or wrapper preserves the existing owner split
+test convenience does not justify a new interface or owner
+```
+
+Reducing argument count is not inherently an improvement. A stable value such
+as `workerIds`, selected and bounded by the caller, is a valid contract input.
+Moving its acquisition into a matcher would add hidden I/O and move scheduling
+policy into the matching mechanism even if the new signature looked smaller.
+
+Likewise, deleting a pass-through helper means inlining its existing sequence:
+
+```text
+before:
+  helper = owner A operation + owner B call
+
+after:
+  caller performs owner A operation, then calls owner B directly
+```
+
+It does not authorize changing owner B's signature, moving owner A's operation
+into owner B, adding a facade, or changing side effects. Hidden I/O is a
+contract change even when the method signature is unchanged.
+
+The following require explicit agreement before code changes:
+
+- adding or removing a public/kernel-facing parameter or return field;
+- moving score acquisition, descriptor lookup, queue access, lease mutation,
+  policy evaluation, or persistence across an owner boundary;
+- changing bounded input into discovery, or discovery into caller input;
+- changing best-effort behavior into atomic/CAS behavior or the reverse;
+- adding a bridge, facade, wrapper, registry, callback, background loop, or
+  second runtime path;
+- changing which component owns limits, ordering, retries, or fairness.
+
+If a request has two plausible interpretations and one changes any item above,
+stop and compare the alternatives before implementation. Do not choose a new
+contract merely because it makes the current function shorter or the tests
+easier to satisfy.
+
+Executable-spec proof must cover both behavior and boundary shape:
+
+```text
+signature/DTO shape is locked by a contract test
+the expected owner performs each external read or mutation
+the callee does not discover inputs that the caller must supply
+no removed wrapper survives under a new name
+no hidden compatibility path or second mainline remains
+```
+
 ## Current Design Notes
 
 - [Kernel Core Scheduling](scheduling/README.md)
@@ -334,11 +410,11 @@ execution input, implementation proof, or migration direction. If a current
 Java roadmap needs a mechanism or Redis shape, define it inside that roadmap or
 the owning module contract instead.
 
-Python executable specs belong outside this directory, for example under a
-future `kernel_core/` package. Current Java project roadmaps should not execute
-these design notes directly. If a future executable-spec plan is needed, write
-that plan for the new kernel core explicitly instead of treating this workspace
-as an extension of the old Java roadmap system.
+The current Python executable spec lives under `kernel_design/py_example/` and
+is governed by these design contracts. A future production package may move to
+a dedicated `kernel_core/` root only through an explicit packaging decision.
+Current Java project roadmaps must not execute these design notes or Python
+specs as if they were current-platform migration steps.
 
 ## Agent Rules
 
@@ -348,8 +424,8 @@ as an extension of the old Java roadmap system.
 - Do not constrain a design note to current engine/module shape unless the
   constraint is a deliberate production requirement.
 - Do not implement directly from a design note without a scoped executable-spec
-  plan when the change crosses owners, runtime truth, storage shape, or public
-  boundary.
+  plan or explicit owner decision when the change crosses owners, runtime
+  truth, storage shape, or a kernel-facing interface.
 - If code reality diverges from the design note, report the gap; do not silently
   bend the design note into current behavior.
 - If a future executable spec proves part of a design note and makes it current

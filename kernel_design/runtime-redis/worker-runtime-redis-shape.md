@@ -274,13 +274,15 @@ ZRANGEBYSCORE wr:{prefix}:score:{workerGroupId}
 Return:
 
 ```text
-list[workerId]
+map[workerId, observedScore]
 ```
 
-Redis may use `WITHSCORES` internally for decoding/tests, but the HOT acquire
-surface returns Worker ids only. Due lease acquisition reads current score
-again inside its atomic score-owner script; no pre-lease score observation is
-exposed to assignment-dispatch or matcher callers.
+The query is read-only. The returned score is an opaque observation retained
+only by the allocation pacer for a later exact-score point lease. The pacer
+passes only Worker ids to matcher. Redis scan order may remain visible through
+the concrete dict insertion order, but it is not part of the public contract.
+Concurrent scans may return the same Worker; the later compare-and-write decides
+the single lease winner.
 
 Recovery recheck:
 
@@ -315,7 +317,10 @@ Required first-slice primitives:
 ```text
 initialize_hot_acquire_score(workerGroupId, workerId, laneRank)
 rewrite_current_score(workerGroupId, workerId, targetTimeMillis, targetLaneRank?)
-acquire_due_hot_score_lease(workerGroupId, workerId, targetTimeMillis)
+acquire_hot_acquire_candidates(workerGroupId, limit)
+acquire_observed_hot_score_lease(
+  workerGroupId, workerId, observedScore, targetTimeMillis
+)
 renew_active_hot_score_lease(workerGroupId, workerId, observedScore, targetTimeMillis)
 mark_current_lease_dirty(workerGroupId, workerId)
 toggle_current_polarity(workerGroupId, workerId, observedScore, targetLaneRank)
@@ -332,8 +337,9 @@ polarity move preserves timeSlot and dirty
 polarity move uses exact observedScore CAS
 RECOVERY_RECHECK cannot be hot leased
 active hot lease renewal returns STALE on dirty
-due hot lease atomically requires current stored score to be positive and due,
-then writes the future score and may clear dirty after the first-stage match
+bounded hot acquire is a read-only positive due-score query
+observed hot lease validates due/future shape outside Lua, then generic exact
+score CAS writes the future lease while preserving laneRank and clearing dirty
 dirty mark only sets dirty = 1
 ```
 
@@ -418,7 +424,8 @@ each WorkerCandidateConstraint carries priority, limit, and match_rules
 match_rules is a structured map compiled by the independent constraint DSL
 worker matcher preparation derives dynamic fields from match_rules
 missing declared dynamic handler is a configuration error
-assignment-dispatch acquires bounded due HOT workerIds before calling matcher
+assignment-dispatch reads bounded due HOT worker observations before matcher
+allocation pacer keeps opaque observed scores in a private sidecar
 descriptors read workers:{workerGroupId} once
 candidate order is priority descending, then candidateId ascending
 declared acquire fields are deduplicated in resolved candidate order
@@ -428,8 +435,8 @@ skip candidates whose per-call limit is full
 evaluate remaining constraints in resolved priority order; first match consumes that worker
 missing / unsupported / unresolved handler rows fail closed when read
 matcher returns each workerId in at most one candidate result
-result shape is insertion-ordered candidateId -> workerIds map in resolved priority order
-only a successful matcher-internal due HOT lease creates CandidateWorkerEntry
+result shape contains insertion-ordered candidateId -> workerIds plus unordered unmatchedWorkerIds
+pacer point-leases matched ids by exact observed score; unmatched ids cause no score write
 ```
 
 `WorkerCandidateMatcher` is a storage-independent worker-runtime mechanism. It
@@ -481,8 +488,8 @@ mark_current_lease_dirty
 Allowed dirty clear:
 
 ```text
-acquire_due_hot_score_lease after current worker descriptor / dynamic metadata
-validation
+acquire_observed_hot_score_lease after bounded descriptor / dynamic metadata
+matching and exact observed-score validation
 ```
 
 Forbidden:

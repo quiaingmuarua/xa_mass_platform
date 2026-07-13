@@ -17,6 +17,7 @@ from kernel_design.py_example import (
     WorkerDescriptor,
     WorkerGroupDescriptor,
     WorkerRuntimeStatus,
+    WorkerScoreTransitionStatus,
 )
 
 
@@ -87,13 +88,36 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
             home_bucket_id=self.worker_group_id,
             limit=10,
         )
+        repeated_candidates = self.score_band.acquire_hot_acquire_candidates(
+            home_bucket_id=self.worker_group_id,
+            limit=10,
+        )
+        observed_score = candidates[worker.worker_id]
+        first_lease = self.score_band.acquire_observed_hot_score_lease(
+            home_bucket_id=self.worker_group_id,
+            worker_id=worker.worker_id,
+            observed_score=observed_score,
+            target_time_millis=(time.time_ns() // 1_000_000) + 5_000,
+        )
+        second_lease = self.score_band.acquire_observed_hot_score_lease(
+            home_bucket_id=self.worker_group_id,
+            worker_id=worker.worker_id,
+            observed_score=observed_score,
+            target_time_millis=(time.time_ns() // 1_000_000) + 6_000,
+        )
         descriptors = self.catalog.get_worker_descriptors(
             worker_group_id=self.worker_group_id,
             worker_ids=[worker.worker_id],
         )
 
         self.assertEqual(registered.status, WorkerRuntimeStatus.OK)
-        self.assertEqual(candidates, [worker.worker_id])
+        self.assertEqual(set(candidates), {worker.worker_id})
+        self.assertEqual(repeated_candidates, candidates)
+        self.assertEqual(
+            first_lease.status,
+            WorkerScoreTransitionStatus.TRANSITIONED,
+        )
+        self.assertEqual(second_lease.status, WorkerScoreTransitionStatus.STALE)
         self.assertEqual(descriptors[worker.worker_id], worker)
 
 

@@ -163,13 +163,12 @@ scheduling signature definition. The full signature or hash lives in
 worker-runtime metadata/evidence; score `dirty` only tells a real persisted
 assignment continuation that its cached match / admission facts may be stale.
 
-HOT candidate scan itself does not create an active lease and returns Worker ids
-only. After a current match, `acquire_due_hot_score_lease` atomically checks the
-stored HOT due coordinate and writes a future score. That newly written score
-is the short allocation lease carried by `CandidateWorkerEntry`; no pre-lease
-score observation crosses the matcher interface. If the first executable slice
-has no persisted task-worker assignment plan / hot score lease continuation,
-dirty should remain unused or deferred.
+HOT candidate acquisition is a bounded read-only range query. It returns
+`(workerId, observedScore)` pairs to the allocation pacer, which keeps each
+opaque score in a private sidecar and passes only Worker ids to the matcher.
+After matching, the pacer attempts an exact-score point lease for matched
+Workers only. Concurrent rounds may observe the same due Worker, but only one
+can win the compare-and-write. Unmatched Workers require no score write.
 
 Worker score is not a Worker resource mutation lease. Registration establishes
 the first HOT_ACQUIRE score, but later system/static/dynamic attribute writes,
@@ -317,7 +316,7 @@ Hot worker acquisition:
 
 ```text
 acquire_hot_acquire_candidates(homeBucketId, limit)
-  -> list[workerId]
+  -> map[workerId, observedScore]
 ```
 
 Score range:
@@ -327,8 +326,9 @@ dueTimeSlot = nowTimeSlot - 1
 MIN_BASE <= score <= base(dueTimeSlot, MAX_LANE_RANK, MAX_DIRTY)
 ```
 
-Only positive due scores are returned. Assignment-dispatch may use these
-candidates only after worker-runtime validation and admission.
+Only positive due scores are returned and the query does not modify them.
+Assignment-dispatch may publish a Worker only after bounded matching and an
+exact observed-score lease succeeds.
 
 Recovery recheck acquisition:
 
@@ -703,8 +703,9 @@ to protect. Do not invent a score lease just to justify dirty. Dirty is
 meaningful only when a real lease owner or stale observed-score continuation can
 observe it before continuing.
 
-`WorkerScoreCore` does not expose a generic dirty clear method. It exposes two
-hot assignment lease primitives plus one dirty marker:
+`WorkerScoreCore` does not expose a generic dirty clear method. It exposes one
+bounded HOT observation query, one observed-score point lease, one active
+renewal primitive, and one dirty marker:
 
 ```text
 mark_current_lease_dirty(homeBucketId, workerId)
@@ -714,16 +715,19 @@ mark_current_lease_dirty(homeBucketId, workerId)
   already-dirty scores are no-op
   applies to both due and future scores
 
-acquire_due_hot_score_lease(homeBucketId, workerId, targetTimeMillis)
-  atomically reads storedScore
-  storedScore must be positive HOT_ACQUIRE
-  stored timeSlot must be < nowSlot
-  targetTimeSlot = floor(targetTimeMillis / SLOT_MILLIS)
-  targetTimeSlot must be > nowSlot
-  caller performs the current first-stage descriptor / dynamic metadata match
-  writes HOT_ACQUIRE(targetTimeSlot, stored laneRank, dirty=0)
-  after the first writer succeeds, concurrent callers observe a future score
-  and return STALE
+acquire_hot_acquire_candidates(homeBucketId, limit)
+  reads positive due HOT_ACQUIRE scores in score order
+  returns at most limit workerId -> observedScore entries
+  does not expose score order as a caller contract
+  does not mutate score
+
+acquire_observed_hot_score_lease(
+  homeBucketId, workerId, observedScore, targetTimeMillis
+)
+  observedScore must decode to a due HOT_ACQUIRE score
+  targetTimeSlot must be after nowTimeSlot
+  writes HOT_ACQUIRE(targetTimeSlot, observed laneRank, dirty=0)
+  generic CAS requires storedScore == observedScore
 
 renew_active_hot_score_lease(homeBucketId, workerId, observedScore, targetTimeMillis)
   observedScore must decode to HOT_ACQUIRE
@@ -782,13 +786,13 @@ timeSlot is preserved unless the owner policy also writes an allowed hold
 Dirty clear is stricter:
 
 ```text
-only a hot score lease owner may write dirty = 0 through
-`acquire_due_hot_score_lease`
+only successful observed-score point lease may write dirty = 0 through
+`acquire_observed_hot_score_lease`
 active hot lease renewal must not clear dirty; dirty active renewal returns
 STALE and forces a fresh match
-the due hot lease owner may clear dirty after the current first-stage match;
-the resulting candidate remains evidence and dispatch revalidates current
-metadata before Work assignment
+the allocation pacer validates observations through matcher before point lease;
+a score change before lease makes exact CAS stale, while a relevant metadata
+change after lease may mark the future-held score dirty
 non-lease owners must never clear dirty
 ```
 
@@ -845,7 +849,9 @@ Worker score-band participates in assignment-dispatch like this:
 task score acquires due task candidate
 assignment-dispatch resolves worker demand
 worker-runtime acquire_hot_acquire_candidates(homeBucketId, limit)
-worker-runtime validates candidates
+allocation pacer keeps opaque observed scores and passes only Worker ids to matcher
+worker-runtime validates and matches candidates
+allocation pacer exact-CAS leases matched Workers and publishes only successes
 worker-runtime admits one or more selected workers
 task-runtime claims work item
 transport receives already-selected worker dispatch
@@ -871,14 +877,15 @@ assignment-dispatch worker selection path.
 
 | Input kind | May write worker score? | Required path |
 | --- | --- | --- |
-| hot acquire admission round | yes | current match followed by atomic stored-score due lease, or same-polarity rewrite |
+| hot candidate observation | no | bounded due range read with scores |
+| matched hot Worker lease | yes | exact observed-score CAS after bounded matching |
 | recovery-recheck validation round | yes | same-polarity rewrite / polarity move / cold park |
 | capacity full / contention | yes | same-polarity HOT_ACQUIRE rewrite |
 | manual disable / drain / maintenance | yes | same-polarity hold |
 | manual enable / release | yes | exact observed-score same-polarity release |
 | platform scheduling metadata signature changed while persisted task-worker assignment plan / hot score lease continuation exists | yes | `mark_current_lease_dirty` may only set dirty = 1 |
 | platform scheduling metadata signature changed while no persisted assignment plan / hot score lease continuation exists | no score write required | metadata/evidence only; next candidate validation reads current metadata |
-| assignment owner revalidated current scheduling metadata for due HOT_ACQUIRE score | yes | owner may clear dirty = 0 only through `acquire_due_hot_score_lease` |
+| assignment owner leases a matched due HOT_ACQUIRE observation | yes | `acquire_observed_hot_score_lease` exact-CAS writes the future lease and clears dirty |
 | assignment owner extends active clean HOT_ACQUIRE lease | yes | `renew_active_hot_score_lease`; dirty returns STALE and forces rematch |
 | confirmed disconnect / trusted unavailable | yes | owner-validated HOT_ACQUIRE -> RECOVERY_RECHECK polarity move preserving time coordinate |
 | verified owner reopen | yes | owner-validated RECOVERY_RECHECK -> HOT_ACQUIRE polarity move preserving time coordinate |
@@ -894,8 +901,8 @@ Use atomic write/CAS where stale intermediate state would allow wrong admission:
 
 ```text
 due HOT allocation lease:
-  atomically require current stored score is positive and due, then write the
-  future lease; no pre-lease observedScore is required
+  scan and matching may interleave with other rounds; one point CAS atomically
+  requires storedScore == observedScore before writing the future lease
 
 time-lowering operations:
   score CAS with complete signed observedScore
@@ -1027,8 +1034,9 @@ slot registry redesign
   drain / maintenance holds may still use far-future timeSlot.
 - Do not add `MANUAL_DISABLED_BAND`; manual disable is same-polarity hold.
 - Do not make score replace capacity/admission validation.
-- Do not return HOT candidate score observations across the matcher boundary;
-  HOT scan returns Worker ids and due lease reads current score atomically.
+- Do not pass observed or leased HOT scores across the matcher boundary; the
+  allocation pacer keeps observations in a private sidecar and matcher receives
+  Worker ids only.
 - Where an operation explicitly requires `observedScore`, do not trim it to
   time/laneRank/dirty. It remains the full signed score and callers must not
   construct or decode it.
@@ -1043,9 +1051,8 @@ slot registry redesign
   metadata bump dirty bit.
 - Do not invent a score lease just to justify dirty. Dirty only has a consumer
   if a real persisted assignment plan / hot score lease continuation exists.
-- Do not let non-lease owners clear dirty. Due HOT_ACQUIRE lease acquisition may
-  clear dirty only through `acquire_due_hot_score_lease` after validating current
-  platform scheduling metadata; active renewal must return STALE on dirty.
+- Do not let non-lease owners clear dirty. A successful exact observed-score HOT
+  lease may clear dirty after matching; active renewal must return STALE on dirty.
 - Do not use RECOVERY_RECHECK scores as assignment leases. Recovery validation
   must move the worker back to HOT_ACQUIRE before any hot score lease primitive
   can run.

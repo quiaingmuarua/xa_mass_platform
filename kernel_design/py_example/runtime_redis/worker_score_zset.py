@@ -82,37 +82,6 @@ redis.call("ZADD", key, next_score, worker_id)
 return {"transitioned", next_score}
 """
 
-    _ACQUIRE_DUE_HOT_LEASE_SCRIPT: ClassVar[str] = """
-local key = KEYS[1]
-local worker_id = ARGV[1]
-local now_min_score = tonumber(ARGV[2])
-local target_min_score = tonumber(ARGV[3])
-local slot_factor = tonumber(ARGV[4])
-local dirty_factor = tonumber(ARGV[5])
-
-local stored = redis.call("ZSCORE", key, worker_id)
-if not stored then
-  return {"stale"}
-end
-
-local stored_score = tonumber(stored)
-if stored_score <= 0 then
-  return {"invalid", stored_score}
-end
-if stored_score >= now_min_score then
-  return {"stale", stored_score}
-end
-if target_min_score <= now_min_score then
-  return {"invalid", stored_score}
-end
-
-local slot_remainder = stored_score % slot_factor
-local lane_rank = math.floor(slot_remainder / dirty_factor)
-local next_score = target_min_score + lane_rank * dirty_factor
-redis.call("ZADD", key, next_score, worker_id)
-return {"transitioned", next_score}
-"""
-
     _MARK_LEASE_DIRTY_SCRIPT: ClassVar[str] = """
 local key = KEYS[1]
 local worker_id = ARGV[1]
@@ -196,18 +165,16 @@ return {"transitioned", target_score}
         *,
         home_bucket_id: HomeBucketId,
         limit: int,
-    ) -> Sequence[WorkerId]:
+    ) -> Mapping[WorkerId, Score]:
         if limit <= 0:
-            return []
+            return {}
 
-        now_time_slot = self._current_time_slot()
-        due_time_slot = now_time_slot - 1
+        due_time_slot = self._current_time_slot() - 1
         if due_time_slot < self.MIN_TIME_SLOT:
-            return []
+            return {}
 
-        return [
-            worker_id
-            for worker_id, _ in self._range_worker_candidates(
+        return dict(
+            self._range_worker_candidates(
                 self._score_key(home_bucket_id),
                 self.MIN_BASE,
                 self._abs_score(
@@ -218,7 +185,7 @@ return {"transitioned", target_score}
                 limit,
                 reverse=False,
             )
-        ]
+        )
 
     def acquire_recovery_recheck_candidates(
         self,
@@ -315,44 +282,40 @@ return {"transitioned", target_score}
             )
         )
 
-    def acquire_due_hot_score_lease(
+    def acquire_observed_hot_score_lease(
         self,
         *,
         home_bucket_id: HomeBucketId,
         worker_id: WorkerId,
+        observed_score: Score,
         target_time_millis: TimeMillis,
     ) -> WorkerScoreTransitionResult:
-        if not self._valid_time_millis(target_time_millis):
+        observed = self._decode_score(observed_score)
+        if observed is None or not self._valid_time_millis(target_time_millis):
             return WorkerScoreTransitionResult(WorkerScoreTransitionStatus.INVALID)
 
+        polarity, observed_time_slot, lane_rank, _ = observed
         now_time_millis = self._current_time_millis()
-        if target_time_millis <= now_time_millis:
-            return WorkerScoreTransitionResult(WorkerScoreTransitionStatus.INVALID)
-
-        current_time_slot = self._time_slot_from_millis(now_time_millis)
+        now_time_slot = self._time_slot_from_millis(now_time_millis)
         target_time_slot = self._time_slot_from_millis(target_time_millis)
-        if target_time_slot <= current_time_slot:
+        if polarity is not WorkerScorePolarity.HOT_ACQUIRE:
+            return WorkerScoreTransitionResult(WorkerScoreTransitionStatus.INVALID)
+        if observed_time_slot >= now_time_slot:
+            return WorkerScoreTransitionResult(WorkerScoreTransitionStatus.STALE)
+        if target_time_millis <= now_time_millis or target_time_slot <= now_time_slot:
             return WorkerScoreTransitionResult(WorkerScoreTransitionStatus.INVALID)
 
-        return self._script_result(
-            self.redis.eval(
-                self._ACQUIRE_DUE_HOT_LEASE_SCRIPT,
-                1,
-                self._score_key(home_bucket_id),
-                worker_id,
-                self._abs_score(
-                    current_time_slot,
-                    self.MIN_LANE_RANK,
-                    self.MIN_DIRTY,
-                ),
-                self._abs_score(
-                    target_time_slot,
-                    self.MIN_LANE_RANK,
-                    self.MIN_DIRTY,
-                ),
-                self.slot_factor,
-                self.dirty_factor,
-            )
+        next_score = self._score(
+            WorkerScorePolarity.HOT_ACQUIRE,
+            target_time_slot,
+            lane_rank,
+            self.MIN_DIRTY,
+        )
+        return self._cas_update(
+            home_bucket_id,
+            worker_id,
+            observed_score,
+            next_score,
         )
 
     def renew_active_hot_score_lease(

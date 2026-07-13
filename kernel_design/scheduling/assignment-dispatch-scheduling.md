@@ -284,12 +284,12 @@ atomicity across Task queues.
 
 ## Worker Fence
 
-Allocation leases a Worker immediately after its constraints match. The matcher
-passes only the Worker id to score owner and returns a `CandidateWorkerEntry`
-only after `acquire_due_hot_score_lease` atomically confirms that the current
-score is positive HOT, due, and can move to the requested future lease. The
-newly written score, not a pre-match observation, becomes
-`CandidateWorkerEntry.workerLeaseScore`.
+Allocation first reads a bounded due HOT `(workerId, observedScore)` batch. The
+pacer keeps the opaque observations in a sidecar and passes only Worker ids to
+the matcher. For matched ids, the pacer attempts an exact observed-score point
+lease and creates `CandidateWorkerEntry` only from successful lease results.
+Unmatched ids require no score write. Matcher does not read or mutate Worker
+score.
 
 Work dispatch must recheck the consumed Worker against current Worker truth:
 
@@ -302,8 +302,11 @@ consume CandidateWorkerEntry
   -> invalid: discard entry and try another bounded entry
 ```
 
-One due Worker can be leased to only one candidate in a concurrent allocation
-window. A stale collection entry can remain after dirtying, release, lease due,
+Concurrent allocation rounds may observe and match the same due Worker, but
+only one exact-score point lease can succeed. Within one matcher call, a Worker
+is consumed by at most one candidate. This exclusivity is only a short
+allocation window. A stale
+collection entry can remain after dirtying, release, lease due,
 or metadata change. Dispatch-side owner validation decides whether it can still
 be used. Such an entry is disposable intermediate residue, not a second
 assignment truth.

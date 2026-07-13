@@ -448,8 +448,8 @@ batch-read or project that existing fact for query use. It must not become the
 worker availability truth.
 
 If a dynamic attribute is relevant to scheduling policy, the worker-runtime
-matching path may batch-read the attribute owner's current values before
-score lease. Only bounded candidate matching should receive candidate
+matching path may batch-read the attribute owner's current values for a bounded
+observed Worker batch before point lease. Only bounded candidate matching should receive candidate
 constraints; worker score lease / hold writes should not receive raw rule maps.
 Assignment-dispatch and worker score primitives must not interpret dynamic
 attribute payloads directly, and dynamic attribute updates must not drive
@@ -485,12 +485,13 @@ running. Assignment-dispatch does not query or choose groups on each round.
 `WorkerCandidateConstraint -> worker predicates` is worker matching inside the
 selected worker group. Its `match_rules` may constrain `workerId`, placement,
 static attributes, system attributes, or explicitly supported projected
-dynamic attributes. These constraints narrow Worker candidates before the
-matcher attempts the Worker-score allocation lease.
+dynamic attributes. These constraints narrow the Worker ids returned by the
+read-only HOT score query; matcher does not attempt or renew Worker-score leases.
 
 `workerId` inside `match_rules` is only a hard filter inside the task's selected
-`workerGroupId`. It still must pass worker score acquire and worker-runtime
-score lease. It is not a worker group selector and not a transport target.
+`workerGroupId`. The Worker must come from bounded due HOT score observation and
+later win an exact-score point lease. It is not a worker group selector and not
+a transport target.
 
 Dynamic attribute matching is deliberately narrow in v0. Assignment-dispatch
 must not perform arbitrary dynamic-attribute multi-index queries. Each
@@ -508,25 +509,29 @@ match_worker_candidates(
   workerGroupId,
   workerIds,
   {candidateId: WorkerCandidateConstraint, ...},
-  leaseUntilMillis,
 )
+  -> WorkerCandidateMatchResult(
+       matches={candidateId: workerIds, ...},
+       unmatchedWorkerIds=[...],
+     )
 ```
 
 The input map makes candidate identity unique. Each value carries explicit
 `priority`, `limit`, and map-shaped `match_rules`. The matcher
 sorts by priority descending and `candidateId` ascending, then each worker is
-considered by the first matching candidate with remaining capacity. The
-matcher then asks Worker score to atomically lease the current due HOT score;
-only a successful lease consumes the Worker and creates
-`CandidateWorkerEntry`. No pre-lease score observation crosses this interface. A
-matcher call handles exactly one selected `workerGroupId`; assignment-dispatch
-must partition candidates by Worker group and acquire a bounded Worker-id batch
-before calling it. The matcher owns descriptor reads, dynamic reads, matching,
-and due-score lease for only those supplied Worker ids.
-The matcher
-returns one insertion-ordered `candidateId -> CandidateWorkerEntry[]` map in
-resolved priority order, containing every input candidate. An empty entry list
-means no reservation. It must not acquire or discover additional Workers and
+considered by the first matching candidate with remaining capacity. Every
+normalized input Worker id appears in exactly one candidate result or in
+`unmatchedWorkerIds`. No score, lease deadline, or dispatch entry crosses this
+interface. `unmatchedWorkerIds` is a completeness partition, not an ordering
+contract. A matcher call handles exactly one selected `workerGroupId`;
+assignment-dispatch
+must partition candidates by Worker group and read a bounded due Worker
+observation batch before calling it. The matcher owns descriptor reads, dynamic
+reads, and matching for only those supplied Worker ids. The allocation pacer
+keeps observed scores in a private sidecar, point-leases matched Workers by
+exact CAS, and creates `CandidateWorkerEntry` values only for lease successes.
+The matcher returns every input candidate in resolved priority order. An empty
+entry means no match. It must not acquire or discover additional Workers and
 must not become
 `find_all_matching_workers(query)` or a global worker query service.
 

@@ -7,6 +7,7 @@ from dataclasses import fields
 import kernel_design.py_example as py_example
 from kernel_design.py_example import (
     WorkerCandidateConstraint,
+    WorkerCandidateMatchResult,
     WorkerCandidateMatcher,
     WorkerDescriptor,
     WorkerDynamicAttributeRuntime,
@@ -15,6 +16,7 @@ from kernel_design.py_example import (
     WorkerRuntime,
     WorkerRuntimeResult,
     WorkerRuntimeStatus,
+    WorkerScoreCore,
 )
 from kernel_design.py_example.kernel.worker_runtime import DynamicAttributeReadResult
 
@@ -107,7 +109,7 @@ class WorkerRuntimeModelTest(unittest.TestCase):
 
         self.assertEqual(
             init_params,
-            {"self", "catalog", "dynamic_attribute_runtime", "worker_score"},
+            {"self", "catalog", "dynamic_attribute_runtime"},
         )
         self.assertEqual(
             match_params,
@@ -116,7 +118,37 @@ class WorkerRuntimeModelTest(unittest.TestCase):
                 "worker_group_id",
                 "worker_ids",
                 "candidate_constraints",
-                "lease_until_millis",
+            },
+        )
+        self.assertEqual(
+            {field.name for field in fields(WorkerCandidateMatchResult)},
+            {"matches", "unmatched_worker_ids"},
+        )
+
+    def test_worker_score_separates_hot_observation_from_exact_lease(self) -> None:
+        acquire_params = set(
+            inspect.signature(
+                WorkerScoreCore.acquire_hot_acquire_candidates
+            ).parameters
+        )
+
+        self.assertEqual(
+            acquire_params,
+            {"self", "home_bucket_id", "limit"},
+        )
+        lease_params = set(
+            inspect.signature(
+                WorkerScoreCore.acquire_observed_hot_score_lease
+            ).parameters
+        )
+        self.assertEqual(
+            lease_params,
+            {
+                "self",
+                "home_bucket_id",
+                "worker_id",
+                "observed_score",
+                "target_time_millis",
             },
         )
 

@@ -1,15 +1,10 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Mapping, Sequence
 
 from ..constraint_dsl import ConstraintDsl, ConstraintMap, UNRESOLVED_VALUE
-from .task_dispatch_runtime import CandidateWorkerEntry
-from .worker_score import (
-    TimeMillis,
-    WorkerId,
-    WorkerScoreCore,
-    WorkerScoreTransitionStatus,
-)
+from .worker_score import WorkerId
 from .worker_runtime import (
     CandidateId,
     DynamicAttributeReadResult,
@@ -22,21 +17,31 @@ from .worker_runtime import (
 )
 
 
-WorkerCandidateMatches = dict[CandidateId, list[CandidateWorkerEntry]]
+WorkerCandidateMatches = dict[CandidateId, tuple[WorkerId, ...]]
+
+
+@dataclass(frozen=True)
+class WorkerCandidateMatchResult:
+    """Exclusive partition of the bounded Worker input.
+
+    Candidate match order follows matcher policy. Unmatched Worker order is
+    unspecified.
+    """
+
+    matches: WorkerCandidateMatches
+    unmatched_worker_ids: tuple[WorkerId, ...]
 
 
 class WorkerCandidateMatcher:
-    """Lease each bounded Worker to its first matching non-full candidate."""
+    """Match each bounded Worker to its first non-full candidate."""
 
     def __init__(
         self,
         catalog: WorkerResourceCatalog,
         dynamic_attribute_runtime: WorkerDynamicAttributeRuntime,
-        worker_score: WorkerScoreCore,
     ) -> None:
         self.catalog = catalog
         self.dynamic_attribute_runtime = dynamic_attribute_runtime
-        self.worker_score = worker_score
 
     def match_worker_candidates(
         self,
@@ -44,25 +49,29 @@ class WorkerCandidateMatcher:
         worker_group_id: WorkerGroupId,
         worker_ids: Sequence[WorkerId],
         candidate_constraints: Mapping[CandidateId, WorkerCandidateConstraint],
-        lease_until_millis: TimeMillis,
-    ) -> WorkerCandidateMatches:
+    ) -> WorkerCandidateMatchResult:
+        unmatched_worker_ids = set(worker_ids)
         if not candidate_constraints:
-            return {}
-
-        worker_ids = tuple(dict.fromkeys(worker_ids))
+            return WorkerCandidateMatchResult({}, tuple(unmatched_worker_ids))
 
         candidates, required_dynamic_attributes = self._prepare_candidates(
             candidate_constraints
         )
-        matched_workers: WorkerCandidateMatches = {
+        mutable_matches: dict[CandidateId, list[WorkerId]] = {
             candidate_id: [] for candidate_id, _, _ in candidates
         }
         for candidate_id in candidate_constraints:
-            matched_workers.setdefault(candidate_id, [])
+            mutable_matches.setdefault(candidate_id, [])
         if not candidates:
-            return matched_workers
+            return WorkerCandidateMatchResult(
+                self._freeze_matches(mutable_matches),
+                tuple(unmatched_worker_ids),
+            )
         if not worker_ids:
-            return matched_workers
+            return WorkerCandidateMatchResult(
+                self._freeze_matches(mutable_matches),
+                (),
+            )
         remaining_capacity = sum(
             constraints.limit for _, constraints, _ in candidates
         )
@@ -90,30 +99,27 @@ class WorkerCandidateMatcher:
                 dynamic_rows,
             )
             for candidate_id, constraints, match_rules in candidates:
-                if len(matched_workers[candidate_id]) >= constraints.limit:
+                if len(mutable_matches[candidate_id]) >= constraints.limit:
                     continue
                 if ConstraintDsl.evaluate_match_rules(context, match_rules):
-                    lease = self.worker_score.acquire_due_hot_score_lease(
-                        home_bucket_id=worker_group_id,
-                        worker_id=worker_id,
-                        target_time_millis=lease_until_millis,
-                    )
-                    if (
-                        lease.status is not WorkerScoreTransitionStatus.TRANSITIONED
-                        or lease.score is None
-                    ):
-                        break
-                    matched_workers[candidate_id].append(
-                        CandidateWorkerEntry(
-                            worker_id=worker_id,
-                            worker_group_id=worker_group_id,
-                            worker_lease_score=lease.score,
-                        )
-                    )
+                    mutable_matches[candidate_id].append(worker_id)
+                    unmatched_worker_ids.discard(worker_id)
                     remaining_capacity -= 1
                     break
 
-        return matched_workers
+        return WorkerCandidateMatchResult(
+            self._freeze_matches(mutable_matches),
+            tuple(unmatched_worker_ids),
+        )
+
+    @staticmethod
+    def _freeze_matches(
+        matches: Mapping[CandidateId, Sequence[WorkerId]],
+    ) -> WorkerCandidateMatches:
+        return {
+            candidate_id: tuple(worker_ids)
+            for candidate_id, worker_ids in matches.items()
+        }
 
     def _prepare_candidates(
         self,

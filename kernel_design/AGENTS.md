@@ -4,8 +4,8 @@ Status: local handoff for `kernel_design/`.
 
 This directory is the clean-kernel design workspace. It is not current Java
 implementation truth, not a Java migration roadmap, and not acceptance proof
-for the existing platform. Use it to align new-kernel mechanisms and future
-Python executable specs.
+for the existing platform. Use it to align new-kernel mechanisms and the
+current Python executable spec.
 
 ## 0. TL;DR
 
@@ -43,6 +43,10 @@ Use this order inside `kernel_design/`:
 
 If a design doc and Python executable spec disagree, describe the gap and do
 not silently bend one into the other.
+
+This trust order describes current behavior; it does not authorize code to
+override an already aligned interface contract. If code and an agreed contract
+diverge, stop and identify which one is stale before editing either side.
 
 ## 2. First Read
 
@@ -86,6 +90,61 @@ For result or dispatch work:
 6. [py_example/kernel/task_dispatch_runtime.py](py_example/kernel/task_dispatch_runtime.py)
 7. [scheduling/result-routing-scheduling.md](scheduling/result-routing-scheduling.md)
 
+## 2.1 Interface Change Gate
+
+Treat every kernel-facing method, DTO, callback, and owner operation as frozen
+unless the current request explicitly changes that contract. An implementation
+cleanup must preserve caller, owner, input authority, output meaning, side
+effects, bounds, and concurrency semantics.
+
+Before editing an interface or moving an operation between classes, write down:
+
+```text
+owner
+caller
+caller-owned inputs
+owner-internal inputs
+output meaning
+side effects and keys
+batch/scan bound owner
+concurrency or stale fence
+explicitly excluded responsibilities
+```
+
+Stop and discuss before implementation when any of these changes:
+
+```text
+method signature or DTO shape
+which component performs I/O
+which component selects or discovers candidates
+which component owns a limit, ordering rule, retry, or fairness policy
+which owner writes score, lease, queue, descriptor, or result truth
+atomicity, CAS, lease, monotonicity, or best-effort semantics
+```
+
+Removing a bridge, wrapper, or helper is not permission to redistribute its
+operations. Inline the same owner sequence at the caller. Do not move candidate
+acquisition into matching, policy into a runtime primitive, persistence into an
+orchestrator, or owner validation into a convenience facade merely to reduce a
+parameter or call site.
+
+Public inputs must be meaningful and constructible by the caller. Owner-local
+score encodings, internal observations, handler maps, Redis ranges, and cached
+snapshots stay hidden. Conversely, a caller-selected bounded identity set such
+as `workerIds` must not become hidden callee discovery just to shorten the
+signature.
+
+Required proof for an intentional interface change:
+
+- update the owning design document before or with code;
+- lock the public signature or DTO shape in a contract test;
+- prove which owner performs every external read and mutation;
+- add a negative assertion for the owner action that must not move;
+- scan for the old interface, renamed wrappers, compatibility paths, and stale
+  documentation;
+- if implementation reality differs from the approved change, stop instead of
+  expanding scope.
+
 ## 3. Owner Map
 
 Task score-band owns:
@@ -126,10 +185,10 @@ WorkerDynamicAttributeRuntime
 
 WorkerCandidateMatcher
   one worker group, caller-supplied bounded worker id batch, ordered candidate
-  constraints, match, and due-score lease
+  constraints, and exclusive matched/unmatched id partition
 
 WorkerScoreCore
-  HOT_ACQUIRE / RECOVERY_RECHECK score acquisition and transitions
+  bounded HOT observation, exact-score point lease, RECOVERY_RECHECK acquisition, and score transitions
 ```
 
 Assignment-dispatch owns:
@@ -174,10 +233,14 @@ RECOVERY_RECHECK
 Hot score lease rules:
 
 ```text
-acquire_due_hot_score_lease(...)
-  atomically requires the current stored score to be due HOT_ACQUIRE
-  receives no caller-supplied observed score and may clear dirty after the
-  first-stage match
+acquire_hot_acquire_candidates(..., limit)
+  read-only bounded due HOT_ACQUIRE query
+  returns workerId -> observedScore mapping to allocation pacer
+  scan order is not part of the public contract
+
+acquire_observed_hot_score_lease(...)
+  after matching, exact-CAS storedScore == observedScore
+  preserves laneRank and clears dirty while writing the future lease
 
 renew_active_hot_score_lease(...)
   requires clean active HOT_ACQUIRE observed score
@@ -187,10 +250,11 @@ RECOVERY_RECHECK
   must not pass either hot lease primitive
 ```
 
-`observedScore` remains an opaque full-score fence for active renewal, release,
-polarity move, and recovery exhaustion. HOT candidate scan and due lease
-acquisition do not expose or accept it. Do not decode, trim, construct, or
-reinterpret observed scores outside worker score logic.
+`observedScore` remains an opaque full-score fence for point lease, active
+renewal, release, polarity move, and recovery exhaustion. HOT query returns the
+observation only to the allocation pacer sidecar; matcher sees Worker ids only.
+Do not decode, trim, construct, or reinterpret observed scores outside worker
+score logic.
 
 Dirty is an assignment-continuation stale hint, not a worker-global version:
 
@@ -218,7 +282,7 @@ register WorkerDescriptor
 initialize HOT_ACQUIRE score
 acquire HOT_ACQUIRE candidates
 match bounded WorkerCandidateConstraint maps
-acquire_due_hot_score_lease
+acquire matched HOT leases through exact observed-score CAS
 renew_active_hot_score_lease
 release_score_hold / rewrite_current_score
 RECOVERY_RECHECK path
