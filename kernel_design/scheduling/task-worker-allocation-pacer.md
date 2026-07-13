@@ -110,8 +110,10 @@ per Task:
 ```text
 bounded Task ids
   -> batch TaskDescriptor read
+  -> per-Task candidate queue occupancy read
   -> partition by workerGroupId
-  -> taskId -> WorkerCandidateConstraint
+  -> calculate remaining candidate capacity
+  -> workerGroupId -> taskId -> WorkerCandidateConstraint
   -> bounded Worker score candidates for that group
   -> one WorkerCandidateMatcher call
   -> taskId -> matched Worker ids
@@ -143,7 +145,11 @@ priority
   parsed from TaskDescriptor.config["priority"]
 
 limit
-  parsed from TaskDescriptor.config["maximumCandidateWorkers"]
+  max(
+    0,
+    TaskDescriptor.config["maximumCandidateWorkers"]
+      - TaskDispatchRuntime.candidateWorkerCount(taskId)
+  )
 
 match_rules
   TaskDescriptor.allocationRule
@@ -174,6 +180,11 @@ sidecar when constructing candidate entries.
 Allocation must not decode observed Worker score and must not acquire a Worker
 lease. Worker evidence may become stale before dispatch; exact CAS in
 WorkDispatchPacer is the correctness fence.
+
+Tasks whose candidate queue already reached `maximumCandidateWorkers` do not
+enter Worker scan or matching. They still proceed to the score-transition stage
+so WorkDispatchPacer sees and drains the existing queue. Existing queue entries
+also prevent a zero-new-match round from being classified as `NO_WORKER`.
 
 ## PRE_DISPATCH_VISIBLE
 
@@ -237,7 +248,6 @@ rounds. Successful allocation does not consume retry/no-work suffix budget.
 Negative classifications own different writes:
 
 ```text
-NO_WORK
 NO_WORKER
 ACTIVATION_FALSE
 ```
@@ -320,8 +330,8 @@ constructor assembly. It is a strategy executor, not an ABC owner surface.
 The config contains round policy only. It does not carry runtime owners,
 Redis keys, clocks, score ranges, preloaded Task/Worker observations, or
 Task-specific candidate limits. `maximumCandidateWorkers` belongs to the
-`TaskDescriptor` and becomes `WorkerCandidateConstraint.limit` for that Task.
-It is not a `TaskDispatchRuntime` argument.
+`TaskDescriptor`; the pacer subtracts current queue occupancy before creating
+`WorkerCandidateConstraint.limit`. It is not a `TaskDispatchRuntime` argument.
 
 ## Conceptual Round
 
@@ -334,14 +344,19 @@ def allocate_candidate_workers(config):
     descriptors = task_catalog.load_task_allocation_descriptors(
         task_ids=task_ids,
     )
+    queued_counts = {
+        task_id: task_dispatch_runtime.candidate_worker_count(task_id=task_id)
+        for task_id in task_ids
+    }
 
-    accepted = classify_and_group(
+    grouped_allocations = prepare_and_group(
         task_ids,
         score_states,
         descriptors,
+        queued_counts,
     )
 
-    for worker_group_id, tasks in accepted:
+    for worker_group_id, tasks in grouped_allocations:
         worker_candidates = worker_score.acquire_hot_acquire_candidates(
             home_bucket_id=worker_group_id,
             limit=config.worker_scan_limit,
@@ -352,7 +367,7 @@ def allocate_candidate_workers(config):
             worker_ids=list(observed_scores),
             candidate_constraints=build_constraints(tasks),
         )
-        classify_rewrite_and_publish(tasks, matches, observed_scores, config)
+        rewrite_then_publish(tasks, matches, observed_scores, config)
 ```
 
 The direct `workerGroupId == homeBucketId` mapping is the current v0 worker

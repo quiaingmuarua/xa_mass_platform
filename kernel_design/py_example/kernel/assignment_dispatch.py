@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from time import time_ns
 
 from .task_dispatch_runtime import CandidateWorkerEntry, TaskDispatchRuntime
-from .task_runtime import TaskDescriptor, TaskResourceCatalog
+from .task_runtime import TaskResourceCatalog
 from .task_score_band import (
     TaskScoreBand,
     TaskScoreBandCore,
@@ -43,11 +44,18 @@ class TaskWorkerAllocationConfig:
             raise ValueError("allocation config values must be positive")
 
 
+@dataclass(frozen=True)
+class _PreparedTaskAllocation:
+    state: TaskScoreState
+    priority: int
+    match_rules: Mapping[str, object]
+    minimum_candidate_workers: int
+    queued_candidate_workers: int
+    remaining_candidate_workers: int
+
+
 class TaskWorkerAllocationPacer:
     """Run one bounded Task-to-Worker candidate allocation round."""
-
-    PRIORITY_MIN = 1
-    PRIORITY_MAX = 100
 
     def __init__(
         self,
@@ -69,163 +77,173 @@ class TaskWorkerAllocationPacer:
         config: TaskWorkerAllocationConfig,
     ) -> int:
         """Publish candidate Workers and return the number of published Tasks."""
+        grouped_tasks = self._prepare_allocation_groups(config)
+        published_tasks = 0
+        for worker_group_id, task_allocations in grouped_tasks.items():
+            allocation_millis = self._current_time_millis()
+            entries_by_task = self._match_group_candidates(
+                worker_group_id=worker_group_id,
+                task_allocations=task_allocations,
+                config=config,
+                allocation_millis=allocation_millis,
+            )
+            published_tasks += self._commit_group_allocations(
+                task_allocations=task_allocations,
+                entries_by_task=entries_by_task,
+                config=config,
+                allocation_millis=allocation_millis,
+            )
+        return published_tasks
+
+    def _prepare_allocation_groups(
+        self,
+        config: TaskWorkerAllocationConfig,
+    ) -> dict[WorkerGroupId, dict[TaskId, _PreparedTaskAllocation]]:
         task_ids = tuple(
             self.task_score.acquire_active_task_candidates(
                 limit=config.task_batch_limit,
             )
         )
         if not task_ids:
-            return 0
+            return {}
 
         score_states = self.task_score.get_score_states(task_ids=task_ids)
         descriptors = self.task_catalog.load_task_allocation_descriptors(
             task_ids=task_ids,
         )
 
-        tasks_by_group: dict[WorkerGroupId, list[TaskId]] = {}
-        constraints: dict[TaskId, WorkerCandidateConstraint] = {}
-        minimum_workers: dict[TaskId, int] = {}
-        accepted_states: dict[TaskId, TaskScoreState] = {}
-
+        grouped_tasks: dict[
+            WorkerGroupId,
+            dict[TaskId, _PreparedTaskAllocation],
+        ] = {}
         for task_id in task_ids:
             state = score_states.get(task_id)
-            if state is None or state.task_id != task_id or state.band not in {
-                TaskScoreBand.RUNNING_VISIBLE,
-                TaskScoreBand.PRE_DISPATCH_VISIBLE,
-            }:
+            descriptor = descriptors.get(task_id)
+            if state is None or descriptor is None:
                 continue
 
-            prepared = self._prepare_constraint(
-                task_id,
-                descriptors.get(task_id),
+            priority = int(descriptor.config["priority"])
+            minimum_candidate_workers = int(
+                descriptor.config["runningVisibleMinimumCandidateWorkers"]
             )
-            if prepared is None:
-                self._defer_without_candidates(
-                    state,
-                    config,
-                    self._current_time_millis(),
-                )
-                continue
+            maximum_candidate_workers = int(
+                descriptor.config["maximumCandidateWorkers"]
+            )
+            queued_candidate_workers = (
+                self.dispatch_runtime.candidate_worker_count(task_id=task_id)
+            )
+            remaining_candidate_workers = max(
+                0,
+                maximum_candidate_workers - queued_candidate_workers,
+            )
+            allocation = _PreparedTaskAllocation(
+                state=state,
+                priority=priority,
+                match_rules=descriptor.allocation_rule,
+                minimum_candidate_workers=minimum_candidate_workers,
+                queued_candidate_workers=queued_candidate_workers,
+                remaining_candidate_workers=remaining_candidate_workers,
+            )
+            group = grouped_tasks.setdefault(descriptor.worker_group_id, {})
+            group[task_id] = allocation
+        return grouped_tasks
 
-            descriptor, constraint, minimum = prepared
-            tasks_by_group.setdefault(descriptor.worker_group_id, []).append(task_id)
-            constraints[task_id] = constraint
-            minimum_workers[task_id] = minimum
-            accepted_states[task_id] = state
+    def _match_group_candidates(
+        self,
+        *,
+        worker_group_id: WorkerGroupId,
+        task_allocations: Mapping[TaskId, _PreparedTaskAllocation],
+        config: TaskWorkerAllocationConfig,
+        allocation_millis: TimeMillis,
+    ) -> dict[TaskId, tuple[CandidateWorkerEntry, ...]]:
+        constraints = {
+            task_id: WorkerCandidateConstraint(
+                priority=allocation.priority,
+                limit=allocation.remaining_candidate_workers,
+                match_rules=allocation.match_rules,
+            )
+            for task_id, allocation in task_allocations.items()
+            if allocation.remaining_candidate_workers > 0
+        }
+        if not constraints:
+            return {task_id: () for task_id in task_allocations}
 
-        published_tasks = 0
-        for worker_group_id, group_task_ids in tasks_by_group.items():
-            worker_candidates = self.worker_score.acquire_hot_acquire_candidates(
+        observed_scores = dict(
+            self.worker_score.acquire_hot_acquire_candidates(
                 home_bucket_id=worker_group_id,
                 limit=config.worker_scan_limit,
             )
-            observed_scores = dict(worker_candidates)
-            matches = (
-                self.worker_matcher.match_worker_candidates(
+        )
+        if not observed_scores:
+            return {task_id: () for task_id in task_allocations}
+
+        matches = self.worker_matcher.match_worker_candidates(
+            worker_group_id=worker_group_id,
+            worker_ids=tuple(observed_scores),
+            candidate_constraints=constraints,
+        )
+        expires_at_millis = allocation_millis + config.candidate_ttl_millis
+        return {
+            task_id: tuple(
+                CandidateWorkerEntry(
+                    worker_id=worker_id,
                     worker_group_id=worker_group_id,
-                    worker_ids=tuple(observed_scores),
-                    candidate_constraints={
-                        task_id: constraints[task_id] for task_id in group_task_ids
-                    },
+                    observed_worker_score=observed_scores[worker_id],
+                    expires_at_millis=expires_at_millis,
                 )
-                if observed_scores
-                else {task_id: [] for task_id in group_task_ids}
+                for worker_id in matches[task_id]
             )
+            if task_id in constraints
+            else ()
+            for task_id in task_allocations
+        }
 
-            for task_id in group_task_ids:
-                state = accepted_states[task_id]
-                classification_millis = self._current_time_millis()
-                entries = tuple(
-                    CandidateWorkerEntry(
-                        worker_id=worker_id,
-                        worker_group_id=worker_group_id,
-                        observed_worker_score=observed_scores[worker_id],
-                        expires_at_millis=(
-                            classification_millis + config.candidate_ttl_millis
-                        ),
-                    )
-                    for worker_id in matches.get(task_id, ())
-                    if worker_id in observed_scores
+    def _commit_group_allocations(
+        self,
+        *,
+        task_allocations: Mapping[TaskId, _PreparedTaskAllocation],
+        entries_by_task: Mapping[TaskId, tuple[CandidateWorkerEntry, ...]],
+        config: TaskWorkerAllocationConfig,
+        allocation_millis: TimeMillis,
+    ) -> int:
+        published_tasks = 0
+        for task_id, allocation in task_allocations.items():
+            entries = entries_by_task[task_id]
+            available_candidates = allocation.queued_candidate_workers + len(entries)
+            if available_candidates == 0 or (
+                allocation.state.band is TaskScoreBand.PRE_DISPATCH_VISIBLE
+                and available_candidates < allocation.minimum_candidate_workers
+            ):
+                self._defer_without_candidates(
+                    allocation.state,
+                    config,
+                    allocation_millis,
                 )
-                if not entries or (
-                    state.band is TaskScoreBand.PRE_DISPATCH_VISIBLE
-                    and len(entries) < minimum_workers[task_id]
-                ):
-                    self._defer_without_candidates(
-                        state,
-                        config,
-                        classification_millis,
-                    )
-                    continue
+                continue
 
-                transition = (
-                    self.task_score.rewrite_score(
-                        task_id=task_id,
-                        expected_band=TaskScoreBand.PRE_DISPATCH_VISIBLE,
-                        target_time_millis=classification_millis,
-                        target_band=TaskScoreBand.RUNNING_VISIBLE,
-                    )
-                    if state.band is TaskScoreBand.PRE_DISPATCH_VISIBLE
-                    else self.task_score.rewrite_same_band_time_millis(
-                        task_id=task_id,
-                        expected_band=TaskScoreBand.RUNNING_VISIBLE,
-                        target_time_millis=classification_millis,
-                    )
+            transition = (
+                self.task_score.rewrite_score(
+                    task_id=task_id,
+                    expected_band=TaskScoreBand.PRE_DISPATCH_VISIBLE,
+                    target_time_millis=allocation_millis,
+                    target_band=TaskScoreBand.RUNNING_VISIBLE,
                 )
-                if transition.status is not TaskScoreTransitionStatus.TRANSITIONED:
-                    continue
-
+                if allocation.state.band is TaskScoreBand.PRE_DISPATCH_VISIBLE
+                else self.task_score.rewrite_same_band_time_millis(
+                    task_id=task_id,
+                    expected_band=TaskScoreBand.RUNNING_VISIBLE,
+                    target_time_millis=allocation_millis,
+                )
+            )
+            if transition.status is not TaskScoreTransitionStatus.TRANSITIONED:
+                continue
+            if entries:
                 self.dispatch_runtime.append_candidate_workers(
                     task_id=task_id,
                     candidate_workers=entries,
                 )
                 published_tasks += 1
-
         return published_tasks
-
-    def _prepare_constraint(
-        self,
-        task_id: TaskId,
-        descriptor: TaskDescriptor | None,
-    ) -> tuple[TaskDescriptor, WorkerCandidateConstraint, int] | None:
-        if descriptor is None or descriptor.task_id != task_id:
-            return None
-        try:
-            priority_text = descriptor.config["priority"]
-            minimum_workers_text = descriptor.config[
-                "runningVisibleMinimumCandidateWorkers"
-            ]
-            maximum_workers_text = descriptor.config["maximumCandidateWorkers"]
-        except (KeyError, TypeError):
-            return None
-        if not (
-            isinstance(priority_text, str)
-            and priority_text.isdecimal()
-            and isinstance(minimum_workers_text, str)
-            and minimum_workers_text.isdecimal()
-            and isinstance(maximum_workers_text, str)
-            and maximum_workers_text.isdecimal()
-        ):
-            return None
-        priority = int(priority_text)
-        minimum_workers = int(minimum_workers_text)
-        maximum_workers = int(maximum_workers_text)
-        if not self.PRIORITY_MIN <= priority <= self.PRIORITY_MAX:
-            return None
-        if not 1 <= minimum_workers <= maximum_workers:
-            return None
-        if not descriptor.task_id or not descriptor.worker_group_id:
-            return None
-
-        return (
-            descriptor,
-            WorkerCandidateConstraint(
-                priority=priority,
-                limit=maximum_workers,
-                match_rules=descriptor.allocation_rule,
-            ),
-            minimum_workers,
-        )
 
     def _defer_without_candidates(
         self,

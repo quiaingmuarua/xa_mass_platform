@@ -59,7 +59,7 @@ hidden defaults.
 | Config key | Required/default | Validation owner | Consumer | Validation |
 | --- | --- | --- | --- | --- |
 | `priority` | required, no default | TaskDescriptor contract | assignment-dispatch constraint construction | decimal text in `1..100` |
-| `maximumCandidateWorkers` | required, no default | TaskDescriptor contract | matcher limit per allocation batch | positive decimal text |
+| `maximumCandidateWorkers` | required, no default | TaskDescriptor contract | allocation pacer candidate-queue target | positive decimal text |
 | `runningVisibleMinimumCandidateWorkers` | required, no default | TaskDescriptor contract | pre-dispatch activation check | decimal text in `1..maximumCandidateWorkers` |
 
 ### taskId
@@ -169,17 +169,23 @@ RUNNING_VISIBLE + worker count later below configured minimum
 Running availability, no-work behavior, pause, and terminal policy remain task
 score/work scheduling concerns.
 
-`maximumCandidateWorkers` is Task-owned allocation configuration. It bounds
-the matcher result produced for this Task in one allocation batch:
+`maximumCandidateWorkers` is Task-owned allocation configuration. The
+allocation pacer compares it with the current stored candidate count before
+performing expensive Worker matching:
 
 ```text
-WorkerCandidateConstraint.limit = maximumCandidateWorkers
+remainingCandidateWorkers = max(
+  0,
+  maximumCandidateWorkers - queuedCandidateWorkers,
+)
+
+WorkerCandidateConstraint.limit = remainingCandidateWorkers
 ```
 
 `TaskDispatchRuntime` does not receive, enforce, or reinterpret this value. It
-appends every candidate entry supplied by the pacer. Descriptor admission must
-reject a minimum above the Task maximum; otherwise one allocation batch can
-never satisfy the task activation condition.
+reports current stored queue occupancy and appends every candidate entry
+supplied by the pacer. Descriptor admission must reject a minimum above the
+Task maximum; otherwise the task can never satisfy its activation condition.
 
 ## Constraint Construction
 
@@ -188,7 +194,8 @@ The phase-one constraint is built directly from the descriptor:
 ```text
 TaskDescriptor
   config["priority"] --------------------------> constraint.priority
-  config["maximumCandidateWorkers"] ----------> constraint.limit
+  config["maximumCandidateWorkers"]
+    - TaskDispatchRuntime.candidateWorkerCount -> constraint.limit
   allocationRule ------------------------------> constraint.match_rules
 ```
 
@@ -197,7 +204,7 @@ Conceptual result:
 ```python
 WorkerCandidateConstraint(
     priority=int(descriptor.config["priority"]),
-    limit=int(descriptor.config["maximumCandidateWorkers"]),
+    limit=remainingCandidateWorkers,
     match_rules=descriptor.allocation_rule,
 )
 ```

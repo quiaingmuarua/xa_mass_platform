@@ -89,7 +89,7 @@ The two pacers do not lock Task resources.
 TaskWorkerAllocationPacer
   only routine Task-score writer in assignment-dispatch
   owns allocation fairness, activation classification, allocation recheck,
-  and no-worker/no-work allocation outcomes
+  and no-worker allocation outcomes
 
 WorkDispatchPacer
   Task-score read-only
@@ -220,6 +220,16 @@ Append stores every entry supplied by the caller. Runtime does not
 choose a queue length or trim to Task policy. `candidate_worker_count` is a
 point-read of the current stored LIST length; it is not a capacity decision and
 does not scan, decode, or subtract expired entries.
+
+`TaskWorkerAllocationPacer` owns the policy calculation before matching:
+
+```text
+remaining = max(0, Task.maximumCandidateWorkers - storedQueueLength)
+```
+
+A full queue skips Worker scan and matching. The Task score is still rotated so
+WorkDispatchPacer can consume existing entries, including expired entries that
+must leave through the consume path.
 
 Cross-Task pipeline/multi-call wrappers may reduce network round trips, but each
 Task key succeeds or fails independently. No interface may imply all-or-nothing
