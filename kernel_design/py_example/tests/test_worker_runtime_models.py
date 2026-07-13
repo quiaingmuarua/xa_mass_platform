@@ -107,11 +107,17 @@ class WorkerRuntimeModelTest(unittest.TestCase):
 
         self.assertEqual(
             init_params,
-            {"self", "catalog", "dynamic_attribute_runtime"},
+            {"self", "catalog", "dynamic_attribute_runtime", "worker_score"},
         )
         self.assertEqual(
             match_params,
-            {"self", "worker_group_id", "worker_ids", "candidate_constraints"},
+            {
+                "self",
+                "worker_group_id",
+                "observed_score_by_worker_id",
+                "candidate_constraints",
+                "lease_until_millis",
+            },
         )
 
     def test_worker_catalog_requires_group_for_worker_location(self) -> None:

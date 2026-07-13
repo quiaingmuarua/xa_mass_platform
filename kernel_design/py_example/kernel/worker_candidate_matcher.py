@@ -3,12 +3,18 @@ from __future__ import annotations
 from typing import Mapping, Sequence
 
 from ..constraint_dsl import ConstraintDsl, ConstraintMap, UNRESOLVED_VALUE
-from .worker_score import WorkerId
+from .task_dispatch_runtime import CandidateWorkerEntry
+from .worker_score import (
+    Score,
+    TimeMillis,
+    WorkerId,
+    WorkerScoreCore,
+    WorkerScoreTransitionStatus,
+)
 from .worker_runtime import (
     CandidateId,
     DynamicAttributeReadResult,
     WorkerCandidateConstraint,
-    WorkerCandidateMatches,
     WorkerDescriptor,
     WorkerDynamicAttributeRuntime,
     WorkerGroupId,
@@ -17,36 +23,42 @@ from .worker_runtime import (
 )
 
 
+WorkerCandidateMatches = dict[CandidateId, list[CandidateWorkerEntry]]
+
+
 class WorkerCandidateMatcher:
-    """Assign each bounded worker to its first matching non-full candidate."""
+    """Lease each bounded Worker to its first matching non-full candidate."""
 
     def __init__(
         self,
         catalog: WorkerResourceCatalog,
         dynamic_attribute_runtime: WorkerDynamicAttributeRuntime,
+        worker_score: WorkerScoreCore,
     ) -> None:
         self.catalog = catalog
         self.dynamic_attribute_runtime = dynamic_attribute_runtime
+        self.worker_score = worker_score
 
     def match_worker_candidates(
         self,
         *,
         worker_group_id: WorkerGroupId,
-        worker_ids: Sequence[WorkerId],
+        observed_score_by_worker_id: Mapping[WorkerId, Score],
         candidate_constraints: Mapping[CandidateId, WorkerCandidateConstraint],
+        lease_until_millis: TimeMillis,
     ) -> WorkerCandidateMatches:
-        self._validate_worker_ids(worker_ids)
+        worker_ids = tuple(observed_score_by_worker_id)
         if not candidate_constraints:
             return {}
 
         candidates, required_dynamic_attributes = self._prepare_candidates(
             candidate_constraints
         )
-        matched_worker_ids: WorkerCandidateMatches = {
+        matched_workers: WorkerCandidateMatches = {
             candidate_id: [] for candidate_id, _, _ in candidates
         }
         if not worker_ids:
-            return matched_worker_ids
+            return matched_workers
         remaining_capacity = sum(
             constraints.limit for _, constraints, _ in candidates
         )
@@ -74,14 +86,31 @@ class WorkerCandidateMatcher:
                 dynamic_rows,
             )
             for candidate_id, constraints, match_rules in candidates:
-                if len(matched_worker_ids[candidate_id]) >= constraints.limit:
+                if len(matched_workers[candidate_id]) >= constraints.limit:
                     continue
                 if ConstraintDsl.evaluate_match_rules(context, match_rules):
-                    matched_worker_ids[candidate_id].append(worker_id)
+                    lease = self.worker_score.acquire_due_hot_score_lease(
+                        home_bucket_id=worker_group_id,
+                        worker_id=worker_id,
+                        observed_score=observed_score_by_worker_id[worker_id],
+                        target_time_millis=lease_until_millis,
+                    )
+                    if (
+                        lease.status is not WorkerScoreTransitionStatus.TRANSITIONED
+                        or lease.score is None
+                    ):
+                        break
+                    matched_workers[candidate_id].append(
+                        CandidateWorkerEntry(
+                            worker_id=worker_id,
+                            worker_group_id=worker_group_id,
+                            worker_lease_score=lease.score,
+                        )
+                    )
                     remaining_capacity -= 1
                     break
 
-        return matched_worker_ids
+        return matched_workers
 
     def _prepare_candidates(
         self,
@@ -166,10 +195,3 @@ class WorkerCandidateMatcher:
             "static": descriptor.static_attributes,
             "dynamic": dynamic_values,
         }
-
-    @staticmethod
-    def _validate_worker_ids(
-        worker_ids: Sequence[WorkerId],
-    ) -> None:
-        if len(worker_ids) != len(set(worker_ids)):
-            raise ValueError("worker ids must be unique within one match call")

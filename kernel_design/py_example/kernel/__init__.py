@@ -20,7 +20,7 @@ from .worker_score import (
     WorkerScoreTransitionResult,
     WorkerScoreTransitionStatus,
 )
-from .worker_candidate_matcher import WorkerCandidateMatcher
+from .worker_candidate_matcher import WorkerCandidateMatcher, WorkerCandidateMatches
 from .worker_runtime import (
     AttributeName,
     AttributeValue,
@@ -28,7 +28,6 @@ from .worker_runtime import (
     DynamicAttributePayload,
     EventCode,
     WorkerCandidateConstraint,
-    WorkerCandidateMatches,
     WorkerDescriptor,
     WorkerDynamicAttributeRuntime,
     WorkerGroupDescriptor,

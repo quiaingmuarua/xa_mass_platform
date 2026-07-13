@@ -14,7 +14,7 @@ Current executable-spec gap:
 ```text
 no WorkDispatchPacer implementation
 TaskWorkerAllocationPacer has a first executable allocation-round implementation
-TaskDispatchRuntime has a Redis LIST executable implementation
+TaskDispatchRuntime has a Redis ZSET executable implementation
 Work/backlog owner and claim interface are intentionally unfrozen
 current Redis dispatch-task acquire is oldest-first, not recent-allocation reverse
 ```
@@ -33,13 +33,14 @@ It contains two independently paced mechanisms:
 TaskWorkerAllocationPacer
   due Task score candidates
     -> bounded Task x Worker matching
-    -> candidate-worker collection
+    -> Worker short lease and reservation collection
     -> Task allocation fairness timeSlot
 
 WorkDispatchPacer
   recently allocated RUNNING_VISIBLE Tasks
-    -> candidate-worker consumption
-    -> Worker short lease
+    -> Worker reservation consumption
+    -> Worker validity recheck
+    -> non-exclusive release or exclusive renewal
     -> Work claim
     -> DeliverSeed
 ```
@@ -88,7 +89,7 @@ The two pacers do not lock Task resources.
 ```text
 TaskWorkerAllocationPacer
   reads due Task ids from the score axis
-  matches Workers and appends transient candidate evidence
+  matches Workers, acquires short leases, and appends transient reservations
   advances the acquired band's timeSlot without decoding Task score state
 
 TaskRunningActivationPacer
@@ -116,7 +117,7 @@ Both pacers use the same Task score axis with opposite scan intent:
 ```text
 TaskWorkerAllocationPacer
   scans oldest due active Tasks first
-  publishes bounded candidate evidence
+  publishes bounded Worker reservations
   independently rotates each considered Task's current same-band timeSlot
 
 TaskRunningActivationPacer
@@ -129,11 +130,12 @@ WorkDispatchPacer
   never rewrites Task score after dispatch
 ```
 
-This is a fairness/freshness pipeline, not an ownership lease:
+This is a Task fairness/freshness pipeline, not a Task ownership lease. Worker
+exclusivity is represented separately by each published short score lease:
 
 ```text
 oldest due Task
-  -> candidate allocation evidence
+  -> candidate Worker reservation
   -> same-band allocation time rotation
   -> independent running activation
   -> RUNNING dispatch visibility
@@ -145,11 +147,11 @@ Dispatch prefers fresh worker evidence. Any policy that reserves capacity for
 PRE_DISPATCH_VISIBLE belongs to deployment/operations policy, not this kernel
 mechanism. Dispatch fairness is bounded separately by candidate collection
 publication policy, per-Task dispatch quota, scan limits, and consume-time
-candidate expiry validation.
+post-consume Worker validity recheck.
 
 ## Inter-Pacer Protocol
 
-The required protocol seam is one expiring candidate-worker LIST per Task:
+The required protocol seam is one candidate-worker ZSET per Task:
 
 ```text
 taskId -> candidateWorkers[]
@@ -157,27 +159,31 @@ taskId -> candidateWorkers[]
 CandidateWorkerEntry
   workerId
   workerGroupId
-  completeObservedWorkerScore
-  expiresAtMillis
+  workerLeaseScore
 ```
 
 The Python DTO and runtime owner are implemented in
 [`py_example/kernel/task_dispatch_runtime.py`](../py_example/kernel/task_dispatch_runtime.py).
-The Redis executable spec uses one LIST per Task:
+The Redis executable spec uses one ZSET per Task, scored by candidate batch
+`expiresAtMillis`:
 
 ```text
 ad:{prefix}:task:{taskId}:candidate-workers
 ```
 
+The member contains the complete `CandidateWorkerEntry`, including opaque
+`workerLeaseScore`. The entry DTO still has no expiry field; one expiry is
+supplied by the allocation caller for the whole appended batch.
+
 The collection is:
 
 ```text
-transient scheduling evidence
-produced by bounded allocation batches; no runtime-owned length cap
+transient Worker reservation handoff
+produced by bounded allocation match-and-lease batches; no runtime-owned length cap
 appendable by allocation rounds
 atomically consumable in a caller-bounded batch
-entry expiry validated only when consumed
-safe to lose, skip, expire, or discard
+expired batches excluded from count and consume
+safe to lose, skip, or discard
 ```
 
 The collection is not:
@@ -185,8 +191,7 @@ The collection is not:
 ```text
 Task truth
 Worker truth
-an assignment record
-a Worker reservation
+a durable assignment record
 a Task lock
 a second Task discovery index
 a guaranteed dispatch plan
@@ -200,8 +205,8 @@ decoded Worker-score internals, transport handles, or result state.
 Allocation publishes evidence independently from Task lifecycle activation:
 
 ```text
-match bounded workers
-  -> atomically append one Task's candidate entries
+match and lease bounded workers
+  -> atomically append one Task's reservation entries
   -> independently request current same-band timeSlot rotation
 
 separate running activation
@@ -212,7 +217,7 @@ separate running activation
 There is no score/collection commit protocol. Publication occurs before the
 same-band time rewrite for one Task. A failed publication does not require a
 score rollback; a stale/rejected time rewrite does not roll back already
-published expiring evidence. If a lifecycle command wins after publication,
+published candidate evidence. If a lifecycle command wins after publication,
 the Task leaves the dispatch scan and the collection becomes unreachable
 residue for later Task physical cleanup.
 
@@ -223,15 +228,16 @@ one candidate entry must be returned to at most one consumer.
 The atomic boundary is one Task queue:
 
 ```text
-append_candidate_workers(taskId, entries)
+append_candidate_workers(taskId, entries, expiresAtMillis)
 candidate_worker_count(taskId)
 consume_candidate_workers(taskId, limit)
 ```
 
-Append stores every entry supplied by the caller. Runtime does not
-choose a queue length or trim to Task policy. `candidate_worker_count` is a
-point-read of the current stored LIST length; it is not a capacity decision and
-does not scan, decode, or subtract expired entries.
+Append stores every candidate supplied by the caller under one batch expiry.
+Runtime does not choose a collection length or trim to Task policy.
+`candidate_worker_count` counts only non-expired entries. It still does not
+prove current Worker validity, lease ownership, dirty state, or constraint
+match and is not a capacity or lifecycle decision.
 
 `maximumCandidateWorkers` is the Task-owned per-round matcher bound:
 
@@ -242,6 +248,12 @@ WorkerCandidateConstraint.limit = Task.maximumCandidateWorkers
 `candidate_worker_count` is available to independent running activation and
 diagnostics. Candidate allocation does not read it, turn it into a persistent
 queue cap, or use it as permission for a lifecycle transition.
+
+The current built-in activation policy uses this live-entry count as its first
+executable approximation. It does not prove the configured minimum is still
+valid after Worker score, dirty, or attribute changes. Strong current-validity
+semantics require an explicit Worker revalidation result; they must not be
+hidden inside `TaskDispatchRuntime` count.
 
 The first executable
 `TaskRunningActivationPacer.activate_running_visible_tasks(config)` scans one
@@ -265,21 +277,38 @@ atomicity across Task queues.
 
 ## Worker Fence
 
-Allocation does not lease Workers. It stores the complete observed Worker score
-returned by HOT acquisition.
+Allocation leases a Worker immediately after its constraints match. The matcher
+uses the complete HOT-acquire score as exact CAS evidence and returns a
+`CandidateWorkerEntry` only after `acquire_due_hot_score_lease` succeeds.
 
-Work dispatch performs the actual short Worker lease:
+Work dispatch must recheck the consumed Worker against current Worker truth:
 
 ```text
 consume CandidateWorkerEntry
-  -> acquire_due_hot_score_lease(completeObservedWorkerScore)
-  -> success: continue to Work claim
-  -> stale: discard entry and try another bounded entry
+  -> inspect current HOT/recovery polarity, score/lease relation, and dirty
+  -> revalidate Task constraints against current Worker metadata
+  -> exclusive policy: establish or renew the required current lease
+  -> non-exclusive policy: require current validity without inventing entry TTL
+  -> invalid: discard entry and try another bounded entry
 ```
 
-The same Worker may appear in collections produced by different allocation
-rounds. Exact observed-score CAS decides which dispatch wins. Other entries are
-stale disposable evidence, not consistency failures.
+One due Worker can be leased to only one candidate in a concurrent allocation
+window. A stale collection entry can remain after dirtying, release, lease due,
+or metadata change. Dispatch-side owner validation decides whether it can still
+be used. Such an entry is disposable intermediate residue, not a second
+assignment truth.
+
+The candidate expiry must not be later than the Worker lease written for that
+batch:
+
+```text
+candidateExpiresAtMillis <= workerLeaseUntilMillis
+```
+
+The first executable policy uses equality. This ensures an old candidate is no
+longer live before that Worker can be leased into a later candidate batch.
+`TaskDispatchRuntime` does not decode Worker score to enforce the relation; the
+trusted allocation protocol supplies both values from the same round.
 
 ## Cross-Pacer Liveness
 
@@ -294,13 +323,13 @@ dispatch faster than allocation
   empty/missing collections are bounded no-op results
 
 collection write lost
-  a later bounded allocation round may produce fresh evidence
+  the short Worker lease expires; a later bounded allocation round may reserve it again
 
 candidate Worker stale
   dispatch drops entry; later allocation produces fresh evidence
 
 Task paused or terminal
-  Task leaves eligible scan range; later Task physical cleanup owns LIST residue
+  Task leaves eligible scan range; later Task physical cleanup owns ZSET residue
 ```
 
 Events may lower latency but cannot be required to wake either pacer.
@@ -311,7 +340,7 @@ Events may lower latency but cannot be required to wake either pacer.
 - Do not let WorkDispatchPacer write Task timeSlot, suffix, band, or terminal
   score.
 - Do not make candidate-worker collection a second global Task index.
-- Do not lease Workers during Task-Worker allocation.
+- Do not publish a candidate Worker unless its allocation lease succeeded.
 - Do not gate candidate publication on either same-band time rotation or Task
   lifecycle activation.
 - Do not let allocation decode Task score, choose a target band, change suffix,

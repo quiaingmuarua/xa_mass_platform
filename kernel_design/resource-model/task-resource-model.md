@@ -177,11 +177,13 @@ WorkerCandidateConstraint.limit = maximumCandidateWorkers
 ```
 
 `TaskDispatchRuntime` does not receive, enforce, or reinterpret this value. It
-appends every candidate entry supplied by the pacer. Its queue count may be
-read later by an independent activation/score classification, but candidate
-allocation does not subtract queue occupancy from the matcher limit. Descriptor
-admission must reject a minimum above the Task maximum; otherwise one bounded
-allocation result cannot satisfy the first activation condition.
+stores every successfully leased candidate entry supplied by the pacer under
+one batch expiry. Its non-expired candidate count may be read later by an
+independent activation/score classification, but it is not current
+Worker-validity proof. Allocation
+does not subtract prior occupancy from the matcher limit. Descriptor admission
+must reject a minimum above the Task maximum; otherwise one bounded allocation
+result cannot satisfy the first activation condition.
 
 The built-in activation check is intentionally unbudgeted. If the minimum is
 not satisfied, the Task remains `PRE_DISPATCH_VISIBLE`; activation does not

@@ -8,14 +8,14 @@ Parent contract: [Assignment-Dispatch Scheduling](assignment-dispatch-scheduling
 
 ## Purpose
 
-`WorkDispatchPacer` consumes recently allocated Task-Worker candidate evidence
-and turns one candidate into one current Work claim plus one `DeliverSeed`.
+`WorkDispatchPacer` consumes recently allocated Task-Worker reservations and
+turns one reservation into one current Work claim plus one `DeliverSeed`.
 
 It answers:
 
 ```text
 can this RUNNING_VISIBLE Task dispatch one concrete Work item through one
-currently leasable candidate Worker?
+currently reserved candidate Worker?
 ```
 
 It does not discover broad Worker universes, evaluate Task start conditions,
@@ -27,8 +27,8 @@ Work dispatch is a higher-frequency consumption path:
 
 ```text
 recent Task score scan
-candidate-worker atomic consume
-Worker observed-score CAS lease
+non-expired candidate-worker atomic consume
+Worker exact-score validity recheck and release/renew
 current Work claim
 DeliverSeed creation
 Worker lease release/hold/compensation
@@ -46,11 +46,10 @@ TaskScoreBandCore
   read-only from this pacer's perspective
 
 TaskDispatchRuntime
-  per-Task size point-read, atomic consume, and consume-time expiry validation
+  per-Task live-count point-read and expiry-ordered atomic consume
 
 WorkerScoreCore
-  acquire_due_hot_score_lease
-  release_score_hold or later Worker policy rewrite
+  current score evidence and policy-selected lease primitives
 
 future Work/backlog owner
   claim one current Work item
@@ -66,9 +65,9 @@ DispatchPolicy
   workerLeaseDuration
 ```
 
-`TaskDispatchRuntime` provides a Redis LIST per-Task candidate append/consume
-implementation. The Work/backlog owner and claim interface remain intentionally
-unfrozen until this pacer's claim semantics are reviewed.
+`TaskDispatchRuntime` provides a Redis ZSET per-Task candidate append/count/
+consume implementation. The Work/backlog owner and claim interface remain
+intentionally unfrozen until this pacer's claim semantics are reviewed.
 
 ## Task Discovery
 
@@ -90,8 +89,9 @@ the configured pacer assembly.
 
 Reverse order intentionally prefers fresh allocation evidence. Allocation
 fairness is owned by TaskWorkerAllocationPacer's oldest-first scan and timeSlot
-rewrite. Dispatch work per round is bounded by the pacer's per-Task quota;
-candidate entries are transient and expire independently of that policy.
+rewrite. Dispatch work per round is bounded by the pacer's per-Task quota.
+Candidate entries stop being live at batch expiry and are removed by bounded
+consume/cleanup; the Worker score lease follows its own owner coordinate.
 
 The current Redis executable implementation of
 `acquire_dispatch_work_tasks(limit)` scans the full due RUNNING range
@@ -107,7 +107,7 @@ For each discovered Task:
 
 ```text
 point-read candidate-worker collection
-missing / empty / expired
+missing / empty
   -> bounded no-op
 
 available
@@ -115,14 +115,15 @@ available
 ```
 
 Multiple dispatch workers may process different Tasks or consume different
-entries concurrently. Atomic entry consumption prevents one candidate entry
-from producing two Worker lease attempts. No Task lock is required.
+entries concurrently. Atomic entry consumption prevents one reservation entry
+from producing two Worker lease renewals. No Task lock is required.
 
-TaskWorkerAllocationPacer appends every matched entry from its bounded batch to
-the Task queue. Runtime does not trim to a Task policy limit. It exposes the
-stored LIST length as a point-read, filters expired entries only after atomic
-consume, and lets stale duplicate Worker entries fail naturally through
-observed-score CAS.
+TaskWorkerAllocationPacer appends every successfully leased entry from its
+bounded batch to the Task collection with one batch expiry. Runtime does not
+trim to a Task policy limit. It excludes expired entries before count and
+consume, but expiry proves only that the allocation handoff window is still
+open. Current Worker score, dirty, and matching attributes are checked after
+atomic consume.
 
 The core consume interface is single Task:
 
@@ -142,34 +143,51 @@ Each consumed entry carries:
 
 ```text
 workerId
-completeObservedWorkerScore
+workerLeaseScore
 ```
 
-Dispatch attempts:
+The entry score is observation/fence input, not proof that the Worker remains
+valid. Dispatch must first obtain current Worker owner evidence and revalidate
+the Task's matching constraints. The exact operation then depends on dispatch
+policy:
 
 ```text
-worker_score.acquire_due_hot_score_lease(
-  workerId,
-  completeObservedWorkerScore,
-  leaseUntilMillis,
-)
+exclusive Worker use
+  -> renew the exact current HOT lease before Work assignment
+
+non-exclusive Worker use
+  -> release the exact allocation lease after validation / assignment handoff
+  -> make the Worker available for another candidate allocation
 ```
 
 Outcomes:
 
 ```text
-TRANSITIONED
-  Worker was still HOT, due, and exact-score current
+VALID
+  Worker remains admissible under current score and metadata
   continue to Work claim
 
-STALE / INVALID
+STALE / DIRTY / INVALID
   discard candidate entry
   try another bounded entry or move to the next Task
 ```
 
-WorkDispatchPacer must not decode, trim, or reconstruct observed Worker score.
-It does not re-run matcher constraints before lease; dirty/exact-score rules in
-Worker runtime provide the current stale fence.
+WorkDispatchPacer must not decode, trim, or reconstruct Worker lease score by
+itself. The dispatch-side Worker owner path must recheck current score/dirty and
+matching attributes. That validation interface is not frozen in the executable
+spec yet.
+
+Candidate expiry and Worker validity are separate fences:
+
+```text
+candidate batch not expired
+  != Worker still valid
+
+stored Worker score == candidate.workerLeaseScore
+and dirty == 0
+and current constraints still match
+  -> Worker validity accepted for this dispatch decision
+```
 
 ## Work Claim
 
@@ -177,7 +195,7 @@ Work claim belongs to the future Work/backlog owner. That owner has not been
 named or frozen as a Python interface yet.
 
 ```text
-Worker short lease acquired
+Worker candidate revalidated and required lease established
   -> claim one current Work item for taskId + workerId
   -> claim succeeds: create DeliverSeed
   -> claim fails: release/compensate Worker short lease
@@ -241,7 +259,7 @@ Task band
 Task terminal score
 ```
 
-Successful dispatch consumes candidate-worker and Work capacity, not Task-score
+Successful dispatch consumes a Worker reservation and Work capacity, not Task-score
 fairness. More entries in the transient collection may dispatch more Work. When
 dispatch drains the collection, TaskWorkerAllocationPacer eventually sees the
 Task in oldest-first allocation order and publishes fresh candidates. Expired
@@ -266,12 +284,11 @@ def dispatch_once(task_batch_limit, per_task_dispatch_limit):
             if candidate is None:
                 break
 
-            worker_lease = worker_score.acquire_due_hot_score_lease(
-                worker_id=candidate.worker_id,
-                observed_score=candidate.observed_worker_score,
-                target_time_millis=worker_lease_until(),
+            worker_admission = recheck_worker_candidate(
+                task_id=task_id,
+                candidate=candidate,
             )
-            if not worker_lease.transitioned:
+            if not worker_admission.valid:
                 continue
 
             claim = work_owner.claim_one(
@@ -279,11 +296,11 @@ def dispatch_once(task_batch_limit, per_task_dispatch_limit):
                 worker_id=candidate.worker_id,
             )
             if not claim.claimed:
-                compensate_worker_lease(worker_lease)
+                compensate_worker_admission(worker_admission)
                 break
 
             seed = build_deliver_seed(claim, candidate.worker_id)
-            submit_or_compensate(seed, claim, worker_lease)
+            submit_or_compensate(seed, claim, worker_admission)
 ```
 
 Names are conceptual and do not freeze Python interfaces.
@@ -302,11 +319,11 @@ defined above.
 candidate collection missing/empty
   bounded no-op; no Task score write
 
-candidate Worker score stale
+candidate Worker score, dirty, or attributes are stale
   discard entry; try another bounded entry
 
-Worker lease succeeds, Work claim fails
-  release/compensate Worker lease
+Worker admission succeeds, Work claim fails
+  release/compensate Worker admission when policy requires it
 
 Work claim succeeds, DeliverSeed construction fails
   compensate current Work claim and Worker lease

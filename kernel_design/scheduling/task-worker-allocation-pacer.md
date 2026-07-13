@@ -17,10 +17,12 @@ It answers:
 which Tasks currently have bounded candidate Workers?
 ```
 
-It does not claim Work, lease Workers, create DeliverSeed, or accept transport
-delivery. It does not classify or advance Task lifecycle. After one Task has
-been considered, it may advance that Task's current same-band timeSlot for
-bounded fairness rotation.
+It does not claim Work, create DeliverSeed, or accept transport delivery. It
+does acquire a short Worker score lease after a constraint match, so an
+exclusive allocation window cannot assign the same due Worker twice. The entry
+itself has no TTL and is not permanent validity proof. It does not classify or
+advance Task lifecycle. After one Task has been considered, it may advance that
+Task's current same-band timeSlot for bounded fairness rotation.
 
 ## Why It Is Independent
 
@@ -54,14 +56,23 @@ TaskResourceCatalog
 
 WorkerScoreCore
   acquire_hot_acquire_candidates(homeBucketId, limit)
+  acquire_due_hot_score_lease(homeBucketId, workerId, observedScore, targetTimeMillis)
 
 WorkerCandidateMatcher
-  match_worker_candidates(workerGroupId, workerIds, candidateConstraints)
+  match_worker_candidates(
+    workerGroupId,
+    observedScoreByWorkerId,
+    candidateConstraints,
+    leaseUntilMillis,
+  )
+
+TaskDispatchRuntime
+  append_candidate_workers(taskId, entries, expiresAtMillis)
 
 TaskWorkerAllocationConfig
   taskBatchLimit
   workerScanLimit
-  candidateTtlMillis
+  workerLeaseDurationMillis
 ```
 
 ## Candidate Bands
@@ -111,7 +122,7 @@ bounded Task ids
   -> workerGroupId -> taskId -> WorkerCandidateConstraint
   -> bounded Worker score candidates for that group
   -> one WorkerCandidateMatcher call
-  -> taskId -> matched Worker ids
+  -> taskId -> leased CandidateWorkerEntry values
 ```
 
 First cut identity is direct:
@@ -160,32 +171,41 @@ For each Worker-group partition:
 homeBucketId = worker-runtime resolution from workerGroupId
 workerCandidates = workerScore.acquire_hot_acquire_candidates(limit)
 observedWorkerScoreByWorkerId = complete returned score sidecar
-matches = workerCandidateMatcher.match_worker_candidates(...)
+reservations = workerCandidateMatcher.match_worker_candidates(
+  observedWorkerScoreByWorkerId,
+  leaseUntilMillis,
+  ...
+)
 ```
 
 The matcher consumes each bounded Worker at most once in one batch according to
-candidate priority and candidate limit. It returns Worker ids only.
-TaskWorkerAllocationPacer joins the complete observed Worker score from its
-sidecar when constructing candidate entries.
+candidate priority and candidate limit. After a constraint match, it attempts
+`acquire_due_hot_score_lease` with the acquired complete score. Only a successful
+exact-score lease creates a `CandidateWorkerEntry`; a concurrent or stale Worker
+cannot appear in the returned reservation map.
 
-Allocation must not decode observed Worker score and must not acquire a Worker
-lease. Worker evidence may become stale before dispatch; exact CAS in
-WorkDispatchPacer is the correctness fence.
+Allocation must not decode observed Worker score. The caller supplies one
+`leaseUntilMillis` derived from `workerLeaseDurationMillis`; this value belongs
+to the Worker score mutation and is not copied into the candidate entry. The
+matcher owns the match-then-lease sequence. The same value is supplied to
+`TaskDispatchRuntime` as the current batch expiry, so candidate expiry never
+outlives the lease that prevented duplicate allocation.
 
 ## PRE_DISPATCH_VISIBLE
 
-Allocation does not evaluate the first-running condition. It appends every
+Allocation does not evaluate the first-running condition. It stores every
 matched candidate entry up to the Task's single-round matcher limit:
 
 ```text
 PRE_DISPATCH_VISIBLE allocation
   -> bounded Worker match
-  -> append candidate evidence when non-empty
+  -> acquire short Worker reservations
+  -> append reservations when non-empty
   -> independently advance the current same-band timeSlot
 ```
 
 An independent score-acquired classification later reads the activation owner
-facts, including the configured minimum and candidate evidence, and decides:
+facts, including the configured minimum and stored candidate count, and decides:
 
 ```text
 PRE_DISPATCH_VISIBLE -> RUNNING_VISIBLE
@@ -199,8 +219,9 @@ Allocation's independent same-band time rotation preserves suffix and provides
 fairness pacing; it is not activation-failure accounting.
 
 That classification is not a commit stage inside `allocate_candidate_workers`.
-Candidate evidence may be appended before a later pause, close, stale
-classification, or failed transition; it remains expiring best-effort evidence.
+Worker candidates may be appended before a later pause, close, stale
+classification, or failed transition; they remain best-effort intermediate
+state.
 
 ## RUNNING_VISIBLE
 
@@ -210,7 +231,7 @@ slice:
 ```text
 due RUNNING_VISIBLE
   -> include Task in Worker-group match batch
-  -> publish bounded candidate evidence when matching succeeds
+  -> publish bounded Worker reservations when matching and lease succeed
 ```
 
 Work may be absent when WorkDispatchPacer later consumes a candidate. That is a
@@ -230,8 +251,8 @@ attempt; it is not an activation, retry-budget, hold, or terminal decision.
 
 Candidate publication and same-band time rotation are independent best-effort
 effects. Publication is not gated on rewrite success. If the score changed to
-a future hold or terminal state, the rewrite can fail while the expiring
-candidate evidence remains valid as intermediate residue.
+a future hold or terminal state, the rewrite can fail while candidate evidence
+remains as intermediate residue.
 
 The first executable lifecycle classifier is a separate
 `TaskRunningActivationPacer` class in the same module. Its
@@ -239,7 +260,7 @@ The first executable lifecycle classifier is a separate
 
 ```text
 acquire PRE_DISPATCH_VISIBLE before the current time horizon with limit
-  -> read TaskDescriptor minimum and candidate queue count
+    -> read TaskDescriptor minimum and stored candidate count
   -> if minimum is satisfied, request RUNNING_VISIBLE
   -> initialize RUNNING_VISIBLE suffix to configured N
   -> count only TaskScoreBandCore TRANSITIONED results
@@ -258,6 +279,12 @@ returns only whether activation is allowed; it does not read or write Task
 score, candidate queues, Redis, or lifecycle state. This keeps condition
 extension separate from pacer mechanics without adding an ABC or bridge.
 
+The current executable count is raw unique collection size, not a current
+Worker-validity count. If `runningVisibleMinimumCandidateWorkers` is required to
+mean currently valid Workers, activation needs a named Worker revalidation
+result before transition. `candidate_worker_count` must not silently absorb
+score, dirty, descriptor, or dynamic-attribute checks.
+
 It does not call `allocate_candidate_workers`, and allocation does not call it.
 
 ## Publish Protocol
@@ -266,7 +293,7 @@ The pacer appends one ordered candidate sequence directly to one Task queue:
 
 ```text
 matched entries prepared
-  -> append candidate entries to that Task queue
+    -> append reservation entries to that Task collection
 ```
 
 Candidate entry:
@@ -274,16 +301,18 @@ Candidate entry:
 ```text
 workerId
 workerGroupId
-completeObservedWorkerScore
-expiresAtMillis
+workerLeaseScore
 ```
 
-The collection is match evidence only. It contains no Worker lease and no Work
-claim.
+The collection contains Worker candidates produced by successful short leases
+but no Work claim. `workerLeaseScore` is the exact score written by allocation
+and stays opaque inside the ZSET member. The entry has no independent expiry;
+the ZSET score is the batch `expiresAtMillis`. Worker lease state, dirty, and
+matching attributes are still rechecked by the later dispatch path.
 
 There is no cross-key transaction or commit protocol between Task score and the
 collection. A lifecycle transition after publication may make the collection
-unreachable to Work dispatch; entry expiry and later Task physical cleanup own
+unreachable to Work dispatch; later consumption or Task physical cleanup owns
 that residue.
 
 One call is atomic only for one Task:
@@ -292,14 +321,15 @@ One call is atomic only for one Task:
 task_dispatch_runtime.append_candidate_workers(
     task_id=task_id,
     candidate_workers=entries,
+    expires_at_millis=lease_until_millis,
 )
 ```
 
 The pacer may loop or a concrete runtime may pipeline calls for many Tasks, but
 cross-Task success is partial and non-atomic. The Task descriptor bounds the
-matcher output for one allocation batch. `TaskDispatchRuntime` appends every
-entry passed to it and owns only queue append, atomic consume, size observation,
-and consume-time expiry validation.
+matcher output for one allocation batch. `TaskDispatchRuntime` stores every
+entry passed to it and owns only batch-expiry indexing, live count, and bounded
+atomic consume.
 
 ## Interface
 
@@ -319,7 +349,7 @@ It is not an assignment count, score-transition count, or Work claim count.
 ```text
 taskBatchLimit
 workerScanLimit
-candidateTtlMillis
+workerLeaseDurationMillis
 ```
 
 The concrete allocation pacer receives `TaskScoreBandCore`,
@@ -338,6 +368,10 @@ It is not a `TaskDispatchRuntime` argument or persistent queue-cap contract.
 
 ```python
 def allocate_candidate_workers(config):
+    allocation_millis = now_millis()
+    lease_until_millis = (
+        allocation_millis + config.worker_lease_duration_millis
+    )
     task_band_by_id = acquire_running_then_pre_dispatch(
         task_batch_limit=config.task_batch_limit,
     )
@@ -359,10 +393,14 @@ def allocate_candidate_workers(config):
         observed_scores = dict(worker_candidates)
         matches = worker_matcher.match_worker_candidates(
             worker_group_id=worker_group_id,
-            worker_ids=list(observed_scores),
+            observed_score_by_worker_id=observed_scores,
             candidate_constraints=constraints,
+            lease_until_millis=lease_until_millis,
         )
-        append_matched_evidence(matches, observed_scores, config)
+        append_worker_reservations(
+            matches,
+            expires_at_millis=lease_until_millis,
+        )
         for task_id in constraints:
             task_score.rewrite_same_band_time_millis(
                 task_id=task_id,
@@ -379,7 +417,7 @@ runtime contract. It is not Task metadata and is not caller-configurable.
 The current Python package implements `TaskWorkerAllocationPacer`,
 `TaskWorkerAllocationConfig`, `TaskRunningActivationPacer`,
 `TaskRunningActivationConfig`, the `TaskDispatchRuntime` owner interface, its
-Redis LIST implementation, and the candidate-worker DTO. The Task score core
+Redis ZSET implementation, and the candidate-worker reservation DTO. The Task score core
 also implements exact single-band bounded acquisition. Work/backlog APIs remain
 deliberately absent until that owner is designed completely. The existing
 active-task acquire supplies the base RUNNING-first band order.
@@ -397,14 +435,15 @@ py_example/kernel/task_dispatch_runtime.py
 Task descriptor missing/corrupt
   skip this Task; descriptor owner/recovery handles the missing fact
 
-Worker score changed after matching
-  allowed; WorkDispatchPacer exact CAS rejects stale entry
+Worker score changes before allocation lease
+  matcher exact CAS rejects this Worker; no reservation is published
 
 candidate collection publication fails
-  this Task's later same-band time rewrite is not attempted
+  this Task's later same-band time rewrite is not attempted; the short Worker
+  lease expires without a cross-key rollback protocol
 
 same-band time rewrite is stale or rejected
-  keep already-published expiring candidate evidence; do not roll it back
+  keep already-published candidate evidence; do not roll it back
 
 Task pauses/closes after publication
   WorkDispatchPacer no longer scans it; later Task physical cleanup owns residue
@@ -414,7 +453,8 @@ Task pauses/closes after publication
 
 - Do not claim Work in this pacer.
 - Do not introduce a Work-availability bridge solely to skip empty matching.
-- Do not acquire or renew Worker score lease in this pacer.
+- Do not bypass WorkerCandidateMatcher's match-then-lease operation or renew an
+  already active Worker lease in this pacer.
 - Do not create DeliverSeed in this pacer.
 - Do not call WorkerCandidateMatcher once per Task.
 - Do not include `PRE_REVIEW`, paused, future non-due, or terminal Tasks.
@@ -428,7 +468,7 @@ Task pauses/closes after publication
 - Do not evaluate activation minimum, fairness rotation, suffix consumption,
   no-worker backoff, hold, or terminal policy inside candidate allocation.
 - Do not expose cross-Task append as one atomic runtime operation; each Task
-  candidate LIST is an independent owner boundary.
+  candidate ZSET is an independent owner boundary.
 - Do not make `TaskDispatchRuntime` choose or enforce a Task candidate limit;
   the pacer bounds each matcher result and the runtime stores what it receives.
 - Do not make candidate collection a Task or Worker truth owner.

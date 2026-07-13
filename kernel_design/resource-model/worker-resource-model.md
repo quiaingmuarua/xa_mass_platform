@@ -485,8 +485,8 @@ running. Assignment-dispatch does not query or choose groups on each round.
 `WorkerCandidateConstraint -> worker predicates` is worker matching inside the
 selected worker group. Its `match_rules` may constrain `workerId`, placement,
 static attributes, system attributes, or explicitly supported projected
-dynamic attributes. These constraints narrow worker candidates; they do not
-replace worker-runtime score lease.
+dynamic attributes. These constraints narrow Worker candidates before the
+matcher attempts the Worker-score allocation lease.
 
 `workerId` inside `match_rules` is only a hard filter inside the task's selected
 `workerGroupId`. It still must pass worker score acquire and worker-runtime
@@ -506,23 +506,24 @@ The first worker-runtime matching surface may expose a bounded batch matcher:
 ```text
 match_worker_candidates(
   workerGroupId,
-  workerIds,
-  {candidateId: WorkerCandidateConstraint, ...}
+  observedScoreByWorkerId,
+  {candidateId: WorkerCandidateConstraint, ...},
+  leaseUntilMillis,
 )
 ```
 
 The input map makes candidate identity unique. Each value carries explicit
 `priority`, `limit`, and map-shaped `match_rules`. The matcher
 sorts by priority descending and `candidateId` ascending, then each worker is
-consumed by the first matching candidate with remaining capacity and cannot
-appear in another candidate result during the same call. A matcher call handles exactly one selected
-`workerGroupId`; assignment-dispatch must partition candidates by worker group
-before calling it. The matcher returns one insertion-ordered
-`candidateId -> matchedWorkerIds` map in resolved priority order, containing
-every input candidate. An empty worker-id list means no match. It matches only
-the supplied worker ids and does not carry `observedWorkerScore`;
-assignment-dispatch keeps score fences from worker score acquire as sidecar
-evidence for later score lease. It must not become
+considered by the first matching candidate with remaining capacity. The
+matcher then performs exact-score `acquire_due_hot_score_lease`; only a
+successful lease consumes the Worker and creates `CandidateWorkerEntry`. A
+matcher call handles exactly one selected `workerGroupId`; assignment-dispatch
+must partition candidates by Worker group before calling it. The matcher
+returns one insertion-ordered `candidateId -> CandidateWorkerEntry[]` map in
+resolved priority order, containing every input candidate. An empty entry list
+means no reservation. It matches only the supplied Worker observations and
+must not become
 `find_all_matching_workers(query)` or a global worker query service.
 
 There is no separate assignment-continuation surface in v0. Worker occupation

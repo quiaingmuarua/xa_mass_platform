@@ -14,7 +14,6 @@ AttributeName = str
 AttributeValue = object
 DynamicAttributePayload = object
 CandidateId = str
-WorkerCandidateMatches = dict[CandidateId, list[WorkerId]]
 
 
 @dataclass(frozen=True)

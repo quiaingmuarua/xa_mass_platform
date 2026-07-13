@@ -27,7 +27,7 @@ class TaskWorkerAllocationConfig:
 
     task_batch_limit: int
     worker_scan_limit: int
-    candidate_ttl_millis: int
+    worker_lease_duration_millis: int
 
     def __post_init__(self) -> None:
         if any(
@@ -35,7 +35,7 @@ class TaskWorkerAllocationConfig:
             for value in (
                 self.task_batch_limit,
                 self.worker_scan_limit,
-                self.candidate_ttl_millis,
+                self.worker_lease_duration_millis,
             )
         ):
             raise ValueError("allocation config values must be positive")
@@ -102,6 +102,9 @@ class TaskWorkerAllocationPacer:
     ) -> int:
         """Publish candidate Workers and return the number of published Tasks."""
         allocation_millis = self._current_time_millis()
+        lease_until_millis = (
+            allocation_millis + config.worker_lease_duration_millis
+        )
         task_band_by_id: dict[TaskId, TaskScoreBand] = {}
         remaining_task_limit = config.task_batch_limit
         for band in self.ALLOCATION_BANDS:
@@ -124,12 +127,14 @@ class TaskWorkerAllocationPacer:
                 worker_group_id=worker_group_id,
                 candidate_constraints=candidate_constraints,
                 config=config,
+                lease_until_millis=lease_until_millis,
             )
             for task_id, entries in entries_by_task.items():
                 if entries:
                     self.dispatch_runtime.append_candidate_workers(
                         task_id=task_id,
                         candidate_workers=entries,
+                        expires_at_millis=lease_until_millis,
                     )
                     published_tasks += 1
                 self.task_score.rewrite_same_band_time_millis(
@@ -174,32 +179,25 @@ class TaskWorkerAllocationPacer:
         worker_group_id: WorkerGroupId,
         candidate_constraints: Mapping[TaskId, WorkerCandidateConstraint],
         config: TaskWorkerAllocationConfig,
+        lease_until_millis: TimeMillis,
     ) -> dict[TaskId, tuple[CandidateWorkerEntry, ...]]:
-        observed_scores = dict(
+        observed_score_by_worker_id = dict(
             self.worker_score.acquire_hot_acquire_candidates(
                 home_bucket_id=worker_group_id,
                 limit=config.worker_scan_limit,
             )
         )
-        if not observed_scores:
+        if not observed_score_by_worker_id:
             return {task_id: () for task_id in candidate_constraints}
 
-        matches = self.worker_matcher.match_worker_candidates(
+        reservations = self.worker_matcher.match_worker_candidates(
             worker_group_id=worker_group_id,
-            worker_ids=tuple(observed_scores),
+            observed_score_by_worker_id=observed_score_by_worker_id,
             candidate_constraints=candidate_constraints,
+            lease_until_millis=lease_until_millis,
         )
-        expires_at_millis = self._current_time_millis() + config.candidate_ttl_millis
         return {
-            task_id: tuple(
-                CandidateWorkerEntry(
-                    worker_id=worker_id,
-                    worker_group_id=worker_group_id,
-                    observed_worker_score=observed_scores[worker_id],
-                    expires_at_millis=expires_at_millis,
-                )
-                for worker_id in matches[task_id]
-            )
+            task_id: tuple(reservations[task_id])
             for task_id in candidate_constraints
         }
 

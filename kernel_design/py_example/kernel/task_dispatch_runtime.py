@@ -12,16 +12,15 @@ from .worker_score import WorkerId
 
 @dataclass(frozen=True)
 class CandidateWorkerEntry:
-    """One expiring Worker candidate queued for one Task."""
+    """One Task-local Worker candidate with opaque Worker-score evidence."""
 
     worker_id: WorkerId
     worker_group_id: WorkerGroupId
-    observed_worker_score: WorkerScore
-    expires_at_millis: TimeMillis
+    worker_lease_score: WorkerScore
 
 
 class TaskDispatchRuntime(ABC):
-    """Owner surface for transient allocation-to-dispatch evidence."""
+    """Owner surface for transient allocation-to-dispatch candidates."""
 
     @abstractmethod
     def append_candidate_workers(
@@ -29,8 +28,9 @@ class TaskDispatchRuntime(ABC):
         *,
         task_id: TaskId,
         candidate_workers: Sequence[CandidateWorkerEntry],
+        expires_at_millis: TimeMillis,
     ) -> None:
-        """Append every supplied candidate to one Task queue."""
+        """Append one expiring candidate batch to a Task-local collection."""
         pass
 
     @abstractmethod
@@ -39,7 +39,7 @@ class TaskDispatchRuntime(ABC):
         *,
         task_id: TaskId,
     ) -> int:
-        """Return the current stored entry count for one Task queue."""
+        """Return the current non-expired candidate count for one Task."""
         pass
 
     @abstractmethod

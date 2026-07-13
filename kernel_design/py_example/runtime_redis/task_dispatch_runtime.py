@@ -11,20 +11,23 @@ from ..kernel.task_dispatch_runtime import (
 from ..kernel.task_score_band import TaskId, TimeMillis
 
 _CONSUME_CANDIDATES_SCRIPT = """
-local entries = {}
-for index = 1, tonumber(ARGV[1]) do
-    local entry = redis.call('LPOP', KEYS[1])
-    if not entry then
-        break
-    end
-    entries[#entries + 1] = entry
+local now_millis = tonumber(ARGV[1])
+local limit = tonumber(ARGV[2])
+
+redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now_millis)
+local entries = redis.call(
+    'ZRANGEBYSCORE', KEYS[1], '(' .. now_millis, '+inf',
+    'LIMIT', 0, limit
+)
+if #entries > 0 then
+    redis.call('ZREM', KEYS[1], unpack(entries))
 end
 return entries
 """
 
 
 class RedisTaskDispatchRuntime(TaskDispatchRuntime):
-    """Redis LIST-backed transient candidate-worker runtime."""
+    """Redis ZSET-backed transient candidate-worker handoff runtime."""
 
     def __init__(
         self,
@@ -42,14 +45,20 @@ class RedisTaskDispatchRuntime(TaskDispatchRuntime):
         *,
         task_id: TaskId,
         candidate_workers: Sequence[CandidateWorkerEntry],
+        expires_at_millis: TimeMillis,
     ) -> None:
         self._validate_task_id(task_id)
+        if expires_at_millis <= 0:
+            raise ValueError("candidate batch expiry must be positive")
         if not candidate_workers:
             return
 
-        self.redis.rpush(
+        self.redis.zadd(
             self._candidate_key(task_id),
-            *(self._encode_entry(entry) for entry in candidate_workers),
+            {
+                self._encode_entry(entry): expires_at_millis
+                for entry in candidate_workers
+            },
         )
 
     def candidate_worker_count(
@@ -58,7 +67,14 @@ class RedisTaskDispatchRuntime(TaskDispatchRuntime):
         task_id: TaskId,
     ) -> int:
         self._validate_task_id(task_id)
-        return int(self.redis.llen(self._candidate_key(task_id)))
+        now_millis = self._current_time_millis()
+        return int(
+            self.redis.zcount(
+                self._candidate_key(task_id),
+                f"({now_millis}",
+                "+inf",
+            )
+        )
 
     def consume_candidate_workers(
         self,
@@ -74,6 +90,7 @@ class RedisTaskDispatchRuntime(TaskDispatchRuntime):
             _CONSUME_CANDIDATES_SCRIPT,
             1,
             self._candidate_key(task_id),
+            self._current_time_millis(),
             limit,
         )
         if raw_entries is None:
@@ -81,11 +98,10 @@ class RedisTaskDispatchRuntime(TaskDispatchRuntime):
         if isinstance(raw_entries, (str, bytes)):
             raw_entries = [raw_entries]
 
-        now_millis = self._current_time_millis()
         entries: list[CandidateWorkerEntry] = []
         for raw_entry in raw_entries:
             entry = self._decode_entry(raw_entry)
-            if entry is not None and entry.expires_at_millis > now_millis:
+            if entry is not None:
                 entries.append(entry)
         return tuple(entries)
 
@@ -102,8 +118,7 @@ class RedisTaskDispatchRuntime(TaskDispatchRuntime):
             {
                 "workerId": entry.worker_id,
                 "workerGroupId": entry.worker_group_id,
-                "observedWorkerScore": entry.observed_worker_score,
-                "expiresAtMillis": entry.expires_at_millis,
+                "workerLeaseScore": entry.worker_lease_score,
             },
             sort_keys=True,
             separators=(",", ":"),
@@ -122,8 +137,7 @@ class RedisTaskDispatchRuntime(TaskDispatchRuntime):
                 return None
             worker_id = payload["workerId"]
             worker_group_id = payload["workerGroupId"]
-            observed_worker_score = payload["observedWorkerScore"]
-            expires_at_millis = payload["expiresAtMillis"]
+            worker_lease_score = payload["workerLeaseScore"]
         except (KeyError, TypeError, ValueError, UnicodeDecodeError):
             return None
         if not isinstance(worker_id, str) or not worker_id:
@@ -131,22 +145,15 @@ class RedisTaskDispatchRuntime(TaskDispatchRuntime):
         if not isinstance(worker_group_id, str) or not worker_group_id:
             return None
         if (
-            isinstance(observed_worker_score, bool)
-            or not isinstance(observed_worker_score, int)
-            or observed_worker_score <= 0
-        ):
-            return None
-        if (
-            isinstance(expires_at_millis, bool)
-            or not isinstance(expires_at_millis, int)
-            or expires_at_millis <= 0
+            isinstance(worker_lease_score, bool)
+            or not isinstance(worker_lease_score, int)
+            or worker_lease_score <= 0
         ):
             return None
         return CandidateWorkerEntry(
             worker_id=worker_id,
             worker_group_id=worker_group_id,
-            observed_worker_score=observed_worker_score,
-            expires_at_millis=expires_at_millis,
+            worker_lease_score=worker_lease_score,
         )
 
     @staticmethod

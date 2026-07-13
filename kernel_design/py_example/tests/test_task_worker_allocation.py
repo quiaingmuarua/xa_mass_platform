@@ -41,7 +41,7 @@ class AssignmentDispatchTest(unittest.TestCase):
                     TaskDispatchRuntime.append_candidate_workers
                 ).parameters
             ),
-            {"self", "task_id", "candidate_workers"},
+            {"self", "task_id", "candidate_workers", "expires_at_millis"},
         )
         self.assertEqual(
             set(
@@ -60,14 +60,13 @@ class AssignmentDispatchTest(unittest.TestCase):
             {"self", "task_id", "limit"},
         )
 
-    def test_candidate_worker_entry_contains_only_dispatch_evidence(self) -> None:
+    def test_candidate_worker_entry_contains_only_score_evidence(self) -> None:
         self.assertEqual(
             {field.name for field in fields(CandidateWorkerEntry)},
             {
                 "worker_id",
                 "worker_group_id",
-                "observed_worker_score",
-                "expires_at_millis",
+                "worker_lease_score",
             },
         )
 
@@ -130,8 +129,10 @@ class AssignmentDispatchTest(unittest.TestCase):
             ("worker-2", 1_002),
         )
         worker_matcher.match_worker_candidates.return_value = {
-            "running-task": ["worker-1"],
-            "pre-dispatch-task": ["worker-2"],
+            "running-task": [self._reservation("worker-1", score=2_001)],
+            "pre-dispatch-task": [
+                self._reservation("worker-2", score=2_002)
+            ],
         }
 
         published = pacer.allocate_candidate_workers(config=self._allocation_config())
@@ -144,6 +145,21 @@ class AssignmentDispatchTest(unittest.TestCase):
         constraints = worker_matcher.match_worker_candidates.call_args.kwargs[
             "candidate_constraints"
         ]
+        self.assertEqual(
+            worker_matcher.match_worker_candidates.call_args.kwargs[
+                "observed_score_by_worker_id"
+            ],
+            {"worker-1": 1_001, "worker-2": 1_002},
+        )
+        self.assertGreater(
+            worker_matcher.match_worker_candidates.call_args.kwargs[
+                "lease_until_millis"
+            ],
+            0,
+        )
+        lease_until_millis = worker_matcher.match_worker_candidates.call_args.kwargs[
+            "lease_until_millis"
+        ]
         self.assertEqual(constraints["running-task"].limit, 10)
         self.assertEqual(constraints["pre-dispatch-task"].limit, 10)
         self.assertEqual(runtime.append_candidate_workers.call_count, 2)
@@ -151,6 +167,13 @@ class AssignmentDispatchTest(unittest.TestCase):
             call.kwargs["task_id"]: call.kwargs["candidate_workers"]
             for call in runtime.append_candidate_workers.call_args_list
         }
+        self.assertEqual(
+            {
+                call.kwargs["expires_at_millis"]
+                for call in runtime.append_candidate_workers.call_args_list
+            },
+            {lease_until_millis},
+        )
         self.assertEqual(
             [entry.worker_id for entry in published_by_task["running-task"]],
             ["worker-1"],
@@ -177,7 +200,7 @@ class AssignmentDispatchTest(unittest.TestCase):
             ("worker-1", 1_001),
         )
         worker_matcher.match_worker_candidates.return_value = {
-            "task-1": ["worker-1"]
+            "task-1": [self._reservation("worker-1", score=2_001)]
         }
         runtime.candidate_worker_count.return_value = 9
 
@@ -209,7 +232,7 @@ class AssignmentDispatchTest(unittest.TestCase):
             ("worker-1", 1_001),
         )
         worker_matcher.match_worker_candidates.return_value = {
-            "task-1": ["worker-1"]
+            "task-1": [self._reservation("worker-1", score=2_001)]
         }
         task_score.rewrite_same_band_time_millis.return_value = (
             TaskScoreTransitionResult(TaskScoreTransitionStatus.STALE)
@@ -335,7 +358,7 @@ class AssignmentDispatchTest(unittest.TestCase):
             TaskWorkerAllocationConfig(
                 task_batch_limit=0,
                 worker_scan_limit=20,
-                candidate_ttl_millis=1_000,
+                worker_lease_duration_millis=1_000,
             )
 
     def _allocation_pacer(
@@ -392,7 +415,7 @@ class AssignmentDispatchTest(unittest.TestCase):
         return TaskWorkerAllocationConfig(
             task_batch_limit=10,
             worker_scan_limit=20,
-            candidate_ttl_millis=60_000,
+            worker_lease_duration_millis=60_000,
         )
 
     @staticmethod
@@ -406,6 +429,18 @@ class AssignmentDispatchTest(unittest.TestCase):
                 "runningVisibleMinimumCandidateWorkers": str(minimum_workers),
                 "maximumCandidateWorkers": "10",
             },
+        )
+
+    @staticmethod
+    def _reservation(
+        worker_id: str,
+        *,
+        score: int,
+    ) -> CandidateWorkerEntry:
+        return CandidateWorkerEntry(
+            worker_id=worker_id,
+            worker_group_id="image-workers",
+            worker_lease_score=score,
         )
 
 

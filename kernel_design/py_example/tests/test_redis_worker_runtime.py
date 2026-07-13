@@ -109,6 +109,21 @@ class FakeRedis:
             zset[member] = score
         return added
 
+    def eval(self, script: str, numkeys: int, *args: object) -> list[object]:
+        if numkeys != 1 or "local observed_score" not in script:
+            raise ValueError("unsupported fake redis script")
+        key = str(args[0])
+        worker_id = str(args[1])
+        observed_score = int(args[2])
+        next_score = int(args[3])
+        stored = self.zscore(key, worker_id)
+        if stored is None:
+            return ["stale"]
+        if stored != observed_score:
+            return ["stale", stored]
+        self.zadd(key, {worker_id: next_score})
+        return ["transitioned", next_score]
+
     def zscore(self, name: str, member: str) -> int | None:
         return self.zsets.get(name, {}).get(member)
 
@@ -206,7 +221,41 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         return WorkerCandidateMatcher(
             self.catalog,
             dynamic_attribute_runtime,
+            self.score_band,
         )
+
+    def match_candidates(
+        self,
+        matcher: WorkerCandidateMatcher,
+        *,
+        worker_group_id: str = "image-workers",
+        worker_ids: Sequence[str],
+        candidate_constraints: dict[str, WorkerCandidateConstraint],
+    ):
+        self.redis.now_millis += self.score_band.SLOT_MILLIS
+        observed_score_by_worker_id: dict[str, int] = {}
+        for worker_id in worker_ids:
+            observed_score_by_worker_id[worker_id] = next(
+                (
+                    row[worker_id]
+                    for row in self.redis.zsets.values()
+                    if worker_id in row
+                ),
+                1,
+            )
+        return matcher.match_worker_candidates(
+            worker_group_id=worker_group_id,
+            observed_score_by_worker_id=observed_score_by_worker_id,
+            candidate_constraints=candidate_constraints,
+            lease_until_millis=self.redis.now_millis + 1_000,
+        )
+
+    @staticmethod
+    def reservation_ids(rows):
+        return {
+            candidate_id: [entry.worker_id for entry in entries]
+            for candidate_id, entries in rows.items()
+        }
 
     def test_register_and_read_worker_group_descriptor(self) -> None:
         self.register_group()
@@ -528,7 +577,8 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             }
 
         matcher = self.matcher({"battery": query_battery})
-        rows = matcher.match_worker_candidates(
+        rows = self.match_candidates(
+            matcher,
             worker_group_id="image-workers",
             worker_ids=["worker-2", "outside", "worker-1"],
             candidate_constraints={
@@ -546,7 +596,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         )
 
         self.assertEqual(
-            rows,
+            self.reservation_ids(rows),
             {
                 "premium-python-battery": ["worker-1"],
                 "all": ["worker-2"],
@@ -573,7 +623,8 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             ValueError,
             "missing dynamic attribute query handler: battery",
         ):
-            matcher_without_handler.match_worker_candidates(
+            self.match_candidates(
+                matcher_without_handler,
                 worker_group_id="image-workers",
                 worker_ids=["worker-1"],
                 candidate_constraints=constraints,
@@ -598,7 +649,8 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             }
 
         matcher = self.matcher({"battery": query_battery})
-        rows = matcher.match_worker_candidates(
+        rows = self.match_candidates(
+            matcher,
             worker_group_id="image-workers",
             worker_ids=["worker-1"],
             candidate_constraints={
@@ -608,14 +660,18 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             },
         )
 
-        self.assertEqual(rows, {"needs-battery": ["worker-1"]})
+        self.assertEqual(
+            self.reservation_ids(rows),
+            {"needs-battery": ["worker-1"]},
+        )
         self.assertEqual(queried_worker_ids, ["worker-1"])
 
     def test_candidate_matcher_validates_candidate_limit(self) -> None:
         matcher = self.matcher()
 
         with self.assertRaisesRegex(ValueError, "candidate limit must be positive"):
-            matcher.match_worker_candidates(
+            self.match_candidates(
+                matcher,
                 worker_group_id="image-workers",
                 worker_ids=["worker-1"],
                 candidate_constraints={
@@ -644,7 +700,8 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
 
         self.assertEqual(
             {"needs-battery": []},
-            matcher_without_value.match_worker_candidates(
+            self.match_candidates(
+                matcher_without_value,
                 worker_group_id="image-workers",
                 worker_ids=["worker-1"],
                 candidate_constraints=constraints,
@@ -657,13 +714,14 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         self.register_worker(self.worker_descriptor("worker-2"))
         matcher = self.matcher()
 
-        rows = matcher.match_worker_candidates(
+        rows = self.match_candidates(
+            matcher,
             worker_group_id="image-workers",
             worker_ids=["worker-1"],
             candidate_constraints={"all": candidate_constraint()},
         )
 
-        self.assertEqual(rows, {"all": ["worker-1"]})
+        self.assertEqual(self.reservation_ids(rows), {"all": ["worker-1"]})
 
     def test_candidate_matcher_requires_declared_dynamic_attribute(self) -> None:
         self.register_group()
@@ -689,7 +747,8 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             }
 
         matcher = self.matcher({"battery": query_battery})
-        rows = matcher.match_worker_candidates(
+        rows = self.match_candidates(
+            matcher,
             worker_group_id="image-workers",
             worker_ids=["worker-1"],
             candidate_constraints={
@@ -699,7 +758,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             },
         )
 
-        self.assertEqual(rows, {"needs-battery": []})
+        self.assertEqual(self.reservation_ids(rows), {"needs-battery": []})
         self.assertEqual(queried_worker_ids, [])
 
     def test_candidate_matcher_reads_dynamic_attribute_once_per_batch(self) -> None:
@@ -722,7 +781,8 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             }
 
         matcher = self.matcher({"battery": query_battery})
-        rows = matcher.match_worker_candidates(
+        rows = self.match_candidates(
+            matcher,
             worker_group_id="image-workers",
             worker_ids=["worker-1", "worker-2"],
             candidate_constraints={
@@ -737,7 +797,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         )
 
         self.assertEqual(
-            rows,
+            self.reservation_ids(rows),
             {
                 "candidate-1": ["worker-1", "worker-2"],
                 "candidate-2": [],
@@ -772,7 +832,8 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             }
 
         matcher = self.matcher({"battery.level": query_battery_level})
-        rows = matcher.match_worker_candidates(
+        rows = self.match_candidates(
+            matcher,
             worker_group_id="image-workers",
             worker_ids=["worker-1"],
             candidate_constraints={
@@ -782,7 +843,10 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             },
         )
 
-        self.assertEqual(rows, {"candidate-1": ["worker-1"]})
+        self.assertEqual(
+            self.reservation_ids(rows),
+            {"candidate-1": ["worker-1"]},
+        )
         self.assertEqual(queried_worker_ids, ["worker-1"])
 
     def test_candidate_matcher_enforces_per_candidate_worker_limit(self) -> None:
@@ -791,7 +855,8 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             self.register_worker(self.worker_descriptor(worker_id))
 
         matcher = self.matcher()
-        rows = matcher.match_worker_candidates(
+        rows = self.match_candidates(
+            matcher,
             worker_group_id="image-workers",
             worker_ids=["worker-1", "worker-2", "worker-3"],
             candidate_constraints={
@@ -801,7 +866,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         )
 
         self.assertEqual(
-            rows,
+            self.reservation_ids(rows),
             {
                 "preferred": ["worker-1"],
                 "fallback": ["worker-2", "worker-3"],
@@ -851,7 +916,8 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
                 "network": query_attribute("network"),
             },
         )
-        rows = matcher.match_worker_candidates(
+        rows = self.match_candidates(
+            matcher,
             worker_group_id="image-workers",
             worker_ids=["worker-2", "worker-1"],
             candidate_constraints={
@@ -870,7 +936,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         )
 
         self.assertEqual(
-            rows,
+            self.reservation_ids(rows),
             {
                 "python-network": ["worker-1"],
                 "battery": ["worker-2"],
@@ -906,7 +972,8 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             }
 
         matcher = self.matcher({"battery": query_battery})
-        rows = matcher.match_worker_candidates(
+        rows = self.match_candidates(
+            matcher,
             worker_group_id="image-workers",
             worker_ids=["worker-1", "worker-2"],
             candidate_constraints={
@@ -916,7 +983,10 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             },
         )
 
-        self.assertEqual(rows, {"needs-battery": ["worker-1"]})
+        self.assertEqual(
+            self.reservation_ids(rows),
+            {"needs-battery": ["worker-1"]},
+        )
 
     def test_candidate_matcher_batches_acquire_before_worker_id_rule(self) -> None:
         self.register_group()
@@ -938,7 +1008,8 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             }
 
         matcher = self.matcher({"battery": query_battery})
-        rows = matcher.match_worker_candidates(
+        rows = self.match_candidates(
+            matcher,
             worker_group_id="image-workers",
             worker_ids=["worker-1", "worker-2"],
             candidate_constraints={
@@ -951,7 +1022,10 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             },
         )
 
-        self.assertEqual(rows, {"worker-1-only": ["worker-1"]})
+        self.assertEqual(
+            self.reservation_ids(rows),
+            {"worker-1-only": ["worker-1"]},
+        )
         self.assertEqual(queried_worker_ids, ["worker-1", "worker-2"])
 
     def test_candidate_matcher_batches_acquire_before_static_rule(self) -> None:
@@ -978,7 +1052,8 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             }
 
         matcher = self.matcher({"battery": query_battery})
-        rows = matcher.match_worker_candidates(
+        rows = self.match_candidates(
+            matcher,
             worker_group_id="image-workers",
             worker_ids=["worker-1"],
             candidate_constraints={
@@ -991,18 +1066,30 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             },
         )
 
-        self.assertEqual(rows, {"python-with-battery": []})
+        self.assertEqual(
+            self.reservation_ids(rows),
+            {"python-with-battery": []},
+        )
         self.assertEqual(queried_worker_ids, ["worker-1"])
 
-    def test_candidate_matcher_rejects_duplicate_worker_ids(self) -> None:
+    def test_candidate_matcher_does_not_reallocate_active_reservation(self) -> None:
+        self.register_group()
+        self.register_worker(self.worker_descriptor("worker-1"))
         matcher = self.matcher()
 
-        with self.assertRaises(ValueError):
-            matcher.match_worker_candidates(
-                worker_group_id="image-workers",
-                worker_ids=["worker-1", "worker-1"],
-                candidate_constraints={"candidate-1": candidate_constraint()},
-            )
+        first = self.match_candidates(
+            matcher,
+            worker_ids=["worker-1"],
+            candidate_constraints={"candidate-1": candidate_constraint()},
+        )
+        second = self.match_candidates(
+            matcher,
+            worker_ids=["worker-1"],
+            candidate_constraints={"candidate-2": candidate_constraint()},
+        )
+
+        self.assertEqual(self.reservation_ids(first), {"candidate-1": ["worker-1"]})
+        self.assertEqual(self.reservation_ids(second), {"candidate-2": []})
 
 
 if __name__ == "__main__":

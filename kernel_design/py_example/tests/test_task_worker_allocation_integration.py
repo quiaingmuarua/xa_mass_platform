@@ -99,7 +99,11 @@ class AssignmentDispatchIntegrationTest(unittest.TestCase):
             self.task_score,
             self.task_catalog,
             self.worker_score,
-            WorkerCandidateMatcher(self.worker_catalog, dynamic_runtime),
+            WorkerCandidateMatcher(
+                self.worker_catalog,
+                dynamic_runtime,
+                self.worker_score,
+            ),
             self.dispatch_runtime,
         )
         self.running_activation_pacer = TaskRunningActivationPacer(
@@ -119,7 +123,7 @@ class AssignmentDispatchIntegrationTest(unittest.TestCase):
             f"{self.worker_score_prefix}:{self.worker_group_id}",
         )
 
-    def test_real_redis_allocation_publishes_observed_worker_evidence(self) -> None:
+    def test_real_redis_allocation_publishes_worker_reservation(self) -> None:
         group_result = self.worker_catalog.register_worker_group_descriptor(
             descriptor=WorkerGroupDescriptor(
                 worker_group_id=self.worker_group_id,
@@ -167,12 +171,23 @@ class AssignmentDispatchIntegrationTest(unittest.TestCase):
             config=TaskWorkerAllocationConfig(
                 task_batch_limit=10,
                 worker_scan_limit=10,
-                candidate_ttl_millis=5_000,
+                worker_lease_duration_millis=5_000,
             )
         )
         score_after_allocation = self.task_score.get_score_states(
             task_ids=(self.task_id,)
         )[self.task_id]
+        worker_score_after_allocation = self.worker_score.get_score_states(
+            home_bucket_id=self.worker_group_id,
+            worker_ids=(self.worker_id,),
+        )[self.worker_id]
+        published_while_reserved = self.pacer.allocate_candidate_workers(
+            config=TaskWorkerAllocationConfig(
+                task_batch_limit=10,
+                worker_scan_limit=10,
+                worker_lease_duration_millis=5_000,
+            )
+        )
         time.sleep((self.task_score.SLOT_MILLIS + 20) / 1_000)
         transitioned = self.running_activation_pacer.activate_running_visible_tasks(
             config=TaskRunningActivationConfig(
@@ -196,6 +211,7 @@ class AssignmentDispatchIntegrationTest(unittest.TestCase):
         self.assertEqual(task_result.status, TaskCreationStatus.CREATED)
         self.assertEqual(approved.status, TaskScoreTransitionStatus.TRANSITIONED)
         self.assertEqual(published, 1)
+        self.assertEqual(published_while_reserved, 0)
         self.assertEqual(
             score_after_allocation.band,
             TaskScoreBand.PRE_DISPATCH_VISIBLE,
@@ -210,7 +226,14 @@ class AssignmentDispatchIntegrationTest(unittest.TestCase):
         self.assertEqual(running_state.suffix, 8)
         self.assertEqual(queued_candidate_count, 1)
         self.assertEqual([entry.worker_id for entry in entries], [self.worker_id])
-        self.assertGreater(entries[0].observed_worker_score, 0)
+        self.assertGreater(
+            worker_score_after_allocation.time_millis,
+            time.time_ns() // 1_000_000,
+        )
+        self.assertEqual(
+            entries[0].worker_lease_score,
+            worker_score_after_allocation.score,
+        )
 
 
 if __name__ == "__main__":
