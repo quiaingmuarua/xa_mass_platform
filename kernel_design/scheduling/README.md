@@ -457,7 +457,7 @@ shape:
 kernel_core/
   task_score.py
   worker_score.py
-  assignment_dispatch.py
+  task_worker_allocation.py
   result_routing.py
   models.py
   memory_runtime.py

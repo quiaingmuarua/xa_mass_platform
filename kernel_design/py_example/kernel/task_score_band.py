@@ -127,6 +127,22 @@ class TaskScoreBandCore(ABC):
         pass
 
     @abstractmethod
+    def acquire_band_task_candidates(
+        self,
+        *,
+        band: TaskScoreBand,
+        before_time_millis: TimeMillis,
+        limit: int,
+    ) -> Sequence[TaskId]:
+        """Acquire one non-terminal band before an exclusive time horizon.
+
+        Public callers select a semantic band and millisecond horizon. The
+        implementation owns time-slot conversion, score-range construction,
+        ordering, and limit enforcement. It never returns TERMINAL members.
+        """
+        pass
+
+    @abstractmethod
     def acquire_dispatch_work_tasks(
         self,
         *,

@@ -82,7 +82,7 @@ For result or dispatch work:
 2. [scheduling/assignment-dispatch-scheduling.md](scheduling/assignment-dispatch-scheduling.md)
 3. [scheduling/task-worker-allocation-pacer.md](scheduling/task-worker-allocation-pacer.md)
 4. [scheduling/work-dispatch-pacer.md](scheduling/work-dispatch-pacer.md)
-5. [py_example/kernel/assignment_dispatch.py](py_example/kernel/assignment_dispatch.py)
+5. [py_example/kernel/task_worker_allocation.py](py_example/kernel/task_worker_allocation.py)
 6. [py_example/kernel/task_dispatch_runtime.py](py_example/kernel/task_dispatch_runtime.py)
 7. [scheduling/result-routing-scheduling.md](scheduling/result-routing-scheduling.md)
 

@@ -219,6 +219,19 @@ consumption, hold, and terminal decisions belong to an independent
 score-acquired scheduling classification. Candidate publication is one fact
 that classification may observe; it is not atomic with the score write.
 
+The first executable classifier is a separate `TaskScoreTransitionPacer` class
+in the same module. Its `rewrite_score(config)` method:
+
+```text
+acquire PRE_DISPATCH_VISIBLE before the current time horizon with limit
+  -> read TaskDescriptor minimum and candidate queue count
+  -> if minimum is satisfied, request RUNNING_VISIBLE
+  -> initialize RUNNING_VISIBLE suffix to configured N
+  -> count only TaskScoreBandCore TRANSITIONED results
+```
+
+It does not call `allocate_candidate_workers`, and allocation does not call it.
+
 ## Publish Protocol
 
 The pacer appends one ordered candidate sequence directly to one Task queue:
@@ -327,15 +340,17 @@ runtime contract. It is not Task metadata and is not caller-configurable.
 ## Executable-Spec Status
 
 The current Python package implements `TaskWorkerAllocationPacer`,
-`TaskWorkerAllocationConfig`, the `TaskDispatchRuntime` owner interface, its
-Redis LIST implementation, and the candidate-worker DTO. Work/backlog APIs
-remain deliberately absent until that owner is designed completely. The
-existing active-task acquire supplies the base RUNNING-first band order.
+`TaskWorkerAllocationConfig`, `TaskScoreTransitionPacer`,
+`TaskScoreTransitionConfig`, the `TaskDispatchRuntime` owner interface, its
+Redis LIST implementation, and the candidate-worker DTO. The Task score core
+also implements exact single-band bounded acquisition. Work/backlog APIs remain
+deliberately absent until that owner is designed completely. The existing
+active-task acquire supplies the base RUNNING-first band order.
 
 Interface sources:
 
 ```text
-py_example/kernel/assignment_dispatch.py
+py_example/kernel/task_worker_allocation.py
 py_example/kernel/task_dispatch_runtime.py
 ```
 

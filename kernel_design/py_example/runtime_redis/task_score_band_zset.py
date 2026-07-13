@@ -133,27 +133,48 @@ return {"transitioned", tonumber(next_score)}
         if limit <= 0:
             return []
 
-        now_time_slot = self._current_time_slot()
-        due_time_slot = now_time_slot - 1
-        if due_time_slot < self.MIN_TIME_SLOT:
-            return []
-
-        running_limit = limit
-        running = self._range_task_ids(
-            self._score(self.RUNNING_VISIBLE_TAG, 0, 0),
-            self._score(self.RUNNING_VISIBLE_TAG, due_time_slot, self.MAX_SUFFIX),
-            running_limit,
+        before_time_millis = self._current_time_millis()
+        running = self.acquire_band_task_candidates(
+            band=TaskScoreBand.RUNNING_VISIBLE,
+            before_time_millis=before_time_millis,
+            limit=limit,
         )
         remaining = limit - len(running)
         if remaining <= 0:
             return running
 
-        pre_dispatch_visible = self._range_task_ids(
-            self._score(self.PRE_DISPATCH_VISIBLE_TAG, 0, 0),
-            self._score(self.PRE_DISPATCH_VISIBLE_TAG, due_time_slot, self.MAX_SUFFIX),
-            remaining,
+        pre_dispatch_visible = self.acquire_band_task_candidates(
+            band=TaskScoreBand.PRE_DISPATCH_VISIBLE,
+            before_time_millis=before_time_millis,
+            limit=remaining,
         )
         return [*running, *pre_dispatch_visible]
+
+    def acquire_band_task_candidates(
+        self,
+        *,
+        band: TaskScoreBand,
+        before_time_millis: TimeMillis,
+        limit: int,
+    ) -> Sequence[TaskId]:
+        if limit <= 0:
+            return []
+        if band is TaskScoreBand.TERMINAL:
+            raise ValueError("terminal band is not a positive score range")
+        if not self._valid_time_millis(before_time_millis):
+            return []
+
+        tag = self._tag_from_band(band)
+        before_time_slot = self._time_slot_from_millis(before_time_millis)
+        max_time_slot = before_time_slot - 1
+        if tag is None or max_time_slot < self.MIN_TIME_SLOT:
+            return []
+
+        return self._range_task_ids(
+            self._score(tag, self.MIN_TIME_SLOT, self.MIN_SUFFIX),
+            self._score(tag, max_time_slot, self.MAX_SUFFIX),
+            limit,
+        )
 
     def acquire_dispatch_work_tasks(
         self,
@@ -162,15 +183,10 @@ return {"transitioned", tonumber(next_score)}
     ) -> Sequence[TaskId]:
         if limit <= 0:
             return []
-        now_time_slot = self._current_time_slot()
-        due_time_slot = now_time_slot - 1
-        if due_time_slot < self.MIN_TIME_SLOT:
-            return []
-
-        return self._range_task_ids(
-            self._score(self.RUNNING_VISIBLE_TAG, 0, 0),
-            self._score(self.RUNNING_VISIBLE_TAG, due_time_slot, self.MAX_SUFFIX),
-            limit,
+        return self.acquire_band_task_candidates(
+            band=TaskScoreBand.RUNNING_VISIBLE,
+            before_time_millis=self._current_time_millis(),
+            limit=limit,
         )
 
     def initialize_score(

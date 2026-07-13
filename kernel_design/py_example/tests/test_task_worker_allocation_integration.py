@@ -22,6 +22,8 @@ from kernel_design.py_example import (
     TaskCreationStatus,
     TaskDescriptor,
     TaskScoreBand,
+    TaskScoreTransitionConfig,
+    TaskScoreTransitionPacer,
     TaskScoreTransitionStatus,
     TaskWorkerAllocationConfig,
     TaskWorkerAllocationPacer,
@@ -99,6 +101,11 @@ class AssignmentDispatchIntegrationTest(unittest.TestCase):
             WorkerCandidateMatcher(self.worker_catalog, dynamic_runtime),
             self.dispatch_runtime,
         )
+        self.transition_pacer = TaskScoreTransitionPacer(
+            self.task_score,
+            self.task_catalog,
+            self.dispatch_runtime,
+        )
 
     def tearDown(self) -> None:
         self.redis.delete(
@@ -142,11 +149,12 @@ class AssignmentDispatchIntegrationTest(unittest.TestCase):
             suffix=5,
         )
         time.sleep((self.task_score.SLOT_MILLIS + 20) / 1_000)
-        promoted = self.task_score.rewrite_score(
+        approved = self.task_score.rewrite_score(
             task_id=self.task_id,
             expected_band=TaskScoreBand.PRE_REVIEW,
             target_time_millis=time.time_ns() // 1_000_000,
-            target_band=TaskScoreBand.RUNNING_VISIBLE,
+            target_band=TaskScoreBand.PRE_DISPATCH_VISIBLE,
+            target_suffix=5,
         )
         time.sleep((self.task_score.SLOT_MILLIS + 20) / 1_000)
         score_before_allocation = self.task_score.get_score_states(
@@ -163,6 +171,15 @@ class AssignmentDispatchIntegrationTest(unittest.TestCase):
         score_after_allocation = self.task_score.get_score_states(
             task_ids=(self.task_id,)
         )[self.task_id]
+        transitioned = self.transition_pacer.rewrite_score(
+            config=TaskScoreTransitionConfig(
+                task_batch_limit=10,
+                running_visible_initial_suffix=8,
+            )
+        )
+        running_state = self.task_score.get_score_states(
+            task_ids=(self.task_id,)
+        )[self.task_id]
         queued_candidate_count = self.dispatch_runtime.candidate_worker_count(
             task_id=self.task_id,
         )
@@ -174,9 +191,12 @@ class AssignmentDispatchIntegrationTest(unittest.TestCase):
         self.assertEqual(group_result.status, WorkerRuntimeStatus.OK)
         self.assertEqual(worker_result.status, WorkerRuntimeStatus.OK)
         self.assertEqual(task_result.status, TaskCreationStatus.CREATED)
-        self.assertEqual(promoted.status, TaskScoreTransitionStatus.TRANSITIONED)
+        self.assertEqual(approved.status, TaskScoreTransitionStatus.TRANSITIONED)
         self.assertEqual(published, 1)
         self.assertEqual(score_after_allocation.score, score_before_allocation.score)
+        self.assertEqual(transitioned, 1)
+        self.assertEqual(running_state.band, TaskScoreBand.RUNNING_VISIBLE)
+        self.assertEqual(running_state.suffix, 8)
         self.assertEqual(queued_candidate_count, 1)
         self.assertEqual([entry.worker_id for entry in entries], [self.worker_id])
         self.assertGreater(entries[0].observed_worker_score, 0)

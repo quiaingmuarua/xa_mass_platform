@@ -204,6 +204,47 @@ class RedisZsetTaskScoreBandCoreTest(unittest.TestCase):
             self.kernel.acquire_dispatch_work_tasks(limit=10),
         )
 
+    def test_acquire_band_candidates_uses_exact_band_and_exclusive_horizon(
+        self,
+    ) -> None:
+        self.store_score(
+            "running-before",
+            self.score(self.kernel.RUNNING_VISIBLE_TAG, 999, 5),
+        )
+        self.store_score(
+            "running-at-horizon",
+            self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 5),
+        )
+        self.store_score(
+            "pre-dispatch-before",
+            self.score(self.kernel.PRE_DISPATCH_VISIBLE_TAG, 999, 5),
+        )
+
+        self.assertEqual(
+            ["pre-dispatch-before"],
+            self.kernel.acquire_band_task_candidates(
+                band=TaskScoreBand.PRE_DISPATCH_VISIBLE,
+                before_time_millis=self.millis(1_000),
+                limit=10,
+            ),
+        )
+        self.assertEqual(
+            ["running-before"],
+            self.kernel.acquire_band_task_candidates(
+                band=TaskScoreBand.RUNNING_VISIBLE,
+                before_time_millis=self.millis(1_000),
+                limit=10,
+            ),
+        )
+
+    def test_acquire_band_candidates_rejects_terminal_band(self) -> None:
+        with self.assertRaises(ValueError):
+            self.kernel.acquire_band_task_candidates(
+                band=TaskScoreBand.TERMINAL,
+                before_time_millis=self.millis(1_000),
+                limit=10,
+            )
+
     def test_initialize_score_writes_duration_lease(self) -> None:
         new_result = self.kernel.initialize_score(
             task_id="new",

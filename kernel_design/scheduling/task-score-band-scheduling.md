@@ -587,6 +587,11 @@ the current band owner defines suffix as owner-local state, such as
 `PRE_REVIEW`. A budget reset is a separate owner-authorized reset transition,
 not release/resume and not a generic event side effect.
 
+For the built-in `PRE_DISPATCH_VISIBLE -> RUNNING_VISIBLE` transition, the
+caller must supply the configured initial `RUNNING_VISIBLE` remaining budget as
+`targetSuffix = N`. It must not preserve the PRE_DISPATCH budget and must not
+write `00` unless policy intentionally starts RUNNING in exhausted mode.
+
 After acquire, decode `tag` and `suffix`:
 
 ```text
@@ -868,6 +873,16 @@ release/resume or owner terminal finality.
 Acquire returns candidate task ids only. It does not prove work exists, admit a
 worker, claim work, or accept a result.
 
+The score owner exposes an exact single-band query primitive:
+
+```text
+acquire_band_task_candidates(band, beforeTimeMillis, limit)
+```
+
+It accepts positive non-terminal bands only, converts the exclusive millisecond
+horizon into the internal time-slot range, and returns ordered Task ids from
+that band. Callers do not construct score bounds or decode returned rows.
+
 After acquire, assignment-dispatch asks the owning planes to validate their own
 facts:
 
@@ -931,7 +946,7 @@ score-hold release primitives:
 
 ```text
 1. choose task score scan range and limit according to active band order
-2. acquire task ids from task score-band query(range, limit)
+2. acquire task ids from task score-band single-band query(band, horizon, limit)
 3. load task score state and validate gate / time coordinate
 4. if RUNNING_VISIBLE:
      ask work-item owner for bounded claimable-work evidence

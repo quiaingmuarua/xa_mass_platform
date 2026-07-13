@@ -91,10 +91,10 @@ TaskWorkerAllocationPacer
   matches Workers and appends transient candidate evidence
   does not read decoded Task score state or write Task score
 
-score-acquired assignment classification
+TaskScoreTransitionPacer
   independently reads activation/allocation owner facts
-  owns fairness rotation, activation transition, allocation recheck,
-  and no-worker score outcomes
+  requests owner-validated Task score transitions
+  first executable action is PRE_DISPATCH_VISIBLE -> RUNNING_VISIBLE
 
 WorkDispatchPacer
   Task-score read-only
@@ -119,9 +119,9 @@ TaskWorkerAllocationPacer
   scans oldest due active Tasks first
   publishes bounded candidate evidence without rewriting Task score
 
-score-acquired assignment classification
+TaskScoreTransitionPacer
   independently observes allocation facts
-  writes the next Task timeSlot / suffix / band according to score policy
+  asks TaskScoreBandCore to write the next Task timeSlot / suffix / band
 
 WorkDispatchPacer
   scans RUNNING_VISIBLE from current time backward
@@ -238,6 +238,14 @@ WorkerCandidateConstraint.limit = Task.maximumCandidateWorkers
 `candidate_worker_count` is available to independent score classification and
 diagnostics. Candidate allocation does not read it, turn it into a persistent
 queue cap, or use it as permission to write Task score.
+
+The first executable `TaskScoreTransitionPacer.rewrite_score(config)` scans one
+due `PRE_DISPATCH_VISIBLE` band range, checks
+`runningVisibleMinimumCandidateWorkers`, and requests
+`PRE_DISPATCH_VISIBLE -> RUNNING_VISIBLE` with an explicit configured initial
+RUNNING suffix. `expected_band` plus the score primitive's write-time range
+check rejects a Task that has already moved; the pacer does not re-read or
+decode Task score state.
 
 Cross-Task pipeline/multi-call wrappers may reduce network round trips, but each
 Task key succeeds or fails independently. No interface may imply all-or-nothing

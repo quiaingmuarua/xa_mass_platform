@@ -40,6 +40,8 @@ from .kernel import (
     TaskDispatchRuntime,
     TaskResourceCatalog,
     TaskRuntime,
+    TaskScoreTransitionConfig,
+    TaskScoreTransitionPacer,
     TaskWorkerAllocationConfig,
     TaskWorkerAllocationPacer,
 )
@@ -104,6 +106,8 @@ __all__ = [
     "TaskDispatchRuntime",
     "TaskResourceCatalog",
     "TaskRuntime",
+    "TaskScoreTransitionConfig",
+    "TaskScoreTransitionPacer",
     "TaskWorkerAllocationConfig",
     "TaskWorkerAllocationPacer",
 ]

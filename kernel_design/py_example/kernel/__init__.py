@@ -45,7 +45,9 @@ from .task_runtime import (
     TaskResourceCatalog,
     TaskRuntime,
 )
-from .assignment_dispatch import (
+from .task_worker_allocation import (
+    TaskScoreTransitionConfig,
+    TaskScoreTransitionPacer,
     TaskWorkerAllocationConfig,
     TaskWorkerAllocationPacer,
 )
@@ -93,6 +95,8 @@ __all__ = [
     "TaskDispatchRuntime",
     "TaskResourceCatalog",
     "TaskRuntime",
+    "TaskScoreTransitionConfig",
+    "TaskScoreTransitionPacer",
     "TaskWorkerAllocationConfig",
     "TaskWorkerAllocationPacer",
 ]
