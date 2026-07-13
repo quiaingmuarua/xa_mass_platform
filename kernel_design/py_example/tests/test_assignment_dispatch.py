@@ -10,11 +10,7 @@ from kernel_design.py_example import (
     TaskDescriptor,
     TaskDispatchRuntime,
     TaskResourceCatalog,
-    TaskScoreBand,
     TaskScoreBandCore,
-    TaskScoreState,
-    TaskScoreTransitionResult,
-    TaskScoreTransitionStatus,
     TaskWorkerAllocationConfig,
     TaskWorkerAllocationPacer,
     WorkerCandidateMatcher,
@@ -79,7 +75,7 @@ class AssignmentDispatchTest(unittest.TestCase):
             {"self", "config"},
         )
 
-    def test_allocation_pacer_stops_when_no_active_tasks_are_acquired(self) -> None:
+    def test_allocation_stops_when_no_active_tasks_are_acquired(self) -> None:
         pacer, task_score, task_catalog, worker_score, _, runtime = (
             self._allocation_pacer()
         )
@@ -88,12 +84,11 @@ class AssignmentDispatchTest(unittest.TestCase):
         published = pacer.allocate_candidate_workers(config=self._allocation_config())
 
         self.assertEqual(published, 0)
-        task_score.get_score_states.assert_not_called()
         task_catalog.load_task_allocation_descriptors.assert_not_called()
         worker_score.acquire_hot_acquire_candidates.assert_not_called()
-        runtime.candidate_worker_count.assert_not_called()
+        runtime.append_candidate_workers.assert_not_called()
 
-    def test_allocation_pacer_matches_one_worker_group_and_publishes_tasks(
+    def test_allocation_matches_one_worker_group_and_publishes_all_evidence(
         self,
     ) -> None:
         pacer, task_score, task_catalog, worker_score, worker_matcher, runtime = (
@@ -101,39 +96,23 @@ class AssignmentDispatchTest(unittest.TestCase):
         )
         task_score.acquire_active_task_candidates.return_value = (
             "running-task",
-            "ready-task",
+            "pre-dispatch-task",
         )
-        task_score.get_score_states.return_value = {
-            "running-task": self._task_state(
-                "running-task",
-                TaskScoreBand.RUNNING_VISIBLE,
-                score=101,
-            ),
-            "ready-task": self._task_state(
-                "ready-task",
-                TaskScoreBand.PRE_DISPATCH_VISIBLE,
-                score=202,
-            ),
-        }
         task_catalog.load_task_allocation_descriptors.return_value = {
             "running-task": self._descriptor("running-task", minimum_workers=1),
-            "ready-task": self._descriptor("ready-task", minimum_workers=2),
+            "pre-dispatch-task": self._descriptor(
+                "pre-dispatch-task",
+                minimum_workers=10,
+            ),
         }
         worker_score.acquire_hot_acquire_candidates.return_value = (
             ("worker-1", 1_001),
             ("worker-2", 1_002),
-            ("worker-3", 1_003),
         )
         worker_matcher.match_worker_candidates.return_value = {
             "running-task": ["worker-1"],
-            "ready-task": ["worker-2", "worker-3"],
+            "pre-dispatch-task": ["worker-2"],
         }
-        task_score.rewrite_same_band_time_millis.return_value = (
-            TaskScoreTransitionResult(TaskScoreTransitionStatus.TRANSITIONED)
-        )
-        task_score.rewrite_score.return_value = TaskScoreTransitionResult(
-            TaskScoreTransitionStatus.TRANSITIONED
-        )
 
         published = pacer.allocate_candidate_workers(config=self._allocation_config())
 
@@ -142,7 +121,11 @@ class AssignmentDispatchTest(unittest.TestCase):
             home_bucket_id="image-workers",
             limit=20,
         )
-        worker_matcher.match_worker_candidates.assert_called_once()
+        constraints = worker_matcher.match_worker_candidates.call_args.kwargs[
+            "candidate_constraints"
+        ]
+        self.assertEqual(constraints["running-task"].limit, 10)
+        self.assertEqual(constraints["pre-dispatch-task"].limit, 10)
         self.assertEqual(runtime.append_candidate_workers.call_count, 2)
         published_by_task = {
             call.kwargs["task_id"]: call.kwargs["candidate_workers"]
@@ -153,186 +136,59 @@ class AssignmentDispatchTest(unittest.TestCase):
             ["worker-1"],
         )
         self.assertEqual(
-            [entry.worker_id for entry in published_by_task["ready-task"]],
-            ["worker-2", "worker-3"],
-        )
-        self.assertEqual(
-            task_score.rewrite_score.call_args.kwargs["target_band"],
-            TaskScoreBand.RUNNING_VISIBLE,
-        )
-
-    def test_allocation_pacer_defers_no_candidate_with_observed_score(self) -> None:
-        pacer, task_score, task_catalog, worker_score, _, runtime = (
-            self._allocation_pacer()
-        )
-        state = self._task_state(
-            "running-task",
-            TaskScoreBand.RUNNING_VISIBLE,
-            score=321,
-            suffix=4,
-        )
-        task_score.acquire_active_task_candidates.return_value = ("running-task",)
-        task_score.get_score_states.return_value = {"running-task": state}
-        task_catalog.load_task_allocation_descriptors.return_value = {
-            "running-task": self._descriptor("running-task", minimum_workers=1)
-        }
-        worker_score.acquire_hot_acquire_candidates.return_value = ()
-
-        published = pacer.allocate_candidate_workers(config=self._allocation_config())
-
-        self.assertEqual(published, 0)
-        rewrite = task_score.rewrite_observed_same_band_suffix
-        self.assertEqual(rewrite.call_args.kwargs["observed_score"], 321)
-        self.assertEqual(rewrite.call_args.kwargs["suffix_delta"], -1)
-        runtime.append_candidate_workers.assert_not_called()
-
-    def test_allocation_pacer_holds_exhausted_no_candidate(self) -> None:
-        pacer, task_score, task_catalog, worker_score, _, _ = (
-            self._allocation_pacer()
-        )
-        state = self._task_state(
-            "running-task",
-            TaskScoreBand.RUNNING_VISIBLE,
-            score=321,
-            suffix=0,
-        )
-        task_score.acquire_active_task_candidates.return_value = ("running-task",)
-        task_score.get_score_states.return_value = {"running-task": state}
-        task_catalog.load_task_allocation_descriptors.return_value = {
-            "running-task": self._descriptor("running-task", minimum_workers=1)
-        }
-        worker_score.acquire_hot_acquire_candidates.return_value = ()
-
-        pacer.allocate_candidate_workers(config=self._allocation_config())
-
-        task_score.rewrite_same_band_time_millis.assert_called_once_with(
-            task_id="running-task",
-            expected_band=TaskScoreBand.RUNNING_VISIBLE,
-            target_time_millis=TaskScoreBandCore.PAUSE_TIME_MILLIS,
+            [
+                entry.worker_id
+                for entry in published_by_task["pre-dispatch-task"]
+            ],
+            ["worker-2"],
         )
 
-    def test_allocation_pacer_does_not_publish_after_stale_score_rewrite(self) -> None:
+    def test_allocation_does_not_read_or_write_task_transition_state(self) -> None:
         pacer, task_score, task_catalog, worker_score, worker_matcher, runtime = (
             self._allocation_pacer()
         )
-        task_score.acquire_active_task_candidates.return_value = ("running-task",)
-        task_score.get_score_states.return_value = {
-            "running-task": self._task_state(
-                "running-task",
-                TaskScoreBand.RUNNING_VISIBLE,
-                score=101,
-            )
-        }
+        task_score.acquire_active_task_candidates.return_value = ("task-1",)
         task_catalog.load_task_allocation_descriptors.return_value = {
-            "running-task": self._descriptor("running-task", minimum_workers=1)
+            "task-1": self._descriptor("task-1", minimum_workers=5)
         }
         worker_score.acquire_hot_acquire_candidates.return_value = (
             ("worker-1", 1_001),
         )
         worker_matcher.match_worker_candidates.return_value = {
-            "running-task": ["worker-1"]
+            "task-1": ["worker-1"]
         }
-        task_score.rewrite_same_band_time_millis.return_value = (
-            TaskScoreTransitionResult(TaskScoreTransitionStatus.STALE)
-        )
-
-        published = pacer.allocate_candidate_workers(config=self._allocation_config())
-
-        self.assertEqual(published, 0)
-        runtime.append_candidate_workers.assert_not_called()
-
-    def test_allocation_pacer_limits_match_to_remaining_queue_capacity(self) -> None:
-        pacer, task_score, task_catalog, worker_score, worker_matcher, runtime = (
-            self._allocation_pacer()
-        )
-        task_score.acquire_active_task_candidates.return_value = ("running-task",)
-        task_score.get_score_states.return_value = {
-            "running-task": self._task_state(
-                "running-task",
-                TaskScoreBand.RUNNING_VISIBLE,
-                score=101,
-            )
-        }
-        task_catalog.load_task_allocation_descriptors.return_value = {
-            "running-task": self._descriptor("running-task", minimum_workers=1)
-        }
-        runtime.candidate_worker_count.return_value = 7
-        worker_score.acquire_hot_acquire_candidates.return_value = (
-            ("worker-1", 1_001),
-            ("worker-2", 1_002),
-            ("worker-3", 1_003),
-        )
-        worker_matcher.match_worker_candidates.return_value = {
-            "running-task": ["worker-1", "worker-2", "worker-3"]
-        }
-        task_score.rewrite_same_band_time_millis.return_value = (
-            TaskScoreTransitionResult(TaskScoreTransitionStatus.TRANSITIONED)
-        )
+        runtime.candidate_worker_count.return_value = 9
 
         published = pacer.allocate_candidate_workers(config=self._allocation_config())
 
         self.assertEqual(published, 1)
+        task_score.get_score_states.assert_not_called()
+        task_score.rewrite_score.assert_not_called()
+        task_score.rewrite_same_band_time_millis.assert_not_called()
+        task_score.rewrite_observed_same_band_suffix.assert_not_called()
+        runtime.candidate_worker_count.assert_not_called()
         constraints = worker_matcher.match_worker_candidates.call_args.kwargs[
             "candidate_constraints"
         ]
-        self.assertEqual(constraints["running-task"].limit, 3)
+        self.assertEqual(constraints["task-1"].limit, 10)
         runtime.append_candidate_workers.assert_called_once()
 
-    def test_existing_candidates_do_not_consume_no_candidate_budget(self) -> None:
-        pacer, task_score, task_catalog, worker_score, _, runtime = (
-            self._allocation_pacer()
-        )
-        task_score.acquire_active_task_candidates.return_value = ("running-task",)
-        task_score.get_score_states.return_value = {
-            "running-task": self._task_state(
-                "running-task",
-                TaskScoreBand.RUNNING_VISIBLE,
-                score=101,
-                suffix=4,
-            )
-        }
-        task_catalog.load_task_allocation_descriptors.return_value = {
-            "running-task": self._descriptor("running-task", minimum_workers=1)
-        }
-        runtime.candidate_worker_count.return_value = 2
-        worker_score.acquire_hot_acquire_candidates.return_value = ()
-        task_score.rewrite_same_band_time_millis.return_value = (
-            TaskScoreTransitionResult(TaskScoreTransitionStatus.TRANSITIONED)
-        )
-
-        pacer.allocate_candidate_workers(config=self._allocation_config())
-
-        task_score.rewrite_observed_same_band_suffix.assert_not_called()
-        task_score.rewrite_same_band_time_millis.assert_called_once()
-        runtime.append_candidate_workers.assert_not_called()
-
-    def test_full_candidate_queue_skips_matching_and_rotates_task_score(self) -> None:
+    def test_allocation_with_no_hot_workers_is_a_bounded_noop(self) -> None:
         pacer, task_score, task_catalog, worker_score, worker_matcher, runtime = (
             self._allocation_pacer()
         )
-        task_score.acquire_active_task_candidates.return_value = ("running-task",)
-        task_score.get_score_states.return_value = {
-            "running-task": self._task_state(
-                "running-task",
-                TaskScoreBand.RUNNING_VISIBLE,
-                score=101,
-            )
-        }
+        task_score.acquire_active_task_candidates.return_value = ("task-1",)
         task_catalog.load_task_allocation_descriptors.return_value = {
-            "running-task": self._descriptor("running-task", minimum_workers=1)
+            "task-1": self._descriptor("task-1", minimum_workers=1)
         }
-        runtime.candidate_worker_count.return_value = 10
-        task_score.rewrite_same_band_time_millis.return_value = (
-            TaskScoreTransitionResult(TaskScoreTransitionStatus.TRANSITIONED)
-        )
+        worker_score.acquire_hot_acquire_candidates.return_value = ()
 
         published = pacer.allocate_candidate_workers(config=self._allocation_config())
 
         self.assertEqual(published, 0)
-        worker_score.acquire_hot_acquire_candidates.assert_not_called()
         worker_matcher.match_worker_candidates.assert_not_called()
-        task_score.rewrite_same_band_time_millis.assert_called_once()
         runtime.append_candidate_workers.assert_not_called()
+        task_score.rewrite_observed_same_band_suffix.assert_not_called()
 
     def test_allocation_config_rejects_non_positive_round_bounds(self) -> None:
         with self.assertRaises(ValueError):
@@ -340,7 +196,6 @@ class AssignmentDispatchTest(unittest.TestCase):
                 task_batch_limit=0,
                 worker_scan_limit=20,
                 candidate_ttl_millis=1_000,
-                no_candidate_recheck_delay_millis=500,
             )
 
     def _allocation_pacer(
@@ -351,7 +206,6 @@ class AssignmentDispatchTest(unittest.TestCase):
         worker_score = Mock(spec=WorkerScoreCore)
         worker_matcher = Mock(spec=WorkerCandidateMatcher)
         runtime = Mock(spec=TaskDispatchRuntime)
-        runtime.candidate_worker_count.return_value = 0
         return (
             TaskWorkerAllocationPacer(
                 task_score,
@@ -373,23 +227,6 @@ class AssignmentDispatchTest(unittest.TestCase):
             task_batch_limit=10,
             worker_scan_limit=20,
             candidate_ttl_millis=60_000,
-            no_candidate_recheck_delay_millis=500,
-        )
-
-    @staticmethod
-    def _task_state(
-        task_id: str,
-        band: TaskScoreBand,
-        *,
-        score: int,
-        suffix: int = 5,
-    ) -> TaskScoreState:
-        return TaskScoreState(
-            task_id=task_id,
-            score=score,
-            band=band,
-            time_millis=1,
-            suffix=suffix,
         )
 
     @staticmethod

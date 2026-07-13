@@ -149,15 +149,20 @@ class AssignmentDispatchIntegrationTest(unittest.TestCase):
             target_band=TaskScoreBand.RUNNING_VISIBLE,
         )
         time.sleep((self.task_score.SLOT_MILLIS + 20) / 1_000)
+        score_before_allocation = self.task_score.get_score_states(
+            task_ids=(self.task_id,)
+        )[self.task_id]
 
         published = self.pacer.allocate_candidate_workers(
             config=TaskWorkerAllocationConfig(
                 task_batch_limit=10,
                 worker_scan_limit=10,
                 candidate_ttl_millis=5_000,
-                no_candidate_recheck_delay_millis=500,
             )
         )
+        score_after_allocation = self.task_score.get_score_states(
+            task_ids=(self.task_id,)
+        )[self.task_id]
         queued_candidate_count = self.dispatch_runtime.candidate_worker_count(
             task_id=self.task_id,
         )
@@ -171,6 +176,7 @@ class AssignmentDispatchIntegrationTest(unittest.TestCase):
         self.assertEqual(task_result.status, TaskCreationStatus.CREATED)
         self.assertEqual(promoted.status, TaskScoreTransitionStatus.TRANSITIONED)
         self.assertEqual(published, 1)
+        self.assertEqual(score_after_allocation.score, score_before_allocation.score)
         self.assertEqual(queued_candidate_count, 1)
         self.assertEqual([entry.worker_id for entry in entries], [self.worker_id])
         self.assertGreater(entries[0].observed_worker_score, 0)

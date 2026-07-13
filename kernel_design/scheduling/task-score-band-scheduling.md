@@ -1012,6 +1012,9 @@ Activation fact changes are not direct score writes. They update activation
 owner truth; an acquired `PRE_DISPATCH_VISIBLE` scheduling round later reads those
 facts and decides whether the band remains `PRE_DISPATCH_VISIBLE`, becomes
 `RUNNING_VISIBLE`, or holds because same-band budget is exhausted.
+Candidate-worker allocation is one such evidence write: it may discover Tasks
+through the score axis, but its match/append operation neither reads decoded
+Task score state nor gates publication on a score transition.
 
 ### Non-Triggers
 

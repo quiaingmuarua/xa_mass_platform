@@ -87,9 +87,14 @@ The two pacers do not lock Task resources.
 
 ```text
 TaskWorkerAllocationPacer
-  only routine Task-score writer in assignment-dispatch
-  owns allocation fairness, activation classification, allocation recheck,
-  and no-worker allocation outcomes
+  reads due Task ids from the score axis
+  matches Workers and appends transient candidate evidence
+  does not read decoded Task score state or write Task score
+
+score-acquired assignment classification
+  independently reads activation/allocation owner facts
+  owns fairness rotation, activation transition, allocation recheck,
+  and no-worker score outcomes
 
 WorkDispatchPacer
   Task-score read-only
@@ -112,8 +117,11 @@ Both pacers use the same Task score axis with opposite scan intent:
 ```text
 TaskWorkerAllocationPacer
   scans oldest due active Tasks first
-  successful allocation writes timeSlot = current scheduling time
-  moves the Task toward the newest end of the due active range
+  publishes bounded candidate evidence without rewriting Task score
+
+score-acquired assignment classification
+  independently observes allocation facts
+  writes the next Task timeSlot / suffix / band according to score policy
 
 WorkDispatchPacer
   scans RUNNING_VISIBLE from current time backward
@@ -125,9 +133,9 @@ This is a fairness/freshness pipeline, not an ownership lease:
 
 ```text
 oldest due Task
-  -> allocation
-  -> current timeSlot
-  -> recent dispatch candidate
+  -> candidate allocation evidence
+  -> independent score classification
+  -> RUNNING dispatch visibility
   -> candidate-worker consumption
 ```
 
@@ -188,21 +196,21 @@ decoded Worker-score internals, transport handles, or result state.
 
 ## Publication And Consumption
 
-Allocation publishes evidence only after the Task-score fairness rewrite is
-accepted:
+Allocation publishes evidence independently from Task-score classification:
 
 ```text
 match bounded workers
-  -> request Task timeSlot rewrite
-  -> stale / rejected: do not publish
-  -> transitioned: atomically append one Task's candidate entries
+  -> atomically append one Task's candidate entries
+
+separate score-acquired classification
+  -> read current owner facts
+  -> request Task score rewrite
 ```
 
-This deliberately avoids cross-key atomicity. If the score rewrite succeeds but
-collection publication fails, the Task loses one allocation opportunity and
-later returns through normal oldest-first allocation. If a lifecycle command
-wins after publication, the Task leaves the dispatch scan and the collection
-becomes unreachable residue for later Task physical cleanup.
+There is no score/collection commit protocol. If publication fails, the score
+has not been changed by allocation. If a lifecycle command wins after
+publication, the Task leaves the dispatch scan and the collection becomes
+unreachable residue for later Task physical cleanup.
 
 Work dispatch consumes entries using an owner-local atomic pop/claim primitive.
 Multiple WorkDispatchPacer workers may run concurrently without a Task lock;
@@ -221,15 +229,15 @@ choose a queue length or trim to Task policy. `candidate_worker_count` is a
 point-read of the current stored LIST length; it is not a capacity decision and
 does not scan, decode, or subtract expired entries.
 
-`TaskWorkerAllocationPacer` owns the policy calculation before matching:
+`maximumCandidateWorkers` is the Task-owned per-round matcher bound:
 
 ```text
-remaining = max(0, Task.maximumCandidateWorkers - storedQueueLength)
+WorkerCandidateConstraint.limit = Task.maximumCandidateWorkers
 ```
 
-A full queue skips Worker scan and matching. The Task score is still rotated so
-WorkDispatchPacer can consume existing entries, including expired entries that
-must leave through the consume path.
+`candidate_worker_count` is available to independent score classification and
+diagnostics. Candidate allocation does not read it, turn it into a persistent
+queue cap, or use it as permission to write Task score.
 
 Cross-Task pipeline/multi-call wrappers may reduce network round trips, but each
 Task key succeeds or fails independently. No interface may imply all-or-nothing
@@ -266,7 +274,7 @@ dispatch faster than allocation
   empty/missing collections are bounded no-op results
 
 collection write lost
-  Task returns through Task-score allocation rotation
+  a later bounded allocation round may produce fresh evidence
 
 candidate Worker stale
   dispatch drops entry; later allocation produces fresh evidence
@@ -284,6 +292,8 @@ Events may lower latency but cannot be required to wake either pacer.
   score.
 - Do not make candidate-worker collection a second global Task index.
 - Do not lease Workers during Task-Worker allocation.
+- Do not gate candidate publication on Task-score transition or make allocation
+  rewrite Task score.
 - Do not put Task or Worker resource mutations behind either pacer.
 - Do not refresh Task score because append, result, heartbeat, metadata, trace,
   or projection changed.

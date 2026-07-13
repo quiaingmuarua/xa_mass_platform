@@ -59,7 +59,7 @@ hidden defaults.
 | Config key | Required/default | Validation owner | Consumer | Validation |
 | --- | --- | --- | --- | --- |
 | `priority` | required, no default | TaskDescriptor contract | assignment-dispatch constraint construction | decimal text in `1..100` |
-| `maximumCandidateWorkers` | required, no default | TaskDescriptor contract | allocation pacer candidate-queue target | positive decimal text |
+| `maximumCandidateWorkers` | required, no default | TaskDescriptor contract | allocation matcher limit per Task and round | positive decimal text |
 | `runningVisibleMinimumCandidateWorkers` | required, no default | TaskDescriptor contract | pre-dispatch activation check | decimal text in `1..maximumCandidateWorkers` |
 
 ### taskId
@@ -169,23 +169,19 @@ RUNNING_VISIBLE + worker count later below configured minimum
 Running availability, no-work behavior, pause, and terminal policy remain task
 score/work scheduling concerns.
 
-`maximumCandidateWorkers` is Task-owned allocation configuration. The
-allocation pacer compares it with the current stored candidate count before
-performing expensive Worker matching:
+`maximumCandidateWorkers` is Task-owned allocation configuration. It bounds the
+matcher output for this Task in one allocation round:
 
 ```text
-remainingCandidateWorkers = max(
-  0,
-  maximumCandidateWorkers - queuedCandidateWorkers,
-)
-
-WorkerCandidateConstraint.limit = remainingCandidateWorkers
+WorkerCandidateConstraint.limit = maximumCandidateWorkers
 ```
 
 `TaskDispatchRuntime` does not receive, enforce, or reinterpret this value. It
-reports current stored queue occupancy and appends every candidate entry
-supplied by the pacer. Descriptor admission must reject a minimum above the
-Task maximum; otherwise the task can never satisfy its activation condition.
+appends every candidate entry supplied by the pacer. Its queue count may be
+read later by an independent activation/score classification, but candidate
+allocation does not subtract queue occupancy from the matcher limit. Descriptor
+admission must reject a minimum above the Task maximum; otherwise one bounded
+allocation result cannot satisfy the first activation condition.
 
 ## Constraint Construction
 
@@ -194,8 +190,7 @@ The phase-one constraint is built directly from the descriptor:
 ```text
 TaskDescriptor
   config["priority"] --------------------------> constraint.priority
-  config["maximumCandidateWorkers"]
-    - TaskDispatchRuntime.candidateWorkerCount -> constraint.limit
+  config["maximumCandidateWorkers"] ----------> constraint.limit
   allocationRule ------------------------------> constraint.match_rules
 ```
 
@@ -204,7 +199,7 @@ Conceptual result:
 ```python
 WorkerCandidateConstraint(
     priority=int(descriptor.config["priority"]),
-    limit=remainingCandidateWorkers,
+    limit=int(descriptor.config["maximumCandidateWorkers"]),
     match_rules=descriptor.allocation_rule,
 )
 ```

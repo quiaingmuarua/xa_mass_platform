@@ -15,12 +15,10 @@ It answers:
 
 ```text
 which Tasks currently have bounded candidate Workers?
-which PRE_DISPATCH_VISIBLE Tasks satisfy their first-running condition?
-which Task score should move to the current allocation fairness timeSlot?
 ```
 
 It does not claim Work, lease Workers, create DeliverSeed, or accept transport
-delivery.
+delivery. It also does not classify or transition Task score.
 
 ## Why It Is Independent
 
@@ -35,7 +33,6 @@ Worker descriptor batch read
 dynamic attribute batch read
 constraint DSL evaluation
 priority and limit consumption
-PRE_DISPATCH_VISIBLE condition evaluation
 candidate collection publication
 ```
 
@@ -48,8 +45,6 @@ claim, and delivery into one large policy extension point.
 ```text
 TaskScoreBandCore
   acquire_active_task_candidates(limit)
-  get_score_states(taskIds)
-  Task score rewrite primitives
 
 TaskResourceCatalog
   load_task_allocation_descriptors(taskIds)
@@ -64,7 +59,6 @@ TaskWorkerAllocationConfig
   taskBatchLimit
   workerScanLimit
   candidateTtlMillis
-  noCandidateRecheckDelayMillis
 ```
 
 ## Candidate Bands
@@ -73,7 +67,7 @@ Allocation scans due active Tasks oldest-first:
 
 ```text
 PRE_DISPATCH_VISIBLE
-  match Workers to evaluate runningVisibleMinimumCandidateWorkers
+  publish bounded candidate evidence for a later activation classification
   never claim Work or produce DeliverSeed
 
 RUNNING_VISIBLE
@@ -110,9 +104,7 @@ per Task:
 ```text
 bounded Task ids
   -> batch TaskDescriptor read
-  -> per-Task candidate queue occupancy read
   -> partition by workerGroupId
-  -> calculate remaining candidate capacity
   -> workerGroupId -> taskId -> WorkerCandidateConstraint
   -> bounded Worker score candidates for that group
   -> one WorkerCandidateMatcher call
@@ -145,11 +137,7 @@ priority
   parsed from TaskDescriptor.config["priority"]
 
 limit
-  max(
-    0,
-    TaskDescriptor.config["maximumCandidateWorkers"]
-      - TaskDispatchRuntime.candidateWorkerCount(taskId)
-  )
+  TaskDescriptor.config["maximumCandidateWorkers"]
 
 match_rules
   TaskDescriptor.allocationRule
@@ -181,37 +169,30 @@ Allocation must not decode observed Worker score and must not acquire a Worker
 lease. Worker evidence may become stale before dispatch; exact CAS in
 WorkDispatchPacer is the correctness fence.
 
-Tasks whose candidate queue already reached `maximumCandidateWorkers` do not
-enter Worker scan or matching. They still proceed to the score-transition stage
-so WorkDispatchPacer sees and drains the existing queue. Existing queue entries
-also prevent a zero-new-match round from being classified as `NO_WORKER`.
-
 ## PRE_DISPATCH_VISIBLE
 
-The first built-in activation condition is:
+Allocation does not evaluate the first-running condition. It appends every
+matched candidate entry up to the Task's single-round matcher limit:
 
 ```text
-matchedWorkerCount >= runningVisibleMinimumCandidateWorkers
+PRE_DISPATCH_VISIBLE allocation
+  -> bounded Worker match
+  -> append candidate evidence when non-empty
+  -> no Task score write
 ```
 
-If satisfied:
+An independent score-acquired classification later reads the activation owner
+facts, including the configured minimum and candidate evidence, and decides:
 
 ```text
-PRE_DISPATCH_VISIBLE -> RUNNING_VISIBLE at current allocation timeSlot
-publish bounded candidate-worker collection
+PRE_DISPATCH_VISIBLE -> RUNNING_VISIBLE
+PRE_DISPATCH_VISIBLE -> later same-band recheck with suffix consumption
+PRE_DISPATCH_VISIBLE -> same-band hold when exhausted
 ```
 
-If not satisfied and budget remains:
-
-```text
-stay PRE_DISPATCH_VISIBLE
-write later recheck timeSlot
-consume one scheduling suffix unit
-do not publish candidate collection
-```
-
-If exhausted, apply the configured PRE_DISPATCH hold/closure policy. This pacer
-never lets PRE_DISPATCH_VISIBLE continue directly into Work claim.
+That classification is not a commit stage inside `allocate_candidate_workers`.
+Candidate evidence may be appended before a later pause, close, stale
+classification, or failed transition; it remains expiring best-effort evidence.
 
 ## RUNNING_VISIBLE
 
@@ -230,41 +211,21 @@ The Work/backlog owner and no-work closure mechanism remain intentionally
 unfrozen until Work runtime is designed as a complete owner. This pacer must not
 introduce a read-only bridge merely to avoid empty matching cost.
 
-## Allocation Fairness
+## Score Classification Is Separate
 
-Allocation scans the oldest due active scores first. Successful allocation
-rewrites the Task to the current scheduling time while preserving same-band
-suffix:
-
-```text
-old timeSlot
-  -> bounded allocation
-  -> current timeSlot
-```
-
-This moves processed Tasks behind older due Tasks for subsequent allocation
-rounds. Successful allocation does not consume retry/no-work suffix budget.
-
-Negative classifications own different writes:
-
-```text
-NO_WORKER
-ACTIVATION_FALSE
-```
-
-They apply their policy-specific later timeSlot, suffix consumption, hold, or
-terminal action.
+Allocation discovers Tasks through the score axis but does not rewrite that
+axis. Fairness rotation, `NO_WORKER`, activation success/false, suffix
+consumption, hold, and terminal decisions belong to an independent
+score-acquired scheduling classification. Candidate publication is one fact
+that classification may observe; it is not atomic with the score write.
 
 ## Publish Protocol
 
-The pacer appends one ordered candidate sequence to one Task queue after the
-Task score rewrite succeeds:
+The pacer appends one ordered candidate sequence directly to one Task queue:
 
 ```text
 matched entries prepared
-  -> rewrite Task score
-  -> stale/rejected: discard prepared entries
-  -> transitioned: append candidate entries to that Task queue
+  -> append candidate entries to that Task queue
 ```
 
 Candidate entry:
@@ -279,10 +240,9 @@ expiresAtMillis
 The collection is match evidence only. It contains no Worker lease and no Work
 claim.
 
-There is no cross-key transaction between Task score and collection. Score
-success plus collection-write failure is a lost allocation opportunity; normal
-allocation rotation retries later. Lifecycle transition after publication makes
-the collection unreachable to Work dispatch; later Task physical cleanup owns
+There is no cross-key transaction or commit protocol between Task score and the
+collection. A lifecycle transition after publication may make the collection
+unreachable to Work dispatch; entry expiry and later Task physical cleanup own
 that residue.
 
 One call is atomic only for one Task:
@@ -310,9 +270,8 @@ allocate_candidate_workers(
 ) -> int
 ```
 
-The return value is the number of Tasks whose candidate entries were published
-after an accepted Task-score rewrite. It is not an assignment count or Work
-claim count.
+The return value is the number of Tasks whose candidate entries were published.
+It is not an assignment count, score-transition count, or Work claim count.
 
 `TaskWorkerAllocationConfig` is not constructor state:
 
@@ -320,7 +279,6 @@ claim count.
 taskBatchLimit
 workerScanLimit
 candidateTtlMillis
-noCandidateRecheckDelayMillis
 ```
 
 The concrete pacer receives `TaskScoreBandCore`, `TaskResourceCatalog`,
@@ -330,8 +288,8 @@ constructor assembly. It is a strategy executor, not an ABC owner surface.
 The config contains round policy only. It does not carry runtime owners,
 Redis keys, clocks, score ranges, preloaded Task/Worker observations, or
 Task-specific candidate limits. `maximumCandidateWorkers` belongs to the
-`TaskDescriptor`; the pacer subtracts current queue occupancy before creating
-`WorkerCandidateConstraint.limit`. It is not a `TaskDispatchRuntime` argument.
+`TaskDescriptor` and becomes the single-round `WorkerCandidateConstraint.limit`.
+It is not a `TaskDispatchRuntime` argument or persistent queue-cap contract.
 
 ## Conceptual Round
 
@@ -340,23 +298,16 @@ def allocate_candidate_workers(config):
     task_ids = task_score.acquire_active_task_candidates(
         limit=config.task_batch_limit,
     )
-    score_states = task_score.get_score_states(task_ids=task_ids)
     descriptors = task_catalog.load_task_allocation_descriptors(
         task_ids=task_ids,
     )
-    queued_counts = {
-        task_id: task_dispatch_runtime.candidate_worker_count(task_id=task_id)
-        for task_id in task_ids
-    }
 
-    grouped_allocations = prepare_and_group(
+    grouped_constraints = prepare_and_group(
         task_ids,
-        score_states,
         descriptors,
-        queued_counts,
     )
 
-    for worker_group_id, tasks in grouped_allocations:
+    for worker_group_id, constraints in grouped_constraints:
         worker_candidates = worker_score.acquire_hot_acquire_candidates(
             home_bucket_id=worker_group_id,
             limit=config.worker_scan_limit,
@@ -365,9 +316,9 @@ def allocate_candidate_workers(config):
         matches = worker_matcher.match_worker_candidates(
             worker_group_id=worker_group_id,
             worker_ids=list(observed_scores),
-            candidate_constraints=build_constraints(tasks),
+            candidate_constraints=constraints,
         )
-        rewrite_then_publish(tasks, matches, observed_scores, config)
+        append_matched_evidence(matches, observed_scores, config)
 ```
 
 The direct `workerGroupId == homeBucketId` mapping is the current v0 worker
@@ -392,16 +343,13 @@ py_example/kernel/task_dispatch_runtime.py
 
 ```text
 Task descriptor missing/corrupt
-  fail closed for this Task and apply bounded score-owner policy
-
-Task score changed before rewrite
-  stale; publish nothing
+  skip this Task; descriptor owner/recovery handles the missing fact
 
 Worker score changed after matching
   allowed; WorkDispatchPacer exact CAS rejects stale entry
 
 candidate collection publication fails
-  no rollback of Task score; later allocation rotation retries
+  no Task score rollback because allocation performed no score write
 
 Task pauses/closes after publication
   WorkDispatchPacer no longer scans it; later Task physical cleanup owns residue
@@ -416,8 +364,11 @@ Task pauses/closes after publication
 - Do not call WorkerCandidateMatcher once per Task.
 - Do not include `PRE_REVIEW`, paused, future non-due, or terminal Tasks.
 - Do not let `PRE_DISPATCH_VISIBLE` enter Work dispatch.
-- Do not consume scheduling suffix on successful allocation.
-- Do not publish candidate entries after a stale Task-score rewrite.
+- Do not read Task score state or write Task score inside
+  `allocate_candidate_workers`.
+- Do not gate candidate publication on a Task score transition.
+- Do not evaluate activation minimum, fairness rotation, suffix consumption,
+  no-worker backoff, hold, or terminal policy inside candidate allocation.
 - Do not expose cross-Task append as one atomic runtime operation; each Task
   candidate LIST is an independent owner boundary.
 - Do not make `TaskDispatchRuntime` choose or enforce a Task candidate limit;
