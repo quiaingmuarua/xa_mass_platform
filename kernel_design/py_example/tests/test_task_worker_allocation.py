@@ -10,16 +10,18 @@ from kernel_design.py_example import (
     TaskDescriptor,
     TaskDispatchRuntime,
     TaskResourceCatalog,
+    TaskRunningActivationConfig,
+    TaskRunningActivationPolicy,
+    TaskRunningActivationPacer,
     TaskScoreBand,
     TaskScoreBandCore,
-    TaskScoreTransitionConfig,
-    TaskScoreTransitionPacer,
     TaskScoreTransitionResult,
     TaskScoreTransitionStatus,
     TaskWorkerAllocationConfig,
     TaskWorkerAllocationPacer,
     WorkerCandidateMatcher,
     WorkerScoreCore,
+    minimum_candidate_workers_satisfied,
 )
 
 
@@ -80,14 +82,14 @@ class AssignmentDispatchTest(unittest.TestCase):
             {"self", "config"},
         )
 
-    def test_score_transition_pacer_exposes_independent_rewrite_operation(
+    def test_running_activation_pacer_exposes_named_operation(
         self,
     ) -> None:
-        self.assertFalse(inspect.isabstract(TaskScoreTransitionPacer))
+        self.assertFalse(inspect.isabstract(TaskRunningActivationPacer))
         self.assertEqual(
             set(
                 inspect.signature(
-                    TaskScoreTransitionPacer.rewrite_score
+                    TaskRunningActivationPacer.activate_running_visible_tasks
                 ).parameters
             ),
             {"self", "config"},
@@ -97,7 +99,7 @@ class AssignmentDispatchTest(unittest.TestCase):
         pacer, task_score, task_catalog, worker_score, _, runtime = (
             self._allocation_pacer()
         )
-        task_score.acquire_active_task_candidates.return_value = ()
+        task_score.acquire_band_task_candidates.side_effect = ((), ())
 
         published = pacer.allocate_candidate_workers(config=self._allocation_config())
 
@@ -112,9 +114,9 @@ class AssignmentDispatchTest(unittest.TestCase):
         pacer, task_score, task_catalog, worker_score, worker_matcher, runtime = (
             self._allocation_pacer()
         )
-        task_score.acquire_active_task_candidates.return_value = (
-            "running-task",
-            "pre-dispatch-task",
+        task_score.acquire_band_task_candidates.side_effect = (
+            ("running-task",),
+            ("pre-dispatch-task",),
         )
         task_catalog.load_task_allocation_descriptors.return_value = {
             "running-task": self._descriptor("running-task", minimum_workers=1),
@@ -161,11 +163,13 @@ class AssignmentDispatchTest(unittest.TestCase):
             ["worker-2"],
         )
 
-    def test_allocation_does_not_read_or_write_task_transition_state(self) -> None:
+    def test_allocation_rewrites_time_without_reading_or_transitioning_band(
+        self,
+    ) -> None:
         pacer, task_score, task_catalog, worker_score, worker_matcher, runtime = (
             self._allocation_pacer()
         )
-        task_score.acquire_active_task_candidates.return_value = ("task-1",)
+        task_score.acquire_band_task_candidates.side_effect = (("task-1",), ())
         task_catalog.load_task_allocation_descriptors.return_value = {
             "task-1": self._descriptor("task-1", minimum_workers=5)
         }
@@ -182,7 +186,6 @@ class AssignmentDispatchTest(unittest.TestCase):
         self.assertEqual(published, 1)
         task_score.get_score_states.assert_not_called()
         task_score.rewrite_score.assert_not_called()
-        task_score.rewrite_same_band_time_millis.assert_not_called()
         task_score.rewrite_observed_same_band_suffix.assert_not_called()
         runtime.candidate_worker_count.assert_not_called()
         constraints = worker_matcher.match_worker_candidates.call_args.kwargs[
@@ -190,12 +193,39 @@ class AssignmentDispatchTest(unittest.TestCase):
         ]
         self.assertEqual(constraints["task-1"].limit, 10)
         runtime.append_candidate_workers.assert_called_once()
+        rewrite = task_score.rewrite_same_band_time_millis.call_args.kwargs
+        self.assertEqual(rewrite["task_id"], "task-1")
+        self.assertEqual(rewrite["expected_band"], TaskScoreBand.RUNNING_VISIBLE)
+
+    def test_candidate_publication_is_not_gated_by_time_rewrite_result(self) -> None:
+        pacer, task_score, task_catalog, worker_score, worker_matcher, runtime = (
+            self._allocation_pacer()
+        )
+        task_score.acquire_band_task_candidates.side_effect = (("task-1",), ())
+        task_catalog.load_task_allocation_descriptors.return_value = {
+            "task-1": self._descriptor("task-1", minimum_workers=1)
+        }
+        worker_score.acquire_hot_acquire_candidates.return_value = (
+            ("worker-1", 1_001),
+        )
+        worker_matcher.match_worker_candidates.return_value = {
+            "task-1": ["worker-1"]
+        }
+        task_score.rewrite_same_band_time_millis.return_value = (
+            TaskScoreTransitionResult(TaskScoreTransitionStatus.STALE)
+        )
+
+        published = pacer.allocate_candidate_workers(config=self._allocation_config())
+
+        self.assertEqual(published, 1)
+        runtime.append_candidate_workers.assert_called_once()
+        task_score.rewrite_same_band_time_millis.assert_called_once()
 
     def test_allocation_with_no_hot_workers_is_a_bounded_noop(self) -> None:
         pacer, task_score, task_catalog, worker_score, worker_matcher, runtime = (
             self._allocation_pacer()
         )
-        task_score.acquire_active_task_candidates.return_value = ("task-1",)
+        task_score.acquire_band_task_candidates.side_effect = (("task-1",), ())
         task_catalog.load_task_allocation_descriptors.return_value = {
             "task-1": self._descriptor("task-1", minimum_workers=1)
         }
@@ -207,9 +237,10 @@ class AssignmentDispatchTest(unittest.TestCase):
         worker_matcher.match_worker_candidates.assert_not_called()
         runtime.append_candidate_workers.assert_not_called()
         task_score.rewrite_observed_same_band_suffix.assert_not_called()
+        task_score.rewrite_same_band_time_millis.assert_called_once()
 
-    def test_score_transition_promotes_eligible_task_and_resets_suffix(self) -> None:
-        pacer, task_score, task_catalog, runtime = self._score_transition_pacer()
+    def test_running_activation_promotes_eligible_task_and_resets_suffix(self) -> None:
+        pacer, task_score, task_catalog, runtime = self._running_activation_pacer()
         task_score.acquire_band_task_candidates.return_value = ("task-1",)
         task_catalog.load_task_allocation_descriptors.return_value = {
             "task-1": self._descriptor("task-1", minimum_workers=3)
@@ -219,8 +250,8 @@ class AssignmentDispatchTest(unittest.TestCase):
             TaskScoreTransitionStatus.TRANSITIONED
         )
 
-        transitioned = pacer.rewrite_score(
-            config=TaskScoreTransitionConfig(
+        transitioned = pacer.activate_running_visible_tasks(
+            config=TaskRunningActivationConfig(
                 task_batch_limit=10,
                 running_visible_initial_suffix=8,
             )
@@ -236,16 +267,16 @@ class AssignmentDispatchTest(unittest.TestCase):
         self.assertEqual(rewrite["target_suffix"], 8)
         task_score.get_score_states.assert_not_called()
 
-    def test_score_transition_leaves_ineligible_task_unchanged(self) -> None:
-        pacer, task_score, task_catalog, runtime = self._score_transition_pacer()
+    def test_running_activation_leaves_ineligible_task_unchanged(self) -> None:
+        pacer, task_score, task_catalog, runtime = self._running_activation_pacer()
         task_score.acquire_band_task_candidates.return_value = ("task-1",)
         task_catalog.load_task_allocation_descriptors.return_value = {
             "task-1": self._descriptor("task-1", minimum_workers=3)
         }
         runtime.candidate_worker_count.return_value = 2
 
-        transitioned = pacer.rewrite_score(
-            config=TaskScoreTransitionConfig(
+        transitioned = pacer.activate_running_visible_tasks(
+            config=TaskRunningActivationConfig(
                 task_batch_limit=10,
                 running_visible_initial_suffix=8,
             )
@@ -254,8 +285,33 @@ class AssignmentDispatchTest(unittest.TestCase):
         self.assertEqual(transitioned, 0)
         task_score.rewrite_score.assert_not_called()
 
-    def test_score_transition_counts_only_core_accepted_writes(self) -> None:
-        pacer, task_score, task_catalog, runtime = self._score_transition_pacer()
+    def test_running_activation_delegates_transition_decision_to_policy(
+        self,
+    ) -> None:
+        activation_policy = Mock(return_value=False)
+        pacer, task_score, task_catalog, runtime = self._running_activation_pacer(
+            activation_policy
+        )
+        descriptor = self._descriptor("task-1", minimum_workers=1)
+        task_score.acquire_band_task_candidates.return_value = ("task-1",)
+        task_catalog.load_task_allocation_descriptors.return_value = {
+            "task-1": descriptor
+        }
+        runtime.candidate_worker_count.return_value = 100
+
+        transitioned = pacer.activate_running_visible_tasks(
+            config=TaskRunningActivationConfig(
+                task_batch_limit=10,
+                running_visible_initial_suffix=8,
+            )
+        )
+
+        self.assertEqual(transitioned, 0)
+        activation_policy.assert_called_once_with(descriptor, 100)
+        task_score.rewrite_score.assert_not_called()
+
+    def test_running_activation_counts_only_core_accepted_writes(self) -> None:
+        pacer, task_score, task_catalog, runtime = self._running_activation_pacer()
         task_score.acquire_band_task_candidates.return_value = ("task-1",)
         task_catalog.load_task_allocation_descriptors.return_value = {
             "task-1": self._descriptor("task-1", minimum_workers=1)
@@ -265,8 +321,8 @@ class AssignmentDispatchTest(unittest.TestCase):
             TaskScoreTransitionStatus.STALE
         )
 
-        transitioned = pacer.rewrite_score(
-            config=TaskScoreTransitionConfig(
+        transitioned = pacer.activate_running_visible_tasks(
+            config=TaskRunningActivationConfig(
                 task_batch_limit=10,
                 running_visible_initial_suffix=8,
             )
@@ -306,8 +362,12 @@ class AssignmentDispatchTest(unittest.TestCase):
         )
 
     @staticmethod
-    def _score_transition_pacer() -> tuple[
-        TaskScoreTransitionPacer,
+    def _running_activation_pacer(
+        activation_policy: TaskRunningActivationPolicy = (
+            minimum_candidate_workers_satisfied
+        ),
+    ) -> tuple[
+        TaskRunningActivationPacer,
         Mock,
         Mock,
         Mock,
@@ -316,7 +376,12 @@ class AssignmentDispatchTest(unittest.TestCase):
         task_catalog = Mock(spec=TaskResourceCatalog)
         runtime = Mock(spec=TaskDispatchRuntime)
         return (
-            TaskScoreTransitionPacer(task_score, task_catalog, runtime),
+            TaskRunningActivationPacer(
+                task_score,
+                task_catalog,
+                runtime,
+                activation_policy,
+            ),
             task_score,
             task_catalog,
             runtime,

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from time import time_ns
 
 from .task_dispatch_runtime import CandidateWorkerEntry, TaskDispatchRuntime
-from .task_runtime import TaskResourceCatalog
+from .task_runtime import TaskDescriptor, TaskResourceCatalog
 from .task_score_band import (
     TaskScoreBand,
     TaskScoreBandCore,
@@ -42,8 +42,8 @@ class TaskWorkerAllocationConfig:
 
 
 @dataclass(frozen=True)
-class TaskScoreTransitionConfig:
-    """Bounds for one PRE_DISPATCH_VISIBLE transition round."""
+class TaskRunningActivationConfig:
+    """Bounds for one PRE_DISPATCH_VISIBLE activation round."""
 
     task_batch_limit: int
     running_visible_initial_suffix: int
@@ -59,8 +59,27 @@ class TaskScoreTransitionConfig:
             raise ValueError("running visible initial suffix must be in 1..99")
 
 
+TaskRunningActivationPolicy = Callable[[TaskDescriptor, int], bool]
+
+
+def minimum_candidate_workers_satisfied(
+    descriptor: TaskDescriptor,
+    candidate_worker_count: int,
+) -> bool:
+    """Built-in RUNNING activation policy."""
+    minimum_candidate_workers = int(
+        descriptor.config["runningVisibleMinimumCandidateWorkers"]
+    )
+    return candidate_worker_count >= minimum_candidate_workers
+
+
 class TaskWorkerAllocationPacer:
     """Run one bounded Task-to-Worker candidate allocation round."""
+
+    ALLOCATION_BANDS = (
+        TaskScoreBand.RUNNING_VISIBLE,
+        TaskScoreBand.PRE_DISPATCH_VISIBLE,
+    )
 
     def __init__(
         self,
@@ -82,7 +101,23 @@ class TaskWorkerAllocationPacer:
         config: TaskWorkerAllocationConfig,
     ) -> int:
         """Publish candidate Workers and return the number of published Tasks."""
-        grouped_constraints = self._prepare_allocation_groups(config)
+        allocation_millis = self._current_time_millis()
+        task_band_by_id: dict[TaskId, TaskScoreBand] = {}
+        remaining_task_limit = config.task_batch_limit
+        for band in self.ALLOCATION_BANDS:
+            if remaining_task_limit <= 0:
+                break
+            task_ids = self.task_score.acquire_band_task_candidates(
+                band=band,
+                before_time_millis=allocation_millis,
+                limit=remaining_task_limit,
+            )
+            for task_id in task_ids:
+                task_band_by_id[task_id] = band
+            remaining_task_limit -= len(task_ids)
+
+        task_ids = tuple(task_band_by_id)
+        grouped_constraints = self._prepare_allocation_groups(task_ids)
         published_tasks = 0
         for worker_group_id, candidate_constraints in grouped_constraints.items():
             entries_by_task = self._match_group_candidates(
@@ -91,24 +126,23 @@ class TaskWorkerAllocationPacer:
                 config=config,
             )
             for task_id, entries in entries_by_task.items():
-                if not entries:
-                    continue
-                self.dispatch_runtime.append_candidate_workers(
+                if entries:
+                    self.dispatch_runtime.append_candidate_workers(
+                        task_id=task_id,
+                        candidate_workers=entries,
+                    )
+                    published_tasks += 1
+                self.task_score.rewrite_same_band_time_millis(
                     task_id=task_id,
-                    candidate_workers=entries,
+                    expected_band=task_band_by_id[task_id],
+                    target_time_millis=allocation_millis,
                 )
-                published_tasks += 1
         return published_tasks
 
     def _prepare_allocation_groups(
         self,
-        config: TaskWorkerAllocationConfig,
+        task_ids: tuple[TaskId, ...],
     ) -> dict[WorkerGroupId, dict[TaskId, WorkerCandidateConstraint]]:
-        task_ids = tuple(
-            self.task_score.acquire_active_task_candidates(
-                limit=config.task_batch_limit,
-            )
-        )
         if not task_ids:
             return {}
 
@@ -174,23 +208,25 @@ class TaskWorkerAllocationPacer:
         return time_ns() // 1_000_000
 
 
-class TaskScoreTransitionPacer:
-    """Run owner-validated Task score transitions independently of allocation."""
+class TaskRunningActivationPacer:
+    """Activate PRE_DISPATCH_VISIBLE Tasks from candidate evidence."""
 
     def __init__(
         self,
         task_score: TaskScoreBandCore,
         task_catalog: TaskResourceCatalog,
         dispatch_runtime: TaskDispatchRuntime,
+        activation_policy: TaskRunningActivationPolicy,
     ) -> None:
         self.task_score = task_score
         self.task_catalog = task_catalog
         self.dispatch_runtime = dispatch_runtime
+        self.activation_policy = activation_policy
 
-    def rewrite_score(
+    def activate_running_visible_tasks(
         self,
         *,
-        config: TaskScoreTransitionConfig,
+        config: TaskRunningActivationConfig,
     ) -> int:
         """Promote eligible PRE_DISPATCH_VISIBLE Tasks to RUNNING_VISIBLE."""
         transition_millis = self._current_time_millis()
@@ -212,13 +248,10 @@ class TaskScoreTransitionPacer:
             descriptor = descriptors.get(task_id)
             if descriptor is None:
                 continue
-            minimum_candidate_workers = int(
-                descriptor.config["runningVisibleMinimumCandidateWorkers"]
+            candidate_worker_count = self.dispatch_runtime.candidate_worker_count(
+                task_id=task_id
             )
-            if (
-                self.dispatch_runtime.candidate_worker_count(task_id=task_id)
-                < minimum_candidate_workers
-            ):
+            if not self.activation_policy(descriptor, candidate_worker_count):
                 continue
 
             result = self.task_score.rewrite_score(

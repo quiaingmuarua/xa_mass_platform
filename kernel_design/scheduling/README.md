@@ -270,9 +270,9 @@ hold / recheck moves right:
 ```
 
 `tag` owns lifecycle direction, `timeSlot` owns same-band freshness /
-recheck, `suffix` owns budget or owner-local code, the score-write stale fence
-prevents stale overwrite, and the transition direction rule blocks lifecycle
-regression.
+recheck, and `suffix` is interpreted by the owning band policy. The score-write
+stale fence prevents stale overwrite, and the transition direction rule blocks
+lifecycle regression.
 Downward lifecycle jumps are allowed; `PRE_DISPATCH_VISIBLE` is an optional
 intermediate band, not a required checkpoint.
 
@@ -284,8 +284,8 @@ PRE_REVIEW
 
 PRE_DISPATCH_VISIBLE
   approved but not yet running; scans evaluate pre-open worker-candidate /
-  policy facts; false with suffix > 00 rewrites same band with suffix-1,
-  false with suffix == 00 writes PRE_DISPATCH_VISIBLE pause/hold
+  policy facts; success enters RUNNING_VISIBLE with configured initial suffix;
+  false leaves PRE_DISPATCH_VISIBLE unchanged for a later bounded retry
 
 RUNNING_VISIBLE
   active running state; may enter assignment-dispatch after validation; no-work,

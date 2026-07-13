@@ -18,7 +18,9 @@ which Tasks currently have bounded candidate Workers?
 ```
 
 It does not claim Work, lease Workers, create DeliverSeed, or accept transport
-delivery. It also does not classify or transition Task score.
+delivery. It does not classify or advance Task lifecycle. After one Task has
+been considered, it may advance that Task's current same-band timeSlot for
+bounded fairness rotation.
 
 ## Why It Is Independent
 
@@ -44,7 +46,8 @@ claim, and delivery into one large policy extension point.
 
 ```text
 TaskScoreBandCore
-  acquire_active_task_candidates(limit)
+  acquire_band_task_candidates(band, beforeTimeMillis, limit)
+  rewrite_same_band_time_millis(taskId, expectedBand, targetTimeMillis)
 
 TaskResourceCatalog
   load_task_allocation_descriptors(taskIds)
@@ -178,7 +181,7 @@ matched candidate entry up to the Task's single-round matcher limit:
 PRE_DISPATCH_VISIBLE allocation
   -> bounded Worker match
   -> append candidate evidence when non-empty
-  -> no Task score write
+  -> independently advance the current same-band timeSlot
 ```
 
 An independent score-acquired classification later reads the activation owner
@@ -186,9 +189,14 @@ facts, including the configured minimum and candidate evidence, and decides:
 
 ```text
 PRE_DISPATCH_VISIBLE -> RUNNING_VISIBLE
-PRE_DISPATCH_VISIBLE -> later same-band recheck with suffix consumption
-PRE_DISPATCH_VISIBLE -> same-band hold when exhausted
+PRE_DISPATCH_VISIBLE -> unchanged when activation is still waiting
 ```
+
+The current activation policy has no PRE_DISPATCH retry budget. A false
+activation check does not decrement suffix and does not write an automatic
+pause/hold. A later bounded activation round may evaluate the Task again.
+Allocation's independent same-band time rotation preserves suffix and provides
+fairness pacing; it is not activation-failure accounting.
 
 That classification is not a commit stage inside `allocate_candidate_workers`.
 Candidate evidence may be appended before a later pause, close, stale
@@ -211,16 +219,23 @@ The Work/backlog owner and no-work closure mechanism remain intentionally
 unfrozen until Work runtime is designed as a complete owner. This pacer must not
 introduce a read-only bridge merely to avoid empty matching cost.
 
-## Score Classification Is Separate
+## Lifecycle Activation Is Separate
 
-Allocation discovers Tasks through the score axis but does not rewrite that
-axis. Fairness rotation, `NO_WORKER`, activation success/false, suffix
-consumption, hold, and terminal decisions belong to an independent
-score-acquired scheduling classification. Candidate publication is one fact
-that classification may observe; it is not atomic with the score write.
+Allocation may rewrite only the acquired band's timeSlot through
+`rewrite_same_band_time_millis`. The pacer carries `expectedBand` directly from
+the band-specific acquisition range; it does not read, decode, infer, or
+revalidate Task score state. The score core range check preserves the stored
+tag and suffix. This write rotates the Task after one bounded allocation
+attempt; it is not an activation, retry-budget, hold, or terminal decision.
 
-The first executable classifier is a separate `TaskScoreTransitionPacer` class
-in the same module. Its `rewrite_score(config)` method:
+Candidate publication and same-band time rotation are independent best-effort
+effects. Publication is not gated on rewrite success. If the score changed to
+a future hold or terminal state, the rewrite can fail while the expiring
+candidate evidence remains valid as intermediate residue.
+
+The first executable lifecycle classifier is a separate
+`TaskRunningActivationPacer` class in the same module. Its
+`activate_running_visible_tasks(config)` method:
 
 ```text
 acquire PRE_DISPATCH_VISIBLE before the current time horizon with limit
@@ -229,6 +244,19 @@ acquire PRE_DISPATCH_VISIBLE before the current time horizon with limit
   -> initialize RUNNING_VISIBLE suffix to configured N
   -> count only TaskScoreBandCore TRANSITIONED results
 ```
+
+The transition decision is delegated to a function strategy:
+
+```python
+TaskRunningActivationPolicy = Callable[[TaskDescriptor, int], bool]
+```
+
+The integer is the current candidate-worker count. The built-in
+`minimum_candidate_workers_satisfied` policy compares it with
+`TaskDescriptor.config["runningVisibleMinimumCandidateWorkers"]`. The policy
+returns only whether activation is allowed; it does not read or write Task
+score, candidate queues, Redis, or lifecycle state. This keeps condition
+extension separate from pacer mechanics without adding an ABC or bridge.
 
 It does not call `allocate_candidate_workers`, and allocation does not call it.
 
@@ -294,9 +322,11 @@ workerScanLimit
 candidateTtlMillis
 ```
 
-The concrete pacer receives `TaskScoreBandCore`, `TaskResourceCatalog`,
-`WorkerScoreCore`, `WorkerCandidateMatcher`, and `TaskDispatchRuntime` through
-constructor assembly. It is a strategy executor, not an ABC owner surface.
+The concrete allocation pacer receives `TaskScoreBandCore`,
+`TaskResourceCatalog`, `WorkerScoreCore`, `WorkerCandidateMatcher`, and
+`TaskDispatchRuntime` through constructor assembly. `TaskRunningActivationPacer`
+additionally receives one `TaskRunningActivationPolicy` function. These pacers
+are strategy executors, not ABC owner surfaces.
 
 The config contains round policy only. It does not carry runtime owners,
 Redis keys, clocks, score ranges, preloaded Task/Worker observations, or
@@ -308,9 +338,10 @@ It is not a `TaskDispatchRuntime` argument or persistent queue-cap contract.
 
 ```python
 def allocate_candidate_workers(config):
-    task_ids = task_score.acquire_active_task_candidates(
-        limit=config.task_batch_limit,
+    task_band_by_id = acquire_running_then_pre_dispatch(
+        task_batch_limit=config.task_batch_limit,
     )
+    task_ids = list(task_band_by_id)
     descriptors = task_catalog.load_task_allocation_descriptors(
         task_ids=task_ids,
     )
@@ -332,6 +363,12 @@ def allocate_candidate_workers(config):
             candidate_constraints=constraints,
         )
         append_matched_evidence(matches, observed_scores, config)
+        for task_id in constraints:
+            task_score.rewrite_same_band_time_millis(
+                task_id=task_id,
+                expected_band=task_band_by_id[task_id],
+                target_time_millis=allocation_millis,
+            )
 ```
 
 The direct `workerGroupId == homeBucketId` mapping is the current v0 worker
@@ -340,8 +377,8 @@ runtime contract. It is not Task metadata and is not caller-configurable.
 ## Executable-Spec Status
 
 The current Python package implements `TaskWorkerAllocationPacer`,
-`TaskWorkerAllocationConfig`, `TaskScoreTransitionPacer`,
-`TaskScoreTransitionConfig`, the `TaskDispatchRuntime` owner interface, its
+`TaskWorkerAllocationConfig`, `TaskRunningActivationPacer`,
+`TaskRunningActivationConfig`, the `TaskDispatchRuntime` owner interface, its
 Redis LIST implementation, and the candidate-worker DTO. The Task score core
 also implements exact single-band bounded acquisition. Work/backlog APIs remain
 deliberately absent until that owner is designed completely. The existing
@@ -364,7 +401,10 @@ Worker score changed after matching
   allowed; WorkDispatchPacer exact CAS rejects stale entry
 
 candidate collection publication fails
-  no Task score rollback because allocation performed no score write
+  this Task's later same-band time rewrite is not attempted
+
+same-band time rewrite is stale or rejected
+  keep already-published expiring candidate evidence; do not roll it back
 
 Task pauses/closes after publication
   WorkDispatchPacer no longer scans it; later Task physical cleanup owns residue
@@ -379,7 +419,10 @@ Task pauses/closes after publication
 - Do not call WorkerCandidateMatcher once per Task.
 - Do not include `PRE_REVIEW`, paused, future non-due, or terminal Tasks.
 - Do not let `PRE_DISPATCH_VISIBLE` enter Work dispatch.
-- Do not read Task score state or write Task score inside
+- Do not read or decode Task score state inside `allocate_candidate_workers`.
+- Obtain `expectedBand` only from the band-specific acquisition context; do not
+  infer it through a second Task-score read or business-state check.
+- Do not perform lifecycle, suffix-budget, hold, or terminal rewrites inside
   `allocate_candidate_workers`.
 - Do not gate candidate publication on a Task score transition.
 - Do not evaluate activation minimum, fairness rotation, suffix consumption,

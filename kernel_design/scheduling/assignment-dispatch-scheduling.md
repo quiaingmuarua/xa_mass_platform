@@ -89,12 +89,11 @@ The two pacers do not lock Task resources.
 TaskWorkerAllocationPacer
   reads due Task ids from the score axis
   matches Workers and appends transient candidate evidence
-  does not read decoded Task score state or write Task score
+  advances the acquired band's timeSlot without decoding Task score state
 
-TaskScoreTransitionPacer
+TaskRunningActivationPacer
   independently reads activation/allocation owner facts
-  requests owner-validated Task score transitions
-  first executable action is PRE_DISPATCH_VISIBLE -> RUNNING_VISIBLE
+  requests the specific PRE_DISPATCH_VISIBLE -> RUNNING_VISIBLE transition
 
 WorkDispatchPacer
   Task-score read-only
@@ -117,11 +116,12 @@ Both pacers use the same Task score axis with opposite scan intent:
 ```text
 TaskWorkerAllocationPacer
   scans oldest due active Tasks first
-  publishes bounded candidate evidence without rewriting Task score
+  publishes bounded candidate evidence
+  independently rotates each considered Task's current same-band timeSlot
 
-TaskScoreTransitionPacer
+TaskRunningActivationPacer
   independently observes allocation facts
-  asks TaskScoreBandCore to write the next Task timeSlot / suffix / band
+  asks TaskScoreBandCore to activate RUNNING_VISIBLE with initial suffix N
 
 WorkDispatchPacer
   scans RUNNING_VISIBLE from current time backward
@@ -134,7 +134,8 @@ This is a fairness/freshness pipeline, not an ownership lease:
 ```text
 oldest due Task
   -> candidate allocation evidence
-  -> independent score classification
+  -> same-band allocation time rotation
+  -> independent running activation
   -> RUNNING dispatch visibility
   -> candidate-worker consumption
 ```
@@ -196,21 +197,24 @@ decoded Worker-score internals, transport handles, or result state.
 
 ## Publication And Consumption
 
-Allocation publishes evidence independently from Task-score classification:
+Allocation publishes evidence independently from Task lifecycle activation:
 
 ```text
 match bounded workers
   -> atomically append one Task's candidate entries
+  -> independently request current same-band timeSlot rotation
 
-separate score-acquired classification
+separate running activation
   -> read current owner facts
-  -> request Task score rewrite
+  -> request PRE_DISPATCH_VISIBLE -> RUNNING_VISIBLE
 ```
 
-There is no score/collection commit protocol. If publication fails, the score
-has not been changed by allocation. If a lifecycle command wins after
-publication, the Task leaves the dispatch scan and the collection becomes
-unreachable residue for later Task physical cleanup.
+There is no score/collection commit protocol. Publication occurs before the
+same-band time rewrite for one Task. A failed publication does not require a
+score rollback; a stale/rejected time rewrite does not roll back already
+published expiring evidence. If a lifecycle command wins after publication,
+the Task leaves the dispatch scan and the collection becomes unreachable
+residue for later Task physical cleanup.
 
 Work dispatch consumes entries using an owner-local atomic pop/claim primitive.
 Multiple WorkDispatchPacer workers may run concurrently without a Task lock;
@@ -235,17 +239,25 @@ does not scan, decode, or subtract expired entries.
 WorkerCandidateConstraint.limit = Task.maximumCandidateWorkers
 ```
 
-`candidate_worker_count` is available to independent score classification and
+`candidate_worker_count` is available to independent running activation and
 diagnostics. Candidate allocation does not read it, turn it into a persistent
-queue cap, or use it as permission to write Task score.
+queue cap, or use it as permission for a lifecycle transition.
 
-The first executable `TaskScoreTransitionPacer.rewrite_score(config)` scans one
+The first executable
+`TaskRunningActivationPacer.activate_running_visible_tasks(config)` scans one
 due `PRE_DISPATCH_VISIBLE` band range, checks
-`runningVisibleMinimumCandidateWorkers`, and requests
+the configured `TaskRunningActivationPolicy`, and requests
 `PRE_DISPATCH_VISIBLE -> RUNNING_VISIBLE` with an explicit configured initial
 RUNNING suffix. `expected_band` plus the score primitive's write-time range
 check rejects a Task that has already moved; the pacer does not re-read or
-decode Task score state.
+decode Task score state. If the policy returns false, activation leaves the
+Task `PRE_DISPATCH_VISIBLE`: it does not decrement suffix and does not write an
+automatic pause. A later bounded activation round may retry.
+
+The built-in policy is `minimum_candidate_workers_satisfied(descriptor,
+candidateWorkerCount) -> bool`. Alternative policies may change the activation
+condition, but they return a decision only and must not mutate score, candidate
+runtime, descriptors, or external state.
 
 Cross-Task pipeline/multi-call wrappers may reduce network round trips, but each
 Task key succeeds or fails independently. No interface may imply all-or-nothing
@@ -300,8 +312,11 @@ Events may lower latency but cannot be required to wake either pacer.
   score.
 - Do not make candidate-worker collection a second global Task index.
 - Do not lease Workers during Task-Worker allocation.
-- Do not gate candidate publication on Task-score transition or make allocation
-  rewrite Task score.
+- Do not gate candidate publication on either same-band time rotation or Task
+  lifecycle activation.
+- Do not let allocation decode Task score, choose a target band, change suffix,
+  hold, close, or advance lifecycle. Its only score write is current same-band
+  timeSlot rotation using the band-specific acquisition context.
 - Do not put Task or Worker resource mutations behind either pacer.
 - Do not refresh Task score because append, result, heartbeat, metadata, trace,
   or projection changed.

@@ -183,6 +183,16 @@ allocation does not subtract queue occupancy from the matcher limit. Descriptor
 admission must reject a minimum above the Task maximum; otherwise one bounded
 allocation result cannot satisfy the first activation condition.
 
+The built-in activation check is intentionally unbudgeted. If the minimum is
+not satisfied, the Task remains `PRE_DISPATCH_VISIBLE`; activation does not
+decrement suffix and does not write an automatic pause. Later bounded rounds
+may evaluate the same condition again.
+
+The check is exposed to the pacer as the function strategy
+`minimum_candidate_workers_satisfied(TaskDescriptor, candidateWorkerCount)`.
+It returns a boolean transition decision. The strategy may be replaced later,
+but it does not own descriptor reads, candidate-count reads, or score writes.
+
 ## Constraint Construction
 
 The phase-one constraint is built directly from the descriptor:
@@ -280,8 +290,9 @@ result mutation
 The expected read path is:
 
 ```text
-task_score.acquire_active_task_candidates(taskBatchLimit)
-  -> taskIds
+task_score.acquire_band_task_candidates(RUNNING_VISIBLE, horizon, limit)
+task_score.acquire_band_task_candidates(PRE_DISPATCH_VISIBLE, horizon, remainingLimit)
+  -> taskIds + acquisition band context
 
 task_resource_catalog.load_task_allocation_descriptors(taskIds)
   -> taskId -> TaskDescriptor | None
@@ -290,9 +301,12 @@ group descriptors by workerGroupId
 build TaskDescriptor -> WorkerCandidateConstraint
 acquire bounded workers for that worker group
 batch match tasks and workers
-for PRE_DISPATCH_VISIBLE tasks, evaluate
-  descriptor.config["runningVisibleMinimumCandidateWorkers"]
-process allocation results
+append candidate evidence and rotate acquired same-band time
+
+independent PRE_DISPATCH_VISIBLE activation round
+  -> read descriptor.config["runningVisibleMinimumCandidateWorkers"]
+  -> compare candidate-worker count
+  -> transition only when the minimum is satisfied
 ```
 
 Task score remains the task candidate source. `TaskResourceCatalog` must not add

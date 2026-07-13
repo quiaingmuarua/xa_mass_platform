@@ -21,9 +21,9 @@ from kernel_design.py_example import (
     RedisZsetWorkerScoreCore,
     TaskCreationStatus,
     TaskDescriptor,
+    TaskRunningActivationConfig,
+    TaskRunningActivationPacer,
     TaskScoreBand,
-    TaskScoreTransitionConfig,
-    TaskScoreTransitionPacer,
     TaskScoreTransitionStatus,
     TaskWorkerAllocationConfig,
     TaskWorkerAllocationPacer,
@@ -31,6 +31,7 @@ from kernel_design.py_example import (
     WorkerDescriptor,
     WorkerGroupDescriptor,
     WorkerRuntimeStatus,
+    minimum_candidate_workers_satisfied,
 )
 
 
@@ -101,10 +102,11 @@ class AssignmentDispatchIntegrationTest(unittest.TestCase):
             WorkerCandidateMatcher(self.worker_catalog, dynamic_runtime),
             self.dispatch_runtime,
         )
-        self.transition_pacer = TaskScoreTransitionPacer(
+        self.running_activation_pacer = TaskRunningActivationPacer(
             self.task_score,
             self.task_catalog,
             self.dispatch_runtime,
+            minimum_candidate_workers_satisfied,
         )
 
     def tearDown(self) -> None:
@@ -171,8 +173,9 @@ class AssignmentDispatchIntegrationTest(unittest.TestCase):
         score_after_allocation = self.task_score.get_score_states(
             task_ids=(self.task_id,)
         )[self.task_id]
-        transitioned = self.transition_pacer.rewrite_score(
-            config=TaskScoreTransitionConfig(
+        time.sleep((self.task_score.SLOT_MILLIS + 20) / 1_000)
+        transitioned = self.running_activation_pacer.activate_running_visible_tasks(
+            config=TaskRunningActivationConfig(
                 task_batch_limit=10,
                 running_visible_initial_suffix=8,
             )
@@ -193,7 +196,15 @@ class AssignmentDispatchIntegrationTest(unittest.TestCase):
         self.assertEqual(task_result.status, TaskCreationStatus.CREATED)
         self.assertEqual(approved.status, TaskScoreTransitionStatus.TRANSITIONED)
         self.assertEqual(published, 1)
-        self.assertEqual(score_after_allocation.score, score_before_allocation.score)
+        self.assertEqual(
+            score_after_allocation.band,
+            TaskScoreBand.PRE_DISPATCH_VISIBLE,
+        )
+        self.assertGreater(
+            score_after_allocation.time_millis,
+            score_before_allocation.time_millis,
+        )
+        self.assertEqual(score_after_allocation.suffix, 5)
         self.assertEqual(transitioned, 1)
         self.assertEqual(running_state.band, TaskScoreBand.RUNNING_VISIBLE)
         self.assertEqual(running_state.suffix, 8)

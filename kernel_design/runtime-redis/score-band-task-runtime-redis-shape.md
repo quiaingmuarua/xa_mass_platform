@@ -535,8 +535,9 @@ the old score.
 
 Activation fact changes follow the same rule. They update the owning fact, but
 they do not rewrite the task score directly. A normal `PRE_DISPATCH_VISIBLE` scan
-reads those facts and decides whether to keep `PRE_DISPATCH_VISIBLE`, promote the task
-to `RUNNING_VISIBLE`, or hold it after the same-band budget is exhausted.
+reads those facts and either promotes the task to `RUNNING_VISIBLE` or leaves it
+`PRE_DISPATCH_VISIBLE` for a later bounded retry. The built-in activation policy
+does not consume suffix and does not auto-pause after an exhaustion count.
 
 `ReadyItemFrame` is intentionally close to the original task item. It carries
 the append-generated logical `messageId` plus the opaque payload. The runtime
@@ -760,9 +761,9 @@ epochSecond
   PRE_REVIEW interprets it as owner mutation freshness time
 
 suffix
-  two-digit same-band remaining schedule budget
-  00 means same-band budget exhausted
-  01..99 means remaining same-band scheduling rewrites
+  two-digit band-owned coordinate
+  RUNNING_VISIBLE uses 00..99 as same-band scheduling budget
+  PRE_DISPATCH_VISIBLE built-in activation preserves and does not interpret it
   PRE_REVIEW interprets it as owner-defined review state code
   not work-item retry truth
 ```
@@ -842,8 +843,8 @@ RUNNING_VISIBLE
 PRE_DISPATCH_VISIBLE
   score = score(PRE_DISPATCH_VISIBLE_TAG, nextReadyRecheckEpochSecond, suffix)
   approved but not yet running; acquired for pre-running open-condition check
-  still not open with suffix > 00 rewrites the same band with suffix-1;
-  still not open with suffix == 00 writes a same-band pause/hold score
+  still not open leaves the score unchanged for a later bounded retry;
+  candidate allocation may independently rotate time while preserving suffix
 
 TERMINAL
   score = -closedScoreKey
@@ -918,9 +919,8 @@ and does not emit a generic score refresh.
 | 2 | task created but not approved | write `score(PRE_REVIEW_TAG, initialOwnerMutationEpochSecond, reviewStateCode)` |
 | 2a | owner-validated pre-review mutation | write `score(PRE_REVIEW_TAG, nextOwnerMutationEpochSecond, reviewStateCode)` where `nextOwnerMutationEpochSecond > currentOwnerMutationEpochSecond`; suffix transition legality belongs to the review owner |
 | 2b | owner-validated pre-review direct activation | write `score(RUNNING_VISIBLE_TAG, nextDispatchEpochSecond, initialBudget(RUNNING_VISIBLE))` |
-| 3 | task approved and waiting for pre-running open facts | write `score(PRE_DISPATCH_VISIBLE_TAG, nextReadyRecheckEpochSecond, initialBudget(PRE_DISPATCH_VISIBLE))` |
-| 3a | `PRE_DISPATCH_VISIBLE` is scanned and pre-running open conditions are still false with `suffix > 00` | write next ready recheck score with `suffix - 1` |
-| 3b | `PRE_DISPATCH_VISIBLE` is scanned and pre-running open conditions are still false with `suffix == 00` | write same-band pause/hold score |
+| 3 | task approved and waiting for pre-running open facts | write `score(PRE_DISPATCH_VISIBLE_TAG, nextReadyRecheckEpochSecond, preservedSuffix)` |
+| 3a | `PRE_DISPATCH_VISIBLE` is scanned and pre-running open conditions are still false | leave score unchanged; retry in a later bounded activation round |
 | 4 | active task is explicitly held | rewrite the same active band with future `epochSecond`; hard pause uses `PAUSE_EPOCH_SECOND` |
 | 5 | active task has dispatchable work or a due retry candidate | write `score(RUNNING_VISIBLE_TAG, nextDispatchEpochSecond, suffix)` |
 | 6a | active task has no current work with `suffix > 00` | write `score(RUNNING_VISIBLE_TAG, nextNoWorkRecheckEpochSecond, suffix - 1)` |
@@ -942,12 +942,14 @@ and does not emit a generic score refresh.
 
 | Ready condition | Candidate |
 | --- | --- |
-| approval / pre-running activation recheck | `score(PRE_DISPATCH_VISIBLE_TAG, nextReadyRecheckEpochSecond, initialBudget(PRE_DISPATCH_VISIBLE))` |
+| approval / pre-running activation recheck | `score(PRE_DISPATCH_VISIBLE_TAG, nextReadyRecheckEpochSecond, preservedSuffix)` |
 | pre-running no-op pacing | `score(PRE_DISPATCH_VISIBLE_TAG, nextReadyRecheckEpochSecond, suffix)` |
 | approval rejected | negative `closedScoreKey` |
 
 Positive non-terminal writes must write an `epochSecond` later than the stored
-score by default. Same-band scheduling rewrites also decrement suffix by one.
+score by default. Budget-consuming `RUNNING_VISIBLE` scheduling rewrites also
+decrement suffix by one. PRE_DISPATCH activation does not consume suffix;
+allocation time rotation preserves it.
 Manual release/resume is the only exception: it writes a same-tag release score
 derived from `observedHoldScore`, usually with `epochSecond = now`, only when
 the stored score still equals `observedHoldScore`, and it copies suffix from
@@ -1026,7 +1028,6 @@ roundOutcome
 
 ```text
 ACTIVATION_STILL_WAITING
-ACTIVATION_BUDGET_EXHAUSTED
 ACTIVATION_READY
 WORK_CLAIMED
 NO_WORK
@@ -1045,11 +1046,8 @@ if TERMINAL:
 if PAUSE_OR_BLOCK:
   score = score(currentActiveTag, futureEpochSecond, suffix)
 
-if scoreState == PRE_DISPATCH_VISIBLE and ACTIVATION_STILL_WAITING and suffix > 00:
-  score = score(PRE_DISPATCH_VISIBLE_TAG, nextReadyRecheckEpochSecond, suffix - 1)
-
-if scoreState == PRE_DISPATCH_VISIBLE and ACTIVATION_BUDGET_EXHAUSTED:
-  score = score(PRE_DISPATCH_VISIBLE_TAG, holdUntilEpochSecond, 00)
+if scoreState == PRE_DISPATCH_VISIBLE and ACTIVATION_STILL_WAITING:
+  no activation score write; retry in a later bounded round
 
 if scoreState == PRE_DISPATCH_VISIBLE and ACTIVATION_READY:
   score = score(RUNNING_VISIBLE_TAG, nowEpochSecond, initialBudget(RUNNING_VISIBLE))
@@ -1183,7 +1181,7 @@ Reason-specific timings are score candidates, not states:
 
 | Reason | Candidate |
 | --- | --- |
-| activation / ready retry budget / priority recheck | `score(PRE_DISPATCH_VISIBLE_TAG, nextReadyRecheckEpochSecond, suffix)` |
+| activation / priority recheck | `score(PRE_DISPATCH_VISIBLE_TAG, nextReadyRecheckEpochSecond, suffix)` |
 | dispatchable ready backlog | `score(RUNNING_VISIBLE_TAG, nextDispatchEpochSecond, suffix)` |
 | retry backoff | `score(RUNNING_VISIBLE_TAG, retryVisibleEpochSecond, suffix)` |
 | scheduled retry due time | `score(RUNNING_VISIBLE_TAG, scheduledRetryEpochSecond, suffix)` |
@@ -1204,7 +1202,7 @@ future no-work recheck; claim timeout repair observes them from
 The implementation may store small bounded score-runtime helper fields, but it
 must not store a separate hold band. Hold timing remains encoded in the ZSET
 score. Deadline-style task closure is not part of the first score-band model;
-closure is driven by exhausted same-band budget.
+RUNNING_VISIBLE no-work closure is driven by its exhausted same-band budget.
 
 ### Item state
 
@@ -1466,9 +1464,8 @@ Processing order:
 2. If score state is PRE_DISPATCH_VISIBLE:
       evaluate pre-running open conditions.
       If satisfied, rewrite to RUNNING_VISIBLE.
-      If not satisfied and suffix > 00, rewrite PRE_DISPATCH_VISIBLE with next epoch
-      and suffix-1.
-      If not satisfied and suffix == 00, write PRE_DISPATCH_VISIBLE pause/hold score.
+      If not satisfied, leave PRE_DISPATCH_VISIBLE unchanged for a later bounded
+      activation retry.
       Stop; do not claim work or produce deliver seeds.
 
 3. If retryMode=DUE_TIME:
@@ -1564,7 +1561,8 @@ in the ready LIST or scheduled retry lane according to `retryMode`, but the
 future same-band score prevents new claims until that epoch becomes due, or
 until an owner-validated resume writes a nearer same-band score. `PRE_REVIEW`
 and `TERMINAL` must not be paused. Deadline-style task closure is not part of
-the first score-band model; closure is driven by exhausted same-band budget.
+the first score-band model; RUNNING_VISIBLE no-work closure is driven by its
+exhausted same-band budget.
 
 Resume/unblock:
 

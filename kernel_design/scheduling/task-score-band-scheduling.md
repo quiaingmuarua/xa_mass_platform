@@ -83,7 +83,8 @@ Core mechanics:
 tag decides lifecycle direction
 timeMillis decides caller-facing hold / recheck / freshness intent
 timeSlot is the internal sortable coordinate derived from timeMillis
-suffix decides same-band budget / tie-break / owner-local code
+suffix carries band-owned budget, tie-break, or owner-local code; not every band
+consumes it
 write-time stored-score/CAS prevents stale overwrite
 terminal close is a high-priority positive-to-negative write
 score hold release uses an exact observed-score fence
@@ -315,12 +316,14 @@ time. For `PRE_REVIEW`, it is the owner mutation freshness coordinate. Kernel co
 does not interpret review business flow; it only rejects stale positive writes
 whose target `timeSlot` is not newer than the stored `timeSlot`, except
 for observed-score release/resume.
-`suffix` is a bounded two-digit same-band remaining schedule budget. `00` means
-same-band budget exhausted; `01..99` means that many same-band scheduling
-rewrites remain for scheduling bands. For `PRE_REVIEW`, `suffix` is an
-owner-defined review state code. Kernel code does not validate suffix ordering.
-It is not work-item retry truth and must not become the item retry counter
-owner.
+`suffix` is a bounded two-digit band-owned coordinate. For `RUNNING_VISIBLE`,
+`00` means same-band scheduling budget exhausted and `01..99` is the remaining
+budget. For `PRE_REVIEW`, `suffix` is an owner-defined review state code. The
+built-in `PRE_DISPATCH_VISIBLE` activation policy does not consume or interpret
+suffix; it preserves the value until activation succeeds and initializes the
+new `RUNNING_VISIBLE` suffix from configuration. Kernel code does not validate
+suffix ordering. It is not work-item retry truth and must not become the item
+retry counter owner.
 
 ```text
 RUNNING_VISIBLE_TAG = 1
@@ -354,7 +357,7 @@ Use `score(TAG, timeSlot, suffix)` below as shorthand for the formula above.
 | --- | --- | --- | --- | --- | --- |
 | `PRE_REVIEW` | `score(PRE_REVIEW_TAG, ownerMutationTimeSlot, reviewStateCode)` | no | no | none | Positive mutable state, not schedulable. The review owner defines and validates suffix state semantics. Kernel only requires positive non-release writes to carry a larger `timeSlot`. |
 | `RUNNING_VISIBLE` | `score(RUNNING_VISIBLE_TAG, nextDispatchOrRecheckTimeSlot, remainingBudget)` | when included by the running scan | yes, after owner validation, work evidence, worker admission, and work claim | run bounded assignment-dispatch | Also handles `NO_WORK`, `NO_WORKER`, and contention classifications. Temporary restriction uses this same tag with a future `timeSlot`; hard pause uses `PAUSE_TIME_SLOT`. |
-| `PRE_DISPATCH_VISIBLE` | `score(PRE_DISPATCH_VISIBLE_TAG, nextReadyRecheckTimeSlot, remainingBudget)` | when included by the ready scan horizon | no | evaluate pre-running open facts only | Pre-running open-condition recheck. It must not create a deliver seed. If still not open and budget remains, scheduling rewrites the same band with `remainingBudget - 1`. If budget is exhausted and still not open, write a same-band pause/hold score. |
+| `PRE_DISPATCH_VISIBLE` | `score(PRE_DISPATCH_VISIBLE_TAG, allocationTimeSlot, preservedSuffix)` | when included by the ready scan horizon | no | evaluate pre-running open facts only | Pre-running open-condition recheck. It must not create a deliver seed. If still not open, activation leaves the score unchanged; allocation may independently rotate the same-band timeSlot while preserving suffix. There is no automatic exhaustion pause. |
 | `TERMINAL` | negative closed score key | no | no | none | Negative score space is final and immutable. Close reason belongs to meta/result/trace. |
 
 Band order is consumption-first:
@@ -384,16 +387,15 @@ dispatch-eligible
   seed creation
 ```
 
-`PRE_DISPATCH_VISIBLE` and `RUNNING_VISIBLE` both use same-band recheck budgets, but
-they protect different allowed actions:
+`PRE_DISPATCH_VISIBLE` and `RUNNING_VISIBLE` have different same-band policies:
 
 ```text
 PRE_DISPATCH_VISIBLE
   running pre-open condition
   when acquired: scans evaluate worker-candidate / open facts
   ready: move to RUNNING_VISIBLE
-  not open and suffix > 00: rewrite PRE_DISPATCH_VISIBLE with next time coordinate and suffix-1
-  not open and suffix == 00: pause/hold in PRE_DISPATCH_VISIBLE
+  not open: remain PRE_DISPATCH_VISIBLE without suffix consumption or auto-pause
+  later bounded rounds may evaluate the condition again
 
 RUNNING_VISIBLE
   running-stage dispatch/recheck condition
@@ -407,12 +409,18 @@ RUNNING_VISIBLE
 
 `PRE_DISPATCH_VISIBLE` is a real band because an approved task may still need
 pre-running open conditions before running, such as a candidate-work count
-range, batch-size threshold, ready retry budget, priority window, or policy
-gate. `nextReadyRecheckTimeSlot` and the initial same-band budget are
-written by approval / activation policy. The task does not derive these values
-from its own shell. Typical open facts include worker-candidate conditions such
-as minimum matching worker count. Acquiring `PRE_DISPATCH_VISIBLE` evaluates open
-facts; it must not create a deliver seed.
+range, batch-size threshold, priority window, or policy gate. The task does not
+derive these values from its own shell. Typical open facts include
+worker-candidate conditions such as minimum matching worker count. Acquiring
+`PRE_DISPATCH_VISIBLE` evaluates open facts; it must not create a deliver seed.
+The built-in activation policy retries indefinitely through bounded scheduling
+rounds rather than consuming a PRE_DISPATCH suffix budget.
+
+This is unbounded over Task lifetime, not unbounded within one round. Cost is
+bounded by RUNNING-first acquisition order, per-round scan limit, pacer cadence,
+and allocation's same-band time rotation. If a deployment later needs an
+activation-attempt ceiling, that must be an explicit policy and owner action;
+the kernel must not infer an automatic pause from PRE_DISPATCH suffix.
 
 Scheduling scan ranges are per active acquisition tag. The default active order
 is running consumption/recheck first, then ready activation:
@@ -458,15 +466,16 @@ clean stale residue
 fail the score-write stale fence because newer score already won
 ```
 
-Keeping the same score after a successful acquire is not the normal path. A
-same-band false classification is consumed by writing a later `timeSlot` and
-`suffix - 1`, or by executing the exhausted action when `suffix == 00`.
-Assignment-dispatch scans `RUNNING_VISIBLE` before `PRE_DISPATCH_VISIBLE`, so ready
-activation rechecks must not block real running consumption. Repeated no-work,
-no-worker, contention, and ready rechecks are bounded by suffix budget plus
-policy-owned horizon, quota, ordering, and backoff.
+Keeping the same score after a successful `RUNNING_VISIBLE` acquire is not the
+normal path; running false classifications use their configured budget and
+next time coordinate. `PRE_DISPATCH_VISIBLE` is the explicit exception: a false
+activation check may leave its score unchanged and does not consume suffix.
+Assignment-dispatch scans `RUNNING_VISIBLE` before `PRE_DISPATCH_VISIBLE`, so
+ready activation retries do not block real running consumption. Each activation
+invocation remains bounded by scan horizon and limit; allocation may
+independently rotate the PRE_DISPATCH timeSlot while preserving suffix.
 
-Same-band scheduling rewrites obey:
+Budget-consuming same-band scheduling rewrites obey:
 
 ```text
 target tag == current tag
@@ -502,13 +511,10 @@ the required facts. It only rejects movement from a lower tag back to a higher
 tag, such as `RUNNING_VISIBLE -> PRE_DISPATCH_VISIBLE`. Same-band recheck/hold writes
 may still raise the numeric score because `timeSlot` is later.
 
-If `suffix == 00`, scheduling must not write another ordinary same-band recheck.
-It must execute the exhausted action for the current band:
+If `RUNNING_VISIBLE` suffix is `00`, scheduling must not write another ordinary
+budgeted same-band recheck. It must execute the running band's exhausted action:
 
 ```text
-PRE_DISPATCH_VISIBLE exhausted
-  -> same-band pause/hold score
-
 RUNNING_VISIBLE exhausted after NO_WORK
   -> TERMINAL
 
@@ -597,10 +603,8 @@ After acquire, decode `tag` and `suffix`:
 ```text
 if acquired PRE_DISPATCH_VISIBLE and open condition is satisfied:
   targetBand = RUNNING_VISIBLE
-if acquired PRE_DISPATCH_VISIBLE and open condition is false and suffix > 00:
-  targetBand = PRE_DISPATCH_VISIBLE with next timeSlot and suffix-1
-if acquired PRE_DISPATCH_VISIBLE and open condition is false and suffix == 00:
-  targetBand = PRE_DISPATCH_VISIBLE paused/held score
+if acquired PRE_DISPATCH_VISIBLE and open condition is false:
+  no activation score write; remain PRE_DISPATCH_VISIBLE for later bounded retry
 if acquired RUNNING_VISIBLE and no work exists and suffix > 00:
   targetBand = RUNNING_VISIBLE with next no-work-recheck timeSlot and suffix-1
 if acquired RUNNING_VISIBLE and no work exists and suffix == 00:
@@ -616,8 +620,8 @@ the same active tag with a future `timeSlot`; hard pause writes
 `PAUSE_TIME_SLOT = 99_999_999_999`. Ordinary future holds eventually become
 due and are interpreted as the original band. Hard pause is released through the
 score-hold release primitive with exact `observedHoldScore`. Deadline-style task
-closure is not part of the first score-band model; closure is driven by
-exhausted same-band budget.
+closure is not part of the first score-band model; `RUNNING_VISIBLE` no-work
+closure is driven by its exhausted same-band budget.
 
 ## Transition Direction Rule
 
@@ -960,9 +964,8 @@ score-hold release primitives:
 5. if PRE_DISPATCH_VISIBLE:
      evaluate pre-running open conditions only
      if satisfied, write RUNNING_VISIBLE
-     if not satisfied and suffix > 00, rewrite PRE_DISPATCH_VISIBLE with next time
-     and suffix-1
-     if not satisfied and suffix == 00, write PRE_DISPATCH_VISIBLE pause/hold score
+     if not satisfied, leave PRE_DISPATCH_VISIBLE unchanged for a later bounded
+     activation retry
 ```
 
 The work evidence read may be cheap and non-consuming. The final claim belongs
@@ -991,10 +994,11 @@ task score due
 ```
 
 This rewrite is not required to make the task schedulable; the task was already
-in the acquire range. It prevents candidates from spinning at a dominant score
-after a real round classification. Same-band false classifications for
-`PRE_DISPATCH_VISIBLE` and `RUNNING_VISIBLE` also consume budget by writing the next
-time coordinate and `suffix - 1`, unless the budget is already exhausted.
+in the acquire range. It prevents running candidates from spinning at a
+dominant score after a real round classification. The built-in
+`PRE_DISPATCH_VISIBLE` activation check is different: a false result does not
+consume suffix or require an activation-owned score write. Candidate allocation
+may independently rotate its same-band time coordinate while preserving suffix.
 
 The rewrite exists for:
 
@@ -1025,8 +1029,8 @@ any non-terminal band -> TERMINAL
 
 Activation fact changes are not direct score writes. They update activation
 owner truth; an acquired `PRE_DISPATCH_VISIBLE` scheduling round later reads those
-facts and decides whether the band remains `PRE_DISPATCH_VISIBLE`, becomes
-`RUNNING_VISIBLE`, or holds because same-band budget is exhausted.
+facts and either moves the band to `RUNNING_VISIBLE` or leaves
+`PRE_DISPATCH_VISIBLE` unchanged for a later bounded retry.
 Candidate-worker allocation is one such evidence write: it may discover Tasks
 through the score axis, but its match/append operation neither reads decoded
 Task score state nor gates publication on a score transition.
@@ -1096,8 +1100,8 @@ PRE_REVIEW gate command
 
 PRE_DISPATCH_VISIBLE activation scheduling round
   read activation facts + write RUNNING_VISIBLE when satisfied
-  otherwise decrement suffix and rewrite PRE_DISPATCH_VISIBLE, or hold PRE_DISPATCH_VISIBLE
-  when suffix is exhausted
+  otherwise leave PRE_DISPATCH_VISIBLE unchanged; no suffix consumption or
+  automatic hold
 
 active-band temporary restriction
   same active band + future timeSlot; hard pause uses PAUSE_TIME_SLOT
@@ -1151,10 +1155,8 @@ Rules:
   negative terminal score or clean according to owner policy;
 - `PRE_DISPATCH_VISIBLE` acquired and open condition is satisfied: transition to
   `RUNNING_VISIBLE`;
-- `PRE_DISPATCH_VISIBLE` acquired and open condition is still false with `suffix >
-  00`: rewrite `PRE_DISPATCH_VISIBLE` with a later time and `suffix - 1`;
-- `PRE_DISPATCH_VISIBLE` acquired and open condition is still false with `suffix ==
-  00`: write a same-band pause/hold score;
+- `PRE_DISPATCH_VISIBLE` acquired and open condition is still false: leave the
+  score unchanged; a later bounded activation round may retry;
 - `RUNNING_VISIBLE` acquired but the work-item owner reports no claimable work
   and `suffix > 00`: rewrite `RUNNING_VISIBLE` with a later no-work recheck
   time and `suffix - 1`;
@@ -1194,8 +1196,8 @@ scheduled retry score
 scan range / horizon choice
 batch limit
 temporary restriction time policy for active bands
-initial same-band budget per target band
-same-band exhausted action per source band
+initial RUNNING_VISIBLE same-band budget
+same-band exhausted action for budgeted source bands
 pre-review timeSlot source and suffix state-code values
 terminal closed marker / closed score key
 ```
@@ -1235,9 +1237,9 @@ no broad refresh from low-value observations
   keeping `RUNNING_VISIBLE` consumption first.
 - Do not let dispatch-visible `RUNNING_VISIBLE` candidates spin at the same
   dominant score after classification; rewrite, move, close, clean, or lose to
-  the score-write stale fence. `PRE_DISPATCH_VISIBLE` and `RUNNING_VISIBLE` same-band
-  false classifications must also be consumed by `suffix - 1`, exhausted
-  action, or stale-fence loss.
+  the score-write stale fence. `PRE_DISPATCH_VISIBLE` is intentionally exempt
+  from suffix-budget consumption: false activation remains eligible for later
+  bounded retry and never auto-pauses because suffix reached zero.
 - Do not use event delivery as the only trigger for scheduling, retry, or
   no-work closure.
 - Do not use an event queue as ready-task backlog or as a second scheduling

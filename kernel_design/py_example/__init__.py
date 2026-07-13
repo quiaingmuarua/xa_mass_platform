@@ -40,10 +40,12 @@ from .kernel import (
     TaskDispatchRuntime,
     TaskResourceCatalog,
     TaskRuntime,
-    TaskScoreTransitionConfig,
-    TaskScoreTransitionPacer,
+    TaskRunningActivationConfig,
+    TaskRunningActivationPolicy,
+    TaskRunningActivationPacer,
     TaskWorkerAllocationConfig,
     TaskWorkerAllocationPacer,
+    minimum_candidate_workers_satisfied,
 )
 from .runtime_redis import (
     RedisTaskDispatchRuntime,
@@ -106,8 +108,10 @@ __all__ = [
     "TaskDispatchRuntime",
     "TaskResourceCatalog",
     "TaskRuntime",
-    "TaskScoreTransitionConfig",
-    "TaskScoreTransitionPacer",
+    "TaskRunningActivationConfig",
+    "TaskRunningActivationPolicy",
+    "TaskRunningActivationPacer",
     "TaskWorkerAllocationConfig",
     "TaskWorkerAllocationPacer",
+    "minimum_candidate_workers_satisfied",
 ]

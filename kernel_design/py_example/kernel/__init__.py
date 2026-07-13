@@ -46,10 +46,12 @@ from .task_runtime import (
     TaskRuntime,
 )
 from .task_worker_allocation import (
-    TaskScoreTransitionConfig,
-    TaskScoreTransitionPacer,
+    TaskRunningActivationConfig,
+    TaskRunningActivationPolicy,
+    TaskRunningActivationPacer,
     TaskWorkerAllocationConfig,
     TaskWorkerAllocationPacer,
+    minimum_candidate_workers_satisfied,
 )
 from .task_dispatch_runtime import CandidateWorkerEntry, TaskDispatchRuntime
 
@@ -95,8 +97,10 @@ __all__ = [
     "TaskDispatchRuntime",
     "TaskResourceCatalog",
     "TaskRuntime",
-    "TaskScoreTransitionConfig",
-    "TaskScoreTransitionPacer",
+    "TaskRunningActivationConfig",
+    "TaskRunningActivationPolicy",
+    "TaskRunningActivationPacer",
     "TaskWorkerAllocationConfig",
     "TaskWorkerAllocationPacer",
+    "minimum_candidate_workers_satisfied",
 ]
