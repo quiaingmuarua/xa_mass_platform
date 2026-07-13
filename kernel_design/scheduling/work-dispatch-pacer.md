@@ -45,14 +45,14 @@ TaskScoreBandCore
   get_score_states(taskIds)
   read-only from this pacer's perspective
 
-TaskCandidateWorkerCollectionRuntime
-  point-read / atomic consume / bounded discard
+TaskDispatchRuntime
+  per-Task size point-read, atomic consume, and consume-time expiry validation
 
 WorkerScoreCore
   acquire_due_hot_score_lease
   release_score_hold or later Worker policy rewrite
 
-TaskWorkRuntime
+future Work/backlog owner
   claim one current Work item
   compensate/release claim when delivery handoff fails
 
@@ -66,8 +66,9 @@ DispatchPolicy
   workerLeaseDuration
 ```
 
-The candidate collection and TaskWorkRuntime executable interfaces are not yet
-implemented.
+`TaskDispatchRuntime` provides a Redis LIST per-Task candidate append/consume
+implementation. The Work/backlog owner and claim interface remain intentionally
+unfrozen until this pacer's claim semantics are reviewed.
 
 ## Task Discovery
 
@@ -89,8 +90,8 @@ the configured pacer assembly.
 
 Reverse order intentionally prefers fresh allocation evidence. Allocation
 fairness is owned by TaskWorkerAllocationPacer's oldest-first scan and timeSlot
-rewrite. Dispatch fairness is bounded by per-Task quota and finite candidate
-collection size.
+rewrite. Dispatch work per round is bounded by the pacer's per-Task quota;
+candidate entries are transient and expire independently of that policy.
 
 The current Redis executable implementation of
 `acquire_dispatch_work_tasks(limit)` scans the full due RUNNING range
@@ -117,8 +118,23 @@ Multiple dispatch workers may process different Tasks or consume different
 entries concurrently. Atomic entry consumption prevents one candidate entry
 from producing two Worker lease attempts. No Task lock is required.
 
-The collection is replaceable by TaskWorkerAllocationPacer. A concurrent replace
-may discard unused entries; that is allowed because they are transient evidence.
+TaskWorkerAllocationPacer appends every matched entry from its bounded batch to
+the Task queue. Runtime does not trim to a Task policy limit. It exposes the
+stored LIST length as a point-read, filters expired entries only after atomic
+consume, and lets stale duplicate Worker entries fail naturally through
+observed-score CAS.
+
+The core consume interface is single Task:
+
+```python
+consume_candidate_workers(
+    task_id=task_id,
+    limit=per_task_dispatch_limit,
+)
+```
+
+A concrete runtime may pipeline consumption for multiple Task ids, but that
+wrapper is explicitly non-atomic across queues.
 
 ## Worker Short Lease
 
@@ -157,7 +173,8 @@ Worker runtime provide the current stale fence.
 
 ## Work Claim
 
-Work claim belongs to `TaskWorkRuntime`.
+Work claim belongs to the future Work/backlog owner. That owner has not been
+named or frozen as a Python interface yet.
 
 ```text
 Worker short lease acquired
@@ -175,8 +192,8 @@ bounded Work relies on result/cancel/manual owner policy.
 
 If Work disappears between allocation and dispatch, the consumed candidate is
 disposable. WorkDispatchPacer does not rewrite Task score to report no-work;
-TaskWorkerAllocationPacer later classifies current backlog evidence through the
-normal Task-score fairness loop.
+the no-work closure handoff remains unfrozen until the complete Work owner is
+designed. This gap must not be filled by a read-only bridge interface.
 
 ## DeliverSeed
 
@@ -225,9 +242,11 @@ Task terminal score
 ```
 
 Successful dispatch consumes candidate-worker and Work capacity, not Task-score
-fairness. More entries in the bounded collection may dispatch more Work. When
-the collection empties or ages out, TaskWorkerAllocationPacer eventually sees
-the Task in oldest-first allocation order and publishes fresh candidates.
+fairness. More entries in the transient collection may dispatch more Work. When
+dispatch drains the collection, TaskWorkerAllocationPacer eventually sees the
+Task in oldest-first allocation order and publishes fresh candidates. Expired
+entries are popped and discarded during that drain; they are not removed by an
+append-side scan.
 
 Claim failure, stale Worker entry, or transport rejection also does not grant
 this pacer generic Task-score write authority. Those outcomes update their own
@@ -255,7 +274,7 @@ def dispatch_once(task_batch_limit, per_task_dispatch_limit):
             if not worker_lease.transitioned:
                 continue
 
-            claim = task_work.claim_one(
+            claim = work_owner.claim_one(
                 task_id=task_id,
                 worker_id=candidate.worker_id,
             )
@@ -271,10 +290,11 @@ Names are conceptual and do not freeze Python interfaces.
 
 ## Executable-Spec Gap
 
-The current Python package has Worker short-lease primitives and Task score
-acquire, but it has no candidate-worker collection runtime, no Work claim owner,
-no DeliverSeed model, and no WorkDispatchPacer. The dispatch-task score query
-also requires the reverse bounded lookback behavior defined above.
+The current Python package has Worker short-lease primitives, Task score
+acquire, candidate-worker DTOs, and the Redis `TaskDispatchRuntime`. It has
+no Work claim method, no DeliverSeed model, and no WorkDispatchPacer. The
+dispatch-task score query also requires the reverse bounded lookback behavior
+defined above.
 
 ## Failure And Compensation
 

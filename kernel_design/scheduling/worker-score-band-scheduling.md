@@ -857,7 +857,8 @@ claim task work
 select transport route
 inspect adapter sessions directly
 write task score
-create per-task worker candidate sets
+create or own per-task worker candidate sets; transient `TaskDispatchRuntime`
+candidate LISTs belong to the assignment inter-pacer protocol
 ```
 
 RECOVERY_RECHECK acquisition is a worker-runtime recovery validation path, not an

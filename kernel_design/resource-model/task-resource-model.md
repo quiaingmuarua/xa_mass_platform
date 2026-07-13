@@ -12,7 +12,7 @@ second lifecycle model.
 ```text
 TaskDescriptor = stable task allocation metadata
 TaskScoreBandCore = task scheduling / lifecycle coordinate
-TaskWorkRuntime = task backlog and work truth, defined separately
+Task work owner = task backlog and work truth, not yet frozen as an interface
 AssignmentDispatch = bounded consumer of task and worker owner facts
 ```
 
@@ -53,12 +53,13 @@ Other policy fields must not grow as parallel top-level descriptor metadata.
 
 `config` is not an unowned extension bag. Every accepted key must have a named
 owner, consumer, required/default behavior, and validation rule. The first cut
-accepts only the two required keys defined in this document and supplies no
+accepts only the three required keys defined in this document and supplies no
 hidden defaults.
 
 | Config key | Required/default | Validation owner | Consumer | Validation |
 | --- | --- | --- | --- | --- |
 | `priority` | required, no default | TaskDescriptor contract | assignment-dispatch constraint construction | decimal text in `1..100` |
+| `maximumCandidateWorkers` | required, no default | TaskDescriptor contract | matcher limit per allocation batch | positive decimal text |
 | `runningVisibleMinimumCandidateWorkers` | required, no default | TaskDescriptor contract | pre-dispatch activation check | decimal text in `1..maximumCandidateWorkers` |
 
 ### taskId
@@ -168,31 +169,27 @@ RUNNING_VISIBLE + worker count later below configured minimum
 Running availability, no-work behavior, pause, and terminal policy remain task
 score/work scheduling concerns.
 
-The matcher maximum is not Task config. `WorkerCandidateConstraint.limit` comes
-from one uniform allocation configuration. The first executable cut fixes it
-at:
+`maximumCandidateWorkers` is Task-owned allocation configuration. It bounds
+the matcher result produced for this Task in one allocation batch:
 
 ```text
-maximumCandidateWorkers = 100
+WorkerCandidateConstraint.limit = maximumCandidateWorkers
 ```
 
-That maximum caps work performed by the matcher. It is not the
-`RUNNING_VISIBLE` condition and must not be copied into `TaskDescriptor`.
-Descriptor admission must reject a minimum above this maximum; otherwise the
-task can never satisfy its activation condition.
+`TaskDispatchRuntime` does not receive, enforce, or reinterpret this value. It
+appends every candidate entry supplied by the pacer. Descriptor admission must
+reject a minimum above the Task maximum; otherwise one allocation batch can
+never satisfy the task activation condition.
 
 ## Constraint Construction
 
-The phase-one constraint is built directly from the descriptor and uniform
-allocation configuration:
+The phase-one constraint is built directly from the descriptor:
 
 ```text
 TaskDescriptor
   config["priority"] --------------------------> constraint.priority
+  config["maximumCandidateWorkers"] ----------> constraint.limit
   allocationRule ------------------------------> constraint.match_rules
-
-uniform allocation config
-  maximumCandidateWorkers ---------------> constraint.limit
 ```
 
 Conceptual result:
@@ -200,7 +197,7 @@ Conceptual result:
 ```python
 WorkerCandidateConstraint(
     priority=int(descriptor.config["priority"]),
-    limit=allocation_config.maximum_candidate_workers,
+    limit=int(descriptor.config["maximumCandidateWorkers"]),
     match_rules=descriptor.allocation_rule,
 )
 ```
@@ -314,7 +311,7 @@ taskId empty
 workerGroupId empty
 config is not map<string, string>
 config contains an undeclared key
-config is missing either required key
+config is missing any required key
 config["priority"] is not decimal text in 1..100
 allocationRule is not a valid constraint_dsl rule
 config["runningVisibleMinimumCandidateWorkers"] is not decimal text in

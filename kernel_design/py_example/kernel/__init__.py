@@ -45,6 +45,11 @@ from .task_runtime import (
     TaskResourceCatalog,
     TaskRuntime,
 )
+from .assignment_dispatch import (
+    TaskWorkerAllocationConfig,
+    TaskWorkerAllocationPacer,
+)
+from .task_dispatch_runtime import CandidateWorkerEntry, TaskDispatchRuntime
 
 __all__ = [
     "TimeMillis",
@@ -84,6 +89,10 @@ __all__ = [
     "TaskCreationResult",
     "TaskCreationStatus",
     "TaskDescriptor",
+    "CandidateWorkerEntry",
+    "TaskDispatchRuntime",
     "TaskResourceCatalog",
     "TaskRuntime",
+    "TaskWorkerAllocationConfig",
+    "TaskWorkerAllocationPacer",
 ]

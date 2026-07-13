@@ -506,7 +506,7 @@ wr:{prefix}:heartbeat:{workerGroupId}
 wr:{prefix}:transition
 wr:{prefix}:capacity:{workerGroupId}
 wr:{prefix}:assignment-continuation:{workerGroupId}
-task:{taskId}:candidate-workers
+wr:{prefix}:task:{taskId}:candidate-workers
 worker:{workerId}:score
 attribute:{name}:{value}:workers
 ```
@@ -519,7 +519,10 @@ session / heartbeat belongs to transport or dynamic attribute handlers
 transition evidence belongs to trace or deterministic tests until repair needs it
 capacity is policy / dynamic attribute / later admission owner, not score truth
 assignment continuation is not first-slice truth
-per-task candidates create a second assignment-dispatch mainline
+worker-runtime-owned per-task candidates create a second assignment-dispatch
+mainline. The separate `TaskDispatchRuntime` may own transient
+`ad:{prefix}:task:{taskId}:candidate-workers` LISTs; worker-runtime and
+worker-score must not read, write, or reinterpret that protocol.
 per-worker score keys break home-bucket acquisition
 attribute fanout is deferred until candidate discovery needs it
 ```

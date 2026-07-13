@@ -54,24 +54,18 @@ TaskScoreBandCore
 TaskResourceCatalog
   load_task_allocation_descriptors(taskIds)
 
-TaskWorkRuntime
-  bounded claimable-work evidence for RUNNING_VISIBLE classification
-
 WorkerScoreCore
   acquire_hot_acquire_candidates(homeBucketId, limit)
 
 WorkerCandidateMatcher
   match_worker_candidates(workerGroupId, workerIds, candidateConstraints)
 
-AllocationPolicy
+TaskWorkerAllocationConfig
   taskBatchLimit
   workerScanLimit
-  maximumCandidateWorkers
-  no-work / no-worker recheck policy
+  candidateTtlMillis
+  noCandidateRecheckDelayMillis
 ```
-
-`TaskWorkRuntime` is named here as a required owner surface; its executable
-interface is not implemented yet.
 
 ## Candidate Bands
 
@@ -83,9 +77,8 @@ PRE_DISPATCH_VISIBLE
   never claim Work or produce DeliverSeed
 
 RUNNING_VISIBLE
-  obtain bounded backlog evidence
-  classify obvious no-work before expensive Worker matching
-  match Workers when allocation demand remains
+  match bounded Workers for the current running Task
+  do not inspect or claim Work in this pacer
 ```
 
 `PRE_REVIEW`, hard-paused positive scores, future non-due scores, and `TERMINAL`
@@ -150,7 +143,7 @@ priority
   parsed from TaskDescriptor.config["priority"]
 
 limit
-  bounded by allocation policy maximumCandidateWorkers
+  parsed from TaskDescriptor.config["maximumCandidateWorkers"]
 
 match_rules
   TaskDescriptor.allocationRule
@@ -211,20 +204,20 @@ never lets PRE_DISPATCH_VISIBLE continue directly into Work claim.
 
 ## RUNNING_VISIBLE
 
-RUNNING Task allocation first reads bounded non-consuming backlog evidence.
+RUNNING Task allocation is independent of backlog inspection in this interface
+slice:
 
 ```text
-no claimable Work
-  -> classify no-work
-  -> later recheck or terminal according to suffix policy
-  -> do not perform Worker matching
-
-claimable Work appears available
+due RUNNING_VISIBLE
   -> include Task in Worker-group match batch
+  -> publish bounded candidate evidence when matching succeeds
 ```
 
-This evidence is not a Work claim and cannot promise that Work still exists
-when WorkDispatchPacer later consumes a Worker entry.
+Work may be absent when WorkDispatchPacer later consumes a candidate. That is a
+bounded stale/empty dispatch outcome, not an allocation correctness failure.
+The Work/backlog owner and no-work closure mechanism remain intentionally
+unfrozen until Work runtime is designed as a complete owner. This pacer must not
+introduce a read-only bridge merely to avoid empty matching cost.
 
 ## Allocation Fairness
 
@@ -254,21 +247,23 @@ terminal action.
 
 ## Publish Protocol
 
-The pacer publishes one bounded replaceable candidate-worker collection after
-the Task score rewrite succeeds:
+The pacer appends one ordered candidate sequence to one Task queue after the
+Task score rewrite succeeds:
 
 ```text
 matched entries prepared
   -> rewrite Task score
   -> stale/rejected: discard prepared entries
-  -> transitioned: replace Task candidate-worker collection
+  -> transitioned: append candidate entries to that Task queue
 ```
 
 Candidate entry:
 
 ```text
 workerId
+workerGroupId
 completeObservedWorkerScore
+expiresAtMillis
 ```
 
 The collection is match evidence only. It contains no Worker lease and no Work
@@ -277,32 +272,79 @@ claim.
 There is no cross-key transaction between Task score and collection. Score
 success plus collection-write failure is a lost allocation opportunity; normal
 allocation rotation retries later. Lifecycle transition after publication makes
-the collection unreachable to Work dispatch and TTL removes residue.
+the collection unreachable to Work dispatch; later Task physical cleanup owns
+that residue.
+
+One call is atomic only for one Task:
+
+```python
+task_dispatch_runtime.append_candidate_workers(
+    task_id=task_id,
+    candidate_workers=entries,
+)
+```
+
+The pacer may loop or a concrete runtime may pipeline calls for many Tasks, but
+cross-Task success is partial and non-atomic. The Task descriptor bounds the
+matcher output for one allocation batch. `TaskDispatchRuntime` appends every
+entry passed to it and owns only queue append, atomic consume, size observation,
+and consume-time expiry validation.
+
+## Interface
+
+The stable scheduling entry receives round policy per invocation:
+
+```python
+allocate_candidate_workers(
+    config: TaskWorkerAllocationConfig,
+) -> int
+```
+
+The return value is the number of Tasks whose candidate entries were published
+after an accepted Task-score rewrite. It is not an assignment count or Work
+claim count.
+
+`TaskWorkerAllocationConfig` is not constructor state:
+
+```text
+taskBatchLimit
+workerScanLimit
+candidateTtlMillis
+noCandidateRecheckDelayMillis
+```
+
+The concrete pacer receives `TaskScoreBandCore`, `TaskResourceCatalog`,
+`WorkerScoreCore`, `WorkerCandidateMatcher`, and `TaskDispatchRuntime` through
+constructor assembly. It is a strategy executor, not an ABC owner surface.
+
+The config contains round policy only. It does not carry runtime owners,
+Redis keys, clocks, score ranges, preloaded Task/Worker observations, or
+Task-specific candidate limits. `maximumCandidateWorkers` belongs to the
+`TaskDescriptor` and becomes `WorkerCandidateConstraint.limit` for that Task.
+It is not a `TaskDispatchRuntime` argument.
 
 ## Conceptual Round
 
 ```python
-def allocate_once(task_batch_limit, worker_scan_limit):
+def allocate_candidate_workers(config):
     task_ids = task_score.acquire_active_task_candidates(
-        limit=task_batch_limit,
+        limit=config.task_batch_limit,
     )
     score_states = task_score.get_score_states(task_ids=task_ids)
     descriptors = task_catalog.load_task_allocation_descriptors(
         task_ids=task_ids,
     )
-    work_evidence = task_work.inspect_claimable_work(task_ids=task_ids)
 
     accepted = classify_and_group(
         task_ids,
         score_states,
         descriptors,
-        work_evidence,
     )
 
     for worker_group_id, tasks in accepted:
         worker_candidates = worker_score.acquire_hot_acquire_candidates(
-            home_bucket_id=resolve_home_bucket(worker_group_id),
-            limit=worker_scan_limit,
+            home_bucket_id=worker_group_id,
+            limit=config.worker_scan_limit,
         )
         observed_scores = dict(worker_candidates)
         matches = worker_matcher.match_worker_candidates(
@@ -310,18 +352,26 @@ def allocate_once(task_batch_limit, worker_scan_limit):
             worker_ids=list(observed_scores),
             candidate_constraints=build_constraints(tasks),
         )
-        classify_rewrite_and_publish(tasks, matches, observed_scores)
+        classify_rewrite_and_publish(tasks, matches, observed_scores, config)
 ```
 
-Names are conceptual and do not freeze Python interfaces.
+The direct `workerGroupId == homeBucketId` mapping is the current v0 worker
+runtime contract. It is not Task metadata and is not caller-configurable.
 
-## Executable-Spec Gap
+## Executable-Spec Status
 
-The current Python package already provides Task score, Task descriptor batch
-read, Worker score acquisition, and `WorkerCandidateMatcher`. It does not yet
-provide this pacer, `TaskWorkRuntime.inspect_claimable_work`, or candidate-
-worker publication. The existing active-task acquire already supplies the base
-RUNNING-first band order.
+The current Python package implements `TaskWorkerAllocationPacer`,
+`TaskWorkerAllocationConfig`, the `TaskDispatchRuntime` owner interface, its
+Redis LIST implementation, and the candidate-worker DTO. Work/backlog APIs
+remain deliberately absent until that owner is designed completely. The
+existing active-task acquire supplies the base RUNNING-first band order.
+
+Interface sources:
+
+```text
+py_example/kernel/assignment_dispatch.py
+py_example/kernel/task_dispatch_runtime.py
+```
 
 ## Failure And Stale Handling
 
@@ -339,12 +389,13 @@ candidate collection publication fails
   no rollback of Task score; later allocation rotation retries
 
 Task pauses/closes after publication
-  WorkDispatchPacer no longer scans it; collection expires
+  WorkDispatchPacer no longer scans it; later Task physical cleanup owns residue
 ```
 
 ## Guardrails
 
 - Do not claim Work in this pacer.
+- Do not introduce a Work-availability bridge solely to skip empty matching.
 - Do not acquire or renew Worker score lease in this pacer.
 - Do not create DeliverSeed in this pacer.
 - Do not call WorkerCandidateMatcher once per Task.
@@ -352,6 +403,8 @@ Task pauses/closes after publication
 - Do not let `PRE_DISPATCH_VISIBLE` enter Work dispatch.
 - Do not consume scheduling suffix on successful allocation.
 - Do not publish candidate entries after a stale Task-score rewrite.
-- Do not append duplicate candidate collections; publish one bounded replaceable
-  collection per Task.
+- Do not expose cross-Task append as one atomic runtime operation; each Task
+  candidate LIST is an independent owner boundary.
+- Do not make `TaskDispatchRuntime` choose or enforce a Task candidate limit;
+  the pacer bounds each matcher result and the runtime stores what it receives.
 - Do not make candidate collection a Task or Worker truth owner.

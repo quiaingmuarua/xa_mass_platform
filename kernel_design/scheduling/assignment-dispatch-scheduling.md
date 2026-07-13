@@ -12,15 +12,15 @@ Detailed mechanisms:
 Current executable-spec gap:
 
 ```text
-no TaskWorkerAllocationPacer implementation
 no WorkDispatchPacer implementation
-no candidate-worker collection runtime
-no TaskWorkRuntime inspect/claim interface
+TaskWorkerAllocationPacer has a first executable allocation-round implementation
+TaskDispatchRuntime has a Redis LIST executable implementation
+Work/backlog owner and claim interface are intentionally unfrozen
 current Redis dispatch-task acquire is oldest-first, not recent-allocation reverse
 ```
 
-This document defines the target split. It does not claim those mechanisms are
-already implemented.
+This document defines the target split. Only the first allocation pacer and its
+Redis handoff runtime currently have executable-spec implementations.
 
 ## Core Decision
 
@@ -135,37 +135,40 @@ Allocation prioritizes productive RUNNING work before pre-running activation.
 Dispatch prefers fresh worker evidence. Any policy that reserves capacity for
 PRE_DISPATCH_VISIBLE belongs to deployment/operations policy, not this kernel
 mechanism. Dispatch fairness is bounded separately by candidate collection
-size, per-Task dispatch quota, scan limits, and collection expiry.
+publication policy, per-Task dispatch quota, scan limits, and consume-time
+candidate expiry validation.
 
 ## Inter-Pacer Protocol
 
-The required protocol seam is one bounded replaceable candidate-worker
-collection per Task:
+The required protocol seam is one expiring candidate-worker LIST per Task:
 
 ```text
-TaskCandidateWorkerCollection
-  taskId
-  workerGroupId
-  entries[]
-  createdAtMillis
-  expiresAtMillis
+taskId -> candidateWorkers[]
 
 CandidateWorkerEntry
   workerId
+  workerGroupId
   completeObservedWorkerScore
+  expiresAtMillis
 ```
 
-The concrete Python DTO and Redis key type are not frozen by this overview.
+The Python DTO and runtime owner are implemented in
+[`py_example/kernel/task_dispatch_runtime.py`](../py_example/kernel/task_dispatch_runtime.py).
+The Redis executable spec uses one LIST per Task:
+
+```text
+ad:{prefix}:task:{taskId}:candidate-workers
+```
 
 The collection is:
 
 ```text
 transient scheduling evidence
-bounded
-replaceable by a newer allocation round
-atomically consumable one worker entry at a time
-TTL / expiry controlled
-safe to lose, skip, replace, or discard
+produced by bounded allocation batches; no runtime-owned length cap
+appendable by allocation rounds
+atomically consumable in a caller-bounded batch
+entry expiry validated only when consumed
+safe to lose, skip, expire, or discard
 ```
 
 The collection is not:
@@ -192,18 +195,35 @@ accepted:
 match bounded workers
   -> request Task timeSlot rewrite
   -> stale / rejected: do not publish
-  -> transitioned: replace candidate-worker collection
+  -> transitioned: atomically append one Task's candidate entries
 ```
 
 This deliberately avoids cross-key atomicity. If the score rewrite succeeds but
 collection publication fails, the Task loses one allocation opportunity and
 later returns through normal oldest-first allocation. If a lifecycle command
 wins after publication, the Task leaves the dispatch scan and the collection
-expires as residue.
+becomes unreachable residue for later Task physical cleanup.
 
 Work dispatch consumes entries using an owner-local atomic pop/claim primitive.
 Multiple WorkDispatchPacer workers may run concurrently without a Task lock;
 one candidate entry must be returned to at most one consumer.
+
+The atomic boundary is one Task queue:
+
+```text
+append_candidate_workers(taskId, entries)
+candidate_worker_count(taskId)
+consume_candidate_workers(taskId, limit)
+```
+
+Append stores every entry supplied by the caller. Runtime does not
+choose a queue length or trim to Task policy. `candidate_worker_count` is a
+point-read of the current stored LIST length; it is not a capacity decision and
+does not scan, decode, or subtract expired entries.
+
+Cross-Task pipeline/multi-call wrappers may reduce network round trips, but each
+Task key succeeds or fails independently. No interface may imply all-or-nothing
+atomicity across Task queues.
 
 ## Worker Fence
 
@@ -229,7 +249,8 @@ Neither pacer depends on an event from the other.
 
 ```text
 allocation faster than dispatch
-  candidate collections remain bounded and replaceable
+  producer match policy controls each publication size; the queue may accumulate
+  until dispatch consumes it
 
 dispatch faster than allocation
   empty/missing collections are bounded no-op results
@@ -241,7 +262,7 @@ candidate Worker stale
   dispatch drops entry; later allocation produces fresh evidence
 
 Task paused or terminal
-  Task leaves eligible scan range; collection expires
+  Task leaves eligible scan range; later Task physical cleanup owns LIST residue
 ```
 
 Events may lower latency but cannot be required to wake either pacer.
@@ -261,3 +282,5 @@ Events may lower latency but cannot be required to wake either pacer.
 - Do not retain candidate collections as durable assignment truth.
 - Do not require cross-key atomicity between Task score and candidate-worker
   collection.
+- Do not expose cross-Task candidate append/consume as an atomic owner
+  primitive. Batch wrappers are non-atomic execution optimizations only.
