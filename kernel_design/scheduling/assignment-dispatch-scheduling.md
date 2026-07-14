@@ -89,7 +89,8 @@ The two pacers do not lock Task resources.
 ```text
 TaskWorkerAllocationPacer
   reads due Task ids from the score axis
-  matches Workers, acquires short leases, and appends transient reservations
+  acquires short Worker leases, matches lease successes, retains unmatched
+  leases until expiry, and appends transient reservations
   advances the acquired band's timeSlot without decoding Task score state
 
 TaskRunningActivationPacer
@@ -179,7 +180,7 @@ The collection is:
 
 ```text
 transient Worker reservation handoff
-produced by bounded allocation match-and-lease batches; no runtime-owned length cap
+produced by bounded allocation lease-and-match batches; no runtime-owned length cap
 appendable by allocation rounds
 atomically consumable in a caller-bounded batch
 expired batches excluded from count and consume
@@ -205,7 +206,7 @@ decoded Worker-score internals, transport handles, or result state.
 Allocation publishes evidence independently from Task lifecycle activation:
 
 ```text
-match and lease bounded workers
+lease and match bounded workers; unmatched leases expire naturally
   -> atomically append one Task's reservation entries
   -> independently request current same-band timeSlot rotation
 
@@ -216,11 +217,12 @@ separate running activation
 
 There is no score/collection commit protocol. Publication occurs before the
 same-band time rewrite. A failed publication does not require a Task-score
-rollback; allocation best-effort releases exact Worker leases that have not yet
-been published and propagates the runtime failure. A stale/rejected time rewrite
-does not roll back already published candidate evidence. If a lifecycle command
-wins after publication, the Task leaves the dispatch scan and the collection
-becomes unreachable residue for later Task physical cleanup.
+rollback or Worker-score compensation. Allocation leaves every acquired Worker
+lease intact, propagates the runtime failure, and relies on bounded lease expiry
+to restore Worker visibility. A stale/rejected time rewrite does not roll back
+already published candidate evidence. If a lifecycle command wins after
+publication, the Task leaves the dispatch scan and the collection becomes
+unreachable residue for later Task physical cleanup.
 
 Work dispatch consumes entries using an owner-local atomic pop/claim primitive.
 Multiple WorkDispatchPacer workers may run concurrently without a Task lock;
@@ -252,8 +254,8 @@ WorkerCandidateConstraint.limit =
 Candidate allocation reads the bounded count batch before matching. Runtime
 still does not enforce or reinterpret the Task limit during append. Concurrent
 allocation pacers may observe the same prior count and temporarily overshoot;
-the first cut accepts this rather than adding candidate-slot reservation or
-discarding already leased Workers after matching.
+the first cut accepts this rather than adding cross-Task candidate-slot
+reservation or append-time trimming.
 
 The current built-in activation policy uses this live-entry count as its first
 executable approximation. It is point-in-time allocation evidence and does not
@@ -285,11 +287,12 @@ atomicity across Task queues.
 ## Worker Fence
 
 Allocation first reads a bounded due HOT `(workerId, observedScore)` batch. The
-pacer keeps the opaque observations in a sidecar and passes only Worker ids to
-the matcher. For matched ids, the pacer attempts an exact observed-score point
-lease and creates `CandidateWorkerEntry` only from successful lease results.
-Unmatched ids require no score write. Matcher does not read or mutate Worker
-score.
+pacer keeps the opaque observations in a sidecar and attempts one exact
+batched observed-score lease with an independent CAS per Worker. Only
+lease-success ids enter the matcher.
+Unmatched leases are consumed negative scheduling evidence and remain held
+until expiry. Matched lease scores become `CandidateWorkerEntry` values.
+Matcher does not read or mutate Worker score.
 
 Work dispatch must recheck the consumed Worker against current Worker truth:
 
@@ -302,9 +305,9 @@ consume CandidateWorkerEntry
   -> invalid: discard entry and try another bounded entry
 ```
 
-Concurrent allocation rounds may observe and match the same due Worker, but
-only one exact-score point lease can succeed. Within one matcher call, a Worker
-is consumed by at most one candidate. This exclusivity is only a short
+Concurrent allocation rounds may observe the same due Worker, but only one
+exact-score lease CAS can pass it into matching. Within one matcher call, a
+Worker is consumed by at most one candidate. This exclusivity is only a short
 allocation window. A stale
 collection entry can remain after dirtying, release, lease due,
 or metadata change. Dispatch-side owner validation decides whether it can still
@@ -336,8 +339,8 @@ dispatch faster than allocation
   empty/missing collections are bounded no-op results
 
 collection write lost
-  allocation best-effort releases unpublished exact leases; timeout remains the
-  fallback and a later bounded round may reserve the Worker again
+  allocation propagates without Worker-score compensation; acquired leases
+  remain held until bounded expiry and a later round may reserve the Worker again
 
 candidate Worker stale
   dispatch drops entry; later allocation produces fresh evidence

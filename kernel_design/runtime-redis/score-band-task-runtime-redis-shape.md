@@ -1,17 +1,18 @@
 # Score-Band Task Runtime Redis Shape
 
-Status: superseded Redis shape draft. This document is not active execution
-input, current Java implementation truth, or an implementation roadmap.
+Status: superseded historical Redis shape draft. This document is not an active
+reading entry, execution input, current Java implementation truth, or an
+implementation roadmap.
 
-This document describes a compact Redis shape for task work runtime. It is a
-directional design note for the future kernel core and executable-spec work.
-It still contains older `epochSecond` / `PAUSE_EPOCH_SECOND` task score-band
-vocabulary. Do not implement task score behavior from those terms.
+This document preserves an earlier combined task-work Redis shape for historical
+context. It still contains older `epochSecond` / `PAUSE_EPOCH_SECOND` task
+score-band vocabulary. Do not implement task score behavior from those terms or
+use this file as a current task-runtime shape contract.
 
 The current task score design lives in:
 
 - [Task Score-Band Scheduling](../scheduling/task-score-band-scheduling.md)
-- [task_score.py](../py_example/kernel/task_score.py)
+- [task_score_band.py](../py_example/kernel/task_score_band.py)
 - [task_score_band_zset.py](../py_example/runtime_redis/task_score_band_zset.py)
 
 The active model uses public `timeMillis`, internal `timeSlot =

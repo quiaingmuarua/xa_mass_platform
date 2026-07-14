@@ -39,11 +39,11 @@ worker-score-band-scheduling
   decides which worker/resource ids may enter worker admission now
 
 assignment-dispatch-scheduling
-  joins a schedulable task, admitted worker/resource, claimed work hash row,
-  and transport route evidence into a concrete deliver seed
+  joins a schedulable task, admitted worker/resource, claimed item score, and
+  transport route evidence into a concrete deliver seed
 
 result-routing-scheduling
-  compares incoming result evidence with current work hash truth and routes it
+  compares incoming result evidence with current item score truth and routes it
   to finality, retry, discard, or no-op handling
 ```
 
@@ -69,11 +69,11 @@ transport facts as worker selection truth are not allowed
 task score acquire
   -> task validation
   -> worker score acquire / admission
-  -> work hash claim
+  -> item score acquire / claim
   -> deliver seed
   -> transport delivery
   -> result evidence
-  -> current hash compare
+  -> current item score compare
   -> finality / retry / no-op / next scheduling decision
 ```
 
@@ -101,8 +101,8 @@ Without ordinary external events, the kernel must still close the loop:
 task score due
   -> owner validation
   -> worker admission
-  -> work claim / no-work classification
-  -> result compare or repair
+  -> item score claim / no-work classification
+  -> result compare
   -> retry / finality / next score
 ```
 
@@ -136,7 +136,7 @@ operator-visible unresolved state created
 Even then, emission is evidence only. It must be bounded and fast-fail; failure
 to emit cannot roll back or block the owner transition. If an allowed event is
 dropped, repeated, delayed, or reordered, owner state machines must still
-converge through score recheck, current-truth validation, bounded repair, or
+converge through score recheck, current-truth validation, bounded recheck, or
 explicit policy closure.
 
 Allowed events can only accelerate scheduling. They must not be the scheduling
@@ -149,7 +149,7 @@ event arrives
   -> score/state decides the next scheduling action
 
 event missing
-  -> bounded scheduler scan / recheck / repair still reaches the same state
+  -> bounded scheduler scan / recheck still reaches the same state
 ```
 
 Do not build a path where scheduling only happens because an event was emitted.
@@ -182,9 +182,9 @@ resource mutation
   does not wait for dispatcher ownership
 
 item append
-  writes backlog truth directly
+  writes item record and item score truth directly
   does not change task lifecycle or scheduling visibility
-  guarantees queue acceptance only, not eventual consumption
+  guarantees item acceptance only, not eventual consumption
 
 score-acquired scheduling round
   is the only routine writer for an acquirable score
@@ -244,7 +244,7 @@ Does not own:
 
 ```text
 item append
-work hash claim / current occupancy
+item score claim / current occupancy
 worker selection
 transport delivery
 result finality
@@ -328,7 +328,7 @@ Answers:
 
 ```text
 which bounded Task-Worker candidates should be published now?
-which recent candidate can become a current Work claim and DeliverSeed now?
+which recent candidate can become a current item-score claim and DeliverSeed now?
 ```
 
 Owns:
@@ -338,9 +338,9 @@ two mandatory independent pacers
 oldest-first Task-Worker allocation and Task fairness rewrite intent
 newest-first candidate-worker consumption
 worker group / constraint / priority rule application during allocation
-Worker short lease timing during dispatch
-final work claim timing
-deliver seed creation from current work hash evidence
+Worker allocation-lease duration and dispatch-side release / renewal disposition
+final item claim timing
+deliver seed creation from current item score evidence
 ```
 
 Does not own:
@@ -385,25 +385,24 @@ owner and not a transport parser.
 
 1. [Task Score-Band Scheduling](task-score-band-scheduling.md)
    - target task active-acquisition score mechanism.
-2. [Worker Score-Band Scheduling](worker-score-band-scheduling.md)
+2. [Task Item Score-Band Scheduling](task-item-score-band-scheduling.md)
+   - target per-Task Item record plus monotonic item score axis.
+3. [Worker Score-Band Scheduling](worker-score-band-scheduling.md)
    - target worker/resource eligibility score mechanism.
-3. [Assignment-Dispatch Scheduling](assignment-dispatch-scheduling.md)
+4. [Assignment-Dispatch Scheduling](assignment-dispatch-scheduling.md)
    - shared owner and protocol contract for two mandatory independent pacers.
-4. [Task-Worker Allocation Pacer](task-worker-allocation-pacer.md)
+5. [Task-Worker Allocation Pacer](task-worker-allocation-pacer.md)
    - oldest-first Task allocation, batch Worker matching, activation checks,
      Task timeSlot fairness, and candidate-worker publication.
-5. [Work Dispatch Pacer](work-dispatch-pacer.md)
-   - newest-first candidate consumption, Worker short lease, Work claim, and
+6. [Work Dispatch Pacer](work-dispatch-pacer.md)
+   - newest-first candidate consumption, Worker short lease, item-score claim, and
      DeliverSeed creation; Task score is read-only.
-6. [Result-Routing Scheduling](result-routing-scheduling.md)
+7. [Result-Routing Scheduling](result-routing-scheduling.md)
    - how result evidence is routed to finality, retry, no-op, or unresolved
      handling.
-7. [Worker Runtime Redis Shape](../runtime-redis/worker-runtime-redis-shape.md)
+8. [Worker Runtime Redis Shape](../runtime-redis/worker-runtime-redis-shape.md)
    - first-slice Redis structure reference for worker-runtime resource catalog,
      score acquisition, and dynamic attribute storage.
-8. [Score-Band Task Runtime Redis Shape](../runtime-redis/score-band-task-runtime-redis-shape.md)
-   - Redis structure reference for task score lanes plus adjacent work-item and
-     result structures.
 
 This directory describes mechanisms for new-kernel alignment. A future
 executable spec must define its own scope, acceptance, and residue handling
@@ -417,9 +416,9 @@ The target kernel uses explicit owner planes:
 Task score-band
   owns task active-acquisition visibility
 
-Work-item owner
-  owns item readiness, current work hash claim, retry frame, and claim
-  compensation
+Task Item score-band
+  owns per-Task Item record, item scheduling score, same-tag claim/retry
+  movement, and cross-tag final movement
 
 Result owner
   owns result finality, recent-final barriers, and result read projection
@@ -442,30 +441,42 @@ First kernel cut rule:
 no Attempt aggregate
 no claim_token as a required model concept
 deliver seed carries claim evidence
-work hash is the current truth
-result apply validates against the current work hash
-time-bounded work may compare claim_expires_at
-non-time-bounded work is single-claim until result/cancel/manual intervention
+item score is the current runtime truth
+result apply validates against the current item score
+expired claim scores naturally re-enter acquire
+optional intake LIST is not kernel truth
 ```
 
-## Python Kernel Direction
+## Python Executable Spec
 
-The first Python kernel core should optimize for owner clarity over framework
-shape:
+The current Python executable spec is framework-light and organized by owner:
 
 ```text
-kernel_core/
-  task_score.py
-  worker_score.py
-  task_worker_allocation.py
-  result_routing.py
-  models.py
-  memory_runtime.py
+kernel_design/py_example/
+  constraint_dsl/
+    evaluator.py
+  kernel/
+    task_score_band.py
+    worker_score.py
+    task_runtime.py
+    worker_runtime.py
+    worker_candidate_matcher.py
+    task_dispatch_runtime.py
+    task_worker_allocation.py
+  runtime_redis/
+    task_score_band_zset.py
+    worker_score_zset.py
+    task_runtime.py
+    worker_runtime.py
+    task_dispatch_runtime.py
+  tests/
 ```
 
-The first version can be in-memory and single-process. It should prove the
-owner model before introducing Redis, HTTP, SDKs, background workers, or UI
-surfaces.
+It currently proves the Task and Worker score axes, resource catalogs, bounded
+Worker matching, Redis candidate handoff, and the first Task-Worker allocation
+pacer. `WorkDispatchPacer`, Work/backlog claim ownership, and result routing are
+still executable-spec gaps. Redis owner implementations already exist; an
+in-memory runtime is not a prerequisite or a parallel mainline.
 
 ## Extension Scope
 
@@ -493,7 +504,7 @@ internal design notes.
   explicitly labelled as a failure-mode or invariant reference.
 - Do not let legacy Java classes, module names, or bridge layers define the new
   kernel core.
-- Do not make task score-band own work hash claim, retry-frame mutation, or
+- Do not make task score-band own item score claim, retry movement, or
   result finality.
 - Do not make worker score-band own transport sessions or raw heartbeat truth.
 - Do not let transport identifiers become scheduling candidate truth.

@@ -138,7 +138,7 @@ class WorkerRuntimeModelTest(unittest.TestCase):
         )
         lease_params = set(
             inspect.signature(
-                WorkerScoreCore.acquire_observed_hot_score_lease
+                WorkerScoreCore.acquire_observed_hot_score_leases
             ).parameters
         )
         self.assertEqual(
@@ -146,9 +146,39 @@ class WorkerRuntimeModelTest(unittest.TestCase):
             {
                 "self",
                 "home_bucket_id",
-                "worker_id",
-                "observed_score",
+                "observed_scores",
                 "target_time_millis",
+            },
+        )
+        rewrite_params = set(
+            inspect.signature(WorkerScoreCore.rewrite_current_scores).parameters
+        )
+        self.assertEqual(
+            rewrite_params,
+            {
+                "self",
+                "home_bucket_id",
+                "worker_ids",
+                "target_time_millis",
+                "target_lane_rank",
+            },
+        )
+        renew_params = set(
+            inspect.signature(
+                WorkerScoreCore.renew_active_hot_score_leases
+            ).parameters
+        )
+        self.assertEqual(renew_params, lease_params)
+        release_params = set(
+            inspect.signature(WorkerScoreCore.release_score_holds).parameters
+        )
+        self.assertEqual(
+            release_params,
+            {
+                "self",
+                "home_bucket_id",
+                "observed_scores",
+                "release_time_millis",
             },
         )
 

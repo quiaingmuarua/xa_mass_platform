@@ -93,18 +93,16 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
             limit=10,
         )
         observed_score = candidates[worker.worker_id]
-        first_lease = self.score_band.acquire_observed_hot_score_lease(
+        first_lease = self.score_band.acquire_observed_hot_score_leases(
             home_bucket_id=self.worker_group_id,
-            worker_id=worker.worker_id,
-            observed_score=observed_score,
+            observed_scores={worker.worker_id: observed_score},
             target_time_millis=(time.time_ns() // 1_000_000) + 5_000,
-        )
-        second_lease = self.score_band.acquire_observed_hot_score_lease(
+        )[worker.worker_id]
+        second_lease = self.score_band.acquire_observed_hot_score_leases(
             home_bucket_id=self.worker_group_id,
-            worker_id=worker.worker_id,
-            observed_score=observed_score,
+            observed_scores={worker.worker_id: observed_score},
             target_time_millis=(time.time_ns() // 1_000_000) + 6_000,
-        )
+        )[worker.worker_id]
         descriptors = self.catalog.get_worker_descriptors(
             worker_group_id=self.worker_group_id,
             worker_ids=[worker.worker_id],

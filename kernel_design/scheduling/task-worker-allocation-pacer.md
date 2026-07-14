@@ -18,11 +18,14 @@ which Tasks currently have bounded candidate Workers?
 ```
 
 It does not claim Work, create DeliverSeed, or accept transport delivery. It
-reads a bounded Worker score observation batch, matches only those Worker ids,
-then attempts an exact-score point lease for each match. The entry
-itself has no TTL and is not permanent validity proof. It does not classify or
-advance Task lifecycle. After one Task has been considered, it may advance that
-Task's current same-band timeSlot for bounded fairness rotation.
+reads a bounded Worker score observation batch, batch-leases every unchanged
+due Worker, matches only lease successes, and publishes matched leases. Every
+successful lease is consumed by the scheduling attempt; unmatched and failed
+publication paths wait for lease expiry. The entry itself has no TTL and is not
+permanent validity proof.
+It does not classify or advance Task lifecycle. After one Task has been
+considered, it may advance that Task's current same-band timeSlot for bounded
+fairness rotation.
 
 ## Why It Is Independent
 
@@ -57,11 +60,9 @@ TaskResourceCatalog
 WorkerScoreCore
   acquire_hot_acquire_candidates(homeBucketId, limit)
     -> workerId -> observedScore mapping; read-only
-  acquire_observed_hot_score_lease(
-    homeBucketId, workerId, observedScore, targetTimeMillis
+  acquire_observed_hot_score_leases(
+    homeBucketId, observedScores, targetTimeMillis
   )
-  release_score_hold(homeBucketId, workerId, observedScore, releaseTimeMillis)
-  exact-CAS leases matched Workers and compensates unpublished leases
 
 WorkerCandidateMatcher
   match_worker_candidates(
@@ -129,10 +130,11 @@ bounded Task ids
   -> workerGroupId -> taskId -> WorkerCandidateConstraint
   -> bounded due HOT (workerId, observedScore) pairs without mutation
   -> pacer-private workerId -> observedScore sidecar
-  -> one WorkerCandidateMatcher call with those Worker ids
+  -> one batch of independent exact-score CAS leases for unchanged due Workers
+  -> one WorkerCandidateMatcher call with lease-success Worker ids
   -> matched and unmatched Worker-id partition
-  -> exact-score point lease for matched ids only
-  -> successful leases become CandidateWorkerEntry values
+  -> unmatched leases remain held until expiry
+  -> matched lease scores become CandidateWorkerEntry values
 ```
 
 First cut identity is direct:
@@ -179,48 +181,46 @@ TaskWorkerAllocationPacer maps values but does not implement DSL parsing.
 For each Worker-group partition:
 
 ```text
-observedScoreByWorkerId = workerScore.acquire_hot_acquire_candidates(
+workerCandidates = workerScore.acquire_hot_acquire_candidates(
   workerGroupId,
   workerScanLimit,
 )
-workerIds = list(observedScoreByWorkerId)
+leaseUntilMillis = nowMillis() + workerLeaseDurationMillis
+leasedWorkerScores = {}
+leaseResults = workerScore.acquire_observed_hot_score_leases(
+  workerGroupId,
+  workerCandidates,
+  leaseUntilMillis,
+)
+for workerId, lease in leaseResults.items():
+  if lease succeeds:
+    leasedWorkerScores[workerId] = lease.score
 matchResult = workerCandidateMatcher.match_worker_candidates(
   workerGroupId,
-  workerIds,
+  leasedWorkerScores.keys(),
   ...
 )
-leaseUntilMillis = nowMillis() + workerLeaseDurationMillis
-for matchedWorkerId in matchResult.matches:
-  lease = workerScore.acquire_observed_hot_score_lease(
-    workerGroupId,
-    matchedWorkerId,
-    observedScoreByWorkerId[matchedWorkerId],
-    leaseUntilMillis,
-  )
-  if lease succeeds:
-    publish CandidateWorkerEntry(matchedWorkerId, lease.score)
+publish matched CandidateWorkerEntry values with leasedWorkerScores
 ```
 
 The allocation pacer resolves `workerGroupId` to the current v0 home bucket and
 reads at most `workerScanLimit` due HOT entries as a private
 `workerId -> observedScore` sidecar. This query does not mutate score or expose
-scan order as a caller contract. The pacer supplies only Worker ids to the
-matcher. The matcher considers each Worker at most once according to candidate
-priority and candidate limit and returns a complete exclusive partition: each
-normalized input Worker is either assigned to one candidate or returned as
-unmatched.
+scan order as a caller contract. The pacer submits one bounded lease batch
+before matching. Each Worker still uses an independent exact-score CAS; stale
+entries are discarded. Only successful lease
+ids enter the matcher, which returns a complete exclusive matched/unmatched
+partition. Unmatched Workers consumed the scheduling round and keep their
+future leases until natural expiry.
 
-Unmatched Workers require no score write. For each matched Worker, the pacer
-passes its opaque observation to `acquire_observed_hot_score_lease`. That method
-validates due HOT shape outside Lua and uses one generic exact-score CAS to write
-the future lease while preserving lane rank and clearing dirty. A stale CAS is
-discarded; only a successful result creates `CandidateWorkerEntry`.
-
-The scan, matching, and point leases are deliberately not one atomic operation.
-Concurrent rounds may inspect and match the same observation, but only one can
-win the exact-score lease CAS. `leaseUntilMillis` is derived immediately before
-point leasing from `workerLeaseDurationMillis`; it does not cross the matcher
-interface. The same value is supplied to
+The batch validates due HOT shape outside Lua and pipelines the existing generic
+single-Worker exact-score CAS while preserving lane rank and clearing dirty.
+The scan, leases, matching, and publication are
+deliberately not one atomic operation. Concurrent rounds may inspect the same
+observation, but only one can win its exact-score lease CAS.
+`leaseUntilMillis` is derived before batch leasing from
+`workerLeaseDurationMillis`; it does not cross the matcher interface. The same
+value is supplied to
 `TaskDispatchRuntime` as the current batch expiry, so candidate expiry never
 outlives the lease that prevented duplicate allocation.
 
@@ -231,8 +231,9 @@ matched candidate entry up to the Task's current remaining candidate target:
 
 ```text
 PRE_DISPATCH_VISIBLE allocation
+  -> acquire bounded short Worker reservations
   -> bounded Worker match
-  -> acquire short Worker reservations
+  -> retain unmatched reservations until lease expiry
   -> append reservations when non-empty
   -> independently advance the current same-band timeSlot
 ```
@@ -407,47 +408,62 @@ concurrent pacers rather than a cross-key atomic hard cap.
 
 ```python
 def allocate_candidate_workers(config):
-    task_band_by_id = acquire_running_then_pre_dispatch(
+    task_candidate_bands = acquire_running_then_pre_dispatch(
         task_batch_limit=config.task_batch_limit,
     )
-    task_ids = list(task_band_by_id)
-    descriptors = task_catalog.load_task_allocation_descriptors(
+    task_ids = list(task_candidate_bands)
+    task_descriptors = task_catalog.load_task_allocation_descriptors(
         task_ids=task_ids,
     )
-    candidate_counts = task_dispatch_runtime.candidate_worker_counts(
+    candidate_worker_counts = task_dispatch_runtime.candidate_worker_counts(
         task_ids=task_ids,
     )
 
-    grouped_constraints = prepare_and_group(
+    grouped_task_constraints = group_task_constraints(
         task_ids,
-        descriptors,
-        candidate_counts,
+        task_descriptors,
+        candidate_worker_counts,
     )
 
-    for worker_group_id, constraints in grouped_constraints:
-        observed_score_by_worker_id = worker_score.acquire_hot_acquire_candidates(
+    for worker_group_id, task_constraints in grouped_task_constraints:
+        worker_candidates = worker_score.acquire_hot_acquire_candidates(
             home_bucket_id=worker_group_id,
             limit=config.worker_scan_limit,
         )
-        match_result = worker_matcher.match_worker_candidates(
-            worker_group_id=worker_group_id,
-            worker_ids=tuple(observed_score_by_worker_id),
-            candidate_constraints=constraints,
-        )
-        lease_until_millis = (
+        worker_lease_until_millis = (
             now_millis() + config.worker_lease_duration_millis
         )
-        leased_entries = lease_matched_workers(
-            match_result.matches,
-            observed_score_by_worker_id,
-            lease_until_millis,
+        lease_results = worker_score.acquire_observed_hot_score_leases(
+            home_bucket_id=worker_group_id,
+            observed_scores=worker_candidates,
+            target_time_millis=worker_lease_until_millis,
         )
-        append_worker_reservations(
-            leased_entries,
-            expires_at_millis=lease_until_millis,
+        leased_worker_scores = {}
+        for worker_id, lease in lease_results.items():
+            if lease.status == TRANSITIONED and lease.score is not None:
+                leased_worker_scores[worker_id] = lease.score
+        match_result = worker_matcher.match_worker_candidates(
+            worker_group_id=worker_group_id,
+            worker_ids=tuple(leased_worker_scores),
+            candidate_constraints=task_constraints,
+        )
+        matched_candidates = {
+            task_id: tuple(
+                CandidateWorkerEntry(
+                    worker_id=worker_id,
+                    worker_group_id=worker_group_id,
+                    worker_lease_score=leased_worker_scores[worker_id],
+                )
+                for worker_id in worker_ids
+            )
+            for task_id, worker_ids in match_result.matches.items()
+        }
+        publish_candidate_workers(
+            matched_candidates,
+            expires_at_millis=worker_lease_until_millis,
         )
 
-    for task_id, expected_band in task_band_by_id.items():
+    for task_id, expected_band in task_candidate_bands.items():
         task_score.rewrite_same_band_time_millis(
             task_id=task_id,
             expected_band=expected_band,
@@ -483,21 +499,22 @@ Task descriptor missing/corrupt
   the permanent score head; descriptor owner/recovery handles the missing fact
 
 concurrent allocation round
-  rounds may observe and match the same Worker; exact-score point lease permits
-  only one successful future-lease write
+  rounds may observe the same Worker; exact-score lease CAS permits only one
+  round to pass that Worker into matching
 
 matcher raises
-  no Worker lease has been written; propagate the failure directly
+  propagate; all acquired leases remain held until natural expiry
 
 Worker is unmatched or candidate capacity is exhausted
-  return it through unmatchedWorkerIds; no score write or release is required
+  return it through unmatchedWorkerIds; its scheduling attempt consumes the
+  lease until natural expiry
 
-matched Worker score changed before point lease
-  exact-score CAS returns STALE; discard that match and publish no entry for it
+Worker score changed before lease CAS
+  exact-score CAS returns STALE; exclude that Worker from matcher input
 
 candidate collection publication fails
-  best-effort release every exact Worker lease not yet published by that group,
-  then propagate the failure; already-published Task entries remain valid
+  propagate without Worker-score compensation; every acquired lease remains
+  held until expiry and already-published Task entries remain valid
 
 same-band time rewrite is stale or rejected
   keep already-published candidate evidence; do not roll it back
@@ -510,9 +527,13 @@ Task pauses/closes after publication
 
 - Do not claim Work in this pacer.
 - Do not introduce a Work-availability bridge solely to skip empty matching.
-- Do not turn scan -> match -> point lease into one transaction or lock.
-- Point lease must use the exact opaque observed score; do not replace it with
-  an expected band, time range, or second score read.
+- Do not turn scan -> batch lease -> match -> publish matched into one
+  transaction or lock.
+- Do not release Worker leases from this pacer. Unmatched, matcher failure, and
+  publication failure all recover through bounded lease expiry.
+- Each Worker lease operation inside the batch must use its exact opaque
+  observed score; do not replace it with an expected band, time range, or second
+  score read.
 - Do not pass opaque lease scores, lease deadlines, or dispatch entries into
   `WorkerCandidateMatcher`.
 - Do not create DeliverSeed in this pacer.

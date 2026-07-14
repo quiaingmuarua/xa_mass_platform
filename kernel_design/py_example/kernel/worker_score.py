@@ -130,7 +130,7 @@ class WorkerScoreCore(ABC):
         """Return bounded due HOT_ACQUIRE Workers by id and observed score.
 
         This is a read-only score query. Callers may retain each score only as
-        the expected fence for `acquire_observed_hot_score_lease`; they must not
+        the expected fence for `acquire_observed_hot_score_leases`; they must not
         decode or rewrite it. Concurrent rounds may observe the same Worker,
         but only one can later acquire its lease through exact score CAS. The
         mapping does not expose scan order as a public contract.
@@ -168,15 +168,15 @@ class WorkerScoreCore(ABC):
         pass
 
     @abstractmethod
-    def rewrite_current_score(
+    def rewrite_current_scores(
         self,
         *,
         home_bucket_id: HomeBucketId,
-        worker_id: WorkerId,
+        worker_ids: Sequence[WorkerId],
         target_time_millis: TimeMillis,
         target_lane_rank: LaneRank | None = None,
-    ) -> WorkerScoreTransitionResult:
-        """Rewrite the current score within the same polarity.
+    ) -> Mapping[WorkerId, WorkerScoreTransitionResult]:
+        """Rewrite current scores within the same polarity.
 
         This is the ordinary same-lane score update used for renew, retry,
         cooldown, manual hold, drain, maintenance, or policy hold. Implementations
@@ -188,32 +188,31 @@ class WorkerScoreCore(ABC):
         pass
 
     @abstractmethod
-    def acquire_observed_hot_score_lease(
+    def acquire_observed_hot_score_leases(
         self,
         *,
         home_bucket_id: HomeBucketId,
-        worker_id: WorkerId,
-        observed_score: Score,
+        observed_scores: Mapping[WorkerId, Score],
         target_time_millis: TimeMillis,
-    ) -> WorkerScoreTransitionResult:
-        """Lease one observed due HOT_ACQUIRE score through exact CAS.
+    ) -> Mapping[WorkerId, WorkerScoreTransitionResult]:
+        """Lease observed due HOT_ACQUIRE scores through independent exact CAS.
 
         Implementations validate the opaque observation as a due HOT score,
         require the target to be a future time slot, preserve lane rank, clear
-        dirty, and write only when storedScore still equals observed_score.
+        dirty, and write each score only when storedScore still equals its
+        observed score. The batch is not an all-or-nothing transaction.
         """
         pass
 
     @abstractmethod
-    def renew_active_hot_score_lease(
+    def renew_active_hot_score_leases(
         self,
         *,
         home_bucket_id: HomeBucketId,
-        worker_id: WorkerId,
-        observed_score: Score,
+        observed_scores: Mapping[WorkerId, Score],
         target_time_millis: TimeMillis,
-    ) -> WorkerScoreTransitionResult:
-        """Extend a still-active HOT_ACQUIRE score lease without rematching.
+    ) -> Mapping[WorkerId, WorkerScoreTransitionResult]:
+        """Extend still-active HOT_ACQUIRE score leases without rematching.
 
         Implementations require storedScore == observed_score, observed time
         polarity == HOT_ACQUIRE, observed time slot >= current time slot,
@@ -236,7 +235,7 @@ class WorkerScoreCore(ABC):
         read the current stored score, only set dirty=1, and preserve polarity,
         score time coordinate, and lane_rank. This applies to both due scores
         and future-held allocation leases. A relevant metadata change after
-        point lease marks the lease dirty so later dispatch renewal or
+        lease acquisition marks the lease dirty so later dispatch renewal or
         revalidation cannot continue from stale match evidence.
         """
         pass
@@ -280,20 +279,18 @@ class WorkerScoreCore(ABC):
         pass
 
     @abstractmethod
-    def release_score_hold(
+    def release_score_holds(
         self,
         *,
         home_bucket_id: HomeBucketId,
-        worker_id: WorkerId,
-        observed_score: Score,
+        observed_scores: Mapping[WorkerId, Score],
         release_time_millis: TimeMillis,
-    ) -> WorkerScoreTransitionResult:
-        """Release an exact held score while preserving polarity.
+    ) -> Mapping[WorkerId, WorkerScoreTransitionResult]:
+        """Release exact held scores while preserving polarity.
 
         Release is the only ordinary operation allowed to lower the score time
-        coordinate. It
-        is not a RECOVERY_RECHECK -> HOT_ACQUIRE reopen. If observed_score is negative, the
-        worker remains in RECOVERY_RECHECK and still requires recovery validation
-        before hot score acquire.
+        coordinate. It is not a RECOVERY_RECHECK -> HOT_ACQUIRE reopen. If an
+        observed score is negative, the worker remains in RECOVERY_RECHECK and
+        still requires recovery validation before hot score acquire.
         """
         pass

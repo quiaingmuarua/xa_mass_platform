@@ -278,11 +278,11 @@ map[workerId, observedScore]
 ```
 
 The query is read-only. The returned score is an opaque observation retained
-only by the allocation pacer for a later exact-score point lease. The pacer
-passes only Worker ids to matcher. Redis scan order may remain visible through
-the concrete dict insertion order, but it is not part of the public contract.
-Concurrent scans may return the same Worker; the later compare-and-write decides
-the single lease winner.
+only by the allocation pacer for a later batched exact-score lease. The pacer
+passes only independent lease-CAS successes to matcher. Redis scan order may remain
+visible through the concrete dict insertion order, but it is not part of the
+public contract. Concurrent scans may return the same Worker; the later
+compare-and-write decides the single lease winner before matching.
 
 Recovery recheck:
 
@@ -316,17 +316,23 @@ Required first-slice primitives:
 
 ```text
 initialize_hot_acquire_score(workerGroupId, workerId, laneRank)
-rewrite_current_score(workerGroupId, workerId, targetTimeMillis, targetLaneRank?)
+rewrite_current_scores(workerGroupId, workerIds, targetTimeMillis, targetLaneRank?)
 acquire_hot_acquire_candidates(workerGroupId, limit)
-acquire_observed_hot_score_lease(
-  workerGroupId, workerId, observedScore, targetTimeMillis
+acquire_observed_hot_score_leases(
+  workerGroupId, observedScores, targetTimeMillis
 )
-renew_active_hot_score_lease(workerGroupId, workerId, observedScore, targetTimeMillis)
+renew_active_hot_score_leases(workerGroupId, observedScores, targetTimeMillis)
 mark_current_lease_dirty(workerGroupId, workerId)
 toggle_current_polarity(workerGroupId, workerId, observedScore, targetLaneRank)
 exhaust_recovery_recheck(workerGroupId, workerId, observedScore)
-release_score_hold(workerGroupId, workerId, observedScore, releaseTimeMillis)
+release_score_holds(workerGroupId, observedScores, releaseTimeMillis)
 ```
+
+`release_score_holds` is not an allocation-pacer compensation primitive.
+Only a downstream dispatch/admission owner holding the published opaque lease
+score may release a non-exclusive Worker after its scheduling decision succeeds.
+Allocation unmatched, matcher failure, and candidate publication failure leave
+the score untouched and recover through lease expiry.
 
 Rules:
 
@@ -338,13 +344,18 @@ polarity move uses exact observedScore CAS
 RECOVERY_RECHECK cannot be hot leased
 active hot lease renewal returns STALE on dirty
 bounded hot acquire is a read-only positive due-score query
-observed hot lease validates due/future shape outside Lua, then generic exact
-score CAS writes the future lease while preserving laneRank and clearing dirty
+observed hot lease batch validates due/future shape outside Lua, then pipelines
+one generic exact-score CAS per Worker while preserving laneRank and clearing dirty
 dirty mark only sets dirty = 1
 ```
 
-`rewrite_current_score` is monotonic and does not need `observedScore`.
+`rewrite_current_scores` is monotonic and does not need `observedScore`.
 Lowering operations and polarity moves do need exact `observedScore`.
+
+Batch score writes accept one WorkerGroup/ZSET key and shared target parameters.
+Redis uses `pipeline(transaction=false)` around the existing single-Worker Lua
+primitives. The batch reduces network round trips but is not transactional;
+each Worker returns an independent transition result.
 
 ## Worker Registration And Catalog Operations
 
@@ -436,7 +447,7 @@ evaluate remaining constraints in resolved priority order; first match consumes 
 missing / unsupported / unresolved handler rows fail closed when read
 matcher returns each workerId in at most one candidate result
 result shape contains insertion-ordered candidateId -> workerIds plus unordered unmatchedWorkerIds
-pacer point-leases matched ids by exact observed score; unmatched ids cause no score write
+pacer leaves unmatched leases untouched; lease expiry restores hot visibility
 ```
 
 `WorkerCandidateMatcher` is a storage-independent worker-runtime mechanism. It
@@ -488,8 +499,8 @@ mark_current_lease_dirty
 Allowed dirty clear:
 
 ```text
-acquire_observed_hot_score_lease after bounded descriptor / dynamic metadata
-matching and exact observed-score validation
+acquire_observed_hot_score_leases after bounded score candidate scan and before
+bounded descriptor / dynamic metadata matching
 ```
 
 Forbidden:

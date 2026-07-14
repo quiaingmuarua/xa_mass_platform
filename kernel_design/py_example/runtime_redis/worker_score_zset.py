@@ -250,18 +250,27 @@ return {"transitioned", target_score}
             self._score_to_int(stored_score),
         )
 
-    def rewrite_current_score(
+    def rewrite_current_scores(
         self,
         *,
         home_bucket_id: HomeBucketId,
-        worker_id: WorkerId,
+        worker_ids: Sequence[WorkerId],
         target_time_millis: TimeMillis,
         target_lane_rank: LaneRank | None = None,
-    ) -> WorkerScoreTransitionResult:
+    ) -> Mapping[WorkerId, WorkerScoreTransitionResult]:
+        unique_worker_ids = tuple(dict.fromkeys(worker_ids))
+        if not unique_worker_ids:
+            return {}
         if not self._valid_time_millis(target_time_millis):
-            return WorkerScoreTransitionResult(WorkerScoreTransitionStatus.INVALID)
+            return self._uniform_results(
+                unique_worker_ids,
+                WorkerScoreTransitionStatus.INVALID,
+            )
         if target_lane_rank is not None and not self._valid_lane_rank(target_lane_rank):
-            return WorkerScoreTransitionResult(WorkerScoreTransitionStatus.INVALID)
+            return self._uniform_results(
+                unique_worker_ids,
+                WorkerScoreTransitionStatus.INVALID,
+            )
 
         target_time_slot = self._time_slot_from_millis(target_time_millis)
         target_min_abs_score = self._abs_score(
@@ -269,91 +278,145 @@ return {"transitioned", target_score}
             self.MIN_LANE_RANK,
             self.MIN_DIRTY,
         )
-        return self._script_result(
-            self.redis.eval(
-                self._CURRENT_REWRITE_SCRIPT,
-                1,
-                self._score_key(home_bucket_id),
-                worker_id,
-                target_min_abs_score,
-                -1 if target_lane_rank is None else target_lane_rank,
-                self.slot_factor,
-                self.dirty_factor,
+        key = self._score_key(home_bucket_id)
+        with self.redis.pipeline(transaction=False) as pipe:
+            for worker_id in unique_worker_ids:
+                pipe.eval(
+                    self._CURRENT_REWRITE_SCRIPT,
+                    1,
+                    key,
+                    worker_id,
+                    target_min_abs_score,
+                    -1 if target_lane_rank is None else target_lane_rank,
+                    self.slot_factor,
+                    self.dirty_factor,
+                )
+            raw_results = pipe.execute()
+        return {
+            worker_id: self._script_result(raw_result)
+            for worker_id, raw_result in zip(
+                unique_worker_ids,
+                raw_results,
+                strict=True,
             )
-        )
+        }
 
-    def acquire_observed_hot_score_lease(
+    def acquire_observed_hot_score_leases(
         self,
         *,
         home_bucket_id: HomeBucketId,
-        worker_id: WorkerId,
-        observed_score: Score,
+        observed_scores: Mapping[WorkerId, Score],
         target_time_millis: TimeMillis,
-    ) -> WorkerScoreTransitionResult:
-        observed = self._decode_score(observed_score)
-        if observed is None or not self._valid_time_millis(target_time_millis):
-            return WorkerScoreTransitionResult(WorkerScoreTransitionStatus.INVALID)
+    ) -> Mapping[WorkerId, WorkerScoreTransitionResult]:
+        if not observed_scores:
+            return {}
+        if not self._valid_time_millis(target_time_millis):
+            return self._uniform_results(
+                observed_scores,
+                WorkerScoreTransitionStatus.INVALID,
+            )
 
-        polarity, observed_time_slot, lane_rank, _ = observed
         now_time_millis = self._current_time_millis()
         now_time_slot = self._time_slot_from_millis(now_time_millis)
         target_time_slot = self._time_slot_from_millis(target_time_millis)
-        if polarity is not WorkerScorePolarity.HOT_ACQUIRE:
-            return WorkerScoreTransitionResult(WorkerScoreTransitionStatus.INVALID)
-        if observed_time_slot >= now_time_slot:
-            return WorkerScoreTransitionResult(WorkerScoreTransitionStatus.STALE)
         if target_time_millis <= now_time_millis or target_time_slot <= now_time_slot:
-            return WorkerScoreTransitionResult(WorkerScoreTransitionStatus.INVALID)
+            return self._uniform_results(
+                observed_scores,
+                WorkerScoreTransitionStatus.INVALID,
+            )
 
-        next_score = self._score(
-            WorkerScorePolarity.HOT_ACQUIRE,
-            target_time_slot,
-            lane_rank,
-            self.MIN_DIRTY,
-        )
-        return self._cas_update(
-            home_bucket_id,
-            worker_id,
-            observed_score,
-            next_score,
+        immediate_results: dict[WorkerId, WorkerScoreTransitionResult] = {}
+        pending_updates: dict[WorkerId, tuple[Score, Score]] = {}
+        for worker_id, observed_score in observed_scores.items():
+            observed = self._decode_score(observed_score)
+            if observed is None:
+                immediate_results[worker_id] = WorkerScoreTransitionResult(
+                    WorkerScoreTransitionStatus.INVALID
+                )
+                continue
+            polarity, observed_time_slot, lane_rank, _ = observed
+            if polarity is not WorkerScorePolarity.HOT_ACQUIRE:
+                immediate_results[worker_id] = WorkerScoreTransitionResult(
+                    WorkerScoreTransitionStatus.INVALID
+                )
+                continue
+            if observed_time_slot >= now_time_slot:
+                immediate_results[worker_id] = WorkerScoreTransitionResult(
+                    WorkerScoreTransitionStatus.STALE
+                )
+                continue
+            pending_updates[worker_id] = (
+                observed_score,
+                self._score(
+                    WorkerScorePolarity.HOT_ACQUIRE,
+                    target_time_slot,
+                    lane_rank,
+                    self.MIN_DIRTY,
+                ),
+            )
+        return self._merge_batch_results(
+            observed_scores,
+            immediate_results,
+            self._pipeline_cas_updates(home_bucket_id, pending_updates),
         )
 
-    def renew_active_hot_score_lease(
+    def renew_active_hot_score_leases(
         self,
         *,
         home_bucket_id: HomeBucketId,
-        worker_id: WorkerId,
-        observed_score: Score,
+        observed_scores: Mapping[WorkerId, Score],
         target_time_millis: TimeMillis,
-    ) -> WorkerScoreTransitionResult:
-        observed = self._decode_score(observed_score)
-        if observed is None:
-            return WorkerScoreTransitionResult(WorkerScoreTransitionStatus.INVALID)
+    ) -> Mapping[WorkerId, WorkerScoreTransitionResult]:
+        if not observed_scores:
+            return {}
         if not self._valid_time_millis(target_time_millis):
-            return WorkerScoreTransitionResult(WorkerScoreTransitionStatus.INVALID)
-
-        polarity, observed_time_slot, lane_rank, dirty = observed
-        if polarity != WorkerScorePolarity.HOT_ACQUIRE:
-            return WorkerScoreTransitionResult(WorkerScoreTransitionStatus.INVALID)
-
-        if dirty != self.MIN_DIRTY:
-            return WorkerScoreTransitionResult(
-                WorkerScoreTransitionStatus.STALE,
-                observed_score,
+            return self._uniform_results(
+                observed_scores,
+                WorkerScoreTransitionStatus.INVALID,
             )
 
         current_time_slot = self._current_time_slot()
         target_time_slot = self._time_slot_from_millis(target_time_millis)
-        if observed_time_slot < current_time_slot:
-            return WorkerScoreTransitionResult(
-                WorkerScoreTransitionStatus.STALE,
+        immediate_results: dict[WorkerId, WorkerScoreTransitionResult] = {}
+        pending_updates: dict[WorkerId, tuple[Score, Score]] = {}
+        for worker_id, observed_score in observed_scores.items():
+            observed = self._decode_score(observed_score)
+            if observed is None:
+                immediate_results[worker_id] = WorkerScoreTransitionResult(
+                    WorkerScoreTransitionStatus.INVALID
+                )
+                continue
+            polarity, observed_time_slot, lane_rank, dirty = observed
+            if polarity is not WorkerScorePolarity.HOT_ACQUIRE:
+                immediate_results[worker_id] = WorkerScoreTransitionResult(
+                    WorkerScoreTransitionStatus.INVALID
+                )
+                continue
+            if dirty != self.MIN_DIRTY or observed_time_slot < current_time_slot:
+                immediate_results[worker_id] = WorkerScoreTransitionResult(
+                    WorkerScoreTransitionStatus.STALE,
+                    observed_score,
+                )
+                continue
+            if target_time_slot <= observed_time_slot:
+                immediate_results[worker_id] = WorkerScoreTransitionResult(
+                    WorkerScoreTransitionStatus.INVALID
+                )
+                continue
+            pending_updates[worker_id] = (
                 observed_score,
+                self._score(
+                    polarity,
+                    target_time_slot,
+                    lane_rank,
+                    self.MIN_DIRTY,
+                ),
             )
-        if target_time_slot <= observed_time_slot:
-            return WorkerScoreTransitionResult(WorkerScoreTransitionStatus.INVALID)
-
-        next_score = self._score(polarity, target_time_slot, lane_rank, self.MIN_DIRTY)
-        return self._cas_update(home_bucket_id, worker_id, observed_score, next_score)
+        return self._merge_batch_results(
+            observed_scores,
+            immediate_results,
+            self._pipeline_cas_updates(home_bucket_id, pending_updates),
+        )
 
     def mark_current_lease_dirty(
         self,
@@ -421,29 +484,96 @@ return {"transitioned", target_score}
         )
         return self._cas_update(home_bucket_id, worker_id, observed_score, next_score)
 
-    def release_score_hold(
+    def release_score_holds(
         self,
         *,
         home_bucket_id: HomeBucketId,
-        worker_id: WorkerId,
-        observed_score: Score,
+        observed_scores: Mapping[WorkerId, Score],
         release_time_millis: TimeMillis,
-    ) -> WorkerScoreTransitionResult:
-        observed = self._decode_score(observed_score)
-        if observed is None:
-            return WorkerScoreTransitionResult(WorkerScoreTransitionStatus.INVALID)
+    ) -> Mapping[WorkerId, WorkerScoreTransitionResult]:
+        if not observed_scores:
+            return {}
         if not self._valid_time_millis(release_time_millis):
-            return WorkerScoreTransitionResult(WorkerScoreTransitionStatus.INVALID)
+            return self._uniform_results(
+                observed_scores,
+                WorkerScoreTransitionStatus.INVALID,
+            )
 
         release_time_slot = self._time_slot_from_millis(release_time_millis)
-        polarity, observed_time_slot, lane_rank, dirty = observed
-        if release_time_slot > observed_time_slot:
-            return WorkerScoreTransitionResult(WorkerScoreTransitionStatus.INVALID)
-        if self._abs_score(release_time_slot, lane_rank, dirty) < self.MIN_BASE:
-            return WorkerScoreTransitionResult(WorkerScoreTransitionStatus.INVALID)
+        immediate_results: dict[WorkerId, WorkerScoreTransitionResult] = {}
+        pending_updates: dict[WorkerId, tuple[Score, Score]] = {}
+        for worker_id, observed_score in observed_scores.items():
+            observed = self._decode_score(observed_score)
+            if observed is None:
+                immediate_results[worker_id] = WorkerScoreTransitionResult(
+                    WorkerScoreTransitionStatus.INVALID
+                )
+                continue
+            polarity, observed_time_slot, lane_rank, dirty = observed
+            next_abs_score = self._abs_score(release_time_slot, lane_rank, dirty)
+            if (
+                release_time_slot > observed_time_slot
+                or next_abs_score < self.MIN_BASE
+            ):
+                immediate_results[worker_id] = WorkerScoreTransitionResult(
+                    WorkerScoreTransitionStatus.INVALID
+                )
+                continue
+            pending_updates[worker_id] = (
+                observed_score,
+                int(polarity) * next_abs_score,
+            )
+        return self._merge_batch_results(
+            observed_scores,
+            immediate_results,
+            self._pipeline_cas_updates(home_bucket_id, pending_updates),
+        )
 
-        next_score = self._score(polarity, release_time_slot, lane_rank, dirty)
-        return self._cas_update(home_bucket_id, worker_id, observed_score, next_score)
+    def _pipeline_cas_updates(
+        self,
+        home_bucket_id: HomeBucketId,
+        updates: Mapping[WorkerId, tuple[Score, Score]],
+    ) -> Mapping[WorkerId, WorkerScoreTransitionResult]:
+        if not updates:
+            return {}
+        key = self._score_key(home_bucket_id)
+        with self.redis.pipeline(transaction=False) as pipe:
+            for worker_id, (observed_score, next_score) in updates.items():
+                pipe.eval(
+                    self._CAS_UPDATE_SCRIPT,
+                    1,
+                    key,
+                    worker_id,
+                    observed_score,
+                    next_score,
+                )
+            raw_results = pipe.execute()
+        return {
+            worker_id: self._script_result(raw_result)
+            for worker_id, raw_result in zip(updates, raw_results, strict=True)
+        }
+
+    @staticmethod
+    def _uniform_results(
+        worker_ids: Sequence[WorkerId] | Mapping[WorkerId, object],
+        status: WorkerScoreTransitionStatus,
+    ) -> Mapping[WorkerId, WorkerScoreTransitionResult]:
+        return {
+            worker_id: WorkerScoreTransitionResult(status)
+            for worker_id in worker_ids
+        }
+
+    @staticmethod
+    def _merge_batch_results(
+        worker_ids: Mapping[WorkerId, object],
+        immediate_results: Mapping[WorkerId, WorkerScoreTransitionResult],
+        persisted_results: Mapping[WorkerId, WorkerScoreTransitionResult],
+    ) -> Mapping[WorkerId, WorkerScoreTransitionResult]:
+        return {
+            worker_id: immediate_results.get(worker_id)
+            or persisted_results[worker_id]
+            for worker_id in worker_ids
+        }
 
     def _cas_update(
         self,

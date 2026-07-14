@@ -13,7 +13,7 @@ class FakePipeline:
     def __init__(self, redis: FakeRedis, transaction: bool = True) -> None:
         self.redis = redis
         self.transaction = transaction
-        self.commands: list[tuple[str, str, str]] = []
+        self.commands: list[tuple[str, tuple[object, ...]]] = []
 
     def __enter__(self) -> FakePipeline:
         return self
@@ -23,14 +23,24 @@ class FakePipeline:
 
     def zscore(self, key: str, member: str) -> object:
         if not self.transaction:
-            self.commands.append(("zscore", key, member))
+            self.commands.append(("zscore", (key, member)))
             return self
         return self.redis.zscore(key, member)
 
+    def eval(self, script: str, numkeys: int, *args: object) -> FakePipeline:
+        self.commands.append(("eval", (script, numkeys, *args)))
+        return self
+
     def execute(self) -> list[object]:
+        self.redis.pipeline_execute_count += 1
         results: list[object] = []
-        for _, key, member in self.commands:
-            results.append(self.redis.zscore(key, member))
+        for command, args in self.commands:
+            if command == "zscore":
+                results.append(self.redis.zscore(str(args[0]), str(args[1])))
+            elif command == "eval":
+                results.append(self.redis.eval(str(args[0]), int(args[1]), *args[2:]))
+            else:
+                raise ValueError(f"unsupported fake pipeline command: {command}")
         self.commands.clear()
         return results
 
@@ -40,6 +50,7 @@ class FakeRedis:
         self.zsets: dict[str, dict[str, int]] = {}
         self.now_millis = 100_000
         self.eval_count = 0
+        self.pipeline_execute_count = 0
 
     def pipeline(self, transaction: bool = True) -> FakePipeline:
         return FakePipeline(self, transaction)
@@ -327,15 +338,15 @@ class RedisZsetWorkerScoreCoreTest(unittest.TestCase):
         )
         self.assertEqual(WorkerScoreTransitionStatus.INVALID, invalid.status)
 
-    def test_rewrite_current_score_preserves_polarity_lane_and_dirty(self) -> None:
+    def test_rewrite_current_scores_preserves_polarity_lane_and_dirty(self) -> None:
         current = self.score(WorkerScorePolarity.HOT_ACQUIRE, 900, 5, 1)
         self.store_score("worker", current)
 
-        result = self.kernel.rewrite_current_score(
+        result = self.kernel.rewrite_current_scores(
             home_bucket_id=self.home_bucket_id,
-            worker_id="worker",
+            worker_ids=["worker"],
             target_time_millis=self.millis(950),
-        )
+        )["worker"]
         state = self.kernel.get_score_states(
             home_bucket_id=self.home_bucket_id,
             worker_ids=["worker"],
@@ -348,16 +359,16 @@ class RedisZsetWorkerScoreCoreTest(unittest.TestCase):
         self.assertEqual(5, state.lane_rank)
         self.assertEqual(1, state.dirty)
 
-    def test_rewrite_current_score_can_update_lane_rank(self) -> None:
+    def test_rewrite_current_scores_can_update_lane_rank(self) -> None:
         current = self.score(WorkerScorePolarity.RECOVERY_RECHECK, 900, 5, 1)
         self.store_score("worker", current)
 
-        result = self.kernel.rewrite_current_score(
+        result = self.kernel.rewrite_current_scores(
             home_bucket_id=self.home_bucket_id,
-            worker_id="worker",
+            worker_ids=["worker"],
             target_time_millis=self.millis(950),
             target_lane_rank=8,
-        )
+        )["worker"]
         state = self.kernel.get_score_states(
             home_bucket_id=self.home_bucket_id,
             worker_ids=["worker"],
@@ -370,43 +381,61 @@ class RedisZsetWorkerScoreCoreTest(unittest.TestCase):
         self.assertEqual(8, state.lane_rank)
         self.assertEqual(1, state.dirty)
 
-    def test_rewrite_current_score_rejects_lower_time(self) -> None:
+    def test_rewrite_current_scores_rejects_lower_time(self) -> None:
         current = self.score(WorkerScorePolarity.HOT_ACQUIRE, 950, 5)
         self.store_score("worker", current)
 
-        result = self.kernel.rewrite_current_score(
+        result = self.kernel.rewrite_current_scores(
             home_bucket_id=self.home_bucket_id,
-            worker_id="worker",
+            worker_ids=["worker"],
             target_time_millis=self.millis(949),
-        )
+        )["worker"]
 
         self.assertEqual(WorkerScoreTransitionStatus.STALE, result.status)
         self.assertEqual(current, result.score)
 
-    def test_rewrite_current_score_rejects_same_slot_rewrite(self) -> None:
+    def test_rewrite_current_scores_rejects_same_slot_rewrite(self) -> None:
         current = self.score(WorkerScorePolarity.HOT_ACQUIRE, 950, 5)
         self.store_score("worker", current)
 
-        result = self.kernel.rewrite_current_score(
+        result = self.kernel.rewrite_current_scores(
             home_bucket_id=self.home_bucket_id,
-            worker_id="worker",
+            worker_ids=["worker"],
             target_time_millis=self.millis(950),
             target_lane_rank=8,
-        )
+        )["worker"]
 
         self.assertEqual(WorkerScoreTransitionStatus.STALE, result.status)
         self.assertEqual(current, result.score)
 
-    def test_acquire_observed_hot_score_lease_uses_exact_score_cas(self) -> None:
+    def test_rewrite_current_scores_return_independent_batch_results(self) -> None:
+        current = self.score(WorkerScorePolarity.HOT_ACQUIRE, 900, 5)
+        already_rewritten = self.score(WorkerScorePolarity.HOT_ACQUIRE, 950, 6)
+        self.store_score("worker-1", current)
+        self.store_score("worker-2", already_rewritten)
+
+        results = self.kernel.rewrite_current_scores(
+            home_bucket_id=self.home_bucket_id,
+            worker_ids=["worker-1", "worker-2", "missing"],
+            target_time_millis=self.millis(950),
+        )
+
+        self.assertEqual(
+            WorkerScoreTransitionStatus.TRANSITIONED,
+            results["worker-1"].status,
+        )
+        self.assertEqual(WorkerScoreTransitionStatus.STALE, results["worker-2"].status)
+        self.assertEqual(WorkerScoreTransitionStatus.STALE, results["missing"].status)
+
+    def test_acquire_observed_hot_score_leases_use_exact_score_cas(self) -> None:
         observed = self.score(WorkerScorePolarity.HOT_ACQUIRE, 999, 5, 1)
         self.store_score("worker", observed)
 
-        result = self.kernel.acquire_observed_hot_score_lease(
+        result = self.kernel.acquire_observed_hot_score_leases(
             home_bucket_id=self.home_bucket_id,
-            worker_id="worker",
-            observed_score=observed,
+            observed_scores={"worker": observed},
             target_time_millis=self.millis(1_030),
-        )
+        )["worker"]
         state = self.kernel.get_score_states(
             home_bucket_id=self.home_bucket_id,
             worker_ids=["worker"],
@@ -418,57 +447,94 @@ class RedisZsetWorkerScoreCoreTest(unittest.TestCase):
         self.assertEqual(5, state.lane_rank)
         self.assertEqual(0, state.dirty)
 
-    def test_acquire_observed_hot_score_lease_rejects_changed_score(self) -> None:
+    def test_acquire_observed_hot_score_leases_reject_changed_score(self) -> None:
         observed = self.score(WorkerScorePolarity.HOT_ACQUIRE, 999, 5, 0)
         changed = self.score(WorkerScorePolarity.HOT_ACQUIRE, 999, 5, 1)
         self.store_score("worker", changed)
 
-        result = self.kernel.acquire_observed_hot_score_lease(
+        result = self.kernel.acquire_observed_hot_score_leases(
             home_bucket_id=self.home_bucket_id,
-            worker_id="worker",
-            observed_score=observed,
+            observed_scores={"worker": observed},
             target_time_millis=self.millis(1_030),
-        )
+        )["worker"]
 
         self.assertEqual(WorkerScoreTransitionStatus.STALE, result.status)
         self.assertEqual(changed, result.score)
 
-    def test_acquire_observed_hot_score_lease_rejects_non_due_score(self) -> None:
+    def test_acquire_observed_hot_score_leases_reject_non_due_score(self) -> None:
         observed = self.score(WorkerScorePolarity.HOT_ACQUIRE, 1_000, 5, 0)
         self.store_score("worker", observed)
 
-        result = self.kernel.acquire_observed_hot_score_lease(
+        result = self.kernel.acquire_observed_hot_score_leases(
             home_bucket_id=self.home_bucket_id,
-            worker_id="worker",
-            observed_score=observed,
+            observed_scores={"worker": observed},
             target_time_millis=self.millis(1_030),
-        )
+        )["worker"]
 
         self.assertEqual(WorkerScoreTransitionStatus.STALE, result.status)
 
-    def test_acquire_observed_hot_score_lease_rejects_recovery_score(self) -> None:
+    def test_acquire_observed_hot_score_leases_reject_recovery_score(self) -> None:
         observed = self.score(WorkerScorePolarity.RECOVERY_RECHECK, 999, 5, 0)
         self.store_score("worker", observed)
 
-        result = self.kernel.acquire_observed_hot_score_lease(
+        result = self.kernel.acquire_observed_hot_score_leases(
             home_bucket_id=self.home_bucket_id,
-            worker_id="worker",
-            observed_score=observed,
+            observed_scores={"worker": observed},
             target_time_millis=self.millis(1_030),
-        )
+        )["worker"]
 
         self.assertEqual(WorkerScoreTransitionStatus.INVALID, result.status)
 
-    def test_renew_active_hot_score_lease_extends_clean_active_lease(self) -> None:
+    def test_acquire_observed_hot_score_leases_pipeline_independent_results(
+        self,
+    ) -> None:
+        first_observed = self.score(WorkerScorePolarity.HOT_ACQUIRE, 998, 4, 1)
+        second_observed = self.score(WorkerScorePolarity.HOT_ACQUIRE, 998, 5, 0)
+        second_stored = self.score(WorkerScorePolarity.HOT_ACQUIRE, 999, 5, 0)
+        recovery_observed = self.score(
+            WorkerScorePolarity.RECOVERY_RECHECK,
+            998,
+            6,
+            0,
+        )
+        self.store_score("worker-1", first_observed)
+        self.store_score("worker-2", second_stored)
+        self.store_score("worker-3", recovery_observed)
+        pipeline_count = self.redis.pipeline_execute_count
+        eval_count = self.redis.eval_count
+
+        results = self.kernel.acquire_observed_hot_score_leases(
+            home_bucket_id=self.home_bucket_id,
+            observed_scores={
+                "worker-1": first_observed,
+                "worker-2": second_observed,
+                "worker-3": recovery_observed,
+            },
+            target_time_millis=self.millis(1_030),
+        )
+
+        self.assertEqual(pipeline_count + 1, self.redis.pipeline_execute_count)
+        self.assertEqual(eval_count + 2, self.redis.eval_count)
+        self.assertEqual(
+            WorkerScoreTransitionStatus.TRANSITIONED,
+            results["worker-1"].status,
+        )
+        self.assertEqual(WorkerScoreTransitionStatus.STALE, results["worker-2"].status)
+        self.assertEqual(
+            WorkerScoreTransitionStatus.INVALID,
+            results["worker-3"].status,
+        )
+        self.assertEqual(0, abs(results["worker-1"].score) % self.kernel.dirty_factor)
+
+    def test_renew_active_hot_score_leases_extend_clean_active_lease(self) -> None:
         current = self.score(WorkerScorePolarity.HOT_ACQUIRE, 1_020, 5, 0)
         self.store_score("worker", current)
 
-        result = self.kernel.renew_active_hot_score_lease(
+        result = self.kernel.renew_active_hot_score_leases(
             home_bucket_id=self.home_bucket_id,
-            worker_id="worker",
-            observed_score=current,
+            observed_scores={"worker": current},
             target_time_millis=self.millis(1_040),
-        )
+        )["worker"]
         state = self.kernel.get_score_states(
             home_bucket_id=self.home_bucket_id,
             worker_ids=["worker"],
@@ -480,75 +546,98 @@ class RedisZsetWorkerScoreCoreTest(unittest.TestCase):
         self.assertEqual(5, state.lane_rank)
         self.assertEqual(0, state.dirty)
 
-    def test_renew_active_hot_score_lease_rejects_dirty_observed_score(self) -> None:
+    def test_renew_active_hot_score_leases_reject_dirty_observed_score(self) -> None:
         current = self.score(WorkerScorePolarity.HOT_ACQUIRE, 1_020, 5, 1)
         self.store_score("worker", current)
 
-        result = self.kernel.renew_active_hot_score_lease(
+        result = self.kernel.renew_active_hot_score_leases(
             home_bucket_id=self.home_bucket_id,
-            worker_id="worker",
-            observed_score=current,
+            observed_scores={"worker": current},
             target_time_millis=self.millis(1_040),
-        )
+        )["worker"]
 
         self.assertEqual(WorkerScoreTransitionStatus.STALE, result.status)
         self.assertEqual(current, result.score)
 
-    def test_renew_active_hot_score_lease_rejects_due_score(self) -> None:
+    def test_renew_active_hot_score_leases_reject_due_score(self) -> None:
         current = self.score(WorkerScorePolarity.HOT_ACQUIRE, 999, 5, 0)
         self.store_score("worker", current)
 
-        result = self.kernel.renew_active_hot_score_lease(
+        result = self.kernel.renew_active_hot_score_leases(
             home_bucket_id=self.home_bucket_id,
-            worker_id="worker",
-            observed_score=current,
+            observed_scores={"worker": current},
             target_time_millis=self.millis(1_040),
-        )
+        )["worker"]
 
         self.assertEqual(WorkerScoreTransitionStatus.STALE, result.status)
         self.assertEqual(current, result.score)
 
-    def test_renew_active_hot_score_lease_rejects_recovery_recheck_score(self) -> None:
+    def test_renew_active_hot_score_leases_reject_recovery_recheck_score(self) -> None:
         current = self.score(WorkerScorePolarity.RECOVERY_RECHECK, 1_020, 5, 0)
         self.store_score("worker", current)
 
-        result = self.kernel.renew_active_hot_score_lease(
+        result = self.kernel.renew_active_hot_score_leases(
             home_bucket_id=self.home_bucket_id,
-            worker_id="worker",
-            observed_score=current,
+            observed_scores={"worker": current},
             target_time_millis=self.millis(1_040),
-        )
+        )["worker"]
 
         self.assertEqual(WorkerScoreTransitionStatus.INVALID, result.status)
 
-    def test_renew_active_hot_score_lease_uses_observed_score_cas(self) -> None:
+    def test_renew_active_hot_score_leases_use_observed_score_cas(self) -> None:
         observed = self.score(WorkerScorePolarity.HOT_ACQUIRE, 1_020, 5, 0)
         changed = self.score(WorkerScorePolarity.HOT_ACQUIRE, 1_025, 5, 0)
         self.store_score("worker", observed)
         self.store_score("worker", changed)
 
-        result = self.kernel.renew_active_hot_score_lease(
+        result = self.kernel.renew_active_hot_score_leases(
             home_bucket_id=self.home_bucket_id,
-            worker_id="worker",
-            observed_score=observed,
+            observed_scores={"worker": observed},
             target_time_millis=self.millis(1_040),
-        )
+        )["worker"]
 
         self.assertEqual(WorkerScoreTransitionStatus.STALE, result.status)
         self.assertEqual(changed, result.score)
 
-    def test_renew_active_hot_score_lease_rejects_non_extending_target(self) -> None:
+    def test_renew_active_hot_score_leases_reject_non_extending_target(self) -> None:
         current = self.score(WorkerScorePolarity.HOT_ACQUIRE, 1_020, 5, 0)
         self.store_score("worker", current)
 
-        result = self.kernel.renew_active_hot_score_lease(
+        result = self.kernel.renew_active_hot_score_leases(
             home_bucket_id=self.home_bucket_id,
-            worker_id="worker",
-            observed_score=current,
+            observed_scores={"worker": current},
             target_time_millis=self.millis(1_020),
-        )
+        )["worker"]
 
         self.assertEqual(WorkerScoreTransitionStatus.INVALID, result.status)
+
+    def test_renew_active_hot_score_leases_return_independent_batch_results(
+        self,
+    ) -> None:
+        clean = self.score(WorkerScorePolarity.HOT_ACQUIRE, 1_020, 4, 0)
+        dirty = self.score(WorkerScorePolarity.HOT_ACQUIRE, 1_020, 5, 1)
+        stale_observed = self.score(WorkerScorePolarity.HOT_ACQUIRE, 1_020, 6, 0)
+        stale_stored = self.score(WorkerScorePolarity.HOT_ACQUIRE, 1_025, 6, 0)
+        self.store_score("worker-1", clean)
+        self.store_score("worker-2", dirty)
+        self.store_score("worker-3", stale_stored)
+
+        results = self.kernel.renew_active_hot_score_leases(
+            home_bucket_id=self.home_bucket_id,
+            observed_scores={
+                "worker-1": clean,
+                "worker-2": dirty,
+                "worker-3": stale_observed,
+            },
+            target_time_millis=self.millis(1_040),
+        )
+
+        self.assertEqual(
+            WorkerScoreTransitionStatus.TRANSITIONED,
+            results["worker-1"].status,
+        )
+        self.assertEqual(WorkerScoreTransitionStatus.STALE, results["worker-2"].status)
+        self.assertEqual(WorkerScoreTransitionStatus.STALE, results["worker-3"].status)
 
     def test_mark_current_lease_dirty_sets_dirty_for_future_score(self) -> None:
         current = self.score(WorkerScorePolarity.RECOVERY_RECHECK, 1_030, 5, 0)
@@ -686,7 +775,7 @@ class RedisZsetWorkerScoreCoreTest(unittest.TestCase):
 
         self.assertEqual(WorkerScoreTransitionStatus.INVALID, result.status)
 
-    def test_release_score_hold_preserves_polarity_lane_and_dirty(self) -> None:
+    def test_release_score_holds_preserve_polarity_lane_and_dirty(self) -> None:
         held = self.score(
             WorkerScorePolarity.RECOVERY_RECHECK,
             self.kernel.PAUSE_TIME_SLOT,
@@ -695,12 +784,11 @@ class RedisZsetWorkerScoreCoreTest(unittest.TestCase):
         )
         self.store_score("worker", held)
 
-        result = self.kernel.release_score_hold(
+        result = self.kernel.release_score_holds(
             home_bucket_id=self.home_bucket_id,
-            worker_id="worker",
-            observed_score=held,
+            observed_scores={"worker": held},
             release_time_millis=self.millis(950),
-        )
+        )["worker"]
         state = self.kernel.get_score_states(
             home_bucket_id=self.home_bucket_id,
             worker_ids=["worker"],
@@ -713,18 +801,41 @@ class RedisZsetWorkerScoreCoreTest(unittest.TestCase):
         self.assertEqual(4, state.lane_rank)
         self.assertEqual(1, state.dirty)
 
-    def test_release_score_hold_rejects_later_time(self) -> None:
+    def test_release_score_holds_reject_later_time(self) -> None:
         held = self.score(WorkerScorePolarity.HOT_ACQUIRE, 950, 4)
         self.store_score("worker", held)
 
-        result = self.kernel.release_score_hold(
+        result = self.kernel.release_score_holds(
             home_bucket_id=self.home_bucket_id,
-            worker_id="worker",
-            observed_score=held,
+            observed_scores={"worker": held},
             release_time_millis=self.millis(951),
-        )
+        )["worker"]
 
         self.assertEqual(WorkerScoreTransitionStatus.INVALID, result.status)
+
+    def test_release_score_holds_return_independent_batch_results(self) -> None:
+        first_held = self.score(WorkerScorePolarity.HOT_ACQUIRE, 1_050, 4)
+        second_observed = self.score(WorkerScorePolarity.HOT_ACQUIRE, 1_050, 5)
+        second_stored = self.score(WorkerScorePolarity.HOT_ACQUIRE, 1_060, 5)
+        self.store_score("worker-1", first_held)
+        self.store_score("worker-2", second_stored)
+
+        results = self.kernel.release_score_holds(
+            home_bucket_id=self.home_bucket_id,
+            observed_scores={
+                "worker-1": first_held,
+                "worker-2": second_observed,
+                "invalid": 0,
+            },
+            release_time_millis=self.millis(1_000),
+        )
+
+        self.assertEqual(
+            WorkerScoreTransitionStatus.TRANSITIONED,
+            results["worker-1"].status,
+        )
+        self.assertEqual(WorkerScoreTransitionStatus.STALE, results["worker-2"].status)
+        self.assertEqual(WorkerScoreTransitionStatus.INVALID, results["invalid"].status)
 
 
 if __name__ == "__main__":

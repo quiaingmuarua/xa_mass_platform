@@ -57,6 +57,7 @@ class AssignmentDispatchIntegrationTest(unittest.TestCase):
         self.prefix = f"integration-{uuid.uuid4().hex}"
         self.task_id = "task-1"
         self.worker_id = "worker-1"
+        self.unmatched_worker_id = "worker-2"
         self.worker_group_id = "image-workers"
         self.task_score_key = f"tr:{self.prefix}:task:score"
         self.worker_score_prefix = f"wr:{self.prefix}:score"
@@ -140,6 +141,16 @@ class AssignmentDispatchIntegrationTest(unittest.TestCase):
             ),
             lane_rank=5,
         )
+        unmatched_worker_result = self.worker_runtime.register_worker_descriptor(
+            descriptor=WorkerDescriptor(
+                worker_id=self.unmatched_worker_id,
+                worker_group_id=self.worker_group_id,
+                system_metadata={"tier": "standard"},
+                static_attributes={"runtime": "java"},
+                dynamic_attribute_names=frozenset(),
+            ),
+            lane_rank=6,
+        )
         task_result = self.task_runtime.create_task(
             descriptor=TaskDescriptor(
                 task_id=self.task_id,
@@ -178,8 +189,8 @@ class AssignmentDispatchIntegrationTest(unittest.TestCase):
         )[self.task_id]
         worker_score_after_allocation = self.worker_score.get_score_states(
             home_bucket_id=self.worker_group_id,
-            worker_ids=(self.worker_id,),
-        )[self.worker_id]
+            worker_ids=(self.worker_id, self.unmatched_worker_id),
+        )
         published_while_reserved = self.pacer.allocate_candidate_workers(
             config=TaskWorkerAllocationConfig(
                 task_batch_limit=10,
@@ -188,6 +199,10 @@ class AssignmentDispatchIntegrationTest(unittest.TestCase):
             )
         )
         time.sleep((self.task_score.SLOT_MILLIS + 20) / 1_000)
+        due_worker_candidates = self.worker_score.acquire_hot_acquire_candidates(
+            home_bucket_id=self.worker_group_id,
+            limit=10,
+        )
         transitioned = self.running_activation_pacer.activate_running_visible_tasks(
             config=TaskRunningActivationConfig(
                 task_batch_limit=10,
@@ -207,6 +222,7 @@ class AssignmentDispatchIntegrationTest(unittest.TestCase):
 
         self.assertEqual(group_result.status, WorkerRuntimeStatus.OK)
         self.assertEqual(worker_result.status, WorkerRuntimeStatus.OK)
+        self.assertEqual(unmatched_worker_result.status, WorkerRuntimeStatus.OK)
         self.assertEqual(task_result.status, TaskCreationStatus.CREATED)
         self.assertEqual(approved.status, TaskScoreTransitionStatus.TRANSITIONED)
         self.assertEqual(published, 1)
@@ -226,13 +242,21 @@ class AssignmentDispatchIntegrationTest(unittest.TestCase):
         self.assertEqual(queued_candidate_count, 1)
         self.assertEqual([entry.worker_id for entry in entries], [self.worker_id])
         self.assertGreater(
-            worker_score_after_allocation.time_millis,
+            worker_score_after_allocation[self.worker_id].time_millis,
+            time.time_ns() // 1_000_000,
+        )
+        self.assertGreater(
+            worker_score_after_allocation[
+                self.unmatched_worker_id
+            ].time_millis,
             time.time_ns() // 1_000_000,
         )
         self.assertEqual(
             entries[0].worker_lease_score,
-            worker_score_after_allocation.score,
+            worker_score_after_allocation[self.worker_id].score,
         )
+        self.assertNotIn(self.unmatched_worker_id, due_worker_candidates)
+        self.assertNotIn(self.worker_id, due_worker_candidates)
 
 
 if __name__ == "__main__":

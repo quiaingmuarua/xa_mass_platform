@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from contextlib import suppress
 from dataclasses import dataclass
 from time import time_ns
 
@@ -107,175 +106,152 @@ class TaskWorkerAllocationPacer:
         config: TaskWorkerAllocationConfig,
     ) -> int:
         """Publish candidate Workers and return the number of published Tasks."""
-        allocation_millis = self._current_time_millis()
-        task_band_by_id: dict[TaskId, TaskScoreBand] = {}
-        remaining_task_limit = config.task_batch_limit
+        task_scan_time_millis = self._current_time_millis()
+        task_candidate_bands: dict[TaskId, TaskScoreBand] = {}
+        task_limit_remaining = config.task_batch_limit
         for band in self.ALLOCATION_BANDS:
-            if remaining_task_limit <= 0:
+            if task_limit_remaining <= 0:
                 break
-            task_ids = self.task_score.acquire_band_task_candidates(
+            band_task_ids = self.task_score.acquire_band_task_candidates(
                 band=band,
-                before_time_millis=allocation_millis,
-                limit=remaining_task_limit,
+                before_time_millis=task_scan_time_millis,
+                limit=task_limit_remaining,
             )
-            for task_id in task_ids:
-                task_band_by_id[task_id] = band
-            remaining_task_limit -= len(task_ids)
+            for task_id in band_task_ids:
+                task_candidate_bands[task_id] = band
+            task_limit_remaining -= len(band_task_ids)
 
-        task_ids = tuple(task_band_by_id)
-        candidate_counts = self.dispatch_runtime.candidate_worker_counts(
+        task_ids = tuple(task_candidate_bands)
+        candidate_worker_counts = self.dispatch_runtime.candidate_worker_counts(
             task_ids=task_ids,
         )
-        grouped_constraints = self._prepare_allocation_groups(
+        grouped_task_constraints = self._group_task_constraints(
             task_ids,
-            candidate_counts,
+            candidate_worker_counts,
         )
-        published_tasks = 0
-        for worker_group_id, candidate_constraints in grouped_constraints.items():
-            observed_score_by_worker_id = self.worker_score.acquire_hot_acquire_candidates(
-                home_bucket_id=worker_group_id,
-                limit=config.worker_scan_limit,
+        published_task_count = 0
+        for worker_group_id, task_constraints in grouped_task_constraints.items():
+            worker_candidates = (
+                self.worker_score.acquire_hot_acquire_candidates(
+                    home_bucket_id=worker_group_id,
+                    limit=config.worker_scan_limit,
+                )
             )
-            match_result = self.worker_matcher.match_worker_candidates(
-                worker_group_id=worker_group_id,
-                worker_ids=tuple(observed_score_by_worker_id),
-                candidate_constraints=candidate_constraints,
-            )
-            lease_until_millis = (
+            if not worker_candidates:
+                continue
+            worker_lease_until_millis = (
                 self._current_time_millis()
                 + config.worker_lease_duration_millis
             )
-            entries_by_task = self._lease_candidate_entries_by_task(
-                worker_group_id=worker_group_id,
-                matches=match_result.matches,
-                observed_score_by_worker_id=observed_score_by_worker_id,
-                lease_until_millis=lease_until_millis,
+            lease_results = self.worker_score.acquire_observed_hot_score_leases(
+                home_bucket_id=worker_group_id,
+                observed_scores=worker_candidates,
+                target_time_millis=worker_lease_until_millis,
             )
-            published_tasks += self._publish_group_candidates(
-                entries_by_task=entries_by_task,
-                expires_at_millis=lease_until_millis,
+            leased_worker_scores: dict[WorkerId, Score] = {}
+            for worker_id, lease_result in lease_results.items():
+                if (
+                    lease_result.status
+                    is not WorkerScoreTransitionStatus.TRANSITIONED
+                ):
+                    continue
+                if lease_result.score is None:
+                    continue
+                leased_worker_scores[worker_id] = lease_result.score
+
+            if not leased_worker_scores:
+                continue
+
+            match_result = self.worker_matcher.match_worker_candidates(
+                worker_group_id=worker_group_id,
+                worker_ids=tuple(leased_worker_scores),
+                candidate_constraints=task_constraints,
+            )
+            matched_candidates = {
+                task_id: tuple(
+                    CandidateWorkerEntry(
+                        worker_id=worker_id,
+                        worker_group_id=worker_group_id,
+                        worker_lease_score=leased_worker_scores[worker_id],
+                    )
+                    for worker_id in worker_ids
+                )
+                for task_id, worker_ids in match_result.matches.items()
+            }
+            published_task_count += self._publish_candidate_workers(
+                matched_candidates=matched_candidates,
+                expires_at_millis=worker_lease_until_millis,
             )
 
-        for task_id, expected_band in task_band_by_id.items():
+        for task_id, expected_band in task_candidate_bands.items():
             self.task_score.rewrite_same_band_time_millis(
                 task_id=task_id,
                 expected_band=expected_band,
                 target_time_millis=self._current_time_millis(),
             )
-        return published_tasks
+        return published_task_count
 
-    def _prepare_allocation_groups(
+    def _group_task_constraints(
         self,
         task_ids: tuple[TaskId, ...],
-        candidate_counts: Mapping[TaskId, int],
+        candidate_worker_counts: Mapping[TaskId, int],
     ) -> dict[WorkerGroupId, dict[TaskId, WorkerCandidateConstraint]]:
         if not task_ids:
             return {}
 
-        descriptors = self.task_catalog.load_task_allocation_descriptors(
+        task_descriptors = self.task_catalog.load_task_allocation_descriptors(
             task_ids=task_ids,
         )
 
-        grouped_tasks: dict[
+        grouped_task_constraints: dict[
             WorkerGroupId,
             dict[TaskId, WorkerCandidateConstraint],
         ] = {}
         for task_id in task_ids:
-            descriptor = descriptors.get(task_id)
+            descriptor = task_descriptors.get(task_id)
             if descriptor is None:
                 continue
 
-            maximum_candidates = int(
+            maximum_candidate_workers = int(
                 descriptor.config["maximumCandidateWorkers"]
             )
-            remaining_candidates = max(
+            candidate_limit = max(
                 0,
-                maximum_candidates - candidate_counts.get(task_id, 0),
+                maximum_candidate_workers
+                - candidate_worker_counts.get(task_id, 0),
             )
-            if remaining_candidates == 0:
+            if candidate_limit == 0:
                 continue
 
-            constraint = WorkerCandidateConstraint(
+            task_constraint = WorkerCandidateConstraint(
                 priority=int(descriptor.config["priority"]),
-                limit=remaining_candidates,
+                limit=candidate_limit,
                 match_rules=descriptor.allocation_rule,
             )
-            group = grouped_tasks.setdefault(descriptor.worker_group_id, {})
-            group[task_id] = constraint
-        return grouped_tasks
+            worker_group_constraints = grouped_task_constraints.setdefault(
+                descriptor.worker_group_id,
+                {},
+            )
+            worker_group_constraints[task_id] = task_constraint
+        return grouped_task_constraints
 
-    def _lease_candidate_entries_by_task(
+    def _publish_candidate_workers(
         self,
         *,
-        worker_group_id: WorkerGroupId,
-        matches: Mapping[TaskId, Sequence[WorkerId]],
-        observed_score_by_worker_id: Mapping[WorkerId, Score],
-        lease_until_millis: TimeMillis,
-    ) -> dict[TaskId, tuple[CandidateWorkerEntry, ...]]:
-        entries_by_task: dict[TaskId, tuple[CandidateWorkerEntry, ...]] = {}
-        for task_id, worker_ids in matches.items():
-            entries: list[CandidateWorkerEntry] = []
-            for worker_id in worker_ids:
-                lease = self.worker_score.acquire_observed_hot_score_lease(
-                    home_bucket_id=worker_group_id,
-                    worker_id=worker_id,
-                    observed_score=observed_score_by_worker_id[worker_id],
-                    target_time_millis=lease_until_millis,
-                )
-                if (
-                    lease.status is WorkerScoreTransitionStatus.TRANSITIONED
-                    and lease.score is not None
-                ):
-                    entries.append(
-                        CandidateWorkerEntry(
-                            worker_id=worker_id,
-                            worker_group_id=worker_group_id,
-                            worker_lease_score=lease.score,
-                        )
-                    )
-            entries_by_task[task_id] = tuple(entries)
-        return entries_by_task
-
-    def _publish_group_candidates(
-        self,
-        *,
-        entries_by_task: Mapping[TaskId, Sequence[CandidateWorkerEntry]],
+        matched_candidates: Mapping[TaskId, Sequence[CandidateWorkerEntry]],
         expires_at_millis: TimeMillis,
     ) -> int:
-        task_entries = tuple(entries_by_task.items())
-        published_tasks = 0
-        for index, (task_id, entries) in enumerate(task_entries):
-            if not entries:
+        published_task_count = 0
+        for task_id, candidate_workers in matched_candidates.items():
+            if not candidate_workers:
                 continue
-            try:
-                self.dispatch_runtime.append_candidate_workers(
-                    task_id=task_id,
-                    candidate_workers=entries,
-                    expires_at_millis=expires_at_millis,
-                )
-            except Exception:
-                self._release_unpublished_entries(task_entries[index:])
-                raise
-            published_tasks += 1
-        return published_tasks
-
-    def _release_unpublished_entries(
-        self,
-        task_entries: tuple[
-            tuple[TaskId, Sequence[CandidateWorkerEntry]],
-            ...,
-        ],
-    ) -> None:
-        release_time_millis = self._current_time_millis()
-        for _, entries in task_entries:
-            for entry in entries:
-                with suppress(Exception):
-                    self.worker_score.release_score_hold(
-                        home_bucket_id=entry.worker_group_id,
-                        worker_id=entry.worker_id,
-                        observed_score=entry.worker_lease_score,
-                        release_time_millis=release_time_millis,
-                    )
+            self.dispatch_runtime.append_candidate_workers(
+                task_id=task_id,
+                candidate_workers=candidate_workers,
+                expires_at_millis=expires_at_millis,
+            )
+            published_task_count += 1
+        return published_task_count
 
     @staticmethod
     def _current_time_millis() -> TimeMillis:
@@ -303,42 +279,42 @@ class TaskRunningActivationPacer:
         config: TaskRunningActivationConfig,
     ) -> int:
         """Promote eligible PRE_DISPATCH_VISIBLE Tasks to RUNNING_VISIBLE."""
-        transition_millis = self._current_time_millis()
-        task_ids = tuple(
+        activation_time_millis = self._current_time_millis()
+        pre_dispatch_task_ids = tuple(
             self.task_score.acquire_band_task_candidates(
                 band=TaskScoreBand.PRE_DISPATCH_VISIBLE,
-                before_time_millis=transition_millis,
+                before_time_millis=activation_time_millis,
                 limit=config.task_batch_limit,
             )
         )
-        if not task_ids:
+        if not pre_dispatch_task_ids:
             return 0
 
-        descriptors = self.task_catalog.load_task_allocation_descriptors(
-            task_ids=task_ids,
+        task_descriptors = self.task_catalog.load_task_allocation_descriptors(
+            task_ids=pre_dispatch_task_ids,
         )
-        candidate_counts = self.dispatch_runtime.candidate_worker_counts(
-            task_ids=task_ids,
+        candidate_worker_counts = self.dispatch_runtime.candidate_worker_counts(
+            task_ids=pre_dispatch_task_ids,
         )
-        transitioned = 0
-        for task_id in task_ids:
-            descriptor = descriptors.get(task_id)
+        activated_task_count = 0
+        for task_id in pre_dispatch_task_ids:
+            descriptor = task_descriptors.get(task_id)
             if descriptor is None:
                 continue
-            candidate_worker_count = candidate_counts.get(task_id, 0)
+            candidate_worker_count = candidate_worker_counts.get(task_id, 0)
             if not self.activation_policy(descriptor, candidate_worker_count):
                 continue
 
-            result = self.task_score.rewrite_score(
+            activation_result = self.task_score.rewrite_score(
                 task_id=task_id,
                 expected_band=TaskScoreBand.PRE_DISPATCH_VISIBLE,
                 target_band=TaskScoreBand.RUNNING_VISIBLE,
-                target_time_millis=transition_millis,
+                target_time_millis=activation_time_millis,
                 target_suffix=config.running_visible_initial_suffix,
             )
-            if result.status is TaskScoreTransitionStatus.TRANSITIONED:
-                transitioned += 1
-        return transitioned
+            if activation_result.status is TaskScoreTransitionStatus.TRANSITIONED:
+                activated_task_count += 1
+        return activated_task_count
 
     @staticmethod
     def _current_time_millis() -> TimeMillis:

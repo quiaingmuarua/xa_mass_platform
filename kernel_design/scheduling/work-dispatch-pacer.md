@@ -305,6 +305,20 @@ def dispatch_once(task_batch_limit, per_task_dispatch_limit):
 
 Names are conceptual and do not freeze Python interfaces.
 
+Worker lease disposition belongs here, after candidate consumption and current
+owner validation:
+
+```text
+non-exclusive scheduling/admission succeeds
+  release the exact published Worker lease score so the Worker may compete again
+
+exclusive scheduling/admission succeeds
+  retain or renew the exact Worker lease according to admission policy
+```
+
+Allocation-stage unmatched, matcher failure, and candidate append failure do
+not reach this owner and therefore do not release Worker score.
+
 ## Executable-Spec Gap
 
 The current Python package has Worker short-lease primitives, Task score

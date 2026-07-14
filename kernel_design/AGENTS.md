@@ -70,15 +70,14 @@ For task runtime or task score-band work:
 
 1. [resource-model/task-resource-model.md](resource-model/task-resource-model.md)
 2. [scheduling/task-score-band-scheduling.md](scheduling/task-score-band-scheduling.md)
-3. [runtime-redis/score-band-task-runtime-redis-shape.md](runtime-redis/score-band-task-runtime-redis-shape.md)
-4. [py_example/kernel/task_runtime.py](py_example/kernel/task_runtime.py)
-5. [py_example/kernel/task_score_band.py](py_example/kernel/task_score_band.py)
-6. [py_example/runtime_redis/task_runtime.py](py_example/runtime_redis/task_runtime.py)
-7. [py_example/runtime_redis/task_score_band_zset.py](py_example/runtime_redis/task_score_band_zset.py)
-8. [py_example/tests/test_task_runtime_models.py](py_example/tests/test_task_runtime_models.py)
-9. [py_example/tests/test_redis_task_runtime.py](py_example/tests/test_redis_task_runtime.py)
-10. [py_example/tests/test_redis_task_runtime_integration.py](py_example/tests/test_redis_task_runtime_integration.py)
-11. [py_example/tests/test_redis_zset_task_score_band.py](py_example/tests/test_redis_zset_task_score_band.py)
+3. [py_example/kernel/task_runtime.py](py_example/kernel/task_runtime.py)
+4. [py_example/kernel/task_score_band.py](py_example/kernel/task_score_band.py)
+5. [py_example/runtime_redis/task_runtime.py](py_example/runtime_redis/task_runtime.py)
+6. [py_example/runtime_redis/task_score_band_zset.py](py_example/runtime_redis/task_score_band_zset.py)
+7. [py_example/tests/test_task_runtime_models.py](py_example/tests/test_task_runtime_models.py)
+8. [py_example/tests/test_redis_task_runtime.py](py_example/tests/test_redis_task_runtime.py)
+9. [py_example/tests/test_redis_task_runtime_integration.py](py_example/tests/test_redis_task_runtime_integration.py)
+10. [py_example/tests/test_redis_zset_task_score_band.py](py_example/tests/test_redis_zset_task_score_band.py)
 
 For result or dispatch work:
 
@@ -188,7 +187,7 @@ WorkerCandidateMatcher
   constraints, and exclusive matched/unmatched id partition
 
 WorkerScoreCore
-  bounded HOT observation, exact-score point lease, RECOVERY_RECHECK acquisition, and score transitions
+  bounded HOT observation, batched exact-score lease, RECOVERY_RECHECK acquisition, and score transitions
 ```
 
 Assignment-dispatch owns:
@@ -238,19 +237,19 @@ acquire_hot_acquire_candidates(..., limit)
   returns workerId -> observedScore mapping to allocation pacer
   scan order is not part of the public contract
 
-acquire_observed_hot_score_lease(...)
-  after matching, exact-CAS storedScore == observedScore
-  preserves laneRank and clears dirty while writing the future lease
+acquire_observed_hot_score_leases(...)
+  before matching, batches one exact CAS per observed Worker
+  preserves laneRank and clears dirty while writing each future lease
 
-renew_active_hot_score_lease(...)
+renew_active_hot_score_leases(...)
   requires clean active HOT_ACQUIRE observed score
-  returns STALE on dirty
+  returns an independent result per Worker and STALE on dirty
 
 RECOVERY_RECHECK
   must not pass either hot lease primitive
 ```
 
-`observedScore` remains an opaque full-score fence for point lease, active
+`observedScore` remains an opaque full-score fence for batched lease, active
 renewal, release, polarity move, and recovery exhaustion. HOT query returns the
 observation only to the allocation pacer sidecar; matcher sees Worker ids only.
 Do not decode, trim, construct, or reinterpret observed scores outside worker
@@ -281,10 +280,11 @@ register WorkerGroupDescriptor
 register WorkerDescriptor
 initialize HOT_ACQUIRE score
 acquire HOT_ACQUIRE candidates
+acquire unchanged candidates through exact observed-score CAS
 match bounded WorkerCandidateConstraint maps
-acquire matched HOT leases through exact observed-score CAS
-renew_active_hot_score_lease
-release_score_hold / rewrite_current_score
+retain unmatched HOT leases until natural expiry
+renew_active_hot_score_leases
+release_score_holds / rewrite_current_scores
 RECOVERY_RECHECK path
 dirty stale behavior
 ```

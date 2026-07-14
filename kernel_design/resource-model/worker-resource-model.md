@@ -59,7 +59,9 @@ physical runtime process
 In v0, a `Worker` is the scheduler-visible execution identity. It may still
 process multiple work items concurrently. Worker score lease / hold protects
 only the short assignment decision window; it is not an execution-duration lock
-and should be released after assignment / deliver seed creation succeeds.
+by itself. After assignment / DeliverSeed creation succeeds, downstream
+admission policy releases the exact lease for non-exclusive use or retains /
+renews it for exclusive use.
 
 Concurrency and capacity are policy inputs, not worker score truth. Represent
 them through static attributes, projected dynamic attributes such as
@@ -449,7 +451,7 @@ worker availability truth.
 
 If a dynamic attribute is relevant to scheduling policy, the worker-runtime
 matching path may batch-read the attribute owner's current values for a bounded
-observed Worker batch before point lease. Only bounded candidate matching should receive candidate
+leased Worker batch. Only bounded candidate matching should receive candidate
 constraints; worker score lease / hold writes should not receive raw rule maps.
 Assignment-dispatch and worker score primitives must not interpret dynamic
 attribute payloads directly, and dynamic attribute updates must not drive
@@ -486,12 +488,13 @@ running. Assignment-dispatch does not query or choose groups on each round.
 selected worker group. Its `match_rules` may constrain `workerId`, placement,
 static attributes, system attributes, or explicitly supported projected
 dynamic attributes. These constraints narrow the Worker ids returned by the
-read-only HOT score query; matcher does not attempt or renew Worker-score leases.
+lease-first allocation step; matcher does not attempt or renew Worker-score
+leases.
 
 `workerId` inside `match_rules` is only a hard filter inside the task's selected
 `workerGroupId`. The Worker must come from bounded due HOT score observation and
-later win an exact-score point lease. It is not a worker group selector and not
-a transport target.
+win an exact-score lease CAS before matcher validation. It is not a worker
+group selector and not a transport target.
 
 Dynamic attribute matching is deliberately narrow in v0. Assignment-dispatch
 must not perform arbitrary dynamic-attribute multi-index queries. Each
@@ -528,8 +531,9 @@ assignment-dispatch
 must partition candidates by Worker group and read a bounded due Worker
 observation batch before calling it. The matcher owns descriptor reads, dynamic
 reads, and matching for only those supplied Worker ids. The allocation pacer
-keeps observed scores in a private sidecar, point-leases matched Workers by
-exact CAS, and creates `CandidateWorkerEntry` values only for lease successes.
+keeps observed scores in a private sidecar, batch-leases unchanged due Workers
+by exact CAS, passes only lease successes to matcher, leaves unmatched leases
+to expire naturally, and creates `CandidateWorkerEntry` values for matched leases.
 The matcher returns every input candidate in resolved priority order. An empty
 entry means no match. It must not acquire or discover additional Workers and
 must not become
@@ -582,11 +586,12 @@ must not become a second score lease owner.
 
 In v0, worker occupation is a short score lease / hold of one
 scheduler-visible worker identity during assignment. A selected worker is
-score-leased for the current assignment window or it is not. The lease should be
-released after assignment / deliver seed creation, so it does not serialize all
-work execution for that worker. Do not model capacity pools inside
-`WorkerDescriptor`; express concurrent capacity through attributes and policy
-until an executable spec proves a separate capacity owner is needed.
+score-leased for the current assignment window or it is not. Non-exclusive
+assignment releases the exact lease after assignment / DeliverSeed creation so
+it does not serialize all work execution for that Worker. Exclusive assignment
+retains or renews the lease according to admission policy. Do not model capacity
+pools inside `WorkerDescriptor`; express concurrent capacity through attributes
+and policy until an executable spec proves a separate capacity owner is needed.
 
 The worker score model remains separate:
 
