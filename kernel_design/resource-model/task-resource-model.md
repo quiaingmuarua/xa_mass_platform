@@ -12,15 +12,18 @@ second lifecycle model.
 ```text
 TaskDescriptor = stable task allocation metadata
 TaskScoreBandCore = task scheduling / lifecycle coordinate
-TaskItemRuntime = Item record, Item score, claim/retry, and outcome movement
+TaskRuntime = Task descriptor creation plus canonical TaskItem record operations
+TaskItemScoreBandCore = Item score initialization, acquire, claim/retry, and outcome movement
 AssignmentDispatch = bounded consumer of task and worker owner facts
 ```
 
-`TaskRuntime` owns score-leased Task creation and future Task runtime owner
-operations. `TaskResourceCatalog`
+`TaskRuntime` owns score-coordinated Task creation, TaskItem append, and bounded
+TaskItem record reads. It invokes `TaskScoreBandCore` or
+`TaskItemScoreBandCore` through their contracts but does not own, decode, or
+write either score axis. `TaskResourceCatalog`
 owns only the bounded allocation descriptor load. The catalog does not create
-Task identity or decide duplicate-create conflicts, and neither surface owns
-general Task reads, worker matching, allocation results, TaskItems, or finality.
+Task identity or decide duplicate-create conflicts. None of these surfaces owns
+general Task reads, worker matching, allocation results, or result finality.
 
 For the first allocation cut, one task belongs to exactly one worker group:
 
@@ -117,10 +120,10 @@ assignment-dispatch.
 ### config["maxRetryTimes"]
 
 `maxRetryTimes` is the number of claims allowed after the first claim fails or
-expires. It is Task policy, not an ItemRecord field and not a score parameter
+expires. It is Task policy, not a TaskItem field and not a score parameter
 accepted from append callers.
 
-Task Item runtime converts it to the internal ACTIVE suffix budget:
+`TaskItemScoreBandCore` converts it to the internal ACTIVE suffix budget:
 
 ```text
 initialClaimBudget = 1 + maxRetryTimes
@@ -484,9 +487,10 @@ is the real-Redis proof for one-owner-per-slot creation, stale-owner rejection,
 redis-py pipeline compatibility, binary response decoding, and corrupt-row isolation.
 
 Current Python `TaskDescriptor` still validates the earlier three-key
-allocation-only config. `maxRetryTimes` and Task Item runtime are target contract
-additions in this document and are not executable-spec truth until the Task Item
-slice updates the descriptor, Redis round trip, and tests together.
+allocation-only config. `maxRetryTimes`, TaskItem record operations, and
+`TaskItemScoreBandCore` are target contract additions in this document and are
+not executable-spec truth until the Task Item slice updates the descriptor,
+Redis round trip, and tests together.
 
 The first cut deliberately uses string-only config values. Supporting both JSON
 numbers and strings would add two representations for the same setting without

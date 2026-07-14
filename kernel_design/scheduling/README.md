@@ -365,7 +365,7 @@ Owns:
 
 ```text
 classify business result as retryable, final-failed, or final-success
-invoke one Task Item runtime transition without interpreting score
+invoke one TaskItemScoreBandCore transition without interpreting score
 map the returned transition status to accepted, stale/duplicate no-op, discard,
 or manual review / unresolved handling
 ```
@@ -380,7 +380,7 @@ task score refresh as a generic side effect
 ```
 
 Result routing is a scheduling plane because it decides whether a result exits
-the runtime, requests retry scheduling, or is ignored. Task Item runtime alone
+the runtime, requests retry scheduling, or is ignored. TaskItemScoreBandCore alone
 decides whether the requested score transition is legal. Result routing is not
 a query/view owner and not a transport parser.
 
@@ -419,10 +419,12 @@ The target kernel uses explicit owner planes:
 Task score-band
   owns task active-acquisition visibility
 
-Task Item score-band
-  owns per-Task Item record, item scheduling score, same-tag claim/retry
-  movement, and cross-tag final movement
-  append accepts bounded ItemRecord batches and mints ACTIVE tag/time/suffix internally
+TaskRuntime
+  owns canonical TaskItem records, append orchestration, and bounded record reads
+
+TaskItemScoreBandCore
+  owns per-Task item scheduling score, ACTIVE initialization, same-tag
+  claim/retry movement, and cross-tag final movement
 
 Result owner
   owns retryable/final classification, late-success barriers, and result projection
@@ -445,10 +447,11 @@ First kernel cut rule:
 no Attempt aggregate
 no claim_token as a required model concept
 deliver seed carries claim evidence
-item score is the current runtime truth
-result routing passes opaque evidence to a named Task Item operation
-Task Item runtime validates same-tag retry against exact claimScore
-Task Item runtime enforces ACTIVE < FINAL_FAILED < FINAL_SUCCESS
+TaskItem record truth belongs to TaskRuntime
+Item scheduling truth belongs to TaskItemScoreBandCore
+result routing passes opaque evidence to a named TaskItemScoreBandCore operation
+TaskItemScoreBandCore validates same-tag retry against exact claimScore
+TaskItemScoreBandCore enforces ACTIVE < FINAL_FAILED < FINAL_SUCCESS
 expired claim scores naturally re-enter acquire
 default ingress calls append_items directly
 caller-owned outbox / broker is optional and never kernel truth

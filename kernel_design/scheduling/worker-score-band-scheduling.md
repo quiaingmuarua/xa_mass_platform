@@ -858,7 +858,8 @@ allocation pacer passes only lease-success Worker ids to matcher
 worker-runtime validates and matches candidates
 allocation pacer retains unmatched leases until expiry and publishes matched leases
 worker-runtime admits one or more selected workers
-TaskItemRuntime claims TaskItem
+TaskRuntime loads the selected TaskItem record
+TaskItemScoreBandCore claims the observed Item score
 transport receives already-selected worker dispatch
 worker-runtime rewrites worker scores only through owner/admission rules
 ```
@@ -866,8 +867,8 @@ worker-runtime rewrites worker scores only through owner/admission rules
 Worker score-band does not:
 
 ```text
-read task backlog
-claim task work
+read TaskItem records
+claim Item score
 select transport route
 inspect adapter sessions directly
 write task score

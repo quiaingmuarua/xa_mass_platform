@@ -111,7 +111,7 @@ Rules:
   pacing;
 - dispatch-visible candidates must be classified and moved, closed, cleaned, or
   rejected by the score-write stale fence;
-- acquired tasks still require descriptor and Task Item runtime validation before
+- acquired tasks still require descriptor and TaskItemScoreBandCore validation before
   dispatch; no second lifecycle gate may override the score band;
 - append, Item retry/outcome movement, and result lookup are not score refresh
   triggers.
@@ -135,7 +135,7 @@ Conceptual flow:
 assignment-dispatch pacing round
   -> task score query(range, limit)
   -> task lifecycle / gate / time-coordinate validation
-  -> Task Item runtime reports or claims a due TaskItem
+  -> TaskItemScoreBandCore reports or claims a due TaskItem score
   -> worker score-band acquire / admission
   -> dispatch the selected TaskItem through transport
   -> scheduling round classifies evidence
@@ -203,7 +203,8 @@ Examples:
 
 ```text
 append item
-  -> writes canonical Item record + Item score truth
+  -> TaskRuntime writes canonical TaskItem record
+  -> TaskItemScoreBandCore initializes Item score truth
   -> does not write task score
   -> does not emit a default wakeup
   -> does not become RUNNING_VISIBLE correctness
@@ -232,8 +233,8 @@ RUNNING_VISIBLE
   -> owner validation decides whether dispatch can happen
 
 result evidence
-  -> result owner classifies business outcome and invokes Task Item runtime
-  -> Task Item runtime validates opaque claimScore / outcome movement
+  -> result owner classifies business outcome and invokes TaskItemScoreBandCore
+  -> TaskItemScoreBandCore validates opaque claimScore / outcome movement
   -> live Task score changes only through Task-score owner-approved rewrite
 ```
 
@@ -898,9 +899,12 @@ task lifecycle owner:
   lifecycle gate / time coordinate permits a scheduling round
   policy snapshot is current enough for the round
 
-Task Item runtime:
-  a due TaskItem exists now, or no-work evidence is returned
-  final Item claim happens only through Task Item runtime
+TaskItemScoreBandCore:
+  a due TaskItem score exists now, or no-work evidence is returned
+  final Item claim happens only through TaskItemScoreBandCore
+
+TaskRuntime:
+  the corresponding canonical TaskItem record exists for DeliverSeed creation
 
 worker-runtime owner:
   selected worker can be acquired and admitted now
@@ -913,11 +917,11 @@ score state says which bounded action may run
 RUNNING_VISIBLE may enter dispatch after validation, or consume a no-work /
 no-worker / contention classification through same-band rewrite
 PRE_DISPATCH_VISIBLE runs activation check
-Task Item runtime proves whether there is a due TaskItem now
+TaskItemScoreBandCore proves whether there is a due TaskItem score now
 worker-runtime proves whether a concrete worker can be admitted now
 ```
 
-An acquired `RUNNING_VISIBLE` score first asks Task Item runtime for bounded
+An acquired `RUNNING_VISIBLE` score first asks TaskItemScoreBandCore for bounded
 Item availability evidence. If no due TaskItem exists and `suffix > 00`, scheduling keeps
 the task in `RUNNING_VISIBLE`, writes the next no-work recheck time, and
 decrements `suffix`. If no due TaskItem exists and `suffix == 00`, the task
@@ -943,8 +947,8 @@ does not create an owner transition.
 
 ## Assignment-Dispatch Protocol
 
-The target protocol deliberately keeps Task score-band, Task Item runtime,
-worker-runtime, and transport separate. The active loop belongs to
+The target protocol deliberately keeps Task score-band, TaskRuntime records,
+TaskItemScoreBandCore, worker-runtime, and transport separate. The active loop belongs to
 assignment-dispatch; task score-band only supplies query plus same-band
 time/suffix rewrite, general positive rewrite, terminal close, and
 score-hold release primitives:
@@ -954,12 +958,13 @@ score-hold release primitives:
 2. acquire task ids from task score-band single-band query(band, horizon, limit)
 3. load task score state and validate gate / time coordinate
 4. if RUNNING_VISIBLE:
-     ask Task Item runtime for bounded due-Item evidence
+     ask TaskItemScoreBandCore for bounded due-Item evidence
      if no work and suffix > 00, rewrite RUNNING_VISIBLE with next time and
      suffix-1
      if no work and suffix == 00, close to TERMINAL
      acquire and admit worker through worker score-band / worker-runtime
-     let Task Item runtime perform the final Item claim
+     load TaskItem records through TaskRuntime
+     let TaskItemScoreBandCore perform the final Item claim
      produce deliver seed for transport
      rewrite to RUNNING_VISIBLE after the round classification
 5. if PRE_DISPATCH_VISIBLE:
@@ -970,7 +975,7 @@ score-hold release primitives:
 ```
 
 The Item availability read may be cheap and non-consuming. The final claim
-belongs to Task Item runtime and should happen only when the scheduling round has
+belongs to TaskItemScoreBandCore and should happen only when the scheduling round has
 enough worker-admission evidence to avoid consuming an Item without a viable
 dispatch path.
 
@@ -1121,7 +1126,7 @@ policy command that changes scheduling visibility
 Separate owner boundaries:
 
 ```text
-Task Item score owner
+TaskItemScoreBandCore
   owns Item record, ACTIVE acquire, claim lease, same-tag retry movement, and
   monotonic outcome promotion
 
@@ -1158,10 +1163,10 @@ Rules:
   `RUNNING_VISIBLE`;
 - `PRE_DISPATCH_VISIBLE` acquired and open condition is still false: leave the
   score unchanged; a later bounded activation round may retry;
-- `RUNNING_VISIBLE` acquired but Task Item runtime reports no due TaskItem
+- `RUNNING_VISIBLE` acquired but TaskItemScoreBandCore reports no due TaskItem
   and `suffix > 00`: rewrite `RUNNING_VISIBLE` with a later no-work recheck
   time and `suffix - 1`;
-- `RUNNING_VISIBLE` acquired but Task Item runtime reports no due TaskItem
+- `RUNNING_VISIBLE` acquired but TaskItemScoreBandCore reports no due TaskItem
   and `suffix == 00`: close to `TERMINAL`; close reason is
   metadata/result/trace, not score;
 - `RUNNING_VISIBLE` acquired but no worker matches and `suffix > 00`: stay in

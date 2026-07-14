@@ -101,14 +101,16 @@ read projection / trace materialization
 
 Those writes may affect facts read by a later scheduling round, but they do not
 become score transitions and must not wait for score ownership. In particular,
-append owns canonical ItemRecord plus initial Item-score creation only. It does
-not make a Task schedulable, refresh Task score, or emit a required wakeup.
+TaskRuntime append owns canonical TaskItem persistence and invokes
+TaskItemScoreBandCore for initial Item-score creation. It does not make a Task
+schedulable, refresh Task score, or emit a required wakeup.
 
 Append acceptance is deliberately narrow:
 
 ```text
 append accepted
-  = Task Item owner persisted ItemRecord + initial ACTIVE Item score
+  = TaskRuntime confirmed TaskItem persistence
+  + TaskItemScoreBandCore confirmed initial ACTIVE Item score
 
 append accepted
   != task is live or schedulable
@@ -131,7 +133,8 @@ solve this by making every append read or lease Task score.
 
 ```text
 ingress owner decides append eligibility
-Task Item owner guarantees accepted ItemRecord + Item-score persistence only
+TaskRuntime owns TaskItem persistence
+TaskItemScoreBandCore owns Item-score initialization and movement
 Task score owns Task scheduling visibility
 dispatcher owns consumption opportunity
 retention owner removes terminal residue
@@ -168,7 +171,7 @@ The hard owner rule is:
 
 ```text
 resource owners write resource truth without a score lease
-Task Item owner appends ItemRecord + initial Item score without Task-score mutation
+TaskRuntime appends TaskItem through TaskItemScoreBandCore initialization
 scheduling owns routine acquirable-score evolution
 command owners own explicit lifecycle transitions only
 score never becomes a global mutation lock
@@ -184,7 +187,7 @@ The kernel must close its own loop without ordinary external events:
 task score-band recheck
 worker score-band acquire / admission
 assignment-dispatch bounded claim
-result classification -> Task Item owner transition
+result classification -> TaskItemScoreBandCore transition
 Item score lease expiry / retry-budget exhaustion
 terminal / policy closure
 ```
@@ -388,7 +391,7 @@ no hidden compatibility path or second mainline remains
   - v0 task allocation metadata, start conditions, allocation-rule routing,
     Item retry policy, and bounded task descriptor reads.
 - [Task Item Score-Band Scheduling](scheduling/task-item-score-band-scheduling.md)
-  - one canonical TaskItem from append through finality, with ItemRecord, ACTIVE
+  - one canonical TaskItem from append through finality, with TaskItem record, ACTIVE
     claim/retry, and monotonic result outcome movement; no second Work model.
 - [Assignment-Dispatch Scheduling](scheduling/assignment-dispatch-scheduling.md)
   - shared owner contract for two mandatory independent pacers.

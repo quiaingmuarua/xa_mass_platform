@@ -159,12 +159,19 @@ bounded task acquire / recheck primitives
 It does not own Item append, Item score claim/retry/outcome movement, worker
 selection, transport delivery, or result finality classification.
 
-Task Item runtime / score-band owns:
+TaskRuntime owns:
 
 ```text
 canonical per-Task Item records
-batch Item append with internal ACTIVE score initialization
-bounded ACTIVE Item acquire
+TaskItem validation, defaults, persistence, and bounded record reads
+batch Item append orchestration through TaskItemScoreBandCore initialization
+```
+
+TaskItemScoreBandCore owns:
+
+```text
+initial ACTIVE Item score creation
+bounded ACTIVE Item-score acquire
 same-tag claim/retry stale fencing
 monotonic ACTIVE < FINAL_FAILED < FINAL_SUCCESS outcome movement
 ```
@@ -172,8 +179,9 @@ monotonic ACTIVE < FINAL_FAILED < FINAL_SUCCESS outcome movement
 `TaskItem` is the only runtime unit from append through finality. Claiming it
 does not create a `Work` / `WorkItem` model, id, store, runtime, or owner.
 
-Item append callers provide `ItemRecord` values only. Task config owns
-`maxRetryTimes`; Task Item runtime converts it to internal suffix budget. Tag,
+Item append callers provide `TaskItem` values only. Task config owns
+`maxRetryTimes`; TaskRuntime passes stable initialization inputs to
+TaskItemScoreBandCore, which converts them to internal suffix budget. Tag,
 timeSlot, suffix, score bounds, and initial score never cross the append API.
 
 Score is not a resource mutation lock. Task/worker metadata writes, dynamic
@@ -226,7 +234,7 @@ Result-routing owns:
 
 ```text
 retryable / final-failure / final-success business classification
-opaque claimScore pass-through to Task Item runtime
+opaque claimScore pass-through to TaskItemScoreBandCore
 Task Item transition-result mapping to routing outcomes
 late-success retention barrier and result projection
 owner-specific handoffs after result acceptance
@@ -352,7 +360,7 @@ python -m unittest \
 - Do not require a score read, lease, or rewrite before resource metadata,
   dynamic attribute, Item append, result/evidence, projection, or trace
   mutation.
-- The default server/SDK ingress calls `TaskItemRuntime.append_items` directly;
+- The default server/SDK ingress calls `TaskRuntime.append_items` directly;
   do not require a server backlog, outbox, broker, or periodic materializer.
 - Treat append success as canonical Item acceptance only. Do not infer that
   the Task is live, schedulable, guaranteed to consume the item, or required to

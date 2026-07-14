@@ -29,7 +29,7 @@ record and one monotonic score coordinate:
 task:{taskId}:items
   HASH
   field = messageId
-  value = ItemRecord
+  value = TaskItem
 
 task:{taskId}:item-score
   ZSET
@@ -37,7 +37,17 @@ task:{taskId}:item-score
   score = ItemScore
 ```
 
-The score axis is the runtime scheduling truth. The Item record is intake data.
+The score axis is Item scheduling truth. The `TaskItem` record is Task runtime
+resource truth. They are paired by `(taskId, messageId)` but have different
+owners:
+
+```text
+TaskRuntime
+  TaskItem validation, defaults, persistence, and bounded record reads
+
+TaskItemScoreBandCore
+  ItemScore initialization, bounded acquire, claim, retry, and outcome movement
+```
 
 Vocabulary is singular across the complete path:
 
@@ -49,7 +59,8 @@ append -> acquire -> claim -> dispatch -> result -> retry/final
 Claim does not create a second `Work` entity. `Work`, `WorkItem`, `WorkRecord`,
 `WorkRuntime`, `WorkClaim`, and `workItemId` are not new-kernel model or owner
 names. Ordinary prose may still say "no work", but contracts use `TaskItem`,
-`messageId`, `ItemRecord`, `TaskItemRuntime`, and opaque Item claim evidence.
+`messageId`, `TaskRuntime`, `TaskItemScoreBandCore`, and opaque Item claim
+evidence.
 
 ## Non-Goals
 
@@ -62,9 +73,9 @@ claim-expiry queue
 active repair registry
 leaseToken
 attemptNo
-claimEvidence in ItemRecord
-retryCount in ItemRecord
-finalReceipt in ItemRecord
+claimEvidence in TaskItem
+retryCount in TaskItem
+finalReceipt in TaskItem
 ```
 
 The default ingress path calls `append_items` directly and returns only after the
@@ -75,20 +86,23 @@ A caller may independently use an outbox or broker when its own transaction,
 offline submission, or burst-buffering requirements justify one. That caller-
 owned mechanism is outside the kernel contract and does not become Item truth.
 
-## Item Record
+## TaskItem Model
 
 The Item record carries only caller/intake facts:
 
 ```text
-ItemRecord
+TaskItem
   messageId
+  eventCode
   payload | payloadRef
   priority = 5
   createdAtMillis
   expireAtMillis = createdAtMillis + defaultItemTtlMillis
 ```
 
-Exactly one of `payload` and `payloadRef` is required. `priority` is an integer
+`messageId` is unique inside one Task. `eventCode` selects the worker-local
+handler after Worker selection and does not participate in matching. Exactly one
+of `payload` and `payloadRef` is required. `priority` is an integer
 from `0` through `10`; `5` is the canonical default. `createdAtMillis` is the
 immutable intake timestamp. An omitted `expireAtMillis` is materialized as
 `createdAtMillis + defaultItemTtlMillis`; the v0 runtime default is 365 days and
@@ -323,41 +337,65 @@ Append is batch-first and exposes no score fields:
 ```text
 append_items(
   taskId,
-  items: Sequence[ItemRecord]
+  items: Sequence[TaskItem]
 )
   -> messageId -> ItemAppendResult
 ```
 
-Task Item runtime reads `TaskDescriptor.config["maxRetryTimes"]` once for the
-Task-scoped batch. For each Item independently it then:
+`TaskRuntime` owns this public append operation. It reads
+`TaskDescriptor.config["maxRetryTimes"]` once for the Task-scoped batch,
+validates and persists each `TaskItem`, then invokes
+`TaskItemScoreBandCore.initialize_item_scores(...)` with stable initialization
+inputs only:
 
 ```text
-validate messageId and payload XOR payloadRef
+messageId
+priority
+maxRetryTimes
+createdAtMillis
+```
+
+For each Item independently:
+
+```text
+TaskRuntime
+  validate messageId / eventCode and payload XOR payloadRef
 materialize priority / expiry defaults
-mint internal TAG_ACTIVE / initial timeSlot / suffix
+  HSETNX task:{taskId}:items messageId TaskItem
 
-HSETNX task:{taskId}:items messageId ItemRecord
-ZADD NX task:{taskId}:item-score
-  score(TAG_ACTIVE, initialTimeSlot, initialSuffix)
-  messageId
+TaskItemScoreBandCore
+  mint internal TAG_ACTIVE / initial timeSlot / suffix
+  ZADD NX task:{taskId}:item-score internalScore messageId
 ```
 
-The atomic boundary is one Item's HASH field plus ZSET member. A bounded batch is
-an API and pipeline optimization, not an all-or-nothing transaction across
-Items. An implementation may pipeline one owner-local atomic script per Item.
+Neither owner writes the other's key or reconstructs its encoding. A bounded
+batch is an API/pipeline optimization, not an all-or-nothing transaction across
+Items. Append returns `APPENDED` only after both the TaskItem record and initial
+Item score are confirmed.
 
-Each Item script must classify both keys before mutation:
+The record-first composition uses only owner results:
 
 ```text
-record absent + score absent
-  -> write both and return APPENDED
+TaskRuntime HSETNX succeeds
+  -> invoke TaskItemScoreBandCore.initialize_item_scores
+  -> TRANSITIONED: return APPENDED
+  -> retryable infrastructure failure: return RETRYABLE
+  -> NOOP / STALE / INVALID: append is not newly accepted
 
-record present + score present
-  -> return DUPLICATE_REJECTED
+TaskRuntime finds an existing exact-equal TaskItem
+  -> may invoke initialization to complete a prior record-only partial write
+  -> TRANSITIONED: return APPENDED
+  -> NOOP: return DUPLICATE_REJECTED
 
-only one side present
-  -> return CORRUPT
+TaskRuntime finds different content for the same messageId
+  -> return CONFLICT
 ```
+
+A failure before both sides are confirmed returns `RETRYABLE`, not accepted.
+No periodic repair scanner is required: an exact append retry may complete the
+record-present / score-absent state. This composition does not make TaskRuntime
+the Item score owner. TaskRuntime observes only initialization operation status;
+it does not read or decode the stored Item score.
 
 Duplicate `messageId` values inside one input batch are invalid before Redis
 execution. A previously stored duplicate is rejected per Item:
@@ -385,12 +423,15 @@ require storedScore == observedScore
 require targetTag == observedTag
 require targetTimeSlot >= observedTimeSlot
 require targetScore > observedScore
-read ItemRecord
-if ItemRecord missing: return stale
 kernel encodes claimScore from observedTag, claimLeaseUntilMillis, and suffix rule
 write claimScore
-return payload | payloadRef plus claimScore
+return opaque claimScore
 ```
+
+`TaskItemScoreBandCore` never reads the TaskItem HASH. The dispatch caller loads
+the corresponding records through bounded `TaskRuntime.load_task_items(...)` and
+combines a successfully claimed score with its TaskItem. Missing records are
+record/retention corruption evidence, not a score transition rule.
 
 The first active policy uses suffix as remaining scheduling budget:
 
@@ -503,7 +544,8 @@ Item score-band must not refresh Task score as a generic side effect:
 
 ```text
 append item
-  writes ItemRecord + ItemScore only
+  TaskRuntime writes TaskItem
+  TaskItemScoreBandCore initializes ItemScore
 
 claim / retry / final
   writes ItemScore only
@@ -522,8 +564,9 @@ The normal path is direct:
 
 ```text
 server / SDK
-  -> TaskItemRuntime.append_items
-  -> canonical HASH + ZSET
+  -> TaskRuntime.append_items
+  -> TaskRuntime persists TaskItem
+  -> TaskItemScoreBandCore initializes ItemScore
 ```
 
 A caller may add an outbox or broker before `append_items`, but only for a named
@@ -533,7 +576,7 @@ durable replay until `append_items` succeeds.
 
 ```text
 accepted after HASH + ZSET write
-  canonical item score-band owner has accepted the item
+  TaskRuntime has confirmed TaskItem persistence and ItemScore initialization
 ```
 
 Do not introduce a server backlog merely as a precaution, and do not let an
@@ -541,14 +584,22 @@ optional caller buffer become the hidden correctness path for Item runtime truth
 
 ## Minimal Primitive Surface
 
-First executable surface:
+First executable surfaces:
 
 ```text
+TaskRuntime
+
 append_items(
   taskId,
-  items: Sequence[ItemRecord]
+  items: Sequence[TaskItem]
 )
   -> messageId -> ItemAppendResult
+
+load_task_items(taskId, messageIds)
+
+TaskItemScoreBandCore
+
+initialize_item_scores(taskId, initializations)
 
 acquire_item_score_candidates(
   taskId,
@@ -557,6 +608,13 @@ acquire_item_score_candidates(
   limit
 )
   -> messageId -> observedScore
+
+claim_observed_items(
+  taskId,
+  observedScores,
+  claimLeaseUntilMillis
+)
+  -> messageId -> ItemScoreTransitionResult
 
 retry_observed_claim(
   taskId,
@@ -572,7 +630,6 @@ promote_item_outcome(
   outcomeAtMillis
 )
 
-get_item_records(taskId, messageIds)
 get_item_score_states(taskId, messageIds)
 ```
 
@@ -584,7 +641,9 @@ details as public kernel contracts.
 
 - Do not add a runtime ready LIST as kernel truth.
 - Do not move payload between ready, retry, and active structures.
-- Do not store claim evidence, retry count, or final receipt in `ItemRecord`.
+- Do not store claim evidence, retry count, or final receipt in `TaskItem`.
+- Do not let `TaskRuntime` read, decode, mint, or directly write ItemScore.
+- Do not let `TaskItemScoreBandCore` read or write TaskItem records.
 - Do not let append callers provide tag, timeSlot, suffix, retry budget, or
   encoded score.
 - Do not use score absence as final proof.

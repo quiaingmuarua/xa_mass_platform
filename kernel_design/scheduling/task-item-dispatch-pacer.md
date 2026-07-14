@@ -51,10 +51,13 @@ TaskDispatchRuntime
 WorkerScoreCore
   current score evidence and policy-selected lease primitives
 
-TaskItemRuntime
+TaskRuntime
+  load bounded TaskItem records by taskId + messageIds
+
+TaskItemScoreBandCore
   acquire bounded due ACTIVE Items
-  use owner-internal score primitives to exact-CAS observed Items into future claims
-  return Item payload plus opaque claimScore
+  exact-CAS observed Item scores into future claims
+  return opaque claimScore results
 
 Transport ingress
   accepts DeliverSeed or returns bounded rejection evidence
@@ -67,8 +70,8 @@ DispatchPolicy
 ```
 
 `TaskDispatchRuntime` provides a Redis ZSET per-Task candidate append/count/
-consume implementation. Task Item score-band is the canonical Item record,
-acquire, claim, retry, and outcome-movement owner.
+consume implementation. `TaskRuntime` owns TaskItem records;
+`TaskItemScoreBandCore` owns acquire, claim, retry, and outcome movement.
 
 ## Task Discovery
 
@@ -192,21 +195,24 @@ and current constraints still match
 
 ## Item Score Claim
 
-Item claim belongs to Task Item score-band. TaskItemDispatchPacer does not pop or
-move payload between ready/current/retry structures.
+Item claim belongs to `TaskItemScoreBandCore`. TaskItemDispatchPacer loads
+TaskItem records through `TaskRuntime`; it does not pop or move payload between
+ready/current/retry structures.
 
 ```text
 Worker candidate revalidated and required lease established
   -> acquire one bounded due ACTIVE Item observation for taskId
+  -> load the corresponding TaskItem records through TaskRuntime
   -> exact-CAS the observation to a future claim lease
-  -> claim succeeds: create DeliverSeed
+  -> record exists and claim succeeds: create DeliverSeed
   -> claim fails: release/retain Worker short lease according to admission policy
 ```
 
-The Item owner validates current Item record/score truth and creates occupancy by
-rewriting the same ACTIVE score to a future timeSlot while consuming one internal
-claim-budget suffix. Task score-band must not inspect Item score, and Worker
-score must not mutate Item state.
+`TaskRuntime` validates and returns the record. `TaskItemScoreBandCore` validates
+the observed score and creates occupancy by rewriting the same ACTIVE score to a
+future timeSlot while consuming one internal claim-budget suffix. Neither owner
+reads or mutates the other's key. Task score-band must not inspect Item score,
+and Worker score must not mutate Item state.
 
 Claim remains thin. It does not create a separate Attempt lifecycle or a second
 scheduling id. The opaque returned `claimScore` is the same-tag result/retry
@@ -234,8 +240,9 @@ DeliverSeed
   createdAtMillis
 ```
 
-It carries opaque claim evidence, not current truth. Current Item truth remains
-in Task Item score-band. Transport and result callers store and return
+It carries opaque claim evidence, not current truth. Current TaskItem record
+truth remains in `TaskRuntime`; current Item scheduling truth remains in
+`TaskItemScoreBandCore`. Transport and result callers store and return
 `claimScore`; they never decode it.
 
 Transport-specific identifiers do not belong in the seed:

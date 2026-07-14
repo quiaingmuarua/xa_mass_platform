@@ -1,8 +1,8 @@
 # Result-Routing Scheduling
 
 Status: new-kernel mechanism note. This document defines result classification
-and the handoff to Task Item runtime. It is not current implementation truth and
-not an implementation roadmap.
+and the handoff to `TaskItemScoreBandCore`. It is not current implementation
+truth and not an implementation roadmap.
 
 Parent contract: [Task Item Score-Band Scheduling](task-item-score-band-scheduling.md).
 
@@ -13,8 +13,8 @@ Result routing converts result evidence into one bounded owner decision:
 ```text
 incoming result evidence
   -> classify retryable / final-failed / final-success business outcome
-  -> invoke one named Task Item runtime operation
-  -> map Task Item transition status to accepted / stale / duplicate / unresolved
+  -> invoke one named TaskItemScoreBandCore operation
+  -> map Item score transition status to accepted / stale / duplicate / unresolved
   -> result barrier / projection update
   -> owner-specific release or closure handoffs
 ```
@@ -37,7 +37,7 @@ ResultEvidence
 ```
 
 `claimScore` is opaque evidence copied from `DeliverSeed`. Result routing passes
-it unchanged to Task Item runtime and never reads or decodes tag, timeSlot, or
+it unchanged to `TaskItemScoreBandCore` and never reads or decodes tag, timeSlot, or
 suffix. Transport may normalize protocol frames into `ResultEvidence`; it does
 not decide retry or finality.
 
@@ -54,14 +54,14 @@ Worker release or capacity disposition
 ## Owner Split
 
 ```text
-Task Item score owner
+TaskItemScoreBandCore
   current Item score
   exact same-tag claim/retry stale fence
   ACTIVE < FINAL_FAILED < FINAL_SUCCESS promotion
 
 result owner
   business outcome classification
-  Task Item operation selection
+  Item score operation selection
   transition-result mapping to routing outcome
   late-success retention barrier
   result payload and read projection
@@ -73,7 +73,7 @@ Worker owner
   release / retain / capacity decision after accepted result
 ```
 
-Result policy chooses an Item owner operation. Task Item runtime alone validates
+Result policy chooses an Item score operation. `TaskItemScoreBandCore` alone validates
 the current score and returns the transition result. Result routing does not
 write Redis score directly, compare stored score, or construct target tags,
 timeSlots, suffixes, or encoded scores.
@@ -100,7 +100,7 @@ a generic `handle_result` method.
 2. validate taskId / messageId / workerId and result payload shape
 3. consult the recent-result barrier and Task retention fence
 4. classify retryable failure, final failure, or final success
-5. invoke exactly one Task Item owner transition
+5. invoke exactly one TaskItemScoreBandCore transition
 6. map the returned transition status to accepted, stale, duplicate, or unresolved
 7. record result/barrier/projection evidence only when routing policy permits
 8. invoke Worker and Task owner handoffs when policy requires them
@@ -111,7 +111,7 @@ No result path refreshes Task score as a generic side effect.
 
 ## Task Item Operations Consumed
 
-Result routing depends on the Task Item contract without reimplementing it:
+Result routing depends on the Task Item score contract without reimplementing it:
 
 ```text
 retryable failure
@@ -124,7 +124,7 @@ final success
   -> promote_item_outcome(taskId, messageId, FINAL_SUCCESS, outcomeAtMillis)
 ```
 
-Task Item runtime owns exact same-tag claim fencing, retry-budget interpretation,
+`TaskItemScoreBandCore` owns exact same-tag claim fencing, retry-budget interpretation,
 cross-tag outcome precedence, and all score mutation. It returns an explicit
 transition status such as `TRANSITIONED`, `STALE`, `NOOP`, `NOT_FOUND`, or
 `CORRUPT`. Result routing maps that status to `ResultRoutingOutcome`; it does not
@@ -147,7 +147,7 @@ Task close
   does not immediately delete Item score or result barrier truth
 
 late success inside retention window
-  requests FINAL_SUCCESS promotion from Task Item runtime
+  requests FINAL_SUCCESS promotion from TaskItemScoreBandCore
   may update result aggregate / terminal reason projection
   must not reopen Task scheduling
 
@@ -160,16 +160,16 @@ The retention owner, not Task score-band, decides physical deletion timing.
 ## Transition-Result Mapping
 
 ```text
-Task Item returns TRANSITIONED
+TaskItemScoreBandCore returns TRANSITIONED
   map to RESULT_RETRY_SCHEDULED / RESULT_FINAL_FAILED / RESULT_FINAL_SUCCESS
 
-Task Item returns STALE
+TaskItemScoreBandCore returns STALE
   map to RESULT_STALE_NOOP
 
-Task Item returns NOOP
+TaskItemScoreBandCore returns NOOP
   RESULT_DUPLICATE_NOOP
 
-Task Item returns NOT_FOUND / CORRUPT
+TaskItemScoreBandCore returns NOT_FOUND / CORRUPT
   map to RESULT_UNRESOLVED_REVIEW or the declared owner-specific rejection
 
 result after retention cleanup
@@ -206,13 +206,13 @@ routing, DeliverSeed, or TaskItemDispatchPacer. The first implementation must pr
 ```text
 retryable classification invokes retry_observed_claim with unchanged claimScore
 final classification invokes promote_item_outcome with the named outcome
-Task Item TRANSITIONED / STALE / NOOP statuses map to declared routing outcomes
+Item score TRANSITIONED / STALE / NOOP statuses map to declared routing outcomes
 only accepted transitions update result barrier / projection
 late success after Task close without Task reopen
 bounded result barrier retention
 ```
 
-Same-tag fencing and cross-tag precedence are proved by Task Item runtime tests,
+Same-tag fencing and cross-tag precedence are proved by TaskItemScoreBandCore tests,
 not duplicated in result-routing tests.
 
 ## Guardrails
@@ -220,7 +220,7 @@ not duplicated in result-routing tests.
 - Do not restore a current-work HASH, retry ZSET, claim-expiry queue, or Attempt
   aggregate beside Item score.
 - Do not let result callers construct tag, timeSlot, suffix, or target score.
-- Do not read Item score to pre-validate, predict, or reproduce Task Item runtime
+- Do not read Item score to pre-validate, predict, or reproduce TaskItemScoreBandCore
   transition results.
 - Do not duplicate same-tag fencing or cross-tag precedence in result-routing.
 - Do not translate a retryable business result into a final operation merely to
