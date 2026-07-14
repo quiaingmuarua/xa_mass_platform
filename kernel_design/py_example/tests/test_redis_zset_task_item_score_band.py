@@ -120,7 +120,7 @@ class FakeRedis:
 
     def eval(self, script: str, numkeys: int, *args: object) -> list[object]:
         self.eval_count += 1
-        if numkeys != 1 or "local observed_score" not in script:
+        if numkeys != 1:
             raise ValueError("unsupported fake Redis script")
         if self.before_next_eval is not None:
             callback = self.before_next_eval
@@ -129,15 +129,24 @@ class FakeRedis:
 
         key = str(args[0])
         message_id = str(args[1])
-        observed_score = int(args[2])
-        next_score = int(args[3])
         stored_score = self.zscore(key, message_id)
         if stored_score is None:
             return ["not_found"]
-        if stored_score != observed_score:
-            return ["stale"]
-        self.zadd(key, {message_id: next_score})
-        return ["transitioned", next_score]
+        if "local observed_score" in script:
+            observed_score = int(args[2])
+            next_score = int(args[3])
+            if stored_score != observed_score:
+                return ["stale"]
+            self.zadd(key, {message_id: next_score})
+            return ["transitioned", next_score]
+        if "local max_same_band_score_delta" in script:
+            target_score = int(args[2])
+            max_same_band_score_delta = int(args[3])
+            if target_score - stored_score <= max_same_band_score_delta:
+                return ["noop", stored_score]
+            self.zadd(key, {message_id: target_score})
+            return ["transitioned", target_score]
+        raise ValueError("unsupported fake Redis script")
 
     def time(self) -> tuple[int, int]:
         return self.now_millis // 1_000, (self.now_millis % 1_000) * 1_000
@@ -324,7 +333,7 @@ class RedisZsetTaskItemScoreBandCoreTest(unittest.TestCase):
         self.assertEqual(self.millis(1_100), state.time_millis)
         self.assertIsNone(state.remaining_budget)
 
-    def test_promotion_returns_stale_when_score_changes_after_owner_read(self) -> None:
+    def test_same_band_rewrite_does_not_block_cross_band_promotion(self) -> None:
         current = self.score(TaskItemScoreBand.ACTIVE, 990, 1)
         newer = self.score(TaskItemScoreBand.ACTIVE, 1_050, 1)
         self.store("message-1", current)
@@ -337,21 +346,41 @@ class RedisZsetTaskItemScoreBandCoreTest(unittest.TestCase):
             target_time_millis=self.millis(1_000),
         )
 
-        self.assertEqual(TaskItemScoreTransitionStatus.STALE, result["message-1"].status)
-        self.assertEqual(newer, self.redis.zscore(self.score_key, "message-1"))
+        self.assertEqual(
+            TaskItemScoreTransitionStatus.TRANSITIONED,
+            result["message-1"].status,
+        )
+        state = self.core.get_item_score_states(
+            task_id=self.task_id,
+            message_ids=["message-1"],
+        )["message-1"]
+        self.assertEqual(TaskItemScoreBand.FINAL_SUCCESS, state.band)
 
-    def test_promotion_reports_missing_and_corrupt_scores(self) -> None:
-        self.store("corrupt", 42)
-
+    def test_promotion_reports_missing_score(self) -> None:
         results = self.core.promote_item_outcomes(
             task_id=self.task_id,
-            message_ids=["missing", "corrupt"],
+            message_ids=["missing"],
             target_band=TaskItemScoreBand.FINAL_FAILED,
             target_time_millis=self.millis(1_000),
         )
 
         self.assertEqual(TaskItemScoreTransitionStatus.NOT_FOUND, results["missing"].status)
-        self.assertEqual(TaskItemScoreTransitionStatus.CORRUPT, results["corrupt"].status)
+
+    def test_promotion_rejects_positive_same_band_delta_without_a_band_whitelist(
+        self,
+    ) -> None:
+        active = self.score(TaskItemScoreBand.ACTIVE, 900, 2)
+        self.store("message-1", active)
+
+        result = self.core.promote_item_outcomes(
+            task_id=self.task_id,
+            message_ids=["message-1"],
+            target_band=TaskItemScoreBand.ACTIVE,
+            target_time_millis=self.millis(1_000),
+        )
+
+        self.assertEqual(TaskItemScoreTransitionStatus.NOOP, result["message-1"].status)
+        self.assertEqual(active, self.redis.zscore(self.score_key, "message-1"))
 
     def test_redis_script_is_only_exact_score_cas(self) -> None:
         script = self.core._CAS_UPDATE_SCRIPT
@@ -361,6 +390,19 @@ class RedisZsetTaskItemScoreBandCoreTest(unittest.TestCase):
         self.assertNotIn("suffix", script)
         self.assertNotIn("band", script)
         self.assertNotIn("target_time", script)
+
+    def test_promotion_script_only_compares_encoded_score_distance(self) -> None:
+        script = self.core._PROMOTE_CROSS_BAND_SCRIPT
+
+        self.assertIn('redis.call("ZSCORE"', script)
+        self.assertIn("target_score - stored_score", script)
+        self.assertIn("max_same_band_score_delta", script)
+        self.assertNotIn("observed_score", script)
+        self.assertNotIn("suffix", script)
+        self.assertNotIn("tag", script)
+        self.assertNotIn("ACTIVE", script)
+        self.assertNotIn("FINAL_FAILED", script)
+        self.assertNotIn("FINAL_SUCCESS", script)
 
     def test_task_scoped_key_shape_is_explicit(self) -> None:
         self.assertEqual("tr:test:task:task-1:item-score", self.score_key)

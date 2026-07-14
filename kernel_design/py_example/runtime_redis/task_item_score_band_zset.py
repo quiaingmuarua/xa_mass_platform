@@ -37,6 +37,26 @@ redis.call("ZADD", key, next_score, message_id)
 return {"transitioned", next_score}
 """
 
+    _PROMOTE_CROSS_BAND_SCRIPT: ClassVar[str] = """
+local key = KEYS[1]
+local message_id = ARGV[1]
+local target_score = tonumber(ARGV[2])
+local max_same_band_score_delta = tonumber(ARGV[3])
+
+local stored = redis.call("ZSCORE", key, message_id)
+if not stored then
+  return {"not_found"}
+end
+
+local stored_score = tonumber(stored)
+if target_score - stored_score <= max_same_band_score_delta then
+  return {"noop", stored_score}
+end
+
+redis.call("ZADD", key, target_score, message_id)
+return {"transitioned", target_score}
+"""
+
     def __init__(
         self,
         redis_client: Any,
@@ -209,11 +229,9 @@ return {"transitioned", next_score}
         ordered_message_ids = tuple(dict.fromkeys(message_ids))
         if not ordered_message_ids:
             return {}
-        if (
-            not task_id
-            or target_band
-            not in {TaskItemScoreBand.FINAL_FAILED, TaskItemScoreBand.FINAL_SUCCESS}
-            or not self._valid_time_millis(target_time_millis)
+        target_tag = self._tag_from_band(target_band)
+        if not task_id or target_tag is None or not self._valid_time_millis(
+            target_time_millis
         ):
             return self._uniform_results(
                 ordered_message_ids,
@@ -221,59 +239,30 @@ return {"transitioned", next_score}
             )
 
         key = self._score_key(task_id)
+        target_score = self._score(
+            target_tag,
+            self._time_slot_from_millis(target_time_millis),
+            self.FINAL_SUFFIX,
+        )
         with self.redis.pipeline(transaction=False) as pipe:
             for message_id in ordered_message_ids:
-                pipe.zscore(key, message_id)
-            raw_scores = pipe.execute()
-
-        target_tag = self._tag_from_band(target_band)
-        assert target_tag is not None
-        requested_time_slot = self._time_slot_from_millis(target_time_millis)
-        immediate: dict[MessageId, TaskItemScoreTransitionResult] = {}
-        pending: dict[MessageId, tuple[Score, Score]] = {}
-        for message_id, raw_score in zip(
-            ordered_message_ids,
-            raw_scores,
-            strict=True,
-        ):
-            if not message_id:
-                immediate[message_id] = TaskItemScoreTransitionResult(
-                    TaskItemScoreTransitionStatus.INVALID
+                pipe.eval(
+                    self._PROMOTE_CROSS_BAND_SCRIPT,
+                    1,
+                    key,
+                    message_id,
+                    target_score,
+                    self.MAX_SAME_BAND_SCORE_DELTA,
                 )
-                continue
-            if raw_score is None:
-                immediate[message_id] = TaskItemScoreTransitionResult(
-                    TaskItemScoreTransitionStatus.NOT_FOUND
-                )
-                continue
-            try:
-                current_score = self._score_to_int(raw_score)
-            except (TypeError, ValueError):
-                immediate[message_id] = TaskItemScoreTransitionResult(
-                    TaskItemScoreTransitionStatus.CORRUPT
-                )
-                continue
-            decoded = self._decode_score(current_score)
-            if decoded is None:
-                immediate[message_id] = TaskItemScoreTransitionResult(
-                    TaskItemScoreTransitionStatus.CORRUPT
-                )
-                continue
-
-            current_tag, _, _ = decoded
-            if target_tag <= current_tag:
-                immediate[message_id] = TaskItemScoreTransitionResult(
-                    TaskItemScoreTransitionStatus.NOOP,
-                    current_score,
-                )
-                continue
-            pending[message_id] = (
-                current_score,
-                self._score(target_tag, requested_time_slot, self.FINAL_SUFFIX),
+            raw_results = pipe.execute()
+        return {
+            message_id: self._script_result(raw_result)
+            for message_id, raw_result in zip(
+                ordered_message_ids,
+                raw_results,
+                strict=True,
             )
-
-        persisted = self._pipeline_cas_updates(task_id, pending)
-        return self._merge_results(ordered_message_ids, immediate, persisted)
+        }
 
     def get_item_score_states(
         self,

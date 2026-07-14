@@ -129,6 +129,8 @@ score = tag * TAG_FACTOR + timeSlot * SUFFIX_FACTOR + suffix
 TAG_FACTOR = TIME_SLOT_FACTOR * SUFFIX_FACTOR
 SUFFIX_FACTOR = 100
 SLOT_MILLIS = 100
+TAG_STRIDE = 4
+MAX_SAME_BAND_SCORE_DELTA = TAG_FACTOR - 1
 ```
 
 This formula is an internal encoding sketch, not a stable interface. The kernel
@@ -170,10 +172,11 @@ TAG_FINAL_SUCCESS = 9
 ```
 
 The names above are kernel categories, not per-event transition branches.
-Future final categories may be added only by extending the kernel tag table and
-its tag-local suffix rule. Ordinary write decisions still use the score-band
-rules below: same-tag time growth with exact CAS, strict cross-tag growth, and
-tag-local suffix validation.
+Encoded tags advance by `TAG_STRIDE`. Future categories preserve that stride so
+the complete numeric distance between two scores can distinguish same-band
+movement from cross-band movement without Redis understanding tag names.
+Ordinary write decisions still use the score-band rules below: same-tag time
+growth with exact CAS, strict cross-tag growth, and tag-local suffix validation.
 
 ## Monotonic Write Rules
 
@@ -192,7 +195,7 @@ same-band rewrite
   targetTimeSlot > storedTimeSlot
 
 cross-band promotion
-  targetTag > storedTag
+  targetScore - storedScore > MAX_SAME_BAND_SCORE_DELTA
   targetTimeSlot is interpreted only inside targetTag
   no comparison with storedTimeSlot
 ```
@@ -247,7 +250,8 @@ Cross-tag writes are monotonic result-outcome promotions:
 
 ```text
 storedScore = current score
-targetTag > storedTag
+scoreDelta = targetScore - storedScore
+scoreDelta > MAX_SAME_BAND_SCORE_DELTA
 targetTimeSlot = floor(targetTimeMillis / SLOT_MILLIS)
 do not compare targetTimeSlot with storedTimeSlot
 targetScore > storedScore
@@ -255,15 +259,18 @@ targetSuffix satisfies target-tag suffix rule
 ```
 
 No caller-supplied observed score is required for cross-tag progress. The core
-reads the current score, validates strict tag growth, mints the target-band
-coordinate, and exact-CAS writes that current score. A concurrent rewrite
-returns `STALE`; retrying the same semantic promotion re-reads current truth.
-A higher final tag can override a lower final tag; a lower or equal tag cannot
-overwrite the current score.
+mints the target coordinate and atomically compares its numeric distance from
+the stored score. A positive delta no larger than
+`MAX_SAME_BAND_SCORE_DELTA` is same-band movement and therefore a promotion
+no-op. A larger delta is cross-band progress and is written directly. A
+concurrent same-band claim or retry rewrite remains inside that same-band
+distance and cannot block the promotion. A higher final tag can override a
+lower final tag; a lower or equal tag cannot overwrite the current score.
 
 Result policy passes a semantic final `targetBand` and caller-facing millisecond
 time. The kernel maps the band to its numeric tag and fixed final suffix;
 callers do not pass numeric tags or construct suffix from decoded score fields.
+Redis does not whitelist final band names or decode the stored score.
 
 Core consequence:
 
@@ -681,12 +688,14 @@ pipeline ZADD NX
 bounded ZREVRANGEBYSCORE WITHSCORES
 pipeline ZSCORE
 one exact-score CAS Lua primitive
+one encoded-score-distance promotion Lua primitive
 ```
 
-Band decoding, remaining-budget validation, target score minting, and cross-band
-tag validation stay in Python core code. The Lua script compares stored score
-with one expected score and writes one precomputed target score; it contains no
-band, budget, time, result, or retry policy.
+Band decoding, remaining-budget validation, and target score minting stay in
+Python core code. Same-band Lua compares stored score with one expected score.
+Cross-band Lua compares the precomputed target score distance with
+`MAX_SAME_BAND_SCORE_DELTA`; it does not decode or whitelist tags. Neither
+script contains band names, budget, time, result, or retry policy.
 
 ## Guardrails
 

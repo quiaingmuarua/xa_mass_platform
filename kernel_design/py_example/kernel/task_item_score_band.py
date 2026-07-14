@@ -53,9 +53,10 @@ class TaskItemScoreBandCore(ABC):
     private.
     """
 
+    TAG_STRIDE: ClassVar[int] = 4
     ACTIVE_TAG: ClassVar[int] = 1
-    FINAL_FAILED_TAG: ClassVar[int] = 5
-    FINAL_SUCCESS_TAG: ClassVar[int] = 9
+    FINAL_FAILED_TAG: ClassVar[int] = ACTIVE_TAG + TAG_STRIDE
+    FINAL_SUCCESS_TAG: ClassVar[int] = FINAL_FAILED_TAG + TAG_STRIDE
     VALID_TAGS: ClassVar[frozenset[int]] = frozenset(
         {ACTIVE_TAG, FINAL_FAILED_TAG, FINAL_SUCCESS_TAG}
     )
@@ -69,6 +70,7 @@ class TaskItemScoreBandCore(ABC):
     MAX_TIME_SLOT: ClassVar[int] = 99_999_999_999
     TIME_SLOT_FACTOR: ClassVar[int] = MAX_TIME_SLOT + 1
     TAG_FACTOR: ClassVar[int] = TIME_SLOT_FACTOR * SUFFIX_FACTOR
+    MAX_SAME_BAND_SCORE_DELTA: ClassVar[int] = TAG_FACTOR - 1
     MIN_TIME_MILLIS: ClassVar[int] = MIN_TIME_SLOT * SLOT_MILLIS
     MAX_TIME_MILLIS: ClassVar[int] = MAX_TIME_SLOT * SLOT_MILLIS
 
@@ -124,13 +126,14 @@ class TaskItemScoreBandCore(ABC):
         target_band: TaskItemScoreBand,
         target_time_millis: TimeMillis,
     ) -> Mapping[MessageId, TaskItemScoreTransitionResult]:
-        """Promote current scores to a higher final band.
+        """Promote current scores across the encoded band boundary.
 
-        The core reads the current score itself and requires targetTag greater
-        than currentTag. Cross-band movement does not compare time coordinates:
-        the target band's time comes directly from target_time_millis. A
-        concurrent rewrite returns STALE; callers do not provide an observed
-        score for outcome precedence.
+        The core mints the target score and compares its numeric distance from
+        the stored score. A positive delta inside MAX_SAME_BAND_SCORE_DELTA is
+        not a promotion; a larger delta advances to a later band. Cross-band
+        movement does not compare time coordinates and does not use an
+        observed-score fence, so a concurrent same-band lease rewrite cannot
+        block outcome precedence.
         """
         pass
 

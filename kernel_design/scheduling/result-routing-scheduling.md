@@ -169,7 +169,7 @@ TaskItemScoreBandCore returns TRANSITIONED
   map to RESULT_RETRY_SCHEDULED / RESULT_FINAL_FAILED / RESULT_FINAL_SUCCESS
 
 TaskItemScoreBandCore returns STALE
-  map to RESULT_STALE_NOOP
+  map same-band retry scheduling to RESULT_STALE_NOOP
 
 TaskItemScoreBandCore returns NOOP
   RESULT_DUPLICATE_NOOP
