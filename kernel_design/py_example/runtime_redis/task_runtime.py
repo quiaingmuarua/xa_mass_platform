@@ -7,9 +7,12 @@ from typing import Any, Mapping, Sequence
 
 from ..constraint_dsl import ConstraintDsl
 from ..kernel.task_runtime import (
+    MessageId,
     TaskCreationResult,
     TaskCreationStatus,
     TaskDescriptor,
+    TaskItem,
+    TaskItemAppendResult,
     TaskResourceCatalog,
     TaskRuntime,
 )
@@ -141,6 +144,22 @@ class RedisTaskRuntime(TaskRuntime):
             TaskCreationStatus.RETRYABLE,
             "task score initialization could not be confirmed",
         )
+
+    def append_items(
+        self,
+        *,
+        task_id: TaskId,
+        items: Sequence[TaskItem],
+    ) -> Mapping[MessageId, TaskItemAppendResult]:
+        raise NotImplementedError("TaskItem append is not implemented yet")
+
+    def load_task_items(
+        self,
+        *,
+        task_id: TaskId,
+        message_ids: Sequence[MessageId],
+    ) -> Mapping[MessageId, TaskItem | None]:
+        raise NotImplementedError("TaskItem record reads are not implemented yet")
 
 
 class RedisTaskResourceCatalog(TaskResourceCatalog):

@@ -115,13 +115,18 @@ Result routing depends on the Task Item score contract without reimplementing it
 
 ```text
 retryable failure
-  -> retry_observed_claim(taskId, messageId, claimScore, retryDueMillis)
+  -> rewrite_observed_item_scores(
+       taskId,
+       {messageId: claimScore},
+       retryDueMillis,
+       remainingBudgetDelta = 0
+     )
 
 final failure
-  -> promote_item_outcome(taskId, messageId, FINAL_FAILED, outcomeAtMillis)
+  -> promote_item_outcomes(taskId, [messageId], FINAL_FAILED, outcomeAtMillis)
 
 final success
-  -> promote_item_outcome(taskId, messageId, FINAL_SUCCESS, outcomeAtMillis)
+  -> promote_item_outcomes(taskId, [messageId], FINAL_SUCCESS, outcomeAtMillis)
 ```
 
 `TaskItemScoreBandCore` owns exact same-tag claim fencing, retry-budget interpretation,
@@ -200,12 +205,14 @@ as an unrestricted mutation path.
 
 ## Executable-Spec Gap
 
-The Python executable spec does not yet implement Task Item score, result
-routing, DeliverSeed, or TaskItemDispatchPacer. The first implementation must prove:
+The Python executable spec implements Task Item score interfaces and the Redis
+ZSET owner. Result routing, DeliverSeed, and TaskItemDispatchPacer remain gaps.
+Their first implementation must prove:
 
 ```text
-retryable classification invokes retry_observed_claim with unchanged claimScore
-final classification invokes promote_item_outcome with the named outcome
+retryable classification invokes rewrite_observed_item_scores with unchanged
+  budget and the opaque claimScore
+final classification invokes promote_item_outcomes with the target final band
 Item score TRANSITIONED / STALE / NOOP statuses map to declared routing outcomes
 only accepted transitions update result barrier / projection
 late success after Task close without Task reopen

@@ -73,14 +73,19 @@ For task runtime or task score-band work:
 3. [scheduling/task-item-score-band-scheduling.md](scheduling/task-item-score-band-scheduling.md)
 4. [py_example/kernel/task_runtime.py](py_example/kernel/task_runtime.py)
 5. [py_example/kernel/task_score_band.py](py_example/kernel/task_score_band.py)
-6. [py_example/runtime_redis/task_runtime.py](py_example/runtime_redis/task_runtime.py)
-7. [py_example/runtime_redis/task_score_band_zset.py](py_example/runtime_redis/task_score_band_zset.py)
-8. [py_example/tests/test_task_runtime_models.py](py_example/tests/test_task_runtime_models.py)
-9. [py_example/tests/test_redis_task_runtime.py](py_example/tests/test_redis_task_runtime.py)
-10. [py_example/tests/test_redis_task_runtime_integration.py](py_example/tests/test_redis_task_runtime_integration.py)
-11. [py_example/tests/test_redis_zset_task_score_band.py](py_example/tests/test_redis_zset_task_score_band.py)
+6. [py_example/kernel/task_item_score_band.py](py_example/kernel/task_item_score_band.py)
+7. [py_example/runtime_redis/task_item_score_band_zset.py](py_example/runtime_redis/task_item_score_band_zset.py)
+8. [py_example/runtime_redis/task_runtime.py](py_example/runtime_redis/task_runtime.py)
+9. [py_example/runtime_redis/task_score_band_zset.py](py_example/runtime_redis/task_score_band_zset.py)
+10. [py_example/tests/test_task_runtime_models.py](py_example/tests/test_task_runtime_models.py)
+11. [py_example/tests/test_task_item_score_band_models.py](py_example/tests/test_task_item_score_band_models.py)
+12. [py_example/tests/test_redis_zset_task_item_score_band.py](py_example/tests/test_redis_zset_task_item_score_band.py)
+13. [py_example/tests/test_redis_task_item_score_band_integration.py](py_example/tests/test_redis_task_item_score_band_integration.py)
+14. [py_example/tests/test_redis_task_runtime.py](py_example/tests/test_redis_task_runtime.py)
+15. [py_example/tests/test_redis_task_runtime_integration.py](py_example/tests/test_redis_task_runtime_integration.py)
+16. [py_example/tests/test_redis_zset_task_score_band.py](py_example/tests/test_redis_zset_task_score_band.py)
 
-For result or dispatch work:
+For result or TaskItem dispatch:
 
 1. [resource-model/task-resource-model.md](resource-model/task-resource-model.md)
 2. [scheduling/task-item-score-band-scheduling.md](scheduling/task-item-score-band-scheduling.md)
@@ -172,17 +177,19 @@ TaskItemScoreBandCore owns:
 ```text
 initial ACTIVE Item score creation
 bounded ACTIVE Item-score acquire
-same-tag claim/retry stale fencing
-monotonic ACTIVE < FINAL_FAILED < FINAL_SUCCESS outcome movement
+same-tag claim/retry rewrite through exact observed-score fencing
+strict-tag ACTIVE < FINAL_FAILED < FINAL_SUCCESS outcome promotion
 ```
 
 `TaskItem` is the only runtime unit from append through finality. Claiming it
 does not create a `Work` / `WorkItem` model, id, store, runtime, or owner.
 
-Item append callers provide `TaskItem` values only. Task config owns
-`maxRetryTimes`; TaskRuntime passes stable initialization inputs to
-TaskItemScoreBandCore, which converts them to internal suffix budget. Tag,
-timeSlot, suffix, score bounds, and initial score never cross the append API.
+Item append callers provide `TaskItem` values only. Append scheduling policy
+maps Item priority to initial due milliseconds; Task config owns
+`maxRetryTimes`. TaskRuntime passes those stable initialization inputs to
+TaskItemScoreBandCore, which converts time and budget to internal coordinates.
+Tag, timeSlot, suffix, score bounds, and initial score never cross the append
+API.
 
 Score is not a resource mutation lock. Task/worker metadata writes, dynamic
 attribute writes, item append, result/evidence writes, projections, and trace

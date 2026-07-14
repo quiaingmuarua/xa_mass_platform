@@ -160,6 +160,7 @@ class AssignmentDispatchIntegrationTest(unittest.TestCase):
                     "priority": "80",
                     "runningVisibleMinimumCandidateWorkers": "1",
                     "maximumCandidateWorkers": "10",
+                    "maxRetryTimes": "3",
                 },
             ),
             suffix=5,

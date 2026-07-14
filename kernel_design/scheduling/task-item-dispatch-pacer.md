@@ -56,8 +56,9 @@ TaskRuntime
 
 TaskItemScoreBandCore
   acquire bounded due ACTIVE Items
-  exact-CAS observed Item scores into future claims
-  return opaque claimScore results
+  return observedScore + remainingBudget
+  exact-CAS positive-budget observations into future same-band claims
+  promote exhausted observations to FINAL_FAILED
 
 Transport ingress
   accepts DeliverSeed or returns bounded rejection evidence
@@ -71,7 +72,7 @@ DispatchPolicy
 
 `TaskDispatchRuntime` provides a Redis ZSET per-Task candidate append/count/
 consume implementation. `TaskRuntime` owns TaskItem records;
-`TaskItemScoreBandCore` owns acquire, claim, retry, and outcome movement.
+`TaskItemScoreBandCore` owns acquire, same-band rewrite, and outcome promotion.
 
 ## Task Discovery
 
@@ -202,17 +203,19 @@ ready/current/retry structures.
 ```text
 Worker candidate revalidated and required lease established
   -> acquire one bounded due ACTIVE Item observation for taskId
-  -> load the corresponding TaskItem records through TaskRuntime
-  -> exact-CAS the observation to a future claim lease
-  -> record exists and claim succeeds: create DeliverSeed
-  -> claim fails: release/retain Worker short lease according to admission policy
+  -> remainingBudget == 0: promote FINAL_FAILED; do not dispatch
+  -> remainingBudget > 0: load corresponding TaskItem through TaskRuntime
+  -> exact-CAS observation to future ACTIVE claim with budget delta -1
+  -> TRANSITIONED + score: create DeliverSeed
+  -> other result: release/retain Worker short lease according to admission policy
 ```
 
 `TaskRuntime` validates and returns the record. `TaskItemScoreBandCore` validates
-the observed score and creates occupancy by rewriting the same ACTIVE score to a
-future timeSlot while consuming one internal claim-budget suffix. Neither owner
-reads or mutates the other's key. Task score-band must not inspect Item score,
-and Worker score must not mutate Item state.
+the observed score. For positive remaining budget it creates occupancy through
+`rewrite_observed_item_scores(..., remainingBudgetDelta=-1)`. For an exhausted
+candidate the pacer requests `promote_item_outcomes(..., FINAL_FAILED, now)`.
+Neither owner reads or mutates the other's key. Task score-band must not inspect
+Item score, and Worker score must not mutate Item state.
 
 Claim remains thin. It does not create a separate Attempt lifecycle or a second
 scheduling id. The opaque returned `claimScore` is the same-tag result/retry
@@ -304,11 +307,42 @@ def dispatch_once(task_batch_limit, per_task_dispatch_limit):
             if not worker_admission.valid:
                 continue
 
-            claim = work_owner.claim_one(
+            observations = item_score.acquire_item_score_candidates(
                 task_id=task_id,
-                worker_id=candidate.worker_id,
+                limit=1,
             )
-            if not claim.claimed:
+            exhausted_ids = tuple(
+                message_id
+                for message_id, (_, budget) in observations.items()
+                if budget == 0
+            )
+            item_score.promote_item_outcomes(
+                task_id=task_id,
+                message_ids=exhausted_ids,
+                target_band=FINAL_FAILED,
+                target_time_millis=now_millis,
+            )
+            claimable = {
+                message_id: observed_score
+                for message_id, (observed_score, budget) in observations.items()
+                if budget > 0
+            }
+            items = task_runtime.load_task_items(
+                task_id=task_id,
+                message_ids=tuple(claimable),
+            )
+            record_backed_scores = select_record_backed_scores(
+                items,
+                claimable,
+            )
+            claim_results = item_score.rewrite_observed_item_scores(
+                task_id=task_id,
+                observed_scores=record_backed_scores,
+                target_time_millis=claim_lease_until_millis,
+                remaining_budget_delta=-1,
+            )
+            claim = first_claimed_record(items, claim_results)
+            if claim is None:
                 compensate_worker_admission(worker_admission)
                 break
 

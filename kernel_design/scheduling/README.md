@@ -467,6 +467,7 @@ kernel_design/py_example/
     evaluator.py
   kernel/
     task_score_band.py
+    task_item_score_band.py
     worker_score.py
     task_runtime.py
     worker_runtime.py
@@ -475,6 +476,7 @@ kernel_design/py_example/
     task_worker_allocation.py
   runtime_redis/
     task_score_band_zset.py
+    task_item_score_band_zset.py
     worker_score_zset.py
     task_runtime.py
     worker_runtime.py
@@ -482,11 +484,11 @@ kernel_design/py_example/
   tests/
 ```
 
-It currently proves the Task and Worker score axes, resource catalogs, bounded
-Worker matching, Redis candidate handoff, and the first Task-Worker allocation
-pacer. Task Item score, `TaskItemDispatchPacer`, and result routing are still
-executable-spec gaps. Redis owner implementations already exist; an in-memory
-runtime is not a prerequisite or a parallel mainline.
+It currently proves the Task, TaskItem, and Worker score axes, TaskItem DTO
+contracts, resource catalogs, bounded Worker matching, Redis candidate handoff,
+and the first Task-Worker allocation pacer. `TaskItemDispatchPacer`, TaskItem
+record persistence, and result routing are still executable-spec gaps. An
+in-memory runtime is not a prerequisite or a parallel mainline.
 
 ## Extension Scope
 

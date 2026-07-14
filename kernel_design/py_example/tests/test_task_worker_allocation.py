@@ -707,6 +707,7 @@ class AssignmentDispatchTest(unittest.TestCase):
                 "priority": "80",
                 "runningVisibleMinimumCandidateWorkers": str(minimum_workers),
                 "maximumCandidateWorkers": "10",
+                "maxRetryTimes": "3",
             },
         )
 

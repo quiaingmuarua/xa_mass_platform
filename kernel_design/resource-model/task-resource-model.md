@@ -131,9 +131,10 @@ initialSuffix = encodeRemainingClaimBudget(initialClaimBudget)
 ```
 
 The `0..98` range keeps the v0 total claim budget in `1..99`, matching the
-two-digit internal suffix coordinate. Callers never observe or construct that
-suffix. A different future score encoding may change the internal bound without
-changing Item append semantics.
+two-digit internal suffix coordinate. Scheduling callers may observe the
+semantic remaining budget returned by acquire, but never decode or construct
+the suffix. A different future score encoding may change the internal bound
+without changing Item append semantics.
 
 ### allocationRule
 
@@ -479,18 +480,24 @@ These are descriptor values, not lifecycle or allocation-result records.
 The interface skeleton is implemented in
 [`py_example/kernel/task_runtime.py`](../py_example/kernel/task_runtime.py). It
 contains the descriptor DTO, the Task owner `TaskRuntime`, and the bounded
-read-only `TaskResourceCatalog` surface. The Redis executable-spec implementation lives in
+read-only `TaskResourceCatalog` surface. It now also defines `TaskItem`, append
+result DTOs, and the abstract append/bounded Item-read operations. The independent
+Item-score interface lives in
+[`py_example/kernel/task_item_score_band.py`](../py_example/kernel/task_item_score_band.py).
+The Redis Task implementation lives in
 [`py_example/runtime_redis/task_runtime.py`](../py_example/runtime_redis/task_runtime.py)
-and implements score-leased creation plus HASH batch loading.
+and currently implements score-leased Task creation plus descriptor HASH batch
+loading; TaskItem append/read methods remain explicit unimplemented stubs.
 [`py_example/tests/test_redis_task_runtime_integration.py`](../py_example/tests/test_redis_task_runtime_integration.py)
 is the real-Redis proof for one-owner-per-slot creation, stale-owner rejection,
 redis-py pipeline compatibility, binary response decoding, and corrupt-row isolation.
 
-Current Python `TaskDescriptor` still validates the earlier three-key
-allocation-only config. `maxRetryTimes`, TaskItem record operations, and
-`TaskItemScoreBandCore` are target contract additions in this document and are
-not executable-spec truth until the Task Item slice updates the descriptor,
-Redis round trip, and tests together.
+Current Python `TaskDescriptor` validates all four required config keys including
+`maxRetryTimes`. TaskItem DTOs and `TaskItemScoreBandCore` are executable interface
+contracts with model tests. The Redis Item-score owner is implemented in
+[`py_example/runtime_redis/task_item_score_band_zset.py`](../py_example/runtime_redis/task_item_score_band_zset.py)
+with Fake and real-Redis proofs. Redis TaskItem record persistence remains an
+implementation gap and must not be inferred from the score implementation.
 
 The first cut deliberately uses string-only config values. Supporting both JSON
 numbers and strings would add two representations for the same setting without

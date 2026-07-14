@@ -1,3 +1,4 @@
+from .task_item_score_band_zset import RedisZsetTaskItemScoreBandCore
 from .task_score_band_zset import RedisZsetTaskScoreBandCore
 from .task_dispatch_runtime import RedisTaskDispatchRuntime
 from .task_runtime import RedisTaskResourceCatalog, RedisTaskRuntime
@@ -9,6 +10,7 @@ from .worker_runtime import (
 )
 
 __all__ = [
+    "RedisZsetTaskItemScoreBandCore",
     "RedisZsetTaskScoreBandCore",
     "RedisTaskDispatchRuntime",
     "RedisTaskResourceCatalog",

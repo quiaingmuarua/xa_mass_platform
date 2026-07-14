@@ -6,8 +6,65 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import ClassVar, Mapping, Sequence
 
-from .task_score_band import Suffix, TaskId
-from .worker_runtime import WorkerGroupId
+from .task_score_band import Suffix, TaskId, TimeMillis
+from .worker_runtime import EventCode, WorkerGroupId
+
+
+MessageId = str
+ItemPriority = int
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class TaskItem:
+    """Canonical Task-scoped item record; scheduling state lives elsewhere."""
+
+    message_id: MessageId
+    event_code: EventCode
+    created_at_millis: TimeMillis
+    payload: Mapping[str, object] | None = None
+    payload_ref: str | None = None
+    priority: ItemPriority = 5
+    expire_at_millis: TimeMillis | None = None
+
+    def __post_init__(self) -> None:
+        if not self.message_id:
+            raise ValueError("message id must be non-empty")
+        if not self.event_code:
+            raise ValueError("event code must be non-empty")
+        if (self.payload is None) == (self.payload_ref is None):
+            raise ValueError("exactly one of payload and payload_ref is required")
+        if self.payload is not None and not isinstance(self.payload, MappingABC):
+            raise ValueError("task item payload must be a mapping")
+        if self.payload_ref is not None and not self.payload_ref:
+            raise ValueError("payload ref must be non-empty")
+        if (
+            not isinstance(self.priority, int)
+            or isinstance(self.priority, bool)
+            or not 0 <= self.priority <= 10
+        ):
+            raise ValueError("task item priority must be in 0..10")
+        if self.created_at_millis < 0:
+            raise ValueError("created_at_millis must be non-negative")
+        if (
+            self.expire_at_millis is not None
+            and self.expire_at_millis <= self.created_at_millis
+        ):
+            raise ValueError("expire_at_millis must be after created_at_millis")
+
+
+class TaskItemAppendStatus(Enum):
+    APPENDED = "appended"
+    DUPLICATE_REJECTED = "duplicate_rejected"
+    CONFLICT = "conflict"
+    RETRYABLE = "retryable"
+    NOT_FOUND = "not_found"
+    INVALID = "invalid"
+
+
+@dataclass(frozen=True)
+class TaskItemAppendResult:
+    status: TaskItemAppendStatus
+    reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -24,6 +81,7 @@ class TaskDescriptor:
             "priority",
             "maximumCandidateWorkers",
             "runningVisibleMinimumCandidateWorkers",
+            "maxRetryTimes",
         }
     )
 
@@ -49,6 +107,7 @@ class TaskDescriptor:
         minimum_candidates = self._decimal_config(
             "runningVisibleMinimumCandidateWorkers"
         )
+        max_retry_times = self._decimal_config("maxRetryTimes")
         if not 1 <= priority <= 100:
             raise ValueError("task priority must be in 1..100")
         if maximum_candidates <= 0:
@@ -57,6 +116,8 @@ class TaskDescriptor:
             raise ValueError(
                 "minimum candidate workers must be in 1..maximumCandidateWorkers"
             )
+        if not 0 <= max_retry_times <= 98:
+            raise ValueError("max retry times must be in 0..98")
 
     def _decimal_config(self, key: str) -> int:
         value = self.config[key]
@@ -79,7 +140,7 @@ class TaskCreationResult:
 
 
 class TaskRuntime(ABC):
-    """Task runtime owner surface."""
+    """Task and canonical TaskItem record owner surface."""
 
     @abstractmethod
     def create_task(
@@ -89,6 +150,26 @@ class TaskRuntime(ABC):
         suffix: Suffix,
     ) -> TaskCreationResult:
         """Create one Task through its initialization score lease."""
+        pass
+
+    @abstractmethod
+    def append_items(
+        self,
+        *,
+        task_id: TaskId,
+        items: Sequence[TaskItem],
+    ) -> Mapping[MessageId, TaskItemAppendResult]:
+        """Persist one bounded TaskItem batch and coordinate score initialization."""
+        pass
+
+    @abstractmethod
+    def load_task_items(
+        self,
+        *,
+        task_id: TaskId,
+        message_ids: Sequence[MessageId],
+    ) -> Mapping[MessageId, TaskItem | None]:
+        """Load canonical records for one bounded Task-scoped message-id batch."""
         pass
 
 
