@@ -51,7 +51,7 @@ Useful lessons from the current runtime:
 
 ```text
 bounded acquire is mandatory
-duplicate claim / duplicate final must be impossible in their owning planes
+duplicate claim must be fenced; duplicate final evidence must converge to no-op
 stale candidates are normal and must be cheap to reject
 paused / terminal tasks must be fail-closed for new dispatch
 trace evidence is valuable for proof but must not become runtime truth
@@ -61,9 +61,9 @@ What must not be copied into task score-band:
 
 ```text
 ready backlog ownership
-item claim ownership
-current work occupancy ownership
-scheduled retry frame ownership
+Item record ownership
+Item score claim / current occupancy ownership
+Item same-tag retry movement ownership
 result finality ownership
 result read-model ownership
 ```
@@ -111,13 +111,13 @@ Rules:
   pacing;
 - dispatch-visible candidates must be classified and moved, closed, cleaned, or
   rejected by the score-write stale fence;
-- acquired tasks still require descriptor and work-item owner validation before
+- acquired tasks still require descriptor and Task Item runtime validation before
   dispatch; no second lifecycle gate may override the score band;
-- append, result, retry frame write, and result lookup are not score refresh
+- append, Item retry/outcome movement, and result lookup are not score refresh
   triggers.
 
 Score is not a Task resource mutation lease. Task metadata/configuration writes,
-item append, work/result evidence, projections, and trace commit through their
+item append, Item/result evidence, projections, and trace commit through their
 own owners without reading, acquiring, or rewriting task score. Their success
 must not depend on dispatcher ownership of the current score.
 
@@ -135,9 +135,9 @@ Conceptual flow:
 assignment-dispatch pacing round
   -> task score query(range, limit)
   -> task lifecycle / gate / time-coordinate validation
-  -> work-item owner reports or claims claimable work
+  -> Task Item runtime reports or claims a due TaskItem
   -> worker score-band acquire / admission
-  -> dispatch selected work through transport
+  -> dispatch the selected TaskItem through transport
   -> scheduling round classifies evidence
   -> task score rewrite/close/release for fairness / anti-spin / future retry
 ```
@@ -203,18 +203,18 @@ Examples:
 
 ```text
 append item
-  -> writes backlog truth
+  -> writes canonical Item record + Item score truth
   -> does not write task score
   -> does not emit a default wakeup
   -> does not become RUNNING_VISIBLE correctness
-  -> guarantees accepted backlog persistence only, not eventual consumption
+  -> guarantees Item acceptance only, not eventual consumption
 
 PRE_DISPATCH_VISIBLE
   -> activation facts may change outside the score owner
   -> they do not directly promote the task
   -> scheduling acquire evaluates activation and writes RUNNING_VISIBLE if ready
 
-RUNNING_VISIBLE with no current work
+RUNNING_VISIBLE with no due Item
   -> remains RUNNING_VISIBLE with a later score and reduced suffix budget
   -> append does not have to wake it
   -> work discovery and no-work closure come from owner recheck / policy budget
@@ -232,8 +232,9 @@ RUNNING_VISIBLE
   -> owner validation decides whether dispatch can happen
 
 result evidence
-  -> result owner validates current work hash
-  -> live task score changes only through owner-approved rewrite
+  -> result owner classifies business outcome and invokes Task Item runtime
+  -> Task Item runtime validates opaque claimScore / outcome movement
+  -> live Task score changes only through Task-score owner-approved rewrite
 ```
 
 Explicit human gates are the exception. `PRE_REVIEW` may require an approve or
@@ -259,7 +260,7 @@ owner command
 
 owner-evidence-write
   -> updates its own truth only
-  -> append, result, retry frame, worker evidence, transport evidence, trace
+  -> Item append/retry/outcome, worker evidence, transport evidence, trace
   -> does not directly refresh task score
 ```
 
@@ -322,7 +323,7 @@ budget. For `PRE_REVIEW`, `suffix` is an owner-defined review state code. The
 built-in `PRE_DISPATCH_VISIBLE` activation policy does not consume or interpret
 suffix; it preserves the value until activation succeeds and initializes the
 new `RUNNING_VISIBLE` suffix from configuration. Kernel code does not validate
-suffix ordering. It is not work-item retry truth and must not become the item
+suffix ordering. It is not Item retry truth and must not become the Item
 retry counter owner.
 
 ```text
@@ -356,7 +357,7 @@ Use `score(TAG, timeSlot, suffix)` below as shorthand for the formula above.
 | Band | Score encoding | Acquirable by scheduling | Dispatch-eligible | Kernel action after acquire | Notes |
 | --- | --- | --- | --- | --- | --- |
 | `PRE_REVIEW` | `score(PRE_REVIEW_TAG, ownerMutationTimeSlot, reviewStateCode)` | no | no | none | Positive mutable state, not schedulable. The review owner defines and validates suffix state semantics. Kernel only requires positive non-release writes to carry a larger `timeSlot`. |
-| `RUNNING_VISIBLE` | `score(RUNNING_VISIBLE_TAG, nextDispatchOrRecheckTimeSlot, remainingBudget)` | when included by the running scan | yes, after owner validation, work evidence, worker admission, and work claim | run bounded assignment-dispatch | Also handles `NO_WORK`, `NO_WORKER`, and contention classifications. Temporary restriction uses this same tag with a future `timeSlot`; hard pause uses `PAUSE_TIME_SLOT`. |
+| `RUNNING_VISIBLE` | `score(RUNNING_VISIBLE_TAG, nextDispatchOrRecheckTimeSlot, remainingBudget)` | when included by the running scan | yes, after owner validation, Item evidence, worker admission, and Item score claim | run bounded assignment-dispatch | Also handles `NO_WORK`, `NO_WORKER`, and contention classifications. Temporary restriction uses this same tag with a future `timeSlot`; hard pause uses `PAUSE_TIME_SLOT`. |
 | `PRE_DISPATCH_VISIBLE` | `score(PRE_DISPATCH_VISIBLE_TAG, allocationTimeSlot, preservedSuffix)` | when included by the ready scan horizon | no | evaluate pre-running open facts only | Pre-running open-condition recheck. It must not create a deliver seed. If still not open, activation leaves the score unchanged; allocation may independently rotate the same-band timeSlot while preserving suffix. There is no automatic exhaustion pause. |
 | `TERMINAL` | negative closed score key | no | no | none | Negative score space is final and immutable. Close reason belongs to meta/result/trace. |
 
@@ -383,7 +384,7 @@ score-acquirable
   assignment-dispatch may pick the task id and run the band's owner check
 
 dispatch-eligible
-  scheduling may continue into worker admission, work hash claim, and deliver
+  scheduling may continue into worker admission, Item score claim, and deliver
   seed creation
 ```
 
@@ -400,7 +401,7 @@ PRE_DISPATCH_VISIBLE
 RUNNING_VISIBLE
   running-stage dispatch/recheck condition
   when acquired: scans work, worker, retry, contention, and dispatch facts
-  work dispatched: rewrite RUNNING_VISIBLE by policy
+  TaskItem dispatched: rewrite RUNNING_VISIBLE by policy
   no work and suffix > 00: rewrite RUNNING_VISIBLE with next no-work-recheck time coordinate and suffix-1
   no work and suffix == 00: close to TERMINAL
   no worker / contention and suffix > 00: rewrite RUNNING_VISIBLE with next recheck time coordinate and suffix-1
@@ -850,7 +851,7 @@ bounded work now. Active acquisition order is consumption-first:
 
 ```text
 RUNNING_VISIBLE
-  acquired for work evidence, worker admission, work hash claim, deliver seed
+  acquired for Item evidence, worker admission, Item score claim, DeliverSeed
   creation, and no-work / no-worker recheck
 
 PRE_DISPATCH_VISIBLE
@@ -897,9 +898,9 @@ task lifecycle owner:
   lifecycle gate / time coordinate permits a scheduling round
   policy snapshot is current enough for the round
 
-work-item owner:
-  claimable work exists now, or no-work evidence is returned
-  final item claim happens only through the work-item owner
+Task Item runtime:
+  a due TaskItem exists now, or no-work evidence is returned
+  final Item claim happens only through Task Item runtime
 
 worker-runtime owner:
   selected worker can be acquired and admitted now
@@ -912,24 +913,24 @@ score state says which bounded action may run
 RUNNING_VISIBLE may enter dispatch after validation, or consume a no-work /
 no-worker / contention classification through same-band rewrite
 PRE_DISPATCH_VISIBLE runs activation check
-work-item owner proves whether there is claimable work now
+Task Item runtime proves whether there is a due TaskItem now
 worker-runtime proves whether a concrete worker can be admitted now
 ```
 
-An acquired `RUNNING_VISIBLE` score first asks the work-item owner for bounded
-work evidence. If no claimable work exists and `suffix > 00`, scheduling keeps
+An acquired `RUNNING_VISIBLE` score first asks Task Item runtime for bounded
+Item availability evidence. If no due TaskItem exists and `suffix > 00`, scheduling keeps
 the task in `RUNNING_VISIBLE`, writes the next no-work recheck time, and
-decrements `suffix`. If no claimable work exists and `suffix == 00`, the task
+decrements `suffix`. If no due TaskItem exists and `suffix == 00`, the task
 closes. If work exists, assignment-dispatch continues through worker admission,
 final item claim, and deliver seed creation. Append, result, and read paths do
 not directly refresh the live score.
 
-The append owner does not prove Task liveness before persisting backlog. Its
+The append owner does not prove Task liveness before accepting an Item. Its
 success contract ends at accepted-item persistence. Ingress/product policy may
 reject append using a bounded Task status cache, close-append tag, or tombstone,
 but stale policy observation may still admit a late item. That item has no
 consumption guarantee and cannot reopen a terminal score. TTL, repeated cleanup,
-generation-scoped keys, or another retention mechanism owns orphan backlog
+generation-scoped keys, or another retention mechanism owns orphan Item
 removal after physical cleanup races.
 
 This makes no-work closure a deliberate latency tradeoff. If an item is
@@ -942,7 +943,7 @@ does not create an owner transition.
 
 ## Assignment-Dispatch Protocol
 
-The target protocol deliberately keeps score-band, work-item ownership,
+The target protocol deliberately keeps Task score-band, Task Item runtime,
 worker-runtime, and transport separate. The active loop belongs to
 assignment-dispatch; task score-band only supplies query plus same-band
 time/suffix rewrite, general positive rewrite, terminal close, and
@@ -953,12 +954,12 @@ score-hold release primitives:
 2. acquire task ids from task score-band single-band query(band, horizon, limit)
 3. load task score state and validate gate / time coordinate
 4. if RUNNING_VISIBLE:
-     ask work-item owner for bounded claimable-work evidence
+     ask Task Item runtime for bounded due-Item evidence
      if no work and suffix > 00, rewrite RUNNING_VISIBLE with next time and
      suffix-1
      if no work and suffix == 00, close to TERMINAL
      acquire and admit worker through worker score-band / worker-runtime
-     let work-item owner perform the final item claim
+     let Task Item runtime perform the final Item claim
      produce deliver seed for transport
      rewrite to RUNNING_VISIBLE after the round classification
 5. if PRE_DISPATCH_VISIBLE:
@@ -968,9 +969,9 @@ score-hold release primitives:
      activation retry
 ```
 
-The work evidence read may be cheap and non-consuming. The final claim belongs
-to the work-item owner and should happen only when the scheduling round has
-enough worker-admission evidence to avoid consuming work without a viable
+The Item availability read may be cheap and non-consuming. The final claim
+belongs to Task Item runtime and should happen only when the scheduling round has
+enough worker-admission evidence to avoid consuming an Item without a viable
 dispatch path.
 
 If final item claim fails after worker admission, the scheduling round releases
@@ -989,7 +990,7 @@ assignment-dispatch round that observed them:
 ```text
 task score due
   -> assignment-dispatch acquires task
-  -> lifecycle / work-item / worker-runtime validation produces evidence
+  -> lifecycle / Task Item / worker-runtime validation produces evidence
   -> score owner writes the next score through the score-write stale fence
 ```
 
@@ -1042,7 +1043,7 @@ These update their own owner truth and do not trigger generic score refresh:
 ```text
 append item
 result success
-retry frame write
+Item same-tag retry movement
 recent-final receipt
 result lookup
 trace materialization
@@ -1062,7 +1063,7 @@ on the kernel primitive.
 | score-acquired assignment-dispatch round | yes | Decode score, validate owner facts, run the band action, then call same-band time/suffix rewrite, general positive rewrite, terminal close, or score hold release. |
 | initialization owner | yes, once | Establish the first score during Task creation; it cannot reacquire or rewrite an existing score. |
 | owner command | yes, declared transitions only | Validate owner facts, then approve/reject/pause/resume/cancel/close through the matching transition primitive. It cannot perform generic cadence or budget rewrites. |
-| resource / backlog / evidence write | no direct live score | Metadata/config update, append, work/result evidence, retry frame, and similar writes update their own truth without a score lease. Later scheduling or an owner command may observe them. |
+| resource / backlog / evidence write | no direct live score | Metadata/config update, Item append, Item retry/outcome movement, and result evidence update their own truth without a Task-score lease. Later scheduling or an owner command may observe them. |
 | read projection / trace | no | Observability only. |
 
 ## Transition Execution Rules
@@ -1088,7 +1089,7 @@ positive score and no-op if the score is already terminal.
 ## Atomicity Boundaries
 
 Task score updates must be atomic only with the task scheduling visibility facts
-they protect. They must not absorb work-item claim state or result-finality
+they protect. They must not absorb Task Item claim state or result-finality
 state.
 
 Important boundaries:
@@ -1120,9 +1121,9 @@ policy command that changes scheduling visibility
 Separate owner boundaries:
 
 ```text
-work-item owner
-  owns item readiness, current work hash claim, retry frame, and claim
-  compensation
+Task Item score owner
+  owns Item record, ACTIVE acquire, claim lease, same-tag retry movement, and
+  monotonic outcome promotion
 
 result owner
   owns result finality, recent-final barriers, and result read projection
@@ -1157,10 +1158,10 @@ Rules:
   `RUNNING_VISIBLE`;
 - `PRE_DISPATCH_VISIBLE` acquired and open condition is still false: leave the
   score unchanged; a later bounded activation round may retry;
-- `RUNNING_VISIBLE` acquired but the work-item owner reports no claimable work
+- `RUNNING_VISIBLE` acquired but Task Item runtime reports no due TaskItem
   and `suffix > 00`: rewrite `RUNNING_VISIBLE` with a later no-work recheck
   time and `suffix - 1`;
-- `RUNNING_VISIBLE` acquired but the work-item owner reports no claimable work
+- `RUNNING_VISIBLE` acquired but Task Item runtime reports no due TaskItem
   and `suffix == 00`: close to `TERMINAL`; close reason is
   metadata/result/trace, not score;
 - `RUNNING_VISIBLE` acquired but no worker matches and `suffix > 00`: stay in
@@ -1248,8 +1249,8 @@ no broad refresh from low-value observations
   Assignment-dispatch must scan active bands through separate band ranges and
   must not include terminal markers or positive inactive tags such as
   `PRE_REVIEW` in active acquire.
-- Do not let `PRE_DISPATCH_VISIBLE` enter worker admission, work claim, or deliver
-  seed creation; assignment-dispatch may scan it only for activation checks.
+- Do not let `PRE_DISPATCH_VISIBLE` enter worker admission, Item claim, or
+  DeliverSeed creation; assignment-dispatch may scan it only for activation checks.
 - Do not write a scheduling restriction score for `PRE_REVIEW` or `TERMINAL`.
   The owner-local `PRE_REVIEW` creation lease is permitted only for
   lease-controlled Task creation; kernel code stores its suffix opaquely and
@@ -1263,9 +1264,9 @@ no broad refresh from low-value observations
   because it preserves the same active tag, use per-task write ordering or
   a score-write stale fence.
 - Do not close `RUNNING_VISIBLE` after a no-work classification without applying
-  the owner policy to the decoded suffix budget and current work evidence.
-- Do not put work-item claim, current work occupancy, retry-frame mutation, or
-  result finality inside task score-band atomicity.
+  the owner policy to the decoded suffix budget and current Item evidence.
+- Do not put Item claim/current occupancy, Item retry/outcome movement, or result
+  finality classification inside Task score-band atomicity.
 - Do not use current implementation classes as target owner proof for this
   mechanism; this document defines the new owner split.
 - Do not create a second serving ready-task scheduling index after score

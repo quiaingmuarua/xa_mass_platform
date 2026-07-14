@@ -346,7 +346,7 @@ deliver seed creation from current item score evidence
 Does not own:
 
 ```text
-task score truth; WorkDispatchPacer is Task-score read-only
+task score truth; TaskItemDispatchPacer is Task-score read-only
 worker score lifecycle
 result finality
 transport session internals
@@ -364,8 +364,10 @@ what should this incoming result do next?
 Owns:
 
 ```text
-route result to accepted finality, retry, stale/duplicate no-op, discard, or
-manual review / unresolved handling
+classify business result as retryable, final-failed, or final-success
+invoke one Task Item runtime transition without interpreting score
+map the returned transition status to accepted, stale/duplicate no-op, discard,
+or manual review / unresolved handling
 ```
 
 Does not own:
@@ -378,8 +380,9 @@ task score refresh as a generic side effect
 ```
 
 Result routing is a scheduling plane because it decides whether a result exits
-the runtime, re-enters retry scheduling, or is ignored. It is not a query/view
-owner and not a transport parser.
+the runtime, requests retry scheduling, or is ignored. Task Item runtime alone
+decides whether the requested score transition is legal. Result routing is not
+a query/view owner and not a transport parser.
 
 ## Reading Order
 
@@ -394,7 +397,7 @@ owner and not a transport parser.
 5. [Task-Worker Allocation Pacer](task-worker-allocation-pacer.md)
    - oldest-first Task allocation, batch Worker matching, activation checks,
      Task timeSlot fairness, and candidate-worker publication.
-6. [Work Dispatch Pacer](work-dispatch-pacer.md)
+6. [Task Item Dispatch Pacer](task-item-dispatch-pacer.md)
    - newest-first candidate consumption, Worker short lease, item-score claim, and
      DeliverSeed creation; Task score is read-only.
 7. [Result-Routing Scheduling](result-routing-scheduling.md)
@@ -419,9 +422,10 @@ Task score-band
 Task Item score-band
   owns per-Task Item record, item scheduling score, same-tag claim/retry
   movement, and cross-tag final movement
+  append accepts bounded ItemRecord batches and mints ACTIVE tag/time/suffix internally
 
 Result owner
-  owns result finality, recent-final barriers, and result read projection
+  owns retryable/final classification, late-success barriers, and result projection
 
 Worker score-band / worker-runtime
   owns worker eligibility acquire, validation, admission, capacity, and score
@@ -442,9 +446,12 @@ no Attempt aggregate
 no claim_token as a required model concept
 deliver seed carries claim evidence
 item score is the current runtime truth
-result apply validates against the current item score
+result routing passes opaque evidence to a named Task Item operation
+Task Item runtime validates same-tag retry against exact claimScore
+Task Item runtime enforces ACTIVE < FINAL_FAILED < FINAL_SUCCESS
 expired claim scores naturally re-enter acquire
-optional intake LIST is not kernel truth
+default ingress calls append_items directly
+caller-owned outbox / broker is optional and never kernel truth
 ```
 
 ## Python Executable Spec
@@ -474,9 +481,9 @@ kernel_design/py_example/
 
 It currently proves the Task and Worker score axes, resource catalogs, bounded
 Worker matching, Redis candidate handoff, and the first Task-Worker allocation
-pacer. `WorkDispatchPacer`, Work/backlog claim ownership, and result routing are
-still executable-spec gaps. Redis owner implementations already exist; an
-in-memory runtime is not a prerequisite or a parallel mainline.
+pacer. Task Item score, `TaskItemDispatchPacer`, and result routing are still
+executable-spec gaps. Redis owner implementations already exist; an in-memory
+runtime is not a prerequisite or a parallel mainline.
 
 ## Extension Scope
 

@@ -1,272 +1,232 @@
 # Result-Routing Scheduling
 
-Status: new-kernel mechanism note. This document describes the target
-result-routing scheduling plane for the clean kernel core. It is not current
-implementation truth and not an implementation roadmap.
+Status: new-kernel mechanism note. This document defines result classification
+and the handoff to Task Item runtime. It is not current implementation truth and
+not an implementation roadmap.
+
+Parent contract: [Task Item Score-Band Scheduling](task-item-score-band-scheduling.md).
 
 ## Purpose
 
-Result-routing scheduling decides where an incoming result goes next:
+Result routing converts result evidence into one bounded owner decision:
 
 ```text
 incoming result evidence
-  -> current work hash compare
-  -> accepted finality
-  -> retry scheduling
-  -> duplicate / stale no-op
-  -> discard / reject
-  -> unresolved manual lane
+  -> classify retryable / final-failed / final-success business outcome
+  -> invoke one named Task Item runtime operation
+  -> map Task Item transition status to accepted / stale / duplicate / unresolved
+  -> result barrier / projection update
+  -> owner-specific release or closure handoffs
 ```
 
-It answers:
-
-```text
-does this result close work, retry work, do nothing, or require unresolved
-handling?
-```
-
-It does not answer:
-
-```text
-which worker should run new work?
-which task should enter a scheduling round?
-how transport sessions are managed?
-what a read model should display?
-```
-
-Result routing is a scheduling plane because retry, finality, and ignored
-results decide whether work leaves runtime, re-enters scheduling, or is
-explicitly not acted on.
+It does not select Workers, claim Items, read or decode Item score, reproduce
+same-tag/cross-tag transition rules, refresh Task score, or turn transport
+delivery into finality truth.
 
 ## Inputs
-
-Result routing consumes normalized result evidence:
 
 ```text
 ResultEvidence
   taskId
-  workItemId
+  messageId
   workerId
-  claimExpiresAtMillis?  # only when the deliver seed carried a time bound
-  resultStatus
-  resultPayload or outputRef
-  errorCode
-  observedAt
-  transportCorrelation
+  outcome
+  resultPayload | resultPayloadRef | null
+  claimScore
+  observedAtMillis
 ```
 
-It validates the evidence against owner truth:
+`claimScore` is opaque evidence copied from `DeliverSeed`. Result routing passes
+it unchanged to Task Item runtime and never reads or decodes tag, timeSlot, or
+suffix. Transport may normalize protocol frames into `ResultEvidence`; it does
+not decide retry or finality.
+
+Policy inputs may include:
 
 ```text
-current work hash row
-selected worker identity
-optional claim_expires_at evidence
-retry budget
-finality policy
-recent final barrier
-task terminal / discard fence
+retryable outcome classification
+final-failure classification
+late-success acceptance window
+Task terminal / discard fence
+Worker release or capacity disposition
 ```
 
-Transport may normalize protocol frames into `ResultEvidence`, but transport
-does not decide finality, retry, or duplicate semantics.
+## Owner Split
+
+```text
+Task Item score owner
+  current Item score
+  exact same-tag claim/retry stale fence
+  ACTIVE < FINAL_FAILED < FINAL_SUCCESS promotion
+
+result owner
+  business outcome classification
+  Task Item operation selection
+  transition-result mapping to routing outcome
+  late-success retention barrier
+  result payload and read projection
+
+Task score owner
+  Task scheduling visibility and terminal coordinate
+
+Worker owner
+  release / retain / capacity decision after accepted result
+```
+
+Result policy chooses an Item owner operation. Task Item runtime alone validates
+the current score and returns the transition result. Result routing does not
+write Redis score directly, compare stored score, or construct target tags,
+timeSlots, suffixes, or encoded scores.
 
 ## Routing Outcomes
 
-The target plane produces one explicit outcome:
-
 ```text
-RESULT_ACCEPTED_FINAL
 RESULT_RETRY_SCHEDULED
-RESULT_DUPLICATE_FINAL_NOOP
-RESULT_STALE_CLAIM_NOOP
-RESULT_REJECTED_NO_CURRENT_CLAIM
-RESULT_REJECTED_HASH_MISMATCH
+RESULT_FINAL_FAILED
+RESULT_FINAL_SUCCESS
+RESULT_DUPLICATE_NOOP
+RESULT_STALE_NOOP
 RESULT_IGNORED_TASK_CLOSED
 RESULT_UNRESOLVED_REVIEW
 ```
 
-Each outcome has one owner-visible effect. Avoid side effects hidden behind
-generic "handle result" calls.
+Each outcome has one owner-visible effect. Avoid hidden multi-owner writes behind
+a generic `handle_result` method.
 
 ## Mainline
 
 ```text
-1. receive normalized result evidence
-2. validate task/work ids
-3. load current work hash row from the work-item owner
-4. check recent-final barrier for duplicates
-5. compare selected worker and optional claim_expires_at with the current hash
-6. classify result against finality and retry policy
-7. atomically remove/update the current work hash row
-8. write final receipt, schedule retry frame, or record no-op
-9. emit score rewrite requests only through owner-specific handoffs
-10. return routing outcome
+1. receive normalized ResultEvidence
+2. validate taskId / messageId / workerId and result payload shape
+3. consult the recent-result barrier and Task retention fence
+4. classify retryable failure, final failure, or final success
+5. invoke exactly one Task Item owner transition
+6. map the returned transition status to accepted, stale, duplicate, or unresolved
+7. record result/barrier/projection evidence only when routing policy permits
+8. invoke Worker and Task owner handoffs when policy requires them
+9. return ResultRoutingOutcome
 ```
 
-Step 8 is intentionally narrow. A result does not generically refresh task
-score. It may:
+No result path refreshes Task score as a generic side effect.
+
+## Task Item Operations Consumed
+
+Result routing depends on the Task Item contract without reimplementing it:
 
 ```text
-schedule retry visibility through the work-item/retry owner
-close task visibility through lifecycle/finality owner
-release worker capacity through worker owner
+retryable failure
+  -> retry_observed_claim(taskId, messageId, claimScore, retryDueMillis)
+
+final failure
+  -> promote_item_outcome(taskId, messageId, FINAL_FAILED, outcomeAtMillis)
+
+final success
+  -> promote_item_outcome(taskId, messageId, FINAL_SUCCESS, outcomeAtMillis)
 ```
 
-Those are owner handoffs, not direct result-to-score writes.
+Task Item runtime owns exact same-tag claim fencing, retry-budget interpretation,
+cross-tag outcome precedence, and all score mutation. It returns an explicit
+transition status such as `TRANSITIONED`, `STALE`, `NOOP`, `NOT_FOUND`, or
+`CORRUPT`. Result routing maps that status to `ResultRoutingOutcome`; it does not
+derive the status by inspecting Item score.
 
-## Finality Boundary
+The authoritative fence and outcome-precedence rules live only in
+[Task Item Score-Band Scheduling](task-item-score-band-scheduling.md).
 
-Finality means the logical work item has reached an owner-approved terminal
-state:
+## Task Closure And Late Success
+
+Task terminal score remains closed and does not re-enter scheduling because a
+late Item success is accepted. Result attribution and aggregate projection may
+still improve from failed to success while retained Item truth exists.
+
+Therefore:
 
 ```text
-success final
-failure final
-cancelled final
-expired final
-discarded final
+Task close
+  stops new Task / Item dispatch
+  does not immediately delete Item score or result barrier truth
+
+late success inside retention window
+  requests FINAL_SUCCESS promotion from Task Item runtime
+  may update result aggregate / terminal reason projection
+  must not reopen Task scheduling
+
+retention barrier expired
+  physical Item/result cleanup may proceed
 ```
 
-Finality is not the same as:
+The retention owner, not Task score-band, decides physical deletion timing.
+
+## Transition-Result Mapping
 
 ```text
-transport ack
-worker process completed locally
-review row written
-trace event emitted
-result payload stored
+Task Item returns TRANSITIONED
+  map to RESULT_RETRY_SCHEDULED / RESULT_FINAL_FAILED / RESULT_FINAL_SUCCESS
+
+Task Item returns STALE
+  map to RESULT_STALE_NOOP
+
+Task Item returns NOOP
+  RESULT_DUPLICATE_NOOP
+
+Task Item returns NOT_FOUND / CORRUPT
+  map to RESULT_UNRESOLVED_REVIEW or the declared owner-specific rejection
+
+result after retention cleanup
+  RESULT_IGNORED_TASK_CLOSED or RESULT_UNRESOLVED_REVIEW
 ```
 
-Result routing owns finality classification and the recent-final barrier. Read
-models, trace, or review surfaces consume this as evidence after acceptance.
-
-## Retry Boundary
-
-Retry is scheduled only when all required facts hold:
-
-```text
-current work hash still exists
-current selected worker matches result.workerId
-claim_expires_at matches if the work is time-bounded
-result is retryable by policy
-retry budget remains
-task/work fences permit retry
-retry visibility time is computed
-```
-
-Retry output:
-
-```text
-RetryFrame
-  taskId
-  workItemId
-  retryCount
-  visibleAt
-  payload or payloadRef
-  reason
-```
-
-The retry frame belongs to the work-item/retry owner. Task score-band may later
-be notified that retry visibility exists, but result routing must not rewrite a
-live task score just because a result arrived.
-
-## Duplicate And Stale Handling
-
-Duplicate and stale results are normal distributed-system inputs.
-
-Rules:
-
-- duplicate final result after accepted finality returns a no-op outcome;
-- stale result after the work hash was moved/reclaimed returns stale no-op or
-  rejected-hash-mismatch;
-- result with no current claim is rejected unless a recent-final barrier proves
-  the logical work already converged;
-- time-bounded work may reject a result when `now > claim_expires_at` or when
-  the seed's `claim_expires_at` no longer matches the current hash;
-- non-time-bounded work is single-claim until result/cancel/manual
-  intervention in the first kernel core;
-- late result after task closed cannot reopen task/work scheduling;
-- no-op outcomes may emit trace/diagnostic evidence but must not mutate active
-  runtime truth.
+No-op outcomes may emit bounded trace/diagnostic evidence but do not mutate Task
+or Worker scheduling truth.
 
 ## Owner Handoffs
 
-Result routing may hand off evidence to these owners:
+After an Item transition succeeds:
 
 ```text
-work-item / retry owner
-  schedule retry frame
-  remove or rewrite current work hash row
-  write recent-final barrier
+result owner
+  persist result payload / barrier / projection
 
-task score / lifecycle owner
-  close task visibility if aggregate finality says the task is done
-  never generic refresh on result arrival
+Worker owner
+  release or retain admission/capacity according to policy
 
-worker score / capacity owner
-  release capacity or classify stale worker evidence
-
-trace / diagnostics owner
-  observe routing outcome after the owner mutation is accepted
+Task lifecycle owner
+  observe aggregate/no-work evidence in a later bounded scheduling round
+  close Task visibility only through declared Task-score transitions
 ```
 
-Result routing must not call read-view materialization to decide acceptance.
+These are owner handoffs. Result routing does not call Worker score or Task score
+as an unrestricted mutation path.
 
-## Interaction With The Four Scheduling Planes
+## Executable-Spec Gap
+
+The Python executable spec does not yet implement Task Item score, result
+routing, DeliverSeed, or TaskItemDispatchPacer. The first implementation must prove:
 
 ```text
-task-score-band-scheduling
-  may later acquire the task again if retry/work visibility says there is work
-
-worker-score-band-scheduling
-  may reopen or cool down worker capacity after result release evidence
-
-assignment-dispatch-scheduling
-  created the deliver seed whose evidence this result may carry back
-
-result-routing-scheduling
-  accepts, retries, ignores, or rejects the result
+retryable classification invokes retry_observed_claim with unchanged claimScore
+final classification invokes promote_item_outcome with the named outcome
+Task Item TRANSITIONED / STALE / NOOP statuses map to declared routing outcomes
+only accepted transitions update result barrier / projection
+late success after Task close without Task reopen
+bounded result barrier retention
 ```
 
-The result path is not a shortcut back into assignment. It can only create
-retry/finality evidence that later scheduling planes consume through their own
-owners.
-
-## Python Kernel First Cut
-
-The first Python kernel can expose:
-
-```text
-route_result(result: ResultEvidence) -> ResultRoutingOutcome
-```
-
-Minimal collaborators:
-
-```text
-work_hash.get_current(task_id, work_item_id)
-work_hash.compare_and_apply(...)
-retry_store.schedule(...)
-final_store.record(...)
-worker_runtime.record_release_evidence(...)
-worker_runtime.release_admission(...)
-task_score.close_or_notify(...)
-```
-
-Result routing must not call worker score directly. It emits release evidence
-for the worker-runtime / assignment owner; that owner decides whether capacity
-or admission score should be released.
-
-Keep it synchronous and in-memory first. Do not introduce queues or background
-repair loops before the routing outcomes are deterministic.
+Same-tag fencing and cross-tag precedence are proved by Task Item runtime tests,
+not duplicated in result-routing tests.
 
 ## Guardrails
 
-- Do not accept results from read models or review rows.
-- Do not let transport decide retry/finality.
-- Do not let result arrival directly refresh live task score.
-- Do not use absence of current claim as terminal proof unless recent-final
-  barrier confirms prior convergence.
-- Do not let duplicate result mutate final state twice.
-- Do not let stale result overwrite a newer current work hash row.
-- Do not make result routing select workers.
-- Do not make trace emission the commit point.
+- Do not restore a current-work HASH, retry ZSET, claim-expiry queue, or Attempt
+  aggregate beside Item score.
+- Do not let result callers construct tag, timeSlot, suffix, or target score.
+- Do not read Item score to pre-validate, predict, or reproduce Task Item runtime
+  transition results.
+- Do not duplicate same-tag fencing or cross-tag precedence in result-routing.
+- Do not translate a retryable business result into a final operation merely to
+  avoid a `STALE` response.
+- Do not let late success reopen Task scheduling.
+- Do not physically delete Item/result truth before the late-success retention
+  barrier permits cleanup.
+- Do not let transport decide retry, finality, or Worker replacement.
+- Do not refresh Task score because a result arrived.

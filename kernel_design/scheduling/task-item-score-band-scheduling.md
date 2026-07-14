@@ -22,7 +22,7 @@ round:
 which Item members inside this Task are worth checking now?
 ```
 
-The item kernel does not model a ready queue. It stores one immutable-ish Item
+The item kernel does not model a ready queue. It stores one canonical Item
 record and one monotonic score coordinate:
 
 ```text
@@ -38,6 +38,18 @@ task:{taskId}:item-score
 ```
 
 The score axis is the runtime scheduling truth. The Item record is intake data.
+
+Vocabulary is singular across the complete path:
+
+```text
+append -> acquire -> claim -> dispatch -> result -> retry/final
+                 all refer to the same TaskItem
+```
+
+Claim does not create a second `Work` entity. `Work`, `WorkItem`, `WorkRecord`,
+`WorkRuntime`, `WorkClaim`, and `workItemId` are not new-kernel model or owner
+names. Ordinary prose may still say "no work", but contracts use `TaskItem`,
+`messageId`, `ItemRecord`, `TaskItemRuntime`, and opaque Item claim evidence.
 
 ## Non-Goals
 
@@ -55,11 +67,13 @@ retryCount in ItemRecord
 finalReceipt in ItemRecord
 ```
 
-LIST or broker intake may exist as an optional ingestion accelerator, but it is
-not a kernel contract. If an API returns accepted after writing only the
-accelerator, that accelerator owner must provide durable replay and eventual
-canonical materialization. The default kernel acceptance point is the canonical
-HASH + ZSET write.
+The default ingress path calls `append_items` directly and returns only after the
+canonical HASH + ZSET write. Kernel and server do not require an intake LIST,
+broker, backlog, materializer, or periodic append job.
+
+A caller may independently use an outbox or broker when its own transaction,
+offline submission, or burst-buffering requirements justify one. That caller-
+owned mechanism is outside the kernel contract and does not become Item truth.
 
 ## Item Record
 
@@ -67,15 +81,28 @@ The Item record carries only caller/intake facts:
 
 ```text
 ItemRecord
+  messageId
   payload | payloadRef
-  priority
+  priority = 5
   createdAtMillis
-  expireAtMillis | null
+  expireAtMillis = createdAtMillis + defaultItemTtlMillis
 ```
 
+Exactly one of `payload` and `payloadRef` is required. `priority` is an integer
+from `0` through `10`; `5` is the canonical default. `createdAtMillis` is the
+immutable intake timestamp. An omitted `expireAtMillis` is materialized as
+`createdAtMillis + defaultItemTtlMillis`; the v0 runtime default is 365 days and
+is configurable owner policy, not score encoding.
+
+Item `priority` is distinct from `TaskDescriptor.config["priority"]`. Task
+priority orders Tasks competing for Workers; Item priority places newly appended
+members inside one Task's ACTIVE acquire range.
+
 `expireAtMillis` is policy input. The score kernel stores it but does not
-interpret it. Claim/result policy may read it and choose a monotonic target
-score.
+interpret it. Claim/result policy may read it and choose a monotonic owner
+operation. Retry count is not an Item field. `TaskDescriptor.config` owns
+`maxRetryTimes`; item-score initialization converts it to an internal claim
+budget.
 
 ## Score Axis
 
@@ -89,6 +116,24 @@ TAG_FACTOR = TIME_SLOT_FACTOR * SUFFIX_FACTOR
 SUFFIX_FACTOR = 100
 SLOT_MILLIS = 100
 ```
+
+This formula is an internal encoding sketch, not a stable interface. The kernel
+may change score packing, factor widths, slot scale, or Redis encoding as long
+as it preserves the public score-band semantics:
+
+```text
+bounded acquire by kernel tag and millisecond horizon
+same-tag observed-score fence
+cross-tag monotonic progress
+kernel-owned tag vocabulary
+kernel-owned tag-local suffix rule
+opaque observedScore returned only as a stale fence
+```
+
+Callers must treat every score as opaque. Owner-facing operations accept Item
+records, millisecond timestamps, result outcomes, and opaque observed scores
+only where a stale fence is required. They do not accept tag values, timeSlot,
+suffix, suffix actions, score bounds, or encoded target scores.
 
 Kernel mechanics:
 
@@ -169,8 +214,7 @@ for the full score to increase.
 
 ### Cross-Tag Monotonic Write
 
-Cross-tag writes are used for irreversible band progress and higher-priority
-final override:
+Cross-tag writes are monotonic result-outcome promotions:
 
 ```text
 storedScore = current score
@@ -181,12 +225,12 @@ targetSuffix satisfies target-tag suffix rule
 ```
 
 No observed-score equality is required for cross-tag progress. Safety comes from
-strict tag growth. A higher final tag can override a lower final tag; a lower or
-equal tag cannot overwrite the current score.
+strict outcome precedence. A higher final tag can override a lower final tag; a
+lower or equal tag cannot overwrite the current score.
 
-Cross-tag callers pass `targetTag` and caller-facing millisecond time. The kernel
-derives `targetSuffix` from the target-tag rule; callers must not construct it
-from decoded score fields.
+Result policy passes a named outcome and caller-facing millisecond time. The
+kernel maps the outcome to its tag and target suffix; callers do not pass tags
+or construct suffix from decoded score fields.
 
 Core consequence:
 
@@ -196,6 +240,19 @@ late success may overwrite failed final
 failure cannot overwrite success
 final cannot return to active
 ```
+
+This is an outcome lattice, not claim-generation isolation:
+
+```text
+ACTIVE < FINAL_FAILED < FINAL_SUCCESS
+```
+
+An older final-failure result may promote a currently ACTIVE item even if a
+newer claim has already been issued. That promotion stops future acquisition;
+it does not cancel an already issued claim. A later success from any issued
+claim may still promote the item to `FINAL_SUCCESS`. `FINAL_SUCCESS` is the only
+absorbing result tag. Result policy must not use final-failure promotion for an
+ordinary retryable failure.
 
 ## Initial Score And Priority
 
@@ -209,7 +266,8 @@ thresholdTimeMillis = floorMillis
 thresholdSlot = floor(thresholdTimeMillis / SLOT_MILLIS)
 nowSlot = floor(nowMillis / SLOT_MILLIS)
 initialSlot = max(thresholdSlot, nowSlot - priorityBoostSlots(priority))
-initialSuffix = remainingBudget
+initialClaimBudget = 1 + TaskDescriptor.config["maxRetryTimes"]
+initialSuffix = encodeRemainingClaimBudget(initialClaimBudget)
 ```
 
 Higher priority maps closer to `nowSlot`. No priority or lowest priority maps
@@ -219,6 +277,10 @@ After the first claim, ordinary same-tag rewrites place the item at future
 `timeSlot` coordinates such as claim lease expiry or retry due time. Initial
 priority no longer reorders the item.
 
+The append caller does not provide any value in this calculation. Item runtime
+always initializes `TAG_ACTIVE`; it obtains `maxRetryTimes` from Task config and
+owns the priority-to-time and claim-budget-to-suffix mappings.
+
 ## Acquire
 
 Acquire is a bounded score query, not a destructive pop:
@@ -226,7 +288,6 @@ Acquire is a bounded score query, not a destructive pop:
 ```text
 acquire_item_score_candidates(
   taskId,
-  tag,
   thresholdTimeMillis,
   beforeTimeMillis,
   limit
@@ -247,7 +308,7 @@ ZREVRANGEBYSCORE task:{taskId}:item-score
   LIMIT 0 limit
 ```
 
-This direction is intentional. It lets priority work only as an initial
+This direction is intentional. It lets priority affect only initial
 timeSlot placement: high-priority fresh items enter near `nowSlot`, while
 floor/default items sit near `thresholdSlot`. Once claimed, items are placed by
 the ordinary future timeSlot rule.
@@ -257,36 +318,57 @@ not decode the score except through kernel-owned helper APIs.
 
 ## Append
 
-Append writes the canonical Item record and initial score in one owner-local
-atomic operation:
+Append is batch-first and exposes no score fields:
 
 ```text
-append_item(
+append_items(
   taskId,
-  messageId,
-  itemRecord,
-  initialTag,
-  initialTimeMillis,
-  initialSuffix
+  items: Sequence[ItemRecord]
 )
+  -> messageId -> ItemAppendResult
+```
+
+Task Item runtime reads `TaskDescriptor.config["maxRetryTimes"]` once for the
+Task-scoped batch. For each Item independently it then:
+
+```text
+validate messageId and payload XOR payloadRef
+materialize priority / expiry defaults
+mint internal TAG_ACTIVE / initial timeSlot / suffix
 
 HSETNX task:{taskId}:items messageId ItemRecord
 ZADD NX task:{taskId}:item-score
-  score(initialTag, floor(initialTimeMillis / SLOT_MILLIS), initialSuffix)
+  score(TAG_ACTIVE, initialTimeSlot, initialSuffix)
   messageId
 ```
 
-Both writes must succeed for kernel acceptance.
+The atomic boundary is one Item's HASH field plus ZSET member. A bounded batch is
+an API and pipeline optimization, not an all-or-nothing transaction across
+Items. An implementation may pipeline one owner-local atomic script per Item.
 
-Duplicate `messageId` is rejected:
+Each Item script must classify both keys before mutation:
+
+```text
+record absent + score absent
+  -> write both and return APPENDED
+
+record present + score present
+  -> return DUPLICATE_REJECTED
+
+only one side present
+  -> return CORRUPT
+```
+
+Duplicate `messageId` values inside one input batch are invalid before Redis
+execution. A previously stored duplicate is rejected per Item:
 
 ```text
 DUPLICATE_REJECTED
 ```
 
-The kernel does not promise caller idempotency for duplicate appends. A caller
-that needs idempotency must own that key space or add an explicit higher-level
-idempotency contract.
+The kernel does not reinterpret duplicate append as caller idempotency. A caller
+that needs a different duplicate contract must own that key space or add an
+explicit higher-level idempotency decision.
 
 ## Claim
 
@@ -317,8 +399,10 @@ observed suffix > 0
 claimScore = score(TAG_ACTIVE, claimLeaseUntilSlot, observedSuffix - 1)
 ```
 
-The claim score is the result fence. It is an opaque full score carried by the
-dispatch/result caller and returned to the item score owner for comparison.
+The claim score is the same-tag claim/retry stale fence. It is an opaque full
+score carried by DeliverSeed/result evidence and returned to the Item score
+owner for comparison. Cross-tag outcome promotion does not require claim-score
+equality; it follows the result precedence defined below.
 
 ## Lease Expiry
 
@@ -352,23 +436,26 @@ targetScore > claimScore
 write retryDueScore
 ```
 
-Cross-tag final:
+Cross-tag outcome promotion:
 
 ```text
 storedScore = current score
+targetTag = outcomeTag(resultOutcome)
 targetTag > storedTag
-targetTimeSlot = floor(finalTimeMillis / SLOT_MILLIS)
-targetTimeSlot >= storedTimeSlot
+targetTimeSlot = max(storedTimeSlot, floor(outcomeAtMillis / SLOT_MILLIS))
 targetScore > storedScore
 write finalScore
 ```
+
+The final score timeSlot is a monotonic score coordinate, not the business
+completion timestamp. Result projection owns the original `outcomeAtMillis`.
 
 Examples:
 
 ```text
 active claim -> active retry due
-active claim -> final failed
-active claim -> final success
+active -> final failed
+active -> final success
 final failed -> final success
 final success -> rejected/no-op for lower final tags
 ```
@@ -376,18 +463,24 @@ final success -> rejected/no-op for lower final tags
 Late result handling uses the same kernel tag ordering:
 
 ```text
-late failure
+retryable failure
   requires same-tag observed claimScore
-  stale if score moved
+  stale/no-op if score moved
+
+final failure
+  may promote current ACTIVE to FINAL_FAILED without claimScore equality
+  does not cancel an already issued newer claim
 
 late success
-  may use cross-tag monotonic write
-  allowed only when current tag is below TAG_FINAL_SUCCESS
+  may promote ACTIVE or FINAL_FAILED to FINAL_SUCCESS
+  accepted while current tag is below TAG_FINAL_SUCCESS
 ```
 
-The default policy may discard expired-lease results unless the result can be
-represented as a higher-tag success override. The score kernel enforces the
-same monotonic score rules either way.
+Result policy owns retryable-versus-final classification. The score kernel owns
+only same-tag claim CAS and cross-tag outcome precedence. Task closure does not
+reopen scheduling, but result retention must continue accepting a valid
+`FINAL_SUCCESS` promotion until the owner-defined late-result retention barrier
+expires.
 
 ## Exhausted Budget
 
@@ -397,11 +490,12 @@ For `TAG_ACTIVE`, suffix is remaining scheduling budget. A due active item with
 ```text
 ACTIVE due + suffix == 0
   -> write TAG_FINAL_FAILED
-  -> or leave it for a later bounded score pass
 ```
 
-This is a kernel-owned suffix rule for `TAG_ACTIVE`, not an external policy
-interpretation.
+This transition is mandatory once the exhausted Item is selected. Leaving an
+unclaimable ACTIVE member in the bounded acquire range would create permanent
+hot no-op residue. This is a kernel-owned suffix rule for `TAG_ACTIVE`, not an
+external policy interpretation.
 
 ## Relationship To Task Score
 
@@ -422,82 +516,77 @@ Task score-band remains the Task-level scheduling entry. Item score-band is the
 per-Task member acquire and stale-fence axis. The two axes compose through a
 scheduling round; neither axis rewrites the other as routine evidence.
 
-## Optional Intake Accelerator
+## Optional Caller-Owned Intake Buffer
 
-An implementation may add:
+The normal path is direct:
 
 ```text
-external append
-  -> optional LIST / broker
-  -> bounded materializer
+server / SDK
+  -> TaskItemRuntime.append_items
   -> canonical HASH + ZSET
 ```
 
-This is not a kernel contract. It is valid only when the intake owner defines
-acceptance semantics:
+A caller may add an outbox or broker before `append_items`, but only for a named
+caller-side requirement. The kernel does not require, inspect, poll, or repair
+that buffer. If the caller acknowledges before canonical append, the caller owns
+durable replay until `append_items` succeeds.
 
 ```text
-accepted after LIST write
-  LIST/broker owner must provide durable replay and materialization
-
 accepted after HASH + ZSET write
   canonical item score-band owner has accepted the item
 ```
 
-Do not let an optional materializer become the hidden correctness path for item
-runtime truth.
+Do not introduce a server backlog merely as a precaution, and do not let an
+optional caller buffer become the hidden correctness path for Item runtime truth.
 
 ## Minimal Primitive Surface
 
 First executable surface:
 
 ```text
-append_item(
+append_items(
   taskId,
-  messageId,
-  itemRecord,
-  initialTag,
-  initialTimeMillis,
-  initialSuffix
+  items: Sequence[ItemRecord]
 )
+  -> messageId -> ItemAppendResult
 
 acquire_item_score_candidates(
   taskId,
-  tag,
   thresholdTimeMillis,
   beforeTimeMillis,
   limit
 )
   -> messageId -> observedScore
 
-rewrite_observed_same_tag_score(
+retry_observed_claim(
   taskId,
   messageId,
-  observedScore,
-  targetTimeMillis,
-  suffixAction
+  claimScore,
+  retryDueMillis
 )
 
-rewrite_current_cross_tag_score(
+promote_item_outcome(
   taskId,
   messageId,
-  targetTag,
-  targetTimeMillis
+  outcome,
+  outcomeAtMillis
 )
 
 get_item_records(taskId, messageIds)
 get_item_score_states(taskId, messageIds)
 ```
 
-Do not expose min/max score internals, Redis range bounds, raw `targetScore`,
-decoded tag/timeSlot helpers, or LIST materialization details as public kernel
-contracts.
+Do not expose initial tag/time/suffix, min/max score internals, Redis range
+bounds, raw `targetScore`, decoded tag/timeSlot helpers, or LIST materialization
+details as public kernel contracts.
 
 ## Guardrails
 
 - Do not add a runtime ready LIST as kernel truth.
 - Do not move payload between ready, retry, and active structures.
 - Do not store claim evidence, retry count, or final receipt in `ItemRecord`.
+- Do not let append callers provide tag, timeSlot, suffix, retry budget, or
+  encoded score.
 - Do not use score absence as final proof.
 - Do not let append refresh Task score.
 - Do not let result refresh Task score.
@@ -505,6 +594,10 @@ contracts.
 - Do not let same-tag writes skip observed-score CAS.
 - Do not allow cross-tag writes without strict tag growth.
 - Do not let lower final tags overwrite higher final tags.
+- Do not treat `FINAL_FAILED` as an absorbing result tag; a later success may
+  promote it to `FINAL_SUCCESS`.
+- Do not physically remove Item truth before the late-success retention barrier
+  permits cleanup.
 - Do not let external callers define tag values or tag-local suffix rules.
 - Do not add event-name branches when the score-band tag/timeSlot/suffix rules
   already express the transition.

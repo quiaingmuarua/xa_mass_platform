@@ -7,15 +7,15 @@ truth and not an implementation roadmap.
 Detailed mechanisms:
 
 - [Task-Worker Allocation Pacer](task-worker-allocation-pacer.md)
-- [Work Dispatch Pacer](work-dispatch-pacer.md)
+- [Task Item Dispatch Pacer](task-item-dispatch-pacer.md)
 
 Current executable-spec gap:
 
 ```text
-no WorkDispatchPacer implementation
+no TaskItemDispatchPacer implementation
 TaskWorkerAllocationPacer has a first executable allocation-round implementation
 TaskDispatchRuntime has a Redis ZSET executable implementation
-Work/backlog owner and claim interface are intentionally unfrozen
+Task Item score mechanism is defined but has no executable implementation
 current Redis dispatch-task acquire is oldest-first, not recent-allocation reverse
 ```
 
@@ -36,12 +36,12 @@ TaskWorkerAllocationPacer
     -> Worker short lease and reservation collection
     -> Task allocation fairness timeSlot
 
-WorkDispatchPacer
+TaskItemDispatchPacer
   recently allocated RUNNING_VISIBLE Tasks
     -> Worker reservation consumption
     -> Worker validity recheck
     -> non-exclusive release or exclusive renewal
-    -> Work claim
+    -> Item score claim
     -> DeliverSeed
 ```
 
@@ -55,7 +55,7 @@ dispatch may be faster and consumption-heavy
 
 allocation delay must not block dispatch from an existing candidate collection
 dispatch congestion must not redefine Task-Worker matching
-PRE_DISPATCH_VISIBLE must participate in allocation but never in work dispatch
+PRE_DISPATCH_VISIBLE must participate in allocation but never in Task Item dispatch
 ```
 
 They are independent scheduling entries, not necessarily dedicated threads.
@@ -72,7 +72,7 @@ Worker score truth
 Worker capacity truth
 Task descriptor truth
 Worker descriptor or dynamic attribute truth
-Backlog or current work truth
+Task Item record or Item score truth
 Result finality
 Transport session or route truth
 Read models, trace, or diagnostics
@@ -97,9 +97,9 @@ TaskRunningActivationPacer
   independently reads activation/allocation owner facts
   requests the specific PRE_DISPATCH_VISIBLE -> RUNNING_VISIBLE transition
 
-WorkDispatchPacer
+TaskItemDispatchPacer
   Task-score read-only
-  consumes candidate workers and current work without rewriting Task timeSlot
+  consumes candidate workers and claims current Item score without rewriting Task timeSlot
   or suffix
 ```
 
@@ -125,7 +125,7 @@ TaskRunningActivationPacer
   independently observes allocation facts
   asks TaskScoreBandCore to activate RUNNING_VISIBLE with initial suffix N
 
-WorkDispatchPacer
+TaskItemDispatchPacer
   scans RUNNING_VISIBLE from current time backward
   prioritizes the most recently allocated Tasks
   never rewrites Task score after dispatch
@@ -143,7 +143,8 @@ oldest due Task
   -> candidate-worker consumption
 ```
 
-Allocation prioritizes productive RUNNING work before pre-running activation.
+Allocation prioritizes productive `RUNNING_VISIBLE` Tasks before pre-running
+activation.
 Dispatch prefers fresh worker evidence. Any policy that reserves capacity for
 PRE_DISPATCH_VISIBLE belongs to deployment/operations policy, not this kernel
 mechanism. Dispatch fairness is bounded separately by candidate collection
@@ -224,8 +225,8 @@ already published candidate evidence. If a lifecycle command wins after
 publication, the Task leaves the dispatch scan and the collection becomes
 unreachable residue for later Task physical cleanup.
 
-Work dispatch consumes entries using an owner-local atomic pop/claim primitive.
-Multiple WorkDispatchPacer workers may run concurrently without a Task lock;
+Task Item dispatch consumes entries using an owner-local atomic pop/claim primitive.
+Multiple TaskItemDispatchPacer workers may run concurrently without a Task lock;
 one candidate entry must be returned to at most one consumer.
 
 The atomic boundary is one Task queue:
@@ -294,7 +295,7 @@ Unmatched leases are consumed negative scheduling evidence and remain held
 until expiry. Matched lease scores become `CandidateWorkerEntry` values.
 Matcher does not read or mutate Worker score.
 
-Work dispatch must recheck the consumed Worker against current Worker truth:
+Task Item dispatch must recheck the consumed Worker against current Worker truth:
 
 ```text
 consume CandidateWorkerEntry
@@ -354,7 +355,7 @@ Events may lower latency but cannot be required to wake either pacer.
 ## Shared Guardrails
 
 - Do not collapse both pacers into one monolithic scheduling entry.
-- Do not let WorkDispatchPacer write Task timeSlot, suffix, band, or terminal
+- Do not let TaskItemDispatchPacer write Task timeSlot, suffix, band, or terminal
   score.
 - Do not make candidate-worker collection a second global Task index.
 - Do not publish a candidate Worker unless its allocation lease succeeded.
@@ -367,7 +368,7 @@ Events may lower latency but cannot be required to wake either pacer.
 - Do not refresh Task score because append, result, heartbeat, metadata, trace,
   or projection changed.
 - Do not make transport select a Worker or reinterpret candidate entries.
-- Do not create DeliverSeed without current Work claim evidence.
+- Do not create DeliverSeed without current Item `claimScore` evidence.
 - Do not retain candidate collections as durable assignment truth.
 - Do not require cross-key atomicity between Task score and candidate-worker
   collection.

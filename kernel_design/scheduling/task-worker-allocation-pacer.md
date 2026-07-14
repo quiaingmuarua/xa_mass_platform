@@ -17,7 +17,7 @@ It answers:
 which Tasks currently have bounded candidate Workers?
 ```
 
-It does not claim Work, create DeliverSeed, or accept transport delivery. It
+It does not claim TaskItems, create DeliverSeed, or accept transport delivery. It
 reads a bounded Worker score observation batch, batch-leases every unchanged
 due Worker, matches only lease successes, and publishes matched leases. Every
 successful lease is consumed by the scheduling attempt; unmatched and failed
@@ -43,9 +43,9 @@ priority and limit consumption
 candidate collection publication
 ```
 
-Its cadence and batch limits must be tunable independently from Work dispatch.
-Merging it with dispatch would turn matching, activation, Worker lease, Work
-claim, and delivery into one large policy extension point.
+Its cadence and batch limits must be tunable independently from Task Item
+dispatch. Merging it with dispatch would turn matching, activation, Worker
+lease, Item claim, and delivery into one large policy extension point.
 
 ## Inputs
 
@@ -89,11 +89,11 @@ Allocation scans due active Tasks oldest-first:
 ```text
 PRE_DISPATCH_VISIBLE
   publish bounded candidate evidence for a later activation classification
-  never claim Work or produce DeliverSeed
+  never claim a TaskItem or produce DeliverSeed
 
 RUNNING_VISIBLE
   match bounded Workers for the current running Task
-  do not inspect or claim Work in this pacer
+  do not inspect or claim TaskItems in this pacer
 ```
 
 `PRE_REVIEW`, hard-paused positive scores, future non-due scores, and `TERMINAL`
@@ -259,8 +259,8 @@ state.
 
 ## RUNNING_VISIBLE
 
-RUNNING Task allocation is independent of backlog inspection in this interface
-slice:
+RUNNING Task allocation is independent of TaskItem availability inspection in
+this interface slice:
 
 ```text
 due RUNNING_VISIBLE
@@ -268,11 +268,11 @@ due RUNNING_VISIBLE
   -> publish bounded Worker reservations when matching and lease succeed
 ```
 
-Work may be absent when WorkDispatchPacer later consumes a candidate. That is a
-bounded stale/empty dispatch outcome, not an allocation correctness failure.
-The Work/backlog owner and no-work closure mechanism remain intentionally
-unfrozen until Work runtime is designed as a complete owner. This pacer must not
-introduce a read-only bridge merely to avoid empty matching cost.
+No due TaskItem may remain when TaskItemDispatchPacer later consumes a candidate.
+That is a bounded stale/empty dispatch outcome, not an allocation correctness failure.
+Task Item score-band owns due Item acquisition and claim. Task lifecycle policy
+owns any later no-work closure decision. This pacer must not inspect Item score
+or introduce a read-only bridge merely to avoid empty matching cost.
 
 ## Lifecycle Activation Is Separate
 
@@ -341,14 +341,14 @@ workerLeaseScore
 ```
 
 The collection contains Worker candidates produced by successful short leases
-but no Work claim. `workerLeaseScore` is the exact score written by allocation
+but no Item claim. `workerLeaseScore` is the exact score written by allocation
 and stays opaque inside the ZSET member. The entry has no independent expiry;
 the ZSET score is the batch `expiresAtMillis`. Worker lease state, dirty, and
 matching attributes are still rechecked by the later dispatch path.
 
 There is no cross-key transaction or commit protocol between Task score and the
 collection. A lifecycle transition after publication may make the collection
-unreachable to Work dispatch; later consumption or Task physical cleanup owns
+unreachable to Task Item dispatch; later consumption or Task physical cleanup owns
 that residue.
 
 One call is atomic only for one Task:
@@ -379,7 +379,7 @@ allocate_candidate_workers(
 ```
 
 The return value is the number of Tasks whose candidate entries were published.
-It is not an assignment count, score-transition count, or Work claim count.
+It is not an assignment count, score-transition count, or Item claim count.
 
 `TaskWorkerAllocationConfig` is not constructor state:
 
@@ -480,9 +480,9 @@ The current Python package implements `TaskWorkerAllocationPacer`,
 `TaskWorkerAllocationConfig`, `TaskRunningActivationPacer`,
 `TaskRunningActivationConfig`, the `TaskDispatchRuntime` owner interface, its
 Redis ZSET implementation, and the candidate-worker reservation DTO. The Task score core
-also implements exact single-band bounded acquisition. Work/backlog APIs remain
-deliberately absent until that owner is designed completely. The existing
-active-task acquire supplies the base RUNNING-first band order.
+also implements exact single-band bounded acquisition. Task Item score APIs are
+the defined next owner surface but remain absent from the executable spec. The
+existing active-task acquire supplies the base RUNNING-first band order.
 
 Interface sources:
 
@@ -520,13 +520,13 @@ same-band time rewrite is stale or rejected
   keep already-published candidate evidence; do not roll it back
 
 Task pauses/closes after publication
-  WorkDispatchPacer no longer scans it; later Task physical cleanup owns residue
+  TaskItemDispatchPacer no longer scans it; later Task physical cleanup owns residue
 ```
 
 ## Guardrails
 
-- Do not claim Work in this pacer.
-- Do not introduce a Work-availability bridge solely to skip empty matching.
+- Do not claim TaskItems in this pacer.
+- Do not introduce a TaskItem-availability bridge solely to skip empty matching.
 - Do not turn scan -> batch lease -> match -> publish matched into one
   transaction or lock.
 - Do not release Worker leases from this pacer. Unmatched, matcher failure, and
@@ -539,7 +539,7 @@ Task pauses/closes after publication
 - Do not create DeliverSeed in this pacer.
 - Do not call WorkerCandidateMatcher once per Task.
 - Do not include `PRE_REVIEW`, paused, future non-due, or terminal Tasks.
-- Do not let `PRE_DISPATCH_VISIBLE` enter Work dispatch.
+- Do not let `PRE_DISPATCH_VISIBLE` enter Task Item dispatch.
 - Do not read or decode Task score state inside `allocate_candidate_workers`.
 - Obtain `expectedBand` only from the band-specific acquisition context; do not
   infer it through a second Task-score read or business-state check.

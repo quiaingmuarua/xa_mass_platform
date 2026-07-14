@@ -19,7 +19,7 @@ The resource model is intentionally a short tree:
 ```text
 Task admission      -> exactly one selected WorkerGroup
 WorkerCandidateConstraint -> worker predicates inside selected WorkerGroup
-Work / item / seed  -> worker-local EventHandler
+TaskItem / DeliverSeed -> worker-local EventHandler
 Transport           -> internal delivery resource
 ```
 
@@ -34,8 +34,8 @@ selected worker group. Its `match_rules` map narrows workers by `workerId`,
 placement, static/system attributes, or explicitly supported projected dynamic
 query attributes.
 
-`Work / item / seed -> EventHandler` is handler invocation inside the selected
-worker. The work item's `eventCode` validates against the selected
+`TaskItem / DeliverSeed -> EventHandler` is handler invocation inside the selected
+worker. The TaskItem's `eventCode` validates against the selected
 `WorkerGroupDescriptor.eventCodes` and resolves to a worker-local handler. It
 does not choose worker groups and does not prove worker availability.
 
@@ -57,7 +57,7 @@ physical runtime process
 ```
 
 In v0, a `Worker` is the scheduler-visible execution identity. It may still
-process multiple work items concurrently. Worker score lease / hold protects
+process multiple TaskItems concurrently. Worker score lease / hold protects
 only the short assignment decision window; it is not an execution-duration lock
 by itself. After assignment / DeliverSeed creation succeeds, downstream
 admission policy releases the exact lease for non-exclusive use or retains /
@@ -477,7 +477,7 @@ The stable model has three resource/handler relationships:
 ```text
 Task admission      -> selected WorkerGroup
 WorkerCandidateConstraint -> worker predicates inside selected WorkerGroup
-Work / item / seed  -> EventHandler
+TaskItem / DeliverSeed -> EventHandler
 ```
 
 `Task admission -> selected WorkerGroup` validates one registered group before
@@ -544,7 +544,7 @@ uses `WorkerScoreCore` score lease / hold primitives directly. If a later
 executable spec proves a persisted cross-round assignment continuation is
 required, add that owner then. Do not keep a placeholder surface now.
 
-`Work / item / seed -> EventHandler` is worker-local execution routing. The
+`TaskItem / DeliverSeed -> EventHandler` is worker-local execution routing. The
 item `eventCode` resolves the handler only after the task has a selected worker
 group and assignment-dispatch has selected a concrete worker.
 
@@ -577,7 +577,7 @@ surfaces before producing a selected worker:
 task descriptor workerGroupId -> worker score home bucket
 worker score -> hot/recovery acquisition coordinate
 WorkerScoreCore lease / hold -> current usability/capacity/resource hold decision
-assignment-dispatch -> selected worker + work claim + deliver seed
+assignment-dispatch -> selected worker + Item score claim + DeliverSeed
 ```
 
 Descriptor metadata can be used by worker-runtime validation, policy mapping,

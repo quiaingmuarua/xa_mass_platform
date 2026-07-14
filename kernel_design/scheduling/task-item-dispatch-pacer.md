@@ -1,4 +1,4 @@
-# Work Dispatch Pacer
+# Task Item Dispatch Pacer
 
 Status: new-kernel mechanism note. This document defines the second mandatory
 assignment-dispatch pacer. It is not current implementation truth and not an
@@ -8,13 +8,13 @@ Parent contract: [Assignment-Dispatch Scheduling](assignment-dispatch-scheduling
 
 ## Purpose
 
-`WorkDispatchPacer` consumes recently allocated Task-Worker reservations and
-turns one reservation into one current Work claim plus one `DeliverSeed`.
+`TaskItemDispatchPacer` consumes recently allocated Task-Worker reservations and
+turns one reservation into one current Item-score claim plus one `DeliverSeed`.
 
 It answers:
 
 ```text
-can this RUNNING_VISIBLE Task dispatch one concrete Work item through one
+can this RUNNING_VISIBLE Task dispatch one concrete TaskItem through one
 currently reserved candidate Worker?
 ```
 
@@ -23,18 +23,18 @@ re-run constraint DSL, or write Task score.
 
 ## Why It Is Independent
 
-Work dispatch is a higher-frequency consumption path:
+Task Item dispatch is a higher-frequency consumption path:
 
 ```text
 recent Task score scan
 non-expired candidate-worker atomic consume
 Worker exact-score validity recheck and release/renew
-current Work claim
+current Item score claim
 DeliverSeed creation
-Worker lease release/hold/compensation
+Worker lease release/hold
 ```
 
-Its throughput, per-Task quota, Worker lease interval, Work claim batch, and
+Its throughput, per-Task quota, Worker lease interval, Item claim batch, and
 transport handoff pressure must be tunable independently from allocation.
 
 ## Inputs
@@ -51,9 +51,10 @@ TaskDispatchRuntime
 WorkerScoreCore
   current score evidence and policy-selected lease primitives
 
-future Work/backlog owner
-  claim one current Work item
-  compensate/release claim when delivery handoff fails
+TaskItemRuntime
+  acquire bounded due ACTIVE Items
+  use owner-internal score primitives to exact-CAS observed Items into future claims
+  return Item payload plus opaque claimScore
 
 Transport ingress
   accepts DeliverSeed or returns bounded rejection evidence
@@ -66,12 +67,12 @@ DispatchPolicy
 ```
 
 `TaskDispatchRuntime` provides a Redis ZSET per-Task candidate append/count/
-consume implementation. The Work/backlog owner and claim interface remain
-intentionally unfrozen until this pacer's claim semantics are reviewed.
+consume implementation. Task Item score-band is the canonical Item record,
+acquire, claim, retry, and outcome-movement owner.
 
 ## Task Discovery
 
-Work dispatch uses Task score as its only Task discovery index. It does not add
+Task Item dispatch uses Task score as its only Task discovery index. It does not add
 an allocation queue or global candidate-list index.
 
 It scans only due `RUNNING_VISIBLE` Tasks from current scheduling time backward:
@@ -89,7 +90,7 @@ the configured pacer assembly.
 
 Reverse order intentionally prefers fresh allocation evidence. Allocation
 fairness is owned by TaskWorkerAllocationPacer's oldest-first scan and timeSlot
-rewrite. Dispatch work per round is bounded by the pacer's per-Task quota.
+rewrite. TaskItem dispatches per round are bounded by the pacer's per-Task quota.
 Candidate entries stop being live at batch expiry and are removed by bounded
 consume/cleanup; the Worker score lease follows its own owner coordinate.
 
@@ -153,7 +154,7 @@ policy:
 
 ```text
 exclusive Worker use
-  -> renew the exact current HOT lease before Work assignment
+  -> renew the exact current HOT lease before TaskItem assignment
 
 non-exclusive Worker use
   -> release the exact allocation lease after validation / assignment handoff
@@ -165,14 +166,14 @@ Outcomes:
 ```text
 VALID
   Worker remains admissible under current score and metadata
-  continue to Work claim
+  continue to Item score claim
 
 STALE / DIRTY / INVALID
   discard candidate entry
   try another bounded entry or move to the next Task
 ```
 
-WorkDispatchPacer must not decode, trim, or reconstruct Worker lease score by
+TaskItemDispatchPacer must not decode, trim, or reconstruct Worker lease score by
 itself. The dispatch-side Worker owner path must recheck current score/dirty and
 matching attributes. That validation interface is not frozen in the executable
 spec yet.
@@ -189,29 +190,32 @@ and current constraints still match
   -> Worker validity accepted for this dispatch decision
 ```
 
-## Work Claim
+## Item Score Claim
 
-Work claim belongs to the future Work/backlog owner. That owner has not been
-named or frozen as a Python interface yet.
+Item claim belongs to Task Item score-band. TaskItemDispatchPacer does not pop or
+move payload between ready/current/retry structures.
 
 ```text
 Worker candidate revalidated and required lease established
-  -> claim one current Work item for taskId + workerId
+  -> acquire one bounded due ACTIVE Item observation for taskId
+  -> exact-CAS the observation to a future claim lease
   -> claim succeeds: create DeliverSeed
-  -> claim fails: release/compensate Worker short lease
+  -> claim fails: release/retain Worker short lease according to admission policy
 ```
 
-The claim owner validates current Work truth and creates current occupancy. Task
-score-band must not pop backlog, and Worker score must not mutate Work state.
+The Item owner validates current Item record/score truth and creates occupancy by
+rewriting the same ACTIVE score to a future timeSlot while consuming one internal
+claim-budget suffix. Task score-band must not inspect Item score, and Worker
+score must not mutate Item state.
 
 Claim remains thin. It does not create a separate Attempt lifecycle or a second
-scheduling id. Time-bounded Work may carry `claimExpiresAtMillis`; non-time-
-bounded Work relies on result/cancel/manual owner policy.
+scheduling id. The opaque returned `claimScore` is the same-tag result/retry
+fence. Lease expiry naturally makes a non-final Item due again; there is no
+claim-repair queue.
 
-If Work disappears between allocation and dispatch, the consumed candidate is
-disposable. WorkDispatchPacer does not rewrite Task score to report no-work;
-the no-work closure handoff remains unfrozen until the complete Work owner is
-designed. This gap must not be filled by a read-only bridge interface.
+If no due Item can be claimed after candidate consumption, the candidate is
+disposable. TaskItemDispatchPacer does not rewrite Task score to report no-work;
+Task lifecycle policy may classify that fact in a later Task scheduling round.
 
 ## DeliverSeed
 
@@ -220,18 +224,19 @@ designed. This gap must not be filled by a read-only bridge interface.
 ```text
 DeliverSeed
   taskId
-  workItemId
+  messageId
   workerId
   workerGroupId
   eventCode
   payload or payloadRef
-  claimExpiresAtMillis?
-  runtimeEpoch?
+  claimScore
+  claimLeaseUntilMillis
   createdAtMillis
 ```
 
-It carries claim evidence, not current truth. Current Work truth remains in the
-Work owner.
+It carries opaque claim evidence, not current truth. Current Item truth remains
+in Task Item score-band. Transport and result callers store and return
+`claimScore`; they never decode it.
 
 Transport-specific identifiers do not belong in the seed:
 
@@ -250,7 +255,7 @@ Worker.
 
 ## Task Score Is Read-Only
 
-WorkDispatchPacer never writes:
+TaskItemDispatchPacer never writes:
 
 ```text
 Task timeSlot
@@ -259,10 +264,11 @@ Task band
 Task terminal score
 ```
 
-Successful dispatch consumes a Worker reservation and Work capacity, not Task-score
-fairness. More entries in the transient collection may dispatch more Work. When
-dispatch drains the collection, TaskWorkerAllocationPacer eventually sees the
-Task in oldest-first allocation order and publishes fresh candidates. Expired
+Successful dispatch consumes a Worker reservation and one TaskItem claim, not
+Task-score fairness. More entries in the transient collection may dispatch more
+TaskItems. When dispatch drains the collection, TaskWorkerAllocationPacer
+eventually sees the Task in oldest-first allocation order and publishes fresh
+candidates. Expired
 entries are popped and discarded during that drain; they are not removed by an
 append-side scan.
 
@@ -323,7 +329,8 @@ not reach this owner and therefore do not release Worker score.
 
 The current Python package has Worker short-lease primitives, Task score
 acquire, candidate-worker DTOs, and the Redis `TaskDispatchRuntime`. It has
-no Work claim method, no DeliverSeed model, and no WorkDispatchPacer. The
+no Task Item score implementation, no DeliverSeed model, and no
+TaskItemDispatchPacer. The
 dispatch-task score query also requires the reverse bounded lookback behavior
 defined above.
 
@@ -336,17 +343,19 @@ candidate collection missing/empty
 candidate Worker score, dirty, or attributes are stale
   discard entry; try another bounded entry
 
-Worker admission succeeds, Work claim fails
+Worker admission succeeds, Item claim fails
   release/compensate Worker admission when policy requires it
 
-Work claim succeeds, DeliverSeed construction fails
-  compensate current Work claim and Worker lease
+Item claim succeeds, DeliverSeed construction fails
+  leave Item claim future-held until bounded lease expiry;
+  release/retain Worker admission according to policy
 
 transport rejects seed
-  record delivery evidence and invoke Work/Worker compensation policy
+  record delivery evidence; Item claim remains future-held until expiry;
+  invoke Worker disposition policy
 
 Task pauses/closes during dispatch
-  current owner validation or claim fence rejects further Work;
+  current owner validation or claim fence rejects further Item dispatch;
   future scans exclude the Task
 ```
 
@@ -361,8 +370,10 @@ rewrite Task score as a generic side effect.
 - Do not write Task score for success, no-work, stale Worker, claim failure, or
   transport rejection.
 - Do not consume candidate entries without an atomic owner-local primitive.
-- Do not claim Work before a current Worker short lease succeeds.
-- Do not create DeliverSeed before current Work claim succeeds.
+- Do not claim an Item before a current Worker short lease succeeds.
+- Do not create DeliverSeed before current Item claim succeeds.
+- Do not compensate Item claim through a second ready/retry structure; bounded
+  claim expiry restores due visibility.
 - Do not let transport choose another Worker.
 - Do not retain candidate entries as durable assignment truth.
 - Do not require a Task lock around concurrent dispatch consumers.

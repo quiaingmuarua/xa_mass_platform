@@ -858,7 +858,7 @@ allocation pacer passes only lease-success Worker ids to matcher
 worker-runtime validates and matches candidates
 allocation pacer retains unmatched leases until expiry and publishes matched leases
 worker-runtime admits one or more selected workers
-task-runtime claims work item
+TaskItemRuntime claims TaskItem
 transport receives already-selected worker dispatch
 worker-runtime rewrites worker scores only through owner/admission rules
 ```

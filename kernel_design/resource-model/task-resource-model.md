@@ -12,7 +12,7 @@ second lifecycle model.
 ```text
 TaskDescriptor = stable task allocation metadata
 TaskScoreBandCore = task scheduling / lifecycle coordinate
-Task work owner = task backlog and work truth, not yet frozen as an interface
+TaskItemRuntime = Item record, Item score, claim/retry, and outcome movement
 AssignmentDispatch = bounded consumer of task and worker owner facts
 ```
 
@@ -20,7 +20,7 @@ AssignmentDispatch = bounded consumer of task and worker owner facts
 operations. `TaskResourceCatalog`
 owns only the bounded allocation descriptor load. The catalog does not create
 Task identity or decide duplicate-create conflicts, and neither surface owns
-general Task reads, worker matching, allocation results, work items, or finality.
+general Task reads, worker matching, allocation results, TaskItems, or finality.
 
 For the first allocation cut, one task belongs to exactly one worker group:
 
@@ -43,6 +43,7 @@ TaskDescriptor
     priority: decimal text, 1..100
     maximumCandidateWorkers: positive decimal text
     runningVisibleMinimumCandidateWorkers: positive decimal text
+    maxRetryTimes: non-negative decimal text, 0..98
 ```
 
 The descriptor intentionally contains no generic Task status. Task scheduling
@@ -54,7 +55,7 @@ Other policy fields must not grow as parallel top-level descriptor metadata.
 
 `config` is not an unowned extension bag. Every accepted key must have a named
 owner, consumer, required/default behavior, and validation rule. The first cut
-accepts only the three required keys defined in this document and supplies no
+accepts only the four required keys defined in this document and supplies no
 hidden defaults.
 
 | Config key | Required/default | Validation owner | Consumer | Validation |
@@ -62,6 +63,7 @@ hidden defaults.
 | `priority` | required, no default | TaskDescriptor contract | assignment-dispatch constraint construction | decimal text in `1..100` |
 | `maximumCandidateWorkers` | required, no default | TaskDescriptor contract | best-effort live candidate collection target | positive decimal text |
 | `runningVisibleMinimumCandidateWorkers` | required, no default | TaskDescriptor contract | pre-dispatch activation check | decimal text in `1..maximumCandidateWorkers` |
+| `maxRetryTimes` | required, no default | TaskDescriptor contract | Task Item score initialization | decimal text in `0..98` |
 
 ### taskId
 
@@ -111,6 +113,24 @@ TaskDescriptor.config["priority"]
 
 There must not be an independent second allocation-priority field in
 assignment-dispatch.
+
+### config["maxRetryTimes"]
+
+`maxRetryTimes` is the number of claims allowed after the first claim fails or
+expires. It is Task policy, not an ItemRecord field and not a score parameter
+accepted from append callers.
+
+Task Item runtime converts it to the internal ACTIVE suffix budget:
+
+```text
+initialClaimBudget = 1 + maxRetryTimes
+initialSuffix = encodeRemainingClaimBudget(initialClaimBudget)
+```
+
+The `0..98` range keeps the v0 total claim budget in `1..99`, matching the
+two-digit internal suffix coordinate. Callers never observe or construct that
+suffix. A different future score encoding may change the internal bound without
+changing Item append semantics.
 
 ### allocationRule
 
@@ -298,9 +318,13 @@ queryByScore
 task lifecycle mutation
 worker matching
 allocation result writes
-work-item append / claim
+TaskItem append / claim
 result mutation
 ```
+
+Task Item append resolves `maxRetryTimes` through an owner-local Task metadata
+read. It does not add `maxRetryTimes`, tag, timeSlot, or suffix to the append
+contract and does not turn `TaskResourceCatalog` into a general Task query API.
 
 ## Batch Allocation Read Path
 
@@ -459,6 +483,11 @@ and implements score-leased creation plus HASH batch loading.
 is the real-Redis proof for one-owner-per-slot creation, stale-owner rejection,
 redis-py pipeline compatibility, binary response decoding, and corrupt-row isolation.
 
+Current Python `TaskDescriptor` still validates the earlier three-key
+allocation-only config. `maxRetryTimes` and Task Item runtime are target contract
+additions in this document and are not executable-spec truth until the Task Item
+slice updates the descriptor, Redis round trip, and tests together.
+
 The first cut deliberately uses string-only config values. Supporting both JSON
 numbers and strings would add two representations for the same setting without
 adding mechanism value. A future configuration center may become the source of
@@ -477,12 +506,12 @@ TaskDescriptor and TaskResourceCatalog do not own:
 task score / score band
 task lifecycle enum or shell status
 approval execution
-task backlog / work hashes
+Task Item records / Item score
 worker descriptors or dynamic values
 worker score / lease
 matched worker ids
 task-to-worker allocation handoff
-work claim
+Item score claim
 deliver seed
 result finality
 trace / diagnostics

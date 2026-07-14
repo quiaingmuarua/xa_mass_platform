@@ -95,20 +95,20 @@ task or worker score:
 task descriptor / allocation metadata update
 worker system / static / dynamic attribute update
 task item append
-work / result / transport evidence write
+Item result / transport evidence write
 read projection / trace materialization
 ```
 
 Those writes may affect facts read by a later scheduling round, but they do not
 become score transitions and must not wait for score ownership. In particular,
-append owns backlog growth only. It does not make a task schedulable, refresh a
-task score, or emit a required wakeup.
+append owns canonical ItemRecord plus initial Item-score creation only. It does
+not make a Task schedulable, refresh Task score, or emit a required wakeup.
 
 Append acceptance is deliberately narrow:
 
 ```text
 append accepted
-  = backlog owner persisted one item
+  = Task Item owner persisted ItemRecord + initial ACTIVE Item score
 
 append accepted
   != task is live or schedulable
@@ -124,15 +124,15 @@ gate. Small observation delay is acceptable: a late item accepted after Task
 terminal is invalid residue, not a kernel lifecycle failure. Task score remains
 terminal and the item must not recreate scheduling visibility.
 
-Physical cleanup races are retention concerns. If terminal cleanup removes a
-backlog key and a delayed append recreates it, retention may use TTL, repeated
+Physical cleanup races are retention concerns. If terminal cleanup removes Item
+keys and a delayed append recreates them, retention may use TTL, repeated
 cleanup, generation-scoped keys, or an ingress tombstone. The kernel must not
-solve this by making every append read or lease task score.
+solve this by making every append read or lease Task score.
 
 ```text
 ingress owner decides append eligibility
-backlog owner guarantees accepted-item persistence only
-task score owns scheduling visibility
+Task Item owner guarantees accepted ItemRecord + Item-score persistence only
+Task score owns Task scheduling visibility
 dispatcher owns consumption opportunity
 retention owner removes terminal residue
 ```
@@ -168,7 +168,7 @@ The hard owner rule is:
 
 ```text
 resource owners write resource truth without a score lease
-backlog owners append work without score mutation
+Task Item owner appends ItemRecord + initial Item score without Task-score mutation
 scheduling owns routine acquirable-score evolution
 command owners own explicit lifecycle transitions only
 score never becomes a global mutation lock
@@ -184,8 +184,8 @@ The kernel must close its own loop without ordinary external events:
 task score-band recheck
 worker score-band acquire / admission
 assignment-dispatch bounded claim
-result-routing current hash compare
-retry / empty-running / timeout / repair
+result classification -> Task Item owner transition
+Item score lease expiry / retry-budget exhaustion
 terminal / policy closure
 ```
 
@@ -386,15 +386,21 @@ no hidden compatibility path or second mainline remains
     attribute allowlists.
 - [Task Resource Model](resource-model/task-resource-model.md)
   - v0 task allocation metadata, start conditions, allocation-rule routing,
-    and bounded task descriptor reads.
+    Item retry policy, and bounded task descriptor reads.
+- [Task Item Score-Band Scheduling](scheduling/task-item-score-band-scheduling.md)
+  - one canonical TaskItem from append through finality, with ItemRecord, ACTIVE
+    claim/retry, and monotonic result outcome movement; no second Work model.
 - [Assignment-Dispatch Scheduling](scheduling/assignment-dispatch-scheduling.md)
   - shared owner contract for two mandatory independent pacers.
 - [Task-Worker Allocation Pacer](scheduling/task-worker-allocation-pacer.md)
   - oldest-first allocation fairness, batch matching, activation, and candidate
     publication.
-- [Work Dispatch Pacer](scheduling/work-dispatch-pacer.md)
-  - newest-first candidate consumption, Worker short lease, Work claim, and
+- [Task Item Dispatch Pacer](scheduling/task-item-dispatch-pacer.md)
+  - newest-first candidate consumption, Worker short lease, Item score claim, and
     DeliverSeed creation without Task-score writes.
+- [Result-Routing Scheduling](scheduling/result-routing-scheduling.md)
+  - business result classification, Task Item transition invocation, routing
+    outcome mapping, and late-result retention.
 
 ## Boundary
 

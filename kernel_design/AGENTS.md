@@ -70,24 +70,26 @@ For task runtime or task score-band work:
 
 1. [resource-model/task-resource-model.md](resource-model/task-resource-model.md)
 2. [scheduling/task-score-band-scheduling.md](scheduling/task-score-band-scheduling.md)
-3. [py_example/kernel/task_runtime.py](py_example/kernel/task_runtime.py)
-4. [py_example/kernel/task_score_band.py](py_example/kernel/task_score_band.py)
-5. [py_example/runtime_redis/task_runtime.py](py_example/runtime_redis/task_runtime.py)
-6. [py_example/runtime_redis/task_score_band_zset.py](py_example/runtime_redis/task_score_band_zset.py)
-7. [py_example/tests/test_task_runtime_models.py](py_example/tests/test_task_runtime_models.py)
-8. [py_example/tests/test_redis_task_runtime.py](py_example/tests/test_redis_task_runtime.py)
-9. [py_example/tests/test_redis_task_runtime_integration.py](py_example/tests/test_redis_task_runtime_integration.py)
-10. [py_example/tests/test_redis_zset_task_score_band.py](py_example/tests/test_redis_zset_task_score_band.py)
+3. [scheduling/task-item-score-band-scheduling.md](scheduling/task-item-score-band-scheduling.md)
+4. [py_example/kernel/task_runtime.py](py_example/kernel/task_runtime.py)
+5. [py_example/kernel/task_score_band.py](py_example/kernel/task_score_band.py)
+6. [py_example/runtime_redis/task_runtime.py](py_example/runtime_redis/task_runtime.py)
+7. [py_example/runtime_redis/task_score_band_zset.py](py_example/runtime_redis/task_score_band_zset.py)
+8. [py_example/tests/test_task_runtime_models.py](py_example/tests/test_task_runtime_models.py)
+9. [py_example/tests/test_redis_task_runtime.py](py_example/tests/test_redis_task_runtime.py)
+10. [py_example/tests/test_redis_task_runtime_integration.py](py_example/tests/test_redis_task_runtime_integration.py)
+11. [py_example/tests/test_redis_zset_task_score_band.py](py_example/tests/test_redis_zset_task_score_band.py)
 
 For result or dispatch work:
 
 1. [resource-model/task-resource-model.md](resource-model/task-resource-model.md)
-2. [scheduling/assignment-dispatch-scheduling.md](scheduling/assignment-dispatch-scheduling.md)
-3. [scheduling/task-worker-allocation-pacer.md](scheduling/task-worker-allocation-pacer.md)
-4. [scheduling/work-dispatch-pacer.md](scheduling/work-dispatch-pacer.md)
-5. [py_example/kernel/task_worker_allocation.py](py_example/kernel/task_worker_allocation.py)
-6. [py_example/kernel/task_dispatch_runtime.py](py_example/kernel/task_dispatch_runtime.py)
-7. [scheduling/result-routing-scheduling.md](scheduling/result-routing-scheduling.md)
+2. [scheduling/task-item-score-band-scheduling.md](scheduling/task-item-score-band-scheduling.md)
+3. [scheduling/assignment-dispatch-scheduling.md](scheduling/assignment-dispatch-scheduling.md)
+4. [scheduling/task-worker-allocation-pacer.md](scheduling/task-worker-allocation-pacer.md)
+5. [scheduling/task-item-dispatch-pacer.md](scheduling/task-item-dispatch-pacer.md)
+6. [py_example/kernel/task_worker_allocation.py](py_example/kernel/task_worker_allocation.py)
+7. [py_example/kernel/task_dispatch_runtime.py](py_example/kernel/task_dispatch_runtime.py)
+8. [scheduling/result-routing-scheduling.md](scheduling/result-routing-scheduling.md)
 
 ## 2.1 Interface Change Gate
 
@@ -154,8 +156,25 @@ task score-state interpretation
 bounded task acquire / recheck primitives
 ```
 
-It does not own item append, work hash claim, worker selection, transport
-delivery, or result finality.
+It does not own Item append, Item score claim/retry/outcome movement, worker
+selection, transport delivery, or result finality classification.
+
+Task Item runtime / score-band owns:
+
+```text
+canonical per-Task Item records
+batch Item append with internal ACTIVE score initialization
+bounded ACTIVE Item acquire
+same-tag claim/retry stale fencing
+monotonic ACTIVE < FINAL_FAILED < FINAL_SUCCESS outcome movement
+```
+
+`TaskItem` is the only runtime unit from append through finality. Claiming it
+does not create a `Work` / `WorkItem` model, id, store, runtime, or owner.
+
+Item append callers provide `ItemRecord` values only. Task config owns
+`maxRetryTimes`; Task Item runtime converts it to internal suffix budget. Tag,
+timeSlot, suffix, score bounds, and initial score never cross the append API.
 
 Score is not a resource mutation lock. Task/worker metadata writes, dynamic
 attribute writes, item append, result/evidence writes, projections, and trace
@@ -196,7 +215,7 @@ Assignment-dispatch owns:
 one scheduling-round composition
 candidate ranking after worker-runtime matching
 short assignment plan evidence
-work hash claim timing
+Item score claim timing
 deliver seed creation
 ```
 
@@ -206,13 +225,16 @@ or transport session internals.
 Result-routing owns:
 
 ```text
-current work hash compare
-finality / retry / duplicate / stale / unresolved classification
+retryable / final-failure / final-success business classification
+opaque claimScore pass-through to Task Item runtime
+Task Item transition-result mapping to routing outcomes
+late-success retention barrier and result projection
 owner-specific handoffs after result acceptance
 ```
 
-It must not select workers, parse transport sessions as truth, or refresh task
-or worker score as a generic side effect.
+It must not interpret current Item score, reproduce same-tag/cross-tag rules,
+select workers, parse transport sessions as truth, or refresh task or worker
+score as a generic side effect.
 
 ## 4. Worker-Runtime Boundary Rules
 
@@ -289,7 +311,7 @@ RECOVERY_RECHECK path
 dirty stale behavior
 ```
 
-Task-runtime proof should stop at task score/backlog/result owner behavior
+Task-runtime proof should stop at Task score, Task Item, and result-owner behavior
 unless a separate plan explicitly crosses into worker-runtime or transport.
 
 Fast Python validation:
@@ -328,9 +350,11 @@ python -m unittest \
 - Do not put transport identifiers into scheduling candidate truth.
 - Do not make score-band a read model, storage blob, or lifecycle facade.
 - Do not require a score read, lease, or rewrite before resource metadata,
-  dynamic attribute, backlog append, result/evidence, projection, or trace
+  dynamic attribute, Item append, result/evidence, projection, or trace
   mutation.
-- Treat append success as accepted backlog persistence only. Do not infer that
+- The default server/SDK ingress calls `TaskItemRuntime.append_items` directly;
+  do not require a server backlog, outbox, broker, or periodic materializer.
+- Treat append success as canonical Item acceptance only. Do not infer that
   the Task is live, schedulable, guaranteed to consume the item, or required to
   reopen. Ingress owns append eligibility; retention owns terminal residue.
 - Do not make kernel append compensate for stale server intake decisions. A
@@ -343,7 +367,8 @@ python -m unittest \
   cadence/budget rewrites; command handlers are limited to explicit lifecycle
   transitions.
 - Do not make worker score own task demand, task backlog, or final result.
-- Do not make task score own work hash claim, retry frames, or result finality.
+- Do not make Task score own Item score claim/retry/outcome movement or result
+  finality classification.
 - Do not introduce a second hot-path candidate index without naming its owner,
   lifecycle, update discipline, and deletion path.
 - Do not treat `runtime-redis/*shape.md` as public API unless a current
