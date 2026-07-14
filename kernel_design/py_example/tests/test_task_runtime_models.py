@@ -105,8 +105,6 @@ class TaskRuntimeModelTest(unittest.TestCase):
         self.assertEqual(
             {
                 "appended",
-                "duplicate_rejected",
-                "conflict",
                 "retryable",
                 "not_found",
                 "invalid",

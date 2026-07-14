@@ -9,9 +9,13 @@ import kernel_design.py_example as py_example
 from kernel_design.py_example import (
     RedisTaskResourceCatalog,
     RedisTaskRuntime,
+    RedisZsetTaskItemScoreBandCore,
     RedisZsetTaskScoreBandCore,
     TaskCreationStatus,
     TaskDescriptor,
+    TaskItem,
+    TaskItemAppendStatus,
+    TaskItemScoreBand,
     TaskScoreBand,
     TaskScoreTransitionResult,
     TaskScoreTransitionStatus,
@@ -21,7 +25,7 @@ from kernel_design.py_example import (
 class FakePipeline:
     def __init__(self, redis_client: FakeRedis) -> None:
         self.redis = redis_client
-        self.commands: list[tuple[str, tuple[str, ...]]] = []
+        self.commands: list[tuple[str, str, tuple[object, ...]]] = []
 
     def __enter__(self) -> FakePipeline:
         return self
@@ -30,21 +34,42 @@ class FakePipeline:
         return False
 
     def zscore(self, name: str, member: str) -> FakePipeline:
-        self.commands.append((name, (member,)))
+        self.commands.append(("zscore", name, (member,)))
         return self
 
     def hmget(self, name: str, keys: Sequence[str]) -> FakePipeline:
-        self.commands.append((name, tuple(keys)))
+        self.commands.append(("hmget", name, tuple(keys)))
+        return self
+
+    def zadd(
+        self,
+        name: str,
+        mapping: dict[str, int],
+        *,
+        nx: bool = False,
+    ) -> FakePipeline:
+        self.commands.append(("zadd", name, (mapping, nx)))
         return self
 
     def execute(self) -> list[object]:
         self.redis.pipeline_executions.append(tuple(self.commands))
-        return [
-            self.redis.zscore(name, fields[0])
-            if len(fields) == 1 and name in self.redis.zsets
-            else self.redis.hmget(name, fields)
-            for name, fields in self.commands
-        ]
+        results: list[object] = []
+        for command, name, args in self.commands:
+            if command == "zscore":
+                results.append(self.redis.zscore(name, str(args[0])))
+            elif command == "hmget":
+                results.append(self.redis.hmget(name, args))
+            elif command == "zadd":
+                results.append(
+                    self.redis.zadd(
+                        name,
+                        args[0],
+                        nx=bool(args[1]),
+                    )
+                )
+            else:
+                raise ValueError(f"unsupported fake pipeline command: {command}")
+        return results
 
 
 class FakeRedis:
@@ -53,7 +78,7 @@ class FakeRedis:
         self.zsets: dict[str, dict[str, int]] = {}
         self.now_millis = 100_000
         self.pipeline_transaction_flags: list[bool] = []
-        self.pipeline_executions: list[tuple[tuple[str, tuple[str, ...]], ...]] = []
+        self.pipeline_executions: list[tuple[tuple[str, str, tuple[object, ...]], ...]] = []
 
     def exists(self, key: str) -> int:
         return int(key in self.hashes)
@@ -65,6 +90,9 @@ class FakeRedis:
     def hmget(self, name: str, keys: Sequence[str]) -> list[str | None]:
         row = self.hashes.get(name, {})
         return [row.get(key) for key in keys]
+
+    def hget(self, name: str, key: str) -> str | None:
+        return self.hashes.get(name, {}).get(key)
 
     def hset(self, name: str, *, mapping: dict[str, object]) -> int:
         row = self.hashes.setdefault(name, {})
@@ -122,9 +150,14 @@ class RedisTaskRuntimeTest(unittest.TestCase):
             self.redis,
             score_key="tr:test:task:score",
         )
+        self.item_score_band = RedisZsetTaskItemScoreBandCore(
+            self.redis,
+            prefix="test",
+        )
         self.runtime = RedisTaskRuntime(
             self.redis,
             self.score_band,
+            self.item_score_band,
             prefix="test",
         )
         self.catalog = RedisTaskResourceCatalog(self.redis, prefix="test")
@@ -379,6 +412,146 @@ class RedisTaskRuntimeTest(unittest.TestCase):
         )
 
         self.assertEqual({"task-1": task_1, "task-2": None}, rows)
+
+    def test_append_overwrites_latest_item_record_and_initializes_score_once(
+        self,
+    ) -> None:
+        self.runtime.create_task(
+            descriptor=self.descriptor("task-1"),
+            suffix=self.SUFFIX,
+        )
+        first = TaskItem(
+            message_id="message-1",
+            event_code="image.resize",
+            created_at_millis=90_000,
+            payload={"source": "first"},
+            priority=8,
+        )
+        latest = TaskItem(
+            message_id="message-1",
+            event_code="image.resize",
+            created_at_millis=91_000,
+            payload={"source": "latest"},
+            priority=9,
+        )
+
+        first_result = self.runtime.append_items(
+            task_id="task-1",
+            items=[first],
+        )
+        first_score = self.redis.zscore(
+            "tr:test:task:task-1:item-score",
+            "message-1",
+        )
+        latest_result = self.runtime.append_items(
+            task_id="task-1",
+            items=[latest],
+        )
+        loaded = self.runtime.load_task_items(
+            task_id="task-1",
+            message_ids=["message-1"],
+        )["message-1"]
+
+        self.assertEqual(TaskItemAppendStatus.APPENDED, first_result["message-1"].status)
+        self.assertEqual(TaskItemAppendStatus.APPENDED, latest_result["message-1"].status)
+        self.assertEqual(first_score, self.redis.zscore(
+            "tr:test:task:task-1:item-score",
+            "message-1",
+        ))
+        self.assertEqual({"source": "latest"}, loaded.payload)
+        self.assertEqual(
+            latest.created_at_millis + self.runtime.DEFAULT_ITEM_TTL_MILLIS,
+            loaded.expire_at_millis,
+        )
+
+    def test_append_batch_initializes_retry_budget_and_loads_missing_as_none(
+        self,
+    ) -> None:
+        self.runtime.create_task(
+            descriptor=self.descriptor("task-1"),
+            suffix=self.SUFFIX,
+        )
+        payload_item = TaskItem(
+            message_id="message-1",
+            event_code="image.resize",
+            created_at_millis=90_000,
+            payload={"source": "s3://input"},
+        )
+        ref_item = TaskItem(
+            message_id="message-2",
+            event_code="image.resize",
+            created_at_millis=90_000,
+            payload_ref="item://payload-2",
+            expire_at_millis=120_000,
+        )
+
+        results = self.runtime.append_items(
+            task_id="task-1",
+            items=[payload_item, ref_item],
+        )
+        loaded = self.runtime.load_task_items(
+            task_id="task-1",
+            message_ids=["message-2", "missing", "message-1", "message-1"],
+        )
+        states = self.item_score_band.get_item_score_states(
+            task_id="task-1",
+            message_ids=["message-1", "message-2"],
+        )
+
+        self.assertTrue(
+            all(result.status is TaskItemAppendStatus.APPENDED for result in results.values())
+        )
+        self.assertEqual(["message-2", "missing", "message-1"], list(loaded))
+        self.assertIsNone(loaded["missing"])
+        self.assertEqual("item://payload-2", loaded["message-2"].payload_ref)
+        self.assertTrue(all(state.band is TaskItemScoreBand.ACTIVE for state in states.values()))
+        self.assertTrue(all(state.remaining_budget == 4 for state in states.values()))
+
+    def test_append_missing_task_does_not_write_item_or_score(self) -> None:
+        result = self.runtime.append_items(
+            task_id="missing",
+            items=[
+                TaskItem(
+                    message_id="message-1",
+                    event_code="event",
+                    created_at_millis=1_000,
+                    payload={},
+                )
+            ],
+        )
+
+        self.assertEqual(TaskItemAppendStatus.NOT_FOUND, result["message-1"].status)
+        self.assertNotIn("tr:test:task:missing:items", self.redis.hashes)
+        self.assertNotIn("tr:test:task:missing:item-score", self.redis.zsets)
+
+    def test_append_score_failure_leaves_latest_record_for_retry(self) -> None:
+        self.runtime.create_task(
+            descriptor=self.descriptor("task-1"),
+            suffix=self.SUFFIX,
+        )
+        item = TaskItem(
+            message_id="message-1",
+            event_code="event",
+            created_at_millis=90_000,
+            payload={"value": 1},
+        )
+
+        with patch.object(
+            self.item_score_band,
+            "initialize_item_scores",
+            side_effect=RuntimeError("score unavailable"),
+        ):
+            failed = self.runtime.append_items(task_id="task-1", items=[item])
+        retried = self.runtime.append_items(task_id="task-1", items=[item])
+
+        self.assertEqual(TaskItemAppendStatus.RETRYABLE, failed["message-1"].status)
+        self.assertEqual(TaskItemAppendStatus.APPENDED, retried["message-1"].status)
+        self.assertIsNotNone(
+            self.runtime.load_task_items(
+                task_id="task-1",
+                message_ids=["message-1"],
+            )["message-1"]
+        )
 
     def test_exports_and_read_only_catalog_surface(self) -> None:
         self.assertIs(py_example.RedisTaskRuntime, RedisTaskRuntime)

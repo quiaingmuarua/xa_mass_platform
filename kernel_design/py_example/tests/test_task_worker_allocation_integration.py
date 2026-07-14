@@ -17,6 +17,7 @@ from kernel_design.py_example import (
     RedisWorkerDynamicAttributeRuntime,
     RedisWorkerResourceCatalog,
     RedisWorkerRuntime,
+    RedisZsetTaskItemScoreBandCore,
     RedisZsetTaskScoreBandCore,
     RedisZsetWorkerScoreCore,
     TaskCreationStatus,
@@ -66,9 +67,14 @@ class AssignmentDispatchIntegrationTest(unittest.TestCase):
             self.redis,
             score_key=self.task_score_key,
         )
+        self.task_item_score = RedisZsetTaskItemScoreBandCore(
+            self.redis,
+            prefix=self.prefix,
+        )
         self.task_runtime = RedisTaskRuntime(
             self.redis,
             self.task_score,
+            self.task_item_score,
             prefix=self.prefix,
         )
         self.task_catalog = RedisTaskResourceCatalog(

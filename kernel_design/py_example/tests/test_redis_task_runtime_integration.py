@@ -14,9 +14,13 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
 from kernel_design.py_example import (
     RedisTaskResourceCatalog,
     RedisTaskRuntime,
+    RedisZsetTaskItemScoreBandCore,
     RedisZsetTaskScoreBandCore,
     TaskCreationStatus,
     TaskDescriptor,
+    TaskItem,
+    TaskItemAppendStatus,
+    TaskItemScoreBand,
     TaskScoreTransitionStatus,
 )
 
@@ -48,9 +52,14 @@ class RedisTaskRuntimeIntegrationTest(unittest.TestCase):
             self.redis,
             score_key=self.score_key,
         )
+        self.item_score_band = RedisZsetTaskItemScoreBandCore(
+            self.redis,
+            prefix=self.prefix,
+        )
         self.runtime = RedisTaskRuntime(
             self.redis,
             self.score_band,
+            self.item_score_band,
             prefix=self.prefix,
             lease_duration_millis=200,
         )
@@ -60,6 +69,8 @@ class RedisTaskRuntimeIntegrationTest(unittest.TestCase):
     def tearDown(self) -> None:
         keys = [self.score_key]
         keys.extend(self._task_key(task_id) for task_id in self.task_ids)
+        keys.extend(self._items_key(task_id) for task_id in self.task_ids)
+        keys.extend(self._item_score_key(task_id) for task_id in self.task_ids)
         self.redis.delete(*keys)
 
     @staticmethod
@@ -82,6 +93,12 @@ class RedisTaskRuntimeIntegrationTest(unittest.TestCase):
 
     def _task_key(self, task_id: str) -> str:
         return f"tc:{self.prefix}:task:{task_id}"
+
+    def _items_key(self, task_id: str) -> str:
+        return f"tr:{self.prefix}:task:{task_id}:items"
+
+    def _item_score_key(self, task_id: str) -> str:
+        return f"tr:{self.prefix}:task:{task_id}:item-score"
 
     def test_real_redis_allows_only_one_creation_owner_per_slot(self) -> None:
         task_id = "task-atomic"
@@ -167,6 +184,55 @@ class RedisTaskRuntimeIntegrationTest(unittest.TestCase):
         )
 
         self.assertEqual(rows, {first.task_id: first, second.task_id: None})
+
+    def test_real_redis_append_overwrites_record_without_reinitializing_score(
+        self,
+    ) -> None:
+        task_id = "task-items"
+        self.task_ids.add(task_id)
+        self.runtime.create_task(
+            descriptor=self.descriptor(task_id),
+            suffix=self.SUFFIX,
+        )
+        first = TaskItem(
+            message_id="message-1",
+            event_code="image.resize",
+            created_at_millis=int(time.time() * 1_000),
+            payload={"source": "first"},
+        )
+        latest = TaskItem(
+            message_id="message-1",
+            event_code="image.resize.v2",
+            created_at_millis=first.created_at_millis + 100,
+            payload={"source": "latest"},
+            expire_at_millis=first.created_at_millis + 60_000,
+        )
+
+        first_result = self.runtime.append_items(task_id=task_id, items=[first])
+        first_score = self.redis.zscore(
+            self._item_score_key(task_id),
+            first.message_id,
+        )
+        latest_result = self.runtime.append_items(task_id=task_id, items=[latest])
+        loaded = self.runtime.load_task_items(
+            task_id=task_id,
+            message_ids=[first.message_id, "missing"],
+        )
+        state = self.item_score_band.get_item_score_states(
+            task_id=task_id,
+            message_ids=[first.message_id],
+        )[first.message_id]
+
+        self.assertEqual(TaskItemAppendStatus.APPENDED, first_result[first.message_id].status)
+        self.assertEqual(TaskItemAppendStatus.APPENDED, latest_result[first.message_id].status)
+        self.assertEqual(
+            first_score,
+            self.redis.zscore(self._item_score_key(task_id), first.message_id),
+        )
+        self.assertEqual(latest, loaded[first.message_id])
+        self.assertIsNone(loaded["missing"])
+        self.assertEqual(TaskItemScoreBand.ACTIVE, state.band)
+        self.assertEqual(4, state.remaining_budget)
 
 
 if __name__ == "__main__":

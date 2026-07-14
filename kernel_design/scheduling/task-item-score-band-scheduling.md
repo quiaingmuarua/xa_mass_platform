@@ -103,10 +103,14 @@ TaskItem
 `messageId` is unique inside one Task. `eventCode` selects the worker-local
 handler after Worker selection and does not participate in matching. Exactly one
 of `payload` and `payloadRef` is required. `priority` is an integer
-from `0` through `10`; `5` is the canonical default. `createdAtMillis` is the
-immutable intake timestamp. An omitted `expireAtMillis` is materialized as
+from `0` through `10`; `5` is the canonical default. An omitted `expireAtMillis` is materialized as
 `createdAtMillis + defaultItemTtlMillis`; the v0 runtime default is 365 days and
 is configurable owner policy, not score encoding.
+
+Only `(taskId, messageId)` is stable Item identity. The HASH value is the
+latest-write TaskItem record for that identity. Re-appending the same
+`messageId` may replace payload, event code, priority, creation time, expiry, or
+payload reference without creating a second scheduling identity.
 
 Item `priority` is distinct from `TaskDescriptor.config["priority"]`. Task
 priority orders Tasks competing for Workers; Item priority places newly appended
@@ -302,16 +306,18 @@ ordering override after the item has entered normal scheduling.
 First policy:
 
 ```text
-thresholdTimeMillis = floorMillis
-thresholdSlot = floor(thresholdTimeMillis / SLOT_MILLIS)
-nowSlot = floor(nowMillis / SLOT_MILLIS)
-initialSlot = max(thresholdSlot, nowSlot - priorityBoostSlots(priority))
+priorityStepMillis = 100
+initialDueMillis = max(
+  0,
+  createdAtMillis - (10 - priority) * priorityStepMillis
+)
 initialClaimBudget = 1 + TaskDescriptor.config["maxRetryTimes"]
 initialSuffix = encodeRemainingClaimBudget(initialClaimBudget)
 ```
 
-Higher priority maps closer to `nowSlot`. No priority or lowest priority maps
-closer to `thresholdSlot`.
+Higher priority maps closer to `createdAtMillis`; lower priority starts farther
+back in the initial due range. This placement is used only when `messageId` is
+first inserted into ItemScore.
 
 After the first claim, ordinary same-tag rewrites place the item at future
 `timeSlot` coordinates such as claim lease expiry or retry due time. Initial
@@ -389,7 +395,7 @@ For each Item independently:
 TaskRuntime
   validate messageId / eventCode and payload XOR payloadRef
   materialize priority / expiry defaults
-  HSETNX task:{taskId}:items messageId TaskItem
+  HSET task:{taskId}:items messageId latestTaskItem
 
 TaskItemScoreBandCore
   convert initialDueMillis to timeSlot
@@ -399,43 +405,31 @@ TaskItemScoreBandCore
 
 Neither owner writes the other's key or reconstructs its encoding. A bounded
 batch is an API/pipeline optimization, not an all-or-nothing transaction across
-Items. Append returns `APPENDED` only after both the TaskItem record and initial
-Item score are confirmed.
+Items. HASH write is latest-write-wins. ItemScore initialization is `ZADD NX`:
+an existing scheduling identity keeps its current band, time, and budget.
 
 The record-first composition uses only owner results:
 
 ```text
-TaskRuntime HSETNX succeeds
+TaskRuntime HSET succeeds
   -> invoke TaskItemScoreBandCore.initialize_item_scores
   -> TRANSITIONED: return APPENDED
+  -> NOOP: return APPENDED; latest record is stored and existing score is unchanged
   -> retryable infrastructure failure: return RETRYABLE
-  -> NOOP / STALE / INVALID: append is not newly accepted
-
-TaskRuntime finds an existing exact-equal TaskItem
-  -> may invoke initialization to complete a prior record-only partial write
-  -> TRANSITIONED: return APPENDED
-  -> NOOP: return DUPLICATE_REJECTED
-
-TaskRuntime finds different content for the same messageId
-  -> return CONFLICT
+  -> INVALID: return INVALID
 ```
 
-A failure before both sides are confirmed returns `RETRYABLE`, not accepted.
-No periodic repair scanner is required: an exact append retry may complete the
-record-present / score-absent state. This composition does not make TaskRuntime
-the Item score owner. TaskRuntime observes only initialization operation status;
-it does not read or decode the stored Item score.
+A score failure after HSET leaves a record-only state. Repeating append writes
+the latest record again and retries `ZADD NX`; no repair scanner is required.
+Repeated `messageId` values inside one input batch collapse to the last record
+value before HSET. TaskRuntime observes only initialization status and never
+reads, decodes, or rewrites an existing ItemScore.
 
-Duplicate `messageId` values inside one input batch are invalid before Redis
-execution. A previously stored duplicate is rejected per Item:
-
-```text
-DUPLICATE_REJECTED
-```
-
-The kernel does not reinterpret duplicate append as caller idempotency. A caller
-that needs a different duplicate contract must own that key space or add an
-explicit higher-level idempotency decision.
+Replacing a record does not reset scheduling. Updated priority or creation time
+does not reorder an existing ItemScore; updated payload, event code, or expiry
+is visible to later bounded loads. An already-issued delivery may still carry
+an older record, and its result still converges the same `messageId`. The kernel
+has no payload generation or attempt identity beneath `messageId`.
 
 ## Claim
 
@@ -615,8 +609,10 @@ that buffer. If the caller acknowledges before canonical append, the caller owns
 durable replay until `append_items` succeeds.
 
 ```text
-accepted after HASH + ZSET write
-  TaskRuntime has confirmed TaskItem persistence and ItemScore initialization
+accepted after HASH write + ItemScore initialization call
+  TaskRuntime stored the latest TaskItem record
+  TaskItemScoreBandCore initialized the score or returned NX no-op for the
+  existing messageId identity
 ```
 
 Do not introduce a server backlog merely as a precaution, and do not let an

@@ -484,10 +484,10 @@ kernel_design/py_example/
   tests/
 ```
 
-It currently proves the Task, TaskItem, and Worker score axes, TaskItem DTO
-contracts, resource catalogs, bounded Worker matching, Redis candidate handoff,
-and the first Task-Worker allocation pacer. `TaskItemDispatchPacer`, TaskItem
-record persistence, and result routing are still executable-spec gaps. An
+It currently proves the Task, TaskItem, and Worker score axes, TaskItem DTO and
+latest-write Redis record persistence, resource catalogs, bounded Worker
+matching, Redis candidate handoff, and the first Task-Worker allocation pacer.
+`TaskItemDispatchPacer` and result routing are still executable-spec gaps. An
 in-memory runtime is not a prerequisite or a parallel mainline.
 
 ## Extension Scope

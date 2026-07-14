@@ -486,8 +486,8 @@ Item-score interface lives in
 [`py_example/kernel/task_item_score_band.py`](../py_example/kernel/task_item_score_band.py).
 The Redis Task implementation lives in
 [`py_example/runtime_redis/task_runtime.py`](../py_example/runtime_redis/task_runtime.py)
-and currently implements score-leased Task creation plus descriptor HASH batch
-loading; TaskItem append/read methods remain explicit unimplemented stubs.
+and implements score-leased Task creation, descriptor HASH batch loading,
+latest-write TaskItem HASH append, and bounded TaskItem record reads.
 [`py_example/tests/test_redis_task_runtime_integration.py`](../py_example/tests/test_redis_task_runtime_integration.py)
 is the real-Redis proof for one-owner-per-slot creation, stale-owner rejection,
 redis-py pipeline compatibility, binary response decoding, and corrupt-row isolation.
@@ -496,8 +496,9 @@ Current Python `TaskDescriptor` validates all four required config keys includin
 `maxRetryTimes`. TaskItem DTOs and `TaskItemScoreBandCore` are executable interface
 contracts with model tests. The Redis Item-score owner is implemented in
 [`py_example/runtime_redis/task_item_score_band_zset.py`](../py_example/runtime_redis/task_item_score_band_zset.py)
-with Fake and real-Redis proofs. Redis TaskItem record persistence remains an
-implementation gap and must not be inferred from the score implementation.
+with Fake and real-Redis proofs. Redis TaskItem records are written separately
+by `TaskRuntime`: HSET replaces the latest record for `messageId`, while ItemScore
+initialization remains `ZADD NX` and never resets an existing scheduling identity.
 
 The first cut deliberately uses string-only config values. Supporting both JSON
 numbers and strings would add two representations for the same setting without

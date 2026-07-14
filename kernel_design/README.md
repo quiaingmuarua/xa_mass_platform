@@ -109,8 +109,9 @@ Append acceptance is deliberately narrow:
 
 ```text
 append accepted
-  = TaskRuntime confirmed TaskItem persistence
-  + TaskItemScoreBandCore confirmed initial ACTIVE Item score
+  = TaskRuntime stored the latest TaskItem record
+  + TaskItemScoreBandCore initialized ACTIVE Item score or confirmed that the
+    messageId scheduling identity already exists
 
 append accepted
   != task is live or schedulable

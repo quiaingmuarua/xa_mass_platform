@@ -54,8 +54,6 @@ class TaskItem:
 
 class TaskItemAppendStatus(Enum):
     APPENDED = "appended"
-    DUPLICATE_REJECTED = "duplicate_rejected"
-    CONFLICT = "conflict"
     RETRYABLE = "retryable"
     NOT_FOUND = "not_found"
     INVALID = "invalid"
@@ -159,7 +157,7 @@ class TaskRuntime(ABC):
         task_id: TaskId,
         items: Sequence[TaskItem],
     ) -> Mapping[MessageId, TaskItemAppendResult]:
-        """Persist one bounded TaskItem batch and coordinate score initialization."""
+        """Store the latest records and initialize missing Item scores."""
         pass
 
     @abstractmethod
