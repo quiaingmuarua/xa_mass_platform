@@ -7,7 +7,7 @@ from kernel_design.executable_spec import (
     CandidateWorkerEntry,
     DeliverSeed,
     RedisAssignmentDispatchRuntime,
-    TaskItem,
+    RedisDeliverSeedRuntime,
 )
 
 
@@ -43,13 +43,22 @@ class FakeRedis:
         return len(expired)
 
     def pipeline(self, *, transaction: bool) -> FakePipeline:
-        assert transaction is False
-        return FakePipeline(self)
+        return FakePipeline(self, transaction=transaction)
 
     def rpush(self, key: str, *values: str) -> int:
         row = self.lists.setdefault(key, [])
         row.extend(values)
         return len(row)
+
+    def lpop(self, key: str, count: int | None = None):
+        row = self.lists.get(key, [])
+        if not row:
+            return None
+        if count is None:
+            return row.pop(0)
+        values = row[:count]
+        del row[:count]
+        return values
 
     def eval(
         self,
@@ -75,8 +84,9 @@ class FakeRedis:
 
 
 class FakePipeline:
-    def __init__(self, redis: FakeRedis) -> None:
+    def __init__(self, redis: FakeRedis, *, transaction: bool) -> None:
         self.redis = redis
+        self.transaction = transaction
         self.commands: list[tuple[str, tuple[object, ...]]] = []
 
     def __enter__(self) -> FakePipeline:
@@ -107,6 +117,10 @@ class FakePipeline:
         self.commands.append(("zcount", (key, minimum, maximum)))
         return self
 
+    def lpop(self, key: str) -> FakePipeline:
+        self.commands.append(("lpop", (key,)))
+        return self
+
     def execute(self) -> list[object]:
         return [
             getattr(self.redis, method)(*args)
@@ -121,42 +135,93 @@ class RedisAssignmentDispatchRuntimeTest(unittest.TestCase):
             self.redis,
             prefix="test",
         )
+        self.deliver_seed_runtime = RedisDeliverSeedRuntime(
+            self.redis,
+            prefix="test",
+        )
         self.key = "ad:test:task:task-1:candidate-workers"
+
+    def test_candidate_and_deliver_seed_owners_are_separate(self) -> None:
+        self.assertFalse(hasattr(self.runtime, "append_deliver_seeds"))
+        self.assertFalse(
+            hasattr(self.deliver_seed_runtime, "append_candidate_workers")
+        )
 
     def test_append_deliver_seeds_writes_endpoint_manager_list(self) -> None:
         seed = DeliverSeed(
-            task_id="task-1",
-            selected_worker_id="worker-1",
-            worker_group_id="image-workers",
-            endpoint_manager_id="endpoint-manager-1",
-            task_item=TaskItem(
-                message_id="message-1",
-                event_code="image.resize",
-                created_at_millis=90_000,
-                payload={"source": "s3://input"},
-            ),
-            claim_score=123,
-            worker_lease_score=456,
+            worker_id="worker-1",
+            opaque_delivery_item='{"eventCode":"image.resize"}',
+            opaque_result_context='{"taskId":"task-1"}',
+            task_item_claim_until_millis=103_000,
         )
 
-        self.runtime.append_deliver_seeds(
+        self.deliver_seed_runtime.append_deliver_seeds(
             endpoint_manager_id="endpoint-manager-1",
             deliver_seeds=(seed,),
         )
 
         key = "ad:test:endpoint-manager:endpoint-manager-1:deliver-seeds"
         payload = json.loads(self.redis.lists[key][0])
-        self.assertEqual("task-1", payload["taskId"])
-        self.assertEqual("worker-1", payload["selectedWorkerId"])
-        self.assertEqual("message-1", payload["taskItem"]["messageId"])
-        self.assertEqual({"source": "s3://input"}, payload["taskItem"]["payload"])
-        self.assertEqual(123, payload["claimScore"])
-        self.assertEqual(456, payload["workerLeaseScore"])
+        self.assertEqual(
+            {
+                "workerId": "worker-1",
+                "opaqueDeliveryItem": '{"eventCode":"image.resize"}',
+                "opaqueResultContext": '{"taskId":"task-1"}',
+                "taskItemClaimUntilMillis": 103_000,
+            },
+            payload,
+        )
+        self.assertTrue(
+            {
+                "taskId",
+                "selectedWorkerId",
+                "workerGroupId",
+                "endpointManagerId",
+                "taskItem",
+                "claimScore",
+                "workerLeaseScore",
+            }.isdisjoint(payload)
+        )
+
+    def test_consume_deliver_seeds_atomically_pops_one_endpoint_queue(self) -> None:
+        first = self._deliver_seed("message-1", "worker-1")
+        second = self._deliver_seed("message-2", "worker-2")
+        self.deliver_seed_runtime.append_deliver_seeds(
+            endpoint_manager_id="endpoint-manager-1",
+            deliver_seeds=(first, second),
+        )
+
+        self.assertEqual(
+            (first,),
+            self.deliver_seed_runtime.consume_deliver_seeds(
+                endpoint_manager_id="endpoint-manager-1",
+                limit=1,
+            ),
+        )
+        self.assertEqual(
+            (second,),
+            self.deliver_seed_runtime.consume_deliver_seeds(
+                endpoint_manager_id="endpoint-manager-1",
+                limit=10,
+            ),
+        )
+        self.assertEqual(
+            (),
+            self.deliver_seed_runtime.consume_deliver_seeds(
+                endpoint_manager_id="endpoint-manager-1",
+                limit=10,
+            ),
+        )
 
         with self.assertRaises(ValueError):
-            self.runtime.append_deliver_seeds(
-                endpoint_manager_id="other-endpoint-manager",
-                deliver_seeds=(seed,),
+            self.deliver_seed_runtime.consume_deliver_seeds(
+                endpoint_manager_id="",
+                limit=1,
+            )
+        with self.assertRaises(ValueError):
+            self.deliver_seed_runtime.consume_deliver_seeds(
+                endpoint_manager_id="endpoint-manager-1",
+                limit=0,
             )
 
     def test_append_stores_batch_expiry_as_zset_score(self) -> None:
@@ -319,6 +384,23 @@ class RedisAssignmentDispatchRuntimeTest(unittest.TestCase):
             worker_group_id="image-workers",
             endpoint_manager_id="endpoint-manager-1",
             worker_lease_score=worker_lease_score,
+        )
+
+    @staticmethod
+    def _deliver_seed(message_id: str, worker_id: str) -> DeliverSeed:
+        return DeliverSeed(
+            worker_id=worker_id,
+            opaque_delivery_item=json.dumps(
+                {"messageId": message_id},
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+            opaque_result_context=json.dumps(
+                {"taskId": "task-1", "messageId": message_id},
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+            task_item_claim_until_millis=103_000,
         )
 
 

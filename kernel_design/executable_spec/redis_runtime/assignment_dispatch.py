@@ -8,6 +8,7 @@ from ..assignment_dispatch.runtime import (
     AssignmentDispatchRuntime,
     CandidateWorkerEntry,
     DeliverSeed,
+    DeliverSeedRuntime,
 )
 from ..kernel.task_score_band import TaskId, TimeMillis
 from ..kernel.worker_runtime import EndpointManagerId
@@ -29,7 +30,7 @@ return entries
 
 
 class RedisAssignmentDispatchRuntime(AssignmentDispatchRuntime):
-    """Redis-backed assignment-to-dispatch intermediate runtime."""
+    """Redis-backed Task-local candidate Worker runtime."""
 
     def __init__(
         self,
@@ -124,37 +125,8 @@ class RedisAssignmentDispatchRuntime(AssignmentDispatchRuntime):
                 entries.append(entry)
         return tuple(entries)
 
-    def append_deliver_seeds(
-        self,
-        *,
-        endpoint_manager_id: EndpointManagerId,
-        deliver_seeds: Sequence[DeliverSeed],
-    ) -> None:
-        if not endpoint_manager_id:
-            raise ValueError("endpoint manager id must be non-empty")
-        if not deliver_seeds:
-            return
-        if any(
-            seed.endpoint_manager_id != endpoint_manager_id
-            for seed in deliver_seeds
-        ):
-            raise ValueError("deliver seed endpoint manager must match queue partition")
-
-        encoded_seeds = tuple(
-            self._encode_deliver_seed(seed) for seed in deliver_seeds
-        )
-        self.redis.rpush(
-            self._deliver_seed_key(endpoint_manager_id),
-            *encoded_seeds,
-        )
-
     def _candidate_key(self, task_id: TaskId) -> str:
         return f"ad:{self.prefix}:task:{task_id}:candidate-workers"
-
-    def _deliver_seed_key(self, endpoint_manager_id: EndpointManagerId) -> str:
-        return (
-            f"ad:{self.prefix}:endpoint-manager:{endpoint_manager_id}:deliver-seeds"
-        )
 
     def _current_time_millis(self) -> TimeMillis:
         seconds, microseconds = self.redis.time()
@@ -210,29 +182,81 @@ class RedisAssignmentDispatchRuntime(AssignmentDispatchRuntime):
         )
 
     @staticmethod
+    def _validate_task_id(task_id: TaskId) -> None:
+        if not task_id:
+            raise ValueError("task id must be non-empty")
+
+
+class RedisDeliverSeedRuntime(DeliverSeedRuntime):
+    """Redis-backed endpoint-manager DeliverSeed queue runtime."""
+
+    def __init__(
+        self,
+        redis_client: Any,
+        *,
+        prefix: str = "default",
+    ) -> None:
+        if not prefix:
+            raise ValueError("prefix must be non-empty")
+        self.redis = redis_client
+        self.prefix = prefix
+
+    def append_deliver_seeds(
+        self,
+        *,
+        endpoint_manager_id: EndpointManagerId,
+        deliver_seeds: Sequence[DeliverSeed],
+    ) -> None:
+        if not endpoint_manager_id:
+            raise ValueError("endpoint manager id must be non-empty")
+        if not deliver_seeds:
+            return
+        encoded_seeds = tuple(
+            self._encode_deliver_seed(seed) for seed in deliver_seeds
+        )
+        self.redis.rpush(
+            self._deliver_seed_key(endpoint_manager_id),
+            *encoded_seeds,
+        )
+
+    def consume_deliver_seeds(
+        self,
+        *,
+        endpoint_manager_id: EndpointManagerId,
+        limit: int,
+    ) -> tuple[DeliverSeed, ...]:
+        if not endpoint_manager_id:
+            raise ValueError("endpoint manager id must be non-empty")
+        if limit <= 0:
+            raise ValueError("consume limit must be positive")
+
+        with self.redis.pipeline(transaction=True) as pipeline:
+            for _ in range(limit):
+                pipeline.lpop(self._deliver_seed_key(endpoint_manager_id))
+            raw_seeds = pipeline.execute()
+
+        deliver_seeds: list[DeliverSeed] = []
+        for raw_seed in raw_seeds:
+            if raw_seed is None:
+                continue
+            seed = self._decode_deliver_seed(raw_seed)
+            if seed is not None:
+                deliver_seeds.append(seed)
+        return tuple(deliver_seeds)
+
+    def _deliver_seed_key(self, endpoint_manager_id: EndpointManagerId) -> str:
+        return (
+            f"ad:{self.prefix}:endpoint-manager:{endpoint_manager_id}:deliver-seeds"
+        )
+
+    @staticmethod
     def _encode_deliver_seed(seed: DeliverSeed) -> str:
-        task_item = seed.task_item
         return json.dumps(
             {
-                "taskId": seed.task_id,
-                "selectedWorkerId": seed.selected_worker_id,
-                "workerGroupId": seed.worker_group_id,
-                "endpointManagerId": seed.endpoint_manager_id,
-                "taskItem": {
-                    "messageId": task_item.message_id,
-                    "eventCode": task_item.event_code,
-                    "payload": (
-                        dict(task_item.payload)
-                        if task_item.payload is not None
-                        else None
-                    ),
-                    "payloadRef": task_item.payload_ref,
-                    "priority": task_item.priority,
-                    "createdAtMillis": task_item.created_at_millis,
-                    "expireAtMillis": task_item.expire_at_millis,
-                },
-                "claimScore": seed.claim_score,
-                "workerLeaseScore": seed.worker_lease_score,
+                "workerId": seed.worker_id,
+                "opaqueDeliveryItem": seed.opaque_delivery_item,
+                "opaqueResultContext": seed.opaque_result_context,
+                "taskItemClaimUntilMillis": seed.task_item_claim_until_millis,
             },
             allow_nan=False,
             sort_keys=True,
@@ -240,6 +264,37 @@ class RedisAssignmentDispatchRuntime(AssignmentDispatchRuntime):
         )
 
     @staticmethod
-    def _validate_task_id(task_id: TaskId) -> None:
-        if not task_id:
-            raise ValueError("task id must be non-empty")
+    def _decode_deliver_seed(raw_seed: Any) -> DeliverSeed | None:
+        try:
+            text = raw_seed.decode("utf-8") if isinstance(raw_seed, bytes) else raw_seed
+            payload = json.loads(text)
+            if not isinstance(payload, MappingABC):
+                return None
+            worker_id = payload["workerId"]
+            opaque_delivery_item = payload["opaqueDeliveryItem"]
+            opaque_result_context = payload["opaqueResultContext"]
+            task_item_claim_until_millis = payload["taskItemClaimUntilMillis"]
+        except (KeyError, TypeError, ValueError, UnicodeDecodeError):
+            return None
+
+        if any(
+            not isinstance(value, str) or not value
+            for value in (
+                worker_id,
+                opaque_delivery_item,
+                opaque_result_context,
+            )
+        ):
+            return None
+        if (
+            isinstance(task_item_claim_until_millis, bool)
+            or not isinstance(task_item_claim_until_millis, int)
+            or task_item_claim_until_millis <= 0
+        ):
+            return None
+        return DeliverSeed(
+            worker_id=worker_id,
+            opaque_delivery_item=opaque_delivery_item,
+            opaque_result_context=opaque_result_context,
+            task_item_claim_until_millis=task_item_claim_until_millis,
+        )

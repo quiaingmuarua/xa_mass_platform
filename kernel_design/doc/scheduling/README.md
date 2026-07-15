@@ -421,7 +421,8 @@ a query/view owner and not a transport parser.
 3. [Worker Score-Band Scheduling](worker-score-band-scheduling.md)
    - target worker/resource eligibility score mechanism.
 4. [Assignment-Dispatch Scheduling](assignment-dispatch-scheduling.md)
-   - shared owner and protocol contract for two mandatory independent pacers.
+   - plane protocol and owner-boundary contract for two mandatory independent
+     pacers.
 5. [Task-Worker Allocation Pacer](task-worker-allocation-pacer.md)
    - oldest-first Task allocation, batch Worker matching, activation checks,
      Task timeSlot fairness, and candidate-worker publication.
@@ -520,11 +521,10 @@ kernel_design/executable_spec/
 It currently proves the Task, TaskItem, and Worker score axes, TaskItem DTO and
 latest-write Redis record persistence, resource catalogs, bounded Worker
 matching, Redis candidate handoff, both assignment pacers, the DeliverSeed
-model, and endpoint-manager-partitioned Redis DeliverSeed append through
-`AssignmentDispatchRuntime`. DeliverSeed consumption, outbound delivery,
-recent-first dispatch-task acquire, and result routing are still
-executable-spec gaps. An in-memory runtime is not a prerequisite or a parallel
-mainline.
+model, and endpoint-manager-partitioned Redis DeliverSeed append/bounded consume
+through `DeliverSeedRuntime`. Transport-side outbound orchestration,
+recent-first dispatch-task acquire, and result routing are still executable-spec
+gaps. An in-memory runtime is not a prerequisite or a parallel mainline.
 
 ## Extension Scope
 

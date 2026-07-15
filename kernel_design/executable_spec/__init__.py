@@ -53,6 +53,7 @@ from .assignment_dispatch import (
     CandidateId,
     CandidateWorkerEntry,
     DeliverSeed,
+    DeliverSeedRuntime,
     TaskItemDispatchConfig,
     TaskItemDispatchPacer,
     TaskRunningActivationConfig,
@@ -68,6 +69,7 @@ from .assignment_dispatch import (
 )
 from .redis_runtime import (
     RedisAssignmentDispatchRuntime,
+    RedisDeliverSeedRuntime,
     RedisTaskItemScoreBandCore,
     RedisTaskResourceCatalog,
     RedisTaskRuntime,
@@ -89,6 +91,7 @@ __all__ = [
     "RedisTaskItemScoreBandCore",
     "RedisTaskScoreBandCore",
     "RedisAssignmentDispatchRuntime",
+    "RedisDeliverSeedRuntime",
     "RedisTaskResourceCatalog",
     "RedisTaskRuntime",
     "RedisWorkerScoreCore",
@@ -142,6 +145,7 @@ __all__ = [
     "TaskItemScoreTransitionStatus",
     "CandidateWorkerEntry",
     "DeliverSeed",
+    "DeliverSeedRuntime",
     "TaskItemDispatchConfig",
     "TaskItemDispatchPacer",
     "TaskResourceCatalog",

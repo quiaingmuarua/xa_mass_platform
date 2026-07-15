@@ -6,6 +6,7 @@ from .runtime import (
     AssignmentDispatchRuntime,
     CandidateWorkerEntry,
     DeliverSeed,
+    DeliverSeedRuntime,
 )
 from .task_worker_allocation import (
     TaskRunningActivationConfig,
@@ -28,6 +29,7 @@ __all__ = [
     "CandidateId",
     "CandidateWorkerEntry",
     "DeliverSeed",
+    "DeliverSeedRuntime",
     "TaskItemDispatchConfig",
     "TaskItemDispatchPacer",
     "TaskRunningActivationConfig",

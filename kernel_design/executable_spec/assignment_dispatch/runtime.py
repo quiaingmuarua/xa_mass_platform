@@ -4,8 +4,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Mapping, Sequence
 
-from ..kernel.task_runtime import TaskItem
-from ..kernel.task_score_band import Score, TaskId, TimeMillis
+from ..kernel.task_score_band import TaskId, TimeMillis
 from ..kernel.worker_runtime import EndpointManagerId, WorkerGroupId
 from ..kernel.worker_score import Score as WorkerScore
 from ..kernel.worker_score import WorkerId
@@ -23,19 +22,36 @@ class CandidateWorkerEntry:
 
 @dataclass(frozen=True)
 class DeliverSeed:
-    """Already-assigned TaskItem handoff for one endpoint manager."""
+    """Opaque already-assigned handoff consumed by one endpoint manager."""
 
-    task_id: TaskId
-    selected_worker_id: WorkerId
-    worker_group_id: WorkerGroupId
-    endpoint_manager_id: EndpointManagerId
-    task_item: TaskItem
-    claim_score: Score
-    worker_lease_score: WorkerScore
+    worker_id: WorkerId
+    opaque_delivery_item: str
+    opaque_result_context: str
+    task_item_claim_until_millis: TimeMillis
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.worker_id, str) or not self.worker_id:
+            raise ValueError("worker id must be non-empty")
+        if (
+            not isinstance(self.opaque_delivery_item, str)
+            or not self.opaque_delivery_item
+        ):
+            raise ValueError("opaque delivery item must be non-empty")
+        if (
+            not isinstance(self.opaque_result_context, str)
+            or not self.opaque_result_context
+        ):
+            raise ValueError("opaque result context must be non-empty")
+        if (
+            isinstance(self.task_item_claim_until_millis, bool)
+            or not isinstance(self.task_item_claim_until_millis, int)
+            or self.task_item_claim_until_millis <= 0
+        ):
+            raise ValueError("TaskItem claim deadline must be positive")
 
 
 class AssignmentDispatchRuntime(ABC):
-    """Runtime owner for assignment-to-dispatch intermediate artifacts."""
+    """Runtime owner for Task-local candidate Worker handoff."""
 
     @abstractmethod
     def append_candidate_workers(
@@ -67,6 +83,10 @@ class AssignmentDispatchRuntime(ABC):
         """Atomically consume up to limit entries from one Task collection."""
         pass
 
+
+class DeliverSeedRuntime(ABC):
+    """Runtime owner for endpoint-manager-partitioned DeliverSeed queues."""
+
     @abstractmethod
     def append_deliver_seeds(
         self,
@@ -75,4 +95,14 @@ class AssignmentDispatchRuntime(ABC):
         deliver_seeds: Sequence[DeliverSeed],
     ) -> None:
         """Append one bounded batch to exactly one endpoint-manager queue."""
+        pass
+
+    @abstractmethod
+    def consume_deliver_seeds(
+        self,
+        *,
+        endpoint_manager_id: EndpointManagerId,
+        limit: int,
+    ) -> tuple[DeliverSeed, ...]:
+        """Atomically consume a bounded batch from one endpoint-manager queue."""
         pass

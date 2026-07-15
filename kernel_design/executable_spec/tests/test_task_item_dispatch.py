@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import json
 import unittest
 from dataclasses import fields
 from unittest.mock import Mock, call, patch
@@ -10,6 +11,7 @@ from kernel_design.executable_spec import (
     AssignmentDispatchRuntime,
     CandidateWorkerEntry,
     DeliverSeed,
+    DeliverSeedRuntime,
     TaskItem,
     TaskItemDispatchConfig,
     TaskItemDispatchPacer,
@@ -27,12 +29,14 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
 
     def setUp(self) -> None:
         self.task_score = Mock(spec=TaskScoreBandCore)
-        self.dispatch_runtime = Mock(spec=AssignmentDispatchRuntime)
+        self.candidate_runtime = Mock(spec=AssignmentDispatchRuntime)
+        self.deliver_seed_runtime = Mock(spec=DeliverSeedRuntime)
         self.item_score = Mock(spec=TaskItemScoreBandCore)
         self.task_runtime = Mock(spec=TaskRuntime)
         self.pacer = TaskItemDispatchPacer(
             self.task_score,
-            self.dispatch_runtime,
+            self.candidate_runtime,
+            self.deliver_seed_runtime,
             self.item_score,
             self.task_runtime,
         )
@@ -75,14 +79,26 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
 
     def test_public_contract_and_config_validation(self) -> None:
         self.assertEqual(
+            AssignmentDispatchRuntime.__abstractmethods__,
+            {
+                "append_candidate_workers",
+                "candidate_worker_counts",
+                "consume_candidate_workers",
+            },
+        )
+        self.assertEqual(
+            DeliverSeedRuntime.__abstractmethods__,
+            {
+                "append_deliver_seeds",
+                "consume_deliver_seeds",
+            },
+        )
+        self.assertEqual(
             [
-                "task_id",
-                "selected_worker_id",
-                "worker_group_id",
-                "endpoint_manager_id",
-                "task_item",
-                "claim_score",
-                "worker_lease_score",
+                "worker_id",
+                "opaque_delivery_item",
+                "opaque_result_context",
+                "task_item_claim_until_millis",
             ],
             [field.name for field in fields(DeliverSeed)],
         )
@@ -90,11 +106,30 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
             ["self", "endpoint_manager_id", "deliver_seeds"],
             list(
                 inspect.signature(
-                    AssignmentDispatchRuntime.append_deliver_seeds
+                    DeliverSeedRuntime.append_deliver_seeds
+                ).parameters
+            ),
+        )
+        self.assertEqual(
+            ["self", "endpoint_manager_id", "limit"],
+            list(
+                inspect.signature(
+                    DeliverSeedRuntime.consume_deliver_seeds
                 ).parameters
             ),
         )
         self.assertIs(executable_spec.TaskItemDispatchPacer, TaskItemDispatchPacer)
+        for invalid_seed in (
+            ("", "delivery", "context", 1),
+            ("worker-1", "", "context", 1),
+            ("worker-1", "delivery", "", 1),
+            ("worker-1", "delivery", "context", 0),
+            ("worker-1", 123, "context", 1),
+        ):
+            with self.subTest(invalid_seed=invalid_seed), self.assertRaises(
+                ValueError
+            ):
+                DeliverSeed(*invalid_seed)
         for values in ((0, 1, 1), (1, 0, 1), (1, 1, 0), (-1, 1, 1)):
             with self.subTest(values=values), self.assertRaises(ValueError):
                 TaskItemDispatchConfig(*values)
@@ -105,18 +140,18 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
         self.assertEqual(0, self.dispatch())
 
         self.task_score.acquire_dispatch_work_tasks.assert_called_once_with(limit=10)
-        self.dispatch_runtime.consume_candidate_workers.assert_not_called()
+        self.candidate_runtime.consume_candidate_workers.assert_not_called()
         self.item_score.acquire_item_score_candidates.assert_not_called()
         self.task_runtime.load_task_items.assert_not_called()
-        self.dispatch_runtime.append_deliver_seeds.assert_not_called()
+        self.deliver_seed_runtime.append_deliver_seeds.assert_not_called()
 
     def test_no_candidate_does_not_acquire_items(self) -> None:
         self.task_score.acquire_dispatch_work_tasks.return_value = ("task-1",)
-        self.dispatch_runtime.consume_candidate_workers.return_value = ()
+        self.candidate_runtime.consume_candidate_workers.return_value = ()
 
         self.assertEqual(0, self.dispatch())
 
-        self.dispatch_runtime.consume_candidate_workers.assert_called_once_with(
+        self.candidate_runtime.consume_candidate_workers.assert_called_once_with(
             task_id="task-1",
             limit=4,
         )
@@ -128,7 +163,7 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
         item_1 = self.item("message-1")
         item_3 = self.item("message-3")
         self.task_score.acquire_dispatch_work_tasks.return_value = ("task-1",)
-        self.dispatch_runtime.consume_candidate_workers.return_value = candidates
+        self.candidate_runtime.consume_candidate_workers.return_value = candidates
         self.item_score.acquire_item_score_candidates.return_value = {
             "exhausted": (101, 0),
             "message-1": (102, 3),
@@ -168,20 +203,63 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
             target_time_millis=self.NOW_MILLIS + 3_000,
             remaining_budget_delta=-1,
         )
-        seed = self.dispatch_runtime.append_deliver_seeds.call_args.kwargs[
+        seed = self.deliver_seed_runtime.append_deliver_seeds.call_args.kwargs[
             "deliver_seeds"
         ][0]
-        self.assertEqual("worker-1", seed.selected_worker_id)
-        self.assertIs(item_3, seed.task_item)
-        self.assertEqual(304, seed.claim_score)
-        self.assertEqual(10_001, seed.worker_lease_score)
+        delivery_item = json.loads(seed.opaque_delivery_item)
+        result_context = json.loads(seed.opaque_result_context)
+        self.assertEqual("worker-1", seed.worker_id)
+        self.assertEqual(
+            {
+                "messageId": "message-3",
+                "eventCode": "image.resize",
+                "payload": {"messageId": "message-3"},
+                "payloadRef": None,
+                "priority": 5,
+                "createdAtMillis": 90_000,
+                "expireAtMillis": None,
+            },
+            delivery_item,
+        )
+        self.assertEqual(
+            {
+                "taskId": "task-1",
+                "messageId": "message-3",
+                "workerId": "worker-1",
+                "claimScore": 304,
+                "workerLeaseScore": 10_001,
+            },
+            result_context,
+        )
+        self.assertEqual(
+            json.dumps(
+                delivery_item,
+                allow_nan=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+            seed.opaque_delivery_item,
+        )
+        self.assertEqual(
+            json.dumps(
+                result_context,
+                allow_nan=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+            seed.opaque_result_context,
+        )
+        self.assertEqual(
+            self.NOW_MILLIS + self.config.item_claim_lease_duration_millis,
+            seed.task_item_claim_until_millis,
+        )
 
     def test_claimed_items_keep_observation_order_when_paired(self) -> None:
         candidates = (self.candidate("worker-1"), self.candidate("worker-2"))
         item_2 = self.item("message-2")
         item_1 = self.item("message-1")
         self.task_score.acquire_dispatch_work_tasks.return_value = ("task-1",)
-        self.dispatch_runtime.consume_candidate_workers.return_value = candidates
+        self.candidate_runtime.consume_candidate_workers.return_value = candidates
         self.item_score.acquire_item_score_candidates.return_value = {
             "message-2": (202, 2),
             "message-1": (201, 2),
@@ -203,23 +281,26 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
 
         self.assertEqual(2, self.dispatch())
 
-        seeds = self.dispatch_runtime.append_deliver_seeds.call_args.kwargs[
+        seeds = self.deliver_seed_runtime.append_deliver_seeds.call_args.kwargs[
             "deliver_seeds"
         ]
         self.assertEqual(
             [("worker-1", "message-2"), ("worker-2", "message-1")],
             [
-                (seed.selected_worker_id, seed.task_item.message_id)
+                (
+                    seed.worker_id,
+                    json.loads(seed.opaque_result_context)["messageId"],
+                )
                 for seed in seeds
             ],
         )
 
-    def test_whole_round_aggregates_by_endpoint_manager(self) -> None:
+    def test_each_task_publishes_deliver_seeds_immediately(self) -> None:
         self.task_score.acquire_dispatch_work_tasks.return_value = (
             "task-1",
             "task-2",
         )
-        self.dispatch_runtime.consume_candidate_workers.side_effect = [
+        self.candidate_runtime.consume_candidate_workers.side_effect = [
             (self.candidate("worker-1", lease_score=11),),
             (self.candidate("worker-2", lease_score=12),),
         ]
@@ -248,15 +329,26 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
 
         self.assertEqual(2, self.dispatch())
 
-        self.dispatch_runtime.append_deliver_seeds.assert_called_once()
-        append_call = self.dispatch_runtime.append_deliver_seeds.call_args
-        seeds = append_call.kwargs["deliver_seeds"]
-        self.assertEqual("endpoint-1", append_call.kwargs["endpoint_manager_id"])
-        self.assertEqual(["task-1", "task-2"], [seed.task_id for seed in seeds])
+        append_calls = self.deliver_seed_runtime.append_deliver_seeds.call_args_list
+        self.assertEqual(2, len(append_calls))
+        self.assertEqual(
+            ["endpoint-1", "endpoint-1"],
+            [append_call.kwargs["endpoint_manager_id"] for append_call in append_calls],
+        )
+        self.assertEqual(
+            [["task-1"], ["task-2"]],
+            [
+                [
+                    json.loads(seed.opaque_result_context)["taskId"]
+                    for seed in append_call.kwargs["deliver_seeds"]
+                ]
+                for append_call in append_calls
+            ],
+        )
 
     def test_different_endpoint_managers_are_appended_separately(self) -> None:
         self.task_score.acquire_dispatch_work_tasks.return_value = ("task-1",)
-        self.dispatch_runtime.consume_candidate_workers.return_value = (
+        self.candidate_runtime.consume_candidate_workers.return_value = (
             self.candidate("worker-1", endpoint_manager_id="endpoint-1"),
             self.candidate("worker-2", endpoint_manager_id="endpoint-2"),
         )
@@ -285,7 +377,7 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
             ["endpoint-1", "endpoint-2"],
             [
                 append_call.kwargs["endpoint_manager_id"]
-                for append_call in self.dispatch_runtime.append_deliver_seeds.call_args_list
+                for append_call in self.deliver_seed_runtime.append_deliver_seeds.call_args_list
             ],
         )
 
@@ -294,9 +386,9 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
             if endpoint_manager_id == "endpoint-2":
                 raise RuntimeError("queue unavailable")
 
-        self.dispatch_runtime.append_deliver_seeds.side_effect = fail_second_queue
+        self.deliver_seed_runtime.append_deliver_seeds.side_effect = fail_second_queue
         self.task_score.acquire_dispatch_work_tasks.return_value = ("task-1",)
-        self.dispatch_runtime.consume_candidate_workers.return_value = (
+        self.candidate_runtime.consume_candidate_workers.return_value = (
             self.candidate("worker-1", endpoint_manager_id="endpoint-1"),
             self.candidate("worker-2", endpoint_manager_id="endpoint-2"),
         )
@@ -326,7 +418,7 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
             ["endpoint-1", "endpoint-2"],
             [
                 append_call.kwargs["endpoint_manager_id"]
-                for append_call in self.dispatch_runtime.append_deliver_seeds.call_args_list
+                for append_call in self.deliver_seed_runtime.append_deliver_seeds.call_args_list
             ],
         )
         self.assertEqual(

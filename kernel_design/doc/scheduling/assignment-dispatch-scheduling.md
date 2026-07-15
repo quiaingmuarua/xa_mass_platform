@@ -15,15 +15,19 @@ Current executable-spec gap:
 
 ```text
 TaskWorkerAllocationPacer has a first executable allocation-round implementation
-AssignmentDispatchRuntime has Redis candidate-ZSET and DeliverSeed-LIST implementations
+AssignmentDispatchRuntime has a Redis candidate-ZSET implementation
+DeliverSeedRuntime has a Redis endpoint-manager LIST implementation
 Task Item score and TaskItem record mechanisms have Redis executable implementations
 TaskItemDispatchPacer and DeliverSeed have executable implementations
-no DeliverSeed outbound consumer
+bounded per-endpoint DeliverSeed append/consume primitives are implemented
+no transport-side DeliverSeed outbound orchestration
 current Redis dispatch-task acquire is oldest-first, not recent-allocation reverse
 ```
 
 This document defines the target split. Both pacers now have executable-spec
 implementations; the second pacer proof stops after Redis DeliverSeed append.
+Redis queue consumption is a separate outbound-owner primitive, not another
+step inside that pacer.
 
 ## Core Decision
 
@@ -182,16 +186,24 @@ The Redis executable spec uses one ZSET per Task, scored by candidate batch
 ad:{prefix}:task:{taskId}:candidate-workers
 ```
 
-The same `AssignmentDispatchRuntime` also owns endpoint-manager-partitioned
-DeliverSeed append through an independent Redis LIST:
+`DeliverSeedRuntime` separately owns endpoint-manager-partitioned DeliverSeed
+append and bounded consume through a Redis LIST:
 
 ```text
 ad:{prefix}:endpoint-manager:{endpointManagerId}:deliver-seeds
 ```
 
-Shared runtime ownership does not make candidate consumption and DeliverSeed
-append one transaction. They are separate bounded operations over separate
-intermediate structures.
+The adjacent runtimes do not make candidate consumption and DeliverSeed append
+one transaction. They are separate bounded operations over separate
+intermediate structures and separate owner interfaces.
+
+```text
+append_deliver_seeds(endpointManagerId, deliverSeeds)
+consume_deliver_seeds(endpointManagerId, limit)
+```
+
+Each call addresses exactly one endpoint-manager queue. TaskItem dispatch only
+calls append; the later outbound owner calls consume before transport delivery.
 
 The member contains the complete `CandidateWorkerEntry`, including the matched
 Worker's `endpointManagerId` and opaque `workerLeaseScore`. The entry DTO still
@@ -323,11 +335,15 @@ consumed opaque lease evidence into DeliverSeed:
 ```text
 consume CandidateWorkerEntry
   -> claim one current TaskItem score
-  -> DeliverSeed(workerId, workerGroupId, endpointManagerId, workerLeaseScore,
-       claimScore, TaskItem)
+  -> encode opaqueDeliveryItem from the canonical TaskItem
+  -> encode opaqueResultContext(taskId, messageId, workerId,
+       claimScore, workerLeaseScore)
+  -> DeliverSeed(workerId, opaqueDeliveryItem, opaqueResultContext,
+       taskItemClaimUntilMillis)
   -> append DeliverSeed to the endpointManagerId queue
 
 outbound DeliverSeed consumer
+  -> discard expired-before-submit seed without a synthetic result
   -> validate or renew the exact Worker lease evidence
   -> submit to the already selected Worker
   -> release after accepted non-exclusive delivery or retain for exclusive use
@@ -403,6 +419,8 @@ Events may lower latency but cannot be required to wake either pacer.
   or projection changed.
 - Do not make transport select a Worker or reinterpret candidate entries.
 - Do not create DeliverSeed without current Item `claimScore` evidence.
+- Do not duplicate `workerGroupId` or `endpointManagerId` inside DeliverSeed;
+  the selected Worker and queue key already carry those completed decisions.
 - Do not retain candidate collections as durable assignment truth.
 - Do not require cross-key atomicity between Task score and candidate-worker
   collection.

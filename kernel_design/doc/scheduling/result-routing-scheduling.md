@@ -36,10 +36,11 @@ ResultEvidence
   observedAtMillis
 ```
 
-`claimScore` is opaque evidence copied from `DeliverSeed`. Result routing passes
-it unchanged to `TaskItemScoreBandCore` and never reads or decodes tag, timeSlot, or
-suffix. Transport may normalize protocol frames into `ResultEvidence`; it does
-not decide retry or finality.
+`claimScore` is opaque evidence recovered from DeliverSeed's
+`opaqueResultContext`. Result routing passes it unchanged to
+`TaskItemScoreBandCore` and never reads or decodes tag, timeSlot, or suffix.
+Transport may normalize protocol frames into `ResultEvidence`; it does not
+decide retry or finality.
 
 Policy inputs may include:
 
@@ -156,6 +157,10 @@ late success inside retention window
   may update result aggregate / terminal reason projection
   must not reopen Task scheduling
 
+real Worker result arriving after its original claim cutoff
+  still follows normal classification and TaskItem outcome precedence
+  is not reduced to diagnostics-only handling
+
 retention barrier expired
   physical Item/result cleanup may proceed
 ```
@@ -206,9 +211,10 @@ as an unrestricted mutation path.
 ## Executable-Spec Gap
 
 The Python executable spec implements Task Item score interfaces and the Redis
-ZSET owner, plus DeliverSeed, the AssignmentDispatchRuntime owner surface, and
-TaskItemDispatchPacer. Result routing and DeliverSeed outbound consumption
-remain gaps.
+ZSET owner, plus DeliverSeed, the DeliverSeedRuntime owner surface, and
+TaskItemDispatchPacer. Result routing and transport-side DeliverSeed outbound
+orchestration remain gaps; the Redis bounded queue-consume primitive already
+exists.
 Their first implementation must prove:
 
 ```text

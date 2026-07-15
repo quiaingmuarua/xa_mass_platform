@@ -14,6 +14,7 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
 from kernel_design.executable_spec import (
     CandidateWorkerEntry,
     RedisAssignmentDispatchRuntime,
+    RedisDeliverSeedRuntime,
     RedisTaskRuntime,
     RedisTaskItemScoreBandCore,
     RedisTaskScoreBandCore,
@@ -65,13 +66,18 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             self.item_score,
             prefix=self.prefix,
         )
-        self.dispatch_runtime = RedisAssignmentDispatchRuntime(
+        self.candidate_runtime = RedisAssignmentDispatchRuntime(
+            self.redis,
+            prefix=self.prefix,
+        )
+        self.deliver_seed_runtime = RedisDeliverSeedRuntime(
             self.redis,
             prefix=self.prefix,
         )
         self.pacer = TaskItemDispatchPacer(
             self.task_score,
-            self.dispatch_runtime,
+            self.candidate_runtime,
+            self.deliver_seed_runtime,
             self.item_score,
             self.task_runtime,
         )
@@ -124,7 +130,7 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             task_id=self.task_id,
             items=(item,),
         )
-        self.dispatch_runtime.append_candidate_workers(
+        self.candidate_runtime.append_candidate_workers(
             task_id=self.task_id,
             candidate_workers=(
                 CandidateWorkerEntry(
@@ -145,7 +151,7 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
                 item_claim_lease_duration_millis=3_000,
             )
         )
-        candidate_count = self.dispatch_runtime.candidate_worker_counts(
+        candidate_count = self.candidate_runtime.candidate_worker_counts(
             task_ids=(self.task_id,),
         )[self.task_id]
         item_state = self.item_score.get_item_score_states(
@@ -165,18 +171,39 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             item_state.time_millis,
             dispatch_started_millis + 3_000 - self.item_score.SLOT_MILLIS,
         )
-        deliver_seed_key = (
-            f"ad:{self.prefix}:endpoint-manager:endpoint-manager-1:deliver-seeds"
+        seeds = self.deliver_seed_runtime.consume_deliver_seeds(
+            endpoint_manager_id="endpoint-manager-1",
+            limit=10,
         )
-        raw_seeds = self.redis.lrange(deliver_seed_key, 0, -1)
-        self.assertEqual(1, len(raw_seeds))
-        seed = json.loads(raw_seeds[0])
-        self.assertEqual(self.task_id, seed["taskId"])
-        self.assertEqual("worker-1", seed["selectedWorkerId"])
-        self.assertEqual("endpoint-manager-1", seed["endpointManagerId"])
-        self.assertEqual(self.message_id, seed["taskItem"]["messageId"])
-        self.assertEqual(item_state.score, seed["claimScore"])
-        self.assertEqual(123_456, seed["workerLeaseScore"])
+        self.assertEqual(1, len(seeds))
+        seed = seeds[0]
+        delivery_item = json.loads(seed.opaque_delivery_item)
+        result_context = json.loads(seed.opaque_result_context)
+        self.assertEqual("worker-1", seed.worker_id)
+        self.assertEqual(self.message_id, delivery_item["messageId"])
+        self.assertEqual("image.resize", delivery_item["eventCode"])
+        self.assertEqual({"source": "s3://input"}, delivery_item["payload"])
+        self.assertEqual(
+            {
+                "taskId": self.task_id,
+                "messageId": self.message_id,
+                "workerId": "worker-1",
+                "claimScore": item_state.score,
+                "workerLeaseScore": 123_456,
+            },
+            result_context,
+        )
+        self.assertGreaterEqual(
+            seed.task_item_claim_until_millis,
+            dispatch_started_millis + 3_000,
+        )
+        self.assertEqual(
+            (),
+            self.deliver_seed_runtime.consume_deliver_seeds(
+                endpoint_manager_id="endpoint-manager-1",
+                limit=10,
+            ),
+        )
 
 
 if __name__ == "__main__":

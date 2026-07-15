@@ -35,6 +35,8 @@ TaskScoreBandCore
 
 AssignmentDispatchRuntime
   atomically consume one Task's bounded CandidateWorkerEntry batch
+
+DeliverSeedRuntime
   append one bounded DeliverSeed batch to one endpointManagerId queue
 
 TaskItemScoreBandCore
@@ -160,25 +162,29 @@ expiry restores acquire visibility.
 
 ```text
 DeliverSeed
-  taskId
-  selectedWorkerId
-  workerGroupId
-  endpointManagerId
-  taskItem
-  claimScore
-  workerLeaseScore
+  workerId
+  opaqueDeliveryItem
+  opaqueResultContext
+  taskItemClaimUntilMillis
 ```
 
-`taskItem` is the canonical stable `TaskItem` value loaded from `TaskRuntime`.
-The seed does not mirror its event code, payload, payload reference, priority,
-creation time, or expiry into a second Item-shaped DTO.
+`opaqueDeliveryItem` is a deterministic serialized TaskItem handoff. The
+endpoint manager may translate it into its Worker protocol without receiving
+the canonical `TaskItem` object. `opaqueResultContext` carries serialized
+`taskId / messageId / workerId / claimScore / workerLeaseScore` correlation
+that a Worker result must return unchanged.
 
-`claimScore` and `workerLeaseScore` are opaque owner fences. This pacer stores
-and forwards them but never decodes, trims, compares, or reconstructs either
-score.
+The two scores remain opaque owner fences even though they are no longer
+top-level DeliverSeed fields. Redis runtime and Worker-facing transport adapters
+do not parse either opaque string; a later platform outbound/result codec may
+recover the declared context fields without exposing score encoding.
 
-`endpointManagerId` is copied from the consumed `CandidateWorkerEntry` and is
-the Deliver Queue partition key. The pacer does not choose or recompute it:
+`taskItemClaimUntilMillis` is the same claim target supplied to
+`rewrite_observed_item_scores`. It is an outbound stale-delivery cutoff, not
+TaskItem business expiry and not another score truth.
+
+`endpointManagerId` is copied from the consumed `CandidateWorkerEntry` only as
+the Deliver Queue partition key. It is not duplicated inside DeliverSeed:
 
 ```text
 deliverQueue[endpointManagerId].append(DeliverSeed)
@@ -203,13 +209,18 @@ crosses into the outbound owner.
 
 ## DeliverSeed Queue
 
-The minimal queue operation is batch-first:
+The queue owner exposes one bounded operation in each direction:
 
 ```text
 append_deliver_seeds(
   endpointManagerId,
   deliverSeeds: Sequence[DeliverSeed]
 )
+
+consume_deliver_seeds(
+  endpointManagerId,
+  limit
+) -> Sequence[DeliverSeed]
 ```
 
 The Redis executable spec writes one LIST per endpoint manager:
@@ -218,15 +229,19 @@ The Redis executable spec writes one LIST per endpoint manager:
 ad:{prefix}:endpoint-manager:{endpointManagerId}:deliver-seeds
 ```
 
-One call writes exactly one endpoint-manager queue. The pacer may aggregate
-seeds from multiple Tasks in the current bounded round before appending. Calls
-for different endpoint managers succeed or fail independently; the interface
-does not imply cross-queue atomicity.
+One call reads or writes exactly one endpoint-manager queue. Redis 6.0 uses a
+transactional pipeline of bounded `LPOP` operations for consume; this preserves
+the batch atomicity without a Lua script or a Redis 6.2 dependency. For each Task, the
+pacer partitions that Task's claimed seeds by endpoint manager and appends them
+before advancing to the next Task. It does not retain a whole-round,
+cross-Task DeliverSeed buffer. Calls for different endpoint managers succeed or
+fail independently; the interface does not imply cross-queue atomicity.
 
 The queue has one semantic role: handoff of already claimed Items to outbound
 delivery. It is not Item truth, Worker truth, result truth, or a second claim
-owner. Candidate collections and DeliverSeed queues share
-`AssignmentDispatchRuntime` ownership but remain independent structures.
+owner. Candidate collections belong to `AssignmentDispatchRuntime`; DeliverSeed
+queues belong to `DeliverSeedRuntime`. They are adjacent handoff structures,
+not one runtime lifecycle.
 
 The queue does not promise cross-key atomicity with Item score or candidate
 consumption. Its correctness fallback is the existing score timing:
@@ -267,7 +282,6 @@ def dispatch_task_items(config):
     task_ids = task_score.acquire_dispatch_work_tasks(
         limit=config.task_batch_limit,
     )
-    pending_seeds_by_endpoint_manager = {}
     generated_seed_count = 0
 
     for task_id in task_ids:
@@ -332,32 +346,36 @@ def dispatch_task_items(config):
                 continue
             claimed_items.append((items[message_id], result.score))
 
+        endpoint_batches = {}
         for candidate_worker, (task_item, claim_score) in zip(
             candidate_workers,
             claimed_items,
         ):
             seed = DeliverSeed(
-                task_id=task_id,
-                selected_worker_id=candidate_worker.worker_id,
-                worker_group_id=candidate_worker.worker_group_id,
-                endpoint_manager_id=candidate_worker.endpoint_manager_id,
-                task_item=task_item,
-                claim_score=claim_score,
-                worker_lease_score=candidate_worker.worker_lease_score,
+                worker_id=candidate_worker.worker_id,
+                opaque_delivery_item=encode_task_item(task_item),
+                opaque_result_context=encode_result_context(
+                    task_id,
+                    task_item.message_id,
+                    candidate_worker.worker_id,
+                    claim_score,
+                    candidate_worker.worker_lease_score,
+                ),
+                task_item_claim_until_millis=claim_lease_until_millis,
             )
-            pending_seeds_by_endpoint_manager.setdefault(
+            endpoint_batches.setdefault(
                 candidate_worker.endpoint_manager_id,
                 [],
             ).append(seed)
 
-    for endpoint_manager_id, deliver_seeds in (
-        pending_seeds_by_endpoint_manager.items()
-    ):
-        assignment_dispatch_runtime.append_deliver_seeds(
-            endpoint_manager_id=endpoint_manager_id,
-            deliver_seeds=tuple(deliver_seeds),
-        )
-        generated_seed_count += len(deliver_seeds)
+        for endpoint_manager_id, deliver_seeds in (
+            endpoint_batches.items()
+        ):
+            deliver_seed_runtime.append_deliver_seeds(
+                endpoint_manager_id=endpoint_manager_id,
+                deliver_seeds=tuple(deliver_seeds),
+            )
+            generated_seed_count += len(deliver_seeds)
 
     return generated_seed_count
 ```
@@ -375,10 +393,11 @@ The Python executable spec already provides:
 
 ```text
 TaskScoreBandCore.acquire_dispatch_work_tasks
-AssignmentDispatchRuntime with Redis candidate ZSET and DeliverSeed LIST
+AssignmentDispatchRuntime with Redis candidate ZSET append/count/consume
+DeliverSeedRuntime with Redis DeliverSeed LIST append/consume
 TaskRuntime bounded TaskItem load
 TaskItemScoreBandCore and Redis Item score implementation
-DeliverSeed model and AssignmentDispatchRuntime owner surface
+DeliverSeed model and DeliverSeedRuntime owner surface
 TaskItemDispatchConfig and TaskItemDispatchPacer
 unit proof plus real Redis orchestration proof
 ```
@@ -386,13 +405,14 @@ unit proof plus real Redis orchestration proof
 It does not yet provide:
 
 ```text
-DeliverSeed outbound consumer
+transport-side DeliverSeed outbound orchestration
 recent-first Redis implementation for acquire_dispatch_work_tasks
 ```
 
-The current implementation proof stops at queued DeliverSeed creation. It does
-not call transport or execute Worker release/renew policy merely to claim an
-end-to-end delivery demo.
+The Redis runtime can append and bounded-pop one endpoint-manager queue. The
+current pacer proof stops at queued DeliverSeed creation; no transport-side
+caller yet consumes that primitive, calls transport, or executes Worker
+release/renew policy merely to claim an end-to-end delivery demo.
 
 ## Failure Semantics
 
@@ -412,6 +432,10 @@ TaskItem record missing or corrupt
 Item claim succeeds, seed construction or queue append fails
   no compensation; Item claim and Worker lease expire naturally
 
+seed reaches outbound after taskItemClaimUntilMillis
+  outbound drops it before Worker submit and records bounded diagnostics
+  no synthetic result, Item-score mutation, or eager Worker release
+
 Task pauses or closes after scan
   this already-started bounded round may still append a seed
 ```
@@ -429,5 +453,6 @@ Task pauses or closes after scan
 - Do not consume candidate entries without an owner-local atomic primitive.
 - Do not create DeliverSeed before current Item claim succeeds.
 - Do not decode Item or Worker scores.
+- Do not convert expired-before-submit DeliverSeed into a synthetic result.
 - Do not create a second Work, Attempt, retry queue, or claim-expiry owner.
 - Do not require a Task lock or post-scan Task score recheck.

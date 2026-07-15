@@ -34,7 +34,6 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
             AssignmentDispatchRuntime.__abstractmethods__,
             {
                 "append_candidate_workers",
-                "append_deliver_seeds",
                 "candidate_worker_counts",
                 "consume_candidate_workers",
             },
