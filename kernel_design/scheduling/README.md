@@ -39,8 +39,8 @@ worker-score-band-scheduling
   decides which worker/resource ids may enter worker admission now
 
 assignment-dispatch-scheduling
-  joins a schedulable task, admitted worker/resource, claimed item score, and
-  transport route evidence into a concrete deliver seed
+  joins a schedulable task, allocated worker evidence, and claimed item score
+  into a queued deliver seed; it does not perform transport delivery
 
 result-routing-scheduling
   compares incoming result evidence with current item score truth and routes it
@@ -338,9 +338,9 @@ two mandatory independent pacers
 oldest-first Task-Worker allocation and Task fairness rewrite intent
 newest-first candidate-worker consumption
 worker group / constraint / priority rule application during allocation
-Worker allocation-lease duration and dispatch-side release / renewal disposition
+Worker allocation-lease duration
 final item claim timing
-deliver seed creation from current item score evidence
+DeliverSeed creation and queue append from current Item score evidence
 ```
 
 Does not own:
@@ -351,6 +351,33 @@ worker score lifecycle
 result finality
 transport session internals
 transport adapter queue choice
+```
+
+### DeliverSeed Outbound Delivery Boundary
+
+Answers:
+
+```text
+can this queued, already-assigned DeliverSeed continue to final-hop delivery?
+after accepted delivery, should the Worker lease be released or retained?
+```
+
+Owns:
+
+```text
+queued DeliverSeed consumption
+exact Worker lease continuation before delivery
+transport submit for the already selected Worker
+accepted non-exclusive release or exclusive lease retention
+```
+
+Does not own:
+
+```text
+Task or Worker selection
+TaskItem acquisition or claim
+Task score mutation
+result finality
 ```
 
 ### Result-Routing Scheduling
@@ -398,12 +425,15 @@ a query/view owner and not a transport parser.
    - oldest-first Task allocation, batch Worker matching, activation checks,
      Task timeSlot fairness, and candidate-worker publication.
 6. [Task Item Dispatch Pacer](task-item-dispatch-pacer.md)
-   - newest-first candidate consumption, Worker short lease, item-score claim, and
-     DeliverSeed creation; Task score is read-only.
-7. [Result-Routing Scheduling](result-routing-scheduling.md)
+   - newest-first candidate consumption, Item-score claim, and DeliverSeed queue
+     append; Task and Worker scores are read-only.
+7. [DeliverSeed Outbound Delivery](deliver-seed-outbound-delivery.md)
+   - queued seed consumption, Worker lease continuation, transport submit, and
+     exclusive/non-exclusive Worker disposition.
+8. [Result-Routing Scheduling](result-routing-scheduling.md)
    - how result evidence is routed to finality, retry, no-op, or unresolved
      handling.
-8. [Worker Runtime Redis Shape](../runtime-redis/worker-runtime-redis-shape.md)
+9. [Worker Runtime Redis Shape](../runtime-redis/worker-runtime-redis-shape.md)
    - first-slice Redis structure reference for worker-runtime resource catalog,
      score acquisition, and dynamic attribute storage.
 
@@ -487,8 +517,9 @@ kernel_design/py_example/
 It currently proves the Task, TaskItem, and Worker score axes, TaskItem DTO and
 latest-write Redis record persistence, resource catalogs, bounded Worker
 matching, Redis candidate handoff, and the first Task-Worker allocation pacer.
-`TaskItemDispatchPacer` and result routing are still executable-spec gaps. An
-in-memory runtime is not a prerequisite or a parallel mainline.
+`TaskItemDispatchPacer`, DeliverSeed queue/outbound delivery, and result routing
+are still executable-spec gaps. An in-memory runtime is not a prerequisite or
+a parallel mainline.
 
 ## Extension Scope
 

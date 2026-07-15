@@ -21,6 +21,7 @@ from kernel_design.py_example import (
     TaskItem,
     TaskItemAppendStatus,
     TaskItemScoreBand,
+    TaskItemScoreTransitionStatus,
     TaskScoreTransitionStatus,
 )
 
@@ -233,6 +234,80 @@ class RedisTaskRuntimeIntegrationTest(unittest.TestCase):
         self.assertIsNone(loaded["missing"])
         self.assertEqual(TaskItemScoreBand.ACTIVE, state.band)
         self.assertEqual(4, state.remaining_budget)
+
+    def test_real_redis_task_item_owner_composition_reaches_final_success(
+        self,
+    ) -> None:
+        task_id = "task-item-flow"
+        message_id = "message-flow"
+        self.task_ids.add(task_id)
+        self.runtime.create_task(
+            descriptor=self.descriptor(task_id),
+            suffix=self.SUFFIX,
+        )
+        now_millis = int(time.time() * 1_000)
+        item = TaskItem(
+            message_id=message_id,
+            event_code="image.resize",
+            created_at_millis=now_millis,
+            payload={"source": "input"},
+        )
+
+        appended = self.runtime.append_items(task_id=task_id, items=[item])
+        observations = self.item_score_band.acquire_item_score_candidates(
+            task_id=task_id,
+            limit=1,
+        )
+        observed_score, observed_budget = observations[message_id]
+        claimed = self.item_score_band.rewrite_observed_item_scores(
+            task_id=task_id,
+            observed_scores={message_id: observed_score},
+            target_time_millis=now_millis + 2_000,
+            remaining_budget_delta=-1,
+        )
+        claim_score = claimed[message_id].score
+        loaded = self.runtime.load_task_items(
+            task_id=task_id,
+            message_ids=[message_id],
+        )
+        retried = self.item_score_band.rewrite_observed_item_scores(
+            task_id=task_id,
+            observed_scores={message_id: claim_score},
+            target_time_millis=now_millis + 4_000,
+            remaining_budget_delta=0,
+        )
+        finalized = self.item_score_band.promote_item_outcomes(
+            task_id=task_id,
+            message_ids=[message_id],
+            target_band=TaskItemScoreBand.FINAL_SUCCESS,
+            target_time_millis=now_millis + 1_000,
+        )
+        final_state = self.item_score_band.get_item_score_states(
+            task_id=task_id,
+            message_ids=[message_id],
+        )[message_id]
+
+        self.assertEqual(
+            TaskItemAppendStatus.APPENDED,
+            appended[message_id].status,
+        )
+        self.assertEqual(4, observed_budget)
+        self.assertEqual(
+            TaskItemScoreTransitionStatus.TRANSITIONED,
+            claimed[message_id].status,
+        )
+        self.assertEqual(item.message_id, loaded[message_id].message_id)
+        self.assertEqual(item.payload, loaded[message_id].payload)
+        self.assertEqual(
+            TaskItemScoreTransitionStatus.TRANSITIONED,
+            retried[message_id].status,
+        )
+        self.assertEqual(
+            TaskItemScoreTransitionStatus.TRANSITIONED,
+            finalized[message_id].status,
+        )
+        self.assertEqual(TaskItemScoreBand.FINAL_SUCCESS, final_state.band)
+        self.assertIsNone(final_state.remaining_budget)
 
 
 if __name__ == "__main__":

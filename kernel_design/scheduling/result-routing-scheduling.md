@@ -206,7 +206,8 @@ as an unrestricted mutation path.
 ## Executable-Spec Gap
 
 The Python executable spec implements Task Item score interfaces and the Redis
-ZSET owner. Result routing, DeliverSeed, and TaskItemDispatchPacer remain gaps.
+ZSET owner. Result routing, DeliverSeed model/queue, DeliverSeed outbound
+delivery, and TaskItemDispatchPacer remain gaps.
 Their first implementation must prove:
 
 ```text

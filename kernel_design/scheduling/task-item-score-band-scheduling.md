@@ -104,8 +104,9 @@ TaskItem
 handler after Worker selection and does not participate in matching. Exactly one
 of `payload` and `payloadRef` is required. `priority` is an integer
 from `0` through `10`; `5` is the canonical default. An omitted `expireAtMillis` is materialized as
-`createdAtMillis + defaultItemTtlMillis`; the v0 runtime default is 365 days and
-is configurable owner policy, not score encoding.
+`createdAtMillis + defaultItemTtlMillis`; the v0 executable spec uses a fixed
+365-day runtime default. A later configurable value remains TaskRuntime owner
+policy and must not become score encoding.
 
 Only `(taskId, messageId)` is stable Item identity. The HASH value is the
 latest-write TaskItem record for that identity. Re-appending the same
@@ -340,29 +341,31 @@ acquire_item_score_candidates(
   -> messageId -> (observedScore, remainingBudget)
 ```
 
-For the first active policy, scan from now toward threshold:
+For the v0 active policy, scan the complete due ACTIVE range from `now` toward
+the minimum ACTIVE coordinate:
 
 ```text
-thresholdSlot = floor(thresholdTimeMillis / SLOT_MILLIS)
 beforeSlot = floor(beforeTimeMillis / SLOT_MILLIS)
 
 ZREVRANGEBYSCORE task:{taskId}:item-score
   score(TAG_ACTIVE, beforeSlot, MAX_SUFFIX)
-  score(TAG_ACTIVE, thresholdSlot, MIN_SUFFIX)
+  score(TAG_ACTIVE, MIN_TIME_SLOT, MIN_SUFFIX)
   WITHSCORES
   LIMIT 0 limit
 ```
 
 This direction is intentional. It lets priority affect only initial
 timeSlot placement: high-priority fresh items enter near `nowSlot`, while
-floor/default items sit near `thresholdSlot`. Once claimed, items are placed by
-the ordinary future timeSlot rule.
+lower-priority items start slightly farther back. Once claimed, items are
+placed by the ordinary future timeSlot rule. The fixed ACTIVE lower bound keeps
+older due Items eligible; bounded work comes from `limit`, not from a moving
+lookback threshold or pagination cursor.
 
 The public caller supplies only `taskId + limit`. `TaskItemScoreBandCore` owns
-current-time capture, threshold policy, range construction, score ordering, and
-limit enforcement. Acquire returns an opaque `observedScore` stale fence plus
-the semantic `remainingBudget` needed to choose claim or exhausted promotion.
-The caller does not decode score fields itself.
+current-time capture, the ACTIVE range bounds, score ordering, and limit
+enforcement. Acquire returns an opaque `observedScore` stale fence plus the
+semantic `remainingBudget` needed to choose claim or exhausted promotion. The
+caller does not decode score fields itself.
 
 ## Append
 
@@ -676,6 +679,15 @@ The interface is implemented in
 The Redis ZSET owner is implemented in
 [`../py_example/runtime_redis/task_item_score_band_zset.py`](../py_example/runtime_redis/task_item_score_band_zset.py).
 Its physical key is `tr:{prefix}:task:{taskId}:item-score`.
+
+Canonical TaskItem record append and bounded load are implemented by
+[`../py_example/runtime_redis/task_runtime.py`](../py_example/runtime_redis/task_runtime.py)
+using `tr:{prefix}:task:{taskId}:items`. Real-Redis integration proof covers the
+complete owner composition:
+
+```text
+append -> acquire -> claim -> load -> retry -> final promotion
+```
 
 The Redis implementation uses only:
 

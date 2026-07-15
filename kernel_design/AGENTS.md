@@ -92,9 +92,10 @@ For result or TaskItem dispatch:
 3. [scheduling/assignment-dispatch-scheduling.md](scheduling/assignment-dispatch-scheduling.md)
 4. [scheduling/task-worker-allocation-pacer.md](scheduling/task-worker-allocation-pacer.md)
 5. [scheduling/task-item-dispatch-pacer.md](scheduling/task-item-dispatch-pacer.md)
-6. [py_example/kernel/task_worker_allocation.py](py_example/kernel/task_worker_allocation.py)
-7. [py_example/kernel/task_dispatch_runtime.py](py_example/kernel/task_dispatch_runtime.py)
-8. [scheduling/result-routing-scheduling.md](scheduling/result-routing-scheduling.md)
+6. [scheduling/deliver-seed-outbound-delivery.md](scheduling/deliver-seed-outbound-delivery.md)
+7. [py_example/kernel/task_worker_allocation.py](py_example/kernel/task_worker_allocation.py)
+8. [py_example/kernel/task_dispatch_runtime.py](py_example/kernel/task_dispatch_runtime.py)
+9. [scheduling/result-routing-scheduling.md](scheduling/result-routing-scheduling.md)
 
 ## 2.1 Interface Change Gate
 
@@ -231,11 +232,23 @@ one scheduling-round composition
 candidate ranking after worker-runtime matching
 short assignment plan evidence
 Item score claim timing
-deliver seed creation
+queued DeliverSeed creation
 ```
 
 It does not own task lifecycle truth, worker lifecycle truth, result finality,
-or transport session internals.
+Worker lease continuation/disposition, transport delivery, or transport session
+internals.
+
+DeliverSeed outbound delivery owns:
+
+```text
+queued DeliverSeed consumption
+exact Worker lease continuation before final-hop delivery
+transport submit for the already selected Worker
+accepted non-exclusive release or exclusive lease retention
+```
+
+It does not select Workers, claim Items, or mutate Task score.
 
 Result-routing owns:
 

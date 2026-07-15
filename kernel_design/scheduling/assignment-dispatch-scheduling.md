@@ -8,6 +8,8 @@ Detailed mechanisms:
 
 - [Task-Worker Allocation Pacer](task-worker-allocation-pacer.md)
 - [Task Item Dispatch Pacer](task-item-dispatch-pacer.md)
+- [DeliverSeed Outbound Delivery](deliver-seed-outbound-delivery.md), which
+  begins after the assignment-dispatch cutpoint
 
 Current executable-spec gap:
 
@@ -15,7 +17,8 @@ Current executable-spec gap:
 no TaskItemDispatchPacer implementation
 TaskWorkerAllocationPacer has a first executable allocation-round implementation
 TaskDispatchRuntime has a Redis ZSET executable implementation
-Task Item score mechanism is defined but has no executable implementation
+Task Item score and TaskItem record mechanisms have Redis executable implementations
+no DeliverSeed model or queue owner implementation
 current Redis dispatch-task acquire is oldest-first, not recent-allocation reverse
 ```
 
@@ -39,10 +42,14 @@ TaskWorkerAllocationPacer
 TaskItemDispatchPacer
   recently allocated RUNNING_VISIBLE Tasks
     -> Worker reservation consumption
-    -> Worker validity recheck
-    -> non-exclusive release or exclusive renewal
     -> Item score claim
-    -> DeliverSeed
+    -> DeliverSeed queue append
+
+DeliverSeed outbound owner
+  queued DeliverSeed
+    -> Worker validity / lease continuation
+    -> transport submit
+    -> non-exclusive release or exclusive retention
 ```
 
 The separation is mandatory. The two pacers have different candidate bands,
@@ -148,8 +155,9 @@ activation.
 Dispatch prefers fresh worker evidence. Any policy that reserves capacity for
 PRE_DISPATCH_VISIBLE belongs to deployment/operations policy, not this kernel
 mechanism. Dispatch fairness is bounded separately by candidate collection
-publication policy, per-Task dispatch quota, scan limits, and consume-time
-post-consume Worker validity recheck.
+publication policy, per-Task dispatch quota, and scan limits. Worker validity
+after candidate consumption belongs to queued DeliverSeed outbound delivery,
+not TaskItem dispatch planning.
 
 ## Inter-Pacer Protocol
 
@@ -285,7 +293,7 @@ Cross-Task pipeline/multi-call wrappers may reduce network round trips, but each
 Task key succeeds or fails independently. No interface may imply all-or-nothing
 atomicity across Task queues.
 
-## Worker Fence
+## Worker Fence Handoff
 
 Allocation first reads a bounded due HOT `(workerId, observedScore)` batch. The
 pacer keeps the opaque observations in a sidecar and attempts one exact
@@ -295,25 +303,30 @@ Unmatched leases are consumed negative scheduling evidence and remain held
 until expiry. Matched lease scores become `CandidateWorkerEntry` values.
 Matcher does not read or mutate Worker score.
 
-Task Item dispatch must recheck the consumed Worker against current Worker truth:
+Task Item dispatch does not recheck or mutate Worker score. It copies the
+consumed opaque lease evidence into DeliverSeed:
 
 ```text
 consume CandidateWorkerEntry
-  -> inspect current HOT/recovery polarity, score/lease relation, and dirty
-  -> revalidate Task constraints against current Worker metadata
-  -> exclusive policy: establish or renew the required current lease
-  -> non-exclusive policy: require current validity without inventing entry TTL
-  -> invalid: discard entry and try another bounded entry
+  -> claim one current TaskItem score
+  -> DeliverSeed(workerId, workerGroupId, workerLeaseScore, claimScore, TaskItem)
+  -> append DeliverSeed queue
+
+outbound DeliverSeed consumer
+  -> validate or renew the exact Worker lease evidence
+  -> submit to the already selected Worker
+  -> release after accepted non-exclusive delivery or retain for exclusive use
 ```
 
 Concurrent allocation rounds may observe the same due Worker, but only one
 exact-score lease CAS can pass it into matching. Within one matcher call, a
 Worker is consumed by at most one candidate. This exclusivity is only a short
 allocation window. A stale
-collection entry can remain after dirtying, release, lease due,
-or metadata change. Dispatch-side owner validation decides whether it can still
-be used. Such an entry is disposable intermediate residue, not a second
-assignment truth.
+collection entry can remain after dirtying, release, lease due, or metadata
+change. TaskItem dispatch may still turn that opaque evidence into a queued
+seed; outbound Worker validation decides whether delivery may continue. Such
+an entry and seed are disposable intermediate evidence, not a second assignment
+or Worker truth.
 
 The candidate expiry must not be later than the Worker lease written for that
 batch:
@@ -344,10 +357,12 @@ collection write lost
   remain held until bounded expiry and a later round may reserve the Worker again
 
 candidate Worker stale
-  dispatch drops entry; later allocation produces fresh evidence
+  outbound seed consumption rejects stale Worker evidence; later allocation
+  produces fresh evidence
 
 Task paused or terminal
-  Task leaves eligible scan range; later Task physical cleanup owns ZSET residue
+  Task leaves later eligible scan ranges; an already-started bounded dispatch
+  round may still append a DeliverSeed
 ```
 
 Events may lower latency but cannot be required to wake either pacer.
@@ -357,6 +372,10 @@ Events may lower latency but cannot be required to wake either pacer.
 - Do not collapse both pacers into one monolithic scheduling entry.
 - Do not let TaskItemDispatchPacer write Task timeSlot, suffix, band, or terminal
   score.
+- Do not let TaskItemDispatchPacer read, validate, renew, release, or retain
+  Worker score.
+- Do not let TaskItemDispatchPacer call transport; its cutpoint is DeliverSeed
+  queue append.
 - Do not make candidate-worker collection a second global Task index.
 - Do not publish a candidate Worker unless its allocation lease succeeded.
 - Do not gate candidate publication on either same-band time rotation or Task

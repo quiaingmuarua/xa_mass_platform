@@ -400,8 +400,11 @@ no hidden compatibility path or second mainline remains
   - oldest-first allocation fairness, batch matching, activation, and candidate
     publication.
 - [Task Item Dispatch Pacer](scheduling/task-item-dispatch-pacer.md)
-  - newest-first candidate consumption, Worker short lease, Item score claim, and
-    DeliverSeed creation without Task-score writes.
+  - newest-first candidate consumption, Item score claim, and DeliverSeed queue
+    append without Task- or Worker-score writes.
+- [DeliverSeed Outbound Delivery](scheduling/deliver-seed-outbound-delivery.md)
+  - queued seed consumption, Worker lease continuation, transport submit, and
+    exclusive/non-exclusive Worker disposition.
 - [Result-Routing Scheduling](scheduling/result-routing-scheduling.md)
   - business result classification, Task Item transition invocation, routing
     outcome mapping, and late-result retention.
