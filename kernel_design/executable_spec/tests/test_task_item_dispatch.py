@@ -211,13 +211,8 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
         self.assertEqual("worker-1", seed.worker_id)
         self.assertEqual(
             {
-                "messageId": "message-3",
                 "eventCode": "image.resize",
                 "payload": {"messageId": "message-3"},
-                "payloadRef": None,
-                "priority": 5,
-                "createdAtMillis": 90_000,
-                "expireAtMillis": None,
             },
             delivery_item,
         )
@@ -253,6 +248,47 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
             self.NOW_MILLIS + self.config.item_claim_lease_duration_millis,
             seed.task_item_claim_until_millis,
         )
+
+    def test_internal_delivery_item_encoder_can_replace_builtin_policy(self) -> None:
+        custom_encoder = Mock(return_value='{"custom":true}')
+        pacer = TaskItemDispatchPacer(
+            self.task_score,
+            self.candidate_runtime,
+            self.deliver_seed_runtime,
+            self.item_score,
+            self.task_runtime,
+            custom_encoder,
+        )
+        item = self.item("message-1")
+        self.task_score.acquire_dispatch_work_tasks.return_value = ("task-1",)
+        self.candidate_runtime.consume_candidate_workers.return_value = (
+            self.candidate("worker-1"),
+        )
+        self.item_score.acquire_item_score_candidates.return_value = {
+            item.message_id: (101, 1),
+        }
+        self.task_runtime.load_task_items.return_value = {
+            item.message_id: item,
+        }
+        self.item_score.rewrite_observed_item_scores.return_value = {
+            item.message_id: TaskItemScoreTransitionResult(
+                TaskItemScoreTransitionStatus.TRANSITIONED,
+                201,
+            )
+        }
+
+        with patch.object(
+            TaskItemDispatchPacer,
+            "_current_time_millis",
+            return_value=self.NOW_MILLIS,
+        ):
+            self.assertEqual(1, pacer.dispatch_task_items(config=self.config))
+
+        custom_encoder.assert_called_once_with(item)
+        seed = self.deliver_seed_runtime.append_deliver_seeds.call_args.kwargs[
+            "deliver_seeds"
+        ][0]
+        self.assertEqual('{"custom":true}', seed.opaque_delivery_item)
 
     def test_claimed_items_keep_observation_order_when_paired(self) -> None:
         candidates = (self.candidate("worker-1"), self.candidate("worker-2"))

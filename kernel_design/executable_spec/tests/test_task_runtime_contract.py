@@ -54,7 +54,6 @@ class TaskRuntimeContractTest(unittest.TestCase):
                 "event_code",
                 "created_at_millis",
                 "payload",
-                "payload_ref",
                 "priority",
                 "expire_at_millis",
             },
@@ -75,8 +74,7 @@ class TaskRuntimeContractTest(unittest.TestCase):
                 "message_id": "message-1",
                 "event_code": "event",
                 "created_at_millis": 1,
-                "payload": {},
-                "payload_ref": "ref",
+                "payload": "ref",
             },
             {
                 "message_id": "message-1",
@@ -95,7 +93,7 @@ class TaskRuntimeContractTest(unittest.TestCase):
         )
 
         for item in invalid_items:
-            with self.subTest(item=item), self.assertRaises(ValueError):
+            with self.subTest(item=item), self.assertRaises((TypeError, ValueError)):
                 TaskItem(**item)
 
     def test_task_item_append_result_is_narrow(self) -> None:

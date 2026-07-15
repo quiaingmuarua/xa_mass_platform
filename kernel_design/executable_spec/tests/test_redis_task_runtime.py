@@ -481,7 +481,7 @@ class RedisTaskRuntimeTest(unittest.TestCase):
             message_id="message-2",
             event_code="image.resize",
             created_at_millis=90_000,
-            payload_ref="item://payload-2",
+            payload={"ref": "item://payload-2"},
             expire_at_millis=120_000,
         )
 
@@ -503,7 +503,10 @@ class RedisTaskRuntimeTest(unittest.TestCase):
         )
         self.assertEqual(["message-2", "missing", "message-1"], list(loaded))
         self.assertIsNone(loaded["missing"])
-        self.assertEqual("item://payload-2", loaded["message-2"].payload_ref)
+        self.assertEqual(
+            {"ref": "item://payload-2"},
+            loaded["message-2"].payload,
+        )
         self.assertTrue(all(state.band is TaskItemScoreBand.ACTIVE for state in states.values()))
         self.assertTrue(all(state.remaining_budget == 4 for state in states.values()))
 

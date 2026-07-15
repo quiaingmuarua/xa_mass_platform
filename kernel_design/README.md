@@ -409,11 +409,14 @@ no hidden compatibility path or second mainline remains
   - independent background lifecycle for allocation, running activation, and
     TaskItem dispatch pacers.
 - [Kernel Application Assembly](doc/kernel-application-assembly.md)
-  - zero-config command boundary, private Redis composition, built-in CLI, and
-    the external FastAPI protocol example.
+  - independent resource registration and scheduling-process boundaries,
+    private Redis composition, built-in CLI, and the FastAPI protocol example.
 - [DeliverSeed Outbound Delivery](doc/scheduling/deliver-seed-outbound-delivery.md)
-  - queued seed consumption, Worker lease continuation, transport submit, and
-    exclusive/non-exclusive Worker disposition.
+  - queued seed consumption, external endpoint-manager execution, and opaque
+    result handoff without adapter-owned score mutation.
+- [Local Function Transport Adapter](examples/local_function_adapter/README.md)
+  - independent process startup, local Worker registration, shared event
+    handlers, platform resource registration, and SeedResult submission.
 - [Result-Routing Scheduling](doc/scheduling/result-routing-scheduling.md)
   - business result classification, Task Item transition invocation, routing
     outcome mapping, and late-result retention.

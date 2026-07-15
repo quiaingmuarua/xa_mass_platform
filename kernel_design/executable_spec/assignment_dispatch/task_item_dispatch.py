@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from time import time_ns
 
@@ -15,6 +16,19 @@ from ..kernel.worker_runtime import EndpointManagerId
 from ..kernel.worker_score import Score as WorkerScore
 from ..kernel.worker_score import WorkerId
 from .runtime import AssignmentDispatchRuntime, DeliverSeed, DeliverSeedRuntime
+
+
+def _encode_delivery_item(task_item: TaskItem) -> str:
+    """Encode the built-in event-handler envelope."""
+    return json.dumps(
+        {
+            "eventCode": task_item.event_code,
+            "payload": dict(task_item.payload),
+        },
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
 
 
 @dataclass(frozen=True)
@@ -44,12 +58,14 @@ class TaskItemDispatchPacer:
         deliver_seed_runtime: DeliverSeedRuntime,
         item_score: TaskItemScoreBandCore,
         task_runtime: TaskRuntime,
+        delivery_item_encoder: Callable[[TaskItem], str] = _encode_delivery_item,
     ) -> None:
         self.task_score = task_score
         self.candidate_runtime = candidate_runtime
         self.deliver_seed_runtime = deliver_seed_runtime
         self.item_score = item_score
         self.task_runtime = task_runtime
+        self._delivery_item_encoder = delivery_item_encoder
 
     def dispatch_task_items(
         self,
@@ -86,7 +102,7 @@ class TaskItemDispatchPacer:
             ):
                 seed = DeliverSeed(
                     worker_id=candidate_worker.worker_id,
-                    opaque_delivery_item=self._encode_delivery_item(task_item),
+                    opaque_delivery_item=self._delivery_item_encoder(task_item),
                     opaque_result_context=self._encode_result_context(
                         task_id=task_id,
                         task_item=task_item,
@@ -181,27 +197,6 @@ class TaskItemDispatchPacer:
     @staticmethod
     def _current_time_millis() -> TimeMillis:
         return time_ns() // 1_000_000
-
-    @staticmethod
-    def _encode_delivery_item(task_item: TaskItem) -> str:
-        return json.dumps(
-            {
-                "messageId": task_item.message_id,
-                "eventCode": task_item.event_code,
-                "payload": (
-                    dict(task_item.payload)
-                    if task_item.payload is not None
-                    else None
-                ),
-                "payloadRef": task_item.payload_ref,
-                "priority": task_item.priority,
-                "createdAtMillis": task_item.created_at_millis,
-                "expireAtMillis": task_item.expire_at_millis,
-            },
-            allow_nan=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        )
 
     @staticmethod
     def _encode_result_context(

@@ -5,6 +5,8 @@ consumption from assignment-side seed generation. The queue consume primitive
 is implemented; transport-side outbound orchestration is not.
 
 Upstream contract: [Task Item Dispatch Pacer](task-item-dispatch-pacer.md).
+External process contract:
+[Local Function Transport Adapter](../../examples/local_function_adapter/README.md).
 
 ## Purpose
 
@@ -14,10 +16,9 @@ transport accepts or rejects that already-assigned delivery:
 ```text
 consume queued DeliverSeed from this endpointManagerId queue
   -> discard if nowMillis >= taskItemClaimUntilMillis
-  -> validate or renew opaque Worker lease evidence
-  -> resolve final-hop transport evidence for workerId
-  -> submit transport delivery
-  -> apply Task-owned exclusive/non-exclusive Worker disposition
+  -> resolve workerId in endpoint-manager-local reachability truth
+  -> submit already-assigned delivery
+  -> append SeedResult to the kernel SeedResultRuntime
 ```
 
 It does not select a Worker, match Task constraints, claim a TaskItem, mutate
@@ -31,38 +32,31 @@ DeliverSeedRuntime
   atomically pops one bounded batch from one endpointManagerId partition
   Redis 6.0 implementation uses bounded LPOP commands in one transaction pipeline
 
-WorkerScoreCore
-  exact opaque Worker-score validation/renew/release primitives
+external DeliverSeed consumer client
+  stable bounded queue-consume protocol for one endpointManagerId
 
-resolved Task Worker-occupancy policy
-  EXCLUSIVE or NON_EXCLUSIVE
-  exact carrier remains to be frozen
-
-transport ingress
-  accepts or rejects delivery for the already selected Worker
+external SeedResult command client
+  forwards append_seed_results to the kernel SeedResultRuntime
+  carries no endpointManagerId because results enter one logical queue
 ```
 
 `workerLeaseScore` is copied from allocation evidence into
-`opaqueResultContext`. The platform outbound coordinator may recover that
-declared field for exact lease continuation and still forward the original
-context unchanged. It never decodes Worker score coordinates; Redis queue and
-Worker-facing transport adapters treat the context as opaque.
+`opaqueResultContext`. External adapters and Redis queue runtime treat the
+context as opaque. Result routing recovers declared correlation and coordinates
+the accepted-result release/retention handoff to the Worker owner.
 
 ## Mainline
 
 ```text
 consume_deliver_seeds(endpointManagerId, limit)
   -> discard each seed where nowMillis >= taskItemClaimUntilMillis
-  -> exact Worker lease continuation succeeds
-  -> resolve selected Worker delivery target
+  -> resolve selected Worker in endpoint-manager-local state
   -> submit transport
 
-transport accepted + NON_EXCLUSIVE
-  -> release exact current Worker lease
-
-transport accepted + EXCLUSIVE
-  -> retain or renew Worker lease
-  -> carry the opaque current Worker lease score into result-side disposition
+Worker result appended to SeedResultRuntime
+  -> ResultRoutingPacer bounded-consumes the unified queue
+  -> Result-Routing Scheduling applies TaskItem outcome
+  -> Worker owner receives release / retain / capacity handoff
 
 transport rejected / resolution failed / outbound process stopped
   -> do not immediately release or reschedule
@@ -74,14 +68,15 @@ seed claim cutoff already reached before submit
   -> do not mutate Item score or eagerly release Worker lease
 ```
 
-The exact relationship between exclusive Worker lease duration, result arrival,
-and result-side release belongs to the later result/outbound interface design.
-It must not be pushed backward into `TaskItemDispatchPacer`.
+The exact relationship between Worker lease duration, result arrival, and
+result-side release belongs to Result-Routing Scheduling and the Worker-owner
+handoff. It must not be pushed into the external adapter or backward into
+`TaskItemDispatchPacer`.
 
-The Redis executable spec implements the bounded LIST pop only. A later
-transport-side owner must call it and perform the remaining validation,
-resolution, submission, and Worker disposition steps. The queue runtime itself
-does not call transport.
+The Redis executable spec implements the bounded LIST pop only. A later external
+adapter client must call it and perform local resolution, handler execution,
+and SeedResult submission. The DeliverSeed queue runtime itself does not call
+transport.
 
 ## DeliverSeed Is Evidence
 
@@ -94,8 +89,14 @@ opaqueResultContext
 taskItemClaimUntilMillis
 ```
 
-`opaqueDeliveryItem` may be translated by the endpoint manager before Worker
-submit. `opaqueResultContext` is forwarded unchanged and contains the Task,
+`opaqueDeliveryItem` is produced by the assignment-dispatch internal encoder.
+The built-in policy serializes only `eventCode` and `payload`; it does not expose
+message identity, Item scheduling fields, expiry, or score evidence to the
+Worker handler. A payload reference, when needed by an application, is ordinary
+caller-defined data inside `payload`. The endpoint manager may translate the
+opaque item before Worker submit.
+
+`opaqueResultContext` is forwarded unchanged and contains the Task,
 Item, Worker, claim-score, and Worker-lease correlation required by later
 result routing. Worker-facing transport adapters and Redis queue runtime do not
 parse it.
@@ -120,5 +121,6 @@ candidate truth.
 - Do not reconstruct or decode `claimScore` or `workerLeaseScore`.
 - Do not emit a timeout result for a seed discarded before Worker submit.
 - Do not downgrade a real late Worker result to diagnostics-only handling.
-- Do not move Worker release/retain decisions into seed generation.
+- Do not move Worker release/retain decisions into seed generation or the
+  external adapter.
 - Do not add immediate compensation loops that bypass bounded score expiry.

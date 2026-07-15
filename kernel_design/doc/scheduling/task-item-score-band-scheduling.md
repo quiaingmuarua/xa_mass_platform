@@ -94,15 +94,17 @@ The Item record carries only caller/intake facts:
 TaskItem
   messageId
   eventCode
-  payload | payloadRef
+  payload
   priority = 5
   createdAtMillis
   expireAtMillis = createdAtMillis + defaultItemTtlMillis
 ```
 
 `messageId` is unique inside one Task. `eventCode` selects the worker-local
-handler after Worker selection and does not participate in matching. Exactly one
-of `payload` and `payloadRef` is required. `priority` is an integer
+handler after Worker selection and does not participate in matching. `payload`
+is the caller-owned mapping. A reference is ordinary payload data, for example
+`{"ref": "item://payload-2"}`; the kernel does not define a separate reference
+field. `priority` is an integer
 from `0` through `10`; `5` is the canonical default. An omitted `expireAtMillis` is materialized as
 `createdAtMillis + defaultItemTtlMillis`; the v0 executable spec uses a fixed
 365-day runtime default. A later configurable value remains TaskRuntime owner
@@ -111,7 +113,8 @@ policy and must not become score encoding.
 Only `(taskId, messageId)` is stable Item identity. The HASH value is the
 latest-write TaskItem record for that identity. Re-appending the same
 `messageId` may replace payload, event code, priority, creation time, expiry, or
-payload reference without creating a second scheduling identity.
+any caller-defined payload reference without creating a second scheduling
+identity.
 
 Item `priority` is distinct from `TaskDescriptor.config["priority"]`. Task
 priority orders Tasks competing for Workers; Item priority places newly appended
@@ -396,7 +399,7 @@ For each Item independently:
 
 ```text
 TaskRuntime
-  validate messageId / eventCode and payload XOR payloadRef
+  validate messageId / eventCode and payload mapping
   materialize priority / expiry defaults
   HSET task:{taskId}:items messageId latestTaskItem
 

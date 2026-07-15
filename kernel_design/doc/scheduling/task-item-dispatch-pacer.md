@@ -168,9 +168,23 @@ DeliverSeed
   taskItemClaimUntilMillis
 ```
 
-`opaqueDeliveryItem` is a deterministic serialized TaskItem handoff. The
-endpoint manager may translate it into its Worker protocol without receiving
-the canonical `TaskItem` object. `opaqueResultContext` carries serialized
+`opaqueDeliveryItem` is produced through one internal function call. The
+built-in encoder emits only deterministic `eventCode / payload` JSON:
+
+```text
+encodeDeliveryItem(TaskItem)
+  -> {"eventCode": ..., "payload": ...}
+```
+
+This function is an assignment-dispatch policy point, not a public registry,
+SDK command, assembly setting, or externally selectable codec. The executable
+spec uses the built-in function by default and may replace it only through
+internal composition or focused tests. `messageId`, priority, creation time,
+expiry, and score evidence are deliberately absent from the Worker-facing
+delivery envelope. The endpoint manager may translate the opaque value into
+its Worker protocol without receiving the canonical `TaskItem` object.
+
+`opaqueResultContext` carries serialized
 `taskId / messageId / workerId / claimScore / workerLeaseScore` correlation
 that a Worker result must return unchanged.
 
@@ -353,7 +367,7 @@ def dispatch_task_items(config):
         ):
             seed = DeliverSeed(
                 worker_id=candidate_worker.worker_id,
-                opaque_delivery_item=encode_task_item(task_item),
+                opaque_delivery_item=encode_delivery_item(task_item),
                 opaque_result_context=encode_result_context(
                     task_id,
                     task_item.message_id,

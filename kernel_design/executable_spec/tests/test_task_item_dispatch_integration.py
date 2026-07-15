@@ -180,9 +180,13 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
         delivery_item = json.loads(seed.opaque_delivery_item)
         result_context = json.loads(seed.opaque_result_context)
         self.assertEqual("worker-1", seed.worker_id)
-        self.assertEqual(self.message_id, delivery_item["messageId"])
-        self.assertEqual("image.resize", delivery_item["eventCode"])
-        self.assertEqual({"source": "s3://input"}, delivery_item["payload"])
+        self.assertEqual(
+            {
+                "eventCode": "image.resize",
+                "payload": {"source": "s3://input"},
+            },
+            delivery_item,
+        )
         self.assertEqual(
             {
                 "taskId": self.task_id,

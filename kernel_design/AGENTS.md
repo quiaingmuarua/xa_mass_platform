@@ -106,9 +106,18 @@ For process assembly or server entry work:
 1. [doc/kernel-application-assembly.md](doc/kernel-application-assembly.md)
 2. [doc/scheduling/assignment-dispatch-application.md](doc/scheduling/assignment-dispatch-application.md)
 3. [executable_spec/assembly/application.py](executable_spec/assembly/application.py)
-4. [executable_spec/assembly/assignment_dispatch_application.py](executable_spec/assembly/assignment_dispatch_application.py)
-5. [executable_spec/tests/test_kernel_application.py](executable_spec/tests/test_kernel_application.py)
-6. [examples/fastapi_server.py](examples/fastapi_server.py)
+4. [executable_spec/assembly/resources_command_client.py](executable_spec/assembly/resources_command_client.py)
+5. [executable_spec/assembly/assignment_dispatch_application.py](executable_spec/assembly/assignment_dispatch_application.py)
+6. [executable_spec/tests/test_kernel_application.py](executable_spec/tests/test_kernel_application.py)
+7. [executable_spec/tests/test_resources_command_client.py](executable_spec/tests/test_resources_command_client.py)
+8. [examples/fastapi_server.py](examples/fastapi_server.py)
+
+For an external endpoint-manager or transport-adapter process:
+
+1. [examples/local_function_adapter/README.md](examples/local_function_adapter/README.md)
+2. [doc/scheduling/deliver-seed-outbound-delivery.md](doc/scheduling/deliver-seed-outbound-delivery.md)
+3. [doc/scheduling/result-routing-scheduling.md](doc/scheduling/result-routing-scheduling.md)
+4. [doc/kernel-application-assembly.md](doc/kernel-application-assembly.md)
 
 ## 2.1 Python Naming Rules
 
@@ -290,16 +299,20 @@ DeliverSeed outbound delivery owns:
 ```text
 queued DeliverSeed consumption
 endpointManagerId queue partition ownership
-exact Worker lease continuation before final-hop delivery
+endpoint-manager-local Worker resolution
 transport submit for the already selected Worker
-accepted non-exclusive release or exclusive lease retention
+SeedResult creation and append to SeedResultRuntime
 ```
 
-It does not select Workers, claim Items, or mutate Task score.
+It does not select Workers, claim Items, mutate Task score, interpret Worker
+score, or renew/release Worker leases.
 
 Result-routing owns:
 
 ```text
+one logical SeedResult queue through SeedResultRuntime
+bounded SeedResult consumption through ResultRoutingPacer
+opaqueResultContext decoding inside the result owner
 retryable / final-failure / final-success business classification
 opaque claimScore pass-through to TaskItemScoreBandCore
 Task Item transition-result mapping to routing outcomes
@@ -307,9 +320,11 @@ late-success retention barrier and result projection
 owner-specific handoffs after result acceptance
 ```
 
-It must not interpret current Item score, reproduce same-tag/cross-tag rules,
+SeedResultRuntime must not classify results or decode context. ResultRoutingPacer
+must not interpret current Item score, reproduce same-tag/cross-tag rules,
 select workers, parse transport sessions as truth, or refresh task or worker
-score as a generic side effect.
+score as a generic side effect. The public SeedResult queue is not partitioned
+by endpointManagerId.
 
 ## 4. Worker-Runtime Boundary Rules
 

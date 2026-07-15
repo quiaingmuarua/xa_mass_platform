@@ -1,7 +1,5 @@
 from ..assignment_dispatch import DeliverSeed
 from ..kernel import (
-    AttributeName,
-    DynamicAttributePayload,
     EndpointManagerId,
     MessageId,
     TaskCreationResult,
@@ -11,11 +9,8 @@ from ..kernel import (
     TaskItem,
     TaskItemAppendResult,
     TaskItemAppendStatus,
-    TimeMillis,
     WorkerDescriptor,
     WorkerGroupDescriptor,
-    WorkerGroupId,
-    WorkerId,
     WorkerRuntimeResult,
     WorkerRuntimeStatus,
 )
@@ -25,15 +20,15 @@ from .application import (
     TaskApprovalResult,
     TaskApprovalStatus,
 )
+from .resources_command_client import ResourcesCommandClient
 
 __all__ = [
-    "AttributeName",
     "DeliverSeed",
-    "DynamicAttributePayload",
     "EndpointManagerId",
     "KernelApplication",
     "KernelApplicationConfig",
     "MessageId",
+    "ResourcesCommandClient",
     "TaskApprovalResult",
     "TaskApprovalStatus",
     "TaskCreationResult",
@@ -43,11 +38,8 @@ __all__ = [
     "TaskItem",
     "TaskItemAppendResult",
     "TaskItemAppendStatus",
-    "TimeMillis",
     "WorkerDescriptor",
     "WorkerGroupDescriptor",
-    "WorkerGroupId",
-    "WorkerId",
     "WorkerRuntimeResult",
     "WorkerRuntimeStatus",
 ]

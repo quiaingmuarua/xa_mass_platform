@@ -14,8 +14,6 @@ from ..assignment_dispatch import (
     TaskWorkerAllocationConfig,
 )
 from ..kernel import (
-    AttributeName,
-    DynamicAttributePayload,
     EndpointManagerId,
     MessageId,
     TaskCreationResult,
@@ -28,12 +26,6 @@ from ..kernel import (
     TaskScoreBandCore,
     TaskScoreState,
     TaskScoreTransitionStatus,
-    TimeMillis,
-    WorkerDescriptor,
-    WorkerGroupDescriptor,
-    WorkerGroupId,
-    WorkerId,
-    WorkerRuntimeResult,
 )
 from ._redis_process import _RedisKernelProcess, _RedisKernelProcessConfig
 from .assignment_dispatch_application import AssignmentDispatchApplicationConfig
@@ -46,7 +38,6 @@ _DEFAULT_STOP_TIMEOUT_MILLIS = 5_000
 
 _INITIAL_PRE_REVIEW_SUFFIX = 1
 _APPROVED_PRE_DISPATCH_SUFFIX = 0
-_DEFAULT_WORKER_LANE_RANK = 50
 
 _TASK_BATCH_LIMIT = 100
 _WORKER_SCAN_LIMIT = 100
@@ -280,7 +271,7 @@ class _TaskLifecycleManager:
 
 
 class KernelApplication:
-    """The only stable external application boundary for the executable spec."""
+    """Scheduling-process application boundary for the executable spec."""
 
     def __init__(
         self,
@@ -320,46 +311,6 @@ class KernelApplication:
                 return
             self._process.stop()
             self._started = False
-
-    def register_worker_group(
-        self,
-        *,
-        descriptor: WorkerGroupDescriptor,
-    ) -> WorkerRuntimeResult:
-        self._require_started()
-        return self._process._worker_resource_catalog.register_worker_group_descriptor(
-            descriptor=descriptor,
-        )
-
-    def register_worker(
-        self,
-        *,
-        descriptor: WorkerDescriptor,
-    ) -> WorkerRuntimeResult:
-        self._require_started()
-        return self._process._worker_runtime.register_worker_descriptor(
-            descriptor=descriptor,
-            lane_rank=_DEFAULT_WORKER_LANE_RANK,
-        )
-
-    def update_worker_dynamic_attributes(
-        self,
-        *,
-        worker_group_id: WorkerGroupId,
-        worker_id: WorkerId,
-        updates: Mapping[AttributeName, DynamicAttributePayload],
-        observed_at_millis: TimeMillis,
-    ) -> Mapping[AttributeName, WorkerRuntimeResult]:
-        self._require_started()
-        return (
-            self._process._worker_dynamic_attribute_runtime
-            .update_worker_dynamic_attributes(
-                worker_group_id=worker_group_id,
-                worker_id=worker_id,
-                updates=updates,
-                observed_at_millis=observed_at_millis,
-            )
-        )
 
     def create_task(
         self,

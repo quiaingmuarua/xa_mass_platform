@@ -8,10 +8,13 @@ Parent contract: [Task Item Score-Band Scheduling](task-item-score-band-scheduli
 
 ## Purpose
 
-Result routing converts result evidence into one bounded owner decision:
+Result routing consumes queued `SeedResult` evidence and converts each value
+into one bounded owner decision:
 
 ```text
-incoming result evidence
+SeedResultRuntime unified queue
+  -> ResultRoutingPacer bounded consume
+  -> decode opaqueResultContext inside the result owner
   -> classify retryable / final-failed / final-success business outcome
   -> invoke one named TaskItemScoreBandCore operation
   -> map Item score transition status to accepted / stale / duplicate / unresolved
@@ -26,21 +29,61 @@ delivery into finality truth.
 ## Inputs
 
 ```text
-ResultEvidence
+SeedResult
+  opaqueResultContext
+  outcomeCode
+  opaqueResultPayload | null
+
+decoded result-owner context
   taskId
   messageId
   workerId
-  outcome
-  resultPayload | resultPayloadRef | null
   claimScore
-  observedAtMillis
+  workerLeaseScore
 ```
 
-`claimScore` is opaque evidence recovered from DeliverSeed's
-`opaqueResultContext`. Result routing passes it unchanged to
-`TaskItemScoreBandCore` and never reads or decodes tag, timeSlot, or suffix.
-Transport may normalize protocol frames into `ResultEvidence`; it does not
-decide retry or finality.
+The adapter copies `opaqueResultContext` unchanged from `DeliverSeed` into
+`SeedResult`. Only the result owner decodes the built-in context envelope.
+`claimScore` and `workerLeaseScore` remain opaque fences after decoding: result
+routing passes them to their declared owner operations and never interprets
+tag, timeSlot, suffix, or lane coordinates. Transport does not decide retry or
+finality.
+
+## SeedResult Runtime
+
+`SeedResultRuntime` owns one logical queue and only two bounded operations:
+
+```text
+append_seed_results(results: Sequence[SeedResult]) -> acceptedCount
+consume_seed_results(limit) -> Sequence[SeedResult]
+```
+
+Unlike `DeliverSeedRuntime`, it is not partitioned by `endpointManagerId`.
+Endpoint partitioning is required only while routing an already-assigned seed
+to its physical endpoint manager. Once a Worker outcome returns, one
+`ResultRoutingPacer` consumes the common result stream and recovers Task/Item/
+Worker correlation from `opaqueResultContext`.
+
+The runtime does not decode context, classify outcomes, mutate Item score,
+write result projection, or release Workers. Internal backend sharding may be
+added later without adding a public partition coordinate or a second result
+owner.
+
+## Outcome Code Contract
+
+```text
+outcomeCode == "200"
+  final-success evidence
+
+outcomeCode != "200"
+  failure evidence
+  result policy classifies retryable or final-failed
+```
+
+`outcomeCode` is always a non-empty string. Success is the exact string
+`"200"`; integer coercion and textual aliases such as `success`, `SUCCESS`,
+`ok`, or `OK` are forbidden. This is a kernel result contract, not an HTTP
+status interpretation.
 
 Policy inputs may include:
 
@@ -60,7 +103,12 @@ TaskItemScoreBandCore
   exact same-tag claim/retry stale fence
   ACTIVE < FINAL_FAILED < FINAL_SUCCESS promotion
 
-result owner
+SeedResultRuntime
+  unified bounded queue append / consume
+  no result classification or score mutation
+
+ResultRoutingPacer
+  opaque result-context decoding
   business outcome classification
   Item score operation selection
   transition-result mapping to routing outcome
@@ -97,16 +145,19 @@ a generic `handle_result` method.
 ## Mainline
 
 ```text
-1. receive normalized ResultEvidence
-2. validate taskId / messageId / workerId and result payload shape
-3. consult the recent-result barrier and Task retention fence
-4. classify retryable failure, final failure, or final success
-5. invoke exactly one TaskItemScoreBandCore transition
-6. map the returned transition status to accepted, stale, duplicate, or unresolved
-7. record result/barrier/projection evidence only when routing policy permits
-8. invoke Worker and Task owner handoffs when policy requires them
-9. return ResultRoutingOutcome
+1. consume one bounded SeedResult batch from SeedResultRuntime
+2. decode and validate opaqueResultContext inside ResultRoutingPacer
+3. validate outcomeCode and opaque result payload shape
+4. consult the recent-result barrier and Task retention fence
+5. classify retryable failure, final failure, or final success
+6. invoke exactly one TaskItemScoreBandCore transition
+7. map the returned transition status to accepted, stale, duplicate, or unresolved
+8. record result/barrier/projection evidence only when routing policy permits
+9. invoke Worker and Task owner handoffs when policy requires them
 ```
+
+One pacer round is bounded by its consume limit. It does not scan Tasks,
+Workers, endpoint-manager queues, or Redis keys outside `SeedResultRuntime`.
 
 No result path refreshes Task score as a generic side effect.
 
@@ -218,6 +269,9 @@ exists.
 Their first implementation must prove:
 
 ```text
+SeedResultRuntime appends and bounded-consumes one unified queue without an
+  endpointManagerId parameter
+ResultRoutingPacer alone decodes opaqueResultContext
 retryable classification invokes rewrite_observed_item_scores with unchanged
   budget and the opaque claimScore
 final classification invokes promote_item_outcomes with the target final band
@@ -244,4 +298,6 @@ not duplicated in result-routing tests.
 - Do not physically delete Item/result truth before the late-success retention
   barrier permits cleanup.
 - Do not let transport decide retry, finality, or Worker replacement.
+- Do not partition the public SeedResult queue by endpointManagerId.
+- Do not let SeedResultRuntime decode context or perform result routing.
 - Do not refresh Task score because a result arrived.

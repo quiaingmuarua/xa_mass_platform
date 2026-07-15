@@ -20,6 +20,7 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
 from kernel_design.executable_spec.assembly import (
     KernelApplication,
     KernelApplicationConfig,
+    ResourcesCommandClient,
     TaskApprovalResult,
     TaskApprovalStatus,
     TaskCreationResult,
@@ -30,7 +31,6 @@ from kernel_design.executable_spec.assembly import (
     TaskItemAppendStatus,
     WorkerDescriptor,
     WorkerGroupDescriptor,
-    WorkerRuntimeResult,
     WorkerRuntimeStatus,
 )
 from kernel_design.executable_spec.assembly._redis_process import _RedisKernelProcess
@@ -139,11 +139,8 @@ class KernelApplicationTest(unittest.TestCase):
                 "approve_task",
                 "consume_deliver_seeds",
                 "create_task",
-                "register_worker",
-                "register_worker_group",
                 "start",
                 "stop",
-                "update_worker_dynamic_attributes",
             },
             public_methods,
         )
@@ -156,9 +153,10 @@ class KernelApplicationTest(unittest.TestCase):
             "suffix",
             inspect.signature(KernelApplication.create_task).parameters,
         )
-        self.assertNotIn(
-            "lane_rank",
-            inspect.signature(KernelApplication.register_worker).parameters,
+        self.assertFalse(hasattr(self.application, "register_worker"))
+        self.assertFalse(hasattr(self.application, "register_worker_group"))
+        self.assertFalse(
+            hasattr(self.application, "update_worker_dynamic_attributes")
         )
         for package in (assembly_package, executable_spec_package):
             self.assertFalse(hasattr(package, "RedisKernelProcess"))
@@ -217,20 +215,7 @@ class KernelApplicationTest(unittest.TestCase):
         self.application.stop()
         self.assertFalse(self.application._started)
 
-    def test_owner_commands_hide_initial_suffix_and_lane_rank(self) -> None:
-        group = WorkerGroupDescriptor(
-            worker_group_id="image-workers",
-            attributes={},
-            event_codes=frozenset({"image.resize"}),
-        )
-        worker = WorkerDescriptor(
-            worker_id="worker-1",
-            worker_group_id="image-workers",
-            endpoint_manager_id="endpoint-1",
-            system_metadata={},
-            static_attributes={"runtime": "python"},
-            dynamic_attribute_names=frozenset({"battery"}),
-        )
+    def test_task_commands_hide_initial_suffix(self) -> None:
         task = self._task_descriptor()
         item = TaskItem(
             message_id="message-1",
@@ -238,33 +223,20 @@ class KernelApplicationTest(unittest.TestCase):
             created_at_millis=1,
             payload={"source": "input"},
         )
-        group_result = WorkerRuntimeResult(WorkerRuntimeStatus.OK)
-        worker_result = WorkerRuntimeResult(WorkerRuntimeStatus.OK)
         creation_result = TaskCreationResult(TaskCreationStatus.CREATED)
         append_result = {
             item.message_id: TaskItemAppendResult(TaskItemAppendStatus.APPENDED)
         }
-        register_group = (
-            self.process._worker_resource_catalog.register_worker_group_descriptor
-        )
-        register_group.return_value = group_result
-        self.process._worker_runtime.register_worker_descriptor.return_value = worker_result
         self.process._task_runtime.create_task.return_value = creation_result
         self.process._task_runtime.append_items.return_value = append_result
         self.application.start()
 
-        self.assertIs(group_result, self.application.register_worker_group(descriptor=group))
-        self.assertIs(worker_result, self.application.register_worker(descriptor=worker))
         self.assertIs(creation_result, self.application.create_task(descriptor=task))
         self.assertIs(
             append_result,
             self.application.append_task_items(task_id=task.task_id, items=(item,)),
         )
 
-        self.process._worker_runtime.register_worker_descriptor.assert_called_once_with(
-            descriptor=worker,
-            lane_rank=50,
-        )
         self.process._task_runtime.create_task.assert_called_once_with(
             descriptor=task,
             suffix=1,
@@ -397,9 +369,6 @@ class KernelApplicationTest(unittest.TestCase):
         process._task_score = Mock(spec=TaskScoreBandCore)
         process._task_resource_catalog = Mock(spec=TaskResourceCatalog)
         process._task_runtime = Mock()
-        process._worker_resource_catalog = Mock()
-        process._worker_runtime = Mock()
-        process._worker_dynamic_attribute_runtime = Mock()
         process._deliver_seed_runtime = Mock()
         return process
 
@@ -425,17 +394,16 @@ class KernelApplicationIntegrationTest(unittest.TestCase):
     def setUp(self) -> None:
         assert _REDIS_URL is not None
         self.prefix = f"application-{uuid.uuid4().hex}"
-        self.application = KernelApplication(
-            KernelApplicationConfig(
-                redis_url=_REDIS_URL,
-                redis_prefix=self.prefix,
-                worker_allocation_interval_millis=10,
-                running_activation_interval_millis=10,
-                task_item_dispatch_interval_millis=10,
-                stop_timeout_millis=1_000,
-            )
+        self.config = KernelApplicationConfig(
+            redis_url=_REDIS_URL,
+            redis_prefix=self.prefix,
+            worker_allocation_interval_millis=10,
+            running_activation_interval_millis=10,
+            task_item_dispatch_interval_millis=10,
+            stop_timeout_millis=1_000,
         )
-        self.application.start()
+        self.resources_client = ResourcesCommandClient(self.config)
+        self.application = KernelApplication(self.config)
 
     def tearDown(self) -> None:
         self.application.stop()
@@ -449,14 +417,14 @@ class KernelApplicationIntegrationTest(unittest.TestCase):
         task_id = "task-1"
         message_id = "message-1"
 
-        group_result = self.application.register_worker_group(
+        group_result = self.resources_client.register_worker_group(
             descriptor=WorkerGroupDescriptor(
                 worker_group_id=worker_group_id,
                 attributes={"kind": "image"},
                 event_codes=frozenset({"image.resize"}),
             )
         )
-        worker_result = self.application.register_worker(
+        worker_result = self.resources_client.register_worker(
             descriptor=WorkerDescriptor(
                 worker_id="worker-1",
                 worker_group_id=worker_group_id,
@@ -466,6 +434,8 @@ class KernelApplicationIntegrationTest(unittest.TestCase):
                 dynamic_attribute_names=frozenset(),
             )
         )
+        self.application.start()
+
         created = self.application.create_task(
             descriptor=KernelApplicationTest._task_descriptor(task_id)
         )
@@ -501,7 +471,14 @@ class KernelApplicationIntegrationTest(unittest.TestCase):
         self.assertEqual("worker-1", seeds[0].worker_id)
         self.assertEqual(
             message_id,
-            json.loads(seeds[0].opaque_delivery_item)["messageId"],
+            json.loads(seeds[0].opaque_result_context)["messageId"],
+        )
+        self.assertEqual(
+            {
+                "eventCode": "image.resize",
+                "payload": {"source": "input"},
+            },
+            json.loads(seeds[0].opaque_delivery_item),
         )
 
 

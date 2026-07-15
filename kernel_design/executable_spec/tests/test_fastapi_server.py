@@ -8,6 +8,7 @@ from unittest.mock import Mock
 from kernel_design.executable_spec.assembly import (
     DeliverSeed,
     KernelApplication,
+    ResourcesCommandClient,
     TaskApprovalResult,
     TaskApprovalStatus,
     TaskCreationResult,
@@ -50,10 +51,11 @@ class FastApiServerTest(unittest.TestCase):
     def setUp(self) -> None:
         assert create_app is not None
         self.application = Mock(spec=KernelApplication)
-        self.application.register_worker_group.return_value = WorkerRuntimeResult(
+        self.resources_client = Mock(spec=ResourcesCommandClient)
+        self.resources_client.register_worker_group.return_value = WorkerRuntimeResult(
             WorkerRuntimeStatus.OK
         )
-        self.application.register_worker.return_value = WorkerRuntimeResult(
+        self.resources_client.register_worker.return_value = WorkerRuntimeResult(
             WorkerRuntimeStatus.OK
         )
         self.application.create_task.return_value = TaskCreationResult(
@@ -73,7 +75,12 @@ class FastApiServerTest(unittest.TestCase):
                 task_item_claim_until_millis=5_000,
             ),
         )
-        self.client_context = TestClient(create_app(application=self.application))
+        self.client_context = TestClient(
+            create_app(
+                application=self.application,
+                resources_client=self.resources_client,
+            )
+        )
         self.client = self.client_context.__enter__()
 
     def tearDown(self) -> None:
@@ -82,6 +89,7 @@ class FastApiServerTest(unittest.TestCase):
     def test_lifespan_and_health_use_one_kernel_application(self) -> None:
         self.assertEqual({"status": "ok"}, self.client.get("/health").json())
         self.application.start.assert_called_once_with()
+        self.assertFalse(hasattr(self.resources_client, "start"))
 
     def test_routes_translate_http_values_to_assembly_contracts(self) -> None:
         group_response = self.client.post(
@@ -158,6 +166,23 @@ class FastApiServerTest(unittest.TestCase):
             "suffix",
             inspect.signature(self.application.create_task).parameters,
         )
+        self.resources_client.register_worker_group.assert_called_once()
+        self.resources_client.register_worker.assert_called_once()
+
+    def test_dynamic_attribute_route_is_not_public(self) -> None:
+        response = self.client.post(
+            "/workers/image-workers/worker-1/dynamic-attributes",
+            json={"updates": {"battery": 80}, "observedAtMillis": 1},
+        )
+
+        self.assertEqual(404, response.status_code)
+
+    def test_injected_boundaries_must_be_supplied_together(self) -> None:
+        assert create_app is not None
+        with self.assertRaisesRegex(ValueError, "injected together"):
+            create_app(application=self.application)
+        with self.assertRaisesRegex(ValueError, "injected together"):
+            create_app(resources_client=self.resources_client)
 
     def test_stop_runs_when_lifespan_closes(self) -> None:
         self.client_context.__exit__(None, None, None)

@@ -359,17 +359,17 @@ transport adapter/session queue choice inside an endpoint manager
 Answers:
 
 ```text
-can this queued, already-assigned DeliverSeed continue to final-hop delivery?
-after accepted delivery, should the Worker lease be released or retained?
+can this queued, already-assigned DeliverSeed reach its selected local Worker?
+can the external endpoint manager submit the resulting evidence unchanged?
 ```
 
 Owns:
 
 ```text
 endpointManagerId-partitioned DeliverSeed queue consumption
-exact Worker lease continuation before delivery
-transport submit for the already selected Worker
-accepted non-exclusive release or exclusive lease retention
+stale claim cutoff and endpoint-manager-local Worker resolution
+handler / transport submit for the already selected Worker
+SeedResult append to the kernel SeedResultRuntime
 ```
 
 Does not own:
@@ -378,6 +378,7 @@ Does not own:
 Task or Worker selection
 TaskItem acquisition or claim
 Task score mutation
+Worker lease validation, renewal, release, or retention
 result finality
 ```
 
@@ -392,10 +393,13 @@ what should this incoming result do next?
 Owns:
 
 ```text
+one logical SeedResult queue through SeedResultRuntime
+bounded SeedResult consumption through ResultRoutingPacer
 classify business result as retryable, final-failed, or final-success
 invoke one TaskItemScoreBandCore transition without interpreting score
 map the returned transition status to accepted, stale/duplicate no-op, discard,
 or manual review / unresolved handling
+coordinate accepted-result release / retain handoff to the Worker owner
 ```
 
 Does not own:
@@ -432,12 +436,15 @@ a query/view owner and not a transport parser.
 7. [Assignment-Dispatch Application](assignment-dispatch-application.md)
    - assembly lifecycle for three independently paced background round loops.
 8. [DeliverSeed Outbound Delivery](deliver-seed-outbound-delivery.md)
-   - queued seed consumption, Worker lease continuation, transport submit, and
-     exclusive/non-exclusive Worker disposition.
+   - queued seed consumption, endpoint-manager-local execution, and opaque
+     SeedResult submission.
 9. [Result-Routing Scheduling](result-routing-scheduling.md)
    - how result evidence is routed to finality, retry, no-op, or unresolved
      handling.
-9. [Worker Runtime Redis Shape](../runtime-redis/worker-runtime-redis-shape.md)
+10. [Local Function Transport Adapter](../../examples/local_function_adapter/README.md)
+   - independent external-process startup, local Worker reachability, and
+     platform resource registration order.
+11. [Worker Runtime Redis Shape](../runtime-redis/worker-runtime-redis-shape.md)
    - first-slice Redis structure reference for worker-runtime resource catalog,
      score acquisition, and dynamic attribute storage.
 

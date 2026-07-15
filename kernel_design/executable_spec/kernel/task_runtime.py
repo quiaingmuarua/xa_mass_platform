@@ -21,8 +21,7 @@ class TaskItem:
     message_id: MessageId
     event_code: EventCode
     created_at_millis: TimeMillis
-    payload: Mapping[str, object] | None = None
-    payload_ref: str | None = None
+    payload: Mapping[str, object]
     priority: ItemPriority = 5
     expire_at_millis: TimeMillis | None = None
 
@@ -31,12 +30,8 @@ class TaskItem:
             raise ValueError("message id must be non-empty")
         if not self.event_code:
             raise ValueError("event code must be non-empty")
-        if (self.payload is None) == (self.payload_ref is None):
-            raise ValueError("exactly one of payload and payload_ref is required")
-        if self.payload is not None and not isinstance(self.payload, MappingABC):
+        if not isinstance(self.payload, MappingABC):
             raise ValueError("task item payload must be a mapping")
-        if self.payload_ref is not None and not self.payload_ref:
-            raise ValueError("payload ref must be non-empty")
         if (
             not isinstance(self.priority, int)
             or isinstance(self.priority, bool)

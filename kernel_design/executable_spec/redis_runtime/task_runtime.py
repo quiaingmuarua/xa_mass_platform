@@ -296,7 +296,6 @@ class RedisTaskRuntime(TaskRuntime):
             {
                 "eventCode": item.event_code,
                 "payload": item.payload,
-                "payloadRef": item.payload_ref,
                 "priority": item.priority,
                 "createdAtMillis": item.created_at_millis,
                 "expireAtMillis": item.expire_at_millis,
@@ -311,7 +310,6 @@ class RedisTaskRuntime(TaskRuntime):
                 message_id=message_id,
                 event_code=item["eventCode"],
                 payload=item["payload"],
-                payload_ref=item["payloadRef"],
                 priority=item["priority"],
                 created_at_millis=item["createdAtMillis"],
                 expire_at_millis=item["expireAtMillis"],

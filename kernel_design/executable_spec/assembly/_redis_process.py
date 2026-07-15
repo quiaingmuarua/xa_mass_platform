@@ -19,7 +19,6 @@ from ..redis_runtime import (
     RedisTaskScoreBandCore,
     RedisWorkerDynamicAttributeRuntime,
     RedisWorkerResourceCatalog,
-    RedisWorkerRuntime,
     RedisWorkerScoreCore,
 )
 from .assignment_dispatch_application import (
@@ -78,11 +77,6 @@ class _RedisKernelProcess:
         )
         self._worker_resource_catalog = RedisWorkerResourceCatalog(
             redis_client,
-            prefix=config.prefix,
-        )
-        self._worker_runtime = RedisWorkerRuntime(
-            redis_client,
-            worker_score,
             prefix=config.prefix,
         )
         self._worker_dynamic_attribute_runtime = (

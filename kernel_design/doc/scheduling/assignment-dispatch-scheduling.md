@@ -55,9 +55,9 @@ TaskItemDispatchPacer
 
 DeliverSeed outbound owner
   queued DeliverSeed
-    -> Worker validity / lease continuation
-    -> transport submit
-    -> non-exclusive release or exclusive retention
+    -> endpoint-manager-local Worker resolution
+    -> handler / transport submit
+    -> SeedResult append to the kernel SeedResultRuntime
 ```
 
 The separation is mandatory. The two pacers have different candidate bands,
@@ -342,7 +342,8 @@ consumed opaque lease evidence into DeliverSeed:
 ```text
 consume CandidateWorkerEntry
   -> claim one current TaskItem score
-  -> encode opaqueDeliveryItem from the canonical TaskItem
+  -> call the internal delivery-item encoder for the canonical TaskItem
+     built-in output = {eventCode, payload}
   -> encode opaqueResultContext(taskId, messageId, workerId,
        claimScore, workerLeaseScore)
   -> DeliverSeed(workerId, opaqueDeliveryItem, opaqueResultContext,
@@ -351,9 +352,13 @@ consume CandidateWorkerEntry
 
 outbound DeliverSeed consumer
   -> discard expired-before-submit seed without a synthetic result
-  -> validate or renew the exact Worker lease evidence
   -> submit to the already selected Worker
-  -> release after accepted non-exclusive delivery or retain for exclusive use
+  -> append the real Worker outcome to SeedResultRuntime
+
+ResultRoutingPacer
+  -> bounded consume from the unified SeedResult queue
+  -> interpret the returned opaque result context
+  -> coordinate Worker-owner release or retain policy
 ```
 
 Concurrent allocation rounds may observe the same due Worker, but only one
@@ -362,9 +367,10 @@ Worker is consumed by at most one candidate. This exclusivity is only a short
 allocation window. A stale
 collection entry can remain after dirtying, release, lease due, or metadata
 change. TaskItem dispatch may still turn that opaque evidence into a queued
-seed; outbound Worker validation decides whether delivery may continue. Such
-an entry and seed are disposable intermediate evidence, not a second assignment
-or Worker truth.
+seed. The external endpoint manager neither interprets nor mutates the Worker
+score; Result-Routing owns the later Worker-owner handoff. Such an entry and
+seed are disposable intermediate evidence, not a second assignment or Worker
+truth.
 
 The candidate expiry must not be later than the Worker lease written for that
 batch:

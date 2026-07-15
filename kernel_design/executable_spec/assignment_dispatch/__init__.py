@@ -1,7 +1,4 @@
-from .task_item_dispatch import (
-    TaskItemDispatchConfig,
-    TaskItemDispatchPacer,
-)
+from .task_item_dispatch import TaskItemDispatchConfig, TaskItemDispatchPacer
 from .runtime import (
     AssignmentDispatchRuntime,
     CandidateWorkerEntry,

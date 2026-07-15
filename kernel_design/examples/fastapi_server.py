@@ -14,6 +14,8 @@ from pydantic import BaseModel, Field
 from kernel_design.executable_spec.assembly import (
     DeliverSeed,
     KernelApplication,
+    KernelApplicationConfig,
+    ResourcesCommandClient,
     TaskApprovalResult,
     TaskApprovalStatus,
     TaskCreationResult,
@@ -52,11 +54,6 @@ class WorkerRequest(BaseModel):
     )
 
 
-class DynamicAttributeUpdateRequest(BaseModel):
-    updates: dict[str, Any]
-    observed_at_millis: int = Field(alias="observedAtMillis")
-
-
 class TaskRequest(BaseModel):
     task_id: str = Field(alias="taskId")
     worker_group_id: str = Field(alias="workerGroupId")
@@ -68,8 +65,7 @@ class TaskItemRequest(BaseModel):
     message_id: str = Field(alias="messageId")
     event_code: str = Field(alias="eventCode")
     created_at_millis: int = Field(alias="createdAtMillis")
-    payload: dict[str, Any] | None = None
-    payload_ref: str | None = Field(default=None, alias="payloadRef")
+    payload: dict[str, Any]
     priority: int = 5
     expire_at_millis: int | None = Field(default=None, alias="expireAtMillis")
 
@@ -121,9 +117,12 @@ def _approval_response(result: TaskApprovalResult) -> JSONResponse:
 
 
 def _result_map_payload(
-    results: Mapping[str, TaskItemAppendResult | WorkerRuntimeResult],
+    results: Mapping[str, TaskItemAppendResult],
 ) -> dict[str, dict[str, Any]]:
-    return {message_id: _result_payload(result) for message_id, result in results.items()}
+    return {
+        message_id: _result_payload(result)
+        for message_id, result in results.items()
+    }
 
 
 def _deliver_seed_payload(seed: DeliverSeed) -> dict[str, Any]:
@@ -139,10 +138,26 @@ def create_app(
     *,
     config_json: str | None = None,
     application: KernelApplication | None = None,
+    resources_client: ResourcesCommandClient | None = None,
 ) -> FastAPI:
-    if config_json is not None and application is not None:
-        raise ValueError("config_json and application are mutually exclusive")
-    kernel_application = application or KernelApplication.from_json(config_json)
+    if config_json is not None and (
+        application is not None or resources_client is not None
+    ):
+        raise ValueError(
+            "config_json and injected application boundaries are mutually exclusive"
+        )
+    if (application is None) != (resources_client is None):
+        raise ValueError(
+            "application and resources_client must be injected together"
+        )
+    if application is None:
+        config = KernelApplicationConfig.from_json(config_json)
+        kernel_application = KernelApplication(config)
+        resource_commands = ResourcesCommandClient(config)
+    else:
+        assert resources_client is not None
+        kernel_application = application
+        resource_commands = resources_client
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -154,6 +169,7 @@ def create_app(
 
     app = FastAPI(title="Kernel Executable Spec", lifespan=lifespan)
     app.state.kernel_application = kernel_application
+    app.state.resources_command_client = resource_commands
 
     @app.exception_handler(ValueError)
     async def invalid_contract_value(
@@ -169,7 +185,7 @@ def create_app(
     @app.post("/worker-groups")
     def register_worker_group(request: WorkerGroupRequest) -> JSONResponse:
         return _worker_result_response(
-            kernel_application.register_worker_group(
+            resource_commands.register_worker_group(
                 descriptor=WorkerGroupDescriptor(
                     worker_group_id=request.worker_group_id,
                     attributes=request.attributes,
@@ -181,7 +197,7 @@ def create_app(
     @app.post("/workers")
     def register_worker(request: WorkerRequest) -> JSONResponse:
         return _worker_result_response(
-            kernel_application.register_worker(
+            resource_commands.register_worker(
                 descriptor=WorkerDescriptor(
                     worker_id=request.worker_id,
                     worker_group_id=request.worker_group_id,
@@ -194,20 +210,6 @@ def create_app(
                 )
             )
         )
-
-    @app.post("/workers/{worker_group_id}/{worker_id}/dynamic-attributes")
-    def update_worker_dynamic_attributes(
-        worker_group_id: str,
-        worker_id: str,
-        request: DynamicAttributeUpdateRequest,
-    ) -> dict[str, dict[str, Any]]:
-        results = kernel_application.update_worker_dynamic_attributes(
-            worker_group_id=worker_group_id,
-            worker_id=worker_id,
-            updates=request.updates,
-            observed_at_millis=request.observed_at_millis,
-        )
-        return _result_map_payload(results)
 
     @app.post("/tasks")
     def create_task(request: TaskRequest) -> JSONResponse:
@@ -237,7 +239,6 @@ def create_app(
                 event_code=item.event_code,
                 created_at_millis=item.created_at_millis,
                 payload=item.payload,
-                payload_ref=item.payload_ref,
                 priority=item.priority,
                 expire_at_millis=item.expire_at_millis,
             )
