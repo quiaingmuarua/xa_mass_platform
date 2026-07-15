@@ -11,5 +11,5 @@ The document families are grouped by design concern:
 - [Runtime Redis Shapes](runtime-redis/worker-runtime-redis-shape.md): Redis
   key and owner-shape notes adopted or evaluated by the executable spec.
 
-Python executable-spec code lives under `../py_example/`; these documents do
+Python executable-spec code lives under `../executable_spec/`; these documents do
 not create a second implementation path or current Java implementation truth.

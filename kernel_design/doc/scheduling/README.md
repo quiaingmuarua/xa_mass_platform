@@ -493,7 +493,7 @@ caller-owned outbox / broker is optional and never kernel truth
 The current Python executable spec is framework-light and organized by owner:
 
 ```text
-kernel_design/py_example/
+kernel_design/executable_spec/
   constraint_dsl/
     evaluator.py
   kernel/
@@ -502,28 +502,29 @@ kernel_design/py_example/
     worker_score.py
     task_runtime.py
     worker_runtime.py
-    task_dispatch_runtime.py
   assignment_dispatch/
+    runtime.py
     worker_candidate_matcher.py
     task_worker_allocation.py
     task_item_dispatch.py
-  runtime_redis/
-    task_score_band_zset.py
-    task_item_score_band_zset.py
-    worker_score_zset.py
+  redis_runtime/
+    task_score_band.py
+    task_item_score_band.py
+    worker_score.py
     task_runtime.py
     worker_runtime.py
-    task_dispatch_runtime.py
+    assignment_dispatch.py
   tests/
 ```
 
 It currently proves the Task, TaskItem, and Worker score axes, TaskItem DTO and
 latest-write Redis record persistence, resource catalogs, bounded Worker
 matching, Redis candidate handoff, both assignment pacers, the DeliverSeed
-model, and the DeliverSeedQueue owner surface. DeliverSeed queue storage,
-outbound delivery, recent-first dispatch-task acquire, and result routing are
-still executable-spec gaps. An in-memory runtime is not a prerequisite or a
-parallel mainline.
+model, and endpoint-manager-partitioned Redis DeliverSeed append through
+`AssignmentDispatchRuntime`. DeliverSeed consumption, outbound delivery,
+recent-first dispatch-task acquire, and result routing are still
+executable-spec gaps. An in-memory runtime is not a prerequisite or a parallel
+mainline.
 
 ## Extension Scope
 

@@ -72,7 +72,7 @@ WorkerCandidateMatcher
   )
   -> WorkerCandidateMatchResult(matches, endpointManagerIdByWorkerId)
 
-TaskDispatchRuntime
+AssignmentDispatchRuntime
   append_candidate_workers(taskId, entries, expiresAtMillis)
   candidate_worker_counts(taskIds)
 
@@ -223,7 +223,7 @@ observation, but only one can win its exact-score lease CAS.
 `leaseUntilMillis` is derived before batch leasing from
 `workerLeaseDurationMillis`; it does not cross the matcher interface. The same
 value is supplied to
-`TaskDispatchRuntime` as the current batch expiry, so candidate expiry never
+`AssignmentDispatchRuntime` as the current batch expiry, so candidate expiry never
 outlives the lease that prevented duplicate allocation.
 
 ## PRE_DISPATCH_VISIBLE
@@ -366,7 +366,7 @@ task_dispatch_runtime.append_candidate_workers(
 The pacer may loop or a concrete runtime may pipeline calls for many Tasks, but
 cross-Task success is partial and non-atomic. The Task descriptor plus current
 live count bounds the matcher output for one allocation batch.
-`TaskDispatchRuntime` stores every entry passed to it and owns only batch-expiry
+`AssignmentDispatchRuntime` stores every entry passed to it and owns only batch-expiry
 indexing, owner-local expired-member cleanup, batched live count, and bounded
 atomic consume.
 
@@ -393,7 +393,7 @@ workerLeaseDurationMillis
 
 The concrete allocation pacer receives `TaskScoreBandCore`,
 `TaskResourceCatalog`, `WorkerScoreCore`, `WorkerCandidateMatcher`, and
-`TaskDispatchRuntime` through constructor assembly. `TaskRunningActivationPacer`
+`AssignmentDispatchRuntime` through constructor assembly. `TaskRunningActivationPacer`
 additionally receives one `TaskRunningActivationPolicy` function. These pacers
 are strategy executors, not ABC owner surfaces.
 
@@ -483,7 +483,7 @@ runtime contract. It is not Task metadata and is not caller-configurable.
 
 The current Python package implements `TaskWorkerAllocationPacer`,
 `TaskWorkerAllocationConfig`, `TaskRunningActivationPacer`,
-`TaskRunningActivationConfig`, the `TaskDispatchRuntime` owner interface, its
+`TaskRunningActivationConfig`, the `AssignmentDispatchRuntime` owner interface, its
 Redis ZSET implementation, and the candidate-worker reservation DTO. The Task score core
 also implements exact single-band bounded acquisition. Task Item score APIs are
 the defined next owner surface but remain absent from the executable spec. The
@@ -492,8 +492,8 @@ existing active-task acquire supplies the base RUNNING-first band order.
 Interface sources:
 
 ```text
-py_example/assignment_dispatch/task_worker_allocation.py
-py_example/kernel/task_dispatch_runtime.py
+executable_spec/assignment_dispatch/task_worker_allocation.py
+executable_spec/assignment_dispatch/runtime.py
 ```
 
 ## Failure And Stale Handling
@@ -555,6 +555,6 @@ Task pauses/closes after publication
   no-worker backoff, hold, or terminal policy inside candidate allocation.
 - Do not expose cross-Task append as one atomic runtime operation; each Task
   candidate ZSET is an independent owner boundary.
-- Do not make `TaskDispatchRuntime` choose or enforce a Task candidate limit;
+- Do not make `AssignmentDispatchRuntime` choose or enforce a Task candidate limit;
   the pacer bounds each matcher result and the runtime stores what it receives.
 - Do not make candidate collection a Task or Worker truth owner.

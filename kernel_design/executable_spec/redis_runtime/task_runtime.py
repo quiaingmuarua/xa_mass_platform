@@ -1,0 +1,403 @@
+from __future__ import annotations
+
+import json
+from collections.abc import Mapping as MappingABC
+from contextlib import suppress
+from dataclasses import replace
+from typing import Any, Mapping, Sequence
+
+from ..constraint_dsl import ConstraintEvaluator
+from ..kernel.task_runtime import (
+    MessageId,
+    TaskCreationResult,
+    TaskCreationStatus,
+    TaskDescriptor,
+    TaskItem,
+    TaskItemAppendResult,
+    TaskItemAppendStatus,
+    TaskResourceCatalog,
+    TaskRuntime,
+)
+from ..kernel.task_item_score_band import (
+    TaskItemScoreBandCore,
+    TaskItemScoreTransitionStatus,
+)
+from ..kernel.task_score_band import (
+    Score,
+    Suffix,
+    TaskId,
+    TaskScoreBandCore,
+    TaskScoreTransitionStatus,
+)
+
+
+def _task_descriptor_key(prefix: str, task_id: TaskId) -> str:
+    return f"tc:{prefix}:task:{task_id}"
+
+
+def _task_items_key(prefix: str, task_id: TaskId) -> str:
+    return f"tr:{prefix}:task:{task_id}:items"
+
+
+def _encode_json(payload: Mapping[str, object]) -> str:
+    return json.dumps(
+        dict(payload),
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+
+
+class RedisTaskRuntime(TaskRuntime):
+    """Redis Task runtime owner."""
+
+    DEFAULT_LEASE_DURATION_MILLIS = 3_000
+    DEFAULT_ITEM_TTL_MILLIS = 365 * 24 * 60 * 60 * 1_000
+    ITEM_PRIORITY_STEP_MILLIS = 100
+    MAX_ITEM_PRIORITY = 10
+
+    def __init__(
+        self,
+        redis_client: Any,
+        score_band: TaskScoreBandCore,
+        item_score_band: TaskItemScoreBandCore,
+        *,
+        prefix: str = "default",
+        lease_duration_millis: int = DEFAULT_LEASE_DURATION_MILLIS,
+    ) -> None:
+        if not prefix:
+            raise ValueError("prefix must be non-empty")
+        if lease_duration_millis <= 0:
+            raise ValueError("lease_duration_millis must be positive")
+        self.redis = redis_client
+        self.score_band = score_band
+        self.item_score_band = item_score_band
+        self.prefix = prefix
+        self.lease_duration_millis = lease_duration_millis
+
+    def create_task(
+        self,
+        *,
+        descriptor: TaskDescriptor,
+        suffix: Suffix,
+    ) -> TaskCreationResult:
+        try:
+            ConstraintEvaluator.compile_match_rules(descriptor.allocation_rule)
+            allocation_rule_json = _encode_json(descriptor.allocation_rule)
+            config_json = _encode_json(descriptor.config)
+        except (TypeError, ValueError):
+            return TaskCreationResult(
+                TaskCreationStatus.INVALID,
+                "descriptor allocation rule is invalid or not JSON serializable",
+            )
+
+        initialization = self._initialize_task_score(
+            task_id=descriptor.task_id,
+            suffix=suffix,
+        )
+        if isinstance(initialization, TaskCreationResult):
+            return initialization
+        observed_lease_score = initialization
+
+        try:
+            self.redis.hset(
+                _task_descriptor_key(self.prefix, descriptor.task_id),
+                mapping={
+                    "workerGroupId": descriptor.worker_group_id,
+                    "allocationRuleJson": allocation_rule_json,
+                    "configJson": config_json,
+                },
+            )
+        except Exception:
+            with suppress(Exception):
+                self.score_band.release_observed_score_hold(
+                    task_id=descriptor.task_id,
+                    observed_hold_score=observed_lease_score,
+                )
+            raise
+
+        release = self.score_band.release_observed_score_hold(
+            task_id=descriptor.task_id,
+            observed_hold_score=observed_lease_score,
+        )
+        if release.status == TaskScoreTransitionStatus.TRANSITIONED:
+            return TaskCreationResult(TaskCreationStatus.CREATED)
+        return TaskCreationResult(
+            TaskCreationStatus.RETRYABLE,
+            "task descriptor was written but score release was not accepted",
+        )
+
+    def _initialize_task_score(
+        self,
+        *,
+        task_id: TaskId,
+        suffix: Suffix,
+    ) -> Score | TaskCreationResult:
+        initialization = self.score_band.initialize_score(
+            task_id=task_id,
+            suffix=suffix,
+            lease_duration_millis=self.lease_duration_millis,
+        )
+        if initialization.status == TaskScoreTransitionStatus.TRANSITIONED:
+            if initialization.score is not None:
+                return initialization.score
+            return TaskCreationResult(
+                TaskCreationStatus.RETRYABLE,
+                "task score initialization returned no lease score",
+            )
+        if initialization.status == TaskScoreTransitionStatus.NOOP:
+            return TaskCreationResult(
+                TaskCreationStatus.CONFLICT,
+                "task score is already initialized",
+            )
+        if initialization.status == TaskScoreTransitionStatus.INVALID:
+            return TaskCreationResult(
+                TaskCreationStatus.INVALID,
+                "task score initialization was rejected",
+            )
+        return TaskCreationResult(
+            TaskCreationStatus.RETRYABLE,
+            "task score initialization could not be confirmed",
+        )
+
+    def append_items(
+        self,
+        *,
+        task_id: TaskId,
+        items: Sequence[TaskItem],
+    ) -> Mapping[MessageId, TaskItemAppendResult]:
+        if not items:
+            return {}
+
+        ordered_items = {item.message_id: item for item in items}
+        max_retry_times = self._load_max_retry_times(task_id)
+        if max_retry_times is None:
+            return self._item_results(
+                ordered_items,
+                TaskItemAppendStatus.NOT_FOUND,
+            )
+
+        records: dict[MessageId, str] = {}
+        due_millis_by_message_id: dict[MessageId, int] = {}
+        results: dict[MessageId, TaskItemAppendResult] = {}
+        for message_id, item in ordered_items.items():
+            try:
+                normalized = self._materialize_item_defaults(item)
+                records[message_id] = self._encode_task_item(normalized)
+                due_millis_by_message_id[message_id] = (
+                    self._initial_due_millis(normalized)
+                )
+            except (TypeError, ValueError):
+                results[message_id] = TaskItemAppendResult(
+                    TaskItemAppendStatus.INVALID,
+                    "TaskItem is not JSON serializable",
+                )
+
+        if not records:
+            return results
+
+        try:
+            self.redis.hset(self._items_key(task_id), mapping=records)
+        except Exception:
+            results.update(
+                self._item_results(records, TaskItemAppendStatus.RETRYABLE)
+            )
+            return results
+
+        try:
+            score_results = self.item_score_band.initialize_item_scores(
+                task_id=task_id,
+                initial_due_millis_by_message_id=due_millis_by_message_id,
+                max_retry_times=max_retry_times,
+            )
+        except Exception:
+            results.update(
+                self._item_results(records, TaskItemAppendStatus.RETRYABLE)
+            )
+            return results
+
+        for message_id, score_result in score_results.items():
+            if score_result.status in {
+                TaskItemScoreTransitionStatus.TRANSITIONED,
+                TaskItemScoreTransitionStatus.NOOP,
+            }:
+                status = TaskItemAppendStatus.APPENDED
+            elif score_result.status is TaskItemScoreTransitionStatus.INVALID:
+                status = TaskItemAppendStatus.INVALID
+            else:
+                status = TaskItemAppendStatus.RETRYABLE
+            results[message_id] = TaskItemAppendResult(status)
+        return results
+
+    def load_task_items(
+        self,
+        *,
+        task_id: TaskId,
+        message_ids: Sequence[MessageId],
+    ) -> Mapping[MessageId, TaskItem | None]:
+        unique_message_ids = tuple(dict.fromkeys(message_ids))
+        if not unique_message_ids:
+            return {}
+
+        raw_items = self.redis.hmget(
+            self._items_key(task_id),
+            unique_message_ids,
+        )
+        return {
+            message_id: (
+                None
+                if raw_item is None
+                else self._decode_task_item(message_id, raw_item)
+            )
+            for message_id, raw_item in zip(
+                unique_message_ids,
+                raw_items,
+                strict=True,
+            )
+        }
+
+    def _items_key(self, task_id: TaskId) -> str:
+        return _task_items_key(self.prefix, task_id)
+
+    def _load_max_retry_times(self, task_id: TaskId) -> int | None:
+        raw_config = self.redis.hget(
+            _task_descriptor_key(self.prefix, task_id),
+            "configJson",
+        )
+        if raw_config is None:
+            return None
+        config = json.loads(raw_config)
+        value = config["maxRetryTimes"]
+        if not isinstance(value, str) or not value.isascii() or not value.isdecimal():
+            raise ValueError("Task maxRetryTimes must be decimal text")
+        return int(value)
+
+    def _materialize_item_defaults(self, item: TaskItem) -> TaskItem:
+        if item.expire_at_millis is not None:
+            return item
+        return replace(
+            item,
+            expire_at_millis=(
+                item.created_at_millis + self.DEFAULT_ITEM_TTL_MILLIS
+            ),
+        )
+
+    def _initial_due_millis(self, item: TaskItem) -> int:
+        return max(
+            0,
+            item.created_at_millis
+            - (self.MAX_ITEM_PRIORITY - item.priority)
+            * self.ITEM_PRIORITY_STEP_MILLIS,
+        )
+
+    @staticmethod
+    def _encode_task_item(item: TaskItem) -> str:
+        return _encode_json(
+            {
+                "eventCode": item.event_code,
+                "payload": item.payload,
+                "payloadRef": item.payload_ref,
+                "priority": item.priority,
+                "createdAtMillis": item.created_at_millis,
+                "expireAtMillis": item.expire_at_millis,
+            }
+        )
+
+    @staticmethod
+    def _decode_task_item(message_id: MessageId, raw_item: Any) -> TaskItem | None:
+        try:
+            item = json.loads(raw_item)
+            return TaskItem(
+                message_id=message_id,
+                event_code=item["eventCode"],
+                payload=item["payload"],
+                payload_ref=item["payloadRef"],
+                priority=item["priority"],
+                created_at_millis=item["createdAtMillis"],
+                expire_at_millis=item["expireAtMillis"],
+            )
+        except (KeyError, TypeError, ValueError, UnicodeDecodeError):
+            return None
+
+    @staticmethod
+    def _item_results(
+        message_ids: Sequence[MessageId] | Mapping[MessageId, object],
+        status: TaskItemAppendStatus,
+    ) -> dict[MessageId, TaskItemAppendResult]:
+        return {
+            message_id: TaskItemAppendResult(status)
+            for message_id in message_ids
+        }
+
+
+class RedisTaskResourceCatalog(TaskResourceCatalog):
+    """Redis HASH-backed Task allocation descriptor catalog."""
+
+    _HASH_FIELDS = ("workerGroupId", "allocationRuleJson", "configJson")
+
+    def __init__(
+        self,
+        redis_client: Any,
+        *,
+        prefix: str = "default",
+    ) -> None:
+        if not prefix:
+            raise ValueError("prefix must be non-empty")
+        self.redis = redis_client
+        self.prefix = prefix
+
+    def load_task_allocation_descriptors(
+        self,
+        *,
+        task_ids: Sequence[TaskId],
+    ) -> Mapping[TaskId, TaskDescriptor | None]:
+        unique_task_ids = list(dict.fromkeys(task_ids))
+        if not unique_task_ids:
+            return {}
+
+        pipeline = self.redis.pipeline(transaction=False)
+        for task_id in unique_task_ids:
+            pipeline.hmget(self._task_key(task_id), list(self._HASH_FIELDS))
+        raw_rows = pipeline.execute()
+
+        return {
+            task_id: self._decode_descriptor(task_id, raw_row)
+            for task_id, raw_row in zip(unique_task_ids, raw_rows, strict=True)
+        }
+
+    def _task_key(self, task_id: TaskId) -> str:
+        return _task_descriptor_key(self.prefix, task_id)
+
+    @staticmethod
+    def _decode_descriptor(
+        task_id: TaskId,
+        raw_row: Any,
+    ) -> TaskDescriptor | None:
+        try:
+            worker_group_raw, allocation_rule_raw, config_raw = raw_row
+            worker_group_id = (
+                worker_group_raw.decode("utf-8")
+                if isinstance(worker_group_raw, bytes)
+                else worker_group_raw
+            )
+            allocation_rule = json.loads(allocation_rule_raw)
+            config = json.loads(config_raw)
+        except (TypeError, ValueError, UnicodeDecodeError):
+            return None
+
+        if (
+            not isinstance(worker_group_id, str)
+            or not worker_group_id
+            or not isinstance(allocation_rule, MappingABC)
+            or not isinstance(config, MappingABC)
+        ):
+            return None
+        try:
+            return TaskDescriptor(
+                task_id=task_id,
+                worker_group_id=worker_group_id,
+                allocation_rule=dict(allocation_rule),
+                config=dict(config),
+            )
+        except ValueError:
+            return None

@@ -675,13 +675,13 @@ details as public kernel contracts.
 ## Executable-Spec Status
 
 The interface is implemented in
-[`py_example/kernel/task_item_score_band.py`](../../py_example/kernel/task_item_score_band.py).
+[`executable_spec/kernel/task_item_score_band.py`](../../executable_spec/kernel/task_item_score_band.py).
 The Redis ZSET owner is implemented in
-[`py_example/runtime_redis/task_item_score_band_zset.py`](../../py_example/runtime_redis/task_item_score_band_zset.py).
+[`executable_spec/redis_runtime/task_item_score_band.py`](../../executable_spec/redis_runtime/task_item_score_band.py).
 Its physical key is `tr:{prefix}:task:{taskId}:item-score`.
 
 Canonical TaskItem record append and bounded load are implemented by
-[`py_example/runtime_redis/task_runtime.py`](../../py_example/runtime_redis/task_runtime.py)
+[`executable_spec/redis_runtime/task_runtime.py`](../../executable_spec/redis_runtime/task_runtime.py)
 using `tr:{prefix}:task:{taskId}:items`. Real-Redis integration proof covers the
 complete owner composition:
 

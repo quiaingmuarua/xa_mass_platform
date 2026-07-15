@@ -25,7 +25,7 @@ Task score, classify result finality, or create another assignment identity.
 ## Inputs
 
 ```text
-DeliverSeedQueue
+AssignmentDispatchRuntime
   bounded queued seed consumption for one endpointManagerId partition
 
 WorkerScoreCore

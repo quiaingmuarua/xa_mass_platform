@@ -549,7 +549,7 @@ transition evidence belongs to trace or deterministic tests until repair needs i
 capacity is policy / dynamic attribute / later admission owner, not score truth
 assignment continuation is not first-slice truth
 worker-runtime-owned per-task candidates create a second assignment-dispatch
-mainline. The separate `TaskDispatchRuntime` may own transient
+mainline. The separate `AssignmentDispatchRuntime` may own transient
 `ad:{prefix}:task:{taskId}:candidate-workers` ZSETs; worker-runtime and
 worker-score must not read, write, or reinterpret that protocol.
 per-worker score keys break home-bucket acquisition

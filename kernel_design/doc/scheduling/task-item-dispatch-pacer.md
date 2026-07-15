@@ -33,8 +33,9 @@ TaskScoreBandCore
   acquire_dispatch_work_tasks(limit)
   read-only RUNNING_VISIBLE Task discovery
 
-TaskDispatchRuntime
+AssignmentDispatchRuntime
   atomically consume one Task's bounded CandidateWorkerEntry batch
+  append one bounded DeliverSeed batch to one endpointManagerId queue
 
 TaskItemScoreBandCore
   acquire due ACTIVE Item observations
@@ -43,9 +44,6 @@ TaskItemScoreBandCore
 
 TaskRuntime
   load bounded canonical TaskItem records
-
-DeliverSeedQueue
-  append one bounded DeliverSeed batch to one endpointManagerId queue
 
 TaskItemDispatchConfig
   taskBatchLimit
@@ -214,15 +212,21 @@ append_deliver_seeds(
 )
 ```
 
+The Redis executable spec writes one LIST per endpoint manager:
+
+```text
+ad:{prefix}:endpoint-manager:{endpointManagerId}:deliver-seeds
+```
+
 One call writes exactly one endpoint-manager queue. The pacer may aggregate
 seeds from multiple Tasks in the current bounded round before appending. Calls
 for different endpoint managers succeed or fail independently; the interface
 does not imply cross-queue atomicity.
 
-The first executable slice may use an in-process bounded queue or a Redis-backed
-queue, but the queue has one semantic role: handoff of already claimed Items to
-outbound delivery. It is not Item truth, Worker truth, result truth, or a second
-claim owner.
+The queue has one semantic role: handoff of already claimed Items to outbound
+delivery. It is not Item truth, Worker truth, result truth, or a second claim
+owner. Candidate collections and DeliverSeed queues share
+`AssignmentDispatchRuntime` ownership but remain independent structures.
 
 The queue does not promise cross-key atomicity with Item score or candidate
 consumption. Its correctness fallback is the existing score timing:
@@ -349,7 +353,7 @@ def dispatch_task_items(config):
     for endpoint_manager_id, deliver_seeds in (
         pending_seeds_by_endpoint_manager.items()
     ):
-        deliver_seed_queue.append_deliver_seeds(
+        assignment_dispatch_runtime.append_deliver_seeds(
             endpoint_manager_id=endpoint_manager_id,
             deliver_seeds=tuple(deliver_seeds),
         )
@@ -371,18 +375,18 @@ The Python executable spec already provides:
 
 ```text
 TaskScoreBandCore.acquire_dispatch_work_tasks
-TaskDispatchRuntime and Redis candidate ZSET
+AssignmentDispatchRuntime with Redis candidate ZSET and DeliverSeed LIST
 TaskRuntime bounded TaskItem load
 TaskItemScoreBandCore and Redis Item score implementation
-DeliverSeed model and DeliverSeedQueue owner surface
+DeliverSeed model and AssignmentDispatchRuntime owner surface
 TaskItemDispatchConfig and TaskItemDispatchPacer
-unit proof plus real Redis orchestration proof with a recording queue
+unit proof plus real Redis orchestration proof
 ```
 
 It does not yet provide:
 
 ```text
-DeliverSeedQueue storage implementation or outbound consumer
+DeliverSeed outbound consumer
 recent-first Redis implementation for acquire_dispatch_work_tasks
 ```
 

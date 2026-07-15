@@ -15,15 +15,15 @@ Current executable-spec gap:
 
 ```text
 TaskWorkerAllocationPacer has a first executable allocation-round implementation
-TaskDispatchRuntime has a Redis ZSET executable implementation
+AssignmentDispatchRuntime has Redis candidate-ZSET and DeliverSeed-LIST implementations
 Task Item score and TaskItem record mechanisms have Redis executable implementations
-TaskItemDispatchPacer, DeliverSeed, and DeliverSeedQueue surface have executable implementations
-no DeliverSeedQueue storage implementation or outbound consumer
+TaskItemDispatchPacer and DeliverSeed have executable implementations
+no DeliverSeed outbound consumer
 current Redis dispatch-task acquire is oldest-first, not recent-allocation reverse
 ```
 
 This document defines the target split. Both pacers now have executable-spec
-implementations; the second pacer proof stops at a recording DeliverSeed queue.
+implementations; the second pacer proof stops after Redis DeliverSeed append.
 
 ## Core Decision
 
@@ -174,13 +174,24 @@ CandidateWorkerEntry
 ```
 
 The Python DTO and runtime owner are implemented in
-[`py_example/kernel/task_dispatch_runtime.py`](../../py_example/kernel/task_dispatch_runtime.py).
+[`executable_spec/assignment_dispatch/runtime.py`](../../executable_spec/assignment_dispatch/runtime.py).
 The Redis executable spec uses one ZSET per Task, scored by candidate batch
 `expiresAtMillis`:
 
 ```text
 ad:{prefix}:task:{taskId}:candidate-workers
 ```
+
+The same `AssignmentDispatchRuntime` also owns endpoint-manager-partitioned
+DeliverSeed append through an independent Redis LIST:
+
+```text
+ad:{prefix}:endpoint-manager:{endpointManagerId}:deliver-seeds
+```
+
+Shared runtime ownership does not make candidate consumption and DeliverSeed
+append one transaction. They are separate bounded operations over separate
+intermediate structures.
 
 The member contains the complete `CandidateWorkerEntry`, including the matched
 Worker's `endpointManagerId` and opaque `workerLeaseScore`. The entry DTO still
@@ -273,7 +284,7 @@ executable approximation. It is point-in-time allocation evidence and does not
 prove the configured minimum remains valid through the Task score transition
 or after Worker score, dirty, or attribute changes. Strong current-validity
 semantics require an explicit Worker revalidation/reservation result; they must
-not be hidden inside `TaskDispatchRuntime` count.
+not be hidden inside `AssignmentDispatchRuntime` count.
 
 The first executable
 `TaskRunningActivationPacer.activate_running_visible_tasks(config)` scans one
@@ -341,7 +352,7 @@ candidateExpiresAtMillis <= workerLeaseUntilMillis
 
 The first executable policy uses equality. This ensures an old candidate is no
 longer live before that Worker can be leased into a later candidate batch.
-`TaskDispatchRuntime` does not decode Worker score to enforce the relation; the
+`AssignmentDispatchRuntime` does not decode Worker score to enforce the relation; the
 trusted allocation protocol supplies both values from the same round.
 
 ## Cross-Pacer Liveness

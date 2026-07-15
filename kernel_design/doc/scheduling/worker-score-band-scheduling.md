@@ -872,7 +872,7 @@ claim Item score
 select transport route
 inspect adapter sessions directly
 write task score
-create or own per-task worker candidate sets; transient `TaskDispatchRuntime`
+create or own per-task worker candidate sets; transient `AssignmentDispatchRuntime`
 candidate reservation ZSETs belong to the assignment inter-pacer protocol
 ```
 

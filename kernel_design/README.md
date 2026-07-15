@@ -425,7 +425,7 @@ execution input, implementation proof, or migration direction. If a current
 Java roadmap needs a mechanism or Redis shape, define it inside that roadmap or
 the owning module contract instead.
 
-The current Python executable spec lives under `kernel_design/py_example/` and
+The current Python executable spec lives under `kernel_design/executable_spec/` and
 is governed by these design contracts. A future production package may move to
 a dedicated `kernel_core/` root only through an explicit packaging decision.
 Current Java project roadmaps must not execute these design notes or Python

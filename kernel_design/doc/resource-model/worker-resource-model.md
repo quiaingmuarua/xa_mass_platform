@@ -287,7 +287,7 @@ continue against the remaining candidates in resolved priority order.
 domain-qualified fields against a two-level context map:
 
 ```python
-ConstraintDsl.evaluate_match_rules(
+ConstraintEvaluator.evaluate_match_rules(
   {
     "workerId": worker_id,
     "system": descriptor.system_metadata,

@@ -34,7 +34,7 @@ implement them in one package if owner truth remains explicit.
 
 Use this order inside `kernel_design/`:
 
-1. Python executable spec code and tests under `py_example/`
+1. Python executable spec code and tests under `executable_spec/`
 2. Current local design docs under `doc/scheduling/`, `doc/resource-model/`,
    and `doc/runtime-redis/`
 3. Superseded shape docs only when their status says they are retained as
@@ -61,30 +61,30 @@ For worker-runtime work:
 1. [doc/resource-model/worker-resource-model.md](doc/resource-model/worker-resource-model.md)
 2. [doc/scheduling/worker-score-band-scheduling.md](doc/scheduling/worker-score-band-scheduling.md)
 3. [doc/scheduling/assignment-dispatch-scheduling.md](doc/scheduling/assignment-dispatch-scheduling.md)
-4. [py_example/kernel/worker_runtime.py](py_example/kernel/worker_runtime.py)
-5. [py_example/kernel/worker_score.py](py_example/kernel/worker_score.py)
-6. [py_example/runtime_redis/worker_score_zset.py](py_example/runtime_redis/worker_score_zset.py)
-7. [py_example/tests/test_worker_runtime_models.py](py_example/tests/test_worker_runtime_models.py)
-8. [py_example/tests/test_redis_zset_worker_score.py](py_example/tests/test_redis_zset_worker_score.py)
+4. [executable_spec/kernel/worker_runtime.py](executable_spec/kernel/worker_runtime.py)
+5. [executable_spec/kernel/worker_score.py](executable_spec/kernel/worker_score.py)
+6. [executable_spec/redis_runtime/worker_score.py](executable_spec/redis_runtime/worker_score.py)
+7. [executable_spec/tests/test_worker_runtime_contract.py](executable_spec/tests/test_worker_runtime_contract.py)
+8. [executable_spec/tests/test_redis_worker_score.py](executable_spec/tests/test_redis_worker_score.py)
 
 For task runtime or task score-band work:
 
 1. [doc/resource-model/task-resource-model.md](doc/resource-model/task-resource-model.md)
 2. [doc/scheduling/task-score-band-scheduling.md](doc/scheduling/task-score-band-scheduling.md)
 3. [doc/scheduling/task-item-score-band-scheduling.md](doc/scheduling/task-item-score-band-scheduling.md)
-4. [py_example/kernel/task_runtime.py](py_example/kernel/task_runtime.py)
-5. [py_example/kernel/task_score_band.py](py_example/kernel/task_score_band.py)
-6. [py_example/kernel/task_item_score_band.py](py_example/kernel/task_item_score_band.py)
-7. [py_example/runtime_redis/task_item_score_band_zset.py](py_example/runtime_redis/task_item_score_band_zset.py)
-8. [py_example/runtime_redis/task_runtime.py](py_example/runtime_redis/task_runtime.py)
-9. [py_example/runtime_redis/task_score_band_zset.py](py_example/runtime_redis/task_score_band_zset.py)
-10. [py_example/tests/test_task_runtime_models.py](py_example/tests/test_task_runtime_models.py)
-11. [py_example/tests/test_task_item_score_band_models.py](py_example/tests/test_task_item_score_band_models.py)
-12. [py_example/tests/test_redis_zset_task_item_score_band.py](py_example/tests/test_redis_zset_task_item_score_band.py)
-13. [py_example/tests/test_redis_task_item_score_band_integration.py](py_example/tests/test_redis_task_item_score_band_integration.py)
-14. [py_example/tests/test_redis_task_runtime.py](py_example/tests/test_redis_task_runtime.py)
-15. [py_example/tests/test_redis_task_runtime_integration.py](py_example/tests/test_redis_task_runtime_integration.py)
-16. [py_example/tests/test_redis_zset_task_score_band.py](py_example/tests/test_redis_zset_task_score_band.py)
+4. [executable_spec/kernel/task_runtime.py](executable_spec/kernel/task_runtime.py)
+5. [executable_spec/kernel/task_score_band.py](executable_spec/kernel/task_score_band.py)
+6. [executable_spec/kernel/task_item_score_band.py](executable_spec/kernel/task_item_score_band.py)
+7. [executable_spec/redis_runtime/task_item_score_band.py](executable_spec/redis_runtime/task_item_score_band.py)
+8. [executable_spec/redis_runtime/task_runtime.py](executable_spec/redis_runtime/task_runtime.py)
+9. [executable_spec/redis_runtime/task_score_band.py](executable_spec/redis_runtime/task_score_band.py)
+10. [executable_spec/tests/test_task_runtime_contract.py](executable_spec/tests/test_task_runtime_contract.py)
+11. [executable_spec/tests/test_task_item_score_band_contract.py](executable_spec/tests/test_task_item_score_band_contract.py)
+12. [executable_spec/tests/test_redis_task_item_score_band.py](executable_spec/tests/test_redis_task_item_score_band.py)
+13. [executable_spec/tests/test_redis_task_item_score_band_integration.py](executable_spec/tests/test_redis_task_item_score_band_integration.py)
+14. [executable_spec/tests/test_redis_task_runtime.py](executable_spec/tests/test_redis_task_runtime.py)
+15. [executable_spec/tests/test_redis_task_runtime_integration.py](executable_spec/tests/test_redis_task_runtime_integration.py)
+16. [executable_spec/tests/test_redis_task_score_band.py](executable_spec/tests/test_redis_task_score_band.py)
 
 For result or TaskItem dispatch:
 
@@ -94,11 +94,41 @@ For result or TaskItem dispatch:
 4. [doc/scheduling/task-worker-allocation-pacer.md](doc/scheduling/task-worker-allocation-pacer.md)
 5. [doc/scheduling/task-item-dispatch-pacer.md](doc/scheduling/task-item-dispatch-pacer.md)
 6. [doc/scheduling/deliver-seed-outbound-delivery.md](doc/scheduling/deliver-seed-outbound-delivery.md)
-7. [py_example/assignment_dispatch/task_worker_allocation.py](py_example/assignment_dispatch/task_worker_allocation.py)
-8. [py_example/kernel/task_dispatch_runtime.py](py_example/kernel/task_dispatch_runtime.py)
-9. [doc/scheduling/result-routing-scheduling.md](doc/scheduling/result-routing-scheduling.md)
+7. [executable_spec/assignment_dispatch/task_worker_allocation.py](executable_spec/assignment_dispatch/task_worker_allocation.py)
+8. [executable_spec/assignment_dispatch/runtime.py](executable_spec/assignment_dispatch/runtime.py)
+9. [executable_spec/redis_runtime/assignment_dispatch.py](executable_spec/redis_runtime/assignment_dispatch.py)
+10. [doc/scheduling/result-routing-scheduling.md](doc/scheduling/result-routing-scheduling.md)
 
-## 2.1 Interface Change Gate
+## 2.1 Python Naming Rules
+
+Names in `executable_spec/` expose owner and mechanism, not historical status or
+storage trivia:
+
+```text
+executable_spec/          stable executable-spec package, never example/demo
+kernel/                   owner contracts and kernel-owned score mechanisms
+assignment_dispatch/      assignment-dispatch policy and intermediate runtime
+constraint_dsl/           standalone constraint compilation/evaluation
+redis_runtime/            Redis-backed implementations of owner contracts
+```
+
+Use these rules:
+
+- package names describe an owner/domain or backend implementation boundary;
+- file names describe the primary owner or mechanism in that file;
+- contract classes use semantic names such as `TaskScoreBandCore`;
+- concrete backend classes use one backend prefix such as
+  `RedisTaskScoreBandCore`;
+- do not repeat internal storage structures such as `Zset`, `Hash`, `List`, or
+  `Lua` in stable class names merely because the first implementation uses them;
+- related DTOs and one owner interface may share a file; do not force one class
+  per file when it fragments one owner surface;
+- test file and test class names should identify the concrete mechanism under
+  proof;
+- renames replace old names directly; do not retain aliases or compatibility
+  packages inside this isolated workspace.
+
+## 2.2 Interface Change Gate
 
 Treat every kernel-facing method, DTO, callback, and owner operation as frozen
 unless the current request explicitly changes that contract. An implementation
@@ -347,8 +377,8 @@ unless a separate plan explicitly crosses into worker-runtime or transport.
 Fast Python validation:
 
 ```text
-python -m unittest discover -s kernel_design/py_example/tests
-python -m compileall -q kernel_design/py_example
+python -m unittest discover -s kernel_design/executable_spec/tests
+python -m compileall -q kernel_design/executable_spec
 git diff --check -- kernel_design
 ```
 
@@ -357,15 +387,15 @@ Real Redis TaskResourceCatalog proof requires a reachable Redis URI:
 ```text
 KERNEL_DESIGN_REDIS_URL=redis://localhost:6379/15 \
 python -m unittest \
-  kernel_design.py_example.tests.test_redis_task_runtime_integration
+  kernel_design.executable_spec.tests.test_redis_task_runtime_integration
 ```
 
 For focused worker-runtime checks:
 
 ```text
 python -m unittest \
-  kernel_design.py_example.tests.test_worker_runtime_models \
-  kernel_design.py_example.tests.test_redis_zset_worker_score
+  kernel_design.executable_spec.tests.test_worker_runtime_contract \
+  kernel_design.executable_spec.tests.test_redis_worker_score
 ```
 
 ## 6. Guardrails

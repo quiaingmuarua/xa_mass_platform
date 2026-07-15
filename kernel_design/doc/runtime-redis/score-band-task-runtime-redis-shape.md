@@ -12,8 +12,8 @@ use this file as a current task-runtime shape contract.
 The current task score design lives in:
 
 - [Task Score-Band Scheduling](../scheduling/task-score-band-scheduling.md)
-- [task_score_band.py](../../py_example/kernel/task_score_band.py)
-- [task_score_band_zset.py](../../py_example/runtime_redis/task_score_band_zset.py)
+- [task_score_band.py](../../executable_spec/kernel/task_score_band.py)
+- [task_score_band.py](../../executable_spec/redis_runtime/task_score_band.py)
 
 The active model uses public `timeMillis`, internal `timeSlot =
 floor(timeMillis / SLOT_MILLIS)`, score tags for lifecycle order, and suffix as

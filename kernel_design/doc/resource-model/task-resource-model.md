@@ -205,7 +205,7 @@ remainingCandidateWorkers =
 WorkerCandidateConstraint.limit = remainingCandidateWorkers
 ```
 
-`TaskDispatchRuntime` does not receive, enforce, or reinterpret this value. It
+`AssignmentDispatchRuntime` does not receive, enforce, or reinterpret this value. It
 stores every successfully leased candidate entry supplied by the pacer under
 one batch expiry. Its batched non-expired candidate count may be read by both
 allocation and independent activation/score classification, but it is not
@@ -301,7 +301,7 @@ task_runtime = RedisTaskRuntime(
 ```
 
 `RedisTaskRuntime` owns its descriptor Redis client explicitly. It must not
-obtain that client from `score_band`, depend on `RedisZsetTaskScoreBandCore`, or
+obtain that client from `score_band`, depend on `RedisTaskScoreBandCore`, or
 call score implementation private clock / encoding methods. Score time and
 score-coordinate calculation stay inside `TaskScoreBandCore`.
 
@@ -478,24 +478,24 @@ class TaskDescriptor:
 These are descriptor values, not lifecycle or allocation-result records.
 
 The interface skeleton is implemented in
-[`py_example/kernel/task_runtime.py`](../../py_example/kernel/task_runtime.py). It
+[`executable_spec/kernel/task_runtime.py`](../../executable_spec/kernel/task_runtime.py). It
 contains the descriptor DTO, the Task owner `TaskRuntime`, and the bounded
 read-only `TaskResourceCatalog` surface. It now also defines `TaskItem`, append
 result DTOs, and the abstract append/bounded Item-read operations. The independent
 Item-score interface lives in
-[`py_example/kernel/task_item_score_band.py`](../../py_example/kernel/task_item_score_band.py).
+[`executable_spec/kernel/task_item_score_band.py`](../../executable_spec/kernel/task_item_score_band.py).
 The Redis Task implementation lives in
-[`py_example/runtime_redis/task_runtime.py`](../../py_example/runtime_redis/task_runtime.py)
+[`executable_spec/redis_runtime/task_runtime.py`](../../executable_spec/redis_runtime/task_runtime.py)
 and implements score-leased Task creation, descriptor HASH batch loading,
 latest-write TaskItem HASH append, and bounded TaskItem record reads.
-[`py_example/tests/test_redis_task_runtime_integration.py`](../../py_example/tests/test_redis_task_runtime_integration.py)
+[`executable_spec/tests/test_redis_task_runtime_integration.py`](../../executable_spec/tests/test_redis_task_runtime_integration.py)
 is the real-Redis proof for one-owner-per-slot creation, stale-owner rejection,
 redis-py pipeline compatibility, binary response decoding, and corrupt-row isolation.
 
 Current Python `TaskDescriptor` validates all four required config keys including
 `maxRetryTimes`. TaskItem DTOs and `TaskItemScoreBandCore` are executable interface
 contracts with model tests. The Redis Item-score owner is implemented in
-[`py_example/runtime_redis/task_item_score_band_zset.py`](../../py_example/runtime_redis/task_item_score_band_zset.py)
+[`executable_spec/redis_runtime/task_item_score_band.py`](../../executable_spec/redis_runtime/task_item_score_band.py)
 with Fake and real-Redis proofs. Redis TaskItem records are written separately
 by `TaskRuntime`: HSET replaces the latest record for `messageId`, while ItemScore
 initialization remains `ZADD NX` and never resets an existing scheduling identity.
