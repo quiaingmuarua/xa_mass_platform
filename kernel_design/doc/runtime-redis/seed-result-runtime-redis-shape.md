@@ -1,6 +1,6 @@
-# Result-Routing Runtime Redis Shape
+# Seed Result Runtime Redis Shape
 
-Status: current Python executable-spec Redis shape.
+Status: active new-kernel Redis shape; Python executable spec implemented.
 
 ## Key
 

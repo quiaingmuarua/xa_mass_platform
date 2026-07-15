@@ -1,6 +1,6 @@
 # Kernel Application Assembly
 
-Status: current Python executable-spec external application boundary.
+Status: active new-kernel application contract; Python executable spec implemented.
 
 ## Purpose
 
@@ -129,6 +129,41 @@ may restart.
 `ResourcesCommandClient`, `DeliverSeedConsumerClient`, and
 `SeedResultCommandClient` have no `start` or `stop`. Each may use a separate
 redis-py pool while sharing the same URL, prefix, and Redis owner truth.
+
+## Background Loop Contract
+
+`KernelApplication` composes two independent internal applications:
+
+```text
+AssignmentDispatchApplication
+  -> worker-allocation loop
+  -> running-activation loop
+  -> TaskItem-dispatch loop
+
+ResultRoutingApplication
+  -> SeedResult-routing loop
+```
+
+Each assignment-dispatch loop has one non-daemon thread and its own configured
+interval. A loop executes its first bounded round immediately, runs at most one
+round at a time, waits for its interval after the round returns, and logs a
+failed round before continuing. A slow round therefore cannot create overlap or
+a catch-up burst, and one pacer's latency or failure does not block another
+pacer.
+
+Result routing has a separate non-daemon thread and cadence. Kernel startup
+starts result routing before assignment-dispatch; shutdown stops
+assignment-dispatch before result routing. Partial startup rolls back any
+already-started internal application.
+
+`stopTimeoutMillis` is one shared deadline for joining all internal threads.
+Stop signals interrupt loop waits but do not cancel an in-flight Redis call or
+claim a blocked round stopped. A timeout is reported rather than hidden.
+
+The application lifecycle owns timers and process coordination only. It does
+not construct policy inside a pacer, combine rounds into one sequential loop,
+own score or runtime truth, consume DeliverSeed queues, or turn append/result/
+heartbeat events into required wakeups.
 
 ## External Hosts
 

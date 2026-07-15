@@ -1,9 +1,7 @@
 # Worker Score-Band Scheduling
 
-Status: design reference for the new kernel workspace. This document is not
-current Java implementation truth and is not an implementation roadmap.
-
-Artifact role: mechanism design reference.
+Status: active new-kernel mechanism contract; Python executable spec
+implemented; policy coverage partial.
 
 ## Purpose
 
@@ -460,8 +458,9 @@ changes, and it lets a recovered too-old RECOVERY_RECHECK score become
 immediately due in HOT_ACQUIRE. Polarity move must not implicitly inherit
 laneRank across lanes. HOT_ACQUIRE laneRank and RECOVERY_RECHECK laneRank have
 different meanings, so the target laneRank must be minted explicitly by policy.
-Polarity move preserves dirty bit. Dirty writes belong to the deferred
-reservation protocol, not to raw availability evidence.
+Polarity move preserves the dirty bit. Dirty score primitives are implemented;
+policy may invoke them only for an active continuation that will later
+revalidate or renew. Raw availability evidence never writes dirty.
 
 Raw network-ok, heartbeat, reconnect, keepalive, or latency evidence cannot move
 RECOVERY_RECHECK to HOT_ACQUIRE by itself. They are validation inputs only.
@@ -668,14 +667,16 @@ it into a far-future hold. If owner reset or verified recovery later moves it
 back to HOT_ACQUIRE, the old coordinate is preserved and the worker becomes
 immediately due in HOT_ACQUIRE.
 
-### Deferred Dirty Marker
+### Dirty Lease Fence
 
 Worker scheduling metadata can change without any network event. Worker-runtime
 owns a platform-defined scheduling signature over critical worker fields. The
 signature definition is built into platform policy, not supplied by external
 events or arbitrary business callers.
 
-Dirty exists only to protect a real persisted scheduling continuation object:
+The score encoding and Redis primitives for mark, lease-clear, stale renewal,
+polarity preservation, cold park, and exact release are implemented. Dirty is
+useful only when it protects a real scheduling continuation object:
 
 ```text
 idle / no persisted reservation:
@@ -698,11 +699,11 @@ a named continuation invariant, the continuation owner needs a stronger
 owner-local protocol; the resource update still must not acquire the worker
 score as a global lock.
 
-If the runtime has only an in-memory scheduling round and no persisted
-assignment plan / hot score lease continuation, there may be no dirty consumer
-to protect. Do not invent a score lease just to justify dirty. Dirty is
-meaningful only when a real lease owner or stale observed-score continuation can
-observe it before continuing.
+If the runtime has no persisted assignment plan or active score-lease
+continuation, there is no dirty consumer to protect. Do not invoke the marker or
+invent a score lease merely because the bit exists. The remaining deferred
+work is owner policy and end-to-end continuation use, not score representation
+or Redis primitive implementation.
 
 `WorkerScoreCore` does not expose a generic dirty clear method. It exposes one
 bounded HOT observation query, one observed-score lease batch, one active
@@ -969,7 +970,7 @@ Score absence is not normal unavailability. It may be used only for absent
 resources or confirmed orphan cleanup, not as the ordinary way to hold, park,
 disable, or disconnect a long-lived worker id.
 
-## Policy Seams
+## Mechanism And Deferred Policy
 
 Mechanism owns:
 
@@ -978,7 +979,7 @@ signed score encoding
 positive hot acquire range
 negative recovery-recheck acquire range
 observed-score stale fence for active renewal, lowering, and polarity moves
-deferred dirty bit mark / hot lease clear protocol
+dirty bit mark / hot lease clear / stale-renew protocol
 same-polarity release
 owner-validated polarity move boundary preserving timeSlot
 RECOVERY_RECHECK lookback-window acquisition
@@ -993,8 +994,8 @@ Policy owns:
 initial HOT_ACQUIRE score
 candidate ranking / laneRank meaning
 platform scheduling signature policy
-deferred dirty mark / hot lease clear rule, only if a persisted assignment
-continuation exists
+dirty mark invocation and continuation revalidation rule, only when a
+persisted assignment continuation exists
 cooldown duration
 admission hold interval
 manual hold / enable rule

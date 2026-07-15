@@ -93,13 +93,13 @@ For result or TaskItem dispatch:
 3. [doc/scheduling/assignment-dispatch-scheduling.md](doc/scheduling/assignment-dispatch-scheduling.md)
 4. [doc/scheduling/task-worker-allocation-pacer.md](doc/scheduling/task-worker-allocation-pacer.md)
 5. [doc/scheduling/task-item-dispatch-pacer.md](doc/scheduling/task-item-dispatch-pacer.md)
-6. [doc/scheduling/assignment-dispatch-application.md](doc/scheduling/assignment-dispatch-application.md)
-7. [doc/scheduling/deliver-seed-outbound-delivery.md](doc/scheduling/deliver-seed-outbound-delivery.md)
-8. [executable_spec/scheduling/task_worker_allocation.py](executable_spec/scheduling/task_worker_allocation.py)
-9. [executable_spec/assembly/assignment_dispatch_application.py](executable_spec/assembly/assignment_dispatch_application.py)
-10. [executable_spec/kernel/assignment_dispatch_runtime.py](executable_spec/kernel/assignment_dispatch_runtime.py)
-11. [executable_spec/redis_runtime/assignment_dispatch.py](executable_spec/redis_runtime/assignment_dispatch.py)
-12. [doc/scheduling/result-routing-scheduling.md](doc/scheduling/result-routing-scheduling.md)
+6. [doc/scheduling/deliver-seed-outbound-delivery.md](doc/scheduling/deliver-seed-outbound-delivery.md)
+7. [executable_spec/scheduling/task_worker_allocation.py](executable_spec/scheduling/task_worker_allocation.py)
+8. [executable_spec/assembly/assignment_dispatch_application.py](executable_spec/assembly/assignment_dispatch_application.py)
+9. [executable_spec/kernel/assignment_dispatch_runtime.py](executable_spec/kernel/assignment_dispatch_runtime.py)
+10. [executable_spec/redis_runtime/assignment_dispatch.py](executable_spec/redis_runtime/assignment_dispatch.py)
+11. [doc/scheduling/result-routing-scheduling.md](doc/scheduling/result-routing-scheduling.md)
+12. [doc/runtime-redis/seed-result-runtime-redis-shape.md](doc/runtime-redis/seed-result-runtime-redis-shape.md)
 13. [executable_spec/kernel/result_context.py](executable_spec/kernel/result_context.py)
 14. [executable_spec/kernel/seed_result_runtime.py](executable_spec/kernel/seed_result_runtime.py)
 15. [executable_spec/scheduling/result_routing.py](executable_spec/scheduling/result_routing.py)
@@ -109,15 +109,14 @@ For result or TaskItem dispatch:
 For process assembly or server entry work:
 
 1. [doc/kernel-application-assembly.md](doc/kernel-application-assembly.md)
-2. [doc/scheduling/assignment-dispatch-application.md](doc/scheduling/assignment-dispatch-application.md)
-3. [executable_spec/assembly/application.py](executable_spec/assembly/application.py)
-4. [executable_spec/assembly/resources_command_client.py](executable_spec/assembly/resources_command_client.py)
-5. [executable_spec/assembly/assignment_dispatch_application.py](executable_spec/assembly/assignment_dispatch_application.py)
-6. [executable_spec/assembly/result_routing_application.py](executable_spec/assembly/result_routing_application.py)
-7. [executable_spec/assembly/transport_clients.py](executable_spec/assembly/transport_clients.py)
-8. [executable_spec/tests/test_kernel_application.py](executable_spec/tests/test_kernel_application.py)
-9. [executable_spec/tests/test_resources_command_client.py](executable_spec/tests/test_resources_command_client.py)
-10. [examples/fastapi_server.py](examples/fastapi_server.py)
+2. [executable_spec/assembly/application.py](executable_spec/assembly/application.py)
+3. [executable_spec/assembly/resources_command_client.py](executable_spec/assembly/resources_command_client.py)
+4. [executable_spec/assembly/assignment_dispatch_application.py](executable_spec/assembly/assignment_dispatch_application.py)
+5. [executable_spec/assembly/result_routing_application.py](executable_spec/assembly/result_routing_application.py)
+6. [executable_spec/assembly/transport_clients.py](executable_spec/assembly/transport_clients.py)
+7. [executable_spec/tests/test_kernel_application.py](executable_spec/tests/test_kernel_application.py)
+8. [executable_spec/tests/test_resources_command_client.py](executable_spec/tests/test_resources_command_client.py)
+9. [examples/fastapi_server.py](examples/fastapi_server.py)
 
 For an external endpoint-manager or transport-adapter process:
 
@@ -482,7 +481,7 @@ python -m unittest \
   new-kernel executable-spec plan when execution begins.
 - Update Python tests when a Python interface contract changes.
 - Delete or rewrite stale design text instead of preserving parallel narratives.
-- Label superseded Redis or shape notes clearly when they are no longer active.
-- If a future executable spec makes a design fact current kernel truth, migrate
-  that fact to the owning kernel-core documentation and leave the old design
-  note as context.
+- Delete superseded Redis or shape notes after current contracts and links have
+  been migrated; do not retain a parallel historical design narrative.
+- When executable code makes a design fact current kernel truth, migrate it to
+  the owning contract and delete the superseded narrative after link cleanup.

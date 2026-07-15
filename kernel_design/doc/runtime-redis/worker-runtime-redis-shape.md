@@ -1,19 +1,16 @@
 # Worker Runtime Redis Shape
 
-Status: new-kernel design reference. This document is not current Java
-implementation truth and is not an implementation roadmap.
+Status: active new-kernel Redis shape; Python executable spec implemented;
+policy coverage partial.
 
-Artifact role: Redis shape reference for the Python executable spec.
-
-This document replaces the older score-band Redis draft. Do not reintroduce
-old time-coordinate terminology, worker lifecycle tags, owner-mirrored
-assignment-hold vocabulary, stale-fence revision fields, or a generic worker
-scheduling metadata hash from that draft.
+This document records the current executable Redis shape. Worker lifecycle
+tags, owner-mirrored assignment holds, revision fields, and a generic worker
+scheduling metadata hash are outside this owner model.
 
 ## Purpose
 
-Define the first worker-runtime Redis structures before implementing the
-worker-runtime executable spec.
+Define the Worker resource, score, and dynamic-attribute structures used by the
+current executable spec.
 
 Worker-runtime Redis has four first-slice responsibilities:
 
@@ -466,9 +463,11 @@ hides query handlers and does not reread descriptors. Redis-specific code owns
 descriptor persistence and handler storage only. Do not introduce
 storage-specific matcher subclasses.
 
-Dynamic attribute updates do not automatically write worker score. They may mark
-score dirty only after a later executable spec introduces a real persisted
-assignment plan or hot score lease continuation that can consume dirty.
+Dynamic attribute updates do not automatically write worker score. They may
+invoke the implemented dirty marker only when platform policy identifies a
+changed match dependency and a real persisted assignment plan or active hot
+score lease continuation will consume that fence. The current assembly does not
+yet wire that end-to-end invocation/revalidation policy.
 
 First slice should not create a dynamic-attribute global query service. Use
 bounded handler-owned batch reads during candidate matching. Add attribute
@@ -521,8 +520,9 @@ dynamic attribute handler clears dirty directly
 active hot lease renewal clears dirty
 ```
 
-`validationDependencySet` is conceptual until the assignment executable spec
-introduces a persisted continuation. It is not a Redis key in this first slice.
+`validationDependencySet` remains conceptual until an explicit persisted
+continuation owner consumes it. It is not a Redis key in the current
+executable spec.
 
 ## Deferred Structures
 

@@ -1,7 +1,7 @@
 # Worker Resource Model
 
-Status: new-kernel design note, not current implementation truth and not an
-implementation roadmap.
+Status: active new-kernel resource contract; Python executable spec
+implemented; policy coverage partial.
 
 This note fixes the first-cut metadata model for workers and worker groups in
 the clean kernel design workspace. It intentionally keeps the model small:

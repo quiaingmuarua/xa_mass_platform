@@ -1,8 +1,7 @@
 # Task Item Dispatch Pacer
 
-Status: new-kernel mechanism note. This document defines the second mandatory
-assignment-dispatch pacer. It is not current implementation truth and not an
-implementation roadmap.
+Status: active new-kernel mechanism contract; Python executable spec partial;
+policy coverage partial.
 
 Parent contract: [Assignment-Dispatch Scheduling](assignment-dispatch-scheduling.md).
 The next owner after this pacer is
@@ -71,8 +70,9 @@ band bounds, current-time capture, score ordering, and range construction.
 
 The intended dispatch scan prefers recently rotated RUNNING evidence. The
 current Redis implementation still scans the due RUNNING range oldest-first;
-that is an implementation gap inside the existing score method, not permission
-to add another Task discovery index or expose score ranges to the pacer.
+that is a deferred ordering policy inside the existing score method, not
+permission to add another Task discovery index or expose score ranges to the
+pacer.
 
 Task discovery is a round-admission decision, not a Task lock. A Task that is
 paused or closed after it was returned may finish this already-started bounded
@@ -404,7 +404,7 @@ candidate count. Queue append is fail-fast per endpoint manager: previously
 appended manager batches remain published, while failed and unattempted claims
 recover through their score leases.
 
-## Executable-Spec Gap
+## Executable-Spec Status And Deferred Policy
 
 The Python executable spec already provides:
 
@@ -419,7 +419,8 @@ TaskItemDispatchConfig and TaskItemDispatchPacer
 unit proof plus real Redis orchestration proof
 ```
 
-The remaining dispatch-specific gap is:
+The orchestration mechanism is implemented. The remaining deferred dispatch
+acquisition policy is:
 
 ```text
 recent-first Redis implementation for acquire_dispatch_work_tasks

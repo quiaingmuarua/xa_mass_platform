@@ -1,8 +1,7 @@
 # Task-Worker Allocation Pacer
 
-Status: new-kernel mechanism note. This document defines the first mandatory
-assignment-dispatch pacer. It is not current implementation truth and not an
-implementation roadmap.
+Status: active new-kernel mechanism contract; Python executable spec
+implemented; policy coverage partial.
 
 Parent contract: [Assignment-Dispatch Scheduling](assignment-dispatch-scheduling.md).
 
@@ -339,14 +338,18 @@ Candidate entry:
 ```text
 workerId
 workerGroupId
+endpointManagerId
 workerLeaseScore
 ```
 
 The collection contains Worker candidates produced by successful short leases
 but no Item claim. `workerLeaseScore` is the exact score written by allocation
 and stays opaque inside the ZSET member. The entry has no independent expiry;
-the ZSET score is the batch `expiresAtMillis`. Worker lease state, dirty, and
-matching attributes are still rechecked by the later dispatch path.
+the ZSET score is the batch `expiresAtMillis`. The current TaskItem-dispatch
+path treats the entry as opaque bounded evidence and does not reread Worker
+score or rerun matching. Worker lease and candidate expiry bound reuse; a
+future persisted continuation that renews a lease must treat dirty as STALE and
+rematch through the Worker owner.
 
 There is no cross-key transaction or commit protocol between Task score and the
 collection. A lifecycle transition after publication may make the collection
@@ -485,9 +488,9 @@ The current Python package implements `TaskWorkerAllocationPacer`,
 `TaskWorkerAllocationConfig`, `TaskRunningActivationPacer`,
 `TaskRunningActivationConfig`, the `AssignmentDispatchRuntime` owner interface, its
 Redis ZSET implementation, and the candidate-worker reservation DTO. The Task score core
-also implements exact single-band bounded acquisition. Task Item score APIs are
-the defined next owner surface but remain absent from the executable spec. The
-existing active-task acquire supplies the base RUNNING-first band order.
+also implements exact single-band bounded acquisition. TaskItem score/runtime
+and the second dispatch pacer are implemented by their separate owners. The
+active-task acquire supplies the current RUNNING-first band order.
 
 Interface sources:
 
@@ -495,6 +498,14 @@ Interface sources:
 executable_spec/scheduling/task_worker_allocation.py
 executable_spec/kernel/assignment_dispatch_runtime.py
 ```
+
+## Deferred Policy
+
+- Keep the current `RUNNING_VISIBLE`-first acquisition as the built-in policy.
+- Any quota or weighting for `PRE_DISPATCH_VISIBLE` must stay in allocation
+  policy; it must not change candidate-runtime append semantics.
+- Alternative running-activation conditions may replace the built-in minimum
+  candidate count, but remain pure decisions over owner facts.
 
 ## Failure And Stale Handling
 

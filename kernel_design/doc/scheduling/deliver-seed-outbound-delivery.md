@@ -1,7 +1,7 @@
 # DeliverSeed Outbound Delivery
 
-Status: current Python executable-spec boundary. The Redis queue, external
-clients, and Local Function Adapter are implemented.
+Status: active new-kernel boundary contract; Python executable spec and Local
+Function Adapter implemented; production transport policy deferred.
 
 Upstream contract: [Task Item Dispatch Pacer](task-item-dispatch-pacer.md).
 External process contract:
@@ -112,6 +112,15 @@ reread `WorkerDescriptor` to choose a queue.
 Transport-specific route, adapter, mailbox, connection, or session facts are
 resolved inside that endpoint manager and never written back into scheduling
 candidate truth.
+
+## Deferred Policy
+
+- Production transports choose their protocol-specific delivery-item
+  conversion and endpoint-local retry behavior.
+- Pending/ack reliability requires a named outbound invariant; it is not added
+  to the best-effort queue by default.
+- Result payload projection and Worker disposition remain downstream owner
+  concerns, not adapter extensions.
 
 ## Guardrails
 

@@ -405,12 +405,10 @@ no hidden compatibility path or second mainline remains
 - [Task Item Dispatch Pacer](doc/scheduling/task-item-dispatch-pacer.md)
   - newest-first candidate consumption, Item score claim, and DeliverSeed queue
     append without Task- or Worker-score writes.
-- [Assignment-Dispatch Application](doc/scheduling/assignment-dispatch-application.md)
-  - independent background lifecycle for allocation, running activation, and
-    TaskItem dispatch pacers.
 - [Kernel Application Assembly](doc/kernel-application-assembly.md)
   - independent resource registration and scheduling-process boundaries,
-    private Redis composition, built-in CLI, and the FastAPI protocol example.
+    private Redis composition, background scheduling lifecycles, built-in CLI,
+    and the FastAPI protocol example.
 - [DeliverSeed Outbound Delivery](doc/scheduling/deliver-seed-outbound-delivery.md)
   - queued seed consumption, external endpoint-manager execution, and opaque
     result handoff without adapter-owned score mutation.
@@ -420,6 +418,8 @@ no hidden compatibility path or second mainline remains
 - [Result-Routing Scheduling](doc/scheduling/result-routing-scheduling.md)
   - unified SeedResult consumption, success/retry selection, Task Item score
     invocation, and Worker exact-release handoff.
+- [Seed Result Runtime Redis Shape](doc/runtime-redis/seed-result-runtime-redis-shape.md)
+  - unified best-effort SeedResult queue encoding and bounded Redis operations.
 
 ## Boundary
 

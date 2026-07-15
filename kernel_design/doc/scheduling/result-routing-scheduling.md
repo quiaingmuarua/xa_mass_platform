@@ -1,9 +1,10 @@
 # Result-Routing Scheduling
 
-Status: current Python executable-spec mechanism.
+Status: active new-kernel mechanism contract; Python executable spec
+implemented; policy coverage partial.
 
 Parent contract: [Task Item Score-Band Scheduling](task-item-score-band-scheduling.md).
-Redis shape: [Result-Routing Runtime Redis Shape](../runtime-redis/result-routing-runtime-redis-shape.md).
+Redis shape: [Seed Result Runtime Redis Shape](../runtime-redis/seed-result-runtime-redis-shape.md).
 
 ## Purpose
 
@@ -120,8 +121,10 @@ failure
 
 ## Application Lifecycle
 
-`ResultRoutingApplication` owns one non-daemon background loop. Built-in
-coordinates are:
+`ResultRoutingApplication` owns one independently paced background loop.
+Startup order, shutdown order, partial-start rollback, and shared stop timeout
+are defined by [Kernel Application Assembly](../kernel-application-assembly.md).
+Built-in scheduling coordinates remain:
 
 ```text
 intervalMillis = 100
@@ -130,9 +133,15 @@ retryDelayMillis = 1000
 ```
 
 Only `resultRouting.intervalMillis` is public JSON. Batch and retry policy stay
-internal. `KernelApplication` starts result routing before assignment-dispatch
-and stops assignment-dispatch before result routing. If assignment startup
-fails, the already-started result loop is stopped before the error returns.
+internal to result-routing assembly.
+
+## Deferred Policy
+
+- Batch limit, retry delay, and cadence may change without changing result
+  classification or score-owner interfaces.
+- Result payload projection requires a separate read/projection owner.
+- Pending/ack or durable result history requires an invariant that bounded Item
+  claim and Worker lease expiry cannot satisfy.
 
 ## Failure Semantics
 

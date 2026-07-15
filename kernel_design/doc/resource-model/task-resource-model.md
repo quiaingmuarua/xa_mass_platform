@@ -1,7 +1,7 @@
 # Task Resource Model
 
-Status: new-kernel design note, not current implementation truth and not an
-implementation roadmap.
+Status: active new-kernel resource contract; Python executable spec
+implemented; policy coverage partial.
 
 This note fixes the first-cut Task metadata required by phase-one task-worker
 allocation. It does not recreate the historical Task shell, storage CRUD, or a

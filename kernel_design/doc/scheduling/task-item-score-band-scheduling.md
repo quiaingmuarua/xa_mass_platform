@@ -1,8 +1,7 @@
 # Task Item Score-Band Scheduling
 
-Status: new-kernel mechanism note. This document defines the target Task Item
-score-band axis. It is not current implementation truth and not an
-implementation roadmap.
+Status: active new-kernel mechanism contract; Python executable spec
+implemented; policy coverage partial.
 
 Parent contract: [Task Score-Band Scheduling](task-score-band-scheduling.md)
 and [Assignment-Dispatch Scheduling](assignment-dispatch-scheduling.md).
@@ -707,6 +706,15 @@ Python core code. Same-band Lua compares stored score with one expected score.
 Cross-band Lua compares the precomputed target score distance with
 `MAX_SAME_BAND_SCORE_DELTA`; it does not decode or whitelist tags. Neither
 script contains band names, budget, time, result, or retry policy.
+
+## Deferred Policy
+
+- Task/runtime policy chooses the initial remaining budget and initialization
+  coordinate; callers never provide encoded score fields.
+- Dispatch and result-routing policy choose future claim/retry times without
+  changing same-tag and cross-tag write rules.
+- Final Item retention requires a separate retention owner; score finality does
+  not define physical deletion time.
 
 ## Guardrails
 
