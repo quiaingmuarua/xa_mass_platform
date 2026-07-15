@@ -8,6 +8,8 @@ Detailed mechanisms:
 
 - [Task-Worker Allocation Pacer](task-worker-allocation-pacer.md)
 - [Task Item Dispatch Pacer](task-item-dispatch-pacer.md)
+- [Assignment-Dispatch Application](assignment-dispatch-application.md)
+  - application lifecycle for the independent pacer loops
 - [DeliverSeed Outbound Delivery](deliver-seed-outbound-delivery.md), which
   begins after the assignment-dispatch cutpoint
 
@@ -20,6 +22,8 @@ DeliverSeedRuntime has a Redis endpoint-manager LIST implementation
 Task Item score and TaskItem record mechanisms have Redis executable implementations
 TaskItemDispatchPacer and DeliverSeed have executable implementations
 bounded per-endpoint DeliverSeed append/consume primitives are implemented
+AssignmentDispatchApplication drives allocation, activation, and Item dispatch
+  through three independent background loops
 no transport-side DeliverSeed outbound orchestration
 current Redis dispatch-task acquire is oldest-first, not recent-allocation reverse
 ```
@@ -69,7 +73,10 @@ dispatch congestion must not redefine Task-Worker matching
 PRE_DISPATCH_VISIBLE must participate in allocation but never in Task Item dispatch
 ```
 
-They are independent scheduling entries, not necessarily dedicated threads.
+They are independent scheduling entries. The mechanism does not require a
+particular executor, but the current executable assembly gives worker
+allocation, running activation, and Item dispatch one thread each so their
+cadence and failures remain independent.
 
 ## Shared Owner Boundary
 

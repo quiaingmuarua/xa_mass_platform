@@ -429,10 +429,12 @@ a query/view owner and not a transport parser.
 6. [Task Item Dispatch Pacer](task-item-dispatch-pacer.md)
    - newest-first candidate consumption, Item-score claim, and DeliverSeed queue
      append; Task and Worker scores are read-only.
-7. [DeliverSeed Outbound Delivery](deliver-seed-outbound-delivery.md)
+7. [Assignment-Dispatch Application](assignment-dispatch-application.md)
+   - assembly lifecycle for three independently paced background round loops.
+8. [DeliverSeed Outbound Delivery](deliver-seed-outbound-delivery.md)
    - queued seed consumption, Worker lease continuation, transport submit, and
      exclusive/non-exclusive Worker disposition.
-8. [Result-Routing Scheduling](result-routing-scheduling.md)
+9. [Result-Routing Scheduling](result-routing-scheduling.md)
    - how result evidence is routed to finality, retry, no-op, or unresolved
      handling.
 9. [Worker Runtime Redis Shape](../runtime-redis/worker-runtime-redis-shape.md)
@@ -508,6 +510,11 @@ kernel_design/executable_spec/
     worker_candidate_matcher.py
     task_worker_allocation.py
     task_item_dispatch.py
+  assembly/
+    application.py
+    assignment_dispatch_application.py
+    _redis_process.py
+    __main__.py
   redis_runtime/
     task_score_band.py
     task_item_score_band.py

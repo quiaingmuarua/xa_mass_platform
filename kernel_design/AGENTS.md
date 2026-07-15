@@ -93,11 +93,22 @@ For result or TaskItem dispatch:
 3. [doc/scheduling/assignment-dispatch-scheduling.md](doc/scheduling/assignment-dispatch-scheduling.md)
 4. [doc/scheduling/task-worker-allocation-pacer.md](doc/scheduling/task-worker-allocation-pacer.md)
 5. [doc/scheduling/task-item-dispatch-pacer.md](doc/scheduling/task-item-dispatch-pacer.md)
-6. [doc/scheduling/deliver-seed-outbound-delivery.md](doc/scheduling/deliver-seed-outbound-delivery.md)
-7. [executable_spec/assignment_dispatch/task_worker_allocation.py](executable_spec/assignment_dispatch/task_worker_allocation.py)
-8. [executable_spec/assignment_dispatch/runtime.py](executable_spec/assignment_dispatch/runtime.py)
-9. [executable_spec/redis_runtime/assignment_dispatch.py](executable_spec/redis_runtime/assignment_dispatch.py)
-10. [doc/scheduling/result-routing-scheduling.md](doc/scheduling/result-routing-scheduling.md)
+6. [doc/scheduling/assignment-dispatch-application.md](doc/scheduling/assignment-dispatch-application.md)
+7. [doc/scheduling/deliver-seed-outbound-delivery.md](doc/scheduling/deliver-seed-outbound-delivery.md)
+8. [executable_spec/assignment_dispatch/task_worker_allocation.py](executable_spec/assignment_dispatch/task_worker_allocation.py)
+9. [executable_spec/assembly/assignment_dispatch_application.py](executable_spec/assembly/assignment_dispatch_application.py)
+10. [executable_spec/assignment_dispatch/runtime.py](executable_spec/assignment_dispatch/runtime.py)
+11. [executable_spec/redis_runtime/assignment_dispatch.py](executable_spec/redis_runtime/assignment_dispatch.py)
+12. [doc/scheduling/result-routing-scheduling.md](doc/scheduling/result-routing-scheduling.md)
+
+For process assembly or server entry work:
+
+1. [doc/kernel-application-assembly.md](doc/kernel-application-assembly.md)
+2. [doc/scheduling/assignment-dispatch-application.md](doc/scheduling/assignment-dispatch-application.md)
+3. [executable_spec/assembly/application.py](executable_spec/assembly/application.py)
+4. [executable_spec/assembly/assignment_dispatch_application.py](executable_spec/assembly/assignment_dispatch_application.py)
+5. [executable_spec/tests/test_kernel_application.py](executable_spec/tests/test_kernel_application.py)
+6. [examples/fastapi_server.py](examples/fastapi_server.py)
 
 ## 2.1 Python Naming Rules
 
@@ -108,9 +119,13 @@ storage trivia:
 executable_spec/          stable executable-spec package, never example/demo
 kernel/                   owner contracts and kernel-owned score mechanisms
 assignment_dispatch/      assignment-dispatch policy and intermediate runtime
+assembly/                 application lifecycle and dependency composition
 constraint_dsl/           standalone constraint compilation/evaluation
 redis_runtime/            Redis-backed implementations of owner contracts
 ```
+
+`kernel_design/examples/` contains external protocol hosts. Those hosts may
+depend on the assembly application boundary, not owner implementations.
 
 Use these rules:
 

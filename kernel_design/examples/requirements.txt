@@ -1,0 +1,4 @@
+fastapi
+httpx2
+redis
+uvicorn

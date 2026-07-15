@@ -1,0 +1,297 @@
+from __future__ import annotations
+
+import argparse
+import logging
+from collections.abc import Mapping
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Any
+
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, Field
+
+from kernel_design.executable_spec.assembly import (
+    DeliverSeed,
+    KernelApplication,
+    TaskApprovalResult,
+    TaskApprovalStatus,
+    TaskCreationResult,
+    TaskCreationStatus,
+    TaskDescriptor,
+    TaskItem,
+    TaskItemAppendResult,
+    WorkerDescriptor,
+    WorkerGroupDescriptor,
+    WorkerRuntimeResult,
+    WorkerRuntimeStatus,
+)
+
+
+class WorkerGroupRequest(BaseModel):
+    worker_group_id: str = Field(alias="workerGroupId")
+    attributes: dict[str, Any] = Field(default_factory=dict)
+    event_codes: list[str] = Field(alias="eventCodes")
+
+
+class WorkerRequest(BaseModel):
+    worker_id: str = Field(alias="workerId")
+    worker_group_id: str = Field(alias="workerGroupId")
+    endpoint_manager_id: str = Field(alias="endpointManagerId")
+    system_metadata: dict[str, Any] = Field(
+        default_factory=dict,
+        alias="systemMetadata",
+    )
+    static_attributes: dict[str, Any] = Field(
+        default_factory=dict,
+        alias="staticAttributes",
+    )
+    dynamic_attribute_names: list[str] = Field(
+        default_factory=list,
+        alias="dynamicAttributeNames",
+    )
+
+
+class DynamicAttributeUpdateRequest(BaseModel):
+    updates: dict[str, Any]
+    observed_at_millis: int = Field(alias="observedAtMillis")
+
+
+class TaskRequest(BaseModel):
+    task_id: str = Field(alias="taskId")
+    worker_group_id: str = Field(alias="workerGroupId")
+    allocation_rule: dict[str, Any] = Field(alias="allocationRule")
+    config: dict[str, str]
+
+
+class TaskItemRequest(BaseModel):
+    message_id: str = Field(alias="messageId")
+    event_code: str = Field(alias="eventCode")
+    created_at_millis: int = Field(alias="createdAtMillis")
+    payload: dict[str, Any] | None = None
+    payload_ref: str | None = Field(default=None, alias="payloadRef")
+    priority: int = 5
+    expire_at_millis: int | None = Field(default=None, alias="expireAtMillis")
+
+
+class AppendTaskItemsRequest(BaseModel):
+    items: list[TaskItemRequest]
+
+
+def _result_payload(result: Any) -> dict[str, Any]:
+    payload: dict[str, Any] = {"status": result.status.value}
+    if result.reason is not None:
+        payload["reason"] = result.reason
+    return payload
+
+
+def _worker_result_response(result: WorkerRuntimeResult) -> JSONResponse:
+    status_code = {
+        WorkerRuntimeStatus.OK: 201,
+        WorkerRuntimeStatus.NOOP: 200,
+        WorkerRuntimeStatus.NOT_FOUND: 404,
+        WorkerRuntimeStatus.INVALID: 422,
+        WorkerRuntimeStatus.REJECTED: 409,
+        WorkerRuntimeStatus.STALE: 409,
+        WorkerRuntimeStatus.CONFLICT: 409,
+    }[result.status]
+    return JSONResponse(_result_payload(result), status_code=status_code)
+
+
+def _creation_response(result: TaskCreationResult) -> JSONResponse:
+    status_code = {
+        TaskCreationStatus.CREATED: 201,
+        TaskCreationStatus.CONFLICT: 409,
+        TaskCreationStatus.INVALID: 422,
+        TaskCreationStatus.RETRYABLE: 503,
+    }[result.status]
+    return JSONResponse(_result_payload(result), status_code=status_code)
+
+
+def _approval_response(result: TaskApprovalResult) -> JSONResponse:
+    status_code = {
+        TaskApprovalStatus.APPROVED: 200,
+        TaskApprovalStatus.ALREADY_APPROVED: 200,
+        TaskApprovalStatus.NOT_FOUND: 404,
+        TaskApprovalStatus.CONFLICT: 409,
+        TaskApprovalStatus.INVALID: 422,
+        TaskApprovalStatus.RETRYABLE: 503,
+    }[result.status]
+    return JSONResponse(_result_payload(result), status_code=status_code)
+
+
+def _result_map_payload(
+    results: Mapping[str, TaskItemAppendResult | WorkerRuntimeResult],
+) -> dict[str, dict[str, Any]]:
+    return {message_id: _result_payload(result) for message_id, result in results.items()}
+
+
+def _deliver_seed_payload(seed: DeliverSeed) -> dict[str, Any]:
+    return {
+        "workerId": seed.worker_id,
+        "opaqueDeliveryItem": seed.opaque_delivery_item,
+        "opaqueResultContext": seed.opaque_result_context,
+        "taskItemClaimUntilMillis": seed.task_item_claim_until_millis,
+    }
+
+
+def create_app(
+    *,
+    config_json: str | None = None,
+    application: KernelApplication | None = None,
+) -> FastAPI:
+    if config_json is not None and application is not None:
+        raise ValueError("config_json and application are mutually exclusive")
+    kernel_application = application or KernelApplication.from_json(config_json)
+
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
+        kernel_application.start()
+        try:
+            yield
+        finally:
+            kernel_application.stop()
+
+    app = FastAPI(title="Kernel Executable Spec", lifespan=lifespan)
+    app.state.kernel_application = kernel_application
+
+    @app.exception_handler(ValueError)
+    async def invalid_contract_value(
+        _request: Request,
+        error: ValueError,
+    ) -> JSONResponse:
+        return JSONResponse({"detail": str(error)}, status_code=422)
+
+    @app.get("/health")
+    def health() -> dict[str, str]:
+        return {"status": "ok"}
+
+    @app.post("/worker-groups")
+    def register_worker_group(request: WorkerGroupRequest) -> JSONResponse:
+        return _worker_result_response(
+            kernel_application.register_worker_group(
+                descriptor=WorkerGroupDescriptor(
+                    worker_group_id=request.worker_group_id,
+                    attributes=request.attributes,
+                    event_codes=frozenset(request.event_codes),
+                )
+            )
+        )
+
+    @app.post("/workers")
+    def register_worker(request: WorkerRequest) -> JSONResponse:
+        return _worker_result_response(
+            kernel_application.register_worker(
+                descriptor=WorkerDescriptor(
+                    worker_id=request.worker_id,
+                    worker_group_id=request.worker_group_id,
+                    endpoint_manager_id=request.endpoint_manager_id,
+                    system_metadata=request.system_metadata,
+                    static_attributes=request.static_attributes,
+                    dynamic_attribute_names=frozenset(
+                        request.dynamic_attribute_names
+                    ),
+                )
+            )
+        )
+
+    @app.post("/workers/{worker_group_id}/{worker_id}/dynamic-attributes")
+    def update_worker_dynamic_attributes(
+        worker_group_id: str,
+        worker_id: str,
+        request: DynamicAttributeUpdateRequest,
+    ) -> dict[str, dict[str, Any]]:
+        results = kernel_application.update_worker_dynamic_attributes(
+            worker_group_id=worker_group_id,
+            worker_id=worker_id,
+            updates=request.updates,
+            observed_at_millis=request.observed_at_millis,
+        )
+        return _result_map_payload(results)
+
+    @app.post("/tasks")
+    def create_task(request: TaskRequest) -> JSONResponse:
+        return _creation_response(
+            kernel_application.create_task(
+                descriptor=TaskDescriptor(
+                    task_id=request.task_id,
+                    worker_group_id=request.worker_group_id,
+                    allocation_rule=request.allocation_rule,
+                    config=request.config,
+                )
+            )
+        )
+
+    @app.post("/tasks/{task_id}/approve")
+    def approve_task(task_id: str) -> JSONResponse:
+        return _approval_response(kernel_application.approve_task(task_id=task_id))
+
+    @app.post("/tasks/{task_id}/items")
+    def append_task_items(
+        task_id: str,
+        request: AppendTaskItemsRequest,
+    ) -> dict[str, dict[str, Any]]:
+        items = tuple(
+            TaskItem(
+                message_id=item.message_id,
+                event_code=item.event_code,
+                created_at_millis=item.created_at_millis,
+                payload=item.payload,
+                payload_ref=item.payload_ref,
+                priority=item.priority,
+                expire_at_millis=item.expire_at_millis,
+            )
+            for item in request.items
+        )
+        return _result_map_payload(
+            kernel_application.append_task_items(task_id=task_id, items=items)
+        )
+
+    @app.post(
+        "/endpoint-managers/{endpoint_manager_id}/deliver-seeds:consume"
+    )
+    def consume_deliver_seeds(
+        endpoint_manager_id: str,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        return [
+            _deliver_seed_payload(seed)
+            for seed in kernel_application.consume_deliver_seeds(
+                endpoint_manager_id=endpoint_manager_id,
+                limit=limit,
+            )
+        ]
+
+    return app
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Start the kernel FastAPI example.")
+    parser.add_argument("--config", type=Path, help="optional kernel JSON config")
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument(
+        "--log-level",
+        choices=("debug", "info", "warning", "error"),
+        default="info",
+    )
+    args = parser.parse_args()
+    if args.port <= 0:
+        parser.error("--port must be positive")
+
+    config_json = args.config.read_text(encoding="utf-8") if args.config else None
+    logging.basicConfig(level=args.log_level.upper())
+    try:
+        import uvicorn
+    except ImportError as error:
+        raise RuntimeError("uvicorn is required for the FastAPI example") from error
+    uvicorn.run(
+        create_app(config_json=config_json),
+        host=args.host,
+        port=args.port,
+        log_level=args.log_level,
+    )
+
+
+if __name__ == "__main__":
+    main()

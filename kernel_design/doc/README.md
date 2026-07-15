@@ -4,6 +4,8 @@ Status: current document index for the isolated new-kernel workspace.
 
 The document families are grouped by design concern:
 
+- [Kernel Application Assembly](kernel-application-assembly.md): zero-config
+  external command boundary, private Redis composition, and CLI/FastAPI hosts.
 - [Scheduling](scheduling/README.md): score axes, assignment-dispatch pacers,
   outbound handoff, and result routing.
 - [Resource Models](resource-model/worker-resource-model.md): Worker and Task

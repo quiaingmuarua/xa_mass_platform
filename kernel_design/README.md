@@ -397,13 +397,20 @@ no hidden compatibility path or second mainline remains
   - one canonical TaskItem from append through finality, with TaskItem record, ACTIVE
     claim/retry, and monotonic result outcome movement; no second Work model.
 - [Assignment-Dispatch Scheduling](doc/scheduling/assignment-dispatch-scheduling.md)
-  - shared owner contract for two mandatory independent pacers.
+  - plane contract for independent allocation and Item-dispatch pacing, plus
+    running-activation transition handling.
 - [Task-Worker Allocation Pacer](doc/scheduling/task-worker-allocation-pacer.md)
   - oldest-first allocation fairness, batch matching, activation, and candidate
     publication.
 - [Task Item Dispatch Pacer](doc/scheduling/task-item-dispatch-pacer.md)
   - newest-first candidate consumption, Item score claim, and DeliverSeed queue
     append without Task- or Worker-score writes.
+- [Assignment-Dispatch Application](doc/scheduling/assignment-dispatch-application.md)
+  - independent background lifecycle for allocation, running activation, and
+    TaskItem dispatch pacers.
+- [Kernel Application Assembly](doc/kernel-application-assembly.md)
+  - zero-config command boundary, private Redis composition, built-in CLI, and
+    the external FastAPI protocol example.
 - [DeliverSeed Outbound Delivery](doc/scheduling/deliver-seed-outbound-delivery.md)
   - queued seed consumption, Worker lease continuation, transport submit, and
     exclusive/non-exclusive Worker disposition.
