@@ -369,12 +369,14 @@ def dispatch_task_items(config):
                 worker_id=candidate_worker.worker_id,
                 opaque_delivery_item=encode_delivery_item(task_item),
                 opaque_result_context=encode_result_context(
-                    task_id,
-                    task_item.message_id,
-                    candidate_worker.worker_id,
-                    claim_score,
-                    candidate_worker.worker_lease_score,
-                    claim_lease_until_millis,
+                    ResultContext(
+                        task_id=task_id,
+                        message_id=task_item.message_id,
+                        worker_id=candidate_worker.worker_id,
+                        claim_score=claim_score,
+                        worker_lease_score=candidate_worker.worker_lease_score,
+                        task_item_claim_until_millis=claim_lease_until_millis,
+                    )
                 ),
                 task_item_claim_until_millis=claim_lease_until_millis,
             )

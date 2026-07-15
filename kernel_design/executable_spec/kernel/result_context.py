@@ -4,10 +4,10 @@ import json
 from collections.abc import Mapping
 from dataclasses import dataclass
 
-from ..kernel.task_runtime import MessageId
-from ..kernel.task_score_band import Score, TaskId, TimeMillis
-from ..kernel.worker_score import Score as WorkerScore
-from ..kernel.worker_score import WorkerId
+from .task_runtime import MessageId
+from .task_score_band import Score, TaskId, TimeMillis
+from .worker_score import Score as WorkerScore
+from .worker_score import WorkerId
 
 
 @dataclass(frozen=True, slots=True)
@@ -20,24 +20,16 @@ class ResultContext:
     task_item_claim_until_millis: TimeMillis
 
 
-def encode_result_context(
-    *,
-    task_id: TaskId,
-    message_id: MessageId,
-    worker_id: WorkerId,
-    claim_score: Score,
-    worker_lease_score: WorkerScore,
-    task_item_claim_until_millis: TimeMillis,
-) -> str:
+def encode_result_context(context: ResultContext) -> str:
     """Encode the opaque handoff shared by dispatch and result-routing."""
     return json.dumps(
         {
-            "taskId": task_id,
-            "messageId": message_id,
-            "workerId": worker_id,
-            "claimScore": claim_score,
-            "workerLeaseScore": worker_lease_score,
-            "taskItemClaimUntilMillis": task_item_claim_until_millis,
+            "taskId": context.task_id,
+            "messageId": context.message_id,
+            "workerId": context.worker_id,
+            "claimScore": context.claim_score,
+            "workerLeaseScore": context.worker_lease_score,
+            "taskItemClaimUntilMillis": context.task_item_claim_until_millis,
         },
         allow_nan=False,
         sort_keys=True,

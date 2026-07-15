@@ -4,6 +4,10 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from time import time_ns
 
+from ..kernel.assignment_dispatch_runtime import (
+    AssignmentDispatchRuntime,
+    CandidateWorkerEntry,
+)
 from ..kernel.task_runtime import TaskDescriptor, TaskResourceCatalog
 from ..kernel.task_score_band import (
     TaskScoreBand,
@@ -23,7 +27,6 @@ from ..kernel.worker_score import (
     WorkerScoreCore,
     WorkerScoreTransitionStatus,
 )
-from .runtime import AssignmentDispatchRuntime, CandidateWorkerEntry
 
 
 @dataclass(frozen=True)

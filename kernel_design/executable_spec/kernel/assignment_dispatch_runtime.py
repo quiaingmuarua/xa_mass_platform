@@ -4,10 +4,10 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Mapping, Sequence
 
-from ..kernel.task_score_band import TaskId, TimeMillis
-from ..kernel.worker_runtime import EndpointManagerId, WorkerGroupId
-from ..kernel.worker_score import Score as WorkerScore
-from ..kernel.worker_score import WorkerId
+from .task_score_band import TaskId, TimeMillis
+from .worker_runtime import EndpointManagerId, WorkerGroupId
+from .worker_score import Score as WorkerScore
+from .worker_score import WorkerId
 
 
 @dataclass(frozen=True)

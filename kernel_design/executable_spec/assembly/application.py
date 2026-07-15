@@ -7,7 +7,7 @@ from enum import Enum
 from threading import Lock
 from typing import Any
 
-from ..assignment_dispatch import (
+from ..scheduling import (
     TaskItemDispatchConfig,
     TaskRunningActivationConfig,
     TaskWorkerAllocationConfig,
@@ -25,7 +25,7 @@ from ..kernel import (
     TaskScoreState,
     TaskScoreTransitionStatus,
 )
-from ..result_routing import ResultRoutingConfig
+from ..scheduling import ResultRoutingConfig
 from ._redis_process import _RedisKernelProcess, _RedisKernelProcessConfig
 from .assignment_dispatch_application import AssignmentDispatchApplicationConfig
 from .result_routing_application import ResultRoutingApplicationConfig

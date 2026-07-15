@@ -95,15 +95,16 @@ For result or TaskItem dispatch:
 5. [doc/scheduling/task-item-dispatch-pacer.md](doc/scheduling/task-item-dispatch-pacer.md)
 6. [doc/scheduling/assignment-dispatch-application.md](doc/scheduling/assignment-dispatch-application.md)
 7. [doc/scheduling/deliver-seed-outbound-delivery.md](doc/scheduling/deliver-seed-outbound-delivery.md)
-8. [executable_spec/assignment_dispatch/task_worker_allocation.py](executable_spec/assignment_dispatch/task_worker_allocation.py)
+8. [executable_spec/scheduling/task_worker_allocation.py](executable_spec/scheduling/task_worker_allocation.py)
 9. [executable_spec/assembly/assignment_dispatch_application.py](executable_spec/assembly/assignment_dispatch_application.py)
-10. [executable_spec/assignment_dispatch/runtime.py](executable_spec/assignment_dispatch/runtime.py)
+10. [executable_spec/kernel/assignment_dispatch_runtime.py](executable_spec/kernel/assignment_dispatch_runtime.py)
 11. [executable_spec/redis_runtime/assignment_dispatch.py](executable_spec/redis_runtime/assignment_dispatch.py)
 12. [doc/scheduling/result-routing-scheduling.md](doc/scheduling/result-routing-scheduling.md)
-13. [executable_spec/result_routing/runtime.py](executable_spec/result_routing/runtime.py)
-14. [executable_spec/result_routing/pacer.py](executable_spec/result_routing/pacer.py)
-15. [executable_spec/redis_runtime/result_routing.py](executable_spec/redis_runtime/result_routing.py)
-16. [executable_spec/tests/test_result_routing.py](executable_spec/tests/test_result_routing.py)
+13. [executable_spec/kernel/result_context.py](executable_spec/kernel/result_context.py)
+14. [executable_spec/kernel/seed_result_runtime.py](executable_spec/kernel/seed_result_runtime.py)
+15. [executable_spec/scheduling/result_routing.py](executable_spec/scheduling/result_routing.py)
+16. [executable_spec/redis_runtime/result_routing.py](executable_spec/redis_runtime/result_routing.py)
+17. [executable_spec/tests/test_result_routing.py](executable_spec/tests/test_result_routing.py)
 
 For process assembly or server entry work:
 
@@ -134,8 +135,8 @@ storage trivia:
 
 ```text
 executable_spec/          stable executable-spec package, never example/demo
-kernel/                   owner contracts and kernel-owned score mechanisms
-assignment_dispatch/      assignment-dispatch policy and intermediate runtime
+kernel/                   owner contracts, score mechanisms, and internal protocols
+scheduling/               bounded matching and cross-owner pacer orchestration
 assembly/                 application lifecycle and dependency composition
 constraint_dsl/           standalone constraint compilation/evaluation
 redis_runtime/            Redis-backed implementations of owner contracts

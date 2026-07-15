@@ -5,6 +5,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from time import time_ns
 
+from ..kernel.assignment_dispatch_runtime import (
+    AssignmentDispatchRuntime,
+    DeliverSeed,
+    DeliverSeedRuntime,
+)
+from ..kernel.result_context import ResultContext, encode_result_context
 from ..kernel.task_item_score_band import (
     TaskItemScoreBand,
     TaskItemScoreBandCore,
@@ -13,8 +19,6 @@ from ..kernel.task_item_score_band import (
 from ..kernel.task_runtime import TaskItem, TaskRuntime
 from ..kernel.task_score_band import Score, TaskId, TaskScoreBandCore, TimeMillis
 from ..kernel.worker_runtime import EndpointManagerId
-from ..result_routing.context import encode_result_context
-from .runtime import AssignmentDispatchRuntime, DeliverSeed, DeliverSeedRuntime
 
 
 def _encode_delivery_item(task_item: TaskItem) -> str:
@@ -103,12 +107,14 @@ class TaskItemDispatchPacer:
                     worker_id=candidate_worker.worker_id,
                     opaque_delivery_item=self._delivery_item_encoder(task_item),
                     opaque_result_context=encode_result_context(
-                        task_id=task_id,
-                        message_id=task_item.message_id,
-                        worker_id=candidate_worker.worker_id,
-                        claim_score=claim_score,
-                        worker_lease_score=candidate_worker.worker_lease_score,
-                        task_item_claim_until_millis=claim_lease_until_millis,
+                        ResultContext(
+                            task_id=task_id,
+                            message_id=task_item.message_id,
+                            worker_id=candidate_worker.worker_id,
+                            claim_score=claim_score,
+                            worker_lease_score=candidate_worker.worker_lease_score,
+                            task_item_claim_until_millis=claim_lease_until_millis,
+                        )
                     ),
                     task_item_claim_until_millis=claim_lease_until_millis,
                 )

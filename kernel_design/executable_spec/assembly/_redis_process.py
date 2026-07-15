@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from ..assignment_dispatch import (
+from ..scheduling import (
     TaskItemDispatchPacer,
     TaskRunningActivationPacer,
     TaskWorkerAllocationPacer,
@@ -22,7 +22,7 @@ from ..redis_runtime import (
     RedisWorkerScoreCore,
     RedisSeedResultRuntime,
 )
-from ..result_routing import ResultRoutingPacer
+from ..scheduling import ResultRoutingPacer
 from .assignment_dispatch_application import (
     AssignmentDispatchApplication,
     AssignmentDispatchApplicationConfig,

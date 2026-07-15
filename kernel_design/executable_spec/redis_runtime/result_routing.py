@@ -4,7 +4,7 @@ import json
 from collections.abc import Mapping
 from typing import Any, Sequence
 
-from ..result_routing import SeedResult, SeedResultRuntime
+from ..kernel.seed_result_runtime import SeedResult, SeedResultRuntime
 
 
 class RedisSeedResultRuntime(SeedResultRuntime):

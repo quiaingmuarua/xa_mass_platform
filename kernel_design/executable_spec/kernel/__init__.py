@@ -56,8 +56,16 @@ from .task_item_score_band import (
     TaskItemScoreTransitionResult,
     TaskItemScoreTransitionStatus,
 )
+from .assignment_dispatch_runtime import (
+    AssignmentDispatchRuntime,
+    CandidateWorkerEntry,
+    DeliverSeed,
+    DeliverSeedRuntime,
+)
+from .seed_result_runtime import SeedResult, SeedResultRuntime
 
 __all__ = [
+    "AssignmentDispatchRuntime",
     "TimeMillis",
     "HomeBucketId",
     "LaneRank",
@@ -104,6 +112,11 @@ __all__ = [
     "TaskItemScoreState",
     "TaskItemScoreTransitionResult",
     "TaskItemScoreTransitionStatus",
+    "CandidateWorkerEntry",
+    "DeliverSeed",
+    "DeliverSeedRuntime",
+    "SeedResult",
+    "SeedResultRuntime",
     "TaskResourceCatalog",
     "TaskRuntime",
 ]

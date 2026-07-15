@@ -1,5 +1,5 @@
-from ..assignment_dispatch import DeliverSeed
 from ..kernel import (
+    DeliverSeed,
     EndpointManagerId,
     MessageId,
     TaskCreationResult,
@@ -13,6 +13,7 @@ from ..kernel import (
     WorkerGroupDescriptor,
     WorkerRuntimeResult,
     WorkerRuntimeStatus,
+    SeedResult,
 )
 from .application import (
     KernelApplication,
@@ -25,8 +26,6 @@ from .transport_clients import (
     DeliverSeedConsumerClient,
     SeedResultCommandClient,
 )
-from ..result_routing import SeedResult
-
 __all__ = [
     "DeliverSeed",
     "DeliverSeedConsumerClient",

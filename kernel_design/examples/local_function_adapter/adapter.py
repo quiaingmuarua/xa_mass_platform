@@ -8,9 +8,9 @@ from types import MappingProxyType
 
 from ...executable_spec.assembly import (
     DeliverSeedConsumerClient,
+    SeedResult,
     SeedResultCommandClient,
 )
-from ...executable_spec.result_routing import SeedResult
 
 
 @dataclass(frozen=True, slots=True)

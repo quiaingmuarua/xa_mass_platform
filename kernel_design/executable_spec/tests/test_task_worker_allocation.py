@@ -5,6 +5,7 @@ import unittest
 from dataclasses import fields
 from unittest.mock import Mock
 
+from kernel_design.executable_spec import kernel
 from kernel_design.executable_spec import (
     AssignmentDispatchRuntime,
     CandidateWorkerEntry,
@@ -30,6 +31,7 @@ from kernel_design.executable_spec import (
 
 class TaskWorkerAllocationPacerTest(unittest.TestCase):
     def test_assignment_dispatch_runtime_is_an_owner_interface(self) -> None:
+        self.assertIs(kernel.AssignmentDispatchRuntime, AssignmentDispatchRuntime)
         self.assertEqual(
             AssignmentDispatchRuntime.__abstractmethods__,
             {

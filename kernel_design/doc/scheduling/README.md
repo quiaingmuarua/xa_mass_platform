@@ -511,19 +511,23 @@ kernel_design/executable_spec/
   constraint_dsl/
     evaluator.py
   kernel/
+    assignment_dispatch_runtime.py
+    result_context.py
+    seed_result_runtime.py
     task_score_band.py
     task_item_score_band.py
     worker_score.py
     task_runtime.py
     worker_runtime.py
-  assignment_dispatch/
-    runtime.py
+  scheduling/
     worker_candidate_matcher.py
     task_worker_allocation.py
     task_item_dispatch.py
+    result_routing.py
   assembly/
     application.py
     assignment_dispatch_application.py
+    result_routing_application.py
     _redis_process.py
     __main__.py
   redis_runtime/
@@ -533,16 +537,16 @@ kernel_design/executable_spec/
     task_runtime.py
     worker_runtime.py
     assignment_dispatch.py
+    result_routing.py
   tests/
 ```
 
 It currently proves the Task, TaskItem, and Worker score axes, TaskItem DTO and
 latest-write Redis record persistence, resource catalogs, bounded Worker
-matching, Redis candidate handoff, both assignment pacers, the DeliverSeed
-model, and endpoint-manager-partitioned Redis DeliverSeed append/bounded consume
-through `DeliverSeedRuntime`. Transport-side outbound orchestration,
-recent-first dispatch-task acquire, and result routing are still executable-spec
-gaps. An in-memory runtime is not a prerequisite or a parallel mainline.
+matching, Redis candidate handoff, assignment and Item-dispatch pacing,
+DeliverSeed and SeedResult runtime handoffs, Local Function Adapter execution,
+and result routing back into TaskItem and Worker score owners. An in-memory
+runtime is not a prerequisite or a parallel mainline.
 
 ## Extension Scope
 

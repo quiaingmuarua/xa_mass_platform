@@ -2,10 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from ..assignment_dispatch import DeliverSeed
-from ..kernel import EndpointManagerId
+from ..kernel import DeliverSeed, EndpointManagerId, SeedResult
 from ..redis_runtime import RedisDeliverSeedRuntime, RedisSeedResultRuntime
-from ..result_routing import SeedResult
 from .application import KernelApplicationConfig
 
 

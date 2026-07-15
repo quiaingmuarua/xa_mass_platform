@@ -4,7 +4,7 @@ import json
 from collections.abc import Mapping as MappingABC
 from typing import Any, Mapping, Sequence
 
-from ..assignment_dispatch.runtime import (
+from ..kernel.assignment_dispatch_runtime import (
     AssignmentDispatchRuntime,
     CandidateWorkerEntry,
     DeliverSeed,

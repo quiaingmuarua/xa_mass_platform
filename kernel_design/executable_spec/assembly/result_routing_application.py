@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from functools import partial
 from threading import Event, Lock, Thread
 
-from ..result_routing import ResultRoutingConfig, ResultRoutingPacer
+from ..scheduling import ResultRoutingConfig, ResultRoutingPacer
 
 
 _LOGGER = logging.getLogger(__name__)

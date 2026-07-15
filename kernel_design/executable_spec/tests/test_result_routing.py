@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import inspect
+import json
 import unittest
 from dataclasses import fields
 from unittest.mock import Mock, call, patch
 
+from kernel_design.executable_spec import kernel, scheduling
 from kernel_design.executable_spec import (
     ResultRoutingConfig,
     ResultRoutingPacer,
@@ -18,9 +20,50 @@ from kernel_design.executable_spec import (
     TaskResourceCatalog,
     WorkerScoreCore,
 )
-from kernel_design.executable_spec.result_routing.context import (
+from kernel_design.executable_spec.kernel.result_context import (
+    ResultContext,
+    decode_result_context,
     encode_result_context,
 )
+
+
+class ResultContextCodecTest(unittest.TestCase):
+    def test_round_trip_is_deterministic_and_uses_one_context_parameter(self) -> None:
+        context = ResultContext(
+            task_id="task-1",
+            message_id="message-1",
+            worker_id="worker-1",
+            claim_score=101,
+            worker_lease_score=201,
+            task_item_claim_until_millis=105_000,
+        )
+
+        encoded = encode_result_context(context)
+
+        self.assertEqual(["context"], list(inspect.signature(encode_result_context).parameters))
+        self.assertEqual(
+            '{"claimScore":101,"messageId":"message-1","taskId":"task-1",'
+            '"taskItemClaimUntilMillis":105000,"workerId":"worker-1",'
+            '"workerLeaseScore":201}',
+            encoded,
+        )
+        self.assertEqual(context, decode_result_context(encoded))
+
+    def test_decode_ignores_unknown_fields_and_rejects_invalid_contexts(self) -> None:
+        context = ResultContext("task-1", "message-1", "worker-1", 101, 201, 105_000)
+        payload = json.loads(encode_result_context(context))
+        payload["futureField"] = "ignored"
+
+        self.assertEqual(context, decode_result_context(json.dumps(payload)))
+        for invalid in (
+            "{bad-json",
+            "[]",
+            '{"taskId":"task-1"}',
+            '{"taskId":"task-1","messageId":"message-1","workerId":"worker-1",'
+            '"claimScore":0,"workerLeaseScore":201,"taskItemClaimUntilMillis":105000}',
+        ):
+            with self.subTest(invalid=invalid):
+                self.assertIsNone(decode_result_context(invalid))
 
 
 class ResultRoutingPacerTest(unittest.TestCase):
@@ -77,17 +120,22 @@ class ResultRoutingPacerTest(unittest.TestCase):
     ) -> SeedResult:
         return SeedResult(
             opaque_result_context=encode_result_context(
-                task_id=task_id,
-                message_id=message_id,
-                worker_id=worker_id,
-                claim_score=claim_score,
-                worker_lease_score=worker_lease_score,
-                task_item_claim_until_millis=claim_until_millis,
+                ResultContext(
+                    task_id=task_id,
+                    message_id=message_id,
+                    worker_id=worker_id,
+                    claim_score=claim_score,
+                    worker_lease_score=worker_lease_score,
+                    task_item_claim_until_millis=claim_until_millis,
+                )
             ),
             outcome_code=outcome_code,
         )
 
     def test_public_contract(self) -> None:
+        self.assertIs(kernel.SeedResultRuntime, SeedResultRuntime)
+        self.assertIs(scheduling.ResultRoutingPacer, ResultRoutingPacer)
+        self.assertFalse(hasattr(kernel, "ResultRoutingPacer"))
         self.assertEqual(
             [
                 "opaque_result_context",

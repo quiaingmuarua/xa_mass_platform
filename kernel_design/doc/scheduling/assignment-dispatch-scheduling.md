@@ -185,7 +185,7 @@ CandidateWorkerEntry
 ```
 
 The Python DTO and runtime owner are implemented in
-[`executable_spec/assignment_dispatch/runtime.py`](../../executable_spec/assignment_dispatch/runtime.py).
+[`executable_spec/kernel/assignment_dispatch_runtime.py`](../../executable_spec/kernel/assignment_dispatch_runtime.py).
 The Redis executable spec uses one ZSET per Task, scored by candidate batch
 `expiresAtMillis`:
 

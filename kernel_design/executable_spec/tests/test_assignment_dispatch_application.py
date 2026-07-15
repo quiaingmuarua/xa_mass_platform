@@ -7,7 +7,7 @@ from threading import Event
 from time import monotonic, sleep
 from unittest.mock import Mock, call
 
-from kernel_design.executable_spec.assignment_dispatch import (
+from kernel_design.executable_spec.scheduling import (
     TaskItemDispatchConfig,
     TaskItemDispatchPacer,
     TaskRunningActivationConfig,

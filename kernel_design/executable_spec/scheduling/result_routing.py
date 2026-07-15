@@ -5,6 +5,8 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from time import time_ns
 
+from ..kernel.result_context import ResultContext, decode_result_context
+from ..kernel.seed_result_runtime import SeedResult, SeedResultRuntime
 from ..kernel.task_item_score_band import (
     TaskItemScoreBand,
     TaskItemScoreBandCore,
@@ -15,8 +17,6 @@ from ..kernel.task_runtime import MessageId, TaskResourceCatalog
 from ..kernel.task_score_band import TaskId, TimeMillis
 from ..kernel.worker_score import Score as WorkerScore
 from ..kernel.worker_score import WorkerId, WorkerScoreCore
-from .context import ResultContext, decode_result_context
-from .runtime import SeedResult, SeedResultRuntime
 
 
 @dataclass(frozen=True, slots=True)

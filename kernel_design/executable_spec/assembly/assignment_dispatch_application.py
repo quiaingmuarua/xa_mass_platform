@@ -7,7 +7,7 @@ from functools import partial
 from threading import Event, Lock, Thread
 from time import monotonic
 
-from ..assignment_dispatch import (
+from ..scheduling import (
     TaskItemDispatchConfig,
     TaskItemDispatchPacer,
     TaskRunningActivationConfig,
