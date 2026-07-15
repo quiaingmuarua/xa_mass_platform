@@ -18,6 +18,7 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
     redis_module = None  # type: ignore[assignment]
 
 from kernel_design.executable_spec.assembly import (
+    DeliverSeedConsumerClient,
     KernelApplication,
     KernelApplicationConfig,
     ResourcesCommandClient,
@@ -52,6 +53,7 @@ class KernelApplicationConfigTest(unittest.TestCase):
             worker_allocation_interval_millis=100,
             running_activation_interval_millis=100,
             task_item_dispatch_interval_millis=100,
+            result_routing_interval_millis=100,
             stop_timeout_millis=5_000,
         )
 
@@ -66,6 +68,7 @@ class KernelApplicationConfigTest(unittest.TestCase):
                     "assignmentDispatch": {
                         "taskItemDispatchIntervalMillis": 250,
                     },
+                    "resultRouting": {"intervalMillis": 300},
                     "stopTimeoutMillis": 2_000,
                 }
             )
@@ -76,6 +79,7 @@ class KernelApplicationConfigTest(unittest.TestCase):
         self.assertEqual(100, config.worker_allocation_interval_millis)
         self.assertEqual(100, config.running_activation_interval_millis)
         self.assertEqual(250, config.task_item_dispatch_interval_millis)
+        self.assertEqual(300, config.result_routing_interval_millis)
         self.assertEqual(2_000, config.stop_timeout_millis)
 
     def test_unknown_malformed_and_non_positive_values_are_rejected(self) -> None:
@@ -89,6 +93,8 @@ class KernelApplicationConfigTest(unittest.TestCase):
             '{"stopTimeoutMillis": 0}',
             '{"assignmentDispatch": {"workerAllocationIntervalMillis": -1}}',
             '{"assignmentDispatch": {"runningActivationIntervalMillis": true}}',
+            '{"resultRouting": {"intervalMillis": 0}}',
+            '{"resultRouting": {"batchLimit": 100}}',
         )
         for config_json in invalid_configs:
             with self.subTest(config_json=config_json), self.assertRaises(ValueError):
@@ -102,6 +108,7 @@ class KernelApplicationConfigTest(unittest.TestCase):
                 "worker_allocation_interval_millis",
                 "running_activation_interval_millis",
                 "task_item_dispatch_interval_millis",
+                "result_routing_interval_millis",
                 "stop_timeout_millis",
             ],
             [field.name for field in fields(KernelApplicationConfig)],
@@ -137,7 +144,6 @@ class KernelApplicationTest(unittest.TestCase):
             {
                 "append_task_items",
                 "approve_task",
-                "consume_deliver_seeds",
                 "create_task",
                 "start",
                 "stop",
@@ -179,13 +185,13 @@ class KernelApplicationTest(unittest.TestCase):
             5,
             internal.assignment_dispatch.running_activation.running_visible_initial_suffix,
         )
+        self.assertEqual(100, internal.result_routing.routing.batch_limit)
+        self.assertEqual(1_000, internal.result_routing.routing.retry_delay_millis)
+        self.assertEqual(100, internal.result_routing.interval_millis)
 
     def test_commands_require_successful_start_and_lifecycle_is_strict(self) -> None:
         with self.assertRaises(RuntimeError):
-            self.application.consume_deliver_seeds(
-                endpoint_manager_id="endpoint-1",
-                limit=1,
-            )
+            self.application.create_task(descriptor=self._task_descriptor())
 
         self.application.start()
         self.process.start.assert_called_once_with()
@@ -369,8 +375,67 @@ class KernelApplicationTest(unittest.TestCase):
         process._task_score = Mock(spec=TaskScoreBandCore)
         process._task_resource_catalog = Mock(spec=TaskResourceCatalog)
         process._task_runtime = Mock()
-        process._deliver_seed_runtime = Mock()
         return process
+
+
+class RedisKernelProcessLifecycleTest(unittest.TestCase):
+    def process(self) -> tuple[_RedisKernelProcess, list[str]]:
+        process = _RedisKernelProcess.__new__(_RedisKernelProcess)
+        process._redis = Mock()
+        process._config = Mock(
+            assignment_dispatch="assignment-config",
+            result_routing="result-config",
+            stop_timeout_millis=123,
+        )
+        process._assignment_dispatch_application = Mock()
+        process._result_routing_application = Mock()
+        order: list[str] = []
+        process._result_routing_application.start.side_effect = (
+            lambda **_kwargs: order.append("result-start")
+        )
+        process._assignment_dispatch_application.start.side_effect = (
+            lambda **_kwargs: order.append("assignment-start")
+        )
+        process._assignment_dispatch_application.stop.side_effect = (
+            lambda **_kwargs: order.append("assignment-stop")
+        )
+        process._result_routing_application.stop.side_effect = (
+            lambda **_kwargs: order.append("result-stop")
+        )
+        return process, order
+
+    def test_result_loop_starts_first_and_stops_last(self) -> None:
+        process, order = self.process()
+
+        process.start()
+        process.stop()
+
+        self.assertEqual(
+            [
+                "result-start",
+                "assignment-start",
+                "assignment-stop",
+                "result-stop",
+            ],
+            order,
+        )
+
+    def test_assignment_start_failure_rolls_back_result_loop(self) -> None:
+        process, order = self.process()
+
+        def fail_assignment(**_kwargs: object) -> None:
+            order.append("assignment-start")
+            raise RuntimeError("start failed")
+
+        process._assignment_dispatch_application.start.side_effect = fail_assignment
+
+        with self.assertRaisesRegex(RuntimeError, "start failed"):
+            process.start()
+
+        self.assertEqual(
+            ["result-start", "assignment-start", "result-stop"],
+            order,
+        )
 
 
 _REDIS_URL = os.environ.get("KERNEL_DESIGN_REDIS_URL")
@@ -403,6 +468,7 @@ class KernelApplicationIntegrationTest(unittest.TestCase):
             stop_timeout_millis=1_000,
         )
         self.resources_client = ResourcesCommandClient(self.config)
+        self.deliver_seed_consumer = DeliverSeedConsumerClient(self.config)
         self.application = KernelApplication(self.config)
 
     def tearDown(self) -> None:
@@ -455,7 +521,7 @@ class KernelApplicationIntegrationTest(unittest.TestCase):
         deadline = time.monotonic() + 3
         seeds = ()
         while time.monotonic() < deadline and not seeds:
-            seeds = self.application.consume_deliver_seeds(
+            seeds = self.deliver_seed_consumer.consume_deliver_seeds(
                 endpoint_manager_id=endpoint_manager_id,
                 limit=10,
             )

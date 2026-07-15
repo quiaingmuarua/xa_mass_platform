@@ -194,6 +194,7 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
                 "workerId": "worker-1",
                 "claimScore": item_state.score,
                 "workerLeaseScore": 123_456,
+                "taskItemClaimUntilMillis": seed.task_item_claim_until_millis,
             },
             result_context,
         )

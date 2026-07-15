@@ -374,6 +374,7 @@ def dispatch_task_items(config):
                     candidate_worker.worker_id,
                     claim_score,
                     candidate_worker.worker_lease_score,
+                    claim_lease_until_millis,
                 ),
                 task_item_claim_until_millis=claim_lease_until_millis,
             )
@@ -416,17 +417,15 @@ TaskItemDispatchConfig and TaskItemDispatchPacer
 unit proof plus real Redis orchestration proof
 ```
 
-It does not yet provide:
+The remaining dispatch-specific gap is:
 
 ```text
-transport-side DeliverSeed outbound orchestration
 recent-first Redis implementation for acquire_dispatch_work_tasks
 ```
 
-The Redis runtime can append and bounded-pop one endpoint-manager queue. The
-current pacer proof stops at queued DeliverSeed creation; no transport-side
-caller yet consumes that primitive, calls transport, or executes Worker
-release/renew policy merely to claim an end-to-end delivery demo.
+The Local Function Adapter now consumes one endpoint-manager queue and submits
+SeedResult evidence. Worker release remains result-routing-owned rather than a
+TaskItem dispatch responsibility.
 
 ## Failure Semantics
 

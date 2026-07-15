@@ -728,8 +728,8 @@ script contains band names, budget, time, result, or retry policy.
 - Do not let lower final tags overwrite higher final tags.
 - Do not treat `FINAL_FAILED` as an absorbing result tag; a later success may
   promote it to `FINAL_SUCCESS`.
-- Do not physically remove Item truth before the late-success retention barrier
-  permits cleanup.
+- Do not physically remove Item truth until a separate retention owner defines
+  when late-success acceptance may end.
 - Do not let external callers define tag values or tag-local suffix rules.
 - Do not add event-name branches when the score-band tag/timeSlot/suffix rules
   already express the transition.

@@ -418,8 +418,8 @@ no hidden compatibility path or second mainline remains
   - independent process startup, local Worker registration, shared event
     handlers, platform resource registration, and SeedResult submission.
 - [Result-Routing Scheduling](doc/scheduling/result-routing-scheduling.md)
-  - business result classification, Task Item transition invocation, routing
-    outcome mapping, and late-result retention.
+  - unified SeedResult consumption, success/retry selection, Task Item score
+    invocation, and Worker exact-release handoff.
 
 ## Boundary
 

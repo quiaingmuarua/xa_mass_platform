@@ -223,6 +223,7 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
                 "workerId": "worker-1",
                 "claimScore": 304,
                 "workerLeaseScore": 10_001,
+                "taskItemClaimUntilMillis": 103_000,
             },
             result_context,
         )

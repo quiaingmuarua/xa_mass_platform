@@ -1,7 +1,6 @@
 # Local Function Adapter
 
-Status: planned executable-closure example. The adapter, external DeliverSeed
-consumer, SeedResult runtime/client, and ResultRoutingPacer do not exist yet.
+Status: current Python executable-spec closure example.
 
 Kernel boundary:
 [DeliverSeed Outbound Delivery](../../doc/scheduling/deliver-seed-outbound-delivery.md).
@@ -74,7 +73,7 @@ claim score, or Worker lease score. Those correlations already travel inside
 
 any other non-empty string
   failure evidence
-  Result-Routing policy decides retryable or final-failed
+  Result-Routing requests exact same-band retry
 ```
 
 `"200"` is a kernel result code, not an HTTP response status. The contract does
@@ -205,6 +204,11 @@ not delivery or result success.
 Handlers return `outcome_code="200"` only when execution succeeded. Every
 other non-empty code enters Result-Routing as failure evidence.
 
+If a handler raises, returns the wrong type, or produces a payload that cannot
+be encoded as deterministic JSON, the adapter submits `outcome_code="500"`
+with no payload. Expired seeds, missing local Workers, missing handlers, and
+malformed delivery envelopes are discarded without synthesizing a result.
+
 ## Ownership
 
 The adapter owns only:
@@ -239,23 +243,17 @@ Handlers run with at-least-once semantics. The first handler API stays small as
 later contract that exposes decoded delivery identity without parsing result
 context.
 
-## Current Gaps
+## Executable Surface
 
-The next implementation order is:
+The implementation lives in `adapter.py`. It provides `WorkerMeta`,
+`EventHandlerResult`, and `LocalFunctionTransportAdapter`; external queue access
+uses `DeliverSeedConsumerClient` and `SeedResultCommandClient`. The adapter has
+no internal background thread. Its process host owns the `drain_once` loop and
+shutdown policy.
 
-```text
-1. SeedResult DTO + SeedResultRuntime unified queue
-2. independent DeliverSeedConsumerClient
-3. external SeedResultCommandClient for the runtime append operation
-4. LocalFunctionTransportAdapter + bounded process loop
-5. ResultRoutingPacer and Worker-owner handoff
-```
-
-Current `KernelApplication.consume_deliver_seeds` is start-gated and therefore
-is not the independent adapter-process client. Current Worker registration also
-returns `CONFLICT` when an existing Worker score is found; this quick example
-may use fresh Worker IDs, while restart-safe idempotent registration remains a
-separate resource-command correction.
+Worker registration may still return `CONFLICT` when an existing Worker score
+is found. Restart-safe idempotent resource registration remains a separate
+resource-command decision.
 
 ## Non-Goals
 

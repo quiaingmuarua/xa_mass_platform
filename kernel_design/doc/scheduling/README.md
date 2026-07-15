@@ -395,11 +395,11 @@ Owns:
 ```text
 one logical SeedResult queue through SeedResultRuntime
 bounded SeedResult consumption through ResultRoutingPacer
-classify business result as retryable, final-failed, or final-success
+select exact `"200"` final-success or non-200 exact retry
+apply batch-local success precedence for duplicate Item evidence
 invoke one TaskItemScoreBandCore transition without interpreting score
-map the returned transition status to accepted, stale/duplicate no-op, discard,
-or manual review / unresolved handling
-coordinate accepted-result release / retain handoff to the Worker owner
+count actual TRANSITIONED Item operations
+pass the opaque Worker lease fence to WorkerScoreCore exact release
 ```
 
 Does not own:
@@ -408,6 +408,7 @@ Does not own:
 worker selection
 transport delivery
 read-model materialization
+result payload persistence
 task score refresh as a generic side effect
 ```
 
@@ -439,14 +440,16 @@ a query/view owner and not a transport parser.
    - queued seed consumption, endpoint-manager-local execution, and opaque
      SeedResult submission.
 9. [Result-Routing Scheduling](result-routing-scheduling.md)
-   - how result evidence is routed to finality, retry, no-op, or unresolved
-     handling.
+   - how result evidence selects final success or exact retry and releases the
+     matching Worker score hold.
 10. [Local Function Transport Adapter](../../examples/local_function_adapter/README.md)
    - independent external-process startup, local Worker reachability, and
      platform resource registration order.
 11. [Worker Runtime Redis Shape](../runtime-redis/worker-runtime-redis-shape.md)
    - first-slice Redis structure reference for worker-runtime resource catalog,
      score acquisition, and dynamic attribute storage.
+12. [Result-Routing Runtime Redis Shape](../runtime-redis/result-routing-runtime-redis-shape.md)
+   - unified best-effort SeedResult LIST and bounded append/consume behavior.
 
 This directory describes mechanisms for new-kernel alignment. A future
 executable spec must define its own scope, acceptance, and residue handling
@@ -468,7 +471,8 @@ TaskItemScoreBandCore
   claim/retry movement, and cross-tag final movement
 
 Result owner
-  owns retryable/final classification, late-success barriers, and result projection
+  owns SeedResult decoding, exact success/retry selection, batch-local success
+  precedence, and Worker exact-release handoff
 
 Worker score-band / worker-runtime
   owns worker eligibility acquire, validation, admission, capacity, and score

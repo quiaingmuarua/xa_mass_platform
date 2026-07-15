@@ -8,13 +8,11 @@ from threading import Lock
 from typing import Any
 
 from ..assignment_dispatch import (
-    DeliverSeed,
     TaskItemDispatchConfig,
     TaskRunningActivationConfig,
     TaskWorkerAllocationConfig,
 )
 from ..kernel import (
-    EndpointManagerId,
     MessageId,
     TaskCreationResult,
     TaskDescriptor,
@@ -27,13 +25,16 @@ from ..kernel import (
     TaskScoreState,
     TaskScoreTransitionStatus,
 )
+from ..result_routing import ResultRoutingConfig
 from ._redis_process import _RedisKernelProcess, _RedisKernelProcessConfig
 from .assignment_dispatch_application import AssignmentDispatchApplicationConfig
+from .result_routing_application import ResultRoutingApplicationConfig
 
 
 _DEFAULT_REDIS_URL = "redis://localhost:6379/15"
 _DEFAULT_REDIS_PREFIX = "default"
 _DEFAULT_PACER_INTERVAL_MILLIS = 100
+_DEFAULT_RESULT_ROUTING_INTERVAL_MILLIS = 100
 _DEFAULT_STOP_TIMEOUT_MILLIS = 5_000
 
 _INITIAL_PRE_REVIEW_SUFFIX = 1
@@ -45,6 +46,8 @@ _WORKER_LEASE_DURATION_MILLIS = 5_000
 _RUNNING_VISIBLE_INITIAL_SUFFIX = 5
 _PER_TASK_DISPATCH_LIMIT = 100
 _ITEM_CLAIM_LEASE_DURATION_MILLIS = 5_000
+_RESULT_ROUTING_BATCH_LIMIT = 100
+_RESULT_RETRY_DELAY_MILLIS = 1_000
 
 
 def _positive_integer(value: object, *, name: str) -> int:
@@ -85,6 +88,7 @@ class KernelApplicationConfig:
     worker_allocation_interval_millis: int = _DEFAULT_PACER_INTERVAL_MILLIS
     running_activation_interval_millis: int = _DEFAULT_PACER_INTERVAL_MILLIS
     task_item_dispatch_interval_millis: int = _DEFAULT_PACER_INTERVAL_MILLIS
+    result_routing_interval_millis: int = _DEFAULT_RESULT_ROUTING_INTERVAL_MILLIS
     stop_timeout_millis: int = _DEFAULT_STOP_TIMEOUT_MILLIS
 
     def __post_init__(self) -> None:
@@ -102,6 +106,10 @@ class KernelApplicationConfig:
             self.task_item_dispatch_interval_millis,
             name="TaskItem dispatch interval",
         )
+        _positive_integer(
+            self.result_routing_interval_millis,
+            name="result-routing interval",
+        )
         _positive_integer(self.stop_timeout_millis, name="stop timeout")
 
     @classmethod
@@ -117,7 +125,14 @@ class KernelApplicationConfig:
         config = _mapping(raw_config, name="kernel application config")
         _reject_unknown(
             config,
-            allowed=frozenset({"redis", "assignmentDispatch", "stopTimeoutMillis"}),
+            allowed=frozenset(
+                {
+                    "redis",
+                    "assignmentDispatch",
+                    "resultRouting",
+                    "stopTimeoutMillis",
+                }
+            ),
             name="kernel application config",
         )
 
@@ -141,6 +156,15 @@ class KernelApplicationConfig:
                 }
             ),
             name="assignmentDispatch config",
+        )
+        result_routing_config = _mapping(
+            config.get("resultRouting", {}),
+            name="resultRouting config",
+        )
+        _reject_unknown(
+            result_routing_config,
+            allowed=frozenset({"intervalMillis"}),
+            name="resultRouting config",
         )
 
         defaults = _DEFAULT_KERNEL_APPLICATION_CONFIG
@@ -173,6 +197,13 @@ class KernelApplicationConfig:
                     defaults.task_item_dispatch_interval_millis,
                 ),
                 name="TaskItem dispatch interval",
+            ),
+            result_routing_interval_millis=_positive_integer(
+                result_routing_config.get(
+                    "intervalMillis",
+                    defaults.result_routing_interval_millis,
+                ),
+                name="result-routing interval",
             ),
             stop_timeout_millis=_positive_integer(
                 config.get("stopTimeoutMillis", defaults.stop_timeout_millis),
@@ -336,18 +367,6 @@ class KernelApplication:
         self._require_started()
         return self._process._task_runtime.append_items(task_id=task_id, items=items)
 
-    def consume_deliver_seeds(
-        self,
-        *,
-        endpoint_manager_id: EndpointManagerId,
-        limit: int,
-    ) -> tuple[DeliverSeed, ...]:
-        self._require_started()
-        return self._process._deliver_seed_runtime.consume_deliver_seeds(
-            endpoint_manager_id=endpoint_manager_id,
-            limit=limit,
-        )
-
     def _require_started(self) -> None:
         with self._lifecycle_lock:
             if not self._started:
@@ -385,6 +404,13 @@ class KernelApplication:
                 task_item_dispatch_interval_millis=(
                     config.task_item_dispatch_interval_millis
                 ),
+            ),
+            result_routing=ResultRoutingApplicationConfig(
+                routing=ResultRoutingConfig(
+                    batch_limit=_RESULT_ROUTING_BATCH_LIMIT,
+                    retry_delay_millis=_RESULT_RETRY_DELAY_MILLIS,
+                ),
+                interval_millis=config.result_routing_interval_millis,
             ),
             stop_timeout_millis=config.stop_timeout_millis,
         )

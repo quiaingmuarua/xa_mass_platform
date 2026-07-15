@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from kernel_design.executable_spec.assembly import (
     DeliverSeed,
+    DeliverSeedConsumerClient,
     KernelApplication,
     KernelApplicationConfig,
     ResourcesCommandClient,
@@ -139,25 +140,39 @@ def create_app(
     config_json: str | None = None,
     application: KernelApplication | None = None,
     resources_client: ResourcesCommandClient | None = None,
+    deliver_seed_consumer: DeliverSeedConsumerClient | None = None,
 ) -> FastAPI:
     if config_json is not None and (
-        application is not None or resources_client is not None
+        application is not None
+        or resources_client is not None
+        or deliver_seed_consumer is not None
     ):
         raise ValueError(
             "config_json and injected application boundaries are mutually exclusive"
         )
-    if (application is None) != (resources_client is None):
+    injected = (
+        application,
+        resources_client,
+        deliver_seed_consumer,
+    )
+    if any(boundary is not None for boundary in injected) and not all(
+        boundary is not None for boundary in injected
+    ):
         raise ValueError(
-            "application and resources_client must be injected together"
+            "application, resources_client, and deliver_seed_consumer "
+            "must be injected together"
         )
     if application is None:
         config = KernelApplicationConfig.from_json(config_json)
         kernel_application = KernelApplication(config)
         resource_commands = ResourcesCommandClient(config)
+        deliver_seed_commands = DeliverSeedConsumerClient(config)
     else:
         assert resources_client is not None
+        assert deliver_seed_consumer is not None
         kernel_application = application
         resource_commands = resources_client
+        deliver_seed_commands = deliver_seed_consumer
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -170,6 +185,7 @@ def create_app(
     app = FastAPI(title="Kernel Executable Spec", lifespan=lifespan)
     app.state.kernel_application = kernel_application
     app.state.resources_command_client = resource_commands
+    app.state.deliver_seed_consumer_client = deliver_seed_commands
 
     @app.exception_handler(ValueError)
     async def invalid_contract_value(
@@ -257,7 +273,7 @@ def create_app(
     ) -> list[dict[str, Any]]:
         return [
             _deliver_seed_payload(seed)
-            for seed in kernel_application.consume_deliver_seeds(
+            for seed in deliver_seed_commands.consume_deliver_seeds(
                 endpoint_manager_id=endpoint_manager_id,
                 limit=limit,
             )

@@ -7,6 +7,7 @@ from unittest.mock import Mock
 
 from kernel_design.executable_spec.assembly import (
     DeliverSeed,
+    DeliverSeedConsumerClient,
     KernelApplication,
     ResourcesCommandClient,
     TaskApprovalResult,
@@ -52,6 +53,7 @@ class FastApiServerTest(unittest.TestCase):
         assert create_app is not None
         self.application = Mock(spec=KernelApplication)
         self.resources_client = Mock(spec=ResourcesCommandClient)
+        self.deliver_seed_consumer = Mock(spec=DeliverSeedConsumerClient)
         self.resources_client.register_worker_group.return_value = WorkerRuntimeResult(
             WorkerRuntimeStatus.OK
         )
@@ -67,7 +69,7 @@ class FastApiServerTest(unittest.TestCase):
         self.application.append_task_items.return_value = {
             "message-1": TaskItemAppendResult(TaskItemAppendStatus.APPENDED)
         }
-        self.application.consume_deliver_seeds.return_value = (
+        self.deliver_seed_consumer.consume_deliver_seeds.return_value = (
             DeliverSeed(
                 worker_id="worker-1",
                 opaque_delivery_item="delivery",
@@ -79,6 +81,7 @@ class FastApiServerTest(unittest.TestCase):
             create_app(
                 application=self.application,
                 resources_client=self.resources_client,
+                deliver_seed_consumer=self.deliver_seed_consumer,
             )
         )
         self.client = self.client_context.__enter__()
@@ -168,6 +171,11 @@ class FastApiServerTest(unittest.TestCase):
         )
         self.resources_client.register_worker_group.assert_called_once()
         self.resources_client.register_worker.assert_called_once()
+        self.deliver_seed_consumer.consume_deliver_seeds.assert_called_once_with(
+            endpoint_manager_id="endpoint-1",
+            limit=10,
+        )
+        self.assertFalse(hasattr(self.application, "consume_deliver_seeds"))
 
     def test_dynamic_attribute_route_is_not_public(self) -> None:
         response = self.client.post(
@@ -176,6 +184,13 @@ class FastApiServerTest(unittest.TestCase):
         )
 
         self.assertEqual(404, response.status_code)
+        self.assertEqual(
+            404,
+            self.client.post(
+                "/seed-results",
+                json={"opaqueResultContext": "context", "outcomeCode": "200"},
+            ).status_code,
+        )
 
     def test_injected_boundaries_must_be_supplied_together(self) -> None:
         assert create_app is not None
@@ -183,6 +198,8 @@ class FastApiServerTest(unittest.TestCase):
             create_app(application=self.application)
         with self.assertRaisesRegex(ValueError, "injected together"):
             create_app(resources_client=self.resources_client)
+        with self.assertRaisesRegex(ValueError, "injected together"):
+            create_app(deliver_seed_consumer=self.deliver_seed_consumer)
 
     def test_stop_runs_when_lifespan_closes(self) -> None:
         self.client_context.__exit__(None, None, None)

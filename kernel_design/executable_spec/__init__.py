@@ -78,6 +78,13 @@ from .redis_runtime import (
     RedisWorkerRuntime,
     RedisTaskScoreBandCore,
     RedisWorkerScoreCore,
+    RedisSeedResultRuntime,
+)
+from .result_routing import (
+    ResultRoutingConfig,
+    ResultRoutingPacer,
+    SeedResult,
+    SeedResultRuntime,
 )
 
 __all__ = [
@@ -95,6 +102,7 @@ __all__ = [
     "RedisTaskResourceCatalog",
     "RedisTaskRuntime",
     "RedisWorkerScoreCore",
+    "RedisSeedResultRuntime",
     "RedisWorkerDynamicAttributeRuntime",
     "RedisWorkerResourceCatalog",
     "RedisWorkerRuntime",
@@ -156,4 +164,8 @@ __all__ = [
     "TaskWorkerAllocationConfig",
     "TaskWorkerAllocationPacer",
     "minimum_candidate_workers_satisfied",
+    "ResultRoutingConfig",
+    "ResultRoutingPacer",
+    "SeedResult",
+    "SeedResultRuntime",
 ]

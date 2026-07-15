@@ -13,8 +13,7 @@ from ..kernel.task_item_score_band import (
 from ..kernel.task_runtime import TaskItem, TaskRuntime
 from ..kernel.task_score_band import Score, TaskId, TaskScoreBandCore, TimeMillis
 from ..kernel.worker_runtime import EndpointManagerId
-from ..kernel.worker_score import Score as WorkerScore
-from ..kernel.worker_score import WorkerId
+from ..result_routing.context import encode_result_context
 from .runtime import AssignmentDispatchRuntime, DeliverSeed, DeliverSeedRuntime
 
 
@@ -103,12 +102,13 @@ class TaskItemDispatchPacer:
                 seed = DeliverSeed(
                     worker_id=candidate_worker.worker_id,
                     opaque_delivery_item=self._delivery_item_encoder(task_item),
-                    opaque_result_context=self._encode_result_context(
+                    opaque_result_context=encode_result_context(
                         task_id=task_id,
-                        task_item=task_item,
+                        message_id=task_item.message_id,
                         worker_id=candidate_worker.worker_id,
                         claim_score=claim_score,
                         worker_lease_score=candidate_worker.worker_lease_score,
+                        task_item_claim_until_millis=claim_lease_until_millis,
                     ),
                     task_item_claim_until_millis=claim_lease_until_millis,
                 )
@@ -197,25 +197,3 @@ class TaskItemDispatchPacer:
     @staticmethod
     def _current_time_millis() -> TimeMillis:
         return time_ns() // 1_000_000
-
-    @staticmethod
-    def _encode_result_context(
-        *,
-        task_id: TaskId,
-        task_item: TaskItem,
-        worker_id: WorkerId,
-        claim_score: Score,
-        worker_lease_score: WorkerScore,
-    ) -> str:
-        return json.dumps(
-            {
-                "taskId": task_id,
-                "messageId": task_item.message_id,
-                "workerId": worker_id,
-                "claimScore": claim_score,
-                "workerLeaseScore": worker_lease_score,
-            },
-            allow_nan=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        )

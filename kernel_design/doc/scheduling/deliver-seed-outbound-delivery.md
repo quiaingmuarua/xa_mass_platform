@@ -1,8 +1,7 @@
 # DeliverSeed Outbound Delivery
 
-Status: new-kernel boundary note. This document separates queued DeliverSeed
-consumption from assignment-side seed generation. The queue consume primitive
-is implemented; transport-side outbound orchestration is not.
+Status: current Python executable-spec boundary. The Redis queue, external
+clients, and Local Function Adapter are implemented.
 
 Upstream contract: [Task Item Dispatch Pacer](task-item-dispatch-pacer.md).
 External process contract:
@@ -73,10 +72,11 @@ result-side release belongs to Result-Routing Scheduling and the Worker-owner
 handoff. It must not be pushed into the external adapter or backward into
 `TaskItemDispatchPacer`.
 
-The Redis executable spec implements the bounded LIST pop only. A later external
-adapter client must call it and perform local resolution, handler execution,
-and SeedResult submission. The DeliverSeed queue runtime itself does not call
-transport.
+`DeliverSeedConsumerClient` performs the independent queue read and
+`SeedResultCommandClient` appends outcomes to the unified result queue. The
+Local Function Adapter proves local resolution, handler execution, deterministic
+payload encoding, and one result append per bounded drain. The DeliverSeed
+queue runtime itself still does not call transport.
 
 ## DeliverSeed Is Evidence
 

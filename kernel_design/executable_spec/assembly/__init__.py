@@ -21,14 +21,22 @@ from .application import (
     TaskApprovalStatus,
 )
 from .resources_command_client import ResourcesCommandClient
+from .transport_clients import (
+    DeliverSeedConsumerClient,
+    SeedResultCommandClient,
+)
+from ..result_routing import SeedResult
 
 __all__ = [
     "DeliverSeed",
+    "DeliverSeedConsumerClient",
     "EndpointManagerId",
     "KernelApplication",
     "KernelApplicationConfig",
     "MessageId",
     "ResourcesCommandClient",
+    "SeedResult",
+    "SeedResultCommandClient",
     "TaskApprovalResult",
     "TaskApprovalStatus",
     "TaskCreationResult",

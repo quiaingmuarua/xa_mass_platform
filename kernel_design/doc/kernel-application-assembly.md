@@ -4,7 +4,7 @@ Status: current Python executable-spec external application boundary.
 
 ## Purpose
 
-The executable spec exposes two stable application boundaries:
+The executable spec exposes four narrow process boundaries:
 
 ```text
 FastAPI / SDK
@@ -13,9 +13,17 @@ FastAPI / SDK
 
 CLI / FastAPI
   -> KernelApplication
-     -> Task lifecycle commands and DeliverSeed consumption
+     -> Task lifecycle commands
      -> private Redis composition root
-     -> assignment-dispatch background application
+     -> assignment-dispatch and result-routing background applications
+
+endpoint-manager process
+  -> DeliverSeedConsumerClient
+     -> consume assigned DeliverSeeds without KernelApplication lifecycle
+
+endpoint-manager process
+  -> SeedResultCommandClient
+     -> append SeedResults to one unified runtime queue
 ```
 
 Both boundaries expose commands, not runtime objects. Callers cannot obtain
@@ -33,7 +41,12 @@ KernelApplication
 create_task
 approve_task
 append_task_items
+
+DeliverSeedConsumerClient
 consume_deliver_seeds
+
+SeedResultCommandClient
+append_seed_results
 ```
 
 Inputs and results reuse existing caller-owned descriptors and runtime result
@@ -60,6 +73,8 @@ application = KernelApplication()
 application = KernelApplication.from_json("{}")
 resources = ResourcesCommandClient()
 resources = ResourcesCommandClient.from_json("{}")
+deliver_seeds = DeliverSeedConsumerClient()
+seed_results = SeedResultCommandClient()
 ```
 
 The optional JSON contract is:
@@ -74,6 +89,9 @@ The optional JSON contract is:
     "workerAllocationIntervalMillis": 100,
     "runningActivationIntervalMillis": 100,
     "taskItemDispatchIntervalMillis": 100
+  },
+  "resultRouting": {
+    "intervalMillis": 100
   },
   "stopTimeoutMillis": 5000
 }
@@ -91,23 +109,26 @@ them.
 KernelApplication.start()
   -> reject duplicate start
   -> Redis PING fail-fast
+  -> start result-routing loop
   -> start allocation, activation, and Item-dispatch loops
 
 KernelApplication.stop()
   -> no-op before start or after clean stop
-  -> signal and join internal loops within stopTimeoutMillis
+  -> stop assignment-dispatch loops
+  -> stop result-routing loop
   -> keep the application started if stop times out
 ```
 
-Task commands and DeliverSeed consumption require a successful application
-start. Construction establishes the composition graph but performs no Redis
-I/O. The private process root does not close the Redis client on stop, so a
-clean application instance may restart.
+Task commands require a successful application start. DeliverSeed consumption
+and SeedResult append use independent clients with no `start` or `stop`, so an
+endpoint-manager process does not own scheduler lifecycle. Construction
+establishes the composition graph but performs no Redis I/O. The private process
+root does not close the Redis client on stop, so a clean application instance
+may restart.
 
-`ResourcesCommandClient` has no `start` or `stop`. Its construction creates a
-redis-py client without pinging Redis; each registration command performs its
-own Redis I/O. A resource client and a kernel application may use separate
-redis-py pools while sharing the same URL, prefix, and Redis owner truth.
+`ResourcesCommandClient`, `DeliverSeedConsumerClient`, and
+`SeedResultCommandClient` have no `start` or `stop`. Each may use a separate
+redis-py pool while sharing the same URL, prefix, and Redis owner truth.
 
 ## External Hosts
 
@@ -118,15 +139,15 @@ python -m kernel_design.executable_spec.assembly
 python -m kernel_design.executable_spec.assembly --config kernel.json
 ```
 
-The FastAPI example under `kernel_design/examples/` constructs both boundaries
-from one resolved configuration. Lifespan starts and stops only
-`KernelApplication`; WorkerGroup and Worker routes call
-`ResourcesCommandClient` directly. The host imports only the assembly package
-and never reconstructs lifecycle or score transitions.
+The FastAPI example constructs `KernelApplication`, `ResourcesCommandClient`,
+and `DeliverSeedConsumerClient` from one resolved configuration. Lifespan starts
+and stops only `KernelApplication`; resource and DeliverSeed routes use their
+independent clients. The Local Function Adapter example additionally uses
+`SeedResultCommandClient`.
 
-The example is not a production server. Authentication, Task query/list,
-result-routing, transport submit, and production API compatibility remain out
-of scope.
+The examples are not production services. Authentication, Task query/list,
+result projection, production transport, and API compatibility remain out of
+scope.
 
 ## Guardrails
 
@@ -139,4 +160,5 @@ of scope.
 - Do not let HTTP handlers perform score reads or transitions.
 - Do not turn internal Pacer configuration into public JSON without a concrete
   operational requirement.
-- Do not add transport or result loops to assignment-dispatch lifecycle.
+- Keep result-routing and assignment-dispatch as separate internal application
+  lifecycles even though `KernelApplication` composes both.

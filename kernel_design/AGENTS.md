@@ -100,6 +100,10 @@ For result or TaskItem dispatch:
 10. [executable_spec/assignment_dispatch/runtime.py](executable_spec/assignment_dispatch/runtime.py)
 11. [executable_spec/redis_runtime/assignment_dispatch.py](executable_spec/redis_runtime/assignment_dispatch.py)
 12. [doc/scheduling/result-routing-scheduling.md](doc/scheduling/result-routing-scheduling.md)
+13. [executable_spec/result_routing/runtime.py](executable_spec/result_routing/runtime.py)
+14. [executable_spec/result_routing/pacer.py](executable_spec/result_routing/pacer.py)
+15. [executable_spec/redis_runtime/result_routing.py](executable_spec/redis_runtime/result_routing.py)
+16. [executable_spec/tests/test_result_routing.py](executable_spec/tests/test_result_routing.py)
 
 For process assembly or server entry work:
 
@@ -108,9 +112,11 @@ For process assembly or server entry work:
 3. [executable_spec/assembly/application.py](executable_spec/assembly/application.py)
 4. [executable_spec/assembly/resources_command_client.py](executable_spec/assembly/resources_command_client.py)
 5. [executable_spec/assembly/assignment_dispatch_application.py](executable_spec/assembly/assignment_dispatch_application.py)
-6. [executable_spec/tests/test_kernel_application.py](executable_spec/tests/test_kernel_application.py)
-7. [executable_spec/tests/test_resources_command_client.py](executable_spec/tests/test_resources_command_client.py)
-8. [examples/fastapi_server.py](examples/fastapi_server.py)
+6. [executable_spec/assembly/result_routing_application.py](executable_spec/assembly/result_routing_application.py)
+7. [executable_spec/assembly/transport_clients.py](executable_spec/assembly/transport_clients.py)
+8. [executable_spec/tests/test_kernel_application.py](executable_spec/tests/test_kernel_application.py)
+9. [executable_spec/tests/test_resources_command_client.py](executable_spec/tests/test_resources_command_client.py)
+10. [examples/fastapi_server.py](examples/fastapi_server.py)
 
 For an external endpoint-manager or transport-adapter process:
 
@@ -118,6 +124,8 @@ For an external endpoint-manager or transport-adapter process:
 2. [doc/scheduling/deliver-seed-outbound-delivery.md](doc/scheduling/deliver-seed-outbound-delivery.md)
 3. [doc/scheduling/result-routing-scheduling.md](doc/scheduling/result-routing-scheduling.md)
 4. [doc/kernel-application-assembly.md](doc/kernel-application-assembly.md)
+5. [examples/local_function_adapter/adapter.py](examples/local_function_adapter/adapter.py)
+6. [executable_spec/assembly/transport_clients.py](executable_spec/assembly/transport_clients.py)
 
 ## 2.1 Python Naming Rules
 
@@ -313,18 +321,20 @@ Result-routing owns:
 one logical SeedResult queue through SeedResultRuntime
 bounded SeedResult consumption through ResultRoutingPacer
 opaqueResultContext decoding inside the result owner
-retryable / final-failure / final-success business classification
+exact `"200"` final-success selection and non-200 retry selection
+batch-local success precedence for duplicate Item evidence
 opaque claimScore pass-through to TaskItemScoreBandCore
-Task Item transition-result mapping to routing outcomes
-late-success retention barrier and result projection
-owner-specific handoffs after result acceptance
+opaque workerLeaseScore pass-through to WorkerScoreCore exact release
+Task Item transition-result counting
 ```
 
 SeedResultRuntime must not classify results or decode context. ResultRoutingPacer
 must not interpret current Item score, reproduce same-tag/cross-tag rules,
 select workers, parse transport sessions as truth, or refresh task or worker
 score as a generic side effect. The public SeedResult queue is not partitioned
-by endpointManagerId.
+by endpointManagerId. The first executable spec does not persist result payload,
+maintain a result projection/barrier, or classify non-200 evidence directly as
+final failure; exhausted ACTIVE budget is finalized by Item dispatch acquire.
 
 ## 4. Worker-Runtime Boundary Rules
 

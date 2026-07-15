@@ -20,10 +20,16 @@ from ..redis_runtime import (
     RedisWorkerDynamicAttributeRuntime,
     RedisWorkerResourceCatalog,
     RedisWorkerScoreCore,
+    RedisSeedResultRuntime,
 )
+from ..result_routing import ResultRoutingPacer
 from .assignment_dispatch_application import (
     AssignmentDispatchApplication,
     AssignmentDispatchApplicationConfig,
+)
+from .result_routing_application import (
+    ResultRoutingApplication,
+    ResultRoutingApplicationConfig,
 )
 
 
@@ -31,6 +37,7 @@ from .assignment_dispatch_application import (
 class _RedisKernelProcessConfig:
     prefix: str
     assignment_dispatch: AssignmentDispatchApplicationConfig
+    result_routing: ResultRoutingApplicationConfig
     stop_timeout_millis: int
 
     def __post_init__(self) -> None:
@@ -71,7 +78,7 @@ class _RedisKernelProcess:
             prefix=config.prefix,
         )
 
-        worker_score = RedisWorkerScoreCore(
+        self._worker_score = RedisWorkerScoreCore(
             redis_client,
             score_key_prefix=f"wr:{config.prefix}:score",
         )
@@ -102,7 +109,7 @@ class _RedisKernelProcess:
         worker_allocation_pacer = TaskWorkerAllocationPacer(
             self._task_score,
             self._task_resource_catalog,
-            worker_score,
+            self._worker_score,
             worker_candidate_matcher,
             candidate_runtime,
         )
@@ -123,6 +130,18 @@ class _RedisKernelProcess:
             worker_allocation_pacer,
             running_activation_pacer,
             task_item_dispatch_pacer,
+        )
+        self._seed_result_runtime = RedisSeedResultRuntime(
+            redis_client,
+            prefix=config.prefix,
+        )
+        self._result_routing_application = ResultRoutingApplication(
+            ResultRoutingPacer(
+                self._seed_result_runtime,
+                task_item_score,
+                self._worker_score,
+                self._task_resource_catalog,
+            )
         )
 
     @classmethod
@@ -145,11 +164,35 @@ class _RedisKernelProcess:
 
     def start(self) -> None:
         self._redis.ping()
-        self._assignment_dispatch_application.start(
-            config=self._config.assignment_dispatch,
-        )
+        self._result_routing_application.start(config=self._config.result_routing)
+        try:
+            self._assignment_dispatch_application.start(
+                config=self._config.assignment_dispatch,
+            )
+        except Exception as start_error:
+            try:
+                self._result_routing_application.stop(
+                    timeout_millis=self._config.stop_timeout_millis,
+                )
+            except Exception as rollback_error:
+                raise start_error from rollback_error
+            raise
 
     def stop(self) -> None:
-        self._assignment_dispatch_application.stop(
-            timeout_millis=self._config.stop_timeout_millis,
-        )
+        assignment_error: Exception | None = None
+        try:
+            self._assignment_dispatch_application.stop(
+                timeout_millis=self._config.stop_timeout_millis,
+            )
+        except Exception as error:
+            assignment_error = error
+        try:
+            self._result_routing_application.stop(
+                timeout_millis=self._config.stop_timeout_millis,
+            )
+        except Exception as result_error:
+            if assignment_error is not None:
+                raise assignment_error from result_error
+            raise
+        if assignment_error is not None:
+            raise assignment_error
