@@ -492,7 +492,7 @@ existing active-task acquire supplies the base RUNNING-first band order.
 Interface sources:
 
 ```text
-py_example/kernel/task_worker_allocation.py
+py_example/assignment_dispatch/task_worker_allocation.py
 py_example/kernel/task_dispatch_runtime.py
 ```
 

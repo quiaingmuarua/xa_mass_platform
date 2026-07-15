@@ -382,30 +382,32 @@ no hidden compatibility path or second mainline remains
 
 ## Current Design Notes
 
-- [Kernel Core Scheduling](scheduling/README.md)
+- [Kernel Design Documents](doc/README.md)
+  - routing index for scheduling, resource-model, and runtime-Redis notes.
+- [Kernel Core Scheduling](doc/scheduling/README.md)
   - four scheduling planes for the new kernel core: task score-band, worker
     score-band, assignment-dispatch, and result-routing.
-- [Worker Resource Model](resource-model/worker-resource-model.md)
+- [Worker Resource Model](doc/resource-model/worker-resource-model.md)
   - v0 metadata/query projection for worker groups, workers, and dynamic
     attribute allowlists.
-- [Task Resource Model](resource-model/task-resource-model.md)
+- [Task Resource Model](doc/resource-model/task-resource-model.md)
   - v0 task allocation metadata, start conditions, allocation-rule routing,
     Item retry policy, and bounded task descriptor reads.
-- [Task Item Score-Band Scheduling](scheduling/task-item-score-band-scheduling.md)
+- [Task Item Score-Band Scheduling](doc/scheduling/task-item-score-band-scheduling.md)
   - one canonical TaskItem from append through finality, with TaskItem record, ACTIVE
     claim/retry, and monotonic result outcome movement; no second Work model.
-- [Assignment-Dispatch Scheduling](scheduling/assignment-dispatch-scheduling.md)
+- [Assignment-Dispatch Scheduling](doc/scheduling/assignment-dispatch-scheduling.md)
   - shared owner contract for two mandatory independent pacers.
-- [Task-Worker Allocation Pacer](scheduling/task-worker-allocation-pacer.md)
+- [Task-Worker Allocation Pacer](doc/scheduling/task-worker-allocation-pacer.md)
   - oldest-first allocation fairness, batch matching, activation, and candidate
     publication.
-- [Task Item Dispatch Pacer](scheduling/task-item-dispatch-pacer.md)
+- [Task Item Dispatch Pacer](doc/scheduling/task-item-dispatch-pacer.md)
   - newest-first candidate consumption, Item score claim, and DeliverSeed queue
     append without Task- or Worker-score writes.
-- [DeliverSeed Outbound Delivery](scheduling/deliver-seed-outbound-delivery.md)
+- [DeliverSeed Outbound Delivery](doc/scheduling/deliver-seed-outbound-delivery.md)
   - queued seed consumption, Worker lease continuation, transport submit, and
     exclusive/non-exclusive Worker disposition.
-- [Result-Routing Scheduling](scheduling/result-routing-scheduling.md)
+- [Result-Routing Scheduling](doc/scheduling/result-routing-scheduling.md)
   - business result classification, Task Item transition invocation, routing
     outcome mapping, and late-result retention.
 

@@ -45,7 +45,7 @@ TaskRuntime
   load bounded canonical TaskItem records
 
 DeliverSeedQueue
-  append a bounded DeliverSeed batch
+  append one bounded DeliverSeed batch to one endpointManagerId queue
 
 TaskItemDispatchConfig
   taskBatchLimit
@@ -209,9 +209,15 @@ The minimal queue operation is batch-first:
 
 ```text
 append_deliver_seeds(
+  endpointManagerId,
   deliverSeeds: Sequence[DeliverSeed]
 )
 ```
+
+One call writes exactly one endpoint-manager queue. The pacer may aggregate
+seeds from multiple Tasks in the current bounded round before appending. Calls
+for different endpoint managers succeed or fail independently; the interface
+does not imply cross-queue atomicity.
 
 The first executable slice may use an in-process bounded queue or a Redis-backed
 queue, but the queue has one semantic role: handoff of already claimed Items to
@@ -257,6 +263,7 @@ def dispatch_task_items(config):
     task_ids = task_score.acquire_dispatch_work_tasks(
         limit=config.task_batch_limit,
     )
+    pending_seeds_by_endpoint_manager = {}
     generated_seed_count = 0
 
     for task_id in task_ids:
@@ -272,32 +279,38 @@ def dispatch_task_items(config):
             limit=len(candidate_workers),
         )
 
-        exhausted_ids = tuple(
+        exhausted_message_ids = tuple(
             message_id
             for message_id, (_, budget) in observations.items()
             if budget == 0
         )
-        item_score.promote_item_outcomes(
-            task_id=task_id,
-            message_ids=exhausted_ids,
-            target_band=FINAL_FAILED,
-            target_time_millis=now_millis,
-        )
+        if exhausted_message_ids:
+            item_score.promote_item_outcomes(
+                task_id=task_id,
+                message_ids=exhausted_message_ids,
+                target_band=FINAL_FAILED,
+                target_time_millis=now_millis,
+            )
 
-        claimable_scores = {
+        claimable_observed_scores = {
             message_id: observed_score
             for message_id, (observed_score, budget) in observations.items()
             if budget > 0
         }
+        if not claimable_observed_scores:
+            continue
+
         items = task_runtime.load_task_items(
             task_id=task_id,
-            message_ids=tuple(claimable_scores),
+            message_ids=tuple(claimable_observed_scores),
         )
         record_backed_scores = {
-            message_id: claimable_scores[message_id]
-            for message_id, item in items.items()
-            if item is not None
+            message_id: observed_score
+            for message_id, observed_score in claimable_observed_scores.items()
+            if items.get(message_id) is not None
         }
+        if not record_backed_scores:
+            continue
 
         claim_results = item_score.rewrite_observed_item_scores(
             task_id=task_id,
@@ -305,22 +318,52 @@ def dispatch_task_items(config):
             target_time_millis=claim_lease_until_millis,
             remaining_budget_delta=-1,
         )
-        claimed_items = select_transitioned_claims(items, claim_results)
-        deliver_seeds = pair_candidates_and_claims(
+
+        claimed_items = []
+        for message_id in record_backed_scores:
+            result = claim_results.get(message_id)
+            if result is None:
+                continue
+            if result.status != TRANSITIONED or result.score is None:
+                continue
+            claimed_items.append((items[message_id], result.score))
+
+        for candidate_worker, (task_item, claim_score) in zip(
             candidate_workers,
             claimed_items,
-        )
+        ):
+            seed = DeliverSeed(
+                task_id=task_id,
+                selected_worker_id=candidate_worker.worker_id,
+                worker_group_id=candidate_worker.worker_group_id,
+                endpoint_manager_id=candidate_worker.endpoint_manager_id,
+                task_item=task_item,
+                claim_score=claim_score,
+                worker_lease_score=candidate_worker.worker_lease_score,
+            )
+            pending_seeds_by_endpoint_manager.setdefault(
+                candidate_worker.endpoint_manager_id,
+                [],
+            ).append(seed)
 
+    for endpoint_manager_id, deliver_seeds in (
+        pending_seeds_by_endpoint_manager.items()
+    ):
         deliver_seed_queue.append_deliver_seeds(
-            deliver_seeds=deliver_seeds,
+            endpoint_manager_id=endpoint_manager_id,
+            deliver_seeds=tuple(deliver_seeds),
         )
         generated_seed_count += len(deliver_seeds)
 
     return generated_seed_count
 ```
 
-The helper names are conceptual. They may organize local code but must not
-become pass-through owner layers or public interfaces.
+`zip` intentionally stops at the smaller successful side. A consumed candidate
+without a claimed Item is not restored; a successfully claimed Item without a
+paired candidate cannot occur because Item acquire is bounded by the consumed
+candidate count. Queue append is fail-fast per endpoint manager: previously
+appended manager batches remain published, while failed and unattempted claims
+recover through their score leases.
 
 ## Executable-Spec Gap
 
@@ -331,21 +374,21 @@ TaskScoreBandCore.acquire_dispatch_work_tasks
 TaskDispatchRuntime and Redis candidate ZSET
 TaskRuntime bounded TaskItem load
 TaskItemScoreBandCore and Redis Item score implementation
+DeliverSeed model and DeliverSeedQueue owner surface
+TaskItemDispatchConfig and TaskItemDispatchPacer
+unit proof plus real Redis orchestration proof with a recording queue
 ```
 
 It does not yet provide:
 
 ```text
-DeliverSeed model
-DeliverSeedQueue owner surface or implementation
-TaskItemDispatchConfig
-TaskItemDispatchPacer
+DeliverSeedQueue storage implementation or outbound consumer
 recent-first Redis implementation for acquire_dispatch_work_tasks
 ```
 
-The first implementation proof must stop at queued DeliverSeed creation. It
-must not call transport or execute Worker release/renew policy merely to claim
-an end-to-end delivery demo.
+The current implementation proof stops at queued DeliverSeed creation. It does
+not call transport or execute Worker release/renew policy merely to claim an
+end-to-end delivery demo.
 
 ## Failure Semantics
 

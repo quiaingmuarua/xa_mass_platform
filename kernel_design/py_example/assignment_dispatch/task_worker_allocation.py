@@ -4,21 +4,21 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from time import time_ns
 
-from .task_dispatch_runtime import CandidateWorkerEntry, TaskDispatchRuntime
-from .task_runtime import TaskDescriptor, TaskResourceCatalog
-from .task_score_band import (
+from ..kernel.task_dispatch_runtime import CandidateWorkerEntry, TaskDispatchRuntime
+from ..kernel.task_runtime import TaskDescriptor, TaskResourceCatalog
+from ..kernel.task_score_band import (
     TaskScoreBand,
     TaskScoreBandCore,
     TaskScoreTransitionStatus,
     TaskId,
     TimeMillis,
 )
-from .worker_candidate_matcher import WorkerCandidateMatcher
-from .worker_runtime import (
+from .worker_candidate_matcher import (
     WorkerCandidateConstraint,
-    WorkerGroupId,
+    WorkerCandidateMatcher,
 )
-from .worker_score import (
+from ..kernel.worker_runtime import WorkerGroupId
+from ..kernel.worker_score import (
     Score,
     WorkerId,
     WorkerScoreCore,

@@ -14,16 +14,16 @@ Detailed mechanisms:
 Current executable-spec gap:
 
 ```text
-no TaskItemDispatchPacer implementation
 TaskWorkerAllocationPacer has a first executable allocation-round implementation
 TaskDispatchRuntime has a Redis ZSET executable implementation
 Task Item score and TaskItem record mechanisms have Redis executable implementations
-no DeliverSeed model or queue owner implementation
+TaskItemDispatchPacer, DeliverSeed, and DeliverSeedQueue surface have executable implementations
+no DeliverSeedQueue storage implementation or outbound consumer
 current Redis dispatch-task acquire is oldest-first, not recent-allocation reverse
 ```
 
-This document defines the target split. Only the first allocation pacer and its
-Redis handoff runtime currently have executable-spec implementations.
+This document defines the target split. Both pacers now have executable-spec
+implementations; the second pacer proof stops at a recording DeliverSeed queue.
 
 ## Core Decision
 
@@ -174,7 +174,7 @@ CandidateWorkerEntry
 ```
 
 The Python DTO and runtime owner are implemented in
-[`py_example/kernel/task_dispatch_runtime.py`](../py_example/kernel/task_dispatch_runtime.py).
+[`py_example/kernel/task_dispatch_runtime.py`](../../py_example/kernel/task_dispatch_runtime.py).
 The Redis executable spec uses one ZSET per Task, scored by candidate batch
 `expiresAtMillis`:
 

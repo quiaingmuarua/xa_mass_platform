@@ -35,8 +35,8 @@ implement them in one package if owner truth remains explicit.
 Use this order inside `kernel_design/`:
 
 1. Python executable spec code and tests under `py_example/`
-2. Current local design docs under `scheduling/`, `resource-model/`, and
-   `runtime-redis/`
+2. Current local design docs under `doc/scheduling/`, `doc/resource-model/`,
+   and `doc/runtime-redis/`
 3. Superseded shape docs only when their status says they are retained as
    historical context
 4. Current Java implementation only as legacy/failure-mode context
@@ -53,13 +53,14 @@ diverge, stop and identify which one is stale before editing either side.
 For general kernel work:
 
 1. [README.md](README.md)
-2. [scheduling/README.md](scheduling/README.md)
+2. [doc/README.md](doc/README.md)
+3. [doc/scheduling/README.md](doc/scheduling/README.md)
 
 For worker-runtime work:
 
-1. [resource-model/worker-resource-model.md](resource-model/worker-resource-model.md)
-2. [scheduling/worker-score-band-scheduling.md](scheduling/worker-score-band-scheduling.md)
-3. [scheduling/assignment-dispatch-scheduling.md](scheduling/assignment-dispatch-scheduling.md)
+1. [doc/resource-model/worker-resource-model.md](doc/resource-model/worker-resource-model.md)
+2. [doc/scheduling/worker-score-band-scheduling.md](doc/scheduling/worker-score-band-scheduling.md)
+3. [doc/scheduling/assignment-dispatch-scheduling.md](doc/scheduling/assignment-dispatch-scheduling.md)
 4. [py_example/kernel/worker_runtime.py](py_example/kernel/worker_runtime.py)
 5. [py_example/kernel/worker_score.py](py_example/kernel/worker_score.py)
 6. [py_example/runtime_redis/worker_score_zset.py](py_example/runtime_redis/worker_score_zset.py)
@@ -68,9 +69,9 @@ For worker-runtime work:
 
 For task runtime or task score-band work:
 
-1. [resource-model/task-resource-model.md](resource-model/task-resource-model.md)
-2. [scheduling/task-score-band-scheduling.md](scheduling/task-score-band-scheduling.md)
-3. [scheduling/task-item-score-band-scheduling.md](scheduling/task-item-score-band-scheduling.md)
+1. [doc/resource-model/task-resource-model.md](doc/resource-model/task-resource-model.md)
+2. [doc/scheduling/task-score-band-scheduling.md](doc/scheduling/task-score-band-scheduling.md)
+3. [doc/scheduling/task-item-score-band-scheduling.md](doc/scheduling/task-item-score-band-scheduling.md)
 4. [py_example/kernel/task_runtime.py](py_example/kernel/task_runtime.py)
 5. [py_example/kernel/task_score_band.py](py_example/kernel/task_score_band.py)
 6. [py_example/kernel/task_item_score_band.py](py_example/kernel/task_item_score_band.py)
@@ -87,15 +88,15 @@ For task runtime or task score-band work:
 
 For result or TaskItem dispatch:
 
-1. [resource-model/task-resource-model.md](resource-model/task-resource-model.md)
-2. [scheduling/task-item-score-band-scheduling.md](scheduling/task-item-score-band-scheduling.md)
-3. [scheduling/assignment-dispatch-scheduling.md](scheduling/assignment-dispatch-scheduling.md)
-4. [scheduling/task-worker-allocation-pacer.md](scheduling/task-worker-allocation-pacer.md)
-5. [scheduling/task-item-dispatch-pacer.md](scheduling/task-item-dispatch-pacer.md)
-6. [scheduling/deliver-seed-outbound-delivery.md](scheduling/deliver-seed-outbound-delivery.md)
-7. [py_example/kernel/task_worker_allocation.py](py_example/kernel/task_worker_allocation.py)
+1. [doc/resource-model/task-resource-model.md](doc/resource-model/task-resource-model.md)
+2. [doc/scheduling/task-item-score-band-scheduling.md](doc/scheduling/task-item-score-band-scheduling.md)
+3. [doc/scheduling/assignment-dispatch-scheduling.md](doc/scheduling/assignment-dispatch-scheduling.md)
+4. [doc/scheduling/task-worker-allocation-pacer.md](doc/scheduling/task-worker-allocation-pacer.md)
+5. [doc/scheduling/task-item-dispatch-pacer.md](doc/scheduling/task-item-dispatch-pacer.md)
+6. [doc/scheduling/deliver-seed-outbound-delivery.md](doc/scheduling/deliver-seed-outbound-delivery.md)
+7. [py_example/assignment_dispatch/task_worker_allocation.py](py_example/assignment_dispatch/task_worker_allocation.py)
 8. [py_example/kernel/task_dispatch_runtime.py](py_example/kernel/task_dispatch_runtime.py)
-9. [scheduling/result-routing-scheduling.md](scheduling/result-routing-scheduling.md)
+9. [doc/scheduling/result-routing-scheduling.md](doc/scheduling/result-routing-scheduling.md)
 
 ## 2.1 Interface Change Gate
 
@@ -400,7 +401,7 @@ python -m unittest \
   finality classification.
 - Do not introduce a second hot-path candidate index without naming its owner,
   lifecycle, update discipline, and deletion path.
-- Do not treat `runtime-redis/*shape.md` as public API unless a current
+- Do not treat `doc/runtime-redis/*shape.md` as public API unless a current
   executable spec explicitly adopts it.
 
 ## 7. Documentation Rules

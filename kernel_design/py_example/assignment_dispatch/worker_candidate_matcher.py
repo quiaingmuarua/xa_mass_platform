@@ -4,18 +4,28 @@ from dataclasses import dataclass
 from typing import Mapping, Sequence
 
 from ..constraint_dsl import ConstraintDsl, ConstraintMap, UNRESOLVED_VALUE
-from .worker_score import WorkerId
-from .worker_runtime import (
-    CandidateId,
+from ..kernel.worker_score import WorkerId
+from ..kernel.worker_runtime import (
     DynamicAttributeReadResult,
     EndpointManagerId,
-    WorkerCandidateConstraint,
     WorkerDescriptor,
     WorkerDynamicAttributeRuntime,
     WorkerGroupId,
     WorkerResourceCatalog,
     WorkerRuntimeStatus,
 )
+
+
+CandidateId = str
+
+
+@dataclass(frozen=True)
+class WorkerCandidateConstraint:
+    """One candidate's match rules and per-call worker allocation bound."""
+
+    priority: int
+    limit: int
+    match_rules: Mapping[str, object]
 
 
 WorkerCandidateMatches = dict[CandidateId, tuple[WorkerId, ...]]

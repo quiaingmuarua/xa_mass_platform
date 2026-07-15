@@ -502,9 +502,11 @@ kernel_design/py_example/
     worker_score.py
     task_runtime.py
     worker_runtime.py
-    worker_candidate_matcher.py
     task_dispatch_runtime.py
+  assignment_dispatch/
+    worker_candidate_matcher.py
     task_worker_allocation.py
+    task_item_dispatch.py
   runtime_redis/
     task_score_band_zset.py
     task_item_score_band_zset.py
@@ -517,10 +519,11 @@ kernel_design/py_example/
 
 It currently proves the Task, TaskItem, and Worker score axes, TaskItem DTO and
 latest-write Redis record persistence, resource catalogs, bounded Worker
-matching, Redis candidate handoff, and the first Task-Worker allocation pacer.
-`TaskItemDispatchPacer`, DeliverSeed queue/outbound delivery, and result routing
-are still executable-spec gaps. An in-memory runtime is not a prerequisite or
-a parallel mainline.
+matching, Redis candidate handoff, both assignment pacers, the DeliverSeed
+model, and the DeliverSeedQueue owner surface. DeliverSeed queue storage,
+outbound delivery, recent-first dispatch-task acquire, and result routing are
+still executable-spec gaps. An in-memory runtime is not a prerequisite or a
+parallel mainline.
 
 ## Extension Scope
 

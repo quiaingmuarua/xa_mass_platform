@@ -6,9 +6,6 @@ from dataclasses import fields
 
 import kernel_design.py_example as py_example
 from kernel_design.py_example import (
-    WorkerCandidateConstraint,
-    WorkerCandidateMatchResult,
-    WorkerCandidateMatcher,
     WorkerDescriptor,
     WorkerDynamicAttributeRuntime,
     WorkerGroupDescriptor,
@@ -22,20 +19,6 @@ from kernel_design.py_example.kernel.worker_runtime import DynamicAttributeReadR
 
 
 class WorkerRuntimeModelTest(unittest.TestCase):
-    def test_worker_candidate_constraint_is_bounded_priority_dto(self) -> None:
-        constraint = WorkerCandidateConstraint(
-            priority=100,
-            limit=2,
-            match_rules={"dynamic.battery": {"$gte": 20}},
-        )
-
-        self.assertEqual(
-            {field.name for field in fields(WorkerCandidateConstraint)},
-            {"priority", "limit", "match_rules"},
-        )
-        self.assertEqual(constraint.priority, 100)
-        self.assertEqual(constraint.limit, 2)
-
     def test_worker_descriptor_first_layer_shape_has_endpoint_owner_no_version(self) -> None:
         field_names = {field.name for field in fields(WorkerDescriptor)}
 
@@ -83,7 +66,6 @@ class WorkerRuntimeModelTest(unittest.TestCase):
                 "update_worker_dynamic_attributes",
             },
         )
-        self.assertFalse(inspect.isabstract(WorkerCandidateMatcher))
         self.assertFalse(hasattr(py_example, "WorkerAdmission"))
         self.assertFalse(hasattr(py_example, "WorkerAdmissionResult"))
         self.assertFalse(hasattr(py_example, "WorkerAdmissionRuntime"))
@@ -101,30 +83,6 @@ class WorkerRuntimeModelTest(unittest.TestCase):
 
         self.assertEqual(register_params, {"self", "descriptor", "lane_rank"})
         self.assertFalse(hasattr(WorkerResourceCatalog, "register_worker_descriptor"))
-
-    def test_worker_candidate_matcher_batches_constraint_queries(self) -> None:
-        match_params = set(
-            inspect.signature(WorkerCandidateMatcher.match_worker_candidates).parameters
-        )
-        init_params = set(inspect.signature(WorkerCandidateMatcher.__init__).parameters)
-
-        self.assertEqual(
-            init_params,
-            {"self", "catalog", "dynamic_attribute_runtime"},
-        )
-        self.assertEqual(
-            match_params,
-            {
-                "self",
-                "worker_group_id",
-                "worker_ids",
-                "candidate_constraints",
-            },
-        )
-        self.assertEqual(
-            {field.name for field in fields(WorkerCandidateMatchResult)},
-            {"matches", "endpoint_manager_id_by_worker_id"},
-        )
 
     def test_worker_score_separates_hot_observation_from_exact_lease(self) -> None:
         acquire_params = set(

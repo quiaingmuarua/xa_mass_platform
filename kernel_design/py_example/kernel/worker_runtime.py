@@ -14,16 +14,6 @@ EventCode = str
 AttributeName = str
 AttributeValue = object
 DynamicAttributePayload = object
-CandidateId = str
-
-
-@dataclass(frozen=True)
-class WorkerCandidateConstraint:
-    """One candidate's match rules and per-call worker allocation bound."""
-
-    priority: int
-    limit: int
-    match_rules: Mapping[str, object]
 
 
 class WorkerRuntimeStatus(Enum):
