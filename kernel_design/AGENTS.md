@@ -219,7 +219,7 @@ WorkerDynamicAttributeRuntime
 
 WorkerCandidateMatcher
   one worker group, caller-supplied bounded worker id batch, ordered candidate
-  constraints, and exclusive matched/unmatched id partition
+  constraints, matched Worker ids, and matched Worker -> endpointManagerId routing projection
 
 WorkerScoreCore
   bounded HOT observation, batched exact-score lease, RECOVERY_RECHECK acquisition, and score transitions
@@ -243,6 +243,7 @@ DeliverSeed outbound delivery owns:
 
 ```text
 queued DeliverSeed consumption
+endpointManagerId queue partition ownership
 exact Worker lease continuation before final-hop delivery
 transport submit for the already selected Worker
 accepted non-exclusive release or exclusive lease retention

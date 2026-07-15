@@ -12,7 +12,7 @@ The outbound owner starts after a `DeliverSeed` has been appended and ends when
 transport accepts or rejects that already-assigned delivery:
 
 ```text
-consume queued DeliverSeed
+consume queued DeliverSeed from this endpointManagerId queue
   -> validate or renew opaque Worker lease evidence
   -> resolve final-hop transport evidence for selectedWorkerId
   -> submit transport delivery
@@ -26,7 +26,7 @@ Task score, classify result finality, or create another assignment identity.
 
 ```text
 DeliverSeedQueue
-  bounded queued seed consumption
+  bounded queued seed consumption for one endpointManagerId partition
 
 WorkerScoreCore
   exact opaque Worker-score validation/renew/release primitives
@@ -75,6 +75,7 @@ DeliverSeed contains:
 taskId
 selectedWorkerId
 workerGroupId
+endpointManagerId
 TaskItem
 claimScore
 workerLeaseScore
@@ -84,8 +85,11 @@ The two scores are opaque fences, not duplicated owner truth. The queue may be
 lost or replayed without becoming the correctness owner: Item claim expiry and
 Worker lease expiry remain the liveness fallback.
 
+`endpointManagerId` is copied from matching through `CandidateWorkerEntry` and
+partitions the Deliver Queue. The outbound owner therefore consumes only its
+own manager queue and does not reread `WorkerDescriptor` to choose a queue.
 Transport-specific route, adapter, mailbox, connection, or session facts are
-resolved only in this outbound owner and never written back into scheduling
+resolved inside that endpoint manager and never written back into scheduling
 candidate truth.
 
 ## Guardrails

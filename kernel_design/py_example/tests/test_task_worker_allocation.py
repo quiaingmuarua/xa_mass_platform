@@ -69,6 +69,7 @@ class AssignmentDispatchTest(unittest.TestCase):
             {
                 "worker_id",
                 "worker_group_id",
+                "endpoint_manager_id",
                 "worker_lease_score",
             },
         )
@@ -138,7 +139,10 @@ class AssignmentDispatchTest(unittest.TestCase):
                     "running-task": ("worker-1",),
                     "pre-dispatch-task": ("worker-2",),
                 },
-                unmatched_worker_ids=(),
+                endpoint_manager_id_by_worker_id={
+                    "worker-1": "endpoint-manager-1",
+                    "worker-2": "endpoint-manager-1",
+                },
             )
 
         worker_matcher.match_worker_candidates.side_effect = match_after_leases
@@ -196,6 +200,10 @@ class AssignmentDispatchTest(unittest.TestCase):
             published_by_task["running-task"][0].worker_lease_score,
             12_001,
         )
+        self.assertEqual(
+            published_by_task["running-task"][0].endpoint_manager_id,
+            "endpoint-manager-1",
+        )
         worker_score.release_score_holds.assert_not_called()
 
     def test_allocation_rewrites_time_without_reading_or_transitioning_band(
@@ -214,7 +222,9 @@ class AssignmentDispatchTest(unittest.TestCase):
         worker_matcher.match_worker_candidates.return_value = (
             WorkerCandidateMatchResult(
                 matches={"task-1": ("worker-1",)},
-                unmatched_worker_ids=(),
+                endpoint_manager_id_by_worker_id={
+                    "worker-1": "endpoint-manager-1"
+                },
             )
         )
         published = pacer.allocate_candidate_workers(config=self._allocation_config())
@@ -251,7 +261,7 @@ class AssignmentDispatchTest(unittest.TestCase):
         worker_matcher.match_worker_candidates.return_value = (
             WorkerCandidateMatchResult(
                 matches={"task-1": ()},
-                unmatched_worker_ids=("worker-1",),
+                endpoint_manager_id_by_worker_id={},
             )
         )
         pacer.dispatch_runtime.candidate_worker_counts.return_value = {
@@ -284,7 +294,9 @@ class AssignmentDispatchTest(unittest.TestCase):
         worker_matcher.match_worker_candidates.return_value = (
             WorkerCandidateMatchResult(
                 matches={"task-1": ("worker-1",)},
-                unmatched_worker_ids=("worker-2",),
+                endpoint_manager_id_by_worker_id={
+                    "worker-1": "endpoint-manager-1"
+                },
             )
         )
 
@@ -298,6 +310,7 @@ class AssignmentDispatchTest(unittest.TestCase):
             "candidate_workers"
         ][0]
         self.assertEqual(entry.worker_id, "worker-1")
+        self.assertEqual(entry.endpoint_manager_id, "endpoint-manager-1")
         self.assertEqual(entry.worker_lease_score, 12_001)
 
     def test_allocation_at_candidate_capacity_skips_worker_scan_and_rotates(
@@ -360,7 +373,10 @@ class AssignmentDispatchTest(unittest.TestCase):
                     "task-1": ("worker-1",),
                     "task-2": ("worker-2",),
                 },
-                unmatched_worker_ids=(),
+                endpoint_manager_id_by_worker_id={
+                    "worker-1": "endpoint-manager-1",
+                    "worker-2": "endpoint-manager-1",
+                },
             )
         )
         runtime.append_candidate_workers.side_effect = (
@@ -393,7 +409,9 @@ class AssignmentDispatchTest(unittest.TestCase):
         worker_matcher.match_worker_candidates.return_value = (
             WorkerCandidateMatchResult(
                 matches={"task-1": ("worker-1",)},
-                unmatched_worker_ids=(),
+                endpoint_manager_id_by_worker_id={
+                    "worker-1": "endpoint-manager-1"
+                },
             )
         )
         task_score.rewrite_same_band_time_millis.return_value = (
@@ -418,7 +436,7 @@ class AssignmentDispatchTest(unittest.TestCase):
         worker_matcher.match_worker_candidates.return_value = (
             WorkerCandidateMatchResult(
                 matches={"task-1": ()},
-                unmatched_worker_ids=(),
+                endpoint_manager_id_by_worker_id={},
             )
         )
 
@@ -472,7 +490,9 @@ class AssignmentDispatchTest(unittest.TestCase):
         worker_matcher.match_worker_candidates.return_value = (
             WorkerCandidateMatchResult(
                 matches={"task-1": ("worker-1",)},
-                unmatched_worker_ids=(),
+                endpoint_manager_id_by_worker_id={
+                    "worker-1": "endpoint-manager-1"
+                },
             )
         )
         worker_score.acquire_observed_hot_score_leases.side_effect = None

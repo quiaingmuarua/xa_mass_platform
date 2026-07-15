@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Mapping, Sequence
 
 from .task_score_band import TaskId, TimeMillis
-from .worker_runtime import WorkerGroupId
+from .worker_runtime import EndpointManagerId, WorkerGroupId
 from .worker_score import Score as WorkerScore
 from .worker_score import WorkerId
 
@@ -16,6 +16,7 @@ class CandidateWorkerEntry:
 
     worker_id: WorkerId
     worker_group_id: WorkerGroupId
+    endpoint_manager_id: EndpointManagerId
     worker_lease_score: WorkerScore
 
 

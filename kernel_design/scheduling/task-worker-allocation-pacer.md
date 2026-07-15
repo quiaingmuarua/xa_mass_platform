@@ -70,7 +70,7 @@ WorkerCandidateMatcher
     workerIds,
     candidateConstraints,
   )
-  -> WorkerCandidateMatchResult(matches, unmatchedWorkerIds)
+  -> WorkerCandidateMatchResult(matches, endpointManagerIdByWorkerId)
 
 TaskDispatchRuntime
   append_candidate_workers(taskId, entries, expiresAtMillis)
@@ -132,9 +132,9 @@ bounded Task ids
   -> pacer-private workerId -> observedScore sidecar
   -> one batch of independent exact-score CAS leases for unchanged due Workers
   -> one WorkerCandidateMatcher call with lease-success Worker ids
-  -> matched and unmatched Worker-id partition
+  -> matched Worker ids plus matched Worker -> endpointManagerId projection
   -> unmatched leases remain held until expiry
-  -> matched lease scores become CandidateWorkerEntry values
+  -> matched lease scores and endpointManagerId become CandidateWorkerEntry values
 ```
 
 First cut identity is direct:
@@ -200,7 +200,8 @@ matchResult = workerCandidateMatcher.match_worker_candidates(
   leasedWorkerScores.keys(),
   ...
 )
-publish matched CandidateWorkerEntry values with leasedWorkerScores
+publish matched CandidateWorkerEntry values with leasedWorkerScores and
+matchResult.endpointManagerIdByWorkerId
 ```
 
 The allocation pacer resolves `workerGroupId` to the current v0 home bucket and
@@ -209,9 +210,10 @@ reads at most `workerScanLimit` due HOT entries as a private
 scan order as a caller contract. The pacer submits one bounded lease batch
 before matching. Each Worker still uses an independent exact-score CAS; stale
 entries are discarded. Only successful lease
-ids enter the matcher, which returns a complete exclusive matched/unmatched
-partition. Unmatched Workers consumed the scheduling round and keep their
-future leases until natural expiry.
+ids enter the matcher. Each matched Worker appears once in the candidate map and
+once in the matched `workerId -> endpointManagerId` projection. Unmatched
+Workers are omitted from the result; they consumed the scheduling round and keep
+their future leases until natural expiry.
 
 The batch validates due HOT shape outside Lua and pipelines the existing generic
 single-Worker exact-score CAS while preserving lane rank and clearing dirty.
@@ -452,6 +454,9 @@ def allocate_candidate_workers(config):
                 CandidateWorkerEntry(
                     worker_id=worker_id,
                     worker_group_id=worker_group_id,
+                    endpoint_manager_id=(
+                        match_result.endpoint_manager_id_by_worker_id[worker_id]
+                    ),
                     worker_lease_score=leased_worker_scores[worker_id],
                 )
                 for worker_id in worker_ids
@@ -506,8 +511,8 @@ matcher raises
   propagate; all acquired leases remain held until natural expiry
 
 Worker is unmatched or candidate capacity is exhausted
-  return it through unmatchedWorkerIds; its scheduling attempt consumes the
-  lease until natural expiry
+  omit it from the match result; its scheduling attempt consumes the lease until
+  natural expiry
 
 Worker score changed before lease CAS
   exact-score CAS returns STALE; exclude that Worker from matcher input

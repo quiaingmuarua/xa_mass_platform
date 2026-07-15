@@ -16,7 +16,7 @@ The next owner after this pacer is
 ```text
 Task-local CandidateWorkerEntry consumption
   + due TaskItem score acquisition and claim
-  -> DeliverSeed queue append
+  -> endpointManagerId-partitioned DeliverSeed queue append
 ```
 
 Its cutpoint is successful DeliverSeed queue append. It does not consume the
@@ -101,6 +101,7 @@ Each entry already carries allocation-owned opaque evidence:
 CandidateWorkerEntry
   workerId
   workerGroupId
+  endpointManagerId
   workerLeaseScore
 ```
 
@@ -164,6 +165,7 @@ DeliverSeed
   taskId
   selectedWorkerId
   workerGroupId
+  endpointManagerId
   taskItem
   claimScore
   workerLeaseScore
@@ -177,7 +179,14 @@ creation time, or expiry into a second Item-shaped DTO.
 and forwards them but never decodes, trims, compares, or reconstructs either
 score.
 
-Transport identifiers are forbidden:
+`endpointManagerId` is copied from the consumed `CandidateWorkerEntry` and is
+the Deliver Queue partition key. The pacer does not choose or recompute it:
+
+```text
+deliverQueue[endpointManagerId].append(DeliverSeed)
+```
+
+Live transport identifiers are forbidden:
 
 ```text
 adapterId
@@ -187,6 +196,9 @@ mailboxKey
 routeKey
 deliveryQueueKey
 ```
+
+`endpointManagerId` is the explicit exception because it identifies the
+physical endpoint-manager queue, not a live adapter/session/connection handle.
 
 Transport receives an already selected Worker only after the queued seed
 crosses into the outbound owner.

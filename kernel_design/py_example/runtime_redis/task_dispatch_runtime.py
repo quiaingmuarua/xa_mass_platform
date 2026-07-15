@@ -135,6 +135,7 @@ class RedisTaskDispatchRuntime(TaskDispatchRuntime):
             {
                 "workerId": entry.worker_id,
                 "workerGroupId": entry.worker_group_id,
+                "endpointManagerId": entry.endpoint_manager_id,
                 "workerLeaseScore": entry.worker_lease_score,
             },
             sort_keys=True,
@@ -154,12 +155,15 @@ class RedisTaskDispatchRuntime(TaskDispatchRuntime):
                 return None
             worker_id = payload["workerId"]
             worker_group_id = payload["workerGroupId"]
+            endpoint_manager_id = payload["endpointManagerId"]
             worker_lease_score = payload["workerLeaseScore"]
         except (KeyError, TypeError, ValueError, UnicodeDecodeError):
             return None
         if not isinstance(worker_id, str) or not worker_id:
             return None
         if not isinstance(worker_group_id, str) or not worker_group_id:
+            return None
+        if not isinstance(endpoint_manager_id, str) or not endpoint_manager_id:
             return None
         if (
             isinstance(worker_lease_score, bool)
@@ -170,6 +174,7 @@ class RedisTaskDispatchRuntime(TaskDispatchRuntime):
         return CandidateWorkerEntry(
             worker_id=worker_id,
             worker_group_id=worker_group_id,
+            endpoint_manager_id=endpoint_manager_id,
             worker_lease_score=worker_lease_score,
         )
 

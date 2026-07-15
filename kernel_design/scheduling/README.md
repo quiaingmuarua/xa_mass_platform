@@ -340,7 +340,8 @@ newest-first candidate-worker consumption
 worker group / constraint / priority rule application during allocation
 Worker allocation-lease duration
 final item claim timing
-DeliverSeed creation and queue append from current Item score evidence
+DeliverSeed creation and endpointManagerId-partitioned queue append from current
+Item score and CandidateWorkerEntry evidence
 ```
 
 Does not own:
@@ -350,7 +351,7 @@ task score truth; TaskItemDispatchPacer is Task-score read-only
 worker score lifecycle
 result finality
 transport session internals
-transport adapter queue choice
+transport adapter/session queue choice inside an endpoint manager
 ```
 
 ### DeliverSeed Outbound Delivery Boundary
@@ -365,7 +366,7 @@ after accepted delivery, should the Worker lease be released or retained?
 Owns:
 
 ```text
-queued DeliverSeed consumption
+endpointManagerId-partitioned DeliverSeed queue consumption
 exact Worker lease continuation before delivery
 transport submit for the already selected Worker
 accepted non-exclusive release or exclusive lease retention

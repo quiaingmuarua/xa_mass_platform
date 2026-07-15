@@ -73,6 +73,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
         worker = WorkerDescriptor(
             worker_id="worker-1",
             worker_group_id=self.worker_group_id,
+            endpoint_manager_id="endpoint-manager-1",
             system_metadata={"tier": "premium"},
             static_attributes={"runtime": "python"},
             dynamic_attribute_names=frozenset({"battery"}),

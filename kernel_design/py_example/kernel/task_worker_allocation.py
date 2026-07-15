@@ -167,11 +167,15 @@ class TaskWorkerAllocationPacer:
                 worker_ids=tuple(leased_worker_scores),
                 candidate_constraints=task_constraints,
             )
+            endpoint_manager_ids = (
+                match_result.endpoint_manager_id_by_worker_id
+            )
             matched_candidates = {
                 task_id: tuple(
                     CandidateWorkerEntry(
                         worker_id=worker_id,
                         worker_group_id=worker_group_id,
+                        endpoint_manager_id=endpoint_manager_ids[worker_id],
                         worker_lease_score=leased_worker_scores[worker_id],
                     )
                     for worker_id in worker_ids

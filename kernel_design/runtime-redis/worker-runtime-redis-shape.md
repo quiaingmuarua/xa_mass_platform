@@ -46,7 +46,8 @@ one worker belongs to exactly one workerGroupId in v0
 score ZSET is acquisition truth only
 descriptor hashes are resource declaration truth
 dynamic attribute keys are handler-owned projections / indexes
-transport evidence is not stored in worker catalog or score keys
+endpointManagerId is a stable post-selection endpoint-owner locator
+live transport evidence is not stored in worker catalog or score keys
 worker registration is complete only after score-first registration writes the descriptor
 resource metadata updates do not require a worker score lease
 ```
@@ -116,6 +117,7 @@ Value shape:
 {
   "workerId": "worker-1",
   "workerGroupId": "image-workers",
+  "endpointManagerId": "endpoint-manager-a",
   "systemMetadata": {},
   "staticAttributes": {},
   "dynamicAttributeNames": ["battery", "load"]
@@ -124,6 +126,10 @@ Value shape:
 
 `dynamicAttributeNames` is an allowlist of updateable dynamic attribute names.
 It is not the current value of those attributes.
+
+`endpointManagerId` locates the physical endpoint manager only after a Worker
+has been selected. It is required registration metadata, not a matcher field,
+score dimension, live endpoint, session, mailbox, or reachability fact.
 
 `workerGroupId` is a required logical locator on worker descriptor read and
 update operations. The current Redis executable spec uses it directly in the
@@ -386,6 +392,7 @@ Register worker:
 
 ```text
 require workerGroupId exists
+require endpointManagerId is non-empty
 validate worker descriptor against group event-code promise / platform policy
 WorkerScoreCore.initialize_hot_acquire_score(workerGroupId, workerId, laneRank)
   -> ZADD NX score first
@@ -446,7 +453,8 @@ skip candidates whose per-call limit is full
 evaluate remaining constraints in resolved priority order; first match consumes that worker
 missing / unsupported / unresolved handler rows fail closed when read
 matcher returns each workerId in at most one candidate result
-result shape contains insertion-ordered candidateId -> workerIds plus unordered unmatchedWorkerIds
+result shape contains insertion-ordered candidateId -> workerIds plus
+matched workerId -> endpointManagerId
 pacer leaves unmatched leases untouched; lease expiry restores hot visibility
 ```
 

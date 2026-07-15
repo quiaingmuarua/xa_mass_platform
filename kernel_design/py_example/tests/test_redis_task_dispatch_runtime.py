@@ -145,6 +145,10 @@ class RedisTaskDispatchRuntimeTest(unittest.TestCase):
             {payload["workerLeaseScore"] for payload in payloads},
             {100, 200, 300},
         )
+        self.assertEqual(
+            {payload["endpointManagerId"] for payload in payloads},
+            {"endpoint-manager-1"},
+        )
 
     def test_consume_atomically_pops_by_score_and_skips_corrupt_rows(self) -> None:
         self.redis.zsets[self.key] = {
@@ -269,6 +273,7 @@ class RedisTaskDispatchRuntimeTest(unittest.TestCase):
         return CandidateWorkerEntry(
             worker_id=worker_id,
             worker_group_id="image-workers",
+            endpoint_manager_id="endpoint-manager-1",
             worker_lease_score=worker_lease_score,
         )
 

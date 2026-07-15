@@ -169,6 +169,7 @@ taskId -> candidateWorkers[]
 CandidateWorkerEntry
   workerId
   workerGroupId
+  endpointManagerId
   workerLeaseScore
 ```
 
@@ -181,9 +182,10 @@ The Redis executable spec uses one ZSET per Task, scored by candidate batch
 ad:{prefix}:task:{taskId}:candidate-workers
 ```
 
-The member contains the complete `CandidateWorkerEntry`, including opaque
-`workerLeaseScore`. The entry DTO still has no expiry field; one expiry is
-supplied by the allocation caller for the whole appended batch.
+The member contains the complete `CandidateWorkerEntry`, including the matched
+Worker's `endpointManagerId` and opaque `workerLeaseScore`. The entry DTO still
+has no expiry field; one expiry is supplied by the allocation caller for the
+whole appended batch.
 
 The collection is:
 
@@ -300,7 +302,8 @@ pacer keeps the opaque observations in a sidecar and attempts one exact
 batched observed-score lease with an independent CAS per Worker. Only
 lease-success ids enter the matcher.
 Unmatched leases are consumed negative scheduling evidence and remain held
-until expiry. Matched lease scores become `CandidateWorkerEntry` values.
+until expiry. Matched lease scores and endpoint-manager queue coordinates become
+`CandidateWorkerEntry` values.
 Matcher does not read or mutate Worker score.
 
 Task Item dispatch does not recheck or mutate Worker score. It copies the
@@ -309,8 +312,9 @@ consumed opaque lease evidence into DeliverSeed:
 ```text
 consume CandidateWorkerEntry
   -> claim one current TaskItem score
-  -> DeliverSeed(workerId, workerGroupId, workerLeaseScore, claimScore, TaskItem)
-  -> append DeliverSeed queue
+  -> DeliverSeed(workerId, workerGroupId, endpointManagerId, workerLeaseScore,
+       claimScore, TaskItem)
+  -> append DeliverSeed to the endpointManagerId queue
 
 outbound DeliverSeed consumer
   -> validate or renew the exact Worker lease evidence

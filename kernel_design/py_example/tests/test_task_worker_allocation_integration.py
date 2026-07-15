@@ -141,6 +141,7 @@ class AssignmentDispatchIntegrationTest(unittest.TestCase):
             descriptor=WorkerDescriptor(
                 worker_id=self.worker_id,
                 worker_group_id=self.worker_group_id,
+                endpoint_manager_id="endpoint-manager-1",
                 system_metadata={"tier": "premium"},
                 static_attributes={"runtime": "python"},
                 dynamic_attribute_names=frozenset(),
@@ -151,6 +152,7 @@ class AssignmentDispatchIntegrationTest(unittest.TestCase):
             descriptor=WorkerDescriptor(
                 worker_id=self.unmatched_worker_id,
                 worker_group_id=self.worker_group_id,
+                endpoint_manager_id="endpoint-manager-1",
                 system_metadata={"tier": "standard"},
                 static_attributes={"runtime": "java"},
                 dynamic_attribute_names=frozenset(),
@@ -248,6 +250,7 @@ class AssignmentDispatchIntegrationTest(unittest.TestCase):
         self.assertEqual(running_state.suffix, 8)
         self.assertEqual(queued_candidate_count, 1)
         self.assertEqual([entry.worker_id for entry in entries], [self.worker_id])
+        self.assertEqual(entries[0].endpoint_manager_id, "endpoint-manager-1")
         self.assertGreater(
             worker_score_after_allocation[self.worker_id].time_millis,
             time.time_ns() // 1_000_000,

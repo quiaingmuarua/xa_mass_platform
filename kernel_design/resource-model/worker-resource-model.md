@@ -40,8 +40,10 @@ worker. The TaskItem's `eventCode` validates against the selected
 does not choose worker groups and does not prove worker availability.
 
 `Transport` is an internal delivery resource. It resolves how to deliver already
-assigned work to the selected worker; it does not select workers or expose
-adapter/session/mailbox facts as scheduling model fields.
+assigned work to the selected worker; it does not select workers. The worker
+descriptor carries only the stable `endpointManagerId` needed to locate the
+physical endpoint owner after selection. Adapter, session, connection, mailbox,
+and live reachability facts remain outside the scheduling model.
 
 In v0, a worker has exactly one `workerGroupId`. Do not add membership rows,
 multi-group joins, dynamic group selectors, or group-local event binding rows
@@ -112,6 +114,7 @@ dynamic attribute current values
 WorkerDescriptor
   workerId: string
   workerGroupId: string
+  endpointManagerId: string
   systemMetadata: map<string, value>
   staticAttributes: map<string, value>
   dynamicAttributeNames: set<string>
@@ -120,6 +123,13 @@ WorkerDescriptor
 `workerId` is the resource identity used by worker score and assignment.
 
 `workerGroupId` is the only group relationship in v0.
+
+`endpointManagerId` identifies the physical endpoint manager that owns endpoint
+resolution for this Worker. It replaces the old `adapterId` vocabulary because
+the kernel needs a stable owner locator, not a transport implementation type.
+It is read only after `workerId` has already been selected. It does not prove a
+live connection, mailbox, session, or reachability state and must not participate
+in worker matching, score ordering, or candidate selection.
 
 First registration is a `WorkerRuntime` operation, not a descriptor-catalog
 write. It initializes the worker's HOT_ACQUIRE score first and writes the
@@ -141,8 +151,8 @@ worker-id hash buckets, or other physical partitions remain implementation
 choices behind the catalog.
 
 First-layer descriptor fields intentionally stop at resource identity, group
-identity, and attribute buckets. Specific runtime, package, handler, or
-compatibility versions belong in `staticAttributes`.
+identity, endpoint-owner identity, and attribute buckets. Specific runtime,
+package, handler, or compatibility versions belong in `staticAttributes`.
 
 `systemMetadata` is platform-written metadata. It is writable, but should
 be low-frequency. Examples:
@@ -251,6 +261,9 @@ system.*
 static.*
 dynamic.*
 ```
+
+`endpointManagerId` is deliberately absent. Endpoint ownership is final-hop
+location metadata, not a WorkerConstraintQuery field.
 
 These are worker-runtime owner fields, not DSL-reserved fields. `workerId` is a
 normal context value that may participate in the same DSL operators as any
@@ -515,7 +528,7 @@ match_worker_candidates(
 )
   -> WorkerCandidateMatchResult(
        matches={candidateId: workerIds, ...},
-       unmatchedWorkerIds=[...],
+       endpointManagerIdByWorkerId={workerId: endpointManagerId, ...},
      )
 ```
 
@@ -523,17 +536,20 @@ The input map makes candidate identity unique. Each value carries explicit
 `priority`, `limit`, and map-shaped `match_rules`. The matcher
 sorts by priority descending and `candidateId` ascending, then each worker is
 considered by the first matching candidate with remaining capacity. Every
-normalized input Worker id appears in exactly one candidate result or in
-`unmatchedWorkerIds`. No score, lease deadline, or dispatch entry crosses this
-interface. `unmatchedWorkerIds` is a completeness partition, not an ordering
-contract. A matcher call handles exactly one selected `workerGroupId`;
+matched Worker appears in exactly one candidate result and exactly once in
+`endpointManagerIdByWorkerId`. Unmatched Worker ids are not returned; their
+already-acquired leases remain held until natural expiry. No score, lease
+deadline, or dispatch entry crosses this interface. `endpointManagerId` is a
+post-selection Deliver Queue partition coordinate, not a matching field. A
+matcher call handles exactly one selected `workerGroupId`;
 assignment-dispatch
 must partition candidates by Worker group and read a bounded due Worker
 observation batch before calling it. The matcher owns descriptor reads, dynamic
 reads, and matching for only those supplied Worker ids. The allocation pacer
 keeps observed scores in a private sidecar, batch-leases unchanged due Workers
 by exact CAS, passes only lease successes to matcher, leaves unmatched leases
-to expire naturally, and creates `CandidateWorkerEntry` values for matched leases.
+to expire naturally, and combines matched lease scores with matched
+`endpointManagerId` values into `CandidateWorkerEntry` values.
 The matcher returns every input candidate in resolved priority order. An empty
 entry means no match. It must not acquire or discover additional Workers and
 must not become
@@ -548,12 +564,13 @@ required, add that owner then. Do not keep a placeholder surface now.
 item `eventCode` resolves the handler only after the task has a selected worker
 group and assignment-dispatch has selected a concrete worker.
 
-Adapter / transport facts are not part of the public worker resource model.
-Workers may connect through adapters, but adapter identity, mailbox, session,
-route, and delivery queue remain internal transport delivery details. If an
-operator or policy needs a network category, expose it as a worker attribute
-such as `networkType`; do not expose adapter/session identifiers as worker
-selection facts.
+Live adapter / transport facts are not part of the public worker resource model.
+`endpointManagerId` is the narrow exception: it identifies the stable physical
+endpoint owner used after Worker selection. Adapter implementation identity,
+mailbox, session, route, connection, and delivery queue remain internal delivery
+details. If an operator or policy needs a network category, expose it as a
+worker attribute such as `networkType`; do not expose endpoint-manager or
+adapter/session identifiers as worker-selection facts.
 
 Descriptor metadata is the low-frequency query and matching surface used by
 worker allocation inside a pre-bound worker group. Its purpose is to help
@@ -597,7 +614,7 @@ The worker score model remains separate:
 
 ```text
 WorkerDescriptor
-  metadata and dynamic attribute allowlist
+  resource identity, endpoint owner locator, metadata, and dynamic attribute allowlist
 
 WorkerDynamicAttributeRuntime
   bounded dynamic attribute update/read route and owner-local handler dispatch
@@ -667,6 +684,7 @@ class WorkerGroupDescriptor:
 class WorkerDescriptor:
     worker_id: str
     worker_group_id: str
+    endpoint_manager_id: str
     system_metadata: Mapping[str, JsonValue]
     static_attributes: Mapping[str, JsonValue]
     dynamic_attribute_names: frozenset[str]

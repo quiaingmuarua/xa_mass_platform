@@ -9,6 +9,7 @@ from .worker_score import LaneRank, TimeMillis, WorkerId
 
 
 WorkerGroupId = str
+EndpointManagerId = str
 EventCode = str
 AttributeName = str
 AttributeValue = object
@@ -55,12 +56,14 @@ class WorkerGroupDescriptor:
 class WorkerDescriptor:
     """Worker resource metadata/query projection.
 
-    First-layer fields stop at identity, group identity, and attribute buckets.
+    endpoint_manager_id locates the physical endpoint owner after this Worker
+    has been selected. It is not a matching field or live transport evidence.
     Runtime/package/handler compatibility versions belong in static_attributes.
     """
 
     worker_id: WorkerId
     worker_group_id: WorkerGroupId
+    endpoint_manager_id: EndpointManagerId
     system_metadata: Mapping[str, AttributeValue]
     static_attributes: Mapping[str, AttributeValue]
     dynamic_attribute_names: frozenset[AttributeName]

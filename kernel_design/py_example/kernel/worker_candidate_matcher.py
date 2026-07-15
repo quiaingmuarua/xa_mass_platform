@@ -8,6 +8,7 @@ from .worker_score import WorkerId
 from .worker_runtime import (
     CandidateId,
     DynamicAttributeReadResult,
+    EndpointManagerId,
     WorkerCandidateConstraint,
     WorkerDescriptor,
     WorkerDynamicAttributeRuntime,
@@ -22,14 +23,14 @@ WorkerCandidateMatches = dict[CandidateId, tuple[WorkerId, ...]]
 
 @dataclass(frozen=True)
 class WorkerCandidateMatchResult:
-    """Exclusive partition of the bounded Worker input.
+    """Matched Workers plus their post-selection endpoint queue locator.
 
-    Candidate match order follows matcher policy. Unmatched Worker order is
-    unspecified.
+    Candidate match order follows matcher policy. endpoint_manager_id_by_worker_id
+    contains exactly the Workers present in matches.
     """
 
     matches: WorkerCandidateMatches
-    unmatched_worker_ids: tuple[WorkerId, ...]
+    endpoint_manager_id_by_worker_id: dict[WorkerId, EndpointManagerId]
 
 
 class WorkerCandidateMatcher:
@@ -50,9 +51,9 @@ class WorkerCandidateMatcher:
         worker_ids: Sequence[WorkerId],
         candidate_constraints: Mapping[CandidateId, WorkerCandidateConstraint],
     ) -> WorkerCandidateMatchResult:
-        unmatched_worker_ids = set(worker_ids)
+        worker_ids = tuple(dict.fromkeys(worker_ids))
         if not candidate_constraints:
-            return WorkerCandidateMatchResult({}, tuple(unmatched_worker_ids))
+            return WorkerCandidateMatchResult({}, {})
 
         candidates, required_dynamic_attributes = self._prepare_candidates(
             candidate_constraints
@@ -65,12 +66,12 @@ class WorkerCandidateMatcher:
         if not candidates:
             return WorkerCandidateMatchResult(
                 self._freeze_matches(mutable_matches),
-                tuple(unmatched_worker_ids),
+                {},
             )
         if not worker_ids:
             return WorkerCandidateMatchResult(
                 self._freeze_matches(mutable_matches),
-                (),
+                {},
             )
         remaining_capacity = sum(
             constraints.limit for _, constraints, _ in candidates
@@ -86,6 +87,7 @@ class WorkerCandidateMatcher:
             descriptors,
             required_dynamic_attributes,
         )
+        endpoint_manager_id_by_worker_id: dict[WorkerId, EndpointManagerId] = {}
         for worker_id in worker_ids:
             if remaining_capacity == 0:
                 break
@@ -103,13 +105,15 @@ class WorkerCandidateMatcher:
                     continue
                 if ConstraintDsl.evaluate_match_rules(context, match_rules):
                     mutable_matches[candidate_id].append(worker_id)
-                    unmatched_worker_ids.discard(worker_id)
+                    endpoint_manager_id_by_worker_id[worker_id] = (
+                        descriptor.endpoint_manager_id
+                    )
                     remaining_capacity -= 1
                     break
 
         return WorkerCandidateMatchResult(
             self._freeze_matches(mutable_matches),
-            tuple(unmatched_worker_ids),
+            endpoint_manager_id_by_worker_id,
         )
 
     @staticmethod

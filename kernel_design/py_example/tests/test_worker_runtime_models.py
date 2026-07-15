@@ -36,7 +36,7 @@ class WorkerRuntimeModelTest(unittest.TestCase):
         self.assertEqual(constraint.priority, 100)
         self.assertEqual(constraint.limit, 2)
 
-    def test_worker_descriptor_first_layer_shape_has_no_version_field(self) -> None:
+    def test_worker_descriptor_first_layer_shape_has_endpoint_owner_no_version(self) -> None:
         field_names = {field.name for field in fields(WorkerDescriptor)}
 
         self.assertEqual(
@@ -44,6 +44,7 @@ class WorkerRuntimeModelTest(unittest.TestCase):
             {
                 "worker_id",
                 "worker_group_id",
+                "endpoint_manager_id",
                 "system_metadata",
                 "static_attributes",
                 "dynamic_attribute_names",
@@ -122,7 +123,7 @@ class WorkerRuntimeModelTest(unittest.TestCase):
         )
         self.assertEqual(
             {field.name for field in fields(WorkerCandidateMatchResult)},
-            {"matches", "unmatched_worker_ids"},
+            {"matches", "endpoint_manager_id_by_worker_id"},
         )
 
     def test_worker_score_separates_hot_observation_from_exact_lease(self) -> None:
@@ -234,11 +235,13 @@ class WorkerRuntimeModelTest(unittest.TestCase):
             {"self", "worker_group_id", "attribute_name", "worker_ids"},
         )
         self.assertTrue(hasattr(py_example, "DynamicAttributePayload"))
+        self.assertTrue(hasattr(py_example, "EndpointManagerId"))
 
     def test_dynamic_attribute_value_lives_behind_function_table(self) -> None:
         descriptor = WorkerDescriptor(
             worker_id="worker-1",
             worker_group_id="image-workers",
+            endpoint_manager_id="endpoint-manager-1",
             system_metadata={},
             static_attributes={"runtimeVersion": "1.0.0"},
             dynamic_attribute_names=frozenset({"battery"}),

@@ -189,6 +189,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         worker_id: str,
         *,
         worker_group_id: str = "image-workers",
+        endpoint_manager_id: str = "endpoint-manager-1",
         system_metadata: dict[str, object] | None = None,
         static_attributes: dict[str, object] | None = None,
         dynamic_attribute_names: frozenset[str] = frozenset({"battery"}),
@@ -196,6 +197,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         return WorkerDescriptor(
             worker_id=worker_id,
             worker_group_id=worker_group_id,
+            endpoint_manager_id=endpoint_manager_id,
             system_metadata=system_metadata or {},
             static_attributes=static_attributes or {},
             dynamic_attribute_names=dynamic_attribute_names,
@@ -289,6 +291,20 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         )
 
         self.assertEqual(result.status, WorkerRuntimeStatus.NOT_FOUND)
+        self.assertEqual(self.redis.zsets, {})
+
+    def test_register_worker_requires_endpoint_manager_id(self) -> None:
+        self.register_group()
+
+        result = self.runtime.register_worker_descriptor(
+            descriptor=self.worker_descriptor(
+                "worker-1",
+                endpoint_manager_id="",
+            ),
+            lane_rank=self.LANE_RANK,
+        )
+
+        self.assertEqual(result.status, WorkerRuntimeStatus.INVALID)
         self.assertEqual(self.redis.zsets, {})
 
     def test_registered_worker_enters_hot_acquire_after_current_slot(self) -> None:
@@ -392,12 +408,14 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         self.assertEqual(descriptor.system_metadata, {"tier": "premium", "region": "us"})
         self.assertEqual(descriptor.static_attributes, {"runtime": "python"})
         self.assertEqual(descriptor.dynamic_attribute_names, frozenset({"battery"}))
+        self.assertEqual(descriptor.endpoint_manager_id, "endpoint-manager-1")
 
     def test_static_attribute_refresh_replaces_only_static_attributes(self) -> None:
         self.register_group()
         self.register_worker(
             self.worker_descriptor(
                 "worker-1",
+                endpoint_manager_id="endpoint-manager-1",
                 system_metadata={"tier": "premium"},
                 static_attributes={"runtime": "python", "old": True},
             )
@@ -418,6 +436,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         self.assertEqual(descriptor.system_metadata, {"tier": "premium"})
         self.assertEqual(descriptor.static_attributes, {"runtime": "java"})
         self.assertEqual(descriptor.dynamic_attribute_names, frozenset({"battery"}))
+        self.assertEqual(descriptor.endpoint_manager_id, "endpoint-manager-1")
 
     def test_catalog_updates_do_not_discover_worker_group(self) -> None:
         self.register_group()
@@ -537,6 +556,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         self.register_worker(
             self.worker_descriptor(
                 "worker-2",
+                endpoint_manager_id="endpoint-manager-2",
                 system_metadata={"tier": "standard"},
                 static_attributes={"runtime": "java"},
             )
@@ -592,7 +612,30 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
             },
         )
         self.assertEqual(tuple(rows.matches), ("premium-python-battery", "all"))
-        self.assertEqual(rows.unmatched_worker_ids, ("outside",))
+        self.assertEqual(
+            rows.endpoint_manager_id_by_worker_id,
+            {
+                "worker-1": "endpoint-manager-1",
+                "worker-2": "endpoint-manager-2",
+            },
+        )
+
+    def test_candidate_matcher_does_not_expose_endpoint_manager_id(self) -> None:
+        self.register_group()
+        self.register_worker(self.worker_descriptor("worker-1"))
+
+        rows = self.match_candidates(
+            self.matcher(),
+            worker_ids=["worker-1"],
+            candidate_constraints={
+                "transport-placement": candidate_constraint(
+                    {"endpointManagerId": {"$eq": "endpoint-manager-1"}},
+                )
+            },
+        )
+
+        self.assertEqual(rows.matches["transport-placement"], ())
+        self.assertEqual(rows.endpoint_manager_id_by_worker_id, {})
 
     def test_candidate_matcher_rejects_missing_dynamic_handler(self) -> None:
         self.register_group()
@@ -885,7 +928,10 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
                 "fallback": ["worker-2", "worker-3"],
             },
         )
-        self.assertEqual(rows.unmatched_worker_ids, ("worker-4",))
+        self.assertEqual(
+            set(rows.endpoint_manager_id_by_worker_id),
+            {"worker-1", "worker-2", "worker-3"},
+        )
 
     def test_candidate_matcher_batches_declared_fields_and_consumes_by_priority(self) -> None:
         self.register_group()
@@ -1086,7 +1132,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         )
         self.assertEqual(queried_worker_ids, ["worker-1"])
 
-    def test_candidate_matcher_deduplicates_input_and_partitions_unmatched(self) -> None:
+    def test_candidate_matcher_deduplicates_input_before_matching(self) -> None:
         self.register_group()
         self.register_worker(self.worker_descriptor("worker-1"))
         matcher = self.matcher()
@@ -1094,13 +1140,18 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         result = self.match_candidates(
             matcher,
             worker_ids=["worker-1", "missing", "worker-1"],
-            candidate_constraints={"candidate-1": candidate_constraint()},
+            candidate_constraints={
+                "candidate-1": candidate_constraint(limit=2)
+            },
         )
 
         self.assertEqual(self.reservation_ids(result), {"candidate-1": ["worker-1"]})
-        self.assertEqual(result.unmatched_worker_ids, ("missing",))
+        self.assertEqual(
+            result.endpoint_manager_id_by_worker_id,
+            {"worker-1": "endpoint-manager-1"},
+        )
 
-    def test_candidate_matcher_returns_all_workers_unmatched_without_constraints(self) -> None:
+    def test_candidate_matcher_returns_no_endpoint_rows_without_constraints(self) -> None:
         matcher = self.matcher()
 
         result = self.match_candidates(
@@ -1110,7 +1161,7 @@ class RedisWorkerRuntimeTest(unittest.TestCase):
         )
 
         self.assertEqual(result.matches, {})
-        self.assertEqual(set(result.unmatched_worker_ids), {"worker-1", "worker-2"})
+        self.assertEqual(result.endpoint_manager_id_by_worker_id, {})
 
 
 if __name__ == "__main__":

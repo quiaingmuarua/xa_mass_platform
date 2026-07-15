@@ -57,6 +57,7 @@ def _encode_worker_descriptor(descriptor: WorkerDescriptor) -> str | None:
             {
                 "workerId": descriptor.worker_id,
                 "workerGroupId": descriptor.worker_group_id,
+                "endpointManagerId": descriptor.endpoint_manager_id,
                 "systemMetadata": dict(descriptor.system_metadata),
                 "staticAttributes": dict(descriptor.static_attributes),
                 "dynamicAttributeNames": sorted(descriptor.dynamic_attribute_names),
@@ -151,6 +152,7 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
         next_descriptor = WorkerDescriptor(
             worker_id=descriptor.worker_id,
             worker_group_id=descriptor.worker_group_id,
+            endpoint_manager_id=descriptor.endpoint_manager_id,
             system_metadata={**descriptor.system_metadata, **dict(metadata)},
             static_attributes=descriptor.static_attributes,
             dynamic_attribute_names=descriptor.dynamic_attribute_names,
@@ -173,6 +175,7 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
         next_descriptor = WorkerDescriptor(
             worker_id=descriptor.worker_id,
             worker_group_id=descriptor.worker_group_id,
+            endpoint_manager_id=descriptor.endpoint_manager_id,
             system_metadata=descriptor.system_metadata,
             static_attributes=dict(attributes),
             dynamic_attribute_names=descriptor.dynamic_attribute_names,
@@ -281,6 +284,9 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
             return WorkerDescriptor(
                 worker_id=cls._require_string(payload["workerId"]),
                 worker_group_id=cls._require_string(payload["workerGroupId"]),
+                endpoint_manager_id=cls._require_string(
+                    payload["endpointManagerId"]
+                ),
                 system_metadata=cls._require_mapping(payload.get("systemMetadata", {})),
                 static_attributes=cls._require_mapping(payload.get("staticAttributes", {})),
                 dynamic_attribute_names=frozenset(
@@ -361,6 +367,11 @@ class RedisWorkerRuntime(WorkerRuntime):
             return WorkerRuntimeResult(
                 WorkerRuntimeStatus.INVALID,
                 "invalid workerGroupId",
+            )
+        if not _valid_id(descriptor.endpoint_manager_id):
+            return WorkerRuntimeResult(
+                WorkerRuntimeStatus.INVALID,
+                "invalid endpointManagerId",
             )
         if (
             self.redis.hget(
