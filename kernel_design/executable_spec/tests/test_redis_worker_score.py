@@ -787,7 +787,7 @@ class RedisWorkerScoreCoreTest(unittest.TestCase):
         result = self.kernel.release_score_holds(
             home_bucket_id=self.home_bucket_id,
             observed_scores={"worker": held},
-            release_time_millis=self.millis(950),
+            release_time_millis=self.millis(self.redis.now_slot),
         )["worker"]
         state = self.kernel.get_score_states(
             home_bucket_id=self.home_bucket_id,
@@ -797,18 +797,30 @@ class RedisWorkerScoreCoreTest(unittest.TestCase):
         self.assertEqual(WorkerScoreTransitionStatus.TRANSITIONED, result.status)
         self.assertIsNotNone(state)
         self.assertEqual(WorkerScorePolarity.RECOVERY_RECHECK, state.polarity)
-        self.assertEqual(self.millis(950), state.time_millis)
+        self.assertEqual(self.millis(self.redis.now_slot), state.time_millis)
         self.assertEqual(4, state.lane_rank)
         self.assertEqual(1, state.dirty)
 
-    def test_release_score_holds_reject_later_time(self) -> None:
-        held = self.score(WorkerScorePolarity.HOT_ACQUIRE, 950, 4)
+    def test_release_score_holds_rejects_base_not_below_observed_score(self) -> None:
+        held = self.score(WorkerScorePolarity.HOT_ACQUIRE, 1_050, 4)
         self.store_score("worker", held)
 
         result = self.kernel.release_score_holds(
             home_bucket_id=self.home_bucket_id,
             observed_scores={"worker": held},
-            release_time_millis=self.millis(951),
+            release_time_millis=self.millis(1_051),
+        )["worker"]
+
+        self.assertEqual(WorkerScoreTransitionStatus.INVALID, result.status)
+
+    def test_release_score_holds_rejects_time_before_current_slot(self) -> None:
+        held = self.score(WorkerScorePolarity.HOT_ACQUIRE, 1_050, 4)
+        self.store_score("worker", held)
+
+        result = self.kernel.release_score_holds(
+            home_bucket_id=self.home_bucket_id,
+            observed_scores={"worker": held},
+            release_time_millis=self.millis(self.redis.now_slot) - 1,
         )["worker"]
 
         self.assertEqual(WorkerScoreTransitionStatus.INVALID, result.status)

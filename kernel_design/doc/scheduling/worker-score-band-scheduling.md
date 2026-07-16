@@ -584,12 +584,19 @@ Rules:
 ```text
 releaseTimeSlot = floor(releaseTimeMillis / SLOT_MILLIS)
 storedScore must equal observedScore
-observedScore must decode to HOT_ACQUIRE or RECOVERY_RECHECK
-releaseTimeSlot <= observed timeSlot
+observedScore must be non-zero
+currentSlotStartMillis <= releaseTimeMillis
+abs(releaseSlotBase) < abs(observedScore)
 targetLaneRank = observed laneRank
 targetDirty = observed dirty
 write observed polarity with releaseTimeSlot, targetLaneRank, and targetDirty
 ```
+
+The implementation compares the owner-minted release slot base directly with
+the opaque observed score and preserves its low bits; it does not decode an
+observed lease time or need a business-level polarity branch. A release in the
+current score-clock slot is valid. A time before the current slot start is
+rejected so release cannot accidentally act as recovery cold parking.
 
 Release does not reopen a worker:
 

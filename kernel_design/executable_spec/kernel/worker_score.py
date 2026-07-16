@@ -290,9 +290,12 @@ class WorkerScoreCore(ABC):
     ) -> Mapping[WorkerId, WorkerScoreTransitionResult]:
         """Release exact held scores while preserving polarity.
 
-        Release is the only ordinary operation allowed to lower the score time
-        coordinate. It is not a RECOVERY_RECHECK -> HOT_ACQUIRE reopen. If an
-        observed score is negative, the worker remains in RECOVERY_RECHECK and
-        still requires recovery validation before hot score acquire.
+        Release time must not precede the current score-clock slot. Its minted
+        absolute slot base must be lower than each accepted absolute observed
+        score. Release preserves polarity, lane rank, and dirty through exact
+        observed-score CAS. It is not a RECOVERY_RECHECK -> HOT_ACQUIRE reopen.
+        If an observed score is negative, the worker remains in
+        RECOVERY_RECHECK and still requires recovery validation before hot
+        score acquire.
         """
         pass

@@ -500,28 +500,36 @@ return {"transitioned", target_score}
             )
 
         release_time_slot = self._time_slot_from_millis(release_time_millis)
+        current_slot_start_millis = self._time_millis_from_slot(
+            self._current_time_slot()
+        )
+        release_slot_base = self._abs_score(
+            release_time_slot,
+            self.MIN_LANE_RANK,
+            self.MIN_DIRTY,
+        )
+        if release_time_millis < current_slot_start_millis:
+            return self._uniform_results(
+                observed_scores,
+                WorkerScoreTransitionStatus.INVALID,
+            )
+
         immediate_results: dict[WorkerId, WorkerScoreTransitionResult] = {}
         pending_updates: dict[WorkerId, tuple[Score, Score]] = {}
         for worker_id, observed_score in observed_scores.items():
-            observed = self._decode_score(observed_score)
-            if observed is None:
+            observed_abs_score = abs(observed_score)
+            observed_low_bits = observed_abs_score % self.slot_factor
+            if release_slot_base >= observed_abs_score:
                 immediate_results[worker_id] = WorkerScoreTransitionResult(
                     WorkerScoreTransitionStatus.INVALID
                 )
                 continue
-            polarity, observed_time_slot, lane_rank, dirty = observed
-            next_abs_score = self._abs_score(release_time_slot, lane_rank, dirty)
-            if (
-                release_time_slot > observed_time_slot
-                or next_abs_score < self.MIN_BASE
-            ):
-                immediate_results[worker_id] = WorkerScoreTransitionResult(
-                    WorkerScoreTransitionStatus.INVALID
-                )
-                continue
+
+            polarity = 1 if observed_score > 0 else -1
+            next_abs_score = release_slot_base + observed_low_bits
             pending_updates[worker_id] = (
                 observed_score,
-                int(polarity) * next_abs_score,
+                polarity * next_abs_score,
             )
         return self._merge_batch_results(
             observed_scores,

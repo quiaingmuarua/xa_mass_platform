@@ -351,7 +351,10 @@ Rules:
 
 ```text
 same-polarity rewrite never lowers timeSlot
-release may lower timeSlot only through exact observedScore CAS
+release requires currentSlotStartMillis <= releaseTimeMillis and
+abs(releaseSlotBase) < abs(observedScore)
+release preserves polarity, laneRank, and dirty low bits and writes only through
+exact observedScore CAS
 polarity move preserves timeSlot and dirty
 polarity move uses exact observedScore CAS
 RECOVERY_RECHECK cannot be hot leased
