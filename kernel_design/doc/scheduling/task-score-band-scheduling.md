@@ -235,8 +235,9 @@ Task score-band uses four score bands. Temporary restriction is not a separate
 band; pause/block/hold is represented by rewriting the same active band with a
 future hold coordinate. A hard pause uses the maximum internal `timeSlot`
 coordinate. These are scheduling visibility states, not a second business
-lifecycle. Kernel code should branch on the decoded band and owner validation
-result, not on concrete product events.
+lifecycle. Owner policy uses the semantic band and validation result, not
+concrete product events. The Redis primitive receives owner-minted ranges and
+targets and validates numeric relations without interpreting business events.
 
 Hard pause is stronger than an ordinary future delay:
 

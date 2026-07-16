@@ -15,11 +15,13 @@ Dirty = int
 
 
 class WorkerScorePolarity(IntEnum):
-    """Signed worker acquisition lane.
+    """Worker-runtime-classified network availability polarity.
 
-    This is intentionally weaker than a lifecycle band. A worker is a
-    long-lived resource identity, so score sign only says which acquisition
-    lane may inspect it.
+    Positive means network available/online and maps to HOT_ACQUIRE. Negative
+    means network unavailable/offline and maps to RECOVERY_RECHECK. This is
+    intentionally not a lifecycle band or raw transport-session observation;
+    Worker is a long-lived resource and worker-runtime owns the validated
+    classification.
     """
 
     HOT_ACQUIRE = 1
@@ -52,10 +54,10 @@ class WorkerScoreTransitionResult:
 class WorkerScoreCore(ABC):
     """Worker score core interface.
 
-    Worker score is a signed acquisition coordinate:
+    Worker score is a signed network-availability and acquisition coordinate:
 
-    - positive score means HOT_ACQUIRE worker-acquire visibility;
-    - negative score means RECOVERY_RECHECK recovery visibility;
+    - positive score means network available/online HOT_ACQUIRE polarity;
+    - negative score means network unavailable/offline RECOVERY_RECHECK polarity;
     - abs(score) carries the internal time coordinate, laneRank, and dirty.
 
     It is not a worker lifecycle state machine. There is no PARKED band,

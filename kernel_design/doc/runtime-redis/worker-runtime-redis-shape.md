@@ -40,7 +40,8 @@ generic cross-round assignment hold records
 ```text
 workerGroupId == homeBucketId
 one worker belongs to exactly one workerGroupId in v0
-score ZSET is acquisition truth only
+score ZSET is worker-runtime-classified online/offline polarity plus
+acquisition/recovery timing truth
 descriptor hashes are resource declaration truth
 dynamic attribute keys are handler-owned projections / indexes
 endpointManagerId is a stable post-selection endpoint-owner locator
@@ -150,7 +151,8 @@ wr:{prefix}:score:{workerGroupId}
 Role:
 
 ```text
-runtime acquisition truth
+worker-runtime-classified network availability polarity
+runtime acquisition / recovery timing truth
 ```
 
 Only `WorkerScoreCore` writes this key. Resource catalog, dynamic attribute
@@ -221,15 +223,23 @@ Polarity:
 ```text
 score > 0
   HOT_ACQUIRE
+  worker-runtime-classified network available / online
   only source for worker hot acquisition
 
 score < 0
   RECOVERY_RECHECK
+  worker-runtime-classified network unavailable / offline
   only source for worker recovery validation
 
 score == 0
   invalid / reserved
 ```
+
+The sign is network-state scheduling truth after worker-runtime validation; it
+is not raw transport session truth. `timeSlot` is independent: an online Worker
+may remain positive but not currently acquirable because it is leased, held,
+disabled, draining, or cooling down. Polarity movement preserves `timeSlot`, so
+disconnect/reconnect cannot escape an existing hold.
 
 Constants:
 

@@ -70,7 +70,7 @@ Examples:
 
 ```text
 limited DSL operators are acceptable; making eventCode a worker-match field is not
-simple retry policy is acceptable; hiding retry truth in task score is not
+simple retry policy is acceptable; hiding TaskItem retry truth in Task score is not
 in-process handoff is acceptable; merging owner truth is not
 bounded fallback is acceptable; event-only liveness is not
 ```
@@ -84,6 +84,55 @@ owners validate truth before moving state
 policies map evidence to the next score
 external events only provide business evidence or optional acceleration
 ```
+
+### Three Score Axes
+
+The new kernel uses three independent score axes with one shared mechanism:
+
+```text
+one scheduling identity -> one ZSET member -> one ordered score coordinate
+```
+
+The score is the only scheduling truth for that identity. It is not the
+complete resource object and does not absorb descriptors, payload, result
+reason, transport session, trace, or query projection truth.
+
+| Axis | Scheduling identity | Encoded direction | Time rule | Final/recovery rule |
+| --- | --- | --- | --- | --- |
+| Task | global `taskId` | positive lifecycle tag decreases | same-band `timeSlot` normally increases | negative score is immutable terminal |
+| Worker | `workerId` inside one home bucket / WorkerGroup | sign is worker-runtime-classified network availability: positive online, negative offline | same-polarity `timeSlot` normally increases | polarity may toggle because Worker is long-lived; there is no terminal band |
+| TaskItem | `(taskId, messageId)` | outcome tag increases | ACTIVE same-band `timeSlot` increases | outcome precedence advances toward final success; there is no release |
+
+The shared contract is:
+
+```text
+bounded range + limit discovers due identities
+public owner methods accept millisecond time, not internal timeSlot
+the score owner mints encoded scores and Redis ranges
+score values crossing an owner boundary are opaque observation / lease fences
+business meaning stays above the score primitive
+the score owner still enforces field width, monotonic direction, suffix rules,
+and stale-write safety
+score absence is not a hidden parked, paused, terminal, or offline state
+```
+
+Ordinary time movement is monotonic. A lower time coordinate is allowed only
+through a declared exact-fence exception such as Task/Worker release or Worker
+recovery exhaustion to an owner-minted cold coordinate. TaskItem deliberately
+has no release: claim or retry remains held until its future coordinate becomes
+due.
+
+Concurrency strength is operation-specific. Monotonic range minting is enough
+when a stale writer can only move the coordinate safely forward. Exact
+observed-score comparison is required when old evidence could overwrite a
+newer lease, consume suffix/budget, release a hold, or change Worker polarity.
+TaskItem cross-tag outcome promotion intentionally uses numeric precedence
+instead of a claim fence.
+
+Current executable-spec implementations use 100ms slots while all owner-facing
+time inputs remain milliseconds. Slot resolution and score packing are private,
+but changing either against persisted Redis data is an encoding/keyspace
+migration, not an in-place reinterpretation of existing scores.
 
 ## Score Mutation Authority
 

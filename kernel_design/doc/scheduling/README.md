@@ -25,6 +25,21 @@ may change without changing owner authority.
 and result-routing. It is not collapsed into Task score and is not a fifth
 process lifecycle.
 
+All three score owners follow the shared
+[Three Score Axes](../../README.md#three-score-axes) contract:
+
+```text
+Task      lifecycle moves to lower tags; negative is immutable terminal
+Worker    sign is online/offline polarity; abs(score) carries scheduling time
+TaskItem  outcome moves to higher tags; ACTIVE claim time only moves forward
+```
+
+They share ordered discovery, owner-minted coordinates, opaque score fences,
+and bounded numeric transition primitives. They do not share one tag direction,
+one suffix meaning, or one universal delta constant. Each axis derives the
+simplest safe numeric relation from its own encoding; Redis/Lua does not need
+business event names or caller-supplied score ranges.
+
 ## Mainline
 
 ```text

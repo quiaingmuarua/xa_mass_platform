@@ -10,13 +10,14 @@ Worker score-band scheduling is the worker/resource acquisition clock.
 Worker score answers one question:
 
 ```text
-may this worker/resource enter worker candidate acquisition now?
+what network-availability polarity has worker-runtime assigned to this worker,
+and is that polarity's scheduling coordinate due now?
 ```
 
 It does not answer:
 
 ```text
-is this worker currently connected?
+which transport session or endpoint is currently connected?
 does this worker have free capacity?
 does this worker match a task demand?
 is this worker finally selected?
@@ -28,8 +29,11 @@ trace decisions.
 
 Worker score intentionally does not copy task score lifecycle tags. A task is a
 one-shot scheduling aggregate. A worker is a long-lived resource identity. The
-worker score axis therefore expresses acquisition polarity, not lifecycle
-progression.
+worker score axis therefore expresses owner-classified network availability as
+an acquisition polarity, not lifecycle progression. Positive/negative sign is
+the scheduling truth of online/offline classification; raw socket, heartbeat,
+session, and endpoint observations remain transport evidence until
+worker-runtime validates them.
 
 ## Owner Boundary
 
@@ -71,20 +75,29 @@ score = polarity * base
 base = timeSlot * SLOT_FACTOR + laneRank * DIRTY_FACTOR + dirty
 ```
 
-The sign is the worker scheduling lane:
+The sign is both the worker-runtime network classification and its scheduling
+polarity:
 
 ```text
 score > 0
   HOT_ACQUIRE polarity
+  worker-runtime classifies the worker as network available / online
   only candidate source for assignment-dispatch worker hot acquire
 
 score < 0
   RECOVERY_RECHECK polarity
+  worker-runtime classifies the worker as network unavailable / offline
   only candidate source for worker-runtime recovery-recheck validation
 
 score == 0
   invalid / reserved
 ```
+
+Positive does not mean immediately acquirable. The sign answers online/offline;
+the decoded `timeSlot` answers whether the online Worker is due, leased, held,
+disabled, draining, or cooling down. This separation is why manual disable can
+remain positive with a far-future coordinate, while confirmed disconnect
+changes only polarity and preserves the existing hold coordinate.
 
 `abs(score)` is decoded the same way for both polarities:
 
@@ -463,7 +476,9 @@ policy may invoke them only for an active continuation that will later
 revalidate or renew. Raw availability evidence never writes dirty.
 
 Raw network-ok, heartbeat, reconnect, keepalive, or latency evidence cannot move
-RECOVERY_RECHECK to HOT_ACQUIRE by itself. They are validation inputs only.
+RECOVERY_RECHECK to HOT_ACQUIRE by itself. It is evidence of network state;
+worker-runtime owns the validated online/offline classification and the exact
+polarity transition.
 
 ## Interface Rule
 
