@@ -5,7 +5,7 @@ implemented; policy coverage partial.
 
 This note fixes the first-cut metadata model for workers and worker groups in
 the clean kernel design workspace. It intentionally keeps the model small:
-metadata is query projection and registration shape, not runtime truth.
+metadata is a query projection and upsert declaration shape, not score truth.
 
 ## Core Decision
 
@@ -31,7 +31,7 @@ recreate the task; do not hot-swap worker groups during dispatch.
 
 `WorkerCandidateConstraint -> worker predicates` is matching inside the
 selected worker group. Its `match_rules` map narrows workers by `workerId`,
-placement, static/system attributes, or explicitly supported projected dynamic
+placement, platform/worker attributes, or explicitly supported projected dynamic
 query attributes.
 
 `TaskItem / DeliverSeed -> EventHandler` is handler invocation inside the selected
@@ -66,7 +66,7 @@ admission policy releases the exact lease for non-exclusive use or retains /
 renews it for exclusive use.
 
 Concurrency and capacity are policy inputs, not worker score truth. Represent
-them through static attributes, projected dynamic attributes such as
+them through Worker attributes, projected dynamic attributes such as
 `runningCount` / `freeSlots`, worker-side backpressure, and assignment policy.
 Do not keep a worker score lease open merely to express in-flight execution.
 
@@ -108,16 +108,19 @@ task assignment truth
 dynamic attribute current values
 ```
 
-## WorkerDescriptor
+## Worker Declaration And Descriptor
 
 ```text
-WorkerDescriptor
+WorkerDeclaration
   workerId: string
   workerGroupId: string
   endpointManagerId: string
-  systemMetadata: map<string, value>
-  staticAttributes: map<string, value>
+  attributes: map<string, value>
   dynamicAttributeNames: set<string>
+
+WorkerDescriptor
+  WorkerDeclaration fields
+  platformAttributes: map<string, value>
 ```
 
 `workerId` is the resource identity used by worker score and assignment.
@@ -131,14 +134,23 @@ It is read only after `workerId` has already been selected. It does not prove a
 live connection, mailbox, session, or reachability state and must not participate
 in worker matching, score ordering, or candidate selection.
 
-First registration is a `WorkerRuntime` operation, not a descriptor-catalog
-write. It initializes the worker's HOT_ACQUIRE score first and writes the
-descriptor second. A descriptor without a score is not a schedulable registered
-worker. `WorkerResourceCatalog` keeps bounded descriptor reads and
-low-frequency metadata updates; those updates do not require a worker score
-lease. The same rule applies to dynamic attribute updates: resource truth commits
-independently, while any justified dirty mark is an additional stale hint for a
-real persisted assignment continuation and cannot gate or roll back the update.
+`WorkerDeclaration` is caller-owned connect/reconnect input. It cannot carry
+platform attributes, score fields, polarity, laneRank, dirty, or time
+coordinates. `WorkerDescriptor` is the complete runtime query projection.
+
+`WorkerRuntime.upsert_worker` establishes or refreshes the Worker. First
+appearance writes the immutable declaration identity and initializes the first
+HOT_ACQUIRE score using runtime-owned lane configuration. Reconnect completely
+replaces `attributes`, preserves `platformAttributes`, and restores a negative
+score to positive by flipping only its polarity. A positive score is not
+rewritten, so an existing lease, hold, laneRank, dirty bit, and time coordinate
+remain effective.
+
+`WorkerResourceCatalog.upsert_worker_group` creates a group or completely
+replaces its `attributes`. Existing `eventCodes` are immutable; a mismatch is a
+conflict. Worker `endpointManagerId` and `dynamicAttributeNames` are also
+immutable after first appearance. Future mutation requires a separate owner
+command rather than expanding upsert.
 
 `workerGroupId` is globally unique. `workerId` is unique inside one
 `workerGroupId`; all worker catalog operations therefore carry both values.
@@ -152,10 +164,11 @@ choices behind the catalog.
 
 First-layer descriptor fields intentionally stop at resource identity, group
 identity, endpoint-owner identity, and attribute buckets. Specific runtime,
-package, handler, or compatibility versions belong in `staticAttributes`.
+package, handler, or compatibility versions belong in `attributes`.
 
-`systemMetadata` is platform-written metadata. It is writable, but should
-be low-frequency. Examples:
+`platformAttributes` is platform-written metadata. Worker upsert cannot supply
+or replace it. The dedicated platform update merges attributes and should be
+low-frequency. Examples:
 
 ```text
 registeredAt
@@ -165,9 +178,8 @@ trustLevel
 ownerScope
 ```
 
-`staticAttributes` are worker-reported metadata at register/connect time, after
-platform validation. They should be low-frequency and refreshed only by
-register, reconnect, or explicit metadata update. Examples:
+`attributes` are Worker-reported metadata at connect/reconnect time, after
+platform validation. Each upsert is a complete replacement snapshot. Examples:
 
 ```text
 cpuClass
@@ -180,7 +192,7 @@ region
 customTraits
 ```
 
-Version and handler-bundle compatibility fields belong in `staticAttributes`
+Version and handler-bundle compatibility fields belong in `attributes`
 when they are needed. They are ordinary low-frequency metadata, not first-layer
 descriptor fields, not metadata revisions, not stale fences, and not
 score lease tokens.
@@ -208,20 +220,19 @@ a homogeneous event-handler universe:
 every accepted worker in the group must be compatible with the group's eventCodes
 ```
 
-Platform validation must happen when a worker registers, connects, or changes
-group:
+Platform validation must happen when a Worker first appears or reconnects:
 
 ```text
 workerGroupId exists
-staticAttributes satisfy group policy / attributes
-worker registration evidence or platform handler catalog covers eventCodes
+attributes satisfy group policy / attributes
+Worker declaration evidence or platform handler catalog covers eventCodes
 ```
 
 If a worker cannot satisfy the group's event promise, reject the worker from
 that worker group. Do not solve this by adding per-worker event binding rows in
 v0.
 
-Version compatibility is metadata validation through `staticAttributes`.
+Version compatibility is metadata validation through `attributes`.
 Assignment-dispatch must not interpret version fields directly as runtime
 availability. Current usability still belongs to worker-runtime score lease /
 hold.
@@ -245,8 +256,8 @@ candidate_constraints = {
     limit=2,
     match_rules={
       "workerId": {"$in": ["worker-1", "worker-2"]},
-      "system.tier": {"$eq": "premium"},
-      "static.runtime": {"$in": ["python", "java"]},
+      "platform.tier": {"$eq": "premium"},
+      "attributes.runtime": {"$in": ["python", "java"]},
       "dynamic.battery": {"$gte": 20},
     },
   ),
@@ -257,8 +268,8 @@ The current worker matcher context exposes these fields:
 
 ```text
 workerId
-system.*
-static.*
+platform.*
+attributes.*
 dynamic.*
 ```
 
@@ -270,7 +281,7 @@ normal context value that may participate in the same DSL operators as any
 other value. It is not a descriptor attribute.
 
 The matcher derives dynamic read dependencies from the compiled `dynamic.*`
-rule keys. `workerId`, `system.*`, and `static.*` are already supplied by the
+rule keys. `workerId`, `platform.*`, and `attributes.*` are already supplied by the
 descriptor batch and require no handler read. The derived dependency union is
 internal matcher state, not a caller-provided constraint field.
 
@@ -290,8 +301,8 @@ domain-qualified fields against a two-level context map:
 ConstraintEvaluator.evaluate_match_rules(
   {
     "workerId": worker_id,
-    "system": descriptor.system_metadata,
-    "static": descriptor.static_attributes,
+    "platform": descriptor.platform_attributes,
+    "attributes": descriptor.attributes,
     "dynamic": resolved_dynamic_values,
   },
   match_rules,
@@ -301,7 +312,7 @@ ConstraintEvaluator.evaluate_match_rules(
 It splits only the first `.`. For example, `dynamic.battery.level` resolves
 domain `dynamic` and exact field name `battery.level`; it does not recursively
 walk `battery -> level`. An unqualified field such as `workerId` is read from
-the top-level context. `workerId`, `system`, `static`, and `dynamic` are not
+the top-level context. `workerId`, `platform`, `attributes`, and `dynamic` are not
 DSL-reserved names. The current worker matcher may choose those context domains,
 but that is a worker-runtime owner decision. The evaluator does not know
 descriptors, handlers, Redis, worker fields, or scheduling state.
@@ -450,7 +461,8 @@ descriptor-supported worker batch from the matcher. Neither operation writes
 worker score leases directly.
 
 `WorkerDynamicAttributeRuntime` is separate from `WorkerResourceCatalog`.
-`WorkerRuntime` owns score-first worker registration. Catalog owns worker-group
+`WorkerRuntime` owns Worker upsert and score initialization/reconnect polarity.
+Catalog owns worker-group
 declarations, bounded descriptor reads, and low-frequency descriptor metadata.
 Dynamic attribute runtime owns bounded update/read routing and handler
 dispatch for projected, policy-readable facts. It must not become a second
@@ -499,7 +511,7 @@ running. Assignment-dispatch does not query or choose groups on each round.
 
 `WorkerCandidateConstraint -> worker predicates` is worker matching inside the
 selected worker group. Its `match_rules` may constrain `workerId`, placement,
-static attributes, system attributes, or explicitly supported projected
+Worker attributes, platform attributes, or explicitly supported projected
 dynamic attributes. These constraints narrow the Worker ids returned by the
 lease-first allocation step; matcher does not attempt or renew Worker-score
 leases.
@@ -667,7 +679,7 @@ stale-fence invariant that cannot be handled by score fence / score lease.
 
 Add event binding rows only when `WorkerGroupDescriptor.eventCodes` is too weak
 to express group-level event ownership. Do not add them to handle ordinary
-worker version differences; use `staticAttributes` plus platform validation for
+worker version differences; use `attributes` plus platform validation for
 that. Do not add event binding rows preemptively.
 
 ## Minimal Python Shape
@@ -681,12 +693,21 @@ class WorkerGroupDescriptor:
 
 
 @dataclass(frozen=True)
+class WorkerDeclaration:
+    worker_id: str
+    worker_group_id: str
+    endpoint_manager_id: str
+    attributes: Mapping[str, JsonValue]
+    dynamic_attribute_names: frozenset[str]
+
+
+@dataclass(frozen=True)
 class WorkerDescriptor:
     worker_id: str
     worker_group_id: str
     endpoint_manager_id: str
-    system_metadata: Mapping[str, JsonValue]
-    static_attributes: Mapping[str, JsonValue]
+    attributes: Mapping[str, JsonValue]
+    platform_attributes: Mapping[str, JsonValue]
     dynamic_attribute_names: frozenset[str]
 ```
 

@@ -24,7 +24,7 @@ from kernel_design.executable_spec.assembly import (
     TaskDescriptor,
     TaskItem,
     TaskItemAppendResult,
-    WorkerDescriptor,
+    WorkerDeclaration,
     WorkerGroupDescriptor,
     WorkerRuntimeResult,
     WorkerRuntimeStatus,
@@ -32,23 +32,13 @@ from kernel_design.executable_spec.assembly import (
 
 
 class WorkerGroupRequest(BaseModel):
-    worker_group_id: str = Field(alias="workerGroupId")
     attributes: dict[str, Any] = Field(default_factory=dict)
     event_codes: list[str] = Field(alias="eventCodes")
 
 
 class WorkerRequest(BaseModel):
-    worker_id: str = Field(alias="workerId")
-    worker_group_id: str = Field(alias="workerGroupId")
     endpoint_manager_id: str = Field(alias="endpointManagerId")
-    system_metadata: dict[str, Any] = Field(
-        default_factory=dict,
-        alias="systemMetadata",
-    )
-    static_attributes: dict[str, Any] = Field(
-        default_factory=dict,
-        alias="staticAttributes",
-    )
+    attributes: dict[str, Any] = Field(default_factory=dict)
     dynamic_attribute_names: list[str] = Field(
         default_factory=list,
         alias="dynamicAttributeNames",
@@ -84,7 +74,7 @@ def _result_payload(result: Any) -> dict[str, Any]:
 
 def _worker_result_response(result: WorkerRuntimeResult) -> JSONResponse:
     status_code = {
-        WorkerRuntimeStatus.OK: 201,
+        WorkerRuntimeStatus.OK: 200,
         WorkerRuntimeStatus.NOOP: 200,
         WorkerRuntimeStatus.NOT_FOUND: 404,
         WorkerRuntimeStatus.INVALID: 422,
@@ -198,28 +188,34 @@ def create_app(
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
-    @app.post("/worker-groups")
-    def register_worker_group(request: WorkerGroupRequest) -> JSONResponse:
+    @app.put("/worker-groups/{worker_group_id}")
+    def upsert_worker_group(
+        worker_group_id: str,
+        request: WorkerGroupRequest,
+    ) -> JSONResponse:
         return _worker_result_response(
-            resource_commands.register_worker_group(
+            resource_commands.upsert_worker_group(
                 descriptor=WorkerGroupDescriptor(
-                    worker_group_id=request.worker_group_id,
+                    worker_group_id=worker_group_id,
                     attributes=request.attributes,
                     event_codes=frozenset(request.event_codes),
                 )
             )
         )
 
-    @app.post("/workers")
-    def register_worker(request: WorkerRequest) -> JSONResponse:
+    @app.put("/worker-groups/{worker_group_id}/workers/{worker_id}")
+    def upsert_worker(
+        worker_group_id: str,
+        worker_id: str,
+        request: WorkerRequest,
+    ) -> JSONResponse:
         return _worker_result_response(
-            resource_commands.register_worker(
-                descriptor=WorkerDescriptor(
-                    worker_id=request.worker_id,
-                    worker_group_id=request.worker_group_id,
+            resource_commands.upsert_worker(
+                declaration=WorkerDeclaration(
+                    worker_id=worker_id,
+                    worker_group_id=worker_group_id,
                     endpoint_manager_id=request.endpoint_manager_id,
-                    system_metadata=request.system_metadata,
-                    static_attributes=request.static_attributes,
+                    attributes=request.attributes,
                     dynamic_attribute_names=frozenset(
                         request.dynamic_attribute_names
                     ),

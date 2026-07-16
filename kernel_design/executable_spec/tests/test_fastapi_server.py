@@ -54,10 +54,10 @@ class FastApiServerTest(unittest.TestCase):
         self.application = Mock(spec=KernelApplication)
         self.resources_client = Mock(spec=ResourcesCommandClient)
         self.deliver_seed_consumer = Mock(spec=DeliverSeedConsumerClient)
-        self.resources_client.register_worker_group.return_value = WorkerRuntimeResult(
+        self.resources_client.upsert_worker_group.return_value = WorkerRuntimeResult(
             WorkerRuntimeStatus.OK
         )
-        self.resources_client.register_worker.return_value = WorkerRuntimeResult(
+        self.resources_client.upsert_worker.return_value = WorkerRuntimeResult(
             WorkerRuntimeStatus.OK
         )
         self.application.create_task.return_value = TaskCreationResult(
@@ -95,22 +95,18 @@ class FastApiServerTest(unittest.TestCase):
         self.assertFalse(hasattr(self.resources_client, "start"))
 
     def test_routes_translate_http_values_to_assembly_contracts(self) -> None:
-        group_response = self.client.post(
-            "/worker-groups",
+        group_response = self.client.put(
+            "/worker-groups/image-workers",
             json={
-                "workerGroupId": "image-workers",
                 "attributes": {"kind": "image"},
                 "eventCodes": ["image.resize"],
             },
         )
-        worker_response = self.client.post(
-            "/workers",
+        worker_response = self.client.put(
+            "/worker-groups/image-workers/workers/worker-1",
             json={
-                "workerId": "worker-1",
-                "workerGroupId": "image-workers",
                 "endpointManagerId": "endpoint-1",
-                "systemMetadata": {},
-                "staticAttributes": {"runtime": "python"},
+                "attributes": {"runtime": "python"},
                 "dynamicAttributeNames": [],
             },
         )
@@ -119,7 +115,7 @@ class FastApiServerTest(unittest.TestCase):
             json={
                 "taskId": "task-1",
                 "workerGroupId": "image-workers",
-                "allocationRule": {"static.runtime": {"$eq": "python"}},
+                "allocationRule": {"attributes.runtime": {"$eq": "python"}},
                 "config": {
                     "priority": "80",
                     "maximumCandidateWorkers": "10",
@@ -146,8 +142,8 @@ class FastApiServerTest(unittest.TestCase):
             "/endpoint-managers/endpoint-1/deliver-seeds:consume?limit=10"
         )
 
-        self.assertEqual(201, group_response.status_code)
-        self.assertEqual(201, worker_response.status_code)
+        self.assertEqual(200, group_response.status_code)
+        self.assertEqual(200, worker_response.status_code)
         self.assertEqual(201, task_response.status_code)
         self.assertEqual(200, approval_response.status_code)
         self.assertEqual(
@@ -169,13 +165,15 @@ class FastApiServerTest(unittest.TestCase):
             "suffix",
             inspect.signature(self.application.create_task).parameters,
         )
-        self.resources_client.register_worker_group.assert_called_once()
-        self.resources_client.register_worker.assert_called_once()
+        self.resources_client.upsert_worker_group.assert_called_once()
+        self.resources_client.upsert_worker.assert_called_once()
         self.deliver_seed_consumer.consume_deliver_seeds.assert_called_once_with(
             endpoint_manager_id="endpoint-1",
             limit=10,
         )
         self.assertFalse(hasattr(self.application, "consume_deliver_seeds"))
+        self.assertEqual(404, self.client.post("/worker-groups").status_code)
+        self.assertEqual(404, self.client.post("/workers").status_code)
 
     def test_dynamic_attribute_route_is_not_public(self) -> None:
         response = self.client.post(

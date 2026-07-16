@@ -398,8 +398,8 @@ unless explicitly requested. Prove one owner plane first.
 Worker-runtime proof should stop at worker-runtime behavior:
 
 ```text
-register WorkerGroupDescriptor
-register WorkerDescriptor
+upsert WorkerGroupDescriptor
+upsert WorkerDeclaration
 initialize HOT_ACQUIRE score
 acquire HOT_ACQUIRE candidates
 acquire unchanged candidates through exact observed-score CAS

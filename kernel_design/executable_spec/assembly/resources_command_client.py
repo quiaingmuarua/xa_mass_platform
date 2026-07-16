@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from ..kernel import (
-    WorkerDescriptor,
+    WorkerDeclaration,
     WorkerGroupDescriptor,
     WorkerRuntimeResult,
 )
@@ -13,7 +13,7 @@ from ..redis_runtime import (
 from .application import KernelApplicationConfig
 
 
-_DEFAULT_WORKER_LANE_RANK = 50
+_DEFAULT_INITIAL_WORKER_LANE_RANK = 50
 
 
 class ResourcesCommandClient:
@@ -49,6 +49,7 @@ class ResourcesCommandClient:
             redis_client,
             worker_score,
             prefix=resolved_config.redis_prefix,
+            initial_lane_rank=_DEFAULT_INITIAL_WORKER_LANE_RANK,
         )
 
     @classmethod
@@ -58,21 +59,20 @@ class ResourcesCommandClient:
     ) -> ResourcesCommandClient:
         return cls(KernelApplicationConfig.from_json(config_json))
 
-    def register_worker_group(
+    def upsert_worker_group(
         self,
         *,
         descriptor: WorkerGroupDescriptor,
     ) -> WorkerRuntimeResult:
-        return self._resource_catalog.register_worker_group_descriptor(
+        return self._resource_catalog.upsert_worker_group(
             descriptor=descriptor,
         )
 
-    def register_worker(
+    def upsert_worker(
         self,
         *,
-        descriptor: WorkerDescriptor,
+        declaration: WorkerDeclaration,
     ) -> WorkerRuntimeResult:
-        return self._worker_runtime.register_worker_descriptor(
-            descriptor=descriptor,
-            lane_rank=_DEFAULT_WORKER_LANE_RANK,
+        return self._worker_runtime.upsert_worker(
+            declaration=declaration,
         )

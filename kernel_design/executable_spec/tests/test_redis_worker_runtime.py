@@ -4,9 +4,12 @@ import unittest
 
 from kernel_design.executable_spec import (
     RedisWorkerDynamicAttributeRuntime,
+    RedisWorkerRuntime,
     WorkerGroupDescriptor,
     WorkerRuntimeResult,
     WorkerRuntimeStatus,
+    WorkerScorePolarity,
+    WorkerScoreTransitionStatus,
 )
 
 from kernel_design.executable_spec.tests.redis_worker_runtime_test_support import (
@@ -15,8 +18,17 @@ from kernel_design.executable_spec.tests.redis_worker_runtime_test_support impor
 
 
 class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
-    def test_register_and_read_worker_group_descriptor(self) -> None:
-        self.register_group()
+    def test_runtime_rejects_invalid_initial_lane_rank(self) -> None:
+        with self.assertRaisesRegex(ValueError, "initial_lane_rank"):
+            RedisWorkerRuntime(
+                self.redis,
+                self.score_band,
+                prefix="test",
+                initial_lane_rank=100,
+            )
+
+    def test_upsert_and_read_worker_group_descriptor(self) -> None:
+        self.upsert_group()
 
         rows = self.catalog.get_worker_group_descriptors(
             worker_group_ids=["image-workers", "missing"],
@@ -26,21 +38,53 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
         self.assertIsNone(rows["missing"])
         self.assertIn("image-workers", self.redis.hashes["wr:test:groups"])
 
-    def test_register_worker_descriptor_writes_selected_group_hash(self) -> None:
-        self.register_group()
-        descriptor = self.worker_descriptor(
-            "worker-1",
-            system_metadata={"tier": "premium"},
-            static_attributes={"runtime": "python"},
+    def test_worker_group_upsert_replaces_attributes_but_not_event_codes(self) -> None:
+        self.catalog.upsert_worker_group(
+            descriptor=WorkerGroupDescriptor(
+                worker_group_id="image-workers",
+                attributes={"kind": "image", "removed": True},
+                event_codes=self.group.event_codes,
+            )
         )
-        self.register_worker(descriptor)
+
+        updated = self.catalog.upsert_worker_group(
+            descriptor=WorkerGroupDescriptor(
+                worker_group_id="image-workers",
+                attributes={"kind": "gpu"},
+                event_codes=self.group.event_codes,
+            )
+        )
+        conflict = self.catalog.upsert_worker_group(
+            descriptor=WorkerGroupDescriptor(
+                worker_group_id="image-workers",
+                attributes={"kind": "other"},
+                event_codes=frozenset({"other"}),
+            )
+        )
+        stored = self.catalog.get_worker_group_descriptors(
+            worker_group_ids=["image-workers"]
+        )["image-workers"]
+
+        self.assertEqual(updated.status, WorkerRuntimeStatus.OK)
+        self.assertEqual(conflict.status, WorkerRuntimeStatus.CONFLICT)
+        assert stored is not None
+        self.assertEqual(stored.attributes, {"kind": "gpu"})
+        self.assertEqual(stored.event_codes, self.group.event_codes)
+
+    def test_upsert_worker_writes_selected_group_hash(self) -> None:
+        self.upsert_group()
+        declaration = self.worker_declaration(
+            "worker-1",
+            attributes={"runtime": "python"},
+        )
+        self.upsert_worker(declaration)
 
         rows = self.catalog.get_worker_descriptors(
             worker_group_id="image-workers",
             worker_ids=["worker-1"],
         )
 
-        self.assertEqual(rows["worker-1"], descriptor)
+        self.assertEqual(rows["worker-1"], self.expected_descriptor(declaration))
         self.assertIn("worker-1", self.redis.hashes["wr:test:workers:image-workers"])
         self.assertEqual(
             set(self.redis.hashes),
@@ -51,32 +95,55 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
             self.redis.zsets["wr:test:score:image-workers"],
         )
 
-    def test_register_worker_for_missing_group_is_not_found(self) -> None:
-        result = self.runtime.register_worker_descriptor(
-            descriptor=self.worker_descriptor("worker-1"),
-            lane_rank=self.LANE_RANK,
+    def test_upsert_worker_for_missing_group_is_not_found(self) -> None:
+        result = self.runtime.upsert_worker(
+            declaration=self.worker_declaration("worker-1"),
         )
 
         self.assertEqual(result.status, WorkerRuntimeStatus.NOT_FOUND)
         self.assertEqual(self.redis.zsets, {})
 
-    def test_register_worker_requires_endpoint_manager_id(self) -> None:
-        self.register_group()
+    def test_upsert_worker_requires_endpoint_manager_id(self) -> None:
+        self.upsert_group()
 
-        result = self.runtime.register_worker_descriptor(
-            descriptor=self.worker_descriptor(
+        result = self.runtime.upsert_worker(
+            declaration=self.worker_declaration(
                 "worker-1",
                 endpoint_manager_id="",
             ),
-            lane_rank=self.LANE_RANK,
         )
 
         self.assertEqual(result.status, WorkerRuntimeStatus.INVALID)
         self.assertEqual(self.redis.zsets, {})
 
-    def test_registered_worker_enters_hot_acquire_after_current_slot(self) -> None:
-        self.register_group()
-        self.register_worker(self.worker_descriptor("worker-1"))
+    def test_worker_runtime_rejects_legacy_descriptor_json(self) -> None:
+        self.upsert_group()
+        self.redis.hset(
+            "wr:test:workers:image-workers",
+            "worker-1",
+            (
+                '{"workerId":"worker-1","workerGroupId":"image-workers",'
+                '"endpointManagerId":"endpoint-manager-1",'
+                '"systemMetadata":{},"staticAttributes":{},'
+                '"dynamicAttributeNames":[]}'
+            ),
+        )
+
+        result = self.runtime.upsert_worker(
+            declaration=self.worker_declaration("worker-1"),
+        )
+        rows = self.catalog.get_worker_descriptors(
+            worker_group_id="image-workers",
+            worker_ids=["worker-1"],
+        )
+
+        self.assertEqual(result.status, WorkerRuntimeStatus.INVALID)
+        self.assertIsNone(rows["worker-1"])
+        self.assertEqual(self.redis.zsets, {})
+
+    def test_upserted_worker_enters_hot_acquire_after_current_slot(self) -> None:
+        self.upsert_group()
+        self.upsert_worker(self.worker_declaration("worker-1"))
 
         self.assertEqual(
             self.score_band.acquire_hot_acquire_candidates(
@@ -94,53 +161,207 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
 
         self.assertEqual(set(candidates), {"worker-1"})
 
-    def test_existing_worker_score_blocks_descriptor_replacement(self) -> None:
-        self.register_group()
-        original = self.worker_descriptor(
+    def test_existing_worker_upsert_replaces_only_worker_attributes(self) -> None:
+        self.upsert_group()
+        original = self.worker_declaration(
             "worker-1",
-            static_attributes={"runtime": "python"},
+            attributes={"runtime": "python", "removed": True},
         )
-        self.register_worker(original)
+        self.upsert_worker(original)
 
-        result = self.runtime.register_worker_descriptor(
-            descriptor=self.worker_descriptor(
+        self.catalog.update_worker_platform_attributes(
+            worker_group_id="image-workers",
+            worker_id="worker-1",
+            attributes={"tier": "premium"},
+        )
+
+        result = self.runtime.upsert_worker(
+            declaration=self.worker_declaration(
                 "worker-1",
-                static_attributes={"runtime": "java"},
+                attributes={"runtime": "java"},
             ),
-            lane_rank=self.LANE_RANK,
         )
 
-        self.assertEqual(result.status, WorkerRuntimeStatus.CONFLICT)
+        stored = self.catalog.get_worker_descriptors(
+            worker_group_id="image-workers",
+            worker_ids=["worker-1"],
+        )["worker-1"]
+        self.assertEqual(result.status, WorkerRuntimeStatus.OK)
+        assert stored is not None
+        self.assertEqual(stored.attributes, {"runtime": "java"})
+        self.assertEqual(stored.platform_attributes, {"tier": "premium"})
+
+    def test_reconnect_flips_recovery_score_without_changing_coordinate(self) -> None:
+        self.upsert_group()
+        declaration = self.worker_declaration(
+            "worker-1",
+            attributes={"runtime": "python"},
+        )
+        self.upsert_worker(declaration)
+        hot = self.score_band.get_score_states(
+            home_bucket_id="image-workers",
+            worker_ids=["worker-1"],
+        )["worker-1"]
+        assert hot is not None
+        disconnected = self.score_band.toggle_current_polarity(
+            home_bucket_id="image-workers",
+            worker_id="worker-1",
+            observed_score=hot.score,
+            target_lane_rank=hot.lane_rank,
+        )
         self.assertEqual(
+            disconnected.status,
+            WorkerScoreTransitionStatus.TRANSITIONED,
+        )
+
+        result = self.runtime.upsert_worker(
+            declaration=self.worker_declaration(
+                "worker-1",
+                attributes={"runtime": "java"},
+            )
+        )
+        reconnected = self.score_band.get_score_states(
+            home_bucket_id="image-workers",
+            worker_ids=["worker-1"],
+        )["worker-1"]
+
+        self.assertEqual(result.status, WorkerRuntimeStatus.OK)
+        assert reconnected is not None
+        self.assertEqual(reconnected.polarity, WorkerScorePolarity.HOT_ACQUIRE)
+        self.assertEqual(reconnected.score, abs(disconnected.score or 0))
+        self.assertEqual(reconnected.lane_rank, self.LANE_RANK)
+
+    def test_worker_identity_conflict_does_not_change_descriptor_or_score(self) -> None:
+        self.upsert_group()
+        declaration = self.worker_declaration(
+            "worker-1",
+            attributes={"runtime": "python"},
+        )
+        self.upsert_worker(declaration)
+        before_score = self.score_band.get_score_states(
+            home_bucket_id="image-workers",
+            worker_ids=["worker-1"],
+        )["worker-1"]
+
+        endpoint_conflict = self.runtime.upsert_worker(
+            declaration=self.worker_declaration(
+                "worker-1",
+                endpoint_manager_id="other-endpoint",
+                attributes={"runtime": "java"},
+            )
+        )
+        dynamic_conflict = self.runtime.upsert_worker(
+            declaration=self.worker_declaration(
+                "worker-1",
+                attributes={"runtime": "java"},
+                dynamic_attribute_names=frozenset({"load"}),
+            )
+        )
+        stored = self.catalog.get_worker_descriptors(
+            worker_group_id="image-workers",
+            worker_ids=["worker-1"],
+        )["worker-1"]
+        after_score = self.score_band.get_score_states(
+            home_bucket_id="image-workers",
+            worker_ids=["worker-1"],
+        )["worker-1"]
+
+        self.assertEqual(endpoint_conflict.status, WorkerRuntimeStatus.CONFLICT)
+        self.assertEqual(dynamic_conflict.status, WorkerRuntimeStatus.CONFLICT)
+        self.assertEqual(stored, self.expected_descriptor(declaration))
+        self.assertEqual(after_score, before_score)
+
+    def test_upsert_repairs_descriptor_only_and_score_only_residue(self) -> None:
+        self.upsert_group()
+        descriptor_only = self.worker_declaration("descriptor-only")
+        self.upsert_worker(descriptor_only)
+        del self.redis.zsets["wr:test:score:image-workers"]["descriptor-only"]
+
+        repaired_descriptor_only = self.runtime.upsert_worker(
+            declaration=descriptor_only
+        )
+
+        score_only = self.worker_declaration("score-only")
+        self.upsert_worker(score_only)
+        self.redis.hdel("wr:test:workers:image-workers", "score-only")
+        repaired_score_only = self.runtime.upsert_worker(declaration=score_only)
+
+        self.assertEqual(
+            repaired_descriptor_only.status,
+            WorkerRuntimeStatus.OK,
+        )
+        self.assertEqual(repaired_score_only.status, WorkerRuntimeStatus.OK)
+        states = self.score_band.get_score_states(
+            home_bucket_id="image-workers",
+            worker_ids=["descriptor-only", "score-only"],
+        )
+        self.assertTrue(all(state is not None for state in states.values()))
+        descriptors = self.catalog.get_worker_descriptors(
+            worker_group_id="image-workers",
+            worker_ids=["descriptor-only", "score-only"],
+        )
+        self.assertTrue(
+            all(descriptor is not None for descriptor in descriptors.values())
+        )
+
+    def test_same_worker_id_is_independent_across_worker_groups(self) -> None:
+        self.upsert_group()
+        self.catalog.upsert_worker_group(
+            descriptor=WorkerGroupDescriptor(
+                worker_group_id="audio-workers",
+                attributes={},
+                event_codes=frozenset({"transcribe"}),
+            )
+        )
+
+        image = self.runtime.upsert_worker(
+            declaration=self.worker_declaration("shared")
+        )
+        audio = self.runtime.upsert_worker(
+            declaration=self.worker_declaration(
+                "shared",
+                worker_group_id="audio-workers",
+                endpoint_manager_id="audio-endpoint",
+            )
+        )
+
+        self.assertEqual(image.status, WorkerRuntimeStatus.OK)
+        self.assertEqual(audio.status, WorkerRuntimeStatus.OK)
+        self.assertIsNotNone(
             self.catalog.get_worker_descriptors(
                 worker_group_id="image-workers",
-                worker_ids=["worker-1"],
-            )["worker-1"],
-            original,
+                worker_ids=["shared"],
+            )["shared"]
+        )
+        self.assertIsNotNone(
+            self.catalog.get_worker_descriptors(
+                worker_group_id="audio-workers",
+                worker_ids=["shared"],
+            )["shared"]
         )
 
     def test_get_workers_is_scoped_to_one_explicit_group(self) -> None:
-        self.register_group()
+        self.upsert_group()
         other_group = WorkerGroupDescriptor(
             worker_group_id="audio-workers",
             attributes={},
             event_codes=frozenset({"transcribe"}),
         )
-        self.catalog.register_worker_group_descriptor(descriptor=other_group)
-        image_worker = self.worker_descriptor("image-worker")
-        audio_worker = self.worker_descriptor(
+        self.catalog.upsert_worker_group(descriptor=other_group)
+        image_worker = self.worker_declaration("image-worker")
+        audio_worker = self.worker_declaration(
             "audio-worker",
             worker_group_id="audio-workers",
         )
-        self.register_worker(image_worker)
-        self.register_worker(audio_worker)
+        self.upsert_worker(image_worker)
+        self.upsert_worker(audio_worker)
 
         rows = self.catalog.get_worker_descriptors(
             worker_group_id="image-workers",
             worker_ids=["image-worker", "audio-worker", "missing"],
         )
 
-        self.assertEqual(rows["image-worker"], image_worker)
+        self.assertEqual(rows["image-worker"], self.expected_descriptor(image_worker))
         self.assertIsNone(rows["audio-worker"])
         self.assertIsNone(rows["missing"])
 
@@ -148,22 +369,29 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
             worker_group_id="audio-workers",
             worker_ids=["audio-worker"],
         )
-        self.assertEqual(audio_rows["audio-worker"], audio_worker)
-
-    def test_system_metadata_update_merges_without_touching_other_fields(self) -> None:
-        self.register_group()
-        self.register_worker(
-            self.worker_descriptor(
-                "worker-1",
-                system_metadata={"tier": "standard", "region": "us"},
-                static_attributes={"runtime": "python"},
-            )
+        self.assertEqual(
+            audio_rows["audio-worker"],
+            self.expected_descriptor(audio_worker),
         )
 
-        result = self.catalog.update_worker_system_metadata(
+    def test_platform_attributes_update_merges_without_touching_other_fields(self) -> None:
+        self.upsert_group()
+        self.upsert_worker(
+            self.worker_declaration(
+                "worker-1",
+                attributes={"runtime": "python"},
+            )
+        )
+        self.catalog.update_worker_platform_attributes(
             worker_group_id="image-workers",
             worker_id="worker-1",
-            metadata={"tier": "premium"},
+            attributes={"tier": "standard", "region": "us"},
+        )
+
+        result = self.catalog.update_worker_platform_attributes(
+            worker_group_id="image-workers",
+            worker_id="worker-1",
+            attributes={"tier": "premium"},
         )
         descriptor = self.catalog.get_worker_descriptors(
             worker_group_id="image-workers",
@@ -172,70 +400,35 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
 
         self.assertEqual(result.status, WorkerRuntimeStatus.OK)
         assert descriptor is not None
-        self.assertEqual(descriptor.system_metadata, {"tier": "premium", "region": "us"})
-        self.assertEqual(descriptor.static_attributes, {"runtime": "python"})
-        self.assertEqual(descriptor.dynamic_attribute_names, frozenset({"battery"}))
-        self.assertEqual(descriptor.endpoint_manager_id, "endpoint-manager-1")
-
-    def test_static_attribute_refresh_replaces_only_static_attributes(self) -> None:
-        self.register_group()
-        self.register_worker(
-            self.worker_descriptor(
-                "worker-1",
-                endpoint_manager_id="endpoint-manager-1",
-                system_metadata={"tier": "premium"},
-                static_attributes={"runtime": "python", "old": True},
-            )
-        )
-
-        result = self.catalog.refresh_worker_static_attributes(
-            worker_group_id="image-workers",
-            worker_id="worker-1",
-            attributes={"runtime": "java"},
-        )
-        descriptor = self.catalog.get_worker_descriptors(
-            worker_group_id="image-workers",
-            worker_ids=["worker-1"],
-        )["worker-1"]
-
-        self.assertEqual(result.status, WorkerRuntimeStatus.OK)
-        assert descriptor is not None
-        self.assertEqual(descriptor.system_metadata, {"tier": "premium"})
-        self.assertEqual(descriptor.static_attributes, {"runtime": "java"})
+        self.assertEqual(descriptor.platform_attributes, {"tier": "premium", "region": "us"})
+        self.assertEqual(descriptor.attributes, {"runtime": "python"})
         self.assertEqual(descriptor.dynamic_attribute_names, frozenset({"battery"}))
         self.assertEqual(descriptor.endpoint_manager_id, "endpoint-manager-1")
 
     def test_catalog_updates_do_not_discover_worker_group(self) -> None:
-        self.register_group()
-        original = self.worker_descriptor(
+        self.upsert_group()
+        original = self.worker_declaration(
             "worker-1",
-            system_metadata={"tier": "standard"},
-            static_attributes={"runtime": "python"},
+            attributes={"runtime": "python"},
         )
-        self.register_worker(original)
+        self.upsert_worker(original)
 
-        metadata_result = self.catalog.update_worker_system_metadata(
+        platform_result = self.catalog.update_worker_platform_attributes(
             worker_group_id="wrong-group",
             worker_id="worker-1",
-            metadata={"tier": "premium"},
-        )
-        static_result = self.catalog.refresh_worker_static_attributes(
-            worker_group_id="wrong-group",
-            worker_id="worker-1",
-            attributes={"runtime": "java"},
+            attributes={"tier": "premium"},
         )
         stored = self.catalog.get_worker_descriptors(
             worker_group_id="image-workers",
             worker_ids=["worker-1"],
         )["worker-1"]
 
-        self.assertEqual(metadata_result.status, WorkerRuntimeStatus.NOT_FOUND)
-        self.assertEqual(static_result.status, WorkerRuntimeStatus.NOT_FOUND)
-        self.assertEqual(stored, original)
+        self.assertEqual(platform_result.status, WorkerRuntimeStatus.NOT_FOUND)
+        self.assertEqual(stored, self.expected_descriptor(original))
 
     def test_dynamic_attribute_runtime_dispatches_allowed_updates(self) -> None:
-        self.register_group()
-        self.register_worker(self.worker_descriptor("worker-1"))
+        self.upsert_group()
+        self.upsert_worker(self.worker_declaration("worker-1"))
         calls: list[tuple[str, object, int]] = []
 
         def update_battery(
@@ -263,9 +456,9 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
         self.assertFalse(any(":score:" in key for key in self.redis.hashes))
 
     def test_dynamic_attribute_runtime_rejects_missing_worker_or_handler(self) -> None:
-        self.register_group()
-        self.register_worker(
-            self.worker_descriptor(
+        self.upsert_group()
+        self.upsert_worker(
+            self.worker_declaration(
                 "worker-1",
                 dynamic_attribute_names=frozenset({"battery", "network"}),
             )

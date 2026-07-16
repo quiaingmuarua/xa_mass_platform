@@ -14,9 +14,10 @@ from kernel_design.executable_spec import (
     RedisWorkerResourceCatalog,
     RedisWorkerRuntime,
     RedisWorkerScoreCore,
-    WorkerDescriptor,
+    WorkerDeclaration,
     WorkerGroupDescriptor,
     WorkerRuntimeStatus,
+    WorkerScorePolarity,
     WorkerScoreTransitionStatus,
 )
 
@@ -51,6 +52,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
             self.redis,
             self.score_band,
             prefix=self.prefix,
+            initial_lane_rank=5,
         )
         self.catalog = RedisWorkerResourceCatalog(
             self.redis,
@@ -64,25 +66,23 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
             f"{self.score_key_prefix}:{self.worker_group_id}",
         )
 
-    def test_registered_worker_becomes_hot_acquire_candidate(self) -> None:
+    def test_upserted_worker_becomes_hot_acquire_candidate(self) -> None:
         group = WorkerGroupDescriptor(
             worker_group_id=self.worker_group_id,
             attributes={"kind": "image"},
             event_codes=frozenset({"resize"}),
         )
-        worker = WorkerDescriptor(
+        worker = WorkerDeclaration(
             worker_id="worker-1",
             worker_group_id=self.worker_group_id,
             endpoint_manager_id="endpoint-manager-1",
-            system_metadata={"tier": "premium"},
-            static_attributes={"runtime": "python"},
+            attributes={"runtime": "python"},
             dynamic_attribute_names=frozenset({"battery"}),
         )
-        self.catalog.register_worker_group_descriptor(descriptor=group)
+        self.catalog.upsert_worker_group(descriptor=group)
 
-        registered = self.runtime.register_worker_descriptor(
-            descriptor=worker,
-            lane_rank=5,
+        upserted = self.runtime.upsert_worker(
+            declaration=worker,
         )
         time.sleep((self.score_band.SLOT_MILLIS + 20) / 1_000)
         candidates = self.score_band.acquire_hot_acquire_candidates(
@@ -109,7 +109,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
             worker_ids=[worker.worker_id],
         )
 
-        self.assertEqual(registered.status, WorkerRuntimeStatus.OK)
+        self.assertEqual(upserted.status, WorkerRuntimeStatus.OK)
         self.assertEqual(set(candidates), {worker.worker_id})
         self.assertEqual(repeated_candidates, candidates)
         self.assertEqual(
@@ -117,7 +117,98 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
             WorkerScoreTransitionStatus.TRANSITIONED,
         )
         self.assertEqual(second_lease.status, WorkerScoreTransitionStatus.STALE)
-        self.assertEqual(descriptors[worker.worker_id], worker)
+        descriptor = descriptors[worker.worker_id]
+        assert descriptor is not None
+        self.assertEqual(descriptor.attributes, worker.attributes)
+        self.assertEqual(descriptor.platform_attributes, {})
+
+    def test_reconnect_restores_polarity_and_identity_conflict_fails_closed(
+        self,
+    ) -> None:
+        self.catalog.upsert_worker_group(
+            descriptor=WorkerGroupDescriptor(
+                worker_group_id=self.worker_group_id,
+                attributes={},
+                event_codes=frozenset({"resize"}),
+            )
+        )
+        declaration = WorkerDeclaration(
+            worker_id="worker-1",
+            worker_group_id=self.worker_group_id,
+            endpoint_manager_id="endpoint-manager-1",
+            attributes={"runtime": "python"},
+            dynamic_attribute_names=frozenset({"battery"}),
+        )
+        self.runtime.upsert_worker(declaration=declaration)
+        rewritten = self.score_band.rewrite_current_scores(
+            home_bucket_id=self.worker_group_id,
+            worker_ids=[declaration.worker_id],
+            target_time_millis=(time.time_ns() // 1_000_000) + 10_000,
+            target_lane_rank=7,
+        )[declaration.worker_id]
+        self.assertEqual(
+            rewritten.status,
+            WorkerScoreTransitionStatus.TRANSITIONED,
+        )
+        dirty = self.score_band.mark_current_lease_dirty(
+            home_bucket_id=self.worker_group_id,
+            worker_id=declaration.worker_id,
+        )
+        self.assertEqual(dirty.status, WorkerScoreTransitionStatus.TRANSITIONED)
+        held = self.score_band.get_score_states(
+            home_bucket_id=self.worker_group_id,
+            worker_ids=[declaration.worker_id],
+        )[declaration.worker_id]
+        assert held is not None
+        disconnected = self.score_band.toggle_current_polarity(
+            home_bucket_id=self.worker_group_id,
+            worker_id=declaration.worker_id,
+            observed_score=held.score,
+            target_lane_rank=held.lane_rank,
+        )
+        self.assertEqual(
+            disconnected.status,
+            WorkerScoreTransitionStatus.TRANSITIONED,
+        )
+
+        reconnected = self.runtime.upsert_worker(
+            declaration=WorkerDeclaration(
+                worker_id=declaration.worker_id,
+                worker_group_id=declaration.worker_group_id,
+                endpoint_manager_id=declaration.endpoint_manager_id,
+                attributes={"runtime": "java"},
+                dynamic_attribute_names=declaration.dynamic_attribute_names,
+            )
+        )
+        conflict = self.runtime.upsert_worker(
+            declaration=WorkerDeclaration(
+                worker_id=declaration.worker_id,
+                worker_group_id=declaration.worker_group_id,
+                endpoint_manager_id="other-endpoint",
+                attributes={"runtime": "other"},
+                dynamic_attribute_names=declaration.dynamic_attribute_names,
+            )
+        )
+        current = self.score_band.get_score_states(
+            home_bucket_id=self.worker_group_id,
+            worker_ids=[declaration.worker_id],
+        )[declaration.worker_id]
+        descriptor = self.catalog.get_worker_descriptors(
+            worker_group_id=self.worker_group_id,
+            worker_ids=[declaration.worker_id],
+        )[declaration.worker_id]
+
+        self.assertEqual(reconnected.status, WorkerRuntimeStatus.OK)
+        self.assertEqual(conflict.status, WorkerRuntimeStatus.CONFLICT)
+        assert current is not None
+        self.assertEqual(current.polarity, WorkerScorePolarity.HOT_ACQUIRE)
+        self.assertEqual(current.score, abs(disconnected.score or 0))
+        self.assertEqual(current.time_millis, held.time_millis)
+        self.assertEqual(current.lane_rank, 7)
+        self.assertTrue(current.dirty)
+        assert descriptor is not None
+        self.assertEqual(descriptor.endpoint_manager_id, "endpoint-manager-1")
+        self.assertEqual(descriptor.attributes, {"runtime": "java"})
 
 
 if __name__ == "__main__":

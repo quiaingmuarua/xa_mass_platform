@@ -6,6 +6,7 @@ from dataclasses import fields
 
 import kernel_design.executable_spec as executable_spec
 from kernel_design.executable_spec import (
+    WorkerDeclaration,
     WorkerDescriptor,
     WorkerDynamicAttributeRuntime,
     WorkerGroupDescriptor,
@@ -19,6 +20,18 @@ from kernel_design.executable_spec.kernel.worker_runtime import DynamicAttribute
 
 
 class WorkerRuntimeContractTest(unittest.TestCase):
+    def test_worker_declaration_contains_only_worker_owned_fields(self) -> None:
+        self.assertEqual(
+            {field.name for field in fields(WorkerDeclaration)},
+            {
+                "worker_id",
+                "worker_group_id",
+                "endpoint_manager_id",
+                "attributes",
+                "dynamic_attribute_names",
+            },
+        )
+
     def test_worker_descriptor_first_layer_shape_has_endpoint_owner_no_version(self) -> None:
         field_names = {field.name for field in fields(WorkerDescriptor)}
 
@@ -28,8 +41,8 @@ class WorkerRuntimeContractTest(unittest.TestCase):
                 "worker_id",
                 "worker_group_id",
                 "endpoint_manager_id",
-                "system_metadata",
-                "static_attributes",
+                "platform_attributes",
+                "attributes",
                 "dynamic_attribute_names",
             },
         )
@@ -47,16 +60,15 @@ class WorkerRuntimeContractTest(unittest.TestCase):
     def test_worker_runtime_interfaces_expose_narrow_owner_surfaces(self) -> None:
         self.assertEqual(
             WorkerRuntime.__abstractmethods__,
-            {"register_worker_descriptor"},
+            {"upsert_worker"},
         )
         self.assertEqual(
             WorkerResourceCatalog.__abstractmethods__,
             {
                 "get_worker_descriptors",
                 "get_worker_group_descriptors",
-                "refresh_worker_static_attributes",
-                "register_worker_group_descriptor",
-                "update_worker_system_metadata",
+                "upsert_worker_group",
+                "update_worker_platform_attributes",
             },
         )
         self.assertEqual(
@@ -76,13 +88,13 @@ class WorkerRuntimeContractTest(unittest.TestCase):
         self.assertFalse(hasattr(executable_spec, "WorkerReservationRuntime"))
         self.assertFalse(hasattr(executable_spec, "WorkerValidationResult"))
 
-    def test_worker_registration_requires_score_ordering_input(self) -> None:
-        register_params = set(
-            inspect.signature(WorkerRuntime.register_worker_descriptor).parameters
+    def test_worker_upsert_hides_score_ordering_input(self) -> None:
+        upsert_params = set(
+            inspect.signature(WorkerRuntime.upsert_worker).parameters
         )
 
-        self.assertEqual(register_params, {"self", "descriptor", "lane_rank"})
-        self.assertFalse(hasattr(WorkerResourceCatalog, "register_worker_descriptor"))
+        self.assertEqual(upsert_params, {"self", "declaration"})
+        self.assertFalse(hasattr(WorkerResourceCatalog, "upsert_worker"))
 
     def test_worker_score_separates_hot_observation_from_exact_lease(self) -> None:
         acquire_params = set(
@@ -145,24 +157,15 @@ class WorkerRuntimeContractTest(unittest.TestCase):
         get_params = set(
             inspect.signature(WorkerResourceCatalog.get_worker_descriptors).parameters
         )
-        metadata_params = set(
+        platform_params = set(
             inspect.signature(
-                WorkerResourceCatalog.update_worker_system_metadata
-            ).parameters
-        )
-        static_params = set(
-            inspect.signature(
-                WorkerResourceCatalog.refresh_worker_static_attributes
+                WorkerResourceCatalog.update_worker_platform_attributes
             ).parameters
         )
 
         self.assertEqual(get_params, {"self", "worker_group_id", "worker_ids"})
         self.assertEqual(
-            metadata_params,
-            {"self", "worker_group_id", "worker_id", "metadata"},
-        )
-        self.assertEqual(
-            static_params,
+            platform_params,
             {"self", "worker_group_id", "worker_id", "attributes"},
         )
 
@@ -200,8 +203,8 @@ class WorkerRuntimeContractTest(unittest.TestCase):
             worker_id="worker-1",
             worker_group_id="image-workers",
             endpoint_manager_id="endpoint-manager-1",
-            system_metadata={},
-            static_attributes={"runtimeVersion": "1.0.0"},
+            platform_attributes={},
+            attributes={"runtimeVersion": "1.0.0"},
             dynamic_attribute_names=frozenset({"battery"}),
         )
         values: dict[str, tuple[object, int]] = {}

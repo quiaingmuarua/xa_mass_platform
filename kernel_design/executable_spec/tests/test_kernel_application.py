@@ -30,7 +30,7 @@ from kernel_design.executable_spec.assembly import (
     TaskItem,
     TaskItemAppendResult,
     TaskItemAppendStatus,
-    WorkerDescriptor,
+    WorkerDeclaration,
     WorkerGroupDescriptor,
     WorkerRuntimeStatus,
 )
@@ -360,7 +360,7 @@ class KernelApplicationTest(unittest.TestCase):
         return TaskDescriptor(
             task_id=task_id,
             worker_group_id="image-workers",
-            allocation_rule={"static.runtime": {"$eq": "python"}},
+            allocation_rule={"attributes.runtime": {"$eq": "python"}},
             config={
                 "priority": "80",
                 "maximumCandidateWorkers": "10",
@@ -483,20 +483,19 @@ class KernelApplicationIntegrationTest(unittest.TestCase):
         task_id = "task-1"
         message_id = "message-1"
 
-        group_result = self.resources_client.register_worker_group(
+        group_result = self.resources_client.upsert_worker_group(
             descriptor=WorkerGroupDescriptor(
                 worker_group_id=worker_group_id,
                 attributes={"kind": "image"},
                 event_codes=frozenset({"image.resize"}),
             )
         )
-        worker_result = self.resources_client.register_worker(
-            descriptor=WorkerDescriptor(
+        worker_result = self.resources_client.upsert_worker(
+            declaration=WorkerDeclaration(
                 worker_id="worker-1",
                 worker_group_id=worker_group_id,
                 endpoint_manager_id=endpoint_manager_id,
-                system_metadata={"tier": "premium"},
-                static_attributes={"runtime": "python"},
+                attributes={"runtime": "python"},
                 dynamic_attribute_names=frozenset(),
             )
         )

@@ -724,7 +724,7 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
         return TaskDescriptor(
             task_id=task_id,
             worker_group_id="image-workers",
-            allocation_rule={"static.runtime": {"$eq": "python"}},
+            allocation_rule={"attributes.runtime": {"$eq": "python"}},
             config={
                 "priority": "80",
                 "runningVisibleMinimumCandidateWorkers": str(minimum_workers),

@@ -182,8 +182,9 @@ rounds may observe the same due Worker, but only one can win the
 compare-and-write. Unmatched leases remain held until bounded expiry; allocation
 does not release them.
 
-Worker score is not a Worker resource mutation lease. Registration establishes
-the first HOT_ACQUIRE score, but later system/static/dynamic attribute writes,
+Worker score is not a Worker resource mutation lease. First Worker upsert
+establishes the initial HOT_ACQUIRE score using runtime-owned lane config, but
+later platform/Worker/dynamic attribute writes,
 handler-owned projections, heartbeat evidence, and diagnostics update their own
 truth without acquiring or renewing worker score. HOT admission scheduling is
 the only routine writer of acquired HOT scores; recovery scheduling is the only
@@ -475,10 +476,12 @@ Polarity move preserves the dirty bit. Dirty score primitives are implemented;
 policy may invoke them only for an active continuation that will later
 revalidate or renew. Raw availability evidence never writes dirty.
 
-Raw network-ok, heartbeat, reconnect, keepalive, or latency evidence cannot move
-RECOVERY_RECHECK to HOT_ACQUIRE by itself. It is evidence of network state;
-worker-runtime owns the validated online/offline classification and the exact
-polarity transition.
+Raw network-ok, heartbeat, keepalive, or latency evidence cannot move
+RECOVERY_RECHECK to HOT_ACQUIRE by itself. `WorkerRuntime.upsert_worker` is the
+trusted reconnect owner command: after immutable declaration validation and
+attribute refresh, it may exact-CAS a negative score to positive while
+preserving `abs(score)`. Other evidence remains non-authoritative until
+worker-runtime validates it.
 
 ## Interface Rule
 
@@ -914,13 +917,14 @@ assignment-dispatch worker selection path.
 | manual enable / release | yes | exact observed-score same-polarity release |
 | platform scheduling metadata signature changed while persisted task-worker assignment plan / hot score lease continuation exists | yes | `mark_current_lease_dirty` may only set dirty = 1 |
 | platform scheduling metadata signature changed while no persisted assignment plan / hot score lease continuation exists | no score write required | metadata/evidence only; next candidate validation reads current metadata |
+| trusted Worker reconnect upsert after declaration validation | yes only when negative | exact polarity flip to HOT_ACQUIRE preserving `abs(score)`; positive score is unchanged |
 | assignment owner leases due HOT_ACQUIRE observations | yes | `acquire_observed_hot_score_leases` pipelines independent exact-CAS writes, future leases, and dirty clear before matching |
 | assignment owner extends active clean HOT_ACQUIRE leases | yes | `renew_active_hot_score_leases`; dirty entries return STALE and force rematch |
 | confirmed disconnect / trusted unavailable | yes | owner-validated HOT_ACQUIRE -> RECOVERY_RECHECK polarity move preserving time coordinate |
 | verified owner reopen | yes | owner-validated RECOVERY_RECHECK -> HOT_ACQUIRE polarity move preserving time coordinate |
 | recovery exhausted / cold parked | yes | RECOVERY_RECHECK too-old cold coordinate + owner evidence |
 | transport heartbeat / keepalive | no | evidence only |
-| raw connected / session refresh | no | evidence only |
+| raw connected / session refresh outside Worker upsert | no | evidence only |
 | result arrival / task finality | no | capacity/admission may update; no generic score refresh |
 | read projection / trace | no | diagnostics only |
 

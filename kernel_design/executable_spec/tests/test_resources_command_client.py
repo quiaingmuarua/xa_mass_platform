@@ -15,7 +15,7 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
 from kernel_design.executable_spec.assembly import (
     KernelApplicationConfig,
     ResourcesCommandClient,
-    WorkerDescriptor,
+    WorkerDeclaration,
     WorkerGroupDescriptor,
     WorkerRuntimeResult,
     WorkerRuntimeStatus,
@@ -61,7 +61,7 @@ class ResourcesCommandClientTest(unittest.TestCase):
         )
         self.client = ResourcesCommandClient(self.config)
 
-    def test_public_surface_contains_only_resource_registration_commands(self) -> None:
+    def test_public_surface_contains_only_resource_upsert_commands(self) -> None:
         public_instance_methods = {
             name
             for name, method in inspect.getmembers(
@@ -71,7 +71,7 @@ class ResourcesCommandClientTest(unittest.TestCase):
             if not name.startswith("_")
         }
         self.assertEqual(
-            {"register_worker", "register_worker_group"},
+            {"upsert_worker", "upsert_worker_group"},
             public_instance_methods,
         )
         for forbidden in (
@@ -84,10 +84,10 @@ class ResourcesCommandClientTest(unittest.TestCase):
             self.assertFalse(hasattr(self.client, forbidden))
         self.assertNotIn(
             "lane_rank",
-            inspect.signature(ResourcesCommandClient.register_worker).parameters,
+            inspect.signature(ResourcesCommandClient.upsert_worker).parameters,
         )
 
-    def test_composes_only_worker_registration_owners_from_shared_config(self) -> None:
+    def test_composes_only_worker_upsert_owners_from_shared_config(self) -> None:
         import redis
 
         redis.Redis.from_url.assert_called_once_with(  # type: ignore[attr-defined]
@@ -108,35 +108,37 @@ class ResourcesCommandClientTest(unittest.TestCase):
             self.redis_client,
             self.score,
             prefix="resources-test",
+            initial_lane_rank=50,
         )
 
-    def test_registration_delegates_without_application_lifecycle(self) -> None:
+    def test_upsert_delegates_without_application_lifecycle(self) -> None:
         group = WorkerGroupDescriptor(
             worker_group_id="image-workers",
             attributes={},
             event_codes=frozenset({"image.resize"}),
         )
-        worker = WorkerDescriptor(
+        worker = WorkerDeclaration(
             worker_id="worker-1",
             worker_group_id=group.worker_group_id,
             endpoint_manager_id="endpoint-1",
-            system_metadata={},
-            static_attributes={"runtime": "python"},
+            attributes={"runtime": "python"},
             dynamic_attribute_names=frozenset(),
         )
         group_result = WorkerRuntimeResult(WorkerRuntimeStatus.OK)
         worker_result = WorkerRuntimeResult(WorkerRuntimeStatus.OK)
-        self.catalog.register_worker_group_descriptor.return_value = group_result
-        self.runtime.register_worker_descriptor.return_value = worker_result
+        self.catalog.upsert_worker_group.return_value = group_result
+        self.runtime.upsert_worker.return_value = worker_result
 
         self.assertIs(
             group_result,
-            self.client.register_worker_group(descriptor=group),
+            self.client.upsert_worker_group(descriptor=group),
         )
-        self.assertIs(worker_result, self.client.register_worker(descriptor=worker))
-        self.runtime.register_worker_descriptor.assert_called_once_with(
-            descriptor=worker,
-            lane_rank=50,
+        self.assertIs(
+            worker_result,
+            self.client.upsert_worker(declaration=worker),
+        )
+        self.runtime.upsert_worker.assert_called_once_with(
+            declaration=worker,
         )
 
     def test_from_json_uses_the_shared_application_config_contract(self) -> None:
@@ -184,22 +186,21 @@ class ResourcesCommandClientIntegrationTest(unittest.TestCase):
         if keys:
             self.redis.delete(*keys)
 
-    def test_registration_initializes_hot_worker_without_start(self) -> None:
+    def test_upsert_initializes_hot_worker_without_start(self) -> None:
         group_id = "image-workers"
-        group_result = self.client.register_worker_group(
+        group_result = self.client.upsert_worker_group(
             descriptor=WorkerGroupDescriptor(
                 worker_group_id=group_id,
                 attributes={},
                 event_codes=frozenset({"image.resize"}),
             )
         )
-        worker_result = self.client.register_worker(
-            descriptor=WorkerDescriptor(
+        worker_result = self.client.upsert_worker(
+            declaration=WorkerDeclaration(
                 worker_id="worker-1",
                 worker_group_id=group_id,
                 endpoint_manager_id="endpoint-1",
-                system_metadata={},
-                static_attributes={"runtime": "python"},
+                attributes={"runtime": "python"},
                 dynamic_attribute_names=frozenset(),
             )
         )

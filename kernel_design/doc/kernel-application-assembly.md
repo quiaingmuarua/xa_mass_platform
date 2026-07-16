@@ -9,7 +9,7 @@ The executable spec exposes four narrow process boundaries:
 ```text
 FastAPI / SDK
   -> ResourcesCommandClient
-     -> WorkerGroup and Worker registration
+     -> WorkerGroup and Worker upsert
 
 CLI / FastAPI
   -> KernelApplication
@@ -34,8 +34,8 @@ suffixes, or lane ranks.
 
 ```text
 ResourcesCommandClient
-register_worker_group
-register_worker
+upsert_worker_group
+upsert_worker
 
 KernelApplication
 create_task
@@ -49,12 +49,15 @@ SeedResultCommandClient
 append_seed_results
 ```
 
-Inputs and results reuse existing caller-owned descriptors and runtime result
-types. Assembly does not create mirrored request DTOs. The FastAPI example owns
+WorkerGroup upsert reuses `WorkerGroupDescriptor`. Worker upsert accepts the
+caller-owned `WorkerDeclaration`; the complete `WorkerDescriptor` remains a
+query projection containing platform-owned attributes. The FastAPI example owns
 its HTTP request models because they are protocol-edge translations.
 
-Worker registration selects the default lane rank internally and initializes
+First Worker upsert selects the default lane rank internally and initializes
 the Worker HOT score without requiring the scheduling process to be running.
+Reconnect replaces Worker attributes and restores negative polarity without
+resetting the existing absolute score coordinate.
 `create_task` selects the initial PRE_REVIEW owner code internally.
 `approve_task` is an explicit lifecycle command that validates Task metadata
 and current score band, then requests `PRE_REVIEW -> PRE_DISPATCH_VISIBLE`. It

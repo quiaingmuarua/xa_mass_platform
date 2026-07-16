@@ -9,6 +9,7 @@ from ..kernel.worker_score import (
     TimeMillis,
     WorkerId,
     WorkerScoreCore,
+    WorkerScorePolarity,
     WorkerScoreTransitionStatus,
 )
 from ..kernel.worker_runtime import (
@@ -16,6 +17,7 @@ from ..kernel.worker_runtime import (
     AttributeValue,
     DynamicAttributePayload,
     DynamicAttributeReadResult,
+    WorkerDeclaration,
     WorkerDescriptor,
     WorkerDynamicAttributeRuntime,
     WorkerGroupDescriptor,
@@ -58,8 +60,8 @@ def _encode_worker_descriptor(descriptor: WorkerDescriptor) -> str | None:
                 "workerId": descriptor.worker_id,
                 "workerGroupId": descriptor.worker_group_id,
                 "endpointManagerId": descriptor.endpoint_manager_id,
-                "systemMetadata": dict(descriptor.system_metadata),
-                "staticAttributes": dict(descriptor.static_attributes),
+                "attributes": dict(descriptor.attributes),
+                "platformAttributes": dict(descriptor.platform_attributes),
                 "dynamicAttributeNames": sorted(descriptor.dynamic_attribute_names),
             },
             sort_keys=True,
@@ -83,7 +85,7 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
         self.redis = redis_client
         self.prefix = prefix
 
-    def register_worker_group_descriptor(
+    def upsert_worker_group(
         self,
         *,
         descriptor: WorkerGroupDescriptor,
@@ -93,6 +95,30 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
         encoded = self._encode_worker_group_descriptor(descriptor)
         if encoded is None:
             return WorkerRuntimeResult(WorkerRuntimeStatus.INVALID, "invalid descriptor json")
+
+        if self.redis.hsetnx(
+            self._groups_key(),
+            descriptor.worker_group_id,
+            encoded,
+        ):
+            return WorkerRuntimeResult(WorkerRuntimeStatus.OK)
+
+        current = self._decode_worker_group_descriptor(
+            self.redis.hget(self._groups_key(), descriptor.worker_group_id)
+        )
+        if current is None:
+            return WorkerRuntimeResult(
+                WorkerRuntimeStatus.INVALID,
+                "stored worker group descriptor is invalid",
+            )
+        if (
+            current.worker_group_id != descriptor.worker_group_id
+            or current.event_codes != descriptor.event_codes
+        ):
+            return WorkerRuntimeResult(
+                WorkerRuntimeStatus.CONFLICT,
+                "worker group eventCodes are immutable",
+            )
 
         self.redis.hset(self._groups_key(), descriptor.worker_group_id, encoded)
         return WorkerRuntimeResult(WorkerRuntimeStatus.OK)
@@ -136,30 +162,7 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
                 result[worker_id] = descriptor
         return result
 
-    def update_worker_system_metadata(
-        self,
-        *,
-        worker_group_id: WorkerGroupId,
-        worker_id: WorkerId,
-        metadata: Mapping[str, AttributeValue],
-    ) -> WorkerRuntimeResult:
-        loaded = self._load_worker_descriptor(worker_group_id, worker_id)
-        if loaded[0] is not WorkerRuntimeStatus.OK:
-            return WorkerRuntimeResult(loaded[0], loaded[1])
-        descriptor = loaded[2]
-        assert descriptor is not None
-
-        next_descriptor = WorkerDescriptor(
-            worker_id=descriptor.worker_id,
-            worker_group_id=descriptor.worker_group_id,
-            endpoint_manager_id=descriptor.endpoint_manager_id,
-            system_metadata={**descriptor.system_metadata, **dict(metadata)},
-            static_attributes=descriptor.static_attributes,
-            dynamic_attribute_names=descriptor.dynamic_attribute_names,
-        )
-        return self._store_worker_descriptor(next_descriptor)
-
-    def refresh_worker_static_attributes(
+    def update_worker_platform_attributes(
         self,
         *,
         worker_group_id: WorkerGroupId,
@@ -176,8 +179,11 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
             worker_id=descriptor.worker_id,
             worker_group_id=descriptor.worker_group_id,
             endpoint_manager_id=descriptor.endpoint_manager_id,
-            system_metadata=descriptor.system_metadata,
-            static_attributes=dict(attributes),
+            attributes=descriptor.attributes,
+            platform_attributes={
+                **descriptor.platform_attributes,
+                **dict(attributes),
+            },
             dynamic_attribute_names=descriptor.dynamic_attribute_names,
         )
         return self._store_worker_descriptor(next_descriptor)
@@ -287,8 +293,10 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
                 endpoint_manager_id=cls._require_string(
                     payload["endpointManagerId"]
                 ),
-                system_metadata=cls._require_mapping(payload.get("systemMetadata", {})),
-                static_attributes=cls._require_mapping(payload.get("staticAttributes", {})),
+                attributes=cls._require_mapping(payload["attributes"]),
+                platform_attributes=cls._require_mapping(
+                    payload["platformAttributes"]
+                ),
                 dynamic_attribute_names=frozenset(
                     cls._require_string(name)
                     for name in cls._require_sequence(
@@ -340,7 +348,7 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
 
 
 class RedisWorkerRuntime(WorkerRuntime):
-    """Redis worker registration owner."""
+    """Redis worker declaration and reconnect owner."""
 
     def __init__(
         self,
@@ -348,27 +356,35 @@ class RedisWorkerRuntime(WorkerRuntime):
         score_band: WorkerScoreCore,
         *,
         prefix: str = "default",
+        initial_lane_rank: LaneRank = 50,
     ) -> None:
         if not prefix:
             raise ValueError("prefix must be non-empty")
+        if (
+            not isinstance(initial_lane_rank, int)
+            or not score_band.MIN_LANE_RANK
+            <= initial_lane_rank
+            <= score_band.MAX_LANE_RANK
+        ):
+            raise ValueError("initial_lane_rank is out of range")
         self.redis = redis_client
         self.score_band = score_band
         self.prefix = prefix
+        self.initial_lane_rank = initial_lane_rank
 
-    def register_worker_descriptor(
+    def upsert_worker(
         self,
         *,
-        descriptor: WorkerDescriptor,
-        lane_rank: LaneRank,
+        declaration: WorkerDeclaration,
     ) -> WorkerRuntimeResult:
-        if not _valid_id(descriptor.worker_id):
+        if not _valid_id(declaration.worker_id):
             return WorkerRuntimeResult(WorkerRuntimeStatus.INVALID, "invalid workerId")
-        if not _valid_id(descriptor.worker_group_id):
+        if not _valid_id(declaration.worker_group_id):
             return WorkerRuntimeResult(
                 WorkerRuntimeStatus.INVALID,
                 "invalid workerGroupId",
             )
-        if not _valid_id(descriptor.endpoint_manager_id):
+        if not _valid_id(declaration.endpoint_manager_id):
             return WorkerRuntimeResult(
                 WorkerRuntimeStatus.INVALID,
                 "invalid endpointManagerId",
@@ -376,7 +392,7 @@ class RedisWorkerRuntime(WorkerRuntime):
         if (
             self.redis.hget(
                 _worker_groups_key(self.prefix),
-                descriptor.worker_group_id,
+                declaration.worker_group_id,
             )
             is None
         ):
@@ -385,6 +401,14 @@ class RedisWorkerRuntime(WorkerRuntime):
                 "worker group not found",
             )
 
+        descriptor = WorkerDescriptor(
+            worker_id=declaration.worker_id,
+            worker_group_id=declaration.worker_group_id,
+            endpoint_manager_id=declaration.endpoint_manager_id,
+            attributes=dict(declaration.attributes),
+            platform_attributes={},
+            dynamic_attribute_names=declaration.dynamic_attribute_names,
+        )
         encoded = _encode_worker_descriptor(descriptor)
         if encoded is None:
             return WorkerRuntimeResult(
@@ -392,36 +416,98 @@ class RedisWorkerRuntime(WorkerRuntime):
                 "invalid descriptor json",
             )
 
-        initialization = self.score_band.initialize_hot_acquire_score(
-            home_bucket_id=descriptor.worker_group_id,
-            worker_id=descriptor.worker_id,
-            lane_rank=lane_rank,
+        workers_key = _worker_descriptors_key(
+            self.prefix,
+            declaration.worker_group_id,
         )
-        if initialization.status == WorkerScoreTransitionStatus.NOOP:
-            return WorkerRuntimeResult(
-                WorkerRuntimeStatus.CONFLICT,
-                "worker score is already initialized",
+        if not self.redis.hsetnx(workers_key, declaration.worker_id, encoded):
+            current = RedisWorkerResourceCatalog._decode_worker_descriptor(
+                self.redis.hget(workers_key, declaration.worker_id)
             )
-        if initialization.status == WorkerScoreTransitionStatus.INVALID:
+            if current is None:
+                return WorkerRuntimeResult(
+                    WorkerRuntimeStatus.INVALID,
+                    "stored worker descriptor is invalid",
+                )
+            if (
+                current.worker_id != declaration.worker_id
+                or current.worker_group_id != declaration.worker_group_id
+                or current.endpoint_manager_id != declaration.endpoint_manager_id
+                or current.dynamic_attribute_names
+                != declaration.dynamic_attribute_names
+            ):
+                return WorkerRuntimeResult(
+                    WorkerRuntimeStatus.CONFLICT,
+                    "worker identity declaration is immutable",
+                )
+            descriptor = WorkerDescriptor(
+                worker_id=current.worker_id,
+                worker_group_id=current.worker_group_id,
+                endpoint_manager_id=current.endpoint_manager_id,
+                attributes=dict(declaration.attributes),
+                platform_attributes=current.platform_attributes,
+                dynamic_attribute_names=current.dynamic_attribute_names,
+            )
+            encoded = _encode_worker_descriptor(descriptor)
+            if encoded is None:
+                return WorkerRuntimeResult(
+                    WorkerRuntimeStatus.INVALID,
+                    "invalid descriptor json",
+                )
+            self.redis.hset(workers_key, declaration.worker_id, encoded)
+
+        score_state = self.score_band.get_score_states(
+            home_bucket_id=declaration.worker_group_id,
+            worker_ids=[declaration.worker_id],
+        ).get(declaration.worker_id)
+        if score_state is None:
+            initialization = self.score_band.initialize_hot_acquire_score(
+                home_bucket_id=declaration.worker_group_id,
+                worker_id=declaration.worker_id,
+                lane_rank=self.initial_lane_rank,
+            )
+            if initialization.status == WorkerScoreTransitionStatus.TRANSITIONED:
+                return WorkerRuntimeResult(WorkerRuntimeStatus.OK)
+            if initialization.status == WorkerScoreTransitionStatus.INVALID:
+                return WorkerRuntimeResult(
+                    WorkerRuntimeStatus.INVALID,
+                    "worker score initialization was rejected",
+                )
+            if initialization.status != WorkerScoreTransitionStatus.NOOP:
+                return WorkerRuntimeResult(
+                    WorkerRuntimeStatus.STALE,
+                    "worker score initialization could not be confirmed",
+                )
+            score_state = self.score_band.get_score_states(
+                home_bucket_id=declaration.worker_group_id,
+                worker_ids=[declaration.worker_id],
+            ).get(declaration.worker_id)
+            if score_state is None:
+                return WorkerRuntimeResult(
+                    WorkerRuntimeStatus.STALE,
+                    "worker score initialization could not be observed",
+                )
+
+        if score_state.polarity == WorkerScorePolarity.HOT_ACQUIRE:
+            return WorkerRuntimeResult(WorkerRuntimeStatus.OK)
+
+        recovery = self.score_band.toggle_current_polarity(
+            home_bucket_id=declaration.worker_group_id,
+            worker_id=declaration.worker_id,
+            observed_score=score_state.score,
+            target_lane_rank=score_state.lane_rank,
+        )
+        if recovery.status == WorkerScoreTransitionStatus.TRANSITIONED:
+            return WorkerRuntimeResult(WorkerRuntimeStatus.OK)
+        if recovery.status == WorkerScoreTransitionStatus.INVALID:
             return WorkerRuntimeResult(
                 WorkerRuntimeStatus.INVALID,
-                "worker score initialization was rejected",
+                "worker score recovery was rejected",
             )
-        if (
-            initialization.status != WorkerScoreTransitionStatus.TRANSITIONED
-            or initialization.score is None
-        ):
-            return WorkerRuntimeResult(
-                WorkerRuntimeStatus.STALE,
-                "worker score initialization could not be confirmed",
-            )
-
-        self.redis.hset(
-            _worker_descriptors_key(self.prefix, descriptor.worker_group_id),
-            descriptor.worker_id,
-            encoded,
+        return WorkerRuntimeResult(
+            WorkerRuntimeStatus.STALE,
+            "worker score recovery lost its observed fence",
         )
-        return WorkerRuntimeResult(WorkerRuntimeStatus.OK)
 
 
 class RedisWorkerDynamicAttributeRuntime(WorkerDynamicAttributeRuntime):

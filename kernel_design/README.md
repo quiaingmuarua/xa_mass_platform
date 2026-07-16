@@ -142,7 +142,7 @@ task or worker score:
 
 ```text
 task descriptor / allocation metadata update
-worker system / static / dynamic attribute update
+Worker platform / declared / dynamic attribute update
 task item append
 Item result / transport evidence write
 read projection / trace materialization
@@ -194,7 +194,7 @@ Score write authority is deliberately narrow:
 
 ```text
 initialization owner
-  establishes the first score during task creation or worker registration
+  establishes the first score during task creation or first Worker upsert
 
 scheduling plane
   is the only routine writer while a score is in an acquirable scheduling lane
@@ -455,7 +455,7 @@ no hidden compatibility path or second mainline remains
   - newest-first candidate consumption, Item score claim, and DeliverSeed queue
     append without Task- or Worker-score writes.
 - [Kernel Application Assembly](doc/kernel-application-assembly.md)
-  - independent resource registration and scheduling-process boundaries,
+  - independent resource upsert and scheduling-process boundaries,
     private Redis composition, background scheduling lifecycles, built-in CLI,
     and the FastAPI protocol example.
 - [DeliverSeed Outbound Delivery](doc/scheduling/deliver-seed-outbound-delivery.md)
@@ -463,7 +463,7 @@ no hidden compatibility path or second mainline remains
     result handoff without adapter-owned score mutation.
 - [Local Function Transport Adapter](examples/local_function_adapter/README.md)
   - independent process startup, local Worker registration, shared event
-    handlers, platform resource registration, and SeedResult submission.
+    handlers, platform resource upsert, and SeedResult submission.
 - [Result-Routing Scheduling](doc/scheduling/result-routing-scheduling.md)
   - unified SeedResult consumption, success/retry selection, Task Item score
     invocation, and Worker exact-release handoff.

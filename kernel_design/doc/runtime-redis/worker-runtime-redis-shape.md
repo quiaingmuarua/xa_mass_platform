@@ -46,8 +46,9 @@ descriptor hashes are resource declaration truth
 dynamic attribute keys are handler-owned projections / indexes
 endpointManagerId is a stable post-selection endpoint-owner locator
 live transport evidence is not stored in worker catalog or score keys
-worker registration is complete only after score-first registration writes the descriptor
-resource metadata updates do not require a worker score lease
+Worker upsert establishes immutable declaration identity before ensuring score presence
+reconnect replaces Worker attributes and may restore negative polarity without resetting abs(score)
+platform and dynamic attribute updates do not require a worker score lease
 ```
 
 `homeBucketId` is a worker-runtime partition key. It is not a placement tag,
@@ -116,8 +117,8 @@ Value shape:
   "workerId": "worker-1",
   "workerGroupId": "image-workers",
   "endpointManagerId": "endpoint-manager-a",
-  "systemMetadata": {},
-  "staticAttributes": {},
+  "platformAttributes": {},
+  "attributes": {},
   "dynamicAttributeNames": ["battery", "load"]
 }
 ```
@@ -126,7 +127,7 @@ Value shape:
 It is not the current value of those attributes.
 
 `endpointManagerId` locates the physical endpoint manager only after a Worker
-has been selected. It is required registration metadata, not a matcher field,
+has been selected. It is required declaration metadata, not a matcher field,
 score dimension, live endpoint, session, mailbox, or reachability fact.
 
 `workerGroupId` is a required logical locator on worker descriptor read and
@@ -373,62 +374,67 @@ Redis uses `pipeline(transaction=false)` around the existing single-Worker Lua
 primitives. The batch reduces network round trips but is not transactional;
 each Worker returns an independent transition result.
 
-## Worker Registration And Catalog Operations
+## Worker Upsert And Catalog Operations
 
-First worker registration belongs to `WorkerRuntime`, because descriptor-only
-registration creates an unschedulable worker. `WorkerResourceCatalog` remains
-the worker-group declaration, descriptor-read, and low-frequency metadata
-surface.
+Worker upsert belongs to `WorkerRuntime` because first appearance must ensure a
+score and reconnect may restore network-available polarity. The caller supplies
+`WorkerDeclaration`; the runtime owns `platformAttributes`, initial laneRank,
+score initialization, and polarity handling. `WorkerResourceCatalog` remains
+the WorkerGroup upsert, descriptor-read, and platform-attribute surface.
 
 Required first-slice operations:
 
 ```text
-WorkerRuntime.register_worker_descriptor(descriptor, laneRank)
+WorkerRuntime.upsert_worker(declaration)
 
-register_worker_group_descriptor(descriptor)
+upsert_worker_group(descriptor)
 get_worker_group_descriptors(workerGroupIds)
 get_worker_descriptors(workerGroupId, workerIds)
-update_worker_system_metadata(workerGroupId, workerId, metadata)
-refresh_worker_static_attributes(workerGroupId, workerId, attributes)
+update_worker_platform_attributes(workerGroupId, workerId, attributes)
 ```
 
-Register worker group:
+Upsert WorkerGroup:
 
 ```text
-HSET wr:{prefix}:groups workerGroupId descriptorJson
+HSETNX establishes workerGroupId + eventCodes
+existing eventCodes mismatch -> CONFLICT
+compatible repeat -> HSET complete replacement attributes
 ```
 
-Register worker:
+Upsert Worker:
 
 ```text
 require workerGroupId exists
 require endpointManagerId is non-empty
-validate worker descriptor against group event-code promise / platform policy
-WorkerScoreCore.initialize_hot_acquire_score(workerGroupId, workerId, laneRank)
-  -> ZADD NX score first
-require score initialization succeeded
-HSET wr:{prefix}:workers:{workerGroupId} workerId descriptorJson second
+HSETNX establishes workerId + workerGroupId + endpointManagerId + dynamicAttributeNames
+existing immutable declaration mismatch -> CONFLICT
+compatible repeat -> replace attributes, preserve platformAttributes
+
+score absent
+  -> initialize HOT_ACQUIRE using runtime-owned initialLaneRank
+score positive
+  -> no score write
+score negative
+  -> exact observed-score CAS flips only polarity to positive
 ```
 
-The score is the registration/existence fence for scheduling. A descriptor row
-without a score is incomplete residue and must not make the worker discoverable
-or block later score-owned repair. An existing score rejects repeated
-registration before descriptor replacement.
+The score remains the scheduling truth. A descriptor row without a score is
+not schedulable and a later idempotent upsert initializes the missing score. A
+score without a descriptor fails closed during matcher descriptor validation;
+a later upsert recreates the descriptor without resetting the existing score.
 
-This registration score is not a metadata-update lease. After registration,
-`update_worker_system_metadata`, `refresh_worker_static_attributes`, and dynamic
-attribute handlers update their owner data directly. Dirty marking, when a
+The score is not a metadata-update lease. `update_worker_platform_attributes`
+and dynamic attribute handlers update their owner data directly. Dirty marking, when a
 validated assignment continuation actually depends on a changed field, is a
 separate score-fence concern; it is not a prerequisite for resource updates.
 
-Registration does not use a cross-key Lua script or Redis transaction. Score
-and descriptor remain separate owner keys. A score with a missing descriptor
-fails closed during bounded descriptor validation and can be repaired by an
-owner command in a later slice.
+Upsert uses no cross-key Lua script or Redis transaction. `HSETNX` establishes
+one immutable descriptor field; score operations continue through
+`WorkerScoreCore`. Partial completion is bounded and converges through retry.
 
-If a worker changes group in a later slice, that is a remove/register
-transition owned by worker runtime and score owner together. Do not implement
-multi-group movement in v0.
+`workerId` is unique only inside one `workerGroupId`. The runtime does not keep
+a global Worker home index; the same Worker id in different groups represents
+different resources. Do not infer or implement cross-group movement in v0.
 
 ## Dynamic Attribute Operations
 

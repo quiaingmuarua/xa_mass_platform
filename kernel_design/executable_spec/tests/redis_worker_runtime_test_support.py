@@ -6,10 +6,30 @@ from kernel_design.executable_spec import (
     RedisWorkerResourceCatalog,
     RedisWorkerRuntime,
     RedisWorkerScoreCore,
+    WorkerDeclaration,
     WorkerDescriptor,
     WorkerGroupDescriptor,
     WorkerRuntimeStatus,
 )
+
+
+class FakePipeline:
+    def __init__(self, redis: FakeRedis) -> None:
+        self.redis = redis
+        self.commands: list[tuple[str, str]] = []
+
+    def __enter__(self) -> FakePipeline:
+        return self
+
+    def __exit__(self, *args: object) -> bool:
+        return False
+
+    def zscore(self, key: str, member: str) -> FakePipeline:
+        self.commands.append((key, member))
+        return self
+
+    def execute(self) -> list[int | None]:
+        return [self.redis.zscore(key, member) for key, member in self.commands]
 
 
 class FakeRedis:
@@ -18,6 +38,9 @@ class FakeRedis:
         self.zsets: dict[str, dict[str, int]] = {}
         self.hmget_calls: list[tuple[str, tuple[str, ...]]] = []
         self.now_millis = 100_000
+
+    def pipeline(self, transaction: bool = True) -> FakePipeline:
+        return FakePipeline(self)
 
     def hset(
         self,
@@ -42,6 +65,18 @@ class FakeRedis:
         key: str,
     ) -> str | None:
         return self.hashes.get(name, {}).get(key)
+
+    def hsetnx(
+        self,
+        name: str,
+        key: str,
+        value: object,
+    ) -> int:
+        hash_row = self.hashes.setdefault(name, {})
+        if key in hash_row:
+            return 0
+        hash_row[key] = self._stringify(value)
+        return 1
 
     def hmget(
         self,
@@ -82,6 +117,9 @@ class FakeRedis:
             zset[member] = score
         return added
 
+    def zscore(self, name: str, member: str) -> int | None:
+        return self.zsets.get(name, {}).get(member)
+
     def eval(self, script: str, numkeys: int, *args: object) -> list[object]:
         if numkeys != 1:
             raise ValueError("unsupported fake redis script")
@@ -98,9 +136,6 @@ class FakeRedis:
             return ["stale", stored]
         self.zadd(key, {worker_id: next_score})
         return ["transitioned", next_score]
-
-    def zscore(self, name: str, member: str) -> int | None:
-        return self.zsets.get(name, {}).get(member)
 
     def zrangebyscore(
         self,
@@ -146,6 +181,7 @@ class RedisWorkerRuntimeFixture(unittest.TestCase):
             self.redis,
             self.score_band,
             prefix="test",
+            initial_lane_rank=self.LANE_RANK,
         )
         self.group = WorkerGroupDescriptor(
             worker_group_id="image-workers",
@@ -153,35 +189,47 @@ class RedisWorkerRuntimeFixture(unittest.TestCase):
             event_codes=frozenset({"resize"}),
         )
 
-    def register_group(self) -> None:
-        result = self.catalog.register_worker_group_descriptor(descriptor=self.group)
+    def upsert_group(self) -> None:
+        result = self.catalog.upsert_worker_group(descriptor=self.group)
         self.assertEqual(result.status, WorkerRuntimeStatus.OK)
 
-    def worker_descriptor(
+    def worker_declaration(
         self,
         worker_id: str,
         *,
         worker_group_id: str = "image-workers",
         endpoint_manager_id: str = "endpoint-manager-1",
-        system_metadata: dict[str, object] | None = None,
-        static_attributes: dict[str, object] | None = None,
+        attributes: dict[str, object] | None = None,
         dynamic_attribute_names: frozenset[str] = frozenset({"battery"}),
-    ) -> WorkerDescriptor:
-        return WorkerDescriptor(
+    ) -> WorkerDeclaration:
+        return WorkerDeclaration(
             worker_id=worker_id,
             worker_group_id=worker_group_id,
             endpoint_manager_id=endpoint_manager_id,
-            system_metadata=system_metadata or {},
-            static_attributes=static_attributes or {},
+            attributes=attributes or {},
             dynamic_attribute_names=dynamic_attribute_names,
         )
 
-    def register_worker(
+    def upsert_worker(
         self,
-        descriptor: WorkerDescriptor,
+        declaration: WorkerDeclaration,
     ) -> None:
-        result = self.runtime.register_worker_descriptor(
-            descriptor=descriptor,
-            lane_rank=self.LANE_RANK,
+        result = self.runtime.upsert_worker(
+            declaration=declaration,
         )
         self.assertEqual(result.status, WorkerRuntimeStatus.OK)
+
+    @staticmethod
+    def expected_descriptor(
+        declaration: WorkerDeclaration,
+        *,
+        platform_attributes: dict[str, object] | None = None,
+    ) -> WorkerDescriptor:
+        return WorkerDescriptor(
+            worker_id=declaration.worker_id,
+            worker_group_id=declaration.worker_group_id,
+            endpoint_manager_id=declaration.endpoint_manager_id,
+            attributes=declaration.attributes,
+            platform_attributes=platform_attributes or {},
+            dynamic_attribute_names=declaration.dynamic_attribute_names,
+        )

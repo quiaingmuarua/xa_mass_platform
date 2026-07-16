@@ -147,7 +147,7 @@ class TaskRuntimeContractTest(unittest.TestCase):
                 TaskDescriptor(
                     task_id="task-1",
                     worker_group_id="workers-a",
-                    allocation_rule={"static.runtime": {"$eq": "python"}},
+                    allocation_rule={"attributes.runtime": {"$eq": "python"}},
                     config=config,
                 )
 

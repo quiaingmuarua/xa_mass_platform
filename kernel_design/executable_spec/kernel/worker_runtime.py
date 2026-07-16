@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Mapping, Sequence
 
-from .worker_score import LaneRank, TimeMillis, WorkerId
+from .worker_score import TimeMillis, WorkerId
 
 
 WorkerGroupId = str
@@ -43,19 +43,30 @@ class WorkerGroupDescriptor:
 
 
 @dataclass(frozen=True)
-class WorkerDescriptor:
-    """Worker resource metadata/query projection.
+class WorkerDeclaration:
+    """Worker-owned resource declaration used by connect/reconnect upsert.
 
     endpoint_manager_id locates the physical endpoint owner after this Worker
     has been selected. It is not a matching field or live transport evidence.
-    Runtime/package/handler compatibility versions belong in static_attributes.
+    Runtime/package/handler compatibility versions belong in attributes.
     """
 
     worker_id: WorkerId
     worker_group_id: WorkerGroupId
     endpoint_manager_id: EndpointManagerId
-    system_metadata: Mapping[str, AttributeValue]
-    static_attributes: Mapping[str, AttributeValue]
+    attributes: Mapping[str, AttributeValue]
+    dynamic_attribute_names: frozenset[AttributeName]
+
+
+@dataclass(frozen=True)
+class WorkerDescriptor:
+    """Complete worker-runtime resource metadata/query projection."""
+
+    worker_id: WorkerId
+    worker_group_id: WorkerGroupId
+    endpoint_manager_id: EndpointManagerId
+    attributes: Mapping[str, AttributeValue]
+    platform_attributes: Mapping[str, AttributeValue]
     dynamic_attribute_names: frozenset[AttributeName]
 
 
@@ -77,13 +88,12 @@ class WorkerRuntime(ABC):
     """Worker runtime owner surface."""
 
     @abstractmethod
-    def register_worker_descriptor(
+    def upsert_worker(
         self,
         *,
-        descriptor: WorkerDescriptor,
-        lane_rank: LaneRank,
+        declaration: WorkerDeclaration,
     ) -> WorkerRuntimeResult:
-        """Register one worker through its first HOT_ACQUIRE score."""
+        """Create or reconnect one Worker without exposing score policy."""
         pass
 
 
@@ -137,13 +147,13 @@ class WorkerResourceCatalog(ABC):
     """Worker-runtime resource declaration surface.
 
     It owns worker-group declarations, bounded descriptor reads, and
-    low-frequency metadata updates. First worker registration belongs to
-    WorkerRuntime because registration must also establish the worker score.
+    low-frequency platform attribute updates. Worker upsert belongs to
+    WorkerRuntime because first appearance must also establish the worker score.
     This catalog does not expose dynamic attribute values or score mutation.
     """
 
     @abstractmethod
-    def register_worker_group_descriptor(
+    def upsert_worker_group(
         self,
         *,
         descriptor: WorkerGroupDescriptor,
@@ -169,23 +179,12 @@ class WorkerResourceCatalog(ABC):
         pass
 
     @abstractmethod
-    def update_worker_system_metadata(
-        self,
-        *,
-        worker_group_id: WorkerGroupId,
-        worker_id: WorkerId,
-        metadata: Mapping[str, AttributeValue],
-    ) -> WorkerRuntimeResult:
-        """Platform-owned metadata update inside an explicit worker group."""
-        pass
-
-    @abstractmethod
-    def refresh_worker_static_attributes(
+    def update_worker_platform_attributes(
         self,
         *,
         worker_group_id: WorkerGroupId,
         worker_id: WorkerId,
         attributes: Mapping[str, AttributeValue],
     ) -> WorkerRuntimeResult:
-        """Refresh static attributes inside an explicit worker group."""
+        """Merge platform-owned attributes inside an explicit worker group."""
         pass

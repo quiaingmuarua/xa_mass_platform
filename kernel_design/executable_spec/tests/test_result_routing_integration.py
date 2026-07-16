@@ -28,7 +28,7 @@ from kernel_design.executable_spec.assembly import (
     SeedResultCommandClient,
     TaskDescriptor,
     TaskItem,
-    WorkerDescriptor,
+    WorkerDeclaration,
     WorkerGroupDescriptor,
 )
 
@@ -83,7 +83,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
             self.redis.delete(*keys)
 
     def test_local_adapter_result_finalizes_item_and_releases_worker(self) -> None:
-        self.resources.register_worker_group(
+        self.resources.upsert_worker_group(
             descriptor=WorkerGroupDescriptor(
                 worker_group_id="image-workers",
                 attributes={},
@@ -98,13 +98,12 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
                 {"handled": payload["source"], "runtime": worker.attributes["runtime"]},
             ),
         )
-        self.resources.register_worker(
-            descriptor=WorkerDescriptor(
+        self.resources.upsert_worker(
+            declaration=WorkerDeclaration(
                 worker_id="worker-1",
                 worker_group_id="image-workers",
                 endpoint_manager_id="endpoint-1",
-                system_metadata={},
-                static_attributes={"runtime": "python"},
+                attributes={"runtime": "python"},
                 dynamic_attribute_names=frozenset(),
             )
         )
@@ -164,7 +163,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         return TaskDescriptor(
             task_id="task-1",
             worker_group_id="image-workers",
-            allocation_rule={"static.runtime": {"$eq": "python"}},
+            allocation_rule={"attributes.runtime": {"$eq": "python"}},
             config={
                 "priority": "80",
                 "maximumCandidateWorkers": "10",

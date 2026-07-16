@@ -219,7 +219,7 @@ class WorkerCandidateMatcher:
             )
         return {
             "workerId": worker_id,
-            "system": descriptor.system_metadata,
-            "static": descriptor.static_attributes,
+            "platform": descriptor.platform_attributes,
+            "attributes": descriptor.attributes,
             "dynamic": dynamic_values,
         }

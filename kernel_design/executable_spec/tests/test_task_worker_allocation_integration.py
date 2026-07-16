@@ -29,7 +29,7 @@ from kernel_design.executable_spec import (
     TaskWorkerAllocationConfig,
     TaskWorkerAllocationPacer,
     WorkerCandidateMatcher,
-    WorkerDescriptor,
+    WorkerDeclaration,
     WorkerGroupDescriptor,
     WorkerRuntimeStatus,
     minimum_candidate_workers_satisfied,
@@ -89,6 +89,7 @@ class TaskWorkerAllocationIntegrationTest(unittest.TestCase):
             self.redis,
             self.worker_score,
             prefix=self.prefix,
+            initial_lane_rank=5,
         )
         self.worker_catalog = RedisWorkerResourceCatalog(
             self.redis,
@@ -130,40 +131,36 @@ class TaskWorkerAllocationIntegrationTest(unittest.TestCase):
         )
 
     def test_real_redis_allocation_publishes_worker_reservation(self) -> None:
-        group_result = self.worker_catalog.register_worker_group_descriptor(
+        group_result = self.worker_catalog.upsert_worker_group(
             descriptor=WorkerGroupDescriptor(
                 worker_group_id=self.worker_group_id,
                 attributes={"kind": "image"},
                 event_codes=frozenset({"resize"}),
             )
         )
-        worker_result = self.worker_runtime.register_worker_descriptor(
-            descriptor=WorkerDescriptor(
+        worker_result = self.worker_runtime.upsert_worker(
+            declaration=WorkerDeclaration(
                 worker_id=self.worker_id,
                 worker_group_id=self.worker_group_id,
                 endpoint_manager_id="endpoint-manager-1",
-                system_metadata={"tier": "premium"},
-                static_attributes={"runtime": "python"},
+                attributes={"runtime": "python"},
                 dynamic_attribute_names=frozenset(),
             ),
-            lane_rank=5,
         )
-        unmatched_worker_result = self.worker_runtime.register_worker_descriptor(
-            descriptor=WorkerDescriptor(
+        unmatched_worker_result = self.worker_runtime.upsert_worker(
+            declaration=WorkerDeclaration(
                 worker_id=self.unmatched_worker_id,
                 worker_group_id=self.worker_group_id,
                 endpoint_manager_id="endpoint-manager-1",
-                system_metadata={"tier": "standard"},
-                static_attributes={"runtime": "java"},
+                attributes={"runtime": "java"},
                 dynamic_attribute_names=frozenset(),
             ),
-            lane_rank=6,
         )
         task_result = self.task_runtime.create_task(
             descriptor=TaskDescriptor(
                 task_id=self.task_id,
                 worker_group_id=self.worker_group_id,
-                allocation_rule={"static.runtime": {"$eq": "python"}},
+                allocation_rule={"attributes.runtime": {"$eq": "python"}},
                 config={
                     "priority": "80",
                     "runningVisibleMinimumCandidateWorkers": "1",

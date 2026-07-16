@@ -87,31 +87,31 @@ all-or-error operation. It does not return ambiguous partial acceptance.
 
 ## Worker Startup
 
-Worker startup uses two distinct registrations:
+Worker startup uses two distinct declarations:
 
 ```text
 adapter.register_worker(workerId, WorkerMeta)
   process-local invocation reachability
 
-ResourcesCommandClient.register_worker(WorkerDescriptor)
-  platform resource registration and first scheduling presence
+ResourcesCommandClient.upsert_worker(WorkerDeclaration)
+  platform resource upsert and scheduling presence/reconnect
 ```
 
 The safe order is:
 
 ```text
-register WorkerGroup
+upsert WorkerGroup
 register event handlers
 register adapter-local Workers
-register platform Worker descriptors
+upsert platform Worker declarations
 start bounded adapter draining
 ```
 
 Local registration must happen first. Otherwise kernel scheduling may select a
 Worker before its endpoint-manager process can invoke it.
 
-`WorkerMeta` is local invocation context only. It must not mirror platform
-system/static/dynamic matching metadata. The platform descriptor's
+`WorkerMeta` is local invocation context only. It must not mirror platform,
+Worker, or dynamic matching attributes. The platform descriptor's
 `endpointManagerId` must equal the adapter's `endpoint_manager_id`.
 
 ## Example Shape
@@ -131,13 +131,12 @@ adapter.register_event_handler("event1", event1_handler)
 adapter.register_event_handler("event2", event2_handler)
 
 adapter.register_worker("worker-1", WorkerMeta(...))
-resources.register_worker(
-    descriptor=WorkerDescriptor(
+resources.upsert_worker(
+    declaration=WorkerDeclaration(
         worker_id="worker-1",
         worker_group_id="local-workers",
         endpoint_manager_id="local-endpoint",
-        system_metadata={},
-        static_attributes={"runtime": "python"},
+        attributes={"runtime": "python"},
         dynamic_attribute_names=frozenset(),
     )
 )
@@ -251,9 +250,9 @@ uses `DeliverSeedConsumerClient` and `SeedResultCommandClient`. The adapter has
 no internal background thread. Its process host owns the `drain_once` loop and
 shutdown policy.
 
-Worker registration may still return `CONFLICT` when an existing Worker score
-is found. Restart-safe idempotent resource registration remains a separate
-resource-command decision.
+Worker upsert is restart-safe. Reconnect may return `CONFLICT` only when an
+immutable declaration field such as `endpointManagerId` or
+`dynamicAttributeNames` differs; an existing score alone is not a conflict.
 
 ## Non-Goals
 
