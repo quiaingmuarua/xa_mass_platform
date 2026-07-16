@@ -4,6 +4,8 @@ Status: active new-kernel boundary contract; Python executable spec and Local
 Function Adapter implemented; production transport policy deferred.
 
 Upstream contract: [Task Item Dispatch Pacer](task-item-dispatch-pacer.md).
+Worker lease contract:
+[Worker HOT_ACQUIRE Lease Protocol](worker-hot-acquire-lease-protocol.md).
 External process contract:
 [Local Function Transport Adapter](../../examples/local_function_adapter/README.md).
 
@@ -39,10 +41,11 @@ external SeedResult command client
   carries no endpointManagerId because results enter one logical queue
 ```
 
-`workerLeaseScore` is copied from allocation evidence into
-`opaqueResultContext`. External adapters and Redis queue runtime treat the
-context as opaque. Result routing recovers declared correlation and coordinates
-the accepted-result release/retention handoff to the Worker owner.
+Target `workerLeaseScore` is the fence confirmed by dispatch-time Worker-owner
+retention and copied into `opaqueResultContext`; the current partial executable
+spec still copies the allocation fence directly. External adapters and Redis
+queue runtime treat the context as opaque. Result routing recovers declared
+correlation and requests exact release from the Worker owner.
 
 ## Mainline
 
@@ -55,7 +58,7 @@ consume_deliver_seeds(endpointManagerId, limit)
 Worker result appended to SeedResultRuntime
   -> ResultRoutingPacer bounded-consumes the unified queue
   -> Result-Routing Scheduling applies TaskItem outcome
-  -> Worker owner receives release / retain / capacity handoff
+  -> Worker owner receives exact-release request
 
 transport rejected / resolution failed / outbound process stopped
   -> do not immediately release or reschedule
@@ -67,10 +70,10 @@ seed claim cutoff already reached before submit
   -> do not mutate Item score or eagerly release Worker lease
 ```
 
-The exact relationship between Worker lease duration, result arrival, and
-result-side release belongs to Result-Routing Scheduling and the Worker-owner
-handoff. It must not be pushed into the external adapter or backward into
-`TaskItemDispatchPacer`.
+The exact relationship between allocation lease, dispatch disposition,
+result-side release, and natural expiry is defined by the canonical Worker
+lease protocol. The external outbound process begins after assignment-side
+DeliverSeed acceptance and must not reinterpret or mutate that disposition.
 
 `DeliverSeedConsumerClient` performs the independent queue read and
 `SeedResultCommandClient` appends outcomes to the unified result queue. The
@@ -130,6 +133,7 @@ candidate truth.
 - Do not reconstruct or decode `claimScore` or `workerLeaseScore`.
 - Do not emit a timeout result for a seed discarded before Worker submit.
 - Do not downgrade a real late Worker result to diagnostics-only handling.
-- Do not move Worker release/retain decisions into seed generation or the
-  external adapter.
+- Do not move Worker release/retain decisions into outbound queue consumption
+  or the external adapter; assignment-side accepted-Seed disposition is already
+  complete before this boundary.
 - Do not add immediate compensation loops that bypass bounded score expiry.

@@ -439,6 +439,9 @@ no hidden compatibility path or second mainline remains
 - [Worker Resource Model](doc/resource-model/worker-resource-model.md)
   - v0 metadata/query projection for worker groups, workers, and dynamic
     attribute allowlists.
+- [Worker HOT_ACQUIRE Lease Protocol](doc/scheduling/worker-hot-acquire-lease-protocol.md)
+  - canonical allocation, dispatch disposition, non-exclusive early-release,
+    exclusive retain, result-release, and natural-expiry rules.
 - [Task Resource Model](doc/resource-model/task-resource-model.md)
   - v0 task allocation metadata, start conditions, allocation-rule routing,
     Item retry policy, and bounded task descriptor reads.
@@ -452,8 +455,9 @@ no hidden compatibility path or second mainline remains
   - oldest-first allocation fairness, batch matching, activation, and candidate
     publication.
 - [Task Item Dispatch Pacer](doc/scheduling/task-item-dispatch-pacer.md)
-  - newest-first candidate consumption, Item score claim, and DeliverSeed queue
-    append without Task- or Worker-score writes.
+  - candidate consumption, Item score claim, dispatch-time Worker lease
+    disposition, and DeliverSeed queue append; the current executable spec has
+    not yet implemented the Worker lease disposition branch.
 - [Kernel Application Assembly](doc/kernel-application-assembly.md)
   - independent resource upsert and scheduling-process boundaries,
     private Redis composition, background scheduling lifecycles, built-in CLI,

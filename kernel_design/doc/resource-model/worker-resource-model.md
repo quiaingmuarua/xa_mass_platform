@@ -73,6 +73,12 @@ Do not keep a worker score lease open merely to express in-flight execution.
 This keeps score ownership, dirty handling, and release semantics single-group
 and admission-fence oriented from the scheduler's point of view.
 
+The complete allocation, dispatch disposition, result release, and timeout
+sequence is defined once in
+[Worker HOT_ACQUIRE Lease Protocol](../scheduling/worker-hot-acquire-lease-protocol.md).
+This resource model owns the exclusive/non-exclusive declaration meaning, not
+a second lease lifecycle.
+
 ## WorkerGroupDescriptor
 
 ```text

@@ -3,6 +3,10 @@
 Status: active new-kernel mechanism contract; Python executable spec
 implemented; policy coverage partial.
 
+Cross-pacer use of HOT leases is defined by
+[Worker HOT_ACQUIRE Lease Protocol](worker-hot-acquire-lease-protocol.md). This
+document remains the owner of score encoding and transition primitives.
+
 ## Purpose
 
 Worker score-band scheduling is the worker/resource acquisition clock.
@@ -925,7 +929,8 @@ assignment-dispatch worker selection path.
 | recovery exhausted / cold parked | yes | RECOVERY_RECHECK too-old cold coordinate + owner evidence |
 | transport heartbeat / keepalive | no | evidence only |
 | raw connected / session refresh outside Worker upsert | no | evidence only |
-| result arrival / task finality | no | capacity/admission may update; no generic score refresh |
+| trusted result arrival | yes | exact release of the correlated Worker lease fence; no generic score refresh |
+| task finality without a correlated Worker result | no | Task/Item owner movement only |
 | read projection / trace | no | diagnostics only |
 
 ## Atomicity Boundaries

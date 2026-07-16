@@ -47,7 +47,10 @@ Task score acquire
   -> Worker allocation and exact Worker lease
   -> candidate-worker runtime
   -> TaskItem score acquire / claim
+  -> active Worker lease retain through the required cutpoint
   -> DeliverSeed queue
+     -> non-exclusive: exact release after accepted append
+     -> exclusive: keep retained through the attempt deadline
   -> endpoint-manager delivery
   -> SeedResult queue
   -> result routing
@@ -97,6 +100,7 @@ Transport adapters
 | --- | --- | --- |
 | Task score-band | Implemented with Redis proof | Cadence, scan horizons, activation and no-work budget values |
 | Worker score-band | Implemented with Redis proof, including dirty lease fence | Dirty marking policy when a persisted assignment continuation exists; recovery cadence and ranking |
+| Worker HOT_ACQUIRE lease protocol | Allocation and result-release phases implemented; dispatch disposition pending | Exclusive policy source, retain-through convergence, and non-exclusive early release |
 | TaskItem score-band | Implemented with Redis proof | Initial retry budget and retry delay values |
 | Worker allocation | Implemented with unit and Redis orchestration proof | PRE_DISPATCH/RUNNING weighting or quota beyond current RUNNING-first behavior |
 | Task running activation | Implemented | Alternative activation policies beyond the built-in minimum candidate count |
@@ -112,21 +116,23 @@ runtime path.
 
 1. [Task Score-Band Scheduling](task-score-band-scheduling.md)
 2. [Worker Score-Band Scheduling](worker-score-band-scheduling.md)
-3. [Task Item Score-Band Scheduling](task-item-score-band-scheduling.md)
-4. [Assignment-Dispatch Scheduling](assignment-dispatch-scheduling.md)
-5. [Task-Worker Allocation Pacer](task-worker-allocation-pacer.md)
-6. [Task Item Dispatch Pacer](task-item-dispatch-pacer.md)
-7. [DeliverSeed Outbound Delivery](deliver-seed-outbound-delivery.md)
-8. [Result-Routing Scheduling](result-routing-scheduling.md)
-9. [Kernel Application Assembly](../kernel-application-assembly.md)
-10. [Worker Runtime Redis Shape](../runtime-redis/worker-runtime-redis-shape.md)
-11. [Seed Result Runtime Redis Shape](../runtime-redis/seed-result-runtime-redis-shape.md)
-12. [Local Function Transport Adapter](../../examples/local_function_adapter/README.md)
+3. [Worker HOT_ACQUIRE Lease Protocol](worker-hot-acquire-lease-protocol.md)
+4. [Task Item Score-Band Scheduling](task-item-score-band-scheduling.md)
+5. [Assignment-Dispatch Scheduling](assignment-dispatch-scheduling.md)
+6. [Task-Worker Allocation Pacer](task-worker-allocation-pacer.md)
+7. [Task Item Dispatch Pacer](task-item-dispatch-pacer.md)
+8. [DeliverSeed Outbound Delivery](deliver-seed-outbound-delivery.md)
+9. [Result-Routing Scheduling](result-routing-scheduling.md)
+10. [Kernel Application Assembly](../kernel-application-assembly.md)
+11. [Worker Runtime Redis Shape](../runtime-redis/worker-runtime-redis-shape.md)
+12. [Seed Result Runtime Redis Shape](../runtime-redis/seed-result-runtime-redis-shape.md)
+13. [Local Function Transport Adapter](../../examples/local_function_adapter/README.md)
 
-The score documents own encoding and transition rules. The assignment parent
-owns the two-pacer protocol. Each pacer document owns its round sequence,
-limits, stale/failure behavior, and deferred policy. Redis shape documents own
-backend representation only.
+The score documents own encoding and transition rules. The Worker lease
+protocol owns the one cross-pacer lease lifecycle without becoming a score or
+runtime owner. The assignment parent owns the two-pacer protocol. Each pacer
+document owns its round sequence, limits, stale/failure behavior, and deferred
+policy. Redis shape documents own backend representation only.
 
 ## Executable Spec Map
 

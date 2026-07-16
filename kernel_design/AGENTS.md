@@ -60,12 +60,13 @@ For worker-runtime work:
 
 1. [doc/resource-model/worker-resource-model.md](doc/resource-model/worker-resource-model.md)
 2. [doc/scheduling/worker-score-band-scheduling.md](doc/scheduling/worker-score-band-scheduling.md)
-3. [doc/scheduling/assignment-dispatch-scheduling.md](doc/scheduling/assignment-dispatch-scheduling.md)
-4. [executable_spec/kernel/worker_runtime.py](executable_spec/kernel/worker_runtime.py)
-5. [executable_spec/kernel/worker_score.py](executable_spec/kernel/worker_score.py)
-6. [executable_spec/redis_runtime/worker_score.py](executable_spec/redis_runtime/worker_score.py)
-7. [executable_spec/tests/test_worker_runtime_contract.py](executable_spec/tests/test_worker_runtime_contract.py)
-8. [executable_spec/tests/test_redis_worker_score.py](executable_spec/tests/test_redis_worker_score.py)
+3. [doc/scheduling/worker-hot-acquire-lease-protocol.md](doc/scheduling/worker-hot-acquire-lease-protocol.md)
+4. [doc/scheduling/assignment-dispatch-scheduling.md](doc/scheduling/assignment-dispatch-scheduling.md)
+5. [executable_spec/kernel/worker_runtime.py](executable_spec/kernel/worker_runtime.py)
+6. [executable_spec/kernel/worker_score.py](executable_spec/kernel/worker_score.py)
+7. [executable_spec/redis_runtime/worker_score.py](executable_spec/redis_runtime/worker_score.py)
+8. [executable_spec/tests/test_worker_runtime_contract.py](executable_spec/tests/test_worker_runtime_contract.py)
+9. [executable_spec/tests/test_redis_worker_score.py](executable_spec/tests/test_redis_worker_score.py)
 
 For task runtime or task score-band work:
 
@@ -295,12 +296,14 @@ one scheduling-round composition
 candidate ranking after worker-runtime matching
 short assignment plan evidence
 Item score claim timing
+dispatch-time Worker lease disposition through WorkerScoreCore owner primitives
 queued DeliverSeed creation
 ```
 
-It does not own task lifecycle truth, worker lifecycle truth, result finality,
-Worker lease continuation/disposition, transport delivery, or transport session
-internals.
+It does not own task lifecycle truth, worker lifecycle truth, Worker score
+encoding/storage, result finality, transport delivery, or transport session
+internals. The canonical allocation/dispatch/result lease sequence is defined
+by [Worker HOT_ACQUIRE Lease Protocol](doc/scheduling/worker-hot-acquire-lease-protocol.md).
 
 DeliverSeed outbound delivery owns:
 
@@ -366,6 +369,11 @@ acquire_observed_hot_score_leases(...)
 renew_active_hot_score_leases(...)
   requires clean active HOT_ACQUIRE observed score
   returns an independent result per Worker and STALE on dirty
+
+dispatch disposition
+  non-exclusive releases the exact fence after accepted DeliverSeed append
+  exclusive retains the exact fence through the attempt deadline
+  result routing exact-releases every trusted success/failure result fence
 
 RECOVERY_RECHECK
   must not pass either hot lease primitive

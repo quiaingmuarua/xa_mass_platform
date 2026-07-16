@@ -347,6 +347,9 @@ Only a downstream dispatch/admission owner holding the published opaque lease
 score may release a non-exclusive Worker after its scheduling decision succeeds.
 Allocation unmatched, matcher failure, and candidate publication failure leave
 the score untouched and recover through lease expiry.
+The full cross-pacer owner sequence is defined by
+[Worker HOT_ACQUIRE Lease Protocol](../scheduling/worker-hot-acquire-lease-protocol.md);
+this Redis note owns only storage and atomic primitive behavior.
 
 Rules:
 

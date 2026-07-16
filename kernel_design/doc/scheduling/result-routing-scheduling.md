@@ -4,6 +4,8 @@ Status: active new-kernel mechanism contract; Python executable spec
 implemented; policy coverage partial.
 
 Parent contract: [Task Item Score-Band Scheduling](task-item-score-band-scheduling.md).
+Worker lease contract:
+[Worker HOT_ACQUIRE Lease Protocol](worker-hot-acquire-lease-protocol.md).
 Redis shape: [Seed Result Runtime Redis Shape](../runtime-redis/seed-result-runtime-redis-shape.md).
 
 ## Purpose
@@ -52,7 +54,9 @@ taskItemClaimUntilMillis
 
 `claimScore` and `workerLeaseScore` remain opaque exact-CAS fences. Only the
 result owner decodes the envelope, and it passes each score unchanged to its
-declared score owner.
+declared score owner. Target `workerLeaseScore` is the fence confirmed or
+extended by dispatch-time retention; the current partial executable spec still
+carries the allocation fence.
 
 ## Outcome Rule
 
@@ -103,6 +107,11 @@ Worker release is attempted for all successfully decoded results, including
 Item `STALE` and `NOOP` outcomes. Missing TaskDescriptor, stale Worker lease, or
 release failure does not roll back Item movement; Worker lease expiry remains
 the recovery fallback.
+
+This uniform release also covers non-exclusive work. If dispatch already
+released the fence after accepted DeliverSeed append, result-side exact release
+is stale and harmless. If early release failed and the same fence remains
+current, result routing may complete it.
 
 Result routing does not reread Item score before choosing an operation:
 

@@ -1,12 +1,13 @@
 # Assignment-Dispatch Scheduling
 
-Status: active new-kernel mechanism contract; Python executable spec
-implemented; policy coverage partial.
+Status: active new-kernel mechanism contract; Python executable spec partial;
+dispatch-time Worker lease disposition is not yet implemented.
 
 Detailed rounds:
 
 - [Task-Worker Allocation Pacer](task-worker-allocation-pacer.md)
 - [Task Item Dispatch Pacer](task-item-dispatch-pacer.md)
+- [Worker HOT_ACQUIRE Lease Protocol](worker-hot-acquire-lease-protocol.md)
 - [DeliverSeed Outbound Delivery](deliver-seed-outbound-delivery.md), which
   begins after the assignment-dispatch cutpoint
 
@@ -23,7 +24,7 @@ Two independently paced mechanisms are mandatory:
 | Pacer | Input | Cutpoint | Score authority |
 | --- | --- | --- | --- |
 | Task-Worker allocation | Due active Tasks, Task constraints, due Worker observations | Expiring `CandidateWorkerEntry` values in one Task-local queue | Exact Worker lease plus current same-band Task time rotation |
-| TaskItem dispatch | RUNNING Task ids, consumed candidate entries, due Item observations and TaskItem records | `DeliverSeed` append to one endpoint-manager queue | TaskItem observed claim only; Task and Worker scores are read-only/opaque |
+| TaskItem dispatch | RUNNING Task ids, consumed candidate entries, due Item observations and TaskItem records | `DeliverSeed` append plus Worker lease disposition for the accepted batch | TaskItem observed claim plus narrow Worker exact retain/release invocation; Task score remains read-only |
 
 `TaskRunningActivationPacer` is the independent lifecycle classification between
 them. It evaluates activation owner facts and may request the declared
@@ -68,7 +69,9 @@ TaskItemDispatchPacer
   discovers RUNNING_VISIBLE Task ids
   consumes candidate evidence
   claims observed TaskItem scores
-  never rewrites Task score or reads/mutates Worker score
+  asks WorkerScoreCore to retain active exact fences through the required cutpoint
+  exact-releases non-exclusive fences after accepted DeliverSeed append
+  never rewrites Task score or decodes Worker score
 ```
 
 Task/Worker metadata updates and TaskItem append remain independent owner
@@ -89,7 +92,7 @@ CandidateWorkerEntry
   workerId
   workerGroupId
   endpointManagerId
-  workerLeaseScore     # opaque exact-release fence
+  workerLeaseScore     # opaque allocation fence for later retain/release
 ```
 
 Its owner surface is:
@@ -147,7 +150,10 @@ RUNNING_VISIBLE Task
   -> atomic bounded candidate consume
   -> bounded TaskItem observation/load/claim
   -> pair successful claims with consumed candidates
+  -> classify exclusive/non-exclusive disposition from Task/admission policy
+  -> retain active clean exact Worker fences through the required cutpoint
   -> append DeliverSeeds grouped by endpointManagerId
+  -> exact-release non-exclusive fences for definitely accepted batches
 ```
 
 Candidate consume and DeliverSeed append are separate runtime operations. A
@@ -198,6 +204,12 @@ Task pauses or closes after discovery
 
 Item claim or DeliverSeed append is lost
   Item claim and Worker lease deadlines restore scheduling visibility
+
+non-exclusive DeliverSeed append succeeds
+  dispatch exact-releases the confirmed Worker fence
+
+exclusive DeliverSeed append succeeds
+  Worker fence remains held through the attempt deadline
 ```
 
 Candidate queues and DeliverSeed queues are disposable handoffs, not a second
@@ -210,6 +222,8 @@ source of liveness or lifecycle truth.
   candidate-runtime feature.
 - Dispatch intends to prefer recently allocated RUNNING Tasks; the current
   Redis Task acquisition remains oldest-first.
+- The exact Task/admission contract that supplies exclusive versus
+  non-exclusive disposition is not yet implemented.
 - Candidate target, scan limits, lease duration, activation condition, and
   per-Task dispatch limit are bounded policy values owned by their pacer
   configs or Task descriptor.
@@ -220,8 +234,9 @@ source of liveness or lifecycle truth.
 
 - Do not collapse allocation, activation, and Item dispatch into one round.
 - Do not let allocation decode Task score or change Task band/suffix.
-- Do not let Item dispatch rewrite Task score or inspect/renew/release Worker
-  score.
+- Do not let Item dispatch rewrite Task score or decode/directly rewrite Worker
+  score; it may invoke only canonical active-fence retain and exact-release
+  owner primitives.
 - Do not publish a candidate before its exact Worker lease succeeds.
 - Do not release unmatched or failed-publication Worker leases as if the
   scheduling attempt had not occurred.

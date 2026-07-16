@@ -4,6 +4,8 @@ Status: active new-kernel mechanism contract; Python executable spec
 implemented; policy coverage partial.
 
 Parent contract: [Assignment-Dispatch Scheduling](assignment-dispatch-scheduling.md).
+Cross-pacer lease contract:
+[Worker HOT_ACQUIRE Lease Protocol](worker-hot-acquire-lease-protocol.md).
 
 ## Purpose
 
@@ -547,6 +549,8 @@ Task pauses/closes after publication
   transaction or lock.
 - Do not release Worker leases from this pacer. Unmatched, matcher failure, and
   publication failure all recover through bounded lease expiry.
+- Do not decide non-exclusive early release or exclusive attempt retention;
+  those dispositions begin after a matched candidate reaches TaskItem dispatch.
 - Each Worker lease operation inside the batch must use its exact opaque
   observed score; do not replace it with an expected band, time range, or second
   score read.

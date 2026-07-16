@@ -7,8 +7,9 @@ The document families are grouped by design concern:
 - [Kernel Application Assembly](kernel-application-assembly.md): zero-config
   scheduling application and resource-command boundaries, private Redis
   composition, and CLI/FastAPI hosts.
-- [Scheduling](scheduling/README.md): score axes, assignment-dispatch pacers,
-  outbound handoff, and result routing.
+- [Scheduling](scheduling/README.md): score axes, the cross-pacer Worker
+  HOT_ACQUIRE lease protocol, assignment-dispatch pacers, outbound handoff, and
+  result routing.
 - Resource models:
   [Worker](resource-model/worker-resource-model.md) and
   [Task](resource-model/task-resource-model.md) metadata/query projection
