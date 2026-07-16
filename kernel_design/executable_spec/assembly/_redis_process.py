@@ -125,6 +125,7 @@ class _RedisKernelProcess:
             self._deliver_seed_runtime,
             task_item_score,
             self._task_runtime,
+            self._worker_score,
         )
         self._assignment_dispatch_application = AssignmentDispatchApplication(
             worker_allocation_pacer,

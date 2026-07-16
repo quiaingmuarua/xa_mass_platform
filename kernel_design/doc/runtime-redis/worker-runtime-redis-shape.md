@@ -47,7 +47,8 @@ dynamic attribute keys are handler-owned projections / indexes
 endpointManagerId is a stable post-selection endpoint-owner locator
 live transport evidence is not stored in worker catalog or score keys
 Worker upsert establishes immutable declaration identity before ensuring score presence
-reconnect replaces Worker attributes and may restore negative polarity without resetting abs(score)
+reconnect replaces Worker attributes, preserves timeSlot/laneRank, converges to
+positive polarity, and writes dirty=1 without releasing a hold
 platform and dynamic attribute updates do not require a worker score lease
 ```
 
@@ -330,23 +331,25 @@ Required first-slice primitives:
 
 ```text
 initialize_hot_acquire_score(workerGroupId, workerId, laneRank)
+reconcile_worker_online(workerGroupId, workerId)
 rewrite_current_scores(workerGroupId, workerIds, targetTimeMillis, targetLaneRank?)
 acquire_hot_acquire_candidates(workerGroupId, limit)
 acquire_observed_hot_score_leases(
   workerGroupId, observedScores, targetTimeMillis
 )
 renew_active_hot_score_leases(workerGroupId, observedScores, targetTimeMillis)
+mark_observed_worker_leases_offline(workerGroupId, observedScores)
 mark_current_lease_dirty(workerGroupId, workerId)
 toggle_current_polarity(workerGroupId, workerId, observedScore, targetLaneRank)
 exhaust_recovery_recheck(workerGroupId, workerId, observedScore)
 release_score_holds(workerGroupId, observedScores, releaseTimeMillis)
 ```
 
-`release_score_holds` is not an allocation-pacer compensation primitive.
-Only a downstream dispatch/admission owner holding the published opaque lease
-score may release a non-exclusive Worker after its scheduling decision succeeds.
-Allocation unmatched, matcher failure, and candidate publication failure leave
-the score untouched and recover through lease expiry.
+`release_score_holds` is not an allocation or dispatch compensation primitive.
+Result routing uses the published opaque lease after `200/1xxx` evidence.
+Allocation unmatched, matcher failure, candidate publication failure, dispatch
+rejection, and queue ambiguity leave the score untouched and recover through
+lease expiry unless trusted `3xxx` evidence requests exact offline movement.
 The full cross-pacer owner sequence is defined by
 [Worker HOT_ACQUIRE Lease Protocol](../scheduling/worker-hot-acquire-lease-protocol.md);
 this Redis note owns only storage and atomic primitive behavior.
@@ -362,11 +365,16 @@ exact observedScore CAS
 polarity move preserves timeSlot and dirty
 polarity move uses exact observedScore CAS
 RECOVERY_RECHECK cannot be hot leased
-active hot lease renewal returns STALE on dirty
+active hot lease renewal returns STALE on dirty; a covered future target returns
+NOOP only after exact observedScore validation
 bounded hot acquire is a read-only positive due-score query
 observed hot lease batch validates due/future shape outside Lua, then pipelines
 one generic exact-score CAS per Worker while preserving laneRank and clearing dirty
 dirty mark only sets dirty = 1
+online reconciliation preserves timeSlot/laneRank, writes positive polarity,
+and sets dirty = 1
+observed offline movement accepts only clean positive lease scores and writes
+-abs(observedScore) through exact CAS
 ```
 
 `rewrite_current_scores` is monotonic and does not need `observedScore`.
@@ -607,8 +615,8 @@ protects.
   hashes.
 - Do not store dynamic attribute current values inside `WorkerDescriptor`.
 - Do not let transport write worker score keys directly.
-- Do not let heartbeat / reconnect / raw positive session evidence move
-  RECOVERY_RECHECK to HOT_ACQUIRE directly.
+- Do not let heartbeat or raw session evidence move RECOVERY_RECHECK to
+  HOT_ACQUIRE. Only validated Worker upsert may invoke online reconciliation.
 - Do not add worker lifecycle tags.
 - Do not add PARKED, FUTURE, or MANUAL_DISABLED bands.
 - Do not use score absence as worker unavailability.

@@ -19,6 +19,7 @@ from kernel_design.executable_spec import (
     RedisTaskItemScoreBandCore,
     RedisWorkerScoreCore,
     TaskItemScoreBand,
+    WorkerScorePolarity,
 )
 from kernel_design.executable_spec.assembly import (
     DeliverSeedConsumerClient,
@@ -157,6 +158,75 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
             if "worker-1" not in worker_candidates:
                 time.sleep(self.worker_score.SLOT_MILLIS / 1_000)
         self.assertIn("worker-1", worker_candidates)
+
+    def test_adapter_rejection_marks_worker_offline_then_reconnect_restores_online(
+        self,
+    ) -> None:
+        self.resources.upsert_worker_group(
+            descriptor=WorkerGroupDescriptor(
+                worker_group_id="image-workers",
+                attributes={},
+                event_codes=frozenset({"image.resize"}),
+            )
+        )
+        declaration = WorkerDeclaration(
+            worker_id="worker-1",
+            worker_group_id="image-workers",
+            endpoint_manager_id="endpoint-1",
+            attributes={"runtime": "python"},
+            dynamic_attribute_names=frozenset(),
+        )
+        self.adapter.register_worker("worker-1", WorkerMeta({"runtime": "local"}))
+        self.adapter.unregister_worker("worker-1")
+        self.resources.upsert_worker(declaration=declaration)
+
+        self.application.start()
+        self.application.create_task(descriptor=self._task_descriptor())
+        self.application.approve_task(task_id="task-1")
+        self.application.append_task_items(
+            task_id="task-1",
+            items=(
+                TaskItem(
+                    message_id="message-1",
+                    event_code="image.resize",
+                    created_at_millis=int(time.time() * 1_000) - 1_000,
+                    payload={"source": "input"},
+                ),
+            ),
+        )
+
+        deadline = time.monotonic() + 3
+        reported = 0
+        while time.monotonic() < deadline and reported == 0:
+            reported = self.adapter.drain_once(limit=10)
+            if reported == 0:
+                time.sleep(0.02)
+        self.assertEqual(1, reported)
+
+        offline = None
+        deadline = time.monotonic() + 3
+        while time.monotonic() < deadline:
+            offline = self.worker_score.get_score_states(
+                home_bucket_id="image-workers",
+                worker_ids=["worker-1"],
+            )["worker-1"]
+            if offline is not None and offline.polarity is WorkerScorePolarity.RECOVERY_RECHECK:
+                break
+            time.sleep(0.02)
+
+        self.assertIsNotNone(offline)
+        assert offline is not None
+        self.assertIs(WorkerScorePolarity.RECOVERY_RECHECK, offline.polarity)
+
+        self.resources.upsert_worker(declaration=declaration)
+        online = self.worker_score.get_score_states(
+            home_bucket_id="image-workers",
+            worker_ids=["worker-1"],
+        )["worker-1"]
+        self.assertIsNotNone(online)
+        assert online is not None
+        self.assertIs(WorkerScorePolarity.HOT_ACQUIRE, online.polarity)
+        self.assertEqual(1, online.dirty)
 
     @staticmethod
     def _task_descriptor() -> TaskDescriptor:

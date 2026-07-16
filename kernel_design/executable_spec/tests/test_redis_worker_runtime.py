@@ -190,6 +190,13 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
         assert stored is not None
         self.assertEqual(stored.attributes, {"runtime": "java"})
         self.assertEqual(stored.platform_attributes, {"tier": "premium"})
+        state = self.score_band.get_score_states(
+            home_bucket_id="image-workers",
+            worker_ids=["worker-1"],
+        )["worker-1"]
+        assert state is not None
+        self.assertEqual(WorkerScorePolarity.HOT_ACQUIRE, state.polarity)
+        self.assertEqual(1, state.dirty)
 
     def test_reconnect_flips_recovery_score_without_changing_coordinate(self) -> None:
         self.upsert_group()
@@ -228,8 +235,9 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
         self.assertEqual(result.status, WorkerRuntimeStatus.OK)
         assert reconnected is not None
         self.assertEqual(reconnected.polarity, WorkerScorePolarity.HOT_ACQUIRE)
-        self.assertEqual(reconnected.score, abs(disconnected.score or 0))
+        self.assertEqual(reconnected.score, abs(disconnected.score or 0) + 1)
         self.assertEqual(reconnected.lane_rank, self.LANE_RANK)
+        self.assertEqual(reconnected.dirty, 1)
 
     def test_worker_identity_conflict_does_not_change_descriptor_or_score(self) -> None:
         self.upsert_group()

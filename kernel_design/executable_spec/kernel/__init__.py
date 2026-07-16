@@ -63,7 +63,13 @@ from .assignment_dispatch_runtime import (
     DeliverSeed,
     DeliverSeedRuntime,
 )
-from .seed_result_runtime import SeedResult, SeedResultRuntime
+from .seed_result_runtime import (
+    SUCCESS_OUTCOME_CODE,
+    SeedResult,
+    SeedResultOutcomeClass,
+    SeedResultRuntime,
+    classify_seed_result_outcome_code,
+)
 
 __all__ = [
     "AssignmentDispatchRuntime",
@@ -118,7 +124,10 @@ __all__ = [
     "DeliverSeed",
     "DeliverSeedRuntime",
     "SeedResult",
+    "SeedResultOutcomeClass",
     "SeedResultRuntime",
+    "SUCCESS_OUTCOME_CODE",
+    "classify_seed_result_outcome_code",
     "TaskResourceCatalog",
     "TaskRuntime",
 ]

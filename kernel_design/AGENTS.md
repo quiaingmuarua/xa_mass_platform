@@ -324,10 +324,11 @@ Result-routing owns:
 one logical SeedResult queue through SeedResultRuntime
 bounded SeedResult consumption through ResultRoutingPacer
 opaqueResultContext decoding inside the result owner
-exact `"200"` final-success selection and non-200 retry selection
+exact `"200"` final-success selection and `1xxx/3xxx` retry selection
 batch-local success precedence for duplicate Item evidence
 opaque claimScore pass-through to TaskItemScoreBandCore
-opaque workerLeaseScore pass-through to WorkerScoreCore exact release
+opaque workerLeaseScore pass-through to WorkerScoreCore exact release for
+`200/1xxx` or exact offline movement for `3xxx`
 Task Item transition-result counting
 ```
 
@@ -336,8 +337,8 @@ must not interpret current Item score, reproduce same-tag/cross-tag rules,
 select workers, parse transport sessions as truth, or refresh task or worker
 score as a generic side effect. The public SeedResult queue is not partitioned
 by endpointManagerId. The first executable spec does not persist result payload,
-maintain a result projection/barrier, or classify non-200 evidence directly as
-final failure; exhausted ACTIVE budget is finalized by Item dispatch acquire.
+maintain a result projection/barrier, or parse exact outcome subcodes; exhausted
+ACTIVE budget is finalized by Item dispatch acquire.
 
 ## 4. Worker-Runtime Boundary Rules
 
@@ -368,12 +369,18 @@ acquire_observed_hot_score_leases(...)
 
 renew_active_hot_score_leases(...)
   requires clean active HOT_ACQUIRE observed score
+  exact-validates an already sufficient lease or extends it
   returns an independent result per Worker and STALE on dirty
 
 dispatch disposition
-  non-exclusive releases the exact fence after accepted DeliverSeed append
-  exclusive retains the exact fence through the attempt deadline
-  result routing exact-releases every trusted success/failure result fence
+  validates/renews the exact active fence before Item claim
+  rejects dirty/offline/expired/stale candidates without compensation release
+  result routing exact-releases `200/1xxx` fences and moves `3xxx` fences
+  to negative polarity
+
+connect/reconnect
+  existing score preserves timeSlot/laneRank, converges positive, dirty=1
+  first score initializes positive, dirty=0
 
 RECOVERY_RECHECK
   must not pass either hot lease primitive

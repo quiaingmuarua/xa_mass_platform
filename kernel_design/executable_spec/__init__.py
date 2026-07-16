@@ -53,7 +53,10 @@ from .kernel import (
     DeliverSeed,
     DeliverSeedRuntime,
     SeedResult,
+    SeedResultOutcomeClass,
     SeedResultRuntime,
+    SUCCESS_OUTCOME_CODE,
+    classify_seed_result_outcome_code,
 )
 from .scheduling import (
     CandidateId,
@@ -166,5 +169,8 @@ __all__ = [
     "ResultRoutingConfig",
     "ResultRoutingPacer",
     "SeedResult",
+    "SeedResultOutcomeClass",
     "SeedResultRuntime",
+    "SUCCESS_OUTCOME_CODE",
+    "classify_seed_result_outcome_code",
 ]

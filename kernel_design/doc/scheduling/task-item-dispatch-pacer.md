@@ -1,535 +1,170 @@
-# Task Item Dispatch Pacer
+# TaskItem Dispatch Pacer
 
-Status: active new-kernel mechanism contract; Python executable spec partial;
-policy coverage partial.
+Status: active new-kernel mechanism contract; Python executable spec
+implemented; policy coverage partial.
 
-Parent contract: [Assignment-Dispatch Scheduling](assignment-dispatch-scheduling.md).
-Cross-pacer lease contract:
+Parent contracts:
+[Assignment-Dispatch Scheduling](assignment-dispatch-scheduling.md),
+[Task Item Score-Band Scheduling](task-item-score-band-scheduling.md), and
 [Worker HOT_ACQUIRE Lease Protocol](worker-hot-acquire-lease-protocol.md).
-The next owner after this pacer is
-[DeliverSeed Outbound Delivery](deliver-seed-outbound-delivery.md).
 
 ## Purpose
 
-`TaskItemDispatchPacer` turns two bounded scheduling inputs into queued
-`DeliverSeed` values:
+This is the second independent assignment-dispatch pacer:
 
 ```text
-Task-local CandidateWorkerEntry consumption
-  + due TaskItem score acquisition and claim
-  -> endpointManagerId-partitioned DeliverSeed queue append
+RUNNING_VISIBLE Task
+  -> consume Task-local CandidateWorkerEntry values
+  -> exact validate/renew active Worker leases
+  -> claim no more TaskItems than valid Workers
+  -> pair Worker and Item in stable order
+  -> append DeliverSeed by endpointManagerId
 ```
 
-Its cutpoint is successful DeliverSeed queue append plus the declared Worker
-lease disposition for that accepted batch. It does not consume the DeliverSeed
-again, call transport, resolve adapters, decode Worker score, or own Worker
-score truth.
+It does not discover Workers, rematch constraints, update Task score, call
+transport, process results, or own Worker online classification.
 
-The word `dispatch` in this document means assignment-side TaskItem dispatch
-planning. It does not mean final-hop transport delivery.
-
-## Inputs
-
-```text
-TaskScoreBandCore
-  acquire_dispatch_work_tasks(limit)
-  read-only RUNNING_VISIBLE Task discovery
-
-AssignmentDispatchRuntime
-  atomically consume one Task's bounded CandidateWorkerEntry batch
-
-DeliverSeedRuntime
-  append one bounded DeliverSeed batch to one endpointManagerId queue
-
-TaskItemScoreBandCore
-  acquire due ACTIVE Item observations
-  exact-CAS positive-budget observations into future ACTIVE claims
-  promote selected exhausted observations to FINAL_FAILED
-
-TaskRuntime
-  load bounded canonical TaskItem records
-
-WorkerScoreCore
-  confirm / retain active clean exact HOT lease fences through a required cutpoint
-  exact-release confirmed non-exclusive fences after accepted DeliverSeed append
-
-Task/admission policy
-  classify the selected Task's Worker use as exclusive or non-exclusive
-
-TaskItemDispatchConfig
-  taskBatchLimit
-  perTaskDispatchLimit
-  itemClaimLeaseDurationMillis
-```
-
-There is deliberately no Worker matcher, transport ingress, adapter resolver,
-or result owner in this pacer. `WorkerScoreCore` is present only as the narrow
-owner of opaque active-fence retain and exact-release operations; dispatch must
-not decode its scores or absorb Worker policy.
-
-## Task Discovery
-
-Task Item dispatch uses Task score as its only Task discovery index:
-
-```text
-acquire_dispatch_work_tasks(limit=taskBatchLimit)
-  -> due RUNNING_VISIBLE Task ids
-```
-
-`PRE_DISPATCH_VISIBLE`, `PRE_REVIEW`, future-held Tasks, and `TERMINAL` do not
-enter this pacer. The public caller supplies only `limit`; Task score owns
-band bounds, current-time capture, score ordering, and range construction.
-
-The intended dispatch scan prefers recently rotated RUNNING evidence. The
-current Redis implementation still scans the due RUNNING range oldest-first;
-that is a deferred ordering policy inside the existing score method, not
-permission to add another Task discovery index or expose score ranges to the
-pacer.
-
-Task discovery is a round-admission decision, not a Task lock. A Task that is
-paused or closed after it was returned may finish this already-started bounded
-round. The design intentionally accepts that in-flight race; it does not add a
-second Task score read, rollback, or cross-key fence.
-
-## Candidate Worker Consumption
-
-For each discovered Task:
-
-```text
-consume_candidate_workers(
-  taskId,
-  limit=perTaskDispatchLimit
-)
-```
-
-The runtime atomically removes at most the requested number of non-expired
-entries from that one Task collection. Multiple pacers may consume different
-entries concurrently without a Task lock. One candidate entry is returned to
-at most one consumer.
-
-Each entry already carries allocation-owned opaque evidence:
-
-```text
-CandidateWorkerEntry
-  workerId
-  workerGroupId
-  endpointManagerId
-  workerLeaseScore
-```
-
-This pacer does not interpret `workerLeaseScore`. The target protocol passes it
-to the Worker owner for active/clean/exact retain validation and copies the
-returned confirmed fence into the generated DeliverSeed. The current partial
-executable spec still copies the allocation fence without this dispatch-time
-step.
-
-Consumed candidates are not restored when no Item is claimable or queue append
-fails. Their Worker leases remain bounded and recover through Worker score
-time semantics.
-
-## Item Acquisition And Claim
-
-The pacer requests at most one Item candidate per consumed Worker:
-
-```text
-acquire_item_score_candidates(
-  taskId,
-  limit=len(candidateWorkers)
-)
-  -> messageId -> (observedScore, remainingBudget)
-```
-
-Acquire is read-only. It cannot directly produce DeliverSeed because concurrent
-pacer rounds may observe the same Item. A DeliverSeed requires an exact
-same-band claim first:
-
-```text
-remainingBudget > 0
-  -> load the canonical TaskItem record
-  -> rewrite_observed_item_scores(
-       taskId,
-       recordBackedObservedScores,
-       claimLeaseUntilMillis,
-       remainingBudgetDelta=-1
-     )
-  -> only TRANSITIONED + claimScore may produce DeliverSeed
-
-remainingBudget == 0
-  -> promote_item_outcomes(
-       taskId,
-       exhaustedMessageIds,
-       FINAL_FAILED,
-       nowMillis
-     )
-  -> no DeliverSeed
-```
-
-Missing or corrupt TaskItem records are skipped. The pacer does not invent a
-payload, create another Work model, or infer a terminal reason from missing
-record truth. A successful Item claim is future ACTIVE score placement; queue
-append failure needs no retry queue or compensating score write because claim
-expiry restores acquire visibility.
-
-## DeliverSeed
-
-`DeliverSeed` is the assignment-side handoff produced by this pacer:
-
-```text
-DeliverSeed
-  workerId
-  opaqueDeliveryItem
-  opaqueResultContext
-  taskItemClaimUntilMillis
-```
-
-`opaqueDeliveryItem` is produced through one internal function call. The
-built-in encoder emits only deterministic `eventCode / payload` JSON:
-
-```text
-encodeDeliveryItem(TaskItem)
-  -> {"eventCode": ..., "payload": ...}
-```
-
-This function is an assignment-dispatch policy point, not a public registry,
-SDK command, assembly setting, or externally selectable codec. The executable
-spec uses the built-in function by default and may replace it only through
-internal composition or focused tests. `messageId`, priority, creation time,
-expiry, and score evidence are deliberately absent from the Worker-facing
-delivery envelope. The endpoint manager may translate the opaque value into
-its Worker protocol without receiving the canonical `TaskItem` object.
-
-`opaqueResultContext` carries serialized
-`taskId / messageId / workerId / claimScore / workerLeaseScore` correlation
-that a Worker result must return unchanged. Target `workerLeaseScore` is the
-fence returned by dispatch-time retain validation: unchanged when the active
-lease already covers the required cutpoint, or extended for exclusive use.
-
-The two scores remain opaque owner fences even though they are no longer
-top-level DeliverSeed fields. Redis runtime and Worker-facing transport adapters
-do not parse either opaque string; a later platform outbound/result codec may
-recover the declared context fields without exposing score encoding.
-
-`taskItemClaimUntilMillis` is the same claim target supplied to
-`rewrite_observed_item_scores`. It is an outbound stale-delivery cutoff, not
-TaskItem business expiry and not another score truth.
-
-`endpointManagerId` is copied from the consumed `CandidateWorkerEntry` only as
-the Deliver Queue partition key. It is not duplicated inside DeliverSeed:
-
-```text
-deliverQueue[endpointManagerId].append(DeliverSeed)
-```
-
-Live transport identifiers are forbidden:
-
-```text
-adapterId
-sessionId
-connectionId
-mailboxKey
-routeKey
-deliveryQueueKey
-```
-
-`endpointManagerId` is the explicit exception because it identifies the
-physical endpoint-manager queue, not a live adapter/session/connection handle.
-
-Transport receives an already selected Worker only after the queued seed
-crosses into the outbound owner.
-
-## DeliverSeed Queue
-
-The queue owner exposes one bounded operation in each direction:
-
-```text
-append_deliver_seeds(
-  endpointManagerId,
-  deliverSeeds: Sequence[DeliverSeed]
-)
-
-consume_deliver_seeds(
-  endpointManagerId,
-  limit
-) -> Sequence[DeliverSeed]
-```
-
-The Redis executable spec writes one LIST per endpoint manager:
-
-```text
-ad:{prefix}:endpoint-manager:{endpointManagerId}:deliver-seeds
-```
-
-One call reads or writes exactly one endpoint-manager queue. Redis 6.0 uses a
-transactional pipeline of bounded `LPOP` operations for consume; this preserves
-the batch atomicity without a Lua script or a Redis 6.2 dependency. For each Task, the
-pacer partitions that Task's claimed seeds by endpoint manager and appends them
-before advancing to the next Task. It does not retain a whole-round,
-cross-Task DeliverSeed buffer. Calls for different endpoint managers succeed or
-fail independently; the interface does not imply cross-queue atomicity.
-
-The queue has one semantic role: handoff of already claimed Items to outbound
-delivery. It is not Item truth, Worker truth, result truth, or a second claim
-owner. Candidate collections belong to `AssignmentDispatchRuntime`; DeliverSeed
-queues belong to `DeliverSeedRuntime`. They are adjacent handoff structures,
-not one runtime lifecycle.
-
-The queue does not promise cross-key atomicity with Item score or candidate
-consumption. Its correctness fallback is the existing score timing:
-
-```text
-candidate consumed, no seed appended
-  -> Worker lease eventually becomes due
-
-Item claimed, seed append fails or process stops
-  -> Item claim eventually becomes due
-  -> Worker lease eventually becomes due
-
-non-exclusive seed batch definitely appended
-  -> dispatch exact-releases that batch's confirmed Worker fences
-
-exclusive seed batch definitely appended
-  -> dispatch retains each confirmed Worker fence through attemptUntilMillis
-```
-
-No background repair scanner is required.
-
-## Task Score Is Read-Only
-
-This pacer never writes:
-
-```text
-Task timeSlot
-Task suffix
-Task band
-Task terminal score
-```
-
-Candidate absence, no due Item, stale Item claim, missing record, or seed queue
-failure does not grant Task-score write authority. Task scheduling policy may
-classify later evidence in another bounded round.
-
-## Target Worker Lease Disposition
-
-After pairing claimed Items with candidates and before making a Seed visible:
-
-```text
-read Task/admission exclusive policy
-  -> retain each candidate's active clean exact HOT fence
-     -> non-exclusive: require only the accepted-DeliverSeed cutpoint
-     -> exclusive: require attemptUntilMillis
-  -> discard stale / dirty / expired retain failures
-  -> create DeliverSeeds with returned confirmed fences
-  -> append one endpoint-manager batch
-  -> after definite append success, exact-release non-exclusive fences
-```
-
-The retain operation owns the opaque comparison. Dispatch cannot decode the
-allocation score to decide whether the existing deadline is already sufficient.
-If queue append fails or is ambiguous after retain, no compensation release is
-allowed; the bounded Worker lease and Item claim expire independently.
-
-The target branch is not yet wired in the Python executable spec.
-
-## Current Executable Round
+## Contracts
 
 ```python
-def dispatch_task_items(config):
-    now_millis = current_time_millis()
-    claim_lease_until_millis = (
-        now_millis + config.item_claim_lease_duration_millis
-    )
-    task_ids = task_score.acquire_dispatch_work_tasks(
-        limit=config.task_batch_limit,
-    )
-    generated_seed_count = 0
+TaskItemDispatchConfig(
+    task_batch_limit: int,
+    per_task_dispatch_limit: int,
+    item_claim_lease_duration_millis: int,
+)
 
-    for task_id in task_ids:
-        candidate_workers = dispatch_runtime.consume_candidate_workers(
-            task_id=task_id,
-            limit=config.per_task_dispatch_limit,
-        )
-        if not candidate_workers:
-            continue
-
-        observations = item_score.acquire_item_score_candidates(
-            task_id=task_id,
-            limit=len(candidate_workers),
-        )
-
-        exhausted_message_ids = tuple(
-            message_id
-            for message_id, (_, budget) in observations.items()
-            if budget == 0
-        )
-        if exhausted_message_ids:
-            item_score.promote_item_outcomes(
-                task_id=task_id,
-                message_ids=exhausted_message_ids,
-                target_band=FINAL_FAILED,
-                target_time_millis=now_millis,
-            )
-
-        claimable_observed_scores = {
-            message_id: observed_score
-            for message_id, (observed_score, budget) in observations.items()
-            if budget > 0
-        }
-        if not claimable_observed_scores:
-            continue
-
-        items = task_runtime.load_task_items(
-            task_id=task_id,
-            message_ids=tuple(claimable_observed_scores),
-        )
-        record_backed_scores = {
-            message_id: observed_score
-            for message_id, observed_score in claimable_observed_scores.items()
-            if items.get(message_id) is not None
-        }
-        if not record_backed_scores:
-            continue
-
-        claim_results = item_score.rewrite_observed_item_scores(
-            task_id=task_id,
-            observed_scores=record_backed_scores,
-            target_time_millis=claim_lease_until_millis,
-            remaining_budget_delta=-1,
-        )
-
-        claimed_items = []
-        for message_id in record_backed_scores:
-            result = claim_results.get(message_id)
-            if result is None:
-                continue
-            if result.status != TRANSITIONED or result.score is None:
-                continue
-            claimed_items.append((items[message_id], result.score))
-
-        endpoint_batches = {}
-        for candidate_worker, (task_item, claim_score) in zip(
-            candidate_workers,
-            claimed_items,
-        ):
-            seed = DeliverSeed(
-                worker_id=candidate_worker.worker_id,
-                opaque_delivery_item=encode_delivery_item(task_item),
-                opaque_result_context=encode_result_context(
-                    ResultContext(
-                        task_id=task_id,
-                        message_id=task_item.message_id,
-                        worker_id=candidate_worker.worker_id,
-                        claim_score=claim_score,
-                        worker_lease_score=candidate_worker.worker_lease_score,
-                        task_item_claim_until_millis=claim_lease_until_millis,
-                    )
-                ),
-                task_item_claim_until_millis=claim_lease_until_millis,
-            )
-            endpoint_batches.setdefault(
-                candidate_worker.endpoint_manager_id,
-                [],
-            ).append(seed)
-
-        for endpoint_manager_id, deliver_seeds in (
-            endpoint_batches.items()
-        ):
-            deliver_seed_runtime.append_deliver_seeds(
-                endpoint_manager_id=endpoint_manager_id,
-                deliver_seeds=tuple(deliver_seeds),
-            )
-            generated_seed_count += len(deliver_seeds)
-
-    return generated_seed_count
+TaskItemDispatchPacer.dispatch_task_items(config) -> int
 ```
 
-`zip` intentionally stops at the smaller successful side. A consumed candidate
-without a claimed Item is not restored; a successfully claimed Item without a
-paired candidate cannot occur because Item acquire is bounded by the consumed
-candidate count. Queue append is fail-fast per endpoint manager: previously
-appended manager batches remain published, while failed and unattempted claims
-recover through their score leases.
+The return value counts DeliverSeeds successfully appended. All limits and the
+claim duration must be positive.
 
-## Executable-Spec Status And Deferred Policy
-
-The Python executable spec already provides:
+`CandidateWorkerEntry` carries:
 
 ```text
-TaskScoreBandCore.acquire_dispatch_work_tasks
-AssignmentDispatchRuntime with Redis candidate ZSET append/count/consume
-DeliverSeedRuntime with Redis DeliverSeed LIST append/consume
-TaskRuntime bounded TaskItem load
-TaskItemScoreBandCore and Redis Item score implementation
-DeliverSeed model and DeliverSeedRuntime owner surface
-TaskItemDispatchConfig and TaskItemDispatchPacer
-unit proof plus real Redis orchestration proof
+workerId
+workerGroupId
+endpointManagerId
+workerLeaseScore    # opaque allocation fence
 ```
 
-The Item acquisition, claim, and DeliverSeed append mechanism is implemented.
-The remaining target gaps are:
+## Dispatch Round
+
+One round reads `nowMillis` once and defines:
 
 ```text
-recent-first Redis implementation for acquire_dispatch_work_tasks
-Task/admission exclusive disposition available to this pacer
-dispatch-time active clean exact-fence retain
-non-exclusive exact release after confirmed DeliverSeed append
-exclusive retain through attemptUntilMillis
-confirmed/retained fence propagation into opaqueResultContext
+taskItemClaimUntilMillis
+  = nowMillis + itemClaimLeaseDurationMillis
 ```
 
-The Local Function Adapter now consumes one endpoint-manager queue and submits
-SeedResult evidence. Result routing already performs the fallback exact release
-for every decoded result; dispatch-side early release remains unimplemented.
+Per Task:
+
+```text
+1. consume at most perTaskDispatchLimit candidate Workers
+2. group candidates by workerGroupId
+3. renew_active_hot_score_leases using taskItemClaimUntilMillis
+4. retain only TRANSITIONED / NOOP results carrying a current score
+5. acquire no more Item observations than retained Workers
+6. promote zero-budget observations to FINAL_FAILED
+7. load TaskItem records and discard missing records
+8. exact-claim remaining Items with remainingBudgetDelta=-1
+9. pair successful Item claims with validated Workers in stable order
+10. encode ResultContext using the validated/renewed Worker fence
+11. append endpoint-manager batches before continuing to the next Task
+```
+
+Worker validation must happen before Item claim. A dirty, offline, expired, or
+stale Worker candidate cannot consume an Item claim in this round.
+
+`renew_active_hot_score_leases` owns the opaque comparison:
+
+```text
+storedScore != observedScore -> STALE
+polarity != HOT_ACQUIRE      -> rejected
+dirty == 1                   -> STALE
+lease expired                -> STALE
+lease already covers target -> exact NOOP + current fence
+lease needs extension        -> exact CAS + renewed fence
+```
+
+The pacer never decodes a Worker score and never clears dirty.
+
+## Item Claim And Pairing
+
+TaskItem score remains the claim truth. Missing records and lost Item CAS do not
+produce DeliverSeeds. Pairing follows the order of validated candidates and
+successful Item observations; `zip` stops at the smaller side.
+
+The built-in delivery envelope contains only `eventCode` and `payload`.
+`opaqueResultContext` carries Task/Item correlation plus both opaque score
+fences. `endpointManagerId` partitions the queue and is not included in the
+DeliverSeed itself.
 
 ## Failure Semantics
 
 ```text
-candidate collection missing or empty
-  bounded no-op
+no RUNNING Task or no candidate
+  -> bounded no-op
 
-no due Item
-  consumed candidates are not restored; Worker leases expire naturally
+all Worker validations rejected
+  -> no Item acquire or claim
 
-Worker retain validation is stale / dirty / expired
-  no DeliverSeed for that Worker/Item pair; bounded deadlines recover
+some Worker validations rejected
+  -> claim only for remaining Workers
 
-Item observation loses exact claim CAS
-  no DeliverSeed for that Item
+no due Item / missing Item record / lost Item CAS
+  -> no DeliverSeed for that position
 
-TaskItem record missing or corrupt
-  no DeliverSeed; no inferred final transition
+Item claimed but seed append fails
+  -> no compensation; Item claim and Worker lease expire
 
-Item claim succeeds, seed construction or queue append fails
-  no compensation; Item claim and Worker lease expire naturally
+Worker validated but not paired or not published
+  -> no active release; Worker lease expires
 
-non-exclusive DeliverSeed batch is definitely accepted
-  exact-release that batch's confirmed Worker fences
-
-exclusive DeliverSeed batch is definitely accepted
-  retain confirmed Worker fences until result or attempt timeout
-
-seed reaches outbound after taskItemClaimUntilMillis
-  outbound drops it before Worker submit and records bounded diagnostics
-  no synthetic result, Item-score mutation, or outbound-owned Worker release
-
-Task pauses or closes after scan
-  this already-started bounded round may still append a seed
+Task pauses or closes after Task scan
+  -> this bounded round may still publish already-started work
 ```
+
+The pacer does not release Worker leases. Trusted `200/1xxx` result evidence
+releases the exact fence; trusted `3xxx` adapter rejection moves that exact
+fence to offline polarity. Missing results recover through time.
+
+## Task Score And Queue Boundaries
+
+Task score is read-only in this pacer. Candidate absence, stale Worker, no Item,
+claim failure, or queue failure grants no Task-score write authority.
+
+`AssignmentDispatchRuntime` owns Task-local candidate queues.
+`DeliverSeedRuntime` owns endpoint-manager queues. Neither queue is TaskItem or
+Worker truth, and neither promises cross-key atomicity.
+
+## Executable-Spec Status And Deferred Policy
+
+Implemented:
+
+```text
+RUNNING_VISIBLE Task acquisition
+candidate consume
+dispatch-time active clean Worker exact validation/renewal
+dirty/offline/stale rejection before Item claim
+TaskItem acquire/load/exact claim
+validated Worker fence propagation
+DeliverSeed endpoint-manager append
+unit and real Redis proof
+```
+
+Deferred policy is limited to recent-first Task acquisition and future explicit
+capacity/concurrency policy. It must not create an early-release branch inside
+this pacer without a separate owner invariant.
 
 ## Guardrails
 
-- Do not process `PRE_DISPATCH_VISIBLE` in this pacer.
-- Do not discover Worker groups or broad Worker candidates here.
-- Do not invoke `WorkerCandidateMatcher` or read Worker metadata here.
-- Invoke only the narrow Worker-owner active-fence retain and exact-release
-  primitives defined by the canonical lease protocol.
-- Do not decode, construct, trim, rank, or directly rewrite Worker scores.
-- Do not call transport or resolve adapters here.
-- Read exclusive versus non-exclusive disposition only from Task/admission
-  policy; do not infer it from payload, transport, or handler results.
-- Do not write Task score for success, no-work, claim failure, or queue failure.
-- Do not consume candidate entries without an owner-local atomic primitive.
-- Do not create DeliverSeed before current Item claim succeeds.
-- Do not decode Item or Worker scores.
-- Do not convert expired-before-submit DeliverSeed into a synthetic result.
-- Do not create a second Work, Attempt, retry queue, or claim-expiry owner.
-- Do not require a Task lock or post-scan Task score recheck.
+- Do not process `PRE_DISPATCH_VISIBLE` here.
+- Do not discover or match Workers here.
+- Do not decode Worker or Item scores.
+- Do not claim Items before Worker lease validation.
+- Do not restore consumed candidates or compensate ambiguous queue writes.
+- Do not release Worker leases from this pacer.
+- Do not call transport or parse result outcomes here.
+- Do not write Task score.
+- Do not create Attempt, reservation lifecycle, retry queue, or repair scanner.

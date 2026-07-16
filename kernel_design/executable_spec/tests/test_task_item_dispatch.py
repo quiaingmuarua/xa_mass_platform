@@ -21,6 +21,9 @@ from kernel_design.executable_spec import (
     TaskItemScoreTransitionStatus,
     TaskRuntime,
     TaskScoreBandCore,
+    WorkerScoreCore,
+    WorkerScoreTransitionResult,
+    WorkerScoreTransitionStatus,
 )
 
 
@@ -33,12 +36,23 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
         self.deliver_seed_runtime = Mock(spec=DeliverSeedRuntime)
         self.item_score = Mock(spec=TaskItemScoreBandCore)
         self.task_runtime = Mock(spec=TaskRuntime)
+        self.worker_score = Mock(spec=WorkerScoreCore)
+        self.worker_score.renew_active_hot_score_leases.side_effect = (
+            lambda *, observed_scores, **_kwargs: {
+                worker_id: WorkerScoreTransitionResult(
+                    WorkerScoreTransitionStatus.NOOP,
+                    observed_score,
+                )
+                for worker_id, observed_score in observed_scores.items()
+            }
+        )
         self.pacer = TaskItemDispatchPacer(
             self.task_score,
             self.candidate_runtime,
             self.deliver_seed_runtime,
             self.item_score,
             self.task_runtime,
+            self.worker_score,
         )
         self.config = TaskItemDispatchConfig(
             task_batch_limit=10,
@@ -141,6 +155,7 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
 
         self.task_score.acquire_dispatch_work_tasks.assert_called_once_with(limit=10)
         self.candidate_runtime.consume_candidate_workers.assert_not_called()
+        self.worker_score.renew_active_hot_score_leases.assert_not_called()
         self.item_score.acquire_item_score_candidates.assert_not_called()
         self.task_runtime.load_task_items.assert_not_called()
         self.deliver_seed_runtime.append_deliver_seeds.assert_not_called()
@@ -155,8 +170,74 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
             task_id="task-1",
             limit=4,
         )
+        self.worker_score.renew_active_hot_score_leases.assert_not_called()
         self.item_score.acquire_item_score_candidates.assert_not_called()
         self.task_runtime.load_task_items.assert_not_called()
+
+    def test_worker_lease_recheck_precedes_item_claim_and_filters_stale(self) -> None:
+        candidates = (
+            self.candidate("worker-1", lease_score=101),
+            self.candidate("worker-2", lease_score=102),
+        )
+        item = self.item("message-1")
+        self.task_score.acquire_dispatch_work_tasks.return_value = ("task-1",)
+        self.candidate_runtime.consume_candidate_workers.return_value = candidates
+        self.worker_score.renew_active_hot_score_leases.side_effect = None
+        self.worker_score.renew_active_hot_score_leases.return_value = {
+            "worker-1": WorkerScoreTransitionResult(
+                WorkerScoreTransitionStatus.TRANSITIONED,
+                201,
+            ),
+            "worker-2": WorkerScoreTransitionResult(
+                WorkerScoreTransitionStatus.STALE,
+                102,
+            ),
+        }
+
+        def acquire_items(**_kwargs: object) -> dict[str, tuple[int, int]]:
+            self.worker_score.renew_active_hot_score_leases.assert_called_once()
+            return {"message-1": (301, 2)}
+
+        self.item_score.acquire_item_score_candidates.side_effect = acquire_items
+        self.task_runtime.load_task_items.return_value = {"message-1": item}
+        self.item_score.rewrite_observed_item_scores.return_value = {
+            "message-1": TaskItemScoreTransitionResult(
+                TaskItemScoreTransitionStatus.TRANSITIONED,
+                401,
+            )
+        }
+
+        self.assertEqual(1, self.dispatch())
+
+        self.item_score.acquire_item_score_candidates.assert_called_once_with(
+            task_id="task-1",
+            limit=1,
+        )
+        seed = self.deliver_seed_runtime.append_deliver_seeds.call_args.kwargs[
+            "deliver_seeds"
+        ][0]
+        self.assertEqual(
+            201,
+            json.loads(seed.opaque_result_context)["workerLeaseScore"],
+        )
+
+    def test_all_invalid_worker_leases_stop_before_item_claim(self) -> None:
+        self.task_score.acquire_dispatch_work_tasks.return_value = ("task-1",)
+        self.candidate_runtime.consume_candidate_workers.return_value = (
+            self.candidate("worker-1", lease_score=101),
+        )
+        self.worker_score.renew_active_hot_score_leases.side_effect = None
+        self.worker_score.renew_active_hot_score_leases.return_value = {
+            "worker-1": WorkerScoreTransitionResult(
+                WorkerScoreTransitionStatus.STALE,
+                101,
+            )
+        }
+
+        self.assertEqual(0, self.dispatch())
+
+        self.item_score.acquire_item_score_candidates.assert_not_called()
+        self.deliver_seed_runtime.append_deliver_seeds.assert_not_called()
 
     def test_exhausted_missing_and_stale_items_do_not_produce_seeds(self) -> None:
         candidates = tuple(self.candidate(f"worker-{index}") for index in range(1, 5))
@@ -258,6 +339,7 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
             self.deliver_seed_runtime,
             self.item_score,
             self.task_runtime,
+            self.worker_score,
             custom_encoder,
         )
         item = self.item("message-1")

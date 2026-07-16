@@ -482,10 +482,11 @@ revalidate or renew. Raw availability evidence never writes dirty.
 
 Raw network-ok, heartbeat, keepalive, or latency evidence cannot move
 RECOVERY_RECHECK to HOT_ACQUIRE by itself. `WorkerRuntime.upsert_worker` is the
-trusted reconnect owner command: after immutable declaration validation and
-attribute refresh, it may exact-CAS a negative score to positive while
-preserving `abs(score)`. Other evidence remains non-authoritative until
-worker-runtime validates it.
+trusted connect/reconnect command. After declaration validation and attribute
+refresh it calls `reconcile_worker_online`: existing scores converge to positive
+polarity, preserve timeSlot/laneRank, and set dirty=1. This does not release a
+future hold. Other evidence remains non-authoritative until worker-runtime
+validates it.
 
 ## Interface Rule
 
@@ -765,9 +766,23 @@ renew_active_hot_score_leases(homeBucketId, observedScores, targetTimeMillis)
   each storedScore must equal its observedScore
   each observed timeSlot must be >= nowSlot
   each observed dirty must be 0
-  targetTimeSlot must be > each accepted observed timeSlot
-  independently writes HOT_ACQUIRE(targetTimeSlot, observed laneRank, dirty=0)
+  targetTimeMillis must describe a future slot
+  if the observed lease already covers targetTimeSlot, exact validation returns
+    NOOP plus the observed score
+  otherwise independently writes HOT_ACQUIRE(targetTimeSlot, observed laneRank, dirty=0)
   dirty entries return STALE and caller must discard / rematch
+
+reconcile_worker_online(homeBucketId, workerId)
+  missing score returns STALE so WorkerRuntime remains initialization owner
+  preserves timeSlot and laneRank
+  writes positive polarity and dirty=1
+  positive dirty score is NOOP
+
+mark_observed_worker_leases_offline(homeBucketId, observedScores)
+  each observed score must be a clean positive opaque lease fence
+  independently requires storedScore == observedScore
+  writes -abs(observedScore)
+  preserves the complete absolute coordinate
 ```
 
 These batch APIs operate on one WorkerGroup/ZSET key and shared target
@@ -921,7 +936,7 @@ assignment-dispatch worker selection path.
 | manual enable / release | yes | exact observed-score same-polarity release |
 | platform scheduling metadata signature changed while persisted task-worker assignment plan / hot score lease continuation exists | yes | `mark_current_lease_dirty` may only set dirty = 1 |
 | platform scheduling metadata signature changed while no persisted assignment plan / hot score lease continuation exists | no score write required | metadata/evidence only; next candidate validation reads current metadata |
-| trusted Worker reconnect upsert after declaration validation | yes only when negative | exact polarity flip to HOT_ACQUIRE preserving `abs(score)`; positive score is unchanged |
+| trusted Worker connect/reconnect after declaration validation | yes for every existing score | `reconcile_worker_online` preserves timeSlot/laneRank, writes positive polarity and dirty=1; score absence still initializes positive dirty=0 |
 | assignment owner leases due HOT_ACQUIRE observations | yes | `acquire_observed_hot_score_leases` pipelines independent exact-CAS writes, future leases, and dirty clear before matching |
 | assignment owner extends active clean HOT_ACQUIRE leases | yes | `renew_active_hot_score_leases`; dirty entries return STALE and force rematch |
 | confirmed disconnect / trusted unavailable | yes | owner-validated HOT_ACQUIRE -> RECOVERY_RECHECK polarity move preserving time coordinate |
@@ -929,7 +944,8 @@ assignment-dispatch worker selection path.
 | recovery exhausted / cold parked | yes | RECOVERY_RECHECK too-old cold coordinate + owner evidence |
 | transport heartbeat / keepalive | no | evidence only |
 | raw connected / session refresh outside Worker upsert | no | evidence only |
-| trusted result arrival | yes | exact release of the correlated Worker lease fence; no generic score refresh |
+| trusted Worker execution result (`200/1xxx`) | yes | exact release of the correlated Worker lease fence |
+| trusted Adapter pre-execution rejection (`3xxx`) | yes | exact positive-to-negative movement of the correlated Worker lease fence |
 | task finality without a correlated Worker result | no | Task/Item owner movement only |
 | read projection / trace | no | diagnostics only |
 

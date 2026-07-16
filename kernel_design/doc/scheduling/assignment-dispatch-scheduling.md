@@ -68,9 +68,8 @@ TaskRunningActivationPacer
 TaskItemDispatchPacer
   discovers RUNNING_VISIBLE Task ids
   consumes candidate evidence
+  exact-validates or renews active clean HOT Worker fences
   claims observed TaskItem scores
-  asks WorkerScoreCore to retain active exact fences through the required cutpoint
-  exact-releases non-exclusive fences after accepted DeliverSeed append
   never rewrites Task score or decodes Worker score
 ```
 
@@ -148,12 +147,10 @@ Item dispatch follows this owner order:
 ```text
 RUNNING_VISIBLE Task
   -> atomic bounded candidate consume
+  -> exact validate/renew active clean HOT Worker fences
   -> bounded TaskItem observation/load/claim
   -> pair successful claims with consumed candidates
-  -> classify exclusive/non-exclusive disposition from Task/admission policy
-  -> retain active clean exact Worker fences through the required cutpoint
   -> append DeliverSeeds grouped by endpointManagerId
-  -> exact-release non-exclusive fences for definitely accepted batches
 ```
 
 Candidate consume and DeliverSeed append are separate runtime operations. A
@@ -205,11 +202,14 @@ Task pauses or closes after discovery
 Item claim or DeliverSeed append is lost
   Item claim and Worker lease deadlines restore scheduling visibility
 
-non-exclusive DeliverSeed append succeeds
-  dispatch exact-releases the confirmed Worker fence
+SeedResult proves Worker execution
+  result routing exact-releases the confirmed Worker fence
 
-exclusive DeliverSeed append succeeds
-  Worker fence remains held through the attempt deadline
+SeedResult proves Adapter rejection before Worker execution
+  result routing exact-marks the confirmed Worker fence offline
+
+Adapter crashes or no SeedResult arrives
+  no disposition is invented; Item claim and Worker lease deadlines recover
 ```
 
 Candidate queues and DeliverSeed queues are disposable handoffs, not a second
@@ -222,11 +222,12 @@ source of liveness or lifecycle truth.
   candidate-runtime feature.
 - Dispatch intends to prefer recently allocated RUNNING Tasks; the current
   Redis Task acquisition remains oldest-first.
-- The exact Task/admission contract that supplies exclusive versus
-  non-exclusive disposition is not yet implemented.
 - Candidate target, scan limits, lease duration, activation condition, and
   per-Task dispatch limit are bounded policy values owned by their pacer
   configs or Task descriptor.
+- Concurrent Worker capacity beyond the current one-score-fence mechanism
+  requires a separately proved capacity owner; dispatch must not infer it from
+  resource metadata and release the fence early.
 - Strong persisted assignment continuation would require an explicit owner
   protocol; candidate queues must not be promoted into that role.
 
@@ -235,8 +236,9 @@ source of liveness or lifecycle truth.
 - Do not collapse allocation, activation, and Item dispatch into one round.
 - Do not let allocation decode Task score or change Task band/suffix.
 - Do not let Item dispatch rewrite Task score or decode/directly rewrite Worker
-  score; it may invoke only canonical active-fence retain and exact-release
-  owner primitives.
+  score; it may invoke only the canonical exact validate/renew primitive.
+- Do not release or mark Worker fences offline from Item dispatch; result
+  routing owns that disposition from classified SeedResult evidence.
 - Do not publish a candidate before its exact Worker lease succeeds.
 - Do not release unmatched or failed-publication Worker leases as if the
   scheduling attempt had not occurred.

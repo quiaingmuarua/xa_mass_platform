@@ -2,7 +2,35 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from enum import Enum
 from typing import Sequence
+
+
+class SeedResultOutcomeClass(Enum):
+    SUCCESS = "SUCCESS"
+    WORKER_FAILURE = "WORKER_FAILURE"
+    ADAPTER_REJECTION = "ADAPTER_REJECTION"
+
+
+SUCCESS_OUTCOME_CODE = "200"
+
+
+def classify_seed_result_outcome_code(
+    outcome_code: str,
+) -> SeedResultOutcomeClass | None:
+    """Classify the stable transport outcome protocol without parsing subcodes."""
+    if outcome_code == SUCCESS_OUTCOME_CODE:
+        return SeedResultOutcomeClass.SUCCESS
+    if (
+        isinstance(outcome_code, str)
+        and len(outcome_code) == 4
+        and all("0" <= character <= "9" for character in outcome_code)
+    ):
+        if outcome_code[0] == "1":
+            return SeedResultOutcomeClass.WORKER_FAILURE
+        if outcome_code[0] == "3":
+            return SeedResultOutcomeClass.ADAPTER_REJECTION
+    return None
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,8 +47,8 @@ class SeedResult:
             or not self.opaque_result_context
         ):
             raise ValueError("opaque result context must be non-empty")
-        if not isinstance(self.outcome_code, str) or not self.outcome_code:
-            raise ValueError("outcome code must be non-empty")
+        if classify_seed_result_outcome_code(self.outcome_code) is None:
+            raise ValueError("outcome code must be 200, 1xxx, or 3xxx")
         if (
             self.opaque_result_payload is not None
             and (

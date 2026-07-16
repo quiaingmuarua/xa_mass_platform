@@ -59,25 +59,24 @@ physical runtime process
 ```
 
 In v0, a `Worker` is the scheduler-visible execution identity. It may still
-process multiple TaskItems concurrently. Worker score lease / hold protects
-only the short assignment decision window; it is not an execution-duration lock
-by itself. After assignment / DeliverSeed creation succeeds, downstream
-admission policy releases the exact lease for non-exclusive use or retains /
-renews it for exclusive use.
+process multiple TaskItems concurrently only when a future explicit capacity
+owner makes multiple scheduling slots visible. The current Worker score lease /
+hold protects one scheduler-visible Worker slot from allocation through result
+or bounded lease expiry. TaskItem dispatch validates or renews that exact fence;
+it does not release it after DeliverSeed creation.
 
-Concurrency and capacity are policy inputs, not worker score truth. Represent
-them through Worker attributes, projected dynamic attributes such as
-`runningCount` / `freeSlots`, worker-side backpressure, and assignment policy.
-Do not keep a worker score lease open merely to express in-flight execution.
+Concurrency and capacity are not descriptor or metadata truth. Worker
+attributes and projected dynamic attributes such as `runningCount` /
+`freeSlots` may be policy inputs, but they cannot mint additional scheduling
+slots without a named capacity owner and executable mechanism.
 
 This keeps score ownership, dirty handling, and release semantics single-group
 and admission-fence oriented from the scheduler's point of view.
 
-The complete allocation, dispatch disposition, result release, and timeout
+The complete allocation, dispatch exact recheck, result disposition, and timeout
 sequence is defined once in
 [Worker HOT_ACQUIRE Lease Protocol](../scheduling/worker-hot-acquire-lease-protocol.md).
-This resource model owns the exclusive/non-exclusive declaration meaning, not
-a second lease lifecycle.
+This resource model does not own a second lease or capacity lifecycle.
 
 ## WorkerGroupDescriptor
 
@@ -147,10 +146,11 @@ coordinates. `WorkerDescriptor` is the complete runtime query projection.
 `WorkerRuntime.upsert_worker` establishes or refreshes the Worker. First
 appearance writes the immutable declaration identity and initializes the first
 HOT_ACQUIRE score using runtime-owned lane configuration. Reconnect completely
-replaces `attributes`, preserves `platformAttributes`, and restores a negative
-score to positive by flipping only its polarity. A positive score is not
-rewritten, so an existing lease, hold, laneRank, dirty bit, and time coordinate
-remain effective.
+replaces `attributes` and preserves `platformAttributes`. Every existing score
+is reconciled to positive polarity with dirty=1 while preserving timeSlot and
+laneRank. This invalidates pre-reconnect candidate evidence without releasing a
+future hold. First score initialization remains positive with dirty=0 because
+no older lease evidence exists.
 
 `WorkerResourceCatalog.upsert_worker_group` creates a group or completely
 replaces its `attributes`. Existing `eventCodes` are immutable; a mismatch is a
@@ -619,14 +619,14 @@ Descriptor metadata can be used by worker-runtime validation, policy mapping,
 query views, and diagnostics. It is a candidate discovery / matching input; it
 must not become a second score lease owner.
 
-In v0, worker occupation is a short score lease / hold of one
-scheduler-visible worker identity during assignment. A selected worker is
-score-leased for the current assignment window or it is not. Non-exclusive
-assignment releases the exact lease after assignment / DeliverSeed creation so
-it does not serialize all work execution for that Worker. Exclusive assignment
-retains or renews the lease according to admission policy. Do not model capacity
-pools inside `WorkerDescriptor`; express concurrent capacity through attributes
-and policy until an executable spec proves a separate capacity owner is needed.
+In v0, Worker occupation is a bounded score lease / hold of one
+scheduler-visible Worker slot. Allocation creates the exact fence, TaskItem
+dispatch validates or renews it before claiming an Item, and result routing
+either exact-releases it after Worker execution evidence or exact-marks it
+offline after Adapter rejection evidence. With no valid result, natural lease
+expiry restores visibility. Do not model capacity pools inside
+`WorkerDescriptor`; a future concurrent-capacity mechanism requires an explicit
+owner rather than an early-release convention.
 
 The worker score model remains separate:
 

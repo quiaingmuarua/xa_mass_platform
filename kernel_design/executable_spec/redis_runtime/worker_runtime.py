@@ -9,7 +9,6 @@ from ..kernel.worker_score import (
     TimeMillis,
     WorkerId,
     WorkerScoreCore,
-    WorkerScorePolarity,
     WorkerScoreTransitionStatus,
 )
 from ..kernel.worker_runtime import (
@@ -488,25 +487,23 @@ class RedisWorkerRuntime(WorkerRuntime):
                     "worker score initialization could not be observed",
                 )
 
-        if score_state.polarity == WorkerScorePolarity.HOT_ACQUIRE:
-            return WorkerRuntimeResult(WorkerRuntimeStatus.OK)
-
-        recovery = self.score_band.toggle_current_polarity(
+        reconciliation = self.score_band.reconcile_worker_online(
             home_bucket_id=declaration.worker_group_id,
             worker_id=declaration.worker_id,
-            observed_score=score_state.score,
-            target_lane_rank=score_state.lane_rank,
         )
-        if recovery.status == WorkerScoreTransitionStatus.TRANSITIONED:
+        if reconciliation.status in {
+            WorkerScoreTransitionStatus.TRANSITIONED,
+            WorkerScoreTransitionStatus.NOOP,
+        }:
             return WorkerRuntimeResult(WorkerRuntimeStatus.OK)
-        if recovery.status == WorkerScoreTransitionStatus.INVALID:
+        if reconciliation.status == WorkerScoreTransitionStatus.INVALID:
             return WorkerRuntimeResult(
                 WorkerRuntimeStatus.INVALID,
-                "worker score recovery was rejected",
+                "worker online reconciliation was rejected",
             )
         return WorkerRuntimeResult(
             WorkerRuntimeStatus.STALE,
-            "worker score recovery lost its observed fence",
+            "worker online reconciliation could not observe score",
         )
 
 

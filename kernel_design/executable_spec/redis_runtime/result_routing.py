@@ -99,8 +99,11 @@ class RedisSeedResultRuntime(SeedResultRuntime):
             )
         ):
             return None
-        return SeedResult(
-            opaque_result_context=opaque_result_context,
-            outcome_code=outcome_code,
-            opaque_result_payload=opaque_result_payload,
-        )
+        try:
+            return SeedResult(
+                opaque_result_context=opaque_result_context,
+                outcome_code=outcome_code,
+                opaque_result_payload=opaque_result_payload,
+            )
+        except ValueError:
+            return None

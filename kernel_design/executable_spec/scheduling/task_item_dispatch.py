@@ -7,6 +7,7 @@ from time import time_ns
 
 from ..kernel.assignment_dispatch_runtime import (
     AssignmentDispatchRuntime,
+    CandidateWorkerEntry,
     DeliverSeed,
     DeliverSeedRuntime,
 )
@@ -19,6 +20,10 @@ from ..kernel.task_item_score_band import (
 from ..kernel.task_runtime import TaskItem, TaskRuntime
 from ..kernel.task_score_band import Score, TaskId, TaskScoreBandCore, TimeMillis
 from ..kernel.worker_runtime import EndpointManagerId
+from ..kernel.worker_score import (
+    WorkerScoreCore,
+    WorkerScoreTransitionStatus,
+)
 
 
 def _encode_delivery_item(task_item: TaskItem) -> str:
@@ -61,6 +66,7 @@ class TaskItemDispatchPacer:
         deliver_seed_runtime: DeliverSeedRuntime,
         item_score: TaskItemScoreBandCore,
         task_runtime: TaskRuntime,
+        worker_score: WorkerScoreCore,
         delivery_item_encoder: Callable[[TaskItem], str] = _encode_delivery_item,
     ) -> None:
         self.task_score = task_score
@@ -68,6 +74,7 @@ class TaskItemDispatchPacer:
         self.deliver_seed_runtime = deliver_seed_runtime
         self.item_score = item_score
         self.task_runtime = task_runtime
+        self.worker_score = worker_score
         self._delivery_item_encoder = delivery_item_encoder
 
     def dispatch_task_items(
@@ -88,6 +95,13 @@ class TaskItemDispatchPacer:
             candidate_workers = self.candidate_runtime.consume_candidate_workers(
                 task_id=task_id,
                 limit=config.per_task_dispatch_limit,
+            )
+            if not candidate_workers:
+                continue
+
+            candidate_workers = self._validate_candidate_worker_leases(
+                candidate_workers=candidate_workers,
+                target_time_millis=claim_lease_until_millis,
             )
             if not candidate_workers:
                 continue
@@ -130,6 +144,52 @@ class TaskItemDispatchPacer:
                 )
                 appended_seed_count += len(endpoint_seeds)
         return appended_seed_count
+
+    def _validate_candidate_worker_leases(
+        self,
+        *,
+        candidate_workers: tuple[CandidateWorkerEntry, ...],
+        target_time_millis: TimeMillis,
+    ) -> tuple[CandidateWorkerEntry, ...]:
+        observed_by_group: dict[str, dict[str, int]] = {}
+        for candidate in candidate_workers:
+            observed_by_group.setdefault(candidate.worker_group_id, {})[
+                candidate.worker_id
+            ] = candidate.worker_lease_score
+
+        results_by_group = {
+            worker_group_id: self.worker_score.renew_active_hot_score_leases(
+                home_bucket_id=worker_group_id,
+                observed_scores=observed_scores,
+                target_time_millis=target_time_millis,
+            )
+            for worker_group_id, observed_scores in observed_by_group.items()
+        }
+
+        validated: list[CandidateWorkerEntry] = []
+        for candidate in candidate_workers:
+            result = results_by_group[candidate.worker_group_id].get(
+                candidate.worker_id
+            )
+            if (
+                result is None
+                or result.status
+                not in {
+                    WorkerScoreTransitionStatus.TRANSITIONED,
+                    WorkerScoreTransitionStatus.NOOP,
+                }
+                or result.score is None
+            ):
+                continue
+            validated.append(
+                CandidateWorkerEntry(
+                    worker_id=candidate.worker_id,
+                    worker_group_id=candidate.worker_group_id,
+                    endpoint_manager_id=candidate.endpoint_manager_id,
+                    worker_lease_score=result.score,
+                )
+            )
+        return tuple(validated)
 
     def _claim_task_items(
         self,

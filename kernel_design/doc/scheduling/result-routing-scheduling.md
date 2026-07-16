@@ -3,28 +3,27 @@
 Status: active new-kernel mechanism contract; Python executable spec
 implemented; policy coverage partial.
 
-Parent contract: [Task Item Score-Band Scheduling](task-item-score-band-scheduling.md).
-Worker lease contract:
+Parent contracts:
+[Task Item Score-Band Scheduling](task-item-score-band-scheduling.md) and
 [Worker HOT_ACQUIRE Lease Protocol](worker-hot-acquire-lease-protocol.md).
 Redis shape: [Seed Result Runtime Redis Shape](../runtime-redis/seed-result-runtime-redis-shape.md).
 
 ## Purpose
 
-Result routing converts bounded `SeedResult` evidence into owner operations:
+Result routing converts bounded `SeedResult` evidence into independent Item and
+Worker owner operations:
 
 ```text
-SeedResultRuntime unified queue
-  -> ResultRoutingPacer bounded consume
-  -> decode opaqueResultContext inside result-routing
-  -> success precedence or exact retry
-  -> TaskItemScoreBandCore
-  -> WorkerScoreCore exact release
+SeedResultRuntime
+  -> decode ResultContext and classify outcomeCode
+  -> TaskItemScoreBandCore final-success or exact retry
+  -> WorkerScoreCore exact release or exact offline classification
 ```
 
-It does not select Workers, claim Items, persist result payloads, query Task
-state, refresh Task score, or reproduce score encoding rules.
+It does not select Workers, claim Items, persist result payloads, refresh Task
+score, parse score internals, or own Worker online truth.
 
-## Contracts
+## Protocol
 
 ```python
 SeedResult(
@@ -32,156 +31,116 @@ SeedResult(
     outcome_code: str,
     opaque_result_payload: str | None,
 )
-
-SeedResultRuntime.append_seed_results(results) -> int
-SeedResultRuntime.consume_seed_results(limit) -> tuple[SeedResult, ...]
 ```
 
-The queue is one logical FIFO and is not partitioned by `endpointManagerId`.
-The runtime stores opaque strings only; it does not decode context or classify
-outcomes.
+The unified queue is not partitioned by endpoint manager. The result context
+carries `taskId`, `messageId`, `workerId`, opaque `claimScore`, opaque
+`workerLeaseScore`, and `taskItemClaimUntilMillis`.
 
-The built-in result context contains:
+Outcome classification is exact:
 
 ```text
-taskId
-messageId
-workerId
-claimScore
-workerLeaseScore
-taskItemClaimUntilMillis
+"200"  -> SUCCESS
+"1xxx" -> WORKER_FAILURE
+"3xxx" -> ADAPTER_REJECTION
 ```
 
-`claimScore` and `workerLeaseScore` remain opaque exact-CAS fences. Only the
-result owner decodes the envelope, and it passes each score unchanged to its
-declared score owner. Target `workerLeaseScore` is the fence confirmed or
-extended by dispatch-time retention; the current partial executable spec still
-carries the allocation fence.
-
-## Outcome Rule
-
-```text
-outcomeCode == "200"
-  request FINAL_SUCCESS promotion
-
-any other non-empty outcomeCode
-  request same-band retry with the original claimScore
-```
-
-The first executable spec has no result payload projection and no separate
-final-failure result classification. Retry preserves remaining budget with
-`remainingBudgetDelta=0`. When ACTIVE budget is exhausted, the existing Item
-dispatch acquire path promotes the Item to `FINAL_FAILED`.
-
-Within one consumed batch, evidence is collapsed by `(taskId, messageId)`:
-
-```text
-any "200" exists
-  retain success
-
-otherwise
-  retain the last failure evidence
-```
-
-This is batch-local precedence only. Cross-band final precedence remains owned
-by `TaskItemScoreBandCore`, so a late success may promote a previously failed
-Item without reopening Task scheduling.
+`1xxx` and `3xxx` are exactly four ASCII digits. Other values are invalid or
+reserved and authorize no Item or Worker mutation. Result routing understands
+only the class, never the business or adapter subcode.
 
 ## Routing Round
 
 ```text
-1. consume at most config.batchLimit SeedResults
-2. decode valid opaqueResultContext values; discard malformed contexts
-3. collapse duplicate Item evidence using success precedence
-4. batch FINAL_SUCCESS promotions by taskId
-5. batch non-200 exact retries by taskId
-6. per Task, set retry due to max(now, that Task's retained claimUntil) + retryDelayMillis
-7. count only TRANSITIONED Item operations
-8. load bounded TaskDescriptors for every successfully decoded result
-9. group unique Worker lease fences by descriptor.workerGroupId
-10. call WorkerScoreCore.release_score_holds with every original lease fence;
-    duplicate Worker ids are split into bounded exact-release rounds
+1. consume at most batchLimit SeedResults
+2. decode valid ResultContext values and classify outcomeCode
+3. discard malformed context or invalid outcome protocol
+4. collapse Item evidence by (taskId, messageId)
+5. apply FINAL_SUCCESS for retained 200 evidence
+6. apply exact same-band retry for retained 1xxx / 3xxx evidence
+7. independently classify each correlated Worker lease disposition
+8. load bounded TaskDescriptors to resolve WorkerGroup ownership
+9. exact-release 200 / 1xxx Worker leases
+10. exact-CAS 3xxx Worker leases to negative polarity
 ```
 
-Worker release is attempted for all successfully decoded results, including
-Item `STALE` and `NOOP` outcomes. Missing TaskDescriptor, stale Worker lease, or
-release failure does not roll back Item movement; Worker lease expiry remains
-the recovery fallback.
+Within one batch, any `200` wins for the same Item; otherwise the last valid
+failure evidence is retained. Cross-band Item precedence remains owned by
+`TaskItemScoreBandCore`.
 
-This uniform release also covers non-exclusive work. If dispatch already
-released the fence after accepted DeliverSeed append, result-side exact release
-is stale and harmless. If early release failed and the same fence remains
-current, result routing may complete it.
-
-Result routing does not reread Item score before choosing an operation:
+Retry uses the original claim fence:
 
 ```text
-success
-  promote_item_outcomes(taskId, messageIds, FINAL_SUCCESS, now)
+retryDueMillis
+  = max(nowMillis, taskItemClaimUntilMillis) + retryDelayMillis
 
-failure
-  rewrite_observed_item_scores(
-      taskId,
-      {messageId: claimScore},
-      retryDueMillis,
-      remainingBudgetDelta=0,
-  )
+remainingBudgetDelta = 0
 ```
 
-## Application Lifecycle
+The budget was consumed at claim time and is not restored. Result arrival does
+not make the Item immediately retryable.
 
-`ResultRoutingApplication` owns one independently paced background loop.
-Startup order, shutdown order, partial-start rollback, and shared stop timeout
-are defined by [Kernel Application Assembly](../kernel-application-assembly.md).
-Built-in scheduling coordinates remain:
+## Worker Disposition
+
+Worker disposition is independent from Item transition success:
 
 ```text
-intervalMillis = 100
-batchLimit = 100
-retryDelayMillis = 1000
+200 / 1xxx
+  -> Worker was entered
+  -> release_score_holds(original workerLeaseScore, now)
+
+3xxx
+  -> Adapter confirmed the Item did not enter Worker execution
+  -> mark_observed_worker_leases_offline(original workerLeaseScore)
 ```
 
-Only `resultRouting.intervalMillis` is public JSON. Batch and retry policy stay
-internal to result-routing assembly.
+For the same `(workerGroupId, workerId, workerLeaseScore)`, Worker execution
+evidence (`200` or `1xxx`) wins over `3xxx`, because it proves reachability for
+that attempt. Duplicate dispositions are collapsed before owner calls.
 
-## Deferred Policy
-
-- Batch limit, retry delay, and cadence may change without changing result
-  classification or score-owner interfaces.
-- Result payload projection requires a separate read/projection owner.
-- Pending/ack or durable result history requires an invariant that bounded Item
-  claim and Worker lease expiry cannot satisfy.
+Worker `STALE`, missing TaskDescriptor, or owner-operation failure does not
+roll back Item movement. The opaque fence prevents an old result from releasing
+or offlining a newer Worker lease.
 
 ## Failure Semantics
 
 ```text
-malformed result envelope
-  consumed and discarded
+malformed context or invalid outcomeCode
+  -> consume and discard; no Item or Worker mutation
 
-Item exact retry is stale/no-op
-  no score rewrite; Worker exact release is still attempted
+Item transition STALE / NOOP
+  -> Worker disposition is still attempted
 
 missing TaskDescriptor
-  skip Worker release; lease expiry recovers
+  -> skip Worker disposition; lease expiry recovers
 
-process crash after queue pop
-  Item claim and Worker lease expiry recover scheduling
+Adapter process dies without SeedResult
+  -> UNKNOWN; Item claim and Worker lease expiry recover
 
-result payload
-  ignored after validation of the SeedResult envelope; no projection exists
+process crash after SeedResult pop
+  -> Item claim and Worker lease expiry recover
 ```
 
 `SeedResultRuntime` is deliberately best-effort. It has no pending/ack queue,
-retry queue, cross-key transaction, or durable result ledger.
+repair scanner, cross-key transaction, or durable result ledger.
+
+## Application And Deferred Policy
+
+`ResultRoutingApplication` owns one independently paced loop. Lifecycle order
+is defined by [Kernel Application Assembly](../kernel-application-assembly.md).
+Built-in coordinates are `intervalMillis=100`, `batchLimit=100`, and
+`retryDelayMillis=1000`; only the interval is public JSON.
+
+Deferred policy is limited to cadence/batch tuning and a future separate result
+projection owner. Reliable pending/ack requires a new named invariant and does
+not belong in the current score-expiry mechanism.
 
 ## Guardrails
 
-- Do not partition the public result queue by endpoint manager.
-- Do not let the adapter parse `opaqueResultContext` or mutate score.
-- Do not add a result projection until a separate owner and caller require it.
-- Do not inspect current Item score before invoking its owner operation.
-- Do not duplicate same-tag exact fencing or cross-tag precedence.
+- Do not let Adapter mutate Worker score directly.
+- Do not parse exact `1xxx` or `3xxx` subcodes in result routing.
+- Do not treat missing SeedResult as adapter rejection.
+- Do not make Worker disposition a precondition for Item movement.
+- Do not inspect current Item score before invoking its score owner.
 - Do not refresh or close Task score because a result arrived.
-- Do not make Worker release a precondition for accepted Item movement.
-- Do not add pending/ack reliability to this best-effort evidence queue without
-  a named invariant that score expiry cannot satisfy.
+- Do not partition the SeedResult queue by endpoint manager.

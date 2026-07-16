@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import unittest
 
-from kernel_design.executable_spec import RedisSeedResultRuntime, SeedResult
+from kernel_design.executable_spec import (
+    RedisSeedResultRuntime,
+    SeedResult,
+    SeedResultOutcomeClass,
+    classify_seed_result_outcome_code,
+)
 
 
 class FakeRedis:
@@ -50,7 +55,7 @@ class RedisSeedResultRuntimeTest(unittest.TestCase):
 
     def test_batch_append_and_bounded_consume_are_fifo_on_one_queue(self) -> None:
         first = SeedResult("context-1", "200", '{"value":1}')
-        second = SeedResult("context-2", "500")
+        second = SeedResult("context-2", "1000")
 
         self.assertEqual(
             2,
@@ -71,11 +76,32 @@ class RedisSeedResultRuntimeTest(unittest.TestCase):
         self.redis.lists[self.key] = [
             "{bad-json",
             '{"outcomeCode":"200"}',
+            '{"opaqueResultContext":"context","outcomeCode":"500",'
+            '"opaqueResultPayload":null}',
             RedisSeedResultRuntime._encode_result(valid),
         ]
 
-        self.assertEqual((valid,), self.runtime.consume_seed_results(limit=3))
+        self.assertEqual((valid,), self.runtime.consume_seed_results(limit=4))
         self.assertEqual([], self.redis.lists[self.key])
+
+    def test_outcome_code_protocol_is_exact_and_ascii(self) -> None:
+        self.assertIs(
+            SeedResultOutcomeClass.SUCCESS,
+            classify_seed_result_outcome_code("200"),
+        )
+        self.assertIs(
+            SeedResultOutcomeClass.WORKER_FAILURE,
+            classify_seed_result_outcome_code("1000"),
+        )
+        self.assertIs(
+            SeedResultOutcomeClass.ADAPTER_REJECTION,
+            classify_seed_result_outcome_code("3999"),
+        )
+        for invalid in ("", "500", "2000", "300", "30000", "\uff13\uff10\uff10\uff11"):
+            with self.subTest(invalid=invalid):
+                self.assertIsNone(classify_seed_result_outcome_code(invalid))
+                with self.assertRaises(ValueError):
+                    SeedResult("context", invalid)
 
     def test_empty_append_and_invalid_limit(self) -> None:
         self.assertEqual(0, self.runtime.append_seed_results(results=()))

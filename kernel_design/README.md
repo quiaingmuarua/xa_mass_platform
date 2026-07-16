@@ -440,8 +440,8 @@ no hidden compatibility path or second mainline remains
   - v0 metadata/query projection for worker groups, workers, and dynamic
     attribute allowlists.
 - [Worker HOT_ACQUIRE Lease Protocol](doc/scheduling/worker-hot-acquire-lease-protocol.md)
-  - canonical allocation, dispatch disposition, non-exclusive early-release,
-    exclusive retain, result-release, and natural-expiry rules.
+  - canonical allocation lease, dispatch exact recheck, result-driven
+    release/offline classification, reconnect dirty fence, and natural expiry.
 - [Task Resource Model](doc/resource-model/task-resource-model.md)
   - v0 task allocation metadata, start conditions, allocation-rule routing,
     Item retry policy, and bounded task descriptor reads.

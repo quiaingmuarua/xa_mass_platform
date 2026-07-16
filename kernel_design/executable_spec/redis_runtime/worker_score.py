@@ -78,6 +78,10 @@ if stored_score ~= observed_score then
   return {"stale", stored_score}
 end
 
+if next_score == stored_score then
+  return {"noop", stored_score}
+end
+
 redis.call("ZADD", key, next_score, worker_id)
 return {"transitioned", next_score}
 """
@@ -107,6 +111,35 @@ end
 
 local target_abs_score = abs_score + 1
 local target_score = sign * target_abs_score
+redis.call("ZADD", key, target_score, worker_id)
+return {"transitioned", target_score}
+"""
+
+    _RECONCILE_ONLINE_SCRIPT: ClassVar[str] = """
+local key = KEYS[1]
+local worker_id = ARGV[1]
+local dirty_factor = tonumber(ARGV[2])
+
+local stored = redis.call("ZSCORE", key, worker_id)
+if not stored then
+  return {"stale"}
+end
+
+local stored_score = tonumber(stored)
+local abs_score = math.abs(stored_score)
+if abs_score <= 0 then
+  return {"invalid", stored_score}
+end
+
+local stored_dirty = abs_score % dirty_factor
+if stored_dirty ~= 0 and stored_dirty ~= 1 then
+  return {"invalid", stored_score}
+end
+if stored_score > 0 and stored_dirty == 1 then
+  return {"noop", stored_score}
+end
+
+local target_score = abs_score + (1 - stored_dirty)
 redis.call("ZADD", key, target_score, worker_id)
 return {"transitioned", target_score}
 """
@@ -301,6 +334,22 @@ return {"transitioned", target_score}
             )
         }
 
+    def reconcile_worker_online(
+        self,
+        *,
+        home_bucket_id: HomeBucketId,
+        worker_id: WorkerId,
+    ) -> WorkerScoreTransitionResult:
+        return self._script_result(
+            self.redis.eval(
+                self._RECONCILE_ONLINE_SCRIPT,
+                1,
+                self._score_key(home_bucket_id),
+                worker_id,
+                self.dirty_factor,
+            )
+        )
+
     def acquire_observed_hot_score_leases(
         self,
         *,
@@ -375,8 +424,17 @@ return {"transitioned", target_score}
                 WorkerScoreTransitionStatus.INVALID,
             )
 
-        current_time_slot = self._current_time_slot()
+        current_time_millis = self._current_time_millis()
+        current_time_slot = self._time_slot_from_millis(current_time_millis)
         target_time_slot = self._time_slot_from_millis(target_time_millis)
+        if (
+            target_time_millis <= current_time_millis
+            or target_time_slot <= current_time_slot
+        ):
+            return self._uniform_results(
+                observed_scores,
+                WorkerScoreTransitionStatus.INVALID,
+            )
         immediate_results: dict[WorkerId, WorkerScoreTransitionResult] = {}
         pending_updates: dict[WorkerId, tuple[Score, Score]] = {}
         for worker_id, observed_score in observed_scores.items():
@@ -398,20 +456,53 @@ return {"transitioned", target_score}
                     observed_score,
                 )
                 continue
-            if target_time_slot <= observed_time_slot:
-                immediate_results[worker_id] = WorkerScoreTransitionResult(
-                    WorkerScoreTransitionStatus.INVALID
-                )
-                continue
-            pending_updates[worker_id] = (
-                observed_score,
-                self._score(
+            next_score = observed_score
+            if target_time_slot > observed_time_slot:
+                next_score = self._score(
                     polarity,
                     target_time_slot,
                     lane_rank,
                     self.MIN_DIRTY,
-                ),
+                )
+            pending_updates[worker_id] = (
+                observed_score,
+                next_score,
             )
+        return self._merge_batch_results(
+            observed_scores,
+            immediate_results,
+            self._pipeline_cas_updates(home_bucket_id, pending_updates),
+        )
+
+    def mark_observed_worker_leases_offline(
+        self,
+        *,
+        home_bucket_id: HomeBucketId,
+        observed_scores: Mapping[WorkerId, Score],
+    ) -> Mapping[WorkerId, WorkerScoreTransitionResult]:
+        if not observed_scores:
+            return {}
+
+        immediate_results: dict[WorkerId, WorkerScoreTransitionResult] = {}
+        pending_updates: dict[WorkerId, tuple[Score, Score]] = {}
+        for worker_id, observed_score in observed_scores.items():
+            observed = self._decode_score(observed_score)
+            if observed is None:
+                immediate_results[worker_id] = WorkerScoreTransitionResult(
+                    WorkerScoreTransitionStatus.INVALID
+                )
+                continue
+            polarity, _, _, dirty = observed
+            if (
+                polarity is not WorkerScorePolarity.HOT_ACQUIRE
+                or dirty != self.MIN_DIRTY
+            ):
+                immediate_results[worker_id] = WorkerScoreTransitionResult(
+                    WorkerScoreTransitionStatus.INVALID
+                )
+                continue
+            pending_updates[worker_id] = (observed_score, -abs(observed_score))
+
         return self._merge_batch_results(
             observed_scores,
             immediate_results,

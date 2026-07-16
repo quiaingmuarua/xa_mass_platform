@@ -210,6 +210,55 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
         self.assertEqual(descriptor.endpoint_manager_id, "endpoint-manager-1")
         self.assertEqual(descriptor.attributes, {"runtime": "java"})
 
+    def test_reconnect_dirties_active_lease_and_rejects_old_candidate_fence(
+        self,
+    ) -> None:
+        self.catalog.upsert_worker_group(
+            descriptor=WorkerGroupDescriptor(
+                worker_group_id=self.worker_group_id,
+                attributes={},
+                event_codes=frozenset({"resize"}),
+            )
+        )
+        declaration = WorkerDeclaration(
+            worker_id="worker-1",
+            worker_group_id=self.worker_group_id,
+            endpoint_manager_id="endpoint-manager-1",
+            attributes={"runtime": "python"},
+            dynamic_attribute_names=frozenset(),
+        )
+        self.runtime.upsert_worker(declaration=declaration)
+        time.sleep((self.score_band.SLOT_MILLIS + 20) / 1_000)
+        observed = self.score_band.acquire_hot_acquire_candidates(
+            home_bucket_id=self.worker_group_id,
+            limit=1,
+        )[declaration.worker_id]
+        lease = self.score_band.acquire_observed_hot_score_leases(
+            home_bucket_id=self.worker_group_id,
+            observed_scores={declaration.worker_id: observed},
+            target_time_millis=time.time_ns() // 1_000_000 + 5_000,
+        )[declaration.worker_id]
+        self.assertEqual(WorkerScoreTransitionStatus.TRANSITIONED, lease.status)
+        assert lease.score is not None
+
+        reconnect = self.runtime.upsert_worker(declaration=declaration)
+        stale = self.score_band.renew_active_hot_score_leases(
+            home_bucket_id=self.worker_group_id,
+            observed_scores={declaration.worker_id: lease.score},
+            target_time_millis=time.time_ns() // 1_000_000 + 6_000,
+        )[declaration.worker_id]
+        current = self.score_band.get_score_states(
+            home_bucket_id=self.worker_group_id,
+            worker_ids=[declaration.worker_id],
+        )[declaration.worker_id]
+
+        self.assertEqual(WorkerRuntimeStatus.OK, reconnect.status)
+        self.assertEqual(WorkerScoreTransitionStatus.STALE, stale.status)
+        assert current is not None
+        self.assertEqual(WorkerScorePolarity.HOT_ACQUIRE, current.polarity)
+        self.assertEqual(1, current.dirty)
+        self.assertNotEqual(lease.score, current.score)
+
 
 if __name__ == "__main__":
     unittest.main()

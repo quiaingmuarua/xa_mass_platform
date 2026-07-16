@@ -18,6 +18,7 @@ from kernel_design.executable_spec import (
     RedisTaskRuntime,
     RedisTaskItemScoreBandCore,
     RedisTaskScoreBandCore,
+    RedisWorkerScoreCore,
     TaskCreationStatus,
     TaskDescriptor,
     TaskItem,
@@ -27,6 +28,7 @@ from kernel_design.executable_spec import (
     TaskItemScoreBand,
     TaskScoreBand,
     TaskScoreTransitionStatus,
+    WorkerScoreTransitionStatus,
 )
 
 
@@ -74,12 +76,17 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             self.redis,
             prefix=self.prefix,
         )
+        self.worker_score = RedisWorkerScoreCore(
+            self.redis,
+            score_key_prefix=f"wr:{self.prefix}:score",
+        )
         self.pacer = TaskItemDispatchPacer(
             self.task_score,
             self.candidate_runtime,
             self.deliver_seed_runtime,
             self.item_score,
             self.task_runtime,
+            self.worker_score,
         )
 
     def tearDown(self) -> None:
@@ -88,6 +95,7 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             f"tc:{self.prefix}:task:{self.task_id}",
             f"tr:{self.prefix}:task:{self.task_id}:items",
             f"tr:{self.prefix}:task:{self.task_id}:item-score",
+            f"wr:{self.prefix}:score:image-workers",
             f"ad:{self.prefix}:task:{self.task_id}:candidate-workers",
             (
                 f"ad:{self.prefix}:endpoint-manager:endpoint-manager-1:"
@@ -130,6 +138,30 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             task_id=self.task_id,
             items=(item,),
         )
+        initialized_worker = self.worker_score.initialize_hot_acquire_score(
+            home_bucket_id="image-workers",
+            worker_id="worker-1",
+            lane_rank=50,
+        )
+        self.assertEqual(
+            WorkerScoreTransitionStatus.TRANSITIONED,
+            initialized_worker.status,
+        )
+        time.sleep((self.worker_score.SLOT_MILLIS + 20) / 1_000)
+        observed_worker_score = self.worker_score.acquire_hot_acquire_candidates(
+            home_bucket_id="image-workers",
+            limit=1,
+        )["worker-1"]
+        worker_lease = self.worker_score.acquire_observed_hot_score_leases(
+            home_bucket_id="image-workers",
+            observed_scores={"worker-1": observed_worker_score},
+            target_time_millis=time.time_ns() // 1_000_000 + 5_000,
+        )["worker-1"]
+        self.assertEqual(
+            WorkerScoreTransitionStatus.TRANSITIONED,
+            worker_lease.status,
+        )
+        assert worker_lease.score is not None
         self.candidate_runtime.append_candidate_workers(
             task_id=self.task_id,
             candidate_workers=(
@@ -137,7 +169,7 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
                     worker_id="worker-1",
                     worker_group_id="image-workers",
                     endpoint_manager_id="endpoint-manager-1",
-                    worker_lease_score=123_456,
+                    worker_lease_score=worker_lease.score,
                 ),
             ),
             expires_at_millis=time.time_ns() // 1_000_000 + 5_000,
@@ -193,7 +225,7 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
                 "messageId": self.message_id,
                 "workerId": "worker-1",
                 "claimScore": item_state.score,
-                "workerLeaseScore": 123_456,
+                "workerLeaseScore": worker_lease.score,
                 "taskItemClaimUntilMillis": seed.task_item_claim_until_millis,
             },
             result_context,

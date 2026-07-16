@@ -170,6 +170,21 @@ class WorkerScoreCore(ABC):
         pass
 
     @abstractmethod
+    def reconcile_worker_online(
+        self,
+        *,
+        home_bucket_id: HomeBucketId,
+        worker_id: WorkerId,
+    ) -> WorkerScoreTransitionResult:
+        """Converge an existing Worker to online polarity and dirty its lease.
+
+        The implementation preserves time and lane rank, writes positive
+        polarity, and sets dirty=1. Missing score returns STALE so initialization
+        remains owned by WorkerRuntime. This operation never releases a hold.
+        """
+        pass
+
+    @abstractmethod
     def rewrite_current_scores(
         self,
         *,
@@ -218,9 +233,24 @@ class WorkerScoreCore(ABC):
 
         Implementations require storedScore == observed_score, observed time
         polarity == HOT_ACQUIRE, observed time slot >= current time slot,
-        dirty == 0, and target time slot after the observed time slot. Dirty
-        returns STALE because active renewal does not prove current descriptor /
-        dynamic metadata validity.
+        dirty == 0, and a future target time. When the observed lease already
+        covers the target, exact validation returns NOOP plus the observed
+        score. Dirty returns STALE because active renewal does not prove current
+        descriptor / dynamic metadata validity.
+        """
+        pass
+
+    @abstractmethod
+    def mark_observed_worker_leases_offline(
+        self,
+        *,
+        home_bucket_id: HomeBucketId,
+        observed_scores: Mapping[WorkerId, Score],
+    ) -> Mapping[WorkerId, WorkerScoreTransitionResult]:
+        """Move exact clean HOT lease observations to offline polarity.
+
+        Each member is an independent exact-score CAS. The implementation
+        preserves the absolute score coordinate and only changes its sign.
         """
         pass
 

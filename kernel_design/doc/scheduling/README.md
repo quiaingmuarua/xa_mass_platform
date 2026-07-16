@@ -46,15 +46,15 @@ business event names or caller-supplied score ranges.
 Task score acquire
   -> Worker allocation and exact Worker lease
   -> candidate-worker runtime
+  -> exact Worker lease validate/renew
   -> TaskItem score acquire / claim
-  -> active Worker lease retain through the required cutpoint
   -> DeliverSeed queue
-     -> non-exclusive: exact release after accepted append
-     -> exclusive: keep retained through the attempt deadline
   -> endpoint-manager delivery
   -> SeedResult queue
-  -> result routing
-  -> TaskItem outcome/retry + Worker exact release
+  -> result routing classification
+     -> 200 / 1xxx: TaskItem outcome/retry + Worker exact release
+     -> 3xxx: TaskItem retry + Worker exact offline transition
+     -> no result: Item claim and Worker lease expire naturally
 ```
 
 The score axes and bounded runtime handoffs provide liveness. Events may provide
@@ -100,7 +100,7 @@ Transport adapters
 | --- | --- | --- |
 | Task score-band | Implemented with Redis proof | Cadence, scan horizons, activation and no-work budget values |
 | Worker score-band | Implemented with Redis proof, including dirty lease fence | Dirty marking policy when a persisted assignment continuation exists; recovery cadence and ranking |
-| Worker HOT_ACQUIRE lease protocol | Allocation and result-release phases implemented; dispatch disposition pending | Exclusive policy source, retain-through convergence, and non-exclusive early release |
+| Worker HOT_ACQUIRE lease protocol | Allocation, dispatch exact recheck, result release/offline, and reconnect dirty fence implemented | Recovery probe cadence and future explicit capacity-owner policy |
 | TaskItem score-band | Implemented with Redis proof | Initial retry budget and retry delay values |
 | Worker allocation | Implemented with unit and Redis orchestration proof | PRE_DISPATCH/RUNNING weighting or quota beyond current RUNNING-first behavior |
 | Task running activation | Implemented | Alternative activation policies beyond the built-in minimum candidate count |

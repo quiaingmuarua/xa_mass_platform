@@ -10,7 +10,14 @@ from ...executable_spec.assembly import (
     DeliverSeedConsumerClient,
     SeedResult,
     SeedResultCommandClient,
+    SeedResultOutcomeClass,
+    classify_seed_result_outcome_code,
 )
+
+
+WORKER_HANDLER_FAILURE_OUTCOME_CODE = "1500"
+ADAPTER_WORKER_UNAVAILABLE_OUTCOME_CODE = "3001"
+ADAPTER_HANDLER_UNAVAILABLE_OUTCOME_CODE = "3002"
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,8 +42,12 @@ class EventHandlerResult:
     payload: object | None = None
 
     def __post_init__(self) -> None:
-        if not isinstance(self.outcome_code, str) or not self.outcome_code:
-            raise ValueError("outcome code must be non-empty")
+        outcome_class = classify_seed_result_outcome_code(self.outcome_code)
+        if outcome_class not in {
+            SeedResultOutcomeClass.SUCCESS,
+            SeedResultOutcomeClass.WORKER_FAILURE,
+        }:
+            raise ValueError("handler outcome code must be 200 or 1xxx")
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +84,11 @@ class LocalFunctionTransportAdapter:
             raise TypeError("metadata must be WorkerMeta")
         self.workers[worker_id] = metadata
 
+    def unregister_worker(self, worker_id: str) -> None:
+        if not worker_id:
+            raise ValueError("worker id must be non-empty")
+        self.workers.pop(worker_id, None)
+
     def register_event_handler(
         self,
         event_code: str,
@@ -96,14 +112,26 @@ class LocalFunctionTransportAdapter:
         for seed in seeds:
             if self._current_time_millis() >= seed.task_item_claim_until_millis:
                 continue
-            worker = self.workers.get(seed.worker_id)
-            if worker is None:
-                continue
             item = self._decode_delivery_item(seed.opaque_delivery_item)
             if item is None:
                 continue
+            worker = self.workers.get(seed.worker_id)
+            if worker is None:
+                results.append(
+                    SeedResult(
+                        opaque_result_context=seed.opaque_result_context,
+                        outcome_code=ADAPTER_WORKER_UNAVAILABLE_OUTCOME_CODE,
+                    )
+                )
+                continue
             handler = self.handlers.get(item.event_code)
             if handler is None:
+                results.append(
+                    SeedResult(
+                        opaque_result_context=seed.opaque_result_context,
+                        outcome_code=ADAPTER_HANDLER_UNAVAILABLE_OUTCOME_CODE,
+                    )
+                )
                 continue
 
             try:
@@ -119,7 +147,7 @@ class LocalFunctionTransportAdapter:
             except Exception:
                 result = SeedResult(
                     opaque_result_context=seed.opaque_result_context,
-                    outcome_code="500",
+                    outcome_code=WORKER_HANDLER_FAILURE_OUTCOME_CODE,
                 )
             results.append(result)
 

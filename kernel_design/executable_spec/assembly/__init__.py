@@ -2,6 +2,8 @@ from ..kernel import (
     DeliverSeed,
     EndpointManagerId,
     MessageId,
+    SeedResult,
+    SeedResultOutcomeClass,
     TaskCreationResult,
     TaskCreationStatus,
     TaskDescriptor,
@@ -14,7 +16,7 @@ from ..kernel import (
     WorkerGroupDescriptor,
     WorkerRuntimeResult,
     WorkerRuntimeStatus,
-    SeedResult,
+    classify_seed_result_outcome_code,
 )
 from .application import (
     KernelApplication,
@@ -36,6 +38,7 @@ __all__ = [
     "MessageId",
     "ResourcesCommandClient",
     "SeedResult",
+    "SeedResultOutcomeClass",
     "SeedResultCommandClient",
     "TaskApprovalResult",
     "TaskApprovalStatus",
@@ -51,4 +54,5 @@ __all__ = [
     "WorkerGroupDescriptor",
     "WorkerRuntimeResult",
     "WorkerRuntimeStatus",
+    "classify_seed_result_outcome_code",
 ]

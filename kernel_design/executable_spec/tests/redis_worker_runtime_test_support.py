@@ -124,6 +124,21 @@ class FakeRedis:
         if numkeys != 1:
             raise ValueError("unsupported fake redis script")
         key = str(args[0])
+        if "target_score = abs_score + (1 - stored_dirty)" in script:
+            worker_id = str(args[1])
+            dirty_factor = int(args[2])
+            stored = self.zscore(key, worker_id)
+            if stored is None:
+                return ["stale"]
+            abs_score = abs(stored)
+            if abs_score <= 0:
+                return ["invalid", stored]
+            dirty = abs_score % dirty_factor
+            if stored > 0 and dirty == 1:
+                return ["noop", stored]
+            next_score = abs_score + (1 - dirty)
+            self.zadd(key, {worker_id: next_score})
+            return ["transitioned", next_score]
         if "local observed_score" not in script:
             raise ValueError("unsupported fake redis script")
         worker_id = str(args[1])
@@ -134,6 +149,8 @@ class FakeRedis:
             return ["stale"]
         if stored != observed_score:
             return ["stale", stored]
+        if next_score == stored:
+            return ["noop", stored]
         self.zadd(key, {worker_id: next_score})
         return ["transitioned", next_score]
 

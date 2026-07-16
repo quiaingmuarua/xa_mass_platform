@@ -79,10 +79,10 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
         self.assertEqual("200", result.outcome_code)
         self.assertEqual('{"a":1,"z":2}', result.opaque_result_payload)
 
-    def test_non_200_is_forwarded_without_adapter_classification(self) -> None:
+    def test_worker_failure_code_is_forwarded_without_subcode_parsing(self) -> None:
         self.adapter.register_event_handler(
             "event-1",
-            lambda _payload, _worker: EventHandlerResult("409"),
+            lambda _payload, _worker: EventHandlerResult("1409"),
         )
         self.consumer.consume_deliver_seeds.return_value = (self.seed(),)
 
@@ -91,9 +91,9 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
         result = self.result_commands.append_seed_results.call_args.kwargs[
             "results"
         ][0]
-        self.assertEqual("409", result.outcome_code)
+        self.assertEqual("1409", result.outcome_code)
 
-    def test_handler_or_result_encoding_error_becomes_500(self) -> None:
+    def test_handler_or_result_encoding_error_becomes_1500(self) -> None:
         for handler in (
             lambda _payload, _worker: (_ for _ in ()).throw(RuntimeError("boom")),
             lambda _payload, _worker: EventHandlerResult(
@@ -112,20 +112,35 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
                 result = self.result_commands.append_seed_results.call_args.kwargs[
                     "results"
                 ][0]
-                self.assertEqual("500", result.outcome_code)
+                self.assertEqual("1500", result.outcome_code)
                 self.assertIsNone(result.opaque_result_payload)
 
-    def test_expired_missing_worker_missing_handler_and_corrupt_seed_are_dropped(self) -> None:
+    def test_adapter_rejections_are_reported_while_expired_and_corrupt_drop(self) -> None:
         self.consumer.consume_deliver_seeds.return_value = (
             self.seed(claim_until_millis=self.NOW_MILLIS),
             self.seed(worker_id="missing-worker"),
             self.seed(delivery_item='{"eventCode":"missing","payload":{}}'),
             self.seed(delivery_item="{bad-json"),
+            self.seed(worker_id="missing-worker", delivery_item="{bad-json"),
         )
+        self.result_commands.append_seed_results.return_value = 2
 
-        self.assertEqual(0, self.drain())
+        self.assertEqual(2, self.drain())
 
-        self.result_commands.append_seed_results.assert_not_called()
+        results = self.result_commands.append_seed_results.call_args.kwargs["results"]
+        self.assertEqual(["3001", "3002"], [result.outcome_code for result in results])
+
+    def test_unregister_worker_is_idempotent_and_reports_unavailable(self) -> None:
+        self.adapter.unregister_worker("worker-1")
+        self.adapter.unregister_worker("worker-1")
+        self.consumer.consume_deliver_seeds.return_value = (self.seed(),)
+
+        self.assertEqual(1, self.drain())
+
+        result = self.result_commands.append_seed_results.call_args.kwargs[
+            "results"
+        ][0]
+        self.assertEqual("3001", result.outcome_code)
 
     def test_one_drain_uses_one_consume_and_one_append(self) -> None:
         self.adapter.register_event_handler(
@@ -158,7 +173,7 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
             self.drain()
 
     def test_duplicate_registration_replaces_process_local_value(self) -> None:
-        first = Mock(return_value=EventHandlerResult("500"))
+        first = Mock(return_value=EventHandlerResult("1000"))
         second = Mock(return_value=EventHandlerResult("200"))
         self.adapter.register_event_handler("event-1", first)
         self.adapter.register_event_handler("event-1", second)
@@ -170,8 +185,10 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
         first.assert_not_called()
         self.assertEqual(2, second.call_args.args[1].attributes["version"])
 
-    def test_outcome_code_is_exact_non_empty_text(self) -> None:
-        for invalid in ("", 200, None):
+    def test_handler_outcome_code_accepts_only_success_or_worker_failure(self) -> None:
+        self.assertEqual("200", EventHandlerResult("200").outcome_code)
+        self.assertEqual("1999", EventHandlerResult("1999").outcome_code)
+        for invalid in ("", "500", "3001", "１２３４", 200, None):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 EventHandlerResult(invalid)  # type: ignore[arg-type]
 

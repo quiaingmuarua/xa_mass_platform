@@ -56,8 +56,8 @@ its HTTP request models because they are protocol-edge translations.
 
 First Worker upsert selects the default lane rank internally and initializes
 the Worker HOT score without requiring the scheduling process to be running.
-Reconnect replaces Worker attributes and restores negative polarity without
-resetting the existing absolute score coordinate.
+Reconnect replaces Worker attributes, preserves timeSlot/laneRank, converges an
+existing score to positive polarity, and sets dirty=1 without releasing a hold.
 `create_task` selects the initial PRE_REVIEW owner code internally.
 `approve_task` is an explicit lifecycle command that validates Task metadata
 and current score band, then requests `PRE_REVIEW -> PRE_DISPATCH_VISIBLE`. It

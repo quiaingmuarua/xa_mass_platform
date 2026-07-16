@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from time import time_ns
 
 from ..kernel.result_context import ResultContext, decode_result_context
-from ..kernel.seed_result_runtime import SeedResult, SeedResultRuntime
+from ..kernel.seed_result_runtime import (
+    SUCCESS_OUTCOME_CODE as KERNEL_SUCCESS_OUTCOME_CODE,
+    SeedResult,
+    SeedResultOutcomeClass,
+    SeedResultRuntime,
+    classify_seed_result_outcome_code,
+)
 from ..kernel.task_item_score_band import (
     TaskItemScoreBand,
     TaskItemScoreBandCore,
@@ -35,12 +41,13 @@ class ResultRoutingConfig:
 class _DecodedSeedResult:
     result: SeedResult
     context: ResultContext
+    outcome_class: SeedResultOutcomeClass
 
 
 class ResultRoutingPacer:
     """Route bounded SeedResult evidence into Item and Worker score owners."""
 
-    SUCCESS_OUTCOME_CODE = "200"
+    SUCCESS_OUTCOME_CODE = KERNEL_SUCCESS_OUTCOME_CODE
 
     def __init__(
         self,
@@ -69,7 +76,7 @@ class ResultRoutingPacer:
             now_millis=now_millis,
             retry_delay_millis=config.retry_delay_millis,
         )
-        self._release_worker_holds(decoded, release_time_millis=now_millis)
+        self._apply_worker_dispositions(decoded, release_time_millis=now_millis)
         return transitioned_count
 
     @staticmethod
@@ -79,8 +86,9 @@ class ResultRoutingPacer:
         decoded: list[_DecodedSeedResult] = []
         for result in results:
             context = decode_result_context(result.opaque_result_context)
-            if context is not None:
-                decoded.append(_DecodedSeedResult(result, context))
+            outcome_class = classify_seed_result_outcome_code(result.outcome_code)
+            if context is not None and outcome_class is not None:
+                decoded.append(_DecodedSeedResult(result, context, outcome_class))
         return tuple(decoded)
 
     @classmethod
@@ -141,7 +149,7 @@ class ResultRoutingPacer:
             transitioned_count += self._transitioned_count(retries.values())
         return transitioned_count
 
-    def _release_worker_holds(
+    def _apply_worker_dispositions(
         self,
         decoded: tuple[_DecodedSeedResult, ...],
         *,
@@ -151,33 +159,68 @@ class ResultRoutingPacer:
         descriptors = self.task_catalog.load_task_allocation_descriptors(
             task_ids=task_ids,
         )
-        observed_by_group: dict[
-            str,
-            dict[WorkerId, list[WorkerScore]],
-        ] = defaultdict(lambda: defaultdict(list))
+        disposition_by_lease: dict[
+            tuple[str, WorkerId, WorkerScore],
+            SeedResultOutcomeClass,
+        ] = {}
         for entry in decoded:
             descriptor = descriptors.get(entry.context.task_id)
             if descriptor is None:
                 continue
-            worker_scores = observed_by_group[descriptor.worker_group_id][
-                entry.context.worker_id
-            ]
-            if entry.context.worker_lease_score not in worker_scores:
-                worker_scores.append(entry.context.worker_lease_score)
+            key = (
+                descriptor.worker_group_id,
+                entry.context.worker_id,
+                entry.context.worker_lease_score,
+            )
+            current = disposition_by_lease.get(key)
+            if current in {
+                SeedResultOutcomeClass.SUCCESS,
+                SeedResultOutcomeClass.WORKER_FAILURE,
+            }:
+                continue
+            disposition_by_lease[key] = entry.outcome_class
 
-        for worker_group_id, scores_by_worker in observed_by_group.items():
-            release_round_count = max(map(len, scores_by_worker.values()))
-            for index in range(release_round_count):
-                observed_scores = {
-                    worker_id: scores[index]
-                    for worker_id, scores in scores_by_worker.items()
-                    if index < len(scores)
-                }
+        release_scores: dict[str, dict[WorkerId, list[WorkerScore]]] = defaultdict(
+            lambda: defaultdict(list)
+        )
+        offline_scores: dict[str, dict[WorkerId, list[WorkerScore]]] = defaultdict(
+            lambda: defaultdict(list)
+        )
+        for (worker_group_id, worker_id, worker_score), outcome_class in (
+            disposition_by_lease.items()
+        ):
+            target = (
+                offline_scores
+                if outcome_class is SeedResultOutcomeClass.ADAPTER_REJECTION
+                else release_scores
+            )
+            target[worker_group_id][worker_id].append(worker_score)
+
+        for worker_group_id, scores_by_worker in release_scores.items():
+            for observed_scores in self._score_rounds(scores_by_worker):
                 self.worker_score.release_score_holds(
                     home_bucket_id=worker_group_id,
                     observed_scores=observed_scores,
                     release_time_millis=release_time_millis,
                 )
+        for worker_group_id, scores_by_worker in offline_scores.items():
+            for observed_scores in self._score_rounds(scores_by_worker):
+                self.worker_score.mark_observed_worker_leases_offline(
+                    home_bucket_id=worker_group_id,
+                    observed_scores=observed_scores,
+                )
+
+    @staticmethod
+    def _score_rounds(
+        scores_by_worker: dict[WorkerId, list[WorkerScore]],
+    ) -> Iterator[dict[WorkerId, WorkerScore]]:
+        round_count = max(map(len, scores_by_worker.values()))
+        for index in range(round_count):
+            yield {
+                worker_id: scores[index]
+                for worker_id, scores in scores_by_worker.items()
+                if index < len(scores)
+            }
 
     @staticmethod
     def _transitioned_count(

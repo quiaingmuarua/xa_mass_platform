@@ -65,20 +65,17 @@ one logical result queue, so neither append nor consume carries
 claim score, or Worker lease score. Those correlations already travel inside
 `opaque_result_context` and remain opaque to the adapter.
 
-`outcome_code` uses one exact success code:
+`outcome_code` uses a fixed kernel protocol:
 
 ```text
-"200"
-  success
-
-any other non-empty string
-  failure evidence
-  Result-Routing requests exact same-band retry
+"200"  -> Worker execution success
+"1xxx" -> Worker execution failure after entering the Worker
+"3xxx" -> Adapter rejected delivery before entering the Worker
 ```
 
-`"200"` is a kernel result code, not an HTTP response status. The contract does
-not accept integer `200`, trim values, or provide aliases such as `success`,
-`SUCCESS`, `ok`, or `OK`.
+`1xxx` and `3xxx` are exactly four ASCII digits. Exact subcodes belong to the
+producer; Result-Routing understands only the class. The contract does not
+accept integer codes, trim values, or provide aliases such as `success` or `ok`.
 
 `append_seed_results` is batch-shaped because one bounded adapter drain can
 produce multiple results. Its return value is the number accepted by the
@@ -145,6 +142,10 @@ while running:
     adapter.drain_once(limit=100)
 ```
 
+`adapter.unregister_worker(workerId)` removes local reachability idempotently.
+It does not mutate kernel Worker score; a later consumed Seed for that Worker
+produces adapter rejection evidence.
+
 One adapter process may host many Workers. They share the process-local
 `eventCode -> EventHandler` registry.
 
@@ -176,19 +177,29 @@ def drain_once(self, *, limit: int) -> int:
 
         worker = self.workers.get(seed.worker_id)
         if worker is None:
+            results.append(SeedResult(seed.opaque_result_context, "3001"))
             continue
 
         item = decode_delivery_item(seed.opaque_delivery_item)
+        if item is None:
+            continue
         handler = self.handlers.get(item.event_code)
         if handler is None:
+            results.append(SeedResult(seed.opaque_result_context, "3002"))
             continue
 
-        handled = handler(item.payload, worker)
+        try:
+            handled = handler(item.payload, worker)
+            outcome_code = handled.outcome_code
+            result_payload = encode_result_payload(handled.payload)
+        except Exception:
+            outcome_code = "1500"
+            result_payload = None
         results.append(
             SeedResult(
                 opaque_result_context=seed.opaque_result_context,
-                outcome_code=handled.outcome_code,
-                opaque_result_payload=encode_result_payload(handled.payload),
+                outcome_code=outcome_code,
+                opaque_result_payload=result_payload,
             )
         )
 
@@ -200,13 +211,11 @@ def drain_once(self, *, limit: int) -> int:
 The adapter counts only runtime-accepted results. Consuming a queue record is
 not delivery or result success.
 
-Handlers return `outcome_code="200"` only when execution succeeded. Every
-other non-empty code enters Result-Routing as failure evidence.
-
-If a handler raises, returns the wrong type, or produces a payload that cannot
-be encoded as deterministic JSON, the adapter submits `outcome_code="500"`
-with no payload. Expired seeds, missing local Workers, missing handlers, and
-malformed delivery envelopes are discarded without synthesizing a result.
+Handlers may return only `"200"` or `1xxx`; they cannot forge `3xxx` adapter
+evidence. Handler failure, invalid return type, or payload encoding failure is
+reported as `1500`. Missing local Worker is `3001`; missing handler is `3002`.
+Expired seeds and malformed delivery envelopes remain unclassified drops and
+do not change Worker online classification.
 
 ## Ownership
 
@@ -232,10 +241,11 @@ synthesize timeout results
 ```
 
 `SeedResultRuntime` stores accepted evidence in one logical queue.
-`ResultRoutingPacer` consumes it, applies the TaskItem outcome, and coordinates
-Worker-owner release/retention. When the adapter drops a seed, crashes, or
-cannot submit a result, TaskItem claim and Worker lease time coordinates remain
-the recovery fallback.
+`ResultRoutingPacer` consumes it, applies the TaskItem outcome, and requests
+Worker exact release for `200/1xxx` or exact offline classification for `3xxx`.
+When the adapter drops a malformed/expired seed, crashes, or cannot submit a
+result, TaskItem claim and Worker lease time coordinates remain the recovery
+fallback. Missing evidence is never reclassified as `3xxx`.
 
 Handlers run with at-least-once semantics. The first handler API stays small as
 `handler(payload, WorkerMeta)`; handlers requiring idempotency will need a
@@ -250,7 +260,9 @@ uses `DeliverSeedConsumerClient` and `SeedResultCommandClient`. The adapter has
 no internal background thread. Its process host owns the `drain_once` loop and
 shutdown policy.
 
-Worker upsert is restart-safe. Reconnect may return `CONFLICT` only when an
+Worker upsert is restart-safe. Reconnect converges an existing score to positive
+polarity and dirty=1 while preserving its time coordinate and lane rank. It may
+return `CONFLICT` only when an
 immutable declaration field such as `endpointManagerId` or
 `dynamicAttributeNames` differs; an existing score alone is not a conflict.
 
