@@ -105,9 +105,9 @@ reason, transport session, trace, or query projection truth.
 
 One WorkerId is one scheduler-visible execution slot and therefore one active
 Worker lease at a time. Physical executor concurrency is represented by
-multiple logical WorkerIds. A future multi-Item optimization may consume a
-same-Task batch under one Worker lease; it does not permit independent or
-cross-Task assignments to share one WorkerId.
+multiple logical WorkerIds. One TaskItem remains one scheduling, claim, retry,
+and result unit. A business batch is one TaskItem whose payload contains a
+bounded collection; the kernel does not coalesce multiple TaskItems.
 
 The shared contract is:
 

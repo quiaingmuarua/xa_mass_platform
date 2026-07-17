@@ -228,9 +228,9 @@ source of liveness or lifecycle truth.
 - One `WorkerId` is one scheduler-visible execution slot. A physical executor
   with parallel capacity must expose multiple logical WorkerIds; dispatch must
   not infer parallel slots from metadata or release one score fence early.
-- Future same-Task batch consume may bind several Items to one WorkerId only as
-  one batch under one Worker lease and one bounded TaskItem claim horizon. It
-  is not independent Item concurrency and cannot mix Tasks.
+- One Worker lease continues exactly one TaskItem. Business batch operations
+  use a bounded collection inside that Item payload; assignment-dispatch does
+  not coalesce multiple Items or own result fan-out policy.
 - Strong persisted assignment continuation would require an explicit owner
   protocol; candidate queues must not be promoted into that role.
 

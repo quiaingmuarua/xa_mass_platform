@@ -41,9 +41,8 @@ validation. It does not mirror a socket, heartbeat, session, or endpoint state.
 One `WorkerId` is one scheduler-visible execution slot and owns one score
 coordinate. A physical executor with concurrency `N` exposes `N` logical
 WorkerIds. The score model never mints several independent active assignments
-behind one WorkerId. A future same-Task batch consume may carry several Items
-under one Worker lease and one bounded TaskItem claim horizon; that remains one
-slot occupation. The current executable spec dispatches one Item per seed.
+behind one WorkerId. Business batch input belongs inside one TaskItem payload;
+the score model never coalesces multiple TaskItems behind one Worker lease.
 
 ## Owner Boundary
 

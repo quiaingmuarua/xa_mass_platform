@@ -33,11 +33,10 @@ trusted result disposition or lease expiry. A physical executor with parallel
 capacity exposes multiple logical WorkerIds; the kernel does not create several
 active assignments behind one Worker score.
 
-A future same-Task batch consume may place several TaskItems into one
-DeliverSeed batch under the same Worker lease and one bounded TaskItem claim
-horizon. This remains one slot occupation. It must not become cross-Task
-concurrency or an early release path. The current executable spec dispatches
-one TaskItem per seed.
+One Worker lease carries one TaskItem and one DeliverSeed. A Worker that exposes
+a business batch operation receives the batch as a bounded collection inside
+that TaskItem payload. The kernel does not merge multiple TaskItems, create
+multiple Item claim fences behind one Worker lease, or release the slot early.
 
 ## Allocation Lease
 
@@ -212,9 +211,9 @@ cross-owner transaction.
 
 ## Deferred Policy
 
-Recovery probe cadence/ranking and same-Task batch-consume sizing are deferred.
-Batch consume must reuse one signed Worker score fence and one bounded TaskItem
-claim horizon; it must not introduce parallel leases for one WorkerId.
+Recovery probe cadence and ranking are deferred. TaskItem coalescing is not a
+deferred kernel policy; business batching is expressed inside one TaskItem
+payload.
 
 ## Guardrails
 

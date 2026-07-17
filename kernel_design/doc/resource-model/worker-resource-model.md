@@ -76,11 +76,11 @@ physical runtime with concurrency 3
   -> worker-slot-3
 ```
 
-The only future multi-Item shape allowed for one WorkerId is one same-Task batch
-consume: several TaskItems from the same Task may be carried as one dispatch
-batch under one Worker lease and one bounded TaskItem claim horizon. That is one
-slot occupation, not concurrent independent assignments and not cross-Task
-reuse. The current executable spec remains one TaskItem per DeliverSeed.
+One TaskItem remains one scheduling and result unit. If a Worker supports a
+business batch operation, the caller places the bounded input collection inside
+one TaskItem payload. The kernel still claims one Item, emits one DeliverSeed,
+and receives one SeedResult. It does not merge independently appended
+TaskItems, fan out partial outcomes, or reuse the Worker slot across Tasks.
 
 This keeps score ownership, dirty handling, and release semantics single-group
 and admission-fence oriented from the scheduler's point of view.

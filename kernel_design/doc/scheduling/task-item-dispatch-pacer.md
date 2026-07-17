@@ -97,6 +97,9 @@ produce DeliverSeeds. Pairing follows the order of validated candidates and
 successful Item observations; `zip` stops at the smaller side.
 
 The built-in delivery envelope contains only `eventCode` and `payload`.
+If an event handler supports a business batch operation, its bounded input
+collection is carried inside this one TaskItem payload. Dispatch does not merge
+multiple TaskItems into one delivery envelope.
 `opaqueResultContext` carries Task/Item correlation plus both opaque score
 fences. `endpointManagerId` partitions the queue and is not included in the
 DeliverSeed itself.
@@ -154,12 +157,10 @@ DeliverSeed endpoint-manager append
 unit and real Redis proof
 ```
 
-Deferred policy is limited to recent-first Task acquisition and optional
-same-Task batch consume. A batch may claim several Items from one Task for one
-WorkerId only when they share one Worker lease and one bounded TaskItem claim
-horizon. It must not create cross-Task concurrency or an early-release branch.
-The current executable spec remains one candidate Worker to one TaskItem to one
-DeliverSeed.
+Deferred policy is limited to recent-first Task acquisition. The current and
+target mechanism remains one candidate Worker to one TaskItem to one
+DeliverSeed. Business batching belongs inside that TaskItem payload and is not
+a dispatch coalescing policy.
 
 ## Guardrails
 
@@ -171,6 +172,7 @@ DeliverSeed.
 - Do not release Worker leases from this pacer.
 - Do not dispatch another independent Item to the same WorkerId while its lease
   remains active.
+- Do not merge multiple TaskItems into one DeliverSeed.
 - Do not call transport or parse result outcomes here.
 - Do not write Task score.
 - Do not create Attempt, reservation lifecycle, retry queue, or repair scanner.

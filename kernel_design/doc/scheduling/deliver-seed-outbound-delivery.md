@@ -94,10 +94,11 @@ taskItemClaimUntilMillis
 
 `opaqueDeliveryItem` is produced by the assignment-dispatch internal encoder.
 The built-in policy serializes only `eventCode` and `payload`; it does not expose
-message identity, Item scheduling fields, expiry, or score evidence to the
-Worker handler. A payload reference, when needed by an application, is ordinary
-caller-defined data inside `payload`. The endpoint manager may translate the
-opaque item before Worker submit.
+message identity, Item score, retry budget, expiry, or Worker lease evidence to
+the Worker handler. A payload reference or bounded business batch, when needed
+by an application, is ordinary caller-defined data inside this one Item
+payload. The endpoint manager may translate the opaque item before Worker
+submit. The kernel does not merge multiple TaskItems into one delivery item.
 
 `opaqueResultContext` is forwarded unchanged and contains the Task,
 Item, Worker, claim-score, and Worker-lease correlation required by later

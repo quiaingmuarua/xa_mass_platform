@@ -100,7 +100,7 @@ Transport adapters
 | --- | --- | --- |
 | Task score-band | Implemented with Redis proof | Cadence, scan horizons, activation and no-work budget values |
 | Worker score-band | Implemented with Redis proof, including dirty lease fence | Dirty marking policy when a persisted assignment continuation exists; recovery cadence and ranking |
-| Worker HOT_ACQUIRE lease protocol | Allocation, dispatch exact recheck, result release/recovery demotion, reconnect dirty fence, and one-WorkerId/one-slot invariant implemented | Recovery probe cadence and optional same-Task batch consume |
+| Worker HOT_ACQUIRE lease protocol | Allocation, dispatch exact recheck, result release/recovery demotion, reconnect dirty fence, and one-WorkerId/one-slot invariant implemented | Recovery probe cadence and ranking |
 | TaskItem score-band | Implemented with Redis proof | Initial retry budget and retry delay values |
 | Worker allocation | Implemented with unit and Redis orchestration proof | PRE_DISPATCH/RUNNING weighting or quota beyond current RUNNING-first behavior |
 | Task running activation | Implemented | Alternative activation policies beyond the built-in minimum candidate count |
