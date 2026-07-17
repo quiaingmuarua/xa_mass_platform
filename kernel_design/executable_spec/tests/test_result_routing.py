@@ -218,7 +218,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
         )
         self.item_score.rewrite_observed_item_scores.assert_not_called()
 
-    def test_adapter_rejection_retries_item_and_marks_worker_offline(self) -> None:
+    def test_adapter_rejection_retries_item_and_demotes_worker_to_recovery(self) -> None:
         rejection = self.result(outcome_code="3001", worker_lease_score=201)
         self.runtime.consume_seed_results.return_value = (rejection,)
         self.task_catalog.load_task_allocation_descriptors.return_value = {
@@ -233,7 +233,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
 
         self.assertEqual(1, self.route())
 
-        self.worker_score.mark_observed_worker_leases_offline.assert_called_once_with(
+        self.worker_score.demote_observed_worker_leases_to_recovery.assert_called_once_with(
             home_bucket_id="image-workers",
             observed_scores={"worker-1": 201},
         )
@@ -268,7 +268,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
             observed_scores={"worker-1": 201},
             release_time_millis=self.NOW_MILLIS,
         )
-        self.worker_score.mark_observed_worker_leases_offline.assert_not_called()
+        self.worker_score.demote_observed_worker_leases_to_recovery.assert_not_called()
 
     def test_non_200_uses_exact_claim_retry_after_latest_claim_deadline(self) -> None:
         first = self.result(

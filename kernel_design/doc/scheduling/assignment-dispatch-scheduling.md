@@ -42,9 +42,9 @@ Assignment-dispatch does not own:
 
 ```text
 Task lifecycle, descriptor, or score truth
-Worker resource, reachability, capacity, or score truth
+Worker resource, scheduling serviceability, capacity, or score truth
 TaskItem record, score, retry, or finality truth
-transport sessions or endpoint reachability
+transport sessions or endpoint-local observations
 result classification or projection
 ```
 
@@ -206,7 +206,7 @@ SeedResult proves Worker execution
   result routing exact-releases the confirmed Worker fence
 
 SeedResult proves Adapter rejection before Worker execution
-  result routing exact-marks the confirmed Worker fence offline
+  result routing exact-demotes the confirmed Worker fence to RECOVERY_RECHECK
 
 Adapter crashes or no SeedResult arrives
   no disposition is invented; Item claim and Worker lease deadlines recover
@@ -237,7 +237,7 @@ source of liveness or lifecycle truth.
 - Do not let allocation decode Task score or change Task band/suffix.
 - Do not let Item dispatch rewrite Task score or decode/directly rewrite Worker
   score; it may invoke only the canonical exact validate/renew primitive.
-- Do not release or mark Worker fences offline from Item dispatch; result
+- Do not release or demote Worker fences to recovery from Item dispatch; result
   routing owns that disposition from classified SeedResult evidence.
 - Do not publish a candidate before its exact Worker lease succeeds.
 - Do not release unmatched or failed-publication Worker leases as if the

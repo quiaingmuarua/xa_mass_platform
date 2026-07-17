@@ -40,15 +40,16 @@ generic cross-round assignment hold records
 ```text
 workerGroupId == homeBucketId
 one worker belongs to exactly one workerGroupId in v0
-score ZSET is worker-runtime-classified online/offline polarity plus
+score ZSET is kernel-owned TaskItem scheduling-serviceability polarity plus
 acquisition/recovery timing truth
 descriptor hashes are resource declaration truth
 dynamic attribute keys are handler-owned projections / indexes
 endpointManagerId is a stable post-selection endpoint-owner locator
 live transport evidence is not stored in worker catalog or score keys
 Worker upsert establishes immutable declaration identity before ensuring score presence
-reconnect replaces Worker attributes, preserves timeSlot/laneRank, converges to
-positive polarity, and writes dirty=1 without releasing a hold
+reconnect supplies trusted serviceability evidence, replaces Worker attributes,
+preserves timeSlot/laneRank, converges to HOT_ACQUIRE, and writes dirty=1
+without releasing a hold
 platform and dynamic attribute updates do not require a worker score lease
 ```
 
@@ -94,7 +95,7 @@ Value shape:
 
 `eventCodes` is a group promise. It validates worker-group capability after a
 task has already selected a group. It is not a worker selector and not runtime
-availability proof.
+scheduling-serviceability proof.
 
 ### Worker Descriptors
 
@@ -153,7 +154,7 @@ wr:{prefix}:score:{workerGroupId}
 Role:
 
 ```text
-worker-runtime-classified network availability polarity
+kernel-owned TaskItem scheduling-serviceability polarity
 runtime acquisition / recovery timing truth
 ```
 
@@ -168,7 +169,7 @@ acquired negative scores. Registration initializes the first score; explicit
 hold/release or verified polarity commands are narrow control transitions, not
 generic metadata-update hooks.
 
-Score absence is not a normal unavailable state. It means the score has not been
+Score absence is not a RECOVERY_RECHECK classification. It means the score has not been
 initialized, the worker was removed, or the index is orphaned and needs
 owner-local repair.
 
@@ -225,23 +226,23 @@ Polarity:
 ```text
 score > 0
   HOT_ACQUIRE
-  worker-runtime-classified network available / online
+  scheduling-available for ordinary allocation
   only source for worker hot acquisition
 
 score < 0
   RECOVERY_RECHECK
-  worker-runtime-classified network unavailable / offline
+  scheduling-unavailable for ordinary allocation
   only source for worker recovery validation
 
 score == 0
   invalid / reserved
 ```
 
-The sign is network-state scheduling truth after worker-runtime validation; it
-is not raw transport session truth. `timeSlot` is independent: an online Worker
-may remain positive but not currently acquirable because it is leased, held,
-disabled, draining, or cooling down. Polarity movement preserves `timeSlot`, so
-disconnect/reconnect cannot escape an existing hold.
+The sign is kernel scheduling-serviceability truth after owner validation; it
+is not physical connection or transport-session truth. `timeSlot` is
+independent: a HOT_ACQUIRE Worker may still be non-due because it is leased,
+held, disabled, draining, or cooling down. Polarity movement preserves
+`timeSlot`, so reconnect or recovery evidence cannot escape an existing hold.
 
 Constants:
 
@@ -331,14 +332,14 @@ Required first-slice primitives:
 
 ```text
 initialize_hot_acquire_score(workerGroupId, workerId, laneRank)
-reconcile_worker_online(workerGroupId, workerId)
+reconcile_worker_hot_acquire(workerGroupId, workerId)
 rewrite_current_scores(workerGroupId, workerIds, targetTimeMillis, targetLaneRank?)
 acquire_hot_acquire_candidates(workerGroupId, limit)
 acquire_observed_hot_score_leases(
   workerGroupId, observedScores, targetTimeMillis
 )
 renew_active_hot_score_leases(workerGroupId, observedScores, targetTimeMillis)
-mark_observed_worker_leases_offline(workerGroupId, observedScores)
+demote_observed_worker_leases_to_recovery(workerGroupId, observedScores)
 mark_current_lease_dirty(workerGroupId, workerId)
 toggle_current_polarity(workerGroupId, workerId, observedScore, targetLaneRank)
 exhaust_recovery_recheck(workerGroupId, workerId, observedScore)
@@ -349,7 +350,8 @@ release_score_holds(workerGroupId, observedScores, releaseTimeMillis)
 Result routing uses the published opaque lease after `200/1xxx` evidence.
 Allocation unmatched, matcher failure, candidate publication failure, dispatch
 rejection, and queue ambiguity leave the score untouched and recover through
-lease expiry unless trusted `3xxx` evidence requests exact offline movement.
+lease expiry unless trusted `3xxx` evidence requests exact RECOVERY_RECHECK
+demotion.
 The full cross-pacer owner sequence is defined by
 [Worker HOT_ACQUIRE Lease Protocol](../scheduling/worker-hot-acquire-lease-protocol.md);
 this Redis note owns only storage and atomic primitive behavior.
@@ -371,9 +373,9 @@ bounded hot acquire is a read-only positive due-score query
 observed hot lease batch validates due/future shape outside Lua, then pipelines
 one generic exact-score CAS per Worker while preserving laneRank and clearing dirty
 dirty mark only sets dirty = 1
-online reconciliation preserves timeSlot/laneRank, writes positive polarity,
+HOT_ACQUIRE reconciliation preserves timeSlot/laneRank, writes positive polarity,
 and sets dirty = 1
-observed offline movement accepts only clean positive lease scores and writes
+observed recovery demotion accepts only clean positive lease scores and writes
 -abs(observedScore) through exact CAS
 ```
 
@@ -388,7 +390,7 @@ each Worker returns an independent transition result.
 ## Worker Upsert And Catalog Operations
 
 Worker upsert belongs to `WorkerRuntime` because first appearance must ensure a
-score and reconnect may restore network-available polarity. The caller supplies
+score and reconnect evidence may restore HOT_ACQUIRE polarity. The caller supplies
 `WorkerDeclaration`; the runtime owns `platformAttributes`, initial laneRank,
 score initialization, and polarity handling. `WorkerResourceCatalog` remains
 the WorkerGroup upsert, descriptor-read, and platform-attribute surface.
@@ -616,10 +618,11 @@ protects.
 - Do not store dynamic attribute current values inside `WorkerDescriptor`.
 - Do not let transport write worker score keys directly.
 - Do not let heartbeat or raw session evidence move RECOVERY_RECHECK to
-  HOT_ACQUIRE. Only validated Worker upsert may invoke online reconciliation.
+  HOT_ACQUIRE. Only validated Worker upsert may invoke HOT_ACQUIRE
+  reconciliation.
 - Do not add worker lifecycle tags.
 - Do not add PARKED, FUTURE, or MANUAL_DISABLED bands.
-- Do not use score absence as worker unavailability.
+- Do not use score absence as Worker scheduling-unavailability.
 - Do not use RECOVERY_RECHECK scores as assignment leases.
 - Do not create per-task worker candidate keys.
 - Do not fan out score across placement-tag buckets in v0.

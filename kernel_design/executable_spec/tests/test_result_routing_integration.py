@@ -159,7 +159,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
                 time.sleep(self.worker_score.SLOT_MILLIS / 1_000)
         self.assertIn("worker-1", worker_candidates)
 
-    def test_adapter_rejection_marks_worker_offline_then_reconnect_restores_online(
+    def test_adapter_rejection_demotes_worker_then_reconnect_restores_hot_acquire(
         self,
     ) -> None:
         self.resources.upsert_worker_group(
@@ -203,30 +203,36 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
                 time.sleep(0.02)
         self.assertEqual(1, reported)
 
-        offline = None
+        recovery_state = None
         deadline = time.monotonic() + 3
         while time.monotonic() < deadline:
-            offline = self.worker_score.get_score_states(
+            recovery_state = self.worker_score.get_score_states(
                 home_bucket_id="image-workers",
                 worker_ids=["worker-1"],
             )["worker-1"]
-            if offline is not None and offline.polarity is WorkerScorePolarity.RECOVERY_RECHECK:
+            if (
+                recovery_state is not None
+                and recovery_state.polarity is WorkerScorePolarity.RECOVERY_RECHECK
+            ):
                 break
             time.sleep(0.02)
 
-        self.assertIsNotNone(offline)
-        assert offline is not None
-        self.assertIs(WorkerScorePolarity.RECOVERY_RECHECK, offline.polarity)
+        self.assertIsNotNone(recovery_state)
+        assert recovery_state is not None
+        self.assertIs(
+            WorkerScorePolarity.RECOVERY_RECHECK,
+            recovery_state.polarity,
+        )
 
         self.resources.upsert_worker(declaration=declaration)
-        online = self.worker_score.get_score_states(
+        hot_state = self.worker_score.get_score_states(
             home_bucket_id="image-workers",
             worker_ids=["worker-1"],
         )["worker-1"]
-        self.assertIsNotNone(online)
-        assert online is not None
-        self.assertIs(WorkerScorePolarity.HOT_ACQUIRE, online.polarity)
-        self.assertEqual(1, online.dirty)
+        self.assertIsNotNone(hot_state)
+        assert hot_state is not None
+        self.assertIs(WorkerScorePolarity.HOT_ACQUIRE, hot_state.polarity)
+        self.assertEqual(1, hot_state.dirty)
 
     @staticmethod
     def _task_descriptor() -> TaskDescriptor:

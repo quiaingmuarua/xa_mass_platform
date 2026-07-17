@@ -15,13 +15,13 @@ Dirty = int
 
 
 class WorkerScorePolarity(IntEnum):
-    """Worker-runtime-classified network availability polarity.
+    """Kernel-owned TaskItem scheduling-serviceability classification.
 
-    Positive means network available/online and maps to HOT_ACQUIRE. Negative
-    means network unavailable/offline and maps to RECOVERY_RECHECK. This is
-    intentionally not a lifecycle band or raw transport-session observation;
-    Worker is a long-lived resource and worker-runtime owns the validated
-    classification.
+    Positive HOT_ACQUIRE means scheduling-available: the Worker may enter
+    ordinary allocation when the rest of the score and runtime checks pass.
+    Negative RECOVERY_RECHECK means scheduling-unavailable: the Worker is
+    excluded from ordinary allocation and may enter only recovery validation.
+    Neither polarity is a physical connection or transport-session truth.
     """
 
     HOT_ACQUIRE = 1
@@ -54,10 +54,10 @@ class WorkerScoreTransitionResult:
 class WorkerScoreCore(ABC):
     """Worker score core interface.
 
-    Worker score is a signed network-availability and acquisition coordinate:
+    Worker score is a signed scheduling-serviceability and acquisition coordinate:
 
-    - positive score means network available/online HOT_ACQUIRE polarity;
-    - negative score means network unavailable/offline RECOVERY_RECHECK polarity;
+    - positive score means scheduling-available HOT_ACQUIRE polarity;
+    - negative score means scheduling-unavailable RECOVERY_RECHECK polarity;
     - abs(score) carries the internal time coordinate, laneRank, and dirty.
 
     It is not a worker lifecycle state machine. There is no PARKED band,
@@ -118,7 +118,7 @@ class WorkerScoreCore(ABC):
 
         This is batch-only to discourage N+1 point reads. Missing scores are
         represented by a present worker id with None. Score absence is not an
-        unavailable-worker state.
+        scheduling-unavailable Worker state.
         """
         pass
 
@@ -170,17 +170,18 @@ class WorkerScoreCore(ABC):
         pass
 
     @abstractmethod
-    def reconcile_worker_online(
+    def reconcile_worker_hot_acquire(
         self,
         *,
         home_bucket_id: HomeBucketId,
         worker_id: WorkerId,
     ) -> WorkerScoreTransitionResult:
-        """Converge an existing Worker to online polarity and dirty its lease.
+        """Converge an existing Worker to HOT_ACQUIRE and dirty its lease.
 
-        The implementation preserves time and lane rank, writes positive
-        polarity, and sets dirty=1. Missing score returns STALE so initialization
-        remains owned by WorkerRuntime. This operation never releases a hold.
+        Trusted serviceability evidence invokes this operation. The
+        implementation preserves time and lane rank, writes positive polarity,
+        and sets dirty=1. Missing score returns STALE so initialization remains
+        owned by WorkerRuntime. This operation never releases a hold.
         """
         pass
 
@@ -241,16 +242,17 @@ class WorkerScoreCore(ABC):
         pass
 
     @abstractmethod
-    def mark_observed_worker_leases_offline(
+    def demote_observed_worker_leases_to_recovery(
         self,
         *,
         home_bucket_id: HomeBucketId,
         observed_scores: Mapping[WorkerId, Score],
     ) -> Mapping[WorkerId, WorkerScoreTransitionResult]:
-        """Move exact clean HOT lease observations to offline polarity.
+        """Demote exact clean HOT lease observations to RECOVERY_RECHECK.
 
-        Each member is an independent exact-score CAS. The implementation
-        preserves the absolute score coordinate and only changes its sign.
+        Trusted pre-execution rejection evidence invokes this operation. Each
+        member is an independent exact-score CAS. The implementation preserves
+        the absolute score coordinate and only changes its sign.
         """
         pass
 

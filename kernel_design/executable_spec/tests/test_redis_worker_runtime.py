@@ -210,14 +210,14 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
             worker_ids=["worker-1"],
         )["worker-1"]
         assert hot is not None
-        disconnected = self.score_band.toggle_current_polarity(
+        recovery = self.score_band.toggle_current_polarity(
             home_bucket_id="image-workers",
             worker_id="worker-1",
             observed_score=hot.score,
             target_lane_rank=hot.lane_rank,
         )
         self.assertEqual(
-            disconnected.status,
+            recovery.status,
             WorkerScoreTransitionStatus.TRANSITIONED,
         )
 
@@ -227,17 +227,17 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
                 attributes={"runtime": "java"},
             )
         )
-        reconnected = self.score_band.get_score_states(
+        hot_after_reconnect = self.score_band.get_score_states(
             home_bucket_id="image-workers",
             worker_ids=["worker-1"],
         )["worker-1"]
 
         self.assertEqual(result.status, WorkerRuntimeStatus.OK)
-        assert reconnected is not None
-        self.assertEqual(reconnected.polarity, WorkerScorePolarity.HOT_ACQUIRE)
-        self.assertEqual(reconnected.score, abs(disconnected.score or 0) + 1)
-        self.assertEqual(reconnected.lane_rank, self.LANE_RANK)
-        self.assertEqual(reconnected.dirty, 1)
+        assert hot_after_reconnect is not None
+        self.assertEqual(hot_after_reconnect.polarity, WorkerScorePolarity.HOT_ACQUIRE)
+        self.assertEqual(hot_after_reconnect.score, abs(recovery.score or 0) + 1)
+        self.assertEqual(hot_after_reconnect.lane_rank, self.LANE_RANK)
+        self.assertEqual(hot_after_reconnect.dirty, 1)
 
     def test_worker_identity_conflict_does_not_change_descriptor_or_score(self) -> None:
         self.upsert_group()

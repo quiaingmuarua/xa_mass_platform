@@ -183,14 +183,14 @@ class ResultRoutingPacer:
         release_scores: dict[str, dict[WorkerId, list[WorkerScore]]] = defaultdict(
             lambda: defaultdict(list)
         )
-        offline_scores: dict[str, dict[WorkerId, list[WorkerScore]]] = defaultdict(
+        recovery_scores: dict[str, dict[WorkerId, list[WorkerScore]]] = defaultdict(
             lambda: defaultdict(list)
         )
         for (worker_group_id, worker_id, worker_score), outcome_class in (
             disposition_by_lease.items()
         ):
             target = (
-                offline_scores
+                recovery_scores
                 if outcome_class is SeedResultOutcomeClass.ADAPTER_REJECTION
                 else release_scores
             )
@@ -203,9 +203,9 @@ class ResultRoutingPacer:
                     observed_scores=observed_scores,
                     release_time_millis=release_time_millis,
                 )
-        for worker_group_id, scores_by_worker in offline_scores.items():
+        for worker_group_id, scores_by_worker in recovery_scores.items():
             for observed_scores in self._score_rounds(scores_by_worker):
-                self.worker_score.mark_observed_worker_leases_offline(
+                self.worker_score.demote_observed_worker_leases_to_recovery(
                     home_bucket_id=worker_group_id,
                     observed_scores=observed_scores,
                 )

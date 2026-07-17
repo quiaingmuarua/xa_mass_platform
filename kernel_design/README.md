@@ -100,7 +100,7 @@ reason, transport session, trace, or query projection truth.
 | Axis | Scheduling identity | Encoded direction | Time rule | Final/recovery rule |
 | --- | --- | --- | --- | --- |
 | Task | global `taskId` | positive lifecycle tag decreases | same-band `timeSlot` normally increases | negative score is immutable terminal |
-| Worker | `workerId` inside one home bucket / WorkerGroup | sign is worker-runtime-classified network availability: positive online, negative offline | same-polarity `timeSlot` normally increases | polarity may toggle because Worker is long-lived; there is no terminal band |
+| Worker | `workerId` inside one home bucket / WorkerGroup | sign is kernel-owned TaskItem scheduling serviceability: positive HOT_ACQUIRE, negative RECOVERY_RECHECK | same-polarity `timeSlot` normally increases | polarity may toggle because Worker is long-lived; there is no terminal band |
 | TaskItem | `(taskId, messageId)` | outcome tag increases | ACTIVE same-band `timeSlot` increases | outcome precedence advances toward final success; there is no release |
 
 The shared contract is:
@@ -113,7 +113,7 @@ score values crossing an owner boundary are opaque observation / lease fences
 business meaning stays above the score primitive
 the score owner still enforces field width, monotonic direction, suffix rules,
 and stale-write safety
-score absence is not a hidden parked, paused, terminal, or offline state
+score absence is not a hidden parked, paused, terminal, or scheduling-unavailable state
 ```
 
 Ordinary time movement is monotonic. A lower time coordinate is allowed only
@@ -203,7 +203,7 @@ scheduling plane
 
 lifecycle command owner
   may perform only explicit control transitions such as approve, reject,
-  pause, resume, cancel, close, verified unavailable, or verified reopen
+  pause, resume, cancel, close, serviceability demotion, or validated recovery
 ```
 
 The lifecycle-command exception does not create a second scheduling mainline.
@@ -441,7 +441,7 @@ no hidden compatibility path or second mainline remains
     attribute allowlists.
 - [Worker HOT_ACQUIRE Lease Protocol](doc/scheduling/worker-hot-acquire-lease-protocol.md)
   - canonical allocation lease, dispatch exact recheck, result-driven
-    release/offline classification, reconnect dirty fence, and natural expiry.
+    release/recovery classification, reconnect dirty fence, and natural expiry.
 - [Task Resource Model](doc/resource-model/task-resource-model.md)
   - v0 task allocation metadata, start conditions, allocation-rule routing,
     Item retry policy, and bounded task descriptor reads.

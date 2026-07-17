@@ -17,11 +17,11 @@ Worker owner operations:
 SeedResultRuntime
   -> decode ResultContext and classify outcomeCode
   -> TaskItemScoreBandCore final-success or exact retry
-  -> WorkerScoreCore exact release or exact offline classification
+  -> WorkerScoreCore exact release or exact RECOVERY_RECHECK demotion
 ```
 
 It does not select Workers, claim Items, persist result payloads, refresh Task
-score, parse score internals, or own Worker online truth.
+score, parse score internals, or own Worker scheduling-serviceability truth.
 
 ## Protocol
 
@@ -61,7 +61,7 @@ only the class, never the business or adapter subcode.
 7. independently classify each correlated Worker lease disposition
 8. load bounded TaskDescriptors to resolve WorkerGroup ownership
 9. exact-release 200 / 1xxx Worker leases
-10. exact-CAS 3xxx Worker leases to negative polarity
+10. exact-CAS 3xxx Worker leases to RECOVERY_RECHECK
 ```
 
 Within one batch, any `200` wins for the same Item; otherwise the last valid
@@ -86,21 +86,22 @@ Worker disposition is independent from Item transition success:
 
 ```text
 200 / 1xxx
-  -> Worker was entered
+  -> this attempt crossed the Worker execution boundary
   -> release_score_holds(original workerLeaseScore, now)
 
 3xxx
   -> Adapter confirmed the Item did not enter Worker execution
-  -> mark_observed_worker_leases_offline(original workerLeaseScore)
+  -> demote_observed_worker_leases_to_recovery(original workerLeaseScore)
 ```
 
 For the same `(workerGroupId, workerId, workerLeaseScore)`, Worker execution
-evidence (`200` or `1xxx`) wins over `3xxx`, because it proves reachability for
-that attempt. Duplicate dispositions are collapsed before owner calls.
+evidence (`200` or `1xxx`) wins over `3xxx`, because it proves that this attempt
+crossed the Worker execution boundary. It does not prove persistent physical
+connectivity. Duplicate dispositions are collapsed before owner calls.
 
 Worker `STALE`, missing TaskDescriptor, or owner-operation failure does not
 roll back Item movement. The opaque fence prevents an old result from releasing
-or offlining a newer Worker lease.
+or demoting a newer Worker lease.
 
 ## Failure Semantics
 

@@ -22,7 +22,8 @@ RUNNING_VISIBLE Task
 ```
 
 It does not discover Workers, rematch constraints, update Task score, call
-transport, process results, or own Worker online classification.
+transport, process results, or own Worker scheduling-serviceability
+classification.
 
 ## Contracts
 
@@ -73,8 +74,8 @@ Per Task:
 11. append endpoint-manager batches before continuing to the next Task
 ```
 
-Worker validation must happen before Item claim. A dirty, offline, expired, or
-stale Worker candidate cannot consume an Item claim in this round.
+Worker validation must happen before Item claim. A dirty, RECOVERY_RECHECK,
+expired, or stale Worker candidate cannot consume an Item claim in this round.
 
 `renew_active_hot_score_leases` owns the opaque comparison:
 
@@ -127,7 +128,7 @@ Task pauses or closes after Task scan
 
 The pacer does not release Worker leases. Trusted `200/1xxx` result evidence
 releases the exact fence; trusted `3xxx` adapter rejection moves that exact
-fence to offline polarity. Missing results recover through time.
+fence to RECOVERY_RECHECK. Missing results recover through time.
 
 ## Task Score And Queue Boundaries
 
@@ -146,7 +147,7 @@ Implemented:
 RUNNING_VISIBLE Task acquisition
 candidate consume
 dispatch-time active clean Worker exact validation/renewal
-dirty/offline/stale rejection before Item claim
+dirty/recovery/stale rejection before Item claim
 TaskItem acquire/load/exact claim
 validated Worker fence propagation
 DeliverSeed endpoint-manager append

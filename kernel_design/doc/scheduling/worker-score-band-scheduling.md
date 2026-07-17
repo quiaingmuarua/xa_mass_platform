@@ -14,7 +14,7 @@ Worker score-band scheduling is the worker/resource acquisition clock.
 Worker score answers one question:
 
 ```text
-what network-availability polarity has worker-runtime assigned to this worker,
+what TaskItem scheduling-serviceability polarity has the kernel assigned to this worker,
 and is that polarity's scheduling coordinate due now?
 ```
 
@@ -33,11 +33,10 @@ trace decisions.
 
 Worker score intentionally does not copy task score lifecycle tags. A task is a
 one-shot scheduling aggregate. A worker is a long-lived resource identity. The
-worker score axis therefore expresses owner-classified network availability as
-an acquisition polarity, not lifecycle progression. Positive/negative sign is
-the scheduling truth of online/offline classification; raw socket, heartbeat,
-session, and endpoint observations remain transport evidence until
-worker-runtime validates them.
+worker score axis therefore expresses kernel-owned TaskItem scheduling
+serviceability as an acquisition polarity, not lifecycle progression. The sign
+answers whether the Worker may enter ordinary allocation or only recovery
+validation. It does not mirror a socket, heartbeat, session, or endpoint state.
 
 ## Owner Boundary
 
@@ -50,24 +49,24 @@ dispatch gate interpretation
 reachability interpretation for scheduling
 capacity / admission truth
 score polarity and coordinate placement
-verified reopen
-negative dispatch blocking
+validated recovery promotion
+RECOVERY_RECHECK allocation blocking
 manual hold / release policy
 ```
 
-Transport owns final-hop delivery evidence:
+Adapter and endpoint managers own local final-hop observations:
 
 ```text
 endpoint/session observation
 heartbeat / keepalive freshness
 adapter-local consumer availability
 delivery mailbox evidence
-disconnect / unavailable evidence
+pre-execution rejection evidence
 ```
 
-Transport evidence can be read by worker-runtime during validation. It must not
-directly write worker score or promote a worker into hot admission. Positive
-availability is a worker-runtime-verified fact.
+These observations may become evidence for a Worker score owner operation. They
+must not directly write Worker score or promote a Worker into HOT_ACQUIRE. The
+kernel owns the resulting scheduling-serviceability classification.
 
 ## Score Model
 
@@ -79,29 +78,28 @@ score = polarity * base
 base = timeSlot * SLOT_FACTOR + laneRank * DIRTY_FACTOR + dirty
 ```
 
-The sign is both the worker-runtime network classification and its scheduling
-polarity:
+The sign is the kernel scheduling-serviceability polarity:
 
 ```text
 score > 0
   HOT_ACQUIRE polarity
-  worker-runtime classifies the worker as network available / online
+  scheduling-available for the ordinary allocation lane
   only candidate source for assignment-dispatch worker hot acquire
 
 score < 0
   RECOVERY_RECHECK polarity
-  worker-runtime classifies the worker as network unavailable / offline
+  scheduling-unavailable for ordinary allocation
   only candidate source for worker-runtime recovery-recheck validation
 
 score == 0
   invalid / reserved
 ```
 
-Positive does not mean immediately acquirable. The sign answers online/offline;
-the decoded `timeSlot` answers whether the online Worker is due, leased, held,
-disabled, draining, or cooling down. This separation is why manual disable can
-remain positive with a far-future coordinate, while confirmed disconnect
-changes only polarity and preserves the existing hold coordinate.
+HOT_ACQUIRE does not mean immediately acquirable or physically connected. The
+sign selects the ordinary-allocation versus recovery-validation lane; the
+decoded `timeSlot` answers whether a HOT Worker is due, leased, held, disabled,
+draining, or cooling down. A trusted Adapter pre-execution rejection may demote
+only polarity while preserving the existing time coordinate.
 
 `abs(score)` is decoded the same way for both polarities:
 
@@ -146,7 +144,7 @@ HOT_ACQUIRE
 
 RECOVERY_RECHECK
   recovery validation coordinate interpreted through a recent lookback window
-  examples: disconnect recheck, stale endpoint recovery, reconnect backoff,
+  examples: Adapter rejection recheck, stale endpoint validation, reconnect evidence backoff,
   future retry delay, too-old recovery exhausted / cold parked
 ```
 
@@ -237,8 +235,8 @@ timeSlot > nowSlot
 ```
 
 Manual disable, drain, maintenance, capacity cooldown, and admission hold do not
-mean network unavailable. They are same-polarity HOT_ACQUIRE rewrites with a later
-`timeSlot`. A hard manual hold uses:
+require recovery validation. They are same-polarity HOT_ACQUIRE rewrites with a
+later `timeSlot`. A hard manual hold uses:
 
 ```text
 +base(PAUSE_TIME_SLOT, laneRank, dirty)
@@ -263,10 +261,10 @@ score = -base(timeSlot, laneRank, dirty)
 Typical inputs:
 
 ```text
-confirmed disconnect
-trusted unavailable / unreachable evidence
-stale endpoint requiring recovery validation
-recoverable dispatch gate block caused by reachability uncertainty
+trusted Adapter pre-execution rejection
+owner-validated evidence that TaskItem serviceability is uncertain
+stale endpoint observation requiring recovery validation
+recoverable dispatch gate block requiring a probe
 failed hot admission validation that requires recovery
 ```
 
@@ -275,8 +273,8 @@ admission. A due RECOVERY_RECHECK candidate may:
 
 ```text
 pass recovery validation
-  -> move polarity to HOT_ACQUIRE after declaration, gate, reachability, capacity, and
-     policy validation
+  -> move polarity to HOT_ACQUIRE after declaration, gate, Adapter evidence,
+     capacity, and policy validation
 
 fail recovery validation with budget remaining
   -> stay RECOVERY_RECHECK with later timeSlot and updated laneRank
@@ -413,7 +411,7 @@ if dirty == 1 and the caller is continuing from a persisted assignment plan /
 hot score lease continuation, assignment owner discards / rematches or
 revalidates through the allowed hot lease transition
 dispatch gate permits scheduling
-reachability evidence is acceptable by policy
+Adapter/serviceability evidence is acceptable by policy
 capacity/admission is available
 selection policy still wants this worker
 ```
@@ -460,33 +458,32 @@ Polarity move rule:
 
 ```text
 HOT_ACQUIRE -> RECOVERY_RECHECK
-  strong negative availability transition
-  examples: confirmed disconnect, trusted unavailable, owner-validated
-  unreachable
+  scheduling-serviceability demotion
+  examples: trusted Adapter pre-execution rejection or failed owner validation
 
 RECOVERY_RECHECK -> HOT_ACQUIRE
-  verified reopen transition
+  validated recovery transition
   requires declaration, membership, gate, reachability, capacity/admission, and
   policy validation
 ```
 
 Polarity move always preserves `timeSlot`. This prevents disabled,
-draining, cooldown, or far-future holds from escaping when availability polarity
+draining, cooldown, or far-future holds from escaping when serviceability polarity
 changes, and it lets a recovered too-old RECOVERY_RECHECK score become
 immediately due in HOT_ACQUIRE. Polarity move must not implicitly inherit
 laneRank across lanes. HOT_ACQUIRE laneRank and RECOVERY_RECHECK laneRank have
 different meanings, so the target laneRank must be minted explicitly by policy.
 Polarity move preserves the dirty bit. Dirty score primitives are implemented;
 policy may invoke them only for an active continuation that will later
-revalidate or renew. Raw availability evidence never writes dirty.
+revalidate or renew. Raw external observation never writes dirty.
 
-Raw network-ok, heartbeat, keepalive, or latency evidence cannot move
+Raw connect, heartbeat, keepalive, session, or latency observation cannot move
 RECOVERY_RECHECK to HOT_ACQUIRE by itself. `WorkerRuntime.upsert_worker` is the
-trusted connect/reconnect command. After declaration validation and attribute
-refresh it calls `reconcile_worker_online`: existing scores converge to positive
-polarity, preserve timeSlot/laneRank, and set dirty=1. This does not release a
-future hold. Other evidence remains non-authoritative until worker-runtime
-validates it.
+trusted connect/reconnect evidence boundary. After declaration validation and
+attribute refresh it calls `reconcile_worker_hot_acquire`: existing scores
+converge to HOT_ACQUIRE, preserve timeSlot/laneRank, and set dirty=1. This does
+not release a future hold. Other evidence remains non-authoritative until a
+kernel owner validates it.
 
 ## Interface Rule
 
@@ -626,7 +623,7 @@ writing the release.
 
 ### Polarity Move
 
-Polarity move is an owner-validated availability transition, not release and
+Polarity move is an owner-validated scheduling-serviceability transition, not release and
 not renew:
 
 ```text
@@ -650,9 +647,10 @@ targetDirty = stored dirty
 write signed score(targetPolarity, storedTimeSlot, targetLaneRank, storedDirty)
 ```
 
-Use HOT_ACQUIRE -> RECOVERY_RECHECK for strong negative availability evidence. Use
-RECOVERY_RECHECK -> HOT_ACQUIRE only after worker-runtime verified reopen. Do not use release
-for polarity moves.
+Use HOT_ACQUIRE -> RECOVERY_RECHECK for owner-validated evidence that the Worker
+must leave ordinary TaskItem scheduling. Use RECOVERY_RECHECK -> HOT_ACQUIRE only
+after validated reconnect or recovery evidence. Do not use release for polarity
+moves.
 
 Polarity move preserves `timeSlot` on purpose:
 
@@ -699,7 +697,7 @@ immediately due in HOT_ACQUIRE.
 
 ### Dirty Lease Fence
 
-Worker scheduling metadata can change without any network event. Worker-runtime
+Worker scheduling metadata can change without any connection observation. Worker-runtime
 owns a platform-defined scheduling signature over critical worker fields. The
 signature definition is built into platform policy, not supplied by external
 events or arbitrary business callers.
@@ -772,13 +770,13 @@ renew_active_hot_score_leases(homeBucketId, observedScores, targetTimeMillis)
   otherwise independently writes HOT_ACQUIRE(targetTimeSlot, observed laneRank, dirty=0)
   dirty entries return STALE and caller must discard / rematch
 
-reconcile_worker_online(homeBucketId, workerId)
+reconcile_worker_hot_acquire(homeBucketId, workerId)
   missing score returns STALE so WorkerRuntime remains initialization owner
   preserves timeSlot and laneRank
   writes positive polarity and dirty=1
   positive dirty score is NOOP
 
-mark_observed_worker_leases_offline(homeBucketId, observedScores)
+demote_observed_worker_leases_to_recovery(homeBucketId, observedScores)
   each observed score must be a clean positive opaque lease fence
   independently requires storedScore == observedScore
   writes -abs(observedScore)
@@ -880,7 +878,7 @@ needed.
 | HOT_ACQUIRE | candidate remains usable and no delay is needed | no rewrite, or HOT_ACQUIRE(nextTime, laneRank, dirty) | same polarity |
 | HOT_ACQUIRE | capacity full / contention / claim interval | HOT_ACQUIRE(nextTime, laneRank, dirty) | nextTimeSlot >= currentTimeSlot |
 | HOT_ACQUIRE | manual disable / drain / maintenance hold | HOT_ACQUIRE(PAUSE_TIME_SLOT, laneRank, dirty) | same polarity hold |
-| HOT_ACQUIRE | confirmed disconnect / trusted unavailable | RECOVERY_RECHECK(sameTime, recoveryLaneRank, dirty) | owner-validated polarity move |
+| HOT_ACQUIRE | trusted Adapter rejection / failed serviceability validation | RECOVERY_RECHECK(sameTime, recoveryLaneRank, dirty) | owner-validated polarity move |
 | RECOVERY_RECHECK | recovery validation passes | HOT_ACQUIRE(sameTime, hotLaneRank, dirty) | owner-validated polarity move |
 | RECOVERY_RECHECK | recovery validation fails and budget remains | RECOVERY_RECHECK(nextRecheckTime, laneRank', dirty) | same polarity |
 | RECOVERY_RECHECK | recovery exhausted / cold parked | RECOVERY_RECHECK(coldTooOldTime, laneRank, dirty) | same polarity cold park + owner evidence |
@@ -936,14 +934,14 @@ assignment-dispatch worker selection path.
 | manual enable / release | yes | exact observed-score same-polarity release |
 | platform scheduling metadata signature changed while persisted task-worker assignment plan / hot score lease continuation exists | yes | `mark_current_lease_dirty` may only set dirty = 1 |
 | platform scheduling metadata signature changed while no persisted assignment plan / hot score lease continuation exists | no score write required | metadata/evidence only; next candidate validation reads current metadata |
-| trusted Worker connect/reconnect after declaration validation | yes for every existing score | `reconcile_worker_online` preserves timeSlot/laneRank, writes positive polarity and dirty=1; score absence still initializes positive dirty=0 |
+| trusted Worker connect/reconnect evidence after declaration validation | yes for every existing score | `reconcile_worker_hot_acquire` preserves timeSlot/laneRank, writes HOT_ACQUIRE and dirty=1; score absence still initializes HOT_ACQUIRE dirty=0 |
 | assignment owner leases due HOT_ACQUIRE observations | yes | `acquire_observed_hot_score_leases` pipelines independent exact-CAS writes, future leases, and dirty clear before matching |
 | assignment owner extends active clean HOT_ACQUIRE leases | yes | `renew_active_hot_score_leases`; dirty entries return STALE and force rematch |
-| confirmed disconnect / trusted unavailable | yes | owner-validated HOT_ACQUIRE -> RECOVERY_RECHECK polarity move preserving time coordinate |
-| verified owner reopen | yes | owner-validated RECOVERY_RECHECK -> HOT_ACQUIRE polarity move preserving time coordinate |
+| trusted Adapter evidence that execution was not entered | yes | exact `demote_observed_worker_leases_to_recovery` preserving the time coordinate |
+| validated reconnect or recovery evidence | yes | owner-validated RECOVERY_RECHECK -> HOT_ACQUIRE polarity move preserving the time coordinate |
 | recovery exhausted / cold parked | yes | RECOVERY_RECHECK too-old cold coordinate + owner evidence |
 | transport heartbeat / keepalive | no | evidence only |
-| raw connected / session refresh outside Worker upsert | no | evidence only |
+| raw connected / session refresh outside Worker upsert | no | local observation only |
 | trusted Worker execution result (`200/1xxx`) | yes | exact release of the correlated Worker lease fence |
 | trusted Adapter pre-execution rejection (`3xxx`) | yes | exact positive-to-negative movement of the correlated Worker lease fence |
 | task finality without a correlated Worker result | no | Task/Item owner movement only |
@@ -967,10 +965,10 @@ capacity admission:
 manual disable / drain / maintenance:
   owner gate fact and same-polarity hold score write
 
-trusted reachability block:
+trusted serviceability demotion:
   owner block fact and HOT_ACQUIRE -> RECOVERY_RECHECK polarity move
 
-verified reopen:
+validated recovery:
   validated owner facts and RECOVERY_RECHECK -> HOT_ACQUIRE polarity move
 
 pause release / enable:
@@ -995,7 +993,7 @@ score due but worker disabled/draining
   stale candidate or owner mismatch; rewrite same polarity to far-future hold
   if the owner hold fact is current
 
-HOT_ACQUIRE score due but reachability/readiness validation fails strongly
+HOT_ACQUIRE score due but serviceability validation fails strongly
   move to RECOVERY_RECHECK by owner policy, preserving timeSlot
 
 RECOVERY_RECHECK score due but recovery validation fails
@@ -1008,14 +1006,14 @@ score due but capacity is full
 stale lease renew / observed-score polarity move
   return STALE / no-op; do not overwrite newer score
 
-raw positive transport evidence
+raw connect/session observation
   never moves RECOVERY_RECHECK to HOT_ACQUIRE directly
 ```
 
 Stale handling must be bounded. Do not scan all workers to repair score.
-Score absence is not normal unavailability. It may be used only for absent
+Score absence is not RECOVERY_RECHECK. It may be used only for absent
 resources or confirmed orphan cleanup, not as the ordinary way to hold, park,
-disable, or disconnect a long-lived worker id.
+disable, or demote a long-lived worker id.
 
 ## Mechanism And Deferred Policy
 

@@ -17,7 +17,7 @@ transport accepts or rejects that already-assigned delivery:
 ```text
 consume queued DeliverSeed from this endpointManagerId queue
   -> discard if nowMillis >= taskItemClaimUntilMillis
-  -> resolve workerId in endpoint-manager-local reachability truth
+  -> resolve workerId in the endpoint-manager-local delivery registry
   -> submit already-assigned delivery
   -> append SeedResult to the kernel SeedResultRuntime
 ```

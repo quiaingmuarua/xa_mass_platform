@@ -551,7 +551,7 @@ Task pauses/closes after publication
   publication failure all recover through bounded lease expiry.
 - Do not decide post-delivery Worker disposition; TaskItem dispatch only
   validates or renews the exact fence, while result routing owns release or
-  offline transition from classified SeedResult evidence.
+  RECOVERY_RECHECK demotion from classified SeedResult evidence.
 - Each Worker lease operation inside the batch must use its exact opaque
   observed score; do not replace it with an expected band, time range, or second
   score read.

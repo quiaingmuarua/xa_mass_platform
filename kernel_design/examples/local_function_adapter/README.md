@@ -215,7 +215,7 @@ Handlers may return only `"200"` or `1xxx`; they cannot forge `3xxx` adapter
 evidence. Handler failure, invalid return type, or payload encoding failure is
 reported as `1500`. Missing local Worker is `3001`; missing handler is `3002`.
 Expired seeds and malformed delivery envelopes remain unclassified drops and
-do not change Worker online classification.
+do not change Worker scheduling-serviceability classification.
 
 ## Ownership
 
@@ -242,7 +242,8 @@ synthesize timeout results
 
 `SeedResultRuntime` stores accepted evidence in one logical queue.
 `ResultRoutingPacer` consumes it, applies the TaskItem outcome, and requests
-Worker exact release for `200/1xxx` or exact offline classification for `3xxx`.
+Worker exact release for `200/1xxx` or exact RECOVERY_RECHECK demotion for
+`3xxx`.
 When the adapter drops a malformed/expired seed, crashes, or cannot submit a
 result, TaskItem claim and Worker lease time coordinates remain the recovery
 fallback. Missing evidence is never reclassified as `3xxx`.

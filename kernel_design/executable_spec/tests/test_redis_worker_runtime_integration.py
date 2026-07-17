@@ -160,18 +160,18 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
             worker_ids=[declaration.worker_id],
         )[declaration.worker_id]
         assert held is not None
-        disconnected = self.score_band.toggle_current_polarity(
+        recovery_transition = self.score_band.toggle_current_polarity(
             home_bucket_id=self.worker_group_id,
             worker_id=declaration.worker_id,
             observed_score=held.score,
             target_lane_rank=held.lane_rank,
         )
         self.assertEqual(
-            disconnected.status,
+            recovery_transition.status,
             WorkerScoreTransitionStatus.TRANSITIONED,
         )
 
-        reconnected = self.runtime.upsert_worker(
+        reconnect_result = self.runtime.upsert_worker(
             declaration=WorkerDeclaration(
                 worker_id=declaration.worker_id,
                 worker_group_id=declaration.worker_group_id,
@@ -198,11 +198,11 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
             worker_ids=[declaration.worker_id],
         )[declaration.worker_id]
 
-        self.assertEqual(reconnected.status, WorkerRuntimeStatus.OK)
+        self.assertEqual(reconnect_result.status, WorkerRuntimeStatus.OK)
         self.assertEqual(conflict.status, WorkerRuntimeStatus.CONFLICT)
         assert current is not None
         self.assertEqual(current.polarity, WorkerScorePolarity.HOT_ACQUIRE)
-        self.assertEqual(current.score, abs(disconnected.score or 0))
+        self.assertEqual(current.score, abs(recovery_transition.score or 0))
         self.assertEqual(current.time_millis, held.time_millis)
         self.assertEqual(current.lane_rank, 7)
         self.assertTrue(current.dirty)

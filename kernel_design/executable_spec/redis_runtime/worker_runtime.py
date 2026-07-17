@@ -487,7 +487,7 @@ class RedisWorkerRuntime(WorkerRuntime):
                     "worker score initialization could not be observed",
                 )
 
-        reconciliation = self.score_band.reconcile_worker_online(
+        reconciliation = self.score_band.reconcile_worker_hot_acquire(
             home_bucket_id=declaration.worker_group_id,
             worker_id=declaration.worker_id,
         )
@@ -499,11 +499,11 @@ class RedisWorkerRuntime(WorkerRuntime):
         if reconciliation.status == WorkerScoreTransitionStatus.INVALID:
             return WorkerRuntimeResult(
                 WorkerRuntimeStatus.INVALID,
-                "worker online reconciliation was rejected",
+                "worker HOT_ACQUIRE reconciliation was rejected",
             )
         return WorkerRuntimeResult(
             WorkerRuntimeStatus.STALE,
-            "worker online reconciliation could not observe score",
+            "worker HOT_ACQUIRE reconciliation could not observe score",
         )
 
 

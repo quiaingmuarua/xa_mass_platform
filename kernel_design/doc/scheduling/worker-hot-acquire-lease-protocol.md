@@ -21,7 +21,7 @@ due HOT observation
   -> CandidateWorkerEntry(workerLeaseScore)
   -> dispatch exact validate/renew
   -> ResultContext(workerLeaseScore)
-  -> result exact release or offline transition
+  -> result exact release or RECOVERY_RECHECK demotion
 ```
 
 There is no separate reservation store, attempt lifecycle, lease token model,
@@ -89,7 +89,8 @@ an active Worker lease exists
 and metadata used by its match may have changed
 ```
 
-It is not online/offline state, metadata version, global Worker status, or an
+It is not scheduling-serviceability polarity, metadata version, global Worker
+status, or an
 attribute update lock. Non-lease owners may set dirty but never clear it.
 Allocation may clear dirty only while acquiring a due Worker before fresh
 matching. Active dispatch validation rejects dirty and forces a later fresh
@@ -100,7 +101,7 @@ Connect/reconnect uses the same fence deliberately:
 ```text
 existing score
   -> preserve timeSlot and laneRank
-  -> converge to positive polarity
+  -> converge to HOT_ACQUIRE
   -> set dirty=1
 ```
 
@@ -113,24 +114,24 @@ The opaque Worker fence returns through `ResultContext`:
 
 ```text
 200 / 1xxx
-  -> Worker execution was entered
+  -> this attempt crossed the Worker execution boundary
   -> exact release preserving positive polarity
 
 3xxx
   -> Adapter confirmed execution was not entered
-  -> exact CAS from positive to negative polarity
+  -> exact CAS from HOT_ACQUIRE to RECOVERY_RECHECK
 ```
 
 The Adapter emits evidence only; it never mutates score. Result routing invokes
 WorkerScoreCore and treats Worker disposition independently from Item movement.
 
 For one exact lease, Worker execution evidence wins over adapter rejection.
-Stale evidence cannot release or offline a newer lease.
+Stale evidence cannot release or demote a newer lease.
 
-## Online Reconciliation And Offline Classification
+## Serviceability Reconciliation And Recovery Demotion
 
 ```text
-reconcile_worker_online(workerGroupId, workerId)
+reconcile_worker_hot_acquire(workerGroupId, workerId)
 ```
 
 - Missing score returns `STALE`; WorkerRuntime owns initialization.
@@ -140,7 +141,7 @@ reconcile_worker_online(workerGroupId, workerId)
 - timeSlot and laneRank are preserved; future holds remain future.
 
 ```text
-mark_observed_worker_leases_offline(workerGroupId, observedScores)
+demote_observed_worker_leases_to_recovery(workerGroupId, observedScores)
 ```
 
 - Accepts only clean positive opaque lease scores.
@@ -148,9 +149,24 @@ mark_observed_worker_leases_offline(workerGroupId, observedScores)
 - Writes `-abs(observedScore)` and preserves the complete absolute coordinate.
 - `STALE` does not affect Item outcome.
 
-Positive/negative is kernel's online/offline scheduling classification, not a
-zero-latency mirror of a physical socket. Adapter evidence, reconnect upsert,
-and future recovery recheck make the classification converge.
+Polarity is the kernel-owned classification of whether a Worker may participate
+in normal TaskItem scheduling:
+
+```text
+HOT_ACQUIRE
+  scheduling-available
+  may enter ordinary allocation when due and after all runtime checks
+
+RECOVERY_RECHECK
+  scheduling-unavailable
+  excluded from ordinary allocation; may enter only recovery validation
+```
+
+This is not a physical connection or socket state. Adapter, Worker, and endpoint
+manager observations are evidence. Reconnect upsert, execution evidence,
+pre-execution rejection, and future recovery probes make the kernel
+classification converge when scheduling or recovery work requires it. With no
+demand, bounded classification lag is allowed.
 
 ## Failure Matrix
 
@@ -158,14 +174,14 @@ and future recovery recheck make the classification converge.
 | --- | --- | --- |
 | Allocation | lease CAS lost | exclude Worker |
 | Allocation | unmatched or publication failure | retain short lease until expiry |
-| Dispatch | dirty/offline/expired/stale fence | consume candidate, do not claim Item |
+| Dispatch | dirty/recovery/expired/stale fence | consume candidate, do not claim Item |
 | Dispatch | Item absent or claim lost | no release; leases expire |
 | Dispatch | queue append failed or ambiguous | no compensation |
 | Adapter | expired or malformed seed | drop; no synthetic result |
 | Adapter | Worker/handler unavailable | emit `3xxx` |
 | Adapter | Worker execution failure | emit `1xxx` |
 | Result | `200/1xxx` | exact release |
-| Result | `3xxx` | exact offline transition |
+| Result | `3xxx` | exact RECOVERY_RECHECK demotion |
 | Result | malformed/missing evidence | no guessed mutation; expiry recovers |
 
 No branch adds a repair scanner, compensation queue, distributed lock, or
@@ -176,17 +192,17 @@ cross-owner transaction.
 | Owner | Responsibility | Refusal |
 | --- | --- | --- |
 | WorkerScoreCore | score encoding, scans, exact lease, dirty fence, release and polarity mechanics | no Task policy, transport or result subcode parsing |
-| WorkerRuntime | declaration validation, first score initialization and reconnect reconciliation | no heartbeat or dispatch ownership |
+| WorkerRuntime | declaration validation, first score initialization and trusted reconnect reconciliation | no heartbeat or dispatch ownership |
 | TaskWorkerAllocationPacer | bounded lease, match and candidate publication | no result handling or compensation release |
 | TaskItemDispatchPacer | active fence validation/renewal before Item claim | no Worker discovery, rematch or release |
-| External Adapter | final-hop reachability and execution evidence | no score parsing or mutation |
+| External Adapter | local final-hop observation and execution evidence | no score parsing or mutation |
 | ResultRoutingPacer | outcome class routing to Item and Worker owners | no Worker selection or exact subcode policy |
 
 ## Deferred Policy
 
 Recovery probe cadence/ranking and explicit capacity/concurrency mechanisms are
 deferred. They must reuse the signed Worker score owner rather than create a
-second availability or lease truth.
+second scheduling-serviceability or lease truth.
 
 ## Guardrails
 

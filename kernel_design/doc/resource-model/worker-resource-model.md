@@ -37,13 +37,14 @@ query attributes.
 `TaskItem / DeliverSeed -> EventHandler` is handler invocation inside the selected
 worker. The TaskItem's `eventCode` validates against the selected
 `WorkerGroupDescriptor.eventCodes` and resolves to a worker-local handler. It
-does not choose worker groups and does not prove worker availability.
+does not choose worker groups and does not prove Worker scheduling
+serviceability.
 
 `Transport` is an internal delivery resource. It resolves how to deliver already
 assigned work to the selected worker; it does not select workers. The worker
 descriptor carries only the stable `endpointManagerId` needed to locate the
 physical endpoint owner after selection. Adapter, session, connection, mailbox,
-and live reachability facts remain outside the scheduling model.
+and live reachability observations remain outside the scheduling model.
 
 In v0, a worker has exactly one `workerGroupId`. Do not add membership rows,
 multi-group joins, dynamic group selectors, or group-local event binding rows
@@ -240,8 +241,8 @@ v0.
 
 Version compatibility is metadata validation through `attributes`.
 Assignment-dispatch must not interpret version fields directly as runtime
-availability. Current usability still belongs to worker-runtime score lease /
-hold.
+serviceability. Current scheduling admission still belongs to Worker score
+polarity, lease, and hold.
 
 ## WorkerCandidateConstraint
 
@@ -410,7 +411,7 @@ dynamicAttributeNames can accept or reject an update
 dynamicAttributeNames cannot represent current attribute value
 dynamicAttributeNames cannot replace worker score
 dynamicAttributeNames cannot be used as direct scheduling truth
-dynamicAttributeNames cannot prove worker availability
+dynamicAttributeNames cannot prove Worker scheduling serviceability
 ```
 
 Dynamic attribute values are owned by built-in attribute functions hidden behind
@@ -478,7 +479,7 @@ Dynamic attributes are query/projection facts. A `heartbeat` dynamic attribute
 does not require a second heartbeat owner. If adapter/session runtime already
 has heartbeat or reachability information, the dynamic attribute function may
 batch-read or project that existing fact for query use. It must not become the
-worker availability truth.
+Worker scheduling-serviceability truth.
 
 If a dynamic attribute is relevant to scheduling policy, the worker-runtime
 matching path may batch-read the attribute owner's current values for a bounded
@@ -486,7 +487,7 @@ leased Worker batch. Only bounded candidate matching should receive candidate
 constraints; worker score lease / hold writes should not receive raw rule maps.
 Assignment-dispatch and worker score primitives must not interpret dynamic
 attribute payloads directly, and dynamic attribute updates must not drive
-worker availability by themselves.
+Worker serviceability classification by themselves.
 
 Dynamic attribute changes do not automatically mark worker score dirty. A
 handler should consider dirty only when the changed attribute participates in
@@ -622,8 +623,8 @@ must not become a second score lease owner.
 In v0, Worker occupation is a bounded score lease / hold of one
 scheduler-visible Worker slot. Allocation creates the exact fence, TaskItem
 dispatch validates or renews it before claiming an Item, and result routing
-either exact-releases it after Worker execution evidence or exact-marks it
-offline after Adapter rejection evidence. With no valid result, natural lease
+either exact-releases it after Worker execution evidence or exact-demotes it to
+RECOVERY_RECHECK after Adapter rejection evidence. With no valid result, natural lease
 expiry restores visibility. Do not model capacity pools inside
 `WorkerDescriptor`; a future concurrent-capacity mechanism requires an explicit
 owner rather than an early-release convention.
@@ -641,8 +642,8 @@ WorkerScore
   HOT_ACQUIRE / RECOVERY_RECHECK acquisition coordinate
 
 WorkerScoreLease
-  validates metadata, optional dynamic query attributes, reachability, capacity,
-  and score lease / hold
+  validates metadata, optional dynamic query attributes, serviceability
+  evidence, capacity, and score lease / hold
 ```
 
 ## Deliberate Non-Goals

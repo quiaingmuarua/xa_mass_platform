@@ -115,7 +115,7 @@ redis.call("ZADD", key, target_score, worker_id)
 return {"transitioned", target_score}
 """
 
-    _RECONCILE_ONLINE_SCRIPT: ClassVar[str] = """
+    _RECONCILE_HOT_ACQUIRE_SCRIPT: ClassVar[str] = """
 local key = KEYS[1]
 local worker_id = ARGV[1]
 local dirty_factor = tonumber(ARGV[2])
@@ -334,7 +334,7 @@ return {"transitioned", target_score}
             )
         }
 
-    def reconcile_worker_online(
+    def reconcile_worker_hot_acquire(
         self,
         *,
         home_bucket_id: HomeBucketId,
@@ -342,7 +342,7 @@ return {"transitioned", target_score}
     ) -> WorkerScoreTransitionResult:
         return self._script_result(
             self.redis.eval(
-                self._RECONCILE_ONLINE_SCRIPT,
+                self._RECONCILE_HOT_ACQUIRE_SCRIPT,
                 1,
                 self._score_key(home_bucket_id),
                 worker_id,
@@ -474,7 +474,7 @@ return {"transitioned", target_score}
             self._pipeline_cas_updates(home_bucket_id, pending_updates),
         )
 
-    def mark_observed_worker_leases_offline(
+    def demote_observed_worker_leases_to_recovery(
         self,
         *,
         home_bucket_id: HomeBucketId,

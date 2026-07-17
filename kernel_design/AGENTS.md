@@ -261,7 +261,7 @@ attribute writes, item append, result/evidence writes, projections, and trace
 must not acquire or refresh score. Initialization establishes the first score;
 the active scheduling plane is the only routine writer for acquirable scores;
 explicit lifecycle commands may invoke only declared approve/reject/pause/
-resume/close or availability transitions.
+resume/close or scheduling-serviceability transitions.
 
 Worker-runtime owns:
 
@@ -328,7 +328,7 @@ exact `"200"` final-success selection and `1xxx/3xxx` retry selection
 batch-local success precedence for duplicate Item evidence
 opaque claimScore pass-through to TaskItemScoreBandCore
 opaque workerLeaseScore pass-through to WorkerScoreCore exact release for
-`200/1xxx` or exact offline movement for `3xxx`
+`200/1xxx` or exact RECOVERY_RECHECK demotion for `3xxx`
 Task Item transition-result counting
 ```
 
@@ -374,7 +374,7 @@ renew_active_hot_score_leases(...)
 
 dispatch disposition
   validates/renews the exact active fence before Item claim
-  rejects dirty/offline/expired/stale candidates without compensation release
+  rejects dirty/recovery/expired/stale candidates without compensation release
   result routing exact-releases `200/1xxx` fences and moves `3xxx` fences
   to negative polarity
 

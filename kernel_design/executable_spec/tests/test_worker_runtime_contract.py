@@ -141,19 +141,19 @@ class WorkerRuntimeContractTest(unittest.TestCase):
         )
         self.assertEqual(renew_params, lease_params)
         reconcile_params = set(
-            inspect.signature(WorkerScoreCore.reconcile_worker_online).parameters
+            inspect.signature(WorkerScoreCore.reconcile_worker_hot_acquire).parameters
         )
         self.assertEqual(
             reconcile_params,
             {"self", "home_bucket_id", "worker_id"},
         )
-        offline_params = set(
+        recovery_params = set(
             inspect.signature(
-                WorkerScoreCore.mark_observed_worker_leases_offline
+                WorkerScoreCore.demote_observed_worker_leases_to_recovery
             ).parameters
         )
         self.assertEqual(
-            offline_params,
+            recovery_params,
             {"self", "home_bucket_id", "observed_scores"},
         )
         release_params = set(

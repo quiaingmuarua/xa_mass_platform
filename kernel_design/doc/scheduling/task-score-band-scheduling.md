@@ -142,7 +142,7 @@ activity:
 
 ```text
 append item
-worker availability update
+worker serviceability evidence update
 transport delivery outcome
 result notification
 trace / projection update
