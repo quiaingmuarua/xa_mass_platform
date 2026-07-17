@@ -13,10 +13,8 @@ from kernel_design.executable_spec import (
     SeedResult,
     SeedResultOutcomeClass,
     SeedResultRuntime,
-    TaskDescriptor,
     TaskItemScoreBand,
     TaskItemScoreBandCore,
-    TaskResourceCatalog,
     TaskRuntime,
     WorkerScoreCore,
 )
@@ -33,6 +31,7 @@ class ResultContextCodecTest(unittest.TestCase):
             task_id="task-1",
             message_id="message-1",
             worker_id="worker-1",
+            worker_group_id="image-workers",
             claim_score=101,
             worker_lease_score=201,
             task_item_claim_until_millis=105_000,
@@ -43,14 +42,23 @@ class ResultContextCodecTest(unittest.TestCase):
         self.assertEqual(["context"], list(inspect.signature(encode_result_context).parameters))
         self.assertEqual(
             '{"claimScore":101,"messageId":"message-1","taskId":"task-1",'
-            '"taskItemClaimUntilMillis":105000,"workerId":"worker-1",'
+            '"taskItemClaimUntilMillis":105000,"workerGroupId":"image-workers",'
+            '"workerId":"worker-1",'
             '"workerLeaseScore":201}',
             encoded,
         )
         self.assertEqual(context, decode_result_context(encoded))
 
     def test_decode_ignores_unknown_fields_and_rejects_invalid_contexts(self) -> None:
-        context = ResultContext("task-1", "message-1", "worker-1", 101, 201, 105_000)
+        context = ResultContext(
+            "task-1",
+            "message-1",
+            "worker-1",
+            "image-workers",
+            101,
+            201,
+            105_000,
+        )
         payload = json.loads(encode_result_context(context))
         payload["futureField"] = "ignored"
 
@@ -60,6 +68,10 @@ class ResultContextCodecTest(unittest.TestCase):
             "[]",
             '{"taskId":"task-1"}',
             '{"taskId":"task-1","messageId":"message-1","workerId":"worker-1",'
+            '"claimScore":101,"workerLeaseScore":201,'
+            '"taskItemClaimUntilMillis":105000}',
+            '{"taskId":"task-1","messageId":"message-1","workerId":"worker-1",'
+            '"workerGroupId":"image-workers",'
             '"claimScore":0,"workerLeaseScore":201,"taskItemClaimUntilMillis":105000}',
         ):
             with self.subTest(invalid=invalid):
@@ -73,7 +85,6 @@ class ResultRoutingPacerTest(unittest.TestCase):
         self.runtime = Mock(spec=SeedResultRuntime)
         self.item_score = Mock(spec=TaskItemScoreBandCore)
         self.worker_score = Mock(spec=WorkerScoreCore)
-        self.task_catalog = Mock(spec=TaskResourceCatalog)
         self.task_runtime = Mock(spec=TaskRuntime)
         self.queues: dict[SeedResultOutcomeClass, tuple[SeedResult, ...]] = {}
         self.runtime.consume_seed_results.side_effect = (
@@ -83,7 +94,6 @@ class ResultRoutingPacerTest(unittest.TestCase):
             self.runtime,
             self.item_score,
             self.worker_score,
-            self.task_catalog,
             self.task_runtime,
         )
         self.config = ResultRoutingConfig(per_outcome_batch_limit=100)
@@ -97,25 +107,12 @@ class ResultRoutingPacerTest(unittest.TestCase):
             return self.pacer.route_seed_results(config=self.config)
 
     @staticmethod
-    def descriptor(task_id: str, worker_group_id: str) -> TaskDescriptor:
-        return TaskDescriptor(
-            task_id=task_id,
-            worker_group_id=worker_group_id,
-            allocation_rule={},
-            config={
-                "priority": "50",
-                "maximumCandidateWorkers": "100",
-                "runningVisibleMinimumCandidateWorkers": "1",
-                "maxRetryTimes": "5",
-            },
-        )
-
-    @staticmethod
     def result(
         *,
         task_id: str = "task-1",
         message_id: str = "message-1",
         worker_id: str = "worker-1",
+        worker_group_id: str = "image-workers",
         worker_lease_score: int = 201,
         outcome_code: str = "200",
         payload: str | None = '{"value":1}',
@@ -126,6 +123,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
                     task_id=task_id,
                     message_id=message_id,
                     worker_id=worker_id,
+                    worker_group_id=worker_group_id,
                     claim_score=101,
                     worker_lease_score=worker_lease_score,
                     task_item_claim_until_millis=105_000,
@@ -166,12 +164,6 @@ class ResultRoutingPacerTest(unittest.TestCase):
                 payload="null",
             ),
         )
-        self.task_catalog.load_task_allocation_descriptors.side_effect = (
-            lambda *, task_ids: {
-                task_id: self.descriptor(task_id, "image-workers")
-                for task_id in task_ids
-            }
-        )
         owner_order: list[str] = []
         self.task_runtime.store_task_item_success_results.side_effect = (
             lambda **_kwargs: owner_order.append("store")
@@ -201,13 +193,25 @@ class ResultRoutingPacerTest(unittest.TestCase):
             self.item_score.promote_item_outcomes.call_args_list[0],
         )
         self.item_score.rewrite_observed_item_scores.assert_not_called()
+        self.assertEqual(
+            [
+                call(
+                    home_bucket_id="image-workers",
+                    observed_scores={"worker-1": 201, "worker-2": 203},
+                    release_time_millis=self.NOW_MILLIS,
+                ),
+                call(
+                    home_bucket_id="image-workers",
+                    observed_scores={"worker-1": 202},
+                    release_time_millis=self.NOW_MILLIS,
+                ),
+            ],
+            self.worker_score.release_score_holds.call_args_list,
+        )
 
     def test_worker_failure_only_releases_worker_lease(self) -> None:
         failure = self.result(outcome_code="1500", payload=None)
         self.queues[SeedResultOutcomeClass.WORKER_FAILURE] = (failure,)
-        self.task_catalog.load_task_allocation_descriptors.return_value = {
-            "task-1": self.descriptor("task-1", "image-workers")
-        }
 
         self.assertEqual(1, self.route())
 
@@ -223,9 +227,6 @@ class ResultRoutingPacerTest(unittest.TestCase):
     def test_adapter_rejection_only_demotes_worker_lease(self) -> None:
         rejection = self.result(outcome_code="3001", payload=None)
         self.queues[SeedResultOutcomeClass.ADAPTER_REJECTION] = (rejection,)
-        self.task_catalog.load_task_allocation_descriptors.return_value = {
-            "task-1": self.descriptor("task-1", "image-workers")
-        }
 
         self.assertEqual(1, self.route())
 
@@ -242,26 +243,26 @@ class ResultRoutingPacerTest(unittest.TestCase):
         self.queues[SeedResultOutcomeClass.ADAPTER_REJECTION] = (
             self.result(outcome_code="3001", payload=None),
         )
-        self.task_catalog.load_task_allocation_descriptors.return_value = {
-            "task-1": self.descriptor("task-1", "image-workers")
-        }
 
         self.assertEqual(2, self.route())
 
         self.worker_score.release_score_holds.assert_called_once()
         self.worker_score.demote_observed_worker_leases_to_recovery.assert_called_once()
 
-    def test_missing_descriptor_only_skips_worker_disposition(self) -> None:
-        self.queues[SeedResultOutcomeClass.SUCCESS] = (self.result(),)
-        self.task_catalog.load_task_allocation_descriptors.return_value = {
-            "task-1": None
-        }
+    def test_result_context_supplies_worker_disposition_bucket(self) -> None:
+        self.queues[SeedResultOutcomeClass.SUCCESS] = (
+            self.result(worker_group_id="gpu-workers"),
+        )
 
         self.assertEqual(1, self.route())
 
         self.task_runtime.store_task_item_success_results.assert_called_once()
         self.item_score.promote_item_outcomes.assert_called_once()
-        self.worker_score.release_score_holds.assert_not_called()
+        self.worker_score.release_score_holds.assert_called_once_with(
+            home_bucket_id="gpu-workers",
+            observed_scores={"worker-1": 201},
+            release_time_millis=self.NOW_MILLIS,
+        )
 
     def test_corrupt_or_misrouted_results_are_consumed_without_owner_writes(self) -> None:
         self.queues[SeedResultOutcomeClass.SUCCESS] = (
@@ -273,7 +274,8 @@ class ResultRoutingPacerTest(unittest.TestCase):
 
         self.task_runtime.store_task_item_success_results.assert_not_called()
         self.item_score.promote_item_outcomes.assert_not_called()
-        self.task_catalog.load_task_allocation_descriptors.assert_not_called()
+        self.worker_score.release_score_holds.assert_not_called()
+        self.worker_score.demote_observed_worker_leases_to_recovery.assert_not_called()
 
     def test_each_lane_uses_its_own_bounded_consume(self) -> None:
         self.assertEqual(0, self.route())

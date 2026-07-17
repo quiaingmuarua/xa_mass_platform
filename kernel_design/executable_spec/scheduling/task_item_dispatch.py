@@ -125,6 +125,7 @@ class TaskItemDispatchPacer:
                             task_id=task_id,
                             message_id=task_item.message_id,
                             worker_id=candidate_worker.worker_id,
+                            worker_group_id=candidate_worker.worker_group_id,
                             claim_score=claim_score,
                             worker_lease_score=candidate_worker.worker_lease_score,
                             task_item_claim_until_millis=claim_lease_until_millis,

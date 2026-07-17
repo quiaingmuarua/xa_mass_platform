@@ -6,6 +6,7 @@ from dataclasses import dataclass
 
 from .task_runtime import MessageId
 from .task_score_band import Score, TaskId, TimeMillis
+from .worker_runtime import WorkerGroupId
 from .worker_score import Score as WorkerScore
 from .worker_score import WorkerId
 
@@ -15,6 +16,7 @@ class ResultContext:
     task_id: TaskId
     message_id: MessageId
     worker_id: WorkerId
+    worker_group_id: WorkerGroupId
     claim_score: Score
     worker_lease_score: WorkerScore
     task_item_claim_until_millis: TimeMillis
@@ -27,6 +29,7 @@ def encode_result_context(context: ResultContext) -> str:
             "taskId": context.task_id,
             "messageId": context.message_id,
             "workerId": context.worker_id,
+            "workerGroupId": context.worker_group_id,
             "claimScore": context.claim_score,
             "workerLeaseScore": context.worker_lease_score,
             "taskItemClaimUntilMillis": context.task_item_claim_until_millis,
@@ -46,6 +49,7 @@ def decode_result_context(value: str) -> ResultContext | None:
         task_id = payload["taskId"]
         message_id = payload["messageId"]
         worker_id = payload["workerId"]
+        worker_group_id = payload["workerGroupId"]
         claim_score = payload["claimScore"]
         worker_lease_score = payload["workerLeaseScore"]
         task_item_claim_until_millis = payload["taskItemClaimUntilMillis"]
@@ -54,7 +58,7 @@ def decode_result_context(value: str) -> ResultContext | None:
 
     if any(
         not isinstance(identifier, str) or not identifier
-        for identifier in (task_id, message_id, worker_id)
+        for identifier in (task_id, message_id, worker_id, worker_group_id)
     ):
         return None
     if any(
@@ -74,6 +78,7 @@ def decode_result_context(value: str) -> ResultContext | None:
         task_id=task_id,
         message_id=message_id,
         worker_id=worker_id,
+        worker_group_id=worker_group_id,
         claim_score=claim_score,
         worker_lease_score=worker_lease_score,
         task_item_claim_until_millis=task_item_claim_until_millis,

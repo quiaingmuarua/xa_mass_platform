@@ -326,8 +326,8 @@ bounded per-class SeedResult consumption through ResultRoutingPacer
 opaqueResultContext decoding inside the result owner
 Task-scoped last-success result payload storage before FINAL_SUCCESS promotion
 no Item score mutation for `1xxx/3xxx`; the existing claim becomes due
-opaque workerLeaseScore pass-through to WorkerScoreCore exact release for
-`200/1xxx` or exact RECOVERY_RECHECK demotion for `3xxx`
+workerGroupId plus opaque workerLeaseScore pass-through to WorkerScoreCore exact
+release for `200/1xxx` or exact RECOVERY_RECHECK demotion for `3xxx`
 valid routed-evidence counting
 ```
 

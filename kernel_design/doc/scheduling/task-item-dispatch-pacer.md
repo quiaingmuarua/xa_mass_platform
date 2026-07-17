@@ -100,9 +100,9 @@ The built-in delivery envelope contains only `eventCode` and `payload`.
 If an event handler supports a business batch operation, its bounded input
 collection is carried inside this one TaskItem payload. Dispatch does not merge
 multiple TaskItems into one delivery envelope.
-`opaqueResultContext` carries Task/Item correlation plus both opaque score
-fences. `endpointManagerId` partitions the queue and is not included in the
-DeliverSeed itself.
+`opaqueResultContext` carries Task/Item correlation, the WorkerGroup
+home-bucket coordinate, and both opaque score fences. `endpointManagerId`
+partitions the queue and is not included in the DeliverSeed itself.
 
 ## Failure Semantics
 

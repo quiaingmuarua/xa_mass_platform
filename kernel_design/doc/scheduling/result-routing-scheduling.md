@@ -53,8 +53,11 @@ only the class. A `200` must carry a non-empty opaque payload; JSON `"null"`
 represents a successful handler with no business return value.
 
 Each class has an independent Redis LIST. The result context remains opaque to
-the queue runtime and carries `taskId`, `messageId`, `workerId`, opaque
-`claimScore`, opaque `workerLeaseScore`, and `taskItemClaimUntilMillis`.
+the queue runtime and carries `taskId`, `messageId`, `workerId`,
+`workerGroupId`, opaque `claimScore`, opaque `workerLeaseScore`, and
+`taskItemClaimUntilMillis`. `workerGroupId` is the home-bucket coordinate of
+the opaque Worker lease fence; result routing does not reread Task metadata to
+recover it.
 
 ## Routing Round
 
@@ -62,6 +65,19 @@ One round calls the three class lanes in a fixed implementation order. The
 order is deterministic but does not define outcome precedence. Each lane may
 consume up to `perOutcomeBatchLimit`, so a complete round handles at most three
 times that limit.
+
+Each lane decodes once and normalizes its bounded input into two private
+indexes:
+
+```text
+taskId -> ordered decoded results
+workerGroupId -> ordered decoded results
+```
+
+Normalization does not apply duplicate precedence. The SUCCESS handler applies
+last-result semantics by `messageId` inside one Task. Worker disposition groups
+`workerId + workerLeaseScore` only when preparing the exact score-owner calls,
+while preserving every lease evidence value.
 
 ### Success
 
@@ -106,9 +122,9 @@ The Item again becomes retryable through its existing claim coordinate.
 
 ## Worker Fence Semantics
 
-TaskDescriptor supplies the WorkerGroup bucket. Missing descriptors only skip
-Worker disposition; they do not undo successful result storage or Item
-promotion.
+`ResultContext.workerGroupId` supplies the Worker score home bucket. It is
+carried with the opaque lease fence at dispatch time, so late result handling
+does not depend on TaskDescriptor retention or a metadata lookup.
 
 Every result submits its original opaque `workerLeaseScore` independently.
 There is no cross-class winner map or duplicate collapse. Exact Worker score CAS

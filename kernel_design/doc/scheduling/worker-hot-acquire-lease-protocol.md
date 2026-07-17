@@ -121,7 +121,9 @@ future holds or introducing a session epoch.
 
 ## Result Disposition
 
-The opaque Worker fence returns through `ResultContext`:
+The opaque Worker fence returns through `ResultContext` together with its
+`workerGroupId` home-bucket coordinate. Result routing must not reread Task
+metadata to recover the Worker score bucket:
 
 ```text
 200 / 1xxx

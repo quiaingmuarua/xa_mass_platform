@@ -103,10 +103,10 @@ by an application, is ordinary caller-defined data inside this one Item
 payload. The endpoint manager may translate the opaque item before Worker
 submit. The kernel does not merge multiple TaskItems into one delivery item.
 
-`opaqueResultContext` is forwarded unchanged and contains the Task,
-Item, Worker, claim-score, and Worker-lease correlation required by later
-result routing. Worker-facing transport adapters and Redis queue runtime do not
-parse it.
+`opaqueResultContext` is forwarded unchanged and contains the Task, Item,
+Worker, WorkerGroup home-bucket coordinate, claim-score, and Worker-lease
+correlation required by later result routing. Worker-facing transport adapters
+and Redis queue runtime do not parse it.
 
 `taskItemClaimUntilMillis` is only a fast stale-seed cutoff. The queue may be
 lost or replayed without becoming the correctness owner: Item claim expiry and

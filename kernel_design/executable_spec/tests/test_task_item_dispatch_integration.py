@@ -224,6 +224,7 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
                 "taskId": self.task_id,
                 "messageId": self.message_id,
                 "workerId": "worker-1",
+                "workerGroupId": "image-workers",
                 "claimScore": item_state.score,
                 "workerLeaseScore": worker_lease.score,
                 "taskItemClaimUntilMillis": seed.task_item_claim_until_millis,

@@ -141,7 +141,6 @@ class _RedisKernelProcess:
                 self._seed_result_runtime,
                 task_item_score,
                 self._worker_score,
-                self._task_resource_catalog,
                 self._task_runtime,
             )
         )
