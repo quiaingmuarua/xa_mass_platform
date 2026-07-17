@@ -22,7 +22,7 @@ It does not answer:
 
 ```text
 which transport session or endpoint is currently connected?
-does this worker have free capacity?
+does this physical executor expose additional parallel slots?
 does this worker match a task demand?
 is this worker finally selected?
 why was this worker held, parked, disabled, or recovered?
@@ -38,6 +38,13 @@ serviceability as an acquisition polarity, not lifecycle progression. The sign
 answers whether the Worker may enter ordinary allocation or only recovery
 validation. It does not mirror a socket, heartbeat, session, or endpoint state.
 
+One `WorkerId` is one scheduler-visible execution slot and owns one score
+coordinate. A physical executor with concurrency `N` exposes `N` logical
+WorkerIds. The score model never mints several independent active assignments
+behind one WorkerId. A future same-Task batch consume may carry several Items
+under one Worker lease and one bounded TaskItem claim horizon; that remains one
+slot occupation. The current executable spec dispatches one Item per seed.
+
 ## Owner Boundary
 
 Worker-runtime owns:
@@ -47,7 +54,7 @@ worker declaration validation
 worker group membership interpretation
 dispatch gate interpretation
 reachability interpretation for scheduling
-capacity / admission truth
+slot admission truth
 score polarity and coordinate placement
 validated recovery promotion
 RECOVERY_RECHECK allocation blocking
@@ -139,7 +146,7 @@ minimum score, use `MIN_BASE`, not `0`.
 ```text
 HOT_ACQUIRE
   next time the worker may enter hot admission
-  examples: capacity cooldown, admission hold, occupancy interval, drain,
+  examples: slot cooldown, admission hold, occupancy interval, drain,
   manual disable, maintenance hold
 
 RECOVERY_RECHECK
@@ -195,7 +202,7 @@ hold/release or perform verified polarity transitions, but cannot become a
 generic score-refresh path.
 
 Scheduling-critical metadata may include worker group membership, approved
-scheduling attributes, capacity profile, dispatch gate generation, admission
+scheduling attributes, slot admission profile, dispatch gate generation, admission
 policy, or other platform-defined fields that affect worker selection or
 admission. It must not include transport heartbeat, session id, latency sample,
 connection id, trace fields, diagnostic details, or high-frequency load
@@ -234,7 +241,7 @@ timeSlot > nowSlot
   future-held / occupied / temporarily unavailable for hot acquisition
 ```
 
-Manual disable, drain, maintenance, capacity cooldown, and admission hold do not
+Manual disable, drain, maintenance, slot cooldown, and admission hold do not
 require recovery validation. They are same-polarity HOT_ACQUIRE rewrites with a
 later `timeSlot`. A hard manual hold uses:
 
@@ -274,7 +281,7 @@ admission. A due RECOVERY_RECHECK candidate may:
 ```text
 pass recovery validation
   -> move polarity to HOT_ACQUIRE after declaration, gate, Adapter evidence,
-     capacity, and policy validation
+     slot admission, and policy validation
 
 fail recovery validation with budget remaining
   -> stay RECOVERY_RECHECK with later timeSlot and updated laneRank
@@ -412,7 +419,7 @@ hot score lease continuation, assignment owner discards / rematches or
 revalidates through the allowed hot lease transition
 dispatch gate permits scheduling
 Adapter/serviceability evidence is acceptable by policy
-capacity/admission is available
+the logical slot is due and admission is allowed
 selection policy still wants this worker
 ```
 
@@ -436,7 +443,7 @@ same-polarity rewrite
 Most changes are same-polarity rewrites:
 
 ```text
-capacity cooldown
+slot cooldown
 admission hold
 manual disable / drain
 maintenance hold
@@ -463,7 +470,7 @@ HOT_ACQUIRE -> RECOVERY_RECHECK
 
 RECOVERY_RECHECK -> HOT_ACQUIRE
   validated recovery transition
-  requires declaration, membership, gate, reachability, capacity/admission, and
+  requires declaration, membership, gate, reachability, slot admission, and
   policy validation
 ```
 
@@ -560,7 +567,7 @@ dirty, or cross polarity.
 Typical uses:
 
 ```text
-capacity full -> HOT_ACQUIRE with future timeSlot
+slot contention / cooldown -> HOT_ACQUIRE with future timeSlot
 admission hold -> HOT_ACQUIRE with future timeSlot
 manual disable / drain observed as HOT_ACQUIRE -> HOT_ACQUIRE(PAUSE_TIME_SLOT)
 manual disable / drain observed as RECOVERY_RECHECK -> RECOVERY_RECHECK(PAUSE_TIME_SLOT)
@@ -712,7 +719,7 @@ idle / no persisted reservation:
   candidate validation reads current metadata
 
 already dispatched work is running:
-  do not interrupt through dirty; wait for result / timeout / capacity release
+  do not interrupt through dirty; wait for result / timeout / lease expiry
   path and validate current metadata before the next assignment
 
 persisted task-worker assignment plan / hot score lease continuation:
@@ -802,7 +809,7 @@ Typical signature inputs:
 ```text
 worker group membership
 approved scheduling attributes
-capacity profile id
+slot admission profile id
 dispatch gate generation
 admission policy id
 placement / home-bucket fields that affect candidate validity
@@ -858,10 +865,10 @@ Dirty should be written only when all of these are true:
 
 If the changed attribute is not referenced by the continuation's
 candidate `match_rules`, matcher validation, group membership check, gate,
-capacity profile, or other owner-approved validation dependency, it should not
+slot admission profile, or other owner-approved validation dependency, it should not
 mark dirty. If the worker is already executing dispatched work and the hot score
-lease has been released, dirty should not interrupt execution; result, timeout,
-capacity evidence, and the next scheduling round handle the new facts.
+lease remains active, dirty should not interrupt execution; result, timeout,
+lease expiry, and the next scheduling round handle the new facts.
 
 `validationDependencySet` is conceptual first-slice evidence, not a public DTO
 and not a new interface. It records which worker metadata / dynamic attributes /
@@ -876,7 +883,7 @@ needed.
 | Current polarity | Validated outcome | Target score | Rule |
 | --- | --- | --- | --- |
 | HOT_ACQUIRE | candidate remains usable and no delay is needed | no rewrite, or HOT_ACQUIRE(nextTime, laneRank, dirty) | same polarity |
-| HOT_ACQUIRE | capacity full / contention / claim interval | HOT_ACQUIRE(nextTime, laneRank, dirty) | nextTimeSlot >= currentTimeSlot |
+| HOT_ACQUIRE | slot contention / cooldown / claim interval | HOT_ACQUIRE(nextTime, laneRank, dirty) | nextTimeSlot >= currentTimeSlot |
 | HOT_ACQUIRE | manual disable / drain / maintenance hold | HOT_ACQUIRE(PAUSE_TIME_SLOT, laneRank, dirty) | same polarity hold |
 | HOT_ACQUIRE | trusted Adapter rejection / failed serviceability validation | RECOVERY_RECHECK(sameTime, recoveryLaneRank, dirty) | owner-validated polarity move |
 | RECOVERY_RECHECK | recovery validation passes | HOT_ACQUIRE(sameTime, hotLaneRank, dirty) | owner-validated polarity move |
@@ -929,7 +936,7 @@ assignment-dispatch worker selection path.
 | hot candidate observation | no | bounded due range read with scores |
 | hot Worker allocation lease | yes | exact observed-score CAS before bounded matching |
 | recovery-recheck validation round | yes | same-polarity rewrite / polarity move / cold park |
-| capacity full / contention | yes | same-polarity HOT_ACQUIRE rewrite |
+| slot contention / cooldown | yes | same-polarity HOT_ACQUIRE rewrite |
 | manual disable / drain / maintenance | yes | same-polarity hold |
 | manual enable / release | yes | exact observed-score same-polarity release |
 | platform scheduling metadata signature changed while persisted task-worker assignment plan / hot score lease continuation exists | yes | `mark_current_lease_dirty` may only set dirty = 1 |
@@ -958,9 +965,6 @@ due HOT allocation lease:
 
 time-lowering operations:
   score CAS with complete signed observedScore
-
-capacity admission:
-  capacity mutation and score rewrite if the rewrite protects that admission
 
 manual disable / drain / maintenance:
   owner gate fact and same-polarity hold score write
@@ -1000,7 +1004,7 @@ RECOVERY_RECHECK score due but recovery validation fails
   rewrite RECOVERY_RECHECK with next recheck time if budget remains, or write
   a RECOVERY_RECHECK too-old cold coordinate if exhausted
 
-score due but capacity is full
+score due but slot admission defers use
   rewrite HOT_ACQUIRE with future time or reject according to admission policy
 
 stale lease renew / observed-score polarity move
@@ -1049,7 +1053,7 @@ RECOVERY_RECHECK initial retry budget
 RECOVERY_RECHECK lookback window
 cold parked / owner-reset evidence rule
 negative evidence mapping
-capacity contention delay
+slot contention delay
 verified reopen policy
 ```
 
@@ -1085,7 +1089,10 @@ slot registry redesign
   RECOVERY_RECHECK too-old coordinate plus owner evidence; manual disable /
   drain / maintenance holds may still use far-future timeSlot.
 - Do not add `MANUAL_DISABLED_BAND`; manual disable is same-polarity hold.
-- Do not make score replace capacity/admission validation.
+- Do not add a per-Worker capacity pool beside score. One WorkerId is one
+  execution slot; physical concurrency is multiple logical WorkerIds.
+- Do not release an active Worker lease early to simulate immediate slot reuse
+  or assign independent Items concurrently to one WorkerId.
 - Do not pass observed or leased HOT scores across the matcher boundary; the
   allocation pacer keeps observations in a private sidecar and matcher receives
   Worker ids only.

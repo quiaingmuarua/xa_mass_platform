@@ -59,17 +59,28 @@ physical runtime process
   -> logical worker B in workerGroupB
 ```
 
-In v0, a `Worker` is the scheduler-visible execution identity. It may still
-process multiple TaskItems concurrently only when a future explicit capacity
-owner makes multiple scheduling slots visible. The current Worker score lease /
-hold protects one scheduler-visible Worker slot from allocation through result
-or bounded lease expiry. TaskItem dispatch validates or renews that exact fence;
-it does not release it after DeliverSeed creation.
+In v0, a `WorkerId` is one scheduler-visible execution slot. One WorkerId may
+have at most one active Worker lease continuation. The Worker score lease / hold
+protects that slot from allocation through result or bounded lease expiry.
+TaskItem dispatch validates or renews the exact fence; it does not release the
+slot after DeliverSeed creation.
 
-Concurrency and capacity are not descriptor or metadata truth. Worker
-attributes and projected dynamic attributes such as `runningCount` /
-`freeSlots` may be policy inputs, but they cannot mint additional scheduling
-slots without a named capacity owner and executable mechanism.
+If one physical runtime can execute `N` independent TaskItems concurrently, it
+must expose `N` logical WorkerIds. Those Workers may share one WorkerGroup and
+one endpoint manager, but each owns an independent score and lease:
+
+```text
+physical runtime with concurrency 3
+  -> worker-slot-1
+  -> worker-slot-2
+  -> worker-slot-3
+```
+
+The only future multi-Item shape allowed for one WorkerId is one same-Task batch
+consume: several TaskItems from the same Task may be carried as one dispatch
+batch under one Worker lease and one bounded TaskItem claim horizon. That is one
+slot occupation, not concurrent independent assignments and not cross-Task
+reuse. The current executable spec remains one TaskItem per DeliverSeed.
 
 This keeps score ownership, dirty handling, and release semantics single-group
 and admission-fence oriented from the scheduler's point of view.
@@ -107,7 +118,7 @@ WorkerGroupDescriptor does not own:
 ```text
 worker hot/recovery score
 worker score lease / hold
-worker capacity truth
+per-Worker parallel capacity truth
 transport session truth
 adapter mailbox truth
 task assignment truth
@@ -496,11 +507,11 @@ assignment plan or hot score lease continuation, and the new value invalidates
 or may invalidate the recorded match evidence. If there is no such continuation,
 the next matcher read observes the new value directly.
 
-Concurrent execution control is one expected use of dynamic attributes. For
-example, a worker may project `runningCount`, `freeSlots`, load, or local
-queue-depth attributes. These values can narrow or rank candidate workers
-through policy / matching, while worker score lease remains only the short
-assignment fence.
+Load or local queue-depth dynamic attributes may narrow or rank existing Worker
+slots. They cannot make one WorkerId represent multiple independently leased
+execution slots. Physical executor concurrency is projected by provisioning or
+draining logical WorkerIds, not by minting parallel assignments from an
+attribute value.
 
 ## Scheduling Boundary
 
@@ -554,7 +565,7 @@ match_worker_candidates(
 The input map makes candidate identity unique. Each value carries explicit
 `priority`, `limit`, and map-shaped `match_rules`. The matcher
 sorts by priority descending and `candidateId` ascending, then each worker is
-considered by the first matching candidate with remaining capacity. Every
+considered by the first matching candidate with remaining match limit. Every
 matched Worker appears in exactly one candidate result and exactly once in
 `endpointManagerIdByWorkerId`. Unmatched Worker ids are not returned; their
 already-acquired leases remain held until natural expiry. No score, lease
@@ -603,7 +614,7 @@ task eventCode
   -> validates against WorkerGroupDescriptor.eventCodes
 pre-bound workerGroupId
   -> WorkerCandidateConstraint.match_rules filters worker attributes
-  -> WorkerScoreCore score lease validates current usability/capacity/resource hold
+  -> WorkerScoreCore score lease validates current serviceability and slot hold
 ```
 
 Scheduling must not stop at descriptor matches. It reads worker-runtime owner
@@ -612,7 +623,7 @@ surfaces before producing a selected worker:
 ```text
 task descriptor workerGroupId -> worker score home bucket
 worker score -> hot/recovery acquisition coordinate
-WorkerScoreCore lease / hold -> current usability/capacity/resource hold decision
+WorkerScoreCore lease / hold -> current serviceability and slot-occupation decision
 assignment-dispatch -> selected worker + Item score claim + DeliverSeed
 ```
 
@@ -620,14 +631,13 @@ Descriptor metadata can be used by worker-runtime validation, policy mapping,
 query views, and diagnostics. It is a candidate discovery / matching input; it
 must not become a second score lease owner.
 
-In v0, Worker occupation is a bounded score lease / hold of one
-scheduler-visible Worker slot. Allocation creates the exact fence, TaskItem
+In v0, Worker occupation is a bounded score lease / hold of exactly one
+scheduler-visible execution slot. Allocation creates the exact fence, TaskItem
 dispatch validates or renews it before claiming an Item, and result routing
 either exact-releases it after Worker execution evidence or exact-demotes it to
-RECOVERY_RECHECK after Adapter rejection evidence. With no valid result, natural lease
-expiry restores visibility. Do not model capacity pools inside
-`WorkerDescriptor`; a future concurrent-capacity mechanism requires an explicit
-owner rather than an early-release convention.
+RECOVERY_RECHECK after Adapter rejection evidence. With no valid result, natural
+lease expiry restores visibility. Do not model a capacity pool inside one
+`WorkerDescriptor`, and do not release the fence early to simulate concurrency.
 
 The worker score model remains separate:
 
@@ -643,7 +653,7 @@ WorkerScore
 
 WorkerScoreLease
   validates metadata, optional dynamic query attributes, serviceability
-  evidence, capacity, and score lease / hold
+  evidence and score lease / hold
 ```
 
 ## Deliberate Non-Goals
@@ -663,6 +673,7 @@ eventCode inside WorkerCandidateConstraint.match_rules
 workerGroupId inside WorkerCandidateConstraint.match_rules
 adapter session / mailbox / connection state inside WorkerDescriptor
 runtime score / dirty / score lease fields inside WorkerDescriptor
+parallel execution capacity inside one WorkerId
 ```
 
 If the executable spec needs stale metadata fencing, worker-runtime may compute
@@ -677,7 +688,7 @@ Add `WorkerGroupMembership` only when one of these becomes unavoidable:
 ```text
 the same worker must have different weight per group
 the same worker must be enabled in one group and disabled in another
-the same worker needs different quota/capacity per group
+the same physical executor needs independently managed logical slots per group
 the same worker needs different score lease lane per group
 ```
 

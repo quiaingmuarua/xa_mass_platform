@@ -103,6 +103,12 @@ reason, transport session, trace, or query projection truth.
 | Worker | `workerId` inside one home bucket / WorkerGroup | sign is kernel-owned TaskItem scheduling serviceability: positive HOT_ACQUIRE, negative RECOVERY_RECHECK | same-polarity `timeSlot` normally increases | polarity may toggle because Worker is long-lived; there is no terminal band |
 | TaskItem | `(taskId, messageId)` | outcome tag increases | ACTIVE same-band `timeSlot` increases | outcome precedence advances toward final success; there is no release |
 
+One WorkerId is one scheduler-visible execution slot and therefore one active
+Worker lease at a time. Physical executor concurrency is represented by
+multiple logical WorkerIds. A future multi-Item optimization may consume a
+same-Task batch under one Worker lease; it does not permit independent or
+cross-Task assignments to share one WorkerId.
+
 The shared contract is:
 
 ```text

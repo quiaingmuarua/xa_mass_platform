@@ -31,7 +31,7 @@ task result truth
 trace / audit truth
 worker lifecycle tags
 global worker state blob
-full capacity/admission model
+per-Worker capacity pool or parallel assignment model
 generic cross-round assignment hold records
 ```
 
@@ -578,7 +578,8 @@ Reasons:
 hold is represented by future timeSlot inside current polarity
 session / heartbeat belongs to transport or dynamic attribute handlers
 transition evidence belongs to trace or deterministic tests until repair needs it
-capacity is policy / dynamic attribute / later admission owner, not score truth
+one WorkerId is one execution slot; physical concurrency is represented by
+multiple logical WorkerIds, not a capacity key behind one score
 assignment continuation is not first-slice truth
 worker-runtime-owned per-task candidates create a second assignment-dispatch
 mainline. The separate `AssignmentDispatchRuntime` may own transient
@@ -594,7 +595,6 @@ Use atomic operations only where stale state can produce wrong admission:
 
 ```text
 score exact-CAS for release, polarity move, cold park, hot lease acquire/renew
-capacity + score update only after a later capacity owner proves the invariant
 ```
 
 Accept bounded eventual consistency for:

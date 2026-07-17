@@ -27,6 +27,18 @@ due HOT observation
 There is no separate reservation store, attempt lifecycle, lease token model,
 or transport-owned Worker state.
 
+`WorkerId` means one scheduler-visible execution slot. A successful allocation
+lease prevents that slot from receiving another independent TaskItem until
+trusted result disposition or lease expiry. A physical executor with parallel
+capacity exposes multiple logical WorkerIds; the kernel does not create several
+active assignments behind one Worker score.
+
+A future same-Task batch consume may place several TaskItems into one
+DeliverSeed batch under the same Worker lease and one bounded TaskItem claim
+horizon. This remains one slot occupation. It must not become cross-Task
+concurrency or an early release path. The current executable spec dispatches
+one TaskItem per seed.
+
 ## Allocation Lease
 
 ```text
@@ -200,9 +212,9 @@ cross-owner transaction.
 
 ## Deferred Policy
 
-Recovery probe cadence/ranking and explicit capacity/concurrency mechanisms are
-deferred. They must reuse the signed Worker score owner rather than create a
-second scheduling-serviceability or lease truth.
+Recovery probe cadence/ranking and same-Task batch-consume sizing are deferred.
+Batch consume must reuse one signed Worker score fence and one bounded TaskItem
+claim horizon; it must not introduce parallel leases for one WorkerId.
 
 ## Guardrails
 
@@ -213,3 +225,7 @@ second scheduling-serviceability or lease truth.
 - Do not treat missing result as `3xxx`.
 - Do not let old result evidence mutate a newer Worker lease.
 - Do not create separate Attempt, reservation, session epoch or lease registry.
+- Do not release a Worker fence after DeliverSeed append to simulate immediate
+  slot reuse.
+- Do not assign independent TaskItems or different Tasks concurrently to one
+  WorkerId.

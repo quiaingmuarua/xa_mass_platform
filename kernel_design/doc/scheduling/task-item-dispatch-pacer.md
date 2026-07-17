@@ -154,9 +154,12 @@ DeliverSeed endpoint-manager append
 unit and real Redis proof
 ```
 
-Deferred policy is limited to recent-first Task acquisition and future explicit
-capacity/concurrency policy. It must not create an early-release branch inside
-this pacer without a separate owner invariant.
+Deferred policy is limited to recent-first Task acquisition and optional
+same-Task batch consume. A batch may claim several Items from one Task for one
+WorkerId only when they share one Worker lease and one bounded TaskItem claim
+horizon. It must not create cross-Task concurrency or an early-release branch.
+The current executable spec remains one candidate Worker to one TaskItem to one
+DeliverSeed.
 
 ## Guardrails
 
@@ -166,6 +169,8 @@ this pacer without a separate owner invariant.
 - Do not claim Items before Worker lease validation.
 - Do not restore consumed candidates or compensate ambiguous queue writes.
 - Do not release Worker leases from this pacer.
+- Do not dispatch another independent Item to the same WorkerId while its lease
+  remains active.
 - Do not call transport or parse result outcomes here.
 - Do not write Task score.
 - Do not create Attempt, reservation lifecycle, retry queue, or repair scanner.

@@ -1,7 +1,7 @@
 # Assignment-Dispatch Scheduling
 
-Status: active new-kernel mechanism contract; Python executable spec partial;
-dispatch-time Worker lease disposition is not yet implemented.
+Status: active new-kernel mechanism contract; Python executable spec
+implemented; policy coverage partial.
 
 Detailed rounds:
 
@@ -24,7 +24,7 @@ Two independently paced mechanisms are mandatory:
 | Pacer | Input | Cutpoint | Score authority |
 | --- | --- | --- | --- |
 | Task-Worker allocation | Due active Tasks, Task constraints, due Worker observations | Expiring `CandidateWorkerEntry` values in one Task-local queue | Exact Worker lease plus current same-band Task time rotation |
-| TaskItem dispatch | RUNNING Task ids, consumed candidate entries, due Item observations and TaskItem records | `DeliverSeed` append plus Worker lease disposition for the accepted batch | TaskItem observed claim plus narrow Worker exact retain/release invocation; Task score remains read-only |
+| TaskItem dispatch | RUNNING Task ids, consumed candidate entries, due Item observations and TaskItem records | `DeliverSeed` append after exact Worker lease validation/renewal | TaskItem observed claim plus narrow Worker exact validate/renew invocation; Task score remains read-only |
 
 `TaskRunningActivationPacer` is the independent lifecycle classification between
 them. It evaluates activation owner facts and may request the declared
@@ -42,7 +42,7 @@ Assignment-dispatch does not own:
 
 ```text
 Task lifecycle, descriptor, or score truth
-Worker resource, scheduling serviceability, capacity, or score truth
+Worker resource, scheduling serviceability, slot occupation, or score truth
 TaskItem record, score, retry, or finality truth
 transport sessions or endpoint-local observations
 result classification or projection
@@ -225,9 +225,12 @@ source of liveness or lifecycle truth.
 - Candidate target, scan limits, lease duration, activation condition, and
   per-Task dispatch limit are bounded policy values owned by their pacer
   configs or Task descriptor.
-- Concurrent Worker capacity beyond the current one-score-fence mechanism
-  requires a separately proved capacity owner; dispatch must not infer it from
-  resource metadata and release the fence early.
+- One `WorkerId` is one scheduler-visible execution slot. A physical executor
+  with parallel capacity must expose multiple logical WorkerIds; dispatch must
+  not infer parallel slots from metadata or release one score fence early.
+- Future same-Task batch consume may bind several Items to one WorkerId only as
+  one batch under one Worker lease and one bounded TaskItem claim horizon. It
+  is not independent Item concurrency and cannot mix Tasks.
 - Strong persisted assignment continuation would require an explicit owner
   protocol; candidate queues must not be promoted into that role.
 
