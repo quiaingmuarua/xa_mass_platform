@@ -48,6 +48,9 @@ cursor.rules
 *.log
 *.log.*
 /.codex-root-test.log
+
+### Archived docs ###
+doc/archive/
 __pycache__/
 *.py[cod]
 *$py.class
@@ -70,3 +73,4 @@ __pycache__/
 /data/
 /identifier.sqlite
 .vercel
+
