@@ -197,12 +197,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
             [
                 call(
                     home_bucket_id="image-workers",
-                    observed_scores={"worker-1": 201, "worker-2": 203},
-                    release_time_millis=self.NOW_MILLIS,
-                ),
-                call(
-                    home_bucket_id="image-workers",
-                    observed_scores={"worker-1": 202},
+                    observed_scores={"worker-1": 202, "worker-2": 203},
                     release_time_millis=self.NOW_MILLIS,
                 ),
             ],

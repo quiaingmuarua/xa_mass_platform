@@ -76,8 +76,9 @@ workerGroupId -> ordered decoded results
 
 Normalization does not apply duplicate precedence. The SUCCESS handler applies
 last-result semantics by `messageId` inside one Task. Worker disposition groups
-`workerId + workerLeaseScore` only when preparing the exact score-owner calls,
-while preserving every lease evidence value.
+`workerId + workerLeaseScore` only when preparing the exact score-owner call;
+the last score observed for one Worker in that outcome batch is submitted.
+Each WorkerGroup therefore produces at most one batch call to WorkerScoreCore.
 
 ### Success
 
@@ -126,11 +127,12 @@ The Item again becomes retryable through its existing claim coordinate.
 carried with the opaque lease fence at dispatch time, so late result handling
 does not depend on TaskDescriptor retention or a metadata lookup.
 
-Every result submits its original opaque `workerLeaseScore` independently.
-There is no cross-class winner map or duplicate collapse. Exact Worker score CAS
-prevents stale evidence from mutating a newer lease. Contradictory classes for
-one exact lease violate the normal one-DeliverSeed/one-SeedResult protocol; the
-score owner accepts at most one applicable disposition.
+Within one outcome batch, repeated results for the same Worker collapse to the
+last opaque `workerLeaseScore` in queue order. There is no cross-class winner
+map. Exact Worker score CAS prevents stale evidence from mutating a newer
+lease. Contradictory classes for one exact lease violate the normal
+one-DeliverSeed/one-SeedResult protocol; the score owner accepts at most one
+applicable disposition.
 
 ## Failure Semantics
 

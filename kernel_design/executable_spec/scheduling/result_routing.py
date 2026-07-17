@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterator
 from dataclasses import dataclass
 from time import time_ns
 
@@ -58,10 +57,7 @@ class ResultRoutingPacer:
         self.item_score = item_score
         self.worker_score = worker_score
         self.task_runtime = task_runtime
-
-    def route_seed_results(self, *, config: ResultRoutingConfig) -> int:
-        result_time_millis = self._current_time_millis()
-        handlers = (
+        self._outcome_handlers = (
             (
                 SeedResultOutcomeClass.SUCCESS,
                 self._handle_success_results,
@@ -75,8 +71,11 @@ class ResultRoutingPacer:
                 self._handle_adapter_rejection_results,
             ),
         )
+
+    def route_seed_results(self, *, config: ResultRoutingConfig) -> int:
+        result_time_millis = self._current_time_millis()
         routed_count = 0
-        for outcome_class, handler in handlers:
+        for outcome_class, handler in self._outcome_handlers:
             batch = self._consume_decoded(
                 outcome_class=outcome_class,
                 limit=config.per_outcome_batch_limit,
@@ -109,27 +108,35 @@ class ResultRoutingPacer:
                 target_time_millis=result_time_millis,
             )
 
-        self._release_worker_leases(
-            batch.results_by_worker_group,
-            release_time_millis=result_time_millis,
-        )
+        for worker_group_id, entries in batch.results_by_worker_group.items():
+            self.worker_score.release_score_holds(
+                home_bucket_id=worker_group_id,
+                observed_scores=self._latest_worker_scores(entries),
+                release_time_millis=result_time_millis,
+            )
 
     def _handle_worker_failure_results(
         self,
         batch: _DecodedSeedResultBatch,
         release_time_millis: TimeMillis,
     ) -> None:
-        self._release_worker_leases(
-            batch.results_by_worker_group,
-            release_time_millis=release_time_millis,
-        )
+        for worker_group_id, entries in batch.results_by_worker_group.items():
+            self.worker_score.release_score_holds(
+                home_bucket_id=worker_group_id,
+                observed_scores=self._latest_worker_scores(entries),
+                release_time_millis=release_time_millis,
+            )
 
     def _handle_adapter_rejection_results(
         self,
         batch: _DecodedSeedResultBatch,
         _result_time_millis: TimeMillis,
     ) -> None:
-        self._demote_worker_leases(batch.results_by_worker_group)
+        for worker_group_id, entries in batch.results_by_worker_group.items():
+            self.worker_score.demote_observed_worker_leases_to_recovery(
+                home_bucket_id=worker_group_id,
+                observed_scores=self._latest_worker_scores(entries),
+            )
 
     def _consume_decoded(
         self,
@@ -169,51 +176,14 @@ class ResultRoutingPacer:
             },
         )
 
-    def _release_worker_leases(
-        self,
-        results_by_worker_group: dict[
-            WorkerGroupId, tuple[_DecodedSeedResult, ...]
-        ],
-        *,
-        release_time_millis: TimeMillis,
-    ) -> None:
-        for worker_group_id, entries in results_by_worker_group.items():
-            for observed_scores in self._worker_score_rounds(entries):
-                self.worker_score.release_score_holds(
-                    home_bucket_id=worker_group_id,
-                    observed_scores=observed_scores,
-                    release_time_millis=release_time_millis,
-                )
-
-    def _demote_worker_leases(
-        self,
-        results_by_worker_group: dict[
-            WorkerGroupId, tuple[_DecodedSeedResult, ...]
-        ],
-    ) -> None:
-        for worker_group_id, entries in results_by_worker_group.items():
-            for observed_scores in self._worker_score_rounds(entries):
-                self.worker_score.demote_observed_worker_leases_to_recovery(
-                    home_bucket_id=worker_group_id,
-                    observed_scores=observed_scores,
-                )
-
     @staticmethod
-    def _worker_score_rounds(
+    def _latest_worker_scores(
         entries: tuple[_DecodedSeedResult, ...],
-    ) -> Iterator[dict[WorkerId, WorkerScore]]:
-        scores_by_worker: dict[WorkerId, list[WorkerScore]] = defaultdict(list)
-        for entry in entries:
-            scores_by_worker[entry.context.worker_id].append(
-                entry.context.worker_lease_score
-            )
-        round_count = max(map(len, scores_by_worker.values()))
-        for index in range(round_count):
-            yield {
-                worker_id: scores[index]
-                for worker_id, scores in scores_by_worker.items()
-                if index < len(scores)
-            }
+    ) -> dict[WorkerId, WorkerScore]:
+        return {
+            entry.context.worker_id: entry.context.worker_lease_score
+            for entry in entries
+        }
 
     @staticmethod
     def _current_time_millis() -> TimeMillis:
