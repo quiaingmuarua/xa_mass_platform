@@ -172,9 +172,7 @@ class LocalFunctionTransportAdapter:
         return _DeliveryItem(event_code, MappingProxyType(dict(item_payload)))
 
     @staticmethod
-    def _encode_result_payload(payload: object | None) -> str | None:
-        if payload is None:
-            return None
+    def _encode_result_payload(payload: object | None) -> str:
         return json.dumps(
             payload,
             allow_nan=False,

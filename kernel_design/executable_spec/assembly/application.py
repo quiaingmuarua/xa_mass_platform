@@ -46,8 +46,7 @@ _WORKER_LEASE_DURATION_MILLIS = 5_000
 _RUNNING_VISIBLE_INITIAL_SUFFIX = 5
 _PER_TASK_DISPATCH_LIMIT = 100
 _ITEM_CLAIM_LEASE_DURATION_MILLIS = 5_000
-_RESULT_ROUTING_BATCH_LIMIT = 100
-_RESULT_RETRY_DELAY_MILLIS = 1_000
+_RESULT_ROUTING_PER_OUTCOME_BATCH_LIMIT = 100
 
 
 def _positive_integer(value: object, *, name: str) -> int:
@@ -407,8 +406,9 @@ class KernelApplication:
             ),
             result_routing=ResultRoutingApplicationConfig(
                 routing=ResultRoutingConfig(
-                    batch_limit=_RESULT_ROUTING_BATCH_LIMIT,
-                    retry_delay_millis=_RESULT_RETRY_DELAY_MILLIS,
+                    per_outcome_batch_limit=(
+                        _RESULT_ROUTING_PER_OUTCOME_BATCH_LIMIT
+                    ),
                 ),
                 interval_millis=config.result_routing_interval_millis,
             ),

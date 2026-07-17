@@ -500,18 +500,10 @@ not repair.
 
 ## Result And Finality
 
-Result policy uses the same score primitives.
-
-Same-tag retry:
-
-```text
-rewrite_observed_item_scores(
-  taskId,
-  {messageId: claimScore},
-  retryDueMillis,
-  remainingBudgetDelta = 0
-)
-```
+Result routing does not perform a same-tag retry rewrite. A claim already places
+the ACTIVE Item at a future time coordinate. `1xxx` and `3xxx` leave that score
+unchanged; when the claim coordinate becomes due, ordinary acquisition retries
+the Item and consumes no additional result-owned budget.
 
 Cross-tag outcome promotion:
 
@@ -543,24 +535,24 @@ final success -> rejected/no-op for lower final tags
 Late result handling uses the same kernel tag ordering:
 
 ```text
-retryable failure
-  requires same-tag observed claimScore
-  stale/no-op if score moved
+worker failure / adapter rejection
+  no Item score write
+  existing ACTIVE claim becomes due naturally
 
 final failure
-  may promote current ACTIVE to FINAL_FAILED without claimScore equality
-  does not cancel an already issued newer claim
+  produced by exhausted scheduling budget
+  may be overwritten only by late success
 
 late success
   may promote ACTIVE or FINAL_FAILED to FINAL_SUCCESS
   accepted while current tag is below TAG_FINAL_SUCCESS
 ```
 
-Result policy owns retryable-versus-final classification. The score kernel owns
-only same-tag claim CAS and cross-tag outcome precedence. Task closure does not
-reopen scheduling, but result retention must continue accepting a valid
-`FINAL_SUCCESS` promotion until the owner-defined late-result retention barrier
-expires.
+The score kernel owns same-tag claim CAS and cross-tag outcome precedence.
+Result routing owns successful payload storage followed by FINAL_SUCCESS
+promotion. Task closure does not reopen scheduling, but result retention must
+continue accepting a valid `FINAL_SUCCESS` promotion until the owner-defined
+late-result retention barrier expires.
 
 ## Exhausted Budget
 

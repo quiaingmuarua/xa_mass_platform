@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import time
 import unittest
@@ -146,6 +147,19 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         self.assertIsNotNone(state)
         assert state is not None
         self.assertIs(TaskItemScoreBand.FINAL_SUCCESS, state.band)
+        stored_payload = self.redis.hget(
+            f"tr:{self.prefix}:task:task-1:results",
+            "message-1",
+        )
+        self.assertIsNotNone(stored_payload)
+        self.assertEqual(
+            {"handled": "input", "runtime": "local"},
+            json.loads(stored_payload),
+        )
+        self.assertEqual(
+            0,
+            self.redis.exists(f"rr:{self.prefix}:seed-results"),
+        )
 
         self.application.stop()
         worker_candidates = {}

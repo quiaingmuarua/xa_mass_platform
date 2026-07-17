@@ -15,7 +15,7 @@ DeliverSeed
   -> LocalFunctionTransportAdapter
   -> local Worker + EventHandler
   -> SeedResult
-  -> SeedResultRuntime unified queue
+  -> SeedResultRuntime outcome-class queue
   -> ResultRoutingPacer
 ```
 
@@ -57,9 +57,9 @@ class SeedResultCommandClient:
 
 `SeedResultCommandClient` is only the independent adapter process's protocol
 client. It forwards the append operation to the kernel-owned
-`SeedResultRuntime`; it is not another result owner or queue. The runtime uses
-one logical result queue, so neither append nor consume carries
-`endpointManagerId`.
+`SeedResultRuntime`; it is not another result owner or queue. The runtime
+partitions by outcome class only, so append carries no partition coordinate and
+consume carries no `endpointManagerId`.
 
 `SeedResult` deliberately does not duplicate `taskId`, `messageId`, `workerId`,
 claim score, or Worker lease score. Those correlations already travel inside
@@ -76,11 +76,14 @@ claim score, or Worker lease score. Those correlations already travel inside
 `1xxx` and `3xxx` are exactly four ASCII digits. Exact subcodes belong to the
 producer; Result-Routing understands only the class. The contract does not
 accept integer codes, trim values, or provide aliases such as `success` or `ok`.
+`200` always carries non-empty JSON text; a successful handler returning no
+business value is encoded as `"null"`.
 
 `append_seed_results` is batch-shaped because one bounded adapter drain can
 produce multiple results. Its return value is the number accepted by the
-runtime; the first runtime appends one batch to the unified queue as an
-all-or-error operation. It does not return ambiguous partial acceptance.
+runtime. A mixed batch is partitioned into three best-effort class queues; a
+cross-class append is not atomic and an exception does not report partial
+acceptance.
 
 ## Worker Startup
 
@@ -240,10 +243,11 @@ classify result finality
 synthesize timeout results
 ```
 
-`SeedResultRuntime` stores accepted evidence in one logical queue.
-`ResultRoutingPacer` consumes it, applies the TaskItem outcome, and requests
-Worker exact release for `200/1xxx` or exact RECOVERY_RECHECK demotion for
-`3xxx`.
+`SeedResultRuntime` stores accepted evidence in one of three class queues.
+`ResultRoutingPacer` stores last-success payload and promotes FINAL_SUCCESS for
+`200`, exact-releases Worker leases for `200/1xxx`, and exact-demotes them for
+`3xxx`. Failures do not actively rewrite Item retry time; the existing Item
+claim becomes due naturally.
 When the adapter drops a malformed/expired seed, crashes, or cannot submit a
 result, TaskItem claim and Worker lease time coordinates remain the recovery
 fallback. Missing evidence is never reclassified as `3xxx`.

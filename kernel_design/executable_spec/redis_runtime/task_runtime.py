@@ -39,6 +39,10 @@ def _task_items_key(prefix: str, task_id: TaskId) -> str:
     return f"tr:{prefix}:task:{task_id}:items"
 
 
+def _task_item_results_key(prefix: str, task_id: TaskId) -> str:
+    return f"tr:{prefix}:task:{task_id}:results"
+
+
 def _encode_json(payload: Mapping[str, object]) -> str:
     return json.dumps(
         dict(payload),
@@ -252,6 +256,56 @@ class RedisTaskRuntime(TaskRuntime):
             for message_id, raw_item in zip(
                 unique_message_ids,
                 raw_items,
+                strict=True,
+            )
+        }
+
+    def store_task_item_success_results(
+        self,
+        *,
+        task_id: TaskId,
+        results: Mapping[MessageId, str],
+    ) -> None:
+        if not task_id:
+            raise ValueError("task id must be non-empty")
+        if not results:
+            return
+        if any(
+            not message_id
+            or not isinstance(payload, str)
+            or not payload
+            for message_id, payload in results.items()
+        ):
+            raise ValueError("success results require non-empty ids and payloads")
+        self.redis.hset(
+            _task_item_results_key(self.prefix, task_id),
+            mapping=dict(results),
+        )
+
+    def load_task_item_success_results(
+        self,
+        *,
+        task_id: TaskId,
+        message_ids: Sequence[MessageId],
+    ) -> Mapping[MessageId, str | None]:
+        if not task_id:
+            raise ValueError("task id must be non-empty")
+        unique_message_ids = tuple(dict.fromkeys(message_ids))
+        if not unique_message_ids:
+            return {}
+        raw_results = self.redis.hmget(
+            _task_item_results_key(self.prefix, task_id),
+            unique_message_ids,
+        )
+        return {
+            message_id: (
+                raw_result.decode("utf-8")
+                if isinstance(raw_result, bytes)
+                else raw_result
+            )
+            for message_id, raw_result in zip(
+                unique_message_ids,
+                raw_results,
                 strict=True,
             )
         }

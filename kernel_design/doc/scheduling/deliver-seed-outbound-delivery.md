@@ -38,7 +38,8 @@ external DeliverSeed consumer client
 
 external SeedResult command client
   forwards append_seed_results to the kernel SeedResultRuntime
-  carries no endpointManagerId because results enter one logical queue
+  carries no endpointManagerId or outcome-class argument; runtime derives the
+  class queue from each SeedResult outcomeCode
 ```
 
 Target `workerLeaseScore` is the fence confirmed by dispatch-time Worker-owner
@@ -56,9 +57,10 @@ consume_deliver_seeds(endpointManagerId, limit)
   -> submit transport
 
 Worker result appended to SeedResultRuntime
-  -> ResultRoutingPacer bounded-consumes the unified queue
-  -> Result-Routing Scheduling applies TaskItem outcome
-  -> Worker owner receives exact-release request
+  -> runtime routes by SUCCESS / WORKER_FAILURE / ADAPTER_REJECTION
+  -> ResultRoutingPacer bounded-consumes the corresponding class queue
+  -> success stores result truth and finalizes the TaskItem
+  -> Worker owner receives exact release or recovery-demotion request
 
 transport rejected / resolution failed / outbound process stopped
   -> do not immediately release or reschedule
@@ -76,7 +78,8 @@ lease protocol. The external outbound process begins after assignment-side
 DeliverSeed acceptance and must not reinterpret or mutate that disposition.
 
 `DeliverSeedConsumerClient` performs the independent queue read and
-`SeedResultCommandClient` appends outcomes to the unified result queue. The
+`SeedResultCommandClient` appends a mixed result batch; SeedResultRuntime routes
+each member to its outcome-class queue. The
 Local Function Adapter proves local resolution, handler execution, deterministic
 payload encoding, and one result append per bounded drain. The DeliverSeed
 queue runtime itself still does not call transport.

@@ -17,8 +17,7 @@ class ResultRoutingApplicationTest(unittest.TestCase):
         self.application = ResultRoutingApplication(self.pacer)
         self.config = ResultRoutingApplicationConfig(
             routing=ResultRoutingConfig(
-                batch_limit=100,
-                retry_delay_millis=1_000,
+                per_outcome_batch_limit=100,
             ),
             interval_millis=1_000,
         )

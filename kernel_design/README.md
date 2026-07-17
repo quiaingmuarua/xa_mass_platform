@@ -475,10 +475,10 @@ no hidden compatibility path or second mainline remains
   - independent process startup, local Worker registration, shared event
     handlers, platform resource upsert, and SeedResult submission.
 - [Result-Routing Scheduling](doc/scheduling/result-routing-scheduling.md)
-  - unified SeedResult consumption, success/retry selection, Task Item score
-    invocation, and Worker exact-release handoff.
+  - outcome-class SeedResult consumption, last-success result storage, TaskItem
+    final-success invocation, and Worker exact disposition.
 - [Seed Result Runtime Redis Shape](doc/runtime-redis/seed-result-runtime-redis-shape.md)
-  - unified best-effort SeedResult queue encoding and bounded Redis operations.
+  - three best-effort outcome-class queues plus Task-scoped success result HASH.
 
 ## Boundary
 

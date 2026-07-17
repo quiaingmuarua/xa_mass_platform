@@ -11,13 +11,13 @@ from kernel_design.executable_spec import (
     ResultRoutingConfig,
     ResultRoutingPacer,
     SeedResult,
+    SeedResultOutcomeClass,
     SeedResultRuntime,
     TaskDescriptor,
     TaskItemScoreBand,
     TaskItemScoreBandCore,
-    TaskItemScoreTransitionResult,
-    TaskItemScoreTransitionStatus,
     TaskResourceCatalog,
+    TaskRuntime,
     WorkerScoreCore,
 )
 from kernel_design.executable_spec.kernel.result_context import (
@@ -74,16 +74,19 @@ class ResultRoutingPacerTest(unittest.TestCase):
         self.item_score = Mock(spec=TaskItemScoreBandCore)
         self.worker_score = Mock(spec=WorkerScoreCore)
         self.task_catalog = Mock(spec=TaskResourceCatalog)
+        self.task_runtime = Mock(spec=TaskRuntime)
+        self.queues: dict[SeedResultOutcomeClass, tuple[SeedResult, ...]] = {}
+        self.runtime.consume_seed_results.side_effect = (
+            lambda *, outcome_class, limit: self.queues.get(outcome_class, ())
+        )
         self.pacer = ResultRoutingPacer(
             self.runtime,
             self.item_score,
             self.worker_score,
             self.task_catalog,
+            self.task_runtime,
         )
-        self.config = ResultRoutingConfig(
-            batch_limit=100,
-            retry_delay_millis=1_000,
-        )
+        self.config = ResultRoutingConfig(per_outcome_batch_limit=100)
 
     def route(self) -> int:
         with patch.object(
@@ -113,10 +116,9 @@ class ResultRoutingPacerTest(unittest.TestCase):
         task_id: str = "task-1",
         message_id: str = "message-1",
         worker_id: str = "worker-1",
-        claim_score: int = 101,
         worker_lease_score: int = 201,
-        claim_until_millis: int = 105_000,
         outcome_code: str = "200",
+        payload: str | None = '{"value":1}',
     ) -> SeedResult:
         return SeedResult(
             opaque_result_context=encode_result_context(
@@ -124,12 +126,13 @@ class ResultRoutingPacerTest(unittest.TestCase):
                     task_id=task_id,
                     message_id=message_id,
                     worker_id=worker_id,
-                    claim_score=claim_score,
+                    claim_score=101,
                     worker_lease_score=worker_lease_score,
-                    task_item_claim_until_millis=claim_until_millis,
+                    task_item_claim_until_millis=105_000,
                 )
             ),
             outcome_code=outcome_code,
+            opaque_result_payload=(payload if outcome_code == "200" else None),
         )
 
     def test_public_contract(self) -> None:
@@ -137,11 +140,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
         self.assertIs(scheduling.ResultRoutingPacer, ResultRoutingPacer)
         self.assertFalse(hasattr(kernel, "ResultRoutingPacer"))
         self.assertEqual(
-            [
-                "opaque_result_context",
-                "outcome_code",
-                "opaque_result_payload",
-            ],
+            ["opaque_result_context", "outcome_code", "opaque_result_payload"],
             [field.name for field in fields(SeedResult)],
         )
         self.assertEqual(
@@ -149,86 +148,83 @@ class ResultRoutingPacerTest(unittest.TestCase):
             SeedResultRuntime.__abstractmethods__,
         )
         self.assertEqual(
-            ["self", "results"],
-            list(inspect.signature(SeedResultRuntime.append_seed_results).parameters),
-        )
-        self.assertEqual(
-            ["self", "limit"],
+            ["self", "outcome_class", "limit"],
             list(inspect.signature(SeedResultRuntime.consume_seed_results).parameters),
         )
-        for values in ((0, 1), (1, 0), (-1, 1)):
-            with self.subTest(values=values), self.assertRaises(ValueError):
-                ResultRoutingConfig(*values)
+        with self.assertRaises(ValueError):
+            ResultRoutingConfig(0)
 
-    def test_success_wins_over_failure_and_all_decoded_workers_are_released(self) -> None:
-        failure = self.result(outcome_code="1000", worker_lease_score=201)
-        success = self.result(outcome_code="200", worker_lease_score=202)
-        self.runtime.consume_seed_results.return_value = (failure, success)
+    def test_success_results_are_last_write_grouped_by_task_and_stored_first(self) -> None:
+        self.queues[SeedResultOutcomeClass.SUCCESS] = (
+            self.result(payload='{"version":1}'),
+            self.result(payload='{"version":2}', worker_lease_score=202),
+            self.result(
+                task_id="task-2",
+                message_id="message-2",
+                worker_id="worker-2",
+                worker_lease_score=203,
+                payload="null",
+            ),
+        )
+        self.task_catalog.load_task_allocation_descriptors.side_effect = (
+            lambda *, task_ids: {
+                task_id: self.descriptor(task_id, "image-workers")
+                for task_id in task_ids
+            }
+        )
+        owner_order: list[str] = []
+        self.task_runtime.store_task_item_success_results.side_effect = (
+            lambda **_kwargs: owner_order.append("store")
+        )
+        self.item_score.promote_item_outcomes.side_effect = (
+            lambda **_kwargs: owner_order.append("promote") or {}
+        )
+
+        self.assertEqual(3, self.route())
+
+        self.assertEqual(["store", "promote", "store", "promote"], owner_order)
+        self.assertEqual(
+            call(task_id="task-1", results={"message-1": '{"version":2}'}),
+            self.task_runtime.store_task_item_success_results.call_args_list[0],
+        )
+        self.assertEqual(
+            call(task_id="task-2", results={"message-2": "null"}),
+            self.task_runtime.store_task_item_success_results.call_args_list[1],
+        )
+        self.assertEqual(
+            call(
+                task_id="task-1",
+                message_ids=("message-1",),
+                target_band=TaskItemScoreBand.FINAL_SUCCESS,
+                target_time_millis=self.NOW_MILLIS,
+            ),
+            self.item_score.promote_item_outcomes.call_args_list[0],
+        )
+        self.item_score.rewrite_observed_item_scores.assert_not_called()
+
+    def test_worker_failure_only_releases_worker_lease(self) -> None:
+        failure = self.result(outcome_code="1500", payload=None)
+        self.queues[SeedResultOutcomeClass.WORKER_FAILURE] = (failure,)
         self.task_catalog.load_task_allocation_descriptors.return_value = {
             "task-1": self.descriptor("task-1", "image-workers")
-        }
-        self.item_score.promote_item_outcomes.return_value = {
-            "message-1": TaskItemScoreTransitionResult(
-                TaskItemScoreTransitionStatus.TRANSITIONED,
-                301,
-            )
         }
 
         self.assertEqual(1, self.route())
 
-        self.item_score.promote_item_outcomes.assert_called_once_with(
-            task_id="task-1",
-            message_ids=("message-1",),
-            target_band=TaskItemScoreBand.FINAL_SUCCESS,
-            target_time_millis=self.NOW_MILLIS,
+        self.worker_score.release_score_holds.assert_called_once_with(
+            home_bucket_id="image-workers",
+            observed_scores={"worker-1": 201},
+            release_time_millis=self.NOW_MILLIS,
         )
-        self.item_score.rewrite_observed_item_scores.assert_not_called()
-        self.assertEqual(
-            [
-                call(
-                    home_bucket_id="image-workers",
-                    observed_scores={"worker-1": 201},
-                    release_time_millis=self.NOW_MILLIS,
-                ),
-                call(
-                    home_bucket_id="image-workers",
-                    observed_scores={"worker-1": 202},
-                    release_time_millis=self.NOW_MILLIS,
-                ),
-            ],
-            self.worker_score.release_score_holds.call_args_list,
-        )
-
-    def test_later_failure_cannot_replace_retained_success(self) -> None:
-        success = self.result(outcome_code="200")
-        failure = self.result(outcome_code="1000")
-        self.runtime.consume_seed_results.return_value = (success, failure)
-        self.task_catalog.load_task_allocation_descriptors.return_value = {
-            "task-1": None
-        }
-        self.item_score.promote_item_outcomes.return_value = {}
-
-        self.route()
-
-        self.item_score.promote_item_outcomes.assert_called_once_with(
-            task_id="task-1",
-            message_ids=("message-1",),
-            target_band=TaskItemScoreBand.FINAL_SUCCESS,
-            target_time_millis=self.NOW_MILLIS,
-        )
+        self.task_runtime.store_task_item_success_results.assert_not_called()
+        self.item_score.promote_item_outcomes.assert_not_called()
         self.item_score.rewrite_observed_item_scores.assert_not_called()
 
-    def test_adapter_rejection_retries_item_and_demotes_worker_to_recovery(self) -> None:
-        rejection = self.result(outcome_code="3001", worker_lease_score=201)
-        self.runtime.consume_seed_results.return_value = (rejection,)
+    def test_adapter_rejection_only_demotes_worker_lease(self) -> None:
+        rejection = self.result(outcome_code="3001", payload=None)
+        self.queues[SeedResultOutcomeClass.ADAPTER_REJECTION] = (rejection,)
         self.task_catalog.load_task_allocation_descriptors.return_value = {
             "task-1": self.descriptor("task-1", "image-workers")
-        }
-        self.item_score.rewrite_observed_item_scores.return_value = {
-            "message-1": TaskItemScoreTransitionResult(
-                TaskItemScoreTransitionStatus.TRANSITIONED,
-                301,
-            )
         }
 
         self.assertEqual(1, self.route())
@@ -238,158 +234,67 @@ class ResultRoutingPacerTest(unittest.TestCase):
             observed_scores={"worker-1": 201},
         )
         self.worker_score.release_score_holds.assert_not_called()
+        self.task_runtime.store_task_item_success_results.assert_not_called()
+        self.item_score.promote_item_outcomes.assert_not_called()
 
-    def test_worker_execution_evidence_wins_over_same_lease_adapter_rejection(
-        self,
-    ) -> None:
-        rejection = self.result(
-            message_id="message-1",
-            outcome_code="3001",
-            worker_lease_score=201,
-        )
-        worker_failure = self.result(
-            message_id="message-2",
-            outcome_code="1000",
-            worker_lease_score=201,
-        )
-        self.runtime.consume_seed_results.return_value = (
-            rejection,
-            worker_failure,
+    def test_same_lease_outcomes_are_submitted_independently_to_score_owner(self) -> None:
+        self.queues[SeedResultOutcomeClass.SUCCESS] = (self.result(),)
+        self.queues[SeedResultOutcomeClass.ADAPTER_REJECTION] = (
+            self.result(outcome_code="3001", payload=None),
         )
         self.task_catalog.load_task_allocation_descriptors.return_value = {
             "task-1": self.descriptor("task-1", "image-workers")
         }
-        self.item_score.rewrite_observed_item_scores.return_value = {}
 
-        self.route()
+        self.assertEqual(2, self.route())
 
-        self.worker_score.release_score_holds.assert_called_once_with(
-            home_bucket_id="image-workers",
-            observed_scores={"worker-1": 201},
-            release_time_millis=self.NOW_MILLIS,
-        )
-        self.worker_score.demote_observed_worker_leases_to_recovery.assert_not_called()
+        self.worker_score.release_score_holds.assert_called_once()
+        self.worker_score.demote_observed_worker_leases_to_recovery.assert_called_once()
 
-    def test_non_200_uses_exact_claim_retry_after_latest_claim_deadline(self) -> None:
-        first = self.result(
-            message_id="message-1",
-            worker_id="worker-1",
-            claim_score=101,
-            claim_until_millis=104_000,
-            outcome_code="1409",
-        )
-        second = self.result(
-            message_id="message-2",
-            worker_id="worker-2",
-            claim_score=102,
-            worker_lease_score=202,
-            claim_until_millis=106_000,
-            outcome_code="1500",
-        )
-        self.runtime.consume_seed_results.return_value = (first, second)
+    def test_missing_descriptor_only_skips_worker_disposition(self) -> None:
+        self.queues[SeedResultOutcomeClass.SUCCESS] = (self.result(),)
         self.task_catalog.load_task_allocation_descriptors.return_value = {
-            "task-1": self.descriptor("task-1", "image-workers")
-        }
-        self.item_score.rewrite_observed_item_scores.return_value = {
-            "message-1": TaskItemScoreTransitionResult(
-                TaskItemScoreTransitionStatus.TRANSITIONED,
-                401,
-            ),
-            "message-2": TaskItemScoreTransitionResult(
-                TaskItemScoreTransitionStatus.STALE,
-            ),
+            "task-1": None
         }
 
         self.assertEqual(1, self.route())
 
-        self.item_score.rewrite_observed_item_scores.assert_called_once_with(
-            task_id="task-1",
-            observed_scores={"message-1": 101, "message-2": 102},
-            target_time_millis=107_000,
-            remaining_budget_delta=0,
+        self.task_runtime.store_task_item_success_results.assert_called_once()
+        self.item_score.promote_item_outcomes.assert_called_once()
+        self.worker_score.release_score_holds.assert_not_called()
+
+    def test_corrupt_or_misrouted_results_are_consumed_without_owner_writes(self) -> None:
+        self.queues[SeedResultOutcomeClass.SUCCESS] = (
+            SeedResult("{bad-json", "200", "null"),
+            self.result(outcome_code="1000", payload=None),
         )
+
+        self.assertEqual(0, self.route())
+
+        self.task_runtime.store_task_item_success_results.assert_not_called()
         self.item_score.promote_item_outcomes.assert_not_called()
+        self.task_catalog.load_task_allocation_descriptors.assert_not_called()
 
-    def test_retry_due_is_scoped_per_task(self) -> None:
-        self.runtime.consume_seed_results.return_value = (
-            self.result(
-                task_id="task-1",
-                message_id="message-1",
-                claim_score=101,
-                claim_until_millis=104_000,
-                outcome_code="1000",
-            ),
-            self.result(
-                task_id="task-2",
-                message_id="message-2",
-                worker_id="worker-2",
-                claim_score=102,
-                worker_lease_score=202,
-                claim_until_millis=110_000,
-                outcome_code="1000",
-            ),
-        )
-        self.task_catalog.load_task_allocation_descriptors.return_value = {
-            "task-1": None,
-            "task-2": None,
-        }
-        self.item_score.rewrite_observed_item_scores.return_value = {}
-
-        self.route()
+    def test_each_lane_uses_its_own_bounded_consume(self) -> None:
+        self.assertEqual(0, self.route())
 
         self.assertEqual(
             [
                 call(
-                    task_id="task-1",
-                    observed_scores={"message-1": 101},
-                    target_time_millis=105_000,
-                    remaining_budget_delta=0,
+                    outcome_class=SeedResultOutcomeClass.SUCCESS,
+                    limit=100,
                 ),
                 call(
-                    task_id="task-2",
-                    observed_scores={"message-2": 102},
-                    target_time_millis=111_000,
-                    remaining_budget_delta=0,
+                    outcome_class=SeedResultOutcomeClass.WORKER_FAILURE,
+                    limit=100,
+                ),
+                call(
+                    outcome_class=SeedResultOutcomeClass.ADAPTER_REJECTION,
+                    limit=100,
                 ),
             ],
-            self.item_score.rewrite_observed_item_scores.call_args_list,
+            self.runtime.consume_seed_results.call_args_list,
         )
-
-    def test_corrupt_context_is_dropped_and_missing_descriptor_only_skips_release(self) -> None:
-        valid = self.result(outcome_code="1000")
-        self.runtime.consume_seed_results.return_value = (
-            SeedResult("{bad-json", "200"),
-            valid,
-        )
-        self.task_catalog.load_task_allocation_descriptors.return_value = {
-            "task-1": None
-        }
-        self.item_score.rewrite_observed_item_scores.return_value = {
-            "message-1": TaskItemScoreTransitionResult(
-                TaskItemScoreTransitionStatus.NOOP
-            )
-        }
-
-        self.assertEqual(0, self.route())
-
-        self.runtime.consume_seed_results.assert_called_once_with(limit=100)
-        self.worker_score.release_score_holds.assert_not_called()
-
-    def test_empty_or_fully_corrupt_batch_is_bounded_noop(self) -> None:
-        for results in ((), (SeedResult("{}", "200"),)):
-            with self.subTest(results=results):
-                self.runtime.reset_mock()
-                self.item_score.reset_mock()
-                self.worker_score.reset_mock()
-                self.task_catalog.reset_mock()
-                self.runtime.consume_seed_results.return_value = results
-
-                self.assertEqual(0, self.route())
-
-                self.item_score.promote_item_outcomes.assert_not_called()
-                self.item_score.rewrite_observed_item_scores.assert_not_called()
-                self.task_catalog.load_task_allocation_descriptors.assert_not_called()
-                self.worker_score.release_score_holds.assert_not_called()
 
 
 if __name__ == "__main__":

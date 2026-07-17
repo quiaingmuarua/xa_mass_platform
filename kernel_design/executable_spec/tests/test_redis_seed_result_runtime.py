@@ -13,6 +13,7 @@ from kernel_design.executable_spec import (
 class FakeRedis:
     def __init__(self) -> None:
         self.lists: dict[str, list[str]] = {}
+        self.pipeline_transaction_flags: list[bool] = []
 
     def rpush(self, key: str, *values: str) -> int:
         row = self.lists.setdefault(key, [])
@@ -24,14 +25,14 @@ class FakeRedis:
         return row.pop(0) if row else None
 
     def pipeline(self, *, transaction: bool) -> FakePipeline:
-        return FakePipeline(self, transaction=transaction)
+        self.pipeline_transaction_flags.append(transaction)
+        return FakePipeline(self)
 
 
 class FakePipeline:
-    def __init__(self, redis: FakeRedis, *, transaction: bool) -> None:
+    def __init__(self, redis: FakeRedis) -> None:
         self.redis = redis
-        self.transaction = transaction
-        self.commands: list[str] = []
+        self.commands: list[tuple[str, str, tuple[str, ...]]] = []
 
     def __enter__(self) -> FakePipeline:
         return self
@@ -39,41 +40,91 @@ class FakePipeline:
     def __exit__(self, *args: object) -> None:
         pass
 
-    def lpop(self, key: str) -> FakePipeline:
-        self.commands.append(key)
+    def rpush(self, key: str, *values: str) -> FakePipeline:
+        self.commands.append(("rpush", key, values))
         return self
 
-    def execute(self) -> list[str | None]:
-        return [self.redis.lpop(key) for key in self.commands]
+    def lpop(self, key: str) -> FakePipeline:
+        self.commands.append(("lpop", key, ()))
+        return self
+
+    def execute(self) -> list[int | str | None]:
+        results: list[int | str | None] = []
+        for operation, key, values in self.commands:
+            if operation == "rpush":
+                results.append(self.redis.rpush(key, *values))
+            else:
+                results.append(self.redis.lpop(key))
+        return results
 
 
 class RedisSeedResultRuntimeTest(unittest.TestCase):
     def setUp(self) -> None:
         self.redis = FakeRedis()
         self.runtime = RedisSeedResultRuntime(self.redis, prefix="test")
-        self.key = "rr:test:seed-results"
 
-    def test_batch_append_and_bounded_consume_are_fifo_on_one_queue(self) -> None:
-        first = SeedResult("context-1", "200", '{"value":1}')
-        second = SeedResult("context-2", "1000")
+    def key(self, outcome_class: SeedResultOutcomeClass) -> str:
+        return self.runtime._queue_key(outcome_class)
+
+    def test_mixed_append_partitions_three_fifo_queues(self) -> None:
+        success = SeedResult("context-success", "200", '{"value":1}')
+        worker_failure = SeedResult("context-worker", "1000")
+        adapter_rejection = SeedResult("context-adapter", "3001")
 
         self.assertEqual(
-            2,
-            self.runtime.append_seed_results(results=(first, second)),
+            3,
+            self.runtime.append_seed_results(
+                results=(success, worker_failure, adapter_rejection),
+            ),
         )
-        self.assertEqual({self.key}, set(self.redis.lists))
+
+        self.assertEqual(
+            {
+                self.key(SeedResultOutcomeClass.SUCCESS),
+                self.key(SeedResultOutcomeClass.WORKER_FAILURE),
+                self.key(SeedResultOutcomeClass.ADAPTER_REJECTION),
+            },
+            set(self.redis.lists),
+        )
+        self.assertNotIn("rr:test:seed-results", self.redis.lists)
+        for outcome_class, expected in (
+            (SeedResultOutcomeClass.SUCCESS, success),
+            (SeedResultOutcomeClass.WORKER_FAILURE, worker_failure),
+            (SeedResultOutcomeClass.ADAPTER_REJECTION, adapter_rejection),
+        ):
+            self.assertEqual(
+                (expected,),
+                self.runtime.consume_seed_results(
+                    outcome_class=outcome_class,
+                    limit=1,
+                ),
+            )
+        self.assertEqual([False, True, True, True], self.redis.pipeline_transaction_flags)
+
+    def test_each_class_is_independently_bounded_and_fifo(self) -> None:
+        first = SeedResult("context-1", "1000")
+        second = SeedResult("context-2", "1001")
+        self.runtime.append_seed_results(results=(first, second))
+
         self.assertEqual(
             (first,),
-            self.runtime.consume_seed_results(limit=1),
+            self.runtime.consume_seed_results(
+                outcome_class=SeedResultOutcomeClass.WORKER_FAILURE,
+                limit=1,
+            ),
         )
         self.assertEqual(
             (second,),
-            self.runtime.consume_seed_results(limit=10),
+            self.runtime.consume_seed_results(
+                outcome_class=SeedResultOutcomeClass.WORKER_FAILURE,
+                limit=10,
+            ),
         )
 
     def test_corrupt_envelopes_are_consumed_and_skipped(self) -> None:
-        valid = SeedResult("context-1", "200")
-        self.redis.lists[self.key] = [
+        valid = SeedResult("context-1", "200", "null")
+        key = self.key(SeedResultOutcomeClass.SUCCESS)
+        self.redis.lists[key] = [
             "{bad-json",
             '{"outcomeCode":"200"}',
             '{"opaqueResultContext":"context","outcomeCode":"500",'
@@ -81,10 +132,16 @@ class RedisSeedResultRuntimeTest(unittest.TestCase):
             RedisSeedResultRuntime._encode_result(valid),
         ]
 
-        self.assertEqual((valid,), self.runtime.consume_seed_results(limit=4))
-        self.assertEqual([], self.redis.lists[self.key])
+        self.assertEqual(
+            (valid,),
+            self.runtime.consume_seed_results(
+                outcome_class=SeedResultOutcomeClass.SUCCESS,
+                limit=4,
+            ),
+        )
+        self.assertEqual([], self.redis.lists[key])
 
-    def test_outcome_code_protocol_is_exact_and_ascii(self) -> None:
+    def test_outcome_protocol_and_success_payload_are_exact(self) -> None:
         self.assertIs(
             SeedResultOutcomeClass.SUCCESS,
             classify_seed_result_outcome_code("200"),
@@ -97,17 +154,27 @@ class RedisSeedResultRuntimeTest(unittest.TestCase):
             SeedResultOutcomeClass.ADAPTER_REJECTION,
             classify_seed_result_outcome_code("3999"),
         )
-        for invalid in ("", "500", "2000", "300", "30000", "\uff13\uff10\uff10\uff11"):
+        with self.assertRaises(ValueError):
+            SeedResult("context", "200")
+        for invalid in ("", "500", "2000", "300", "30000", "３００１"):
             with self.subTest(invalid=invalid):
                 self.assertIsNone(classify_seed_result_outcome_code(invalid))
                 with self.assertRaises(ValueError):
                     SeedResult("context", invalid)
 
-    def test_empty_append_and_invalid_limit(self) -> None:
+    def test_empty_append_and_invalid_consume_arguments(self) -> None:
         self.assertEqual(0, self.runtime.append_seed_results(results=()))
         self.assertEqual({}, self.redis.lists)
         with self.assertRaises(ValueError):
-            self.runtime.consume_seed_results(limit=0)
+            self.runtime.consume_seed_results(
+                outcome_class=SeedResultOutcomeClass.SUCCESS,
+                limit=0,
+            )
+        with self.assertRaises(TypeError):
+            self.runtime.consume_seed_results(  # type: ignore[arg-type]
+                outcome_class="SUCCESS",
+                limit=1,
+            )
 
 
 if __name__ == "__main__":

@@ -10,20 +10,27 @@ Redis shape: [Seed Result Runtime Redis Shape](../runtime-redis/seed-result-runt
 
 ## Purpose
 
-Result routing converts bounded `SeedResult` evidence into independent Item and
-Worker owner operations:
+Result routing consumes three bounded evidence classes and invokes their real
+owners:
 
 ```text
-SeedResultRuntime
-  -> decode ResultContext and classify outcomeCode
-  -> TaskItemScoreBandCore final-success or exact retry
-  -> WorkerScoreCore exact release or exact RECOVERY_RECHECK demotion
+SUCCESS
+  -> TaskRuntime last-success result HASH
+  -> TaskItemScoreBandCore FINAL_SUCCESS
+  -> WorkerScoreCore exact release
+
+WORKER_FAILURE
+  -> WorkerScoreCore exact release
+
+ADAPTER_REJECTION
+  -> WorkerScoreCore exact RECOVERY_RECHECK demotion
 ```
 
-It does not select Workers, claim Items, persist result payloads, refresh Task
-score, parse score internals, or own Worker scheduling-serviceability truth.
+It does not select Workers, claim Items, actively retry failed Items, refresh
+Task score, parse score internals, or own Worker scheduling-serviceability
+truth.
 
-## Protocol
+## Protocol And Queues
 
 ```python
 SeedResult(
@@ -33,10 +40,6 @@ SeedResult(
 )
 ```
 
-The unified queue is not partitioned by endpoint manager. The result context
-carries `taskId`, `messageId`, `workerId`, opaque `claimScore`, opaque
-`workerLeaseScore`, and `taskItemClaimUntilMillis`.
-
 Outcome classification is exact:
 
 ```text
@@ -45,103 +48,108 @@ Outcome classification is exact:
 "3xxx" -> ADAPTER_REJECTION
 ```
 
-`1xxx` and `3xxx` are exactly four ASCII digits. Other values are invalid or
-reserved and authorize no Item or Worker mutation. Result routing understands
-only the class, never the business or adapter subcode.
+`1xxx` and `3xxx` are exactly four ASCII digits. Result routing understands
+only the class. A `200` must carry a non-empty opaque payload; JSON `"null"`
+represents a successful handler with no business return value.
+
+Each class has an independent Redis LIST. The result context remains opaque to
+the queue runtime and carries `taskId`, `messageId`, `workerId`, opaque
+`claimScore`, opaque `workerLeaseScore`, and `taskItemClaimUntilMillis`.
 
 ## Routing Round
 
-```text
-1. consume at most batchLimit SeedResults
-2. decode valid ResultContext values and classify outcomeCode
-3. discard malformed context or invalid outcome protocol
-4. collapse Item evidence by (taskId, messageId)
-5. apply FINAL_SUCCESS for retained 200 evidence
-6. apply exact same-band retry for retained 1xxx / 3xxx evidence
-7. independently classify each correlated Worker lease disposition
-8. load bounded TaskDescriptors to resolve WorkerGroup ownership
-9. exact-release 200 / 1xxx Worker leases
-10. exact-CAS 3xxx Worker leases to RECOVERY_RECHECK
-```
+One round calls the three class lanes in a fixed implementation order. The
+order is deterministic but does not define outcome precedence. Each lane may
+consume up to `perOutcomeBatchLimit`, so a complete round handles at most three
+times that limit.
 
-Within one batch, any `200` wins for the same Item; otherwise the last valid
-failure evidence is retained. Cross-band Item precedence remains owned by
-`TaskItemScoreBandCore`.
-
-Retry uses the original claim fence:
+### Success
 
 ```text
-retryDueMillis
-  = max(nowMillis, taskItemClaimUntilMillis) + retryDelayMillis
-
-remainingBudgetDelta = 0
+consume SUCCESS
+-> decode valid ResultContext values
+-> group by taskId
+-> collapse duplicate messageId to the last payload in queue order
+-> HSET Task success result HASH
+-> promote the same messageIds to FINAL_SUCCESS
+-> exact-release each correlated Worker lease
 ```
 
-The budget was consumed at claim time and is not restored. Result arrival does
-not make the Item immediately retryable.
+Result storage precedes Item promotion. This guarantees `FINAL_SUCCESS` has a
+stored successful payload. A crash may temporarily leave a result payload while
+the Item is still ACTIVE or FINAL_FAILED; claim expiry and a later success can
+converge it. Late success may overwrite both an earlier payload and
+`FINAL_FAILED`.
 
-## Worker Disposition
-
-Worker disposition is independent from Item transition success:
+### Worker Failure
 
 ```text
-200 / 1xxx
-  -> this attempt crossed the Worker execution boundary
-  -> release_score_holds(original workerLeaseScore, now)
-
-3xxx
-  -> Adapter confirmed the Item did not enter Worker execution
-  -> demote_observed_worker_leases_to_recovery(original workerLeaseScore)
+consume WORKER_FAILURE
+-> decode valid ResultContext values
+-> exact-release each correlated Worker lease
+-> do not mutate Item score
 ```
 
-For the same `(workerGroupId, workerId, workerLeaseScore)`, Worker execution
-evidence (`200` or `1xxx`) wins over `3xxx`, because it proves that this attempt
-crossed the Worker execution boundary. It does not prove persistent physical
-connectivity. Duplicate dispositions are collapsed before owner calls.
+The Item remains at its future claim coordinate. When that coordinate becomes
+due, normal TaskItem acquisition retries it without a result-owned retry write.
 
-Worker `STALE`, missing TaskDescriptor, or owner-operation failure does not
-roll back Item movement. The opaque fence prevents an old result from releasing
-or demoting a newer Worker lease.
+### Adapter Rejection
+
+```text
+consume ADAPTER_REJECTION
+-> decode valid ResultContext values
+-> exact-demote each correlated Worker lease to RECOVERY_RECHECK
+-> do not mutate Item score
+```
+
+The Item again becomes retryable through its existing claim coordinate.
+
+## Worker Fence Semantics
+
+TaskDescriptor supplies the WorkerGroup bucket. Missing descriptors only skip
+Worker disposition; they do not undo successful result storage or Item
+promotion.
+
+Every result submits its original opaque `workerLeaseScore` independently.
+There is no cross-class winner map or duplicate collapse. Exact Worker score CAS
+prevents stale evidence from mutating a newer lease. Contradictory classes for
+one exact lease violate the normal one-DeliverSeed/one-SeedResult protocol; the
+score owner accepts at most one applicable disposition.
 
 ## Failure Semantics
 
 ```text
-malformed context or invalid outcomeCode
-  -> consume and discard; no Item or Worker mutation
+malformed context or result in the wrong class queue
+  -> consume and discard; no owner mutation
 
-Item transition STALE / NOOP
-  -> Worker disposition is still attempted
+Worker STALE / NOOP
+  -> does not roll back Item or result truth
 
-missing TaskDescriptor
-  -> skip Worker disposition; lease expiry recovers
-
-Adapter process dies without SeedResult
+Adapter or Worker produces no SeedResult
   -> UNKNOWN; Item claim and Worker lease expiry recover
 
-process crash after SeedResult pop
-  -> Item claim and Worker lease expiry recover
+process crash after queue pop
+  -> ingress evidence may be lost; Item claim and Worker lease expiry recover
 ```
 
-`SeedResultRuntime` is deliberately best-effort. It has no pending/ack queue,
-repair scanner, cross-key transaction, or durable result ledger.
+The class queues are deliberately best-effort. Reliable pending/ack or failure
+history requires a separately justified owner and invariant.
 
 ## Application And Deferred Policy
 
 `ResultRoutingApplication` owns one independently paced loop. Lifecycle order
 is defined by [Kernel Application Assembly](../kernel-application-assembly.md).
-Built-in coordinates are `intervalMillis=100`, `batchLimit=100`, and
-`retryDelayMillis=1000`; only the interval is public JSON.
+The built-in interval is `100ms` and the per-class batch limit is `100`; only
+the interval is public JSON.
 
-Deferred policy is limited to cadence/batch tuning and a future separate result
-projection owner. Reliable pending/ack requires a new named invariant and does
-not belong in the current score-expiry mechanism.
+Deferred policy is limited to cadence, per-class limit tuning, result query
+projection, and stronger ingress reliability.
 
 ## Guardrails
 
-- Do not let Adapter mutate Worker score directly.
+- Do not let Adapter or Worker mutate score directly.
 - Do not parse exact `1xxx` or `3xxx` subcodes in result routing.
-- Do not treat missing SeedResult as adapter rejection.
-- Do not make Worker disposition a precondition for Item movement.
-- Do not inspect current Item score before invoking its score owner.
-- Do not refresh or close Task score because a result arrived.
-- Do not partition the SeedResult queue by endpoint manager.
+- Do not partition queues by exact code, Task, WorkerGroup, or producer source.
+- Do not actively rewrite Item retry time when `1xxx` or `3xxx` arrives.
+- Do not promote Item before its successful payload is stored.
+- Do not reintroduce cross-class outcome precedence or winner aggregation.

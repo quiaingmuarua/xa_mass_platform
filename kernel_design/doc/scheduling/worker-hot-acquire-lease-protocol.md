@@ -136,8 +136,10 @@ The opaque Worker fence returns through `ResultContext`:
 The Adapter emits evidence only; it never mutates score. Result routing invokes
 WorkerScoreCore and treats Worker disposition independently from Item movement.
 
-For one exact lease, Worker execution evidence wins over adapter rejection.
-Stale evidence cannot release or demote a newer lease.
+Every result submits its own exact lease evidence without cross-class winner
+aggregation. Stale evidence cannot release or demote a newer lease. Conflicting
+classes for one exact lease violate the one-DeliverSeed/one-SeedResult protocol;
+the score owner accepts at most one applicable disposition.
 
 ## Serviceability Reconciliation And Recovery Demotion
 

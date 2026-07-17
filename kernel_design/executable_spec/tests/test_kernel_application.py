@@ -185,8 +185,10 @@ class KernelApplicationTest(unittest.TestCase):
             5,
             internal.assignment_dispatch.running_activation.running_visible_initial_suffix,
         )
-        self.assertEqual(100, internal.result_routing.routing.batch_limit)
-        self.assertEqual(1_000, internal.result_routing.routing.retry_delay_millis)
+        self.assertEqual(
+            100,
+            internal.result_routing.routing.per_outcome_batch_limit,
+        )
         self.assertEqual(100, internal.result_routing.interval_millis)
 
     def test_commands_require_successful_start_and_lifecycle_is_strict(self) -> None:

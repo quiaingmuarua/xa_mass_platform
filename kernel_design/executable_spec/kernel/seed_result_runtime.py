@@ -50,6 +50,11 @@ class SeedResult:
         if classify_seed_result_outcome_code(self.outcome_code) is None:
             raise ValueError("outcome code must be 200, 1xxx, or 3xxx")
         if (
+            self.outcome_code == SUCCESS_OUTCOME_CODE
+            and self.opaque_result_payload is None
+        ):
+            raise ValueError("successful result must carry an opaque payload")
+        if (
             self.opaque_result_payload is not None
             and (
                 not isinstance(self.opaque_result_payload, str)
@@ -60,7 +65,7 @@ class SeedResult:
 
 
 class SeedResultRuntime(ABC):
-    """Best-effort unified SeedResult evidence queue."""
+    """Best-effort SeedResult evidence queues partitioned by outcome class."""
 
     @abstractmethod
     def append_seed_results(
@@ -75,7 +80,8 @@ class SeedResultRuntime(ABC):
     def consume_seed_results(
         self,
         *,
+        outcome_class: SeedResultOutcomeClass,
         limit: int,
     ) -> tuple[SeedResult, ...]:
-        """Consume at most limit results from the single logical queue."""
+        """Consume at most limit results from one outcome-class queue."""
         pass

@@ -321,24 +321,24 @@ score, or renew/release Worker leases.
 Result-routing owns:
 
 ```text
-one logical SeedResult queue through SeedResultRuntime
-bounded SeedResult consumption through ResultRoutingPacer
+three outcome-class SeedResult queues through SeedResultRuntime
+bounded per-class SeedResult consumption through ResultRoutingPacer
 opaqueResultContext decoding inside the result owner
-exact `"200"` final-success selection and `1xxx/3xxx` retry selection
-batch-local success precedence for duplicate Item evidence
-opaque claimScore pass-through to TaskItemScoreBandCore
+Task-scoped last-success result payload storage before FINAL_SUCCESS promotion
+no Item score mutation for `1xxx/3xxx`; the existing claim becomes due
 opaque workerLeaseScore pass-through to WorkerScoreCore exact release for
 `200/1xxx` or exact RECOVERY_RECHECK demotion for `3xxx`
-Task Item transition-result counting
+valid routed-evidence counting
 ```
 
-SeedResultRuntime must not classify results or decode context. ResultRoutingPacer
-must not interpret current Item score, reproduce same-tag/cross-tag rules,
-select workers, parse transport sessions as truth, or refresh task or worker
-score as a generic side effect. The public SeedResult queue is not partitioned
-by endpointManagerId. The first executable spec does not persist result payload,
-maintain a result projection/barrier, or parse exact outcome subcodes; exhausted
-ACTIVE budget is finalized by Item dispatch acquire.
+SeedResultRuntime may classify only the public outcome class needed to select
+its queue; it must not decode context. ResultRoutingPacer must not interpret
+current Item score, reproduce same-tag/cross-tag rules, select workers, parse
+transport sessions as truth, or refresh task or worker score as a generic side
+effect. Queues are not partitioned by endpointManagerId, exact subcode, Task,
+WorkerGroup, or producer source. The first executable spec persists only
+last-success payload truth, not failure history or a public result projection;
+exhausted ACTIVE budget is finalized by Item dispatch acquire.
 
 ## 4. Worker-Runtime Boundary Rules
 

@@ -133,7 +133,7 @@ class TaskCreationResult:
 
 
 class TaskRuntime(ABC):
-    """Task and canonical TaskItem record owner surface."""
+    """Task, canonical TaskItem, and last-success result owner surface."""
 
     @abstractmethod
     def create_task(
@@ -163,6 +163,26 @@ class TaskRuntime(ABC):
         message_ids: Sequence[MessageId],
     ) -> Mapping[MessageId, TaskItem | None]:
         """Load canonical records for one bounded Task-scoped message-id batch."""
+        pass
+
+    @abstractmethod
+    def store_task_item_success_results(
+        self,
+        *,
+        task_id: TaskId,
+        results: Mapping[MessageId, str],
+    ) -> None:
+        """Store the latest successful payload for each Task-scoped Item."""
+        pass
+
+    @abstractmethod
+    def load_task_item_success_results(
+        self,
+        *,
+        task_id: TaskId,
+        message_ids: Sequence[MessageId],
+    ) -> Mapping[MessageId, str | None]:
+        """Load bounded Task-scoped last-success result payloads."""
         pass
 
 

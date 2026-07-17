@@ -1,25 +1,19 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterator
 from dataclasses import dataclass
 from time import time_ns
 
 from ..kernel.result_context import ResultContext, decode_result_context
 from ..kernel.seed_result_runtime import (
-    SUCCESS_OUTCOME_CODE as KERNEL_SUCCESS_OUTCOME_CODE,
     SeedResult,
     SeedResultOutcomeClass,
     SeedResultRuntime,
     classify_seed_result_outcome_code,
 )
-from ..kernel.task_item_score_band import (
-    TaskItemScoreBand,
-    TaskItemScoreBandCore,
-    TaskItemScoreTransitionResult,
-    TaskItemScoreTransitionStatus,
-)
-from ..kernel.task_runtime import MessageId, TaskResourceCatalog
+from ..kernel.task_item_score_band import TaskItemScoreBand, TaskItemScoreBandCore
+from ..kernel.task_runtime import MessageId, TaskResourceCatalog, TaskRuntime
 from ..kernel.task_score_band import TaskId, TimeMillis
 from ..kernel.worker_score import Score as WorkerScore
 from ..kernel.worker_score import WorkerId, WorkerScoreCore
@@ -27,27 +21,21 @@ from ..kernel.worker_score import WorkerId, WorkerScoreCore
 
 @dataclass(frozen=True, slots=True)
 class ResultRoutingConfig:
-    batch_limit: int
-    retry_delay_millis: TimeMillis
+    per_outcome_batch_limit: int
 
     def __post_init__(self) -> None:
-        if self.batch_limit <= 0:
-            raise ValueError("result-routing batch limit must be positive")
-        if self.retry_delay_millis <= 0:
-            raise ValueError("result retry delay must be positive")
+        if self.per_outcome_batch_limit <= 0:
+            raise ValueError("per-outcome result-routing batch limit must be positive")
 
 
 @dataclass(frozen=True, slots=True)
 class _DecodedSeedResult:
     result: SeedResult
     context: ResultContext
-    outcome_class: SeedResultOutcomeClass
 
 
 class ResultRoutingPacer:
-    """Route bounded SeedResult evidence into Item and Worker score owners."""
-
-    SUCCESS_OUTCOME_CODE = KERNEL_SUCCESS_OUTCOME_CODE
+    """Route outcome-class queues into TaskItem and Worker owners."""
 
     def __init__(
         self,
@@ -55,160 +43,153 @@ class ResultRoutingPacer:
         item_score: TaskItemScoreBandCore,
         worker_score: WorkerScoreCore,
         task_catalog: TaskResourceCatalog,
+        task_runtime: TaskRuntime,
     ) -> None:
         self.seed_result_runtime = seed_result_runtime
         self.item_score = item_score
         self.worker_score = worker_score
         self.task_catalog = task_catalog
+        self.task_runtime = task_runtime
 
     def route_seed_results(self, *, config: ResultRoutingConfig) -> int:
-        now_millis = self._current_time_millis()
-        results = self.seed_result_runtime.consume_seed_results(
-            limit=config.batch_limit,
+        result_time_millis = self._current_time_millis()
+        handlers = (
+            (
+                SeedResultOutcomeClass.SUCCESS,
+                self._handle_success_results,
+            ),
+            (
+                SeedResultOutcomeClass.WORKER_FAILURE,
+                self._handle_worker_failure_results,
+            ),
+            (
+                SeedResultOutcomeClass.ADAPTER_REJECTION,
+                self._handle_adapter_rejection_results,
+            ),
         )
-        decoded = self._decode_results(results)
-        if not decoded:
-            return 0
+        routed_count = 0
+        for outcome_class, handler in handlers:
+            decoded = self._consume_decoded(
+                outcome_class=outcome_class,
+                limit=config.per_outcome_batch_limit,
+            )
+            if not decoded:
+                continue
+            handler(decoded, result_time_millis)
+            routed_count += len(decoded)
+        return routed_count
 
-        retained = self._retain_item_outcomes(decoded)
-        transitioned_count = self._apply_item_outcomes(
-            retained,
-            now_millis=now_millis,
-            retry_delay_millis=config.retry_delay_millis,
+    def _handle_success_results(
+        self,
+        decoded: tuple[_DecodedSeedResult, ...],
+        result_time_millis: TimeMillis,
+    ) -> None:
+        results_by_task: dict[TaskId, dict[MessageId, str]] = defaultdict(dict)
+        for entry in decoded:
+            payload = entry.result.opaque_result_payload
+            if payload is not None:
+                results_by_task[entry.context.task_id][
+                    entry.context.message_id
+                ] = payload
+
+        for task_id, results in results_by_task.items():
+            self.task_runtime.store_task_item_success_results(
+                task_id=task_id,
+                results=results,
+            )
+            self.item_score.promote_item_outcomes(
+                task_id=task_id,
+                message_ids=tuple(results),
+                target_band=TaskItemScoreBand.FINAL_SUCCESS,
+                target_time_millis=result_time_millis,
+            )
+
+        self._release_worker_leases(
+            decoded,
+            release_time_millis=result_time_millis,
         )
-        self._apply_worker_dispositions(decoded, release_time_millis=now_millis)
-        return transitioned_count
 
-    @staticmethod
-    def _decode_results(
-        results: tuple[SeedResult, ...],
+    def _handle_worker_failure_results(
+        self,
+        decoded: tuple[_DecodedSeedResult, ...],
+        release_time_millis: TimeMillis,
+    ) -> None:
+        self._release_worker_leases(
+            decoded,
+            release_time_millis=release_time_millis,
+        )
+
+    def _handle_adapter_rejection_results(
+        self,
+        decoded: tuple[_DecodedSeedResult, ...],
+        _result_time_millis: TimeMillis,
+    ) -> None:
+        self._demote_worker_leases(decoded)
+
+    def _consume_decoded(
+        self,
+        *,
+        outcome_class: SeedResultOutcomeClass,
+        limit: int,
     ) -> tuple[_DecodedSeedResult, ...]:
+        results = self.seed_result_runtime.consume_seed_results(
+            outcome_class=outcome_class,
+            limit=limit,
+        )
         decoded: list[_DecodedSeedResult] = []
         for result in results:
             context = decode_result_context(result.opaque_result_context)
-            outcome_class = classify_seed_result_outcome_code(result.outcome_code)
-            if context is not None and outcome_class is not None:
-                decoded.append(_DecodedSeedResult(result, context, outcome_class))
+            if (
+                context is not None
+                and classify_seed_result_outcome_code(result.outcome_code)
+                is outcome_class
+            ):
+                decoded.append(_DecodedSeedResult(result, context))
         return tuple(decoded)
 
-    @classmethod
-    def _retain_item_outcomes(
-        cls,
-        decoded: tuple[_DecodedSeedResult, ...],
-    ) -> tuple[_DecodedSeedResult, ...]:
-        retained: dict[tuple[TaskId, MessageId], _DecodedSeedResult] = {}
-        for entry in decoded:
-            key = (entry.context.task_id, entry.context.message_id)
-            current = retained.get(key)
-            if current is not None and current.result.outcome_code == cls.SUCCESS_OUTCOME_CODE:
-                continue
-            retained[key] = entry
-        return tuple(retained.values())
-
-    def _apply_item_outcomes(
-        self,
-        retained: tuple[_DecodedSeedResult, ...],
-        *,
-        now_millis: TimeMillis,
-        retry_delay_millis: TimeMillis,
-    ) -> int:
-        successes: dict[TaskId, list[MessageId]] = defaultdict(list)
-        failures: dict[TaskId, dict[MessageId, int]] = defaultdict(dict)
-        retry_base_by_task: dict[TaskId, TimeMillis] = {}
-
-        for entry in retained:
-            context = entry.context
-            if entry.result.outcome_code == self.SUCCESS_OUTCOME_CODE:
-                successes[context.task_id].append(context.message_id)
-                continue
-            failures[context.task_id][context.message_id] = context.claim_score
-            retry_base_by_task[context.task_id] = max(
-                retry_base_by_task.get(context.task_id, now_millis),
-                context.task_item_claim_until_millis,
-            )
-
-        transitioned_count = 0
-        for task_id, message_ids in successes.items():
-            outcomes = self.item_score.promote_item_outcomes(
-                task_id=task_id,
-                message_ids=tuple(message_ids),
-                target_band=TaskItemScoreBand.FINAL_SUCCESS,
-                target_time_millis=now_millis,
-            )
-            transitioned_count += self._transitioned_count(outcomes.values())
-
-        for task_id, observed_scores in failures.items():
-            retries = self.item_score.rewrite_observed_item_scores(
-                task_id=task_id,
-                observed_scores=observed_scores,
-                target_time_millis=(
-                    retry_base_by_task[task_id] + retry_delay_millis
-                ),
-                remaining_budget_delta=0,
-            )
-            transitioned_count += self._transitioned_count(retries.values())
-        return transitioned_count
-
-    def _apply_worker_dispositions(
+    def _release_worker_leases(
         self,
         decoded: tuple[_DecodedSeedResult, ...],
         *,
         release_time_millis: TimeMillis,
     ) -> None:
-        task_ids = tuple(dict.fromkeys(entry.context.task_id for entry in decoded))
-        descriptors = self.task_catalog.load_task_allocation_descriptors(
-            task_ids=task_ids,
-        )
-        disposition_by_lease: dict[
-            tuple[str, WorkerId, WorkerScore],
-            SeedResultOutcomeClass,
-        ] = {}
-        for entry in decoded:
-            descriptor = descriptors.get(entry.context.task_id)
-            if descriptor is None:
-                continue
-            key = (
-                descriptor.worker_group_id,
-                entry.context.worker_id,
-                entry.context.worker_lease_score,
-            )
-            current = disposition_by_lease.get(key)
-            if current in {
-                SeedResultOutcomeClass.SUCCESS,
-                SeedResultOutcomeClass.WORKER_FAILURE,
-            }:
-                continue
-            disposition_by_lease[key] = entry.outcome_class
-
-        release_scores: dict[str, dict[WorkerId, list[WorkerScore]]] = defaultdict(
-            lambda: defaultdict(list)
-        )
-        recovery_scores: dict[str, dict[WorkerId, list[WorkerScore]]] = defaultdict(
-            lambda: defaultdict(list)
-        )
-        for (worker_group_id, worker_id, worker_score), outcome_class in (
-            disposition_by_lease.items()
-        ):
-            target = (
-                recovery_scores
-                if outcome_class is SeedResultOutcomeClass.ADAPTER_REJECTION
-                else release_scores
-            )
-            target[worker_group_id][worker_id].append(worker_score)
-
-        for worker_group_id, scores_by_worker in release_scores.items():
+        for worker_group_id, scores_by_worker in self._worker_scores(decoded).items():
             for observed_scores in self._score_rounds(scores_by_worker):
                 self.worker_score.release_score_holds(
                     home_bucket_id=worker_group_id,
                     observed_scores=observed_scores,
                     release_time_millis=release_time_millis,
                 )
-        for worker_group_id, scores_by_worker in recovery_scores.items():
+
+    def _demote_worker_leases(
+        self,
+        decoded: tuple[_DecodedSeedResult, ...],
+    ) -> None:
+        for worker_group_id, scores_by_worker in self._worker_scores(decoded).items():
             for observed_scores in self._score_rounds(scores_by_worker):
                 self.worker_score.demote_observed_worker_leases_to_recovery(
                     home_bucket_id=worker_group_id,
                     observed_scores=observed_scores,
                 )
+
+    def _worker_scores(
+        self,
+        decoded: tuple[_DecodedSeedResult, ...],
+    ) -> dict[str, dict[WorkerId, list[WorkerScore]]]:
+        task_ids = tuple(dict.fromkeys(entry.context.task_id for entry in decoded))
+        descriptors = self.task_catalog.load_task_allocation_descriptors(
+            task_ids=task_ids,
+        )
+        scores: dict[str, dict[WorkerId, list[WorkerScore]]] = defaultdict(
+            lambda: defaultdict(list)
+        )
+        for entry in decoded:
+            descriptor = descriptors.get(entry.context.task_id)
+            if descriptor is not None:
+                scores[descriptor.worker_group_id][entry.context.worker_id].append(
+                    entry.context.worker_lease_score
+                )
+        return scores
 
     @staticmethod
     def _score_rounds(
@@ -221,15 +202,6 @@ class ResultRoutingPacer:
                 for worker_id, scores in scores_by_worker.items()
                 if index < len(scores)
             }
-
-    @staticmethod
-    def _transitioned_count(
-        results: Iterable[TaskItemScoreTransitionResult],
-    ) -> int:
-        return sum(
-            result.status is TaskItemScoreTransitionStatus.TRANSITIONED
-            for result in results
-        )
 
     @staticmethod
     def _current_time_millis() -> TimeMillis:

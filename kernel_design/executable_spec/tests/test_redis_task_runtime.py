@@ -525,6 +525,63 @@ class RedisTaskRuntimeTest(unittest.TestCase):
 
         self.assertEqual(TaskItemAppendStatus.NOT_FOUND, result["message-1"].status)
         self.assertNotIn("tr:test:task:missing:items", self.redis.hashes)
+
+    def test_success_results_are_task_scoped_bounded_and_last_write_wins(
+        self,
+    ) -> None:
+        self.runtime.store_task_item_success_results(
+            task_id="task-1",
+            results={"message-1": '{"version":1}'},
+        )
+        self.runtime.store_task_item_success_results(
+            task_id="task-1",
+            results={"message-1": '{"version":2}', "message-2": "null"},
+        )
+        self.runtime.store_task_item_success_results(
+            task_id="task-2",
+            results={"message-1": '{"task":2}'},
+        )
+
+        self.assertEqual(
+            {
+                "message-1": '{"version":2}',
+                "message-2": "null",
+                "missing": None,
+            },
+            self.runtime.load_task_item_success_results(
+                task_id="task-1",
+                message_ids=("message-1", "message-2", "missing", "message-1"),
+            ),
+        )
+        self.assertEqual(
+            {"message-1": '{"task":2}'},
+            self.runtime.load_task_item_success_results(
+                task_id="task-2",
+                message_ids=("message-1",),
+            ),
+        )
+        self.assertEqual(
+            {},
+            self.runtime.load_task_item_success_results(
+                task_id="task-1",
+                message_ids=(),
+            ),
+        )
+
+    def test_success_result_storage_rejects_invalid_owner_coordinates(self) -> None:
+        self.runtime.store_task_item_success_results(task_id="task-1", results={})
+        self.assertNotIn("tr:test:task:task-1:results", self.redis.hashes)
+        for task_id, results in (
+            ("", {"message-1": "null"}),
+            ("task-1", {"": "null"}),
+            ("task-1", {"message-1": ""}),
+        ):
+            with self.subTest(task_id=task_id, results=results):
+                with self.assertRaises(ValueError):
+                    self.runtime.store_task_item_success_results(
+                        task_id=task_id,
+                        results=results,
+                    )
         self.assertNotIn("tr:test:task:missing:item-score", self.redis.zsets)
 
     def test_append_score_failure_leaves_latest_record_for_retry(self) -> None:

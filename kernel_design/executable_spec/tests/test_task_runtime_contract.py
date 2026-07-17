@@ -155,7 +155,13 @@ class TaskRuntimeContractTest(unittest.TestCase):
     def test_task_runtime_surface_exposes_record_operations(self) -> None:
         self.assertEqual(
             TaskRuntime.__abstractmethods__,
-            {"create_task", "append_items", "load_task_items"},
+            {
+                "create_task",
+                "append_items",
+                "load_task_items",
+                "store_task_item_success_results",
+                "load_task_item_success_results",
+            },
         )
         self.assertEqual(
             set(inspect.signature(TaskRuntime.create_task).parameters),
@@ -167,6 +173,22 @@ class TaskRuntimeContractTest(unittest.TestCase):
         )
         self.assertEqual(
             set(inspect.signature(TaskRuntime.load_task_items).parameters),
+            {"self", "task_id", "message_ids"},
+        )
+        self.assertEqual(
+            set(
+                inspect.signature(
+                    TaskRuntime.store_task_item_success_results
+                ).parameters
+            ),
+            {"self", "task_id", "results"},
+        )
+        self.assertEqual(
+            set(
+                inspect.signature(
+                    TaskRuntime.load_task_item_success_results
+                ).parameters
+            ),
             {"self", "task_id", "message_ids"},
         )
 

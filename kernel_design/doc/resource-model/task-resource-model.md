@@ -12,13 +12,13 @@ second lifecycle model.
 ```text
 TaskDescriptor = stable task allocation metadata
 TaskScoreBandCore = task scheduling / lifecycle coordinate
-TaskRuntime = Task descriptor creation plus canonical TaskItem record operations
+TaskRuntime = Task creation, canonical TaskItem records, and last-success result payloads
 TaskItemScoreBandCore = Item score initialization, acquire, claim/retry, and outcome movement
 AssignmentDispatch = bounded consumer of task and worker owner facts
 ```
 
-`TaskRuntime` owns score-coordinated Task creation, TaskItem append, and bounded
-TaskItem record reads. It invokes `TaskScoreBandCore` or
+`TaskRuntime` owns score-coordinated Task creation, TaskItem append, bounded
+TaskItem record reads, and Task-scoped last-success result payloads. It invokes `TaskScoreBandCore` or
 `TaskItemScoreBandCore` through their contracts but does not own, decode, or
 write either score axis. `TaskResourceCatalog`
 owns only the bounded allocation descriptor load. The catalog does not create
@@ -487,7 +487,8 @@ Item-score interface lives in
 The Redis Task implementation lives in
 [`executable_spec/redis_runtime/task_runtime.py`](../../executable_spec/redis_runtime/task_runtime.py)
 and implements score-leased Task creation, descriptor HASH batch loading,
-latest-write TaskItem HASH append, and bounded TaskItem record reads.
+latest-write TaskItem HASH append, bounded TaskItem record reads, and
+last-success result HASH writes/reads.
 [`executable_spec/tests/test_redis_task_runtime_integration.py`](../../executable_spec/tests/test_redis_task_runtime_integration.py)
 is the real-Redis proof for one-owner-per-slot creation, stale-owner rejection,
 redis-py pipeline compatibility, binary response decoding, and corrupt-row isolation.

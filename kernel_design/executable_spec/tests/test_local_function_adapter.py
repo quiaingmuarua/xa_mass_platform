@@ -160,6 +160,10 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
             limit=10,
         )
         self.result_commands.append_seed_results.assert_called_once()
+        results = self.result_commands.append_seed_results.call_args.kwargs["results"]
+        self.assertEqual(("null", "null"), tuple(
+            result.opaque_result_payload for result in results
+        ))
 
     def test_append_error_propagates_without_adapter_compensation(self) -> None:
         self.adapter.register_event_handler(

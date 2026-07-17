@@ -86,7 +86,7 @@ class TransportClientsTest(unittest.TestCase):
 
     def test_clients_delegate_to_their_redis_runtime(self) -> None:
         seed = DeliverSeed("worker-1", "delivery", "context", 1)
-        result = SeedResult("context", "200")
+        result = SeedResult("context", "200", "null")
         self.deliver_runtime.consume_deliver_seeds.return_value = (seed,)
         self.result_runtime.append_seed_results.return_value = 1
 

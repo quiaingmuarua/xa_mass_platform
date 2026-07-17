@@ -69,7 +69,8 @@ TaskScoreBandCore
   lifecycle-direction validation, and terminal score
 
 TaskRuntime
-  owns Task descriptors and canonical TaskItem records
+  owns Task descriptors, canonical TaskItem records, and Task-scoped
+  last-success result payloads
 
 TaskItemScoreBandCore
   owns Item initialization, bounded ACTIVE acquisition, observed same-tag
@@ -84,7 +85,7 @@ AssignmentDispatchRuntime
   queues; neither queue is lifecycle truth
 
 SeedResultRuntime
-  owns one bounded best-effort SeedResult queue, not result classification
+  owns three bounded best-effort outcome-class queues, not Item or Worker truth
 
 Scheduling pacers
   compose owner operations in bounded rounds; they do not copy owner truth
@@ -101,7 +102,7 @@ Transport adapters
 | Task score-band | Implemented with Redis proof | Cadence, scan horizons, activation and no-work budget values |
 | Worker score-band | Implemented with Redis proof, including dirty lease fence | Dirty marking policy when a persisted assignment continuation exists; recovery cadence and ranking |
 | Worker HOT_ACQUIRE lease protocol | Allocation, dispatch exact recheck, result release/recovery demotion, reconnect dirty fence, and one-WorkerId/one-slot invariant implemented | Recovery probe cadence and ranking |
-| TaskItem score-band | Implemented with Redis proof | Initial retry budget and retry delay values |
+| TaskItem score-band | Implemented with Redis proof | Initial retry budget and claim-duration values |
 | Worker allocation | Implemented with unit and Redis orchestration proof | PRE_DISPATCH/RUNNING weighting or quota beyond current RUNNING-first behavior |
 | Task running activation | Implemented | Alternative activation policies beyond the built-in minimum candidate count |
 | TaskItem dispatch | Implemented through DeliverSeed append | Recent-first Redis Task acquisition remains deferred |

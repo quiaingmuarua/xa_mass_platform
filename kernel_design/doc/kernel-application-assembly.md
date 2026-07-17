@@ -23,7 +23,7 @@ endpoint-manager process
 
 endpoint-manager process
   -> SeedResultCommandClient
-     -> append SeedResults to one unified runtime queue
+     -> append SeedResults for runtime-internal outcome-class routing
 ```
 
 Both boundaries expose commands, not runtime objects. Callers cannot obtain
