@@ -18,7 +18,7 @@ from ..kernel.task_item_score_band import (
     TaskItemScoreTransitionStatus,
 )
 from ..kernel.task_runtime import TaskItem, TaskRuntime
-from ..kernel.task_score_band import Score, TaskId, TaskScoreBandCore, TimeMillis
+from ..kernel.task_score_band import TaskId, TaskScoreBandCore, TimeMillis
 from ..kernel.worker_runtime import EndpointManagerId
 from ..kernel.worker_score import (
     WorkerScoreCore,
@@ -113,7 +113,7 @@ class TaskItemDispatchPacer:
                 claim_lease_until_millis=claim_lease_until_millis,
             )
             endpoint_batches: dict[EndpointManagerId, list[DeliverSeed]] = {}
-            for candidate_worker, (task_item, claim_score) in zip(
+            for candidate_worker, task_item in zip(
                 candidate_workers,
                 claimed_items,
             ):
@@ -126,9 +126,7 @@ class TaskItemDispatchPacer:
                             message_id=task_item.message_id,
                             worker_id=candidate_worker.worker_id,
                             worker_group_id=candidate_worker.worker_group_id,
-                            claim_score=claim_score,
                             worker_lease_score=candidate_worker.worker_lease_score,
-                            task_item_claim_until_millis=claim_lease_until_millis,
                         )
                     ),
                     task_item_claim_until_millis=claim_lease_until_millis,
@@ -199,7 +197,7 @@ class TaskItemDispatchPacer:
         limit: int,
         now_millis: TimeMillis,
         claim_lease_until_millis: TimeMillis,
-    ) -> tuple[tuple[TaskItem, Score], ...]:
+    ) -> tuple[TaskItem, ...]:
         observations = self.item_score.acquire_item_score_candidates(
             task_id=task_id,
             limit=limit,
@@ -247,7 +245,7 @@ class TaskItemDispatchPacer:
             remaining_budget_delta=-1,
         )
 
-        claimed_items: list[tuple[TaskItem, Score]] = []
+        claimed_items: list[TaskItem] = []
         for message_id in record_backed_scores:
             result = claim_results.get(message_id)
             task_item = items.get(message_id)
@@ -258,7 +256,7 @@ class TaskItemDispatchPacer:
                 or task_item is None
             ):
                 continue
-            claimed_items.append((task_item, result.score))
+            claimed_items.append(task_item)
         return tuple(claimed_items)
 
     @staticmethod

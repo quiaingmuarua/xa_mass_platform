@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from .task_runtime import MessageId
-from .task_score_band import Score, TaskId, TimeMillis
+from .task_score_band import TaskId
 from .worker_runtime import WorkerGroupId
 from .worker_score import Score as WorkerScore
 from .worker_score import WorkerId
@@ -17,9 +17,7 @@ class ResultContext:
     message_id: MessageId
     worker_id: WorkerId
     worker_group_id: WorkerGroupId
-    claim_score: Score
     worker_lease_score: WorkerScore
-    task_item_claim_until_millis: TimeMillis
 
 
 def encode_result_context(context: ResultContext) -> str:
@@ -30,9 +28,7 @@ def encode_result_context(context: ResultContext) -> str:
             "messageId": context.message_id,
             "workerId": context.worker_id,
             "workerGroupId": context.worker_group_id,
-            "claimScore": context.claim_score,
             "workerLeaseScore": context.worker_lease_score,
-            "taskItemClaimUntilMillis": context.task_item_claim_until_millis,
         },
         allow_nan=False,
         sort_keys=True,
@@ -50,9 +46,7 @@ def decode_result_context(value: str) -> ResultContext | None:
         message_id = payload["messageId"]
         worker_id = payload["workerId"]
         worker_group_id = payload["workerGroupId"]
-        claim_score = payload["claimScore"]
         worker_lease_score = payload["workerLeaseScore"]
-        task_item_claim_until_millis = payload["taskItemClaimUntilMillis"]
     except (KeyError, TypeError, ValueError):
         return None
 
@@ -61,25 +55,16 @@ def decode_result_context(value: str) -> ResultContext | None:
         for identifier in (task_id, message_id, worker_id, worker_group_id)
     ):
         return None
-    if any(
-        isinstance(score, bool) or not isinstance(score, int)
-        for score in (claim_score, worker_lease_score)
+    if isinstance(worker_lease_score, bool) or not isinstance(
+        worker_lease_score, int
     ):
         return None
-    if claim_score <= 0 or worker_lease_score <= 0:
-        return None
-    if (
-        isinstance(task_item_claim_until_millis, bool)
-        or not isinstance(task_item_claim_until_millis, int)
-        or task_item_claim_until_millis <= 0
-    ):
+    if worker_lease_score <= 0:
         return None
     return ResultContext(
         task_id=task_id,
         message_id=message_id,
         worker_id=worker_id,
         worker_group_id=worker_group_id,
-        claim_score=claim_score,
         worker_lease_score=worker_lease_score,
-        task_item_claim_until_millis=task_item_claim_until_millis,
     )

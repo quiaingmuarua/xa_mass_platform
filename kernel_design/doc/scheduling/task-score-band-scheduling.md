@@ -214,7 +214,7 @@ RUNNING_VISIBLE
 
 result evidence
   -> result owner classifies business outcome and invokes TaskItemScoreBandCore
-  -> TaskItemScoreBandCore validates opaque claimScore / outcome movement
+  -> TaskItemScoreBandCore validates owner-local outcome movement
   -> live Task score changes only through Task-score owner-approved rewrite
 ```
 

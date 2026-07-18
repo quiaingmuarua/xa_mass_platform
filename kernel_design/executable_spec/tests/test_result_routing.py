@@ -32,17 +32,15 @@ class ResultContextCodecTest(unittest.TestCase):
             message_id="message-1",
             worker_id="worker-1",
             worker_group_id="image-workers",
-            claim_score=101,
             worker_lease_score=201,
-            task_item_claim_until_millis=105_000,
         )
 
         encoded = encode_result_context(context)
 
         self.assertEqual(["context"], list(inspect.signature(encode_result_context).parameters))
         self.assertEqual(
-            '{"claimScore":101,"messageId":"message-1","taskId":"task-1",'
-            '"taskItemClaimUntilMillis":105000,"workerGroupId":"image-workers",'
+            '{"messageId":"message-1","taskId":"task-1",'
+            '"workerGroupId":"image-workers",'
             '"workerId":"worker-1",'
             '"workerLeaseScore":201}',
             encoded,
@@ -55,9 +53,7 @@ class ResultContextCodecTest(unittest.TestCase):
             "message-1",
             "worker-1",
             "image-workers",
-            101,
             201,
-            105_000,
         )
         payload = json.loads(encode_result_context(context))
         payload["futureField"] = "ignored"
@@ -68,11 +64,10 @@ class ResultContextCodecTest(unittest.TestCase):
             "[]",
             '{"taskId":"task-1"}',
             '{"taskId":"task-1","messageId":"message-1","workerId":"worker-1",'
-            '"claimScore":101,"workerLeaseScore":201,'
-            '"taskItemClaimUntilMillis":105000}',
+            '"workerLeaseScore":201}',
             '{"taskId":"task-1","messageId":"message-1","workerId":"worker-1",'
             '"workerGroupId":"image-workers",'
-            '"claimScore":0,"workerLeaseScore":201,"taskItemClaimUntilMillis":105000}',
+            '"workerLeaseScore":0}',
         ):
             with self.subTest(invalid=invalid):
                 self.assertIsNone(decode_result_context(invalid))
@@ -124,9 +119,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
                     message_id=message_id,
                     worker_id=worker_id,
                     worker_group_id=worker_group_id,
-                    claim_score=101,
                     worker_lease_score=worker_lease_score,
-                    task_item_claim_until_millis=105_000,
                 )
             ),
             outcome_code=outcome_code,
@@ -218,6 +211,38 @@ class ResultRoutingPacerTest(unittest.TestCase):
         self.task_runtime.store_task_item_success_results.assert_not_called()
         self.item_score.promote_item_outcomes.assert_not_called()
         self.item_score.rewrite_observed_item_scores.assert_not_called()
+
+    def test_worker_failure_batches_each_worker_group_once(self) -> None:
+        self.queues[SeedResultOutcomeClass.WORKER_FAILURE] = (
+            self.result(outcome_code="1500", payload=None),
+            self.result(
+                task_id="task-2",
+                message_id="message-2",
+                worker_id="worker-2",
+                worker_group_id="gpu-workers",
+                worker_lease_score=202,
+                outcome_code="1500",
+                payload=None,
+            ),
+        )
+
+        self.assertEqual(2, self.route())
+
+        self.assertEqual(
+            [
+                call(
+                    home_bucket_id="image-workers",
+                    observed_scores={"worker-1": 201},
+                    release_time_millis=self.NOW_MILLIS,
+                ),
+                call(
+                    home_bucket_id="gpu-workers",
+                    observed_scores={"worker-2": 202},
+                    release_time_millis=self.NOW_MILLIS,
+                ),
+            ],
+            self.worker_score.release_score_holds.call_args_list,
+        )
 
     def test_adapter_rejection_only_demotes_worker_lease(self) -> None:
         rejection = self.result(outcome_code="3001", payload=None)

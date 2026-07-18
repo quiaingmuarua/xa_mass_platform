@@ -54,15 +54,19 @@ represents a successful handler with no business return value.
 
 Each class has an independent Redis LIST. The result context remains opaque to
 the queue runtime and carries `taskId`, `messageId`, `workerId`,
-`workerGroupId`, opaque `claimScore`, opaque `workerLeaseScore`, and
-`taskItemClaimUntilMillis`. `workerGroupId` is the home-bucket coordinate of
-the opaque Worker lease fence; result routing does not reread Task metadata to
-recover it.
+`workerGroupId`, and opaque `workerLeaseScore`. `workerGroupId` is the
+home-bucket coordinate of the opaque Worker lease fence; result routing does
+not reread Task metadata to recover it. Item claim score and claim-until time
+are not result-routing inputs. The claim-until time remains a top-level
+DeliverSeed cutoff used before Worker submit.
 
 ## Routing Round
 
-One round calls the three class lanes in a fixed implementation order. The
-order is deterministic but does not define outcome precedence. Each lane may
+One round calls the three class lanes in a fixed implementation order. Normal
+protocol produces one SeedResult per DeliverSeed and therefore no cross-class
+precedence decision. If contradictory evidence for one exact Worker lease does
+arrive, the first applicable exact CAS in that fixed order wins; this is
+unsupported protocol-error behavior, not a result winner policy. Each lane may
 consume up to `perOutcomeBatchLimit`, so a complete round handles at most three
 times that limit.
 
@@ -128,11 +132,12 @@ carried with the opaque lease fence at dispatch time, so late result handling
 does not depend on TaskDescriptor retention or a metadata lookup.
 
 Within one outcome batch, repeated results for the same Worker collapse to the
-last opaque `workerLeaseScore` in queue order. There is no cross-class winner
-map. Exact Worker score CAS prevents stale evidence from mutating a newer
-lease. Contradictory classes for one exact lease violate the normal
-one-DeliverSeed/one-SeedResult protocol; the score owner accepts at most one
-applicable disposition.
+last opaque `workerLeaseScore` in queue order. Queue arrival order does not
+guarantee lease-coordinate recency, so this is only a bounded best-effort
+selection. If the selected value is an older fence, exact CAS returns `STALE`;
+the consequence is only that release or demotion is not immediate, and normal
+lease expiry restores liveness. Older scores are not retried one by one because
+one Worker has only one current score. There is no cross-class winner map.
 
 ## Failure Semantics
 

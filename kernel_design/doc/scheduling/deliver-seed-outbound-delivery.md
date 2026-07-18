@@ -104,9 +104,10 @@ payload. The endpoint manager may translate the opaque item before Worker
 submit. The kernel does not merge multiple TaskItems into one delivery item.
 
 `opaqueResultContext` is forwarded unchanged and contains the Task, Item,
-Worker, WorkerGroup home-bucket coordinate, claim-score, and Worker-lease
-correlation required by later result routing. Worker-facing transport adapters
-and Redis queue runtime do not parse it.
+Worker, WorkerGroup home-bucket coordinate, and Worker-lease correlation
+required by later result routing. Item claim score remains internal to the
+TaskItem score owner. Worker-facing transport adapters and Redis queue runtime
+do not parse the context.
 
 `taskItemClaimUntilMillis` is only a fast stale-seed cutoff. The queue may be
 lost or replayed without becoming the correctness owner: Item claim expiry and
@@ -134,7 +135,7 @@ candidate truth.
 - Do not let outbound delivery choose or replace the selected Worker.
 - Do not let transport acceptance become Item result finality.
 - Do not mutate Task score because delivery succeeds or fails.
-- Do not reconstruct or decode `claimScore` or `workerLeaseScore`.
+- Do not reconstruct or decode `workerLeaseScore`.
 - Do not emit a timeout result for a seed discarded before Worker submit.
 - Do not downgrade a real late Worker result to diagnostics-only handling.
 - Do not move Worker release/retain decisions into outbound queue consumption
