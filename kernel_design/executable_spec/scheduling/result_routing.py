@@ -121,7 +121,7 @@ class ResultRoutingBuiltinPolicies:
         self.worker_score.release_score_holds(
             home_bucket_id=worker_group_id,
             observed_scores=self._latest_worker_scores(results),
-            release_time_millis=result_time_millis,
+            release_time_millis=self._current_time_millis(),
         )
 
     def demote_worker_score_holds_to_recovery(
@@ -144,6 +144,10 @@ class ResultRoutingBuiltinPolicies:
             result.worker_id: result.worker_lease_score
             for result in results
         }
+
+    @staticmethod
+    def _current_time_millis() -> TimeMillis:
+        return time_ns() // 1_000_000
 
 
 @dataclass(frozen=True, slots=True)

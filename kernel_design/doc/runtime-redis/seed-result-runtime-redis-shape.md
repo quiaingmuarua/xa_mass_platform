@@ -53,7 +53,11 @@ RedisSeedResultRuntime
   owns class queue encoding, partitioning, and bounded append/consume
 
 ResultRoutingPacer
-  owns context decoding and class-local owner-operation composition
+  owns bounded class consumption, context decoding, owner-key grouping,
+  and delegation to injected handlers
+
+ResultRoutingBuiltinPolicies / replacement handlers
+  own class-local Task and Worker owner-operation policy
 
 TaskRuntime
   owns Task-scoped last-success result payload truth

@@ -244,10 +244,11 @@ synthesize timeout results
 ```
 
 `SeedResultRuntime` stores accepted evidence in one of three class queues.
-`ResultRoutingPacer` stores last-success payload and promotes FINAL_SUCCESS for
-`200`, exact-releases Worker leases for `200/1xxx`, and exact-demotes them for
-`3xxx`. Failures do not actively rewrite Item retry time; the existing Item
-claim becomes due naturally.
+`ResultRoutingPacer` consumes, decodes, groups, and delegates the result
+evidence. The built-in Task handler stores last-success payload and promotes
+FINAL_SUCCESS for `200`; the built-in Worker handlers exact-release leases for
+`200/1xxx` and exact-demote them for `3xxx`. Failures do not actively rewrite
+Item retry time; the existing Item claim becomes due naturally.
 When the adapter drops a malformed/expired seed, crashes, or cannot submit a
 result, TaskItem claim and Worker lease time coordinates remain the recovery
 fallback. Missing evidence is never reclassified as `3xxx`.

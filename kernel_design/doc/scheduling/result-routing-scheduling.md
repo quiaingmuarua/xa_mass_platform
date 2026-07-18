@@ -105,7 +105,11 @@ WorkerScoreCore.
 receive one `taskId`, its immutable result tuple, and `resultTimeMillis`.
 Worker handlers receive one `workerGroupId`, its immutable evidence tuple, and
 the same action-neutral `resultTimeMillis`; the time parameter does not imply
-that the replacement policy must release the Worker. `ResultRoutingPacer`
+that the replacement policy must release the Worker, and it is not a safe
+Worker release coordinate after arbitrary handler work. The built-in release
+policy reads a fresh clock value immediately before calling
+`release_score_holds`; Task success promotion continues to use the stable
+round time. `ResultRoutingPacer`
 accepts owner-local outcome-to-handler mappings, copies them during
 construction, and requires Task SUCCESS coverage plus Worker coverage for all
 three outcome classes. It depends only on `SeedResultRuntime` plus those two

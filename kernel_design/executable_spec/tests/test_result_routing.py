@@ -107,6 +107,10 @@ class ResultRoutingPacerTest(unittest.TestCase):
             ResultRoutingPacer,
             "_current_time_millis",
             return_value=self.NOW_MILLIS,
+        ), patch.object(
+            ResultRoutingBuiltinPolicies,
+            "_current_time_millis",
+            return_value=self.NOW_MILLIS,
         ):
             return self.pacer.route_seed_results(config=self.config)
 
@@ -335,6 +339,33 @@ class ResultRoutingPacerTest(unittest.TestCase):
         self.task_runtime.store_task_item_success_results.assert_not_called()
         self.item_score.promote_item_outcomes.assert_not_called()
         self.item_score.rewrite_observed_item_scores.assert_not_called()
+
+    def test_worker_release_uses_fresh_policy_time_after_round_time(self) -> None:
+        self.queues[SeedResultOutcomeClass.SUCCESS] = (self.result(),)
+        release_time_millis = self.NOW_MILLIS + WorkerScoreCore.SLOT_MILLIS
+
+        with patch.object(
+            ResultRoutingPacer,
+            "_current_time_millis",
+            return_value=self.NOW_MILLIS,
+        ), patch.object(
+            ResultRoutingBuiltinPolicies,
+            "_current_time_millis",
+            return_value=release_time_millis,
+        ):
+            self.assertEqual(1, self.pacer.route_seed_results(config=self.config))
+
+        self.item_score.promote_item_outcomes.assert_called_once_with(
+            task_id="task-1",
+            message_ids=("message-1",),
+            target_band=TaskItemScoreBand.FINAL_SUCCESS,
+            target_time_millis=self.NOW_MILLIS,
+        )
+        self.worker_score.release_score_holds.assert_called_once_with(
+            home_bucket_id="image-workers",
+            observed_scores={"worker-1": 201},
+            release_time_millis=release_time_millis,
+        )
 
     def test_worker_failure_batches_each_worker_group_once(self) -> None:
         self.queues[SeedResultOutcomeClass.WORKER_FAILURE] = (

@@ -211,7 +211,8 @@ cross-owner transaction.
 | TaskWorkerAllocationPacer | bounded lease, match and candidate publication | no result handling or compensation release |
 | TaskItemDispatchPacer | active fence validation/renewal before Item claim | no Worker discovery, rematch or release |
 | External Adapter | local final-hop observation and execution evidence | no score parsing or mutation |
-| ResultRoutingPacer | outcome class routing to Item and Worker owners | no Worker selection or exact subcode policy |
+| ResultRoutingPacer | bounded consume, context decode, owner-key grouping and handler delegation | no direct Task/Worker owner dependency, Worker selection or exact subcode policy |
+| Result-routing handlers | owner-local Task finality and Worker disposition policy | no queue ownership, score decoding or cross-owner truth |
 
 ## Deferred Policy
 

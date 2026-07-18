@@ -322,22 +322,27 @@ Result-routing owns:
 
 ```text
 three outcome-class SeedResult queues through SeedResultRuntime
-bounded per-class SeedResult consumption through ResultRoutingPacer
-opaqueResultContext decoding inside the result owner
+bounded consume, opaqueResultContext decode, owner-key grouping, and handler
+delegation through ResultRoutingPacer
 Task-scoped last-success result payload storage before FINAL_SUCCESS promotion
+through the selected Task result handler
 no Item score mutation for `1xxx/3xxx`; the existing claim becomes due
 workerGroupId plus opaque workerLeaseScore pass-through to WorkerScoreCore exact
-release for `200/1xxx` or exact RECOVERY_RECHECK demotion for `3xxx`
+release for `200/1xxx` or exact RECOVERY_RECHECK demotion for `3xxx` through
+the selected Worker result handler
 valid routed-evidence counting
 ```
 
 SeedResultRuntime may classify only the public outcome class needed to select
 its queue; it must not decode context. ResultRoutingPacer must not interpret
 current Item score, reproduce same-tag/cross-tag rules, select workers, parse
-transport sessions as truth, or refresh task or worker score as a generic side
-effect. Queues are not partitioned by endpointManagerId, exact subcode, Task,
-WorkerGroup, or producer source. The first executable spec persists only
-last-success payload truth, not failure history or a public result projection;
+transport sessions as truth, depend directly on Task/Worker runtime owners, or
+refresh task or worker score as a generic side effect. Built-in owner-operation
+policy belongs to `ResultRoutingBuiltinPolicies`; replacement policy uses the
+same stable handler contracts. Queues are not partitioned by endpointManagerId,
+exact subcode, Task, WorkerGroup, or producer source. The first executable spec
+persists only last-success payload truth, not failure history or a public result
+projection;
 exhausted ACTIVE budget is finalized by Item dispatch acquire.
 
 ## 4. Worker-Runtime Boundary Rules
@@ -375,8 +380,8 @@ renew_active_hot_score_leases(...)
 dispatch disposition
   validates/renews the exact active fence before Item claim
   rejects dirty/recovery/expired/stale candidates without compensation release
-  result routing exact-releases `200/1xxx` fences and moves `3xxx` fences
-  to negative polarity
+  result-routing Worker handlers exact-release `200/1xxx` fences and move
+  `3xxx` fences to negative polarity
 
 connect/reconnect
   existing score preserves timeSlot/laneRank, converges positive, dirty=1

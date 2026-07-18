@@ -148,6 +148,12 @@ ResultRoutingApplication
   -> SeedResult-routing loop
 ```
 
+The composition root creates one `ResultRoutingBuiltinPolicies`, obtains its
+default Task and Worker handler mappings, and injects them into
+`ResultRoutingPacer`. The Pacer itself depends only on `SeedResultRuntime` and
+the stable handler contracts; Task runtime, TaskItem score, and Worker score
+dependencies belong to the selected policy object.
+
 Each assignment-dispatch loop has one non-daemon thread and its own configured
 interval. A loop executes its first bounded round immediately, runs at most one
 round at a time, waits for its interval after the round returns, and logs a

@@ -16,7 +16,7 @@ The kernel has four scheduling planes:
 | Task score-band | Which Tasks may enter a scheduling round now? | Task score coordinate and owner facts | Bounded Task ids or an owner-approved score transition | Task scheduling score only |
 | Worker score-band | Which Workers may enter admission or recovery now? | Worker score coordinate and worker-runtime facts | Bounded Worker observations, leases, holds, or polarity movement | Worker scheduling score only |
 | Assignment-dispatch | Which bounded Task/Worker/Item combination becomes delivery evidence? | Due Tasks, Worker observations, Task descriptors, candidate queues, TaskItem records and Item scores | CandidateWorker entries and queued DeliverSeeds | Owner-local candidate runtime and TaskItem score through declared primitives |
-| Result-routing | How does returned evidence affect Item finality/retry and Worker hold? | SeedResults and opaque result context | Item outcome/retry request and Worker exact-release request | No private truth; invokes TaskItem and Worker score owners |
+| Result-routing | How does returned evidence affect Task success finality and Worker disposition? | SeedResults and opaque result context | Owner-local Task and Worker evidence delegated to policy handlers | No private truth; handlers invoke TaskItem and Worker score owners |
 
 These are logical planes, not mandatory deployment modules. Package placement
 may change without changing owner authority.
@@ -52,8 +52,9 @@ Task score acquire
   -> endpoint-manager delivery
   -> SeedResult queue
   -> result routing classification
-     -> 200 / 1xxx: TaskItem outcome/retry + Worker exact release
-     -> 3xxx: TaskItem retry + Worker exact RECOVERY_RECHECK demotion
+     -> 200: store last-success + FINAL_SUCCESS + Worker exact release
+     -> 1xxx: keep Item claim coordinate + Worker exact release
+     -> 3xxx: keep Item claim coordinate + Worker exact RECOVERY_RECHECK demotion
      -> no result: Item claim and Worker lease expire naturally
 ```
 
@@ -87,8 +88,14 @@ AssignmentDispatchRuntime
 SeedResultRuntime
   owns three bounded best-effort outcome-class queues, not Item or Worker truth
 
-Scheduling pacers
-  compose owner operations in bounded rounds; they do not copy owner truth
+ResultRoutingPacer
+  bounded-consumes, decodes, groups, and delegates owner-local evidence
+
+ResultRoutingBuiltinPolicies or replacement handlers
+  compose Task and Worker owner operations without owning their truth
+
+Other scheduling pacers
+  compose declared owner operations in bounded rounds; they do not copy truth
 
 Transport adapters
   consume already-assigned DeliverSeeds and emit SeedResults; they do not
@@ -107,7 +114,7 @@ Transport adapters
 | Task running activation | Implemented | Alternative activation policies beyond the built-in minimum candidate count |
 | TaskItem dispatch | Implemented through DeliverSeed append | Recent-first Redis Task acquisition remains deferred |
 | Outbound delivery example | Independent clients and Local Function Adapter implemented | Production transport, pending/ack, and protocol-specific conversion |
-| Result routing | Implemented with unit and Redis orchestration proof | Result projection and stronger queue reliability require separate owners and invariants |
+| Result routing | Implemented with unit and Redis orchestration proof; Task/Worker policy handlers are replaceable | Result projection and stronger queue reliability require separate owners and invariants |
 
 Deferred policy stays in the document of the mechanism that consumes it. There
 is no global policy backlog document and no policy residue may create a second

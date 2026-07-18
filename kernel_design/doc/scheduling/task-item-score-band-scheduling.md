@@ -703,8 +703,9 @@ script contains band names, budget, time, result, or retry policy.
 
 - Task/runtime policy chooses the initial remaining budget and initialization
   coordinate; callers never provide encoded score fields.
-- Dispatch and result-routing policy choose future claim/retry times without
-  changing same-tag and cross-tag write rules.
+- Dispatch policy chooses the future claim coordinate. Failure result routing
+  does not rewrite retry time; the existing claim coordinate becoming due
+  restores acquisition visibility without changing score rules.
 - Final Item retention requires a separate retention owner; score finality does
   not define physical deletion time.
 

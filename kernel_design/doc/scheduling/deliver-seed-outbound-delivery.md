@@ -58,9 +58,9 @@ consume_deliver_seeds(endpointManagerId, limit)
 
 Worker result appended to SeedResultRuntime
   -> runtime routes by SUCCESS / WORKER_FAILURE / ADAPTER_REJECTION
-  -> ResultRoutingPacer bounded-consumes the corresponding class queue
-  -> success stores result truth and finalizes the TaskItem
-  -> Worker owner receives exact release or recovery-demotion request
+  -> ResultRoutingPacer bounded-consumes, decodes, groups, and delegates
+  -> selected Task handler stores success truth and finalizes the TaskItem
+  -> selected Worker handler requests exact release or recovery demotion
 
 transport rejected / resolution failed / outbound process stopped
   -> do not immediately release or reschedule
