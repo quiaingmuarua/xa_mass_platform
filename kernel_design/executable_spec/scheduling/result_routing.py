@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from time import time_ns
 from typing import Protocol, Callable
 
-from executable_spec import SeedResultOutcomeClass
 from ..kernel.result_context import decode_result_context
 from ..kernel.seed_result_runtime import (
     SeedResultOutcomeClass,
