@@ -74,15 +74,34 @@ Each lane decodes once and normalizes its bounded input into two private
 indexes:
 
 ```text
-taskId -> ordered decoded results
-workerGroupId -> ordered decoded results
+taskId -> ordered TaskResultEvidence(
+  taskId,
+  messageId,
+  opaqueResultPayload
+)
+
+workerGroupId -> ordered WorkerResultEvidence(
+  taskId,
+  workerId,
+  workerGroupId,
+  workerLeaseScore,
+  outcomeCode
+)
 ```
 
-Normalization does not apply duplicate precedence. The SUCCESS handler applies
-last-result semantics by `messageId` inside one Task. Worker disposition groups
-`workerId + workerLeaseScore` only when preparing the exact score-owner call;
-the last score observed for one Worker in that outcome batch is submitted.
-Each WorkerGroup therefore produces at most one batch call to WorkerScoreCore.
+`SeedResult` and `ResultContext` do not leave this decode cutpoint. Only the
+SUCCESS lane creates Task evidence; every valid outcome creates Worker
+evidence. After consuming one outcome queue, routing enters two owner-local
+paths: `_handle_task_results` receives only `resultsByTask`, while
+`_handle_worker_results` receives only `resultsByWorkerGroup`. Each path
+selects its own outcome policy and invokes leaf handlers with one `taskId`
+batch or one `workerGroupId` batch. No leaf handler receives the mixed decoded
+batch or a complete owner index. Normalization does not apply duplicate
+precedence. The Task success handler applies last-result semantics by
+`messageId` inside one Task. Worker disposition selects the last score observed
+for one Worker in that outcome batch only when preparing the exact score-owner
+call. Each WorkerGroup therefore produces at most one batch call to
+WorkerScoreCore.
 
 ### Success
 
