@@ -62,6 +62,8 @@ from .scheduling import (
     CandidateId,
     ResultRoutingConfig,
     ResultRoutingPacer,
+    TaskResultEvidence,
+    TaskResultHandler,
     TaskItemDispatchConfig,
     TaskItemDispatchPacer,
     TaskRunningActivationConfig,
@@ -73,6 +75,8 @@ from .scheduling import (
     WorkerCandidateMatcher,
     WorkerCandidateMatches,
     WorkerCandidateMatchResult,
+    WorkerResultEvidence,
+    WorkerResultHandler,
     minimum_candidate_workers_satisfied,
 )
 from .redis_runtime import (
@@ -168,9 +172,13 @@ __all__ = [
     "minimum_candidate_workers_satisfied",
     "ResultRoutingConfig",
     "ResultRoutingPacer",
+    "TaskResultEvidence",
+    "TaskResultHandler",
     "SeedResult",
     "SeedResultOutcomeClass",
     "SeedResultRuntime",
     "SUCCESS_OUTCOME_CODE",
+    "WorkerResultEvidence",
+    "WorkerResultHandler",
     "classify_seed_result_outcome_code",
 ]

@@ -103,6 +103,19 @@ for one Worker in that outcome batch only when preparing the exact score-owner
 call. Each WorkerGroup therefore produces at most one batch call to
 WorkerScoreCore.
 
+`TaskResultEvidence`, `WorkerResultEvidence`, `TaskResultHandler`, and
+`WorkerResultHandler` are stable scheduling-policy contracts. Task handlers
+receive one `taskId`, its immutable result tuple, and `resultTimeMillis`.
+Worker handlers receive one `workerGroupId`, its immutable evidence tuple, and
+the same action-neutral `resultTimeMillis`; the time parameter does not imply
+that the replacement policy must release the Worker. `ResultRoutingPacer`
+accepts owner-local outcome-to-handler mappings, copies them during
+construction, and requires Task SUCCESS coverage plus Worker coverage for all
+three outcome classes. The built-in handlers implement the current result
+storage and Item promotion policy. The built-in Worker handler table states
+the current disposition policy directly: SUCCESS and WORKER_FAILURE release
+score holds, while ADAPTER_REJECTION demotes exact score holds to recovery.
+
 ### Success
 
 ```text

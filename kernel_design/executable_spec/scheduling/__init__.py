@@ -1,5 +1,12 @@
 from .task_item_dispatch import TaskItemDispatchConfig, TaskItemDispatchPacer
-from .result_routing import ResultRoutingConfig, ResultRoutingPacer
+from .result_routing import (
+    ResultRoutingConfig,
+    ResultRoutingPacer,
+    TaskResultEvidence,
+    TaskResultHandler,
+    WorkerResultEvidence,
+    WorkerResultHandler,
+)
 from .task_worker_allocation import (
     TaskRunningActivationConfig,
     TaskRunningActivationPolicy,
@@ -20,6 +27,8 @@ __all__ = [
     "CandidateId",
     "ResultRoutingConfig",
     "ResultRoutingPacer",
+    "TaskResultEvidence",
+    "TaskResultHandler",
     "TaskItemDispatchConfig",
     "TaskItemDispatchPacer",
     "TaskRunningActivationConfig",
@@ -31,5 +40,7 @@ __all__ = [
     "WorkerCandidateMatcher",
     "WorkerCandidateMatches",
     "WorkerCandidateMatchResult",
+    "WorkerResultEvidence",
+    "WorkerResultHandler",
     "minimum_candidate_workers_satisfied",
 ]

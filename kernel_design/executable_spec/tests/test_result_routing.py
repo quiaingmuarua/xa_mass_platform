@@ -13,10 +13,14 @@ from kernel_design.executable_spec import (
     SeedResult,
     SeedResultOutcomeClass,
     SeedResultRuntime,
+    TaskResultEvidence,
+    TaskResultHandler,
     TaskItemScoreBand,
     TaskItemScoreBandCore,
     TaskRuntime,
     WorkerScoreCore,
+    WorkerResultEvidence,
+    WorkerResultHandler,
 )
 from kernel_design.executable_spec.kernel.result_context import (
     ResultContext,
@@ -129,6 +133,10 @@ class ResultRoutingPacerTest(unittest.TestCase):
     def test_public_contract(self) -> None:
         self.assertIs(kernel.SeedResultRuntime, SeedResultRuntime)
         self.assertIs(scheduling.ResultRoutingPacer, ResultRoutingPacer)
+        self.assertIs(scheduling.TaskResultEvidence, TaskResultEvidence)
+        self.assertIs(scheduling.TaskResultHandler, TaskResultHandler)
+        self.assertIs(scheduling.WorkerResultEvidence, WorkerResultEvidence)
+        self.assertIs(scheduling.WorkerResultHandler, WorkerResultHandler)
         self.assertFalse(hasattr(kernel, "ResultRoutingPacer"))
         self.assertEqual(
             ["opaque_result_context", "outcome_code", "opaque_result_payload"],
@@ -139,11 +147,106 @@ class ResultRoutingPacerTest(unittest.TestCase):
             SeedResultRuntime.__abstractmethods__,
         )
         self.assertEqual(
+            ["task_id", "message_id", "opaque_result_payload"],
+            [field.name for field in fields(TaskResultEvidence)],
+        )
+        self.assertEqual(
+            [
+                "task_id",
+                "worker_id",
+                "worker_group_id",
+                "worker_lease_score",
+                "outcome_code",
+            ],
+            [field.name for field in fields(WorkerResultEvidence)],
+        )
+        self.assertEqual(
+            ["self", "task_id", "results", "result_time_millis"],
+            list(inspect.signature(TaskResultHandler.__call__).parameters),
+        )
+        self.assertEqual(
+            ["self", "worker_group_id", "results", "result_time_millis"],
+            list(inspect.signature(WorkerResultHandler.__call__).parameters),
+        )
+        self.assertEqual(
             ["self", "outcome_class", "limit"],
             list(inspect.signature(SeedResultRuntime.consume_seed_results).parameters),
         )
         with self.assertRaises(ValueError):
             ResultRoutingConfig(0)
+
+    def test_owner_result_handlers_are_replaceable_stable_contracts(self) -> None:
+        task_handler = Mock()
+        worker_handlers = {
+            outcome_class: Mock()
+            for outcome_class in SeedResultOutcomeClass
+        }
+        pacer = ResultRoutingPacer(
+            self.runtime,
+            self.item_score,
+            self.worker_score,
+            self.task_runtime,
+            task_result_handlers={
+                SeedResultOutcomeClass.SUCCESS: task_handler,
+            },
+            worker_result_handlers=worker_handlers,
+        )
+        self.queues[SeedResultOutcomeClass.SUCCESS] = (self.result(),)
+
+        with patch.object(
+            ResultRoutingPacer,
+            "_current_time_millis",
+            return_value=self.NOW_MILLIS,
+        ):
+            self.assertEqual(1, pacer.route_seed_results(config=self.config))
+
+        task_handler.assert_called_once_with(
+            task_id="task-1",
+            results=(
+                TaskResultEvidence(
+                    task_id="task-1",
+                    message_id="message-1",
+                    opaque_result_payload='{"value":1}',
+                ),
+            ),
+            result_time_millis=self.NOW_MILLIS,
+        )
+        worker_handlers[SeedResultOutcomeClass.SUCCESS].assert_called_once_with(
+            worker_group_id="image-workers",
+            results=(
+                WorkerResultEvidence(
+                    task_id="task-1",
+                    worker_id="worker-1",
+                    worker_group_id="image-workers",
+                    worker_lease_score=201,
+                    outcome_code="200",
+                ),
+            ),
+            result_time_millis=self.NOW_MILLIS,
+        )
+        self.task_runtime.store_task_item_success_results.assert_not_called()
+        self.item_score.promote_item_outcomes.assert_not_called()
+        self.worker_score.release_score_holds.assert_not_called()
+
+    def test_owner_result_handler_coverage_is_required(self) -> None:
+        with self.assertRaisesRegex(ValueError, "Task result handlers"):
+            ResultRoutingPacer(
+                self.runtime,
+                self.item_score,
+                self.worker_score,
+                self.task_runtime,
+                task_result_handlers={},
+            )
+        with self.assertRaisesRegex(ValueError, "Worker result handlers"):
+            ResultRoutingPacer(
+                self.runtime,
+                self.item_score,
+                self.worker_score,
+                self.task_runtime,
+                worker_result_handlers={
+                    SeedResultOutcomeClass.SUCCESS: Mock(),
+                },
+            )
 
     def test_success_results_are_last_write_grouped_by_task_and_stored_first(self) -> None:
         self.queues[SeedResultOutcomeClass.SUCCESS] = (
