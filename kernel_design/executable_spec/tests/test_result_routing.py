@@ -9,6 +9,7 @@ from unittest.mock import Mock, call, patch
 from kernel_design.executable_spec import kernel, scheduling
 from kernel_design.executable_spec import (
     ResultRoutingConfig,
+    ResultRoutingBuiltinPolicies,
     ResultRoutingPacer,
     SeedResult,
     SeedResultOutcomeClass,
@@ -89,11 +90,15 @@ class ResultRoutingPacerTest(unittest.TestCase):
         self.runtime.consume_seed_results.side_effect = (
             lambda *, outcome_class, limit: self.queues.get(outcome_class, ())
         )
+        self.builtin_policies = ResultRoutingBuiltinPolicies(
+            task_runtime=self.task_runtime,
+            item_score=self.item_score,
+            worker_score=self.worker_score,
+        )
         self.pacer = ResultRoutingPacer(
             self.runtime,
-            self.item_score,
-            self.worker_score,
-            self.task_runtime,
+            task_result_handlers=self.builtin_policies.default_task_result_handlers(),
+            worker_result_handlers=self.builtin_policies.default_worker_result_handlers(),
         )
         self.config = ResultRoutingConfig(per_outcome_batch_limit=100)
 
@@ -137,7 +142,20 @@ class ResultRoutingPacerTest(unittest.TestCase):
         self.assertIs(scheduling.TaskResultHandler, TaskResultHandler)
         self.assertIs(scheduling.WorkerResultEvidence, WorkerResultEvidence)
         self.assertIs(scheduling.WorkerResultHandler, WorkerResultHandler)
+        self.assertIs(
+            scheduling.ResultRoutingBuiltinPolicies,
+            ResultRoutingBuiltinPolicies,
+        )
         self.assertFalse(hasattr(kernel, "ResultRoutingPacer"))
+        self.assertEqual(
+            [
+                "self",
+                "seed_result_runtime",
+                "task_result_handlers",
+                "worker_result_handlers",
+            ],
+            list(inspect.signature(ResultRoutingPacer.__init__).parameters),
+        )
         self.assertEqual(
             ["opaque_result_context", "outcome_code", "opaque_result_payload"],
             [field.name for field in fields(SeedResult)],
@@ -152,11 +170,8 @@ class ResultRoutingPacerTest(unittest.TestCase):
         )
         self.assertEqual(
             [
-                "task_id",
                 "worker_id",
-                "worker_group_id",
                 "worker_lease_score",
-                "outcome_code",
             ],
             [field.name for field in fields(WorkerResultEvidence)],
         )
@@ -183,9 +198,6 @@ class ResultRoutingPacerTest(unittest.TestCase):
         }
         pacer = ResultRoutingPacer(
             self.runtime,
-            self.item_score,
-            self.worker_score,
-            self.task_runtime,
             task_result_handlers={
                 SeedResultOutcomeClass.SUCCESS: task_handler,
             },
@@ -215,11 +227,8 @@ class ResultRoutingPacerTest(unittest.TestCase):
             worker_group_id="image-workers",
             results=(
                 WorkerResultEvidence(
-                    task_id="task-1",
                     worker_id="worker-1",
-                    worker_group_id="image-workers",
                     worker_lease_score=201,
-                    outcome_code="200",
                 ),
             ),
             result_time_millis=self.NOW_MILLIS,
@@ -228,21 +237,33 @@ class ResultRoutingPacerTest(unittest.TestCase):
         self.item_score.promote_item_outcomes.assert_not_called()
         self.worker_score.release_score_holds.assert_not_called()
 
+    def test_builtin_policy_mappings_expose_composable_named_methods(self) -> None:
+        self.assertEqual(
+            {
+                SeedResultOutcomeClass.SUCCESS: self.builtin_policies.store_task_success_results,
+            },
+            self.builtin_policies.default_task_result_handlers(),
+        )
+        self.assertEqual(
+            {
+                SeedResultOutcomeClass.SUCCESS: self.builtin_policies.release_worker_score_holds,
+                SeedResultOutcomeClass.WORKER_FAILURE: self.builtin_policies.release_worker_score_holds,
+                SeedResultOutcomeClass.ADAPTER_REJECTION: self.builtin_policies.demote_worker_score_holds_to_recovery,
+            },
+            self.builtin_policies.default_worker_result_handlers(),
+        )
+
     def test_owner_result_handler_coverage_is_required(self) -> None:
         with self.assertRaisesRegex(ValueError, "Task result handlers"):
             ResultRoutingPacer(
                 self.runtime,
-                self.item_score,
-                self.worker_score,
-                self.task_runtime,
                 task_result_handlers={},
+                worker_result_handlers=self.builtin_policies.default_worker_result_handlers(),
             )
         with self.assertRaisesRegex(ValueError, "Worker result handlers"):
             ResultRoutingPacer(
                 self.runtime,
-                self.item_score,
-                self.worker_score,
-                self.task_runtime,
+                task_result_handlers=self.builtin_policies.default_task_result_handlers(),
                 worker_result_handlers={
                     SeedResultOutcomeClass.SUCCESS: Mock(),
                 },

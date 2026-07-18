@@ -4,8 +4,9 @@ from collections.abc import Mapping
 from collections import defaultdict
 from dataclasses import dataclass
 from time import time_ns
-from typing import Protocol
+from typing import Protocol, Callable
 
+from executable_spec import SeedResultOutcomeClass
 from ..kernel.result_context import decode_result_context
 from ..kernel.seed_result_runtime import (
     SeedResultOutcomeClass,
@@ -38,11 +39,8 @@ class TaskResultEvidence:
 
 @dataclass(frozen=True, slots=True)
 class WorkerResultEvidence:
-    task_id: TaskId
     worker_id: WorkerId
-    worker_group_id: WorkerGroupId
     worker_lease_score: WorkerScore
-    outcome_code: str
 
 
 class TaskResultHandler(Protocol):
@@ -63,6 +61,90 @@ class WorkerResultHandler(Protocol):
         results: tuple[WorkerResultEvidence, ...],
         result_time_millis: TimeMillis,
     ) -> None: ...
+
+
+class ResultRoutingBuiltinPolicies:
+    def __init__(
+        self,
+        *,
+        task_runtime: TaskRuntime,
+        item_score: TaskItemScoreBandCore,
+        worker_score: WorkerScoreCore,
+    ) -> None:
+        self.task_runtime = task_runtime
+        self.item_score = item_score
+        self.worker_score = worker_score
+
+    def default_task_result_handlers(
+        self,
+    ) -> dict[SeedResultOutcomeClass, Callable[..., None]]:
+        return {
+            SeedResultOutcomeClass.SUCCESS: self.store_task_success_results,
+        }
+
+    def default_worker_result_handlers(
+        self,
+    ) -> dict[SeedResultOutcomeClass, Callable[..., None] | Callable[..., None] | Callable[..., None]]:
+        return {
+            SeedResultOutcomeClass.SUCCESS: self.release_worker_score_holds,
+            SeedResultOutcomeClass.WORKER_FAILURE: self.release_worker_score_holds,
+            SeedResultOutcomeClass.ADAPTER_REJECTION: self.demote_worker_score_holds_to_recovery,
+        }
+
+    def store_task_success_results(
+        self,
+        *,
+        task_id: TaskId,
+        results: tuple[TaskResultEvidence, ...],
+        result_time_millis: TimeMillis,
+    ) -> None:
+        payloads_by_message_id: dict[MessageId, str] = {}
+        for result in results:
+            payloads_by_message_id[result.message_id] = result.opaque_result_payload
+        self.task_runtime.store_task_item_success_results(
+            task_id=task_id,
+            results=payloads_by_message_id,
+        )
+        self.item_score.promote_item_outcomes(
+            task_id=task_id,
+            message_ids=tuple(payloads_by_message_id),
+            target_band=TaskItemScoreBand.FINAL_SUCCESS,
+            target_time_millis=result_time_millis,
+        )
+
+    def release_worker_score_holds(
+        self,
+        *,
+        worker_group_id: WorkerGroupId,
+        results: tuple[WorkerResultEvidence, ...],
+        result_time_millis: TimeMillis,
+    ) -> None:
+        self.worker_score.release_score_holds(
+            home_bucket_id=worker_group_id,
+            observed_scores=self._latest_worker_scores(results),
+            release_time_millis=result_time_millis,
+        )
+
+    def demote_worker_score_holds_to_recovery(
+        self,
+        *,
+        worker_group_id: WorkerGroupId,
+        results: tuple[WorkerResultEvidence, ...],
+        result_time_millis: TimeMillis,
+    ) -> None:
+        self.worker_score.demote_observed_worker_leases_to_recovery(
+            home_bucket_id=worker_group_id,
+            observed_scores=self._latest_worker_scores(results),
+        )
+
+    @staticmethod
+    def _latest_worker_scores(
+        results: tuple[WorkerResultEvidence, ...],
+    ) -> dict[WorkerId, WorkerScore]:
+        return {
+            result.worker_id: result.worker_lease_score
+            for result in results
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,38 +169,17 @@ class ResultRoutingPacer:
     def __init__(
         self,
         seed_result_runtime: SeedResultRuntime,
-        item_score: TaskItemScoreBandCore,
-        worker_score: WorkerScoreCore,
-        task_runtime: TaskRuntime,
         *,
         task_result_handlers: Mapping[
             SeedResultOutcomeClass, TaskResultHandler
-        ] | None = None,
+        ],
         worker_result_handlers: Mapping[
             SeedResultOutcomeClass, WorkerResultHandler
-        ] | None = None,
+        ],
     ) -> None:
         self.seed_result_runtime = seed_result_runtime
-        self.item_score = item_score
-        self.worker_score = worker_score
-        self.task_runtime = task_runtime
-        default_task_handlers = {SeedResultOutcomeClass.SUCCESS: self._handle_task_success_results,
-        }
-        default_worker_handlers = {
-            SeedResultOutcomeClass.SUCCESS: self._release_worker_score_holds,
-            SeedResultOutcomeClass.WORKER_FAILURE: self._release_worker_score_holds,
-            SeedResultOutcomeClass.ADAPTER_REJECTION: self._demote_worker_score_holds_to_recovery,
-        }
-        self._task_result_handlers = dict(
-            default_task_handlers
-            if task_result_handlers is None
-            else task_result_handlers
-        )
-        self._worker_result_handlers = dict(
-            default_worker_handlers
-            if worker_result_handlers is None
-            else worker_result_handlers
-        )
+        self._task_result_handlers = dict(task_result_handlers)
+        self._worker_result_handlers = dict(worker_result_handlers)
         self._validate_result_handlers()
 
     def route_seed_results(self, *, config: ResultRoutingConfig) -> int:
@@ -178,52 +239,6 @@ class ResultRoutingPacer:
                 result_time_millis=result_time_millis,
             )
 
-    def _handle_task_success_results(
-        self,
-        *,
-        task_id: TaskId,
-        results: tuple[TaskResultEvidence, ...],
-        result_time_millis: TimeMillis,
-    ) -> None:
-        payloads_by_message_id: dict[MessageId, str] = {}
-        for result in results:
-            payloads_by_message_id[result.message_id] = result.opaque_result_payload
-        self.task_runtime.store_task_item_success_results(
-            task_id=task_id,
-            results=payloads_by_message_id,
-        )
-        self.item_score.promote_item_outcomes(
-            task_id=task_id,
-            message_ids=tuple(payloads_by_message_id),
-            target_band=TaskItemScoreBand.FINAL_SUCCESS,
-            target_time_millis=result_time_millis,
-        )
-
-    def _release_worker_score_holds(
-        self,
-        *,
-        worker_group_id: WorkerGroupId,
-        results: tuple[WorkerResultEvidence, ...],
-        result_time_millis: TimeMillis,
-    ) -> None:
-        self.worker_score.release_score_holds(
-            home_bucket_id=worker_group_id,
-            observed_scores=self._latest_worker_scores(results),
-            release_time_millis=result_time_millis,
-        )
-
-    def _demote_worker_score_holds_to_recovery(
-        self,
-        *,
-        worker_group_id: WorkerGroupId,
-        results: tuple[WorkerResultEvidence, ...],
-        result_time_millis: TimeMillis,
-    ) -> None:
-        self.worker_score.demote_observed_worker_leases_to_recovery(
-            home_bucket_id=worker_group_id,
-            observed_scores=self._latest_worker_scores(results),
-        )
-
     def _consume_decoded(
         self,
         *,
@@ -259,11 +274,8 @@ class ResultRoutingPacer:
                         )
                 results_by_worker_group[context.worker_group_id].append(
                     WorkerResultEvidence(
-                        task_id=context.task_id,
                         worker_id=context.worker_id,
-                        worker_group_id=context.worker_group_id,
                         worker_lease_score=context.worker_lease_score,
-                        outcome_code=result.outcome_code,
                     )
                 )
         return _DecodedSeedResultBatch(
@@ -277,15 +289,6 @@ class ResultRoutingPacer:
                 for worker_group_id, entries in results_by_worker_group.items()
             },
         )
-
-    @staticmethod
-    def _latest_worker_scores(
-        results: tuple[WorkerResultEvidence, ...],
-    ) -> dict[WorkerId, WorkerScore]:
-        return {
-            result.worker_id: result.worker_lease_score
-            for result in results
-        }
 
     def _validate_result_handlers(self) -> None:
         if set(self._task_result_handlers) != {SeedResultOutcomeClass.SUCCESS}:

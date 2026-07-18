@@ -4,6 +4,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..scheduling import (
+    ResultRoutingBuiltinPolicies,
+    ResultRoutingPacer,
     TaskItemDispatchPacer,
     TaskRunningActivationPacer,
     TaskWorkerAllocationPacer,
@@ -22,7 +24,6 @@ from ..redis_runtime import (
     RedisWorkerScoreCore,
     RedisSeedResultRuntime,
 )
-from ..scheduling import ResultRoutingPacer
 from .assignment_dispatch_application import (
     AssignmentDispatchApplication,
     AssignmentDispatchApplicationConfig,
@@ -136,12 +137,16 @@ class _RedisKernelProcess:
             redis_client,
             prefix=config.prefix,
         )
+        result_routing_policies = ResultRoutingBuiltinPolicies(
+            task_runtime=self._task_runtime,
+            item_score=task_item_score,
+            worker_score=self._worker_score,
+        )
         self._result_routing_application = ResultRoutingApplication(
             ResultRoutingPacer(
                 self._seed_result_runtime,
-                task_item_score,
-                self._worker_score,
-                self._task_runtime,
+                task_result_handlers=result_routing_policies.default_task_result_handlers(),
+                worker_result_handlers=result_routing_policies.default_worker_result_handlers(),
             )
         )
 

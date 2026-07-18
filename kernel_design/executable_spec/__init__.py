@@ -61,6 +61,7 @@ from .kernel import (
 from .scheduling import (
     CandidateId,
     ResultRoutingConfig,
+    ResultRoutingBuiltinPolicies,
     ResultRoutingPacer,
     TaskResultEvidence,
     TaskResultHandler,
@@ -171,6 +172,7 @@ __all__ = [
     "TaskWorkerAllocationPacer",
     "minimum_candidate_workers_satisfied",
     "ResultRoutingConfig",
+    "ResultRoutingBuiltinPolicies",
     "ResultRoutingPacer",
     "TaskResultEvidence",
     "TaskResultHandler",
