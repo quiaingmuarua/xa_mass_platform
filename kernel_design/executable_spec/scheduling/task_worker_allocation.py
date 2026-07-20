@@ -17,8 +17,9 @@ from ..kernel.task_score_band import (
 )
 from ..kernel.worker_runtime import WorkerGroupId
 from .worker_candidate import (
-    RealtimeWorkerCandidateAcquirer,
+    WorkerCandidateAcquirer,
     WorkerCandidateAcquisition,
+    WorkerCandidateAcquisitionStrategy,
     WorkerCandidateRequest,
 )
 
@@ -48,12 +49,12 @@ class TaskWorkerAllocationPacer:
         self,
         task_score: TaskScoreBandCore,
         task_catalog: TaskResourceCatalog,
-        realtime_candidate_acquirer: RealtimeWorkerCandidateAcquirer,
+        candidate_acquirer: WorkerCandidateAcquirer,
         candidate_cache: CandidateWorkerCache,
     ) -> None:
         self.task_score = task_score
         self.task_catalog = task_catalog
-        self.realtime_candidate_acquirer = realtime_candidate_acquirer
+        self.candidate_acquirer = candidate_acquirer
         self.candidate_cache = candidate_cache
 
     def allocate_candidate_workers(
@@ -88,7 +89,8 @@ class TaskWorkerAllocationPacer:
             candidate_requests_by_worker_group.items()
         ):
             acquired_candidates.update(
-                self.realtime_candidate_acquirer.acquire_worker_candidates(
+                self.candidate_acquirer.acquire_worker_candidates(
+                    strategy=WorkerCandidateAcquisitionStrategy.REALTIME,
                     worker_group_id=worker_group_id,
                     candidate_requests=candidate_requests,
                     lease_until_millis=worker_lease_until_millis,

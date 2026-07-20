@@ -9,8 +9,8 @@ import kernel_design.executable_spec as executable_spec
 import kernel_design.executable_spec.kernel as kernel
 from kernel_design.executable_spec import (
     RedisWorkerDynamicAttributeRuntime,
+    WorkerCandidateAcquisition,
     WorkerCandidateConstraint,
-    WorkerCandidateMatchResult,
     WorkerCandidateMatcher,
     WorkerGroupDescriptor,
     WorkerRuntimeStatus,
@@ -71,14 +71,12 @@ class WorkerCandidateMatcherContractTest(unittest.TestCase):
             {
                 "self",
                 "worker_group_id",
-                "worker_ids",
+                "worker_lease_scores",
                 "candidate_constraints",
             },
         )
-        self.assertEqual(
-            {field.name for field in fields(WorkerCandidateMatchResult)},
-            {"matches", "endpoint_manager_id_by_worker_id"},
-        )
+        self.assertFalse(hasattr(executable_spec, "WorkerCandidateMatchResult"))
+        self.assertFalse(hasattr(executable_spec, "WorkerCandidateMatches"))
 
     def test_assignment_symbols_are_root_exports_not_kernel_exports(self) -> None:
         self.assertIs(executable_spec.WorkerCandidateMatcher, WorkerCandidateMatcher)
@@ -108,18 +106,30 @@ class WorkerCandidateMatcherTest(RedisWorkerRuntimeFixture):
         worker_group_id: str = "image-workers",
         worker_ids: Sequence[str],
         candidate_constraints: dict[str, WorkerCandidateConstraint],
-    ):
+    ) -> WorkerCandidateAcquisition:
+        worker_lease_scores = {
+            worker_id: 1_000 + index
+            for index, worker_id in enumerate(dict.fromkeys(worker_ids))
+        }
         return matcher.match_worker_candidates(
             worker_group_id=worker_group_id,
-            worker_ids=worker_ids,
+            worker_lease_scores=worker_lease_scores,
             candidate_constraints=candidate_constraints,
         )
 
     @staticmethod
     def reservation_ids(rows):
         return {
-            candidate_id: list(worker_ids)
-            for candidate_id, worker_ids in rows.matches.items()
+            candidate_id: [entry.worker_id for entry in entries]
+            for candidate_id, entries in rows.items()
+        }
+
+    @staticmethod
+    def endpoint_manager_ids(rows):
+        return {
+            entry.worker_id: entry.endpoint_manager_id
+            for entries in rows.values()
+            for entry in entries
         }
 
     def test_candidate_matcher_matches_bounded_workers_and_preserves_order(self) -> None:
@@ -207,12 +217,23 @@ class WorkerCandidateMatcherTest(RedisWorkerRuntimeFixture):
                 "all": ["worker-2"],
             },
         )
-        self.assertEqual(tuple(rows.matches), ("premium-python-battery", "all"))
+        self.assertEqual(tuple(rows), ("premium-python-battery", "all"))
         self.assertEqual(
-            rows.endpoint_manager_id_by_worker_id,
+            self.endpoint_manager_ids(rows),
             {
                 "worker-1": "endpoint-manager-1",
                 "worker-2": "endpoint-manager-2",
+            },
+        )
+        self.assertEqual(
+            {
+                "worker-1": 1_002,
+                "worker-2": 1_000,
+            },
+            {
+                entry.worker_id: entry.worker_lease_score
+                for entries in rows.values()
+                for entry in entries
             },
         )
 
@@ -230,8 +251,8 @@ class WorkerCandidateMatcherTest(RedisWorkerRuntimeFixture):
             },
         )
 
-        self.assertEqual(rows.matches["transport-placement"], ())
-        self.assertEqual(rows.endpoint_manager_id_by_worker_id, {})
+        self.assertEqual(rows["transport-placement"], ())
+        self.assertEqual(self.endpoint_manager_ids(rows), {})
 
     def test_candidate_matcher_rejects_missing_dynamic_handler(self) -> None:
         self.upsert_group()
@@ -357,7 +378,7 @@ class WorkerCandidateMatcherTest(RedisWorkerRuntimeFixture):
                 worker_group_id="image-workers",
                 worker_ids=["worker-1"],
                 candidate_constraints=constraints,
-            ).matches,
+            ),
         )
 
     def test_candidate_matcher_never_discovers_workers_outside_input(self) -> None:
@@ -525,7 +546,7 @@ class WorkerCandidateMatcherTest(RedisWorkerRuntimeFixture):
             },
         )
         self.assertEqual(
-            set(rows.endpoint_manager_id_by_worker_id),
+            set(self.endpoint_manager_ids(rows)),
             {"worker-1", "worker-2", "worker-3"},
         )
 
@@ -743,7 +764,7 @@ class WorkerCandidateMatcherTest(RedisWorkerRuntimeFixture):
 
         self.assertEqual(self.reservation_ids(result), {"candidate-1": ["worker-1"]})
         self.assertEqual(
-            result.endpoint_manager_id_by_worker_id,
+            self.endpoint_manager_ids(result),
             {"worker-1": "endpoint-manager-1"},
         )
 
@@ -756,8 +777,7 @@ class WorkerCandidateMatcherTest(RedisWorkerRuntimeFixture):
             candidate_constraints={},
         )
 
-        self.assertEqual(result.matches, {})
-        self.assertEqual(result.endpoint_manager_id_by_worker_id, {})
+        self.assertEqual(result, {})
 
 
 if __name__ == "__main__":

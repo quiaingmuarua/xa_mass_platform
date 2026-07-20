@@ -58,8 +58,9 @@ laneRank, writes a future time coordinate, and clears dirty before the current
 matcher reads Worker metadata. Concurrent rounds may scan the same Worker, but
 only one exact observed-score CAS succeeds.
 
-`RealtimeWorkerCandidateAcquirer` owns this sequence. It never reads candidate
-cache. Each call is scoped to one explicit WorkerGroup and one score ZSET.
+The `REALTIME` path in `WorkerCandidateAcquirer` owns this sequence. It never
+reads candidate cache. Each call is scoped to one explicit WorkerGroup and one
+score ZSET.
 Allocation cache warming and Item-directed realtime dispatch reuse the same
 implementation.
 
@@ -69,7 +70,8 @@ immediate hot-loop rematching from the same evidence.
 
 ## Cached Acquisition Validation
 
-`CachedWorkerCandidateAcquirer` consumes bounded cache evidence and calls:
+The `CACHED` path in `WorkerCandidateAcquirer` consumes bounded cache evidence
+and calls:
 
 ```text
 renew_active_hot_score_leases(
@@ -222,8 +224,8 @@ cross-owner transaction.
 | --- | --- | --- |
 | WorkerScoreCore | score encoding, scans, exact lease, dirty fence, release and polarity mechanics | no Task policy, transport or result subcode parsing |
 | WorkerRuntime | declaration validation, first score initialization and trusted reconnect reconciliation | no heartbeat or dispatch ownership |
-| RealtimeWorkerCandidateAcquirer | bounded HOT scan, exact lease and match | no cache read or fallback |
-| CachedWorkerCandidateAcquirer | cache consume, exact active-fence validation/renewal and rematch | no HOT scan or fallback |
+| WorkerCandidateAcquirer REALTIME | bounded HOT scan, exact lease and match | no cache read or fallback |
+| WorkerCandidateAcquirer CACHED | cache consume, exact active-fence validation/renewal and rematch | no HOT scan or fallback |
 | TaskWorkerAllocationPacer | build stable Task requests, invoke realtime acquisition and publish cache evidence | no direct Worker-score or result handling |
 | TaskItemDispatchPacer | observe Items, resolve one acquirer, claim and publish DeliverSeed | no cache/Worker-score access or release |
 | External Adapter | local final-hop observation and execution evidence | no score parsing or mutation |

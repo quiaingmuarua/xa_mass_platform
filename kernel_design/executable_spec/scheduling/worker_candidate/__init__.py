@@ -1,25 +1,19 @@
 from .acquisition import (
-    CachedWorkerCandidateAcquirer,
-    RealtimeWorkerCandidateAcquirer,
     WorkerCandidateAcquirer,
-    WorkerCandidateAcquisition,
+    WorkerCandidateAcquisitionStrategy,
     WorkerCandidateRequest,
 )
 from .matching import (
+    WorkerCandidateAcquisition,
     WorkerCandidateConstraint,
     WorkerCandidateMatcher,
-    WorkerCandidateMatches,
-    WorkerCandidateMatchResult,
 )
 
 __all__ = [
-    "CachedWorkerCandidateAcquirer",
-    "RealtimeWorkerCandidateAcquirer",
     "WorkerCandidateAcquirer",
     "WorkerCandidateAcquisition",
+    "WorkerCandidateAcquisitionStrategy",
     "WorkerCandidateConstraint",
     "WorkerCandidateMatcher",
-    "WorkerCandidateMatches",
-    "WorkerCandidateMatchResult",
     "WorkerCandidateRequest",
 ]

@@ -12,7 +12,6 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
     redis_module = None  # type: ignore[assignment]
 
 from kernel_design.executable_spec import (
-    CachedWorkerCandidateAcquirer,
     CandidateWorkerEntry,
     RedisCandidateWorkerCache,
     RedisDeliverSeedRuntime,
@@ -34,6 +33,8 @@ from kernel_design.executable_spec import (
     TaskScoreBand,
     TaskScoreTransitionStatus,
     WorkerScoreTransitionStatus,
+    WorkerCandidateAcquirer,
+    WorkerCandidateAcquisitionStrategy,
     WorkerCandidateMatcher,
     WorkerDeclaration,
     WorkerGroupDescriptor,
@@ -102,7 +103,7 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             prefix=self.prefix,
             initial_lane_rank=50,
         )
-        cached_acquirer = CachedWorkerCandidateAcquirer(
+        candidate_acquirer = WorkerCandidateAcquirer(
             self.candidate_cache,
             self.worker_score,
             WorkerCandidateMatcher(
@@ -112,6 +113,7 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
                     update_handlers={},
                 ),
             ),
+            worker_scan_limit=10,
         )
         self.pacer = TaskItemDispatchPacer(
             self.task_score,
@@ -119,7 +121,10 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             self.deliver_seed_runtime,
             self.item_score,
             self.task_runtime,
-            lambda _descriptor, _task_items: cached_acquirer,
+            candidate_acquirer,
+            lambda _descriptor, _task_items: (
+                WorkerCandidateAcquisitionStrategy.CACHED
+            ),
         )
 
     def tearDown(self) -> None:

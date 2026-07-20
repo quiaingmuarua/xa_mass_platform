@@ -32,7 +32,7 @@ from kernel_design.executable_spec import (
     TaskScoreTransitionStatus,
     TaskWorkerAllocationConfig,
     TaskWorkerAllocationPacer,
-    RealtimeWorkerCandidateAcquirer,
+    WorkerCandidateAcquirer,
     WorkerCandidateMatcher,
     WorkerDeclaration,
     WorkerGroupDescriptor,
@@ -107,7 +107,8 @@ class TaskWorkerAllocationIntegrationTest(unittest.TestCase):
             self.redis,
             prefix=self.prefix,
         )
-        realtime_acquirer = RealtimeWorkerCandidateAcquirer(
+        candidate_acquirer = WorkerCandidateAcquirer(
+            self.candidate_cache,
             self.worker_score,
             WorkerCandidateMatcher(
                 self.worker_catalog,
@@ -118,7 +119,7 @@ class TaskWorkerAllocationIntegrationTest(unittest.TestCase):
         self.pacer = TaskWorkerAllocationPacer(
             self.task_score,
             self.task_catalog,
-            realtime_acquirer,
+            candidate_acquirer,
             self.candidate_cache,
         )
         self.running_activation_pacer = TaskRunningActivationPacer(

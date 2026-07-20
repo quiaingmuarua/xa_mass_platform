@@ -466,7 +466,7 @@ handler writes its own dyn key
 Dynamic attribute query flow for matching:
 
 ```text
-WorkerCandidateMatcher receives workerGroupId, bounded workerIds, and a candidate constraint map
+WorkerCandidateMatcher receives workerGroupId, bounded workerId-to-opaque-lease-score map, and a candidate constraint map
 each WorkerCandidateConstraint carries priority, limit, and match_rules
 match_rules is a structured map compiled by the independent constraint DSL
 worker matcher preparation derives dynamic fields from match_rules
@@ -482,8 +482,8 @@ skip candidates whose per-call limit is full
 evaluate remaining constraints in resolved priority order; first match consumes that worker
 missing / unsupported / unresolved handler rows fail closed when read
 matcher returns each workerId in at most one candidate result
-result shape contains insertion-ordered candidateId -> workerIds plus
-matched workerId -> endpointManagerId
+result shape is insertion-ordered candidateId -> CandidateWorkerEntry values
+each entry carries descriptor endpointManagerId and the unchanged opaque lease score
 pacer leaves unmatched leases untouched; lease expiry restores hot visibility
 ```
 

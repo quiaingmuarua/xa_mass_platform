@@ -4,15 +4,15 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..scheduling import (
-    CachedWorkerCandidateAcquirer,
     DueTaskItemAdmissionPolicy,
     PrioritySoftLimitSystemAdmissionPolicy,
-    RealtimeWorkerCandidateAcquirer,
     ResultRoutingBuiltinPolicies,
     ResultRoutingPacer,
     TaskItemDispatchPacer,
     TaskRunningActivationPacer,
     TaskWorkerAllocationPacer,
+    WorkerCandidateAcquirer,
+    WorkerCandidateAcquisitionStrategy,
     WorkerCandidateMatcher,
 )
 from ..redis_runtime import (
@@ -115,21 +115,17 @@ class _RedisKernelProcess:
             self._worker_resource_catalog,
             self._worker_dynamic_attribute_runtime,
         )
-        realtime_candidate_acquirer = RealtimeWorkerCandidateAcquirer(
-            self._worker_score,
-            worker_candidate_matcher,
-            worker_scan_limit=config.worker_candidate_scan_limit,
-        )
-        cached_candidate_acquirer = CachedWorkerCandidateAcquirer(
+        candidate_acquirer = WorkerCandidateAcquirer(
             candidate_cache,
             self._worker_score,
             worker_candidate_matcher,
+            worker_scan_limit=config.worker_candidate_scan_limit,
         )
 
         worker_allocation_pacer = TaskWorkerAllocationPacer(
             self._task_score,
             self._task_resource_catalog,
-            realtime_candidate_acquirer,
+            candidate_acquirer,
             candidate_cache,
         )
         running_activation_pacer = TaskRunningActivationPacer(
@@ -147,7 +143,10 @@ class _RedisKernelProcess:
             self._deliver_seed_runtime,
             task_item_score,
             self._task_runtime,
-            lambda _descriptor, _task_items: cached_candidate_acquirer,
+            candidate_acquirer,
+            lambda _descriptor, _task_items: (
+                WorkerCandidateAcquisitionStrategy.CACHED
+            ),
         )
         self._assignment_dispatch_application = AssignmentDispatchApplication(
             worker_allocation_pacer,

@@ -20,6 +20,7 @@ from kernel_design.executable_spec import (
     TaskRuntime,
     TaskScoreBandCore,
     WorkerCandidateAcquirer,
+    WorkerCandidateAcquisitionStrategy,
 )
 
 
@@ -34,14 +35,17 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
         self.item_score = Mock(spec=TaskItemScoreBandCore)
         self.task_runtime = Mock(spec=TaskRuntime)
         self.candidate_acquirer = Mock(spec=WorkerCandidateAcquirer)
-        self.candidate_resolver = Mock(return_value=self.candidate_acquirer)
+        self.candidate_strategy_resolver = Mock(
+            return_value=WorkerCandidateAcquisitionStrategy.CACHED
+        )
         self.pacer = TaskItemDispatchPacer(
             self.task_score,
             self.task_catalog,
             self.deliver_seed_runtime,
             self.item_score,
             self.task_runtime,
-            self.candidate_resolver,
+            self.candidate_acquirer,
+            self.candidate_strategy_resolver,
         )
         self.config = TaskItemDispatchConfig(
             task_batch_limit=10,
@@ -57,7 +61,8 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
                 "deliver_seed_runtime",
                 "item_score",
                 "task_runtime",
-                "candidate_acquirer_resolver",
+                "candidate_acquirer",
+                "candidate_strategy_resolver",
                 "delivery_item_encoder",
             },
             set(inspect.signature(TaskItemDispatchPacer).parameters),
@@ -94,6 +99,9 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
                 ),
             }
         )
+        self.deliver_seed_runtime.append_deliver_seeds.side_effect = (
+            lambda **_: events.append("publish")
+        )
 
         with patch.object(
             self.pacer,
@@ -103,8 +111,11 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
             appended = self.pacer.dispatch_task_items(config=self.config)
 
         self.assertEqual(2, appended)
-        self.assertEqual(["observe", "acquire", "claim"], events)
-        self.candidate_resolver.assert_called_once_with(
+        self.assertEqual(
+            ["observe", "acquire", "claim", "publish", "publish"],
+            events,
+        )
+        self.candidate_strategy_resolver.assert_called_once_with(
             self._descriptor("task-1"),
             items,
         )
@@ -112,6 +123,10 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
             self.candidate_acquirer.acquire_worker_candidates.call_args
         )
         request = acquisition_call.kwargs["candidate_requests"]["task-1"]
+        self.assertIs(
+            WorkerCandidateAcquisitionStrategy.CACHED,
+            acquisition_call.kwargs["strategy"],
+        )
         self.assertEqual(
             "group-1",
             acquisition_call.kwargs["worker_group_id"],
@@ -196,19 +211,19 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
         self.item_score.rewrite_observed_item_scores.assert_not_called()
         self.deliver_seed_runtime.append_deliver_seeds.assert_not_called()
 
-    def test_resolver_selected_acquirer_is_the_only_acquisition_path(self) -> None:
+    def test_resolver_selected_strategy_is_the_only_acquisition_path(self) -> None:
         self._prepare_task("task-1")
         item = self._item("message-1")
         self.item_score.acquire_item_score_candidates.return_value = {
             "message-1": (101, 3)
         }
         self.task_runtime.load_task_items.return_value = {"message-1": item}
-        selected_acquirer = Mock(spec=WorkerCandidateAcquirer)
-        selected_acquirer.acquire_worker_candidates.return_value = {
+        self.candidate_acquirer.acquire_worker_candidates.return_value = {
             "task-1": ()
         }
-        unused_acquirer = self.candidate_acquirer
-        self.candidate_resolver.return_value = selected_acquirer
+        self.candidate_strategy_resolver.return_value = (
+            WorkerCandidateAcquisitionStrategy.REALTIME
+        )
 
         with patch.object(
             self.pacer,
@@ -217,8 +232,11 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
         ):
             self.pacer.dispatch_task_items(config=self.config)
 
-        selected_acquirer.acquire_worker_candidates.assert_called_once()
-        unused_acquirer.acquire_worker_candidates.assert_not_called()
+        acquisition_call = self.candidate_acquirer.acquire_worker_candidates.call_args
+        self.assertIs(
+            WorkerCandidateAcquisitionStrategy.REALTIME,
+            acquisition_call.kwargs["strategy"],
+        )
 
     def test_exhausted_and_missing_records_do_not_request_workers(self) -> None:
         self._prepare_task("task-1")
@@ -242,7 +260,7 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
             target_band=TaskItemScoreBand.FINAL_FAILED,
             target_time_millis=self.NOW_MILLIS,
         )
-        self.candidate_resolver.assert_not_called()
+        self.candidate_strategy_resolver.assert_not_called()
 
     def test_missing_descriptor_skips_item_observation(self) -> None:
         self.task_score.acquire_dispatch_work_tasks.return_value = ("task-1",)
@@ -259,6 +277,35 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
 
         self.assertEqual(0, appended)
         self.item_score.acquire_item_score_candidates.assert_not_called()
+
+    def test_active_task_tuple_preserves_score_scan_order(self) -> None:
+        self.task_score.acquire_dispatch_work_tasks.return_value = (
+            "task-2",
+            "missing",
+            "task-1",
+        )
+        self.task_catalog.load_task_allocation_descriptors.return_value = {
+            "task-1": self._descriptor("task-1"),
+            "missing": None,
+            "task-2": self._descriptor("task-2"),
+        }
+        self.item_score.acquire_item_score_candidates.return_value = {}
+
+        with patch.object(
+            self.pacer,
+            "_current_time_millis",
+            return_value=self.NOW_MILLIS,
+        ):
+            appended = self.pacer.dispatch_task_items(config=self.config)
+
+        self.assertEqual(0, appended)
+        self.assertEqual(
+            [
+                call(task_id="task-2", limit=3),
+                call(task_id="task-1", limit=3),
+            ],
+            self.item_score.acquire_item_score_candidates.call_args_list,
+        )
 
     def test_non_positive_config_is_rejected(self) -> None:
         invalid = ((0, 1, 1), (1, 0, 1), (1, 1, 0))

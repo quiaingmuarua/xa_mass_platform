@@ -29,7 +29,7 @@ TaskScoreBandCore
 TaskResourceCatalog
   bounded Task allocation descriptors
 
-RealtimeWorkerCandidateAcquirer
+WorkerCandidateAcquirer(strategy=REALTIME)
   due HOT scan, exact lease and match
 
 CandidateWorkerCache
@@ -64,9 +64,10 @@ at dispatch.
 
 ## Publication
 
-The Pacer calls `RealtimeWorkerCandidateAcquirer` once per WorkerGroup with the
-bounded group-local request map. No acquirer call scans or leases across Worker
-score queues. Results are appended independently:
+The Pacer calls the shared `WorkerCandidateAcquirer` with explicit `REALTIME`
+strategy once per WorkerGroup and the bounded group-local request map. No
+acquirer call scans or leases across Worker score queues. Results are appended
+independently:
 
 ```text
 ad:{prefix}:candidate:{taskId}:workers
@@ -95,8 +96,8 @@ TaskWorkerAllocationConfig(
 )
 ```
 
-`worker_scan_limit` belongs to `RealtimeWorkerCandidateAcquirer` construction,
-not to each allocation call.
+`worker_scan_limit` belongs to `WorkerCandidateAcquirer` construction, not to
+each allocation call.
 
 ## Guardrails
 

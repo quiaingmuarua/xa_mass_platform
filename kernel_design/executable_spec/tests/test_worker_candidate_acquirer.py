@@ -5,12 +5,10 @@ import unittest
 from unittest.mock import Mock
 
 from kernel_design.executable_spec import (
-    CachedWorkerCandidateAcquirer,
     CandidateWorkerCache,
     CandidateWorkerEntry,
-    RealtimeWorkerCandidateAcquirer,
     WorkerCandidateAcquirer,
-    WorkerCandidateMatchResult,
+    WorkerCandidateAcquisitionStrategy,
     WorkerCandidateMatcher,
     WorkerCandidateRequest,
     WorkerScoreCore,
@@ -22,8 +20,16 @@ from kernel_design.executable_spec import (
 class WorkerCandidateAcquirerContractTest(unittest.TestCase):
     def test_public_signature_requires_one_worker_group(self) -> None:
         self.assertEqual(
+            ("CACHED", "REALTIME"),
+            tuple(
+                strategy.value
+                for strategy in WorkerCandidateAcquisitionStrategy
+            ),
+        )
+        self.assertEqual(
             {
                 "self",
+                "strategy",
                 "worker_group_id",
                 "candidate_requests",
                 "lease_until_millis",
@@ -55,15 +61,16 @@ class WorkerCandidateAcquirerContractTest(unittest.TestCase):
             )
 
 
-class CachedWorkerCandidateAcquirerTest(unittest.TestCase):
+class WorkerCandidateCachedStrategyTest(unittest.TestCase):
     def setUp(self) -> None:
         self.cache = Mock(spec=CandidateWorkerCache)
         self.worker_score = Mock(spec=WorkerScoreCore)
         self.matcher = Mock(spec=WorkerCandidateMatcher)
-        self.acquirer = CachedWorkerCandidateAcquirer(
+        self.acquirer = WorkerCandidateAcquirer(
             self.cache,
             self.worker_score,
             self.matcher,
+            worker_scan_limit=50,
         )
         self.request = WorkerCandidateRequest(
             priority=80,
@@ -75,6 +82,7 @@ class CachedWorkerCandidateAcquirerTest(unittest.TestCase):
         self.cache.consume_candidate_workers.return_value = ()
 
         result = self.acquirer.acquire_worker_candidates(
+            strategy=WorkerCandidateAcquisitionStrategy.CACHED,
             worker_group_id="group-1",
             candidate_requests={"candidate-1": self.request},
             lease_until_millis=20_000,
@@ -100,30 +108,25 @@ class CachedWorkerCandidateAcquirerTest(unittest.TestCase):
                 WorkerScoreTransitionStatus.STALE,
             ),
         }
-        self.matcher.match_worker_candidates.return_value = (
-            WorkerCandidateMatchResult(
-                matches={"candidate-1": ("worker-1",)},
-                endpoint_manager_id_by_worker_id={
-                    "worker-1": "endpoint-1",
-                },
-            )
+        matched_entry = CandidateWorkerEntry(
+            worker_id="worker-1",
+            worker_group_id="group-1",
+            endpoint_manager_id="endpoint-1",
+            worker_lease_score=201,
         )
+        self.matcher.match_worker_candidates.return_value = {
+            "candidate-1": (matched_entry,),
+        }
 
         result = self.acquirer.acquire_worker_candidates(
+            strategy=WorkerCandidateAcquisitionStrategy.CACHED,
             worker_group_id="group-1",
             candidate_requests={"candidate-1": self.request},
             lease_until_millis=20_000,
         )
 
         self.assertEqual(
-            (
-                CandidateWorkerEntry(
-                    worker_id="worker-1",
-                    worker_group_id="group-1",
-                    endpoint_manager_id="endpoint-1",
-                    worker_lease_score=201,
-                ),
-            ),
+            (matched_entry,),
             result["candidate-1"],
         )
         self.cache.consume_candidate_workers.assert_called_once_with(
@@ -136,7 +139,10 @@ class CachedWorkerCandidateAcquirerTest(unittest.TestCase):
             target_time_millis=20_000,
         )
         matcher_call = self.matcher.match_worker_candidates.call_args
-        self.assertEqual(("worker-1",), matcher_call.kwargs["worker_ids"])
+        self.assertEqual(
+            {"worker-1": 201},
+            matcher_call.kwargs["worker_lease_scores"],
+        )
         self.assertEqual(
             2,
             matcher_call.kwargs["candidate_constraints"][
@@ -154,14 +160,12 @@ class CachedWorkerCandidateAcquirerTest(unittest.TestCase):
                 201,
             )
         }
-        self.matcher.match_worker_candidates.return_value = (
-            WorkerCandidateMatchResult(
-                matches={"candidate-1": ()},
-                endpoint_manager_id_by_worker_id={},
-            )
-        )
+        self.matcher.match_worker_candidates.return_value = {
+            "candidate-1": (),
+        }
 
         result = self.acquirer.acquire_worker_candidates(
+            strategy=WorkerCandidateAcquisitionStrategy.CACHED,
             worker_group_id="group-1",
             candidate_requests={"candidate-1": self.request},
             lease_until_millis=20_000,
@@ -190,6 +194,7 @@ class CachedWorkerCandidateAcquirerTest(unittest.TestCase):
         }
 
         result = self.acquirer.acquire_worker_candidates(
+            strategy=WorkerCandidateAcquisitionStrategy.CACHED,
             worker_group_id="group-1",
             candidate_requests={
                 "candidate-1": self.request,
@@ -218,11 +223,13 @@ class CachedWorkerCandidateAcquirerTest(unittest.TestCase):
         )
 
 
-class RealtimeWorkerCandidateAcquirerTest(unittest.TestCase):
+class WorkerCandidateRealtimeStrategyTest(unittest.TestCase):
     def setUp(self) -> None:
+        self.cache = Mock(spec=CandidateWorkerCache)
         self.worker_score = Mock(spec=WorkerScoreCore)
         self.matcher = Mock(spec=WorkerCandidateMatcher)
-        self.acquirer = RealtimeWorkerCandidateAcquirer(
+        self.acquirer = WorkerCandidateAcquirer(
+            self.cache,
             self.worker_score,
             self.matcher,
             worker_scan_limit=50,
@@ -257,21 +264,33 @@ class RealtimeWorkerCandidateAcquirerTest(unittest.TestCase):
                 "worker-3": 103,
             }.items()
         }
-        self.matcher.match_worker_candidates.return_value = (
-            WorkerCandidateMatchResult(
-                matches={
-                    "candidate-a": ("worker-1",),
-                    "candidate-b": ("worker-2", "worker-3"),
-                },
-                endpoint_manager_id_by_worker_id={
-                    "worker-1": "endpoint-1",
-                    "worker-2": "endpoint-2",
-                    "worker-3": "endpoint-3",
-                },
-            )
-        )
+        self.matcher.match_worker_candidates.return_value = {
+            "candidate-a": (
+                CandidateWorkerEntry(
+                    worker_id="worker-1",
+                    worker_group_id="group-1",
+                    endpoint_manager_id="endpoint-1",
+                    worker_lease_score=201,
+                ),
+            ),
+            "candidate-b": (
+                CandidateWorkerEntry(
+                    worker_id="worker-2",
+                    worker_group_id="group-1",
+                    endpoint_manager_id="endpoint-2",
+                    worker_lease_score=202,
+                ),
+                CandidateWorkerEntry(
+                    worker_id="worker-3",
+                    worker_group_id="group-1",
+                    endpoint_manager_id="endpoint-3",
+                    worker_lease_score=203,
+                ),
+            ),
+        }
 
         result = self.acquirer.acquire_worker_candidates(
+            strategy=WorkerCandidateAcquisitionStrategy.REALTIME,
             worker_group_id="group-1",
             candidate_requests=requests,
             lease_until_millis=20_000,
@@ -291,6 +310,7 @@ class RealtimeWorkerCandidateAcquirerTest(unittest.TestCase):
             home_bucket_id="group-1",
             limit=50,
         )
+        self.cache.consume_candidate_workers.assert_not_called()
         constraints = self.matcher.match_worker_candidates.call_args.kwargs[
             "candidate_constraints"
         ]
@@ -299,6 +319,7 @@ class RealtimeWorkerCandidateAcquirerTest(unittest.TestCase):
 
     def test_empty_requests_do_not_scan_the_worker_group(self) -> None:
         result = self.acquirer.acquire_worker_candidates(
+            strategy=WorkerCandidateAcquisitionStrategy.REALTIME,
             worker_group_id="group-1",
             candidate_requests={},
             lease_until_millis=20_000,

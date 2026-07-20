@@ -37,20 +37,24 @@ TaskScoreBandCore             dispatch-visible RUNNING Task ids
 TaskResourceCatalog           bounded allocation descriptors
 TaskItemScoreBandCore         Item observation and exact claim
 TaskRuntime                   canonical Item records
-WorkerCandidateAcquirerResolver
+WorkerCandidateAcquirer
+WorkerCandidateAcquisitionStrategyResolver
 DeliverSeedRuntime
 ```
 
 Resolver input is the current `TaskDescriptor` and bounded existing
-`TaskItem` records. It returns one `WorkerCandidateAcquirer` implementation.
-The Pacer invokes exactly that implementation; it has no fallback path.
+`TaskItem` records. It returns one built-in acquisition strategy name. The
+Pacer invokes the shared `WorkerCandidateAcquirer` with exactly that strategy;
+it has no fallback path.
 
 ## Dispatch Round
 
 One round computes `nowMillis` and `taskItemClaimUntilMillis` once, then:
 
 1. Acquire a bounded RUNNING Task batch.
-2. Batch-load Task descriptors; skip missing descriptors.
+2. Batch-load Task descriptors and build an ordered
+   `(taskId, TaskDescriptor)` tuple in score-scan order; skip missing
+   descriptors.
 3. Observe bounded due Item scores.
 4. Promote exhausted-budget Items to `FINAL_FAILED`.
 5. Load canonical records for positive-budget observations; skip missing rows.
@@ -77,13 +81,12 @@ not mutate the Item lease; if no Worker is returned, no Item is claimed.
 ## Candidate Acquisition
 
 Zero-config assembly resolves the current stable Task-level request to
-`CachedWorkerCandidateAcquirer`. That implementation consumes the TaskId cache,
-exact-validates or renews Worker lease evidence, and rematches current rules.
+`CACHED`. That internal path consumes the TaskId cache, exact-validates or
+renews Worker lease evidence, and rematches current rules.
 
-An Item-directed policy may later resolve to
-`RealtimeWorkerCandidateAcquirer` and submit multiple CandidateIds. The
-acquisition contract already supports that shape, but Item-level request
-construction and binding policy are deferred.
+An Item-directed policy may later resolve to `REALTIME` and submit multiple
+CandidateIds. The acquisition contract already supports that shape, but
+Item-level request construction and binding policy are deferred.
 
 Cache miss is a bounded no-op. TaskItem dispatch never retries through another
 acquirer implementation in the same round.

@@ -4,11 +4,13 @@ from dataclasses import dataclass
 from typing import Mapping, Sequence
 
 from ...constraint_dsl import ConstraintEvaluator, ConstraintMap, UNRESOLVED_VALUE
-from ...kernel.assignment_dispatch_runtime import CandidateId
-from ...kernel.worker_score import WorkerId
+from ...kernel.assignment_dispatch_runtime import (
+    CandidateId,
+    CandidateWorkerEntry,
+)
+from ...kernel.worker_score import Score, WorkerId
 from ...kernel.worker_runtime import (
     DynamicAttributeReadResult,
-    EndpointManagerId,
     WorkerDescriptor,
     WorkerDynamicAttributeRuntime,
     WorkerGroupId,
@@ -26,19 +28,10 @@ class WorkerCandidateConstraint:
     match_rules: Mapping[str, object]
 
 
-WorkerCandidateMatches = dict[CandidateId, tuple[WorkerId, ...]]
-
-
-@dataclass(frozen=True)
-class WorkerCandidateMatchResult:
-    """Matched Workers plus their post-selection endpoint queue locator.
-
-    Candidate match order follows matcher policy. endpoint_manager_id_by_worker_id
-    contains exactly the Workers present in matches.
-    """
-
-    matches: WorkerCandidateMatches
-    endpoint_manager_id_by_worker_id: dict[WorkerId, EndpointManagerId]
+WorkerCandidateAcquisition = Mapping[
+    CandidateId,
+    tuple[CandidateWorkerEntry, ...],
+]
 
 
 class WorkerCandidateMatcher:
@@ -56,31 +49,25 @@ class WorkerCandidateMatcher:
         self,
         *,
         worker_group_id: WorkerGroupId,
-        worker_ids: Sequence[WorkerId],
+        worker_lease_scores: Mapping[WorkerId, Score],
         candidate_constraints: Mapping[CandidateId, WorkerCandidateConstraint],
-    ) -> WorkerCandidateMatchResult:
-        worker_ids = tuple(dict.fromkeys(worker_ids))
+    ) -> WorkerCandidateAcquisition:
+        worker_ids = tuple(worker_lease_scores)
         if not candidate_constraints:
-            return WorkerCandidateMatchResult({}, {})
+            return {}
 
         candidates, required_dynamic_attributes = self._prepare_candidates(
             candidate_constraints
         )
-        mutable_matches: dict[CandidateId, list[WorkerId]] = {
+        mutable_matches: dict[CandidateId, list[CandidateWorkerEntry]] = {
             candidate_id: [] for candidate_id, _, _ in candidates
         }
         for candidate_id in candidate_constraints:
             mutable_matches.setdefault(candidate_id, [])
         if not candidates:
-            return WorkerCandidateMatchResult(
-                self._freeze_matches(mutable_matches),
-                {},
-            )
+            return self._freeze_acquisitions(mutable_matches)
         if not worker_ids:
-            return WorkerCandidateMatchResult(
-                self._freeze_matches(mutable_matches),
-                {},
-            )
+            return self._freeze_acquisitions(mutable_matches)
         remaining_capacity = sum(
             constraints.limit for _, constraints, _ in candidates
         )
@@ -95,7 +82,6 @@ class WorkerCandidateMatcher:
             descriptors,
             required_dynamic_attributes,
         )
-        endpoint_manager_id_by_worker_id: dict[WorkerId, EndpointManagerId] = {}
         for worker_id in worker_ids:
             if remaining_capacity == 0:
                 break
@@ -112,25 +98,26 @@ class WorkerCandidateMatcher:
                 if len(mutable_matches[candidate_id]) >= constraints.limit:
                     continue
                 if ConstraintEvaluator.evaluate_match_rules(context, match_rules):
-                    mutable_matches[candidate_id].append(worker_id)
-                    endpoint_manager_id_by_worker_id[worker_id] = (
-                        descriptor.endpoint_manager_id
+                    mutable_matches[candidate_id].append(
+                        CandidateWorkerEntry(
+                            worker_id=worker_id,
+                            worker_group_id=worker_group_id,
+                            endpoint_manager_id=descriptor.endpoint_manager_id,
+                            worker_lease_score=worker_lease_scores[worker_id],
+                        )
                     )
                     remaining_capacity -= 1
                     break
 
-        return WorkerCandidateMatchResult(
-            self._freeze_matches(mutable_matches),
-            endpoint_manager_id_by_worker_id,
-        )
+        return self._freeze_acquisitions(mutable_matches)
 
     @staticmethod
-    def _freeze_matches(
-        matches: Mapping[CandidateId, Sequence[WorkerId]],
-    ) -> WorkerCandidateMatches:
+    def _freeze_acquisitions(
+        matches: Mapping[CandidateId, Sequence[CandidateWorkerEntry]],
+    ) -> WorkerCandidateAcquisition:
         return {
-            candidate_id: tuple(worker_ids)
-            for candidate_id, worker_ids in matches.items()
+            candidate_id: tuple(entries)
+            for candidate_id, entries in matches.items()
         }
 
     def _prepare_candidates(

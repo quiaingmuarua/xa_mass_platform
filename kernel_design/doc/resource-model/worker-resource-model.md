@@ -553,33 +553,33 @@ The first worker-runtime matching surface may expose a bounded batch matcher:
 ```text
 match_worker_candidates(
   workerGroupId,
-  workerIds,
+  workerLeaseScores={workerId: opaqueLeaseScore, ...},
   {candidateId: WorkerCandidateConstraint, ...},
 )
-  -> WorkerCandidateMatchResult(
-       matches={candidateId: workerIds, ...},
-       endpointManagerIdByWorkerId={workerId: endpointManagerId, ...},
-     )
+  -> WorkerCandidateAcquisition={
+       candidateId: CandidateWorkerEntry[],
+       ...,
+     }
 ```
 
 The input map makes candidate identity unique. Each value carries explicit
 `priority`, `limit`, and map-shaped `match_rules`. The matcher
 sorts by priority descending and `candidateId` ascending, then each worker is
 considered by the first matching candidate with remaining match limit. Every
-matched Worker appears in exactly one candidate result and exactly once in
-`endpointManagerIdByWorkerId`. Unmatched Worker ids are not returned; their
-already-acquired leases remain held until natural expiry. No score, lease
-deadline, or dispatch entry crosses this interface. `endpointManagerId` is a
-post-selection Deliver Queue partition coordinate, not a matching field. A
-matcher call handles exactly one selected `workerGroupId`;
-assignment-dispatch
+matched Worker appears in exactly one candidate result. Each returned
+`CandidateWorkerEntry` contains its Worker id, WorkerGroup id, descriptor-owned
+`endpointManagerId`, and opaque lease score. The matcher copies but never
+parses or modifies that score. Unmatched Worker ids are not returned; their
+already-acquired leases remain held until natural expiry. `endpointManagerId`
+is a post-selection Deliver Queue partition coordinate, not a matching field.
+A matcher call handles exactly one selected `workerGroupId`; assignment-dispatch
 must partition candidates by Worker group and read a bounded due Worker
 observation batch before calling it. The matcher owns descriptor reads, dynamic
-reads, and matching for only those supplied Worker ids. The allocation pacer
-keeps observed scores in a private sidecar, batch-leases unchanged due Workers
-by exact CAS, passes only lease successes to matcher, leaves unmatched leases
-to expire naturally, and combines matched lease scores with matched
-`endpointManagerId` values into `CandidateWorkerEntry` values.
+reads, and matching for only those supplied Worker ids. The selected candidate
+acquirer batch-leases or validates Workers by exact CAS, passes only lease
+successes to matcher as an opaque score map, and leaves unmatched leases to
+expire naturally. The matcher directly materializes the final acquisition
+result.
 The matcher returns every input candidate in resolved priority order. An empty
 entry means no match. It must not acquire or discover additional Workers and
 must not become

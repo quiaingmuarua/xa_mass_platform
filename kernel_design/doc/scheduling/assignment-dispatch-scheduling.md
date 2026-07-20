@@ -39,41 +39,43 @@ WorkerCandidateRequest(
 )
 
 acquire_worker_candidates(
+    strategy: WorkerCandidateAcquisitionStrategy,
     worker_group_id: WorkerGroupId,
     candidate_requests: Mapping[CandidateId, WorkerCandidateRequest],
     lease_until_millis,
-) -> Mapping[CandidateId, tuple[CandidateWorkerEntry, ...]]
+) -> WorkerCandidateAcquisition
 ```
 
-There is no Task id, global requested count, cache option, fallback mode, or
-score coordinate in this contract. One call is scoped to exactly one
-WorkerGroup and therefore one Worker score queue; cross-group acquisition is a
-caller-owned grouping operation. Each request owns its own bounded count. One
-Worker resource may satisfy at most one CandidateId in one call.
+There is no Task id, global requested count, fallback flag, or score coordinate
+in this contract. The explicit strategy is one of the system-owned `CACHED` or
+`REALTIME` names. One call is scoped to exactly one WorkerGroup and therefore
+one Worker score queue; cross-group acquisition is a caller-owned grouping
+operation. Each request owns its own bounded count. One Worker resource may
+satisfy at most one CandidateId in one call.
 
 Alternative rules for one demand are normalized into one request by the
 calling policy. Multiple requests mean independent demands; the acquirer does
 not interpret OR, fallback, or aggregate budgets between them.
 
-Two implementations deliberately remain separate:
+One `WorkerCandidateAcquirer` owns two deliberately isolated internal paths:
 
 ```text
-CachedWorkerCandidateAcquirer
+CACHED
   consume only CandidateWorkerCache
   batch exact validate/renew Worker leases for the explicit WorkerGroup
   rematch current rules
   return partial/empty on cache miss or stale evidence
 
-RealtimeWorkerCandidateAcquirer
+REALTIME
   bounded due HOT scan for the explicit WorkerGroup
   exact lease observed Workers
   match lease successes
   never read CandidateWorkerCache
 ```
 
-Neither implementation calls the other. Cache miss never changes source.
-Selection is a Task/Item policy decision supplied to TaskItem dispatch through
-a resolver function.
+Neither path calls the other. Cache miss never changes the explicit strategy.
+TaskItem dispatch receives only a strategy name from its resolver; callers do
+not construct or select acquirer implementations.
 
 ## Candidate Cache
 
@@ -120,7 +122,7 @@ Allocation cache warming:
 due RUNNING_VISIBLE Tasks
   -> load stable Task-level rules
   -> requestedCount = maximumCandidateWorkers - cachedCount
-  -> RealtimeWorkerCandidateAcquirer
+  -> WorkerCandidateAcquirer(strategy=REALTIME)
   -> append results under CandidateId = taskId
   -> rotate every considered RUNNING Task within its band
 ```
@@ -132,7 +134,7 @@ dispatch-visible RUNNING Tasks
   -> load descriptors
   -> observe due Item scores and load existing Item records
   -> build bounded candidate requests
-  -> resolver selects exactly one acquirer
+  -> resolver selects one acquisition strategy name
   -> acquire Worker candidates
   -> exact claim only the corresponding number of Items
   -> stable Worker/Item pairing

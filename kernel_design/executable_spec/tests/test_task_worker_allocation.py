@@ -7,13 +7,14 @@ from unittest.mock import Mock, call, patch
 from kernel_design.executable_spec import (
     CandidateWorkerCache,
     CandidateWorkerEntry,
-    RealtimeWorkerCandidateAcquirer,
     TaskDescriptor,
     TaskResourceCatalog,
     TaskScoreBand,
     TaskScoreBandCore,
     TaskWorkerAllocationConfig,
     TaskWorkerAllocationPacer,
+    WorkerCandidateAcquirer,
+    WorkerCandidateAcquisitionStrategy,
 )
 
 
@@ -23,21 +24,21 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
     def setUp(self) -> None:
         self.task_score = Mock(spec=TaskScoreBandCore)
         self.task_catalog = Mock(spec=TaskResourceCatalog)
-        self.realtime_acquirer = Mock(spec=RealtimeWorkerCandidateAcquirer)
+        self.candidate_acquirer = Mock(spec=WorkerCandidateAcquirer)
         self.candidate_cache = Mock(spec=CandidateWorkerCache)
         self.pacer = TaskWorkerAllocationPacer(
             self.task_score,
             self.task_catalog,
-            self.realtime_acquirer,
+            self.candidate_acquirer,
             self.candidate_cache,
         )
 
-    def test_contract_uses_candidate_cache_and_realtime_acquirer(self) -> None:
+    def test_contract_uses_candidate_cache_and_shared_acquirer(self) -> None:
         self.assertEqual(
             {
                 "task_score",
                 "task_catalog",
-                "realtime_candidate_acquirer",
+                "candidate_acquirer",
                 "candidate_cache",
             },
             set(inspect.signature(TaskWorkerAllocationPacer).parameters),
@@ -65,7 +66,7 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
             "task-2": self._descriptor("task-2", maximum_candidates=5),
         }
         entry = self._entry("worker-1")
-        self.realtime_acquirer.acquire_worker_candidates.return_value = {
+        self.candidate_acquirer.acquire_worker_candidates.return_value = {
             "task-1": (entry,),
         }
 
@@ -88,7 +89,11 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
             candidate_ids=("task-1", "task-2"),
         )
         acquisition_call = (
-            self.realtime_acquirer.acquire_worker_candidates.call_args
+            self.candidate_acquirer.acquire_worker_candidates.call_args
+        )
+        self.assertIs(
+            WorkerCandidateAcquisitionStrategy.REALTIME,
+            acquisition_call.kwargs["strategy"],
         )
         request = acquisition_call.kwargs["candidate_requests"]["task-1"]
         self.assertEqual(
@@ -144,11 +149,11 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
             )
 
         self.assertEqual(0, published)
-        self.realtime_acquirer.acquire_worker_candidates.assert_not_called()
+        self.candidate_acquirer.acquire_worker_candidates.assert_not_called()
         self.candidate_cache.append_candidate_workers.assert_not_called()
         self.task_score.rewrite_same_band_time_millis.assert_called_once()
 
-    def test_calls_realtime_acquirer_once_per_worker_group(self) -> None:
+    def test_calls_realtime_strategy_once_per_worker_group(self) -> None:
         self.task_score.acquire_band_task_candidates.return_value = (
             "task-1",
             "task-2",
@@ -169,7 +174,7 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
                 worker_group_id="group-2",
             ),
         }
-        self.realtime_acquirer.acquire_worker_candidates.side_effect = (
+        self.candidate_acquirer.acquire_worker_candidates.side_effect = (
             {"task-1": (self._entry("worker-1", "group-1"),)},
             {"task-2": (self._entry("worker-2", "group-2"),)},
         )
@@ -185,7 +190,7 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
 
         self.assertEqual(2, published)
         acquisition_calls = (
-            self.realtime_acquirer.acquire_worker_candidates.call_args_list
+            self.candidate_acquirer.acquire_worker_candidates.call_args_list
         )
         self.assertEqual(2, len(acquisition_calls))
         self.assertEqual(
@@ -220,7 +225,7 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
 
         self.assertEqual(0, published)
         self.task_catalog.load_task_allocation_descriptors.assert_not_called()
-        self.realtime_acquirer.acquire_worker_candidates.assert_not_called()
+        self.candidate_acquirer.acquire_worker_candidates.assert_not_called()
 
     def test_config_rejects_non_positive_values(self) -> None:
         for values in ((0, 1), (1, 0), (-1, 1)):
