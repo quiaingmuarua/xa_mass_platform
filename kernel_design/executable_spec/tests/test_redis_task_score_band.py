@@ -150,6 +150,13 @@ class FakeRedis:
             return [member for _, member in rows[start:]]
         return [member for _, member in rows[start : start + num]]
 
+    def zcount(self, key: str, min_score: int, max_score: int) -> int:
+        return sum(
+            1
+            for score in self.zsets.get(key, {}).values()
+            if min_score <= score <= max_score
+        )
+
     def time(self) -> tuple[int, int]:
         return self.now_millis // 1_000, (self.now_millis % 1_000) * 1_000
 
@@ -172,17 +179,10 @@ class RedisTaskScoreBandCoreTest(unittest.TestCase):
     def store_score(self, task_id: str, score: int) -> None:
         self.redis.zadd(self.kernel.score_key, {task_id: score})
 
-    def test_acquire_active_candidates_prefers_running_then_pre_dispatch_visible(
-        self,
-    ) -> None:
+    def test_running_count_includes_due_current_and_future_running_scores(self) -> None:
         running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 999, 5)
         running_current_second = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 1)
         pre_dispatch_visible = self.score(self.kernel.PRE_DISPATCH_VISIBLE_TAG, 999, 5)
-        pre_dispatch_current_second = self.score(
-            self.kernel.PRE_DISPATCH_VISIBLE_TAG,
-            1_000,
-            1,
-        )
         paused = self.score(
             self.kernel.RUNNING_VISIBLE_TAG,
             self.kernel.PAUSE_TIME_SLOT,
@@ -192,13 +192,9 @@ class RedisTaskScoreBandCoreTest(unittest.TestCase):
         self.store_score("running", running)
         self.store_score("running-current-second", running_current_second)
         self.store_score("pre-dispatch-visible", pre_dispatch_visible)
-        self.store_score("pre-dispatch-current-second", pre_dispatch_current_second)
         self.store_score("paused", paused)
 
-        self.assertEqual(
-            ["running", "pre-dispatch-visible"],
-            self.kernel.acquire_active_task_candidates(limit=10),
-        )
+        self.assertEqual(3, self.kernel.count_running_visible_tasks())
         self.assertEqual(
             ["running"],
             self.kernel.acquire_dispatch_work_tasks(limit=10),

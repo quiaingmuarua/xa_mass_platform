@@ -101,6 +101,19 @@ class TaskItemScoreBandCore(ABC):
         pass
 
     @abstractmethod
+    def has_due_active_items(
+        self,
+        *,
+        task_ids: Sequence[TaskId],
+    ) -> Mapping[TaskId, bool]:
+        """Return whether each Task has at least one currently due ACTIVE score.
+
+        This is bounded read-only admission evidence. It never claims an Item,
+        reads a TaskItem record, or promises that the observation remains true.
+        """
+        pass
+
+    @abstractmethod
     def rewrite_observed_item_scores(
         self,
         *,

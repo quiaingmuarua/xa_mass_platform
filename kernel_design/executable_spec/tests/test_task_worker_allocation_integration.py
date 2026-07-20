@@ -11,6 +11,8 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
     redis_module = None  # type: ignore[assignment]
 
 from kernel_design.executable_spec import (
+    DueTaskItemAdmissionPolicy,
+    PrioritySoftLimitSystemAdmissionPolicy,
     RedisTaskResourceCatalog,
     RedisAssignmentDispatchRuntime,
     RedisTaskRuntime,
@@ -22,6 +24,8 @@ from kernel_design.executable_spec import (
     RedisWorkerScoreCore,
     TaskCreationStatus,
     TaskDescriptor,
+    TaskItem,
+    TaskItemAppendStatus,
     TaskRunningActivationConfig,
     TaskRunningActivationPacer,
     TaskScoreBand,
@@ -32,7 +36,6 @@ from kernel_design.executable_spec import (
     WorkerDeclaration,
     WorkerGroupDescriptor,
     WorkerRuntimeStatus,
-    minimum_candidate_workers_satisfied,
 )
 
 
@@ -116,14 +119,19 @@ class TaskWorkerAllocationIntegrationTest(unittest.TestCase):
         self.running_activation_pacer = TaskRunningActivationPacer(
             self.task_score,
             self.task_catalog,
-            self.dispatch_runtime,
-            minimum_candidate_workers_satisfied,
+            DueTaskItemAdmissionPolicy(self.task_item_score),
+            PrioritySoftLimitSystemAdmissionPolicy(
+                self.task_score,
+                running_task_soft_limit=100,
+            ),
         )
 
     def tearDown(self) -> None:
         self.redis.delete(
             self.task_score_key,
             f"tc:{self.prefix}:task:{self.task_id}",
+            f"tr:{self.prefix}:task:{self.task_id}:items",
+            f"tr:{self.prefix}:task:{self.task_id}:item-score",
             f"ad:{self.prefix}:task:{self.task_id}:candidate-workers",
             f"wr:{self.prefix}:groups",
             f"wr:{self.prefix}:workers:{self.worker_group_id}",
@@ -131,6 +139,70 @@ class TaskWorkerAllocationIntegrationTest(unittest.TestCase):
         )
 
     def test_real_redis_allocation_publishes_worker_reservation(self) -> None:
+        task_result = self.task_runtime.create_task(
+            descriptor=TaskDescriptor(
+                task_id=self.task_id,
+                worker_group_id=self.worker_group_id,
+                allocation_rule={"attributes.runtime": {"$eq": "python"}},
+                config={
+                    "priority": "80",
+                    "maximumCandidateWorkers": "10",
+                    "maxRetryTimes": "3",
+                },
+            ),
+            suffix=5,
+        )
+        time.sleep((self.task_score.SLOT_MILLIS + 20) / 1_000)
+        approved = self.task_score.rewrite_score(
+            task_id=self.task_id,
+            expected_band=TaskScoreBand.PRE_REVIEW,
+            target_time_millis=time.time_ns() // 1_000_000,
+            target_band=TaskScoreBand.PRE_DISPATCH_VISIBLE,
+            target_suffix=5,
+        )
+        time.sleep((self.task_score.SLOT_MILLIS + 20) / 1_000)
+        pre_dispatch_state = self.task_score.get_score_states(
+            task_ids=(self.task_id,)
+        )[self.task_id]
+
+        activation_without_item = (
+            self.running_activation_pacer.activate_running_visible_tasks(
+                config=TaskRunningActivationConfig(
+                    task_batch_limit=10,
+                    running_visible_initial_suffix=8,
+                )
+            )
+        )
+        state_without_item = self.task_score.get_score_states(
+            task_ids=(self.task_id,)
+        )[self.task_id]
+        appended = self.task_runtime.append_items(
+            task_id=self.task_id,
+            items=(
+                TaskItem(
+                    message_id="message-1",
+                    event_code="resize",
+                    created_at_millis=time.time_ns() // 1_000_000 - 1_000,
+                    payload={"source": "image.jpg"},
+                ),
+            ),
+        )
+        time.sleep((self.task_score.SLOT_MILLIS + 20) / 1_000)
+        transitioned = self.running_activation_pacer.activate_running_visible_tasks(
+            config=TaskRunningActivationConfig(
+                task_batch_limit=10,
+                running_visible_initial_suffix=8,
+            )
+        )
+        running_state = self.task_score.get_score_states(
+            task_ids=(self.task_id,)
+        )[self.task_id]
+        candidate_count_before_worker_registration = (
+            self.dispatch_runtime.candidate_worker_counts(
+                task_ids=(self.task_id,),
+            )[self.task_id]
+        )
+
         group_result = self.worker_catalog.upsert_worker_group(
             descriptor=WorkerGroupDescriptor(
                 worker_group_id=self.worker_group_id,
@@ -156,33 +228,7 @@ class TaskWorkerAllocationIntegrationTest(unittest.TestCase):
                 dynamic_attribute_names=frozenset(),
             ),
         )
-        task_result = self.task_runtime.create_task(
-            descriptor=TaskDescriptor(
-                task_id=self.task_id,
-                worker_group_id=self.worker_group_id,
-                allocation_rule={"attributes.runtime": {"$eq": "python"}},
-                config={
-                    "priority": "80",
-                    "runningVisibleMinimumCandidateWorkers": "1",
-                    "maximumCandidateWorkers": "10",
-                    "maxRetryTimes": "3",
-                },
-            ),
-            suffix=5,
-        )
-        time.sleep((self.task_score.SLOT_MILLIS + 20) / 1_000)
-        approved = self.task_score.rewrite_score(
-            task_id=self.task_id,
-            expected_band=TaskScoreBand.PRE_REVIEW,
-            target_time_millis=time.time_ns() // 1_000_000,
-            target_band=TaskScoreBand.PRE_DISPATCH_VISIBLE,
-            target_suffix=5,
-        )
-        time.sleep((self.task_score.SLOT_MILLIS + 20) / 1_000)
-        score_before_allocation = self.task_score.get_score_states(
-            task_ids=(self.task_id,)
-        )[self.task_id]
-
+        time.sleep((self.worker_score.SLOT_MILLIS + 20) / 1_000)
         published = self.pacer.allocate_candidate_workers(
             config=TaskWorkerAllocationConfig(
                 task_batch_limit=10,
@@ -204,20 +250,10 @@ class TaskWorkerAllocationIntegrationTest(unittest.TestCase):
                 worker_lease_duration_millis=5_000,
             )
         )
-        time.sleep((self.task_score.SLOT_MILLIS + 20) / 1_000)
         due_worker_candidates = self.worker_score.acquire_hot_acquire_candidates(
             home_bucket_id=self.worker_group_id,
             limit=10,
         )
-        transitioned = self.running_activation_pacer.activate_running_visible_tasks(
-            config=TaskRunningActivationConfig(
-                task_batch_limit=10,
-                running_visible_initial_suffix=8,
-            )
-        )
-        running_state = self.task_score.get_score_states(
-            task_ids=(self.task_id,)
-        )[self.task_id]
         queued_candidate_count = self.dispatch_runtime.candidate_worker_counts(
             task_ids=(self.task_id,),
         )[self.task_id]
@@ -231,20 +267,25 @@ class TaskWorkerAllocationIntegrationTest(unittest.TestCase):
         self.assertEqual(unmatched_worker_result.status, WorkerRuntimeStatus.OK)
         self.assertEqual(task_result.status, TaskCreationStatus.CREATED)
         self.assertEqual(approved.status, TaskScoreTransitionStatus.TRANSITIONED)
-        self.assertEqual(published, 1)
-        self.assertEqual(published_while_reserved, 0)
+        self.assertEqual(TaskScoreBand.PRE_DISPATCH_VISIBLE, pre_dispatch_state.band)
+        self.assertEqual(0, activation_without_item)
+        self.assertEqual(TaskScoreBand.PRE_DISPATCH_VISIBLE, state_without_item.band)
         self.assertEqual(
-            score_after_allocation.band,
-            TaskScoreBand.PRE_DISPATCH_VISIBLE,
+            TaskItemAppendStatus.APPENDED,
+            appended["message-1"].status,
         )
-        self.assertGreater(
-            score_after_allocation.time_millis,
-            score_before_allocation.time_millis,
-        )
-        self.assertEqual(score_after_allocation.suffix, 5)
         self.assertEqual(transitioned, 1)
         self.assertEqual(running_state.band, TaskScoreBand.RUNNING_VISIBLE)
         self.assertEqual(running_state.suffix, 8)
+        self.assertEqual(0, candidate_count_before_worker_registration)
+        self.assertEqual(published, 1)
+        self.assertEqual(published_while_reserved, 0)
+        self.assertEqual(score_after_allocation.band, TaskScoreBand.RUNNING_VISIBLE)
+        self.assertGreater(
+            score_after_allocation.time_millis,
+            running_state.time_millis,
+        )
+        self.assertEqual(score_after_allocation.suffix, 8)
         self.assertEqual(queued_candidate_count, 1)
         self.assertEqual([entry.worker_id for entry in entries], [self.worker_id])
         self.assertEqual(entries[0].endpoint_manager_id, "endpoint-manager-1")

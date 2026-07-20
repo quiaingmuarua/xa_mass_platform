@@ -8,13 +8,17 @@ from .result_routing import (
     WorkerResultEvidence,
     WorkerResultHandler,
 )
-from .task_worker_allocation import (
+from .task_running_activation import (
+    DueTaskItemAdmissionPolicy,
+    PrioritySoftLimitSystemAdmissionPolicy,
+    SystemAdmissionPolicy,
+    TaskAdmissionPolicy,
     TaskRunningActivationConfig,
-    TaskRunningActivationPolicy,
     TaskRunningActivationPacer,
+)
+from .task_worker_allocation import (
     TaskWorkerAllocationConfig,
     TaskWorkerAllocationPacer,
-    minimum_candidate_workers_satisfied,
 )
 from .worker_candidate_matcher import (
     CandidateId,
@@ -33,8 +37,11 @@ __all__ = [
     "TaskResultHandler",
     "TaskItemDispatchConfig",
     "TaskItemDispatchPacer",
+    "DueTaskItemAdmissionPolicy",
+    "PrioritySoftLimitSystemAdmissionPolicy",
+    "SystemAdmissionPolicy",
+    "TaskAdmissionPolicy",
     "TaskRunningActivationConfig",
-    "TaskRunningActivationPolicy",
     "TaskRunningActivationPacer",
     "TaskWorkerAllocationConfig",
     "TaskWorkerAllocationPacer",
@@ -44,5 +51,4 @@ __all__ = [
     "WorkerCandidateMatchResult",
     "WorkerResultEvidence",
     "WorkerResultHandler",
-    "minimum_candidate_workers_satisfied",
 ]

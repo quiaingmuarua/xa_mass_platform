@@ -125,30 +125,15 @@ return {"transitioned", tonumber(next_score)}
             )
         return states
 
-    def acquire_active_task_candidates(
-        self,
-        *,
-        limit: int,
-    ) -> Sequence[TaskId]:
-        if limit <= 0:
-            return []
-
-        before_time_millis = self._current_time_millis()
-        running = self.acquire_band_task_candidates(
-            band=TaskScoreBand.RUNNING_VISIBLE,
-            before_time_millis=before_time_millis,
-            limit=limit,
+    def count_running_visible_tasks(self) -> int:
+        tag = self.RUNNING_VISIBLE_TAG
+        return int(
+            self.redis.zcount(
+                self.score_key,
+                self._score(tag, self.MIN_TIME_SLOT, self.MIN_SUFFIX),
+                self._score(tag, self.MAX_TIME_SLOT, self.MAX_SUFFIX),
+            )
         )
-        remaining = limit - len(running)
-        if remaining <= 0:
-            return running
-
-        pre_dispatch_visible = self.acquire_band_task_candidates(
-            band=TaskScoreBand.PRE_DISPATCH_VISIBLE,
-            before_time_millis=before_time_millis,
-            limit=remaining,
-        )
-        return [*running, *pre_dispatch_visible]
 
     def acquire_band_task_candidates(
         self,

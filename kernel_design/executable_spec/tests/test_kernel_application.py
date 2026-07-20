@@ -54,6 +54,7 @@ class KernelApplicationConfigTest(unittest.TestCase):
             running_activation_interval_millis=100,
             task_item_dispatch_interval_millis=100,
             result_routing_interval_millis=100,
+            running_task_soft_limit=100,
             stop_timeout_millis=5_000,
         )
 
@@ -68,6 +69,7 @@ class KernelApplicationConfigTest(unittest.TestCase):
                     "assignmentDispatch": {
                         "taskItemDispatchIntervalMillis": 250,
                     },
+                    "systemPolicy": {"runningTaskSoftLimit": 50},
                     "resultRouting": {"intervalMillis": 300},
                     "stopTimeoutMillis": 2_000,
                 }
@@ -80,6 +82,7 @@ class KernelApplicationConfigTest(unittest.TestCase):
         self.assertEqual(100, config.running_activation_interval_millis)
         self.assertEqual(250, config.task_item_dispatch_interval_millis)
         self.assertEqual(300, config.result_routing_interval_millis)
+        self.assertEqual(50, config.running_task_soft_limit)
         self.assertEqual(2_000, config.stop_timeout_millis)
 
     def test_unknown_malformed_and_non_positive_values_are_rejected(self) -> None:
@@ -95,12 +98,15 @@ class KernelApplicationConfigTest(unittest.TestCase):
             '{"assignmentDispatch": {"runningActivationIntervalMillis": true}}',
             '{"resultRouting": {"intervalMillis": 0}}',
             '{"resultRouting": {"batchLimit": 100}}',
+            '{"systemPolicy": {"runningTaskSoftLimit": 0}}',
+            '{"systemPolicy": {"runningTaskSoftLimit": true}}',
+            '{"systemPolicy": {"fairness": "weighted"}}',
         )
         for config_json in invalid_configs:
             with self.subTest(config_json=config_json), self.assertRaises(ValueError):
                 KernelApplicationConfig.from_json(config_json)
 
-    def test_public_config_contains_no_score_or_pacer_policy_fields(self) -> None:
+    def test_public_config_exposes_only_process_and_system_policy_fields(self) -> None:
         self.assertEqual(
             [
                 "redis_url",
@@ -109,6 +115,7 @@ class KernelApplicationConfigTest(unittest.TestCase):
                 "running_activation_interval_millis",
                 "task_item_dispatch_interval_millis",
                 "result_routing_interval_millis",
+                "running_task_soft_limit",
                 "stop_timeout_millis",
             ],
             [field.name for field in fields(KernelApplicationConfig)],
@@ -366,7 +373,6 @@ class KernelApplicationTest(unittest.TestCase):
             config={
                 "priority": "80",
                 "maximumCandidateWorkers": "10",
-                "runningVisibleMinimumCandidateWorkers": "1",
                 "maxRetryTimes": "3",
             },
         )

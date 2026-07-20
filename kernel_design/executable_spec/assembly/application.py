@@ -36,6 +36,7 @@ _DEFAULT_REDIS_PREFIX = "default"
 _DEFAULT_PACER_INTERVAL_MILLIS = 100
 _DEFAULT_RESULT_ROUTING_INTERVAL_MILLIS = 100
 _DEFAULT_STOP_TIMEOUT_MILLIS = 5_000
+_DEFAULT_RUNNING_TASK_SOFT_LIMIT = 100
 
 _INITIAL_PRE_REVIEW_SUFFIX = 1
 _APPROVED_PRE_DISPATCH_SUFFIX = 0
@@ -88,6 +89,7 @@ class KernelApplicationConfig:
     running_activation_interval_millis: int = _DEFAULT_PACER_INTERVAL_MILLIS
     task_item_dispatch_interval_millis: int = _DEFAULT_PACER_INTERVAL_MILLIS
     result_routing_interval_millis: int = _DEFAULT_RESULT_ROUTING_INTERVAL_MILLIS
+    running_task_soft_limit: int = _DEFAULT_RUNNING_TASK_SOFT_LIMIT
     stop_timeout_millis: int = _DEFAULT_STOP_TIMEOUT_MILLIS
 
     def __post_init__(self) -> None:
@@ -109,6 +111,10 @@ class KernelApplicationConfig:
             self.result_routing_interval_millis,
             name="result-routing interval",
         )
+        _positive_integer(
+            self.running_task_soft_limit,
+            name="running Task soft limit",
+        )
         _positive_integer(self.stop_timeout_millis, name="stop timeout")
 
     @classmethod
@@ -128,6 +134,7 @@ class KernelApplicationConfig:
                 {
                     "redis",
                     "assignmentDispatch",
+                    "systemPolicy",
                     "resultRouting",
                     "stopTimeoutMillis",
                 }
@@ -164,6 +171,15 @@ class KernelApplicationConfig:
             result_routing_config,
             allowed=frozenset({"intervalMillis"}),
             name="resultRouting config",
+        )
+        system_policy_config = _mapping(
+            config.get("systemPolicy", {}),
+            name="systemPolicy config",
+        )
+        _reject_unknown(
+            system_policy_config,
+            allowed=frozenset({"runningTaskSoftLimit"}),
+            name="systemPolicy config",
         )
 
         defaults = _DEFAULT_KERNEL_APPLICATION_CONFIG
@@ -203,6 +219,13 @@ class KernelApplicationConfig:
                     defaults.result_routing_interval_millis,
                 ),
                 name="result-routing interval",
+            ),
+            running_task_soft_limit=_positive_integer(
+                system_policy_config.get(
+                    "runningTaskSoftLimit",
+                    defaults.running_task_soft_limit,
+                ),
+                name="running Task soft limit",
             ),
             stop_timeout_millis=_positive_integer(
                 config.get("stopTimeoutMillis", defaults.stop_timeout_millis),
@@ -377,6 +400,7 @@ class KernelApplication:
     ) -> _RedisKernelProcessConfig:
         return _RedisKernelProcessConfig(
             prefix=config.redis_prefix,
+            running_task_soft_limit=config.running_task_soft_limit,
             assignment_dispatch=AssignmentDispatchApplicationConfig(
                 worker_allocation=TaskWorkerAllocationConfig(
                     task_batch_limit=_TASK_BATCH_LIMIT,

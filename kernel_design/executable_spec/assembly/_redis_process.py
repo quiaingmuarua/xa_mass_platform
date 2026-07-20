@@ -4,13 +4,14 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..scheduling import (
+    DueTaskItemAdmissionPolicy,
+    PrioritySoftLimitSystemAdmissionPolicy,
     ResultRoutingBuiltinPolicies,
     ResultRoutingPacer,
     TaskItemDispatchPacer,
     TaskRunningActivationPacer,
     TaskWorkerAllocationPacer,
     WorkerCandidateMatcher,
-    minimum_candidate_workers_satisfied,
 )
 from ..redis_runtime import (
     RedisAssignmentDispatchRuntime,
@@ -37,6 +38,7 @@ from .result_routing_application import (
 @dataclass(frozen=True, slots=True)
 class _RedisKernelProcessConfig:
     prefix: str
+    running_task_soft_limit: int
     assignment_dispatch: AssignmentDispatchApplicationConfig
     result_routing: ResultRoutingApplicationConfig
     stop_timeout_millis: int
@@ -44,6 +46,8 @@ class _RedisKernelProcessConfig:
     def __post_init__(self) -> None:
         if not self.prefix:
             raise ValueError("Redis kernel prefix must be non-empty")
+        if self.running_task_soft_limit <= 0:
+            raise ValueError("running Task soft limit must be positive")
         if self.stop_timeout_millis <= 0:
             raise ValueError("process stop timeout must be positive")
 
@@ -117,8 +121,11 @@ class _RedisKernelProcess:
         running_activation_pacer = TaskRunningActivationPacer(
             self._task_score,
             self._task_resource_catalog,
-            candidate_runtime,
-            minimum_candidate_workers_satisfied,
+            DueTaskItemAdmissionPolicy(task_item_score),
+            PrioritySoftLimitSystemAdmissionPolicy(
+                self._task_score,
+                running_task_soft_limit=config.running_task_soft_limit,
+            ),
         )
         task_item_dispatch_pacer = TaskItemDispatchPacer(
             self._task_score,

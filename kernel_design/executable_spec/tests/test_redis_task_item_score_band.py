@@ -36,6 +36,24 @@ class FakePipeline:
         self.commands.append(("zscore", (key, member), {}))
         return self
 
+    def zrevrangebyscore(
+        self,
+        key: str,
+        max_score: int,
+        min_score: int,
+        *,
+        start: int = 0,
+        num: int | None = None,
+    ) -> FakePipeline:
+        self.commands.append(
+            (
+                "zrevrangebyscore",
+                (key, max_score, min_score),
+                {"start": start, "num": num},
+            )
+        )
+        return self
+
     def eval(self, script: str, numkeys: int, *args: object) -> FakePipeline:
         self.commands.append(("eval", (script, numkeys, *args), {}))
         return self
@@ -54,6 +72,16 @@ class FakePipeline:
                 )
             elif command == "zscore":
                 results.append(self.redis.zscore(str(args[0]), str(args[1])))
+            elif command == "zrevrangebyscore":
+                results.append(
+                    self.redis.zrevrangebyscore(
+                        str(args[0]),
+                        int(args[1]),
+                        int(args[2]),
+                        start=int(kwargs["start"]),
+                        num=kwargs["num"],
+                    )
+                )
             elif command == "eval":
                 results.append(
                     self.redis.eval(str(args[0]), int(args[1]), *args[2:])
@@ -217,6 +245,24 @@ class RedisTaskItemScoreBandCoreTest(unittest.TestCase):
         self.assertEqual(["new", "exhausted", "old"], list(observations))
         self.assertEqual(2, observations["new"][1])
         self.assertEqual(0, observations["exhausted"][1])
+
+    def test_has_due_active_items_is_batched_and_ignores_future_and_final(self) -> None:
+        self.store("due", self.score(TaskItemScoreBand.ACTIVE, 990, 2))
+        self.redis.zadd(
+            self.core._score_key("task-2"),
+            {"future": self.score(TaskItemScoreBand.ACTIVE, 1_001, 2)},
+        )
+        self.redis.zadd(
+            self.core._score_key("task-3"),
+            {"final": self.score(TaskItemScoreBand.FINAL_SUCCESS, 990)},
+        )
+
+        self.assertEqual(
+            {"task-1": True, "task-2": False, "task-3": False},
+            self.core.has_due_active_items(
+                task_ids=("task-1", "task-2", "task-3"),
+            ),
+        )
 
     def test_rewrite_observed_scores_consumes_or_preserves_budget(self) -> None:
         observed = self.score(TaskItemScoreBand.ACTIVE, 990, 2)

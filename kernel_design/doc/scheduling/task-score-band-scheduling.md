@@ -91,9 +91,9 @@ item append, Item/result evidence, projections, and trace commit through their
 own owners without reading, acquiring, or rewriting task score. Their success
 must not depend on dispatcher ownership of the current score.
 
-For `PRE_DISPATCH_VISIBLE` and `RUNNING_VISIBLE`, assignment-dispatch is the only
-routine score-intent writer. Current allocation owns same-band fairness
-rotation, activation owns the declared cross-band transition, and any future
+For `PRE_DISPATCH_VISIBLE` and `RUNNING_VISIBLE`, scheduling is the only routine
+score-intent writer. Activation owns the declared PRE_DISPATCH cross-band
+transition, RUNNING allocation owns same-band fairness rotation, and any future
 budget-consuming classifier stays in this plane. Explicit lifecycle commands
 may still use the declared owner-transition primitives for
 approve/reject/pause/resume/cancel/close. Those commands are high-priority
@@ -104,7 +104,7 @@ Conceptual flow:
 
 ```text
 worker-allocation round
-  -> acquire due PRE_DISPATCH_VISIBLE / RUNNING_VISIBLE Task ids
+  -> acquire due RUNNING_VISIBLE Task ids
   -> load Task allocation descriptors
   -> acquire and exact-lease due Worker observations
   -> match and publish CandidateWorker evidence
@@ -112,8 +112,8 @@ worker-allocation round
 
 running-activation round
   -> acquire due PRE_DISPATCH_VISIBLE Task ids
-  -> validate activation owner facts
-  -> request RUNNING_VISIBLE transition when satisfied
+  -> apply Task Admission Policy and System Admission Policy
+  -> request RUNNING_VISIBLE transition for selected Tasks
 
 TaskItem-dispatch round
   -> acquire due RUNNING_VISIBLE Task ids
@@ -191,9 +191,9 @@ append item
   -> guarantees Item acceptance only, not eventual consumption
 
 PRE_DISPATCH_VISIBLE
-  -> activation facts may change outside the score owner
-  -> they do not directly promote the task
-  -> scheduling acquire evaluates activation and writes RUNNING_VISIBLE if ready
+  -> Task and System policy inputs may change outside the score owner
+  -> those inputs do not directly promote the task
+  -> activation acquire applies both policies and writes RUNNING_VISIBLE if selected
 
 RUNNING_VISIBLE with no due Item
   -> remains RUNNING_VISIBLE with a later score and reduced suffix budget
@@ -280,9 +280,9 @@ for observed-score release/resume.
 `suffix` is a bounded two-digit band-owned coordinate. For `RUNNING_VISIBLE`,
 `00` means same-band scheduling budget exhausted and `01..99` is the remaining
 budget. For `PRE_REVIEW`, `suffix` is an owner-defined review state code. The
-built-in `PRE_DISPATCH_VISIBLE` activation policy does not consume or interpret
+built-in `PRE_DISPATCH_VISIBLE` admission chain does not consume or interpret
 suffix; it preserves the value until activation succeeds and initializes the
-new `RUNNING_VISIBLE` suffix from configuration. Kernel code does not validate
+new `RUNNING_VISIBLE` suffix from pacer configuration. Kernel code does not validate
 suffix ordering. It is not Item retry truth and must not become the Item
 retry counter owner.
 
@@ -318,7 +318,7 @@ Use `score(TAG, timeSlot, suffix)` below as shorthand for the formula above.
 | --- | --- | --- | --- | --- | --- |
 | `PRE_REVIEW` | `score(PRE_REVIEW_TAG, ownerMutationTimeSlot, reviewStateCode)` | no | no | none | Positive mutable state, not schedulable. The review owner defines and validates suffix state semantics. Kernel only requires positive non-release writes to carry a larger `timeSlot`. |
 | `RUNNING_VISIBLE` | `score(RUNNING_VISIBLE_TAG, nextDispatchOrRecheckTimeSlot, remainingBudget)` | when included by the running scan | yes, after candidate evidence, Item record, and Item score claim | run bounded assignment-dispatch | Allocation rotates this band while preserving suffix; temporary restriction uses the same tag with a future `timeSlot`. No-work/no-worker budget classification remains owner policy, not a TaskItem-dispatch write. |
-| `PRE_DISPATCH_VISIBLE` | `score(PRE_DISPATCH_VISIBLE_TAG, allocationTimeSlot, preservedSuffix)` | when included by the ready scan horizon | no | evaluate pre-running open facts only | Pre-running open-condition recheck. It must not create a deliver seed. If still not open, activation leaves the score unchanged; allocation may independently rotate the same-band timeSlot while preserving suffix. There is no automatic exhaustion pause. |
+| `PRE_DISPATCH_VISIBLE` | `score(PRE_DISPATCH_VISIBLE_TAG, admissionTimeSlot, preservedSuffix)` | when included by the admission scan horizon | no | evaluate Task and System admission policies only | Pre-running admission domain. It must not lease/match Workers or create candidate/delivery evidence. If policy rejects it, activation leaves the score unchanged. There is no automatic exhaustion pause. |
 | `TERMINAL` | negative closed score key | no | no | none | Negative score space is final and immutable. Close reason belongs to meta/result/trace. |
 
 Band order is consumption-first:
@@ -348,14 +348,14 @@ dispatch-eligible
   seed creation
 ```
 
-`PRE_DISPATCH_VISIBLE` and `RUNNING_VISIBLE` have different same-band policies:
+`PRE_DISPATCH_VISIBLE` and `RUNNING_VISIBLE` have different scheduling actions:
 
 ```text
 PRE_DISPATCH_VISIBLE
-  running pre-open condition
-  when acquired: scans evaluate worker-candidate / open facts
-  ready: move to RUNNING_VISIBLE
-  not open: remain PRE_DISPATCH_VISIBLE without suffix consumption or auto-pause
+  pre-running admission domain
+  when acquired: Task Policy then System Policy evaluate owner facts
+  selected: move to RUNNING_VISIBLE
+  rejected: remain PRE_DISPATCH_VISIBLE without suffix consumption or auto-pause
   later bounded rounds may evaluate the condition again
 
 RUNNING_VISIBLE
@@ -366,23 +366,22 @@ RUNNING_VISIBLE
     classification through explicit Task-score primitives
 ```
 
-`PRE_DISPATCH_VISIBLE` is a real band because an approved task may still need
-pre-running open conditions before running, such as a candidate-work count
-range, batch-size threshold, priority window, or policy gate. The task does not
-derive these values from its own shell. Typical open facts include
-worker-candidate conditions such as minimum matching worker count. Acquiring
-`PRE_DISPATCH_VISIBLE` evaluates open facts; it must not create a deliver seed.
-The built-in activation policy retries indefinitely through bounded scheduling
-rounds rather than consuming a PRE_DISPATCH suffix budget.
+`PRE_DISPATCH_VISIBLE` is a real band because an approved Task may still need
+Task and System admission before consuming RUNNING capacity. The built-in Task
+policy requires a due ACTIVE Item. The built-in System policy applies Task
+priority under a RUNNING soft limit. Worker capacity estimates may become a
+future read-only policy input, but PRE_DISPATCH admission never leases, matches,
+or counts candidate Workers. The built-in activation chain retries through
+bounded scheduling rounds rather than consuming a PRE_DISPATCH suffix budget.
 
 This is unbounded over Task lifetime, not unbounded within one round. Cost is
-bounded by RUNNING-first acquisition order, per-round scan limit, pacer cadence,
-and allocation's same-band time rotation. If a deployment later needs an
+bounded by its independent per-round scan limit and pacer cadence. If a
+deployment later needs an
 activation-attempt ceiling, that must be an explicit policy and owner action;
 the kernel must not infer an automatic pause from PRE_DISPATCH suffix.
 
-Scheduling scan ranges are per active acquisition tag. The default active order
-is running consumption/recheck first, then ready activation:
+Scheduling scan ranges are per active acquisition tag. RUNNING allocation and
+PRE_DISPATCH admission use independent scans and pacer cadences:
 
 ```text
 running scan:
@@ -391,17 +390,17 @@ running scan:
     score(RUNNING_VISIBLE_TAG, currentTimeSlot - 1, MAX_SUFFIX)
     LIMIT batchSize
 
-ready scan:
+admission scan:
   ZRANGEBYSCORE task:score
     score(PRE_DISPATCH_VISIBLE_TAG, 0, 0)
-    score(PRE_DISPATCH_VISIBLE_TAG, readyScanHorizonTimeSlot - 1, MAX_SUFFIX)
+    score(PRE_DISPATCH_VISIBLE_TAG, admissionScanHorizonTimeSlot - 1, MAX_SUFFIX)
     LIMIT batchSize
 ```
 
 Do not collapse these into one broad scan from `RUNNING_VISIBLE_TAG` through
 `PRE_DISPATCH_VISIBLE_TAG`. A paused active tag uses `PAUSE_TIME_SLOT` and must
 stay invisible until released by observed-score resume. Terminal scores are
-negative and must not enter the active assignment-dispatch batch.
+negative and must not enter any scheduling batch.
 
 Assignment-dispatch chooses the scan horizon per band. Normally each scan uses
 `timeSlot < nowSlot`; the current slot is not consumed so slot-granularity
@@ -427,12 +426,12 @@ fail the score-write stale fence because newer score already won
 
 Keeping the same score after a successful `RUNNING_VISIBLE` acquire is not the
 normal path; running false classifications use their configured budget and
-next time coordinate. `PRE_DISPATCH_VISIBLE` is the explicit exception: a false
-activation check may leave its score unchanged and does not consume suffix.
-Assignment-dispatch scans `RUNNING_VISIBLE` before `PRE_DISPATCH_VISIBLE`, so
-ready activation retries do not block real running consumption. Each activation
-invocation remains bounded by scan horizon and limit; allocation may
-independently rotate the PRE_DISPATCH timeSlot while preserving suffix.
+next time coordinate. `PRE_DISPATCH_VISIBLE` is the explicit exception: policy
+rejection may leave its score unchanged and does not consume suffix.
+Activation retries cannot consume the RUNNING allocation batch because the two
+pacers use separate scans. Each activation invocation remains bounded by scan
+horizon and limit. Rejected PRE_DISPATCH Tasks retain their score until a later
+bounded activation round or explicit owner transition.
 
 Budget-consuming same-band scheduling rewrites obey:
 
@@ -560,9 +559,9 @@ write `00` unless policy intentionally starts RUNNING in exhausted mode.
 Current pacer behavior and the optional budget classifier are distinct:
 
 ```text
-if acquired PRE_DISPATCH_VISIBLE and open condition is satisfied:
+if acquired PRE_DISPATCH_VISIBLE and both admission policy layers select it:
   targetBand = RUNNING_VISIBLE
-if acquired PRE_DISPATCH_VISIBLE and open condition is false:
+if acquired PRE_DISPATCH_VISIBLE and either admission policy rejects it:
   no activation score write; remain PRE_DISPATCH_VISIBLE for later bounded retry
 if allocation acquires RUNNING_VISIBLE:
   rewrite same-band timeSlot; preserve suffix
@@ -814,7 +813,7 @@ RUNNING_VISIBLE
   creation, and no-work / no-worker recheck
 
 PRE_DISPATCH_VISIBLE
-  acquired for pre-running open-condition evaluation only
+  acquired for Task and System admission policy evaluation only
 ```
 
 These states are not acquired for dispatch:
@@ -852,6 +851,7 @@ round:
 
 ```text
 TaskWorkerAllocationPacer
+  -> query RUNNING_VISIBLE only
   -> load bounded Task allocation descriptors
   -> acquire and exact-lease HOT Worker observations
   -> match current Worker metadata/dynamic attributes
@@ -859,9 +859,9 @@ TaskWorkerAllocationPacer
   -> rotate every considered Task in its acquired band
 
 TaskRunningActivationPacer
-  -> load PRE_DISPATCH_VISIBLE descriptor and live candidate count
-  -> apply the activation policy
-  -> request RUNNING_VISIBLE only when satisfied
+  -> load bounded PRE_DISPATCH_VISIBLE descriptors
+  -> apply Task Admission Policy then System Admission Policy
+  -> request RUNNING_VISIBLE only for the selected ordered subset
 
 TaskItemDispatchPacer
   -> consume current candidate evidence
@@ -889,13 +889,14 @@ primitives. The current executable protocol is:
 
 ```text
 allocation:
-  query RUNNING_VISIBLE first, then PRE_DISPATCH_VISIBLE
+  query RUNNING_VISIBLE only
   publish candidate evidence after exact Worker lease and matching
   rewrite same-band time while preserving suffix
 
 activation:
   query PRE_DISPATCH_VISIBLE
-  request RUNNING_VISIBLE when the activation policy succeeds
+  apply Task and System admission policies
+  request RUNNING_VISIBLE for selected Tasks
   otherwise leave the score unchanged
 
 Item dispatch:
@@ -924,8 +925,8 @@ allocation band query
   -> allocation rewrites current same-band time while preserving suffix
 
 activation band query
-  -> policy satisfied: request RUNNING_VISIBLE
-  -> policy false: leave PRE_DISPATCH_VISIBLE unchanged
+  -> selected by Task and System policies: request RUNNING_VISIBLE
+  -> rejected by either policy: leave PRE_DISPATCH_VISIBLE unchanged
 
 dispatch-work query
   -> TaskItem dispatch consumes candidates and claims Items
@@ -963,13 +964,11 @@ active band -> same-band future hold score | same-band expected-score hold relea
 any non-terminal band -> TERMINAL
 ```
 
-Activation fact changes are not direct score writes. They update activation
-owner truth; an acquired `PRE_DISPATCH_VISIBLE` scheduling round later reads those
-facts and either moves the band to `RUNNING_VISIBLE` or leaves
-`PRE_DISPATCH_VISIBLE` unchanged for a later bounded retry.
-Candidate-worker allocation is one such evidence write: it may discover Tasks
-through the score axis, but its match/append operation neither reads decoded
-Task score state nor gates publication on a score transition.
+Admission input changes are not direct score writes. They update their owner
+truth; an acquired `PRE_DISPATCH_VISIBLE` activation round later applies Task
+and System policies and either moves the band to `RUNNING_VISIBLE` or leaves it
+unchanged for a later bounded retry. Worker candidate publication is not an
+admission input in the built-in path and happens only after RUNNING.
 
 ### Non-Triggers
 
@@ -994,7 +993,7 @@ on the kernel primitive.
 
 | Category | May write task score? | Allowed shape |
 | --- | --- | --- |
-| score-acquired assignment-dispatch round | yes | Decode score, validate owner facts, run the band action, then call same-band time/suffix rewrite, general positive rewrite, terminal close, or score hold release. |
+| score-acquired scheduling round | yes | Apply the installed policy to owner facts, then call only the declared same-band time/suffix rewrite, positive transition, terminal close, or score hold release. |
 | initialization owner | yes, once | Establish the first score during Task creation; it cannot reacquire or rewrite an existing score. |
 | owner command | yes, declared transitions only | Validate owner facts, then approve/reject/pause/resume/cancel/close through the matching transition primitive. It cannot perform generic cadence or budget rewrites. |
 | resource / backlog / evidence write | no direct live score | Metadata/config update, Item append, Item retry/outcome movement, and result evidence update their own truth without a Task-score lease. Later scheduling or an owner command may observe them. |
@@ -1034,7 +1033,7 @@ PRE_REVIEW gate command
   TERMINAL score
 
 PRE_DISPATCH_VISIBLE activation scheduling round
-  read activation facts + write RUNNING_VISIBLE when satisfied
+  read Task/System policy facts + write RUNNING_VISIBLE when selected
   otherwise leave PRE_DISPATCH_VISIBLE unchanged; no suffix consumption or
   automatic hold
 
@@ -1071,9 +1070,9 @@ task score owner
   same-band time/suffix rewrite / positive rewrite / terminal close /
   score-hold release primitives
 
-assignment-dispatch
-  owns scan range choice, batch limit, candidate classification, and request for
-  the next score write
+scheduling pacers and installed policies
+  own scan range choice, batch limit, owner-fact classification, and request
+  for the next declared score write
 ```
 
 Do not add a distributed lock around task scheduling by default. The owner-local
@@ -1092,14 +1091,15 @@ not rewrite Task score. The classifications below are mechanism-safe options
 for owner policy, not claims that every option is wired into the current
 pacers:
 
-- acquired score but Task descriptor is missing: skip owner work; allocation may
-  still rotate the acquired same-band coordinate so the orphan cannot dominate;
+- acquired score but Task descriptor is missing: skip owner work; RUNNING
+  allocation may still rotate its same-band coordinate so the orphan cannot
+  dominate, while PRE_DISPATCH activation leaves it unchanged;
 - lifecycle command changed the score after acquire: the later score wins and
   any stale allocation rewrite is rejected;
-- `PRE_DISPATCH_VISIBLE` acquired and open condition is satisfied: transition to
-  `RUNNING_VISIBLE`;
-- `PRE_DISPATCH_VISIBLE` acquired and open condition is still false: leave the
-  score unchanged; a later bounded activation round may retry;
+- `PRE_DISPATCH_VISIBLE` selected by both Task and System policies: transition
+  to `RUNNING_VISIBLE`;
+- `PRE_DISPATCH_VISIBLE` rejected by either policy: leave the score unchanged;
+  a later bounded activation round may retry;
 - `RUNNING_VISIBLE` acquired but TaskItemScoreBandCore reports no due TaskItem
   and `suffix > 00`: rewrite `RUNNING_VISIBLE` with a later no-work recheck
   time and `suffix - 1`;
@@ -1131,7 +1131,7 @@ Policy owns:
 ```text
 no-worker-match delay
 no-work recheck delay
-activation condition
+Task and System admission policy
 contention delay
 large-backlog requeue delay
 healthy/scarce match delay
@@ -1175,9 +1175,8 @@ no broad refresh from low-value observations
 - Do not let result/retry write live task score.
 - Do not put a timer, periodic recheck loop, or pagination cursor inside the
   task-score owner.
-- Do not treat same-band false recheck as a task-score pagination problem.
-  Assignment-dispatch owns fallback horizon, quota, ordering, and backoff while
-  keeping `RUNNING_VISIBLE` consumption first.
+- Do not treat a rejected PRE_DISPATCH admission as a task-score pagination
+  problem. Activation owns bounded scan cadence; policies own admission.
 - Do not let allocation-acquired `RUNNING_VISIBLE` candidates stay at the same
   dominant score after consideration; same-band rotation must succeed or lose
   to the score-write stale fence. TaskItem dispatch remains Task-score
@@ -1188,11 +1187,12 @@ no broad refresh from low-value observations
 - Do not use an event queue as ready-task backlog or as a second scheduling
   index.
 - Do not collapse active scheduling into one broad range scan across tags.
-  Assignment-dispatch must scan active bands through separate band ranges and
+  Scheduling pacers must scan their bands through separate band ranges and
   must not include terminal markers or positive inactive tags such as
   `PRE_REVIEW` in active acquire.
-- `PRE_DISPATCH_VISIBLE` may enter Worker allocation/matching and candidate
-  publication, but it must not enter TaskItem claim or DeliverSeed creation.
+- `PRE_DISPATCH_VISIBLE` may enter only Task/System admission. It must not enter
+  Worker allocation/matching, candidate publication, TaskItem claim, or
+  DeliverSeed creation.
 - Do not write a scheduling restriction score for `PRE_REVIEW` or `TERMINAL`.
   The owner-local `PRE_REVIEW` creation lease is permitted only for
   lease-controlled Task creation; kernel code stores its suffix opaquely and

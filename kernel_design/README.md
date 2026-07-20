@@ -449,21 +449,23 @@ no hidden compatibility path or second mainline remains
   - canonical allocation lease, dispatch exact recheck, result-driven
     release/recovery classification, reconnect dirty fence, and natural expiry.
 - [Task Resource Model](doc/resource-model/task-resource-model.md)
-  - v0 task allocation metadata, start conditions, allocation-rule routing,
-    Item retry policy, and bounded task descriptor reads.
+  - v0 Task allocation metadata, Task scheduling priority, allocation-rule
+    routing, Item retry policy, and bounded descriptor reads.
 - [Task Item Score-Band Scheduling](doc/scheduling/task-item-score-band-scheduling.md)
   - one canonical TaskItem from append through finality, with TaskItem record, ACTIVE
     claim/retry, and monotonic result outcome movement; no second Work model.
 - [Assignment-Dispatch Scheduling](doc/scheduling/assignment-dispatch-scheduling.md)
-  - plane contract for independent allocation and Item-dispatch pacing, plus
-    running-activation transition handling.
+  - plane contract for independent admission, allocation, and Item-dispatch
+    pacing.
+- [Task Running Activation Pacer](doc/scheduling/task-running-activation-pacer.md)
+  - PRE_DISPATCH Task/System admission policy chain and the sole default
+    transition into RUNNING.
 - [Task-Worker Allocation Pacer](doc/scheduling/task-worker-allocation-pacer.md)
-  - oldest-first allocation fairness, batch matching, activation, and candidate
-    publication.
+  - RUNNING-only Task scan, bounded Worker lease/match, candidate publication,
+    and same-band time rotation.
 - [Task Item Dispatch Pacer](doc/scheduling/task-item-dispatch-pacer.md)
   - candidate consumption, Item score claim, dispatch-time Worker lease
-    disposition, and DeliverSeed queue append; the current executable spec has
-    not yet implemented the Worker lease disposition branch.
+    validation/renewal, and DeliverSeed queue append.
 - [Kernel Application Assembly](doc/kernel-application-assembly.md)
   - independent resource upsert and scheduling-process boundaries,
     private Redis composition, background scheduling lifecycles, built-in CLI,

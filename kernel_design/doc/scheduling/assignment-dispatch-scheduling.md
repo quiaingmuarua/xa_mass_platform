@@ -6,6 +6,7 @@ implemented; policy coverage partial.
 Detailed rounds:
 
 - [Task-Worker Allocation Pacer](task-worker-allocation-pacer.md)
+- [Task Running Activation Pacer](task-running-activation-pacer.md)
 - [Task Item Dispatch Pacer](task-item-dispatch-pacer.md)
 - [Worker HOT_ACQUIRE Lease Protocol](worker-hot-acquire-lease-protocol.md)
 - [DeliverSeed Outbound Delivery](deliver-seed-outbound-delivery.md), which
@@ -19,17 +20,18 @@ Process lifecycle is defined by
 Assignment-dispatch is a bounded scheduling coordination plane. It joins owner
 evidence but does not become a Task, Worker, Item, transport, or result owner.
 
-Two independently paced mechanisms are mandatory:
+Three independently paced mechanisms are mandatory:
 
 | Pacer | Input | Cutpoint | Score authority |
 | --- | --- | --- | --- |
-| Task-Worker allocation | Due active Tasks, Task constraints, due Worker observations | Expiring `CandidateWorkerEntry` values in one Task-local queue | Exact Worker lease plus current same-band Task time rotation |
+| Task RUNNING activation | Due PRE_DISPATCH Tasks, Task descriptors, Task/System policy evidence | Selected Tasks enter `RUNNING_VISIBLE` | Declared `PRE_DISPATCH_VISIBLE -> RUNNING_VISIBLE` Task transition only |
+| Task-Worker allocation | Due RUNNING Tasks, Task constraints, due Worker observations | Expiring `CandidateWorkerEntry` values in one Task-local queue | Exact Worker lease plus RUNNING same-band Task time rotation |
 | TaskItem dispatch | RUNNING Task ids, consumed candidate entries, due Item observations and TaskItem records | `DeliverSeed` append after exact Worker lease validation/renewal | TaskItem observed claim plus narrow Worker exact validate/renew invocation; Task score remains read-only |
 
-`TaskRunningActivationPacer` is the independent lifecycle classification between
-them. It evaluates activation owner facts and may request the declared
-`PRE_DISPATCH_VISIBLE -> RUNNING_VISIBLE` transition. It is not folded into
-allocation publication or Item dispatch.
+`TaskRunningActivationPacer` is the independent admission boundary before
+allocation. It composes Task Admission Policy and System Admission Policy, then
+may request the declared `PRE_DISPATCH_VISIBLE -> RUNNING_VISIBLE` transition.
+It does not acquire, match, count, or reserve Workers.
 
 The mechanisms remain separate because their cadence, cost, batch dimensions,
 failure behavior, and policy extension points differ. Existing candidate
@@ -56,13 +58,14 @@ assignment lifecycle.
 
 ```text
 TaskWorkerAllocationPacer
-  reads due PRE_DISPATCH_VISIBLE / RUNNING_VISIBLE Task ids
+  reads due RUNNING_VISIBLE Task ids only
   exact-leases unchanged due HOT Workers
   publishes matched Worker evidence
-  rotates each considered Task within its current band for fairness
+  rotates each considered RUNNING Task within its band for fairness
 
 TaskRunningActivationPacer
-  reads due PRE_DISPATCH_VISIBLE Task ids and candidate evidence
+  reads due PRE_DISPATCH_VISIBLE Task ids and bounded Task descriptors
+  applies Task Admission Policy and System Admission Policy
   asks TaskScoreBandCore for PRE_DISPATCH_VISIBLE -> RUNNING_VISIBLE
 
 TaskItemDispatchPacer
@@ -138,9 +141,13 @@ Activation is a separate bounded round:
 
 ```text
 due PRE_DISPATCH_VISIBLE Task
-  -> activation policy(candidate count, Task descriptor)
-  -> declared RUNNING_VISIBLE transition when satisfied
+  -> due-Item Task admission policy
+  -> priority + RUNNING soft-limit System admission policy
+  -> declared RUNNING_VISIBLE transition when selected
 ```
+
+No Worker candidate is created before RUNNING. A Task may enter RUNNING with no
+registered Worker; later allocation rounds observe Worker availability.
 
 Item dispatch follows this owner order:
 
@@ -217,14 +224,15 @@ source of liveness or lifecycle truth.
 
 ## Deferred Policy
 
-- Allocation currently prioritizes `RUNNING_VISIBLE` before
-  `PRE_DISPATCH_VISIBLE`; quotas or weighting are deployment policy, not a
-  candidate-runtime feature.
+- Task admission defaults to due ACTIVE Item evidence. System admission defaults
+  to priority-first selection under a configurable RUNNING soft limit.
+- Quota, tenant, business start condition, and resource estimates are future
+  composable admission policies, not score or candidate-runtime features.
 - Dispatch intends to prefer recently allocated RUNNING Tasks; the current
   Redis Task acquisition remains oldest-first.
-- Candidate target, scan limits, lease duration, activation condition, and
-  per-Task dispatch limit are bounded policy values owned by their pacer
-  configs or Task descriptor.
+- Candidate target, scan limits, lease duration, admission bounds, and per-Task
+  dispatch limit are bounded policy values owned by their pacer configs,
+  installed policies, or Task descriptor.
 - One `WorkerId` is one scheduler-visible execution slot. A physical executor
   with parallel capacity must expose multiple logical WorkerIds; dispatch must
   not infer parallel slots from metadata or release one score fence early.
@@ -237,6 +245,7 @@ source of liveness or lifecycle truth.
 ## Guardrails
 
 - Do not collapse allocation, activation, and Item dispatch into one round.
+- Do not allocate, match, count, or reserve Workers for PRE_DISPATCH Tasks.
 - Do not let allocation decode Task score or change Task band/suffix.
 - Do not let Item dispatch rewrite Task score or decode/directly rewrite Worker
   score; it may invoke only the canonical exact validate/renew primitive.

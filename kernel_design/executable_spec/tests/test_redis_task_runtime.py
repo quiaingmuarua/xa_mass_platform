@@ -180,7 +180,6 @@ class RedisTaskRuntimeTest(unittest.TestCase):
             config={
                 "priority": "80",
                 "maximumCandidateWorkers": "20",
-                "runningVisibleMinimumCandidateWorkers": "10",
                 "maxRetryTimes": "3",
             },
         )

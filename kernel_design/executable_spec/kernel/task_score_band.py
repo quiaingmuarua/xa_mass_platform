@@ -112,18 +112,8 @@ class TaskScoreBandCore(ABC):
         pass
 
     @abstractmethod
-    def acquire_active_task_candidates(
-        self,
-        *,
-        limit: int,
-    ) -> Sequence[TaskId]:
-        """Acquire due active task score candidates.
-
-        The implementation owns band-range scans and limit enforcement. It must
-        not return PRE_REVIEW, TERMINAL, hard-paused, or non-due future scores.
-        PRE_DISPATCH_VISIBLE candidates still require activation validation and
-        must not enter worker score lease, TaskItem claim, or deliver seed creation.
-        """
+    def count_running_visible_tasks(self) -> int:
+        """Count every RUNNING_VISIBLE member, including future holds."""
         pass
 
     @abstractmethod

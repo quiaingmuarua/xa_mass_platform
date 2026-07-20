@@ -44,7 +44,9 @@ business event names or caller-supplied score ranges.
 
 ```text
 Task score acquire
-  -> Worker allocation and exact Worker lease
+  -> PRE_DISPATCH Task/System admission
+  -> RUNNING transition
+  -> RUNNING Worker allocation and exact Worker lease
   -> candidate-worker runtime
   -> exact Worker lease validate/renew
   -> TaskItem score acquire / claim
@@ -68,6 +70,10 @@ triggers. Detailed mutation authority remains in the owner documents below.
 TaskScoreBandCore
   owns Task acquisition visibility, encoding, bounded queries, holds,
   lifecycle-direction validation, and terminal score
+
+TaskAdmissionPolicy and SystemAdmissionPolicy
+  decide which bounded PRE_DISPATCH Tasks may request RUNNING; they own no
+  score, Item, Worker, or candidate truth
 
 TaskRuntime
   owns Task descriptors, canonical TaskItem records, and Task-scoped
@@ -106,12 +112,12 @@ Transport adapters
 
 | Mechanism | Executable status | Owner-local deferred policy |
 | --- | --- | --- |
-| Task score-band | Implemented with Redis proof | Cadence, scan horizons, activation and no-work budget values |
+| Task score-band | Implemented with Redis proof | Cadence, scan horizons, and no-work budget values |
 | Worker score-band | Implemented with Redis proof, including dirty lease fence | Dirty marking policy when a persisted assignment continuation exists; recovery cadence and ranking |
 | Worker HOT_ACQUIRE lease protocol | Allocation, dispatch exact recheck, result release/recovery demotion, reconnect dirty fence, and one-WorkerId/one-slot invariant implemented | Recovery probe cadence and ranking |
 | TaskItem score-band | Implemented with Redis proof | Initial retry budget and claim-duration values |
-| Worker allocation | Implemented with unit and Redis orchestration proof | PRE_DISPATCH/RUNNING weighting or quota beyond current RUNNING-first behavior |
-| Task running activation | Implemented | Alternative activation policies beyond the built-in minimum candidate count |
+| Task running activation | Implemented with due-Item Task policy and priority soft-limit System policy | Quota, tenant, business start condition, and resource-estimate policy composition |
+| Worker allocation | Implemented with unit and Redis orchestration proof; RUNNING-only | Fairness beyond Task score order and matcher priority |
 | TaskItem dispatch | Implemented through DeliverSeed append | Recent-first Redis Task acquisition remains deferred |
 | Outbound delivery example | Independent clients and Local Function Adapter implemented | Production transport, pending/ack, and protocol-specific conversion |
 | Result routing | Implemented with unit and Redis orchestration proof; Task/Worker policy handlers are replaceable | Result projection and stronger queue reliability require separate owners and invariants |
@@ -127,18 +133,19 @@ runtime path.
 3. [Worker HOT_ACQUIRE Lease Protocol](worker-hot-acquire-lease-protocol.md)
 4. [Task Item Score-Band Scheduling](task-item-score-band-scheduling.md)
 5. [Assignment-Dispatch Scheduling](assignment-dispatch-scheduling.md)
-6. [Task-Worker Allocation Pacer](task-worker-allocation-pacer.md)
-7. [Task Item Dispatch Pacer](task-item-dispatch-pacer.md)
-8. [DeliverSeed Outbound Delivery](deliver-seed-outbound-delivery.md)
-9. [Result-Routing Scheduling](result-routing-scheduling.md)
-10. [Kernel Application Assembly](../kernel-application-assembly.md)
-11. [Worker Runtime Redis Shape](../runtime-redis/worker-runtime-redis-shape.md)
-12. [Seed Result Runtime Redis Shape](../runtime-redis/seed-result-runtime-redis-shape.md)
-13. [Local Function Transport Adapter](../../examples/local_function_adapter/README.md)
+6. [Task Running Activation Pacer](task-running-activation-pacer.md)
+7. [Task-Worker Allocation Pacer](task-worker-allocation-pacer.md)
+8. [Task Item Dispatch Pacer](task-item-dispatch-pacer.md)
+9. [DeliverSeed Outbound Delivery](deliver-seed-outbound-delivery.md)
+10. [Result-Routing Scheduling](result-routing-scheduling.md)
+11. [Kernel Application Assembly](../kernel-application-assembly.md)
+12. [Worker Runtime Redis Shape](../runtime-redis/worker-runtime-redis-shape.md)
+13. [Seed Result Runtime Redis Shape](../runtime-redis/seed-result-runtime-redis-shape.md)
+14. [Local Function Transport Adapter](../../examples/local_function_adapter/README.md)
 
 The score documents own encoding and transition rules. The Worker lease
 protocol owns the one cross-pacer lease lifecycle without becoming a score or
-runtime owner. The assignment parent owns the two-pacer protocol. Each pacer
+runtime owner. The assignment parent owns the three-pacer protocol. Each pacer
 document owns its round sequence, limits, stale/failure behavior, and deferred
 policy. Redis shape documents own backend representation only.
 
@@ -157,6 +164,7 @@ kernel_design/executable_spec/
     seed_result_runtime.py
   scheduling/
     worker_candidate_matcher.py
+    task_running_activation.py
     task_worker_allocation.py
     task_item_dispatch.py
     result_routing.py

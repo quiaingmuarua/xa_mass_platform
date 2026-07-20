@@ -26,7 +26,6 @@ class TaskRuntimeContractTest(unittest.TestCase):
             config={
                 "priority": "80",
                 "maximumCandidateWorkers": "20",
-                "runningVisibleMinimumCandidateWorkers": "10",
                 "maxRetryTimes": "3",
             },
         )
@@ -126,17 +125,12 @@ class TaskRuntimeContractTest(unittest.TestCase):
         base_config = {
             "priority": "80",
             "maximumCandidateWorkers": "10",
-            "runningVisibleMinimumCandidateWorkers": "2",
             "maxRetryTimes": "3",
         }
 
         invalid_configs = (
             {**base_config, "priority": "0"},
             {**base_config, "maximumCandidateWorkers": "many"},
-            {
-                **base_config,
-                "runningVisibleMinimumCandidateWorkers": "11",
-            },
             {**base_config, "maxRetryTimes": "99"},
             {**base_config, "maxRetryTimes": "many"},
             {key: value for key, value in base_config.items() if key != "priority"},

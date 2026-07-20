@@ -119,7 +119,6 @@ class FastApiServerTest(unittest.TestCase):
                 "config": {
                     "priority": "80",
                     "maximumCandidateWorkers": "10",
-                    "runningVisibleMinimumCandidateWorkers": "1",
                     "maxRetryTimes": "3",
                 },
             },

@@ -97,15 +97,19 @@ The optional JSON contract is:
   "resultRouting": {
     "intervalMillis": 100
   },
+  "systemPolicy": {
+    "runningTaskSoftLimit": 100
+  },
   "stopTimeoutMillis": 5000
 }
 ```
 
 Every field may be omitted. Unknown fields, malformed JSON, empty strings,
 wrong types, and non-positive numeric values fail during construction. Batch,
-scan, lease, claim, suffix, score, and lane policy remain internal constants;
-they are not configuration merely because the first composition root needs
-them.
+scan, lease, claim, suffix, score, and lane policy remain internal constants.
+`systemPolicy.runningTaskSoftLimit` is the one public policy setting in this
+slice; it defaults to `100` and must be a positive integer. It is a soft
+admission bound, not an atomic permit or hard capacity promise.
 
 ## Lifecycle
 
@@ -153,6 +157,13 @@ default Task and Worker handler mappings, and injects them into
 `ResultRoutingPacer`. The Pacer itself depends only on `SeedResultRuntime` and
 the stable handler contracts; Task runtime, TaskItem score, and Worker score
 dependencies belong to the selected policy object.
+
+For Task activation, the composition root installs
+`DueTaskItemAdmissionPolicy` and
+`PrioritySoftLimitSystemAdmissionPolicy`. The activation Pacer receives these
+policies as dependencies; it does not inspect Worker capacity or candidate
+queues. A PRE_DISPATCH Task with a due Item may enter RUNNING before any Worker
+is registered. Worker allocation starts only after that transition.
 
 Each assignment-dispatch loop has one non-daemon thread and its own configured
 interval. A loop executes its first bounded round immediately, runs at most one

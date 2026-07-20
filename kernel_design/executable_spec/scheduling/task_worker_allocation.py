@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from time import time_ns
 
@@ -8,11 +8,10 @@ from ..kernel.assignment_dispatch_runtime import (
     AssignmentDispatchRuntime,
     CandidateWorkerEntry,
 )
-from ..kernel.task_runtime import TaskDescriptor, TaskResourceCatalog
+from ..kernel.task_runtime import TaskResourceCatalog
 from ..kernel.task_score_band import (
     TaskScoreBand,
     TaskScoreBandCore,
-    TaskScoreTransitionStatus,
     TaskId,
     TimeMillis,
 )
@@ -49,45 +48,8 @@ class TaskWorkerAllocationConfig:
             raise ValueError("allocation config values must be positive")
 
 
-@dataclass(frozen=True)
-class TaskRunningActivationConfig:
-    """Bounds for one PRE_DISPATCH_VISIBLE activation round."""
-
-    task_batch_limit: int
-    running_visible_initial_suffix: int
-
-    def __post_init__(self) -> None:
-        if self.task_batch_limit <= 0:
-            raise ValueError("task batch limit must be positive")
-        if not (
-            TaskScoreBandCore.MIN_SUFFIX
-            < self.running_visible_initial_suffix
-            <= TaskScoreBandCore.MAX_SUFFIX
-        ):
-            raise ValueError("running visible initial suffix must be in 1..99")
-
-
-TaskRunningActivationPolicy = Callable[[TaskDescriptor, int], bool]
-
-
-def minimum_candidate_workers_satisfied(
-    descriptor: TaskDescriptor,
-    candidate_worker_count: int,
-) -> bool:
-    """Built-in RUNNING activation policy."""
-    minimum_candidate_workers = int(
-        descriptor.config["runningVisibleMinimumCandidateWorkers"]
-    )
-    return candidate_worker_count >= minimum_candidate_workers
-
-
 class TaskWorkerAllocationPacer:
     """Run one bounded Task-to-Worker candidate allocation round."""
-
-    ALLOCATION_BANDS = (
-        TaskScoreBand.RUNNING_VISIBLE,
-        TaskScoreBand.PRE_DISPATCH_VISIBLE,
-    )
 
     def __init__(
         self,
@@ -110,21 +72,13 @@ class TaskWorkerAllocationPacer:
     ) -> int:
         """Publish candidate Workers and return the number of published Tasks."""
         task_scan_time_millis = self._current_time_millis()
-        task_candidate_bands: dict[TaskId, TaskScoreBand] = {}
-        task_limit_remaining = config.task_batch_limit
-        for band in self.ALLOCATION_BANDS:
-            if task_limit_remaining <= 0:
-                break
-            band_task_ids = self.task_score.acquire_band_task_candidates(
-                band=band,
+        task_ids = tuple(
+            self.task_score.acquire_band_task_candidates(
+                band=TaskScoreBand.RUNNING_VISIBLE,
                 before_time_millis=task_scan_time_millis,
-                limit=task_limit_remaining,
+                limit=config.task_batch_limit,
             )
-            for task_id in band_task_ids:
-                task_candidate_bands[task_id] = band
-            task_limit_remaining -= len(band_task_ids)
-
-        task_ids = tuple(task_candidate_bands)
+        )
         candidate_worker_counts = self.dispatch_runtime.candidate_worker_counts(
             task_ids=task_ids,
         )
@@ -190,10 +144,10 @@ class TaskWorkerAllocationPacer:
                 expires_at_millis=worker_lease_until_millis,
             )
 
-        for task_id, expected_band in task_candidate_bands.items():
+        for task_id in task_ids:
             self.task_score.rewrite_same_band_time_millis(
                 task_id=task_id,
-                expected_band=expected_band,
+                expected_band=TaskScoreBand.RUNNING_VISIBLE,
                 target_time_millis=self._current_time_millis(),
             )
         return published_task_count
@@ -259,69 +213,6 @@ class TaskWorkerAllocationPacer:
             )
             published_task_count += 1
         return published_task_count
-
-    @staticmethod
-    def _current_time_millis() -> TimeMillis:
-        return time_ns() // 1_000_000
-
-
-class TaskRunningActivationPacer:
-    """Activate PRE_DISPATCH_VISIBLE Tasks from candidate evidence."""
-
-    def __init__(
-        self,
-        task_score: TaskScoreBandCore,
-        task_catalog: TaskResourceCatalog,
-        dispatch_runtime: AssignmentDispatchRuntime,
-        activation_policy: TaskRunningActivationPolicy,
-    ) -> None:
-        self.task_score = task_score
-        self.task_catalog = task_catalog
-        self.dispatch_runtime = dispatch_runtime
-        self.activation_policy = activation_policy
-
-    def activate_running_visible_tasks(
-        self,
-        *,
-        config: TaskRunningActivationConfig,
-    ) -> int:
-        """Promote eligible PRE_DISPATCH_VISIBLE Tasks to RUNNING_VISIBLE."""
-        activation_time_millis = self._current_time_millis()
-        pre_dispatch_task_ids = tuple(
-            self.task_score.acquire_band_task_candidates(
-                band=TaskScoreBand.PRE_DISPATCH_VISIBLE,
-                before_time_millis=activation_time_millis,
-                limit=config.task_batch_limit,
-            )
-        )
-        if not pre_dispatch_task_ids:
-            return 0
-
-        task_descriptors = self.task_catalog.load_task_allocation_descriptors(
-            task_ids=pre_dispatch_task_ids,
-        )
-        candidate_worker_counts = self.dispatch_runtime.candidate_worker_counts(
-            task_ids=pre_dispatch_task_ids,
-        )
-        activated_task_count = 0
-        for task_id in pre_dispatch_task_ids:
-            descriptor = task_descriptors.get(task_id)
-            if descriptor is None:
-                continue
-            candidate_worker_count = candidate_worker_counts.get(task_id, 0)
-            if not self.activation_policy(descriptor, candidate_worker_count):
-                continue
-
-            activation_result = self.task_score.rewrite_score(
-                task_id=task_id,
-                expected_band=TaskScoreBand.PRE_DISPATCH_VISIBLE,
-                target_band=TaskScoreBand.RUNNING_VISIBLE,
-                target_time_millis=activation_time_millis,
-                target_suffix=config.running_visible_initial_suffix,
-            )
-            if activation_result.status is TaskScoreTransitionStatus.TRANSITIONED:
-                activated_task_count += 1
-        return activated_task_count
 
     @staticmethod
     def _current_time_millis() -> TimeMillis:
