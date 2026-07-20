@@ -3,10 +3,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Mapping, Sequence
 
-from ..constraint_dsl import ConstraintEvaluator, ConstraintMap, UNRESOLVED_VALUE
-from ..kernel.assignment_dispatch_runtime import CandidateId
-from ..kernel.worker_score import WorkerId
-from ..kernel.worker_runtime import (
+from ...constraint_dsl import ConstraintEvaluator, ConstraintMap, UNRESOLVED_VALUE
+from ...kernel.assignment_dispatch_runtime import CandidateId
+from ...kernel.worker_score import WorkerId
+from ...kernel.worker_runtime import (
     DynamicAttributeReadResult,
     EndpointManagerId,
     WorkerDescriptor,
@@ -15,6 +15,7 @@ from ..kernel.worker_runtime import (
     WorkerResourceCatalog,
     WorkerRuntimeStatus,
 )
+
 
 @dataclass(frozen=True)
 class WorkerCandidateConstraint:

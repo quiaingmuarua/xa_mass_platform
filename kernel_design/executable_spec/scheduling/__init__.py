@@ -24,17 +24,15 @@ from .task_worker_allocation import (
     TaskWorkerAllocationConfig,
     TaskWorkerAllocationPacer,
 )
-from .worker_candidate_matcher import (
-    WorkerCandidateConstraint,
-    WorkerCandidateMatcher,
-    WorkerCandidateMatches,
-    WorkerCandidateMatchResult,
-)
-from .worker_candidate_acquirer import (
+from .worker_candidate import (
     CachedWorkerCandidateAcquirer,
     RealtimeWorkerCandidateAcquirer,
     WorkerCandidateAcquirer,
     WorkerCandidateAcquisition,
+    WorkerCandidateConstraint,
+    WorkerCandidateMatcher,
+    WorkerCandidateMatches,
+    WorkerCandidateMatchResult,
     WorkerCandidateRequest,
 )
 from ..kernel.assignment_dispatch_runtime import CandidateId

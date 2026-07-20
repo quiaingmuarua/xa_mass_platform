@@ -23,7 +23,7 @@ from ..kernel.task_runtime import (
 )
 from ..kernel.task_score_band import Score, TaskId, TaskScoreBandCore, TimeMillis
 from ..kernel.worker_runtime import EndpointManagerId
-from .worker_candidate_acquirer import (
+from .worker_candidate import (
     WorkerCandidateAcquirer,
     WorkerCandidateRequest,
 )

@@ -165,7 +165,9 @@ kernel_design/executable_spec/
     result_context.py
     seed_result_runtime.py
   scheduling/
-    worker_candidate_matcher.py
+    worker_candidate/
+      acquisition.py
+      matching.py
     task_running_activation.py
     task_worker_allocation.py
     task_item_dispatch.py

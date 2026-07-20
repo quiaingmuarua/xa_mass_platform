@@ -4,20 +4,20 @@ from collections.abc import Mapping as MappingABC
 from dataclasses import dataclass
 from typing import Mapping, Protocol
 
-from ..kernel.assignment_dispatch_runtime import (
+from ...kernel.assignment_dispatch_runtime import (
     CandidateId,
     CandidateWorkerCache,
     CandidateWorkerEntry,
 )
-from ..kernel.task_score_band import TimeMillis
-from ..kernel.worker_runtime import WorkerGroupId
-from ..kernel.worker_score import (
+from ...kernel.task_score_band import TimeMillis
+from ...kernel.worker_runtime import WorkerGroupId
+from ...kernel.worker_score import (
     Score,
     WorkerId,
     WorkerScoreCore,
     WorkerScoreTransitionStatus,
 )
-from .worker_candidate_matcher import (
+from .matching import (
     WorkerCandidateConstraint,
     WorkerCandidateMatcher,
 )

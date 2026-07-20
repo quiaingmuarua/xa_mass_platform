@@ -14,7 +14,7 @@ from ..kernel.task_score_band import (
     TaskId,
     TimeMillis,
 )
-from .worker_candidate_acquirer import (
+from .worker_candidate import (
     RealtimeWorkerCandidateAcquirer,
     WorkerCandidateAcquisition,
     WorkerCandidateRequest,
