@@ -58,14 +58,14 @@ One round computes `nowMillis` and `taskItemClaimUntilMillis` once, then:
 
    ```text
    CandidateId = taskId
-   workerGroupId = descriptor.workerGroupId
    priority = descriptor priority
    requestedCount = record-backed claimable Item count
    matchRules = descriptor allocationRule
    ```
 
-7. Resolve and call one candidate acquirer with the Item claim deadline as the
-   required Worker lease deadline.
+7. Resolve and call one candidate acquirer with
+   `workerGroupId = descriptor.workerGroupId` and the Item claim deadline as
+   the required Worker lease deadline.
 8. Exact-claim at most the number of returned Workers, consuming one retry
    budget unit per attempted Item claim.
 9. Pair successful claims and Workers in their stable returned order.

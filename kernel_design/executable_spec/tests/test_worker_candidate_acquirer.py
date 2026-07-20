@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import inspect
 import unittest
-from unittest.mock import Mock, call
+from unittest.mock import Mock
 
 from kernel_design.executable_spec import (
     CachedWorkerCandidateAcquirer,
@@ -20,9 +20,14 @@ from kernel_design.executable_spec import (
 
 
 class WorkerCandidateAcquirerContractTest(unittest.TestCase):
-    def test_public_signature_has_only_requests_and_lease_deadline(self) -> None:
+    def test_public_signature_requires_one_worker_group(self) -> None:
         self.assertEqual(
-            {"self", "candidate_requests", "lease_until_millis"},
+            {
+                "self",
+                "worker_group_id",
+                "candidate_requests",
+                "lease_until_millis",
+            },
             set(
                 inspect.signature(
                     WorkerCandidateAcquirer.acquire_worker_candidates
@@ -31,8 +36,11 @@ class WorkerCandidateAcquirerContractTest(unittest.TestCase):
         )
 
     def test_request_validates_its_own_requested_count(self) -> None:
+        self.assertEqual(
+            {"priority", "requested_count", "match_rules"},
+            set(inspect.signature(WorkerCandidateRequest).parameters),
+        )
         request = WorkerCandidateRequest(
-            worker_group_id="group-1",
             priority=80,
             requested_count=2,
             match_rules={"attributes.runtime": {"$eq": "python"}},
@@ -41,7 +49,6 @@ class WorkerCandidateAcquirerContractTest(unittest.TestCase):
 
         with self.assertRaises(ValueError):
             WorkerCandidateRequest(
-                worker_group_id="group-1",
                 priority=80,
                 requested_count=0,
                 match_rules={},
@@ -59,7 +66,6 @@ class CachedWorkerCandidateAcquirerTest(unittest.TestCase):
             self.matcher,
         )
         self.request = WorkerCandidateRequest(
-            worker_group_id="group-1",
             priority=80,
             requested_count=2,
             match_rules={"attributes.runtime": {"$eq": "python"}},
@@ -69,6 +75,7 @@ class CachedWorkerCandidateAcquirerTest(unittest.TestCase):
         self.cache.consume_candidate_workers.return_value = ()
 
         result = self.acquirer.acquire_worker_candidates(
+            worker_group_id="group-1",
             candidate_requests={"candidate-1": self.request},
             lease_until_millis=20_000,
         )
@@ -103,6 +110,7 @@ class CachedWorkerCandidateAcquirerTest(unittest.TestCase):
         )
 
         result = self.acquirer.acquire_worker_candidates(
+            worker_group_id="group-1",
             candidate_requests={"candidate-1": self.request},
             lease_until_millis=20_000,
         )
@@ -154,6 +162,7 @@ class CachedWorkerCandidateAcquirerTest(unittest.TestCase):
         )
 
         result = self.acquirer.acquire_worker_candidates(
+            worker_group_id="group-1",
             candidate_requests={"candidate-1": self.request},
             lease_until_millis=20_000,
         )
@@ -163,7 +172,6 @@ class CachedWorkerCandidateAcquirerTest(unittest.TestCase):
 
     def test_same_group_cached_requests_share_one_score_renewal_batch(self) -> None:
         second_request = WorkerCandidateRequest(
-            worker_group_id="group-1",
             priority=70,
             requested_count=1,
             match_rules={},
@@ -182,6 +190,7 @@ class CachedWorkerCandidateAcquirerTest(unittest.TestCase):
         }
 
         result = self.acquirer.acquire_worker_candidates(
+            worker_group_id="group-1",
             candidate_requests={
                 "candidate-1": self.request,
                 "candidate-2": second_request,
@@ -219,16 +228,14 @@ class RealtimeWorkerCandidateAcquirerTest(unittest.TestCase):
             worker_scan_limit=50,
         )
 
-    def test_groups_requests_and_applies_each_requested_count(self) -> None:
+    def test_applies_each_requested_count_within_one_worker_group(self) -> None:
         requests = {
             "candidate-a": WorkerCandidateRequest(
-                worker_group_id="group-1",
                 priority=90,
                 requested_count=1,
                 match_rules={"attributes.runtime": {"$eq": "python"}},
             ),
             "candidate-b": WorkerCandidateRequest(
-                worker_group_id="group-1",
                 priority=80,
                 requested_count=2,
                 match_rules={"attributes.region": {"$eq": "east"}},
@@ -265,6 +272,7 @@ class RealtimeWorkerCandidateAcquirerTest(unittest.TestCase):
         )
 
         result = self.acquirer.acquire_worker_candidates(
+            worker_group_id="group-1",
             candidate_requests=requests,
             lease_until_millis=20_000,
         )
@@ -289,36 +297,15 @@ class RealtimeWorkerCandidateAcquirerTest(unittest.TestCase):
         self.assertEqual(1, constraints["candidate-a"].limit)
         self.assertEqual(2, constraints["candidate-b"].limit)
 
-    def test_scans_each_worker_group_independently(self) -> None:
-        requests = {
-            "candidate-a": WorkerCandidateRequest(
-                worker_group_id="group-a",
-                priority=90,
-                requested_count=1,
-                match_rules={},
-            ),
-            "candidate-b": WorkerCandidateRequest(
-                worker_group_id="group-b",
-                priority=80,
-                requested_count=1,
-                match_rules={},
-            ),
-        }
-        self.worker_score.acquire_hot_acquire_candidates.return_value = {}
-
+    def test_empty_requests_do_not_scan_the_worker_group(self) -> None:
         result = self.acquirer.acquire_worker_candidates(
-            candidate_requests=requests,
+            worker_group_id="group-1",
+            candidate_requests={},
             lease_until_millis=20_000,
         )
 
-        self.assertEqual({"candidate-a": (), "candidate-b": ()}, result)
-        self.assertEqual(
-            [
-                call(home_bucket_id="group-a", limit=50),
-                call(home_bucket_id="group-b", limit=50),
-            ],
-            self.worker_score.acquire_hot_acquire_candidates.call_args_list,
-        )
+        self.assertEqual({}, result)
+        self.worker_score.acquire_hot_acquire_candidates.assert_not_called()
 
 
 if __name__ == "__main__":

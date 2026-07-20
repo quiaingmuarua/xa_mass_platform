@@ -49,7 +49,6 @@ requestedCount =
   maximumCandidateWorkers - currentNonExpiredCandidateCount
 
 WorkerCandidateRequest
-  workerGroupId = descriptor.workerGroupId
   priority = int(config["priority"])
   requestedCount = positive deficit
   matchRules = descriptor.allocationRule
@@ -57,6 +56,7 @@ WorkerCandidateRequest
 
 Tasks with no descriptor or no deficit do not produce a request. There is no
 round-global requested count; every Task request owns its own target.
+Requests are grouped by `descriptor.workerGroupId` before acquisition.
 
 The current Task-level allocation rule is stable and cacheable. Future
 Item-directed rules are not warmed by this Pacer; they use realtime acquisition
@@ -64,8 +64,9 @@ at dispatch.
 
 ## Publication
 
-The Pacer calls `RealtimeWorkerCandidateAcquirer` once with the bounded request
-map. Results are appended independently:
+The Pacer calls `RealtimeWorkerCandidateAcquirer` once per WorkerGroup with the
+bounded group-local request map. No acquirer call scans or leases across Worker
+score queues. Results are appended independently:
 
 ```text
 ad:{prefix}:candidate:{taskId}:workers

@@ -33,21 +33,23 @@ TaskItem dispatch depends only on:
 
 ```python
 WorkerCandidateRequest(
-    worker_group_id,
     priority,
     requested_count,
     match_rules,
 )
 
 acquire_worker_candidates(
+    worker_group_id: WorkerGroupId,
     candidate_requests: Mapping[CandidateId, WorkerCandidateRequest],
     lease_until_millis,
 ) -> Mapping[CandidateId, tuple[CandidateWorkerEntry, ...]]
 ```
 
 There is no Task id, global requested count, cache option, fallback mode, or
-score coordinate in this contract. Each request owns its own bounded count.
-One Worker resource may satisfy at most one CandidateId in one call.
+score coordinate in this contract. One call is scoped to exactly one
+WorkerGroup and therefore one Worker score queue; cross-group acquisition is a
+caller-owned grouping operation. Each request owns its own bounded count. One
+Worker resource may satisfy at most one CandidateId in one call.
 
 Alternative rules for one demand are normalized into one request by the
 calling policy. Multiple requests mean independent demands; the acquirer does
@@ -58,12 +60,12 @@ Two implementations deliberately remain separate:
 ```text
 CachedWorkerCandidateAcquirer
   consume only CandidateWorkerCache
-  batch exact validate/renew Worker leases once per WorkerGroup
+  batch exact validate/renew Worker leases for the explicit WorkerGroup
   rematch current rules
   return partial/empty on cache miss or stale evidence
 
 RealtimeWorkerCandidateAcquirer
-  bounded due HOT scan
+  bounded due HOT scan for the explicit WorkerGroup
   exact lease observed Workers
   match lease successes
   never read CandidateWorkerCache

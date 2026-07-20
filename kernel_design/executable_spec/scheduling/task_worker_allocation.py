@@ -6,6 +6,7 @@ from time import time_ns
 
 from ..kernel.assignment_dispatch_runtime import (
     CandidateWorkerCache,
+    CandidateWorkerEntry,
 )
 from ..kernel.task_runtime import TaskResourceCatalog
 from ..kernel.task_score_band import (
@@ -14,6 +15,7 @@ from ..kernel.task_score_band import (
     TaskId,
     TimeMillis,
 )
+from ..kernel.worker_runtime import WorkerGroupId
 from .worker_candidate import (
     RealtimeWorkerCandidateAcquirer,
     WorkerCandidateAcquisition,
@@ -71,21 +73,27 @@ class TaskWorkerAllocationPacer:
         candidate_worker_counts = self.candidate_cache.candidate_worker_counts(
             candidate_ids=task_ids,
         )
-        candidate_requests = self._build_candidate_requests(
+        candidate_requests_by_worker_group = self._build_candidate_requests(
             task_ids,
             candidate_worker_counts,
         )
         worker_lease_until_millis = (
             self._current_time_millis() + config.worker_lease_duration_millis
         )
-        acquired_candidates = (
-            self.realtime_candidate_acquirer.acquire_worker_candidates(
-                candidate_requests=candidate_requests,
-                lease_until_millis=worker_lease_until_millis,
+        acquired_candidates: dict[
+            TaskId,
+            tuple[CandidateWorkerEntry, ...],
+        ] = {}
+        for worker_group_id, candidate_requests in (
+            candidate_requests_by_worker_group.items()
+        ):
+            acquired_candidates.update(
+                self.realtime_candidate_acquirer.acquire_worker_candidates(
+                    worker_group_id=worker_group_id,
+                    candidate_requests=candidate_requests,
+                    lease_until_millis=worker_lease_until_millis,
+                )
             )
-            if candidate_requests
-            else {}
-        )
         published_task_count = self._publish_candidate_workers(
             acquired_candidates=acquired_candidates,
             expires_at_millis=worker_lease_until_millis,
@@ -103,7 +111,7 @@ class TaskWorkerAllocationPacer:
         self,
         task_ids: tuple[TaskId, ...],
         candidate_worker_counts: Mapping[TaskId, int],
-    ) -> dict[TaskId, WorkerCandidateRequest]:
+    ) -> dict[WorkerGroupId, dict[TaskId, WorkerCandidateRequest]]:
         if not task_ids:
             return {}
 
@@ -111,7 +119,10 @@ class TaskWorkerAllocationPacer:
             task_ids=task_ids,
         )
 
-        candidate_requests: dict[TaskId, WorkerCandidateRequest] = {}
+        candidate_requests: dict[
+            WorkerGroupId,
+            dict[TaskId, WorkerCandidateRequest],
+        ] = {}
         for task_id in task_ids:
             descriptor = task_descriptors.get(task_id)
             if descriptor is None:
@@ -128,8 +139,9 @@ class TaskWorkerAllocationPacer:
             if candidate_limit == 0:
                 continue
 
-            candidate_requests[task_id] = WorkerCandidateRequest(
-                worker_group_id=descriptor.worker_group_id,
+            candidate_requests.setdefault(descriptor.worker_group_id, {})[
+                task_id
+            ] = WorkerCandidateRequest(
                 priority=int(descriptor.config["priority"]),
                 requested_count=candidate_limit,
                 match_rules=descriptor.allocation_rule,

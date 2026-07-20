@@ -27,14 +27,11 @@ from .matching import (
 class WorkerCandidateRequest:
     """One independent bounded Worker candidate demand."""
 
-    worker_group_id: WorkerGroupId
     priority: int
     requested_count: int
     match_rules: Mapping[str, object]
 
     def __post_init__(self) -> None:
-        if not self.worker_group_id:
-            raise ValueError("worker group id must be non-empty")
         if (
             isinstance(self.priority, bool)
             or not isinstance(self.priority, int)
@@ -63,6 +60,7 @@ class WorkerCandidateAcquirer(Protocol):
     def acquire_worker_candidates(
         self,
         *,
+        worker_group_id: WorkerGroupId,
         candidate_requests: Mapping[CandidateId, WorkerCandidateRequest],
         lease_until_millis: TimeMillis,
     ) -> WorkerCandidateAcquisition:
@@ -85,9 +83,11 @@ class CachedWorkerCandidateAcquirer:
     def acquire_worker_candidates(
         self,
         *,
+        worker_group_id: WorkerGroupId,
         candidate_requests: Mapping[CandidateId, WorkerCandidateRequest],
         lease_until_millis: TimeMillis,
     ) -> WorkerCandidateAcquisition:
+        _validate_worker_group_id(worker_group_id)
         requests = _validate_candidate_requests(candidate_requests)
         acquired: dict[CandidateId, tuple[CandidateWorkerEntry, ...]] = {
             candidate_id: () for candidate_id in requests
@@ -96,8 +96,8 @@ class CachedWorkerCandidateAcquirer:
             CandidateId,
             tuple[CandidateWorkerEntry, ...],
         ] = {}
-        observed_by_group: dict[WorkerGroupId, dict[WorkerId, Score]] = {}
-        reserved_workers: set[tuple[WorkerGroupId, WorkerId]] = set()
+        observed_scores: dict[WorkerId, Score] = {}
+        reserved_workers: set[WorkerId] = set()
 
         for candidate_id, request in _ordered_requests(requests):
             cached_entries = self.candidate_cache.consume_candidate_workers(
@@ -106,33 +106,30 @@ class CachedWorkerCandidateAcquirer:
             )
             eligible_entries: list[CandidateWorkerEntry] = []
             for entry in cached_entries:
-                worker_key = (entry.worker_group_id, entry.worker_id)
                 if (
-                    entry.worker_group_id != request.worker_group_id
-                    or worker_key in reserved_workers
+                    entry.worker_group_id != worker_group_id
+                    or entry.worker_id in reserved_workers
                 ):
                     continue
-                reserved_workers.add(worker_key)
+                reserved_workers.add(entry.worker_id)
                 eligible_entries.append(entry)
-                observed_by_group.setdefault(request.worker_group_id, {})[
-                    entry.worker_id
-                ] = entry.worker_lease_score
+                observed_scores[entry.worker_id] = entry.worker_lease_score
             consumed_by_candidate[candidate_id] = tuple(eligible_entries)
 
-        lease_results_by_group = {
-            worker_group_id: self.worker_score.renew_active_hot_score_leases(
+        lease_results = (
+            self.worker_score.renew_active_hot_score_leases(
                 home_bucket_id=worker_group_id,
                 observed_scores=observed_scores,
                 target_time_millis=lease_until_millis,
             )
-            for worker_group_id, observed_scores in observed_by_group.items()
-        }
+            if observed_scores
+            else {}
+        )
 
         for candidate_id, request in _ordered_requests(requests):
             eligible_entries = consumed_by_candidate.get(candidate_id, ())
             if not eligible_entries:
                 continue
-            lease_results = lease_results_by_group[request.worker_group_id]
             renewed_scores = {
                 worker_id: result.score
                 for worker_id, result in lease_results.items()
@@ -147,7 +144,7 @@ class CachedWorkerCandidateAcquirer:
                 continue
 
             match_result = self.worker_matcher.match_worker_candidates(
-                worker_group_id=request.worker_group_id,
+                worker_group_id=worker_group_id,
                 worker_ids=tuple(
                     entry.worker_id
                     for entry in eligible_entries
@@ -160,7 +157,7 @@ class CachedWorkerCandidateAcquirer:
             matched_entries = tuple(
                 CandidateWorkerEntry(
                     worker_id=worker_id,
-                    worker_group_id=request.worker_group_id,
+                    worker_group_id=worker_group_id,
                     endpoint_manager_id=(
                         match_result.endpoint_manager_id_by_worker_id[worker_id]
                     ),
@@ -192,65 +189,64 @@ class RealtimeWorkerCandidateAcquirer:
     def acquire_worker_candidates(
         self,
         *,
+        worker_group_id: WorkerGroupId,
         candidate_requests: Mapping[CandidateId, WorkerCandidateRequest],
         lease_until_millis: TimeMillis,
     ) -> WorkerCandidateAcquisition:
+        _validate_worker_group_id(worker_group_id)
         requests = _validate_candidate_requests(candidate_requests)
         acquired: dict[CandidateId, tuple[CandidateWorkerEntry, ...]] = {
             candidate_id: () for candidate_id in requests
         }
-        grouped_requests: dict[
-            WorkerGroupId,
-            dict[CandidateId, WorkerCandidateRequest],
-        ] = {}
-        for candidate_id, request in requests.items():
-            grouped_requests.setdefault(request.worker_group_id, {})[
-                candidate_id
-            ] = request
+        if not requests:
+            return acquired
+        observed_scores = self.worker_score.acquire_hot_acquire_candidates(
+            home_bucket_id=worker_group_id,
+            limit=self.worker_scan_limit,
+        )
+        if not observed_scores:
+            return acquired
+        lease_results = self.worker_score.acquire_observed_hot_score_leases(
+            home_bucket_id=worker_group_id,
+            observed_scores=observed_scores,
+            target_time_millis=lease_until_millis,
+        )
+        leased_scores: dict[WorkerId, Score] = {
+            worker_id: result.score
+            for worker_id, result in lease_results.items()
+            if result.status is WorkerScoreTransitionStatus.TRANSITIONED
+            and result.score is not None
+        }
+        if not leased_scores:
+            return acquired
 
-        for worker_group_id, group_requests in grouped_requests.items():
-            observed_scores = self.worker_score.acquire_hot_acquire_candidates(
-                home_bucket_id=worker_group_id,
-                limit=self.worker_scan_limit,
-            )
-            if not observed_scores:
-                continue
-            lease_results = self.worker_score.acquire_observed_hot_score_leases(
-                home_bucket_id=worker_group_id,
-                observed_scores=observed_scores,
-                target_time_millis=lease_until_millis,
-            )
-            leased_scores: dict[WorkerId, Score] = {
-                worker_id: result.score
-                for worker_id, result in lease_results.items()
-                if result.status is WorkerScoreTransitionStatus.TRANSITIONED
-                and result.score is not None
-            }
-            if not leased_scores:
-                continue
-
-            match_result = self.worker_matcher.match_worker_candidates(
-                worker_group_id=worker_group_id,
-                worker_ids=tuple(leased_scores),
-                candidate_constraints={
-                    candidate_id: _matcher_constraint(request)
-                    for candidate_id, request in group_requests.items()
-                },
-            )
-            for candidate_id, worker_ids in match_result.matches.items():
-                acquired[candidate_id] = tuple(
-                    CandidateWorkerEntry(
-                        worker_id=worker_id,
-                        worker_group_id=worker_group_id,
-                        endpoint_manager_id=(
-                            match_result.endpoint_manager_id_by_worker_id[worker_id]
-                        ),
-                        worker_lease_score=leased_scores[worker_id],
-                    )
-                    for worker_id in worker_ids
+        match_result = self.worker_matcher.match_worker_candidates(
+            worker_group_id=worker_group_id,
+            worker_ids=tuple(leased_scores),
+            candidate_constraints={
+                candidate_id: _matcher_constraint(request)
+                for candidate_id, request in requests.items()
+            },
+        )
+        for candidate_id, worker_ids in match_result.matches.items():
+            acquired[candidate_id] = tuple(
+                CandidateWorkerEntry(
+                    worker_id=worker_id,
+                    worker_group_id=worker_group_id,
+                    endpoint_manager_id=(
+                        match_result.endpoint_manager_id_by_worker_id[worker_id]
+                    ),
+                    worker_lease_score=leased_scores[worker_id],
                 )
+                for worker_id in worker_ids
+            )
 
         return acquired
+
+
+def _validate_worker_group_id(worker_group_id: WorkerGroupId) -> None:
+    if not isinstance(worker_group_id, str) or not worker_group_id:
+        raise ValueError("worker group id must be non-empty")
 
 
 def _validate_candidate_requests(

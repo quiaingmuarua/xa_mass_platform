@@ -91,7 +91,11 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
             self.realtime_acquirer.acquire_worker_candidates.call_args
         )
         request = acquisition_call.kwargs["candidate_requests"]["task-1"]
-        self.assertEqual("group-1", request.worker_group_id)
+        self.assertEqual(
+            "group-1",
+            acquisition_call.kwargs["worker_group_id"],
+        )
+        self.assertFalse(hasattr(request, "worker_group_id"))
         self.assertEqual(80, request.priority)
         self.assertEqual(2, request.requested_count)
         self.assertNotIn(
@@ -144,6 +148,63 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
         self.candidate_cache.append_candidate_workers.assert_not_called()
         self.task_score.rewrite_same_band_time_millis.assert_called_once()
 
+    def test_calls_realtime_acquirer_once_per_worker_group(self) -> None:
+        self.task_score.acquire_band_task_candidates.return_value = (
+            "task-1",
+            "task-2",
+        )
+        self.candidate_cache.candidate_worker_counts.return_value = {
+            "task-1": 0,
+            "task-2": 0,
+        }
+        self.task_catalog.load_task_allocation_descriptors.return_value = {
+            "task-1": self._descriptor(
+                "task-1",
+                maximum_candidates=1,
+                worker_group_id="group-1",
+            ),
+            "task-2": self._descriptor(
+                "task-2",
+                maximum_candidates=1,
+                worker_group_id="group-2",
+            ),
+        }
+        self.realtime_acquirer.acquire_worker_candidates.side_effect = (
+            {"task-1": (self._entry("worker-1", "group-1"),)},
+            {"task-2": (self._entry("worker-2", "group-2"),)},
+        )
+
+        with patch.object(
+            self.pacer,
+            "_current_time_millis",
+            side_effect=(10_000, 10_001, 10_002, 10_003),
+        ):
+            published = self.pacer.allocate_candidate_workers(
+                config=self._config(),
+            )
+
+        self.assertEqual(2, published)
+        acquisition_calls = (
+            self.realtime_acquirer.acquire_worker_candidates.call_args_list
+        )
+        self.assertEqual(2, len(acquisition_calls))
+        self.assertEqual(
+            "group-1",
+            acquisition_calls[0].kwargs["worker_group_id"],
+        )
+        self.assertEqual(
+            {"task-1"},
+            set(acquisition_calls[0].kwargs["candidate_requests"]),
+        )
+        self.assertEqual(
+            "group-2",
+            acquisition_calls[1].kwargs["worker_group_id"],
+        )
+        self.assertEqual(
+            {"task-2"},
+            set(acquisition_calls[1].kwargs["candidate_requests"]),
+        )
+
     def test_empty_running_scan_is_bounded_noop(self) -> None:
         self.task_score.acquire_band_task_candidates.return_value = ()
         self.candidate_cache.candidate_worker_counts.return_value = {}
@@ -181,10 +242,11 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
         task_id: str,
         *,
         maximum_candidates: int,
+        worker_group_id: str = "group-1",
     ) -> TaskDescriptor:
         return TaskDescriptor(
             task_id=task_id,
-            worker_group_id="group-1",
+            worker_group_id=worker_group_id,
             allocation_rule={"attributes.runtime": {"$eq": "python"}},
             config={
                 "priority": "80",
@@ -194,10 +256,13 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
         )
 
     @staticmethod
-    def _entry(worker_id: str) -> CandidateWorkerEntry:
+    def _entry(
+        worker_id: str,
+        worker_group_id: str = "group-1",
+    ) -> CandidateWorkerEntry:
         return CandidateWorkerEntry(
             worker_id=worker_id,
-            worker_group_id="group-1",
+            worker_group_id=worker_group_id,
             endpoint_manager_id="endpoint-1",
             worker_lease_score=100,
         )

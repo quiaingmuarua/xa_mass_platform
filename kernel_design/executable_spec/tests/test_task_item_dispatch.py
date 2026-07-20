@@ -112,7 +112,11 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
             self.candidate_acquirer.acquire_worker_candidates.call_args
         )
         request = acquisition_call.kwargs["candidate_requests"]["task-1"]
-        self.assertEqual("group-1", request.worker_group_id)
+        self.assertEqual(
+            "group-1",
+            acquisition_call.kwargs["worker_group_id"],
+        )
+        self.assertFalse(hasattr(request, "worker_group_id"))
         self.assertEqual(80, request.priority)
         self.assertEqual(2, request.requested_count)
         self.assertEqual(

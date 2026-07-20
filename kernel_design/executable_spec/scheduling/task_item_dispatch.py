@@ -122,9 +122,9 @@ class TaskItemDispatchPacer:
                 task_items,
             )
             acquired_candidates = candidate_acquirer.acquire_worker_candidates(
+                worker_group_id=descriptor.worker_group_id,
                 candidate_requests={
                     task_id: WorkerCandidateRequest(
-                        worker_group_id=descriptor.worker_group_id,
                         priority=int(descriptor.config["priority"]),
                         requested_count=len(claimable_items),
                         match_rules=descriptor.allocation_rule,

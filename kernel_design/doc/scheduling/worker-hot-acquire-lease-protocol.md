@@ -59,8 +59,9 @@ matcher reads Worker metadata. Concurrent rounds may scan the same Worker, but
 only one exact observed-score CAS succeeds.
 
 `RealtimeWorkerCandidateAcquirer` owns this sequence. It never reads candidate
-cache. Allocation cache warming and Item-directed realtime dispatch reuse the
-same implementation.
+cache. Each call is scoped to one explicit WorkerGroup and one score ZSET.
+Allocation cache warming and Item-directed realtime dispatch reuse the same
+implementation.
 
 Unmatched Workers, matcher failures, and candidate publication failures are
 not actively released. Their short leases expire naturally, preventing
@@ -78,9 +79,9 @@ renew_active_hot_score_leases(
 )
 ```
 
-Observations from the same WorkerGroup are submitted in one score-owner batch;
-matching remains request-local so cached evidence cannot silently change its
-CandidateId meaning.
+All accepted observations are submitted in one score-owner batch for the
+call's explicit WorkerGroup; matching remains request-local so cached evidence
+cannot silently change its CandidateId meaning.
 
 Rules:
 
