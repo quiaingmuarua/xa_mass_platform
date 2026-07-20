@@ -183,7 +183,7 @@ class KernelApplicationTest(unittest.TestCase):
         internal = call.kwargs["config"]
         self.assertEqual("default", internal.prefix)
         self.assertEqual(100, internal.assignment_dispatch.worker_allocation.task_batch_limit)
-        self.assertEqual(100, internal.assignment_dispatch.worker_allocation.worker_scan_limit)
+        self.assertEqual(100, internal.worker_candidate_scan_limit)
         self.assertEqual(
             5_000,
             internal.assignment_dispatch.worker_allocation.worker_lease_duration_millis,

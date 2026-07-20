@@ -581,10 +581,11 @@ transition evidence belongs to trace or deterministic tests until repair needs i
 one WorkerId is one execution slot; physical concurrency is represented by
 multiple logical WorkerIds, not a capacity key behind one score
 assignment continuation is not first-slice truth
-worker-runtime-owned per-task candidates create a second assignment-dispatch
-mainline. The separate `AssignmentDispatchRuntime` may own transient
-`ad:{prefix}:task:{taskId}:candidate-workers` ZSETs; worker-runtime and
-worker-score must not read, write, or reinterpret that protocol.
+worker-runtime-owned per-candidate evidence creates a second
+assignment-dispatch mainline. The separate `CandidateWorkerCache` may own
+transient `ad:{prefix}:candidate:{candidateId}:workers` ZSETs;
+worker-runtime and worker-score must not read, write, or reinterpret that
+protocol.
 per-worker score keys break home-bucket acquisition
 attribute fanout is deferred until candidate discovery needs it
 ```

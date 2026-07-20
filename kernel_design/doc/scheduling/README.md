@@ -15,7 +15,7 @@ The kernel has four scheduling planes:
 | --- | --- | --- | --- | --- |
 | Task score-band | Which Tasks may enter a scheduling round now? | Task score coordinate and owner facts | Bounded Task ids or an owner-approved score transition | Task scheduling score only |
 | Worker score-band | Which Workers may enter admission or recovery now? | Worker score coordinate and worker-runtime facts | Bounded Worker observations, leases, holds, or polarity movement | Worker scheduling score only |
-| Assignment-dispatch | Which bounded Task/Worker/Item combination becomes delivery evidence? | Due Tasks, Worker observations, Task descriptors, candidate queues, TaskItem records and Item scores | CandidateWorker entries and queued DeliverSeeds | Owner-local candidate runtime and TaskItem score through declared primitives |
+| Assignment-dispatch | Which bounded Task/Worker/Item combination becomes delivery evidence? | Due Tasks, Task descriptors, policy-selected Worker acquisition, TaskItem records and Item scores | Optional CandidateWorker cache evidence and queued DeliverSeeds | Candidate cache plus TaskItem score through declared owner primitives |
 | Result-routing | How does returned evidence affect Task success finality and Worker disposition? | SeedResults and opaque result context | Owner-local Task and Worker evidence delegated to policy handlers | No private truth; handlers invoke TaskItem and Worker score owners |
 
 These are logical planes, not mandatory deployment modules. Package placement
@@ -46,10 +46,10 @@ business event names or caller-supplied score ranges.
 Task score acquire
   -> PRE_DISPATCH Task/System admission
   -> RUNNING transition
-  -> RUNNING Worker allocation and exact Worker lease
-  -> candidate-worker runtime
-  -> exact Worker lease validate/renew
-  -> TaskItem score acquire / claim
+  -> optional RUNNING candidate cache warming through realtime acquisition
+  -> TaskItem observation
+  -> policy-selected cached or realtime Worker candidate acquisition
+  -> TaskItem exact claim
   -> DeliverSeed queue
   -> endpoint-manager delivery
   -> SeedResult queue
@@ -87,9 +87,11 @@ WorkerScoreCore and worker-runtime
   own Worker acquisition/recovery coordinates, exact leases, dirty fence,
   resource metadata, dynamic attributes, and candidate validation
 
-AssignmentDispatchRuntime
-  owns transient per-Task candidate-worker queues and per-endpoint DeliverSeed
-  queues; neither queue is lifecycle truth
+CandidateWorkerCache
+  owns transient CandidateId-local candidate evidence only
+
+DeliverSeedRuntime
+  owns per-endpoint DeliverSeed queues; neither runtime is lifecycle truth
 
 SeedResultRuntime
   owns three bounded best-effort outcome-class queues, not Item or Worker truth
@@ -114,11 +116,11 @@ Transport adapters
 | --- | --- | --- |
 | Task score-band | Implemented with Redis proof | Cadence, scan horizons, and no-work budget values |
 | Worker score-band | Implemented with Redis proof, including dirty lease fence | Dirty marking policy when a persisted assignment continuation exists; recovery cadence and ranking |
-| Worker HOT_ACQUIRE lease protocol | Allocation, dispatch exact recheck, result release/recovery demotion, reconnect dirty fence, and one-WorkerId/one-slot invariant implemented | Recovery probe cadence and ranking |
+| Worker HOT_ACQUIRE lease protocol | Realtime lease/match, cached exact recheck/rematch, result release/recovery demotion, reconnect dirty fence, and one-WorkerId/one-slot invariant implemented | Recovery probe cadence and ranking |
 | TaskItem score-band | Implemented with Redis proof | Initial retry budget and claim-duration values |
 | Task running activation | Implemented with due-Item Task policy and priority soft-limit System policy | Quota, tenant, business start condition, and resource-estimate policy composition |
-| Worker allocation | Implemented with unit and Redis orchestration proof; RUNNING-only | Fairness beyond Task score order and matcher priority |
-| TaskItem dispatch | Implemented through DeliverSeed append | Recent-first Redis Task acquisition remains deferred |
+| Worker allocation | Implemented as RUNNING-only candidate cache warming through realtime acquisition | Fairness beyond Task score order and matcher priority |
+| TaskItem dispatch | Implemented through policy-selected acquisition and DeliverSeed append | Item-directed request construction and recent-first Redis Task acquisition |
 | Outbound delivery example | Independent clients and Local Function Adapter implemented | Production transport, pending/ack, and protocol-specific conversion |
 | Result routing | Implemented with unit and Redis orchestration proof; Task/Worker policy handlers are replaceable | Result projection and stronger queue reliability require separate owners and invariants |
 

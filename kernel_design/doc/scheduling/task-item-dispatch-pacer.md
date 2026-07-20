@@ -3,177 +3,126 @@
 Status: active new-kernel mechanism contract; Python executable spec
 implemented; policy coverage partial.
 
-Parent contracts:
-[Assignment-Dispatch Scheduling](assignment-dispatch-scheduling.md),
-[Task Item Score-Band Scheduling](task-item-score-band-scheduling.md), and
-[Worker HOT_ACQUIRE Lease Protocol](worker-hot-acquire-lease-protocol.md).
-
 ## Purpose
 
-This is the second independent assignment-dispatch pacer:
+`TaskItemDispatchPacer` composes already-RUNNING Task evidence into assigned
+delivery:
 
 ```text
 RUNNING_VISIBLE Task
-  -> consume Task-local CandidateWorkerEntry values
-  -> exact validate/renew active Worker leases
-  -> claim no more TaskItems than valid Workers
-  -> pair Worker and Item in stable order
-  -> append DeliverSeed by endpointManagerId
+  -> observe due TaskItems
+  -> resolve Worker candidate acquisition policy
+  -> acquire already-leased Worker candidates
+  -> exact claim TaskItems
+  -> build and append DeliverSeeds
 ```
 
-It does not discover Workers, rematch constraints, update Task score, call
-transport, process results, or own Worker scheduling-serviceability
-classification.
+It does not discover Workers, read candidate cache, call Worker score, activate
+Tasks, invoke transport, or classify results.
 
 ## Contracts
 
 ```python
 TaskItemDispatchConfig(
-    task_batch_limit: int,
-    per_task_dispatch_limit: int,
-    item_claim_lease_duration_millis: int,
+    task_batch_limit,
+    per_task_dispatch_limit,
+    item_claim_lease_duration_millis,
 )
-
-TaskItemDispatchPacer.dispatch_task_items(config) -> int
 ```
 
-The return value counts DeliverSeeds successfully appended. All limits and the
-claim duration must be positive.
-
-`CandidateWorkerEntry` carries:
+The Pacer depends on:
 
 ```text
-workerId
-workerGroupId
-endpointManagerId
-workerLeaseScore    # opaque allocation fence
+TaskScoreBandCore             dispatch-visible RUNNING Task ids
+TaskResourceCatalog           bounded allocation descriptors
+TaskItemScoreBandCore         Item observation and exact claim
+TaskRuntime                   canonical Item records
+WorkerCandidateAcquirerResolver
+DeliverSeedRuntime
 ```
+
+Resolver input is the current `TaskDescriptor` and bounded existing
+`TaskItem` records. It returns one `WorkerCandidateAcquirer` implementation.
+The Pacer invokes exactly that implementation; it has no fallback path.
 
 ## Dispatch Round
 
-One round reads `nowMillis` once and defines:
+One round computes `nowMillis` and `taskItemClaimUntilMillis` once, then:
+
+1. Acquire a bounded RUNNING Task batch.
+2. Batch-load Task descriptors; skip missing descriptors.
+3. Observe bounded due Item scores.
+4. Promote exhausted-budget Items to `FINAL_FAILED`.
+5. Load canonical records for positive-budget observations; skip missing rows.
+6. Build the current Task-level request:
+
+   ```text
+   CandidateId = taskId
+   workerGroupId = descriptor.workerGroupId
+   priority = descriptor priority
+   requestedCount = record-backed claimable Item count
+   matchRules = descriptor allocationRule
+   ```
+
+7. Resolve and call one candidate acquirer with the Item claim deadline as the
+   required Worker lease deadline.
+8. Exact-claim at most the number of returned Workers, consuming one retry
+   budget unit per attempted Item claim.
+9. Pair successful claims and Workers in their stable returned order.
+10. Encode one DeliverSeed per pair and append by `endpointManagerId`.
+
+Item observation deliberately precedes Worker acquisition. Observation does
+not mutate the Item lease; if no Worker is returned, no Item is claimed.
+
+## Candidate Acquisition
+
+Zero-config assembly resolves the current stable Task-level request to
+`CachedWorkerCandidateAcquirer`. That implementation consumes the TaskId cache,
+exact-validates or renews Worker lease evidence, and rematches current rules.
+
+An Item-directed policy may later resolve to
+`RealtimeWorkerCandidateAcquirer` and submit multiple CandidateIds. The
+acquisition contract already supports that shape, but Item-level request
+construction and binding policy are deferred.
+
+Cache miss is a bounded no-op. TaskItem dispatch never retries through another
+acquirer implementation in the same round.
+
+## DeliverSeed Cutpoint
+
+Each seed carries only:
 
 ```text
+workerId
+opaqueDeliveryItem
+opaqueResultContext
 taskItemClaimUntilMillis
-  = nowMillis + itemClaimLeaseDurationMillis
 ```
 
-Per Task:
-
-```text
-1. consume at most perTaskDispatchLimit candidate Workers
-2. group candidates by workerGroupId
-3. renew_active_hot_score_leases using taskItemClaimUntilMillis
-4. retain only TRANSITIONED / NOOP results carrying a current score
-5. acquire no more Item observations than retained Workers
-6. promote zero-budget observations to FINAL_FAILED
-7. load TaskItem records and discard missing records
-8. exact-claim remaining Items with remainingBudgetDelta=-1
-9. pair successful Item claims with validated Workers in stable order
-10. encode ResultContext using the validated/renewed Worker fence
-11. append endpoint-manager batches before continuing to the next Task
-```
-
-Worker validation must happen before Item claim. A dirty, RECOVERY_RECHECK,
-expired, or stale Worker candidate cannot consume an Item claim in this round.
-
-`renew_active_hot_score_leases` owns the opaque comparison:
-
-```text
-storedScore != observedScore -> STALE
-polarity != HOT_ACQUIRE      -> rejected
-dirty == 1                   -> STALE
-lease expired                -> STALE
-lease already covers target -> exact NOOP + current fence
-lease needs extension        -> exact CAS + renewed fence
-```
-
-The pacer never decodes a Worker score and never clears dirty.
-
-## Item Claim And Pairing
-
-TaskItem score remains the claim truth. Missing records and lost Item CAS do not
-produce DeliverSeeds. Pairing follows the order of validated candidates and
-successful Item observations; `zip` stops at the smaller side.
-
-The built-in delivery envelope contains only `eventCode` and `payload`.
-If an event handler supports a business batch operation, its bounded input
-collection is carried inside this one TaskItem payload. Dispatch does not merge
-multiple TaskItems into one delivery envelope.
-`opaqueResultContext` carries Task/Item correlation, the WorkerGroup
-home-bucket coordinate, and the opaque Worker lease fence. The Item claim score
-stays inside TaskItemScoreBandCore and is not transported. `endpointManagerId`
-partitions the queue and is not included in the DeliverSeed itself.
+`opaqueResultContext` preserves Task/Item correlation and the exact Worker
+lease fence. `endpointManagerId` partitions the queue but is not duplicated in
+the seed.
 
 ## Failure Semantics
 
-```text
-no RUNNING Task or no candidate
-  -> bounded no-op
-
-all Worker validations rejected
-  -> no Item acquire or claim
-
-some Worker validations rejected
-  -> claim only for remaining Workers
-
-no due Item / missing Item record / lost Item CAS
-  -> no DeliverSeed for that position
-
-Item claimed but seed append fails
-  -> no compensation; Item claim and Worker lease expire
-
-Worker validated but not paired or not published
-  -> no active release; Worker lease expires
-
-Task pauses or closes after Task scan
-  -> this bounded round may still publish already-started work
-```
-
-The pacer does not release Worker leases. Trusted `200/1xxx` result evidence
-releases the exact fence; trusted `3xxx` adapter rejection moves that exact
-fence to RECOVERY_RECHECK. Missing results recover through time.
-
-## Task Score And Queue Boundaries
-
-Task score is read-only in this pacer. Candidate absence, stale Worker, no Item,
-claim failure, or queue failure grants no Task-score write authority.
-
-`AssignmentDispatchRuntime` owns Task-local candidate queues.
-`DeliverSeedRuntime` owns endpoint-manager queues. Neither queue is TaskItem or
-Worker truth, and neither promises cross-key atomicity.
-
-## Executable-Spec Status And Deferred Policy
-
-Implemented:
-
-```text
-RUNNING_VISIBLE Task acquisition
-candidate consume
-dispatch-time active clean Worker exact validation/renewal
-dirty/recovery/stale rejection before Item claim
-TaskItem acquire/load/exact claim
-validated Worker fence propagation
-DeliverSeed endpoint-manager append
-unit and real Redis proof
-```
-
-Deferred policy is limited to recent-first Task acquisition. The current and
-target mechanism remains one candidate Worker to one TaskItem to one
-DeliverSeed. Business batching belongs inside that TaskItem payload and is not
-a dispatch coalescing policy.
+- No Task, descriptor, Item, Worker, or claim success is a bounded no-op.
+- Stale/dirty/offline/expired Worker evidence is filtered by the selected
+  acquirer before Item claim.
+- A failed Item claim does not restore or release its paired Worker lease.
+- DeliverSeed append is fail-fast per endpoint queue; previous queue appends
+  are not rolled back.
+- Item claim and Worker lease deadlines provide recovery.
+- A Task pause or terminal transition after discovery does not retract the
+  bounded round already in progress.
 
 ## Guardrails
 
-- Do not process `PRE_DISPATCH_VISIBLE` here.
-- Do not discover or match Workers here.
-- Do not decode Worker or Item scores.
-- Do not claim Items before Worker lease validation.
-- Do not restore consumed candidates or compensate ambiguous queue writes.
-- Do not release Worker leases from this pacer.
-- Do not dispatch another independent Item to the same WorkerId while its lease
-  remains active.
-- Do not merge multiple TaskItems into one DeliverSeed.
-- Do not call transport or parse result outcomes here.
-- Do not write Task score.
-- Do not create Attempt, reservation lifecycle, retry queue, or repair scanner.
+- Do not access `CandidateWorkerCache` or `WorkerScoreCore` from this Pacer.
+- Do not claim Items before candidate acquisition succeeds.
+- Do not add cache-miss realtime fallback.
+- Do not introduce a global requested count across CandidateIds.
+- Do not interpret OR relationships between requests.
+- Do not rewrite Task score.
+- Do not release or demote Worker leases; result-routing owns evidence-based
+  disposition.
+- Do not call transport directly.

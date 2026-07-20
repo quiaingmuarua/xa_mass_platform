@@ -1,7 +1,7 @@
 from .task_item_score_band import RedisTaskItemScoreBandCore
 from .task_score_band import RedisTaskScoreBandCore
 from .assignment_dispatch import (
-    RedisAssignmentDispatchRuntime,
+    RedisCandidateWorkerCache,
     RedisDeliverSeedRuntime,
 )
 from .task_runtime import RedisTaskResourceCatalog, RedisTaskRuntime
@@ -16,7 +16,7 @@ from .worker_runtime import (
 __all__ = [
     "RedisTaskItemScoreBandCore",
     "RedisTaskScoreBandCore",
-    "RedisAssignmentDispatchRuntime",
+    "RedisCandidateWorkerCache",
     "RedisDeliverSeedRuntime",
     "RedisTaskResourceCatalog",
     "RedisTaskRuntime",

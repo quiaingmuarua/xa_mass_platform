@@ -1,4 +1,8 @@
-from .task_item_dispatch import TaskItemDispatchConfig, TaskItemDispatchPacer
+from .task_item_dispatch import (
+    TaskItemDispatchConfig,
+    TaskItemDispatchPacer,
+    WorkerCandidateAcquirerResolver,
+)
 from .result_routing import (
     ResultRoutingConfig,
     ResultRoutingBuiltinPolicies,
@@ -21,15 +25,23 @@ from .task_worker_allocation import (
     TaskWorkerAllocationPacer,
 )
 from .worker_candidate_matcher import (
-    CandidateId,
     WorkerCandidateConstraint,
     WorkerCandidateMatcher,
     WorkerCandidateMatches,
     WorkerCandidateMatchResult,
 )
+from .worker_candidate_acquirer import (
+    CachedWorkerCandidateAcquirer,
+    RealtimeWorkerCandidateAcquirer,
+    WorkerCandidateAcquirer,
+    WorkerCandidateAcquisition,
+    WorkerCandidateRequest,
+)
+from ..kernel.assignment_dispatch_runtime import CandidateId
 
 __all__ = [
     "CandidateId",
+    "CachedWorkerCandidateAcquirer",
     "ResultRoutingConfig",
     "ResultRoutingBuiltinPolicies",
     "ResultRoutingPacer",
@@ -37,6 +49,7 @@ __all__ = [
     "TaskResultHandler",
     "TaskItemDispatchConfig",
     "TaskItemDispatchPacer",
+    "WorkerCandidateAcquirerResolver",
     "DueTaskItemAdmissionPolicy",
     "PrioritySoftLimitSystemAdmissionPolicy",
     "SystemAdmissionPolicy",
@@ -46,9 +59,13 @@ __all__ = [
     "TaskWorkerAllocationConfig",
     "TaskWorkerAllocationPacer",
     "WorkerCandidateConstraint",
+    "WorkerCandidateAcquirer",
+    "WorkerCandidateAcquisition",
     "WorkerCandidateMatcher",
     "WorkerCandidateMatches",
     "WorkerCandidateMatchResult",
+    "WorkerCandidateRequest",
+    "RealtimeWorkerCandidateAcquirer",
     "WorkerResultEvidence",
     "WorkerResultHandler",
 ]

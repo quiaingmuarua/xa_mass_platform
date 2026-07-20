@@ -401,10 +401,10 @@ class KernelApplication:
         return _RedisKernelProcessConfig(
             prefix=config.redis_prefix,
             running_task_soft_limit=config.running_task_soft_limit,
+            worker_candidate_scan_limit=_WORKER_SCAN_LIMIT,
             assignment_dispatch=AssignmentDispatchApplicationConfig(
                 worker_allocation=TaskWorkerAllocationConfig(
                     task_batch_limit=_TASK_BATCH_LIMIT,
-                    worker_scan_limit=_WORKER_SCAN_LIMIT,
                     worker_lease_duration_millis=_WORKER_LEASE_DURATION_MILLIS,
                 ),
                 running_activation=TaskRunningActivationConfig(

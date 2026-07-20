@@ -5,12 +5,13 @@ from collections.abc import Mapping as MappingABC
 from typing import Any, Mapping, Sequence
 
 from ..kernel.assignment_dispatch_runtime import (
-    AssignmentDispatchRuntime,
+    CandidateId,
+    CandidateWorkerCache,
     CandidateWorkerEntry,
     DeliverSeed,
     DeliverSeedRuntime,
 )
-from ..kernel.task_score_band import TaskId, TimeMillis
+from ..kernel.task_score_band import TimeMillis
 from ..kernel.worker_runtime import EndpointManagerId
 
 _CONSUME_CANDIDATES_SCRIPT = """
@@ -29,8 +30,8 @@ return entries
 """
 
 
-class RedisAssignmentDispatchRuntime(AssignmentDispatchRuntime):
-    """Redis-backed Task-local candidate Worker runtime."""
+class RedisCandidateWorkerCache(CandidateWorkerCache):
+    """Redis-backed expiring Worker candidate cache."""
 
     def __init__(
         self,
@@ -46,11 +47,11 @@ class RedisAssignmentDispatchRuntime(AssignmentDispatchRuntime):
     def append_candidate_workers(
         self,
         *,
-        task_id: TaskId,
+        candidate_id: CandidateId,
         candidate_workers: Sequence[CandidateWorkerEntry],
         expires_at_millis: TimeMillis,
     ) -> None:
-        self._validate_task_id(task_id)
+        self._validate_candidate_id(candidate_id)
         if expires_at_millis <= 0:
             raise ValueError("candidate batch expiry must be positive")
         if not candidate_workers:
@@ -60,7 +61,7 @@ class RedisAssignmentDispatchRuntime(AssignmentDispatchRuntime):
         if expires_at_millis <= now_millis:
             raise ValueError("candidate batch expiry must be in the future")
 
-        key = self._candidate_key(task_id)
+        key = self._candidate_key(candidate_id)
         with self.redis.pipeline(transaction=False) as pipe:
             pipe.zremrangebyscore(key, "-inf", now_millis)
             pipe.zadd(
@@ -75,41 +76,41 @@ class RedisAssignmentDispatchRuntime(AssignmentDispatchRuntime):
     def candidate_worker_counts(
         self,
         *,
-        task_ids: Sequence[TaskId],
-    ) -> Mapping[TaskId, int]:
-        unique_task_ids = tuple(dict.fromkeys(task_ids))
-        for task_id in unique_task_ids:
-            self._validate_task_id(task_id)
-        if not unique_task_ids:
+        candidate_ids: Sequence[CandidateId],
+    ) -> Mapping[CandidateId, int]:
+        unique_candidate_ids = tuple(dict.fromkeys(candidate_ids))
+        for candidate_id in unique_candidate_ids:
+            self._validate_candidate_id(candidate_id)
+        if not unique_candidate_ids:
             return {}
 
         now_millis = self._current_time_millis()
         with self.redis.pipeline(transaction=False) as pipe:
-            for task_id in unique_task_ids:
-                key = self._candidate_key(task_id)
+            for candidate_id in unique_candidate_ids:
+                key = self._candidate_key(candidate_id)
                 pipe.zremrangebyscore(key, "-inf", now_millis)
                 pipe.zcount(key, f"({now_millis}", "+inf")
             results = pipe.execute()
 
         return {
-            task_id: int(results[index * 2 + 1])
-            for index, task_id in enumerate(unique_task_ids)
+            candidate_id: int(results[index * 2 + 1])
+            for index, candidate_id in enumerate(unique_candidate_ids)
         }
 
     def consume_candidate_workers(
         self,
         *,
-        task_id: TaskId,
+        candidate_id: CandidateId,
         limit: int,
     ) -> tuple[CandidateWorkerEntry, ...]:
-        self._validate_task_id(task_id)
+        self._validate_candidate_id(candidate_id)
         if limit <= 0:
             raise ValueError("consume limit must be positive")
 
         raw_entries = self.redis.eval(
             _CONSUME_CANDIDATES_SCRIPT,
             1,
-            self._candidate_key(task_id),
+            self._candidate_key(candidate_id),
             self._current_time_millis(),
             limit,
         )
@@ -125,8 +126,8 @@ class RedisAssignmentDispatchRuntime(AssignmentDispatchRuntime):
                 entries.append(entry)
         return tuple(entries)
 
-    def _candidate_key(self, task_id: TaskId) -> str:
-        return f"ad:{self.prefix}:task:{task_id}:candidate-workers"
+    def _candidate_key(self, candidate_id: CandidateId) -> str:
+        return f"ad:{self.prefix}:candidate:{candidate_id}:workers"
 
     def _current_time_millis(self) -> TimeMillis:
         seconds, microseconds = self.redis.time()
@@ -182,9 +183,9 @@ class RedisAssignmentDispatchRuntime(AssignmentDispatchRuntime):
         )
 
     @staticmethod
-    def _validate_task_id(task_id: TaskId) -> None:
-        if not task_id:
-            raise ValueError("task id must be non-empty")
+    def _validate_candidate_id(candidate_id: CandidateId) -> None:
+        if not candidate_id:
+            raise ValueError("candidate id must be non-empty")
 
 
 class RedisDeliverSeedRuntime(DeliverSeedRuntime):

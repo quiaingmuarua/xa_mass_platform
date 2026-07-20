@@ -58,7 +58,8 @@ from .task_item_score_band import (
     TaskItemScoreTransitionStatus,
 )
 from .assignment_dispatch_runtime import (
-    AssignmentDispatchRuntime,
+    CandidateId,
+    CandidateWorkerCache,
     CandidateWorkerEntry,
     DeliverSeed,
     DeliverSeedRuntime,
@@ -72,7 +73,8 @@ from .seed_result_runtime import (
 )
 
 __all__ = [
-    "AssignmentDispatchRuntime",
+    "CandidateId",
+    "CandidateWorkerCache",
     "TimeMillis",
     "HomeBucketId",
     "LaneRank",

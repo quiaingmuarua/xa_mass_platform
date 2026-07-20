@@ -154,7 +154,6 @@ class AssignmentDispatchApplicationTest(unittest.TestCase):
         return AssignmentDispatchApplicationConfig(
             worker_allocation=TaskWorkerAllocationConfig(
                 task_batch_limit=10,
-                worker_scan_limit=20,
                 worker_lease_duration_millis=5_000,
             ),
             running_activation=TaskRunningActivationConfig(

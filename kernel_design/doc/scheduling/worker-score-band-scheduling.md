@@ -903,10 +903,10 @@ task score acquires due task candidate
 assignment-dispatch resolves worker demand
 worker-runtime acquire_hot_acquire_candidates(homeBucketId, limit)
 allocation pacer exact-CAS leases unchanged due Workers
-allocation pacer passes only lease-success Worker ids to matcher
-worker-runtime validates and matches candidates
-allocation pacer retains unmatched leases until expiry and publishes matched leases
-worker-runtime admits one or more selected workers
+realtime candidate acquirer leases due HOT observations and matches successes
+allocation pacer may publish matched leases into CandidateWorkerCache
+cached candidate acquirer exact-validates/renews and rematches current rules
+TaskItem dispatch receives only already-leased candidate entries
 TaskRuntime loads the selected TaskItem record
 TaskItemScoreBandCore claims the observed Item score
 transport receives already-selected worker dispatch
@@ -921,8 +921,8 @@ claim Item score
 select transport route
 inspect adapter sessions directly
 write task score
-create or own per-task worker candidate sets; transient `AssignmentDispatchRuntime`
-candidate reservation ZSETs belong to the assignment inter-pacer protocol
+create or own Worker candidate cache; transient `CandidateWorkerCache` ZSETs
+belong to assignment-dispatch
 ```
 
 RECOVERY_RECHECK acquisition is a worker-runtime recovery validation path, not an

@@ -12,13 +12,18 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
     redis_module = None  # type: ignore[assignment]
 
 from kernel_design.executable_spec import (
+    CachedWorkerCandidateAcquirer,
     CandidateWorkerEntry,
-    RedisAssignmentDispatchRuntime,
+    RedisCandidateWorkerCache,
     RedisDeliverSeedRuntime,
     RedisTaskRuntime,
+    RedisTaskResourceCatalog,
     RedisTaskItemScoreBandCore,
     RedisTaskScoreBandCore,
     RedisWorkerScoreCore,
+    RedisWorkerDynamicAttributeRuntime,
+    RedisWorkerResourceCatalog,
+    RedisWorkerRuntime,
     TaskCreationStatus,
     TaskDescriptor,
     TaskItem,
@@ -29,6 +34,9 @@ from kernel_design.executable_spec import (
     TaskScoreBand,
     TaskScoreTransitionStatus,
     WorkerScoreTransitionStatus,
+    WorkerCandidateMatcher,
+    WorkerDeclaration,
+    WorkerGroupDescriptor,
 )
 
 
@@ -68,7 +76,11 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             self.item_score,
             prefix=self.prefix,
         )
-        self.candidate_runtime = RedisAssignmentDispatchRuntime(
+        self.task_catalog = RedisTaskResourceCatalog(
+            self.redis,
+            prefix=self.prefix,
+        )
+        self.candidate_cache = RedisCandidateWorkerCache(
             self.redis,
             prefix=self.prefix,
         )
@@ -80,13 +92,34 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             self.redis,
             score_key_prefix=f"wr:{self.prefix}:score",
         )
+        self.worker_catalog = RedisWorkerResourceCatalog(
+            self.redis,
+            prefix=self.prefix,
+        )
+        self.worker_runtime = RedisWorkerRuntime(
+            self.redis,
+            self.worker_score,
+            prefix=self.prefix,
+            initial_lane_rank=50,
+        )
+        cached_acquirer = CachedWorkerCandidateAcquirer(
+            self.candidate_cache,
+            self.worker_score,
+            WorkerCandidateMatcher(
+                self.worker_catalog,
+                RedisWorkerDynamicAttributeRuntime(
+                    self.worker_catalog,
+                    update_handlers={},
+                ),
+            ),
+        )
         self.pacer = TaskItemDispatchPacer(
             self.task_score,
-            self.candidate_runtime,
+            self.task_catalog,
             self.deliver_seed_runtime,
             self.item_score,
             self.task_runtime,
-            self.worker_score,
+            lambda _descriptor, _task_items: cached_acquirer,
         )
 
     def tearDown(self) -> None:
@@ -96,7 +129,9 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             f"tr:{self.prefix}:task:{self.task_id}:items",
             f"tr:{self.prefix}:task:{self.task_id}:item-score",
             f"wr:{self.prefix}:score:image-workers",
-            f"ad:{self.prefix}:task:{self.task_id}:candidate-workers",
+            f"ad:{self.prefix}:candidate:{self.task_id}:workers",
+            f"wr:{self.prefix}:groups",
+            f"wr:{self.prefix}:workers:image-workers",
             (
                 f"ad:{self.prefix}:endpoint-manager:endpoint-manager-1:"
                 "deliver-seeds"
@@ -137,14 +172,21 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             task_id=self.task_id,
             items=(item,),
         )
-        initialized_worker = self.worker_score.initialize_hot_acquire_score(
-            home_bucket_id="image-workers",
-            worker_id="worker-1",
-            lane_rank=50,
+        self.worker_catalog.upsert_worker_group(
+            descriptor=WorkerGroupDescriptor(
+                worker_group_id="image-workers",
+                attributes={},
+                event_codes=frozenset({"image.resize"}),
+            )
         )
-        self.assertEqual(
-            WorkerScoreTransitionStatus.TRANSITIONED,
-            initialized_worker.status,
+        initialized_worker = self.worker_runtime.upsert_worker(
+            declaration=WorkerDeclaration(
+                worker_id="worker-1",
+                worker_group_id="image-workers",
+                endpoint_manager_id="endpoint-manager-1",
+                attributes={},
+                dynamic_attribute_names=frozenset(),
+            )
         )
         time.sleep((self.worker_score.SLOT_MILLIS + 20) / 1_000)
         observed_worker_score = self.worker_score.acquire_hot_acquire_candidates(
@@ -161,8 +203,8 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             worker_lease.status,
         )
         assert worker_lease.score is not None
-        self.candidate_runtime.append_candidate_workers(
-            task_id=self.task_id,
+        self.candidate_cache.append_candidate_workers(
+            candidate_id=self.task_id,
             candidate_workers=(
                 CandidateWorkerEntry(
                     worker_id="worker-1",
@@ -182,8 +224,8 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
                 item_claim_lease_duration_millis=3_000,
             )
         )
-        candidate_count = self.candidate_runtime.candidate_worker_counts(
-            task_ids=(self.task_id,),
+        candidate_count = self.candidate_cache.candidate_worker_counts(
+            candidate_ids=(self.task_id,),
         )[self.task_id]
         item_state = self.item_score.get_item_score_states(
             task_id=self.task_id,

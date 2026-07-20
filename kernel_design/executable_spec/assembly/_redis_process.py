@@ -4,8 +4,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..scheduling import (
+    CachedWorkerCandidateAcquirer,
     DueTaskItemAdmissionPolicy,
     PrioritySoftLimitSystemAdmissionPolicy,
+    RealtimeWorkerCandidateAcquirer,
     ResultRoutingBuiltinPolicies,
     ResultRoutingPacer,
     TaskItemDispatchPacer,
@@ -14,7 +16,7 @@ from ..scheduling import (
     WorkerCandidateMatcher,
 )
 from ..redis_runtime import (
-    RedisAssignmentDispatchRuntime,
+    RedisCandidateWorkerCache,
     RedisDeliverSeedRuntime,
     RedisTaskItemScoreBandCore,
     RedisTaskResourceCatalog,
@@ -39,6 +41,7 @@ from .result_routing_application import (
 class _RedisKernelProcessConfig:
     prefix: str
     running_task_soft_limit: int
+    worker_candidate_scan_limit: int
     assignment_dispatch: AssignmentDispatchApplicationConfig
     result_routing: ResultRoutingApplicationConfig
     stop_timeout_millis: int
@@ -48,6 +51,8 @@ class _RedisKernelProcessConfig:
             raise ValueError("Redis kernel prefix must be non-empty")
         if self.running_task_soft_limit <= 0:
             raise ValueError("running Task soft limit must be positive")
+        if self.worker_candidate_scan_limit <= 0:
+            raise ValueError("Worker candidate scan limit must be positive")
         if self.stop_timeout_millis <= 0:
             raise ValueError("process stop timeout must be positive")
 
@@ -98,7 +103,7 @@ class _RedisKernelProcess:
             )
         )
 
-        candidate_runtime = RedisAssignmentDispatchRuntime(
+        candidate_cache = RedisCandidateWorkerCache(
             redis_client,
             prefix=config.prefix,
         )
@@ -110,13 +115,22 @@ class _RedisKernelProcess:
             self._worker_resource_catalog,
             self._worker_dynamic_attribute_runtime,
         )
+        realtime_candidate_acquirer = RealtimeWorkerCandidateAcquirer(
+            self._worker_score,
+            worker_candidate_matcher,
+            worker_scan_limit=config.worker_candidate_scan_limit,
+        )
+        cached_candidate_acquirer = CachedWorkerCandidateAcquirer(
+            candidate_cache,
+            self._worker_score,
+            worker_candidate_matcher,
+        )
 
         worker_allocation_pacer = TaskWorkerAllocationPacer(
             self._task_score,
             self._task_resource_catalog,
-            self._worker_score,
-            worker_candidate_matcher,
-            candidate_runtime,
+            realtime_candidate_acquirer,
+            candidate_cache,
         )
         running_activation_pacer = TaskRunningActivationPacer(
             self._task_score,
@@ -129,11 +143,11 @@ class _RedisKernelProcess:
         )
         task_item_dispatch_pacer = TaskItemDispatchPacer(
             self._task_score,
-            candidate_runtime,
+            self._task_resource_catalog,
             self._deliver_seed_runtime,
             task_item_score,
             self._task_runtime,
-            self._worker_score,
+            lambda _descriptor, _task_items: cached_candidate_acquirer,
         )
         self._assignment_dispatch_application = AssignmentDispatchApplication(
             worker_allocation_pacer,

@@ -106,8 +106,8 @@ Conceptual flow:
 worker-allocation round
   -> acquire due RUNNING_VISIBLE Task ids
   -> load Task allocation descriptors
-  -> acquire and exact-lease due Worker observations
-  -> match and publish CandidateWorker evidence
+  -> realtime-acquire Worker candidates
+  -> publish expiring CandidateWorker cache evidence
   -> rotate each considered Task within its current score band
 
 running-activation round
@@ -117,8 +117,9 @@ running-activation round
 
 TaskItem-dispatch round
   -> acquire due RUNNING_VISIBLE Task ids
-  -> consume CandidateWorker evidence
-  -> load and claim TaskItems through their owners
+  -> observe record-backed TaskItems
+  -> invoke the policy-selected Worker candidate acquirer
+  -> claim only Items backed by acquired Workers
   -> append DeliverSeeds without another Task score write
 ```
 
@@ -853,9 +854,8 @@ round:
 TaskWorkerAllocationPacer
   -> query RUNNING_VISIBLE only
   -> load bounded Task allocation descriptors
-  -> acquire and exact-lease HOT Worker observations
-  -> match current Worker metadata/dynamic attributes
-  -> publish CandidateWorker evidence
+  -> invoke realtime Worker candidate acquisition
+  -> publish expiring CandidateWorker cache evidence
   -> rotate every considered Task in its acquired band
 
 TaskRunningActivationPacer
@@ -864,10 +864,10 @@ TaskRunningActivationPacer
   -> request RUNNING_VISIBLE only for the selected ordered subset
 
 TaskItemDispatchPacer
-  -> consume current candidate evidence
   -> acquire due ACTIVE Item observations
   -> load canonical TaskItem records
-  -> exact-claim record-backed Items
+  -> invoke the policy-selected cached or realtime candidate acquirer
+  -> exact-claim only Worker-backed Items
   -> append DeliverSeeds without another Task score write
 ```
 

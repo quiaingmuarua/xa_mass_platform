@@ -14,7 +14,7 @@ from kernel_design.executable_spec import (
     DueTaskItemAdmissionPolicy,
     PrioritySoftLimitSystemAdmissionPolicy,
     RedisTaskResourceCatalog,
-    RedisAssignmentDispatchRuntime,
+    RedisCandidateWorkerCache,
     RedisTaskRuntime,
     RedisWorkerDynamicAttributeRuntime,
     RedisWorkerResourceCatalog,
@@ -32,6 +32,7 @@ from kernel_design.executable_spec import (
     TaskScoreTransitionStatus,
     TaskWorkerAllocationConfig,
     TaskWorkerAllocationPacer,
+    RealtimeWorkerCandidateAcquirer,
     WorkerCandidateMatcher,
     WorkerDeclaration,
     WorkerGroupDescriptor,
@@ -102,19 +103,23 @@ class TaskWorkerAllocationIntegrationTest(unittest.TestCase):
             self.worker_catalog,
             update_handlers={},
         )
-        self.dispatch_runtime = RedisAssignmentDispatchRuntime(
+        self.candidate_cache = RedisCandidateWorkerCache(
             self.redis,
             prefix=self.prefix,
         )
-        self.pacer = TaskWorkerAllocationPacer(
-            self.task_score,
-            self.task_catalog,
+        realtime_acquirer = RealtimeWorkerCandidateAcquirer(
             self.worker_score,
             WorkerCandidateMatcher(
                 self.worker_catalog,
                 dynamic_runtime,
             ),
-            self.dispatch_runtime,
+            worker_scan_limit=10,
+        )
+        self.pacer = TaskWorkerAllocationPacer(
+            self.task_score,
+            self.task_catalog,
+            realtime_acquirer,
+            self.candidate_cache,
         )
         self.running_activation_pacer = TaskRunningActivationPacer(
             self.task_score,
@@ -132,7 +137,7 @@ class TaskWorkerAllocationIntegrationTest(unittest.TestCase):
             f"tc:{self.prefix}:task:{self.task_id}",
             f"tr:{self.prefix}:task:{self.task_id}:items",
             f"tr:{self.prefix}:task:{self.task_id}:item-score",
-            f"ad:{self.prefix}:task:{self.task_id}:candidate-workers",
+            f"ad:{self.prefix}:candidate:{self.task_id}:workers",
             f"wr:{self.prefix}:groups",
             f"wr:{self.prefix}:workers:{self.worker_group_id}",
             f"{self.worker_score_prefix}:{self.worker_group_id}",
@@ -198,8 +203,8 @@ class TaskWorkerAllocationIntegrationTest(unittest.TestCase):
             task_ids=(self.task_id,)
         )[self.task_id]
         candidate_count_before_worker_registration = (
-            self.dispatch_runtime.candidate_worker_counts(
-                task_ids=(self.task_id,),
+            self.candidate_cache.candidate_worker_counts(
+                candidate_ids=(self.task_id,),
             )[self.task_id]
         )
 
@@ -232,7 +237,6 @@ class TaskWorkerAllocationIntegrationTest(unittest.TestCase):
         published = self.pacer.allocate_candidate_workers(
             config=TaskWorkerAllocationConfig(
                 task_batch_limit=10,
-                worker_scan_limit=10,
                 worker_lease_duration_millis=5_000,
             )
         )
@@ -246,7 +250,6 @@ class TaskWorkerAllocationIntegrationTest(unittest.TestCase):
         published_while_reserved = self.pacer.allocate_candidate_workers(
             config=TaskWorkerAllocationConfig(
                 task_batch_limit=10,
-                worker_scan_limit=10,
                 worker_lease_duration_millis=5_000,
             )
         )
@@ -254,11 +257,11 @@ class TaskWorkerAllocationIntegrationTest(unittest.TestCase):
             home_bucket_id=self.worker_group_id,
             limit=10,
         )
-        queued_candidate_count = self.dispatch_runtime.candidate_worker_counts(
-            task_ids=(self.task_id,),
+        queued_candidate_count = self.candidate_cache.candidate_worker_counts(
+            candidate_ids=(self.task_id,),
         )[self.task_id]
-        entries = self.dispatch_runtime.consume_candidate_workers(
-            task_id=self.task_id,
+        entries = self.candidate_cache.consume_candidate_workers(
+            candidate_id=self.task_id,
             limit=10,
         )
 
