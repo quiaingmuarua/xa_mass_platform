@@ -29,7 +29,7 @@ _DynamicAttributeQueryHandler = Callable[
 
 
 def candidate_constraint(
-    match_rules: dict[str, object] | None = None,
+    allocation_rule: dict[str, object] | None = None,
     *,
     priority: int = 0,
     limit: int = 1,
@@ -37,7 +37,7 @@ def candidate_constraint(
     return WorkerCandidateConstraint(
         priority=priority,
         limit=limit,
-        match_rules={} if match_rules is None else match_rules,
+        allocation_rule={} if allocation_rule is None else allocation_rule,
     )
 
 
@@ -46,12 +46,12 @@ class WorkerCandidateMatcherContractTest(unittest.TestCase):
         constraint = WorkerCandidateConstraint(
             priority=100,
             limit=2,
-            match_rules={"dynamic.battery": {"$gte": 20}},
+            allocation_rule={"dynamic.battery": {"$gte": 20}},
         )
 
         self.assertEqual(
             {field.name for field in fields(WorkerCandidateConstraint)},
-            {"priority", "limit", "match_rules"},
+            {"priority", "limit", "allocation_rule"},
         )
         self.assertEqual(constraint.priority, 100)
         self.assertEqual(constraint.limit, 2)

@@ -46,9 +46,9 @@ business event names or caller-supplied score ranges.
 Task score acquire
   -> PRE_DISPATCH Task/System admission
   -> RUNNING transition
-  -> optional RUNNING candidate cache warming through realtime acquisition
+  -> optional RUNNING candidate cache warming through HOT-pool acquisition
   -> TaskItem observation
-  -> policy-selected cached or realtime Worker candidate acquisition
+  -> Task-scoped PRECOMPUTED or Item-scoped TARGETED candidate acquisition
   -> TaskItem exact claim
   -> DeliverSeed queue
   -> endpoint-manager delivery
@@ -116,11 +116,11 @@ Transport adapters
 | --- | --- | --- |
 | Task score-band | Implemented with Redis proof | Cadence, scan horizons, and no-work budget values |
 | Worker score-band | Implemented with Redis proof, including dirty lease fence | Dirty marking policy when a persisted assignment continuation exists; recovery cadence and ranking |
-| Worker HOT_ACQUIRE lease protocol | Realtime lease/match, cached exact recheck/rematch, result release/recovery demotion, reconnect dirty fence, and one-WorkerId/one-slot invariant implemented | Recovery probe cadence and ranking |
+| Worker HOT_ACQUIRE lease protocol | HOT-pool precomputation, TARGETED point lease-match, PRECOMPUTED exact recheck-rematch, result disposition, reconnect dirty fence, and one-WorkerId/one-slot invariant implemented | Recovery probe cadence and ranking |
 | TaskItem score-band | Implemented with Redis proof | Initial retry budget and claim-duration values |
 | Task running activation | Implemented with due-Item Task policy and priority soft-limit System policy | Quota, tenant, business start condition, and resource-estimate policy composition |
-| Worker allocation | Implemented as RUNNING-only candidate cache warming through realtime acquisition | Fairness beyond Task score order and matcher priority |
-| TaskItem dispatch | Implemented through policy-selected acquisition and DeliverSeed append | Item-directed request construction and recent-first Redis Task acquisition |
+| Worker allocation | Implemented as RUNNING TASK-scope candidate cache warming through HOT-pool acquisition | Fairness beyond Task score order and matcher priority |
+| TaskItem dispatch | Implemented with Task-owned rule scope, PRECOMPUTED Task rules, TARGETED Item rules, stable Item binding, and DeliverSeed append | Recent-first Redis Task acquisition |
 | Outbound delivery example | Independent clients and Local Function Adapter implemented | Production transport, pending/ack, and protocol-specific conversion |
 | Result routing | Implemented with unit and Redis orchestration proof; Task/Worker policy handlers are replaceable | Result projection and stronger queue reliability require separate owners and invariants |
 

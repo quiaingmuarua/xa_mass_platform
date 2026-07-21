@@ -1,4 +1,5 @@
 from ..kernel import (
+    AllocationRuleScope,
     DeliverSeed,
     EndpointManagerId,
     MessageId,
@@ -30,6 +31,7 @@ from .transport_clients import (
     SeedResultCommandClient,
 )
 __all__ = [
+    "AllocationRuleScope",
     "DeliverSeed",
     "DeliverSeedConsumerClient",
     "EndpointManagerId",
@@ -56,4 +58,3 @@ __all__ = [
     "WorkerRuntimeStatus",
     "classify_seed_result_outcome_code",
 ]
-

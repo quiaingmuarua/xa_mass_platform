@@ -7,18 +7,21 @@ from enum import Enum
 from threading import Lock
 from typing import Any
 
+from ..constraint_dsl import ConstraintEvaluator
 from ..scheduling import (
     TaskItemDispatchConfig,
     TaskRunningActivationConfig,
     TaskWorkerAllocationConfig,
 )
 from ..kernel import (
+    AllocationRuleScope,
     MessageId,
     TaskCreationResult,
     TaskDescriptor,
     TaskId,
     TaskItem,
     TaskItemAppendResult,
+    TaskItemAppendStatus,
     TaskResourceCatalog,
     TaskScoreBand,
     TaskScoreBandCore,
@@ -387,7 +390,126 @@ class KernelApplication:
         items: Sequence[TaskItem],
     ) -> Mapping[MessageId, TaskItemAppendResult]:
         self._require_started()
-        return self._process._task_runtime.append_items(task_id=task_id, items=items)
+        if not items:
+            return {}
+        ordered_items = {item.message_id: item for item in items}
+        descriptor = self._process._task_resource_catalog.load_task_allocation_descriptors(
+            task_ids=(task_id,),
+        ).get(task_id)
+        if descriptor is None:
+            return {
+                message_id: TaskItemAppendResult(TaskItemAppendStatus.NOT_FOUND)
+                for message_id in ordered_items
+            }
+        allowed_item_fields: frozenset[str] = frozenset()
+        if descriptor.allocation_rule_scope is AllocationRuleScope.TASK_ITEM:
+            worker_groups = self._process._worker_resource_catalog.get_worker_group_descriptors(
+                worker_group_ids=(descriptor.worker_group_id,),
+            )
+            worker_group = worker_groups.get(descriptor.worker_group_id)
+            if worker_group is None:
+                return {
+                    message_id: TaskItemAppendResult(
+                        TaskItemAppendStatus.INVALID,
+                        "Task WorkerGroup declaration was not found",
+                    )
+                    for message_id in ordered_items
+                }
+            allowed_item_fields = worker_group.item_allocation_fields
+
+        valid_items: list[TaskItem] = []
+        results: dict[MessageId, TaskItemAppendResult] = {}
+        for message_id, item in ordered_items.items():
+            try:
+                self._validate_item_allocation_rule(
+                    item=item,
+                    allocation_rule_scope=descriptor.allocation_rule_scope,
+                    allowed_fields=allowed_item_fields,
+                )
+            except ValueError as error:
+                results[message_id] = TaskItemAppendResult(
+                    TaskItemAppendStatus.INVALID,
+                    str(error),
+                )
+            else:
+                valid_items.append(item)
+
+        if len(valid_items) == len(ordered_items):
+            return self._process._task_runtime.append_items(
+                task_id=task_id,
+                items=valid_items,
+            )
+        if valid_items:
+            results.update(
+                self._process._task_runtime.append_items(
+                    task_id=task_id,
+                    items=valid_items,
+                )
+            )
+        return {
+            message_id: results[message_id]
+            for message_id in ordered_items
+        }
+
+    def _validate_item_allocation_rule(
+        self,
+        *,
+        item: TaskItem,
+        allocation_rule_scope: AllocationRuleScope,
+        allowed_fields: frozenset[str],
+    ) -> None:
+        if allocation_rule_scope is AllocationRuleScope.TASK:
+            if item.allocation_rule is not None:
+                raise ValueError("TASK allocation scope forbids an Item rule")
+            return
+        if item.allocation_rule is None:
+            raise ValueError("TASK_ITEM allocation scope requires an Item rule")
+        compiled_rule = ConstraintEvaluator.compile_match_rules(
+            item.allocation_rule
+        )
+        unsupported_fields = set(compiled_rule) - allowed_fields
+        if unsupported_fields:
+            raise ValueError(
+                "Item allocation fields are not allowed by WorkerGroup: "
+                + ", ".join(sorted(unsupported_fields))
+            )
+        for field_name, operator_rule in compiled_rule.items():
+            if field_name == "workerId":
+                self._validate_worker_id_allocation_rule(operator_rule)
+                continue
+            domain, separator, attribute_name = field_name.partition(".")
+            if not separator or domain != "dynamic" or not attribute_name:
+                raise ValueError(
+                    f"Item allocation field has no candidate source: {field_name}"
+                )
+            if not self._process._worker_dynamic_attribute_runtime.supports_candidate_query(
+                attribute_name=attribute_name,
+                operator_rule=operator_rule,
+            ):
+                raise ValueError(
+                    f"dynamic allocation field has no candidate query: {field_name}"
+                )
+
+    @staticmethod
+    def _validate_worker_id_allocation_rule(
+        operator_rule: Mapping[str, object],
+    ) -> None:
+        if len(operator_rule) != 1:
+            raise ValueError("workerId allocation requires exactly one operator")
+        operator, operand = next(iter(operator_rule.items()))
+        if operator == "$eq":
+            values = (operand,)
+        elif operator == "$in" and isinstance(operand, tuple):
+            values = operand
+        else:
+            raise ValueError("workerId allocation only supports $eq or $in")
+        if not values or any(
+            not isinstance(worker_id, str) or not worker_id
+            for worker_id in values
+        ):
+            raise ValueError(
+                "workerId allocation values must be non-empty strings"
+            )
 
     def _require_started(self) -> None:
         with self._lifecycle_lock:

@@ -6,6 +6,7 @@ from dataclasses import fields
 
 import kernel_design.executable_spec as executable_spec
 from kernel_design.executable_spec import (
+    AllocationRuleScope,
     TaskCreationResult,
     TaskCreationStatus,
     TaskDescriptor,
@@ -22,6 +23,7 @@ class TaskRuntimeContractTest(unittest.TestCase):
         descriptor = TaskDescriptor(
             task_id="task-1",
             worker_group_id="workers-a",
+            allocation_rule_scope=AllocationRuleScope.TASK,
             allocation_rule={"dynamic.battery": {"$gte": 20}},
             config={
                 "priority": "80",
@@ -32,7 +34,13 @@ class TaskRuntimeContractTest(unittest.TestCase):
 
         self.assertEqual(
             {field.name for field in fields(TaskDescriptor)},
-            {"task_id", "worker_group_id", "allocation_rule", "config"},
+            {
+                "task_id",
+                "worker_group_id",
+                "allocation_rule_scope",
+                "allocation_rule",
+                "config",
+            },
         )
         self.assertEqual(descriptor.config["priority"], "80")
         self.assertEqual(descriptor.config["maxRetryTimes"], "3")
@@ -55,10 +63,12 @@ class TaskRuntimeContractTest(unittest.TestCase):
                 "payload",
                 "priority",
                 "expire_at_millis",
+                "allocation_rule",
             },
         )
         self.assertEqual(5, item.priority)
         self.assertIsNone(item.expire_at_millis)
+        self.assertIsNone(item.allocation_rule)
         self.assertFalse(hasattr(item, "score"))
         self.assertFalse(hasattr(item, "retry_count"))
 
@@ -88,6 +98,13 @@ class TaskRuntimeContractTest(unittest.TestCase):
                 "created_at_millis": 1,
                 "payload": {},
                 "expire_at_millis": 1,
+            },
+            {
+                "message_id": "message-1",
+                "event_code": "event",
+                "created_at_millis": 1,
+                "payload": {},
+                "allocation_rule": {},
             },
         )
 
@@ -141,9 +158,50 @@ class TaskRuntimeContractTest(unittest.TestCase):
                 TaskDescriptor(
                     task_id="task-1",
                     worker_group_id="workers-a",
+                    allocation_rule_scope=AllocationRuleScope.TASK,
                     allocation_rule={"attributes.runtime": {"$eq": "python"}},
                     config=config,
                 )
+
+    def test_task_descriptor_scope_owns_rule_location(self) -> None:
+        config = {
+            "priority": "80",
+            "maximumCandidateWorkers": "10",
+            "maxRetryTimes": "3",
+        }
+        task_scoped = TaskDescriptor(
+            task_id="task-1",
+            worker_group_id="workers-a",
+            allocation_rule_scope=AllocationRuleScope.TASK,
+            allocation_rule={},
+            config=config,
+        )
+        item_scoped = TaskDescriptor(
+            task_id="task-2",
+            worker_group_id="workers-a",
+            allocation_rule_scope=AllocationRuleScope.TASK_ITEM,
+            allocation_rule=None,
+            config=config,
+        )
+
+        self.assertEqual({}, task_scoped.allocation_rule)
+        self.assertIsNone(item_scoped.allocation_rule)
+        with self.assertRaises(ValueError):
+            TaskDescriptor(
+                task_id="task-3",
+                worker_group_id="workers-a",
+                allocation_rule_scope=AllocationRuleScope.TASK,
+                allocation_rule=None,
+                config=config,
+            )
+        with self.assertRaises(ValueError):
+            TaskDescriptor(
+                task_id="task-4",
+                worker_group_id="workers-a",
+                allocation_rule_scope=AllocationRuleScope.TASK_ITEM,
+                allocation_rule={},
+                config=config,
+            )
 
 
     def test_task_runtime_surface_exposes_record_operations(self) -> None:
@@ -208,6 +266,7 @@ class TaskRuntimeContractTest(unittest.TestCase):
 
     def test_task_runtime_contracts_are_package_exports(self) -> None:
         self.assertIs(executable_spec.TaskRuntime, TaskRuntime)
+        self.assertIs(executable_spec.AllocationRuleScope, AllocationRuleScope)
         self.assertIs(executable_spec.TaskDescriptor, TaskDescriptor)
         self.assertIs(executable_spec.TaskItem, TaskItem)
         self.assertIs(executable_spec.TaskItemAppendResult, TaskItemAppendResult)

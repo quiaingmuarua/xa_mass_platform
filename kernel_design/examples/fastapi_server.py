@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from kernel_design.executable_spec.assembly import (
+    AllocationRuleScope,
     DeliverSeed,
     DeliverSeedConsumerClient,
     KernelApplication,
@@ -34,6 +35,10 @@ from kernel_design.executable_spec.assembly import (
 class WorkerGroupRequest(BaseModel):
     attributes: dict[str, Any] = Field(default_factory=dict)
     event_codes: list[str] = Field(alias="eventCodes")
+    item_allocation_fields: list[str] = Field(
+        default_factory=list,
+        alias="itemAllocationFields",
+    )
 
 
 class WorkerRequest(BaseModel):
@@ -48,7 +53,11 @@ class WorkerRequest(BaseModel):
 class TaskRequest(BaseModel):
     task_id: str = Field(alias="taskId")
     worker_group_id: str = Field(alias="workerGroupId")
-    allocation_rule: dict[str, Any] = Field(alias="allocationRule")
+    allocation_rule_scope: AllocationRuleScope = Field(alias="allocationRuleScope")
+    allocation_rule: dict[str, Any] | None = Field(
+        default=None,
+        alias="allocationRule",
+    )
     config: dict[str, str]
 
 
@@ -59,6 +68,10 @@ class TaskItemRequest(BaseModel):
     payload: dict[str, Any]
     priority: int = 5
     expire_at_millis: int | None = Field(default=None, alias="expireAtMillis")
+    allocation_rule: dict[str, Any] | None = Field(
+        default=None,
+        alias="allocationRule",
+    )
 
 
 class AppendTaskItemsRequest(BaseModel):
@@ -199,6 +212,9 @@ def create_app(
                     worker_group_id=worker_group_id,
                     attributes=request.attributes,
                     event_codes=frozenset(request.event_codes),
+                    item_allocation_fields=frozenset(
+                        request.item_allocation_fields
+                    ),
                 )
             )
         )
@@ -230,6 +246,7 @@ def create_app(
                 descriptor=TaskDescriptor(
                     task_id=request.task_id,
                     worker_group_id=request.worker_group_id,
+                    allocation_rule_scope=request.allocation_rule_scope,
                     allocation_rule=request.allocation_rule,
                     config=request.config,
                 )
@@ -253,6 +270,7 @@ def create_app(
                 payload=item.payload,
                 priority=item.priority,
                 expire_at_millis=item.expire_at_millis,
+                allocation_rule=item.allocation_rule,
             )
             for item in request.items
         )

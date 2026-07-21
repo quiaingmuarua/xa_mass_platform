@@ -30,7 +30,7 @@ must use a different worker group, create a different task or stop/cancel and
 recreate the task; do not hot-swap worker groups during dispatch.
 
 `WorkerCandidateConstraint -> worker predicates` is matching inside the
-selected worker group. Its `match_rules` map narrows workers by `workerId`,
+selected worker group. Its `allocation_rule` map narrows workers by `workerId`,
 placement, platform/worker attributes, or explicitly supported projected dynamic
 query attributes.
 
@@ -97,6 +97,7 @@ WorkerGroupDescriptor
   workerGroupId: string
   attributes: map<string, value>
   eventCodes: set<string>
+  itemAllocationFields: set<string>
 ```
 
 `workerGroupId` names a steady scheduling universe configured for operations.
@@ -112,6 +113,15 @@ handle. It validates that the selected worker group can serve the task item's
 event, but it is not a per-dispatch group discovery mechanism and
 not proof that a specific worker is currently reachable, score-leased, or able to
 receive work.
+
+`itemAllocationFields` declares which bounded candidate-source fields a
+`TASK_ITEM`-scope Task may use in Item rules. `workerId` is built in;
+`dynamic.<name>` also requires a registered handler-owned candidate index.
+The declaration does not expose handler functions or Redis keys.
+
+Normal WorkerGroup upsert may replace only `attributes`. `eventCodes` and
+`itemAllocationFields` are immutable declarations; changing either requires a
+separate owner command rather than reconnect-style upsert.
 
 WorkerGroupDescriptor does not own:
 
@@ -263,7 +273,7 @@ per-call worker limit, and one DSL rule map. It is
 not a task policy owner, worker-group selector, score lease contract, or handler
 routing contract.
 
-One matcher call receives a candidate map. `match_rules` is already a
+One matcher call receives a candidate map. `allocation_rule` is already a
 structured map; callers do not pass a JSON string and the worker matcher does
 not own JSON parsing:
 
@@ -272,7 +282,7 @@ candidate_constraints = {
   "task-1": WorkerCandidateConstraint(
     priority=100,
     limit=2,
-    match_rules={
+    allocation_rule={
       "workerId": {"$in": ["worker-1", "worker-2"]},
       "platform.tier": {"$eq": "premium"},
       "attributes.runtime": {"$in": ["python", "java"]},
@@ -298,6 +308,10 @@ These are worker-runtime owner fields, not DSL-reserved fields. `workerId` is a
 normal context value that may participate in the same DSL operators as any
 other value. It is not a descriptor attribute.
 
+That evaluator capability is broader than Item-directed candidate discovery.
+A TaskItem using `workerId` as its TARGETED source is restricted to bounded
+`$eq/$in`; the matcher still evaluates the complete rule after exact lease.
+
 The matcher derives dynamic read dependencies from the compiled `dynamic.*`
 rule keys. `workerId`, `platform.*`, and `attributes.*` are already supplied by the
 descriptor batch and require no handler read. The derived dependency union is
@@ -312,7 +326,7 @@ matcher call. It must be positive. It is not a worker discovery limit and does
 not persist across calls. When one candidate reaches its limit, later workers
 continue against the remaining candidates in resolved priority order.
 
-`match_rules` is the only rule map. The independent DSL compiles and evaluates
+`allocation_rule` is the only rule map. The independent DSL compiles and evaluates
 domain-qualified fields against a two-level context map:
 
 ```python
@@ -323,7 +337,7 @@ ConstraintEvaluator.evaluate_match_rules(
     "attributes": descriptor.attributes,
     "dynamic": resolved_dynamic_values,
   },
-  match_rules,
+  allocation_rule,
 )
 ```
 
@@ -336,7 +350,7 @@ but that is a worker-runtime owner decision. The evaluator does not know
 descriptors, handlers, Redis, worker fields, or scheduling state.
 
 At the start of one bounded matcher call, the matcher compiles every
-`match_rules` map once, orders candidates by priority, derives the ordered
+`allocation_rule` map once, orders candidates by priority, derives the ordered
 dynamic-field union, and batch-reads each field once. The compiled rules are
 evaluated against one temporary context for the current worker.
 
@@ -528,25 +542,25 @@ task scheduling. It is exactly one group in v0 and immutable while the task is
 running. Assignment-dispatch does not query or choose groups on each round.
 
 `WorkerCandidateConstraint -> worker predicates` is worker matching inside the
-selected worker group. Its `match_rules` may constrain `workerId`, placement,
+selected worker group. Its `allocation_rule` may constrain `workerId`, placement,
 Worker attributes, platform attributes, or explicitly supported projected
 dynamic attributes. These constraints narrow the Worker ids returned by the
 lease-first allocation step; matcher does not attempt or renew Worker-score
 leases.
 
-`workerId` inside `match_rules` is only a hard filter inside the task's selected
+`workerId` inside `allocation_rule` is only a hard filter inside the task's selected
 `workerGroupId`. The Worker must come from bounded due HOT score observation and
 win an exact-score lease CAS before matcher validation. It is not a worker
 group selector and not a transport target.
 
 Dynamic attribute matching is deliberately narrow in v0. Assignment-dispatch
-must not perform arbitrary dynamic-attribute multi-index queries. Each
-`WorkerCandidateConstraint.match_rules` map declares the predicates; the
+does not perform arbitrary dynamic-attribute multi-index queries. Each
+`WorkerCandidateConstraint.allocation_rule` map declares the predicates; the
 matcher derives its `dynamic.*` dependencies and batch-reads each field for
 bounded workers whose descriptors declare support. The acquired
-values are read only while evaluating the current worker context. If a later
-executable spec needs candidate discovery such as `battery > 20`, the dynamic
-attribute query function must expose a bounded candidate index explicitly.
+values are read only while evaluating the current worker context. Item-directed
+candidate discovery such as `battery > 20` is allowed only when the dynamic
+attribute runtime installs an explicit bounded candidate-query handler.
 
 The first worker-runtime matching surface may expose a bounded batch matcher:
 
@@ -563,7 +577,7 @@ match_worker_candidates(
 ```
 
 The input map makes candidate identity unique. Each value carries explicit
-`priority`, `limit`, and map-shaped `match_rules`. The matcher
+`priority`, `limit`, and map-shaped `allocation_rule`. The matcher
 sorts by priority descending and `candidateId` ascending, then each worker is
 considered by the first matching candidate with remaining match limit. Every
 matched Worker appears in exactly one candidate result. Each returned
@@ -573,13 +587,14 @@ parses or modifies that score. Unmatched Worker ids are not returned; their
 already-acquired leases remain held until natural expiry. `endpointManagerId`
 is a post-selection Deliver Queue partition coordinate, not a matching field.
 A matcher call handles exactly one selected `workerGroupId`; assignment-dispatch
-must partition candidates by Worker group and read a bounded due Worker
-observation batch before calling it. The matcher owns descriptor reads, dynamic
-reads, and matching for only those supplied Worker ids. The selected candidate
-acquirer batch-leases or validates Workers by exact CAS, passes only lease
-successes to matcher as an opaque score map, and leaves unmatched leases to
-expire naturally. The matcher directly materializes the final acquisition
-result.
+must partition candidates by Worker group and acquire bounded Worker lease
+evidence before calling it. The selected candidate acquirer unions and
+deduplicates source Worker ids, batch-leases or validates them by exact CAS, and
+passes only lease successes as one opaque `workerId -> score` map. The matcher
+owns descriptor reads, dynamic reads, and matching for only those supplied
+Worker ids. It evaluates complete rules in priority order, assigns each Worker
+at most once, and leaves unmatched leases to expire naturally. The matcher
+directly materializes the final acquisition result.
 The matcher returns every input candidate in resolved priority order. An empty
 entry means no match. It must not acquire or discover additional Workers and
 must not become
@@ -602,10 +617,10 @@ details. If an operator or policy needs a network category, expose it as a
 worker attribute such as `networkType`; do not expose endpoint-manager or
 adapter/session identifiers as worker-selection facts.
 
-Descriptor metadata is the low-frequency query and matching surface used by
-worker allocation inside a pre-bound worker group. Its purpose is to help
-assignment-dispatch find a small set of plausible workers before runtime
-score lease. It does not decide which worker group a task may use:
+Descriptor metadata is the low-frequency matching surface used inside a
+pre-bound worker group. Candidate sources propose a small bounded Worker
+universe; descriptor and dynamic point reads validate it after exact score
+lease. Metadata does not decide which WorkerGroup a Task may use:
 
 ```text
 task admission
@@ -613,8 +628,9 @@ task admission
 task eventCode
   -> validates against WorkerGroupDescriptor.eventCodes
 pre-bound workerGroupId
-  -> WorkerCandidateConstraint.match_rules filters worker attributes
-  -> WorkerScoreCore score lease validates current serviceability and slot hold
+  -> candidate source proposes bounded Worker ids
+  -> WorkerScoreCore exact lease validates serviceability and slot hold
+  -> WorkerCandidateConstraint.allocation_rule validates current attributes
 ```
 
 Scheduling must not stop at descriptor matches. It reads worker-runtime owner
@@ -669,8 +685,8 @@ metadataRevision as public descriptor field
 metadataSignature as public descriptor field
 dynamic attribute function refs carried by WorkerDescriptor
 dynamic attribute current values inside WorkerDescriptor
-eventCode inside WorkerCandidateConstraint.match_rules
-workerGroupId inside WorkerCandidateConstraint.match_rules
+eventCode inside WorkerCandidateConstraint.allocation_rule
+workerGroupId inside WorkerCandidateConstraint.allocation_rule
 adapter session / mailbox / connection state inside WorkerDescriptor
 runtime score / dirty / score lease fields inside WorkerDescriptor
 parallel execution capacity inside one WorkerId
@@ -708,6 +724,7 @@ class WorkerGroupDescriptor:
     worker_group_id: str
     attributes: Mapping[str, JsonValue]
     event_codes: frozenset[str]
+    item_allocation_fields: frozenset[str]
 
 
 @dataclass(frozen=True)

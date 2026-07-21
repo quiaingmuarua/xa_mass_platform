@@ -140,6 +140,20 @@ class WorkerScoreCore(ABC):
         pass
 
     @abstractmethod
+    def observe_due_hot_scores(
+        self,
+        *,
+        home_bucket_id: HomeBucketId,
+        worker_ids: Sequence[WorkerId],
+    ) -> Mapping[WorkerId, Score]:
+        """Return due HOT scores for one bounded, caller-selected Worker batch.
+
+        The returned scores are opaque exact-CAS observations. Missing,
+        recovery, current-slot, and future-held Workers are omitted.
+        """
+        pass
+
+    @abstractmethod
     def acquire_recovery_recheck_candidates(
         self,
         *,

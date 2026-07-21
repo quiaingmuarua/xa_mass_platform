@@ -38,12 +38,14 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
         self.assertIsNone(rows["missing"])
         self.assertIn("image-workers", self.redis.hashes["wr:test:groups"])
 
-    def test_worker_group_upsert_replaces_attributes_but_not_event_codes(self) -> None:
+    def test_worker_group_upsert_replaces_only_attributes(self) -> None:
+        item_fields = frozenset({"workerId", "dynamic.battery"})
         self.catalog.upsert_worker_group(
             descriptor=WorkerGroupDescriptor(
                 worker_group_id="image-workers",
                 attributes={"kind": "image", "removed": True},
                 event_codes=self.group.event_codes,
+                item_allocation_fields=item_fields,
             )
         )
 
@@ -52,6 +54,7 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
                 worker_group_id="image-workers",
                 attributes={"kind": "gpu"},
                 event_codes=self.group.event_codes,
+                item_allocation_fields=item_fields,
             )
         )
         conflict = self.catalog.upsert_worker_group(
@@ -59,6 +62,15 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
                 worker_group_id="image-workers",
                 attributes={"kind": "other"},
                 event_codes=frozenset({"other"}),
+                item_allocation_fields=item_fields,
+            )
+        )
+        field_conflict = self.catalog.upsert_worker_group(
+            descriptor=WorkerGroupDescriptor(
+                worker_group_id="image-workers",
+                attributes={"kind": "other"},
+                event_codes=self.group.event_codes,
+                item_allocation_fields=frozenset({"workerId"}),
             )
         )
         stored = self.catalog.get_worker_group_descriptors(
@@ -67,9 +79,11 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
 
         self.assertEqual(updated.status, WorkerRuntimeStatus.OK)
         self.assertEqual(conflict.status, WorkerRuntimeStatus.CONFLICT)
+        self.assertEqual(field_conflict.status, WorkerRuntimeStatus.CONFLICT)
         assert stored is not None
         self.assertEqual(stored.attributes, {"kind": "gpu"})
         self.assertEqual(stored.event_codes, self.group.event_codes)
+        self.assertEqual(stored.item_allocation_fields, item_fields)
 
     def test_upsert_worker_writes_selected_group_hash(self) -> None:
         self.upsert_group()
@@ -505,6 +519,56 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
         self.assertEqual(rejected_attr["load"].status, WorkerRuntimeStatus.REJECTED)
         self.assertEqual(missing_handler["network"].status, WorkerRuntimeStatus.NOT_FOUND)
         self.assertEqual(wrong_group["battery"].status, WorkerRuntimeStatus.NOT_FOUND)
+
+    def test_dynamic_attribute_candidate_query_is_bounded_and_handler_owned(
+        self,
+    ) -> None:
+        calls: list[tuple[str, dict[str, object], int]] = []
+
+        def query_battery_candidates(
+            worker_group_id: str,
+            operator_rule: dict[str, object],
+            limit: int,
+        ) -> tuple[str, ...]:
+            calls.append((worker_group_id, dict(operator_rule), limit))
+            return "worker-2", "worker-1", "worker-2"
+
+        runtime = RedisWorkerDynamicAttributeRuntime(
+            self.catalog,
+            update_handlers={},
+            candidate_query_handlers={
+                "battery": (
+                    frozenset({"$gte", "$lte"}),
+                    query_battery_candidates,
+                )
+            },
+        )
+
+        self.assertTrue(
+            runtime.supports_candidate_query(
+                attribute_name="battery",
+                operator_rule={"$gte": 80},
+            )
+        )
+        self.assertFalse(
+            runtime.supports_candidate_query(
+                attribute_name="battery",
+                operator_rule={"$eq": 80},
+            )
+        )
+        self.assertEqual(
+            ("worker-2", "worker-1"),
+            runtime.query_candidate_worker_ids(
+                worker_group_id="image-workers",
+                attribute_name="battery",
+                operator_rule={"$gte": 80},
+                limit=2,
+            ),
+        )
+        self.assertEqual(
+            [("image-workers", {"$gte": 80}, 2)],
+            calls,
+        )
 
 
 if __name__ == "__main__":

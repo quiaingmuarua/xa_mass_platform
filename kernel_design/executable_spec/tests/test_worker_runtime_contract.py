@@ -52,10 +52,21 @@ class WorkerRuntimeContractTest(unittest.TestCase):
             worker_group_id="image-workers",
             attributes={"kind": "image"},
             event_codes=frozenset({"resize", "thumbnail"}),
+            item_allocation_fields=frozenset({"workerId"}),
         )
 
+        self.assertEqual(
+            {
+                "worker_group_id",
+                "attributes",
+                "event_codes",
+                "item_allocation_fields",
+            },
+            {field.name for field in fields(WorkerGroupDescriptor)},
+        )
         self.assertEqual(descriptor.worker_group_id, "image-workers")
         self.assertIn("resize", descriptor.event_codes)
+        self.assertEqual(frozenset({"workerId"}), descriptor.item_allocation_fields)
 
     def test_worker_runtime_interfaces_expose_narrow_owner_surfaces(self) -> None:
         self.assertEqual(
@@ -75,6 +86,8 @@ class WorkerRuntimeContractTest(unittest.TestCase):
             WorkerDynamicAttributeRuntime.__abstractmethods__,
             {
                 "get_worker_dynamic_attribute_values",
+                "query_candidate_worker_ids",
+                "supports_candidate_query",
                 "update_worker_dynamic_attributes",
             },
         )
@@ -140,6 +153,13 @@ class WorkerRuntimeContractTest(unittest.TestCase):
             ).parameters
         )
         self.assertEqual(renew_params, lease_params)
+        observe_params = set(
+            inspect.signature(WorkerScoreCore.observe_due_hot_scores).parameters
+        )
+        self.assertEqual(
+            observe_params,
+            {"self", "home_bucket_id", "worker_ids"},
+        )
         reconcile_params = set(
             inspect.signature(WorkerScoreCore.reconcile_worker_hot_acquire).parameters
         )
@@ -210,6 +230,28 @@ class WorkerRuntimeContractTest(unittest.TestCase):
         self.assertEqual(
             query_params,
             {"self", "worker_group_id", "attribute_name", "worker_ids"},
+        )
+        self.assertEqual(
+            set(
+                inspect.signature(
+                    WorkerDynamicAttributeRuntime.supports_candidate_query
+                ).parameters
+            ),
+            {"self", "attribute_name", "operator_rule"},
+        )
+        self.assertEqual(
+            set(
+                inspect.signature(
+                    WorkerDynamicAttributeRuntime.query_candidate_worker_ids
+                ).parameters
+            ),
+            {
+                "self",
+                "worker_group_id",
+                "attribute_name",
+                "operator_rule",
+                "limit",
+            },
         )
         self.assertTrue(hasattr(executable_spec, "DynamicAttributePayload"))
         self.assertTrue(hasattr(executable_spec, "EndpointManagerId"))

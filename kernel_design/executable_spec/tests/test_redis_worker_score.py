@@ -313,6 +313,24 @@ class RedisWorkerScoreCoreTest(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(0, self.redis.eval_count)
 
+    def test_observe_due_hot_scores_is_point_bounded_and_preserves_input_order(
+        self,
+    ) -> None:
+        due = self.score(WorkerScorePolarity.HOT_ACQUIRE, 999, 2)
+        future = self.score(WorkerScorePolarity.HOT_ACQUIRE, 1_001, 3)
+        recovery = self.score(WorkerScorePolarity.RECOVERY_RECHECK, 999, 4)
+        self.store_score("due", due)
+        self.store_score("future", future)
+        self.store_score("recovery", recovery)
+
+        observed = self.kernel.observe_due_hot_scores(
+            home_bucket_id=self.home_bucket_id,
+            worker_ids=("future", "due", "missing", "due", "recovery"),
+        )
+
+        self.assertEqual({"due": due}, observed)
+        self.assertEqual(1, self.redis.pipeline_execute_count)
+
     def test_acquire_recovery_recheck_candidates_uses_recent_window(self) -> None:
         too_old = self.score(WorkerScorePolarity.RECOVERY_RECHECK, 899, 1)
         window_start = self.score(WorkerScorePolarity.RECOVERY_RECHECK, 900, 2)

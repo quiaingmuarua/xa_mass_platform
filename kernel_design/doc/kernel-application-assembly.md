@@ -63,10 +63,18 @@ and set dirty=1 without releasing a hold.
 `approve_task` is an explicit lifecycle command that validates Task metadata
 and current score band, then requests `PRE_REVIEW -> PRE_DISPATCH_VISIBLE`. It
 returns `TaskApprovalResult` without exposing score evidence.
+`append_task_items` enforces the Task's immutable `allocationRuleScope`.
+`TASK` forbids Item rules; `TASK_ITEM` requires them and validates each rule
+against the selected WorkerGroup `itemAllocationFields` and installed
+candidate-query handlers before delegating valid records to TaskRuntime. Item
+rules cannot change WorkerGroup. The common `TASK` path performs no WorkerGroup
+or dynamic-index read during append.
 
 Dynamic attribute mutation is not a public assembly command. The executable
 spec has no installed external handler registry, so exposing that command would
 advertise a route that cannot perform a real owner update.
+Zero-config assembly also installs no dynamic candidate index; declared
+`workerId` `$eq/$in` remains the built-in TARGETED Item source.
 
 ## Zero Configuration
 

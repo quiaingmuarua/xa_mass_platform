@@ -5,6 +5,7 @@ import unittest
 from unittest.mock import Mock, call, patch
 
 from kernel_design.executable_spec import (
+    AllocationRuleScope,
     CandidateWorkerCache,
     CandidateWorkerEntry,
     TaskDescriptor,
@@ -14,7 +15,6 @@ from kernel_design.executable_spec import (
     TaskWorkerAllocationConfig,
     TaskWorkerAllocationPacer,
     WorkerCandidateAcquirer,
-    WorkerCandidateAcquisitionStrategy,
 )
 
 
@@ -66,7 +66,7 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
             "task-2": self._descriptor("task-2", maximum_candidates=5),
         }
         entry = self._entry("worker-1")
-        self.candidate_acquirer.acquire_worker_candidates.return_value = {
+        self.candidate_acquirer.acquire_hot_pool_candidates.return_value = {
             "task-1": (entry,),
         }
 
@@ -88,13 +88,7 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
         self.candidate_cache.candidate_worker_counts.assert_called_once_with(
             candidate_ids=("task-1", "task-2"),
         )
-        acquisition_call = (
-            self.candidate_acquirer.acquire_worker_candidates.call_args
-        )
-        self.assertIs(
-            WorkerCandidateAcquisitionStrategy.REALTIME,
-            acquisition_call.kwargs["strategy"],
-        )
+        acquisition_call = self.candidate_acquirer.acquire_hot_pool_candidates.call_args
         request = acquisition_call.kwargs["candidate_requests"]["task-1"]
         self.assertEqual(
             "group-1",
@@ -103,6 +97,11 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
         self.assertFalse(hasattr(request, "worker_group_id"))
         self.assertEqual(80, request.priority)
         self.assertEqual(2, request.requested_count)
+        self.assertIsNone(request.target_field)
+        self.assertEqual(
+            {"attributes.runtime": {"$eq": "python"}},
+            request.allocation_rule,
+        )
         self.assertNotIn(
             "task-2",
             acquisition_call.kwargs["candidate_requests"],
@@ -132,7 +131,7 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
             self.task_score.rewrite_same_band_time_millis.call_args_list,
         )
 
-    def test_missing_descriptor_is_not_acquired_but_is_rotated(self) -> None:
+    def test_missing_descriptor_is_not_acquired_but_scan_is_rotated(self) -> None:
         self.task_score.acquire_band_task_candidates.return_value = ("task-1",)
         self.candidate_cache.candidate_worker_counts.return_value = {"task-1": 0}
         self.task_catalog.load_task_allocation_descriptors.return_value = {
@@ -149,11 +148,11 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
             )
 
         self.assertEqual(0, published)
-        self.candidate_acquirer.acquire_worker_candidates.assert_not_called()
+        self.candidate_acquirer.acquire_hot_pool_candidates.assert_not_called()
         self.candidate_cache.append_candidate_workers.assert_not_called()
         self.task_score.rewrite_same_band_time_millis.assert_called_once()
 
-    def test_calls_realtime_strategy_once_per_worker_group(self) -> None:
+    def test_calls_hot_pool_once_per_worker_group(self) -> None:
         self.task_score.acquire_band_task_candidates.return_value = (
             "task-1",
             "task-2",
@@ -174,7 +173,7 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
                 worker_group_id="group-2",
             ),
         }
-        self.candidate_acquirer.acquire_worker_candidates.side_effect = (
+        self.candidate_acquirer.acquire_hot_pool_candidates.side_effect = (
             {"task-1": (self._entry("worker-1", "group-1"),)},
             {"task-2": (self._entry("worker-2", "group-2"),)},
         )
@@ -190,7 +189,7 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
 
         self.assertEqual(2, published)
         acquisition_calls = (
-            self.candidate_acquirer.acquire_worker_candidates.call_args_list
+            self.candidate_acquirer.acquire_hot_pool_candidates.call_args_list
         )
         self.assertEqual(2, len(acquisition_calls))
         self.assertEqual(
@@ -225,7 +224,35 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
 
         self.assertEqual(0, published)
         self.task_catalog.load_task_allocation_descriptors.assert_not_called()
-        self.candidate_acquirer.acquire_worker_candidates.assert_not_called()
+        self.candidate_acquirer.acquire_hot_pool_candidates.assert_not_called()
+
+    def test_item_scoped_task_is_not_precomputed_but_scan_is_rotated(self) -> None:
+        self.task_score.acquire_band_task_candidates.return_value = ("task-1",)
+        self.task_catalog.load_task_allocation_descriptors.return_value = {
+            "task-1": self._descriptor(
+                "task-1",
+                maximum_candidates=1,
+                allocation_rule_scope=AllocationRuleScope.TASK_ITEM,
+            )
+        }
+
+        with patch.object(
+            self.pacer,
+            "_current_time_millis",
+            return_value=10_000,
+        ):
+            published = self.pacer.allocate_candidate_workers(config=self._config())
+
+        self.assertEqual(0, published)
+        self.candidate_cache.candidate_worker_counts.assert_called_once_with(
+            candidate_ids=(),
+        )
+        self.candidate_acquirer.acquire_hot_pool_candidates.assert_not_called()
+        self.task_score.rewrite_same_band_time_millis.assert_called_once_with(
+            task_id="task-1",
+            expected_band=TaskScoreBand.RUNNING_VISIBLE,
+            target_time_millis=10_000,
+        )
 
     def test_config_rejects_non_positive_values(self) -> None:
         for values in ((0, 1), (1, 0), (-1, 1)):
@@ -248,11 +275,17 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
         *,
         maximum_candidates: int,
         worker_group_id: str = "group-1",
+        allocation_rule_scope: AllocationRuleScope = AllocationRuleScope.TASK,
     ) -> TaskDescriptor:
         return TaskDescriptor(
             task_id=task_id,
             worker_group_id=worker_group_id,
-            allocation_rule={"attributes.runtime": {"$eq": "python"}},
+            allocation_rule_scope=allocation_rule_scope,
+            allocation_rule=(
+                {"attributes.runtime": {"$eq": "python"}}
+                if allocation_rule_scope is AllocationRuleScope.TASK
+                else None
+            ),
             config={
                 "priority": "80",
                 "maximumCandidateWorkers": str(maximum_candidates),

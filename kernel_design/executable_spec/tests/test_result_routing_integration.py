@@ -23,6 +23,7 @@ from kernel_design.executable_spec import (
     WorkerScorePolarity,
 )
 from kernel_design.executable_spec.assembly import (
+    AllocationRuleScope,
     DeliverSeedConsumerClient,
     KernelApplication,
     KernelApplicationConfig,
@@ -253,6 +254,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         return TaskDescriptor(
             task_id="task-1",
             worker_group_id="image-workers",
+            allocation_rule_scope=AllocationRuleScope.TASK,
             allocation_rule={"attributes.runtime": {"$eq": "python"}},
             config={
                 "priority": "80",

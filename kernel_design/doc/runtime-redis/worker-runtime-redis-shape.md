@@ -89,13 +89,18 @@ Value shape:
 {
   "workerGroupId": "image-workers",
   "attributes": {},
-  "eventCodes": ["image.generate"]
+  "eventCodes": ["image.generate"],
+  "itemAllocationFields": ["workerId", "dynamic.battery"]
 }
 ```
 
 `eventCodes` is a group promise. It validates worker-group capability after a
 task has already selected a group. It is not a worker selector and not runtime
 scheduling-serviceability proof.
+
+`itemAllocationFields` is the immutable WorkerGroup allowlist for TaskItem
+TARGETED rules. It names candidate-source fields, not Redis keys or handler
+functions.
 
 ### Worker Descriptors
 
@@ -409,8 +414,8 @@ update_worker_platform_attributes(workerGroupId, workerId, attributes)
 Upsert WorkerGroup:
 
 ```text
-HSETNX establishes workerGroupId + eventCodes
-existing eventCodes mismatch -> CONFLICT
+HSETNX establishes workerGroupId + eventCodes + itemAllocationFields
+existing eventCodes or itemAllocationFields mismatch -> CONFLICT
 compatible repeat -> HSET complete replacement attributes
 ```
 
@@ -425,10 +430,10 @@ compatible repeat -> replace attributes, preserve platformAttributes
 
 score absent
   -> initialize HOT_ACQUIRE using runtime-owned initialLaneRank
-score positive
-  -> no score write
-score negative
-  -> exact observed-score CAS flips only polarity to positive
+score exists
+  -> reconcile to positive polarity
+  -> preserve timeSlot and laneRank
+  -> set dirty=1 so pre-reconnect candidate evidence becomes stale
 ```
 
 The score remains the scheduling truth. A descriptor row without a score is
@@ -466,13 +471,12 @@ handler writes its own dyn key
 Dynamic attribute query flow for matching:
 
 ```text
-WorkerCandidateMatcher receives workerGroupId, bounded workerId-to-opaque-lease-score map, and a candidate constraint map
-each WorkerCandidateConstraint carries priority, limit, and match_rules
-match_rules is a structured map compiled by the independent constraint DSL
-worker matcher preparation derives dynamic fields from match_rules
+WorkerCandidateMatcher receives workerGroupId, one flat workerId-to-opaque-lease-score map, and a candidate constraint map
+each WorkerCandidateConstraint carries priority, limit, and allocation_rule
+allocation_rule is a structured map compiled by the independent constraint DSL
+worker matcher preparation derives dynamic fields from allocation_rule
 missing declared dynamic handler is a configuration error
-assignment-dispatch reads bounded due HOT worker observations before matcher
-allocation pacer keeps opaque observed scores in a private sidecar
+candidate acquisition unions and deduplicates bounded HOT or point-source Worker ids before matcher
 descriptors read workers:{workerGroupId} once
 candidate order is priority descending, then candidateId ascending
 declared acquire fields are deduplicated in resolved candidate order
@@ -501,10 +505,11 @@ changed match dependency and a real persisted assignment plan or active hot
 score lease continuation will consume that fence. The current assembly does not
 yet wire that end-to-end invocation/revalidation policy.
 
-First slice should not create a dynamic-attribute global query service. Use
-bounded handler-owned batch reads during candidate matching. Add attribute
-fanout indexes only when a concrete executable spec proves that candidate
-discovery needs them.
+There is no generic dynamic-attribute query service. A dynamic handler may
+optionally expose a bounded candidate-query function for declared Item
+allocation fields. TARGETED acquisition uses that function only to propose
+Worker IDs, then point-observes due HOT scores and runs complete matcher point
+reads. Zero-config assembly installs no such indexes.
 
 ## Dirty Boundary
 
@@ -587,7 +592,8 @@ transient `ad:{prefix}:candidate:{candidateId}:workers` ZSETs;
 worker-runtime and worker-score must not read, write, or reinterpret that
 protocol.
 per-worker score keys break home-bucket acquisition
-attribute fanout is deferred until candidate discovery needs it
+generic attribute fanout remains deferred; only explicit handler-owned bounded
+candidate indexes are supported
 ```
 
 ## Consistency Rules

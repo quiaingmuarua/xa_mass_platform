@@ -3,12 +3,17 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass
 from time import time_ns
+from typing import cast
 
 from ..kernel.assignment_dispatch_runtime import (
     CandidateWorkerCache,
     CandidateWorkerEntry,
 )
-from ..kernel.task_runtime import TaskResourceCatalog
+from ..kernel.task_runtime import (
+    AllocationRuleScope,
+    TaskDescriptor,
+    TaskResourceCatalog,
+)
 from ..kernel.task_score_band import (
     TaskScoreBand,
     TaskScoreBandCore,
@@ -19,7 +24,6 @@ from ..kernel.worker_runtime import WorkerGroupId
 from .worker_candidate import (
     WorkerCandidateAcquirer,
     WorkerCandidateAcquisition,
-    WorkerCandidateAcquisitionStrategy,
     WorkerCandidateRequest,
 )
 
@@ -71,11 +75,25 @@ class TaskWorkerAllocationPacer:
                 limit=config.task_batch_limit,
             )
         )
+        if not task_ids:
+            return 0
+        task_descriptors = self.task_catalog.load_task_allocation_descriptors(
+            task_ids=task_ids,
+        )
+        precomputed_task_ids = tuple(
+            task_id
+            for task_id in task_ids
+            if (
+                (descriptor := task_descriptors.get(task_id)) is not None
+                and descriptor.allocation_rule_scope is AllocationRuleScope.TASK
+            )
+        )
         candidate_worker_counts = self.candidate_cache.candidate_worker_counts(
-            candidate_ids=task_ids,
+            candidate_ids=precomputed_task_ids,
         )
         candidate_requests_by_worker_group = self._build_candidate_requests(
-            task_ids,
+            precomputed_task_ids,
+            task_descriptors,
             candidate_worker_counts,
         )
         worker_lease_until_millis = (
@@ -89,8 +107,7 @@ class TaskWorkerAllocationPacer:
             candidate_requests_by_worker_group.items()
         ):
             acquired_candidates.update(
-                self.candidate_acquirer.acquire_worker_candidates(
-                    strategy=WorkerCandidateAcquisitionStrategy.REALTIME,
+                self.candidate_acquirer.acquire_hot_pool_candidates(
                     worker_group_id=worker_group_id,
                     candidate_requests=candidate_requests,
                     lease_until_millis=worker_lease_until_millis,
@@ -112,14 +129,11 @@ class TaskWorkerAllocationPacer:
     def _build_candidate_requests(
         self,
         task_ids: tuple[TaskId, ...],
+        task_descriptors: Mapping[TaskId, TaskDescriptor | None],
         candidate_worker_counts: Mapping[TaskId, int],
     ) -> dict[WorkerGroupId, dict[TaskId, WorkerCandidateRequest]]:
         if not task_ids:
             return {}
-
-        task_descriptors = self.task_catalog.load_task_allocation_descriptors(
-            task_ids=task_ids,
-        )
 
         candidate_requests: dict[
             WorkerGroupId,
@@ -146,7 +160,10 @@ class TaskWorkerAllocationPacer:
             ] = WorkerCandidateRequest(
                 priority=int(descriptor.config["priority"]),
                 requested_count=candidate_limit,
-                match_rules=descriptor.allocation_rule,
+                allocation_rule=cast(
+                    Mapping[str, object],
+                    descriptor.allocation_rule,
+                ),
             )
         return candidate_requests
 

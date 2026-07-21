@@ -12,7 +12,6 @@ from ..scheduling import (
     TaskRunningActivationPacer,
     TaskWorkerAllocationPacer,
     WorkerCandidateAcquirer,
-    WorkerCandidateAcquisitionStrategy,
     WorkerCandidateMatcher,
 )
 from ..redis_runtime import (
@@ -119,6 +118,7 @@ class _RedisKernelProcess:
             candidate_cache,
             self._worker_score,
             worker_candidate_matcher,
+            self._worker_dynamic_attribute_runtime,
             worker_scan_limit=config.worker_candidate_scan_limit,
         )
 
@@ -144,9 +144,6 @@ class _RedisKernelProcess:
             task_item_score,
             self._task_runtime,
             candidate_acquirer,
-            lambda _descriptor, _task_items: (
-                WorkerCandidateAcquisitionStrategy.CACHED
-            ),
         )
         self._assignment_dispatch_application = AssignmentDispatchApplication(
             worker_allocation_pacer,

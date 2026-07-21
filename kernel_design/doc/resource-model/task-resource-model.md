@@ -15,13 +15,15 @@ The first cut has one descriptor:
 TaskDescriptor
   taskId
   workerGroupId
-  allocationRule
+  allocationRuleScope
+  allocationRule | null
   config
 ```
 
 `taskId` is globally unique in the kernel design. One Task chooses exactly one
-WorkerGroup for allocation. `allocationRule` constrains Workers inside that
-group; it cannot broaden WorkerGroup capability.
+WorkerGroup for allocation. `allocationRuleScope` fixes whether allocation
+rules belong to the Task or every TaskItem. This is Task metadata, not a
+per-dispatch inference.
 
 ## Descriptor Contract
 
@@ -30,7 +32,8 @@ group; it cannot broaden WorkerGroup capability.
 class TaskDescriptor:
     task_id: str
     worker_group_id: str
-    allocation_rule: Mapping[str, object]
+    allocation_rule_scope: AllocationRuleScope
+    allocation_rule: Mapping[str, object] | None
     config: Mapping[str, str]
 ```
 
@@ -56,6 +59,24 @@ Worker requirement: PRE_DISPATCH admission must not reserve or count Workers.
 
 ## Allocation Rule
 
+The scope is immutable Task intent:
+
+```text
+TASK
+  read TaskDescriptor.allocationRule
+  an empty object means no Worker constraint
+  TaskItems must not carry allocationRule
+  Worker candidates are precomputed
+
+TASK_ITEM
+  TaskDescriptor.allocationRule is null
+  every appended TaskItem must carry a non-empty allocationRule
+  Worker candidates are acquired through TARGETED sources
+```
+
+The two forms cannot be mixed inside one Task. Append validates this contract
+once; claim and dispatch trust it rather than reclassifying every Item.
+
 `allocationRule` uses the independent constraint DSL and is evaluated by the
 bounded Worker matcher. Example:
 
@@ -71,7 +92,7 @@ state, current dynamic values, candidate Workers, or a policy handler object.
 Constraint compilation/validation belongs to `constraint_dsl`; Worker field
 resolution belongs to Worker runtime/matcher.
 
-For one allocation batch, the Pacer derives:
+For one `TASK`-scope precomputation batch, the Pacer derives:
 
 ```text
 WorkerCandidateConstraint
@@ -81,7 +102,7 @@ WorkerCandidateConstraint
                  int(config["maximumCandidateWorkers"])
                    - currentNonExpiredCandidateCount,
                )
-  matchRules = allocationRule
+  allocationRule = descriptor allocationRule
 ```
 
 This is an in-memory bounded transformation, not a stored Task state.
@@ -145,6 +166,7 @@ TaskItem
   priority
   createdAtMillis
   expireAtMillis | null
+  allocationRule | null
 ```
 
 ```python
@@ -158,6 +180,16 @@ load_task_item_success_results(task_id, message_ids)
 record payload for that id, while Item score initialization remains `ZADD NX`
 and never resets its scheduling identity. `maxRetryTimes` is read owner-locally
 to initialize Item remaining budget; callers do not pass score fields.
+
+For `TASK_ITEM` scope, the Item rule does not merge with a Task rule because no
+Task rule exists. It does not change `workerGroupId`, which always comes from
+`TaskDescriptor`.
+
+Before application-level append, the selected WorkerGroup must allow every
+Item rule field through `itemAllocationFields`. `workerId` supports bounded
+`$eq/$in`; dynamic fields require a registered bounded candidate-query handler.
+TaskRuntime itself owns only canonical JSON and DSL syntax validation, not
+Worker catalog or candidate-index policy.
 
 The success-result HASH is last-success truth. It is separate from TaskItem
 score outcome and does not store failure history or provide a general external
@@ -180,10 +212,20 @@ Worker allocation:
 ```text
 TaskScoreBandCore.acquire_band_task_candidates(RUNNING_VISIBLE, now, limit)
   -> TaskResourceCatalog.load_task_allocation_descriptors(taskIds)
+  -> retain allocationRuleScope=TASK
   -> group by workerGroupId
-  -> build WorkerCandidateConstraint values
-  -> lease/match Workers
+  -> build Task-level WorkerCandidateRequest values
+  -> bounded HOT-pool lease/match
   -> append candidate evidence
+```
+
+TaskItem dispatch:
+
+```text
+due record-backed Items
+  -> Task allocationRuleScope=TASK: PRECOMPUTED request using Task rule
+  -> Task allocationRuleScope=TASK_ITEM: messageId-local TARGETED requests
+  -> exact claim only after CandidateId-local Worker binding
 ```
 
 `TaskResourceCatalog` does not add status indexes, active-Task discovery,
@@ -197,11 +239,15 @@ Descriptor construction and Redis decode enforce one schema:
 ```text
 taskId non-empty
 workerGroupId non-empty
-allocationRule is a mapping and valid constraint DSL
+allocationRuleScope is TASK or TASK_ITEM
+TASK scope requires a mapping allocationRule; an empty map means no constraint
+TASK_ITEM scope requires null Task allocationRule
 config is exactly map<string, string> with the three declared keys
 priority is decimal 1..100
 maximumCandidateWorkers is positive decimal
 maxRetryTimes is decimal 0..98
+TASK scope forbids TaskItem allocationRule
+TASK_ITEM scope requires a non-empty valid TaskItem allocationRule
 ```
 
 WorkerGroup existence is a cross-owner command/admission check. The Task
@@ -215,13 +261,16 @@ One Task descriptor is one Redis HASH:
 tc:{prefix}:task:{taskId}
 
 workerGroupId       -> plain string
-allocationRuleJson  -> JSON object
+allocationRuleScope -> `TASK` or `TASK_ITEM`
+allocationRuleJson  -> JSON object or `null`
 configJson          -> JSON object
 ```
 
 Example:
 
 ```json
+allocationRuleScope = "TASK"
+
 allocationRuleJson = {
   "dynamic.battery": {"$gte": 20}
 }
@@ -253,6 +302,9 @@ not use `SCAN`, `HGETALL`, or a second descriptor index.
 
 TaskItem records and success results use Task-scoped HASH keys; Item scheduling
 identity remains in the separate TaskItem score ZSET.
+
+Each canonical Item JSON stores `allocationRule` as either an object or null.
+It is resource metadata, never encoded into Item score.
 
 ## Executable Spec
 

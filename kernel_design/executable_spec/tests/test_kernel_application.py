@@ -18,6 +18,7 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
     redis_module = None  # type: ignore[assignment]
 
 from kernel_design.executable_spec.assembly import (
+    AllocationRuleScope,
     DeliverSeedConsumerClient,
     KernelApplication,
     KernelApplicationConfig,
@@ -244,6 +245,9 @@ class KernelApplicationTest(unittest.TestCase):
         }
         self.process._task_runtime.create_task.return_value = creation_result
         self.process._task_runtime.append_items.return_value = append_result
+        self.process._task_resource_catalog.load_task_allocation_descriptors.return_value = {
+            task.task_id: task
+        }
         self.application.start()
 
         self.assertIs(creation_result, self.application.create_task(descriptor=task))
@@ -256,6 +260,131 @@ class KernelApplicationTest(unittest.TestCase):
             descriptor=task,
             suffix=1,
         )
+        get_worker_groups = (
+            self.process._worker_resource_catalog.get_worker_group_descriptors
+        )
+        get_worker_groups.assert_not_called()
+
+    def test_append_validates_item_allocation_rules_before_task_runtime(self) -> None:
+        task = self._task_descriptor(
+            allocation_rule_scope=AllocationRuleScope.TASK_ITEM,
+        )
+        group = WorkerGroupDescriptor(
+            worker_group_id=task.worker_group_id,
+            attributes={},
+            event_codes=frozenset({"image.resize"}),
+            item_allocation_fields=frozenset(
+                {"workerId", "dynamic.battery", "dynamic.missing"}
+            ),
+        )
+        items = (
+            TaskItem(
+                message_id="plain",
+                event_code="image.resize",
+                created_at_millis=1,
+                payload={},
+            ),
+            TaskItem(
+                message_id="targeted",
+                event_code="image.resize",
+                created_at_millis=1,
+                payload={},
+                allocation_rule={"workerId": {"$in": ["worker-1"]}},
+            ),
+            TaskItem(
+                message_id="dynamic",
+                event_code="image.resize",
+                created_at_millis=1,
+                payload={},
+                allocation_rule={"dynamic.battery": {"$gte": 80}},
+            ),
+            TaskItem(
+                message_id="not-allowed",
+                event_code="image.resize",
+                created_at_millis=1,
+                payload={},
+                allocation_rule={"dynamic.region": {"$eq": "east"}},
+            ),
+            TaskItem(
+                message_id="bad-worker-op",
+                event_code="image.resize",
+                created_at_millis=1,
+                payload={},
+                allocation_rule={"workerId": {"$gte": "worker-1"}},
+            ),
+            TaskItem(
+                message_id="missing-index",
+                event_code="image.resize",
+                created_at_millis=1,
+                payload={},
+                allocation_rule={"dynamic.missing": {"$eq": 1}},
+            ),
+        )
+        self.process._task_resource_catalog.load_task_allocation_descriptors.return_value = {
+            task.task_id: task
+        }
+        self.process._worker_resource_catalog.get_worker_group_descriptors.return_value = {
+            group.worker_group_id: group
+        }
+        self.process._worker_dynamic_attribute_runtime.supports_candidate_query.side_effect = (
+            lambda **kwargs: kwargs["attribute_name"] == "battery"
+            and set(kwargs["operator_rule"]) == {"$gte"}
+        )
+        self.process._task_runtime.append_items.return_value = {
+            "targeted": TaskItemAppendResult(TaskItemAppendStatus.APPENDED),
+            "dynamic": TaskItemAppendResult(TaskItemAppendStatus.APPENDED),
+        }
+        self.application.start()
+
+        results = self.application.append_task_items(
+            task_id=task.task_id,
+            items=items,
+        )
+
+        self.assertEqual(TaskItemAppendStatus.INVALID, results["plain"].status)
+        self.assertEqual(TaskItemAppendStatus.APPENDED, results["targeted"].status)
+        self.assertEqual(TaskItemAppendStatus.APPENDED, results["dynamic"].status)
+        self.assertEqual(TaskItemAppendStatus.INVALID, results["not-allowed"].status)
+        self.assertEqual(TaskItemAppendStatus.INVALID, results["bad-worker-op"].status)
+        self.assertEqual(TaskItemAppendStatus.INVALID, results["missing-index"].status)
+        self.process._task_runtime.append_items.assert_called_once_with(
+            task_id=task.task_id,
+            items=[items[1], items[2]],
+        )
+
+    def test_task_scoped_append_rejects_item_rule(self) -> None:
+        task = self._task_descriptor()
+        item = TaskItem(
+            message_id="message-1",
+            event_code="image.resize",
+            created_at_millis=1,
+            payload={},
+            allocation_rule={"workerId": {"$eq": "worker-1"}},
+        )
+        self.process._task_resource_catalog.load_task_allocation_descriptors.return_value = {
+            task.task_id: task
+        }
+        self.process._worker_resource_catalog.get_worker_group_descriptors.return_value = {
+            task.worker_group_id: WorkerGroupDescriptor(
+                worker_group_id=task.worker_group_id,
+                attributes={},
+                event_codes=frozenset({item.event_code}),
+                item_allocation_fields=frozenset({"workerId"}),
+            )
+        }
+        self.application.start()
+
+        result = self.application.append_task_items(
+            task_id=task.task_id,
+            items=(item,),
+        )[item.message_id]
+
+        self.assertEqual(TaskItemAppendStatus.INVALID, result.status)
+        self.process._task_runtime.append_items.assert_not_called()
+        get_worker_groups = (
+            self.process._worker_resource_catalog.get_worker_group_descriptors
+        )
+        get_worker_groups.assert_not_called()
 
     def test_approval_transitions_without_returning_score(self) -> None:
         task_id = "task-1"
@@ -365,11 +494,19 @@ class KernelApplicationTest(unittest.TestCase):
         self.assertEqual(TaskApprovalStatus.ALREADY_APPROVED, result.status)
 
     @staticmethod
-    def _task_descriptor(task_id: str = "task-1") -> TaskDescriptor:
+    def _task_descriptor(
+        task_id: str = "task-1",
+        allocation_rule_scope: AllocationRuleScope = AllocationRuleScope.TASK,
+    ) -> TaskDescriptor:
         return TaskDescriptor(
             task_id=task_id,
             worker_group_id="image-workers",
-            allocation_rule={"attributes.runtime": {"$eq": "python"}},
+            allocation_rule_scope=allocation_rule_scope,
+            allocation_rule=(
+                {"attributes.runtime": {"$eq": "python"}}
+                if allocation_rule_scope is AllocationRuleScope.TASK
+                else None
+            ),
             config={
                 "priority": "80",
                 "maximumCandidateWorkers": "10",
@@ -383,6 +520,8 @@ class KernelApplicationTest(unittest.TestCase):
         process._task_score = Mock(spec=TaskScoreBandCore)
         process._task_resource_catalog = Mock(spec=TaskResourceCatalog)
         process._task_runtime = Mock()
+        process._worker_resource_catalog = Mock()
+        process._worker_dynamic_attribute_runtime = Mock()
         return process
 
 

@@ -12,6 +12,7 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
     redis_module = None  # type: ignore[assignment]
 
 from kernel_design.executable_spec import (
+    AllocationRuleScope,
     RedisTaskResourceCatalog,
     RedisTaskRuntime,
     RedisTaskItemScoreBandCore,
@@ -83,6 +84,7 @@ class RedisTaskRuntimeIntegrationTest(unittest.TestCase):
         return TaskDescriptor(
             task_id=task_id,
             worker_group_id=worker_group_id,
+            allocation_rule_scope=AllocationRuleScope.TASK,
             allocation_rule={"dynamic.battery": {"$gte": 20}},
             config={
                 "priority": "80",
@@ -167,7 +169,12 @@ class RedisTaskRuntimeIntegrationTest(unittest.TestCase):
         )
         raw_fields = self.redis.hmget(
             self._task_key(first.task_id),
-            ["workerGroupId", "allocationRuleJson", "configJson"],
+            [
+                "workerGroupId",
+                "allocationRuleScope",
+                "allocationRuleJson",
+                "configJson",
+            ],
         )
         self.assertTrue(all(isinstance(value, bytes) for value in raw_fields))
 

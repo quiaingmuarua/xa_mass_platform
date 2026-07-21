@@ -20,7 +20,7 @@ due HOT observation
   -> Worker matcher validation
   -> CandidateWorkerEntry(workerLeaseScore)
   -> optional CandidateWorkerCache handoff
-  -> cached acquisition exact validate/renew and rematch
+  -> PRECOMPUTED acquisition exact validate/renew and rematch
   -> ResultContext(workerLeaseScore)
   -> result exact release or RECOVERY_RECHECK demotion
 ```
@@ -39,11 +39,14 @@ a business batch operation receives the batch as a bounded collection inside
 that TaskItem payload. The kernel does not merge multiple TaskItems, create
 multiple Item claim fences behind one Worker lease, or release the slot early.
 
-## Realtime Acquisition Lease
+## HOT-Pool And TARGETED Acquisition Lease
 
 ```text
 acquire_hot_acquire_candidates(workerGroupId, limit)
   -> workerId -> opaque observedScore
+
+observe_due_hot_scores(workerGroupId, workerIds)
+  -> due HOT workerId -> opaque observedScore
 
 acquire_observed_hot_score_leases(
     workerGroupId,
@@ -58,20 +61,29 @@ laneRank, writes a future time coordinate, and clears dirty before the current
 matcher reads Worker metadata. Concurrent rounds may scan the same Worker, but
 only one exact observed-score CAS succeeds.
 
-The `REALTIME` path in `WorkerCandidateAcquirer` owns this sequence. It never
-reads candidate cache. Each call is scoped to one explicit WorkerGroup and one
-score ZSET.
-Allocation cache warming and Item-directed realtime dispatch reuse the same
-implementation.
+`WorkerCandidateAcquirer` exposes separate source semantics:
+
+```text
+acquire_hot_pool_candidates
+  bounded HOT scan for Task-level cache warming
+
+TARGETED with target_field=workerId or dynamic.<name>
+  bounded point/index Worker ids
+  observe only their due HOT scores
+```
+
+Neither HOT-pool nor TARGETED acquisition reads or writes candidate cache; the
+allocation Pacer owns publication. Each call is scoped to one explicit
+WorkerGroup and one score ZSET. Index output is only a proposal; every accepted
+Worker still passes exact lease and full allocation-rule matching.
 
 Unmatched Workers, matcher failures, and candidate publication failures are
 not actively released. Their short leases expire naturally, preventing
 immediate hot-loop rematching from the same evidence.
 
-## Cached Acquisition Validation
+## PRECOMPUTED Acquisition Validation
 
-The `CACHED` path in `WorkerCandidateAcquirer` consumes bounded cache evidence
-and calls:
+The `PRECOMPUTED` path consumes bounded cache evidence and calls:
 
 ```text
 renew_active_hot_score_leases(
@@ -102,10 +114,11 @@ against the current request. A successful rematch may proceed to Item claim.
 The returned fence, unchanged or renewed, is written into
 `opaqueResultContext`.
 
-Cache miss or rejected evidence never falls back to realtime acquisition.
-TaskItemDispatchPacer never calls Worker score directly; it invokes the
-policy-selected acquirer. Neither the Pacer nor cached acquisition decodes
-scores, clears dirty, or releases rejected candidates.
+PRECOMPUTED miss or rejected evidence never falls back to TARGETED acquisition.
+TaskItemDispatchPacer never calls Worker score directly. It chooses one path
+from `TaskDescriptor.allocationRuleScope`: PRECOMPUTED for Task-owned rules or
+TARGETED for Item-owned rules. Neither the Pacer nor PRECOMPUTED acquisition
+decodes scores, clears dirty, or releases rejected candidates.
 
 ## Dirty Fence
 
@@ -205,7 +218,7 @@ demand, bounded classification lag is allowed.
 | --- | --- | --- |
 | Allocation | lease CAS lost | exclude Worker |
 | Allocation | unmatched or publication failure | retain short lease until expiry |
-| Cached acquisition | dirty/recovery/expired/stale fence or rematch failure | consume candidate, do not claim Item |
+| PRECOMPUTED acquisition | dirty/recovery/expired/stale fence or rematch failure | consume candidate, do not claim Item |
 | Item dispatch | Item absent or claim lost | no release; leases expire |
 | Dispatch | queue append failed or ambiguous | no compensation |
 | Adapter | expired or malformed seed | drop; no synthetic result |
@@ -224,10 +237,11 @@ cross-owner transaction.
 | --- | --- | --- |
 | WorkerScoreCore | score encoding, scans, exact lease, dirty fence, release and polarity mechanics | no Task policy, transport or result subcode parsing |
 | WorkerRuntime | declaration validation, first score initialization and trusted reconnect reconciliation | no heartbeat or dispatch ownership |
-| WorkerCandidateAcquirer REALTIME | bounded HOT scan, exact lease and match | no cache read or fallback |
-| WorkerCandidateAcquirer CACHED | cache consume, exact active-fence validation/renewal and rematch | no HOT scan or fallback |
-| TaskWorkerAllocationPacer | build stable Task requests, invoke realtime acquisition and publish cache evidence | no direct Worker-score or result handling |
-| TaskItemDispatchPacer | observe Items, resolve one acquirer, claim and publish DeliverSeed | no cache/Worker-score access or release |
+| WorkerCandidateAcquirer HOT pool | bounded due-HOT scan, exact lease and full match for precomputation | no cache read/write |
+| WorkerCandidateAcquirer TARGETED | explicit point/index source, exact lease and full match | no cache read/write or fallback |
+| WorkerCandidateAcquirer PRECOMPUTED | cache consume, exact active-fence validation/renewal and rematch | no HOT scan or fallback |
+| TaskWorkerAllocationPacer | retain Task-owned rule Tasks, acquire HOT-pool candidates and publish cache evidence | no direct Worker-score or result handling |
+| TaskItemDispatchPacer | choose PRECOMPUTED/TARGETED from Task rule scope, preserve binding, claim and publish DeliverSeed | no cache/Worker-score access or release |
 | External Adapter | local final-hop observation and execution evidence | no score parsing or mutation |
 | ResultRoutingPacer | bounded consume, context decode, owner-key grouping and handler delegation | no direct Task/Worker owner dependency, Worker selection or exact subcode policy |
 | Result-routing handlers | owner-local Task finality and Worker disposition policy | no queue ownership, score decoding or cross-owner truth |
@@ -243,7 +257,7 @@ payload.
 - Do not lease negative `RECOVERY_RECHECK` scores through HOT primitives.
 - Do not expose score encoding, dirty bit, sign or timeSlot to callers.
 - Do not let active renewal clear dirty.
-- Do not let cached acquisition fall back to realtime acquisition.
+- Do not let PRECOMPUTED acquisition fall back to TARGETED acquisition.
 - Do not let TaskItemDispatchPacer call WorkerScoreCore directly.
 - Do not release rejected dispatch candidates as compensation.
 - Do not treat missing result as `3xxx`.

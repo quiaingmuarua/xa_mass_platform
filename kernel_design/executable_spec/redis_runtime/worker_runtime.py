@@ -38,6 +38,14 @@ _DynamicAttributeQueryFn = Callable[
 ]
 _DynamicAttributeUpdateHandlers = Mapping[AttributeName, _DynamicAttributeUpdateFn]
 _DynamicAttributeQueryHandlers = Mapping[AttributeName, _DynamicAttributeQueryFn]
+_DynamicAttributeCandidateQueryFn = Callable[
+    [WorkerGroupId, Mapping[str, object], int],
+    Sequence[WorkerId],
+]
+_DynamicAttributeCandidateQueryHandlers = Mapping[
+    AttributeName,
+    tuple[frozenset[str], _DynamicAttributeCandidateQueryFn],
+]
 
 
 def _worker_groups_key(prefix: str) -> str:
@@ -113,10 +121,11 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
         if (
             current.worker_group_id != descriptor.worker_group_id
             or current.event_codes != descriptor.event_codes
+            or current.item_allocation_fields != descriptor.item_allocation_fields
         ):
             return WorkerRuntimeResult(
                 WorkerRuntimeStatus.CONFLICT,
-                "worker group eventCodes are immutable",
+                "worker group eventCodes and itemAllocationFields are immutable",
             )
 
         self.redis.hset(self._groups_key(), descriptor.worker_group_id, encoded)
@@ -240,6 +249,7 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
                 "workerGroupId": descriptor.worker_group_id,
                 "attributes": dict(descriptor.attributes),
                 "eventCodes": sorted(descriptor.event_codes),
+                "itemAllocationFields": sorted(descriptor.item_allocation_fields),
             }
         )
 
@@ -272,6 +282,12 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
                 event_codes=frozenset(
                     cls._require_string(event_code)
                     for event_code in cls._require_sequence(payload.get("eventCodes", []))
+                ),
+                item_allocation_fields=frozenset(
+                    cls._require_string(field_name)
+                    for field_name in cls._require_sequence(
+                        payload.get("itemAllocationFields", [])
+                    )
                 ),
             )
         except (KeyError, TypeError, ValueError):
@@ -515,10 +531,14 @@ class RedisWorkerDynamicAttributeRuntime(WorkerDynamicAttributeRuntime):
         catalog: WorkerResourceCatalog,
         update_handlers: _DynamicAttributeUpdateHandlers,
         query_handlers: _DynamicAttributeQueryHandlers | None = None,
+        candidate_query_handlers: (
+            _DynamicAttributeCandidateQueryHandlers | None
+        ) = None,
     ) -> None:
         self.catalog = catalog
         self._update_handlers = update_handlers
         self._query_handlers = query_handlers or {}
+        self._candidate_query_handlers = candidate_query_handlers or {}
 
     def update_worker_dynamic_attributes(
         self,
@@ -587,3 +607,37 @@ class RedisWorkerDynamicAttributeRuntime(WorkerDynamicAttributeRuntime):
             for worker_id in worker_ids
             if (row := rows.get(worker_id)) is not None
         }
+
+    def supports_candidate_query(
+        self,
+        *,
+        attribute_name: AttributeName,
+        operator_rule: Mapping[str, object],
+    ) -> bool:
+        handler = self._candidate_query_handlers.get(attribute_name)
+        return (
+            handler is not None
+            and bool(operator_rule)
+            and set(operator_rule).issubset(handler[0])
+        )
+
+    def query_candidate_worker_ids(
+        self,
+        *,
+        worker_group_id: WorkerGroupId,
+        attribute_name: AttributeName,
+        operator_rule: Mapping[str, object],
+        limit: int,
+    ) -> tuple[WorkerId, ...]:
+        if limit <= 0:
+            return ()
+        handler = self._candidate_query_handlers.get(attribute_name)
+        if handler is None or not self.supports_candidate_query(
+            attribute_name=attribute_name,
+            operator_rule=operator_rule,
+        ):
+            raise ValueError(
+                f"missing dynamic attribute candidate query handler: {attribute_name}"
+            )
+        worker_ids = handler[1](worker_group_id, operator_rule, limit)
+        return tuple(dict.fromkeys(worker_ids))[:limit]

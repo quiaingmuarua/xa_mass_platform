@@ -11,6 +11,7 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
     redis_module = None  # type: ignore[assignment]
 
 from kernel_design.executable_spec import (
+    AllocationRuleScope,
     DueTaskItemAdmissionPolicy,
     PrioritySoftLimitSystemAdmissionPolicy,
     RedisTaskResourceCatalog,
@@ -114,6 +115,7 @@ class TaskWorkerAllocationIntegrationTest(unittest.TestCase):
                 self.worker_catalog,
                 dynamic_runtime,
             ),
+            dynamic_runtime,
             worker_scan_limit=10,
         )
         self.pacer = TaskWorkerAllocationPacer(
@@ -149,6 +151,7 @@ class TaskWorkerAllocationIntegrationTest(unittest.TestCase):
             descriptor=TaskDescriptor(
                 task_id=self.task_id,
                 worker_group_id=self.worker_group_id,
+                allocation_rule_scope=AllocationRuleScope.TASK,
                 allocation_rule={"attributes.runtime": {"$eq": "python"}},
                 config={
                     "priority": "80",

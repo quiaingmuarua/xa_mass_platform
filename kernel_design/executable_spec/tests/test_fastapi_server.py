@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 from kernel_design.executable_spec.assembly import (
+    AllocationRuleScope,
     DeliverSeed,
     DeliverSeedConsumerClient,
     KernelApplication,
@@ -100,6 +101,7 @@ class FastApiServerTest(unittest.TestCase):
             json={
                 "attributes": {"kind": "image"},
                 "eventCodes": ["image.resize"],
+                "itemAllocationFields": ["workerId"],
             },
         )
         worker_response = self.client.put(
@@ -115,7 +117,7 @@ class FastApiServerTest(unittest.TestCase):
             json={
                 "taskId": "task-1",
                 "workerGroupId": "image-workers",
-                "allocationRule": {"attributes.runtime": {"$eq": "python"}},
+                "allocationRuleScope": "TASK_ITEM",
                 "config": {
                     "priority": "80",
                     "maximumCandidateWorkers": "10",
@@ -133,6 +135,9 @@ class FastApiServerTest(unittest.TestCase):
                         "eventCode": "image.resize",
                         "createdAtMillis": 1,
                         "payload": {"source": "input"},
+                        "allocationRule": {
+                            "workerId": {"$eq": "worker-1"}
+                        },
                     }
                 ]
             },
@@ -165,6 +170,28 @@ class FastApiServerTest(unittest.TestCase):
             inspect.signature(self.application.create_task).parameters,
         )
         self.resources_client.upsert_worker_group.assert_called_once()
+        group_descriptor = (
+            self.resources_client.upsert_worker_group.call_args.kwargs[
+                "descriptor"
+            ]
+        )
+        self.assertEqual(
+            frozenset({"workerId"}),
+            group_descriptor.item_allocation_fields,
+        )
+        appended_item = self.application.append_task_items.call_args.kwargs[
+            "items"
+        ][0]
+        self.assertEqual(
+            {"workerId": {"$eq": "worker-1"}},
+            appended_item.allocation_rule,
+        )
+        task_descriptor = self.application.create_task.call_args.kwargs["descriptor"]
+        self.assertIs(
+            AllocationRuleScope.TASK_ITEM,
+            task_descriptor.allocation_rule_scope,
+        )
+        self.assertIsNone(task_descriptor.allocation_rule)
         self.resources_client.upsert_worker.assert_called_once()
         self.deliver_seed_consumer.consume_deliver_seeds.assert_called_once_with(
             endpoint_manager_id="endpoint-1",
@@ -209,6 +236,7 @@ class FastApiServerTest(unittest.TestCase):
             json={
                 "taskId": "task-1",
                 "workerGroupId": "image-workers",
+                "allocationRuleScope": "TASK",
                 "allocationRule": {},
                 "config": {},
             },

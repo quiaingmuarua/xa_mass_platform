@@ -21,11 +21,11 @@ from ...kernel.worker_runtime import (
 
 @dataclass(frozen=True)
 class WorkerCandidateConstraint:
-    """One candidate's match rules and per-call worker allocation bound."""
+    """One candidate's allocation rule and per-call Worker bound."""
 
     priority: int
     limit: int
-    match_rules: Mapping[str, object]
+    allocation_rule: Mapping[str, object]
 
 
 WorkerCandidateAcquisition = Mapping[
@@ -52,7 +52,6 @@ class WorkerCandidateMatcher:
         worker_lease_scores: Mapping[WorkerId, Score],
         candidate_constraints: Mapping[CandidateId, WorkerCandidateConstraint],
     ) -> WorkerCandidateAcquisition:
-        worker_ids = tuple(worker_lease_scores)
         if not candidate_constraints:
             return {}
 
@@ -66,6 +65,7 @@ class WorkerCandidateMatcher:
             mutable_matches.setdefault(candidate_id, [])
         if not candidates:
             return self._freeze_acquisitions(mutable_matches)
+        worker_ids = tuple(worker_lease_scores)
         if not worker_ids:
             return self._freeze_acquisitions(mutable_matches)
         remaining_capacity = sum(
@@ -141,16 +141,16 @@ class WorkerCandidateMatcher:
             if constraints.limit <= 0:
                 raise ValueError("candidate limit must be positive")
             try:
-                match_rules = ConstraintEvaluator.compile_match_rules(
-                    constraints.match_rules
+                compiled_rule = ConstraintEvaluator.compile_match_rules(
+                    constraints.allocation_rule
                 )
             except ValueError:
                 continue
-            for field_name in match_rules:
+            for field_name in compiled_rule:
                 domain, separator, attribute_name = field_name.partition(".")
                 if separator and domain == "dynamic":
                     required_attributes.setdefault(attribute_name, None)
-            candidates.append((candidate_id, constraints, match_rules))
+            candidates.append((candidate_id, constraints, compiled_rule))
 
         return candidates, tuple(required_attributes)
 

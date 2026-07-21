@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from time import time_ns
+from typing import cast
 
 from ..kernel.assignment_dispatch_runtime import (
     CandidateWorkerEntry,
@@ -17,6 +18,8 @@ from ..kernel.task_item_score_band import (
     TaskItemScoreTransitionStatus,
 )
 from ..kernel.task_runtime import (
+    AllocationRuleScope,
+    MessageId,
     TaskDescriptor,
     TaskItem,
     TaskResourceCatalog,
@@ -61,12 +64,6 @@ class TaskItemDispatchConfig:
             raise ValueError("item claim lease duration must be positive")
 
 
-WorkerCandidateAcquisitionStrategyResolver = Callable[
-    [TaskDescriptor, tuple[TaskItem, ...]],
-    WorkerCandidateAcquisitionStrategy,
-]
-
-
 class TaskItemDispatchPacer:
     """Compose Task discovery, candidate consumption, Item claim, and handoff."""
 
@@ -78,7 +75,6 @@ class TaskItemDispatchPacer:
         item_score: TaskItemScoreBandCore,
         task_runtime: TaskRuntime,
         candidate_acquirer: WorkerCandidateAcquirer,
-        candidate_strategy_resolver: WorkerCandidateAcquisitionStrategyResolver,
         delivery_item_encoder: Callable[[TaskItem], str] = _encode_delivery_item,
     ) -> None:
         self.task_score = task_score
@@ -87,7 +83,6 @@ class TaskItemDispatchPacer:
         self.item_score = item_score
         self.task_runtime = task_runtime
         self.candidate_acquirer = candidate_acquirer
-        self.candidate_strategy_resolver = candidate_strategy_resolver
         self._delivery_item_encoder = delivery_item_encoder
 
     def dispatch_task_items(
@@ -113,28 +108,29 @@ class TaskItemDispatchPacer:
             if not claimable_items:
                 continue
 
-            candidate_workers = self._acquire_candidate_workers(
+            candidate_workers_by_message_id = self._acquire_candidate_workers(
                 task_id=task_id,
                 descriptor=descriptor,
                 claimable_items=claimable_items,
                 lease_until_millis=claim_until_millis,
             )
-            if not candidate_workers:
+            if not candidate_workers_by_message_id:
                 continue
 
-            claimed_items = self._claim_task_items(
+            dispatch_assignments = self._claim_task_items(
                 task_id=task_id,
                 claimable_items=claimable_items,
-                maximum_claims=len(candidate_workers),
+                candidate_workers_by_message_id=(
+                    candidate_workers_by_message_id
+                ),
                 claim_until_millis=claim_until_millis,
             )
-            if not claimed_items:
+            if not dispatch_assignments:
                 continue
 
             published_seed_count += self._publish_deliver_seeds(
                 task_id=task_id,
-                candidate_workers=candidate_workers,
-                claimed_items=claimed_items,
+                dispatch_assignments=dispatch_assignments,
                 claim_until_millis=claim_until_millis,
             )
         return published_seed_count
@@ -209,41 +205,84 @@ class TaskItemDispatchPacer:
         descriptor: TaskDescriptor,
         claimable_items: tuple[tuple[TaskItem, Score], ...],
         lease_until_millis: TimeMillis,
-    ) -> tuple[CandidateWorkerEntry, ...]:
+    ) -> dict[MessageId, CandidateWorkerEntry]:
+        priority = int(descriptor.config["priority"])
         task_items = tuple(item for item, _ in claimable_items)
-        strategy = self.candidate_strategy_resolver(
-            descriptor,
-            task_items,
-        )
-        acquired_candidates = self.candidate_acquirer.acquire_worker_candidates(
-            strategy=strategy,
+        if descriptor.allocation_rule_scope is AllocationRuleScope.TASK:
+            task_rule = cast(Mapping[str, object], descriptor.allocation_rule)
+            precomputed = self.candidate_acquirer.acquire_worker_candidates(
+                strategy=WorkerCandidateAcquisitionStrategy.PRECOMPUTED,
+                worker_group_id=descriptor.worker_group_id,
+                candidate_requests={
+                    task_id: WorkerCandidateRequest(
+                        priority=priority,
+                        requested_count=len(task_items),
+                        allocation_rule=task_rule,
+                    )
+                },
+                lease_until_millis=lease_until_millis,
+            ).get(task_id, ())
+            return {
+                item.message_id: candidate_worker
+                for item, candidate_worker in zip(task_items, precomputed)
+            }
+
+        targeted_requests: dict[MessageId, WorkerCandidateRequest] = {}
+        for item in task_items:
+            item_rule = cast(Mapping[str, object], item.allocation_rule)
+            targeted_requests[item.message_id] = WorkerCandidateRequest(
+                priority=priority,
+                requested_count=1,
+                allocation_rule=item_rule,
+                target_field=self._select_target_field(item_rule),
+            )
+        targeted = self.candidate_acquirer.acquire_worker_candidates(
+            strategy=WorkerCandidateAcquisitionStrategy.TARGETED,
             worker_group_id=descriptor.worker_group_id,
-            candidate_requests={
-                task_id: WorkerCandidateRequest(
-                    priority=int(descriptor.config["priority"]),
-                    requested_count=len(claimable_items),
-                    match_rules=descriptor.allocation_rule,
-                )
-            },
+            candidate_requests=targeted_requests,
             lease_until_millis=lease_until_millis,
         )
-        return acquired_candidates.get(task_id, ())
+        return {
+            item.message_id: entries[0]
+            for item in task_items
+            if (entries := targeted.get(item.message_id, ()))
+        }
+
+    @staticmethod
+    def _select_target_field(allocation_rule: Mapping[str, object]) -> str:
+        if "workerId" in allocation_rule:
+            return "workerId"
+        dynamic_fields = sorted(
+            field_name
+            for field_name in allocation_rule
+            if field_name.startswith("dynamic.") and field_name != "dynamic."
+        )
+        if not dynamic_fields:
+            raise ValueError("Item allocation rule has no targeted candidate field")
+        return dynamic_fields[0]
 
     def _claim_task_items(
         self,
         *,
         task_id: TaskId,
         claimable_items: tuple[tuple[TaskItem, Score], ...],
-        maximum_claims: int,
+        candidate_workers_by_message_id: Mapping[
+            MessageId,
+            CandidateWorkerEntry,
+        ],
         claim_until_millis: TimeMillis,
-    ) -> tuple[TaskItem, ...]:
-        bounded_items = claimable_items[:maximum_claims]
-        if not bounded_items:
+    ) -> tuple[tuple[CandidateWorkerEntry, TaskItem], ...]:
+        candidate_backed_items = tuple(
+            (task_item, observed_score)
+            for task_item, observed_score in claimable_items
+            if task_item.message_id in candidate_workers_by_message_id
+        )
+        if not candidate_backed_items:
             return ()
 
         record_backed_scores = {
             task_item.message_id: observed_score
-            for task_item, observed_score in bounded_items
+            for task_item, observed_score in candidate_backed_items
         }
 
         claim_results = self.item_score.rewrite_observed_item_scores(
@@ -253,8 +292,8 @@ class TaskItemDispatchPacer:
             remaining_budget_delta=-1,
         )
 
-        claimed_items: list[TaskItem] = []
-        for task_item, _ in bounded_items:
+        dispatch_assignments: list[tuple[CandidateWorkerEntry, TaskItem]] = []
+        for task_item, _ in candidate_backed_items:
             result = claim_results.get(task_item.message_id)
             if (
                 result is None
@@ -262,19 +301,23 @@ class TaskItemDispatchPacer:
                 or result.score is None
             ):
                 continue
-            claimed_items.append(task_item)
-        return tuple(claimed_items)
+            dispatch_assignments.append(
+                (candidate_workers_by_message_id[task_item.message_id], task_item)
+            )
+        return tuple(dispatch_assignments)
 
     def _publish_deliver_seeds(
         self,
         *,
         task_id: TaskId,
-        candidate_workers: tuple[CandidateWorkerEntry, ...],
-        claimed_items: tuple[TaskItem, ...],
+        dispatch_assignments: tuple[
+            tuple[CandidateWorkerEntry, TaskItem],
+            ...,
+        ],
         claim_until_millis: TimeMillis,
     ) -> int:
         endpoint_batches: dict[EndpointManagerId, list[DeliverSeed]] = {}
-        for candidate_worker, task_item in zip(candidate_workers, claimed_items):
+        for candidate_worker, task_item in dispatch_assignments:
             seed = DeliverSeed(
                 worker_id=candidate_worker.worker_id,
                 opaque_delivery_item=self._delivery_item_encoder(task_item),

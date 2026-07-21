@@ -338,6 +338,9 @@ Hot worker acquisition:
 ```text
 acquire_hot_acquire_candidates(homeBucketId, limit)
   -> map[workerId, observedScore]
+
+observe_due_hot_scores(homeBucketId, workerIds)
+  -> map[dueHotWorkerId, observedScore]
 ```
 
 Score range:
@@ -347,7 +350,9 @@ dueTimeSlot = nowTimeSlot - 1
 MIN_BASE <= score <= base(dueTimeSlot, MAX_LANE_RANK, MAX_DIRTY)
 ```
 
-Only positive due scores are returned and the query does not modify them.
+Only positive due scores are returned and neither query modifies them. The
+point form preserves the bounded caller-supplied Worker universe and is used
+after a `workerId` or dynamic candidate index lookup.
 Assignment-dispatch may pass a Worker into bounded matching only after an exact
 observed-score lease succeeds.
 
@@ -757,6 +762,11 @@ acquire_hot_acquire_candidates(homeBucketId, limit)
   does not expose score order as a caller contract
   does not mutate score
 
+observe_due_hot_scores(homeBucketId, workerIds)
+  reads only the supplied bounded Worker ids
+  returns only currently due HOT_ACQUIRE scores
+  does not mutate score
+
 acquire_observed_hot_score_leases(
   homeBucketId, observedScores, targetTimeMillis
 )
@@ -863,7 +873,7 @@ Dirty should be written only when all of these are true:
 ```
 
 If the changed attribute is not referenced by the continuation's
-candidate `match_rules`, matcher validation, group membership check, gate,
+candidate `allocation_rule`, matcher validation, group membership check, gate,
 slot admission profile, or other owner-approved validation dependency, it should not
 mark dirty. If the worker is already executing dispatched work and the hot score
 lease remains active, dirty should not interrupt execution; result, timeout,
@@ -900,13 +910,12 @@ Worker score-band participates in assignment-dispatch like this:
 
 ```text
 task score acquires due task candidate
-assignment-dispatch resolves worker demand
-worker-runtime acquire_hot_acquire_candidates(homeBucketId, limit)
-allocation pacer exact-CAS leases unchanged due Workers
-realtime candidate acquirer leases due HOT observations and matches successes
-allocation pacer may publish matched leases into CandidateWorkerCache
-cached candidate acquirer exact-validates/renews and rematches current rules
-TaskItem dispatch receives only already-leased candidate entries
+assignment-dispatch builds WorkerCandidateRequests from Task-owned rule scope
+cache warming scans HOT; TARGETED point-observes indexed Worker ids
+candidate acquirer exact-CAS leases unchanged due Workers and fully rematches
+allocation pacer may publish Task-rule results into CandidateWorkerCache
+PRECOMPUTED acquisition exact-validates/renews and rematches Task rules
+TaskItem dispatch selects one scope path and keeps CandidateId-to-Item bindings
 TaskRuntime loads the selected TaskItem record
 TaskItemScoreBandCore claims the observed Item score
 transport receives already-selected worker dispatch

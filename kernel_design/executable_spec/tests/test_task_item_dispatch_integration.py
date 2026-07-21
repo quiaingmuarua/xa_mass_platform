@@ -12,6 +12,7 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
     redis_module = None  # type: ignore[assignment]
 
 from kernel_design.executable_spec import (
+    AllocationRuleScope,
     CandidateWorkerEntry,
     RedisCandidateWorkerCache,
     RedisDeliverSeedRuntime,
@@ -34,10 +35,10 @@ from kernel_design.executable_spec import (
     TaskScoreTransitionStatus,
     WorkerScoreTransitionStatus,
     WorkerCandidateAcquirer,
-    WorkerCandidateAcquisitionStrategy,
     WorkerCandidateMatcher,
     WorkerDeclaration,
     WorkerGroupDescriptor,
+    WorkerRuntimeStatus,
 )
 
 
@@ -103,16 +104,18 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             prefix=self.prefix,
             initial_lane_rank=50,
         )
+        dynamic_runtime = RedisWorkerDynamicAttributeRuntime(
+            self.worker_catalog,
+            update_handlers={},
+        )
         candidate_acquirer = WorkerCandidateAcquirer(
             self.candidate_cache,
             self.worker_score,
             WorkerCandidateMatcher(
                 self.worker_catalog,
-                RedisWorkerDynamicAttributeRuntime(
-                    self.worker_catalog,
-                    update_handlers={},
-                ),
+                dynamic_runtime,
             ),
+            dynamic_runtime,
             worker_scan_limit=10,
         )
         self.pacer = TaskItemDispatchPacer(
@@ -122,9 +125,6 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             self.item_score,
             self.task_runtime,
             candidate_acquirer,
-            lambda _descriptor, _task_items: (
-                WorkerCandidateAcquisitionStrategy.CACHED
-            ),
         )
 
     def tearDown(self) -> None:
@@ -148,6 +148,7 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             descriptor=TaskDescriptor(
                 task_id=self.task_id,
                 worker_group_id="image-workers",
+                allocation_rule_scope=AllocationRuleScope.TASK,
                 allocation_rule={},
                 config={
                     "priority": "80",
@@ -285,6 +286,91 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
                 endpoint_manager_id="endpoint-manager-1",
                 limit=10,
             ),
+        )
+
+    def test_real_redis_targeted_item_dispatches_without_candidate_cache(self) -> None:
+        created = self.task_runtime.create_task(
+            descriptor=TaskDescriptor(
+                task_id=self.task_id,
+                worker_group_id="image-workers",
+                allocation_rule_scope=AllocationRuleScope.TASK_ITEM,
+                allocation_rule=None,
+                config={
+                    "priority": "80",
+                    "maximumCandidateWorkers": "10",
+                    "maxRetryTimes": "3",
+                },
+            ),
+            suffix=5,
+        )
+        time.sleep((self.task_score.SLOT_MILLIS + 20) / 1_000)
+        running = self.task_score.rewrite_score(
+            task_id=self.task_id,
+            expected_band=TaskScoreBand.PRE_REVIEW,
+            target_time_millis=time.time_ns() // 1_000_000,
+            target_band=TaskScoreBand.RUNNING_VISIBLE,
+            target_suffix=5,
+        )
+        time.sleep((self.task_score.SLOT_MILLIS + 20) / 1_000)
+
+        item = TaskItem(
+            message_id=self.message_id,
+            event_code="image.resize",
+            created_at_millis=time.time_ns() // 1_000_000 - 1_000,
+            payload={"source": "targeted"},
+            allocation_rule={"workerId": {"$eq": "worker-1"}},
+        )
+        appended = self.task_runtime.append_items(
+            task_id=self.task_id,
+            items=(item,),
+        )
+        self.worker_catalog.upsert_worker_group(
+            descriptor=WorkerGroupDescriptor(
+                worker_group_id="image-workers",
+                attributes={},
+                event_codes=frozenset({"image.resize"}),
+                item_allocation_fields=frozenset({"workerId"}),
+            )
+        )
+        initialized_worker = self.worker_runtime.upsert_worker(
+            declaration=WorkerDeclaration(
+                worker_id="worker-1",
+                worker_group_id="image-workers",
+                endpoint_manager_id="endpoint-manager-1",
+                attributes={"runtime": "python"},
+                dynamic_attribute_names=frozenset(),
+            )
+        )
+        time.sleep((self.worker_score.SLOT_MILLIS + 20) / 1_000)
+
+        dispatched = self.pacer.dispatch_task_items(
+            config=TaskItemDispatchConfig(
+                task_batch_limit=10,
+                per_task_dispatch_limit=10,
+                item_claim_lease_duration_millis=3_000,
+            )
+        )
+
+        self.assertEqual(TaskCreationStatus.CREATED, created.status)
+        self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, running.status)
+        self.assertEqual(TaskItemAppendStatus.APPENDED, appended[self.message_id].status)
+        self.assertEqual(WorkerRuntimeStatus.OK, initialized_worker.status)
+        self.assertEqual(1, dispatched)
+        self.assertEqual(
+            0,
+            self.candidate_cache.candidate_worker_counts(
+                candidate_ids=(self.task_id,),
+            )[self.task_id],
+        )
+        seeds = self.deliver_seed_runtime.consume_deliver_seeds(
+            endpoint_manager_id="endpoint-manager-1",
+            limit=10,
+        )
+        self.assertEqual(1, len(seeds))
+        self.assertEqual("worker-1", seeds[0].worker_id)
+        self.assertEqual(
+            {"source": "targeted"},
+            json.loads(seeds[0].opaque_delivery_item)["payload"],
         )
 
 

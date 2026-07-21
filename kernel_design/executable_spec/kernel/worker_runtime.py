@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Mapping, Sequence
 
@@ -40,6 +40,7 @@ class WorkerGroupDescriptor:
     worker_group_id: WorkerGroupId
     attributes: Mapping[str, AttributeValue]
     event_codes: frozenset[EventCode]
+    item_allocation_fields: frozenset[str] = field(default_factory=frozenset)
 
 
 @dataclass(frozen=True)
@@ -140,6 +141,28 @@ class WorkerDynamicAttributeRuntime(ABC):
         batch. Implementations validate handler availability before reading and
         must not discover workers outside the supplied ids.
         """
+        pass
+
+    @abstractmethod
+    def supports_candidate_query(
+        self,
+        *,
+        attribute_name: AttributeName,
+        operator_rule: Mapping[str, object],
+    ) -> bool:
+        """Return whether one dynamic field predicate has a bounded index."""
+        pass
+
+    @abstractmethod
+    def query_candidate_worker_ids(
+        self,
+        *,
+        worker_group_id: WorkerGroupId,
+        attribute_name: AttributeName,
+        operator_rule: Mapping[str, object],
+        limit: int,
+    ) -> tuple[WorkerId, ...]:
+        """Query one handler-owned index for bounded candidate Worker ids."""
         pass
 
 

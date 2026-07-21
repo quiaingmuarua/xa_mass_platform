@@ -6,6 +6,7 @@ import unittest
 from unittest.mock import Mock, call, patch
 
 from kernel_design.executable_spec import (
+    AllocationRuleScope,
     CandidateWorkerEntry,
     DeliverSeedRuntime,
     TaskDescriptor,
@@ -35,9 +36,6 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
         self.item_score = Mock(spec=TaskItemScoreBandCore)
         self.task_runtime = Mock(spec=TaskRuntime)
         self.candidate_acquirer = Mock(spec=WorkerCandidateAcquirer)
-        self.candidate_strategy_resolver = Mock(
-            return_value=WorkerCandidateAcquisitionStrategy.CACHED
-        )
         self.pacer = TaskItemDispatchPacer(
             self.task_score,
             self.task_catalog,
@@ -45,7 +43,6 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
             self.item_score,
             self.task_runtime,
             self.candidate_acquirer,
-            self.candidate_strategy_resolver,
         )
         self.config = TaskItemDispatchConfig(
             task_batch_limit=10,
@@ -62,7 +59,6 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
                 "item_score",
                 "task_runtime",
                 "candidate_acquirer",
-                "candidate_strategy_resolver",
                 "delivery_item_encoder",
             },
             set(inspect.signature(TaskItemDispatchPacer).parameters),
@@ -115,16 +111,12 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
             ["observe", "acquire", "claim", "publish", "publish"],
             events,
         )
-        self.candidate_strategy_resolver.assert_called_once_with(
-            self._descriptor("task-1"),
-            items,
-        )
         acquisition_call = (
             self.candidate_acquirer.acquire_worker_candidates.call_args
         )
         request = acquisition_call.kwargs["candidate_requests"]["task-1"]
         self.assertIs(
-            WorkerCandidateAcquisitionStrategy.CACHED,
+            WorkerCandidateAcquisitionStrategy.PRECOMPUTED,
             acquisition_call.kwargs["strategy"],
         )
         self.assertEqual(
@@ -211,31 +203,73 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
         self.item_score.rewrite_observed_item_scores.assert_not_called()
         self.deliver_seed_runtime.append_deliver_seeds.assert_not_called()
 
-    def test_resolver_selected_strategy_is_the_only_acquisition_path(self) -> None:
-        self._prepare_task("task-1")
-        item = self._item("message-1")
-        self.item_score.acquire_item_score_candidates.return_value = {
-            "message-1": (101, 3)
-        }
-        self.task_runtime.load_task_items.return_value = {"message-1": item}
-        self.candidate_acquirer.acquire_worker_candidates.return_value = {
-            "task-1": ()
-        }
-        self.candidate_strategy_resolver.return_value = (
-            WorkerCandidateAcquisitionStrategy.REALTIME
+    def test_item_scoped_task_uses_targeted_requests_without_flattening(self) -> None:
+        self._prepare_task(
+            "task-1",
+            allocation_rule_scope=AllocationRuleScope.TASK_ITEM,
         )
+        first_item = self._item(
+            "message-1",
+            allocation_rule={"workerId": {"$eq": "worker-1"}},
+        )
+        second_item = self._item(
+            "message-2",
+            allocation_rule={"workerId": {"$eq": "worker-2"}},
+        )
+        self.item_score.acquire_item_score_candidates.return_value = {
+            "message-1": (101, 3),
+            "message-2": (102, 3),
+        }
+        self.task_runtime.load_task_items.return_value = {
+            first_item.message_id: first_item,
+            second_item.message_id: second_item,
+        }
+        self.candidate_acquirer.acquire_worker_candidates.return_value = {
+            "message-1": (self._candidate("worker-1", "endpoint-1", 201),),
+            "message-2": (self._candidate("worker-2", "endpoint-2", 202),),
+        }
+        self.item_score.rewrite_observed_item_scores.return_value = {
+            "message-1": TaskItemScoreTransitionResult(
+                TaskItemScoreTransitionStatus.TRANSITIONED,
+                301,
+            ),
+            "message-2": TaskItemScoreTransitionResult(
+                TaskItemScoreTransitionStatus.TRANSITIONED,
+                302,
+            ),
+        }
 
         with patch.object(
             self.pacer,
             "_current_time_millis",
             return_value=self.NOW_MILLIS,
         ):
-            self.pacer.dispatch_task_items(config=self.config)
+            appended = self.pacer.dispatch_task_items(config=self.config)
 
+        self.assertEqual(2, appended)
         acquisition_call = self.candidate_acquirer.acquire_worker_candidates.call_args
         self.assertIs(
-            WorkerCandidateAcquisitionStrategy.REALTIME,
+            WorkerCandidateAcquisitionStrategy.TARGETED,
             acquisition_call.kwargs["strategy"],
+        )
+        targeted_request = acquisition_call.kwargs["candidate_requests"]["message-2"]
+        self.assertEqual("workerId", targeted_request.target_field)
+        self.assertEqual(
+            {"workerId": {"$eq": "worker-2"}},
+            targeted_request.allocation_rule,
+        )
+        published = {
+            json.loads(call_.kwargs["deliver_seeds"][0].opaque_delivery_item)[
+                "payload"
+            ]["value"]: call_.kwargs["deliver_seeds"][0].worker_id
+            for call_ in self.deliver_seed_runtime.append_deliver_seeds.call_args_list
+        }
+        self.assertEqual(
+            {
+                "message-1": "worker-1",
+                "message-2": "worker-2",
+            },
+            published,
         )
 
     def test_exhausted_and_missing_records_do_not_request_workers(self) -> None:
@@ -260,7 +294,7 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
             target_band=TaskItemScoreBand.FINAL_FAILED,
             target_time_millis=self.NOW_MILLIS,
         )
-        self.candidate_strategy_resolver.assert_not_called()
+        self.candidate_acquirer.acquire_worker_candidates.assert_not_called()
 
     def test_missing_descriptor_skips_item_observation(self) -> None:
         self.task_score.acquire_dispatch_work_tasks.return_value = ("task-1",)
@@ -317,18 +351,35 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
                     item_claim_lease_duration_millis=values[2],
                 )
 
-    def _prepare_task(self, task_id: str) -> None:
+    def _prepare_task(
+        self,
+        task_id: str,
+        *,
+        allocation_rule_scope: AllocationRuleScope = AllocationRuleScope.TASK,
+    ) -> None:
         self.task_score.acquire_dispatch_work_tasks.return_value = (task_id,)
         self.task_catalog.load_task_allocation_descriptors.return_value = {
-            task_id: self._descriptor(task_id)
+            task_id: self._descriptor(
+                task_id,
+                allocation_rule_scope=allocation_rule_scope,
+            )
         }
 
     @staticmethod
-    def _descriptor(task_id: str) -> TaskDescriptor:
+    def _descriptor(
+        task_id: str,
+        *,
+        allocation_rule_scope: AllocationRuleScope = AllocationRuleScope.TASK,
+    ) -> TaskDescriptor:
         return TaskDescriptor(
             task_id=task_id,
             worker_group_id="group-1",
-            allocation_rule={"attributes.runtime": {"$eq": "python"}},
+            allocation_rule_scope=allocation_rule_scope,
+            allocation_rule=(
+                {"attributes.runtime": {"$eq": "python"}}
+                if allocation_rule_scope is AllocationRuleScope.TASK
+                else None
+            ),
             config={
                 "priority": "80",
                 "maximumCandidateWorkers": "10",
@@ -337,12 +388,17 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
         )
 
     @staticmethod
-    def _item(message_id: str) -> TaskItem:
+    def _item(
+        message_id: str,
+        *,
+        allocation_rule: dict[str, object] | None = None,
+    ) -> TaskItem:
         return TaskItem(
             message_id=message_id,
             event_code="event-1",
             created_at_millis=1,
             payload={"value": message_id},
+            allocation_rule=allocation_rule,
         )
 
     @staticmethod

@@ -220,6 +220,43 @@ return {"transitioned", target_score}
             )
         )
 
+    def observe_due_hot_scores(
+        self,
+        *,
+        home_bucket_id: HomeBucketId,
+        worker_ids: Sequence[WorkerId],
+    ) -> Mapping[WorkerId, Score]:
+        unique_worker_ids = tuple(dict.fromkeys(worker_ids))
+        if not unique_worker_ids:
+            return {}
+
+        key = self._score_key(home_bucket_id)
+        with self.redis.pipeline(transaction=False) as pipe:
+            for worker_id in unique_worker_ids:
+                pipe.zscore(key, worker_id)
+            raw_scores = pipe.execute()
+
+        due_time_slot = self._current_time_slot() - 1
+        observed: dict[WorkerId, Score] = {}
+        for worker_id, raw_score in zip(
+            unique_worker_ids,
+            raw_scores,
+            strict=True,
+        ):
+            if raw_score is None:
+                continue
+            score = self._score_to_int(raw_score)
+            decoded = self._decode_score(score)
+            if decoded is None:
+                continue
+            polarity, time_slot, _, _ = decoded
+            if (
+                polarity is WorkerScorePolarity.HOT_ACQUIRE
+                and time_slot <= due_time_slot
+            ):
+                observed[worker_id] = score
+        return observed
+
     def acquire_recovery_recheck_candidates(
         self,
         *,

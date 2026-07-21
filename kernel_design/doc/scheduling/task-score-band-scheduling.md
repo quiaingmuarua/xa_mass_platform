@@ -105,8 +105,8 @@ Conceptual flow:
 ```text
 worker-allocation round
   -> acquire due RUNNING_VISIBLE Task ids
-  -> load Task allocation descriptors
-  -> realtime-acquire Worker candidates
+  -> retain Task-owned allocation rules
+  -> acquire and match HOT Worker candidates for precomputation
   -> publish expiring CandidateWorker cache evidence
   -> rotate each considered Task within its current score band
 
@@ -853,10 +853,10 @@ round:
 ```text
 TaskWorkerAllocationPacer
   -> query RUNNING_VISIBLE only
-  -> load bounded Task allocation descriptors
-  -> invoke realtime Worker candidate acquisition
+  -> retain bounded TASK-scope allocation descriptors
+  -> invoke HOT-pool Worker candidate acquisition
   -> publish expiring CandidateWorker cache evidence
-  -> rotate every considered Task in its acquired band
+  -> rotate every scanned Task in its acquired band
 
 TaskRunningActivationPacer
   -> load bounded PRE_DISPATCH_VISIBLE descriptors
@@ -866,7 +866,7 @@ TaskRunningActivationPacer
 TaskItemDispatchPacer
   -> acquire due ACTIVE Item observations
   -> load canonical TaskItem records
-  -> invoke the policy-selected cached or realtime candidate acquirer
+  -> invoke PRECOMPUTED or TARGETED from the Task allocationRuleScope
   -> exact-claim only Worker-backed Items
   -> append DeliverSeeds without another Task score write
 ```

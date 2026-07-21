@@ -8,6 +8,7 @@ from typing import Any, Mapping, Sequence
 
 from ..constraint_dsl import ConstraintEvaluator
 from ..kernel.task_runtime import (
+    AllocationRuleScope,
     MessageId,
     TaskCreationResult,
     TaskCreationStatus,
@@ -86,8 +87,13 @@ class RedisTaskRuntime(TaskRuntime):
         suffix: Suffix,
     ) -> TaskCreationResult:
         try:
-            ConstraintEvaluator.compile_match_rules(descriptor.allocation_rule)
-            allocation_rule_json = _encode_json(descriptor.allocation_rule)
+            if descriptor.allocation_rule is not None:
+                ConstraintEvaluator.compile_match_rules(descriptor.allocation_rule)
+            allocation_rule_json = (
+                _encode_json(descriptor.allocation_rule)
+                if descriptor.allocation_rule is not None
+                else "null"
+            )
             config_json = _encode_json(descriptor.config)
         except (TypeError, ValueError):
             return TaskCreationResult(
@@ -108,6 +114,7 @@ class RedisTaskRuntime(TaskRuntime):
                 _task_descriptor_key(self.prefix, descriptor.task_id),
                 mapping={
                     "workerGroupId": descriptor.worker_group_id,
+                    "allocationRuleScope": descriptor.allocation_rule_scope.value,
                     "allocationRuleJson": allocation_rule_json,
                     "configJson": config_json,
                 },
@@ -186,6 +193,8 @@ class RedisTaskRuntime(TaskRuntime):
         results: dict[MessageId, TaskItemAppendResult] = {}
         for message_id, item in ordered_items.items():
             try:
+                if item.allocation_rule is not None:
+                    ConstraintEvaluator.compile_match_rules(item.allocation_rule)
                 normalized = self._materialize_item_defaults(item)
                 records[message_id] = self._encode_task_item(normalized)
                 due_millis_by_message_id[message_id] = (
@@ -194,7 +203,7 @@ class RedisTaskRuntime(TaskRuntime):
             except (TypeError, ValueError):
                 results[message_id] = TaskItemAppendResult(
                     TaskItemAppendStatus.INVALID,
-                    "TaskItem is not JSON serializable",
+                    "TaskItem is invalid or not JSON serializable",
                 )
 
         if not records:
@@ -353,6 +362,7 @@ class RedisTaskRuntime(TaskRuntime):
                 "priority": item.priority,
                 "createdAtMillis": item.created_at_millis,
                 "expireAtMillis": item.expire_at_millis,
+                "allocationRule": item.allocation_rule,
             }
         )
 
@@ -367,6 +377,7 @@ class RedisTaskRuntime(TaskRuntime):
                 priority=item["priority"],
                 created_at_millis=item["createdAtMillis"],
                 expire_at_millis=item["expireAtMillis"],
+                allocation_rule=item.get("allocationRule"),
             )
         except (KeyError, TypeError, ValueError, UnicodeDecodeError):
             return None
@@ -385,7 +396,12 @@ class RedisTaskRuntime(TaskRuntime):
 class RedisTaskResourceCatalog(TaskResourceCatalog):
     """Redis HASH-backed Task allocation descriptor catalog."""
 
-    _HASH_FIELDS = ("workerGroupId", "allocationRuleJson", "configJson")
+    _HASH_FIELDS = (
+        "workerGroupId",
+        "allocationRuleScope",
+        "allocationRuleJson",
+        "configJson",
+    )
 
     def __init__(
         self,
@@ -426,12 +442,23 @@ class RedisTaskResourceCatalog(TaskResourceCatalog):
         raw_row: Any,
     ) -> TaskDescriptor | None:
         try:
-            worker_group_raw, allocation_rule_raw, config_raw = raw_row
+            (
+                worker_group_raw,
+                allocation_rule_scope_raw,
+                allocation_rule_raw,
+                config_raw,
+            ) = raw_row
             worker_group_id = (
                 worker_group_raw.decode("utf-8")
                 if isinstance(worker_group_raw, bytes)
                 else worker_group_raw
             )
+            allocation_rule_scope_value = (
+                allocation_rule_scope_raw.decode("utf-8")
+                if isinstance(allocation_rule_scope_raw, bytes)
+                else allocation_rule_scope_raw
+            )
+            allocation_rule_scope = AllocationRuleScope(allocation_rule_scope_value)
             allocation_rule = json.loads(allocation_rule_raw)
             config = json.loads(config_raw)
         except (TypeError, ValueError, UnicodeDecodeError):
@@ -440,7 +467,10 @@ class RedisTaskResourceCatalog(TaskResourceCatalog):
         if (
             not isinstance(worker_group_id, str)
             or not worker_group_id
-            or not isinstance(allocation_rule, MappingABC)
+            or (
+                allocation_rule is not None
+                and not isinstance(allocation_rule, MappingABC)
+            )
             or not isinstance(config, MappingABC)
         ):
             return None
@@ -448,7 +478,12 @@ class RedisTaskResourceCatalog(TaskResourceCatalog):
             return TaskDescriptor(
                 task_id=task_id,
                 worker_group_id=worker_group_id,
-                allocation_rule=dict(allocation_rule),
+                allocation_rule_scope=allocation_rule_scope,
+                allocation_rule=(
+                    dict(allocation_rule)
+                    if allocation_rule is not None
+                    else None
+                ),
                 config=dict(config),
             )
         except ValueError:

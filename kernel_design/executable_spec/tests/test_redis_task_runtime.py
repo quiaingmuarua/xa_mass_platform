@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import kernel_design.executable_spec as executable_spec
 from kernel_design.executable_spec import (
+    AllocationRuleScope,
     RedisTaskResourceCatalog,
     RedisTaskRuntime,
     RedisTaskItemScoreBandCore,
@@ -167,14 +168,17 @@ class RedisTaskRuntimeTest(unittest.TestCase):
         task_id: str,
         *,
         worker_group_id: str = "image-workers",
+        allocation_rule_scope: AllocationRuleScope = AllocationRuleScope.TASK,
         allocation_rule: dict[str, object] | None = None,
     ) -> TaskDescriptor:
         return TaskDescriptor(
             task_id=task_id,
             worker_group_id=worker_group_id,
+            allocation_rule_scope=allocation_rule_scope,
             allocation_rule=(
                 {"dynamic.battery": {"$gte": 20}}
                 if allocation_rule is None
+                and allocation_rule_scope is AllocationRuleScope.TASK
                 else allocation_rule
             ),
             config={
@@ -198,6 +202,24 @@ class RedisTaskRuntimeTest(unittest.TestCase):
         self.assertEqual(self.SUFFIX, state.suffix)
         self.assertEqual(self.redis.now_millis, state.time_millis)
 
+    def test_item_scoped_descriptor_round_trips_null_task_rule(self) -> None:
+        descriptor = self.descriptor(
+            "task-1",
+            allocation_rule_scope=AllocationRuleScope.TASK_ITEM,
+        )
+
+        result = self.runtime.create_task(descriptor=descriptor, suffix=self.SUFFIX)
+        loaded = self.catalog.load_task_allocation_descriptors(
+            task_ids=[descriptor.task_id],
+        )[descriptor.task_id]
+
+        self.assertEqual(TaskCreationStatus.CREATED, result.status)
+        self.assertEqual(descriptor, loaded)
+        self.assertEqual(
+            "null",
+            self.redis.hashes["tc:test:task:task-1"]["allocationRuleJson"],
+        )
+
     def test_duplicate_create_conflicts_without_touching_score(self) -> None:
         first = self.descriptor("task-1")
         second = self.descriptor("task-1", worker_group_id="audio-workers")
@@ -217,6 +239,7 @@ class RedisTaskRuntimeTest(unittest.TestCase):
     def test_orphan_descriptor_does_not_block_score_owned_creation(self) -> None:
         self.redis.hashes["tc:test:task:task-1"] = {
             "workerGroupId": "orphan-workers",
+            "allocationRuleScope": "TASK",
             "allocationRuleJson": "{}",
             "configJson": "{}",
         }
@@ -329,6 +352,7 @@ class RedisTaskRuntimeTest(unittest.TestCase):
             "tc:test:task:task-1",
             mapping={
                 "workerGroupId": descriptor.worker_group_id,
+                "allocationRuleScope": descriptor.allocation_rule_scope.value,
                 "allocationRuleJson": json.dumps(dict(descriptor.allocation_rule)),
                 "configJson": json.dumps(dict(descriptor.config)),
             },
@@ -432,6 +456,7 @@ class RedisTaskRuntimeTest(unittest.TestCase):
             created_at_millis=91_000,
             payload={"source": "latest"},
             priority=9,
+            allocation_rule={"workerId": {"$eq": "worker-2"}},
         )
 
         first_result = self.runtime.append_items(
@@ -458,6 +483,10 @@ class RedisTaskRuntimeTest(unittest.TestCase):
             "message-1",
         ))
         self.assertEqual({"source": "latest"}, loaded.payload)
+        self.assertEqual(
+            {"workerId": {"$eq": "worker-2"}},
+            loaded.allocation_rule,
+        )
         self.assertEqual(
             latest.created_at_millis + self.runtime.DEFAULT_ITEM_TTL_MILLIS,
             loaded.expire_at_millis,

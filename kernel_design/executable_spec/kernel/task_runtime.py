@@ -14,6 +14,11 @@ MessageId = str
 ItemPriority = int
 
 
+class AllocationRuleScope(Enum):
+    TASK = "TASK"
+    TASK_ITEM = "TASK_ITEM"
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class TaskItem:
     """Canonical Task-scoped item record; scheduling state lives elsewhere."""
@@ -24,6 +29,7 @@ class TaskItem:
     payload: Mapping[str, object]
     priority: ItemPriority = 5
     expire_at_millis: TimeMillis | None = None
+    allocation_rule: Mapping[str, object] | None = None
 
     def __post_init__(self) -> None:
         if not self.message_id:
@@ -32,6 +38,11 @@ class TaskItem:
             raise ValueError("event code must be non-empty")
         if not isinstance(self.payload, MappingABC):
             raise ValueError("task item payload must be a mapping")
+        if self.allocation_rule is not None and (
+            not isinstance(self.allocation_rule, MappingABC)
+            or not self.allocation_rule
+        ):
+            raise ValueError("task item allocation rule must be a non-empty mapping")
         if (
             not isinstance(self.priority, int)
             or isinstance(self.priority, bool)
@@ -66,7 +77,8 @@ class TaskDescriptor:
 
     task_id: TaskId
     worker_group_id: WorkerGroupId
-    allocation_rule: Mapping[str, object]
+    allocation_rule_scope: AllocationRuleScope
+    allocation_rule: Mapping[str, object] | None
     config: Mapping[str, str]
 
     CONFIG_KEYS: ClassVar[frozenset[str]] = frozenset(
@@ -82,8 +94,13 @@ class TaskDescriptor:
             raise ValueError("task id must be non-empty")
         if not self.worker_group_id:
             raise ValueError("worker group id must be non-empty")
-        if not isinstance(self.allocation_rule, MappingABC):
-            raise ValueError("task allocation rule must be a mapping")
+        if not isinstance(self.allocation_rule_scope, AllocationRuleScope):
+            raise ValueError("task allocation rule scope is invalid")
+        if self.allocation_rule_scope is AllocationRuleScope.TASK:
+            if not isinstance(self.allocation_rule, MappingABC):
+                raise ValueError("TASK allocation scope requires a Task rule")
+        elif self.allocation_rule is not None:
+            raise ValueError("TASK_ITEM allocation scope forbids a Task rule")
         if not isinstance(self.config, MappingABC):
             raise ValueError("task config must be a mapping")
         if set(self.config) != self.CONFIG_KEYS:
