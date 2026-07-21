@@ -64,7 +64,7 @@ The public contract supports exactly two Task types:
 | Task type | Rule owner | Worker acquisition | Candidate cache | Empty behavior |
 | --- | --- | --- | --- | --- |
 | `TASK_DRIVEN` | Task | `PRECOMPUTED` | enabled | close after the configured consecutive-empty limit |
-| `ITEM_DRIVEN` | TaskItem | `TARGETED` | forbidden | remain RUNNING for later append or explicit close |
+| `ITEM_DRIVEN` | TaskItem | `TARGETED` | forbidden | remain RUNNING; an external owner requests close from business evidence |
 
 This table is the canonical external TaskType contract. The rule-shape
 constraints are:
@@ -89,6 +89,41 @@ than reclassifying every Item.
 
 Both types use periodic RUNNING scans and Task dispatch. Append-trigger
 acceleration and deadline-driven close remain deferred policies.
+
+### TaskType Scenario Gate
+
+`TaskType` names one workload scenario that the kernel supports vertically. It
+is not a convenient label for a caller-selected combination of rule owner,
+cache, acquisition, trigger, or termination policies.
+
+The current scenarios are:
+
+```text
+TASK_DRIVEN
+  stable Task-level Worker constraints
+  stage-oriented and relatively dense Item arrival
+  Task-level candidate computation can be prepaid and amortized
+  repeated confirmed emptiness is completion evidence
+
+ITEM_DRIVEN
+  each Item supplies the bounded Worker target rule
+  long-lived or open-ended, with sparse or unpredictable Item arrival
+  Item rules may all be equal or may differ
+  paying selection cost only for a real Item is cheaper than maintaining
+  Task-level candidate leases
+  emptiness is not completion evidence
+```
+
+A future TaskType is admitted only when a named workload cannot be represented
+by either scenario without changing a scheduling invariant. The proposal must
+identify the differing rule owner, Worker acquisition, cache authority, empty
+or close behavior, and provide a vertical create-to-result/close executable
+proof. A different limit, cadence, priority, fairness rule, retry interval, or
+other tuning value stays inside the existing type's System Policy.
+
+Tests do not enumerate arbitrary policy combinations. They prove the two
+supported TaskType paths end to end and test score, lease, CAS, and owner
+primitives independently at their legal boundaries.
 
 `allocationRule` uses the independent constraint DSL and is evaluated by the
 bounded Worker matcher. Example:
@@ -255,8 +290,11 @@ TaskItem-score truth.
 
 `TASK_DRIVEN` closes automatically after the configured number of consecutive
 empty observations. `ITEM_DRIVEN` remains RUNNING at the maximum recheck count
-until a new ACTIVE Item resets the count or an explicit close command arrives.
-Both Task types support `KernelApplication.close_task`.
+until a new ACTIVE Item resets the count or an external owner requests close.
+For example, a server may evaluate deadline or business-completion evidence and
+call `KernelApplication.close_task`. The kernel validates and applies that
+transition; it does not infer ITEM_DRIVEN completion from emptiness. Both Task
+types support the same explicit close command.
 
 Task dispatch:
 

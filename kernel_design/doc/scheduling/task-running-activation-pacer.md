@@ -134,7 +134,7 @@ Zero-config assembly installs the two default policies and exposes only:
 
 The field is optional, defaults to `100`, and must be a positive integer.
 
-## Policy Composition
+## Scenario-Bound Policy
 
 The current chain is intentionally explicit:
 
@@ -146,9 +146,11 @@ Task state
   -> observe again
 ```
 
-Future quota, tenant, environment, or resource-estimate policies may replace
-or compose the System policy. Task-specific business start conditions may
-replace or compose the Task policy. They must remain bounded decisions over
+Future quota, tenant, environment, or resource-estimate decisions may replace
+or compose the System policy only for a named supported TaskType scenario.
+Task-specific business start conditions follow the same rule. This is not an
+open policy-combination surface: every added decision needs a concrete caller,
+evidence, cutpoint, and vertical scenario proof. It must remain bounded over
 owner facts and must not create a second transition path.
 
 ## Guardrails

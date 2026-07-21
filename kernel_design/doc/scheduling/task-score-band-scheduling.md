@@ -280,7 +280,8 @@ is read or written by Task score Lua.
 - A Task discovered before pause/close may finish its already-bounded Item and
   DeliverSeed work; the later score rewrite cannot reopen terminal state.
 - ITEM_DRIVEN empty Tasks remain RUNNING and continue to consume the current
-  soft-limit count until explicitly closed.
+  soft-limit count until an external owner requests explicit close from
+  business evidence. Task score does not infer that evidence from emptiness.
 
 ## Guardrails
 

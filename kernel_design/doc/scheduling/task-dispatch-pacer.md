@@ -121,7 +121,10 @@ append hint may accelerate recheck but is not required for liveness.
 
 `TASK_DRIVEN` treats repeated confirmed emptiness as automatic completion
 evidence. `ITEM_DRIVEN` never closes from emptiness because a later Item may be
-appended. An explicit close command can close either Task type at any time.
+appended. Task dispatch therefore keeps it RUNNING and does not decide whether
+the business workload is complete. An external owner such as a server may use
+deadline or business evidence to call the explicit close command. The kernel
+validates and applies that command for either Task type.
 
 ## Ordinary Dispatch
 

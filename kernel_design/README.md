@@ -52,12 +52,14 @@ Task admission and score visibility
      -> ACTIVE Item: Worker candidate acquisition -> TaskItem claim
                      -> DeliverSeed -> SeedResult
                      -> TaskItem outcome and Worker disposition
-     -> no ACTIVE Item: empty recheck -> type-owned wait or close
-  -> explicit close remains available for either TaskType
+     -> no ACTIVE Item: TASK_DRIVEN may auto-close after bounded rechecks
+                        ITEM_DRIVEN waits for append or external close evidence
+  -> kernel applies an explicit close requested by an external owner
 ```
 
-The two public Task types are stable policy bundles, not independent caller
-knobs. Their canonical contract is defined in
+The two public Task types are supported scheduling scenario contracts, not
+independent caller knobs or arbitrary policy bundles. Their canonical contract
+is defined in
 [Task Resource Model](doc/resource-model/task-resource-model.md#task-type-and-allocation-rule).
 
 Current work should improve owner-local policy, bounds, cadence, fairness,
@@ -67,6 +69,32 @@ liveness invariant that the existing score axes, owner operations, and bounded
 handoffs cannot protect. Production transport reliability, query projections,
 and control-plane concerns are not evidence that scheduling needs another
 owner or state machine.
+
+### Scenario Before Policy
+
+Kernel policy exists only inside a supported scenario:
+
+```text
+concrete workload scenario
+  -> TaskType contract
+  -> scenario invariants
+  -> necessary policy decisions
+  -> kernel owner mechanisms
+  -> vertical executable proof
+```
+
+Do not start with orthogonal cache, acquisition, trigger, termination,
+fairness, or retry policies and then search their Cartesian product for
+unsupported combinations. Such combinations do not establish a product
+scenario and usually create validation branches without protecting a real
+invariant.
+
+Adding a TaskType requires a concrete workload that the existing types cannot
+support without changing rule ownership, Worker acquisition, cache authority,
+empty behavior, or another scheduling invariant. Different limits, cadence,
+priority, fairness, or retry values remain System Policy inside an existing
+TaskType. Acceptance is a vertical scenario proof, not policy-combination
+coverage.
 
 ## Core Axioms
 

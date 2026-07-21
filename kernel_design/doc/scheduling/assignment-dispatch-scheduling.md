@@ -231,7 +231,9 @@ the dispatch round does not infer type or strategy from Item contents.
 - Append-trigger acceleration remains deferred. Periodic RUNNING scans are the
   correctness fallback.
 - TASK_DRIVEN empty auto-close and ITEM_DRIVEN persistent empty recheck are the
-  current built-in empty-state behaviors. Deadline policy remains deferred.
+  current built-in empty-state behaviors. ITEM_DRIVEN close requires an
+  external owner to submit business evidence through the explicit close
+  command; deadline policy remains deferred.
 - One WorkerId remains one scheduler-visible execution slot. Business batch
   work belongs inside one TaskItem payload.
 
@@ -242,6 +244,8 @@ the dispatch round does not infer type or strategy from Item contents.
 - Do not add PRECOMPUTED-miss TARGETED fallback.
 - Do not expose acquisition strategy, cache flags, or rule owner as independent
   Task configuration.
+- Do not add a TaskType for a parameter variation or an imagined policy
+  combination; require a named workload and vertical executable proof.
 - Do not merge Task and Item allocation rules implicitly.
 - Do not add a cross-CandidateId requested count or cross-WorkerGroup call.
 - Do not treat an index result as final matching or Worker availability truth.

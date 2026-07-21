@@ -66,12 +66,18 @@ The public TaskType split is fixed:
 TASK_DRIVEN = Task rule + PRECOMPUTED Worker acquisition + candidate cache
               + close after consecutive empty observations
 ITEM_DRIVEN = TaskItem rule + TARGETED Worker acquisition + no candidate cache
-              + remain RUNNING for append or explicit close
+              + remain RUNNING for append or external close evidence
 ```
 
 This is a summary of the canonical
 [Task Type And Allocation Rule](../resource-model/task-resource-model.md#task-type-and-allocation-rule)
 contract. These dimensions are not independently selectable policies.
+
+TaskType is the supported scenario boundary. Policy follows that scenario; it
+does not define a public Cartesian product of cache, acquisition, trigger,
+termination, fairness, or retry modes. Scheduling tests therefore prove the
+`TASK_DRIVEN` and `ITEM_DRIVEN` vertical paths plus owner-local primitives,
+instead of manufacturing unsupported policy combinations.
 
 The score axes and bounded runtime handoffs provide liveness. Events may provide
 business evidence or reduce latency, but they are not required scheduling
@@ -135,7 +141,7 @@ Transport adapters
 | Worker score-band | Implemented with Redis proof, including dirty lease fence | Dirty marking policy when a persisted assignment continuation exists; recovery cadence and ranking |
 | Worker HOT_ACQUIRE lease protocol | HOT-pool precomputation, TARGETED point lease-match, PRECOMPUTED exact recheck-rematch, result disposition, reconnect dirty fence, and one-WorkerId/one-slot invariant implemented | Recovery probe cadence and ranking |
 | TaskItem score-band | Implemented with Redis proof | Initial retry budget and claim-duration values |
-| Task running activation | Implemented with due-Item Task policy and priority soft-limit System policy | Quota, tenant, business start condition, and resource-estimate policy composition |
+| Task running activation | Implemented with due-Item Task policy and priority soft-limit System policy | Scenario-backed quota, tenant, business start condition, and resource-estimate decisions |
 | Worker allocation | Implemented as hint-driven TASK-scope candidate cache warming through HOT-pool acquisition; Task score is read only for RUNNING/non-hard-pause validation; TASK_DRIVEN has deterministic Redis proof through cache consumption | Warmup prioritization beyond bounded due order and matcher priority |
 | Task dispatch | Implemented with fixed TaskType profiles, PRECOMPUTED Task rules, TARGETED complete Item rules, stable Item binding, RUNNING same-band reschedule, empty recheck, and DeliverSeed append; both TaskTypes have deterministic Redis proof through DeliverSeed and ITEM_DRIVEN proves no warmup/cache path | Recent-first Redis Task acquisition |
 | Outbound delivery example | Independent clients and Local Function Adapter implemented | Production transport, pending/ack, and protocol-specific conversion |
@@ -145,7 +151,8 @@ Both TaskTypes also have process-boundary Redis E2E proof from
 `ResourcesCommandClient` and `KernelApplication`, through the Local Function
 Adapter and Result-Routing, to `FINAL_SUCCESS`, the Task result HASH, and exact
 Worker lease release. Additional Redis proofs cover TASK_DRIVEN empty
-auto-close, ITEM_DRIVEN empty recheck followed by append, and explicit close.
+auto-close, ITEM_DRIVEN empty recheck followed by append, and an external
+explicit close request.
 Deadline-driven close remains deferred.
 
 Deferred policy stays in the document of the mechanism that consumes it. There

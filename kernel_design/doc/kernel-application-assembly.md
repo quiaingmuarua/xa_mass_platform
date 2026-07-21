@@ -68,6 +68,10 @@ returns `TaskApprovalResult` without exposing score evidence.
 all positive bands. It returns `TaskCloseResult`, chooses terminal score
 internally, is idempotent after terminal, and does not retract existing Item,
 DeliverSeed, or result evidence.
+The caller owns the close decision and its business evidence. For
+`ITEM_DRIVEN`, a server or other control-plane owner may call this command from
+deadline or completion evidence; `KernelApplication` does not infer completion
+from an empty Item set.
 `append_task_items` enforces the Task's immutable `taskType`.
 `TASK_DRIVEN` forbids Item rules; `ITEM_DRIVEN` requires them and validates each rule
 against the selected WorkerGroup `itemAllocationFields` and installed

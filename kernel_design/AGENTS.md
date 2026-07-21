@@ -17,6 +17,10 @@ current Python executable spec.
 - The design target is a small strict kernel, not a simplified weak kernel.
 - Owner boundaries matter more than closing a broad demo loop.
 - Prefer owner-local executable proof before crossing into another runtime.
+- Treat `TaskType` as a supported workload scenario contract, not a bag of
+  orthogonal policy switches.
+- Add a TaskType only when a concrete scenario cannot be represented by the
+  existing types and has its own vertical executable proof.
 
 Core kernel shape:
 
@@ -28,7 +32,8 @@ Task score admission and visibility
   -> Task dispatch
      -> ACTIVE Item: Worker score lease/validation -> TaskItem claim
                      -> DeliverSeed / SeedResult -> result-routing
-     -> no ACTIVE Item: empty recheck -> type-owned wait or close
+     -> no ACTIVE Item: TASK_DRIVEN may auto-close after bounded rechecks
+                        ITEM_DRIVEN waits for append or external close evidence
 ```
 
 These are scheduling planes, not necessarily modules. A first Python kernel may
@@ -51,6 +56,24 @@ not silently bend one into the other.
 This trust order describes current behavior; it does not authorize code to
 override an already aligned interface contract. If code and an agreed contract
 diverge, stop and identify which one is stale before editing either side.
+
+### TaskType Scenario Gate
+
+Do not design Task scheduling by enumerating independent policy combinations.
+For every proposed TaskType or type-level behavior, identify:
+
+```text
+concrete workload and caller
+why TASK_DRIVEN and ITEM_DRIVEN cannot represent it
+which owner or scheduling invariant differs
+which policy decisions are required by that scenario
+the create -> dispatch -> result/close vertical proof
+```
+
+Scan limits, cadence, priority, fairness, retry intervals, and other bounded
+System Policy values do not justify a new TaskType. Tests must prove supported
+TaskType scenarios and owner primitives; do not add orchestration branches or
+defensive tests for policy combinations that no supported scenario can create.
 
 ## 2. First Read
 
