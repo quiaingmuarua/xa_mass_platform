@@ -93,7 +93,7 @@ For result or TaskItem dispatch:
 2. [doc/scheduling/task-item-score-band-scheduling.md](doc/scheduling/task-item-score-band-scheduling.md)
 3. [doc/scheduling/assignment-dispatch-scheduling.md](doc/scheduling/assignment-dispatch-scheduling.md)
 4. [doc/scheduling/task-worker-allocation-pacer.md](doc/scheduling/task-worker-allocation-pacer.md)
-5. [doc/scheduling/task-item-dispatch-pacer.md](doc/scheduling/task-item-dispatch-pacer.md)
+5. [doc/scheduling/task-dispatch-pacer.md](doc/scheduling/task-dispatch-pacer.md)
 6. [doc/scheduling/deliver-seed-outbound-delivery.md](doc/scheduling/deliver-seed-outbound-delivery.md)
 7. [executable_spec/scheduling/task_worker_allocation.py](executable_spec/scheduling/task_worker_allocation.py)
 8. [executable_spec/assembly/assignment_dispatch_application.py](executable_spec/assembly/assignment_dispatch_application.py)

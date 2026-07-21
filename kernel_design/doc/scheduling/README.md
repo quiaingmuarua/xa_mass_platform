@@ -131,9 +131,9 @@ Transport adapters
 Both TaskTypes also have process-boundary Redis E2E proof from
 `ResourcesCommandClient` and `KernelApplication`, through the Local Function
 Adapter and Result-Routing, to `FINAL_SUCCESS`, the Task result HASH, and exact
-Worker lease release. These proofs do not claim automatic Task termination or
-RUNNING soft-limit slot release; those remain TaskType-specific termination
-policy work.
+Worker lease release. Additional Redis proofs cover TASK_DRIVEN empty
+auto-close, ITEM_DRIVEN empty recheck followed by append, and explicit close.
+Deadline-driven close remains deferred.
 
 Deferred policy stays in the document of the mechanism that consumes it. There
 is no global policy backlog document and no policy residue may create a second
@@ -148,7 +148,7 @@ runtime path.
 5. [Assignment-Dispatch Scheduling](assignment-dispatch-scheduling.md)
 6. [Task Running Activation Pacer](task-running-activation-pacer.md)
 7. [Task-Worker Allocation Pacer](task-worker-allocation-pacer.md)
-8. [Task Item Dispatch Pacer](task-item-dispatch-pacer.md)
+8. [Task Dispatch Pacer](task-dispatch-pacer.md)
 9. [DeliverSeed Outbound Delivery](deliver-seed-outbound-delivery.md)
 10. [Result-Routing Scheduling](result-routing-scheduling.md)
 11. [Kernel Application Assembly](../kernel-application-assembly.md)
@@ -181,7 +181,7 @@ kernel_design/executable_spec/
       matching.py
     task_running_activation.py
     task_worker_allocation.py
-    task_item_dispatch.py
+    task_dispatch.py
     result_routing.py
   redis_runtime/
     task_score_band.py

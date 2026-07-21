@@ -99,9 +99,9 @@ mechanism.
 8. count only TRANSITIONED results
 ```
 
-The transition uses the round timestamp and the configured initial RUNNING
-suffix. `STALE`, `NOOP`, and `INVALID` are not counted; later bounded rounds may
-observe the Task again when appropriate.
+The transition uses the round timestamp and always initializes RUNNING suffix
+to `0`, the ordinary Task dispatch lane. `STALE`, `NOOP`, and `INVALID` are not
+counted; later bounded rounds may observe the Task again when appropriate.
 
 No Worker is required for activation. A Task may enter RUNNING before any
 Worker is registered. Worker capacity affects later allocation throughput, not
@@ -112,7 +112,6 @@ the lifecycle admission mechanism.
 ```python
 TaskRunningActivationConfig(
     task_batch_limit,
-    running_visible_initial_suffix,
 )
 
 TaskRunningActivationPacer(

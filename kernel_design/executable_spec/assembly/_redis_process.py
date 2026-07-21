@@ -8,7 +8,7 @@ from ..scheduling import (
     PrioritySoftLimitSystemAdmissionPolicy,
     ResultRoutingBuiltinPolicies,
     ResultRoutingPacer,
-    TaskItemDispatchPacer,
+    TaskDispatchPacer,
     TaskRunningActivationPacer,
     TaskWorkerAllocationPacer,
     WorkerCandidateMatcher,
@@ -144,7 +144,7 @@ class _RedisKernelProcess:
             ),
             candidate_warmup_schedule,
         )
-        task_item_dispatch_pacer = TaskItemDispatchPacer(
+        task_dispatch_pacer = TaskDispatchPacer(
             self._task_score,
             self._task_resource_catalog,
             self._deliver_seed_runtime,
@@ -156,7 +156,7 @@ class _RedisKernelProcess:
         self._assignment_dispatch_application = AssignmentDispatchApplication(
             worker_allocation_pacer,
             running_activation_pacer,
-            task_item_dispatch_pacer,
+            task_dispatch_pacer,
         )
         self._seed_result_runtime = RedisSeedResultRuntime(
             redis_client,

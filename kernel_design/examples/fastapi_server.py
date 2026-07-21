@@ -20,6 +20,8 @@ from kernel_design.executable_spec.assembly import (
     ResourcesCommandClient,
     TaskApprovalResult,
     TaskApprovalStatus,
+    TaskCloseResult,
+    TaskCloseStatus,
     TaskCreationResult,
     TaskCreationStatus,
     TaskDescriptor,
@@ -116,6 +118,17 @@ def _approval_response(result: TaskApprovalResult) -> JSONResponse:
         TaskApprovalStatus.CONFLICT: 409,
         TaskApprovalStatus.INVALID: 422,
         TaskApprovalStatus.RETRYABLE: 503,
+    }[result.status]
+    return JSONResponse(_result_payload(result), status_code=status_code)
+
+
+def _close_response(result: TaskCloseResult) -> JSONResponse:
+    status_code = {
+        TaskCloseStatus.CLOSED: 200,
+        TaskCloseStatus.ALREADY_CLOSED: 200,
+        TaskCloseStatus.NOT_FOUND: 404,
+        TaskCloseStatus.INVALID: 422,
+        TaskCloseStatus.RETRYABLE: 503,
     }[result.status]
     return JSONResponse(_result_payload(result), status_code=status_code)
 
@@ -256,6 +269,10 @@ def create_app(
     @app.post("/tasks/{task_id}/approve")
     def approve_task(task_id: str) -> JSONResponse:
         return _approval_response(kernel_application.approve_task(task_id=task_id))
+
+    @app.post("/tasks/{task_id}/close")
+    def close_task(task_id: str) -> JSONResponse:
+        return _close_response(kernel_application.close_task(task_id=task_id))
 
     @app.post("/tasks/{task_id}/items")
     def append_task_items(

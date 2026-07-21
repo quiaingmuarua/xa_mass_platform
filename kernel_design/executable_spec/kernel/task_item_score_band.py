@@ -114,6 +114,20 @@ class TaskItemScoreBandCore(ABC):
         pass
 
     @abstractmethod
+    def has_active_items(
+        self,
+        *,
+        task_ids: Sequence[TaskId],
+    ) -> Mapping[TaskId, bool]:
+        """Return whether each Task has any ACTIVE score coordinate.
+
+        This bounded read includes due and future ACTIVE Items at every
+        remaining-budget value. It does not read Item payloads or treat final
+        outcome scores as active.
+        """
+        pass
+
+    @abstractmethod
     def rewrite_observed_item_scores(
         self,
         *,

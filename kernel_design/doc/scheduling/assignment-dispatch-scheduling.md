@@ -7,7 +7,7 @@ Detailed mechanisms:
 
 - [Task Running Activation Pacer](task-running-activation-pacer.md)
 - [Task-Worker Allocation Pacer](task-worker-allocation-pacer.md)
-- [TaskItem Dispatch Pacer](task-item-dispatch-pacer.md)
+- [Task Dispatch Pacer](task-dispatch-pacer.md)
 - [Worker HOT_ACQUIRE Lease Protocol](worker-hot-acquire-lease-protocol.md)
 - [DeliverSeed Outbound Delivery](deliver-seed-outbound-delivery.md)
 
@@ -22,7 +22,7 @@ Assignment-dispatch keeps three independently paced mechanisms:
 | --- | --- | --- |
 | RUNNING activation | Which PRE_DISPATCH Tasks pass Task and System admission policy? | `PRE_DISPATCH_VISIBLE -> RUNNING_VISIBLE` transition |
 | Worker allocation | Which stable RUNNING Task rules should have candidates prefetched? | Expiring CandidateWorker cache evidence |
-| TaskItem dispatch | Which observed Items and acquired Workers become assigned delivery? | Claimed Items and `DeliverSeed` values |
+| Task dispatch | Does a RUNNING Task dispatch Items or advance empty recheck? | Claimed Items, `DeliverSeed` values, or Task empty-count transition |
 
 The mechanisms have different cadence, cost, and policy inputs. They do not
 share a transaction, lock, or assignment lifecycle object. Candidate warming
@@ -180,17 +180,24 @@ due CandidateWarmupSchedule TaskIds
   -> requeue incomplete warmups
 ```
 
-TaskItem dispatch:
+Task dispatch:
 
 ```text
 dispatch-visible RUNNING Tasks
-  -> observe due Item scores and load existing records
+  -> suffix 0: observe due Item scores and load existing records
   -> TASK_DRIVEN: one TaskId PRECOMPUTED request
   -> ITEM_DRIVEN: one messageId TARGETED request per Item
   -> preserve CandidateId-to-messageId binding
   -> exact claim only Worker-backed Items
   -> append DeliverSeeds by endpointManagerId
-  -> same-band reschedule each considered RUNNING Task
+  -> same-band reschedule while preserving suffix 0
+
+empty-recheck RUNNING Tasks
+  -> suffix > 0, or suffix 0 with no dispatchable Item
+  -> query the complete ACTIVE Item band
+  -> ACTIVE exists: exact reset suffix to 0
+  -> no ACTIVE: increment empty count and apply linear delay
+  -> at max: TASK_DRIVEN closes; ITEM_DRIVEN remains low-frequency RUNNING
 ```
 
 `taskType` is fixed by the Task. The two rule locations cannot be mixed, and
@@ -205,9 +212,9 @@ the dispatch round does not infer type or strategy from Item contents.
   RUNNING/non-hard-pause validation; it never uses it as a cursor or mutates it.
 - Candidate acquisition owns Worker observation, exact lease, and rematch; it
   does not own cache publication.
-- `TaskItemDispatchPacer` does not access CandidateWorkerCache or
+- `TaskDispatchPacer` does not access CandidateWorkerCache or
   WorkerScoreCore directly. It alone owns routine RUNNING same-band dispatch
-  rescheduling.
+  rescheduling and exact empty-count changes.
 - Item observation is not a claim. Exact claim happens only after a Worker is
   bound to that Item.
 - Cache miss, missing index rows, stale Worker evidence, missing records, and
@@ -223,8 +230,10 @@ the dispatch round does not infer type or strategy from Item contents.
   none.
 - Multi-index intersection, cardinality optimization, quotas, and fairness are
   deferred policies.
-- Append-trigger acceleration and TaskType-specific termination remain separate
-  future slices; both current types use periodic RUNNING dispatch.
+- Append-trigger acceleration remains deferred. Periodic RUNNING scans are the
+  correctness fallback.
+- TASK_DRIVEN empty auto-close and ITEM_DRIVEN persistent empty recheck are the
+  current built-in termination behaviors. Deadline policy remains deferred.
 - One WorkerId remains one scheduler-visible execution slot. Business batch
   work belongs inside one TaskItem payload.
 

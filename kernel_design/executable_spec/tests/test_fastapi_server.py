@@ -13,6 +13,8 @@ from kernel_design.executable_spec.assembly import (
     ResourcesCommandClient,
     TaskApprovalResult,
     TaskApprovalStatus,
+    TaskCloseResult,
+    TaskCloseStatus,
     TaskCreationResult,
     TaskCreationStatus,
     TaskItemAppendResult,
@@ -66,6 +68,9 @@ class FastApiServerTest(unittest.TestCase):
         )
         self.application.approve_task.return_value = TaskApprovalResult(
             TaskApprovalStatus.APPROVED
+        )
+        self.application.close_task.return_value = TaskCloseResult(
+            TaskCloseStatus.CLOSED
         )
         self.application.append_task_items.return_value = {
             "message-1": TaskItemAppendResult(TaskItemAppendStatus.APPENDED)
@@ -126,6 +131,7 @@ class FastApiServerTest(unittest.TestCase):
             },
         )
         approval_response = self.client.post("/tasks/task-1/approve")
+        close_response = self.client.post("/tasks/task-1/close")
         append_response = self.client.post(
             "/tasks/task-1/items",
             json={
@@ -150,6 +156,8 @@ class FastApiServerTest(unittest.TestCase):
         self.assertEqual(200, worker_response.status_code)
         self.assertEqual(201, task_response.status_code)
         self.assertEqual(200, approval_response.status_code)
+        self.assertEqual(200, close_response.status_code)
+        self.assertEqual({"status": "closed"}, close_response.json())
         self.assertEqual(
             {"message-1": {"status": "appended"}},
             append_response.json(),

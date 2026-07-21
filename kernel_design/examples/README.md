@@ -27,6 +27,9 @@ imports only assembly boundaries. FastAPI lifespan starts only
 `DeliverSeedConsumerClient`. The host does not receive score cores, runtime
 implementations, Redis keys, matcher, or pacers.
 
+Task lifecycle routes include explicit approve and close commands. Close is
+available for both Task types and does not expose a terminal score.
+
 Dynamic attribute mutation is intentionally absent until the assembly installs
 a real dynamic-attribute handler owner.
 

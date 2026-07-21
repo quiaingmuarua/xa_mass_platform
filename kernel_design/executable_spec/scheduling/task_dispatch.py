@@ -24,12 +24,14 @@ from ..kernel.task_runtime import (
     TaskItem,
     TaskResourceCatalog,
     TaskRuntime,
+    TaskType,
 )
 from ..kernel.task_score_band import (
     Score,
     TaskId,
     TaskScoreBand,
     TaskScoreBandCore,
+    TaskScoreState,
     TimeMillis,
 )
 from ..kernel.worker_runtime import EndpointManagerId
@@ -58,12 +60,14 @@ def _encode_delivery_item(task_item: TaskItem) -> str:
 
 
 @dataclass(frozen=True)
-class TaskItemDispatchConfig:
-    """Bounds and claim duration supplied to one TaskItem dispatch round."""
+class TaskDispatchConfig:
+    """Bounds and timing policy supplied to one RUNNING Task round."""
 
     task_batch_limit: int
     per_task_dispatch_limit: int
     item_claim_lease_duration_millis: TimeMillis
+    max_empty_recheck_times: int
+    empty_recheck_interval_millis: TimeMillis
 
     def __post_init__(self) -> None:
         if self.task_batch_limit <= 0:
@@ -72,10 +76,16 @@ class TaskItemDispatchConfig:
             raise ValueError("per-task dispatch limit must be positive")
         if self.item_claim_lease_duration_millis <= 0:
             raise ValueError("item claim lease duration must be positive")
+        if not (
+            1 <= self.max_empty_recheck_times <= TaskScoreBandCore.MAX_SUFFIX
+        ):
+            raise ValueError("max empty recheck times must be in 1..99")
+        if self.empty_recheck_interval_millis <= 0:
+            raise ValueError("empty recheck interval must be positive")
 
 
-class TaskItemDispatchPacer:
-    """Compose Task discovery, candidate consumption, Item claim, and handoff."""
+class TaskDispatchPacer:
+    """Pace RUNNING Tasks through Item dispatch or empty recheck."""
 
     def __init__(
         self,
@@ -97,28 +107,45 @@ class TaskItemDispatchPacer:
         self.candidate_warmup_schedule = candidate_warmup_schedule
         self._delivery_item_encoder = delivery_item_encoder
 
-    def dispatch_task_items(
+    def dispatch_tasks(
         self,
         *,
-        config: TaskItemDispatchConfig,
+        config: TaskDispatchConfig,
     ) -> int:
         dispatch_time_millis = self._current_time_millis()
         claim_until_millis = (
             dispatch_time_millis + config.item_claim_lease_duration_millis
         )
-        active_tasks = self._acquire_dispatchable_task_descriptors(
+        active_tasks = self._acquire_dispatchable_tasks(
             limit=config.task_batch_limit,
         )
 
         published_seed_count = 0
-        for task_id, descriptor in active_tasks:
+        activity_recheck_tasks: dict[
+            TaskId,
+            tuple[TaskDescriptor, TaskScoreState],
+        ] = {}
+        for task_id, descriptor, state in active_tasks:
+            if state.suffix != TaskScoreBandCore.MIN_SUFFIX:
+                activity_recheck_tasks[task_id] = (descriptor, state)
+                continue
+
+            claimable_items = self._observe_claimable_task_items(
+                task_id=task_id,
+                limit=config.per_task_dispatch_limit,
+                observed_at_millis=dispatch_time_millis,
+            )
+            if not claimable_items:
+                activity_recheck_tasks[task_id] = (descriptor, state)
+                continue
+
             try:
-                published_seed_count += self._dispatch_task_items_for_task(
+                published_seed_count += self._dispatch_claimable_task_items(
                     task_id=task_id,
                     descriptor=descriptor,
-                    per_task_limit=config.per_task_dispatch_limit,
-                    dispatch_time_millis=dispatch_time_millis,
+                    claimable_items=claimable_items,
                     claim_until_millis=claim_until_millis,
+                    warmup_due_time_millis=dispatch_time_millis,
                 )
             finally:
                 self.task_score.rewrite_same_band_time_millis(
@@ -126,31 +153,37 @@ class TaskItemDispatchPacer:
                     expected_band=TaskScoreBand.RUNNING_VISIBLE,
                     target_time_millis=dispatch_time_millis,
                 )
+
+        if activity_recheck_tasks:
+            has_active_items = self.item_score.has_active_items(
+                task_ids=tuple(activity_recheck_tasks),
+            )
+            for task_id, (descriptor, state) in activity_recheck_tasks.items():
+                self._apply_activity_recheck(
+                    task_id=task_id,
+                    descriptor=descriptor,
+                    state=state,
+                    has_active_items=has_active_items.get(task_id, False),
+                    dispatch_time_millis=dispatch_time_millis,
+                    config=config,
+                )
         return published_seed_count
 
-    def _dispatch_task_items_for_task(
+    def _dispatch_claimable_task_items(
         self,
         *,
         task_id: TaskId,
         descriptor: TaskDescriptor,
-        per_task_limit: int,
-        dispatch_time_millis: TimeMillis,
+        claimable_items: tuple[tuple[TaskItem, Score], ...],
         claim_until_millis: TimeMillis,
+        warmup_due_time_millis: TimeMillis,
     ) -> int:
-        claimable_items = self._observe_claimable_task_items(
-            task_id=task_id,
-            limit=per_task_limit,
-            observed_at_millis=dispatch_time_millis,
-        )
-        if not claimable_items:
-            return 0
-
         candidate_workers_by_message_id = self._acquire_candidate_workers(
             task_id=task_id,
             descriptor=descriptor,
             claimable_items=claimable_items,
             lease_until_millis=claim_until_millis,
-            warmup_due_time_millis=dispatch_time_millis,
+            warmup_due_time_millis=warmup_due_time_millis,
         )
         if not candidate_workers_by_message_id:
             return 0
@@ -170,22 +203,84 @@ class TaskItemDispatchPacer:
             claim_until_millis=claim_until_millis,
         )
 
-    def _acquire_dispatchable_task_descriptors(
+    def _acquire_dispatchable_tasks(
         self,
         *,
         limit: int,
-    ) -> tuple[tuple[TaskId, TaskDescriptor], ...]:
+    ) -> tuple[tuple[TaskId, TaskDescriptor, TaskScoreState], ...]:
         task_ids = self.task_score.acquire_dispatch_work_tasks(limit=limit)
         if not task_ids:
             return ()
 
+        states = self.task_score.get_score_states(task_ids=task_ids)
         descriptors = self.task_catalog.load_task_allocation_descriptors(
             task_ids=task_ids,
         )
         return tuple(
-            (task_id, descriptor)
+            (task_id, descriptor, state)
             for task_id in task_ids
             if (descriptor := descriptors.get(task_id)) is not None
+            and (state := states.get(task_id)) is not None
+            and state.band is TaskScoreBand.RUNNING_VISIBLE
+            and state.suffix is not None
+        )
+
+    def _apply_activity_recheck(
+        self,
+        *,
+        task_id: TaskId,
+        descriptor: TaskDescriptor,
+        state: TaskScoreState,
+        has_active_items: bool,
+        dispatch_time_millis: TimeMillis,
+        config: TaskDispatchConfig,
+    ) -> None:
+        suffix = state.suffix
+        assert suffix is not None
+
+        if has_active_items:
+            if suffix == TaskScoreBandCore.MIN_SUFFIX:
+                self.task_score.rewrite_same_band_time_millis(
+                    task_id=task_id,
+                    expected_band=TaskScoreBand.RUNNING_VISIBLE,
+                    target_time_millis=dispatch_time_millis,
+                )
+                return
+            self.task_score.rewrite_observed_same_band_suffix(
+                task_id=task_id,
+                observed_score=state.score,
+                target_time_millis=dispatch_time_millis,
+                suffix_delta=-suffix,
+            )
+            return
+
+        if suffix >= config.max_empty_recheck_times:
+            if descriptor.task_type is TaskType.TASK_DRIVEN:
+                self.task_score.close_score(
+                    task_id=task_id,
+                    terminal_score=TaskScoreBandCore.TERMINAL_SCORE_MAX,
+                )
+                return
+            self.task_score.rewrite_same_band_time_millis(
+                task_id=task_id,
+                expected_band=TaskScoreBand.RUNNING_VISIBLE,
+                target_time_millis=(
+                    dispatch_time_millis
+                    + config.max_empty_recheck_times
+                    * config.empty_recheck_interval_millis
+                ),
+            )
+            return
+
+        next_suffix = suffix + 1
+        self.task_score.rewrite_observed_same_band_suffix(
+            task_id=task_id,
+            observed_score=state.score,
+            target_time_millis=(
+                dispatch_time_millis
+                + next_suffix * config.empty_recheck_interval_millis
+            ),
+            suffix_delta=1,
         )
 
     def _observe_claimable_task_items(

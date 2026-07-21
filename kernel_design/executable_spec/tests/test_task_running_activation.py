@@ -130,10 +130,7 @@ class TaskRunningActivationPacerTest(unittest.TestCase):
             self.system_policy,
             self.warmup_schedule,
         )
-        self.config = TaskRunningActivationConfig(
-            task_batch_limit=10,
-            running_visible_initial_suffix=8,
-        )
+        self.config = TaskRunningActivationConfig(task_batch_limit=10)
 
     def activate(self) -> int:
         with patch.object(
@@ -200,7 +197,7 @@ class TaskRunningActivationPacerTest(unittest.TestCase):
             expected_band=TaskScoreBand.PRE_DISPATCH_VISIBLE,
             target_band=TaskScoreBand.RUNNING_VISIBLE,
             target_time_millis=self.NOW_MILLIS,
-            target_suffix=8,
+            target_suffix=TaskScoreBandCore.MIN_SUFFIX,
         )
         self.warmup_schedule.schedule_candidate_warmups.assert_called_once_with(
             task_ids=("task-2",),

@@ -24,6 +24,8 @@ from .application import (
     KernelApplicationConfig,
     TaskApprovalResult,
     TaskApprovalStatus,
+    TaskCloseResult,
+    TaskCloseStatus,
 )
 from .resources_command_client import ResourcesCommandClient
 from .transport_clients import (
@@ -44,6 +46,8 @@ __all__ = [
     "SeedResultCommandClient",
     "TaskApprovalResult",
     "TaskApprovalStatus",
+    "TaskCloseResult",
+    "TaskCloseStatus",
     "TaskCreationResult",
     "TaskCreationStatus",
     "TaskDescriptor",

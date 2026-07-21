@@ -54,6 +54,24 @@ class FakePipeline:
         )
         return self
 
+    def zrangebyscore(
+        self,
+        key: str,
+        min_score: int,
+        max_score: int,
+        *,
+        start: int = 0,
+        num: int | None = None,
+    ) -> FakePipeline:
+        self.commands.append(
+            (
+                "zrangebyscore",
+                (key, min_score, max_score),
+                {"start": start, "num": num},
+            )
+        )
+        return self
+
     def eval(self, script: str, numkeys: int, *args: object) -> FakePipeline:
         self.commands.append(("eval", (script, numkeys, *args), {}))
         return self
@@ -75,6 +93,16 @@ class FakePipeline:
             elif command == "zrevrangebyscore":
                 results.append(
                     self.redis.zrevrangebyscore(
+                        str(args[0]),
+                        int(args[1]),
+                        int(args[2]),
+                        start=int(kwargs["start"]),
+                        num=kwargs["num"],
+                    )
+                )
+            elif command == "zrangebyscore":
+                results.append(
+                    self.redis.zrangebyscore(
                         str(args[0]),
                         int(args[1]),
                         int(args[2]),
@@ -144,6 +172,23 @@ class FakeRedis:
         sliced = rows[start:] if num is None else rows[start : start + num]
         if withscores:
             return [(member, score) for score, member in sliced]
+        return [member for _, member in sliced]
+
+    def zrangebyscore(
+        self,
+        key: str,
+        min_score: int,
+        max_score: int,
+        *,
+        start: int = 0,
+        num: int | None = None,
+    ) -> list[str]:
+        rows = sorted(
+            (score, member)
+            for member, score in self.zsets.get(key, {}).items()
+            if min_score <= score <= max_score
+        )
+        sliced = rows[start:] if num is None else rows[start : start + num]
         return [member for _, member in sliced]
 
     def eval(self, script: str, numkeys: int, *args: object) -> list[object]:
@@ -227,6 +272,35 @@ class RedisTaskItemScoreBandCoreTest(unittest.TestCase):
         self.assertEqual(self.millis(900), states["message-1"].time_millis)
         self.assertEqual(3, states["message-1"].remaining_budget)
         self.assertEqual(0, self.redis.eval_count)
+
+    def test_has_active_items_includes_due_future_and_zero_budget(self) -> None:
+        self.store(
+            "due",
+            self.score(TaskItemScoreBand.ACTIVE, 900, 2),
+        )
+        self.store(
+            "future-zero-budget",
+            self.score(TaskItemScoreBand.ACTIVE, 2_000, 0),
+        )
+        other_key = self.core._score_key("task-final")
+        self.redis.zadd(
+            other_key,
+            {"final": self.score(TaskItemScoreBand.FINAL_SUCCESS, 900)},
+        )
+
+        result = self.core.has_active_items(
+            task_ids=(self.task_id, "task-final", "missing"),
+        )
+
+        self.assertEqual(
+            {
+                self.task_id: True,
+                "task-final": False,
+                "missing": False,
+            },
+            result,
+        )
+        self.assertEqual(1, self.redis.pipeline_execute_count)
 
     def test_acquire_returns_due_active_scores_and_remaining_budget_in_score_order(
         self,

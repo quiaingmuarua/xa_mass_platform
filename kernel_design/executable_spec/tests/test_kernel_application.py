@@ -25,6 +25,8 @@ from kernel_design.executable_spec.assembly import (
     ResourcesCommandClient,
     TaskApprovalResult,
     TaskApprovalStatus,
+    TaskCloseResult,
+    TaskCloseStatus,
     TaskCreationResult,
     TaskCreationStatus,
     TaskDescriptor,
@@ -53,7 +55,7 @@ class KernelApplicationConfigTest(unittest.TestCase):
             redis_prefix="default",
             worker_allocation_interval_millis=100,
             running_activation_interval_millis=100,
-            task_item_dispatch_interval_millis=100,
+            task_dispatch_interval_millis=100,
             result_routing_interval_millis=100,
             running_task_soft_limit=100,
             stop_timeout_millis=5_000,
@@ -68,7 +70,7 @@ class KernelApplicationConfigTest(unittest.TestCase):
                 {
                     "redis": {"url": "redis://redis:6379/1", "prefix": "demo"},
                     "assignmentDispatch": {
-                        "taskItemDispatchIntervalMillis": 250,
+                        "taskDispatchIntervalMillis": 250,
                     },
                     "systemPolicy": {"runningTaskSoftLimit": 50},
                     "resultRouting": {"intervalMillis": 300},
@@ -81,7 +83,7 @@ class KernelApplicationConfigTest(unittest.TestCase):
         self.assertEqual("demo", config.redis_prefix)
         self.assertEqual(100, config.worker_allocation_interval_millis)
         self.assertEqual(100, config.running_activation_interval_millis)
-        self.assertEqual(250, config.task_item_dispatch_interval_millis)
+        self.assertEqual(250, config.task_dispatch_interval_millis)
         self.assertEqual(300, config.result_routing_interval_millis)
         self.assertEqual(50, config.running_task_soft_limit)
         self.assertEqual(2_000, config.stop_timeout_millis)
@@ -97,6 +99,8 @@ class KernelApplicationConfigTest(unittest.TestCase):
             '{"stopTimeoutMillis": 0}',
             '{"assignmentDispatch": {"workerAllocationIntervalMillis": -1}}',
             '{"assignmentDispatch": {"runningActivationIntervalMillis": true}}',
+            '{"assignmentDispatch": {"task'
+            'ItemDispatchIntervalMillis": 100}}',
             '{"resultRouting": {"intervalMillis": 0}}',
             '{"resultRouting": {"batchLimit": 100}}',
             '{"systemPolicy": {"runningTaskSoftLimit": 0}}',
@@ -114,7 +118,7 @@ class KernelApplicationConfigTest(unittest.TestCase):
                 "redis_prefix",
                 "worker_allocation_interval_millis",
                 "running_activation_interval_millis",
-                "task_item_dispatch_interval_millis",
+                "task_dispatch_interval_millis",
                 "result_routing_interval_millis",
                 "running_task_soft_limit",
                 "stop_timeout_millis",
@@ -152,6 +156,7 @@ class KernelApplicationTest(unittest.TestCase):
             {
                 "append_task_items",
                 "approve_task",
+                "close_task",
                 "create_task",
                 "start",
                 "stop",
@@ -191,7 +196,11 @@ class KernelApplicationTest(unittest.TestCase):
         )
         self.assertEqual(
             5,
-            internal.assignment_dispatch.running_activation.running_visible_initial_suffix,
+            internal.assignment_dispatch.task_dispatch.max_empty_recheck_times,
+        )
+        self.assertEqual(
+            1_000,
+            internal.assignment_dispatch.task_dispatch.empty_recheck_interval_millis,
         )
         self.assertEqual(
             100,
@@ -493,6 +502,54 @@ class KernelApplicationTest(unittest.TestCase):
 
         self.assertEqual(TaskApprovalStatus.ALREADY_APPROVED, result.status)
 
+    def test_close_task_closes_any_positive_band_without_exposing_score(self) -> None:
+        self.application.start()
+        for band in (
+            TaskScoreBand.PRE_REVIEW,
+            TaskScoreBand.PRE_DISPATCH_VISIBLE,
+            TaskScoreBand.RUNNING_VISIBLE,
+        ):
+            with self.subTest(band=band):
+                task_id = f"task-{band.value}"
+                self.process._task_score.get_score_states.return_value = {
+                    task_id: TaskScoreState(
+                        task_id=task_id,
+                        score=100,
+                        band=band,
+                        time_millis=1_000,
+                        suffix=0,
+                    )
+                }
+                self.process._task_score.close_score.return_value = (
+                    TaskScoreTransitionResult(
+                        TaskScoreTransitionStatus.TRANSITIONED,
+                        -1,
+                    )
+                )
+
+                result = self.application.close_task(task_id=task_id)
+
+                self.assertEqual(TaskCloseResult(TaskCloseStatus.CLOSED), result)
+        self.assertNotIn(
+            "terminal_score",
+            inspect.signature(KernelApplication.close_task).parameters,
+        )
+
+    def test_close_task_is_idempotent_and_validates_identity(self) -> None:
+        self.application.start()
+        self.process._task_score.get_score_states.side_effect = (
+            {"task-1": TaskScoreState("task-1", -1, TaskScoreBand.TERMINAL, None, None)},
+            {"missing": None},
+        )
+
+        already_closed = self.application.close_task(task_id="task-1")
+        missing = self.application.close_task(task_id="missing")
+        invalid = self.application.close_task(task_id="")
+
+        self.assertEqual(TaskCloseStatus.ALREADY_CLOSED, already_closed.status)
+        self.assertEqual(TaskCloseStatus.NOT_FOUND, missing.status)
+        self.assertEqual(TaskCloseStatus.INVALID, invalid.status)
+
     @staticmethod
     def _task_descriptor(
         task_id: str = "task-1",
@@ -611,7 +668,7 @@ class KernelApplicationIntegrationTest(unittest.TestCase):
             redis_prefix=self.prefix,
             worker_allocation_interval_millis=10,
             running_activation_interval_millis=10,
-            task_item_dispatch_interval_millis=10,
+            task_dispatch_interval_millis=10,
             stop_timeout_millis=1_000,
         )
         self.resources_client = ResourcesCommandClient(self.config)
@@ -692,6 +749,27 @@ class KernelApplicationIntegrationTest(unittest.TestCase):
             },
             json.loads(seeds[0].opaque_delivery_item),
         )
+
+    def test_public_close_is_terminal_and_background_rounds_cannot_reopen(self) -> None:
+        task_id = "task-close"
+        self.application.start()
+        created = self.application.create_task(
+            descriptor=KernelApplicationTest._task_descriptor(task_id)
+        )
+
+        closed = self.application.close_task(task_id=task_id)
+        time.sleep(0.2)
+        stored_score = self.redis.zscore(
+            f"tr:{self.prefix}:task:score",
+            task_id,
+        )
+        closed_again = self.application.close_task(task_id=task_id)
+
+        self.assertEqual(TaskCreationStatus.CREATED, created.status)
+        self.assertEqual(TaskCloseStatus.CLOSED, closed.status)
+        self.assertIsNotNone(stored_score)
+        self.assertLess(int(stored_score), 0)
+        self.assertEqual(TaskCloseStatus.ALREADY_CLOSED, closed_again.status)
 
 
 if __name__ == "__main__":

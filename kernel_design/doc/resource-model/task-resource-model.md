@@ -83,9 +83,10 @@ and is not a second Task truth. The two forms cannot be mixed inside one Task.
 Append validates this contract once; claim and dispatch trust it rather than
 reclassifying every Item.
 
-Both types currently use periodic RUNNING scans and TaskItem dispatch.
-Append-trigger acceleration and type-specific termination are deferred
-policies, not hidden dimensions of the current Task type contract.
+Both types use periodic RUNNING scans and Task dispatch. Their empty behavior
+is part of the stable type bundle: TASK_DRIVEN closes after the configured
+consecutive empty limit, while ITEM_DRIVEN remains RUNNING for later append.
+Append-trigger acceleration and deadline-driven close remain deferred policies.
 
 `allocationRule` uses the independent constraint DSL and is evaluated by the
 bounded Worker matcher. Example:
@@ -233,7 +234,9 @@ TaskScoreBandCore.acquire_band_task_candidates(PRE_DISPATCH_VISIBLE, now, limit)
 Worker allocation:
 
 ```text
-TaskScoreBandCore.acquire_band_task_candidates(RUNNING_VISIBLE, now, limit)
+CandidateWarmupSchedule.acquire_candidate_warmups(now, limit)
+  -> TaskScoreBandCore.get_score_states(taskIds)
+  -> retain current RUNNING/non-hard-paused Tasks
   -> TaskResourceCatalog.load_task_allocation_descriptors(taskIds)
   -> retain taskType=TASK_DRIVEN
   -> group by workerGroupId
@@ -242,7 +245,18 @@ TaskScoreBandCore.acquire_band_task_candidates(RUNNING_VISIBLE, now, limit)
   -> append candidate evidence
 ```
 
-TaskItem dispatch:
+Every admitted Task enters `RUNNING_VISIBLE` with suffix `0`. In that band the
+suffix is the consecutive confirmed-empty recheck count: zero selects ordinary
+TaskItem dispatch, while a positive value selects low-frequency ACTIVE Item
+existence recheck. It is not `maxRetryTimes`; Item execution retry remains
+TaskItem-score truth.
+
+`TASK_DRIVEN` closes automatically after the configured number of consecutive
+empty observations. `ITEM_DRIVEN` remains RUNNING at the maximum recheck count
+until a new ACTIVE Item resets the count or an explicit close command arrives.
+Both Task types support `KernelApplication.close_task`.
+
+Task dispatch:
 
 ```text
 due record-backed Items

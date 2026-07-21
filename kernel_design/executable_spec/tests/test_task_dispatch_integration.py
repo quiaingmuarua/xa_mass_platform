@@ -32,8 +32,8 @@ from kernel_design.executable_spec import (
     TaskItem,
     TaskItemAppendResult,
     TaskItemAppendStatus,
-    TaskItemDispatchConfig,
-    TaskItemDispatchPacer,
+    TaskDispatchConfig,
+    TaskDispatchPacer,
     TaskRunningActivationConfig,
     TaskRunningActivationPacer,
     TaskWorkerAllocationConfig,
@@ -65,7 +65,7 @@ _REDIS_URL = os.environ.get("KERNEL_DESIGN_REDIS_URL")
     redis_module is not None and _REDIS_URL,
     "set KERNEL_DESIGN_REDIS_URL to run real Redis integration proof",
 )
-class TaskItemDispatchIntegrationTest(unittest.TestCase):
+class TaskDispatchIntegrationTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         assert redis_module is not None
@@ -159,7 +159,7 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             self.task_score,
             self.task_catalog,
         )
-        self.pacer = TaskItemDispatchPacer(
+        self.pacer = TaskDispatchPacer(
             self.task_score,
             self.task_catalog,
             self.deliver_seed_runtime,
@@ -212,10 +212,7 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
         )
         time.sleep((2 * self.task_score.SLOT_MILLIS + 20) / 1_000)
         activated = self.activation_pacer.activate_running_visible_tasks(
-            config=TaskRunningActivationConfig(
-                task_batch_limit=10,
-                running_visible_initial_suffix=8,
-            )
+            config=TaskRunningActivationConfig(task_batch_limit=10)
         )
         return created, approved, appended, activated
 
@@ -242,10 +239,7 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
         time.sleep((2 * self.task_score.SLOT_MILLIS + 20) / 1_000)
         activation_without_item = (
             self.activation_pacer.activate_running_visible_tasks(
-                config=TaskRunningActivationConfig(
-                    task_batch_limit=10,
-                    running_visible_initial_suffix=8,
-                )
+                config=TaskRunningActivationConfig(task_batch_limit=10)
             )
         )
         state_without_item = self.task_score.get_score_states(
@@ -257,10 +251,7 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
         )
         time.sleep((2 * self.task_score.SLOT_MILLIS + 20) / 1_000)
         activated = self.activation_pacer.activate_running_visible_tasks(
-            config=TaskRunningActivationConfig(
-                task_batch_limit=10,
-                running_visible_initial_suffix=8,
-            )
+            config=TaskRunningActivationConfig(task_batch_limit=10)
         )
         running_state = self.task_score.get_score_states(
             task_ids=(self.task_id,)
@@ -301,11 +292,13 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             )
         )
         time.sleep((self.worker_score.SLOT_MILLIS + 20) / 1_000)
-        dispatched_without_precomputation = self.pacer.dispatch_task_items(
-            config=TaskItemDispatchConfig(
+        dispatched_without_precomputation = self.pacer.dispatch_tasks(
+            config=TaskDispatchConfig(
                 task_batch_limit=10,
                 per_task_dispatch_limit=10,
                 item_claim_lease_duration_millis=3_000,
+                max_empty_recheck_times=5,
+                empty_recheck_interval_millis=1_000,
             )
         )
         task_state_before_warmup = self.task_score.get_score_states(
@@ -337,11 +330,13 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
         time.sleep((self.task_score.SLOT_MILLIS + 20) / 1_000)
 
         dispatch_started_millis = time.time_ns() // 1_000_000
-        dispatched = self.pacer.dispatch_task_items(
-            config=TaskItemDispatchConfig(
+        dispatched = self.pacer.dispatch_tasks(
+            config=TaskDispatchConfig(
                 task_batch_limit=10,
                 per_task_dispatch_limit=10,
                 item_claim_lease_duration_millis=3_000,
+                max_empty_recheck_times=5,
+                empty_recheck_interval_millis=1_000,
             )
         )
         candidate_count = self.candidate_cache.candidate_worker_counts(
@@ -503,11 +498,13 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
         )
         time.sleep((self.task_score.SLOT_MILLIS + 20) / 1_000)
 
-        dispatched = self.pacer.dispatch_task_items(
-            config=TaskItemDispatchConfig(
+        dispatched = self.pacer.dispatch_tasks(
+            config=TaskDispatchConfig(
                 task_batch_limit=10,
                 per_task_dispatch_limit=10,
                 item_claim_lease_duration_millis=3_000,
+                max_empty_recheck_times=5,
+                empty_recheck_interval_millis=1_000,
             )
         )
 
@@ -559,6 +556,156 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
                 {"target": f"worker-{index}"},
                 json.loads(seeds[0].opaque_delivery_item)["payload"],
             )
+
+    def test_task_driven_empty_rechecks_close_and_release_running_slot(self) -> None:
+        item = TaskItem(
+            message_id=self.message_id,
+            event_code="image.resize",
+            created_at_millis=time.time_ns() // 1_000_000 - 1_000,
+            payload={},
+        )
+        self._create_approve_append_activate(
+            descriptor=TaskDescriptor(
+                task_id=self.task_id,
+                worker_group_id="image-workers",
+                task_type=TaskType.TASK_DRIVEN,
+                allocation_rule={},
+                config={
+                    "priority": "80",
+                    "maximumCandidateWorkers": "1",
+                    "maxRetryTimes": "3",
+                },
+            ),
+            items=(item,),
+        )
+        self.item_score.promote_item_outcomes(
+            task_id=self.task_id,
+            message_ids=(self.message_id,),
+            target_band=TaskItemScoreBand.FINAL_SUCCESS,
+            target_time_millis=time.time_ns() // 1_000_000,
+        )
+        config = TaskDispatchConfig(
+            task_batch_limit=10,
+            per_task_dispatch_limit=10,
+            item_claim_lease_duration_millis=1_000,
+            max_empty_recheck_times=2,
+            empty_recheck_interval_millis=100,
+        )
+
+        time.sleep(0.12)
+        self.pacer.dispatch_tasks(config=config)
+        first = self.task_score.get_score_states(task_ids=(self.task_id,))[
+            self.task_id
+        ]
+        time.sleep(0.22)
+        self.pacer.dispatch_tasks(config=config)
+        second = self.task_score.get_score_states(task_ids=(self.task_id,))[
+            self.task_id
+        ]
+        time.sleep(0.32)
+        self.pacer.dispatch_tasks(config=config)
+        closed = self.task_score.get_score_states(task_ids=(self.task_id,))[
+            self.task_id
+        ]
+
+        self.assertEqual(1, first.suffix)
+        self.assertEqual(2, second.suffix)
+        self.assertEqual(TaskScoreBand.TERMINAL, closed.band)
+        self.assertEqual(0, self.task_score.count_running_visible_tasks())
+
+    def test_item_driven_empty_rechecks_resume_after_new_item(self) -> None:
+        self.worker_catalog.upsert_worker_group(
+            descriptor=WorkerGroupDescriptor(
+                worker_group_id="image-workers",
+                attributes={},
+                event_codes=frozenset({"image.resize"}),
+                item_allocation_fields=frozenset({"workerId"}),
+            )
+        )
+        self.worker_runtime.upsert_worker(
+            declaration=WorkerDeclaration(
+                worker_id="worker-1",
+                worker_group_id="image-workers",
+                endpoint_manager_id="endpoint-manager-1",
+                attributes={},
+                dynamic_attribute_names=frozenset(),
+            )
+        )
+        original = TaskItem(
+            message_id=self.message_id,
+            event_code="image.resize",
+            created_at_millis=time.time_ns() // 1_000_000 - 1_000,
+            payload={},
+            allocation_rule={"workerId": {"$eq": "worker-1"}},
+        )
+        self._create_approve_append_activate(
+            descriptor=TaskDescriptor(
+                task_id=self.task_id,
+                worker_group_id="image-workers",
+                task_type=TaskType.ITEM_DRIVEN,
+                allocation_rule=None,
+                config={
+                    "priority": "80",
+                    "maximumCandidateWorkers": "1",
+                    "maxRetryTimes": "3",
+                },
+            ),
+            items=(original,),
+        )
+        self.item_score.promote_item_outcomes(
+            task_id=self.task_id,
+            message_ids=(self.message_id,),
+            target_band=TaskItemScoreBand.FINAL_SUCCESS,
+            target_time_millis=time.time_ns() // 1_000_000,
+        )
+        config = TaskDispatchConfig(
+            task_batch_limit=10,
+            per_task_dispatch_limit=10,
+            item_claim_lease_duration_millis=1_000,
+            max_empty_recheck_times=2,
+            empty_recheck_interval_millis=100,
+        )
+
+        time.sleep(0.12)
+        self.pacer.dispatch_tasks(config=config)
+        time.sleep(0.22)
+        self.pacer.dispatch_tasks(config=config)
+        time.sleep(0.32)
+        self.pacer.dispatch_tasks(config=config)
+        held = self.task_score.get_score_states(task_ids=(self.task_id,))[
+            self.task_id
+        ]
+
+        resumed_item = TaskItem(
+            message_id="message-2",
+            event_code="image.resize",
+            created_at_millis=time.time_ns() // 1_000_000 - 1_000,
+            payload={"resume": True},
+            allocation_rule={"workerId": {"$eq": "worker-1"}},
+        )
+        self.task_runtime.append_items(task_id=self.task_id, items=(resumed_item,))
+        time.sleep(0.32)
+        reset_round = self.pacer.dispatch_tasks(config=config)
+        reset = self.task_score.get_score_states(task_ids=(self.task_id,))[
+            self.task_id
+        ]
+        time.sleep(0.12)
+        dispatched = self.pacer.dispatch_tasks(config=config)
+        seeds = self.deliver_seed_runtime.consume_deliver_seeds(
+            endpoint_manager_id="endpoint-manager-1",
+            limit=10,
+        )
+
+        self.assertEqual(TaskScoreBand.RUNNING_VISIBLE, held.band)
+        self.assertEqual(2, held.suffix)
+        self.assertEqual(0, reset_round)
+        self.assertEqual(0, reset.suffix)
+        self.assertEqual(1, dispatched)
+        self.assertEqual(1, len(seeds))
+        self.assertEqual(
+            "message-2",
+            json.loads(seeds[0].opaque_result_context)["messageId"],
+        )
 
 
 if __name__ == "__main__":

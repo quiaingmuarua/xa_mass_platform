@@ -470,7 +470,7 @@ class RedisTaskScoreBandCoreTest(unittest.TestCase):
         self.assertEqual(self.millis(1_000), state.time_millis)
         self.assertEqual(7, state.suffix)
 
-    def test_rewrite_observed_same_band_suffix_rejects_positive_delta(self) -> None:
+    def test_rewrite_observed_same_band_suffix_applies_positive_delta(self) -> None:
         running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 7)
         self.store_score("task", running)
 
@@ -482,10 +482,25 @@ class RedisTaskScoreBandCoreTest(unittest.TestCase):
         )
         state = self.kernel.get_score_states(task_ids=["task"])["task"]
 
-        self.assertEqual(TaskScoreTransitionStatus.INVALID, result.status)
+        self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, result.status)
         self.assertIsNotNone(state)
-        self.assertEqual(self.millis(1_000), state.time_millis)
-        self.assertEqual(7, state.suffix)
+        self.assertEqual(self.millis(1_002), state.time_millis)
+        self.assertEqual(8, state.suffix)
+
+    def test_rewrite_observed_same_band_suffix_rejects_suffix_delta_overflow(
+        self,
+    ) -> None:
+        running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 99)
+        self.store_score("task", running)
+
+        result = self.kernel.rewrite_observed_same_band_suffix(
+            task_id="task",
+            observed_score=running,
+            target_time_millis=self.millis(1_002),
+            suffix_delta=1,
+        )
+
+        self.assertEqual(TaskScoreTransitionStatus.INVALID, result.status)
 
     def test_rewrite_observed_same_band_suffix_rejects_stale_observed_score(
         self,

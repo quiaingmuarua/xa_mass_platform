@@ -9,10 +9,10 @@ from kernel_design.executable_spec import (
     TaskType,
     CandidateWorkerEntry,
     DeliverSeedRuntime,
+    TaskDispatchConfig,
+    TaskDispatchPacer,
     TaskDescriptor,
     TaskItem,
-    TaskItemDispatchConfig,
-    TaskItemDispatchPacer,
     TaskItemScoreBand,
     TaskItemScoreBandCore,
     TaskItemScoreTransitionResult,
@@ -21,6 +21,7 @@ from kernel_design.executable_spec import (
     TaskRuntime,
     TaskScoreBand,
     TaskScoreBandCore,
+    TaskScoreState,
 )
 from kernel_design.executable_spec.kernel.assignment_dispatch_runtime import (
     CandidateWarmupSchedule,
@@ -31,7 +32,7 @@ from kernel_design.executable_spec.scheduling.worker_candidate import (
 )
 
 
-class TaskItemDispatchPacerTest(unittest.TestCase):
+class TaskDispatchPacerTest(unittest.TestCase):
     NOW_MILLIS = 10_000
     CLAIM_UNTIL_MILLIS = 15_000
 
@@ -43,7 +44,7 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
         self.task_runtime = Mock(spec=TaskRuntime)
         self.candidate_acquirer = Mock(spec=WorkerCandidateAcquirer)
         self.warmup_schedule = Mock(spec=CandidateWarmupSchedule)
-        self.pacer = TaskItemDispatchPacer(
+        self.pacer = TaskDispatchPacer(
             self.task_score,
             self.task_catalog,
             self.deliver_seed_runtime,
@@ -52,10 +53,12 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
             self.candidate_acquirer,
             self.warmup_schedule,
         )
-        self.config = TaskItemDispatchConfig(
+        self.config = TaskDispatchConfig(
             task_batch_limit=10,
             per_task_dispatch_limit=3,
             item_claim_lease_duration_millis=5_000,
+            max_empty_recheck_times=5,
+            empty_recheck_interval_millis=1_000,
         )
 
     def test_contract_has_no_candidate_cache_or_worker_score_dependency(self) -> None:
@@ -70,7 +73,7 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
                 "candidate_warmup_schedule",
                 "delivery_item_encoder",
             },
-            set(inspect.signature(TaskItemDispatchPacer).parameters),
+            set(inspect.signature(TaskDispatchPacer).parameters),
         )
 
     def test_observes_items_then_acquires_workers_then_exact_claims(self) -> None:
@@ -113,7 +116,7 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
             "_current_time_millis",
             return_value=self.NOW_MILLIS,
         ):
-            appended = self.pacer.dispatch_task_items(config=self.config)
+            appended = self.pacer.dispatch_tasks(config=self.config)
 
         self.assertEqual(2, appended)
         self.assertEqual(
@@ -189,7 +192,7 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
             "_current_time_millis",
             return_value=self.NOW_MILLIS,
         ):
-            appended = self.pacer.dispatch_task_items(config=self.config)
+            appended = self.pacer.dispatch_tasks(config=self.config)
 
         self.assertEqual(1, appended)
         self.item_score.rewrite_observed_item_scores.assert_called_once_with(
@@ -215,7 +218,7 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
             "_current_time_millis",
             return_value=self.NOW_MILLIS,
         ):
-            appended = self.pacer.dispatch_task_items(config=self.config)
+            appended = self.pacer.dispatch_tasks(config=self.config)
 
         self.assertEqual(0, appended)
         self.item_score.rewrite_observed_item_scores.assert_not_called()
@@ -266,7 +269,7 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
             "_current_time_millis",
             return_value=self.NOW_MILLIS,
         ):
-            appended = self.pacer.dispatch_task_items(config=self.config)
+            appended = self.pacer.dispatch_tasks(config=self.config)
 
         self.assertEqual(2, appended)
         acquisition_call = self.candidate_acquirer.acquire_worker_candidates.call_args
@@ -302,13 +305,14 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
             "missing": (102, 2),
         }
         self.task_runtime.load_task_items.return_value = {"missing": None}
+        self.item_score.has_active_items.return_value = {"task-1": True}
 
         with patch.object(
             self.pacer,
             "_current_time_millis",
             return_value=self.NOW_MILLIS,
         ):
-            appended = self.pacer.dispatch_task_items(config=self.config)
+            appended = self.pacer.dispatch_tasks(config=self.config)
 
         self.assertEqual(0, appended)
         self.item_score.promote_item_outcomes.assert_called_once_with(
@@ -335,7 +339,7 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
             "_current_time_millis",
             return_value=self.NOW_MILLIS,
         ):
-            appended = self.pacer.dispatch_task_items(config=self.config)
+            appended = self.pacer.dispatch_tasks(config=self.config)
 
         self.assertEqual(0, appended)
         self.item_score.acquire_item_score_candidates.assert_not_called()
@@ -351,14 +355,28 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
             "missing": None,
             "task-2": self._descriptor("task-2"),
         }
+        self.task_score.get_score_states.return_value = {
+            task_id: TaskScoreState(
+                task_id=task_id,
+                score=100 + index,
+                band=TaskScoreBand.RUNNING_VISIBLE,
+                time_millis=9_000,
+                suffix=0,
+            )
+            for index, task_id in enumerate(("task-2", "task-1"))
+        }
         self.item_score.acquire_item_score_candidates.return_value = {}
+        self.item_score.has_active_items.return_value = {
+            "task-2": True,
+            "task-1": True,
+        }
 
         with patch.object(
             self.pacer,
             "_current_time_millis",
             return_value=self.NOW_MILLIS,
         ):
-            appended = self.pacer.dispatch_task_items(config=self.config)
+            appended = self.pacer.dispatch_tasks(config=self.config)
 
         self.assertEqual(0, appended)
         self.assertEqual(
@@ -403,7 +421,7 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
             "_current_time_millis",
             return_value=self.NOW_MILLIS,
         ), self.assertRaisesRegex(RuntimeError, "queue unavailable"):
-            self.pacer.dispatch_task_items(config=self.config)
+            self.pacer.dispatch_tasks(config=self.config)
 
         self.task_score.rewrite_same_band_time_millis.assert_called_once_with(
             task_id="task-1",
@@ -412,22 +430,140 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
         )
 
     def test_non_positive_config_is_rejected(self) -> None:
-        invalid = ((0, 1, 1), (1, 0, 1), (1, 1, 0))
+        invalid = (
+            (0, 1, 1, 1, 1),
+            (1, 0, 1, 1, 1),
+            (1, 1, 0, 1, 1),
+            (1, 1, 1, 0, 1),
+            (1, 1, 1, 100, 1),
+            (1, 1, 1, 1, 0),
+        )
         for values in invalid:
             with self.subTest(values=values), self.assertRaises(ValueError):
-                TaskItemDispatchConfig(
+                TaskDispatchConfig(
                     task_batch_limit=values[0],
                     per_task_dispatch_limit=values[1],
                     item_claim_lease_duration_millis=values[2],
+                    max_empty_recheck_times=values[3],
+                    empty_recheck_interval_millis=values[4],
                 )
+
+    def test_empty_task_starts_linear_recheck_count(self) -> None:
+        self._prepare_task("task-1")
+        self.item_score.acquire_item_score_candidates.return_value = {}
+        self.item_score.has_active_items.return_value = {"task-1": False}
+
+        with patch.object(
+            self.pacer,
+            "_current_time_millis",
+            return_value=self.NOW_MILLIS,
+        ):
+            appended = self.pacer.dispatch_tasks(config=self.config)
+
+        self.assertEqual(0, appended)
+        self.task_score.rewrite_observed_same_band_suffix.assert_called_once_with(
+            task_id="task-1",
+            observed_score=100,
+            target_time_millis=11_000,
+            suffix_delta=1,
+        )
+
+    def test_recheck_task_with_active_item_resets_count_without_dispatch(self) -> None:
+        self._prepare_task("task-1", suffix=2, score=102)
+        self.item_score.has_active_items.return_value = {"task-1": True}
+
+        with patch.object(
+            self.pacer,
+            "_current_time_millis",
+            return_value=self.NOW_MILLIS,
+        ):
+            appended = self.pacer.dispatch_tasks(config=self.config)
+
+        self.assertEqual(0, appended)
+        self.item_score.acquire_item_score_candidates.assert_not_called()
+        self.candidate_acquirer.acquire_worker_candidates.assert_not_called()
+        self.task_score.rewrite_observed_same_band_suffix.assert_called_once_with(
+            task_id="task-1",
+            observed_score=102,
+            target_time_millis=self.NOW_MILLIS,
+            suffix_delta=-2,
+        )
+
+    def test_empty_recheck_uses_count_times_interval(self) -> None:
+        self._prepare_task("task-1", suffix=2, score=102)
+        self.item_score.has_active_items.return_value = {"task-1": False}
+
+        with patch.object(
+            self.pacer,
+            "_current_time_millis",
+            return_value=self.NOW_MILLIS,
+        ):
+            self.pacer.dispatch_tasks(config=self.config)
+
+        self.task_score.rewrite_observed_same_band_suffix.assert_called_once_with(
+            task_id="task-1",
+            observed_score=102,
+            target_time_millis=13_000,
+            suffix_delta=1,
+        )
+
+    def test_task_driven_empty_recheck_limit_closes_task(self) -> None:
+        self._prepare_task("task-1", suffix=5, score=105)
+        self.item_score.has_active_items.return_value = {"task-1": False}
+
+        with patch.object(
+            self.pacer,
+            "_current_time_millis",
+            return_value=self.NOW_MILLIS,
+        ):
+            self.pacer.dispatch_tasks(config=self.config)
+
+        self.task_score.close_score.assert_called_once_with(
+            task_id="task-1",
+            terminal_score=TaskScoreBandCore.TERMINAL_SCORE_MAX,
+        )
+
+    def test_item_driven_empty_recheck_limit_stays_running(self) -> None:
+        self._prepare_task(
+            "task-1",
+            task_type=TaskType.ITEM_DRIVEN,
+            suffix=5,
+            score=105,
+        )
+        self.item_score.has_active_items.return_value = {"task-1": False}
+
+        with patch.object(
+            self.pacer,
+            "_current_time_millis",
+            return_value=self.NOW_MILLIS,
+        ):
+            self.pacer.dispatch_tasks(config=self.config)
+
+        self.task_score.close_score.assert_not_called()
+        self.task_score.rewrite_same_band_time_millis.assert_called_once_with(
+            task_id="task-1",
+            expected_band=TaskScoreBand.RUNNING_VISIBLE,
+            target_time_millis=15_000,
+        )
 
     def _prepare_task(
         self,
         task_id: str,
         *,
         task_type: TaskType = TaskType.TASK_DRIVEN,
+        suffix: int = 0,
+        score: int = 100,
     ) -> None:
         self.task_score.acquire_dispatch_work_tasks.return_value = (task_id,)
+        self.task_score.get_score_states.return_value = {
+            task_id: TaskScoreState(
+                task_id=task_id,
+                score=score,
+                band=TaskScoreBand.RUNNING_VISIBLE,
+                time_millis=9_000,
+                suffix=suffix,
+            )
+        }
         self.task_catalog.load_task_allocation_descriptors.return_value = {
             task_id: self._descriptor(
                 task_id,

@@ -78,7 +78,6 @@ class TaskScoreBandCore(ABC):
     MIN_TIME_SLOT: ClassVar[int] = 0
     TIME_SCALE: ClassVar[int] = 10
     SLOT_MILLIS: ClassVar[int] = 1_000 // TIME_SCALE
-    EXHAUSTED_SUFFIX: ClassVar[int] = 0
     MIN_SUFFIX: ClassVar[int] = 0
     MAX_SUFFIX: ClassVar[int] = 99
     SUFFIX_FACTOR: ClassVar[int] = 100
@@ -211,8 +210,8 @@ class TaskScoreBandCore(ABC):
 
         The stored score must still equal observed_score, otherwise the round is
         stale and must not overwrite newer same-band classification.
-        suffix_delta must be negative; positive suffix movement is an explicit
-        owner rewrite, not this observed-round primitive.
+        suffix_delta must be non-zero. The caller owns suffix meaning; the score
+        core only validates the resulting suffix range and increasing time.
         """
         pass
 

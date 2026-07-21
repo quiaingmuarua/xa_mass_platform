@@ -56,7 +56,7 @@ class ResourcesCommandClientTest(unittest.TestCase):
             redis_prefix="resources-test",
             worker_allocation_interval_millis=11,
             running_activation_interval_millis=12,
-            task_item_dispatch_interval_millis=13,
+            task_dispatch_interval_millis=13,
             stop_timeout_millis=14,
         )
         self.client = ResourcesCommandClient(self.config)

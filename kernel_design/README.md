@@ -463,7 +463,7 @@ no hidden compatibility path or second mainline remains
 - [Task-Worker Allocation Pacer](doc/scheduling/task-worker-allocation-pacer.md)
   - RUNNING-only Task scan, bounded Worker lease/match, candidate publication,
     and same-band time rotation.
-- [Task Item Dispatch Pacer](doc/scheduling/task-item-dispatch-pacer.md)
+- [Task Dispatch Pacer](doc/scheduling/task-dispatch-pacer.md)
   - candidate consumption, Item score claim, dispatch-time Worker lease
     validation/renewal, and DeliverSeed queue append.
 - [Kernel Application Assembly](doc/kernel-application-assembly.md)

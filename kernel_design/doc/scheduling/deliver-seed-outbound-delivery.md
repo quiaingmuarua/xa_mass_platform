@@ -3,7 +3,7 @@
 Status: active new-kernel boundary contract; Python executable spec and Local
 Function Adapter implemented; production transport policy deferred.
 
-Upstream contract: [Task Item Dispatch Pacer](task-item-dispatch-pacer.md).
+Upstream contract: [Task Dispatch Pacer](task-dispatch-pacer.md).
 Worker lease contract:
 [Worker HOT_ACQUIRE Lease Protocol](worker-hot-acquire-lease-protocol.md).
 External process contract:

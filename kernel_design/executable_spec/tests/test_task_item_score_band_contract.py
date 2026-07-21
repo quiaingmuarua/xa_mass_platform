@@ -54,6 +54,7 @@ class TaskItemScoreBandContractTest(unittest.TestCase):
             "initialize_item_scores",
             "acquire_item_score_candidates",
             "has_due_active_items",
+            "has_active_items",
             "rewrite_observed_item_scores",
             "promote_item_outcomes",
             "get_item_score_states",
@@ -85,6 +86,14 @@ class TaskItemScoreBandContractTest(unittest.TestCase):
             set(
                 inspect.signature(
                     TaskItemScoreBandCore.has_due_active_items
+                ).parameters
+            ),
+        )
+        self.assertEqual(
+            {"self", "task_ids"},
+            set(
+                inspect.signature(
+                    TaskItemScoreBandCore.has_active_items
                 ).parameters
             ),
         )

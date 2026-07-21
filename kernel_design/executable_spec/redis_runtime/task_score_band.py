@@ -293,7 +293,7 @@ return {"transitioned", tonumber(next_score)}
         target_time_millis: TimeMillis,
         suffix_delta: int,
     ) -> TaskScoreTransitionResult:
-        if suffix_delta >= 0:
+        if suffix_delta == 0:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
         if not self._valid_time_millis(target_time_millis):
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)

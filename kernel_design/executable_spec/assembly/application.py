@@ -8,7 +8,7 @@ from threading import Lock
 from typing import Any
 
 from ..scheduling import (
-    TaskItemDispatchConfig,
+    TaskDispatchConfig,
     TaskRunningActivationConfig,
     TaskWorkerAllocationConfig,
 )
@@ -51,9 +51,10 @@ _APPROVED_PRE_DISPATCH_SUFFIX = 0
 _TASK_BATCH_LIMIT = 100
 _WORKER_SCAN_LIMIT = 100
 _WORKER_LEASE_DURATION_MILLIS = 5_000
-_RUNNING_VISIBLE_INITIAL_SUFFIX = 5
 _PER_TASK_DISPATCH_LIMIT = 100
 _ITEM_CLAIM_LEASE_DURATION_MILLIS = 5_000
+_MAX_EMPTY_RECHECK_TIMES = 5
+_EMPTY_RECHECK_INTERVAL_MILLIS = 1_000
 _RESULT_ROUTING_PER_OUTCOME_BATCH_LIMIT = 100
 
 
@@ -94,7 +95,7 @@ class KernelApplicationConfig:
     redis_prefix: str = _DEFAULT_REDIS_PREFIX
     worker_allocation_interval_millis: int = _DEFAULT_PACER_INTERVAL_MILLIS
     running_activation_interval_millis: int = _DEFAULT_PACER_INTERVAL_MILLIS
-    task_item_dispatch_interval_millis: int = _DEFAULT_PACER_INTERVAL_MILLIS
+    task_dispatch_interval_millis: int = _DEFAULT_PACER_INTERVAL_MILLIS
     result_routing_interval_millis: int = _DEFAULT_RESULT_ROUTING_INTERVAL_MILLIS
     running_task_soft_limit: int = _DEFAULT_RUNNING_TASK_SOFT_LIMIT
     stop_timeout_millis: int = _DEFAULT_STOP_TIMEOUT_MILLIS
@@ -111,8 +112,8 @@ class KernelApplicationConfig:
             name="running activation interval",
         )
         _positive_integer(
-            self.task_item_dispatch_interval_millis,
-            name="TaskItem dispatch interval",
+            self.task_dispatch_interval_millis,
+            name="Task dispatch interval",
         )
         _positive_integer(
             self.result_routing_interval_millis,
@@ -165,7 +166,7 @@ class KernelApplicationConfig:
                 {
                     "workerAllocationIntervalMillis",
                     "runningActivationIntervalMillis",
-                    "taskItemDispatchIntervalMillis",
+                    "taskDispatchIntervalMillis",
                 }
             ),
             name="assignmentDispatch config",
@@ -213,12 +214,12 @@ class KernelApplicationConfig:
                 ),
                 name="running activation interval",
             ),
-            task_item_dispatch_interval_millis=_positive_integer(
+            task_dispatch_interval_millis=_positive_integer(
                 scheduling_config.get(
-                    "taskItemDispatchIntervalMillis",
-                    defaults.task_item_dispatch_interval_millis,
+                    "taskDispatchIntervalMillis",
+                    defaults.task_dispatch_interval_millis,
                 ),
-                name="TaskItem dispatch interval",
+                name="Task dispatch interval",
             ),
             result_routing_interval_millis=_positive_integer(
                 result_routing_config.get(
@@ -256,6 +257,20 @@ class TaskApprovalStatus(Enum):
 @dataclass(frozen=True, slots=True)
 class TaskApprovalResult:
     status: TaskApprovalStatus
+    reason: str | None = None
+
+
+class TaskCloseStatus(Enum):
+    CLOSED = "closed"
+    ALREADY_CLOSED = "already_closed"
+    NOT_FOUND = "not_found"
+    RETRYABLE = "retryable"
+    INVALID = "invalid"
+
+
+@dataclass(frozen=True, slots=True)
+class TaskCloseResult:
+    status: TaskCloseStatus
     reason: str | None = None
 
 
@@ -306,6 +321,34 @@ class _TaskLifecycleManager:
         return TaskApprovalResult(
             TaskApprovalStatus.RETRYABLE,
             "task score changed during approval",
+        )
+
+    def close_task(self, *, task_id: TaskId) -> TaskCloseResult:
+        if not isinstance(task_id, str) or not task_id:
+            return TaskCloseResult(TaskCloseStatus.INVALID, "task id is required")
+
+        state = self._task_score.get_score_states(task_ids=(task_id,)).get(task_id)
+        if state is None:
+            return TaskCloseResult(TaskCloseStatus.NOT_FOUND)
+        if state.band is TaskScoreBand.TERMINAL:
+            return TaskCloseResult(TaskCloseStatus.ALREADY_CLOSED)
+
+        transition = self._task_score.close_score(
+            task_id=task_id,
+            terminal_score=TaskScoreBandCore.TERMINAL_SCORE_MAX,
+        )
+        if transition.status is TaskScoreTransitionStatus.TRANSITIONED:
+            return TaskCloseResult(TaskCloseStatus.CLOSED)
+        if transition.status is TaskScoreTransitionStatus.NOOP:
+            return TaskCloseResult(TaskCloseStatus.ALREADY_CLOSED)
+        if transition.status is TaskScoreTransitionStatus.INVALID:
+            return TaskCloseResult(
+                TaskCloseStatus.INVALID,
+                "task close transition was rejected",
+            )
+        return TaskCloseResult(
+            TaskCloseStatus.RETRYABLE,
+            "task score changed during close",
         )
 
     @staticmethod
@@ -386,6 +429,10 @@ class KernelApplication:
     def approve_task(self, *, task_id: TaskId) -> TaskApprovalResult:
         self._require_started()
         return self._task_lifecycle.approve_task(task_id=task_id)
+
+    def close_task(self, *, task_id: TaskId) -> TaskCloseResult:
+        self._require_started()
+        return self._task_lifecycle.close_task(task_id=task_id)
 
     def append_task_items(
         self,
@@ -505,13 +552,16 @@ class KernelApplication:
                 ),
                 running_activation=TaskRunningActivationConfig(
                     task_batch_limit=_TASK_BATCH_LIMIT,
-                    running_visible_initial_suffix=_RUNNING_VISIBLE_INITIAL_SUFFIX,
                 ),
-                task_item_dispatch=TaskItemDispatchConfig(
+                task_dispatch=TaskDispatchConfig(
                     task_batch_limit=_TASK_BATCH_LIMIT,
                     per_task_dispatch_limit=_PER_TASK_DISPATCH_LIMIT,
                     item_claim_lease_duration_millis=(
                         _ITEM_CLAIM_LEASE_DURATION_MILLIS
+                    ),
+                    max_empty_recheck_times=_MAX_EMPTY_RECHECK_TIMES,
+                    empty_recheck_interval_millis=(
+                        _EMPTY_RECHECK_INTERVAL_MILLIS
                     ),
                 ),
                 worker_allocation_interval_millis=(
@@ -520,8 +570,8 @@ class KernelApplication:
                 running_activation_interval_millis=(
                     config.running_activation_interval_millis
                 ),
-                task_item_dispatch_interval_millis=(
-                    config.task_item_dispatch_interval_millis
+                task_dispatch_interval_millis=(
+                    config.task_dispatch_interval_millis
                 ),
             ),
             result_routing=ResultRoutingApplicationConfig(

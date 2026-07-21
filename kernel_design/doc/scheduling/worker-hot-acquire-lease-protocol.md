@@ -6,7 +6,7 @@ implemented; policy coverage partial.
 Parent contract: [Worker Score-Band Scheduling](worker-score-band-scheduling.md).
 Related pacers:
 [Task Worker Allocation Pacer](task-worker-allocation-pacer.md),
-[TaskItem Dispatch Pacer](task-item-dispatch-pacer.md), and
+[Task Dispatch Pacer](task-dispatch-pacer.md), and
 [Result-Routing Scheduling](result-routing-scheduling.md).
 
 ## Purpose
@@ -115,7 +115,7 @@ The returned fence, unchanged or renewed, is written into
 `opaqueResultContext`.
 
 PRECOMPUTED miss or rejected evidence never falls back to TARGETED acquisition.
-TaskItemDispatchPacer never calls Worker score directly. It chooses one path
+TaskDispatchPacer never calls Worker score directly. It chooses one path
 from `TaskDescriptor.taskType`: PRECOMPUTED for Task-owned rules or
 TARGETED for Item-owned rules. Neither the Pacer nor PRECOMPUTED acquisition
 decodes scores, clears dirty, or releases rejected candidates.
@@ -241,7 +241,7 @@ cross-owner transaction.
 | WorkerCandidateAcquirer TARGETED | explicit point/index source, exact lease and full match | no cache read/write or fallback |
 | WorkerCandidateAcquirer PRECOMPUTED | cache consume, exact active-fence validation/renewal and rematch | no HOT scan or fallback |
 | TaskWorkerAllocationPacer | retain Task-owned rule Tasks, acquire HOT-pool candidates and publish cache evidence | no direct Worker-score or result handling |
-| TaskItemDispatchPacer | resolve PRECOMPUTED/TARGETED from immutable TaskType, preserve binding, claim and publish DeliverSeed | no cache/Worker-score access or release |
+| TaskDispatchPacer | resolve PRECOMPUTED/TARGETED from immutable TaskType, preserve binding, claim and publish DeliverSeed | no cache/Worker-score access or release |
 | External Adapter | local final-hop observation and execution evidence | no score parsing or mutation |
 | ResultRoutingPacer | bounded consume, context decode, owner-key grouping and handler delegation | no direct Task/Worker owner dependency, Worker selection or exact subcode policy |
 | Result-routing handlers | owner-local Task finality and Worker disposition policy | no queue ownership, score decoding or cross-owner truth |
@@ -258,7 +258,7 @@ payload.
 - Do not expose score encoding, dirty bit, sign or timeSlot to callers.
 - Do not let active renewal clear dirty.
 - Do not let PRECOMPUTED acquisition fall back to TARGETED acquisition.
-- Do not let TaskItemDispatchPacer call WorkerScoreCore directly.
+- Do not let TaskDispatchPacer call WorkerScoreCore directly.
 - Do not release rejected dispatch candidates as compensation.
 - Do not treat missing result as `3xxx`.
 - Do not let old result evidence mutate a newer Worker lease.

@@ -63,7 +63,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
             redis_prefix=self.prefix,
             worker_allocation_interval_millis=500,
             running_activation_interval_millis=10,
-            task_item_dispatch_interval_millis=10,
+            task_dispatch_interval_millis=10,
             result_routing_interval_millis=10,
             stop_timeout_millis=1_000,
         )

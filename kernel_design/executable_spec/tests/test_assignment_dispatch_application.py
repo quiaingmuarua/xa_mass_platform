@@ -8,8 +8,8 @@ from time import monotonic, sleep
 from unittest.mock import Mock, call
 
 from kernel_design.executable_spec.scheduling import (
-    TaskItemDispatchConfig,
-    TaskItemDispatchPacer,
+    TaskDispatchConfig,
+    TaskDispatchPacer,
     TaskRunningActivationConfig,
     TaskRunningActivationPacer,
     TaskWorkerAllocationConfig,
@@ -25,11 +25,11 @@ class AssignmentDispatchApplicationTest(unittest.TestCase):
     def setUp(self) -> None:
         self.worker_allocation_pacer = Mock(spec=TaskWorkerAllocationPacer)
         self.running_activation_pacer = Mock(spec=TaskRunningActivationPacer)
-        self.task_item_dispatch_pacer = Mock(spec=TaskItemDispatchPacer)
+        self.task_dispatch_pacer = Mock(spec=TaskDispatchPacer)
         self.application = AssignmentDispatchApplication(
             self.worker_allocation_pacer,
             self.running_activation_pacer,
-            self.task_item_dispatch_pacer,
+            self.task_dispatch_pacer,
         )
 
     def tearDown(self) -> None:
@@ -40,10 +40,10 @@ class AssignmentDispatchApplicationTest(unittest.TestCase):
             [
                 "worker_allocation",
                 "running_activation",
-                "task_item_dispatch",
+                "task_dispatch",
                 "worker_allocation_interval_millis",
                 "running_activation_interval_millis",
-                "task_item_dispatch_interval_millis",
+                "task_dispatch_interval_millis",
             ],
             [field.name for field in fields(AssignmentDispatchApplicationConfig)],
         )
@@ -61,7 +61,7 @@ class AssignmentDispatchApplicationTest(unittest.TestCase):
                 for pacer_method in (
                     self.worker_allocation_pacer.allocate_candidate_workers,
                     self.running_activation_pacer.activate_running_visible_tasks,
-                    self.task_item_dispatch_pacer.dispatch_task_items,
+                    self.task_dispatch_pacer.dispatch_tasks,
                 )
             )
         )
@@ -76,8 +76,8 @@ class AssignmentDispatchApplicationTest(unittest.TestCase):
             self.running_activation_pacer.activate_running_visible_tasks.call_args_list,
         )
         self.assertEqual(
-            [call(config=config.task_item_dispatch)],
-            self.task_item_dispatch_pacer.dispatch_task_items.call_args_list,
+            [call(config=config.task_dispatch)],
+            self.task_dispatch_pacer.dispatch_tasks.call_args_list,
         )
         call_counts = self.pacer_call_counts()
         sleep(0.03)
@@ -156,25 +156,24 @@ class AssignmentDispatchApplicationTest(unittest.TestCase):
                 task_batch_limit=10,
                 worker_lease_duration_millis=5_000,
             ),
-            running_activation=TaskRunningActivationConfig(
-                task_batch_limit=10,
-                running_visible_initial_suffix=5,
-            ),
-            task_item_dispatch=TaskItemDispatchConfig(
+            running_activation=TaskRunningActivationConfig(task_batch_limit=10),
+            task_dispatch=TaskDispatchConfig(
                 task_batch_limit=10,
                 per_task_dispatch_limit=20,
                 item_claim_lease_duration_millis=5_000,
+                max_empty_recheck_times=5,
+                empty_recheck_interval_millis=1_000,
             ),
             worker_allocation_interval_millis=intervals[0],
             running_activation_interval_millis=intervals[1],
-            task_item_dispatch_interval_millis=intervals[2],
+            task_dispatch_interval_millis=intervals[2],
         )
 
     def pacer_call_counts(self) -> tuple[int, int, int]:
         return (
             self.worker_allocation_pacer.allocate_candidate_workers.call_count,
             self.running_activation_pacer.activate_running_visible_tasks.call_count,
-            self.task_item_dispatch_pacer.dispatch_task_items.call_count,
+            self.task_dispatch_pacer.dispatch_tasks.call_count,
         )
 
     def wait_until(

@@ -8,8 +8,8 @@ from threading import Event, Lock, Thread
 from time import monotonic
 
 from ..scheduling import (
-    TaskItemDispatchConfig,
-    TaskItemDispatchPacer,
+    TaskDispatchConfig,
+    TaskDispatchPacer,
     TaskRunningActivationConfig,
     TaskRunningActivationPacer,
     TaskWorkerAllocationConfig,
@@ -25,10 +25,10 @@ _RoundOperation = Callable[[], int]
 class AssignmentDispatchApplicationConfig:
     worker_allocation: TaskWorkerAllocationConfig
     running_activation: TaskRunningActivationConfig
-    task_item_dispatch: TaskItemDispatchConfig
+    task_dispatch: TaskDispatchConfig
     worker_allocation_interval_millis: int
     running_activation_interval_millis: int
-    task_item_dispatch_interval_millis: int
+    task_dispatch_interval_millis: int
 
     def __post_init__(self) -> None:
         if any(
@@ -36,7 +36,7 @@ class AssignmentDispatchApplicationConfig:
             for interval_millis in (
                 self.worker_allocation_interval_millis,
                 self.running_activation_interval_millis,
-                self.task_item_dispatch_interval_millis,
+                self.task_dispatch_interval_millis,
             )
         ):
             raise ValueError("assignment-dispatch intervals must be positive")
@@ -49,11 +49,11 @@ class AssignmentDispatchApplication:
         self,
         worker_allocation_pacer: TaskWorkerAllocationPacer,
         running_activation_pacer: TaskRunningActivationPacer,
-        task_item_dispatch_pacer: TaskItemDispatchPacer,
+        task_dispatch_pacer: TaskDispatchPacer,
     ) -> None:
         self.worker_allocation_pacer = worker_allocation_pacer
         self.running_activation_pacer = running_activation_pacer
-        self.task_item_dispatch_pacer = task_item_dispatch_pacer
+        self.task_dispatch_pacer = task_dispatch_pacer
         self._lifecycle_lock = Lock()
         self._stop_event: Event | None = None
         self._threads: tuple[Thread, ...] = ()
@@ -83,11 +83,11 @@ class AssignmentDispatchApplication:
                     ),
                 ),
                 (
-                    "task-item-dispatch",
-                    config.task_item_dispatch_interval_millis,
+                    "task-dispatch",
+                    config.task_dispatch_interval_millis,
                     partial(
-                        self.task_item_dispatch_pacer.dispatch_task_items,
-                        config=config.task_item_dispatch,
+                        self.task_dispatch_pacer.dispatch_tasks,
+                        config=config.task_dispatch,
                     ),
                 ),
             )

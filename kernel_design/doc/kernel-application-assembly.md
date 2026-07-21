@@ -41,6 +41,7 @@ KernelApplication
 create_task
 approve_task
 append_task_items
+close_task
 
 DeliverSeedConsumerClient
 consume_deliver_seeds
@@ -63,6 +64,10 @@ and set dirty=1 without releasing a hold.
 `approve_task` is an explicit lifecycle command that validates Task metadata
 and current score band, then requests `PRE_REVIEW -> PRE_DISPATCH_VISIBLE`. It
 returns `TaskApprovalResult` without exposing score evidence.
+`close_task` is the common explicit termination command for both Task types and
+all positive bands. It returns `TaskCloseResult`, chooses terminal score
+internally, is idempotent after terminal, and does not retract existing Item,
+DeliverSeed, or result evidence.
 `append_task_items` enforces the Task's immutable `taskType`.
 `TASK_DRIVEN` forbids Item rules; `ITEM_DRIVEN` requires them and validates each rule
 against the selected WorkerGroup `itemAllocationFields` and installed
@@ -104,7 +109,7 @@ The optional JSON contract is:
   "assignmentDispatch": {
     "workerAllocationIntervalMillis": 100,
     "runningActivationIntervalMillis": 100,
-    "taskItemDispatchIntervalMillis": 100
+    "taskDispatchIntervalMillis": 100
   },
   "resultRouting": {
     "intervalMillis": 100
@@ -118,7 +123,8 @@ The optional JSON contract is:
 
 Every field may be omitted. Unknown fields, malformed JSON, empty strings,
 wrong types, and non-positive numeric values fail during construction. Batch,
-scan, lease, claim, suffix, score, and lane policy remain internal constants.
+scan, lease, claim, score, lane, maximum empty-recheck count, and empty-recheck
+interval remain internal constants.
 `systemPolicy.runningTaskSoftLimit` is the one public policy setting in this
 slice; it defaults to `100` and must be a positive integer. It is a soft
 admission bound, not an atomic permit or hard capacity promise.
@@ -130,7 +136,7 @@ KernelApplication.start()
   -> reject duplicate start
   -> Redis PING fail-fast
   -> start result-routing loop
-  -> start allocation, activation, and Item-dispatch loops
+  -> start allocation, activation, and Task-dispatch loops
 
 KernelApplication.stop()
   -> no-op before start or after clean stop
@@ -158,7 +164,7 @@ redis-py pool while sharing the same URL, prefix, and Redis owner truth.
 AssignmentDispatchApplication
   -> worker-allocation loop
   -> running-activation loop
-  -> TaskItem-dispatch loop
+  -> Task-dispatch loop
 
 ResultRoutingApplication
   -> SeedResult-routing loop
@@ -181,8 +187,8 @@ The composition root also installs one Redis-backed
 `CandidateWarmupSchedule`. TASK_DRIVEN activation and PRECOMPUTED dispatch emit
 derived warmup hints; the worker-allocation loop consumes those hints and never
 uses Task score as its own cursor or writer. It only batch-validates current
-RUNNING/non-hard-pause state. TaskItem dispatch remains the routine owner of
-RUNNING same-band pacing.
+RUNNING/non-hard-pause state. Task dispatch owns RUNNING same-band pacing,
+exact empty-count increment/reset, and TASK_DRIVEN empty auto-close.
 
 Each assignment-dispatch loop has one non-daemon thread and its own configured
 interval. A loop executes its first bounded round immediately, runs at most one
@@ -221,9 +227,10 @@ ResourcesCommandClient
 ```
 
 The proof does not route through FastAPI, because HTTP translation is an
-example-host concern rather than scheduling truth. It also stops at Item result
-convergence: automatic Task termination and release of RUNNING soft-limit
-capacity remain a separate termination-policy contract.
+example-host concern rather than scheduling truth. Separate Redis proofs cover
+TASK_DRIVEN empty auto-close with RUNNING soft-limit release, ITEM_DRIVEN empty
+recheck followed by append and dispatch, and public close remaining terminal.
+Deadline-driven close remains deferred.
 
 ## External Hosts
 

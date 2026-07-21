@@ -202,6 +202,39 @@ return {"transitioned", target_score}
             for task_id, rows in zip(task_ids, rows_by_task, strict=True)
         }
 
+    def has_active_items(
+        self,
+        *,
+        task_ids: Sequence[TaskId],
+    ) -> Mapping[TaskId, bool]:
+        if not task_ids:
+            return {}
+
+        min_score = self._score(
+            self.ACTIVE_TAG,
+            self.MIN_TIME_SLOT,
+            self.MIN_REMAINING_BUDGET,
+        )
+        max_score = self._score(
+            self.ACTIVE_TAG,
+            self.MAX_TIME_SLOT,
+            self.MAX_REMAINING_BUDGET,
+        )
+        with self.redis.pipeline(transaction=False) as pipe:
+            for task_id in task_ids:
+                pipe.zrangebyscore(
+                    self._score_key(task_id),
+                    min_score,
+                    max_score,
+                    start=0,
+                    num=1,
+                )
+            rows_by_task = pipe.execute()
+        return {
+            task_id: bool(rows)
+            for task_id, rows in zip(task_ids, rows_by_task, strict=True)
+        }
+
     def rewrite_observed_item_scores(
         self,
         *,

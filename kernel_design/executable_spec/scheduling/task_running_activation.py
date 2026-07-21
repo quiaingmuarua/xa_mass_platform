@@ -23,17 +23,10 @@ class TaskRunningActivationConfig:
     """Bounds for one PRE_DISPATCH_VISIBLE activation round."""
 
     task_batch_limit: int
-    running_visible_initial_suffix: int
 
     def __post_init__(self) -> None:
         if self.task_batch_limit <= 0:
             raise ValueError("task batch limit must be positive")
-        if not (
-            TaskScoreBandCore.MIN_SUFFIX
-            < self.running_visible_initial_suffix
-            <= TaskScoreBandCore.MAX_SUFFIX
-        ):
-            raise ValueError("running visible initial suffix must be in 1..99")
 
 
 class TaskAdmissionPolicy(Protocol):
@@ -190,7 +183,7 @@ class TaskRunningActivationPacer:
                 expected_band=TaskScoreBand.PRE_DISPATCH_VISIBLE,
                 target_band=TaskScoreBand.RUNNING_VISIBLE,
                 target_time_millis=activation_time_millis,
-                target_suffix=config.running_visible_initial_suffix,
+                target_suffix=TaskScoreBandCore.MIN_SUFFIX,
             )
             if result.status is TaskScoreTransitionStatus.TRANSITIONED:
                 activated_task_ids.append(task_id)
