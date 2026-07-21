@@ -177,6 +177,13 @@ policies as dependencies; it does not inspect Worker capacity or candidate
 queues. A PRE_DISPATCH Task with a due Item may enter RUNNING before any Worker
 is registered. Worker allocation starts only after that transition.
 
+The composition root also installs one Redis-backed
+`CandidateWarmupSchedule`. TASK_DRIVEN activation and PRECOMPUTED dispatch emit
+derived warmup hints; the worker-allocation loop consumes those hints and never
+uses Task score as its own cursor or writer. It only batch-validates current
+RUNNING/non-hard-pause state. TaskItem dispatch remains the routine owner of
+RUNNING same-band pacing.
+
 Each assignment-dispatch loop has one non-daemon thread and its own configured
 interval. A loop executes its first bounded round immediately, runs at most one
 round at a time, waits for its interval after the round returns, and logs a

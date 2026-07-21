@@ -41,6 +41,9 @@ from kernel_design.executable_spec import (
 from kernel_design.executable_spec.scheduling.worker_candidate import (
     WorkerCandidateAcquirer,
 )
+from kernel_design.executable_spec.redis_runtime.assignment_dispatch import (
+    RedisCandidateWarmupSchedule,
+)
 
 
 _REDIS_URL = os.environ.get("KERNEL_DESIGN_REDIS_URL")
@@ -110,6 +113,10 @@ class TaskWorkerAllocationIntegrationTest(unittest.TestCase):
             self.redis,
             prefix=self.prefix,
         )
+        self.warmup_schedule = RedisCandidateWarmupSchedule(
+            self.redis,
+            prefix=self.prefix,
+        )
         candidate_acquirer = WorkerCandidateAcquirer(
             self.candidate_cache,
             self.worker_score,
@@ -121,6 +128,7 @@ class TaskWorkerAllocationIntegrationTest(unittest.TestCase):
             worker_scan_limit=10,
         )
         self.pacer = TaskWorkerAllocationPacer(
+            self.warmup_schedule,
             self.task_score,
             self.task_catalog,
             candidate_acquirer,
@@ -134,6 +142,7 @@ class TaskWorkerAllocationIntegrationTest(unittest.TestCase):
                 self.task_score,
                 running_task_soft_limit=100,
             ),
+            self.warmup_schedule,
         )
 
     def tearDown(self) -> None:
@@ -143,6 +152,7 @@ class TaskWorkerAllocationIntegrationTest(unittest.TestCase):
             f"tr:{self.prefix}:task:{self.task_id}:items",
             f"tr:{self.prefix}:task:{self.task_id}:item-score",
             f"ad:{self.prefix}:candidate:{self.task_id}:workers",
+            f"ad:{self.prefix}:candidate-warmups",
             f"wr:{self.prefix}:groups",
             f"wr:{self.prefix}:workers:{self.worker_group_id}",
             f"{self.worker_score_prefix}:{self.worker_group_id}",
@@ -290,7 +300,7 @@ class TaskWorkerAllocationIntegrationTest(unittest.TestCase):
         self.assertEqual(published, 1)
         self.assertEqual(published_while_reserved, 0)
         self.assertEqual(score_after_allocation.band, TaskScoreBand.RUNNING_VISIBLE)
-        self.assertGreater(
+        self.assertEqual(
             score_after_allocation.time_millis,
             running_state.time_millis,
         )

@@ -6,29 +6,68 @@ implemented; policy coverage partial.
 ## Purpose
 
 `TaskWorkerAllocationPacer` is a bounded cache warmer for stable Task-level
-rules:
+rules. It consumes disposable warmup hints rather than acquiring or leasing a
+Task:
 
 ```text
-RUNNING_VISIBLE Task scan
+due candidate-warmup TaskId
+  -> batch-read current Task score state
+  -> retain RUNNING_VISIBLE and non-hard-paused Tasks
   -> load Task allocation descriptor
   -> retain taskType=TASK_DRIVEN
   -> measure CandidateId cache count
   -> acquire the deficit from the HOT pool
   -> append expiring candidate evidence
-  -> same-band rotate considered RUNNING Tasks
+  -> requeue an incomplete warmup hint
 ```
 
-It does not process PRE_DISPATCH Tasks, decide Task activation, or serve
-Item-directed TARGETED requests.
+It uses Task score only as a bounded read-only eligibility truth. It does not
+acquire, lease, rotate, or rewrite Task score, process PRE_DISPATCH Tasks,
+decide Task activation, or serve Item-directed TARGETED requests.
+
+## Warmup Schedule
+
+`CandidateWarmupSchedule` is owner-local, derived evidence:
+
+```text
+schedule_candidate_warmups(taskIds, dueTimeMillis)
+consume_due_candidate_warmups(beforeTimeMillis, limit)
+```
+
+Redis uses one deduplicating ZSET:
+
+```text
+ad:{prefix}:candidate-warmups
+  member = taskId
+  score  = dueTimeMillis
+```
+
+The schedule is not Task truth, dispatch truth, or a replacement ready index.
+It may be lost or consumed more than once. Worker exact-score lease acquisition
+keeps duplicate warming safe, and later PRECOMPUTED cache consumption emits a
+new hint when evidence must be replenished.
+
+Hints are produced by:
+
+- a successful `TASK_DRIVEN` transition into `RUNNING_VISIBLE`;
+- a `TASK_DRIVEN` dispatch round after it consumes or misses PRECOMPUTED
+  candidates;
+- an incomplete warmer round, which requeues the Task for the next configured
+  warmer cadence.
+
+`ITEM_DRIVEN` never enters this schedule.
 
 ## Dependencies
 
 ```text
-TaskScoreBandCore
-  due RUNNING scan and same-band rotation
+CandidateWarmupSchedule
+  bounded due TaskId hints
 
 TaskResourceCatalog
   bounded Task allocation descriptors
+
+TaskScoreBandCore
+  bounded point-state read for RUNNING/non-hard-pause validation only
 
 WorkerCandidateAcquirer.acquire_hot_pool_candidates
   bounded HOT scan, exact lease, and complete Task-rule match
@@ -37,12 +76,13 @@ CandidateWorkerCache
   expiring TaskId-local evidence
 ```
 
-The Pacer does not depend directly on Worker score or matcher. Candidate
-acquisition owns those mechanisms; cache publication remains Pacer-owned.
+The Pacer does not mutate Task score and does not depend directly on Worker
+score or matcher. Candidate acquisition owns Worker mechanisms; cache
+publication remains Pacer-owned.
 
 ## Request Construction
 
-For each descriptor-backed `taskType=TASK_DRIVEN` RUNNING Task:
+For each descriptor-backed `taskType=TASK_DRIVEN` hint:
 
 ```text
 candidateId = taskId
@@ -56,17 +96,13 @@ WorkerCandidateRequest
   targetField = None
 ```
 
-Tasks with no descriptor or no deficit do not produce a request. Requests are
-grouped by `descriptor.workerGroupId`; one acquisition call never crosses
-Worker score queues.
+Tasks with no descriptor, the wrong TaskType, or no deficit do not produce a
+request. Requests are grouped by `descriptor.workerGroupId`; one acquisition
+call never crosses Worker score queues.
 
-`ITEM_DRIVEN` Tasks are excluded before cache count and request construction.
-Item-directed rules are never warmed by this Pacer.
+## Publication And Retry
 
-## Publication
-
-The Pacer invokes the explicit HOT-pool acquisition once per WorkerGroup and
-appends results independently:
+The Pacer appends acquired results under:
 
 ```text
 ad:{prefix}:candidate:{taskId}:workers
@@ -76,17 +112,12 @@ Cache expiry equals the Worker allocation lease deadline. Empty result tuples
 are not written. Return value is the number of Task CandidateIds for which at
 least one entry was appended.
 
+If the acquired count is below the requested deficit, the Pacer writes another
+currently-due warmup hint. The background-loop interval supplies retry cadence;
+there is no second retry-delay configuration.
+
 Every exact-leased Worker is consumed scheduling evidence. Unmatched Workers
 and append failures are not released; lease expiry restores HOT visibility.
-
-## Task Score Rotation
-
-Every scanned RUNNING Task is offered one same-band absolute-time rewrite,
-including missing descriptors, `ITEM_DRIVEN` Tasks, full caches, empty Worker
-scans, and no matches. Only `TASK_DRIVEN` can produce precomputed candidates;
-rotation of the complete bounded scan prevents filtered rows from permanently
-occupying the oldest window. The rewrite preserves Task band and suffix. A
-stale rewrite does not roll back already published candidates.
 
 ## Configuration
 
@@ -97,13 +128,16 @@ TaskWorkerAllocationConfig(
 )
 ```
 
-`worker_scan_limit` belongs to WorkerCandidateAcquirer construction, not to an
-acquisition request.
+The Task RUNNING soft limit bounds normal warmup cardinality. `task_batch_limit`
+is still a safety bound for one round, not a policy that selects only a subset
+of RUNNING Tasks forever. `worker_scan_limit` belongs to
+WorkerCandidateAcquirer construction.
 
 ## Guardrails
 
-- Scan only due `RUNNING_VISIBLE` Tasks.
 - Use `taskId` as the built-in stable CandidateId.
+- Do not use Task score as the warmup cursor. A bounded state read may reject
+  stale, non-RUNNING, or hard-paused hints; no Task-score write is allowed.
 - Do not consume cache to satisfy the prefetch request.
 - Keep HOT scan/lease/match inside `acquire_hot_pool_candidates`.
 - Do not let CandidateWorkerCache own limits, rules, matching, or Worker truth.

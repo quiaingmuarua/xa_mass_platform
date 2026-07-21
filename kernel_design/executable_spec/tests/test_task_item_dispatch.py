@@ -19,7 +19,11 @@ from kernel_design.executable_spec import (
     TaskItemScoreTransitionStatus,
     TaskResourceCatalog,
     TaskRuntime,
+    TaskScoreBand,
     TaskScoreBandCore,
+)
+from kernel_design.executable_spec.kernel.assignment_dispatch_runtime import (
+    CandidateWarmupSchedule,
 )
 from kernel_design.executable_spec.scheduling.worker_candidate import (
     WorkerCandidateAcquirer,
@@ -38,6 +42,7 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
         self.item_score = Mock(spec=TaskItemScoreBandCore)
         self.task_runtime = Mock(spec=TaskRuntime)
         self.candidate_acquirer = Mock(spec=WorkerCandidateAcquirer)
+        self.warmup_schedule = Mock(spec=CandidateWarmupSchedule)
         self.pacer = TaskItemDispatchPacer(
             self.task_score,
             self.task_catalog,
@@ -45,6 +50,7 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
             self.item_score,
             self.task_runtime,
             self.candidate_acquirer,
+            self.warmup_schedule,
         )
         self.config = TaskItemDispatchConfig(
             task_batch_limit=10,
@@ -61,6 +67,7 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
                 "item_score",
                 "task_runtime",
                 "candidate_acquirer",
+                "candidate_warmup_schedule",
                 "delivery_item_encoder",
             },
             set(inspect.signature(TaskItemDispatchPacer).parameters),
@@ -139,6 +146,15 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
             remaining_budget_delta=-1,
         )
         self.assertEqual(2, self.deliver_seed_runtime.append_deliver_seeds.call_count)
+        self.warmup_schedule.schedule_candidate_warmups.assert_called_once_with(
+            task_ids=("task-1",),
+            due_time_millis=self.NOW_MILLIS,
+        )
+        self.task_score.rewrite_same_band_time_millis.assert_called_once_with(
+            task_id="task-1",
+            expected_band=TaskScoreBand.RUNNING_VISIBLE,
+            target_time_millis=self.NOW_MILLIS,
+        )
         first_seed = self.deliver_seed_runtime.append_deliver_seeds.call_args_list[
             0
         ].kwargs["deliver_seeds"][0]
@@ -204,6 +220,10 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
         self.assertEqual(0, appended)
         self.item_score.rewrite_observed_item_scores.assert_not_called()
         self.deliver_seed_runtime.append_deliver_seeds.assert_not_called()
+        self.warmup_schedule.schedule_candidate_warmups.assert_called_once_with(
+            task_ids=("task-1",),
+            due_time_millis=self.NOW_MILLIS,
+        )
 
     def test_item_driven_task_uses_targeted_requests_without_flattening(self) -> None:
         self._prepare_task(
@@ -273,6 +293,7 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
             },
             published,
         )
+        self.warmup_schedule.schedule_candidate_warmups.assert_not_called()
 
     def test_exhausted_and_missing_records_do_not_request_workers(self) -> None:
         self._prepare_task("task-1")
@@ -297,6 +318,11 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
             target_time_millis=self.NOW_MILLIS,
         )
         self.candidate_acquirer.acquire_worker_candidates.assert_not_called()
+        self.task_score.rewrite_same_band_time_millis.assert_called_once_with(
+            task_id="task-1",
+            expected_band=TaskScoreBand.RUNNING_VISIBLE,
+            target_time_millis=self.NOW_MILLIS,
+        )
 
     def test_missing_descriptor_skips_item_observation(self) -> None:
         self.task_score.acquire_dispatch_work_tasks.return_value = ("task-1",)
@@ -341,6 +367,48 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
                 call(task_id="task-1", limit=3),
             ],
             self.item_score.acquire_item_score_candidates.call_args_list,
+        )
+        self.assertEqual(
+            ["task-2", "task-1"],
+            [
+                rewrite_call.kwargs["task_id"]
+                for rewrite_call in (
+                    self.task_score.rewrite_same_band_time_millis.call_args_list
+                )
+            ],
+        )
+
+    def test_queue_failure_still_reschedules_running_task(self) -> None:
+        self._prepare_task("task-1")
+        item = self._item("message-1")
+        self.item_score.acquire_item_score_candidates.return_value = {
+            "message-1": (101, 3)
+        }
+        self.task_runtime.load_task_items.return_value = {"message-1": item}
+        self.candidate_acquirer.acquire_worker_candidates.return_value = {
+            "task-1": (self._candidate("worker-1", "endpoint-1", 201),)
+        }
+        self.item_score.rewrite_observed_item_scores.return_value = {
+            "message-1": TaskItemScoreTransitionResult(
+                TaskItemScoreTransitionStatus.TRANSITIONED,
+                301,
+            )
+        }
+        self.deliver_seed_runtime.append_deliver_seeds.side_effect = RuntimeError(
+            "queue unavailable"
+        )
+
+        with patch.object(
+            self.pacer,
+            "_current_time_millis",
+            return_value=self.NOW_MILLIS,
+        ), self.assertRaisesRegex(RuntimeError, "queue unavailable"):
+            self.pacer.dispatch_task_items(config=self.config)
+
+        self.task_score.rewrite_same_band_time_millis.assert_called_once_with(
+            task_id="task-1",
+            expected_band=TaskScoreBand.RUNNING_VISIBLE,
+            target_time_millis=self.NOW_MILLIS,
         )
 
     def test_non_positive_config_is_rejected(self) -> None:

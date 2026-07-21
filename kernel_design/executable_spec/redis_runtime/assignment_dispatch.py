@@ -6,12 +6,13 @@ from typing import Any, Mapping, Sequence
 
 from ..kernel.assignment_dispatch_runtime import (
     CandidateId,
+    CandidateWarmupSchedule,
     CandidateWorkerCache,
     CandidateWorkerEntry,
     DeliverSeed,
     DeliverSeedRuntime,
 )
-from ..kernel.task_score_band import TimeMillis
+from ..kernel.task_score_band import TaskId, TimeMillis
 from ..kernel.worker_runtime import EndpointManagerId
 
 _CONSUME_CANDIDATES_SCRIPT = """
@@ -28,6 +29,73 @@ if #entries > 0 then
 end
 return entries
 """
+
+
+class RedisCandidateWarmupSchedule(CandidateWarmupSchedule):
+    """Redis ZSET schedule for disposable candidate-warmup hints."""
+
+    def __init__(
+        self,
+        redis_client: Any,
+        *,
+        prefix: str = "default",
+    ) -> None:
+        if not prefix:
+            raise ValueError("prefix must be non-empty")
+        self.redis = redis_client
+        self.prefix = prefix
+
+    def schedule_candidate_warmups(
+        self,
+        *,
+        task_ids: Sequence[TaskId],
+        due_time_millis: TimeMillis,
+    ) -> None:
+        unique_task_ids = tuple(dict.fromkeys(task_ids))
+        if any(not task_id for task_id in unique_task_ids):
+            raise ValueError("Task id must be non-empty")
+        if due_time_millis <= 0:
+            raise ValueError("candidate warmup due time must be positive")
+        if not unique_task_ids:
+            return
+        self.redis.zadd(
+            self._warmup_key(),
+            {task_id: due_time_millis for task_id in unique_task_ids},
+        )
+
+    def consume_due_candidate_warmups(
+        self,
+        *,
+        before_time_millis: TimeMillis,
+        limit: int,
+    ) -> tuple[TaskId, ...]:
+        if before_time_millis <= 0:
+            raise ValueError("candidate warmup cutoff must be positive")
+        if limit <= 0:
+            raise ValueError("candidate warmup limit must be positive")
+
+        raw_task_ids = self.redis.zrangebyscore(
+            self._warmup_key(),
+            "-inf",
+            before_time_millis,
+            start=0,
+            num=limit,
+        )
+        if not raw_task_ids:
+            return ()
+
+        # Warmup hints are derived evidence. Duplicate consumption is harmless:
+        # Worker exact-score lease acquisition remains the concurrency fence.
+        self.redis.zrem(self._warmup_key(), *raw_task_ids)
+        return tuple(
+            raw_task_id.decode("utf-8")
+            if isinstance(raw_task_id, bytes)
+            else raw_task_id
+            for raw_task_id in raw_task_ids
+        )
+
+    def _warmup_key(self) -> str:
+        return f"ad:{self.prefix}:candidate-warmups"
 
 
 class RedisCandidateWorkerCache(CandidateWorkerCache):

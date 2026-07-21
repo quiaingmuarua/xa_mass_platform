@@ -2,18 +2,22 @@ from __future__ import annotations
 
 import inspect
 import unittest
-from unittest.mock import Mock, call, patch
+from unittest.mock import Mock, patch
 
 from kernel_design.executable_spec import (
-    TaskType,
     CandidateWorkerCache,
     CandidateWorkerEntry,
     TaskDescriptor,
     TaskResourceCatalog,
     TaskScoreBand,
     TaskScoreBandCore,
+    TaskScoreState,
+    TaskType,
     TaskWorkerAllocationConfig,
     TaskWorkerAllocationPacer,
+)
+from kernel_design.executable_spec.kernel.assignment_dispatch_runtime import (
+    CandidateWarmupSchedule,
 )
 from kernel_design.executable_spec.scheduling.worker_candidate import (
     WorkerCandidateAcquirer,
@@ -24,20 +28,24 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
     NOW_MILLIS = 10_000
 
     def setUp(self) -> None:
+        self.warmup_schedule = Mock(spec=CandidateWarmupSchedule)
         self.task_score = Mock(spec=TaskScoreBandCore)
+        self.task_score.get_score_states.side_effect = self._running_states
         self.task_catalog = Mock(spec=TaskResourceCatalog)
         self.candidate_acquirer = Mock(spec=WorkerCandidateAcquirer)
         self.candidate_cache = Mock(spec=CandidateWorkerCache)
         self.pacer = TaskWorkerAllocationPacer(
+            self.warmup_schedule,
             self.task_score,
             self.task_catalog,
             self.candidate_acquirer,
             self.candidate_cache,
         )
 
-    def test_contract_uses_candidate_cache_and_shared_acquirer(self) -> None:
+    def test_contract_uses_derived_schedule_without_task_score_writes(self) -> None:
         self.assertEqual(
             {
+                "candidate_warmup_schedule",
                 "task_score",
                 "task_catalog",
                 "candidate_acquirer",
@@ -47,25 +55,24 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
         )
         self.assertEqual(
             {
-                "append_candidate_workers",
-                "candidate_worker_counts",
-                "consume_candidate_workers",
+                "schedule_candidate_warmups",
+                "consume_due_candidate_warmups",
             },
-            CandidateWorkerCache.__abstractmethods__,
+            CandidateWarmupSchedule.__abstractmethods__,
         )
 
-    def test_warms_task_id_candidate_cache_and_rotates_running_tasks(self) -> None:
-        self.task_score.acquire_band_task_candidates.return_value = (
+    def test_warms_deficit_and_requeues_only_incomplete_task(self) -> None:
+        self.warmup_schedule.consume_due_candidate_warmups.return_value = (
             "task-1",
             "task-2",
         )
-        self.candidate_cache.candidate_worker_counts.return_value = {
-            "task-1": 1,
-            "task-2": 5,
-        }
         self.task_catalog.load_task_allocation_descriptors.return_value = {
             "task-1": self._descriptor("task-1", maximum_candidates=3),
             "task-2": self._descriptor("task-2", maximum_candidates=5),
+        }
+        self.candidate_cache.candidate_worker_counts.return_value = {
+            "task-1": 1,
+            "task-2": 5,
         }
         entry = self._entry("worker-1")
         self.candidate_acquirer.acquire_hot_pool_candidates.return_value = {
@@ -75,105 +82,70 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
         with patch.object(
             self.pacer,
             "_current_time_millis",
-            side_effect=(self.NOW_MILLIS, self.NOW_MILLIS + 1, 10_002, 10_003),
+            return_value=self.NOW_MILLIS,
         ):
-            published = self.pacer.allocate_candidate_workers(
-                config=self._config(),
-            )
+            published = self.pacer.allocate_candidate_workers(config=self._config())
 
         self.assertEqual(1, published)
-        self.task_score.acquire_band_task_candidates.assert_called_once_with(
-            band=TaskScoreBand.RUNNING_VISIBLE,
+        self.warmup_schedule.consume_due_candidate_warmups.assert_called_once_with(
             before_time_millis=self.NOW_MILLIS,
             limit=10,
+        )
+        self.task_score.get_score_states.assert_called_once_with(
+            task_ids=("task-1", "task-2"),
         )
         self.candidate_cache.candidate_worker_counts.assert_called_once_with(
             candidate_ids=("task-1", "task-2"),
         )
-        acquisition_call = self.candidate_acquirer.acquire_hot_pool_candidates.call_args
-        request = acquisition_call.kwargs["candidate_requests"]["task-1"]
-        self.assertEqual(
-            "group-1",
-            acquisition_call.kwargs["worker_group_id"],
-        )
-        self.assertFalse(hasattr(request, "worker_group_id"))
-        self.assertEqual(80, request.priority)
+        acquisition = self.candidate_acquirer.acquire_hot_pool_candidates.call_args
+        request = acquisition.kwargs["candidate_requests"]["task-1"]
         self.assertEqual(2, request.requested_count)
-        self.assertIsNone(request.target_field)
-        self.assertEqual(
-            {"attributes.runtime": {"$eq": "python"}},
-            request.allocation_rule,
-        )
-        self.assertNotIn(
-            "task-2",
-            acquisition_call.kwargs["candidate_requests"],
-        )
-        self.assertEqual(
-            self.NOW_MILLIS + 1 + 5_000,
-            acquisition_call.kwargs["lease_until_millis"],
-        )
+        self.assertEqual(self.NOW_MILLIS + 5_000, acquisition.kwargs["lease_until_millis"])
         self.candidate_cache.append_candidate_workers.assert_called_once_with(
             candidate_id="task-1",
             candidate_workers=(entry,),
-            expires_at_millis=self.NOW_MILLIS + 1 + 5_000,
+            expires_at_millis=self.NOW_MILLIS + 5_000,
         )
-        self.assertEqual(
-            [
-                call(
-                    task_id="task-1",
-                    expected_band=TaskScoreBand.RUNNING_VISIBLE,
-                    target_time_millis=10_002,
-                ),
-                call(
-                    task_id="task-2",
-                    expected_band=TaskScoreBand.RUNNING_VISIBLE,
-                    target_time_millis=10_003,
-                ),
-            ],
-            self.task_score.rewrite_same_band_time_millis.call_args_list,
+        self.warmup_schedule.schedule_candidate_warmups.assert_called_once_with(
+            task_ids=("task-1",),
+            due_time_millis=self.NOW_MILLIS,
         )
 
-    def test_missing_descriptor_is_not_acquired_but_scan_is_rotated(self) -> None:
-        self.task_score.acquire_band_task_candidates.return_value = ("task-1",)
-        self.candidate_cache.candidate_worker_counts.return_value = {"task-1": 0}
+    def test_complete_acquisition_does_not_requeue_hint(self) -> None:
+        self.warmup_schedule.consume_due_candidate_warmups.return_value = ("task-1",)
         self.task_catalog.load_task_allocation_descriptors.return_value = {
-            "task-1": None
+            "task-1": self._descriptor("task-1", maximum_candidates=1),
+        }
+        self.candidate_cache.candidate_worker_counts.return_value = {"task-1": 0}
+        self.candidate_acquirer.acquire_hot_pool_candidates.return_value = {
+            "task-1": (self._entry("worker-1"),),
         }
 
         with patch.object(
             self.pacer,
             "_current_time_millis",
-            side_effect=(10_000, 10_001, 10_002),
+            return_value=self.NOW_MILLIS,
         ):
-            published = self.pacer.allocate_candidate_workers(
-                config=self._config(),
-            )
+            self.assertEqual(1, self.pacer.allocate_candidate_workers(config=self._config()))
 
-        self.assertEqual(0, published)
-        self.candidate_acquirer.acquire_hot_pool_candidates.assert_not_called()
-        self.candidate_cache.append_candidate_workers.assert_not_called()
-        self.task_score.rewrite_same_band_time_millis.assert_called_once()
+        self.warmup_schedule.schedule_candidate_warmups.assert_not_called()
 
     def test_calls_hot_pool_once_per_worker_group(self) -> None:
-        self.task_score.acquire_band_task_candidates.return_value = (
+        self.warmup_schedule.consume_due_candidate_warmups.return_value = (
             "task-1",
             "task-2",
         )
+        self.task_catalog.load_task_allocation_descriptors.return_value = {
+            "task-1": self._descriptor(
+                "task-1", maximum_candidates=1, worker_group_id="group-1"
+            ),
+            "task-2": self._descriptor(
+                "task-2", maximum_candidates=1, worker_group_id="group-2"
+            ),
+        }
         self.candidate_cache.candidate_worker_counts.return_value = {
             "task-1": 0,
             "task-2": 0,
-        }
-        self.task_catalog.load_task_allocation_descriptors.return_value = {
-            "task-1": self._descriptor(
-                "task-1",
-                maximum_candidates=1,
-                worker_group_id="group-1",
-            ),
-            "task-2": self._descriptor(
-                "task-2",
-                maximum_candidates=1,
-                worker_group_id="group-2",
-            ),
         }
         self.candidate_acquirer.acquire_hot_pool_candidates.side_effect = (
             {"task-1": (self._entry("worker-1", "group-1"),)},
@@ -183,108 +155,32 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
         with patch.object(
             self.pacer,
             "_current_time_millis",
-            side_effect=(10_000, 10_001, 10_002, 10_003),
+            return_value=self.NOW_MILLIS,
         ):
-            published = self.pacer.allocate_candidate_workers(
-                config=self._config(),
-            )
+            self.assertEqual(2, self.pacer.allocate_candidate_workers(config=self._config()))
 
-        self.assertEqual(2, published)
-        acquisition_calls = (
-            self.candidate_acquirer.acquire_hot_pool_candidates.call_args_list
-        )
-        self.assertEqual(2, len(acquisition_calls))
         self.assertEqual(
-            "group-1",
-            acquisition_calls[0].kwargs["worker_group_id"],
-        )
-        self.assertEqual(
-            {"task-1"},
-            set(acquisition_calls[0].kwargs["candidate_requests"]),
-        )
-        self.assertEqual(
-            "group-2",
-            acquisition_calls[1].kwargs["worker_group_id"],
-        )
-        self.assertEqual(
-            {"task-2"},
-            set(acquisition_calls[1].kwargs["candidate_requests"]),
-        )
-
-    def test_empty_running_scan_is_bounded_noop(self) -> None:
-        self.task_score.acquire_band_task_candidates.return_value = ()
-        self.candidate_cache.candidate_worker_counts.return_value = {}
-
-        with patch.object(
-            self.pacer,
-            "_current_time_millis",
-            side_effect=(10_000, 10_001),
-        ):
-            published = self.pacer.allocate_candidate_workers(
-                config=self._config(),
-            )
-
-        self.assertEqual(0, published)
-        self.task_catalog.load_task_allocation_descriptors.assert_not_called()
-        self.candidate_acquirer.acquire_hot_pool_candidates.assert_not_called()
-
-    def test_item_driven_task_does_not_block_task_driven_warmer(self) -> None:
-        self.task_score.acquire_band_task_candidates.return_value = (
-            "item-task",
-            "task-task",
-        )
-        self.task_catalog.load_task_allocation_descriptors.return_value = {
-            "item-task": self._descriptor(
-                "item-task",
-                maximum_candidates=1,
-                task_type=TaskType.ITEM_DRIVEN,
-            ),
-            "task-task": self._descriptor(
-                "task-task",
-                maximum_candidates=1,
-            ),
-        }
-        self.candidate_cache.candidate_worker_counts.return_value = {
-            "task-task": 0,
-        }
-        entry = self._entry("worker-1")
-        self.candidate_acquirer.acquire_hot_pool_candidates.return_value = {
-            "task-task": (entry,),
-        }
-
-        with patch.object(
-            self.pacer,
-            "_current_time_millis",
-            return_value=10_000,
-        ):
-            published = self.pacer.allocate_candidate_workers(config=self._config())
-
-        self.assertEqual(1, published)
-        self.candidate_cache.candidate_worker_counts.assert_called_once_with(
-            candidate_ids=("task-task",),
-        )
-        requests = (
-            self.candidate_acquirer.acquire_hot_pool_candidates.call_args.kwargs[
-                "candidate_requests"
-            ]
-        )
-        self.assertEqual({"task-task"}, set(requests))
-        self.assertEqual(
-            ["item-task", "task-task"],
+            ["group-1", "group-2"],
             [
-                call_.kwargs["task_id"]
-                for call_ in self.task_score.rewrite_same_band_time_millis.call_args_list
+                candidate_call.kwargs["worker_group_id"]
+                for candidate_call in (
+                    self.candidate_acquirer.acquire_hot_pool_candidates.call_args_list
+                )
             ],
         )
 
-    def test_item_driven_only_window_skips_candidate_owners(self) -> None:
-        self.task_score.acquire_band_task_candidates.return_value = ("item-task",)
+    def test_missing_and_item_driven_hints_are_discarded(self) -> None:
+        self.warmup_schedule.consume_due_candidate_warmups.return_value = (
+            "missing",
+            "item-task",
+        )
         self.task_catalog.load_task_allocation_descriptors.return_value = {
+            "missing": None,
             "item-task": self._descriptor(
                 "item-task",
                 maximum_candidates=1,
                 task_type=TaskType.ITEM_DRIVEN,
-            )
+            ),
         }
 
         with patch.object(
@@ -292,17 +188,51 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
             "_current_time_millis",
             return_value=self.NOW_MILLIS,
         ):
-            published = self.pacer.allocate_candidate_workers(config=self._config())
+            self.assertEqual(0, self.pacer.allocate_candidate_workers(config=self._config()))
 
-        self.assertEqual(0, published)
         self.candidate_cache.candidate_worker_counts.assert_not_called()
-        self.candidate_cache.append_candidate_workers.assert_not_called()
         self.candidate_acquirer.acquire_hot_pool_candidates.assert_not_called()
-        self.task_score.rewrite_same_band_time_millis.assert_called_once_with(
-            task_id="item-task",
-            expected_band=TaskScoreBand.RUNNING_VISIBLE,
-            target_time_millis=self.NOW_MILLIS,
+        self.warmup_schedule.schedule_candidate_warmups.assert_not_called()
+
+    def test_non_running_and_hard_paused_hints_do_not_acquire_workers(self) -> None:
+        self.warmup_schedule.consume_due_candidate_warmups.return_value = (
+            "terminal",
+            "paused",
         )
+        self.task_score.get_score_states.return_value = {
+            "terminal": None,
+            "paused": TaskScoreState(
+                task_id="paused",
+                score=1,
+                band=TaskScoreBand.RUNNING_VISIBLE,
+                time_millis=TaskScoreBandCore.PAUSE_TIME_MILLIS,
+                suffix=5,
+            ),
+        }
+        self.task_score.get_score_states.side_effect = None
+
+        with patch.object(
+            self.pacer,
+            "_current_time_millis",
+            return_value=self.NOW_MILLIS,
+        ):
+            self.assertEqual(0, self.pacer.allocate_candidate_workers(config=self._config()))
+
+        self.task_catalog.load_task_allocation_descriptors.assert_not_called()
+        self.candidate_acquirer.acquire_hot_pool_candidates.assert_not_called()
+
+    def test_empty_schedule_is_bounded_noop(self) -> None:
+        self.warmup_schedule.consume_due_candidate_warmups.return_value = ()
+
+        with patch.object(
+            self.pacer,
+            "_current_time_millis",
+            return_value=self.NOW_MILLIS,
+        ):
+            self.assertEqual(0, self.pacer.allocate_candidate_workers(config=self._config()))
+
+        self.task_catalog.load_task_allocation_descriptors.assert_not_called()
+        self.candidate_acquirer.acquire_hot_pool_candidates.assert_not_called()
 
     def test_config_rejects_non_positive_values(self) -> None:
         for values in ((0, 1), (1, 0), (-1, 1)):
@@ -354,6 +284,19 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
             endpoint_manager_id="endpoint-1",
             worker_lease_score=100,
         )
+
+    @classmethod
+    def _running_states(cls, *, task_ids: tuple[str, ...]) -> dict[str, TaskScoreState]:
+        return {
+            task_id: TaskScoreState(
+                task_id=task_id,
+                score=1,
+                band=TaskScoreBand.RUNNING_VISIBLE,
+                time_millis=cls.NOW_MILLIS - TaskScoreBandCore.SLOT_MILLIS,
+                suffix=5,
+            )
+            for task_id in task_ids
+        }
 
 
 if __name__ == "__main__":

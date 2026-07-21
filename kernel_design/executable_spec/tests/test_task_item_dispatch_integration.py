@@ -42,6 +42,9 @@ from kernel_design.executable_spec import (
 from kernel_design.executable_spec.scheduling.worker_candidate import (
     WorkerCandidateAcquirer,
 )
+from kernel_design.executable_spec.redis_runtime.assignment_dispatch import (
+    RedisCandidateWarmupSchedule,
+)
 
 
 _REDIS_URL = os.environ.get("KERNEL_DESIGN_REDIS_URL")
@@ -88,6 +91,10 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             self.redis,
             prefix=self.prefix,
         )
+        self.warmup_schedule = RedisCandidateWarmupSchedule(
+            self.redis,
+            prefix=self.prefix,
+        )
         self.deliver_seed_runtime = RedisDeliverSeedRuntime(
             self.redis,
             prefix=self.prefix,
@@ -121,6 +128,7 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             worker_scan_limit=10,
         )
         self.allocation_pacer = TaskWorkerAllocationPacer(
+            self.warmup_schedule,
             self.task_score,
             self.task_catalog,
             candidate_acquirer,
@@ -133,6 +141,7 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             self.item_score,
             self.task_runtime,
             candidate_acquirer,
+            self.warmup_schedule,
         )
 
     def tearDown(self) -> None:
@@ -143,6 +152,7 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             f"tr:{self.prefix}:task:{self.task_id}:item-score",
             f"wr:{self.prefix}:score:image-workers",
             f"ad:{self.prefix}:candidate:{self.task_id}:workers",
+            f"ad:{self.prefix}:candidate-warmups",
             f"wr:{self.prefix}:groups",
             f"wr:{self.prefix}:workers:image-workers",
             (
@@ -203,6 +213,10 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             )
         )
         time.sleep((self.worker_score.SLOT_MILLIS + 20) / 1_000)
+        self.warmup_schedule.schedule_candidate_warmups(
+            task_ids=(self.task_id,),
+            due_time_millis=time.time_ns() // 1_000_000,
+        )
         warmed_tasks = self.allocation_pacer.allocate_candidate_workers(
             config=TaskWorkerAllocationConfig(
                 task_batch_limit=10,

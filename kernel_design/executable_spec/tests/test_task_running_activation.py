@@ -20,6 +20,9 @@ from kernel_design.executable_spec import (
     TaskScoreTransitionResult,
     TaskScoreTransitionStatus,
 )
+from kernel_design.executable_spec.kernel.assignment_dispatch_runtime import (
+    CandidateWarmupSchedule,
+)
 
 
 class TaskRunningAdmissionPolicyTest(unittest.TestCase):
@@ -119,11 +122,13 @@ class TaskRunningActivationPacerTest(unittest.TestCase):
         self.task_catalog = Mock(spec=TaskResourceCatalog)
         self.task_policy = Mock(spec=TaskAdmissionPolicy)
         self.system_policy = Mock(spec=SystemAdmissionPolicy)
+        self.warmup_schedule = Mock(spec=CandidateWarmupSchedule)
         self.pacer = TaskRunningActivationPacer(
             self.task_score,
             self.task_catalog,
             self.task_policy,
             self.system_policy,
+            self.warmup_schedule,
         )
         self.config = TaskRunningActivationConfig(
             task_batch_limit=10,
@@ -138,7 +143,7 @@ class TaskRunningActivationPacerTest(unittest.TestCase):
         ):
             return self.pacer.activate_running_visible_tasks(config=self.config)
 
-    def test_round_contract_has_no_worker_or_candidate_runtime_dependency(self) -> None:
+    def test_round_contract_only_emits_derived_candidate_warmup_hints(self) -> None:
         self.assertEqual(
             [
                 "self",
@@ -146,6 +151,7 @@ class TaskRunningActivationPacerTest(unittest.TestCase):
                 "task_catalog",
                 "task_admission_policy",
                 "system_admission_policy",
+                "candidate_warmup_schedule",
             ],
             list(inspect.signature(TaskRunningActivationPacer.__init__).parameters),
         )
@@ -196,6 +202,10 @@ class TaskRunningActivationPacerTest(unittest.TestCase):
             target_time_millis=self.NOW_MILLIS,
             target_suffix=8,
         )
+        self.warmup_schedule.schedule_candidate_warmups.assert_called_once_with(
+            task_ids=("task-2",),
+            due_time_millis=self.NOW_MILLIS,
+        )
 
     def test_missing_descriptor_and_task_policy_rejection_do_not_transition(self) -> None:
         descriptor = self.descriptor("task-1", 10)
@@ -218,6 +228,7 @@ class TaskRunningActivationPacerTest(unittest.TestCase):
         )
         self.system_policy.select_tasks.assert_not_called()
         self.task_score.rewrite_score.assert_not_called()
+        self.warmup_schedule.schedule_candidate_warmups.assert_not_called()
 
     def test_policy_may_not_return_duplicate_or_unobserved_tasks(self) -> None:
         descriptor = self.descriptor("task-1", 10)
@@ -273,6 +284,36 @@ class TaskRunningActivationPacerTest(unittest.TestCase):
             ["task-1", "task-2"],
             [entry.kwargs["task_id"] for entry in self.task_score.rewrite_score.call_args_list],
         )
+        self.warmup_schedule.schedule_candidate_warmups.assert_called_once_with(
+            task_ids=("task-1",),
+            due_time_millis=self.NOW_MILLIS,
+        )
+
+    def test_item_driven_activation_does_not_schedule_candidate_warmup(self) -> None:
+        descriptor = TaskDescriptor(
+            task_id="item-task",
+            worker_group_id="workers",
+            task_type=TaskType.ITEM_DRIVEN,
+            allocation_rule=None,
+            config={
+                "priority": "80",
+                "maximumCandidateWorkers": "10",
+                "maxRetryTimes": "3",
+            },
+        )
+        self.task_score.acquire_band_task_candidates.return_value = ("item-task",)
+        self.task_catalog.load_task_allocation_descriptors.return_value = {
+            "item-task": descriptor
+        }
+        self.task_policy.filter_tasks.return_value = ("item-task",)
+        self.system_policy.select_tasks.return_value = ("item-task",)
+        self.task_score.rewrite_score.return_value = TaskScoreTransitionResult(
+            TaskScoreTransitionStatus.TRANSITIONED
+        )
+
+        self.assertEqual(1, self.activate())
+
+        self.warmup_schedule.schedule_candidate_warmups.assert_not_called()
 
     @staticmethod
     def descriptor(task_id: str, priority: int) -> TaskDescriptor:

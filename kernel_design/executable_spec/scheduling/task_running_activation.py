@@ -6,6 +6,7 @@ from time import time_ns
 from typing import Protocol
 
 from ..kernel.task_item_score_band import TaskItemScoreBandCore
+from ..kernel.assignment_dispatch_runtime import CandidateWarmupSchedule
 from ..kernel.task_runtime import TaskDescriptor, TaskResourceCatalog
 from ..kernel.task_score_band import (
     TaskId,
@@ -14,6 +15,7 @@ from ..kernel.task_score_band import (
     TaskScoreTransitionStatus,
     TimeMillis,
 )
+from .task_scheduling_profile import resolve_task_scheduling_profile
 
 
 @dataclass(frozen=True)
@@ -125,11 +127,13 @@ class TaskRunningActivationPacer:
         task_catalog: TaskResourceCatalog,
         task_admission_policy: TaskAdmissionPolicy,
         system_admission_policy: SystemAdmissionPolicy,
+        candidate_warmup_schedule: CandidateWarmupSchedule,
     ) -> None:
         self.task_score = task_score
         self.task_catalog = task_catalog
         self.task_admission_policy = task_admission_policy
         self.system_admission_policy = system_admission_policy
+        self.candidate_warmup_schedule = candidate_warmup_schedule
 
     def activate_running_visible_tasks(
         self,
@@ -179,7 +183,7 @@ class TaskRunningActivationPacer:
             policy_name="System admission policy",
         )
 
-        activated_task_count = 0
+        activated_task_ids: list[TaskId] = []
         for task_id in system_allowed_ids:
             result = self.task_score.rewrite_score(
                 task_id=task_id,
@@ -189,8 +193,21 @@ class TaskRunningActivationPacer:
                 target_suffix=config.running_visible_initial_suffix,
             )
             if result.status is TaskScoreTransitionStatus.TRANSITIONED:
-                activated_task_count += 1
-        return activated_task_count
+                activated_task_ids.append(task_id)
+
+        warmup_task_ids = tuple(
+            task_id
+            for task_id in activated_task_ids
+            if resolve_task_scheduling_profile(
+                descriptors[task_id].task_type
+            ).candidate_precomputation_enabled
+        )
+        if warmup_task_ids:
+            self.candidate_warmup_schedule.schedule_candidate_warmups(
+                task_ids=warmup_task_ids,
+                due_time_millis=activation_time_millis,
+            )
+        return len(activated_task_ids)
 
     @staticmethod
     def _validated_policy_output(

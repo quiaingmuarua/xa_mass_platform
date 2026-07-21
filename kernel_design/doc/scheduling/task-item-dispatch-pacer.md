@@ -20,6 +20,9 @@ It does not read candidate cache, call Worker score, activate Tasks, invoke
 transport, or classify results. Those details remain behind the selected
 `WorkerCandidateAcquirer` strategy.
 
+It is the routine same-band time owner for considered `RUNNING_VISIBLE` Tasks.
+Candidate warming never advances this coordinate.
+
 ## Contracts
 
 ```python
@@ -38,6 +41,7 @@ TaskResourceCatalog     bounded Task allocation descriptors
 TaskItemScoreBandCore   Item observation and exact claim
 TaskRuntime             canonical Item records
 WorkerCandidateAcquirer PRECOMPUTED and TARGETED candidate acquisition
+CandidateWarmupSchedule derived TASK_DRIVEN cache-replenishment hints
 DeliverSeedRuntime      endpoint-manager handoff queues
 ```
 
@@ -89,9 +93,16 @@ One round computes `nowMillis` and `taskItemClaimUntilMillis` once:
    unit per attempted claim.
 10. Build one DeliverSeed per successful `(Worker, Item)` assignment and append
     by `endpointManagerId`.
+11. In a `finally` boundary, request one `RUNNING_VISIBLE` same-band absolute
+    time rewrite for every descriptor-backed Task considered by the round.
 
 Observation deliberately precedes Worker acquisition. Worker acquisition
 deliberately precedes Item claim.
+
+Every TASK_DRIVEN PRECOMPUTED acquisition schedules a candidate warmup hint,
+including cache miss and partial results. Cache consumption itself creates a
+future deficit, so replenishment is independent of whether this dispatch found
+enough Workers. ITEM_DRIVEN never emits a warmup hint.
 
 ## Append-Time Rule Validation
 
@@ -138,6 +149,8 @@ the seed.
 - Item claim and Worker lease deadlines provide recovery.
 - A Task pause or terminal transition after discovery does not retract the
   bounded round already in progress.
+- A stale Task same-band rewrite loses to the newer Task score and does not
+  roll back Item/Worker/DeliverSeed work already completed.
 
 ## Guardrails
 
@@ -148,7 +161,9 @@ the seed.
 - Do not expose candidate-source topology to the matcher; bind Items from the
   matcher result by CandidateId.
 - Do not add PRECOMPUTED-miss TARGETED fallback or TARGETED cache writes.
-- Do not rewrite Task score.
+- Do not write Task lifecycle bands or suffix. This Pacer may only request the
+  declared `RUNNING_VISIBLE` same-band absolute-time rewrite after considering
+  a Task.
 - Do not release or demote Worker leases; result-routing owns evidence-based
   disposition.
 - Do not call transport directly.

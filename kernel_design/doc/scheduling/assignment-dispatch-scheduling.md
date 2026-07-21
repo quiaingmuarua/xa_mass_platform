@@ -25,7 +25,9 @@ Assignment-dispatch keeps three independently paced mechanisms:
 | TaskItem dispatch | Which observed Items and acquired Workers become assigned delivery? | Claimed Items and `DeliverSeed` values |
 
 The mechanisms have different cadence, cost, and policy inputs. They do not
-share a transaction, lock, or assignment lifecycle object.
+share a transaction, lock, or assignment lifecycle object. Candidate warming
+uses a disposable owner-local hint schedule; it does not reuse Task score as a
+second Pacer cursor.
 
 ## Task Type Profiles
 
@@ -158,18 +160,24 @@ The ZSET score is cache expiry and matches the Worker lease deadline. The cache
 does not own rules, limits, Worker validity, lifecycle truth, or fallback.
 TARGETED Item results never enter this cache.
 
+`CandidateWarmupSchedule` is a separate derived ZSET of `taskId -> dueMillis`.
+It is only a cache-replenishment hint. A successful TASK_DRIVEN activation and
+subsequent PRECOMPUTED cache consumption can recreate it; therefore it is not a
+Task state, assignment record, or durable liveness truth.
+
 ## Round Flows
 
 Allocation cache warming:
 
 ```text
-due RUNNING_VISIBLE Tasks
+due CandidateWarmupSchedule TaskIds
+  -> batch-read Task score and retain RUNNING/non-hard-paused Tasks
   -> load descriptors and retain taskType=TASK_DRIVEN
   -> requestedCount = maximumCandidateWorkers - cachedCount
   -> acquire_hot_pool_candidates
   -> exact lease and match HOT Workers
   -> append under CandidateId=taskId
-  -> same-band rotate considered RUNNING Tasks
+  -> requeue incomplete warmups
 ```
 
 TaskItem dispatch:
@@ -182,6 +190,7 @@ dispatch-visible RUNNING Tasks
   -> preserve CandidateId-to-messageId binding
   -> exact claim only Worker-backed Items
   -> append DeliverSeeds by endpointManagerId
+  -> same-band reschedule each considered RUNNING Task
 ```
 
 `taskType` is fixed by the Task. The two rule locations cannot be mixed, and
@@ -192,11 +201,13 @@ the dispatch round does not infer type or strategy from Item contents.
 
 - `TaskRunningActivationPacer` is the only assignment mechanism that changes a
   Task band.
-- `TaskWorkerAllocationPacer` may same-band rotate considered RUNNING Tasks.
+- `TaskWorkerAllocationPacer` uses Task score only for bounded
+  RUNNING/non-hard-pause validation; it never uses it as a cursor or mutates it.
 - Candidate acquisition owns Worker observation, exact lease, and rematch; it
   does not own cache publication.
 - `TaskItemDispatchPacer` does not access CandidateWorkerCache or
-  WorkerScoreCore directly and never rewrites Task score.
+  WorkerScoreCore directly. It alone owns routine RUNNING same-band dispatch
+  rescheduling.
 - Item observation is not a claim. Exact claim happens only after a Worker is
   bound to that Item.
 - Cache miss, missing index rows, stale Worker evidence, missing records, and
@@ -229,3 +240,4 @@ the dispatch round does not infer type or strategy from Item contents.
 - Do not treat an index result as final matching or Worker availability truth.
 - Do not expose scan limits, Redis keys, score fields, or score decoding.
 - Do not allocate Workers for PRE_DISPATCH Tasks.
+- Do not use Task score as the candidate-warmer cursor.

@@ -90,6 +90,10 @@ WorkerScoreCore and worker-runtime
 CandidateWorkerCache
   owns transient CandidateId-local candidate evidence only
 
+CandidateWarmupSchedule
+  owns disposable TASK_DRIVEN cache-replenishment hints only; it is not Task
+  score, assignment, or liveness truth
+
 DeliverSeedRuntime
   owns per-endpoint DeliverSeed queues; neither runtime is lifecycle truth
 
@@ -119,8 +123,8 @@ Transport adapters
 | Worker HOT_ACQUIRE lease protocol | HOT-pool precomputation, TARGETED point lease-match, PRECOMPUTED exact recheck-rematch, result disposition, reconnect dirty fence, and one-WorkerId/one-slot invariant implemented | Recovery probe cadence and ranking |
 | TaskItem score-band | Implemented with Redis proof | Initial retry budget and claim-duration values |
 | Task running activation | Implemented with due-Item Task policy and priority soft-limit System policy | Quota, tenant, business start condition, and resource-estimate policy composition |
-| Worker allocation | Implemented as RUNNING TASK-scope candidate cache warming through HOT-pool acquisition | Fairness beyond Task score order and matcher priority |
-| TaskItem dispatch | Implemented with fixed TaskType profiles, PRECOMPUTED Task rules, TARGETED Item rules, stable Item binding, and DeliverSeed append | Recent-first Redis Task acquisition |
+| Worker allocation | Implemented as hint-driven TASK-scope candidate cache warming through HOT-pool acquisition; Task score is read only for RUNNING/non-hard-pause validation | Warmup prioritization beyond bounded due order and matcher priority |
+| TaskItem dispatch | Implemented with fixed TaskType profiles, PRECOMPUTED Task rules, TARGETED Item rules, stable Item binding, RUNNING same-band reschedule, and DeliverSeed append | Recent-first Redis Task acquisition |
 | Outbound delivery example | Independent clients and Local Function Adapter implemented | Production transport, pending/ack, and protocol-specific conversion |
 | Result routing | Implemented with unit and Redis orchestration proof; Task/Worker policy handlers are replaceable | Result projection and stronger queue reliability require separate owners and invariants |
 

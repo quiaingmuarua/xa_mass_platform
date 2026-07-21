@@ -26,6 +26,7 @@ from ..redis_runtime import (
     RedisWorkerScoreCore,
     RedisSeedResultRuntime,
 )
+from ..redis_runtime.assignment_dispatch import RedisCandidateWarmupSchedule
 from .assignment_dispatch_application import (
     AssignmentDispatchApplication,
     AssignmentDispatchApplicationConfig,
@@ -106,6 +107,10 @@ class _RedisKernelProcess:
             redis_client,
             prefix=config.prefix,
         )
+        candidate_warmup_schedule = RedisCandidateWarmupSchedule(
+            redis_client,
+            prefix=config.prefix,
+        )
         self._deliver_seed_runtime = RedisDeliverSeedRuntime(
             redis_client,
             prefix=config.prefix,
@@ -123,6 +128,7 @@ class _RedisKernelProcess:
         )
 
         worker_allocation_pacer = TaskWorkerAllocationPacer(
+            candidate_warmup_schedule,
             self._task_score,
             self._task_resource_catalog,
             candidate_acquirer,
@@ -136,6 +142,7 @@ class _RedisKernelProcess:
                 self._task_score,
                 running_task_soft_limit=config.running_task_soft_limit,
             ),
+            candidate_warmup_schedule,
         )
         task_item_dispatch_pacer = TaskItemDispatchPacer(
             self._task_score,
@@ -144,6 +151,7 @@ class _RedisKernelProcess:
             task_item_score,
             self._task_runtime,
             candidate_acquirer,
+            candidate_warmup_schedule,
         )
         self._assignment_dispatch_application = AssignmentDispatchApplication(
             worker_allocation_pacer,

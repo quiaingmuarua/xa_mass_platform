@@ -57,7 +57,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         self.config = KernelApplicationConfig(
             redis_url=_REDIS_URL,
             redis_prefix=self.prefix,
-            worker_allocation_interval_millis=500,
+            worker_allocation_interval_millis=10,
             running_activation_interval_millis=10,
             task_item_dispatch_interval_millis=10,
             result_routing_interval_millis=10,
@@ -112,7 +112,9 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         )
 
         self.application.start()
-        self.application.create_task(descriptor=self._task_descriptor())
+        self.application.create_task(
+            descriptor=self._task_descriptor(TaskType.TASK_DRIVEN)
+        )
         self.application.approve_task(task_id="task-1")
         self.application.append_task_items(
             task_id="task-1",
@@ -182,6 +184,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
                 worker_group_id="image-workers",
                 attributes={},
                 event_codes=frozenset({"image.resize"}),
+                item_allocation_fields=frozenset({"workerId"}),
             )
         )
         declaration = WorkerDeclaration(
@@ -196,7 +199,9 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         self.resources.upsert_worker(declaration=declaration)
 
         self.application.start()
-        self.application.create_task(descriptor=self._task_descriptor())
+        self.application.create_task(
+            descriptor=self._task_descriptor(TaskType.ITEM_DRIVEN)
+        )
         self.application.approve_task(task_id="task-1")
         self.application.append_task_items(
             task_id="task-1",
@@ -206,6 +211,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
                     event_code="image.resize",
                     created_at_millis=int(time.time() * 1_000) - 1_000,
                     payload={"source": "input"},
+                    allocation_rule={"workerId": {"$eq": "worker-1"}},
                 ),
             ),
         )
@@ -248,14 +254,24 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         assert hot_state is not None
         self.assertIs(WorkerScorePolarity.HOT_ACQUIRE, hot_state.polarity)
         self.assertEqual(1, hot_state.dirty)
+        self.assertEqual(
+            0,
+            self.redis.exists(
+                f"ad:{self.prefix}:candidate:task-1:workers"
+            ),
+        )
 
     @staticmethod
-    def _task_descriptor() -> TaskDescriptor:
+    def _task_descriptor(task_type: TaskType) -> TaskDescriptor:
         return TaskDescriptor(
             task_id="task-1",
             worker_group_id="image-workers",
-            task_type=TaskType.TASK_DRIVEN,
-            allocation_rule={"attributes.runtime": {"$eq": "python"}},
+            task_type=task_type,
+            allocation_rule=(
+                {"attributes.runtime": {"$eq": "python"}}
+                if task_type is TaskType.TASK_DRIVEN
+                else None
+            ),
             config={
                 "priority": "80",
                 "maximumCandidateWorkers": "10",

@@ -6,6 +6,7 @@ from time import time_ns
 from typing import cast
 
 from ..kernel.assignment_dispatch_runtime import (
+    CandidateWarmupSchedule,
     CandidateWorkerCache,
     CandidateWorkerEntry,
 )
@@ -14,9 +15,9 @@ from ..kernel.task_runtime import (
     TaskResourceCatalog,
 )
 from ..kernel.task_score_band import (
+    TaskId,
     TaskScoreBand,
     TaskScoreBandCore,
-    TaskId,
     TimeMillis,
 )
 from ..kernel.worker_runtime import WorkerGroupId
@@ -51,11 +52,13 @@ class TaskWorkerAllocationPacer:
 
     def __init__(
         self,
+        candidate_warmup_schedule: CandidateWarmupSchedule,
         task_score: TaskScoreBandCore,
         task_catalog: TaskResourceCatalog,
         candidate_acquirer: WorkerCandidateAcquirer,
         candidate_cache: CandidateWorkerCache,
     ) -> None:
+        self.candidate_warmup_schedule = candidate_warmup_schedule
         self.task_score = task_score
         self.task_catalog = task_catalog
         self.candidate_acquirer = candidate_acquirer
@@ -67,12 +70,21 @@ class TaskWorkerAllocationPacer:
         config: TaskWorkerAllocationConfig,
     ) -> int:
         """Publish candidate Workers and return the number of published Tasks."""
-        task_scan_time_millis = self._current_time_millis()
+        warmup_time_millis = self._current_time_millis()
+        task_ids = self.candidate_warmup_schedule.consume_due_candidate_warmups(
+            before_time_millis=warmup_time_millis,
+            limit=config.task_batch_limit,
+        )
+        if not task_ids:
+            return 0
+        score_states = self.task_score.get_score_states(task_ids=task_ids)
         task_ids = tuple(
-            self.task_score.acquire_band_task_candidates(
-                band=TaskScoreBand.RUNNING_VISIBLE,
-                before_time_millis=task_scan_time_millis,
-                limit=config.task_batch_limit,
+            task_id
+            for task_id in task_ids
+            if (
+                (state := score_states.get(task_id)) is not None
+                and state.band is TaskScoreBand.RUNNING_VISIBLE
+                and state.time_millis != TaskScoreBandCore.PAUSE_TIME_MILLIS
             )
         )
         if not task_ids:
@@ -103,7 +115,7 @@ class TaskWorkerAllocationPacer:
             candidate_worker_counts,
         )
         worker_lease_until_millis = (
-            self._current_time_millis() + config.worker_lease_duration_millis
+            warmup_time_millis + config.worker_lease_duration_millis
         )
         acquired_candidates: dict[
             TaskId,
@@ -123,12 +135,20 @@ class TaskWorkerAllocationPacer:
             acquired_candidates=acquired_candidates,
             expires_at_millis=worker_lease_until_millis,
         )
-
-        for task_id in task_ids:
-            self.task_score.rewrite_same_band_time_millis(
-                task_id=task_id,
-                expected_band=TaskScoreBand.RUNNING_VISIBLE,
-                target_time_millis=self._current_time_millis(),
+        requested_count_by_task_id = {
+            task_id: request.requested_count
+            for requests in candidate_requests_by_worker_group.values()
+            for task_id, request in requests.items()
+        }
+        incomplete_task_ids = tuple(
+            task_id
+            for task_id, requested_count in requested_count_by_task_id.items()
+            if len(acquired_candidates.get(task_id, ())) < requested_count
+        )
+        if incomplete_task_ids:
+            self.candidate_warmup_schedule.schedule_candidate_warmups(
+                task_ids=incomplete_task_ids,
+                due_time_millis=warmup_time_millis,
             )
         return published_task_count
 

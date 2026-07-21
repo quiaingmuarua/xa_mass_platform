@@ -7,6 +7,7 @@ from time import time_ns
 from typing import cast
 
 from ..kernel.assignment_dispatch_runtime import (
+    CandidateWarmupSchedule,
     CandidateWorkerEntry,
     DeliverSeed,
     DeliverSeedRuntime,
@@ -24,7 +25,13 @@ from ..kernel.task_runtime import (
     TaskResourceCatalog,
     TaskRuntime,
 )
-from ..kernel.task_score_band import Score, TaskId, TaskScoreBandCore, TimeMillis
+from ..kernel.task_score_band import (
+    Score,
+    TaskId,
+    TaskScoreBand,
+    TaskScoreBandCore,
+    TimeMillis,
+)
 from ..kernel.worker_runtime import EndpointManagerId
 from .worker_candidate import (
     WorkerCandidateAcquirer,
@@ -77,6 +84,7 @@ class TaskItemDispatchPacer:
         item_score: TaskItemScoreBandCore,
         task_runtime: TaskRuntime,
         candidate_acquirer: WorkerCandidateAcquirer,
+        candidate_warmup_schedule: CandidateWarmupSchedule,
         delivery_item_encoder: Callable[[TaskItem], str] = _encode_delivery_item,
     ) -> None:
         self.task_score = task_score
@@ -85,6 +93,7 @@ class TaskItemDispatchPacer:
         self.item_score = item_score
         self.task_runtime = task_runtime
         self.candidate_acquirer = candidate_acquirer
+        self.candidate_warmup_schedule = candidate_warmup_schedule
         self._delivery_item_encoder = delivery_item_encoder
 
     def dispatch_task_items(
@@ -102,40 +111,63 @@ class TaskItemDispatchPacer:
 
         published_seed_count = 0
         for task_id, descriptor in active_tasks:
-            claimable_items = self._observe_claimable_task_items(
-                task_id=task_id,
-                limit=config.per_task_dispatch_limit,
-                observed_at_millis=dispatch_time_millis,
-            )
-            if not claimable_items:
-                continue
-
-            candidate_workers_by_message_id = self._acquire_candidate_workers(
-                task_id=task_id,
-                descriptor=descriptor,
-                claimable_items=claimable_items,
-                lease_until_millis=claim_until_millis,
-            )
-            if not candidate_workers_by_message_id:
-                continue
-
-            dispatch_assignments = self._claim_task_items(
-                task_id=task_id,
-                claimable_items=claimable_items,
-                candidate_workers_by_message_id=(
-                    candidate_workers_by_message_id
-                ),
-                claim_until_millis=claim_until_millis,
-            )
-            if not dispatch_assignments:
-                continue
-
-            published_seed_count += self._publish_deliver_seeds(
-                task_id=task_id,
-                dispatch_assignments=dispatch_assignments,
-                claim_until_millis=claim_until_millis,
-            )
+            try:
+                published_seed_count += self._dispatch_task_items_for_task(
+                    task_id=task_id,
+                    descriptor=descriptor,
+                    per_task_limit=config.per_task_dispatch_limit,
+                    dispatch_time_millis=dispatch_time_millis,
+                    claim_until_millis=claim_until_millis,
+                )
+            finally:
+                self.task_score.rewrite_same_band_time_millis(
+                    task_id=task_id,
+                    expected_band=TaskScoreBand.RUNNING_VISIBLE,
+                    target_time_millis=dispatch_time_millis,
+                )
         return published_seed_count
+
+    def _dispatch_task_items_for_task(
+        self,
+        *,
+        task_id: TaskId,
+        descriptor: TaskDescriptor,
+        per_task_limit: int,
+        dispatch_time_millis: TimeMillis,
+        claim_until_millis: TimeMillis,
+    ) -> int:
+        claimable_items = self._observe_claimable_task_items(
+            task_id=task_id,
+            limit=per_task_limit,
+            observed_at_millis=dispatch_time_millis,
+        )
+        if not claimable_items:
+            return 0
+
+        candidate_workers_by_message_id = self._acquire_candidate_workers(
+            task_id=task_id,
+            descriptor=descriptor,
+            claimable_items=claimable_items,
+            lease_until_millis=claim_until_millis,
+            warmup_due_time_millis=dispatch_time_millis,
+        )
+        if not candidate_workers_by_message_id:
+            return 0
+
+        dispatch_assignments = self._claim_task_items(
+            task_id=task_id,
+            claimable_items=claimable_items,
+            candidate_workers_by_message_id=candidate_workers_by_message_id,
+            claim_until_millis=claim_until_millis,
+        )
+        if not dispatch_assignments:
+            return 0
+
+        return self._publish_deliver_seeds(
+            task_id=task_id,
+            dispatch_assignments=dispatch_assignments,
+            claim_until_millis=claim_until_millis,
+        )
 
     def _acquire_dispatchable_task_descriptors(
         self,
@@ -207,6 +239,7 @@ class TaskItemDispatchPacer:
         descriptor: TaskDescriptor,
         claimable_items: tuple[tuple[TaskItem, Score], ...],
         lease_until_millis: TimeMillis,
+        warmup_due_time_millis: TimeMillis,
     ) -> dict[MessageId, CandidateWorkerEntry]:
         priority = int(descriptor.config["priority"])
         task_items = tuple(item for item, _ in claimable_items)
@@ -225,6 +258,10 @@ class TaskItemDispatchPacer:
                 },
                 lease_until_millis=lease_until_millis,
             ).get(task_id, ())
+            self.candidate_warmup_schedule.schedule_candidate_warmups(
+                task_ids=(task_id,),
+                due_time_millis=warmup_due_time_millis,
+            )
             return {
                 item.message_id: candidate_worker
                 for item, candidate_worker in zip(task_items, precomputed)
