@@ -18,7 +18,6 @@ from ..kernel.task_item_score_band import (
     TaskItemScoreTransitionStatus,
 )
 from ..kernel.task_runtime import (
-    AllocationRuleScope,
     MessageId,
     TaskDescriptor,
     TaskItem,
@@ -29,8 +28,11 @@ from ..kernel.task_score_band import Score, TaskId, TaskScoreBandCore, TimeMilli
 from ..kernel.worker_runtime import EndpointManagerId
 from .worker_candidate import (
     WorkerCandidateAcquirer,
-    WorkerCandidateAcquisitionStrategy,
     WorkerCandidateRequest,
+)
+from .task_scheduling_profile import (
+    TaskAllocationRuleOwner,
+    resolve_task_scheduling_profile,
 )
 
 
@@ -208,10 +210,11 @@ class TaskItemDispatchPacer:
     ) -> dict[MessageId, CandidateWorkerEntry]:
         priority = int(descriptor.config["priority"])
         task_items = tuple(item for item, _ in claimable_items)
-        if descriptor.allocation_rule_scope is AllocationRuleScope.TASK:
+        profile = resolve_task_scheduling_profile(descriptor.task_type)
+        if profile.allocation_rule_owner is TaskAllocationRuleOwner.TASK:
             task_rule = cast(Mapping[str, object], descriptor.allocation_rule)
             precomputed = self.candidate_acquirer.acquire_worker_candidates(
-                strategy=WorkerCandidateAcquisitionStrategy.PRECOMPUTED,
+                strategy=profile.dispatch_acquisition_strategy,
                 worker_group_id=descriptor.worker_group_id,
                 candidate_requests={
                     task_id: WorkerCandidateRequest(
@@ -237,7 +240,7 @@ class TaskItemDispatchPacer:
                 target_field=self._select_target_field(item_rule),
             )
         targeted = self.candidate_acquirer.acquire_worker_candidates(
-            strategy=WorkerCandidateAcquisitionStrategy.TARGETED,
+            strategy=profile.dispatch_acquisition_strategy,
             worker_group_id=descriptor.worker_group_id,
             candidate_requests=targeted_requests,
             lease_until_millis=lease_until_millis,

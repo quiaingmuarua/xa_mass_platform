@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 from kernel_design.executable_spec.assembly import (
-    AllocationRuleScope,
+    TaskType,
     DeliverSeed,
     DeliverSeedConsumerClient,
     KernelApplication,
@@ -117,7 +117,7 @@ class FastApiServerTest(unittest.TestCase):
             json={
                 "taskId": "task-1",
                 "workerGroupId": "image-workers",
-                "allocationRuleScope": "TASK_ITEM",
+                "taskType": "ITEM_DRIVEN",
                 "config": {
                     "priority": "80",
                     "maximumCandidateWorkers": "10",
@@ -188,8 +188,8 @@ class FastApiServerTest(unittest.TestCase):
         )
         task_descriptor = self.application.create_task.call_args.kwargs["descriptor"]
         self.assertIs(
-            AllocationRuleScope.TASK_ITEM,
-            task_descriptor.allocation_rule_scope,
+            TaskType.ITEM_DRIVEN,
+            task_descriptor.task_type,
         )
         self.assertIsNone(task_descriptor.allocation_rule)
         self.resources_client.upsert_worker.assert_called_once()
@@ -236,7 +236,7 @@ class FastApiServerTest(unittest.TestCase):
             json={
                 "taskId": "task-1",
                 "workerGroupId": "image-workers",
-                "allocationRuleScope": "TASK",
+                "taskType": "TASK_DRIVEN",
                 "allocationRule": {},
                 "config": {},
             },
@@ -244,6 +244,40 @@ class FastApiServerTest(unittest.TestCase):
 
         self.assertEqual(422, response.status_code)
         self.assertIn("task config", response.json()["detail"])
+        self.application.create_task.assert_not_called()
+
+    def test_old_task_scope_contract_is_rejected(self) -> None:
+        old_field_response = self.client.post(
+            "/tasks",
+            json={
+                "taskId": "task-1",
+                "workerGroupId": "image-workers",
+                "allocationRuleScope": "TASK",
+                "allocationRule": {},
+                "config": {
+                    "priority": "80",
+                    "maximumCandidateWorkers": "10",
+                    "maxRetryTimes": "3",
+                },
+            },
+        )
+        old_value_response = self.client.post(
+            "/tasks",
+            json={
+                "taskId": "task-1",
+                "workerGroupId": "image-workers",
+                "taskType": "TASK",
+                "allocationRule": {},
+                "config": {
+                    "priority": "80",
+                    "maximumCandidateWorkers": "10",
+                    "maxRetryTimes": "3",
+                },
+            },
+        )
+
+        self.assertEqual(422, old_field_response.status_code)
+        self.assertEqual(422, old_value_response.status_code)
         self.application.create_task.assert_not_called()
 
 

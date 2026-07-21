@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import kernel_design.executable_spec as executable_spec
 from kernel_design.executable_spec import (
-    AllocationRuleScope,
+    TaskType,
     RedisTaskResourceCatalog,
     RedisTaskRuntime,
     RedisTaskItemScoreBandCore,
@@ -168,17 +168,17 @@ class RedisTaskRuntimeTest(unittest.TestCase):
         task_id: str,
         *,
         worker_group_id: str = "image-workers",
-        allocation_rule_scope: AllocationRuleScope = AllocationRuleScope.TASK,
+        task_type: TaskType = TaskType.TASK_DRIVEN,
         allocation_rule: dict[str, object] | None = None,
     ) -> TaskDescriptor:
         return TaskDescriptor(
             task_id=task_id,
             worker_group_id=worker_group_id,
-            allocation_rule_scope=allocation_rule_scope,
+            task_type=task_type,
             allocation_rule=(
                 {"dynamic.battery": {"$gte": 20}}
                 if allocation_rule is None
-                and allocation_rule_scope is AllocationRuleScope.TASK
+                and task_type is TaskType.TASK_DRIVEN
                 else allocation_rule
             ),
             config={
@@ -202,10 +202,10 @@ class RedisTaskRuntimeTest(unittest.TestCase):
         self.assertEqual(self.SUFFIX, state.suffix)
         self.assertEqual(self.redis.now_millis, state.time_millis)
 
-    def test_item_scoped_descriptor_round_trips_null_task_rule(self) -> None:
+    def test_item_driven_descriptor_round_trips_null_task_rule(self) -> None:
         descriptor = self.descriptor(
             "task-1",
-            allocation_rule_scope=AllocationRuleScope.TASK_ITEM,
+            task_type=TaskType.ITEM_DRIVEN,
         )
 
         result = self.runtime.create_task(descriptor=descriptor, suffix=self.SUFFIX)
@@ -219,6 +219,26 @@ class RedisTaskRuntimeTest(unittest.TestCase):
             "null",
             self.redis.hashes["tc:test:task:task-1"]["allocationRuleJson"],
         )
+
+    def test_old_allocation_scope_row_is_not_decoded(self) -> None:
+        self.redis.hashes["tc:test:task:task-1"] = {
+            "workerGroupId": "workers",
+            "allocationRuleScope": "TASK",
+            "allocationRuleJson": "{}",
+            "configJson": json.dumps(
+                {
+                    "priority": "80",
+                    "maximumCandidateWorkers": "10",
+                    "maxRetryTimes": "3",
+                }
+            ),
+        }
+
+        loaded = self.catalog.load_task_allocation_descriptors(
+            task_ids=("task-1",),
+        )
+
+        self.assertIsNone(loaded["task-1"])
 
     def test_duplicate_create_conflicts_without_touching_score(self) -> None:
         first = self.descriptor("task-1")
@@ -239,7 +259,7 @@ class RedisTaskRuntimeTest(unittest.TestCase):
     def test_orphan_descriptor_does_not_block_score_owned_creation(self) -> None:
         self.redis.hashes["tc:test:task:task-1"] = {
             "workerGroupId": "orphan-workers",
-            "allocationRuleScope": "TASK",
+            "taskType": "TASK_DRIVEN",
             "allocationRuleJson": "{}",
             "configJson": "{}",
         }
@@ -352,7 +372,7 @@ class RedisTaskRuntimeTest(unittest.TestCase):
             "tc:test:task:task-1",
             mapping={
                 "workerGroupId": descriptor.worker_group_id,
-                "allocationRuleScope": descriptor.allocation_rule_scope.value,
+                "taskType": descriptor.task_type.value,
                 "allocationRuleJson": json.dumps(dict(descriptor.allocation_rule)),
                 "configJson": json.dumps(dict(descriptor.config)),
             },

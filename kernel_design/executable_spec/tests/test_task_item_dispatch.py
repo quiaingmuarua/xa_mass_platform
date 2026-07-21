@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import Mock, call, patch
 
 from kernel_design.executable_spec import (
-    AllocationRuleScope,
+    TaskType,
     CandidateWorkerEntry,
     DeliverSeedRuntime,
     TaskDescriptor,
@@ -20,6 +20,8 @@ from kernel_design.executable_spec import (
     TaskResourceCatalog,
     TaskRuntime,
     TaskScoreBandCore,
+)
+from kernel_design.executable_spec.scheduling.worker_candidate import (
     WorkerCandidateAcquirer,
     WorkerCandidateAcquisitionStrategy,
 )
@@ -203,10 +205,10 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
         self.item_score.rewrite_observed_item_scores.assert_not_called()
         self.deliver_seed_runtime.append_deliver_seeds.assert_not_called()
 
-    def test_item_scoped_task_uses_targeted_requests_without_flattening(self) -> None:
+    def test_item_driven_task_uses_targeted_requests_without_flattening(self) -> None:
         self._prepare_task(
             "task-1",
-            allocation_rule_scope=AllocationRuleScope.TASK_ITEM,
+            task_type=TaskType.ITEM_DRIVEN,
         )
         first_item = self._item(
             "message-1",
@@ -355,13 +357,13 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
         self,
         task_id: str,
         *,
-        allocation_rule_scope: AllocationRuleScope = AllocationRuleScope.TASK,
+        task_type: TaskType = TaskType.TASK_DRIVEN,
     ) -> None:
         self.task_score.acquire_dispatch_work_tasks.return_value = (task_id,)
         self.task_catalog.load_task_allocation_descriptors.return_value = {
             task_id: self._descriptor(
                 task_id,
-                allocation_rule_scope=allocation_rule_scope,
+                task_type=task_type,
             )
         }
 
@@ -369,15 +371,15 @@ class TaskItemDispatchPacerTest(unittest.TestCase):
     def _descriptor(
         task_id: str,
         *,
-        allocation_rule_scope: AllocationRuleScope = AllocationRuleScope.TASK,
+        task_type: TaskType = TaskType.TASK_DRIVEN,
     ) -> TaskDescriptor:
         return TaskDescriptor(
             task_id=task_id,
             worker_group_id="group-1",
-            allocation_rule_scope=allocation_rule_scope,
+            task_type=task_type,
             allocation_rule=(
                 {"attributes.runtime": {"$eq": "python"}}
-                if allocation_rule_scope is AllocationRuleScope.TASK
+                if task_type is TaskType.TASK_DRIVEN
                 else None
             ),
             config={

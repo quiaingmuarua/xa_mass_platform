@@ -37,7 +37,7 @@ from .worker_runtime import (
     WorkerRuntimeStatus,
 )
 from .task_runtime import (
-    AllocationRuleScope,
+    TaskType,
     ItemPriority,
     MessageId,
     TaskCreationResult,
@@ -110,7 +110,7 @@ __all__ = [
     "WorkerRuntimeStatus",
     "TaskCreationResult",
     "TaskCreationStatus",
-    "AllocationRuleScope",
+    "TaskType",
     "TaskDescriptor",
     "ItemPriority",
     "MessageId",

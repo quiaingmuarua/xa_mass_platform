@@ -866,7 +866,7 @@ TaskRunningActivationPacer
 TaskItemDispatchPacer
   -> acquire due ACTIVE Item observations
   -> load canonical TaskItem records
-  -> invoke PRECOMPUTED or TARGETED from the Task allocationRuleScope
+  -> invoke PRECOMPUTED or TARGETED from the Task taskType
   -> exact-claim only Worker-backed Items
   -> append DeliverSeeds without another Task score write
 ```

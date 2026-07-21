@@ -10,7 +10,6 @@ from ..kernel.assignment_dispatch_runtime import (
     CandidateWorkerEntry,
 )
 from ..kernel.task_runtime import (
-    AllocationRuleScope,
     TaskDescriptor,
     TaskResourceCatalog,
 )
@@ -26,6 +25,7 @@ from .worker_candidate import (
     WorkerCandidateAcquisition,
     WorkerCandidateRequest,
 )
+from .task_scheduling_profile import resolve_task_scheduling_profile
 
 
 @dataclass(frozen=True)
@@ -85,11 +85,17 @@ class TaskWorkerAllocationPacer:
             for task_id in task_ids
             if (
                 (descriptor := task_descriptors.get(task_id)) is not None
-                and descriptor.allocation_rule_scope is AllocationRuleScope.TASK
+                and resolve_task_scheduling_profile(
+                    descriptor.task_type
+                ).candidate_precomputation_enabled
             )
         )
-        candidate_worker_counts = self.candidate_cache.candidate_worker_counts(
-            candidate_ids=precomputed_task_ids,
+        candidate_worker_counts = (
+            self.candidate_cache.candidate_worker_counts(
+                candidate_ids=precomputed_task_ids,
+            )
+            if precomputed_task_ids
+            else {}
         )
         candidate_requests_by_worker_group = self._build_candidate_requests(
             precomputed_task_ids,

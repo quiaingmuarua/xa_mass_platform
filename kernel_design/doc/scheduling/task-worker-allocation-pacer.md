@@ -11,7 +11,7 @@ rules:
 ```text
 RUNNING_VISIBLE Task scan
   -> load Task allocation descriptor
-  -> retain allocationRuleScope=TASK
+  -> retain taskType=TASK_DRIVEN
   -> measure CandidateId cache count
   -> acquire the deficit from the HOT pool
   -> append expiring candidate evidence
@@ -42,7 +42,7 @@ acquisition owns those mechanisms; cache publication remains Pacer-owned.
 
 ## Request Construction
 
-For each descriptor-backed `allocationRuleScope=TASK` RUNNING Task:
+For each descriptor-backed `taskType=TASK_DRIVEN` RUNNING Task:
 
 ```text
 candidateId = taskId
@@ -60,7 +60,7 @@ Tasks with no descriptor or no deficit do not produce a request. Requests are
 grouped by `descriptor.workerGroupId`; one acquisition call never crosses
 Worker score queues.
 
-`TASK_ITEM` Tasks are excluded before cache count and request construction.
+`ITEM_DRIVEN` Tasks are excluded before cache count and request construction.
 Item-directed rules are never warmed by this Pacer.
 
 ## Publication
@@ -82,8 +82,8 @@ and append failures are not released; lease expiry restores HOT visibility.
 ## Task Score Rotation
 
 Every scanned RUNNING Task is offered one same-band absolute-time rewrite,
-including missing descriptors, `TASK_ITEM` scope, full caches, empty Worker
-scans, and no matches. Only `TASK` scope can produce precomputed candidates;
+including missing descriptors, `ITEM_DRIVEN` Tasks, full caches, empty Worker
+scans, and no matches. Only `TASK_DRIVEN` can produce precomputed candidates;
 rotation of the complete bounded scan prevents filtered rows from permanently
 occupying the oldest window. The rewrite preserves Task band and suffix. A
 stale rewrite does not roll back already published candidates.
@@ -108,5 +108,7 @@ acquisition request.
 - Keep HOT scan/lease/match inside `acquire_hot_pool_candidates`.
 - Do not let CandidateWorkerCache own limits, rules, matching, or Worker truth.
 - Do not warm or cache Item allocation rules.
+- Do not reinterpret `TaskType` as independently configurable cache or
+  acquisition flags.
 - Do not release unmatched or failed-publication Worker leases.
 - Do not change Task band or suffix.

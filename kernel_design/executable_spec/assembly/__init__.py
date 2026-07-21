@@ -1,5 +1,5 @@
 from ..kernel import (
-    AllocationRuleScope,
+    TaskType,
     DeliverSeed,
     EndpointManagerId,
     MessageId,
@@ -31,7 +31,7 @@ from .transport_clients import (
     SeedResultCommandClient,
 )
 __all__ = [
-    "AllocationRuleScope",
+    "TaskType",
     "DeliverSeed",
     "DeliverSeedConsumerClient",
     "EndpointManagerId",

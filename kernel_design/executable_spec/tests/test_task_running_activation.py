@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from kernel_design.executable_spec import (
-    AllocationRuleScope,
+    TaskType,
     DueTaskItemAdmissionPolicy,
     PrioritySoftLimitSystemAdmissionPolicy,
     SystemAdmissionPolicy,
@@ -101,7 +101,7 @@ class TaskRunningAdmissionPolicyTest(unittest.TestCase):
         return TaskDescriptor(
             task_id=task_id,
             worker_group_id="workers",
-            allocation_rule_scope=AllocationRuleScope.TASK,
+            task_type=TaskType.TASK_DRIVEN,
             allocation_rule={},
             config={
                 "priority": str(priority),

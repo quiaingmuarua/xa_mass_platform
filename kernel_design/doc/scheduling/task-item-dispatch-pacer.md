@@ -45,10 +45,10 @@ There is no resolver callback. The Task descriptor fixes the rule owner and
 therefore the acquisition strategy:
 
 ```text
-allocationRuleScope=TASK
+taskType=TASK_DRIVEN
   -> PRECOMPUTED using Task allocationRule
 
-allocationRuleScope=TASK_ITEM
+taskType=ITEM_DRIVEN
   -> TARGETED using each TaskItem allocationRule
 ```
 
@@ -67,13 +67,13 @@ One round computes `nowMillis` and `taskItemClaimUntilMillis` once:
 6. Select one Task-level path:
 
    ```text
-   allocationRuleScope=TASK
+   taskType=TASK_DRIVEN
      one PRECOMPUTED request
      CandidateId = taskId
      requestedCount = number of record-backed Items
      allocationRule = TaskDescriptor allocationRule
 
-   allocationRuleScope=TASK_ITEM
+   taskType=ITEM_DRIVEN
      one TARGETED request per Item
      CandidateId = messageId
      requestedCount = 1
@@ -98,8 +98,8 @@ deliberately precedes Item claim.
 `KernelApplication.append_task_items` validates an Item rule before TaskRuntime
 writes it:
 
-- `TASK` scope forbids Item rules;
-- `TASK_ITEM` scope requires an Item rule;
+- `TASK_DRIVEN` forbids Item rules;
+- `ITEM_DRIVEN` requires an Item rule;
 - the rule is non-empty and valid constraint DSL;
 - every field is declared by the selected WorkerGroup's
   `itemAllocationFields`;
@@ -143,7 +143,8 @@ the seed.
 
 - Do not access `CandidateWorkerCache` or `WorkerScoreCore` from this Pacer.
 - Do not claim Items before candidate acquisition succeeds.
-- Do not infer rule scope from each Item or mix Task and Item rules.
+- Do not infer Task type from each Item or mix Task and Item rules.
+- Do not accept acquisition strategy, rule owner, or cache mode from callers.
 - Do not expose candidate-source topology to the matcher; bind Items from the
   matcher result by CandidateId.
 - Do not add PRECOMPUTED-miss TARGETED fallback or TARGETED cache writes.

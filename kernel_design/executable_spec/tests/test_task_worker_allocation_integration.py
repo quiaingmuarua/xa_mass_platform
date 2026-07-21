@@ -11,7 +11,7 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
     redis_module = None  # type: ignore[assignment]
 
 from kernel_design.executable_spec import (
-    AllocationRuleScope,
+    TaskType,
     DueTaskItemAdmissionPolicy,
     PrioritySoftLimitSystemAdmissionPolicy,
     RedisTaskResourceCatalog,
@@ -33,11 +33,13 @@ from kernel_design.executable_spec import (
     TaskScoreTransitionStatus,
     TaskWorkerAllocationConfig,
     TaskWorkerAllocationPacer,
-    WorkerCandidateAcquirer,
     WorkerCandidateMatcher,
     WorkerDeclaration,
     WorkerGroupDescriptor,
     WorkerRuntimeStatus,
+)
+from kernel_design.executable_spec.scheduling.worker_candidate import (
+    WorkerCandidateAcquirer,
 )
 
 
@@ -151,7 +153,7 @@ class TaskWorkerAllocationIntegrationTest(unittest.TestCase):
             descriptor=TaskDescriptor(
                 task_id=self.task_id,
                 worker_group_id=self.worker_group_id,
-                allocation_rule_scope=AllocationRuleScope.TASK,
+                task_type=TaskType.TASK_DRIVEN,
                 allocation_rule={"attributes.runtime": {"$eq": "python"}},
                 config={
                     "priority": "80",

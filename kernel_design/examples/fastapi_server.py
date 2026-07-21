@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from kernel_design.executable_spec.assembly import (
-    AllocationRuleScope,
+    TaskType,
     DeliverSeed,
     DeliverSeedConsumerClient,
     KernelApplication,
@@ -53,7 +53,7 @@ class WorkerRequest(BaseModel):
 class TaskRequest(BaseModel):
     task_id: str = Field(alias="taskId")
     worker_group_id: str = Field(alias="workerGroupId")
-    allocation_rule_scope: AllocationRuleScope = Field(alias="allocationRuleScope")
+    task_type: TaskType = Field(alias="taskType")
     allocation_rule: dict[str, Any] | None = Field(
         default=None,
         alias="allocationRule",
@@ -246,7 +246,7 @@ def create_app(
                 descriptor=TaskDescriptor(
                     task_id=request.task_id,
                     worker_group_id=request.worker_group_id,
-                    allocation_rule_scope=request.allocation_rule_scope,
+                    task_type=request.task_type,
                     allocation_rule=request.allocation_rule,
                     config=request.config,
                 )

@@ -27,6 +27,20 @@ Assignment-dispatch keeps three independently paced mechanisms:
 The mechanisms have different cadence, cost, and policy inputs. They do not
 share a transaction, lock, or assignment lifecycle object.
 
+## Task Type Profiles
+
+The caller selects one `TaskType`; scheduling resolves the complete internal
+profile:
+
+| Task Type | Rule owner | Candidate precomputation | Dispatch acquisition |
+| --- | --- | --- | --- |
+| `TASK_DRIVEN` | Task | enabled | `PRECOMPUTED` |
+| `ITEM_DRIVEN` | TaskItem | disabled | `TARGETED` |
+
+`ResolvedTaskSchedulingProfile` is a non-persisted derivation. It is not an
+external policy registry, and callers cannot independently select cache,
+warmer, rule-owner, or acquisition flags.
+
 ## Worker Candidate Contract
 
 ```python
@@ -96,6 +110,10 @@ The cache warmer calls `acquire_hot_pool_candidates(...)` explicitly. It is not
 a third strategy and does not disguise a HOT scan as TARGETED. Neither strategy
 invokes the other; a PRECOMPUTED miss never becomes a TARGETED scan.
 
+The acquirer, request, and acquisition-strategy types are internal to the
+`scheduling.worker_candidate` mechanism package. They are not exported through
+the executable-spec, scheduling aggregate, assembly, or HTTP Task contract.
+
 Matcher input is one flat Worker lease map for one WorkerGroup:
 
 ```text
@@ -146,7 +164,7 @@ Allocation cache warming:
 
 ```text
 due RUNNING_VISIBLE Tasks
-  -> load descriptors and retain allocationRuleScope=TASK
+  -> load descriptors and retain taskType=TASK_DRIVEN
   -> requestedCount = maximumCandidateWorkers - cachedCount
   -> acquire_hot_pool_candidates
   -> exact lease and match HOT Workers
@@ -159,15 +177,15 @@ TaskItem dispatch:
 ```text
 dispatch-visible RUNNING Tasks
   -> observe due Item scores and load existing records
-  -> allocationRuleScope=TASK: one TaskId PRECOMPUTED request
-  -> allocationRuleScope=TASK_ITEM: one messageId TARGETED request per Item
+  -> TASK_DRIVEN: one TaskId PRECOMPUTED request
+  -> ITEM_DRIVEN: one messageId TARGETED request per Item
   -> preserve CandidateId-to-messageId binding
   -> exact claim only Worker-backed Items
   -> append DeliverSeeds by endpointManagerId
 ```
 
-`allocationRuleScope` is fixed by the Task. The two rule locations cannot be
-mixed, and the dispatch round does not infer scope from Item contents.
+`taskType` is fixed by the Task. The two rule locations cannot be mixed, and
+the dispatch round does not infer type or strategy from Item contents.
 `workerGroupId` always comes from `TaskDescriptor`.
 
 ## Owner And Failure Boundaries
@@ -194,6 +212,8 @@ mixed, and the dispatch round does not infer scope from Item contents.
   none.
 - Multi-index intersection, cardinality optimization, quotas, and fairness are
   deferred policies.
+- Append-trigger acceleration and TaskType-specific termination remain separate
+  future slices; both current types use periodic RUNNING dispatch.
 - One WorkerId remains one scheduler-visible execution slot. Business batch
   work belongs inside one TaskItem payload.
 
@@ -202,6 +222,8 @@ mixed, and the dispatch round does not infer scope from Item contents.
 - Do not collapse activation, cache warming, and Item dispatch into one Pacer.
 - Do not turn CandidateWorker cache into the universal dispatch mechanism.
 - Do not add PRECOMPUTED-miss TARGETED fallback.
+- Do not expose acquisition strategy, cache flags, or rule owner as independent
+  Task configuration.
 - Do not merge Task and Item allocation rules implicitly.
 - Do not add a cross-CandidateId requested count or cross-WorkerGroup call.
 - Do not treat an index result as final matching or Worker availability truth.

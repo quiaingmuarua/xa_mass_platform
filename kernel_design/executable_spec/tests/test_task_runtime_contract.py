@@ -6,7 +6,7 @@ from dataclasses import fields
 
 import kernel_design.executable_spec as executable_spec
 from kernel_design.executable_spec import (
-    AllocationRuleScope,
+    TaskType,
     TaskCreationResult,
     TaskCreationStatus,
     TaskDescriptor,
@@ -23,7 +23,7 @@ class TaskRuntimeContractTest(unittest.TestCase):
         descriptor = TaskDescriptor(
             task_id="task-1",
             worker_group_id="workers-a",
-            allocation_rule_scope=AllocationRuleScope.TASK,
+            task_type=TaskType.TASK_DRIVEN,
             allocation_rule={"dynamic.battery": {"$gte": 20}},
             config={
                 "priority": "80",
@@ -37,7 +37,7 @@ class TaskRuntimeContractTest(unittest.TestCase):
             {
                 "task_id",
                 "worker_group_id",
-                "allocation_rule_scope",
+                "task_type",
                 "allocation_rule",
                 "config",
             },
@@ -158,39 +158,43 @@ class TaskRuntimeContractTest(unittest.TestCase):
                 TaskDescriptor(
                     task_id="task-1",
                     worker_group_id="workers-a",
-                    allocation_rule_scope=AllocationRuleScope.TASK,
+                    task_type=TaskType.TASK_DRIVEN,
                     allocation_rule={"attributes.runtime": {"$eq": "python"}},
                     config=config,
                 )
 
-    def test_task_descriptor_scope_owns_rule_location(self) -> None:
+    def test_task_type_owns_rule_location(self) -> None:
         config = {
             "priority": "80",
             "maximumCandidateWorkers": "10",
             "maxRetryTimes": "3",
         }
-        task_scoped = TaskDescriptor(
+        task_driven = TaskDescriptor(
             task_id="task-1",
             worker_group_id="workers-a",
-            allocation_rule_scope=AllocationRuleScope.TASK,
+            task_type=TaskType.TASK_DRIVEN,
             allocation_rule={},
             config=config,
         )
-        item_scoped = TaskDescriptor(
+        item_driven = TaskDescriptor(
             task_id="task-2",
             worker_group_id="workers-a",
-            allocation_rule_scope=AllocationRuleScope.TASK_ITEM,
+            task_type=TaskType.ITEM_DRIVEN,
             allocation_rule=None,
             config=config,
         )
 
-        self.assertEqual({}, task_scoped.allocation_rule)
-        self.assertIsNone(item_scoped.allocation_rule)
+        self.assertEqual({}, task_driven.allocation_rule)
+        self.assertIsNone(item_driven.allocation_rule)
+        self.assertEqual(
+            {"TASK_DRIVEN", "ITEM_DRIVEN"},
+            {task_type.value for task_type in TaskType},
+        )
         with self.assertRaises(ValueError):
             TaskDescriptor(
                 task_id="task-3",
                 worker_group_id="workers-a",
-                allocation_rule_scope=AllocationRuleScope.TASK,
+                task_type=TaskType.TASK_DRIVEN,
                 allocation_rule=None,
                 config=config,
             )
@@ -198,7 +202,7 @@ class TaskRuntimeContractTest(unittest.TestCase):
             TaskDescriptor(
                 task_id="task-4",
                 worker_group_id="workers-a",
-                allocation_rule_scope=AllocationRuleScope.TASK_ITEM,
+                task_type=TaskType.ITEM_DRIVEN,
                 allocation_rule={},
                 config=config,
             )
@@ -266,7 +270,8 @@ class TaskRuntimeContractTest(unittest.TestCase):
 
     def test_task_runtime_contracts_are_package_exports(self) -> None:
         self.assertIs(executable_spec.TaskRuntime, TaskRuntime)
-        self.assertIs(executable_spec.AllocationRuleScope, AllocationRuleScope)
+        self.assertIs(executable_spec.TaskType, TaskType)
+        self.assertFalse(hasattr(executable_spec, "AllocationRuleScope"))
         self.assertIs(executable_spec.TaskDescriptor, TaskDescriptor)
         self.assertIs(executable_spec.TaskItem, TaskItem)
         self.assertIs(executable_spec.TaskItemAppendResult, TaskItemAppendResult)

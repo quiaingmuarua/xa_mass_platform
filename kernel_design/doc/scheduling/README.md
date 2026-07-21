@@ -120,7 +120,7 @@ Transport adapters
 | TaskItem score-band | Implemented with Redis proof | Initial retry budget and claim-duration values |
 | Task running activation | Implemented with due-Item Task policy and priority soft-limit System policy | Quota, tenant, business start condition, and resource-estimate policy composition |
 | Worker allocation | Implemented as RUNNING TASK-scope candidate cache warming through HOT-pool acquisition | Fairness beyond Task score order and matcher priority |
-| TaskItem dispatch | Implemented with Task-owned rule scope, PRECOMPUTED Task rules, TARGETED Item rules, stable Item binding, and DeliverSeed append | Recent-first Redis Task acquisition |
+| TaskItem dispatch | Implemented with fixed TaskType profiles, PRECOMPUTED Task rules, TARGETED Item rules, stable Item binding, and DeliverSeed append | Recent-first Redis Task acquisition |
 | Outbound delivery example | Independent clients and Local Function Adapter implemented | Production transport, pending/ack, and protocol-specific conversion |
 | Result routing | Implemented with unit and Redis orchestration proof; Task/Worker policy handlers are replaceable | Result projection and stronger queue reliability require separate owners and invariants |
 

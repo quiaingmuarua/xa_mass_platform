@@ -13,8 +13,12 @@ from ..scheduling import (
     TaskRunningActivationConfig,
     TaskWorkerAllocationConfig,
 )
+from ..scheduling.task_scheduling_profile import (
+    ResolvedTaskSchedulingProfile,
+    TaskAllocationRuleOwner,
+    resolve_task_scheduling_profile,
+)
 from ..kernel import (
-    AllocationRuleScope,
     MessageId,
     TaskCreationResult,
     TaskDescriptor,
@@ -401,8 +405,14 @@ class KernelApplication:
                 message_id: TaskItemAppendResult(TaskItemAppendStatus.NOT_FOUND)
                 for message_id in ordered_items
             }
+        scheduling_profile = resolve_task_scheduling_profile(
+            descriptor.task_type
+        )
         allowed_item_fields: frozenset[str] = frozenset()
-        if descriptor.allocation_rule_scope is AllocationRuleScope.TASK_ITEM:
+        if (
+            scheduling_profile.allocation_rule_owner
+            is TaskAllocationRuleOwner.TASK_ITEM
+        ):
             worker_groups = self._process._worker_resource_catalog.get_worker_group_descriptors(
                 worker_group_ids=(descriptor.worker_group_id,),
             )
@@ -423,7 +433,7 @@ class KernelApplication:
             try:
                 self._validate_item_allocation_rule(
                     item=item,
-                    allocation_rule_scope=descriptor.allocation_rule_scope,
+                    scheduling_profile=scheduling_profile,
                     allowed_fields=allowed_item_fields,
                 )
             except ValueError as error:
@@ -455,15 +465,18 @@ class KernelApplication:
         self,
         *,
         item: TaskItem,
-        allocation_rule_scope: AllocationRuleScope,
+        scheduling_profile: ResolvedTaskSchedulingProfile,
         allowed_fields: frozenset[str],
     ) -> None:
-        if allocation_rule_scope is AllocationRuleScope.TASK:
+        if (
+            scheduling_profile.allocation_rule_owner
+            is TaskAllocationRuleOwner.TASK
+        ):
             if item.allocation_rule is not None:
-                raise ValueError("TASK allocation scope forbids an Item rule")
+                raise ValueError("TASK_DRIVEN forbids a TaskItem allocation rule")
             return
         if item.allocation_rule is None:
-            raise ValueError("TASK_ITEM allocation scope requires an Item rule")
+            raise ValueError("ITEM_DRIVEN requires a TaskItem allocation rule")
         compiled_rule = ConstraintEvaluator.compile_match_rules(
             item.allocation_rule
         )

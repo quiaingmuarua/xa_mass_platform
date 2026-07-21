@@ -24,12 +24,9 @@ from .task_worker_allocation import (
     TaskWorkerAllocationPacer,
 )
 from .worker_candidate import (
-    WorkerCandidateAcquirer,
     WorkerCandidateAcquisition,
-    WorkerCandidateAcquisitionStrategy,
     WorkerCandidateConstraint,
     WorkerCandidateMatcher,
-    WorkerCandidateRequest,
 )
 from ..kernel.assignment_dispatch_runtime import CandidateId
 
@@ -51,11 +48,8 @@ __all__ = [
     "TaskWorkerAllocationConfig",
     "TaskWorkerAllocationPacer",
     "WorkerCandidateConstraint",
-    "WorkerCandidateAcquirer",
     "WorkerCandidateAcquisition",
-    "WorkerCandidateAcquisitionStrategy",
     "WorkerCandidateMatcher",
-    "WorkerCandidateRequest",
     "WorkerResultEvidence",
     "WorkerResultHandler",
 ]

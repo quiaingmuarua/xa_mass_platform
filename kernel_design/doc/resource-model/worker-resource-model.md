@@ -115,7 +115,7 @@ not proof that a specific worker is currently reachable, score-leased, or able t
 receive work.
 
 `itemAllocationFields` declares which bounded candidate-source fields a
-`TASK_ITEM`-scope Task may use in Item rules. `workerId` is built in;
+`ITEM_DRIVEN` Task may use in Item rules. `workerId` is built in;
 `dynamic.<name>` also requires a registered handler-owned candidate index.
 The declaration does not expose handler functions or Redis keys.
 
@@ -576,8 +576,8 @@ match_worker_candidates(
      }
 ```
 
-The input map makes candidate identity unique. Each value carries explicit
-`priority`, `limit`, and map-shaped `allocation_rule`. The matcher
+The candidate-constraint map makes candidate identity unique. Each constraint
+carries explicit `priority`, `limit`, and map-shaped `allocation_rule`. The matcher
 sorts by priority descending and `candidateId` ascending, then each worker is
 considered by the first matching candidate with remaining match limit. Every
 matched Worker appears in exactly one candidate result. Each returned

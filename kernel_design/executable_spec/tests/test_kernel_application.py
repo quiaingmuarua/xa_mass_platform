@@ -18,7 +18,7 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
     redis_module = None  # type: ignore[assignment]
 
 from kernel_design.executable_spec.assembly import (
-    AllocationRuleScope,
+    TaskType,
     DeliverSeedConsumerClient,
     KernelApplication,
     KernelApplicationConfig,
@@ -267,7 +267,7 @@ class KernelApplicationTest(unittest.TestCase):
 
     def test_append_validates_item_allocation_rules_before_task_runtime(self) -> None:
         task = self._task_descriptor(
-            allocation_rule_scope=AllocationRuleScope.TASK_ITEM,
+            task_type=TaskType.ITEM_DRIVEN,
         )
         group = WorkerGroupDescriptor(
             worker_group_id=task.worker_group_id,
@@ -352,7 +352,7 @@ class KernelApplicationTest(unittest.TestCase):
             items=[items[1], items[2]],
         )
 
-    def test_task_scoped_append_rejects_item_rule(self) -> None:
+    def test_task_driven_append_rejects_item_rule(self) -> None:
         task = self._task_descriptor()
         item = TaskItem(
             message_id="message-1",
@@ -496,15 +496,15 @@ class KernelApplicationTest(unittest.TestCase):
     @staticmethod
     def _task_descriptor(
         task_id: str = "task-1",
-        allocation_rule_scope: AllocationRuleScope = AllocationRuleScope.TASK,
+        task_type: TaskType = TaskType.TASK_DRIVEN,
     ) -> TaskDescriptor:
         return TaskDescriptor(
             task_id=task_id,
             worker_group_id="image-workers",
-            allocation_rule_scope=allocation_rule_scope,
+            task_type=task_type,
             allocation_rule=(
                 {"attributes.runtime": {"$eq": "python"}}
-                if allocation_rule_scope is AllocationRuleScope.TASK
+                if task_type is TaskType.TASK_DRIVEN
                 else None
             ),
             config={

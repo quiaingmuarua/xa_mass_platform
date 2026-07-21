@@ -479,7 +479,7 @@ missing declared dynamic handler is a configuration error
 candidate acquisition unions and deduplicates bounded HOT or point-source Worker ids before matcher
 descriptors read workers:{workerGroupId} once
 candidate order is priority descending, then candidateId ascending
-declared acquire fields are deduplicated in resolved candidate order
+dynamic fields derived from allocation_rule are deduplicated in resolved candidate order
 each dynamic handler batch-reads descriptor-supported bounded workerIds once
 for each workerId, build one temporary context
 skip candidates whose per-call limit is full
@@ -491,8 +491,8 @@ each entry carries descriptor endpointManagerId and the unchanged opaque lease s
 pacer leaves unmatched leases untouched; lease expiry restores hot visibility
 ```
 
-`WorkerCandidateMatcher` is a storage-independent worker-runtime mechanism. It
-consumes `WorkerResourceCatalog` for one descriptor batch and
+`WorkerCandidateMatcher` is a storage-independent scheduling mechanism over
+worker-runtime owner surfaces. It consumes `WorkerResourceCatalog` for one descriptor batch and
 `WorkerDynamicAttributeRuntime` for bounded dynamic reads. The matcher filters
 descriptor-supported worker ids from its supplied batch; the dynamic runtime
 hides query handlers and does not reread descriptors. Redis-specific code owns

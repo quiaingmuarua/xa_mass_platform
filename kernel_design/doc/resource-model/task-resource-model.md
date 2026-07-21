@@ -15,15 +15,15 @@ The first cut has one descriptor:
 TaskDescriptor
   taskId
   workerGroupId
-  allocationRuleScope
+  taskType
   allocationRule | null
   config
 ```
 
 `taskId` is globally unique in the kernel design. One Task chooses exactly one
-WorkerGroup for allocation. `allocationRuleScope` fixes whether allocation
-rules belong to the Task or every TaskItem. This is Task metadata, not a
-per-dispatch inference.
+WorkerGroup for allocation. `taskType` selects one stable scheduling behavior
+bundle. It is immutable Task metadata, not a per-dispatch inference or a set
+of caller-selected policy flags.
 
 ## Descriptor Contract
 
@@ -32,7 +32,7 @@ per-dispatch inference.
 class TaskDescriptor:
     task_id: str
     worker_group_id: str
-    allocation_rule_scope: AllocationRuleScope
+    task_type: TaskType
     allocation_rule: Mapping[str, object] | None
     config: Mapping[str, str]
 ```
@@ -42,7 +42,7 @@ The config keys are exactly:
 | Key | Meaning | Validation |
 | --- | --- | --- |
 | `priority` | Task scheduling priority used by default RUNNING admission and Worker contention | decimal text in `1..100`; `100` highest |
-| `maximumCandidateWorkers` | best-effort Task-local candidate target before matching | positive decimal text |
+| `maximumCandidateWorkers` | best-effort Task-local candidate target before matching | positive decimal text; retained but unused by `ITEM_DRIVEN` in this slice |
 | `maxRetryTimes` | TaskItem retry budget source used when initializing Item scores | decimal text in `0..98` |
 
 All values are strings in the first cut. Supporting two representations for
@@ -57,25 +57,35 @@ must not be a second admission-priority or allocation-priority field.
 consumer. The Task resource model deliberately contains no minimum matching
 Worker requirement: PRE_DISPATCH admission must not reserve or count Workers.
 
-## Allocation Rule
+## Task Type And Allocation Rule
 
-The scope is immutable Task intent:
+The public contract supports exactly two Task types:
 
 ```text
-TASK
+TASK_DRIVEN
   read TaskDescriptor.allocationRule
   an empty object means no Worker constraint
   TaskItems must not carry allocationRule
-  Worker candidates are precomputed
+  candidate precomputation and CandidateWorkerCache are enabled
+  dispatch uses PRECOMPUTED acquisition
 
-TASK_ITEM
+ITEM_DRIVEN
   TaskDescriptor.allocationRule is null
   every appended TaskItem must carry a non-empty allocationRule
-  Worker candidates are acquired through TARGETED sources
+  candidate precomputation and CandidateWorkerCache are forbidden
+  dispatch uses TARGETED acquisition
 ```
 
-The two forms cannot be mixed inside one Task. Append validates this contract
-once; claim and dispatch trust it rather than reclassifying every Item.
+Callers do not choose rule owner, cache participation, warmer participation,
+or acquisition strategy independently. Scheduling derives one immutable
+`ResolvedTaskSchedulingProfile` from `TaskType`; the profile is not persisted
+and is not a second Task truth. The two forms cannot be mixed inside one Task.
+Append validates this contract once; claim and dispatch trust it rather than
+reclassifying every Item.
+
+Both types currently use periodic RUNNING scans and TaskItem dispatch.
+Append-trigger acceleration and type-specific termination are deferred
+policies, not hidden dimensions of the current Task type contract.
 
 `allocationRule` uses the independent constraint DSL and is evaluated by the
 bounded Worker matcher. Example:
@@ -92,7 +102,7 @@ state, current dynamic values, candidate Workers, or a policy handler object.
 Constraint compilation/validation belongs to `constraint_dsl`; Worker field
 resolution belongs to Worker runtime/matcher.
 
-For one `TASK`-scope precomputation batch, the Pacer derives:
+For one `TASK_DRIVEN` precomputation batch, the Pacer derives:
 
 ```text
 WorkerCandidateConstraint
@@ -181,7 +191,7 @@ record payload for that id, while Item score initialization remains `ZADD NX`
 and never resets its scheduling identity. `maxRetryTimes` is read owner-locally
 to initialize Item remaining budget; callers do not pass score fields.
 
-For `TASK_ITEM` scope, the Item rule does not merge with a Task rule because no
+For `ITEM_DRIVEN`, the Item rule does not merge with a Task rule because no
 Task rule exists. It does not change `workerGroupId`, which always comes from
 `TaskDescriptor`.
 
@@ -212,7 +222,7 @@ Worker allocation:
 ```text
 TaskScoreBandCore.acquire_band_task_candidates(RUNNING_VISIBLE, now, limit)
   -> TaskResourceCatalog.load_task_allocation_descriptors(taskIds)
-  -> retain allocationRuleScope=TASK
+  -> retain taskType=TASK_DRIVEN
   -> group by workerGroupId
   -> build Task-level WorkerCandidateRequest values
   -> bounded HOT-pool lease/match
@@ -223,9 +233,9 @@ TaskItem dispatch:
 
 ```text
 due record-backed Items
-  -> Task allocationRuleScope=TASK: PRECOMPUTED request using Task rule
-  -> Task allocationRuleScope=TASK_ITEM: messageId-local TARGETED requests
-  -> exact claim only after CandidateId-local Worker binding
+  -> TASK_DRIVEN: PRECOMPUTED request using Task rule
+  -> ITEM_DRIVEN: messageId-local TARGETED requests
+  -> exact claim only after CandidateId-correlated acquisition results
 ```
 
 `TaskResourceCatalog` does not add status indexes, active-Task discovery,
@@ -239,15 +249,15 @@ Descriptor construction and Redis decode enforce one schema:
 ```text
 taskId non-empty
 workerGroupId non-empty
-allocationRuleScope is TASK or TASK_ITEM
-TASK scope requires a mapping allocationRule; an empty map means no constraint
-TASK_ITEM scope requires null Task allocationRule
+taskType is TASK_DRIVEN or ITEM_DRIVEN
+TASK_DRIVEN requires a mapping allocationRule; an empty map means no constraint
+ITEM_DRIVEN requires null Task allocationRule
 config is exactly map<string, string> with the three declared keys
 priority is decimal 1..100
 maximumCandidateWorkers is positive decimal
 maxRetryTimes is decimal 0..98
-TASK scope forbids TaskItem allocationRule
-TASK_ITEM scope requires a non-empty valid TaskItem allocationRule
+TASK_DRIVEN forbids TaskItem allocationRule
+ITEM_DRIVEN requires a non-empty valid TaskItem allocationRule
 ```
 
 WorkerGroup existence is a cross-owner command/admission check. The Task
@@ -261,7 +271,7 @@ One Task descriptor is one Redis HASH:
 tc:{prefix}:task:{taskId}
 
 workerGroupId       -> plain string
-allocationRuleScope -> `TASK` or `TASK_ITEM`
+taskType           -> `TASK_DRIVEN` or `ITEM_DRIVEN`
 allocationRuleJson  -> JSON object or `null`
 configJson          -> JSON object
 ```
@@ -269,7 +279,7 @@ configJson          -> JSON object
 Example:
 
 ```json
-allocationRuleScope = "TASK"
+taskType = "TASK_DRIVEN"
 
 allocationRuleJson = {
   "dynamic.battery": {"$gte": 20}
@@ -313,6 +323,7 @@ Contracts:
 - [`kernel/task_runtime.py`](../../executable_spec/kernel/task_runtime.py)
 - [`kernel/task_score_band.py`](../../executable_spec/kernel/task_score_band.py)
 - [`kernel/task_item_score_band.py`](../../executable_spec/kernel/task_item_score_band.py)
+- [`scheduling/task_scheduling_profile.py`](../../executable_spec/scheduling/task_scheduling_profile.py)
 
 Redis implementations:
 

@@ -12,8 +12,7 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
     redis_module = None  # type: ignore[assignment]
 
 from kernel_design.executable_spec import (
-    AllocationRuleScope,
-    CandidateWorkerEntry,
+    TaskType,
     RedisCandidateWorkerCache,
     RedisDeliverSeedRuntime,
     RedisTaskRuntime,
@@ -30,15 +29,18 @@ from kernel_design.executable_spec import (
     TaskItemAppendStatus,
     TaskItemDispatchConfig,
     TaskItemDispatchPacer,
+    TaskWorkerAllocationConfig,
+    TaskWorkerAllocationPacer,
     TaskItemScoreBand,
     TaskScoreBand,
     TaskScoreTransitionStatus,
-    WorkerScoreTransitionStatus,
-    WorkerCandidateAcquirer,
     WorkerCandidateMatcher,
     WorkerDeclaration,
     WorkerGroupDescriptor,
     WorkerRuntimeStatus,
+)
+from kernel_design.executable_spec.scheduling.worker_candidate import (
+    WorkerCandidateAcquirer,
 )
 
 
@@ -118,6 +120,12 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             dynamic_runtime,
             worker_scan_limit=10,
         )
+        self.allocation_pacer = TaskWorkerAllocationPacer(
+            self.task_score,
+            self.task_catalog,
+            candidate_acquirer,
+            self.candidate_cache,
+        )
         self.pacer = TaskItemDispatchPacer(
             self.task_score,
             self.task_catalog,
@@ -148,7 +156,7 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             descriptor=TaskDescriptor(
                 task_id=self.task_id,
                 worker_group_id="image-workers",
-                allocation_rule_scope=AllocationRuleScope.TASK,
+                task_type=TaskType.TASK_DRIVEN,
                 allocation_rule={},
                 config={
                     "priority": "80",
@@ -195,32 +203,17 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             )
         )
         time.sleep((self.worker_score.SLOT_MILLIS + 20) / 1_000)
-        observed_worker_score = self.worker_score.acquire_hot_acquire_candidates(
-            home_bucket_id="image-workers",
-            limit=1,
-        )["worker-1"]
-        worker_lease = self.worker_score.acquire_observed_hot_score_leases(
-            home_bucket_id="image-workers",
-            observed_scores={"worker-1": observed_worker_score},
-            target_time_millis=time.time_ns() // 1_000_000 + 5_000,
-        )["worker-1"]
-        self.assertEqual(
-            WorkerScoreTransitionStatus.TRANSITIONED,
-            worker_lease.status,
+        warmed_tasks = self.allocation_pacer.allocate_candidate_workers(
+            config=TaskWorkerAllocationConfig(
+                task_batch_limit=10,
+                worker_lease_duration_millis=5_000,
+            )
         )
-        assert worker_lease.score is not None
-        self.candidate_cache.append_candidate_workers(
-            candidate_id=self.task_id,
-            candidate_workers=(
-                CandidateWorkerEntry(
-                    worker_id="worker-1",
-                    worker_group_id="image-workers",
-                    endpoint_manager_id="endpoint-manager-1",
-                    worker_lease_score=worker_lease.score,
-                ),
-            ),
-            expires_at_millis=time.time_ns() // 1_000_000 + 5_000,
-        )
+        worker_lease_score = self.worker_score.get_score_states(
+            home_bucket_id="image-workers",
+            worker_ids=("worker-1",),
+        )["worker-1"].score
+        time.sleep((self.task_score.SLOT_MILLIS + 20) / 1_000)
 
         dispatch_started_millis = time.time_ns() // 1_000_000
         dispatched = self.pacer.dispatch_task_items(
@@ -241,6 +234,7 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
         self.assertEqual(TaskCreationStatus.CREATED, created.status)
         self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, running.status)
         self.assertEqual(TaskItemAppendStatus.APPENDED, appended[self.message_id].status)
+        self.assertEqual(1, warmed_tasks)
         self.assertEqual(1, dispatched)
         self.assertEqual(0, candidate_count)
         self.assertIsNotNone(item_state)
@@ -272,7 +266,7 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
                 "messageId": self.message_id,
                 "workerId": "worker-1",
                 "workerGroupId": "image-workers",
-                "workerLeaseScore": worker_lease.score,
+                "workerLeaseScore": worker_lease_score,
             },
             result_context,
         )
@@ -293,7 +287,7 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             descriptor=TaskDescriptor(
                 task_id=self.task_id,
                 worker_group_id="image-workers",
-                allocation_rule_scope=AllocationRuleScope.TASK_ITEM,
+                task_type=TaskType.ITEM_DRIVEN,
                 allocation_rule=None,
                 config={
                     "priority": "80",
@@ -342,6 +336,21 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             )
         )
         time.sleep((self.worker_score.SLOT_MILLIS + 20) / 1_000)
+        worker_score_before_warmer = self.worker_score.get_score_states(
+            home_bucket_id="image-workers",
+            worker_ids=("worker-1",),
+        )["worker-1"].score
+        warmed_tasks = self.allocation_pacer.allocate_candidate_workers(
+            config=TaskWorkerAllocationConfig(
+                task_batch_limit=10,
+                worker_lease_duration_millis=5_000,
+            )
+        )
+        worker_score_after_warmer = self.worker_score.get_score_states(
+            home_bucket_id="image-workers",
+            worker_ids=("worker-1",),
+        )["worker-1"].score
+        time.sleep((self.task_score.SLOT_MILLIS + 20) / 1_000)
 
         dispatched = self.pacer.dispatch_task_items(
             config=TaskItemDispatchConfig(
@@ -355,6 +364,8 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
         self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, running.status)
         self.assertEqual(TaskItemAppendStatus.APPENDED, appended[self.message_id].status)
         self.assertEqual(WorkerRuntimeStatus.OK, initialized_worker.status)
+        self.assertEqual(0, warmed_tasks)
+        self.assertEqual(worker_score_before_warmer, worker_score_after_warmer)
         self.assertEqual(1, dispatched)
         self.assertEqual(
             0,

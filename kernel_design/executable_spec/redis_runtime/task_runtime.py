@@ -8,7 +8,7 @@ from typing import Any, Mapping, Sequence
 
 from ..constraint_dsl import ConstraintEvaluator
 from ..kernel.task_runtime import (
-    AllocationRuleScope,
+    TaskType,
     MessageId,
     TaskCreationResult,
     TaskCreationStatus,
@@ -114,7 +114,7 @@ class RedisTaskRuntime(TaskRuntime):
                 _task_descriptor_key(self.prefix, descriptor.task_id),
                 mapping={
                     "workerGroupId": descriptor.worker_group_id,
-                    "allocationRuleScope": descriptor.allocation_rule_scope.value,
+                    "taskType": descriptor.task_type.value,
                     "allocationRuleJson": allocation_rule_json,
                     "configJson": config_json,
                 },
@@ -398,7 +398,7 @@ class RedisTaskResourceCatalog(TaskResourceCatalog):
 
     _HASH_FIELDS = (
         "workerGroupId",
-        "allocationRuleScope",
+        "taskType",
         "allocationRuleJson",
         "configJson",
     )
@@ -444,7 +444,7 @@ class RedisTaskResourceCatalog(TaskResourceCatalog):
         try:
             (
                 worker_group_raw,
-                allocation_rule_scope_raw,
+                task_type_raw,
                 allocation_rule_raw,
                 config_raw,
             ) = raw_row
@@ -453,12 +453,12 @@ class RedisTaskResourceCatalog(TaskResourceCatalog):
                 if isinstance(worker_group_raw, bytes)
                 else worker_group_raw
             )
-            allocation_rule_scope_value = (
-                allocation_rule_scope_raw.decode("utf-8")
-                if isinstance(allocation_rule_scope_raw, bytes)
-                else allocation_rule_scope_raw
+            task_type_value = (
+                task_type_raw.decode("utf-8")
+                if isinstance(task_type_raw, bytes)
+                else task_type_raw
             )
-            allocation_rule_scope = AllocationRuleScope(allocation_rule_scope_value)
+            task_type = TaskType(task_type_value)
             allocation_rule = json.loads(allocation_rule_raw)
             config = json.loads(config_raw)
         except (TypeError, ValueError, UnicodeDecodeError):
@@ -478,7 +478,7 @@ class RedisTaskResourceCatalog(TaskResourceCatalog):
             return TaskDescriptor(
                 task_id=task_id,
                 worker_group_id=worker_group_id,
-                allocation_rule_scope=allocation_rule_scope,
+                task_type=task_type,
                 allocation_rule=(
                     dict(allocation_rule)
                     if allocation_rule is not None

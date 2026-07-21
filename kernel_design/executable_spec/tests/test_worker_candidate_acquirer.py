@@ -7,19 +7,21 @@ from unittest.mock import Mock
 from kernel_design.executable_spec import (
     CandidateWorkerCache,
     CandidateWorkerEntry,
-    WorkerCandidateAcquirer,
-    WorkerCandidateAcquisitionStrategy,
     WorkerCandidateMatcher,
-    WorkerCandidateRequest,
     WorkerDynamicAttributeRuntime,
     WorkerScoreCore,
     WorkerScoreTransitionResult,
     WorkerScoreTransitionStatus,
 )
+from kernel_design.executable_spec.scheduling.worker_candidate import (
+    WorkerCandidateAcquirer,
+    WorkerCandidateAcquisitionStrategy,
+    WorkerCandidateRequest,
+)
 
 
 class WorkerCandidateAcquirerContractTest(unittest.TestCase):
-    def test_public_contract_is_group_local_and_strategy_explicit(self) -> None:
+    def test_internal_contract_is_group_local_and_strategy_explicit(self) -> None:
         self.assertEqual(
             ("PRECOMPUTED", "TARGETED"),
             tuple(strategy.value for strategy in WorkerCandidateAcquisitionStrategy),

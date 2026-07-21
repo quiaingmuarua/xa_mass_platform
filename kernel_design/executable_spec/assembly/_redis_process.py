@@ -11,9 +11,9 @@ from ..scheduling import (
     TaskItemDispatchPacer,
     TaskRunningActivationPacer,
     TaskWorkerAllocationPacer,
-    WorkerCandidateAcquirer,
     WorkerCandidateMatcher,
 )
+from ..scheduling.worker_candidate import WorkerCandidateAcquirer
 from ..redis_runtime import (
     RedisCandidateWorkerCache,
     RedisDeliverSeedRuntime,

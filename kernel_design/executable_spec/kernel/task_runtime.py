@@ -14,9 +14,9 @@ MessageId = str
 ItemPriority = int
 
 
-class AllocationRuleScope(Enum):
-    TASK = "TASK"
-    TASK_ITEM = "TASK_ITEM"
+class TaskType(Enum):
+    TASK_DRIVEN = "TASK_DRIVEN"
+    ITEM_DRIVEN = "ITEM_DRIVEN"
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -77,7 +77,7 @@ class TaskDescriptor:
 
     task_id: TaskId
     worker_group_id: WorkerGroupId
-    allocation_rule_scope: AllocationRuleScope
+    task_type: TaskType
     allocation_rule: Mapping[str, object] | None
     config: Mapping[str, str]
 
@@ -94,13 +94,13 @@ class TaskDescriptor:
             raise ValueError("task id must be non-empty")
         if not self.worker_group_id:
             raise ValueError("worker group id must be non-empty")
-        if not isinstance(self.allocation_rule_scope, AllocationRuleScope):
-            raise ValueError("task allocation rule scope is invalid")
-        if self.allocation_rule_scope is AllocationRuleScope.TASK:
+        if not isinstance(self.task_type, TaskType):
+            raise ValueError("task type is invalid")
+        if self.task_type is TaskType.TASK_DRIVEN:
             if not isinstance(self.allocation_rule, MappingABC):
-                raise ValueError("TASK allocation scope requires a Task rule")
+                raise ValueError("TASK_DRIVEN requires a Task allocation rule")
         elif self.allocation_rule is not None:
-            raise ValueError("TASK_ITEM allocation scope forbids a Task rule")
+            raise ValueError("ITEM_DRIVEN forbids a Task allocation rule")
         if not isinstance(self.config, MappingABC):
             raise ValueError("task config must be a mapping")
         if set(self.config) != self.CONFIG_KEYS:

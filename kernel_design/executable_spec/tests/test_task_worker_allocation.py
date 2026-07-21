@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import Mock, call, patch
 
 from kernel_design.executable_spec import (
-    AllocationRuleScope,
+    TaskType,
     CandidateWorkerCache,
     CandidateWorkerEntry,
     TaskDescriptor,
@@ -14,6 +14,8 @@ from kernel_design.executable_spec import (
     TaskScoreBandCore,
     TaskWorkerAllocationConfig,
     TaskWorkerAllocationPacer,
+)
+from kernel_design.executable_spec.scheduling.worker_candidate import (
     WorkerCandidateAcquirer,
 )
 
@@ -226,14 +228,28 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
         self.task_catalog.load_task_allocation_descriptors.assert_not_called()
         self.candidate_acquirer.acquire_hot_pool_candidates.assert_not_called()
 
-    def test_item_scoped_task_is_not_precomputed_but_scan_is_rotated(self) -> None:
-        self.task_score.acquire_band_task_candidates.return_value = ("task-1",)
+    def test_item_driven_task_does_not_block_task_driven_warmer(self) -> None:
+        self.task_score.acquire_band_task_candidates.return_value = (
+            "item-task",
+            "task-task",
+        )
         self.task_catalog.load_task_allocation_descriptors.return_value = {
-            "task-1": self._descriptor(
-                "task-1",
+            "item-task": self._descriptor(
+                "item-task",
                 maximum_candidates=1,
-                allocation_rule_scope=AllocationRuleScope.TASK_ITEM,
-            )
+                task_type=TaskType.ITEM_DRIVEN,
+            ),
+            "task-task": self._descriptor(
+                "task-task",
+                maximum_candidates=1,
+            ),
+        }
+        self.candidate_cache.candidate_worker_counts.return_value = {
+            "task-task": 0,
+        }
+        entry = self._entry("worker-1")
+        self.candidate_acquirer.acquire_hot_pool_candidates.return_value = {
+            "task-task": (entry,),
         }
 
         with patch.object(
@@ -243,15 +259,49 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
         ):
             published = self.pacer.allocate_candidate_workers(config=self._config())
 
-        self.assertEqual(0, published)
+        self.assertEqual(1, published)
         self.candidate_cache.candidate_worker_counts.assert_called_once_with(
-            candidate_ids=(),
+            candidate_ids=("task-task",),
         )
+        requests = (
+            self.candidate_acquirer.acquire_hot_pool_candidates.call_args.kwargs[
+                "candidate_requests"
+            ]
+        )
+        self.assertEqual({"task-task"}, set(requests))
+        self.assertEqual(
+            ["item-task", "task-task"],
+            [
+                call_.kwargs["task_id"]
+                for call_ in self.task_score.rewrite_same_band_time_millis.call_args_list
+            ],
+        )
+
+    def test_item_driven_only_window_skips_candidate_owners(self) -> None:
+        self.task_score.acquire_band_task_candidates.return_value = ("item-task",)
+        self.task_catalog.load_task_allocation_descriptors.return_value = {
+            "item-task": self._descriptor(
+                "item-task",
+                maximum_candidates=1,
+                task_type=TaskType.ITEM_DRIVEN,
+            )
+        }
+
+        with patch.object(
+            self.pacer,
+            "_current_time_millis",
+            return_value=self.NOW_MILLIS,
+        ):
+            published = self.pacer.allocate_candidate_workers(config=self._config())
+
+        self.assertEqual(0, published)
+        self.candidate_cache.candidate_worker_counts.assert_not_called()
+        self.candidate_cache.append_candidate_workers.assert_not_called()
         self.candidate_acquirer.acquire_hot_pool_candidates.assert_not_called()
         self.task_score.rewrite_same_band_time_millis.assert_called_once_with(
-            task_id="task-1",
+            task_id="item-task",
             expected_band=TaskScoreBand.RUNNING_VISIBLE,
-            target_time_millis=10_000,
+            target_time_millis=self.NOW_MILLIS,
         )
 
     def test_config_rejects_non_positive_values(self) -> None:
@@ -275,15 +325,15 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
         *,
         maximum_candidates: int,
         worker_group_id: str = "group-1",
-        allocation_rule_scope: AllocationRuleScope = AllocationRuleScope.TASK,
+        task_type: TaskType = TaskType.TASK_DRIVEN,
     ) -> TaskDescriptor:
         return TaskDescriptor(
             task_id=task_id,
             worker_group_id=worker_group_id,
-            allocation_rule_scope=allocation_rule_scope,
+            task_type=task_type,
             allocation_rule=(
                 {"attributes.runtime": {"$eq": "python"}}
-                if allocation_rule_scope is AllocationRuleScope.TASK
+                if task_type is TaskType.TASK_DRIVEN
                 else None
             ),
             config={
