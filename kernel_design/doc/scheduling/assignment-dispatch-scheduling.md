@@ -31,17 +31,15 @@ second Pacer cursor.
 
 ## Task Type Profiles
 
-The caller selects one `TaskType`; scheduling resolves the complete internal
-profile:
+The caller selects one `TaskType`. The authoritative rule owner, Worker
+acquisition, candidate-cache, and empty-behavior matrix is defined by the
+[Task Resource Model](../resource-model/task-resource-model.md#task-type-and-allocation-rule).
 
-| Task Type | Rule owner | Candidate precomputation | Dispatch acquisition |
-| --- | --- | --- | --- |
-| `TASK_DRIVEN` | Task | enabled | `PRECOMPUTED` |
-| `ITEM_DRIVEN` | TaskItem | disabled | `TARGETED` |
-
-`ResolvedTaskSchedulingProfile` is a non-persisted derivation. It is not an
-external policy registry, and callers cannot independently select cache,
-warmer, rule-owner, or acquisition flags.
+`ResolvedTaskSchedulingProfile` is a non-persisted derivation of the
+Worker-acquisition portion of that contract. Empty behavior is enforced by
+Task dispatch from the same immutable `TaskType`. Neither is an external
+policy registry, and callers cannot independently select cache, warmer,
+rule-owner, acquisition, or empty-behavior flags.
 
 ## Worker Candidate Contract
 
@@ -233,7 +231,7 @@ the dispatch round does not infer type or strategy from Item contents.
 - Append-trigger acceleration remains deferred. Periodic RUNNING scans are the
   correctness fallback.
 - TASK_DRIVEN empty auto-close and ITEM_DRIVEN persistent empty recheck are the
-  current built-in termination behaviors. Deadline policy remains deferred.
+  current built-in empty-state behaviors. Deadline policy remains deferred.
 - One WorkerId remains one scheduler-visible execution slot. Business batch
   work belongs inside one TaskItem payload.
 

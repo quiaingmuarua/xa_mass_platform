@@ -21,10 +21,14 @@ current Python executable spec.
 Core kernel shape:
 
 ```text
-task score-band
-  -> worker score-band
-  -> assignment-dispatch
-  -> result-routing
+Task score admission and visibility
+  -> TaskType profile
+     -> TASK_DRIVEN: Task rule, candidate warmup/cache, PRECOMPUTED acquisition
+     -> ITEM_DRIVEN: TaskItem rule, no cache, TARGETED acquisition
+  -> Task dispatch
+     -> ACTIVE Item: Worker score lease/validation -> TaskItem claim
+                     -> DeliverSeed / SeedResult -> result-routing
+     -> no ACTIVE Item: empty recheck -> type-owned wait or close
 ```
 
 These are scheduling planes, not necessarily modules. A first Python kernel may
@@ -87,25 +91,25 @@ For task runtime or task score-band work:
 15. [executable_spec/tests/test_redis_task_runtime_integration.py](executable_spec/tests/test_redis_task_runtime_integration.py)
 16. [executable_spec/tests/test_redis_task_score_band.py](executable_spec/tests/test_redis_task_score_band.py)
 
-For result or TaskItem dispatch:
+For assignment dispatch:
 
 1. [doc/resource-model/task-resource-model.md](doc/resource-model/task-resource-model.md)
-2. [doc/scheduling/task-item-score-band-scheduling.md](doc/scheduling/task-item-score-band-scheduling.md)
-3. [doc/scheduling/assignment-dispatch-scheduling.md](doc/scheduling/assignment-dispatch-scheduling.md)
-4. [doc/scheduling/task-worker-allocation-pacer.md](doc/scheduling/task-worker-allocation-pacer.md)
-5. [doc/scheduling/task-dispatch-pacer.md](doc/scheduling/task-dispatch-pacer.md)
-6. [doc/scheduling/deliver-seed-outbound-delivery.md](doc/scheduling/deliver-seed-outbound-delivery.md)
-7. [executable_spec/scheduling/task_worker_allocation.py](executable_spec/scheduling/task_worker_allocation.py)
-8. [executable_spec/assembly/assignment_dispatch_application.py](executable_spec/assembly/assignment_dispatch_application.py)
-9. [executable_spec/kernel/assignment_dispatch_runtime.py](executable_spec/kernel/assignment_dispatch_runtime.py)
-10. [executable_spec/redis_runtime/assignment_dispatch.py](executable_spec/redis_runtime/assignment_dispatch.py)
-11. [doc/scheduling/result-routing-scheduling.md](doc/scheduling/result-routing-scheduling.md)
-12. [doc/runtime-redis/seed-result-runtime-redis-shape.md](doc/runtime-redis/seed-result-runtime-redis-shape.md)
-13. [executable_spec/kernel/result_context.py](executable_spec/kernel/result_context.py)
-14. [executable_spec/kernel/seed_result_runtime.py](executable_spec/kernel/seed_result_runtime.py)
-15. [executable_spec/scheduling/result_routing.py](executable_spec/scheduling/result_routing.py)
-16. [executable_spec/redis_runtime/result_routing.py](executable_spec/redis_runtime/result_routing.py)
-17. [executable_spec/tests/test_result_routing.py](executable_spec/tests/test_result_routing.py)
+2. [doc/scheduling/assignment-dispatch-scheduling.md](doc/scheduling/assignment-dispatch-scheduling.md)
+3. [executable_spec/scheduling/task_scheduling_profile.py](executable_spec/scheduling/task_scheduling_profile.py)
+4. [executable_spec/scheduling/task_worker_allocation.py](executable_spec/scheduling/task_worker_allocation.py)
+5. [executable_spec/scheduling/task_dispatch.py](executable_spec/scheduling/task_dispatch.py)
+6. [executable_spec/tests/test_task_dispatch_integration.py](executable_spec/tests/test_task_dispatch_integration.py)
+7. [executable_spec/tests/test_result_routing_integration.py](executable_spec/tests/test_result_routing_integration.py)
+
+For result routing:
+
+1. [doc/scheduling/result-routing-scheduling.md](doc/scheduling/result-routing-scheduling.md)
+2. [doc/runtime-redis/seed-result-runtime-redis-shape.md](doc/runtime-redis/seed-result-runtime-redis-shape.md)
+3. [executable_spec/kernel/result_context.py](executable_spec/kernel/result_context.py)
+4. [executable_spec/kernel/seed_result_runtime.py](executable_spec/kernel/seed_result_runtime.py)
+5. [executable_spec/scheduling/result_routing.py](executable_spec/scheduling/result_routing.py)
+6. [executable_spec/redis_runtime/result_routing.py](executable_spec/redis_runtime/result_routing.py)
+7. [executable_spec/tests/test_result_routing.py](executable_spec/tests/test_result_routing.py)
 
 For process assembly or server entry work:
 

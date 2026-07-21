@@ -915,7 +915,8 @@ cache warming scans HOT; TARGETED point-observes indexed Worker ids
 candidate acquirer exact-CAS leases unchanged due Workers and fully rematches
 allocation pacer may publish Task-rule results into CandidateWorkerCache
 PRECOMPUTED acquisition exact-validates/renews and rematches Task rules
-TaskItem dispatch selects one scope path and keeps CandidateId-to-Item bindings
+Task dispatch resolves the TaskType acquisition path
+and keeps CandidateId-to-Item bindings
 TaskRuntime loads the selected TaskItem record
 TaskItemScoreBandCore claims the observed Item score
 transport receives already-selected worker dispatch

@@ -61,32 +61,34 @@ Worker requirement: PRE_DISPATCH admission must not reserve or count Workers.
 
 The public contract supports exactly two Task types:
 
+| Task type | Rule owner | Worker acquisition | Candidate cache | Empty behavior |
+| --- | --- | --- | --- | --- |
+| `TASK_DRIVEN` | Task | `PRECOMPUTED` | enabled | close after the configured consecutive-empty limit |
+| `ITEM_DRIVEN` | TaskItem | `TARGETED` | forbidden | remain RUNNING for later append or explicit close |
+
+This table is the canonical external TaskType contract. The rule-shape
+constraints are:
+
 ```text
 TASK_DRIVEN
-  read TaskDescriptor.allocationRule
-  an empty object means no Worker constraint
+  TaskDescriptor.allocationRule is a Map; an empty object means no constraint
   TaskItems must not carry allocationRule
-  candidate precomputation and CandidateWorkerCache are enabled
-  dispatch uses PRECOMPUTED acquisition
 
 ITEM_DRIVEN
   TaskDescriptor.allocationRule is null
-  every appended TaskItem must carry a non-empty allocationRule
-  candidate precomputation and CandidateWorkerCache are forbidden
-  dispatch uses TARGETED acquisition
+  every appended TaskItem carries a non-empty allocationRule
 ```
 
 Callers do not choose rule owner, cache participation, warmer participation,
-or acquisition strategy independently. Scheduling derives one immutable
-`ResolvedTaskSchedulingProfile` from `TaskType`; the profile is not persisted
-and is not a second Task truth. The two forms cannot be mixed inside one Task.
-Append validates this contract once; claim and dispatch trust it rather than
-reclassifying every Item.
+acquisition strategy, or empty behavior independently. Scheduling derives the
+Worker-acquisition fields in `ResolvedTaskSchedulingProfile` from `TaskType`;
+`TaskDispatchPacer` applies the same immutable type's empty behavior. Neither
+is persisted as a second Task truth. The two forms cannot be mixed inside one
+Task. Append validates this contract once; claim and dispatch trust it rather
+than reclassifying every Item.
 
-Both types use periodic RUNNING scans and Task dispatch. Their empty behavior
-is part of the stable type bundle: TASK_DRIVEN closes after the configured
-consecutive empty limit, while ITEM_DRIVEN remains RUNNING for later append.
-Append-trigger acceleration and deadline-driven close remain deferred policies.
+Both types use periodic RUNNING scans and Task dispatch. Append-trigger
+acceleration and deadline-driven close remain deferred policies.
 
 `allocationRule` uses the independent constraint DSL and is evaluated by the
 bounded Worker matcher. Example:

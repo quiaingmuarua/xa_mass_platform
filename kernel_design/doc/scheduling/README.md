@@ -1,7 +1,7 @@
 # Kernel Core Scheduling
 
-Status: active new-kernel mechanism index; Python executable spec implemented;
-policy coverage partial.
+Status: declared scheduling mechanism baseline implemented in the Python
+executable spec; policy coverage partial.
 
 The workspace-level isolation, event-cost, liveness, and score-writer rules are
 defined in [Kernel Core Design Workspace](../../README.md). This file is the
@@ -59,6 +59,19 @@ Task score acquire
      -> 3xxx: keep Item claim coordinate + Worker exact RECOVERY_RECHECK demotion
      -> no result: Item claim and Worker lease expire naturally
 ```
+
+The public TaskType split is fixed:
+
+```text
+TASK_DRIVEN = Task rule + PRECOMPUTED Worker acquisition + candidate cache
+              + close after consecutive empty observations
+ITEM_DRIVEN = TaskItem rule + TARGETED Worker acquisition + no candidate cache
+              + remain RUNNING for append or explicit close
+```
+
+This is a summary of the canonical
+[Task Type And Allocation Rule](../resource-model/task-resource-model.md#task-type-and-allocation-rule)
+contract. These dimensions are not independently selectable policies.
 
 The score axes and bounded runtime handoffs provide liveness. Events may provide
 business evidence or reduce latency, but they are not required scheduling
@@ -124,7 +137,7 @@ Transport adapters
 | TaskItem score-band | Implemented with Redis proof | Initial retry budget and claim-duration values |
 | Task running activation | Implemented with due-Item Task policy and priority soft-limit System policy | Quota, tenant, business start condition, and resource-estimate policy composition |
 | Worker allocation | Implemented as hint-driven TASK-scope candidate cache warming through HOT-pool acquisition; Task score is read only for RUNNING/non-hard-pause validation; TASK_DRIVEN has deterministic Redis proof through cache consumption | Warmup prioritization beyond bounded due order and matcher priority |
-| TaskItem dispatch | Implemented with fixed TaskType profiles, PRECOMPUTED Task rules, TARGETED complete Item rules, stable Item binding, RUNNING same-band reschedule, and DeliverSeed append; both TaskTypes have deterministic Redis proof through DeliverSeed and ITEM_DRIVEN proves no warmup/cache path | Recent-first Redis Task acquisition |
+| Task dispatch | Implemented with fixed TaskType profiles, PRECOMPUTED Task rules, TARGETED complete Item rules, stable Item binding, RUNNING same-band reschedule, empty recheck, and DeliverSeed append; both TaskTypes have deterministic Redis proof through DeliverSeed and ITEM_DRIVEN proves no warmup/cache path | Recent-first Redis Task acquisition |
 | Outbound delivery example | Independent clients and Local Function Adapter implemented | Production transport, pending/ack, and protocol-specific conversion |
 | Result routing | Implemented with unit and Redis orchestration proof; Task/Worker policy handlers are replaceable | Result projection and stronger queue reliability require separate owners and invariants |
 
@@ -139,22 +152,32 @@ Deferred policy stays in the document of the mechanism that consumes it. There
 is no global policy backlog document and no policy residue may create a second
 runtime path.
 
-## Reading Order
+## Core Reading Path
 
-1. [Task Score-Band Scheduling](task-score-band-scheduling.md)
-2. [Worker Score-Band Scheduling](worker-score-band-scheduling.md)
+After this index, a new agent can understand the current scheduling mainline
+from five documents:
+
+1. [Task Resource Model](../resource-model/task-resource-model.md)
+2. [Assignment-Dispatch Scheduling](assignment-dispatch-scheduling.md)
 3. [Worker HOT_ACQUIRE Lease Protocol](worker-hot-acquire-lease-protocol.md)
-4. [Task Item Score-Band Scheduling](task-item-score-band-scheduling.md)
-5. [Assignment-Dispatch Scheduling](assignment-dispatch-scheduling.md)
-6. [Task Running Activation Pacer](task-running-activation-pacer.md)
-7. [Task-Worker Allocation Pacer](task-worker-allocation-pacer.md)
-8. [Task Dispatch Pacer](task-dispatch-pacer.md)
-9. [DeliverSeed Outbound Delivery](deliver-seed-outbound-delivery.md)
-10. [Result-Routing Scheduling](result-routing-scheduling.md)
-11. [Kernel Application Assembly](../kernel-application-assembly.md)
-12. [Worker Runtime Redis Shape](../runtime-redis/worker-runtime-redis-shape.md)
-13. [Seed Result Runtime Redis Shape](../runtime-redis/seed-result-runtime-redis-shape.md)
-14. [Local Function Transport Adapter](../../examples/local_function_adapter/README.md)
+4. [Task Dispatch Pacer](task-dispatch-pacer.md)
+5. [Result-Routing Scheduling](result-routing-scheduling.md)
+
+Read owner details only when changing that owner:
+
+- Score axes: [Task](task-score-band-scheduling.md),
+  [Worker](worker-score-band-scheduling.md), and
+  [TaskItem](task-item-score-band-scheduling.md).
+- Admission and cache warming:
+  [Task Running Activation](task-running-activation-pacer.md) and
+  [Task-Worker Allocation](task-worker-allocation-pacer.md).
+- Process and transport:
+  [Kernel Application Assembly](../kernel-application-assembly.md),
+  [DeliverSeed Outbound Delivery](deliver-seed-outbound-delivery.md), and
+  [Local Function Transport Adapter](../../examples/local_function_adapter/README.md).
+- Backend representation:
+  [Worker Runtime Redis Shape](../runtime-redis/worker-runtime-redis-shape.md)
+  and [Seed Result Runtime Redis Shape](../runtime-redis/seed-result-runtime-redis-shape.md).
 
 The score documents own encoding and transition rules. The Worker lease
 protocol owns the one cross-pacer lease lifecycle without becoming a score or

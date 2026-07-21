@@ -40,6 +40,34 @@ which runtime structures and transitions are expected
 which proof boundaries future executable specs must satisfy
 ```
 
+## Current Mechanism Baseline
+
+The declared scheduling baseline is mechanism-complete in the Python
+executable spec:
+
+```text
+Task admission and score visibility
+  -> TASK_DRIVEN or ITEM_DRIVEN scheduling profile
+  -> Task dispatch
+     -> ACTIVE Item: Worker candidate acquisition -> TaskItem claim
+                     -> DeliverSeed -> SeedResult
+                     -> TaskItem outcome and Worker disposition
+     -> no ACTIVE Item: empty recheck -> type-owned wait or close
+  -> explicit close remains available for either TaskType
+```
+
+The two public Task types are stable policy bundles, not independent caller
+knobs. Their canonical contract is defined in
+[Task Resource Model](doc/resource-model/task-resource-model.md#task-type-and-allocation-rule).
+
+Current work should improve owner-local policy, bounds, cadence, fairness,
+recovery behavior, and operational adapters without inventing another
+scheduling mainline. A new kernel mechanism requires a named correctness or
+liveness invariant that the existing score axes, owner operations, and bounded
+handoffs cannot protect. Production transport reliability, query projections,
+and control-plane concerns are not evidence that scheduling needs another
+owner or state machine.
+
 ## Core Axioms
 
 The kernel core should stay small:
