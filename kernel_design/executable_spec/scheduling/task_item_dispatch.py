@@ -37,6 +37,7 @@ from .worker_candidate import (
     WorkerCandidateAcquirer,
     WorkerCandidateRequest,
 )
+from .worker_candidate.rules import select_target_field
 from .task_scheduling_profile import (
     TaskAllocationRuleOwner,
     resolve_task_scheduling_profile,
@@ -274,7 +275,7 @@ class TaskItemDispatchPacer:
                 priority=priority,
                 requested_count=1,
                 allocation_rule=item_rule,
-                target_field=self._select_target_field(item_rule),
+                target_field=select_target_field(item_rule),
             )
         targeted = self.candidate_acquirer.acquire_worker_candidates(
             strategy=profile.dispatch_acquisition_strategy,
@@ -287,19 +288,6 @@ class TaskItemDispatchPacer:
             for item in task_items
             if (entries := targeted.get(item.message_id, ()))
         }
-
-    @staticmethod
-    def _select_target_field(allocation_rule: Mapping[str, object]) -> str:
-        if "workerId" in allocation_rule:
-            return "workerId"
-        dynamic_fields = sorted(
-            field_name
-            for field_name in allocation_rule
-            if field_name.startswith("dynamic.") and field_name != "dynamic."
-        )
-        if not dynamic_fields:
-            raise ValueError("Item allocation rule has no targeted candidate field")
-        return dynamic_fields[0]
 
     def _claim_task_items(
         self,

@@ -5,6 +5,7 @@ import os
 import time
 import unittest
 import uuid
+from collections.abc import Mapping
 
 try:
     import redis as redis_module
@@ -13,6 +14,8 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
 
 from kernel_design.executable_spec import (
     TaskType,
+    DueTaskItemAdmissionPolicy,
+    PrioritySoftLimitSystemAdmissionPolicy,
     RedisCandidateWorkerCache,
     RedisDeliverSeedRuntime,
     RedisTaskRuntime,
@@ -24,20 +27,28 @@ from kernel_design.executable_spec import (
     RedisWorkerResourceCatalog,
     RedisWorkerRuntime,
     TaskCreationStatus,
+    TaskCreationResult,
     TaskDescriptor,
     TaskItem,
+    TaskItemAppendResult,
     TaskItemAppendStatus,
     TaskItemDispatchConfig,
     TaskItemDispatchPacer,
+    TaskRunningActivationConfig,
+    TaskRunningActivationPacer,
     TaskWorkerAllocationConfig,
     TaskWorkerAllocationPacer,
     TaskItemScoreBand,
     TaskScoreBand,
-    TaskScoreTransitionStatus,
     WorkerCandidateMatcher,
     WorkerDeclaration,
     WorkerGroupDescriptor,
     WorkerRuntimeStatus,
+)
+from kernel_design.executable_spec.assembly.application import (
+    TaskApprovalResult,
+    TaskApprovalStatus,
+    _TaskLifecycleManager,
 )
 from kernel_design.executable_spec.scheduling.worker_candidate import (
     WorkerCandidateAcquirer,
@@ -134,6 +145,20 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             candidate_acquirer,
             self.candidate_cache,
         )
+        self.activation_pacer = TaskRunningActivationPacer(
+            self.task_score,
+            self.task_catalog,
+            DueTaskItemAdmissionPolicy(self.item_score),
+            PrioritySoftLimitSystemAdmissionPolicy(
+                self.task_score,
+                running_task_soft_limit=100,
+            ),
+            self.warmup_schedule,
+        )
+        self.task_lifecycle = _TaskLifecycleManager(
+            self.task_score,
+            self.task_catalog,
+        )
         self.pacer = TaskItemDispatchPacer(
             self.task_score,
             self.task_catalog,
@@ -159,74 +184,156 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
                 f"ad:{self.prefix}:endpoint-manager:endpoint-manager-1:"
                 "deliver-seeds"
             ),
+            (
+                f"ad:{self.prefix}:endpoint-manager:endpoint-manager-2:"
+                "deliver-seeds"
+            ),
         )
 
-    def test_real_redis_dispatch_claims_item_and_appends_seed(self) -> None:
+    def _create_approve_append_activate(
+        self,
+        *,
+        descriptor: TaskDescriptor,
+        items: tuple[TaskItem, ...],
+    ) -> tuple[
+        TaskCreationResult,
+        TaskApprovalResult,
+        Mapping[str, TaskItemAppendResult],
+        int,
+    ]:
         created = self.task_runtime.create_task(
-            descriptor=TaskDescriptor(
-                task_id=self.task_id,
-                worker_group_id="image-workers",
-                task_type=TaskType.TASK_DRIVEN,
-                allocation_rule={},
-                config={
-                    "priority": "80",
-                    "maximumCandidateWorkers": "10",
-                    "maxRetryTimes": "3",
-                },
-            ),
+            descriptor=descriptor,
             suffix=5,
         )
-        time.sleep((self.task_score.SLOT_MILLIS + 20) / 1_000)
-        running = self.task_score.rewrite_score(
-            task_id=self.task_id,
-            expected_band=TaskScoreBand.PRE_REVIEW,
-            target_time_millis=time.time_ns() // 1_000_000,
-            target_band=TaskScoreBand.RUNNING_VISIBLE,
-            target_suffix=5,
+        approved = self.task_lifecycle.approve_task(task_id=descriptor.task_id)
+        appended = self.task_runtime.append_items(
+            task_id=descriptor.task_id,
+            items=items,
         )
-        time.sleep((self.task_score.SLOT_MILLIS + 20) / 1_000)
+        time.sleep((2 * self.task_score.SLOT_MILLIS + 20) / 1_000)
+        activated = self.activation_pacer.activate_running_visible_tasks(
+            config=TaskRunningActivationConfig(
+                task_batch_limit=10,
+                running_visible_initial_suffix=8,
+            )
+        )
+        return created, approved, appended, activated
 
+    def test_task_driven_vertical_redis_proof_uses_precomputed_cache(self) -> None:
+        descriptor = TaskDescriptor(
+            task_id=self.task_id,
+            worker_group_id="image-workers",
+            task_type=TaskType.TASK_DRIVEN,
+            allocation_rule={"attributes.runtime": {"$eq": "python"}},
+            config={
+                "priority": "80",
+                "maximumCandidateWorkers": "1",
+                "maxRetryTimes": "3",
+            },
+        )
         item = TaskItem(
             message_id=self.message_id,
             event_code="image.resize",
             created_at_millis=time.time_ns() // 1_000_000 - 1_000,
             payload={"source": "s3://input"},
         )
+        created = self.task_runtime.create_task(descriptor=descriptor, suffix=5)
+        approved = self.task_lifecycle.approve_task(task_id=self.task_id)
+        time.sleep((2 * self.task_score.SLOT_MILLIS + 20) / 1_000)
+        activation_without_item = (
+            self.activation_pacer.activate_running_visible_tasks(
+                config=TaskRunningActivationConfig(
+                    task_batch_limit=10,
+                    running_visible_initial_suffix=8,
+                )
+            )
+        )
+        state_without_item = self.task_score.get_score_states(
+            task_ids=(self.task_id,)
+        )[self.task_id]
         appended = self.task_runtime.append_items(
             task_id=self.task_id,
             items=(item,),
         )
-        self.worker_catalog.upsert_worker_group(
+        time.sleep((2 * self.task_score.SLOT_MILLIS + 20) / 1_000)
+        activated = self.activation_pacer.activate_running_visible_tasks(
+            config=TaskRunningActivationConfig(
+                task_batch_limit=10,
+                running_visible_initial_suffix=8,
+            )
+        )
+        running_state = self.task_score.get_score_states(
+            task_ids=(self.task_id,)
+        )[self.task_id]
+        warmup_score = self.redis.zscore(
+            f"ad:{self.prefix}:candidate-warmups",
+            self.task_id,
+        )
+        candidate_count_before_worker_registration = (
+            self.candidate_cache.candidate_worker_counts(
+                candidate_ids=(self.task_id,),
+            )[self.task_id]
+        )
+
+        group_result = self.worker_catalog.upsert_worker_group(
             descriptor=WorkerGroupDescriptor(
                 worker_group_id="image-workers",
                 attributes={},
                 event_codes=frozenset({"image.resize"}),
             )
         )
-        initialized_worker = self.worker_runtime.upsert_worker(
+        matched_worker = self.worker_runtime.upsert_worker(
             declaration=WorkerDeclaration(
                 worker_id="worker-1",
                 worker_group_id="image-workers",
                 endpoint_manager_id="endpoint-manager-1",
-                attributes={},
+                attributes={"runtime": "python"},
+                dynamic_attribute_names=frozenset(),
+            )
+        )
+        unmatched_worker = self.worker_runtime.upsert_worker(
+            declaration=WorkerDeclaration(
+                worker_id="worker-2",
+                worker_group_id="image-workers",
+                endpoint_manager_id="endpoint-manager-2",
+                attributes={"runtime": "java"},
                 dynamic_attribute_names=frozenset(),
             )
         )
         time.sleep((self.worker_score.SLOT_MILLIS + 20) / 1_000)
-        self.warmup_schedule.schedule_candidate_warmups(
-            task_ids=(self.task_id,),
-            due_time_millis=time.time_ns() // 1_000_000,
+        dispatched_without_precomputation = self.pacer.dispatch_task_items(
+            config=TaskItemDispatchConfig(
+                task_batch_limit=10,
+                per_task_dispatch_limit=10,
+                item_claim_lease_duration_millis=3_000,
+            )
         )
+        task_state_before_warmup = self.task_score.get_score_states(
+            task_ids=(self.task_id,)
+        )[self.task_id]
         warmed_tasks = self.allocation_pacer.allocate_candidate_workers(
             config=TaskWorkerAllocationConfig(
                 task_batch_limit=10,
                 worker_lease_duration_millis=5_000,
             )
         )
-        worker_lease_score = self.worker_score.get_score_states(
+        task_state_after_warmup = self.task_score.get_score_states(
+            task_ids=(self.task_id,)
+        )[self.task_id]
+        candidate_count_before_dispatch = (
+            self.candidate_cache.candidate_worker_counts(
+                candidate_ids=(self.task_id,),
+            )[self.task_id]
+        )
+        worker_states = self.worker_score.get_score_states(
             home_bucket_id="image-workers",
-            worker_ids=("worker-1",),
-        )["worker-1"].score
+            worker_ids=("worker-1", "worker-2"),
+        )
+        worker_lease_score = worker_states["worker-1"].score
+        due_worker_candidates = self.worker_score.acquire_hot_acquire_candidates(
+            home_bucket_id="image-workers",
+            limit=10,
+        )
         time.sleep((self.task_score.SLOT_MILLIS + 20) / 1_000)
 
         dispatch_started_millis = time.time_ns() // 1_000_000
@@ -244,13 +351,44 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             task_id=self.task_id,
             message_ids=(self.message_id,),
         )[self.message_id]
+        warmup_score_after_dispatch = self.redis.zscore(
+            f"ad:{self.prefix}:candidate-warmups",
+            self.task_id,
+        )
 
         self.assertEqual(TaskCreationStatus.CREATED, created.status)
-        self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, running.status)
-        self.assertEqual(TaskItemAppendStatus.APPENDED, appended[self.message_id].status)
+        self.assertEqual(TaskApprovalStatus.APPROVED, approved.status)
+        self.assertEqual(0, activation_without_item)
+        self.assertEqual(TaskScoreBand.PRE_DISPATCH_VISIBLE, state_without_item.band)
+        self.assertEqual(
+            TaskItemAppendStatus.APPENDED,
+            appended[self.message_id].status,
+        )
+        self.assertEqual(WorkerRuntimeStatus.OK, group_result.status)
+        self.assertEqual(WorkerRuntimeStatus.OK, matched_worker.status)
+        self.assertEqual(WorkerRuntimeStatus.OK, unmatched_worker.status)
+        self.assertEqual(1, activated)
+        self.assertIsNotNone(running_state)
+        self.assertEqual(TaskScoreBand.RUNNING_VISIBLE, running_state.band)
+        self.assertIsNotNone(warmup_score)
+        self.assertEqual(0, candidate_count_before_worker_registration)
+        self.assertEqual(0, dispatched_without_precomputation)
         self.assertEqual(1, warmed_tasks)
+        self.assertEqual(task_state_before_warmup, task_state_after_warmup)
+        self.assertEqual(1, candidate_count_before_dispatch)
+        self.assertGreater(
+            worker_states["worker-1"].time_millis,
+            time.time_ns() // 1_000_000,
+        )
+        self.assertGreater(
+            worker_states["worker-2"].time_millis,
+            time.time_ns() // 1_000_000,
+        )
+        self.assertNotIn("worker-1", due_worker_candidates)
+        self.assertNotIn("worker-2", due_worker_candidates)
         self.assertEqual(1, dispatched)
         self.assertEqual(0, candidate_count)
+        self.assertIsNotNone(warmup_score_after_dispatch)
         self.assertIsNotNone(item_state)
         self.assertEqual(TaskItemScoreBand.ACTIVE, item_state.band)
         self.assertEqual(3, item_state.remaining_budget)
@@ -296,43 +434,8 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
             ),
         )
 
-    def test_real_redis_targeted_item_dispatches_without_candidate_cache(self) -> None:
-        created = self.task_runtime.create_task(
-            descriptor=TaskDescriptor(
-                task_id=self.task_id,
-                worker_group_id="image-workers",
-                task_type=TaskType.ITEM_DRIVEN,
-                allocation_rule=None,
-                config={
-                    "priority": "80",
-                    "maximumCandidateWorkers": "10",
-                    "maxRetryTimes": "3",
-                },
-            ),
-            suffix=5,
-        )
-        time.sleep((self.task_score.SLOT_MILLIS + 20) / 1_000)
-        running = self.task_score.rewrite_score(
-            task_id=self.task_id,
-            expected_band=TaskScoreBand.PRE_REVIEW,
-            target_time_millis=time.time_ns() // 1_000_000,
-            target_band=TaskScoreBand.RUNNING_VISIBLE,
-            target_suffix=5,
-        )
-        time.sleep((self.task_score.SLOT_MILLIS + 20) / 1_000)
-
-        item = TaskItem(
-            message_id=self.message_id,
-            event_code="image.resize",
-            created_at_millis=time.time_ns() // 1_000_000 - 1_000,
-            payload={"source": "targeted"},
-            allocation_rule={"workerId": {"$eq": "worker-1"}},
-        )
-        appended = self.task_runtime.append_items(
-            task_id=self.task_id,
-            items=(item,),
-        )
-        self.worker_catalog.upsert_worker_group(
+    def test_item_driven_vertical_redis_proof_uses_complete_item_rules(self) -> None:
+        group_result = self.worker_catalog.upsert_worker_group(
             descriptor=WorkerGroupDescriptor(
                 worker_group_id="image-workers",
                 attributes={},
@@ -340,30 +443,64 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
                 item_allocation_fields=frozenset({"workerId"}),
             )
         )
-        initialized_worker = self.worker_runtime.upsert_worker(
-            declaration=WorkerDeclaration(
-                worker_id="worker-1",
-                worker_group_id="image-workers",
-                endpoint_manager_id="endpoint-manager-1",
-                attributes={"runtime": "python"},
-                dynamic_attribute_names=frozenset(),
+        worker_results = tuple(
+            self.worker_runtime.upsert_worker(
+                declaration=WorkerDeclaration(
+                    worker_id=f"worker-{index}",
+                    worker_group_id="image-workers",
+                    endpoint_manager_id=f"endpoint-manager-{index}",
+                    attributes={"runtime": "python"},
+                    dynamic_attribute_names=frozenset(),
+                )
             )
+            for index in (1, 2)
         )
         time.sleep((self.worker_score.SLOT_MILLIS + 20) / 1_000)
-        worker_score_before_warmer = self.worker_score.get_score_states(
+
+        items = tuple(
+            TaskItem(
+                message_id=f"message-{index}",
+                event_code="image.resize",
+                created_at_millis=time.time_ns() // 1_000_000 - 1_000,
+                payload={"target": f"worker-{index}"},
+                allocation_rule={"workerId": {"$eq": f"worker-{index}"}},
+            )
+            for index in (1, 2)
+        )
+        created, approved, appended, activated = (
+            self._create_approve_append_activate(
+                descriptor=TaskDescriptor(
+                    task_id=self.task_id,
+                    worker_group_id="image-workers",
+                    task_type=TaskType.ITEM_DRIVEN,
+                    allocation_rule=None,
+                    config={
+                        "priority": "80",
+                        "maximumCandidateWorkers": "10",
+                        "maxRetryTimes": "3",
+                    },
+                ),
+                items=items,
+            )
+        )
+        warmup_score_after_activation = self.redis.zscore(
+            f"ad:{self.prefix}:candidate-warmups",
+            self.task_id,
+        )
+        worker_scores_before_warmer = self.worker_score.get_score_states(
             home_bucket_id="image-workers",
-            worker_ids=("worker-1",),
-        )["worker-1"].score
+            worker_ids=("worker-1", "worker-2"),
+        )
         warmed_tasks = self.allocation_pacer.allocate_candidate_workers(
             config=TaskWorkerAllocationConfig(
                 task_batch_limit=10,
                 worker_lease_duration_millis=5_000,
             )
         )
-        worker_score_after_warmer = self.worker_score.get_score_states(
+        worker_scores_after_warmer = self.worker_score.get_score_states(
             home_bucket_id="image-workers",
-            worker_ids=("worker-1",),
-        )["worker-1"].score
+            worker_ids=("worker-1", "worker-2"),
+        )
         time.sleep((self.task_score.SLOT_MILLIS + 20) / 1_000)
 
         dispatched = self.pacer.dispatch_task_items(
@@ -375,28 +512,53 @@ class TaskItemDispatchIntegrationTest(unittest.TestCase):
         )
 
         self.assertEqual(TaskCreationStatus.CREATED, created.status)
-        self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, running.status)
-        self.assertEqual(TaskItemAppendStatus.APPENDED, appended[self.message_id].status)
-        self.assertEqual(WorkerRuntimeStatus.OK, initialized_worker.status)
+        self.assertEqual(TaskApprovalStatus.APPROVED, approved.status)
+        self.assertTrue(
+            all(
+                appended[item.message_id].status is TaskItemAppendStatus.APPENDED
+                for item in items
+            )
+        )
+        self.assertEqual(WorkerRuntimeStatus.OK, group_result.status)
+        self.assertTrue(
+            all(result.status is WorkerRuntimeStatus.OK for result in worker_results)
+        )
+        self.assertEqual(1, activated)
+        self.assertIsNone(warmup_score_after_activation)
         self.assertEqual(0, warmed_tasks)
-        self.assertEqual(worker_score_before_warmer, worker_score_after_warmer)
-        self.assertEqual(1, dispatched)
+        self.assertEqual(worker_scores_before_warmer, worker_scores_after_warmer)
+        self.assertEqual(2, dispatched)
         self.assertEqual(
-            0,
+            {
+                self.task_id: 0,
+                "message-1": 0,
+                "message-2": 0,
+            },
             self.candidate_cache.candidate_worker_counts(
-                candidate_ids=(self.task_id,),
-            )[self.task_id],
+                candidate_ids=(self.task_id, "message-1", "message-2"),
+            ),
         )
-        seeds = self.deliver_seed_runtime.consume_deliver_seeds(
-            endpoint_manager_id="endpoint-manager-1",
-            limit=10,
+        self.assertIsNone(
+            self.redis.zscore(
+                f"ad:{self.prefix}:candidate-warmups",
+                self.task_id,
+            )
         )
-        self.assertEqual(1, len(seeds))
-        self.assertEqual("worker-1", seeds[0].worker_id)
-        self.assertEqual(
-            {"source": "targeted"},
-            json.loads(seeds[0].opaque_delivery_item)["payload"],
-        )
+        for index in (1, 2):
+            seeds = self.deliver_seed_runtime.consume_deliver_seeds(
+                endpoint_manager_id=f"endpoint-manager-{index}",
+                limit=10,
+            )
+            self.assertEqual(1, len(seeds))
+            self.assertEqual(f"worker-{index}", seeds[0].worker_id)
+            self.assertEqual(
+                f"message-{index}",
+                json.loads(seeds[0].opaque_result_context)["messageId"],
+            )
+            self.assertEqual(
+                {"target": f"worker-{index}"},
+                json.loads(seeds[0].opaque_delivery_item)["payload"],
+            )
 
 
 if __name__ == "__main__":

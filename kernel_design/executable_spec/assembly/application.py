@@ -7,12 +7,12 @@ from enum import Enum
 from threading import Lock
 from typing import Any
 
-from ..constraint_dsl import ConstraintEvaluator
 from ..scheduling import (
     TaskItemDispatchConfig,
     TaskRunningActivationConfig,
     TaskWorkerAllocationConfig,
 )
+from ..scheduling.worker_candidate.rules import validate_targeted_allocation_rule
 from ..scheduling.task_scheduling_profile import (
     ResolvedTaskSchedulingProfile,
     TaskAllocationRuleOwner,
@@ -477,52 +477,13 @@ class KernelApplication:
             return
         if item.allocation_rule is None:
             raise ValueError("ITEM_DRIVEN requires a TaskItem allocation rule")
-        compiled_rule = ConstraintEvaluator.compile_match_rules(
-            item.allocation_rule
+        validate_targeted_allocation_rule(
+            item.allocation_rule,
+            allowed_fields=allowed_fields,
+            dynamic_attributes=(
+                self._process._worker_dynamic_attribute_runtime
+            ),
         )
-        unsupported_fields = set(compiled_rule) - allowed_fields
-        if unsupported_fields:
-            raise ValueError(
-                "Item allocation fields are not allowed by WorkerGroup: "
-                + ", ".join(sorted(unsupported_fields))
-            )
-        for field_name, operator_rule in compiled_rule.items():
-            if field_name == "workerId":
-                self._validate_worker_id_allocation_rule(operator_rule)
-                continue
-            domain, separator, attribute_name = field_name.partition(".")
-            if not separator or domain != "dynamic" or not attribute_name:
-                raise ValueError(
-                    f"Item allocation field has no candidate source: {field_name}"
-                )
-            if not self._process._worker_dynamic_attribute_runtime.supports_candidate_query(
-                attribute_name=attribute_name,
-                operator_rule=operator_rule,
-            ):
-                raise ValueError(
-                    f"dynamic allocation field has no candidate query: {field_name}"
-                )
-
-    @staticmethod
-    def _validate_worker_id_allocation_rule(
-        operator_rule: Mapping[str, object],
-    ) -> None:
-        if len(operator_rule) != 1:
-            raise ValueError("workerId allocation requires exactly one operator")
-        operator, operand = next(iter(operator_rule.items()))
-        if operator == "$eq":
-            values = (operand,)
-        elif operator == "$in" and isinstance(operand, tuple):
-            values = operand
-        else:
-            raise ValueError("workerId allocation only supports $eq or $in")
-        if not values or any(
-            not isinstance(worker_id, str) or not worker_id
-            for worker_id in values
-        ):
-            raise ValueError(
-                "workerId allocation values must be non-empty strings"
-            )
 
     def _require_started(self) -> None:
         with self._lifecycle_lock:

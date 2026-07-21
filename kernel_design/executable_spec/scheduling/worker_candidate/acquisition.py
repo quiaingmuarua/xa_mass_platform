@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Mapping as MappingABC, Sequence as SequenceABC
+from collections.abc import Mapping as MappingABC
 from dataclasses import dataclass
 from enum import Enum
 from typing import Mapping
@@ -27,6 +27,7 @@ from .matching import (
     WorkerCandidateConstraint,
     WorkerCandidateMatcher,
 )
+from .rules import worker_ids_from_target_rule
 
 
 @dataclass(frozen=True)
@@ -275,7 +276,7 @@ class WorkerCandidateAcquirer:
         if not isinstance(operator_rule, MappingABC):
             raise ValueError("target field operator rule must be a mapping")
         if target_field == "workerId":
-            return _worker_ids_from_rule(
+            return worker_ids_from_target_rule(
                 operator_rule,
                 limit=self.worker_scan_limit,
             )
@@ -352,34 +353,3 @@ def _successful_lease_scores(
         for worker_id, result in results.items()
         if result.status in accepted_statuses and result.score is not None
     }
-
-
-def _worker_ids_from_rule(
-    operator_rule: Mapping[str, object],
-    *,
-    limit: int,
-) -> tuple[WorkerId, ...]:
-    if len(operator_rule) != 1:
-        raise ValueError("workerId target requires exactly one operator")
-    operator, operand = next(iter(operator_rule.items()))
-    if operator == "$eq":
-        values = (operand,)
-    elif operator == "$in" and not isinstance(operand, (str, bytes)) and isinstance(
-        operand,
-        SequenceABC,
-    ):
-        values = operand
-    else:
-        raise ValueError("workerId target only supports $eq or $in")
-    worker_ids: list[WorkerId] = []
-    seen: set[WorkerId] = set()
-    for value in values:
-        if not isinstance(value, str) or not value:
-            raise ValueError("workerId target values must be non-empty strings")
-        if value in seen:
-            continue
-        seen.add(value)
-        worker_ids.append(value)
-        if len(worker_ids) == limit:
-            break
-    return tuple(worker_ids)

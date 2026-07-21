@@ -205,6 +205,26 @@ not construct policy inside a pacer, combine rounds into one sequential loop,
 own score or runtime truth, consume DeliverSeed queues, or turn append/result/
 heartbeat events into required wakeups.
 
+## Process-Boundary E2E Proof
+
+The executable spec proves both `TASK_DRIVEN` and `ITEM_DRIVEN` through the
+same external process boundaries:
+
+```text
+ResourcesCommandClient
+  -> KernelApplication
+  -> Redis scheduling truth
+  -> DeliverSeedConsumerClient / Local Function Adapter
+  -> SeedResultCommandClient
+  -> Result-Routing
+  -> TaskItem FINAL_SUCCESS + result HASH + Worker lease release
+```
+
+The proof does not route through FastAPI, because HTTP translation is an
+example-host concern rather than scheduling truth. It also stops at Item result
+convergence: automatic Task termination and release of RUNNING soft-limit
+capacity remain a separate termination-policy contract.
+
 ## External Hosts
 
 The built-in CLI starts the application with defaults or one JSON file:

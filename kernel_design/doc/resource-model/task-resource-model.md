@@ -191,9 +191,22 @@ record payload for that id, while Item score initialization remains `ZADD NX`
 and never resets its scheduling identity. `maxRetryTimes` is read owner-locally
 to initialize Item remaining budget; callers do not pass score fields.
 
-For `ITEM_DRIVEN`, the Item rule does not merge with a Task rule because no
-Task rule exists. It does not change `workerGroupId`, which always comes from
-`TaskDescriptor`.
+For `ITEM_DRIVEN`, every TaskItem carries the complete Worker allocation rule
+for that Item. The rule is not a delta and does not merge with a Task rule,
+because no Task rule exists. It does not change `workerGroupId`, which always
+comes from `TaskDescriptor`.
+
+Non-atomic broadcast or fan-out is normalized before scheduling into multiple
+TaskItems. Each expanded Item has its own `messageId`, complete allocation rule,
+claim, retry budget, `DeliverSeed`, and result; each still occupies exactly one
+Worker slot. The kernel therefore does not turn one Item into a multi-Worker
+assignment.
+
+If a business operation truly requires all `N` Worker slots to be reserved and
+started atomically, expansion alone would lose that all-or-none invariant. That
+would be a separate gang-reservation mechanism with a bundle identity,
+multi-lease commit, and bundle failure semantics. No such requirement is
+assumed by the current kernel.
 
 Before application-level append, the selected WorkerGroup must allow every
 Item rule field through `itemAllocationFields`. `workerId` supports bounded

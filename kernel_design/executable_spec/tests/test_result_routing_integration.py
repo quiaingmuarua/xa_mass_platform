@@ -29,10 +29,14 @@ from kernel_design.executable_spec.assembly import (
     KernelApplicationConfig,
     ResourcesCommandClient,
     SeedResultCommandClient,
+    TaskApprovalStatus,
+    TaskCreationStatus,
     TaskDescriptor,
     TaskItem,
+    TaskItemAppendStatus,
     WorkerDeclaration,
     WorkerGroupDescriptor,
+    WorkerRuntimeStatus,
 )
 
 
@@ -57,7 +61,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         self.config = KernelApplicationConfig(
             redis_url=_REDIS_URL,
             redis_prefix=self.prefix,
-            worker_allocation_interval_millis=10,
+            worker_allocation_interval_millis=500,
             running_activation_interval_millis=10,
             task_item_dispatch_interval_millis=10,
             result_routing_interval_millis=10,
@@ -85,12 +89,37 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         if keys:
             self.redis.delete(*keys)
 
-    def test_local_adapter_result_finalizes_item_and_releases_worker(self) -> None:
-        self.resources.upsert_worker_group(
+    def test_task_driven_process_e2e_reaches_success_and_releases_worker(
+        self,
+    ) -> None:
+        self._run_success_e2e(TaskType.TASK_DRIVEN)
+
+    def test_item_driven_process_e2e_reaches_success_without_candidate_cache(
+        self,
+    ) -> None:
+        self._run_success_e2e(TaskType.ITEM_DRIVEN)
+        self.assertEqual(
+            0,
+            self.redis.exists(
+                f"ad:{self.prefix}:candidate:task-1:workers"
+            ),
+        )
+        self.assertEqual(
+            0,
+            self.redis.exists(f"ad:{self.prefix}:candidate-warmups"),
+        )
+
+    def _run_success_e2e(self, task_type: TaskType) -> None:
+        group_result = self.resources.upsert_worker_group(
             descriptor=WorkerGroupDescriptor(
                 worker_group_id="image-workers",
                 attributes={},
                 event_codes=frozenset({"image.resize"}),
+                item_allocation_fields=(
+                    frozenset({"workerId"})
+                    if task_type is TaskType.ITEM_DRIVEN
+                    else frozenset()
+                ),
             )
         )
         self.adapter.register_worker("worker-1", WorkerMeta({"runtime": "local"}))
@@ -101,7 +130,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
                 {"handled": payload["source"], "runtime": worker.attributes["runtime"]},
             ),
         )
-        self.resources.upsert_worker(
+        worker_result = self.resources.upsert_worker(
             declaration=WorkerDeclaration(
                 worker_id="worker-1",
                 worker_group_id="image-workers",
@@ -112,11 +141,11 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         )
 
         self.application.start()
-        self.application.create_task(
-            descriptor=self._task_descriptor(TaskType.TASK_DRIVEN)
+        creation_result = self.application.create_task(
+            descriptor=self._task_descriptor(task_type)
         )
-        self.application.approve_task(task_id="task-1")
-        self.application.append_task_items(
+        approval_result = self.application.approve_task(task_id="task-1")
+        append_results = self.application.append_task_items(
             task_id="task-1",
             items=(
                 TaskItem(
@@ -124,8 +153,22 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
                     event_code="image.resize",
                     created_at_millis=int(time.time() * 1_000) - 1_000,
                     payload={"source": "input"},
+                    allocation_rule=(
+                        {"workerId": {"$eq": "worker-1"}}
+                        if task_type is TaskType.ITEM_DRIVEN
+                        else None
+                    ),
                 ),
             ),
+        )
+
+        self.assertIs(WorkerRuntimeStatus.OK, group_result.status)
+        self.assertIs(WorkerRuntimeStatus.OK, worker_result.status)
+        self.assertIs(TaskCreationStatus.CREATED, creation_result.status)
+        self.assertIs(TaskApprovalStatus.APPROVED, approval_result.status)
+        self.assertIs(
+            TaskItemAppendStatus.APPENDED,
+            append_results["message-1"].status,
         )
 
         deadline = time.monotonic() + 3
