@@ -115,17 +115,29 @@ The current scenarios are:
 
 ```text
 TASK_DRIVEN
-  stable Task-level Worker constraints
-  stage-oriented and relatively dense Item arrival
-  Task-level candidate computation can be prepaid and amortized
+  every Item inherits one complete Task-level Worker rule
+  candidate computation is reusable across Items and dispatch rounds
+  precomputation and cache amortize repeated Worker-selection cost
 
 ITEM_DRIVEN
-  each Item supplies the bounded Worker target rule
-  long-lived or open-ended, with sparse or unpredictable Item arrival
+  every Item owns its complete bounded Worker target rule
   Item rules may all be equal or may differ
-  paying selection cost only for a real Item is cheaper than maintaining
-  Task-level candidate leases
+  Worker selection is paid only when that Item is actually dispatched
 ```
+
+The hard distinction is rule ownership and candidate reuse, not traffic shape.
+Either type may serve RPC-style or batch-oriented callers, and either may see
+dense or sparse Item arrival. A `TASK_DRIVEN` Task may carry different payload
+parameters while all Items reuse one Worker rule. An `ITEM_DRIVEN` Task remains
+Item-driven even when every Item happens to carry the same rule, because the
+Item is still the rule owner and the kernel does not maintain Task-level
+candidate evidence.
+
+TaskType establishes no relative scheduling priority. It also does not imply a
+latency class, synchronous versus asynchronous execution, Worker exclusivity,
+or permission to preempt another Task's Worker lease. Task priority and
+candidate-request priority remain explicit scheduling inputs and are evaluated
+without deriving an ordering from `TASK_DRIVEN` or `ITEM_DRIVEN`.
 
 A future TaskType is admitted only when a named workload cannot be represented
 by either scenario without changing a scheduling invariant. The proposal must
@@ -244,6 +256,13 @@ load_task_item_success_results(task_id, message_ids)
 record payload for that id, while Item score initialization remains `ZADD NX`
 and never resets its scheduling identity. `maxRetryTimes` is read owner-locally
 to initialize Item remaining budget; callers do not pass score fields.
+
+`eventCode` is stored and passed through to the selected Worker's local handler
+dispatch. Kernel Task admission, matching, and dispatch do not compare it with
+WorkerGroup capability metadata. `expireAtMillis` is the new-attempt cutoff:
+TaskRuntime rejects an already-expired append, while Task dispatch final-fails
+an Item that expires after append before acquiring a Worker. Existing claimed
+attempts remain governed by their claim lease.
 
 For `ITEM_DRIVEN`, every TaskItem carries the complete Worker allocation rule
 for that Item. The rule is not a delta and does not merge with a Task rule,

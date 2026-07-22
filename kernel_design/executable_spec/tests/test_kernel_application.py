@@ -320,14 +320,14 @@ class KernelApplicationTest(unittest.TestCase):
             suffix=1,
         )
 
-    def test_append_validates_item_allocation_rules_before_task_runtime(self) -> None:
+    def test_append_validates_item_rules_without_event_code_gate(self) -> None:
         task = self._task_descriptor(
             task_type=TaskType.ITEM_DRIVEN,
         )
         group = WorkerGroupDescriptor(
             worker_group_id=task.worker_group_id,
             attributes={},
-            event_codes=frozenset({"image.resize"}),
+            event_codes=frozenset({"different.event"}),
             item_allocation_fields=frozenset(
                 {"workerId", "dynamic.battery", "dynamic.missing"}
             ),

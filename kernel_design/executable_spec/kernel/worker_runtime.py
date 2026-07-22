@@ -32,9 +32,9 @@ class WorkerRuntimeStatus(Enum):
 class WorkerGroupDescriptor:
     """Worker group metadata/query projection.
 
-    event_codes is the group promise. It validates item event families after a
-    task has already selected a worker group; it is not a worker-group discovery
-    mechanism.
+    event_codes is a declared capability for external bootstrap and operator
+    validation. Kernel append, matching, and dispatch do not enforce it;
+    event-code resolution remains worker-local after assignment.
     """
 
     worker_group_id: WorkerGroupId

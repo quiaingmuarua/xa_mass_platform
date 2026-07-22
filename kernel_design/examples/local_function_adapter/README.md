@@ -188,7 +188,7 @@ def drain_once(self, *, limit: int) -> int:
             continue
         handler = self.handlers.get(item.event_code)
         if handler is None:
-            results.append(SeedResult(seed.opaque_result_context, "3002"))
+            results.append(SeedResult(seed.opaque_result_context, "1404"))
             continue
 
         try:
@@ -216,7 +216,10 @@ not delivery or result success.
 
 Handlers may return only `"200"` or `1xxx`; they cannot forge `3xxx` adapter
 evidence. Handler failure, invalid return type, or payload encoding failure is
-reported as `1500`. Missing local Worker is `3001`; missing handler is `3002`.
+reported as `1500`. Missing local Worker is `3001` because the Adapter could
+not enter Worker execution. Missing handler is `1404`: the selected Worker was
+reached, but its worker-local EventCode dispatch failed. It is therefore Worker
+failure evidence and releases rather than demotes the Worker lease.
 Expired seeds and malformed delivery envelopes remain unclassified drops and
 do not change Worker scheduling-serviceability classification.
 

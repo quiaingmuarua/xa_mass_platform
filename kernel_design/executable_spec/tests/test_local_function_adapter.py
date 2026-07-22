@@ -115,7 +115,7 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
                 self.assertEqual("1500", result.outcome_code)
                 self.assertIsNone(result.opaque_result_payload)
 
-    def test_adapter_rejections_are_reported_while_expired_and_corrupt_drop(self) -> None:
+    def test_unreachable_worker_and_missing_handler_have_distinct_outcomes(self) -> None:
         self.consumer.consume_deliver_seeds.return_value = (
             self.seed(claim_until_millis=self.NOW_MILLIS),
             self.seed(worker_id="missing-worker"),
@@ -128,7 +128,7 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
         self.assertEqual(2, self.drain())
 
         results = self.result_commands.append_seed_results.call_args.kwargs["results"]
-        self.assertEqual(["3001", "3002"], [result.outcome_code for result in results])
+        self.assertEqual(["3001", "1404"], [result.outcome_code for result in results])
 
     def test_unregister_worker_is_idempotent_and_reports_unavailable(self) -> None:
         self.adapter.unregister_worker("worker-1")

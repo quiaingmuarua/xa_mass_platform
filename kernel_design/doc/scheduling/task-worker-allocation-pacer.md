@@ -25,6 +25,11 @@ It uses Task score only as a bounded read-only eligibility truth. It does not
 acquire, lease, rotate, or rewrite Task score, process ADMISSION Tasks,
 decide Task activation, or serve Item-directed TARGETED requests.
 
+Warmup participation is not a priority class. `TASK_DRIVEN` enables reusable
+Task-level candidate computation; it does not make the Task more or less urgent
+than an `ITEM_DRIVEN` Task. The Pacer uses explicit Task/candidate priority and
+must not infer Worker contention or preemption rights from TaskType.
+
 ## Warmup Schedule
 
 `CandidateWarmupSchedule` is owner-local, derived evidence:

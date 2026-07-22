@@ -616,6 +616,30 @@ class RedisTaskRuntimeTest(unittest.TestCase):
         self.assertEqual(TaskItemAppendStatus.NOT_FOUND, result["message-1"].status)
         self.assertNotIn("tr:test:task:missing:items", self.redis.hashes)
 
+    def test_append_rejects_already_expired_item_without_writes(self) -> None:
+        self.runtime.create_task(
+            descriptor=self.descriptor("task-1"),
+            suffix=self.SUFFIX,
+        )
+        result = self.runtime.append_items(
+            task_id="task-1",
+            items=[
+                TaskItem(
+                    message_id="expired",
+                    event_code="image.resize",
+                    created_at_millis=90_000,
+                    expire_at_millis=self.redis.now_millis,
+                    payload={},
+                )
+            ],
+        )
+
+        self.assertEqual(TaskItemAppendStatus.INVALID, result["expired"].status)
+        self.assertNotIn("tr:test:task:task-1:items", self.redis.hashes)
+        self.assertIsNone(
+            self.redis.zscore("tr:test:task:task-1:item-score", "expired")
+        )
+
     def test_success_results_are_task_scoped_bounded_and_last_write_wins(
         self,
     ) -> None:

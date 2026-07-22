@@ -315,29 +315,40 @@ class TaskDispatchPacer:
             for message_id, (_, remaining_budget) in observations.items()
             if remaining_budget == 0
         )
-        if exhausted_message_ids:
-            self.item_score.promote_item_outcomes(
-                task_id=task_id,
-                message_ids=exhausted_message_ids,
-                target_band=TaskItemScoreBand.FINAL_FAILED,
-                target_time_millis=observed_at_millis,
-            )
-
         claimable_scores: dict[str, Score] = {
             message_id: observed_score
             for message_id, (observed_score, remaining_budget) in observations.items()
             if remaining_budget > 0
         }
-        if not claimable_scores:
-            return ()
-
-        items = self.task_runtime.load_task_items(
-            task_id=task_id,
-            message_ids=tuple(claimable_scores),
+        items = (
+            self.task_runtime.load_task_items(
+                task_id=task_id,
+                message_ids=tuple(claimable_scores),
+            )
+            if claimable_scores
+            else {}
         )
+        expired_message_ids = tuple(
+            message_id
+            for message_id in claimable_scores
+            if (task_item := items.get(message_id)) is not None
+            and task_item.expire_at_millis is not None
+            and observed_at_millis >= task_item.expire_at_millis
+        )
+        final_failed_message_ids = exhausted_message_ids + expired_message_ids
+        if final_failed_message_ids:
+            self.item_score.promote_item_outcomes(
+                task_id=task_id,
+                message_ids=final_failed_message_ids,
+                target_band=TaskItemScoreBand.FINAL_FAILED,
+                target_time_millis=observed_at_millis,
+            )
+
+        expired = frozenset(expired_message_ids)
         return tuple(
             (task_item, observed_score)
             for message_id, observed_score in claimable_scores.items()
+            if message_id not in expired
             if (task_item := items.get(message_id)) is not None
         )
 

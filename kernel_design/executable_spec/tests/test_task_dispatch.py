@@ -330,6 +330,36 @@ class TaskDispatchPacerTest(unittest.TestCase):
             target_time_millis=self.NOW_MILLIS,
         )
 
+    def test_expired_item_is_final_failed_before_worker_acquisition(self) -> None:
+        self._prepare_task("task-1")
+        expired = self._item(
+            "expired",
+            expire_at_millis=self.NOW_MILLIS,
+        )
+        self.item_score.acquire_item_score_candidates.return_value = {
+            "expired": (101, 3)
+        }
+        self.task_runtime.load_task_items.return_value = {"expired": expired}
+        self.item_score.has_active_items.return_value = {"task-1": False}
+
+        with patch.object(
+            self.pacer,
+            "_current_time_millis",
+            return_value=self.NOW_MILLIS,
+        ):
+            appended = self.pacer.dispatch_tasks(config=self.config)
+
+        self.assertEqual(0, appended)
+        self.item_score.promote_item_outcomes.assert_called_once_with(
+            task_id="task-1",
+            message_ids=("expired",),
+            target_band=TaskItemScoreBand.FINAL_FAILED,
+            target_time_millis=self.NOW_MILLIS,
+        )
+        self.candidate_acquirer.acquire_worker_candidates.assert_not_called()
+        self.item_score.rewrite_observed_item_scores.assert_not_called()
+        self.deliver_seed_runtime.append_deliver_seeds.assert_not_called()
+
     def test_missing_descriptor_skips_item_observation(self) -> None:
         self.task_score.acquire_dispatch_work_tasks.return_value = ("task-1",)
         self.task_catalog.load_task_allocation_descriptors.return_value = {
@@ -677,6 +707,7 @@ class TaskDispatchPacerTest(unittest.TestCase):
         message_id: str,
         *,
         allocation_rule: dict[str, object] | None = None,
+        expire_at_millis: int | None = None,
     ) -> TaskItem:
         return TaskItem(
             message_id=message_id,
@@ -684,6 +715,7 @@ class TaskDispatchPacerTest(unittest.TestCase):
             created_at_millis=1,
             payload={"value": message_id},
             allocation_rule=allocation_rule,
+            expire_at_millis=expire_at_millis,
         )
 
     @staticmethod

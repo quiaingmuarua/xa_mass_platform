@@ -74,6 +74,12 @@ System Policy values do not justify a new TaskType. Tests must prove supported
 TaskType scenarios and owner primitives; do not add orchestration branches or
 defensive tests for policy combinations that no supported scenario can create.
 
+Do not infer priority, latency class, RPC versus batch behavior, arrival
+density, Worker exclusivity, or preemption rights from TaskType. The stable
+type distinction is Task-owned reusable Worker rules with candidate
+precomputation versus Item-owned complete Worker rules with targeted
+acquisition. Identical Item rules remain valid for `ITEM_DRIVEN`.
+
 ## 2. First Read
 
 For general kernel work:

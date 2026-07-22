@@ -94,8 +94,9 @@ Value shape:
 }
 ```
 
-`eventCodes` is a group promise. It validates worker-group capability after a
-task has already selected a group. It is not a worker selector and not runtime
+`eventCodes` is a declared group capability for external bootstrap and
+operator validation. Kernel append, matching, and dispatch do not read it as an
+admission gate. It is not a worker selector and not runtime
 scheduling-serviceability proof.
 
 `itemAllocationFields` is the immutable WorkerGroup allowlist for TaskItem

@@ -59,7 +59,8 @@ One round computes its dispatch time and Item claim deadline once:
 3. For `suffix > 0`, skip Worker acquisition and Item claim and add the Task to
    the activity-check batch.
 4. For `suffix = 0`, observe record-backed due ACTIVE Items.
-5. Promote observed zero-budget Items to `FINAL_FAILED`.
+5. Promote observed zero-budget Items and Items whose persisted
+   `expireAtMillis <= roundNowMillis` to `FINAL_FAILED`.
 6. If no dispatchable Item remains, add the Task to the activity-check batch.
 7. Otherwise acquire Workers, exact-claim only Worker-backed Items, build
    `DeliverSeed` values, publish by endpoint manager, and preserve suffix zero
@@ -68,7 +69,9 @@ One round computes its dispatch time and Item claim deadline once:
    recheck transition rules below.
 
 Observation precedes Worker acquisition. Worker acquisition precedes Item
-claim. Item claim precedes DeliverSeed publication.
+claim. Item claim precedes DeliverSeed publication. Expiry classification
+therefore cannot acquire a Worker, consume retry budget, or emit a DeliverSeed.
+An already-claimed attempt is not revoked when its Item later expires.
 
 ## ACTIVE Item Truth
 

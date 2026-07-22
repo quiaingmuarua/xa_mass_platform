@@ -16,8 +16,8 @@ from ...executable_spec.assembly import (
 
 
 WORKER_HANDLER_FAILURE_OUTCOME_CODE = "1500"
+WORKER_HANDLER_UNAVAILABLE_OUTCOME_CODE = "1404"
 ADAPTER_WORKER_UNAVAILABLE_OUTCOME_CODE = "3001"
-ADAPTER_HANDLER_UNAVAILABLE_OUTCOME_CODE = "3002"
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,7 +129,7 @@ class LocalFunctionTransportAdapter:
                 results.append(
                     SeedResult(
                         opaque_result_context=seed.opaque_result_context,
-                        outcome_code=ADAPTER_HANDLER_UNAVAILABLE_OUTCOME_CODE,
+                        outcome_code=WORKER_HANDLER_UNAVAILABLE_OUTCOME_CODE,
                     )
                 )
                 continue

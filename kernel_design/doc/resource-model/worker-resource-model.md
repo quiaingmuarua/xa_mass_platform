@@ -35,8 +35,9 @@ placement, platform/worker attributes, or explicitly supported projected dynamic
 query attributes.
 
 `TaskItem / DeliverSeed -> EventHandler` is handler invocation inside the selected
-worker. The TaskItem's `eventCode` validates against the selected
-`WorkerGroupDescriptor.eventCodes` and resolves to a worker-local handler. It
+worker. Kernel assignment passes the TaskItem's `eventCode` through without
+using it for admission or matching. The selected Worker resolves it to a local
+handler and reports an unsupported code as Worker failure evidence. EventCode
 does not choose worker groups and does not prove Worker scheduling
 serviceability.
 
@@ -109,10 +110,10 @@ classification, policy hints, or operator-facing facts. They are not live
 worker score lease truth.
 
 `eventCodes` declares the task item event families this worker group can
-handle. It validates that the selected worker group can serve the task item's
-event, but it is not a per-dispatch group discovery mechanism and
-not proof that a specific worker is currently reachable, score-leased, or able to
-receive work.
+handle. It is capability metadata for external bootstrap, control-plane, and
+operator validation. Kernel Item append, Worker matching, and dispatch do not
+read it as an admission gate. It is not proof that a specific worker is
+currently reachable, score-leased, or able to receive work.
 
 `itemAllocationFields` declares which bounded candidate-source fields a
 `ITEM_DRIVEN` Task may use in Item rules. `workerId` is built in;
@@ -239,16 +240,16 @@ dynamicAttributeNames = {
 }
 ```
 
-## EventCode Promise
+## EventCode Declaration
 
-`WorkerGroupDescriptor.eventCodes` is a group promise. In v0, a worker group is
-a homogeneous event-handler universe:
+`WorkerGroupDescriptor.eventCodes` declares the expected event-handler universe
+for a WorkerGroup:
 
 ```text
 every accepted worker in the group must be compatible with the group's eventCodes
 ```
 
-Platform validation must happen when a Worker first appears or reconnects:
+An external Worker bootstrap or control-plane validator may verify:
 
 ```text
 workerGroupId exists
@@ -256,9 +257,11 @@ attributes satisfy group policy / attributes
 Worker declaration evidence or platform handler catalog covers eventCodes
 ```
 
-If a worker cannot satisfy the group's event promise, reject the worker from
-that worker group. Do not solve this by adding per-worker event binding rows in
-v0.
+That validation is not a kernel reconnect or scheduling transition. The kernel
+does not reject TaskItems by comparing EventCode with this declaration. After
+assignment, unsupported EventCode resolution is Worker execution failure, not
+Adapter rejection and not Worker matching failure. Do not solve ordinary
+handler differences by adding per-worker event binding rows in v0.
 
 Version compatibility is metadata validation through `attributes`.
 Assignment-dispatch must not interpret version fields directly as runtime
@@ -390,8 +393,8 @@ for that field.
 `workerGroupId` is not a query field. It remains an outer parameter because it
 chooses the worker universe, score bucket, and runtime namespace.
 
-`eventCode` is not a query field. It validates the selected group's event-code
-promise and later routes work to a worker-local handler; it does not match
+`eventCode` is not a query field or a kernel admission field. It passes through
+assignment and later routes work to a worker-local handler; it does not match
 individual workers.
 
 Supported v0 operators:
@@ -626,7 +629,7 @@ lease. Metadata does not decide which WorkerGroup a Task may use:
 task admission
   -> validates and fixes workerGroupId
 task eventCode
-  -> validates against WorkerGroupDescriptor.eventCodes
+  -> passes through to selected Worker's local handler dispatch
 pre-bound workerGroupId
   -> candidate source proposes bounded Worker ids
   -> WorkerScoreCore exact lease validates serviceability and slot hold

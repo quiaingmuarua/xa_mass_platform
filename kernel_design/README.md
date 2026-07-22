@@ -96,6 +96,12 @@ priority, fairness, or retry values remain System Policy inside an existing
 TaskType. Acceptance is a vertical scenario proof, not policy-combination
 coverage.
 
+TaskType is not a priority or transport-style label. `TASK_DRIVEN` and
+`ITEM_DRIVEN` may each be used for RPC-style or batch-oriented work and may
+each receive dense or sparse Items. Their stable distinction is whether the
+Task or each TaskItem owns the complete Worker rule and whether Task-level
+candidate evidence is reusable.
+
 ## Core Axioms
 
 The kernel core should stay small:

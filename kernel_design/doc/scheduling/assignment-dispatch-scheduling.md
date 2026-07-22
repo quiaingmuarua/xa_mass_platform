@@ -41,6 +41,11 @@ from `emptyCloseAtMillis`, not from the profile or TaskType. The profile is not
 an external policy registry, and callers cannot independently select cache,
 warmer, rule-owner, or acquisition flags.
 
+The profile does not assign priority. `TASK_DRIVEN` is not above or below
+`ITEM_DRIVEN`, and neither type implies RPC, batch, latency, or preemption
+semantics. Ordering comes only from explicit Task or candidate-request priority
+handled by the corresponding scheduling policy.
+
 ## Worker Candidate Contract
 
 ```python

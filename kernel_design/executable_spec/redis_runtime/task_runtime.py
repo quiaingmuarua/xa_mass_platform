@@ -197,11 +197,17 @@ class RedisTaskRuntime(TaskRuntime):
         records: dict[MessageId, str] = {}
         due_millis_by_message_id: dict[MessageId, int] = {}
         results: dict[MessageId, TaskItemAppendResult] = {}
+        append_time_millis = self._current_time_millis()
         for message_id, item in ordered_items.items():
             try:
                 if item.allocation_rule is not None:
                     ConstraintEvaluator.compile_match_rules(item.allocation_rule)
                 normalized = self._materialize_item_defaults(item)
+                if (
+                    normalized.expire_at_millis is None
+                    or append_time_millis >= normalized.expire_at_millis
+                ):
+                    raise ValueError("TaskItem is already expired")
                 records[message_id] = self._encode_task_item(normalized)
                 due_millis_by_message_id[message_id] = (
                     self._initial_due_millis(normalized)
@@ -357,6 +363,10 @@ class RedisTaskRuntime(TaskRuntime):
             item.created_at_millis
             - item.priority * self.ITEM_PRIORITY_STEP_MILLIS,
         )
+
+    def _current_time_millis(self) -> TimeMillis:
+        seconds, microseconds = self.redis.time()
+        return int(seconds) * 1_000 + int(microseconds) // 1_000
 
     @staticmethod
     def _encode_task_item(item: TaskItem) -> str:

@@ -6,6 +6,7 @@ import time
 import unittest
 import uuid
 from collections.abc import Mapping
+from unittest.mock import patch
 
 try:
     import redis as redis_module
@@ -645,6 +646,74 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
                 {"target": f"worker-{index}"},
                 json.loads(seeds[0].opaque_delivery_item)["payload"],
             )
+
+    def test_expired_item_finalizes_before_worker_acquisition(self) -> None:
+        now_millis = time.time_ns() // 1_000_000
+        expire_at_millis = now_millis + 60_000
+        descriptor = TaskDescriptor(
+            task_id=self.task_id,
+            worker_group_id="image-workers",
+            task_type=TaskType.TASK_DRIVEN,
+            allocation_rule={},
+            config={
+                "priority": "0",
+                "maximumCandidateWorkers": "1",
+                "maxRetryTimes": "3",
+            },
+            empty_close_at_millis=0,
+        )
+        item = TaskItem(
+            message_id=self.message_id,
+            event_code="kernel-does-not-validate-event-code",
+            created_at_millis=now_millis - 1_000,
+            expire_at_millis=expire_at_millis,
+            payload={},
+        )
+        created, approved, appended, activated = (
+            self._create_approve_append_activate(
+                descriptor=descriptor,
+                items=(item,),
+            )
+        )
+        time.sleep((self.task_score.SLOT_MILLIS + 20) / 1_000)
+
+        with patch.object(
+            self.pacer,
+            "_current_time_millis",
+            return_value=expire_at_millis,
+        ):
+            dispatched = self.pacer.dispatch_tasks(
+                config=TaskDispatchConfig(
+                    task_batch_limit=10,
+                    per_task_dispatch_limit=10,
+                    item_claim_lease_duration_millis=5_000,
+                    max_empty_recheck_times=5,
+                    empty_recheck_interval_millis=1_000,
+                )
+            )
+
+        item_state = self.item_score.get_item_score_states(
+            task_id=self.task_id,
+            message_ids=(self.message_id,),
+        )[self.message_id]
+        self.assertEqual(TaskCreationStatus.CREATED, created.status)
+        self.assertEqual(TaskApprovalStatus.APPROVED, approved.status)
+        self.assertEqual(TaskItemAppendStatus.APPENDED, appended[self.message_id].status)
+        self.assertEqual(1, activated)
+        self.assertEqual(0, dispatched)
+        self.assertIs(TaskItemScoreBand.FINAL_FAILED, item_state.band)
+        self.assertEqual(
+            0,
+            self.redis.zcard(
+                f"ad:{self.prefix}:candidate:{self.task_id}:workers"
+            ),
+        )
+        self.assertEqual(
+            0,
+            self.redis.llen(
+                f"ad:{self.prefix}:endpoint-manager:endpoint-manager-1:deliver-seeds"
+            ),
+        )
 
     def test_task_driven_empty_rechecks_close_and_release_running_slot(self) -> None:
         self.worker_catalog.upsert_worker_group(

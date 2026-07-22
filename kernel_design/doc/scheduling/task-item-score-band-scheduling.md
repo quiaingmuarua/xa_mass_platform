@@ -121,8 +121,17 @@ priority is `0..10` and places newly appended members inside one Task's ACTIVE
 acquire range.
 
 `expireAtMillis` is policy input stored by `TaskRuntime`; it never enters
-`TaskItemScoreBandCore`. Claim/result policy may read the TaskItem and choose a
-named score operation. Retry count is not an Item field.
+`TaskItemScoreBandCore`. It is the latest time at which a new dispatch attempt
+may begin. TaskRuntime rejects an Item that is already expired when appended.
+Task dispatch rechecks the persisted value after score observation and, before
+Worker acquisition, promotes expired ACTIVE Items to `FINAL_FAILED` through the
+existing outcome primitive.
+
+Expiry does not retract an attempt claimed before the cutoff. That attempt
+continues under its Item claim and Worker lease, and a later success may still
+promote `FINAL_FAILED` to `FINAL_SUCCESS`. The kernel does not put expiry into
+the score encoding, add a global expiry scanner, or expose it to transport.
+Retry count is not an Item field.
 `TaskDescriptor.config` owns `maxRetryTimes`; item-score initialization converts
 it to an internal claim budget.
 

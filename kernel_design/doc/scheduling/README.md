@@ -73,6 +73,9 @@ ITEM_DRIVEN = TaskItem rule + TARGETED Worker acquisition + no candidate cache
 
 Both TaskTypes use the same persisted empty-close threshold and bounded empty
 recheck policy; TaskType selects Worker acquisition, not lifecycle finality.
+TaskType also establishes no ordering between Tasks: priority, latency target,
+RPC versus batch shape, arrival density, and Worker contention policy are
+orthogonal scheduling inputs or workload properties.
 
 This is a summary of the canonical
 [Task Type And Allocation Rule](../resource-model/task-resource-model.md#task-type-and-allocation-rule)
