@@ -52,8 +52,8 @@ Task admission and score visibility
      -> ACTIVE Item: Worker candidate acquisition -> TaskItem claim
                      -> DeliverSeed -> SeedResult
                      -> TaskItem outcome and Worker disposition
-     -> no ACTIVE Item: TASK_DRIVEN may auto-close after bounded rechecks
-                        ITEM_DRIVEN waits for append or external close evidence
+     -> no ACTIVE Item: increment the shared empty-recheck count
+                        close only when emptyCloseAtMillis is due
   -> kernel applies an explicit close requested by an external owner
 ```
 
@@ -91,7 +91,7 @@ invariant.
 
 Adding a TaskType requires a concrete workload that the existing types cannot
 support without changing rule ownership, Worker acquisition, cache authority,
-empty behavior, or another scheduling invariant. Different limits, cadence,
+or another scheduling invariant. Different close thresholds, limits, cadence,
 priority, fairness, or retry values remain System Policy inside an existing
 TaskType. Acceptance is a vertical scenario proof, not policy-combination
 coverage.

@@ -86,6 +86,11 @@ class RedisTaskRuntime(TaskRuntime):
         descriptor: TaskDescriptor,
         suffix: Suffix,
     ) -> TaskCreationResult:
+        if descriptor.empty_close_at_millis is None:
+            return TaskCreationResult(
+                TaskCreationStatus.INVALID,
+                "descriptor empty_close_at_millis must be resolved",
+            )
         try:
             if descriptor.allocation_rule is not None:
                 ConstraintEvaluator.compile_match_rules(descriptor.allocation_rule)
@@ -117,6 +122,7 @@ class RedisTaskRuntime(TaskRuntime):
                     "taskType": descriptor.task_type.value,
                     "allocationRuleJson": allocation_rule_json,
                     "configJson": config_json,
+                    "emptyCloseAtMillis": str(descriptor.empty_close_at_millis),
                 },
             )
         except Exception:
@@ -401,6 +407,7 @@ class RedisTaskResourceCatalog(TaskResourceCatalog):
         "taskType",
         "allocationRuleJson",
         "configJson",
+        "emptyCloseAtMillis",
     )
 
     def __init__(
@@ -447,6 +454,7 @@ class RedisTaskResourceCatalog(TaskResourceCatalog):
                 task_type_raw,
                 allocation_rule_raw,
                 config_raw,
+                empty_close_at_millis_raw,
             ) = raw_row
             worker_group_id = (
                 worker_group_raw.decode("utf-8")
@@ -461,6 +469,18 @@ class RedisTaskResourceCatalog(TaskResourceCatalog):
             task_type = TaskType(task_type_value)
             allocation_rule = json.loads(allocation_rule_raw)
             config = json.loads(config_raw)
+            empty_close_at_millis_value = (
+                empty_close_at_millis_raw.decode("utf-8")
+                if isinstance(empty_close_at_millis_raw, bytes)
+                else empty_close_at_millis_raw
+            )
+            if (
+                not isinstance(empty_close_at_millis_value, str)
+                or not empty_close_at_millis_value.isascii()
+                or not empty_close_at_millis_value.isdecimal()
+            ):
+                return None
+            empty_close_at_millis = int(empty_close_at_millis_value)
         except (TypeError, ValueError, UnicodeDecodeError):
             return None
 
@@ -485,6 +505,7 @@ class RedisTaskResourceCatalog(TaskResourceCatalog):
                     else None
                 ),
                 config=dict(config),
+                empty_close_at_millis=empty_close_at_millis,
             )
         except ValueError:
             return None

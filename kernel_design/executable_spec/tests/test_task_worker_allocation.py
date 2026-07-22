@@ -221,6 +221,37 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
         self.task_catalog.load_task_allocation_descriptors.assert_not_called()
         self.candidate_acquirer.acquire_hot_pool_candidates.assert_not_called()
 
+    def test_empty_recheck_hint_does_not_read_or_lease_candidates(self) -> None:
+        self.warmup_schedule.consume_due_candidate_warmups.return_value = (
+            "empty-task",
+        )
+        self.task_score.get_score_states.side_effect = None
+        self.task_score.get_score_states.return_value = {
+            "empty-task": TaskScoreState(
+                task_id="empty-task",
+                score=5,
+                band=TaskScoreBand.RUNNING_VISIBLE,
+                time_millis=self.NOW_MILLIS - TaskScoreBandCore.SLOT_MILLIS,
+                suffix=1,
+            )
+        }
+
+        with patch.object(
+            self.pacer,
+            "_current_time_millis",
+            return_value=self.NOW_MILLIS,
+        ):
+            self.assertEqual(
+                0,
+                self.pacer.allocate_candidate_workers(config=self._config()),
+            )
+
+        self.task_catalog.load_task_allocation_descriptors.assert_not_called()
+        self.candidate_cache.candidate_worker_counts.assert_not_called()
+        self.candidate_acquirer.acquire_hot_pool_candidates.assert_not_called()
+        self.candidate_cache.append_candidate_workers.assert_not_called()
+        self.warmup_schedule.schedule_candidate_warmups.assert_not_called()
+
     def test_empty_schedule_is_bounded_noop(self) -> None:
         self.warmup_schedule.consume_due_candidate_warmups.return_value = ()
 
@@ -271,6 +302,7 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
                 "maximumCandidateWorkers": str(maximum_candidates),
                 "maxRetryTimes": "3",
             },
+            empty_close_at_millis=0,
         )
 
     @staticmethod
@@ -293,7 +325,7 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
                 score=1,
                 band=TaskScoreBand.RUNNING_VISIBLE,
                 time_millis=cls.NOW_MILLIS - TaskScoreBandCore.SLOT_MILLIS,
-                suffix=5,
+                suffix=TaskScoreBandCore.MIN_SUFFIX,
             )
             for task_id in task_ids
         }

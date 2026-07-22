@@ -40,11 +40,42 @@ class TaskRuntimeContractTest(unittest.TestCase):
                 "task_type",
                 "allocation_rule",
                 "config",
+                "empty_close_at_millis",
             },
         )
         self.assertEqual(descriptor.config["priority"], "80")
         self.assertEqual(descriptor.config["maxRetryTimes"], "3")
+        self.assertIsNone(descriptor.empty_close_at_millis)
         self.assertFalse(hasattr(descriptor, "project_id"))
+
+    def test_task_descriptor_validates_empty_close_threshold(self) -> None:
+        config = {
+            "priority": "80",
+            "maximumCandidateWorkers": "10",
+            "maxRetryTimes": "3",
+        }
+        for value in (None, 0, 1_000):
+            with self.subTest(value=value):
+                descriptor = TaskDescriptor(
+                    task_id="task-1",
+                    worker_group_id="workers-a",
+                    task_type=TaskType.TASK_DRIVEN,
+                    allocation_rule={},
+                    config=config,
+                    empty_close_at_millis=value,
+                )
+                self.assertEqual(value, descriptor.empty_close_at_millis)
+
+        for value in (-1, True, "1000"):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                TaskDescriptor(
+                    task_id="task-1",
+                    worker_group_id="workers-a",
+                    task_type=TaskType.TASK_DRIVEN,
+                    allocation_rule={},
+                    config=config,
+                    empty_close_at_millis=value,  # type: ignore[arg-type]
+                )
 
     def test_task_item_keeps_only_canonical_record_fields(self) -> None:
         item = TaskItem(

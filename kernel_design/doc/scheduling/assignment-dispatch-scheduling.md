@@ -32,14 +32,14 @@ second Pacer cursor.
 ## Task Type Profiles
 
 The caller selects one `TaskType`. The authoritative rule owner, Worker
-acquisition, candidate-cache, and empty-behavior matrix is defined by the
+acquisition, and candidate-cache matrix is defined by the
 [Task Resource Model](../resource-model/task-resource-model.md#task-type-and-allocation-rule).
 
 `ResolvedTaskSchedulingProfile` is a non-persisted derivation of the
-Worker-acquisition portion of that contract. Empty behavior is enforced by
-Task dispatch from the same immutable `TaskType`. Neither is an external
-policy registry, and callers cannot independently select cache, warmer,
-rule-owner, acquisition, or empty-behavior flags.
+Worker-acquisition contract. Empty close is shared lifecycle policy derived
+from `emptyCloseAtMillis`, not from the profile or TaskType. The profile is not
+an external policy registry, and callers cannot independently select cache,
+warmer, rule-owner, or acquisition flags.
 
 ## Worker Candidate Contract
 
@@ -169,7 +169,7 @@ Allocation cache warming:
 
 ```text
 due CandidateWarmupSchedule TaskIds
-  -> batch-read Task score and retain RUNNING/non-hard-paused Tasks
+  -> batch-read Task score and retain RUNNING/non-hard-paused suffix-zero Tasks
   -> load descriptors and retain taskType=TASK_DRIVEN
   -> requestedCount = maximumCandidateWorkers - cachedCount
   -> acquire_hot_pool_candidates
@@ -193,9 +193,10 @@ dispatch-visible RUNNING Tasks
 empty-recheck RUNNING Tasks
   -> suffix > 0, or suffix 0 with no dispatchable Item
   -> query the complete ACTIVE Item band
-  -> ACTIVE exists: exact reset suffix to 0
+  -> ACTIVE exists: exact reset suffix to 0; TASK_DRIVEN emits warmup hint
   -> no ACTIVE: increment empty count and apply linear delay
-  -> at max: TASK_DRIVEN closes; ITEM_DRIVEN remains low-frequency RUNNING
+  -> at max: close only when emptyCloseAtMillis is due
+             otherwise remain low-frequency RUNNING
 ```
 
 `taskType` is fixed by the Task. The two rule locations cannot be mixed, and
@@ -230,10 +231,9 @@ the dispatch round does not infer type or strategy from Item contents.
   deferred policies.
 - Append-trigger acceleration remains deferred. Periodic RUNNING scans are the
   correctness fallback.
-- TASK_DRIVEN empty auto-close and ITEM_DRIVEN persistent empty recheck are the
-  current built-in empty-state behaviors. ITEM_DRIVEN close requires an
-  external owner to submit business evidence through the explicit close
-  command; deadline policy remains deferred.
+- Both TaskTypes share the persisted empty-close threshold and System Policy
+  recheck count/cadence. A separate hard-deadline scanner remains deferred;
+  external owners may still submit stronger close evidence explicitly.
 - One WorkerId remains one scheduler-visible execution slot. Business batch
   work belongs inside one TaskItem payload.
 

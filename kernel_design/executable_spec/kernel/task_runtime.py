@@ -73,13 +73,14 @@ class TaskItemAppendResult:
 
 @dataclass(frozen=True)
 class TaskDescriptor:
-    """Stable task allocation metadata, separate from task runtime truth."""
+    """Stable Task scheduling metadata, separate from score runtime truth."""
 
     task_id: TaskId
     worker_group_id: WorkerGroupId
     task_type: TaskType
     allocation_rule: Mapping[str, object] | None
     config: Mapping[str, str]
+    empty_close_at_millis: TimeMillis | None = None
 
     CONFIG_KEYS: ClassVar[frozenset[str]] = frozenset(
         {
@@ -103,6 +104,12 @@ class TaskDescriptor:
             raise ValueError("ITEM_DRIVEN forbids a Task allocation rule")
         if not isinstance(self.config, MappingABC):
             raise ValueError("task config must be a mapping")
+        if self.empty_close_at_millis is not None and (
+            not isinstance(self.empty_close_at_millis, int)
+            or isinstance(self.empty_close_at_millis, bool)
+            or self.empty_close_at_millis < 0
+        ):
+            raise ValueError("empty_close_at_millis must be non-negative")
         if set(self.config) != self.CONFIG_KEYS:
             raise ValueError("task config must contain exactly the declared keys")
         if any(
@@ -151,7 +158,7 @@ class TaskRuntime(ABC):
         descriptor: TaskDescriptor,
         suffix: Suffix,
     ) -> TaskCreationResult:
-        """Create one Task through its initialization score lease."""
+        """Create one Task from a descriptor with resolved empty-close time."""
         pass
 
     @abstractmethod

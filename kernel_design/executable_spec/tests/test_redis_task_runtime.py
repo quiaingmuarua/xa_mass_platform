@@ -170,6 +170,7 @@ class RedisTaskRuntimeTest(unittest.TestCase):
         worker_group_id: str = "image-workers",
         task_type: TaskType = TaskType.TASK_DRIVEN,
         allocation_rule: dict[str, object] | None = None,
+        empty_close_at_millis: int = 0,
     ) -> TaskDescriptor:
         return TaskDescriptor(
             task_id=task_id,
@@ -186,6 +187,7 @@ class RedisTaskRuntimeTest(unittest.TestCase):
                 "maximumCandidateWorkers": "20",
                 "maxRetryTimes": "3",
             },
+            empty_close_at_millis=empty_close_at_millis,
         )
 
     def test_create_task_commits_descriptor_under_score_lease(self) -> None:
@@ -201,11 +203,35 @@ class RedisTaskRuntimeTest(unittest.TestCase):
         self.assertEqual(TaskScoreBand.PRE_REVIEW, state.band)
         self.assertEqual(self.SUFFIX, state.suffix)
         self.assertEqual(self.redis.now_millis, state.time_millis)
+        self.assertEqual(
+            "0",
+            self.redis.hashes["tc:test:task:task-1"]["emptyCloseAtMillis"],
+        )
+
+    def test_create_rejects_unresolved_empty_close_before_score_write(self) -> None:
+        descriptor = TaskDescriptor(
+            task_id="task-1",
+            worker_group_id="image-workers",
+            task_type=TaskType.TASK_DRIVEN,
+            allocation_rule={},
+            config={
+                "priority": "80",
+                "maximumCandidateWorkers": "20",
+                "maxRetryTimes": "3",
+            },
+        )
+
+        result = self.runtime.create_task(descriptor=descriptor, suffix=self.SUFFIX)
+
+        self.assertEqual(TaskCreationStatus.INVALID, result.status)
+        self.assertIsNone(self.redis.zscore(self.score_band.score_key, "task-1"))
+        self.assertNotIn("tc:test:task:task-1", self.redis.hashes)
 
     def test_item_driven_descriptor_round_trips_null_task_rule(self) -> None:
         descriptor = self.descriptor(
             "task-1",
             task_type=TaskType.ITEM_DRIVEN,
+            empty_close_at_millis=1234,
         )
 
         result = self.runtime.create_task(descriptor=descriptor, suffix=self.SUFFIX)
@@ -219,6 +245,21 @@ class RedisTaskRuntimeTest(unittest.TestCase):
             "null",
             self.redis.hashes["tc:test:task:task-1"]["allocationRuleJson"],
         )
+        self.assertEqual(
+            "1234",
+            self.redis.hashes["tc:test:task:task-1"]["emptyCloseAtMillis"],
+        )
+
+    def test_descriptor_without_empty_close_field_is_not_decoded(self) -> None:
+        descriptor = self.descriptor("task-1")
+        self.runtime.create_task(descriptor=descriptor, suffix=self.SUFFIX)
+        del self.redis.hashes["tc:test:task:task-1"]["emptyCloseAtMillis"]
+
+        loaded = self.catalog.load_task_allocation_descriptors(
+            task_ids=("task-1",),
+        )
+
+        self.assertIsNone(loaded["task-1"])
 
     def test_old_allocation_scope_row_is_not_decoded(self) -> None:
         self.redis.hashes["tc:test:task:task-1"] = {
@@ -375,6 +416,7 @@ class RedisTaskRuntimeTest(unittest.TestCase):
                 "taskType": descriptor.task_type.value,
                 "allocationRuleJson": json.dumps(dict(descriptor.allocation_rule)),
                 "configJson": json.dumps(dict(descriptor.config)),
+                "emptyCloseAtMillis": str(descriptor.empty_close_at_millis),
             },
         )
         replacement_score = self.score_band._score(

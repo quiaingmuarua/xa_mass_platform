@@ -32,8 +32,7 @@ Task score admission and visibility
   -> Task dispatch
      -> ACTIVE Item: Worker score lease/validation -> TaskItem claim
                      -> DeliverSeed / SeedResult -> result-routing
-     -> no ACTIVE Item: TASK_DRIVEN may auto-close after bounded rechecks
-                        ITEM_DRIVEN waits for append or external close evidence
+     -> no ACTIVE Item: shared empty recheck and emptyCloseAtMillis policy
 ```
 
 These are scheduling planes, not necessarily modules. A first Python kernel may

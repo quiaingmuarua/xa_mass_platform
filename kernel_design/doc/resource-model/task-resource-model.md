@@ -18,6 +18,7 @@ TaskDescriptor
   taskType
   allocationRule | null
   config
+  emptyCloseAtMillis
 ```
 
 `taskId` is globally unique in the kernel design. One Task chooses exactly one
@@ -35,7 +36,20 @@ class TaskDescriptor:
     task_type: TaskType
     allocation_rule: Mapping[str, object] | None
     config: Mapping[str, str]
+    empty_close_at_millis: TimeMillis | None = None
 ```
+
+`emptyCloseAtMillis` is a shared empty-close threshold, not a TaskType flag or
+hard Task deadline. External create commands may omit it. `KernelApplication`
+materializes the omitted value before TaskRuntime persistence:
+
+```text
+TASK_DRIVEN -> 0
+ITEM_DRIVEN -> creationTimeMillis + 3 days
+```
+
+An explicit non-negative absolute millisecond value overrides either default.
+The persisted descriptor always contains a resolved value.
 
 The config keys are exactly:
 
@@ -61,10 +75,10 @@ Worker requirement: PRE_DISPATCH admission must not reserve or count Workers.
 
 The public contract supports exactly two Task types:
 
-| Task type | Rule owner | Worker acquisition | Candidate cache | Empty behavior |
-| --- | --- | --- | --- | --- |
-| `TASK_DRIVEN` | Task | `PRECOMPUTED` | enabled | close after the configured consecutive-empty limit |
-| `ITEM_DRIVEN` | TaskItem | `TARGETED` | forbidden | remain RUNNING; an external owner requests close from business evidence |
+| Task type | Rule owner | Worker acquisition | Candidate cache |
+| --- | --- | --- | --- |
+| `TASK_DRIVEN` | Task | `PRECOMPUTED` | enabled |
+| `ITEM_DRIVEN` | TaskItem | `TARGETED` | forbidden |
 
 This table is the canonical external TaskType contract. The rule-shape
 constraints are:
@@ -79,16 +93,17 @@ ITEM_DRIVEN
   every appended TaskItem carries a non-empty allocationRule
 ```
 
-Callers do not choose rule owner, cache participation, warmer participation,
-acquisition strategy, or empty behavior independently. Scheduling derives the
-Worker-acquisition fields in `ResolvedTaskSchedulingProfile` from `TaskType`;
-`TaskDispatchPacer` applies the same immutable type's empty behavior. Neither
-is persisted as a second Task truth. The two forms cannot be mixed inside one
-Task. Append validates this contract once; claim and dispatch trust it rather
-than reclassifying every Item.
+Callers do not choose rule owner, cache participation, warmer participation, or
+acquisition strategy independently. Scheduling derives only those
+Worker-acquisition fields in `ResolvedTaskSchedulingProfile` from `TaskType`.
+Empty close is a shared Task lifecycle policy and is not part of that profile.
+The two rule forms cannot be mixed inside one Task. Append validates this
+contract once; claim and dispatch trust it rather than reclassifying every
+Item.
 
-Both types use periodic RUNNING scans and Task dispatch. Append-trigger
-acceleration and deadline-driven close remain deferred policies.
+Both types use periodic RUNNING scans, Task dispatch, shared empty recheck, and
+the explicit close command. Append-trigger acceleration and a separate hard
+deadline scanner remain deferred policies.
 
 ### TaskType Scenario Gate
 
@@ -103,7 +118,6 @@ TASK_DRIVEN
   stable Task-level Worker constraints
   stage-oriented and relatively dense Item arrival
   Task-level candidate computation can be prepaid and amortized
-  repeated confirmed emptiness is completion evidence
 
 ITEM_DRIVEN
   each Item supplies the bounded Worker target rule
@@ -111,15 +125,15 @@ ITEM_DRIVEN
   Item rules may all be equal or may differ
   paying selection cost only for a real Item is cheaper than maintaining
   Task-level candidate leases
-  emptiness is not completion evidence
 ```
 
 A future TaskType is admitted only when a named workload cannot be represented
 by either scenario without changing a scheduling invariant. The proposal must
-identify the differing rule owner, Worker acquisition, cache authority, empty
-or close behavior, and provide a vertical create-to-result/close executable
-proof. A different limit, cadence, priority, fairness rule, retry interval, or
-other tuning value stays inside the existing type's System Policy.
+identify the differing rule owner, Worker acquisition, cache authority, or
+another acquisition invariant, and provide a vertical create-to-result/close
+executable proof. A different close threshold, limit, cadence, priority,
+fairness rule, retry interval, or other tuning value stays inside the existing
+type's System Policy.
 
 Tests do not enumerate arbitrary policy combinations. They prove the two
 supported TaskType paths end to end and test score, lease, CAS, and owner
@@ -273,7 +287,7 @@ Worker allocation:
 ```text
 CandidateWarmupSchedule.acquire_candidate_warmups(now, limit)
   -> TaskScoreBandCore.get_score_states(taskIds)
-  -> retain current RUNNING/non-hard-paused Tasks
+  -> retain current RUNNING/non-hard-paused Tasks with suffix 0
   -> TaskResourceCatalog.load_task_allocation_descriptors(taskIds)
   -> retain taskType=TASK_DRIVEN
   -> group by workerGroupId
@@ -288,13 +302,17 @@ TaskItem dispatch, while a positive value selects low-frequency ACTIVE Item
 existence recheck. It is not `maxRetryTimes`; Item execution retry remains
 TaskItem-score truth.
 
-`TASK_DRIVEN` closes automatically after the configured number of consecutive
-empty observations. `ITEM_DRIVEN` remains RUNNING at the maximum recheck count
-until a new ACTIVE Item resets the count or an external owner requests close.
-For example, a server may evaluate deadline or business-completion evidence and
-call `KernelApplication.close_task`. The kernel validates and applies that
-transition; it does not infer ITEM_DRIVEN completion from emptiness. Both Task
-types support the same explicit close command.
+Both Task types use the same empty-close rule. At the maximum consecutive-empty
+count, Task dispatch closes the Task only when `now >= emptyCloseAtMillis`.
+Before that threshold it retains the maximum suffix and continues bounded
+low-frequency checks. Any ACTIVE Item prevents close and resets a positive
+suffix to zero. A server may still submit stronger deadline or business
+evidence through `KernelApplication.close_task` at any time.
+
+While suffix is positive, candidate warming must not acquire or renew Worker
+leases. Existing cache and lease evidence is not actively deleted; it expires
+naturally. A successful positive-to-zero reset emits a best-effort warmup hint
+only for `TASK_DRIVEN`.
 
 Task dispatch:
 
@@ -323,6 +341,7 @@ config is exactly map<string, string> with the three declared keys
 priority is decimal 1..100
 maximumCandidateWorkers is positive decimal
 maxRetryTimes is decimal 0..98
+emptyCloseAtMillis is a resolved non-negative absolute millisecond value
 TASK_DRIVEN forbids TaskItem allocationRule
 ITEM_DRIVEN requires a non-empty valid TaskItem allocationRule
 ```
@@ -341,6 +360,7 @@ workerGroupId       -> plain string
 taskType           -> `TASK_DRIVEN` or `ITEM_DRIVEN`
 allocationRuleJson  -> JSON object or `null`
 configJson          -> JSON object
+emptyCloseAtMillis  -> non-negative decimal absolute milliseconds
 ```
 
 Example:
@@ -357,6 +377,8 @@ configJson = {
   "maximumCandidateWorkers": "20",
   "maxRetryTimes": "3"
 }
+
+emptyCloseAtMillis = "0"
 ```
 
 `taskId` is derived from the key and not duplicated as a HASH field.

@@ -12,7 +12,7 @@ Task:
 ```text
 due candidate-warmup TaskId
   -> batch-read current Task score state
-  -> retain RUNNING_VISIBLE and non-hard-paused Tasks
+  -> retain RUNNING_VISIBLE, non-hard-paused Tasks with suffix 0
   -> load Task allocation descriptor
   -> retain taskType=TASK_DRIVEN
   -> measure CandidateId cache count
@@ -50,6 +50,7 @@ new hint when evidence must be replenished.
 Hints are produced by:
 
 - a successful `TASK_DRIVEN` transition into `RUNNING_VISIBLE`;
+- a successful `TASK_DRIVEN` empty-recheck reset from positive suffix to zero;
 - a `TASK_DRIVEN` dispatch round after it consumes or misses PRECOMPUTED
   candidates;
 - an incomplete warmer round, which requeues the Task for the next configured
@@ -97,8 +98,10 @@ WorkerCandidateRequest
 ```
 
 Tasks with no descriptor, the wrong TaskType, or no deficit do not produce a
-request. Requests are grouped by `descriptor.workerGroupId`; one acquisition
-call never crosses Worker score queues.
+request. A positive RUNNING suffix also discards the consumed hint before any
+descriptor, cache, or Worker access: empty-recheck Tasks must not create new
+Worker leases. Requests are grouped by `descriptor.workerGroupId`; one
+acquisition call never crosses Worker score queues.
 
 ## Publication And Retry
 
@@ -118,6 +121,8 @@ there is no second retry-delay configuration.
 
 Every exact-leased Worker is consumed scheduling evidence. Unmatched Workers
 and append failures are not released; lease expiry restores HOT visibility.
+Existing cache entries and leases are not actively deleted when a Task enters
+the empty lane; they expire naturally.
 
 ## Configuration
 

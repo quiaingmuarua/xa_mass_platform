@@ -123,6 +123,7 @@ class FastApiServerTest(unittest.TestCase):
                 "taskId": "task-1",
                 "workerGroupId": "image-workers",
                 "taskType": "ITEM_DRIVEN",
+                "emptyCloseAtMillis": 1234,
                 "config": {
                     "priority": "80",
                     "maximumCandidateWorkers": "10",
@@ -200,6 +201,7 @@ class FastApiServerTest(unittest.TestCase):
             task_descriptor.task_type,
         )
         self.assertIsNone(task_descriptor.allocation_rule)
+        self.assertEqual(1234, task_descriptor.empty_close_at_millis)
         self.resources_client.upsert_worker.assert_called_once()
         self.deliver_seed_consumer.consume_deliver_seeds.assert_called_once_with(
             endpoint_manager_id="endpoint-1",
@@ -208,6 +210,29 @@ class FastApiServerTest(unittest.TestCase):
         self.assertFalse(hasattr(self.application, "consume_deliver_seeds"))
         self.assertEqual(404, self.client.post("/worker-groups").status_code)
         self.assertEqual(404, self.client.post("/workers").status_code)
+
+    def test_task_rejects_invalid_empty_close_threshold(self) -> None:
+        base_request = {
+            "taskId": "task-1",
+            "workerGroupId": "image-workers",
+            "taskType": "TASK_DRIVEN",
+            "allocationRule": {},
+            "config": {
+                "priority": "80",
+                "maximumCandidateWorkers": "10",
+                "maxRetryTimes": "3",
+            },
+        }
+
+        for value in (-1, True, "1000"):
+            with self.subTest(value=value):
+                response = self.client.post(
+                    "/tasks",
+                    json={**base_request, "emptyCloseAtMillis": value},
+                )
+                self.assertEqual(422, response.status_code)
+
+        self.application.create_task.assert_not_called()
 
     def test_dynamic_attribute_route_is_not_public(self) -> None:
         response = self.client.post(

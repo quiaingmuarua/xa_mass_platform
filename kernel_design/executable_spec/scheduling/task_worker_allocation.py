@@ -85,6 +85,7 @@ class TaskWorkerAllocationPacer:
                 (state := score_states.get(task_id)) is not None
                 and state.band is TaskScoreBand.RUNNING_VISIBLE
                 and state.time_millis != TaskScoreBandCore.PAUSE_TIME_MILLIS
+                and state.suffix == TaskScoreBandCore.MIN_SUFFIX
             )
         )
         if not task_ids:

@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from threading import Lock
+from time import time_ns
 from typing import Any
 
 from ..scheduling import (
@@ -31,6 +32,7 @@ from ..kernel import (
     TaskScoreBandCore,
     TaskScoreState,
     TaskScoreTransitionStatus,
+    TaskType,
 )
 from ..scheduling import ResultRoutingConfig
 from ._redis_process import _RedisKernelProcess, _RedisKernelProcessConfig
@@ -55,6 +57,7 @@ _PER_TASK_DISPATCH_LIMIT = 100
 _ITEM_CLAIM_LEASE_DURATION_MILLIS = 5_000
 _MAX_EMPTY_RECHECK_TIMES = 5
 _EMPTY_RECHECK_INTERVAL_MILLIS = 1_000
+_ITEM_DRIVEN_DEFAULT_EMPTY_CLOSE_DELAY_MILLIS = 3 * 24 * 60 * 60 * 1_000
 _RESULT_ROUTING_PER_OUTCOME_BATCH_LIMIT = 100
 
 
@@ -421,6 +424,17 @@ class KernelApplication:
         descriptor: TaskDescriptor,
     ) -> TaskCreationResult:
         self._require_started()
+        if descriptor.empty_close_at_millis is None:
+            creation_time_millis = time_ns() // 1_000_000
+            descriptor = replace(
+                descriptor,
+                empty_close_at_millis=(
+                    0
+                    if descriptor.task_type is TaskType.TASK_DRIVEN
+                    else creation_time_millis
+                    + _ITEM_DRIVEN_DEFAULT_EMPTY_CLOSE_DELAY_MILLIS
+                ),
+            )
         return self._process._task_runtime.create_task(
             descriptor=descriptor,
             suffix=_INITIAL_PRE_REVIEW_SUFFIX,

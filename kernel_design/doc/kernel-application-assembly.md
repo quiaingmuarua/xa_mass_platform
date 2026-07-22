@@ -191,8 +191,11 @@ The composition root also installs one Redis-backed
 `CandidateWarmupSchedule`. TASK_DRIVEN activation and PRECOMPUTED dispatch emit
 derived warmup hints; the worker-allocation loop consumes those hints and never
 uses Task score as its own cursor or writer. It only batch-validates current
-RUNNING/non-hard-pause state. Task dispatch owns RUNNING same-band pacing,
-exact empty-count increment/reset, and TASK_DRIVEN empty auto-close.
+RUNNING/non-hard-pause suffix-zero state. Task dispatch owns RUNNING same-band
+pacing, exact empty-count increment/reset, and shared threshold-based empty
+close. `KernelApplication.create_task` resolves omitted `emptyCloseAtMillis` to
+zero for TASK_DRIVEN or creation time plus three days for ITEM_DRIVEN before
+calling TaskRuntime.
 
 Each assignment-dispatch loop has one non-daemon thread and its own configured
 interval. A loop executes its first bounded round immediately, runs at most one
@@ -232,9 +235,10 @@ ResourcesCommandClient
 
 The proof does not route through FastAPI, because HTTP translation is an
 example-host concern rather than scheduling truth. Separate Redis proofs cover
-TASK_DRIVEN empty auto-close with RUNNING soft-limit release, ITEM_DRIVEN empty
-recheck followed by append and dispatch, and public close remaining terminal.
-Deadline-driven close remains deferred.
+TASK_DRIVEN default empty close with RUNNING soft-limit release, ITEM_DRIVEN
+future-threshold empty recheck followed by append and dispatch, shared explicit
+threshold close, and public close remaining terminal. A separate hard-deadline
+scanner remains deferred.
 
 ## External Hosts
 

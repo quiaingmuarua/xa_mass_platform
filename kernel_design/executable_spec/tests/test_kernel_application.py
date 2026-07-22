@@ -6,7 +6,7 @@ import os
 import time
 import unittest
 import uuid
-from dataclasses import fields
+from dataclasses import fields, replace
 from unittest.mock import Mock, patch
 
 import kernel_design.executable_spec as executable_spec_package
@@ -266,13 +266,55 @@ class KernelApplicationTest(unittest.TestCase):
         )
 
         self.process._task_runtime.create_task.assert_called_once_with(
-            descriptor=task,
+            descriptor=replace(task, empty_close_at_millis=0),
             suffix=1,
         )
         get_worker_groups = (
             self.process._worker_resource_catalog.get_worker_group_descriptors
         )
         get_worker_groups.assert_not_called()
+
+    def test_create_task_resolves_item_driven_empty_close_once(self) -> None:
+        task = self._task_descriptor(
+            task_id="item-task",
+            task_type=TaskType.ITEM_DRIVEN,
+        )
+        self.process._task_runtime.create_task.return_value = TaskCreationResult(
+            TaskCreationStatus.CREATED
+        )
+        self.application.start()
+
+        with patch(
+            "kernel_design.executable_spec.assembly.application.time_ns",
+            return_value=10_000_000_000,
+        ):
+            self.application.create_task(descriptor=task)
+
+        persisted = self.process._task_runtime.create_task.call_args.kwargs[
+            "descriptor"
+        ]
+        self.assertEqual(
+            10_000 + 3 * 24 * 60 * 60 * 1_000,
+            persisted.empty_close_at_millis,
+        )
+
+    def test_create_task_preserves_explicit_empty_close(self) -> None:
+        task = replace(self._task_descriptor(), empty_close_at_millis=42_000)
+        self.process._task_runtime.create_task.return_value = TaskCreationResult(
+            TaskCreationStatus.CREATED
+        )
+        self.application.start()
+
+        with patch(
+            "kernel_design.executable_spec.assembly.application.time_ns"
+        ) as current_time:
+            self.application.create_task(descriptor=task)
+
+        current_time.assert_not_called()
+        self.process._task_runtime.create_task.assert_called_once_with(
+            descriptor=task,
+            suffix=1,
+        )
 
     def test_append_validates_item_allocation_rules_before_task_runtime(self) -> None:
         task = self._task_descriptor(

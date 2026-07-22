@@ -99,6 +99,7 @@ ACTIVE exists, suffix > 0
   -> suffixDelta = -currentSuffix
   -> reset suffix to 0
   -> do not dispatch in the reset round
+  -> if TASK_DRIVEN reset transitions, emit a best-effort warmup hint
 
 no ACTIVE, suffix = 0
   -> suffix = 1
@@ -108,23 +109,21 @@ no ACTIVE, 0 < suffix < max
   -> suffix = suffix + 1
   -> nextTime = now + suffix * interval
 
-no ACTIVE, suffix = max, TASK_DRIVEN
-  -> close Task to TERMINAL
-
-no ACTIVE, suffix = max, ITEM_DRIVEN
-  -> remain RUNNING at max suffix
-  -> nextTime = now + max * interval
+no ACTIVE, suffix = max
+  -> now >= emptyCloseAtMillis: close Task to TERMINAL
+  -> otherwise remain RUNNING at max suffix
+  -> nextTime = min(emptyCloseAtMillis, now + max * interval)
 ```
 
 The delay is linear. Periodic scanning is the correctness fallback; a future
 append hint may accelerate recheck but is not required for liveness.
 
-`TASK_DRIVEN` treats repeated confirmed emptiness as automatic completion
-evidence. `ITEM_DRIVEN` never closes from emptiness because a later Item may be
-appended. Task dispatch therefore keeps it RUNNING and does not decide whether
-the business workload is complete. An external owner such as a server may use
-deadline or business evidence to call the explicit close command. The kernel
-validates and applies that command for either Task type.
+`emptyCloseAtMillis` is a shared empty-close threshold, not a hard deadline.
+Task dispatch consults it only after the complete ACTIVE band is empty and the
+maximum consecutive-empty count has been reached. `TASK_DRIVEN` defaults to
+zero; `ITEM_DRIVEN` defaults to Task creation time plus three days. Either type
+may override the threshold, and an external owner may submit stronger business
+evidence through the explicit close command at any time.
 
 ## Ordinary Dispatch
 
@@ -172,7 +171,8 @@ taskItemClaimUntilMillis
 - Do not dispatch `suffix > 0` Tasks in the same round that resets suffix.
 - Do not classify future ACTIVE Items as empty.
 - Do not acquire Workers during the empty-recheck lane.
+- Do not interpret TaskType as an empty-close policy.
 - Do not access CandidateWorker cache or Worker score directly.
 - Do not add PRECOMPUTED-miss TARGETED fallback.
-- Do not expose empty-recheck constants through TaskDescriptor or public JSON.
+- Do not expose the max empty count or recheck interval through TaskDescriptor.
 - Do not call transport or result-routing directly.

@@ -142,18 +142,18 @@ Transport adapters
 | Worker HOT_ACQUIRE lease protocol | HOT-pool precomputation, TARGETED point lease-match, PRECOMPUTED exact recheck-rematch, result disposition, reconnect dirty fence, and one-WorkerId/one-slot invariant implemented | Recovery probe cadence and ranking |
 | TaskItem score-band | Implemented with Redis proof | Initial retry budget and claim-duration values |
 | Task running activation | Implemented with due-Item Task policy and priority soft-limit System policy | Scenario-backed quota, tenant, business start condition, and resource-estimate decisions |
-| Worker allocation | Implemented as hint-driven TASK-scope candidate cache warming through HOT-pool acquisition; Task score is read only for RUNNING/non-hard-pause validation; TASK_DRIVEN has deterministic Redis proof through cache consumption | Warmup prioritization beyond bounded due order and matcher priority |
-| Task dispatch | Implemented with fixed TaskType profiles, PRECOMPUTED Task rules, TARGETED complete Item rules, stable Item binding, RUNNING same-band reschedule, empty recheck, and DeliverSeed append; both TaskTypes have deterministic Redis proof through DeliverSeed and ITEM_DRIVEN proves no warmup/cache path | Recent-first Redis Task acquisition |
+| Worker allocation | Implemented as hint-driven TASK-scope candidate cache warming through HOT-pool acquisition; Task score is read only for RUNNING/non-hard-pause suffix-zero validation; TASK_DRIVEN has deterministic Redis proof through cache consumption | Warmup prioritization beyond bounded due order and matcher priority |
+| Task dispatch | Implemented with acquisition-only TaskType profiles, PRECOMPUTED Task rules, TARGETED complete Item rules, stable Item binding, RUNNING same-band reschedule, shared threshold-based empty close, and DeliverSeed append; both TaskTypes have deterministic Redis proof through DeliverSeed and ITEM_DRIVEN proves no warmup/cache path | Recent-first Redis Task acquisition |
 | Outbound delivery example | Independent clients and Local Function Adapter implemented | Production transport, pending/ack, and protocol-specific conversion |
 | Result routing | Implemented with unit and Redis orchestration proof; Task/Worker policy handlers are replaceable | Result projection and stronger queue reliability require separate owners and invariants |
 
 Both TaskTypes also have process-boundary Redis E2E proof from
 `ResourcesCommandClient` and `KernelApplication`, through the Local Function
 Adapter and Result-Routing, to `FINAL_SUCCESS`, the Task result HASH, and exact
-Worker lease release. Additional Redis proofs cover TASK_DRIVEN empty
-auto-close, ITEM_DRIVEN empty recheck followed by append, and an external
-explicit close request.
-Deadline-driven close remains deferred.
+Worker lease release. Additional Redis proofs cover TASK_DRIVEN default empty
+close, ITEM_DRIVEN future-threshold empty recheck followed by append, shared
+explicit threshold close, and an external explicit close request. A separate
+hard-deadline scanner remains deferred.
 
 Deferred policy stays in the document of the mechanism that consumes it. There
 is no global policy backlog document and no policy residue may create a second

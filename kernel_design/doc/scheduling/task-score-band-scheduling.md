@@ -173,9 +173,13 @@ nextTime = now + nextSuffix * emptyRecheckInterval
 At the configured maximum:
 
 ```text
-TASK_DRIVEN -> terminal close
-ITEM_DRIVEN -> remain RUNNING and continue low-frequency checks
+now >= emptyCloseAtMillis -> terminal close
+now < emptyCloseAtMillis  -> remain RUNNING and continue bounded checks
 ```
+
+This close rule is shared by both TaskTypes. The threshold is consulted only
+after complete ACTIVE-band emptiness and the maximum count are established; it
+is not a hard deadline.
 
 Ordinary suffix-zero dispatch pacing uses same-band absolute-time rewrite and
 preserves suffix zero.
@@ -266,7 +270,7 @@ is read or written by Task score Lua.
 | Task creation | initialize PRE_REVIEW and exact release of creation hold |
 | Task approval | PRE_REVIEW -> PRE_DISPATCH_VISIBLE |
 | Running activation | PRE_DISPATCH_VISIBLE -> RUNNING_VISIBLE, suffix 0 |
-| Task dispatch | RUNNING same-band pacing, exact empty-count increment/reset, TASK_DRIVEN empty close |
+| Task dispatch | RUNNING same-band pacing, exact empty-count increment/reset, shared threshold-based empty close |
 | Explicit lifecycle command | close any positive band; exact hold release when authorized |
 | Candidate warmer | none |
 | Worker/runtime/transport/result routing | none |
@@ -279,9 +283,9 @@ is read or written by Task score Lua.
   rounds.
 - A Task discovered before pause/close may finish its already-bounded Item and
   DeliverSeed work; the later score rewrite cannot reopen terminal state.
-- ITEM_DRIVEN empty Tasks remain RUNNING and continue to consume the current
-  soft-limit count until an external owner requests explicit close from
-  business evidence. Task score does not infer that evidence from emptiness.
+- Before `emptyCloseAtMillis`, an empty Task remains RUNNING and continues to
+  consume the current soft-limit count. External close evidence may terminate
+  either TaskType earlier.
 
 ## Guardrails
 

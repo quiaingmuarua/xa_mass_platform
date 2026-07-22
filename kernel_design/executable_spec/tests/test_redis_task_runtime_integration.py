@@ -91,6 +91,7 @@ class RedisTaskRuntimeIntegrationTest(unittest.TestCase):
                 "maximumCandidateWorkers": "20",
                 "maxRetryTimes": "3",
             },
+            empty_close_at_millis=0,
         )
 
     def _task_key(self, task_id: str) -> str:
@@ -174,6 +175,7 @@ class RedisTaskRuntimeIntegrationTest(unittest.TestCase):
                 "taskType",
                 "allocationRuleJson",
                 "configJson",
+                "emptyCloseAtMillis",
             ],
         )
         self.assertTrue(all(isinstance(value, bytes) for value in raw_fields))

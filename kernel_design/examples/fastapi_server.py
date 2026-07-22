@@ -61,6 +61,12 @@ class TaskRequest(BaseModel):
         alias="allocationRule",
     )
     config: dict[str, str]
+    empty_close_at_millis: int | None = Field(
+        default=None,
+        alias="emptyCloseAtMillis",
+        ge=0,
+        strict=True,
+    )
 
 
 class TaskItemRequest(BaseModel):
@@ -262,6 +268,7 @@ def create_app(
                     task_type=request.task_type,
                     allocation_rule=request.allocation_rule,
                     config=request.config,
+                    empty_close_at_millis=request.empty_close_at_millis,
                 )
             )
         )

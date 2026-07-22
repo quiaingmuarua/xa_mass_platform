@@ -24,7 +24,6 @@ from ..kernel.task_runtime import (
     TaskItem,
     TaskResourceCatalog,
     TaskRuntime,
-    TaskType,
 )
 from ..kernel.task_score_band import (
     Score,
@@ -32,6 +31,7 @@ from ..kernel.task_score_band import (
     TaskScoreBand,
     TaskScoreBandCore,
     TaskScoreState,
+    TaskScoreTransitionStatus,
     TimeMillis,
 )
 from ..kernel.worker_runtime import EndpointManagerId
@@ -246,16 +246,28 @@ class TaskDispatchPacer:
                     target_time_millis=dispatch_time_millis,
                 )
                 return
-            self.task_score.rewrite_observed_same_band_suffix(
+            reset = self.task_score.rewrite_observed_same_band_suffix(
                 task_id=task_id,
                 observed_score=state.score,
                 target_time_millis=dispatch_time_millis,
                 suffix_delta=-suffix,
             )
+            if (
+                reset.status is TaskScoreTransitionStatus.TRANSITIONED
+                and resolve_task_scheduling_profile(
+                    descriptor.task_type
+                ).candidate_precomputation_enabled
+            ):
+                self.candidate_warmup_schedule.schedule_candidate_warmups(
+                    task_ids=(task_id,),
+                    due_time_millis=dispatch_time_millis,
+                )
             return
 
         if suffix >= config.max_empty_recheck_times:
-            if descriptor.task_type is TaskType.TASK_DRIVEN:
+            empty_close_at_millis = descriptor.empty_close_at_millis
+            assert empty_close_at_millis is not None
+            if dispatch_time_millis >= empty_close_at_millis:
                 self.task_score.close_score(
                     task_id=task_id,
                     terminal_score=TaskScoreBandCore.TERMINAL_SCORE_MAX,
@@ -264,10 +276,11 @@ class TaskDispatchPacer:
             self.task_score.rewrite_same_band_time_millis(
                 task_id=task_id,
                 expected_band=TaskScoreBand.RUNNING_VISIBLE,
-                target_time_millis=(
+                target_time_millis=min(
+                    empty_close_at_millis,
                     dispatch_time_millis
                     + config.max_empty_recheck_times
-                    * config.empty_recheck_interval_millis
+                    * config.empty_recheck_interval_millis,
                 ),
             )
             return
