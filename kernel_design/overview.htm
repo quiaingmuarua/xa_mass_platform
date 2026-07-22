@@ -1,0 +1,789 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="XA Mass Platform 新机制内核的单页快速导览：场景、调度主链、Score Band、Owner 边界与验证入口。">
+  <title>XA Mass · Kernel Design 快速导览</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #132033;
+      --ink-soft: #536176;
+      --paper: #f6f3ec;
+      --paper-strong: #fffdf8;
+      --line: #d9d3c7;
+      --navy: #10283d;
+      --teal: #087f78;
+      --teal-soft: #dff4ef;
+      --amber: #d88b26;
+      --amber-soft: #fff0d8;
+      --blue: #2e69a8;
+      --blue-soft: #e5effa;
+      --red: #b9574f;
+      --red-soft: #fae7e4;
+      --green: #377e58;
+      --green-soft: #e4f2e8;
+      --shadow: 0 16px 44px rgba(30, 42, 56, .09);
+      --radius: 22px;
+      --sidebar: 260px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 12% 4%, rgba(8,127,120,.10), transparent 27rem),
+        radial-gradient(circle at 92% 18%, rgba(216,139,38,.10), transparent 25rem),
+        var(--paper);
+      font-family: Inter, "SF Pro Text", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.65;
+    }
+
+    a { color: inherit; }
+    button, a { -webkit-tap-highlight-color: transparent; }
+    :focus-visible { outline: 3px solid rgba(8,127,120,.36); outline-offset: 3px; }
+
+    .skip-link {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      z-index: 100;
+      padding: 10px 14px;
+      border-radius: 10px;
+      color: white;
+      background: var(--navy);
+      transform: translateY(-160%);
+      transition: transform .2s ease;
+    }
+    .skip-link:focus { transform: translateY(0); }
+
+    .read-progress {
+      position: fixed;
+      inset: 0 0 auto 0;
+      z-index: 90;
+      height: 4px;
+      background: rgba(16,40,61,.08);
+    }
+    .read-progress span {
+      display: block;
+      width: 0;
+      height: 100%;
+      background: linear-gradient(90deg, var(--teal), var(--amber));
+    }
+
+    .layout {
+      display: grid;
+      grid-template-columns: var(--sidebar) minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      padding: 34px 24px 24px;
+      color: #e8f0f3;
+      background:
+        linear-gradient(155deg, rgba(8,127,120,.25), transparent 45%),
+        var(--navy);
+      overflow-y: auto;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 34px;
+    }
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      border: 1px solid rgba(255,255,255,.22);
+      border-radius: 14px;
+      color: white;
+      background: rgba(255,255,255,.08);
+      font-weight: 800;
+      letter-spacing: -.08em;
+    }
+    .brand strong { display: block; font-size: 14px; letter-spacing: .02em; }
+    .brand small { color: #9fb2bf; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
+
+    .sidebar nav { display: grid; gap: 5px; }
+    .sidebar nav a {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 11px;
+      border-radius: 10px;
+      color: #aebfca;
+      text-decoration: none;
+      font-size: 13px;
+      transition: color .18s ease, background .18s ease;
+    }
+    .sidebar nav a::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+      opacity: .55;
+    }
+    .sidebar nav a:hover,
+    .sidebar nav a.active { color: white; background: rgba(255,255,255,.09); }
+
+    .sidebar-note {
+      margin-top: 34px;
+      padding: 16px;
+      border: 1px solid rgba(255,255,255,.10);
+      border-radius: 15px;
+      color: #adbec8;
+      background: rgba(255,255,255,.045);
+      font-size: 12px;
+    }
+    .sidebar-note strong { color: #fff; }
+
+    main { min-width: 0; padding: 0 5vw 80px; }
+    .content { width: min(1180px, 100%); margin: 0 auto; }
+
+    .hero {
+      min-height: 88vh;
+      display: grid;
+      align-content: center;
+      padding: 72px 0 48px;
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      width: fit-content;
+      margin-bottom: 22px;
+      padding: 7px 11px;
+      border: 1px solid rgba(8,127,120,.24);
+      border-radius: 999px;
+      color: var(--teal);
+      background: rgba(255,255,255,.58);
+      font-size: 12px;
+      font-weight: 750;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+    }
+    .eyebrow::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 0 5px rgba(8,127,120,.12); }
+    h1 {
+      max-width: 950px;
+      margin: 0;
+      color: var(--navy);
+      font-size: clamp(44px, 7vw, 88px);
+      line-height: .98;
+      letter-spacing: -.055em;
+    }
+    h1 span { color: var(--teal); }
+    .hero-lead {
+      max-width: 820px;
+      margin: 28px 0 0;
+      color: var(--ink-soft);
+      font-size: clamp(17px, 2vw, 22px);
+      line-height: 1.7;
+    }
+    .hero-lead strong { color: var(--ink); }
+    .hero-tags { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 28px; }
+    .tag {
+      padding: 7px 11px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: #435267;
+      background: rgba(255,255,255,.65);
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .hero-flow {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+      margin-top: 46px;
+      padding: 16px;
+      border: 1px solid rgba(16,40,61,.12);
+      border-radius: var(--radius);
+      background: rgba(255,253,248,.68);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+    }
+    .hero-flow div {
+      position: relative;
+      padding: 15px 12px;
+      border-radius: 14px;
+      background: var(--paper-strong);
+      text-align: center;
+    }
+    .hero-flow div:not(:last-child)::after {
+      content: "→";
+      position: absolute;
+      top: 50%;
+      right: -17px;
+      z-index: 2;
+      color: var(--teal);
+      transform: translateY(-50%);
+      font-weight: 800;
+    }
+    .hero-flow small { display: block; color: var(--ink-soft); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
+    .hero-flow strong { display: block; margin-top: 2px; color: var(--navy); font-size: 13px; }
+
+    section:not(.hero) { scroll-margin-top: 28px; padding: 64px 0; }
+    .section-kicker { margin: 0 0 10px; color: var(--teal); font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    h2 { margin: 0; color: var(--navy); font-size: clamp(30px, 4vw, 50px); line-height: 1.08; letter-spacing: -.035em; }
+    .section-intro { max-width: 820px; margin: 16px 0 32px; color: var(--ink-soft); font-size: 17px; }
+    h3 { margin: 0; color: var(--navy); font-size: 20px; letter-spacing: -.015em; }
+
+    .grid-2, .grid-3, .grid-4 { display: grid; gap: 18px; }
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+    .card {
+      padding: 24px;
+      border: 1px solid rgba(16,40,61,.11);
+      border-radius: var(--radius);
+      background: rgba(255,253,248,.82);
+      box-shadow: 0 10px 30px rgba(30,42,56,.055);
+    }
+    .card p { margin: 10px 0 0; color: var(--ink-soft); }
+    .card ul { margin: 15px 0 0; padding-left: 20px; color: var(--ink-soft); }
+    .card li + li { margin-top: 7px; }
+    .card .number {
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      margin-bottom: 18px;
+      border-radius: 12px;
+      color: var(--teal);
+      background: var(--teal-soft);
+      font-weight: 850;
+    }
+
+    .statement {
+      margin-top: 18px;
+      padding: 27px 28px;
+      border-left: 5px solid var(--amber);
+      border-radius: 0 var(--radius) var(--radius) 0;
+      color: #4b3a24;
+      background: var(--amber-soft);
+      font-size: 18px;
+    }
+    .statement strong { color: #7a4a0d; }
+
+    .flow-board {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      counter-reset: flow;
+    }
+    .flow-step {
+      position: relative;
+      min-height: 160px;
+      padding: 20px;
+      border: 1px solid rgba(16,40,61,.12);
+      border-radius: 18px;
+      background: var(--paper-strong);
+      counter-increment: flow;
+    }
+    .flow-step::before {
+      content: counter(flow, decimal-leading-zero);
+      display: block;
+      margin-bottom: 22px;
+      color: var(--teal);
+      font-size: 12px;
+      font-weight: 850;
+      letter-spacing: .1em;
+    }
+    .flow-step::after {
+      content: "";
+      position: absolute;
+      top: 49px;
+      left: 52px;
+      right: 20px;
+      height: 1px;
+      background: linear-gradient(90deg, rgba(8,127,120,.44), transparent);
+    }
+    .flow-step strong { display: block; color: var(--navy); font-size: 15px; }
+    .flow-step span { display: block; margin-top: 8px; color: var(--ink-soft); font-size: 13px; }
+
+    .type-card { position: relative; overflow: hidden; padding: 28px; }
+    .type-card::after {
+      content: "";
+      position: absolute;
+      right: -48px;
+      bottom: -48px;
+      width: 160px;
+      height: 160px;
+      border-radius: 50%;
+      background: rgba(255,255,255,.23);
+    }
+    .type-card.dense { background: linear-gradient(145deg, #e4f4f0, #f8fffc); }
+    .type-card.sparse { background: linear-gradient(145deg, #e7eef8, #fafcff); }
+    .type-label { display: inline-block; padding: 5px 9px; border-radius: 8px; font-size: 11px; font-weight: 800; letter-spacing: .08em; }
+    .dense .type-label { color: #08645f; background: rgba(8,127,120,.12); }
+    .sparse .type-label { color: #295c92; background: rgba(46,105,168,.12); }
+    .type-card h3 { margin-top: 14px; font-size: 28px; }
+    .type-path { display: grid; gap: 8px; margin-top: 22px; }
+    .type-path div { position: relative; z-index: 1; padding: 11px 13px; border: 1px solid rgba(16,40,61,.09); border-radius: 11px; background: rgba(255,255,255,.62); font-size: 13px; }
+
+    .shared-rule {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-top: 18px;
+      padding: 17px 20px;
+      border: 1px dashed rgba(8,127,120,.42);
+      border-radius: 16px;
+      color: var(--ink-soft);
+      background: rgba(223,244,239,.36);
+    }
+    .shared-rule b { color: var(--teal); white-space: nowrap; }
+
+    .score-card { display: flex; flex-direction: column; min-height: 390px; }
+    .score-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+    .axis-chip { padding: 5px 8px; border-radius: 7px; font-size: 10px; font-weight: 850; letter-spacing: .07em; }
+    .task-axis .axis-chip { color: #0a6861; background: var(--teal-soft); }
+    .worker-axis .axis-chip { color: #2c5f91; background: var(--blue-soft); }
+    .item-axis .axis-chip { color: #87530f; background: var(--amber-soft); }
+    .axis-line { display: grid; gap: 8px; margin: 22px 0; }
+    .axis-line div { position: relative; padding: 10px 12px 10px 31px; border-radius: 10px; color: #435267; background: rgba(16,40,61,.045); font-size: 12px; }
+    .axis-line div::before { content: ""; position: absolute; left: 13px; top: 50%; width: 7px; height: 7px; border-radius: 50%; background: var(--teal); transform: translateY(-50%); }
+    .worker-axis .axis-line div::before { background: var(--blue); }
+    .item-axis .axis-line div::before { background: var(--amber); }
+    .score-card p { font-size: 13px; }
+    .score-facts { margin-top: auto; padding-top: 15px; border-top: 1px solid var(--line); color: var(--ink-soft); font-size: 12px; }
+
+    .priority-box {
+      display: grid;
+      grid-template-columns: 180px 1fr;
+      gap: 22px;
+      margin-top: 18px;
+      padding: 24px;
+      border-radius: var(--radius);
+      color: #e8f0f3;
+      background: var(--navy);
+    }
+    .priority-meter { display: grid; align-content: center; gap: 8px; }
+    .priority-meter .scale { height: 12px; border-radius: 999px; background: linear-gradient(90deg, #45b8a7, #f0c56e); }
+    .priority-meter .labels { display: flex; justify-content: space-between; color: #b9c9d1; font-size: 11px; }
+    .priority-box h3 { color: white; }
+    .priority-box p { margin: 7px 0 0; color: #b9c9d1; font-size: 13px; }
+
+    .owner-table, .redis-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: var(--paper-strong);
+    }
+    .owner-table th, .owner-table td,
+    .redis-table th, .redis-table td { padding: 15px 16px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; font-size: 13px; }
+    .owner-table tr:last-child td, .redis-table tr:last-child td { border-bottom: 0; }
+    .owner-table th, .redis-table th { color: var(--navy); background: rgba(16,40,61,.045); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
+    .owner-table td:first-child, .redis-table td:first-child { color: var(--navy); font-weight: 750; }
+    .muted { color: var(--ink-soft); }
+
+    .outcome { border-top: 5px solid; }
+    .outcome.success { border-color: var(--green); }
+    .outcome.failure { border-color: var(--amber); }
+    .outcome.reject { border-color: var(--red); }
+    .outcome code { display: inline-block; margin-top: 14px; padding: 5px 8px; border-radius: 7px; background: rgba(16,40,61,.06); font-size: 12px; }
+
+    .rule-list { display: grid; gap: 11px; }
+    .rule {
+      display: grid;
+      grid-template-columns: 34px 1fr;
+      gap: 12px;
+      align-items: start;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--paper-strong);
+    }
+    .rule-mark { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 10px; font-weight: 850; }
+    .rule.good .rule-mark { color: var(--green); background: var(--green-soft); }
+    .rule.bad .rule-mark { color: var(--red); background: var(--red-soft); }
+    .rule strong { display: block; color: var(--navy); font-size: 14px; }
+    .rule span { color: var(--ink-soft); font-size: 12px; }
+
+    .link-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; }
+    .doc-link {
+      display: block;
+      padding: 18px;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      background: var(--paper-strong);
+      text-decoration: none;
+      transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+    }
+    .doc-link:hover { transform: translateY(-2px); border-color: rgba(8,127,120,.45); box-shadow: 0 10px 24px rgba(30,42,56,.07); }
+    .doc-link small { display: block; color: var(--teal); font-size: 10px; font-weight: 850; letter-spacing: .09em; text-transform: uppercase; }
+    .doc-link strong { display: block; margin-top: 6px; color: var(--navy); font-size: 14px; }
+    .doc-link span { display: block; margin-top: 5px; color: var(--ink-soft); font-size: 12px; }
+
+    .command {
+      position: relative;
+      margin-top: 12px;
+      padding: 19px 60px 19px 18px;
+      border-radius: 14px;
+      color: #dce7eb;
+      background: #122434;
+      overflow-x: auto;
+      font: 12px/1.65 "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+    }
+    .copy {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      padding: 6px 9px;
+      border: 1px solid rgba(255,255,255,.16);
+      border-radius: 8px;
+      color: #dce7eb;
+      background: rgba(255,255,255,.07);
+      cursor: pointer;
+      font: 11px/1.2 inherit;
+    }
+
+    details {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--paper-strong);
+    }
+    details + details { margin-top: 10px; }
+    summary { padding: 15px 18px; color: var(--navy); cursor: pointer; font-weight: 730; }
+    details p { margin: 0; padding: 0 18px 18px; color: var(--ink-soft); font-size: 13px; }
+
+    footer { margin-top: 70px; padding-top: 24px; border-top: 1px solid var(--line); color: var(--ink-soft); font-size: 12px; }
+
+    @media (max-width: 1050px) {
+      :root { --sidebar: 220px; }
+      .grid-4, .flow-board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .grid-3 { grid-template-columns: 1fr; }
+      .score-card { min-height: 0; }
+      .link-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+
+    @media (max-width: 760px) {
+      .layout { display: block; }
+      .sidebar { position: relative; width: 100%; height: auto; padding: 20px; }
+      .brand { margin-bottom: 14px; }
+      .sidebar nav { display: flex; overflow-x: auto; padding-bottom: 3px; }
+      .sidebar nav a { flex: 0 0 auto; }
+      .sidebar-note { display: none; }
+      main { padding: 0 20px 60px; }
+      .hero { min-height: auto; padding: 58px 0 34px; }
+      .hero-flow { grid-template-columns: 1fr; }
+      .hero-flow div:not(:last-child)::after { content: "↓"; top: auto; right: 50%; bottom: -19px; transform: translateX(50%); }
+      .grid-2, .grid-4, .flow-board, .link-grid { grid-template-columns: 1fr; }
+      .priority-box { grid-template-columns: 1fr; }
+      .owner-table, .redis-table { display: block; overflow-x: auto; white-space: nowrap; }
+      section:not(.hero) { padding: 50px 0; }
+    }
+
+    @media print {
+      body { background: white; }
+      .sidebar, .read-progress, .copy { display: none !important; }
+      .layout { display: block; }
+      main { padding: 0; }
+      .hero { min-height: auto; }
+      .card, .hero-flow { box-shadow: none; break-inside: avoid; }
+      section { break-inside: avoid; }
+      a { text-decoration: none; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#main">跳到主要内容</a>
+  <div class="read-progress" aria-hidden="true"><span id="progress"></span></div>
+
+  <div class="layout">
+    <aside class="sidebar" aria-label="页面导航">
+      <div class="brand">
+        <div class="brand-mark">XA</div>
+        <div><strong>Kernel Design</strong><small>Quick Orientation</small></div>
+      </div>
+      <nav>
+        <a href="#top" class="active">项目定位</a>
+        <a href="#mental-model">30 秒模型</a>
+        <a href="#mainline">调度主链</a>
+        <a href="#task-types">两类 Task</a>
+        <a href="#score-axes">三条 Score 轴</a>
+        <a href="#owners">Owner 边界</a>
+        <a href="#result">结果闭环</a>
+        <a href="#redis">Redis 形态</a>
+        <a href="#guardrails">避免误读</a>
+        <a href="#reading">继续阅读</a>
+      </nav>
+      <div class="sidebar-note">
+        <strong>阅读目标</strong><br>
+        先理解场景与机制，再进入接口和 Redis 细节。本文基于当前 Python executable spec 与 active kernel 文档。
+      </div>
+    </aside>
+
+    <main id="main">
+      <div class="content">
+        <section class="hero" id="top">
+          <div class="eyebrow">New scheduling kernel</div>
+          <h1>一个严格、可证明的<br><span>分布式调度机制内核</span></h1>
+          <p class="hero-lead">
+            <strong>kernel_design 不是现有 Java 项目的兼容重构。</strong>
+            它从 Task、Worker、TaskItem 三条独立 Score 轴出发，用受限 Redis 状态、精确租约和 owner-local policy 重新建立调度闭环。
+          </p>
+          <div class="hero-tags" aria-label="项目特征">
+            <span class="tag">Python executable spec</span>
+            <span class="tag">Redis runtime truth</span>
+            <span class="tag">Bounded scheduling</span>
+            <span class="tag">Exact score fences</span>
+            <span class="tag">No compatibility track</span>
+          </div>
+          <div class="hero-flow" aria-label="核心调度链">
+            <div><small>Visibility</small><strong>Task Score</strong></div>
+            <div><small>Selection</small><strong>Worker Lease</strong></div>
+            <div><small>Claim</small><strong>TaskItem Score</strong></div>
+            <div><small>Delivery</small><strong>DeliverSeed</strong></div>
+            <div><small>Evidence</small><strong>SeedResult</strong></div>
+          </div>
+        </section>
+
+        <section id="mental-model">
+          <p class="section-kicker">30-second mental model</p>
+          <h2>先记住四件事</h2>
+          <p class="section-intro">项目的大部分设计都可以从下面四个判断推导出来。</p>
+          <div class="grid-4">
+            <article class="card"><div class="number">1</div><h3>Task 是调度容器</h3><p>它承载稳定意图、TaskType、WorkerGroup 和调度配置，不是一次执行尝试。</p></article>
+            <article class="card"><div class="number">2</div><h3>TaskItem 是唯一工作单元</h3><p>从 append、claim、dispatch、retry 到 finality，始终是同一个 messageId。</p></article>
+            <article class="card"><div class="number">3</div><h3>WorkerId 是一个执行槽</h3><p>一个 WorkerId 同时只拥有一个活动租约；物理并发用多个逻辑 WorkerId 表达。</p></article>
+            <article class="card"><div class="number">4</div><h3>Score 是调度真相</h3><p>Score 决定何时值得观察；descriptor、payload、result、transport 不会被塞进 Score。</p></article>
+          </div>
+          <div class="statement"><strong>最重要的边界：</strong>Score 不是资源写锁，也不是完整状态对象。资源 owner 写资源真相；调度 plane 只移动自己的调度坐标。</div>
+        </section>
+
+        <section id="mainline">
+          <p class="section-kicker">Mainline</p>
+          <h2>一条主链，四个调度平面</h2>
+          <p class="section-intro">没有第二条兼容路径，也不靠外部事件维持普通正确性。每一步只产生下一位 owner 所需的最小证据。</p>
+          <div class="flow-board">
+            <div class="flow-step"><strong>创建与批准</strong><span>PRE_REVIEW → ADMISSION_VISIBLE；approval 把 Task priority 写入 admission suffix。</span></div>
+            <div class="flow-step"><strong>RUNNING Admission</strong><span>先取 bounded due window，再按 priority 排序；有 due ACTIVE Item 才进入 RUNNING。</span></div>
+            <div class="flow-step"><strong>Worker Acquisition</strong><span>TASK_DRIVEN 读取预计算缓存；ITEM_DRIVEN 从 Item 规则做定点 acquisition。</span></div>
+            <div class="flow-step"><strong>精确 Worker Lease</strong><span>候选只是 WorkerId；当前 descriptor、dynamic facts 与 observed score 必须再次验证。</span></div>
+            <div class="flow-step"><strong>TaskItem Claim</strong><span>只有已经绑定 Worker 的 Item 才通过 exact observed-score fence 领取。</span></div>
+            <div class="flow-step"><strong>DeliverSeed</strong><span>selected Worker、Item 和 opaque context 组成已分配工作，按 endpointManagerId 入队。</span></div>
+            <div class="flow-step"><strong>SeedResult</strong><span>Adapter/Worker 只回传 outcome evidence；结果上下文保持 opaque。</span></div>
+            <div class="flow-step"><strong>Result Routing</strong><span>按 outcome class 调用 TaskItem 与 Worker score owner，完成 finality 或恢复。</span></div>
+          </div>
+        </section>
+
+        <section id="task-types">
+          <p class="section-kicker">Scenario bundles</p>
+          <h2>TaskType 是场景合约，不是 Policy 拼装器</h2>
+          <p class="section-intro">两类 Task 固定了 rule owner、Worker acquisition 路径和 candidate cache 权限，调用方不能自由重组这些维度。</p>
+          <div class="grid-2">
+            <article class="card type-card dense">
+              <span class="type-label">DENSE / BOUNDED WAVE</span>
+              <h3>TASK_DRIVEN</h3>
+              <p>一批 Item 共享 Task 级 Worker 条件，候选集合有限且值得预热。</p>
+              <div class="type-path">
+                <div><strong>Rule owner</strong> · TaskDescriptor</div>
+                <div><strong>Acquisition</strong> · PRECOMPUTED</div>
+                <div><strong>Candidate cache</strong> · 启用</div>
+                <div><strong>Warmup</strong> · RUNNING 后异步补充</div>
+              </div>
+            </article>
+            <article class="card type-card sparse">
+              <span class="type-label">SPARSE / LONG-LIVED</span>
+              <h3>ITEM_DRIVEN</h3>
+              <p>每个 Item 携带完整 Worker 条件；条件可以相同，也可以不同，不预占候选资源。</p>
+              <div class="type-path">
+                <div><strong>Rule owner</strong> · TaskItem</div>
+                <div><strong>Acquisition</strong> · TARGETED</div>
+                <div><strong>Candidate cache</strong> · 禁止</div>
+                <div><strong>Warmup</strong> · 不存在</div>
+              </div>
+            </article>
+          </div>
+          <div class="shared-rule"><b>共享生命周期</b><span>两种 TaskType 使用同一套 RUNNING empty-recheck 与 emptyCloseAtMillis 机制；外部 owner 也可以随时通过明确证据调用 close_task。</span></div>
+        </section>
+
+        <section id="score-axes">
+          <p class="section-kicker">Scheduling coordinates</p>
+          <h2>三条独立 Score 轴</h2>
+          <p class="section-intro">它们共享“一个 identity → 一个 ZSET member → 一个有序坐标”的机制，但状态方向、suffix 含义和并发规则各自独立。</p>
+          <div class="grid-3">
+            <article class="card score-card task-axis">
+              <div class="score-head"><h3>Task Score</h3><span class="axis-chip">GLOBAL TASK</span></div>
+              <div class="axis-line"><div>PRE_REVIEW</div><div>ADMISSION_VISIBLE</div><div>RUNNING_VISIBLE</div><div>TERMINAL</div></div>
+              <p>回答：哪个 Task 现在值得进入 admission 或 dispatch round？</p>
+              <div class="score-facts">ADMISSION suffix = priority 0..99；RUNNING suffix = 连续空检查计数。</div>
+            </article>
+            <article class="card score-card worker-axis">
+              <div class="score-head"><h3>Worker Score</h3><span class="axis-chip">PER HOME BUCKET</span></div>
+              <div class="axis-line"><div>HOT_ACQUIRE · positive</div><div>Exact lease / hold</div><div>RECOVERY_RECHECK · negative</div><div>Back to serviceability</div></div>
+              <p>回答：哪个 Worker 槽当前值得验证、租用或恢复？</p>
+              <div class="score-facts">observedScore 是 opaque fence；matcher 只看 WorkerId，不解析租约。</div>
+            </article>
+            <article class="card score-card item-axis">
+              <div class="score-head"><h3>TaskItem Score</h3><span class="axis-chip">PER TASK</span></div>
+              <div class="axis-line"><div>ACTIVE</div><div>Claim lease / retry due</div><div>FINAL_FAILED</div><div>FINAL_SUCCESS</div></div>
+              <p>回答：Task 内哪些 Item 现在值得 claim、retry 或吸收结果？</p>
+              <div class="score-facts">Item priority 0..10 只影响首次 due；之后由 claim lease 和 retry time 接管。</div>
+            </article>
+          </div>
+          <div class="priority-box">
+            <div class="priority-meter"><div class="scale"></div><div class="labels"><span>0 · highest</span><span>99 · lowest</span></div></div>
+            <div><h3>ADMISSION 中的 timeSlot 与 priority</h3><p>timeSlot 决定 bounded observation window；窗口成员再按 suffix priority 排序。未 transition 的已观察 Task 会被放到未来 recheck time，避免旧 head 永久遮住后续工作，但 priority 本身不会被内核降低。</p></div>
+          </div>
+        </section>
+
+        <section id="owners">
+          <p class="section-kicker">Ownership</p>
+          <h2>谁可以决定什么</h2>
+          <p class="section-intro">维护这个项目时，先确认 owner，再讨论接口。多数复杂度都来自一个 owner 偷做了另一个 owner 的决定。</p>
+          <table class="owner-table">
+            <thead><tr><th>Owner / Plane</th><th>拥有的真相或决定</th><th>明确不拥有</th></tr></thead>
+            <tbody>
+              <tr><td>TaskScoreBandCore</td><td>Task 可见 band、next-time、bounded acquire、terminal</td><td class="muted">Item retry、Worker lease、candidate cache、result</td></tr>
+              <tr><td>TaskRuntime</td><td>Task descriptor、TaskItem record、last-success payload</td><td class="muted">Task scheduling visibility、Worker selection</td></tr>
+              <tr><td>TaskItemScoreBandCore</td><td>Item 初始化、claim/retry fence、outcome promotion</td><td class="muted">Task lifecycle、transport、Worker serviceability</td></tr>
+              <tr><td>Worker runtime</td><td>WorkerGroup/Worker descriptor、dynamic facts、score lease、matching</td><td class="muted">Task demand、Item finality、transport result</td></tr>
+              <tr><td>Assignment-dispatch</td><td>一轮候选组合、Worker-backed Item claim、DeliverSeed</td><td class="muted">资源真相、Worker score 编码、result winner</td></tr>
+              <tr><td>Transport / Adapter</td><td>消费已分配 DeliverSeed、最终提交、产生 SeedResult</td><td class="muted">选择 Worker、claim Item、刷新 Task score</td></tr>
+              <tr><td>Result-routing</td><td>分类 evidence、按 owner key 分组、调用 policy handler</td><td class="muted">解析 score、主动重试、重新选择 Worker</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="result">
+          <p class="section-kicker">Evidence convergence</p>
+          <h2>结果不是回调逻辑，而是 Owner 收敛</h2>
+          <p class="section-intro">SeedResultRuntime 只做三类 outcome queue；ResultRoutingPacer 解码一次，再把 Task evidence 与 Worker evidence 分开交给真实 owner。</p>
+          <div class="grid-3">
+            <article class="card outcome success"><h3>SUCCESS</h3><code>outcomeCode = 200</code><ul><li>保存 Task last-success payload</li><li>Item → FINAL_SUCCESS</li><li>精确释放 Worker lease</li></ul></article>
+            <article class="card outcome failure"><h3>WORKER_FAILURE</h3><code>outcomeCode = 1xxx</code><ul><li>精确释放 Worker lease</li><li>不直接写 Item retry</li><li>Item 在原 claim time 到期后重试</li></ul></article>
+            <article class="card outcome reject"><h3>ADAPTER_REJECTION</h3><code>outcomeCode = 3xxx</code><ul><li>Worker lease → RECOVERY_RECHECK</li><li>不直接写 Item retry</li><li>Item 依靠原 claim coordinate 恢复</li></ul></article>
+          </div>
+        </section>
+
+        <section id="redis">
+          <p class="section-kicker">Runtime truth</p>
+          <h2>Redis 只保存 owner-local runtime truth</h2>
+          <p class="section-intro">每个 key 都应能回答：谁写、谁读、何时删除、失败后如何恢复。这里列的是形态，不是公共 API。</p>
+          <table class="redis-table">
+            <thead><tr><th>Shape</th><th>身份 / 内容</th><th>角色</th></tr></thead>
+            <tbody>
+              <tr><td>Task score ZSET</td><td>taskId → encoded band/time/suffix</td><td class="muted">全局 Task 调度索引</td></tr>
+              <tr><td>Task descriptor HASH</td><td>TaskType、WorkerGroup、rule、config</td><td class="muted">稳定 Task 意图</td></tr>
+              <tr><td>TaskItem HASH + ZSET</td><td>messageId → record / item score</td><td class="muted">资源记录与调度坐标分离</td></tr>
+              <tr><td>Worker score ZSET</td><td>workerId → serviceability / lease coordinate</td><td class="muted">Worker 调度槽真相</td></tr>
+              <tr><td>Candidate cache ZSET</td><td>taskId → expiring CandidateWorkerEntry</td><td class="muted">TASK_DRIVEN 可丢弃预计算证据</td></tr>
+              <tr><td>DeliverSeed / SeedResult LIST</td><td>已分配工作 / 返回 evidence</td><td class="muted">handoff queue，不是 lifecycle truth</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="guardrails">
+          <p class="section-kicker">Do not misread</p>
+          <h2>最常见的六个误读</h2>
+          <div class="grid-2">
+            <div class="rule-list">
+              <div class="rule good"><div class="rule-mark">✓</div><div><strong>新机制内核</strong><span>以当前 Python executable spec 为实现真相。</span></div></div>
+              <div class="rule good"><div class="rule-mark">✓</div><div><strong>TaskType 是场景 bundle</strong><span>先验证真实场景，再讨论 policy 边缘。</span></div></div>
+              <div class="rule good"><div class="rule-mark">✓</div><div><strong>External event 只是可选加速</strong><span>普通 correctness 与 liveness 必须能靠 score/recheck 自闭环。</span></div></div>
+            </div>
+            <div class="rule-list">
+              <div class="rule bad"><div class="rule-mark">×</div><div><strong>不是 Java 接口兼容工程</strong><span>Java 只提供失败模式与 invariant 证据。</span></div></div>
+              <div class="rule bad"><div class="rule-mark">×</div><div><strong>不是把 policy 正交组合</strong><span>没有业务场景的组合不值得进入内核保护代码。</span></div></div>
+              <div class="rule bad"><div class="rule-mark">×</div><div><strong>Transport 不选择 Worker</strong><span>它只投递已经绑定 selected Worker 的 DeliverSeed。</span></div></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="reading">
+          <p class="section-kicker">Start here</p>
+          <h2>继续阅读与运行验证</h2>
+          <p class="section-intro">先读机制总览，再按 owner 深入。不要直接从 Redis Lua 或零散测试反推整体设计。</p>
+          <div class="link-grid">
+            <a class="doc-link" href="README.md"><small>01 · Positioning</small><strong>Kernel Design README</strong><span>项目定位、三条 Score 轴与总体设计标准。</span></a>
+            <a class="doc-link" href="doc/scheduling/README.md"><small>02 · Scheduling</small><strong>Scheduling Overview</strong><span>四个调度 plane、主链与 executable map。</span></a>
+            <a class="doc-link" href="doc/resource-model/task-resource-model.md"><small>03 · Task</small><strong>Task Resource Model</strong><span>TaskType、rule owner、config 与 runtime surfaces。</span></a>
+            <a class="doc-link" href="doc/resource-model/worker-resource-model.md"><small>04 · Worker</small><strong>Worker Resource Model</strong><span>WorkerGroup、Worker slot、matching 与动态属性。</span></a>
+            <a class="doc-link" href="doc/scheduling/task-score-band-scheduling.md"><small>05 · Score</small><strong>Task Score-Band</strong><span>ADMISSION priority、RUNNING pacing 与 close。</span></a>
+            <a class="doc-link" href="doc/scheduling/assignment-dispatch-scheduling.md"><small>06 · Dispatch</small><strong>Assignment-Dispatch</strong><span>两种 acquisition、cache、claim 与 DeliverSeed。</span></a>
+            <a class="doc-link" href="doc/scheduling/result-routing-scheduling.md"><small>07 · Result</small><strong>Result Routing</strong><span>三类结果、opaque context 与 owner handler。</span></a>
+            <a class="doc-link" href="doc/kernel-application-assembly.md"><small>08 · Assembly</small><strong>Kernel Application</strong><span>公共命令、进程边界、后台 loops 与 E2E。</span></a>
+            <a class="doc-link" href="executable_spec/"><small>09 · Executable</small><strong>Python Spec</strong><span>kernel、redis_runtime、scheduling 与 assembly。</span></a>
+          </div>
+
+          <div class="grid-2" style="margin-top:24px">
+            <div class="card">
+              <h3>快速验证</h3>
+              <p>执行全部 executable-spec 测试。</p>
+              <div class="command"><button class="copy" type="button" data-copy>复制</button><code>python -m unittest discover -s kernel_design/executable_spec/tests -p 'test_*.py'</code></div>
+            </div>
+            <div class="card">
+              <h3>静态检查</h3>
+              <p>检查 Python 编译与工作树格式。</p>
+              <div class="command"><button class="copy" type="button" data-copy>复制</button><code>python -m compileall -q kernel_design/executable_spec<br>git diff --check -- kernel_design</code></div>
+            </div>
+          </div>
+
+          <div style="margin-top:24px">
+            <details><summary>为什么 CandidateWorkerCache 不是生命周期真相？</summary><p>它只保存 TASK_DRIVEN 的短期预计算 Worker evidence。miss、stale 或过期只会让本轮没有候选；Task、Item 和 Worker 的真实状态仍由各自 owner 与 Score 轴决定。</p></details>
+            <details><summary>为什么 Worker failure 不直接把 Item 写回 ready？</summary><p>Item claim 本身已经写入未来 lease coordinate。Worker failure 只释放 Worker；到期后的 Item 会被普通 TaskItem acquisition 再次观察，避免 Result Routing 成为第二个 retry owner。</p></details>
+            <details><summary>为什么不靠 append/result 事件唤醒调度？</summary><p>高频事件容易产生放大和第二套 liveness。当前设计允许事件做有损加速，但 correctness 必须由 bounded score scan、lease expiry 与 owner-local recheck 自行收敛。</p></details>
+          </div>
+        </section>
+
+        <footer>
+          XA Mass Platform · kernel_design quick orientation · 单文件、无外部依赖、支持浏览器打印。
+        </footer>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    const progress = document.getElementById('progress');
+    const navLinks = [...document.querySelectorAll('.sidebar nav a')];
+    const sections = navLinks.map(link => document.querySelector(link.getAttribute('href'))).filter(Boolean);
+
+    function updateProgress() {
+      const height = document.documentElement.scrollHeight - window.innerHeight;
+      const ratio = height > 0 ? Math.min(1, window.scrollY / height) : 0;
+      progress.style.width = `${ratio * 100}%`;
+    }
+    updateProgress();
+    window.addEventListener('scroll', updateProgress, { passive: true });
+
+    const observer = new IntersectionObserver(entries => {
+      const visible = entries
+        .filter(entry => entry.isIntersecting)
+        .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+      if (!visible) return;
+      navLinks.forEach(link => link.classList.toggle('active', link.getAttribute('href') === `#${visible.target.id}`));
+    }, { rootMargin: '-20% 0px -65% 0px', threshold: [0, .1, .4] });
+    sections.forEach(section => observer.observe(section));
+
+    document.querySelectorAll('[data-copy]').forEach(button => {
+      button.addEventListener('click', async () => {
+        const text = button.parentElement.querySelector('code').innerText;
+        try {
+          await navigator.clipboard.writeText(text);
+          button.textContent = '已复制';
+          setTimeout(() => button.textContent = '复制', 1200);
+        } catch (_) {
+          button.textContent = '请手动复制';
+        }
+      });
+    });
+  </script>
+</body>
+</html>
