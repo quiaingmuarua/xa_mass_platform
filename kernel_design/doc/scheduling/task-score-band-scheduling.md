@@ -116,13 +116,29 @@ Callers never pass Redis ranges, tags, slots, score bases, or Lua arguments.
 Task creation is score-first:
 
 ```text
-initialize missing score with a short PRE_REVIEW lease
--> write Task descriptor
--> release the exact creation hold best-effort
+reject an existing descriptor without touching score
+-> initialize a missing score with a short PRE_REVIEW lease
+-> create the complete Task descriptor without overwriting an existing HASH
+-> release only the exact creation hold minted by this call
 ```
 
-An existing score makes initialization fail. Descriptor-only or score-only
-interruption residue converges through retry; no cross-key Lua is required.
+Creation is create-only. An existing descriptor always returns `CONFLICT` and
+is never compared, merged, or overwritten. A score-only interruption residue
+may be completed only when the score is still `PRE_REVIEW` and the descriptor
+key is absent:
+
+```text
+initialize missing score with a short PRE_REVIEW lease
+  process stops before descriptor write
+-> retry observes PRE_REVIEW score and absent descriptor
+-> create descriptor with HSETNX semantics
+-> preserve the existing score unchanged
+```
+
+Descriptor fields are installed through one Redis transaction of per-field
+`HSETNX` operations. This keeps descriptor creation atomic without a cross-key
+Lua script. Existing non-PRE_REVIEW scores and descriptor-only residue return
+`CONFLICT`.
 
 Approval validates metadata and requests:
 

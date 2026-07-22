@@ -60,7 +60,10 @@ the Worker HOT score without requiring the scheduling process to be running.
 Reconnect replaces Worker attributes and supplies trusted serviceability
 evidence. Existing scores converge to HOT_ACQUIRE, preserve timeSlot/laneRank,
 and set dirty=1 without releasing a hold.
-`create_task` selects the initial PRE_REVIEW owner code internally.
+`create_task` selects the initial PRE_REVIEW owner code internally. It is a
+create-only command: an existing descriptor conflicts and is never overwritten.
+It may complete a score-only interrupted creation only while the score remains
+PRE_REVIEW and the descriptor key is absent.
 `approve_task` is an explicit lifecycle command that validates Task metadata
 and current score band, then requests `PRE_REVIEW -> ADMISSION_VISIBLE`, using
 the Task priority as the admission suffix and the approval time as the new lane

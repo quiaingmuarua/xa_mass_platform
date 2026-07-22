@@ -219,10 +219,16 @@ TaskResourceCatalog.load_task_allocation_descriptors(
 ) -> Mapping[TaskId, TaskDescriptor | None]
 ```
 
-`create_task` initializes a `PRE_REVIEW` score lease before writing descriptor
-metadata. The owner-defined initialization suffix is opaque to TaskRuntime.
-Score is the Task identity/lifecycle coordination owner; a descriptor HASH
-cannot independently create a Task.
+`create_task` is create-only. It rejects an existing descriptor without
+touching score, initializes a `PRE_REVIEW` score lease before creating missing
+descriptor metadata, and never overwrites an existing descriptor HASH. The
+owner-defined initialization suffix is opaque to TaskRuntime. Score is the
+Task identity/lifecycle coordination owner; a descriptor HASH cannot
+independently create a Task.
+
+A retry may complete exactly one score-only interruption residue when the
+existing score is still `PRE_REVIEW` and the descriptor key is absent. It
+creates the descriptor without rewriting or releasing that existing score.
 
 `load_task_allocation_descriptors` is batch-only. It supports admission and
 allocation without creating general `get/list/query/update/delete Task` APIs.
@@ -407,15 +413,18 @@ emptyCloseAtMillis = "0"
 Task creation is score-first and intentionally not a cross-key transaction:
 
 ```text
-initialize PRE_REVIEW score with a short owner lease
-  -> HSET complete descriptor fields
+reject an existing descriptor
+  -> initialize PRE_REVIEW score with a short owner lease
+  -> transactionally HSETNX all complete descriptor fields
   -> exact observed-score release to current time
 ```
 
 Known failure release is latency optimization. If release is lost, the score
-lease becomes due naturally. Descriptor-only metadata is not scheduling truth;
-score-only state requires a later owner completion/recovery path. No Lua spans
-score and descriptor keys.
+lease becomes due naturally. A retry completes a score-only PRE_REVIEW residue
+only when the descriptor key is absent, and it preserves the existing score.
+Descriptor-only metadata is not scheduling truth and conflicts with create;
+existing descriptor fields are never overwritten. No Lua spans score and
+descriptor keys.
 
 Bounded descriptor reads pipeline one `HMGET` per requested Task key. They do
 not use `SCAN`, `HGETALL`, or a second descriptor index.

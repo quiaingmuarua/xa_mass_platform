@@ -27,6 +27,7 @@ from ..kernel.task_score_band import (
     Score,
     Suffix,
     TaskId,
+    TaskScoreBand,
     TaskScoreBandCore,
     TaskScoreTransitionStatus,
 )
@@ -106,24 +107,26 @@ class RedisTaskRuntime(TaskRuntime):
                 "descriptor allocation rule is invalid or not JSON serializable",
             )
 
-        initialization = self._initialize_task_score(
+        descriptor_fields = {
+            "workerGroupId": descriptor.worker_group_id,
+            "taskType": descriptor.task_type.value,
+            "allocationRuleJson": allocation_rule_json,
+            "configJson": config_json,
+            "emptyCloseAtMillis": str(descriptor.empty_close_at_millis),
+        }
+        initialization = self._start_or_complete_task_creation(
             task_id=descriptor.task_id,
             suffix=suffix,
+            descriptor_fields=descriptor_fields,
         )
         if isinstance(initialization, TaskCreationResult):
             return initialization
         observed_lease_score = initialization
 
         try:
-            self.redis.hset(
-                _task_descriptor_key(self.prefix, descriptor.task_id),
-                mapping={
-                    "workerGroupId": descriptor.worker_group_id,
-                    "taskType": descriptor.task_type.value,
-                    "allocationRuleJson": allocation_rule_json,
-                    "configJson": config_json,
-                    "emptyCloseAtMillis": str(descriptor.empty_close_at_millis),
-                },
+            descriptor_created = self._write_descriptor_if_absent(
+                task_id=descriptor.task_id,
+                descriptor_fields=descriptor_fields,
             )
         except Exception:
             with suppress(Exception):
@@ -132,6 +135,16 @@ class RedisTaskRuntime(TaskRuntime):
                     observed_hold_score=observed_lease_score,
                 )
             raise
+        if not descriptor_created:
+            with suppress(Exception):
+                self.score_band.release_observed_score_hold(
+                    task_id=descriptor.task_id,
+                    observed_hold_score=observed_lease_score,
+                )
+            return TaskCreationResult(
+                TaskCreationStatus.CONFLICT,
+                "task descriptor already exists",
+            )
 
         release = self.score_band.release_observed_score_hold(
             task_id=descriptor.task_id,
@@ -144,12 +157,20 @@ class RedisTaskRuntime(TaskRuntime):
             "task descriptor was written but score release was not accepted",
         )
 
-    def _initialize_task_score(
+    def _start_or_complete_task_creation(
         self,
         *,
         task_id: TaskId,
         suffix: Suffix,
+        descriptor_fields: Mapping[str, object],
     ) -> Score | TaskCreationResult:
+        descriptor_key = _task_descriptor_key(self.prefix, task_id)
+        if self.redis.exists(descriptor_key):
+            return TaskCreationResult(
+                TaskCreationStatus.CONFLICT,
+                "task descriptor already exists",
+            )
+
         initialization = self.score_band.initialize_score(
             task_id=task_id,
             suffix=suffix,
@@ -163,9 +184,22 @@ class RedisTaskRuntime(TaskRuntime):
                 "task score initialization returned no lease score",
             )
         if initialization.status == TaskScoreTransitionStatus.NOOP:
+            state = self.score_band.get_score_states(task_ids=(task_id,)).get(
+                task_id
+            )
+            if (
+                state is not None
+                and state.band is TaskScoreBand.PRE_REVIEW
+                and not self.redis.exists(descriptor_key)
+                and self._write_descriptor_if_absent(
+                    task_id=task_id,
+                    descriptor_fields=descriptor_fields,
+                )
+            ):
+                return TaskCreationResult(TaskCreationStatus.CREATED)
             return TaskCreationResult(
                 TaskCreationStatus.CONFLICT,
-                "task score is already initialized",
+                "task score is already initialized outside an incomplete creation",
             )
         if initialization.status == TaskScoreTransitionStatus.INVALID:
             return TaskCreationResult(
@@ -176,6 +210,21 @@ class RedisTaskRuntime(TaskRuntime):
             TaskCreationStatus.RETRYABLE,
             "task score initialization could not be confirmed",
         )
+
+    def _write_descriptor_if_absent(
+        self,
+        *,
+        task_id: TaskId,
+        descriptor_fields: Mapping[str, object],
+    ) -> bool:
+        key = _task_descriptor_key(self.prefix, task_id)
+        if self.redis.exists(key):
+            return False
+        with self.redis.pipeline(transaction=True) as pipe:
+            for field, value in descriptor_fields.items():
+                pipe.hsetnx(key, field, value)
+            results = pipe.execute()
+        return bool(results) and all(int(result) == 1 for result in results)
 
     def append_items(
         self,

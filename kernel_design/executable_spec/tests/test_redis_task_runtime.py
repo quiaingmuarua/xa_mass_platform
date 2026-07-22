@@ -52,6 +52,15 @@ class FakePipeline:
         self.commands.append(("zadd", name, (mapping, nx)))
         return self
 
+    def hsetnx(
+        self,
+        name: str,
+        key: str,
+        value: object,
+    ) -> FakePipeline:
+        self.commands.append(("hsetnx", name, (key, value)))
+        return self
+
     def execute(self) -> list[object]:
         self.redis.pipeline_executions.append(tuple(self.commands))
         results: list[object] = []
@@ -68,6 +77,8 @@ class FakePipeline:
                         nx=bool(args[1]),
                     )
                 )
+            elif command == "hsetnx":
+                results.append(self.redis.hsetnx(name, str(args[0]), args[1]))
             else:
                 raise ValueError(f"unsupported fake pipeline command: {command}")
         return results
@@ -102,6 +113,13 @@ class FakeRedis:
             added += int(key not in row)
             row[key] = str(value)
         return added
+
+    def hsetnx(self, name: str, key: str, value: object) -> int:
+        row = self.hashes.setdefault(name, {})
+        if key in row:
+            return 0
+        row[key] = str(value)
+        return 1
 
     def zscore(self, key: str, member: str) -> int | None:
         return self.zsets.get(key, {}).get(member)
@@ -297,13 +315,31 @@ class RedisTaskRuntimeTest(unittest.TestCase):
             self.catalog.load_task_allocation_descriptors(task_ids=["task-1"])["task-1"],
         )
 
-    def test_orphan_descriptor_does_not_block_score_owned_creation(self) -> None:
-        self.redis.hashes["tc:test:task:task-1"] = {
+    def test_orphan_descriptor_conflicts_without_creating_score(self) -> None:
+        orphan = {
             "workerGroupId": "orphan-workers",
             "taskType": "TASK_DRIVEN",
             "allocationRuleJson": "{}",
             "configJson": "{}",
         }
+        self.redis.hashes["tc:test:task:task-1"] = dict(orphan)
+        descriptor = self.descriptor("task-1")
+
+        result = self.runtime.create_task(
+            descriptor=descriptor,
+            suffix=self.SUFFIX,
+        )
+
+        self.assertEqual(TaskCreationStatus.CONFLICT, result.status)
+        self.assertEqual(orphan, self.redis.hashes["tc:test:task:task-1"])
+        self.assertIsNone(self.redis.zscore(self.score_band.score_key, "task-1"))
+
+    def test_pre_review_score_without_descriptor_completes_creation(self) -> None:
+        existing = self.score_band.initialize_score(
+            task_id="task-1",
+            suffix=self.SUFFIX,
+            lease_duration_millis=self.runtime.lease_duration_millis,
+        )
         descriptor = self.descriptor("task-1")
 
         result = self.runtime.create_task(
@@ -316,27 +352,16 @@ class RedisTaskRuntimeTest(unittest.TestCase):
             descriptor,
             self.catalog.load_task_allocation_descriptors(task_ids=["task-1"])["task-1"],
         )
-
-    def test_existing_score_conflicts_with_create(self) -> None:
-        self.score_band.initialize_score(
-            task_id="task-1",
-            suffix=self.SUFFIX,
-            lease_duration_millis=self.runtime.lease_duration_millis,
+        self.assertEqual(
+            existing.score,
+            self.redis.zscore(self.score_band.score_key, "task-1"),
         )
 
-        result = self.runtime.create_task(
-            descriptor=self.descriptor("task-1"),
-            suffix=self.SUFFIX,
-        )
-
-        self.assertEqual(TaskCreationStatus.CONFLICT, result.status)
-        self.assertNotIn("tc:test:task:task-1", self.redis.hashes)
-
-    def test_descriptor_write_failure_best_effort_releases_score(self) -> None:
+    def test_descriptor_write_failure_retries_by_completing_pre_review(self) -> None:
         descriptor = self.descriptor("task-1")
         with patch.object(
-            self.redis,
-            "hset",
+            self.runtime,
+            "_write_descriptor_if_absent",
             side_effect=RuntimeError("write failed"),
         ):
             with self.assertRaisesRegex(RuntimeError, "write failed"):
@@ -346,27 +371,21 @@ class RedisTaskRuntimeTest(unittest.TestCase):
                 )
 
         released = self.score_band.get_score_states(task_ids=["task-1"])["task-1"]
-        same_slot = self.score_band.initialize_score(
-            task_id="task-1",
-            suffix=self.SUFFIX,
-            lease_duration_millis=self.runtime.lease_duration_millis,
-        )
         self.redis.now_millis += self.score_band.SLOT_MILLIS
-        next_slot = self.score_band.initialize_score(
-            task_id="task-1",
-            suffix=self.SUFFIX,
-            lease_duration_millis=self.runtime.lease_duration_millis,
-        )
+        retry = self.runtime.create_task(descriptor=descriptor, suffix=self.SUFFIX)
 
         self.assertIsNotNone(released)
         self.assertEqual(
             self.redis.now_millis - self.score_band.SLOT_MILLIS,
             released.time_millis,
         )
-        self.assertEqual(TaskScoreTransitionStatus.NOOP, same_slot.status)
-        self.assertEqual(TaskScoreTransitionStatus.NOOP, next_slot.status)
+        self.assertEqual(TaskCreationStatus.CREATED, retry.status)
+        self.assertEqual(
+            descriptor,
+            self.catalog.load_task_allocation_descriptors(task_ids=["task-1"])["task-1"],
+        )
 
-    def test_expired_initialization_score_is_not_reinitialized(self) -> None:
+    def test_expired_pre_review_score_completes_without_reinitialization(self) -> None:
         first = self.score_band.initialize_score(
             task_id="task-1",
             suffix=self.SUFFIX,
@@ -382,8 +401,24 @@ class RedisTaskRuntimeTest(unittest.TestCase):
         )
         current_score = self.redis.zscore(self.score_band.score_key, "task-1")
 
-        self.assertEqual(TaskCreationStatus.CONFLICT, result.status)
+        self.assertEqual(TaskCreationStatus.CREATED, result.status)
         self.assertEqual(first.score, current_score)
+
+    def test_existing_non_pre_review_score_conflicts_without_descriptor(self) -> None:
+        admission_score = self.score_band._score(
+            self.score_band.ADMISSION_VISIBLE_TAG,
+            self.score_band._current_time_slot(),
+            0,
+        )
+        self.redis.zadd(self.score_band.score_key, {"task-1": admission_score})
+
+        result = self.runtime.create_task(
+            descriptor=self.descriptor("task-1"),
+            suffix=self.SUFFIX,
+        )
+
+        self.assertEqual(TaskCreationStatus.CONFLICT, result.status)
+        self.assertNotIn("tc:test:task:task-1", self.redis.hashes)
 
     def test_descriptor_write_with_stale_release_is_retryable(self) -> None:
         descriptor = self.descriptor("task-1")
@@ -472,6 +507,8 @@ class RedisTaskRuntimeTest(unittest.TestCase):
         self.runtime.create_task(descriptor=task_1, suffix=self.SUFFIX)
         self.redis.now_millis += self.score_band.SLOT_MILLIS
         self.runtime.create_task(descriptor=task_2, suffix=self.SUFFIX)
+        self.redis.pipeline_transaction_flags.clear()
+        self.redis.pipeline_executions.clear()
 
         rows = self.catalog.load_task_allocation_descriptors(
             task_ids=["task-2", "missing", "task-1", "task-1"]

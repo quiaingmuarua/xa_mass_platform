@@ -103,14 +103,17 @@ class RedisTaskRuntimeIntegrationTest(unittest.TestCase):
     def _item_score_key(self, task_id: str) -> str:
         return f"tr:{self.prefix}:task:{task_id}:item-score"
 
-    def test_real_redis_allows_only_one_creation_owner_per_slot(self) -> None:
+    def test_real_redis_allows_only_one_creation_owner(self) -> None:
         task_id = "task-atomic"
         self.task_ids.add(task_id)
-        descriptor = self.descriptor(task_id)
+        descriptors = (
+            self.descriptor(task_id, worker_group_id="image-workers"),
+            self.descriptor(task_id, worker_group_id="audio-workers"),
+        )
 
-        def create_once(_: int) -> TaskCreationStatus:
+        def create_once(index: int) -> TaskCreationStatus:
             return self.runtime.create_task(
-                descriptor=descriptor,
+                descriptor=descriptors[index % len(descriptors)],
                 suffix=self.SUFFIX,
             ).status
 
@@ -130,10 +133,15 @@ class RedisTaskRuntimeIntegrationTest(unittest.TestCase):
                 for status in statuses
             )
         )
+        stored = self.catalog.load_task_allocation_descriptors(
+            task_ids=(task_id,)
+        )[task_id]
+        self.assertIn(stored, descriptors)
 
-    def test_real_redis_expired_score_is_not_reinitialized(self) -> None:
+    def test_real_redis_expired_pre_review_score_completes_descriptor(self) -> None:
         task_id = "task-stale"
         self.task_ids.add(task_id)
+        descriptor = self.descriptor(task_id)
         old_lease = self.score_band.initialize_score(
             task_id=task_id,
             suffix=self.SUFFIX,
@@ -145,13 +153,27 @@ class RedisTaskRuntimeIntegrationTest(unittest.TestCase):
             suffix=self.SUFFIX,
             lease_duration_millis=self.runtime.lease_duration_millis,
         )
+        completed = self.runtime.create_task(
+            descriptor=descriptor,
+            suffix=self.SUFFIX,
+        )
 
         self.assertEqual(
             TaskScoreTransitionStatus.NOOP,
             repeated_initialization.status,
         )
         self.assertEqual(old_lease.score, repeated_initialization.score)
-        self.assertFalse(self.redis.exists(self._task_key(task_id)))
+        self.assertEqual(TaskCreationStatus.CREATED, completed.status)
+        self.assertEqual(
+            descriptor,
+            self.catalog.load_task_allocation_descriptors(task_ids=(task_id,))[
+                task_id
+            ],
+        )
+        self.assertEqual(
+            old_lease.score,
+            int(self.redis.zscore(self.score_key, task_id)),
+        )
 
     def test_real_redis_pipeline_round_trip_decodes_binary_rows(self) -> None:
         first = self.descriptor("task-1")
