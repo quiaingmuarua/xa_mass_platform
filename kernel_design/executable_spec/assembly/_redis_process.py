@@ -5,7 +5,7 @@ from typing import Any
 
 from ..scheduling import (
     DueTaskItemAdmissionPolicy,
-    PrioritySoftLimitSystemAdmissionPolicy,
+    RunningSoftLimitSystemAdmissionPolicy,
     ResultRoutingBuiltinPolicies,
     ResultRoutingPacer,
     TaskDispatchPacer,
@@ -138,7 +138,7 @@ class _RedisKernelProcess:
             self._task_score,
             self._task_resource_catalog,
             DueTaskItemAdmissionPolicy(task_item_score),
-            PrioritySoftLimitSystemAdmissionPolicy(
+            RunningSoftLimitSystemAdmissionPolicy(
                 self._task_score,
                 running_task_soft_limit=config.running_task_soft_limit,
             ),

@@ -317,6 +317,45 @@ class RedisTaskRuntimeIntegrationTest(unittest.TestCase):
         self.assertEqual(TaskItemScoreBand.FINAL_SUCCESS, final_state.band)
         self.assertIsNone(final_state.remaining_budget)
 
+    def test_real_redis_acquires_lower_item_priority_number_first(self) -> None:
+        task_id = "task-item-priority"
+        self.task_ids.add(task_id)
+        self.runtime.create_task(
+            descriptor=self.descriptor(task_id),
+            suffix=self.SUFFIX,
+        )
+        created_at_millis = int(time.time() * 1_000) - 1_000
+        items = (
+            TaskItem(
+                message_id="priority-10",
+                event_code="image.resize",
+                created_at_millis=created_at_millis,
+                payload={},
+                priority=10,
+            ),
+            TaskItem(
+                message_id="priority-0",
+                event_code="image.resize",
+                created_at_millis=created_at_millis,
+                payload={},
+                priority=0,
+            ),
+        )
+
+        appended = self.runtime.append_items(task_id=task_id, items=items)
+        observations = self.item_score_band.acquire_item_score_candidates(
+            task_id=task_id,
+            limit=2,
+        )
+
+        self.assertTrue(
+            all(
+                result.status is TaskItemAppendStatus.APPENDED
+                for result in appended.values()
+            )
+        )
+        self.assertEqual(["priority-0", "priority-10"], list(observations))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -355,8 +355,7 @@ class RedisTaskRuntime(TaskRuntime):
         return max(
             0,
             item.created_at_millis
-            - (self.MAX_ITEM_PRIORITY - item.priority)
-            * self.ITEM_PRIORITY_STEP_MILLIS,
+            - item.priority * self.ITEM_PRIORITY_STEP_MILLIS,
         )
 
     @staticmethod

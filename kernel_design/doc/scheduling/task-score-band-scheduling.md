@@ -8,7 +8,7 @@ implemented; policy coverage partial.
 Task score is the ordered lifecycle and scheduling coordinate for one Task:
 
 ```text
-PRE_REVIEW -> PRE_DISPATCH_VISIBLE -> RUNNING_VISIBLE -> TERMINAL
+PRE_REVIEW -> ADMISSION_VISIBLE -> RUNNING_VISIBLE -> TERMINAL
 ```
 
 It tells the kernel which scheduling domain the Task occupies and where it is
@@ -26,10 +26,10 @@ score = tag * TAG_FACTOR + timeSlot * SUFFIX_FACTOR + suffix
 Current tags:
 
 ```text
-RUNNING_VISIBLE       = 1
-PRE_DISPATCH_VISIBLE  = 2
-PRE_REVIEW            = 3
-TERMINAL              = any negative score
+RUNNING_VISIBLE    = 1
+ADMISSION_VISIBLE  = 2
+PRE_REVIEW         = 3
+TERMINAL           = any negative score
 ```
 
 The lifecycle direction is numerically downward. Positive cross-band writes
@@ -49,7 +49,7 @@ contract.
 PRE_REVIEW
   metadata exists but approval has not admitted the Task
 
-PRE_DISPATCH_VISIBLE
+ADMISSION_VISIBLE
   approved and eligible for Task/System admission policy
 
 RUNNING_VISIBLE
@@ -73,8 +73,8 @@ Suffix is a bounded two-digit owner-local coordinate. Its meaning is per band:
 PRE_REVIEW
   review owner code, opaque to score core
 
-PRE_DISPATCH_VISIBLE
-  owner-local admission coordinate; built-in flow uses 0
+ADMISSION_VISIBLE
+  Task priority in 0..99; lower values run first inside one bounded due window
 
 RUNNING_VISIBLE
   consecutive confirmed-empty recheck count
@@ -127,27 +127,44 @@ interruption residue converges through retry; no cross-key Lua is required.
 Approval validates metadata and requests:
 
 ```text
-PRE_REVIEW -> PRE_DISPATCH_VISIBLE
-target suffix = 0
+PRE_REVIEW -> ADMISSION_VISIBLE
+target suffix = Task priority, where 0 is highest and 99 is lowest
+target time = max(approvalNow, previousTime + oneSlot)
 ```
 
-Approval is idempotent for PRE_DISPATCH/RUNNING and rejects terminal Tasks.
+Approval is idempotent for ADMISSION/RUNNING and rejects terminal Tasks. The
+new lane coordinate comes from approval evidence rather than Task creation age.
 
 ## Running Admission
 
 `TaskRunningActivationPacer` is the only normal assignment mechanism that
-changes PRE_DISPATCH to RUNNING:
+changes ADMISSION to RUNNING:
 
 ```text
-bounded PRE_DISPATCH scan
+bounded time-major ADMISSION observation window
+-> priority-order observed window members
 -> TaskAdmissionPolicy
 -> SystemAdmissionPolicy
 -> rewrite_score(... RUNNING_VISIBLE, target_suffix=0)
+-> same-band recheck every observed Task not transitioned
 ```
 
 No Worker is reserved during admission. All Tasks enter RUNNING with suffix
-zero. The default Task policy requires one due ACTIVE Item. The default System
-policy applies priority and a soft RUNNING count limit.
+zero. The default Task policy requires one due ACTIVE Item. The score owner
+uses timeSlot to select bounded window membership, then priority suffix to order
+that window. The default System policy only applies the soft RUNNING count
+limit.
+
+Observed Tasks that do not enter RUNNING retain their priority and move to a
+future ADMISSION coordinate:
+
+```text
+priorityBucket = priority // 10
+nextTime = roundNow + oneSlot + priorityBucket * 1000ms
+```
+
+This reason-independent rotation prevents rejected due heads from permanently
+hiding later Tasks without lowering priority or promising global fairness.
 
 ## Running Dispatch And Empty Recheck
 
@@ -234,8 +251,11 @@ opaque fence cannot release a newer hold.
 Band scans are separate and bounded:
 
 ```text
-PRE_DISPATCH scan
-  only PRE_DISPATCH_VISIBLE before the exclusive time horizon
+ADMISSION scan
+  only ADMISSION_VISIBLE before the exclusive time horizon
+  timeSlot order determines the bounded window members
+  returned window members are priority suffix ascending
+  equal priority is timeSlot then taskId ascending
 
 RUNNING dispatch scan
   only RUNNING_VISIBLE due before current time
@@ -268,8 +288,8 @@ is read or written by Task score Lua.
 | Owner | Allowed Task score write |
 | --- | --- |
 | Task creation | initialize PRE_REVIEW and exact release of creation hold |
-| Task approval | PRE_REVIEW -> PRE_DISPATCH_VISIBLE |
-| Running activation | PRE_DISPATCH_VISIBLE -> RUNNING_VISIBLE, suffix 0 |
+| Task approval | PRE_REVIEW -> ADMISSION_VISIBLE, suffix = Task priority |
+| Running activation | ADMISSION_VISIBLE -> RUNNING_VISIBLE, suffix 0; reason-independent same-band recheck for every observed non-transitioned Task |
 | Task dispatch | RUNNING same-band pacing, exact empty-count increment/reset, shared threshold-based empty close |
 | Explicit lifecycle command | close any positive band; exact hold release when authorized |
 | Candidate warmer | none |

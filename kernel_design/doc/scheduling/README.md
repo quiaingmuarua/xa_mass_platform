@@ -40,11 +40,15 @@ one suffix meaning, or one universal delta constant. Each axis derives the
 simplest safe numeric relation from its own encoding; Redis/Lua does not need
 business event names or caller-supplied score ranges.
 
+For every mutable lane, `timeSlot` is the next time that lane may act and the
+low-order coordinate is lane-local ordering or state. Priority and rank ranges
+may differ by lane, but smaller numeric values always mean earlier priority.
+
 ## Mainline
 
 ```text
 Task score acquire
-  -> PRE_DISPATCH Task/System admission
+  -> ADMISSION Task/System policy evaluation
   -> RUNNING transition
   -> optional RUNNING candidate cache warming through HOT-pool acquisition
   -> TaskItem observation
@@ -64,10 +68,11 @@ The public TaskType split is fixed:
 
 ```text
 TASK_DRIVEN = Task rule + PRECOMPUTED Worker acquisition + candidate cache
-              + close after consecutive empty observations
 ITEM_DRIVEN = TaskItem rule + TARGETED Worker acquisition + no candidate cache
-              + remain RUNNING for append or external close evidence
 ```
+
+Both TaskTypes use the same persisted empty-close threshold and bounded empty
+recheck policy; TaskType selects Worker acquisition, not lifecycle finality.
 
 This is a summary of the canonical
 [Task Type And Allocation Rule](../resource-model/task-resource-model.md#task-type-and-allocation-rule)
@@ -91,7 +96,7 @@ TaskScoreBandCore
   lifecycle-direction validation, and terminal score
 
 TaskAdmissionPolicy and SystemAdmissionPolicy
-  decide which bounded PRE_DISPATCH Tasks may request RUNNING; they own no
+  decide which bounded ADMISSION Tasks may request RUNNING; they own no
   score, Item, Worker, or candidate truth
 
 TaskRuntime

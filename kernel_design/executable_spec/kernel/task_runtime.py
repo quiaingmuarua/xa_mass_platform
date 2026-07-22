@@ -121,8 +121,8 @@ class TaskDescriptor:
         priority = self._decimal_config("priority")
         maximum_candidates = self._decimal_config("maximumCandidateWorkers")
         max_retry_times = self._decimal_config("maxRetryTimes")
-        if not 1 <= priority <= 100:
-            raise ValueError("task priority must be in 1..100")
+        if not 0 <= priority <= 99:
+            raise ValueError("task priority must be in 0..99")
         if maximum_candidates <= 0:
             raise ValueError("maximum candidate workers must be positive")
         if not 0 <= max_retry_times <= 98:

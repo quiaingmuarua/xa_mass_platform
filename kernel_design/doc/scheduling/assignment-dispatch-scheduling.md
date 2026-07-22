@@ -20,7 +20,7 @@ Assignment-dispatch keeps three independently paced mechanisms:
 
 | Mechanism | Decision | Output |
 | --- | --- | --- |
-| RUNNING activation | Which PRE_DISPATCH Tasks pass Task and System admission policy? | `PRE_DISPATCH_VISIBLE -> RUNNING_VISIBLE` transition |
+| RUNNING activation | Which ADMISSION Tasks pass Task and System admission policy? | `ADMISSION_VISIBLE -> RUNNING_VISIBLE` transition |
 | Worker allocation | Which stable RUNNING Task rules should have candidates prefetched? | Expiring CandidateWorker cache evidence |
 | Task dispatch | Does a RUNNING Task dispatch Items or advance empty recheck? | Claimed Items, `DeliverSeed` values, or Task empty-count transition |
 
@@ -250,5 +250,5 @@ the dispatch round does not infer type or strategy from Item contents.
 - Do not add a cross-CandidateId requested count or cross-WorkerGroup call.
 - Do not treat an index result as final matching or Worker availability truth.
 - Do not expose scan limits, Redis keys, score fields, or score decoding.
-- Do not allocate Workers for PRE_DISPATCH Tasks.
+- Do not allocate Workers for ADMISSION Tasks.
 - Do not use Task score as the candidate-warmer cursor.

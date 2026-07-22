@@ -48,7 +48,6 @@ _DEFAULT_STOP_TIMEOUT_MILLIS = 5_000
 _DEFAULT_RUNNING_TASK_SOFT_LIMIT = 100
 
 _INITIAL_PRE_REVIEW_SUFFIX = 1
-_APPROVED_PRE_DISPATCH_SUFFIX = 0
 
 _TASK_BATCH_LIMIT = 100
 _WORKER_SCAN_LIMIT = 100
@@ -57,6 +56,7 @@ _PER_TASK_DISPATCH_LIMIT = 100
 _ITEM_CLAIM_LEASE_DURATION_MILLIS = 5_000
 _MAX_EMPTY_RECHECK_TIMES = 5
 _EMPTY_RECHECK_INTERVAL_MILLIS = 1_000
+_ADMISSION_PRIORITY_RECHECK_STEP_MILLIS = 1_000
 _ITEM_DRIVEN_DEFAULT_EMPTY_CLOSE_DELAY_MILLIS = 3 * 24 * 60 * 60 * 1_000
 _RESULT_ROUTING_PER_OUTCOME_BATCH_LIMIT = 100
 
@@ -301,13 +301,17 @@ class _TaskLifecycleManager:
         if classified is not None:
             return classified
         assert state is not None and state.time_millis is not None
+        approval_time_millis = time_ns() // 1_000_000
 
         transition = self._task_score.rewrite_score(
             task_id=task_id,
             expected_band=TaskScoreBand.PRE_REVIEW,
-            target_time_millis=state.time_millis + TaskScoreBandCore.SLOT_MILLIS,
-            target_band=TaskScoreBand.PRE_DISPATCH_VISIBLE,
-            target_suffix=_APPROVED_PRE_DISPATCH_SUFFIX,
+            target_time_millis=max(
+                approval_time_millis,
+                state.time_millis + TaskScoreBandCore.SLOT_MILLIS,
+            ),
+            target_band=TaskScoreBand.ADMISSION_VISIBLE,
+            target_suffix=int(descriptor.config["priority"]),
         )
         if transition.status == TaskScoreTransitionStatus.TRANSITIONED:
             return TaskApprovalResult(TaskApprovalStatus.APPROVED)
@@ -359,7 +363,7 @@ class _TaskLifecycleManager:
         if state is None:
             return TaskApprovalResult(TaskApprovalStatus.NOT_FOUND)
         if state.band in {
-            TaskScoreBand.PRE_DISPATCH_VISIBLE,
+            TaskScoreBand.ADMISSION_VISIBLE,
             TaskScoreBand.RUNNING_VISIBLE,
         }:
             return TaskApprovalResult(TaskApprovalStatus.ALREADY_APPROVED)
@@ -566,6 +570,9 @@ class KernelApplication:
                 ),
                 running_activation=TaskRunningActivationConfig(
                     task_batch_limit=_TASK_BATCH_LIMIT,
+                    priority_recheck_step_millis=(
+                        _ADMISSION_PRIORITY_RECHECK_STEP_MILLIS
+                    ),
                 ),
                 task_dispatch=TaskDispatchConfig(
                     task_batch_limit=_TASK_BATCH_LIMIT,

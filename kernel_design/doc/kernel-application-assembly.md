@@ -62,7 +62,9 @@ evidence. Existing scores converge to HOT_ACQUIRE, preserve timeSlot/laneRank,
 and set dirty=1 without releasing a hold.
 `create_task` selects the initial PRE_REVIEW owner code internally.
 `approve_task` is an explicit lifecycle command that validates Task metadata
-and current score band, then requests `PRE_REVIEW -> PRE_DISPATCH_VISIBLE`. It
+and current score band, then requests `PRE_REVIEW -> ADMISSION_VISIBLE`, using
+the Task priority as the admission suffix and the approval time as the new lane
+coordinate. It
 returns `TaskApprovalResult` without exposing score evidence.
 `close_task` is the common explicit termination command for both Task types and
 all positive bands. It returns `TaskCloseResult`, chooses terminal score
@@ -127,8 +129,8 @@ The optional JSON contract is:
 
 Every field may be omitted. Unknown fields, malformed JSON, empty strings,
 wrong types, and non-positive numeric values fail during construction. Batch,
-scan, lease, claim, score, lane, maximum empty-recheck count, and empty-recheck
-interval remain internal constants.
+scan, lease, claim, score, lane, ADMISSION priority-recheck step, maximum
+empty-recheck count, and empty-recheck interval remain internal constants.
 `systemPolicy.runningTaskSoftLimit` is the one public policy setting in this
 slice; it defaults to `100` and must be a positive integer. It is a soft
 admission bound, not an atomic permit or hard capacity promise.
@@ -182,9 +184,9 @@ dependencies belong to the selected policy object.
 
 For Task activation, the composition root installs
 `DueTaskItemAdmissionPolicy` and
-`PrioritySoftLimitSystemAdmissionPolicy`. The activation Pacer receives these
+`RunningSoftLimitSystemAdmissionPolicy`. The activation Pacer receives these
 policies as dependencies; it does not inspect Worker capacity or candidate
-queues. A PRE_DISPATCH Task with a due Item may enter RUNNING before any Worker
+queues. An ADMISSION Task with a due Item may enter RUNNING before any Worker
 is registered. Worker allocation starts only after that transition.
 
 The composition root also installs one Redis-backed

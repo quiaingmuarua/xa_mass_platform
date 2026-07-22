@@ -177,7 +177,8 @@ class TaskRuntimeContractTest(unittest.TestCase):
         }
 
         invalid_configs = (
-            {**base_config, "priority": "0"},
+            {**base_config, "priority": "-1"},
+            {**base_config, "priority": "100"},
             {**base_config, "maximumCandidateWorkers": "many"},
             {**base_config, "maxRetryTimes": "99"},
             {**base_config, "maxRetryTimes": "many"},
@@ -192,6 +193,16 @@ class TaskRuntimeContractTest(unittest.TestCase):
                     task_type=TaskType.TASK_DRIVEN,
                     allocation_rule={"attributes.runtime": {"$eq": "python"}},
                     config=config,
+                )
+
+        for priority in ("0", "99"):
+            with self.subTest(priority=priority):
+                TaskDescriptor(
+                    task_id="task-1",
+                    worker_group_id="workers-a",
+                    task_type=TaskType.TASK_DRIVEN,
+                    allocation_rule={},
+                    config={**base_config, "priority": priority},
                 )
 
     def test_task_type_owns_rule_location(self) -> None:

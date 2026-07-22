@@ -133,11 +133,17 @@ class WorkerCandidateMatcher:
         required_attributes: dict[str, None] = {}
         ordered_constraints = sorted(
             candidate_constraints.items(),
-            key=lambda item: (-item[1].priority, item[0]),
+            key=lambda item: (item[1].priority, item[0]),
         )
         for candidate_id, constraints in ordered_constraints:
             if not candidate_id:
                 raise ValueError("candidate id must be non-empty")
+            if (
+                isinstance(constraints.priority, bool)
+                or not isinstance(constraints.priority, int)
+                or not 0 <= constraints.priority <= 99
+            ):
+                raise ValueError("candidate priority must be in 0..99")
             if constraints.limit <= 0:
                 raise ValueError("candidate limit must be positive")
             try:

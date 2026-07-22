@@ -21,7 +21,7 @@ class TaskScoreBand(Enum):
 
     PRE_REVIEW = "pre_review"
     RUNNING_VISIBLE = "running_visible"
-    PRE_DISPATCH_VISIBLE = "pre_dispatch_visible"
+    ADMISSION_VISIBLE = "admission_visible"
     TERMINAL = "terminal"
 
 
@@ -67,10 +67,10 @@ class TaskScoreBandCore(ABC):
     """
 
     RUNNING_VISIBLE_TAG: ClassVar[int] = 1
-    PRE_DISPATCH_VISIBLE_TAG: ClassVar[int] = 2
+    ADMISSION_VISIBLE_TAG: ClassVar[int] = 2
     PRE_REVIEW_TAG: ClassVar[int] = 3
     VALID_POSITIVE_TAGS: ClassVar[frozenset[int]] = frozenset(
-        {RUNNING_VISIBLE_TAG, PRE_DISPATCH_VISIBLE_TAG, PRE_REVIEW_TAG}
+        {RUNNING_VISIBLE_TAG, ADMISSION_VISIBLE_TAG, PRE_REVIEW_TAG}
     )
 
     TERMINAL_SCORE_MAX: ClassVar[int] = -1
@@ -127,7 +127,9 @@ class TaskScoreBandCore(ABC):
 
         Public callers select a semantic band and millisecond horizon. The
         implementation owns time-slot conversion, score-range construction,
-        ordering, and limit enforcement. It never returns TERMINAL members.
+        ordering, and limit enforcement. ADMISSION uses time order to select
+        the bounded window, then priority suffix order inside that window. It
+        never returns TERMINAL members.
         """
         pass
 

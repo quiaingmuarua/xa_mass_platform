@@ -115,9 +115,10 @@ latest-write TaskItem record for that identity. Re-appending the same
 any caller-defined payload reference without creating a second scheduling
 identity.
 
-Item `priority` is distinct from `TaskDescriptor.config["priority"]`. Task
-priority orders Tasks competing for Workers; Item priority places newly appended
-members inside one Task's ACTIVE acquire range.
+Item `priority` is distinct from `TaskDescriptor.config["priority"]`. Both use
+the common lower-value-first convention. Task priority is `0..99`; Item
+priority is `0..10` and places newly appended members inside one Task's ACTIVE
+acquire range.
 
 `expireAtMillis` is policy input stored by `TaskRuntime`; it never enters
 `TaskItemScoreBandCore`. Claim/result policy may read the TaskItem and choose a
@@ -312,15 +313,16 @@ First policy:
 priorityStepMillis = 100
 initialDueMillis = max(
   0,
-  createdAtMillis - (10 - priority) * priorityStepMillis
+  createdAtMillis - priority * priorityStepMillis
 )
 initialClaimBudget = 1 + TaskDescriptor.config["maxRetryTimes"]
 initialSuffix = encodeRemainingClaimBudget(initialClaimBudget)
 ```
 
-Higher priority maps closer to `createdAtMillis`; lower priority starts farther
-back in the initial due range. This placement is used only when `messageId` is
-first inserted into ItemScore.
+Smaller values have higher priority and receive the larger initial due
+coordinate. Because ACTIVE acquisition is descending, equal-created Items are
+observed from priority `0` toward priority `10`. This placement is used only
+when `messageId` is first inserted into ItemScore.
 
 After the first claim, ordinary same-tag rewrites place the item at future
 `timeSlot` coordinates such as claim lease expiry or retry due time. Initial
@@ -365,8 +367,8 @@ ZREVRANGEBYSCORE task:{taskId}:item-score
 ```
 
 This direction is intentional. It lets priority affect only initial
-timeSlot placement: high-priority fresh items enter near `nowSlot`, while
-lower-priority items start slightly farther back. Once claimed, items are
+timeSlot placement: lower numeric priorities start closer to creation time and
+are observed first by the descending query. Once claimed, items are
 placed by the ordinary future timeSlot rule. The fixed ACTIVE lower bound keeps
 older due Items eligible; bounded work comes from `limit`, not from a moving
 lookback threshold or pagination cursor.

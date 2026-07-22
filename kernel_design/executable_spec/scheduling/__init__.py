@@ -13,7 +13,7 @@ from .result_routing import (
 )
 from .task_running_activation import (
     DueTaskItemAdmissionPolicy,
-    PrioritySoftLimitSystemAdmissionPolicy,
+    RunningSoftLimitSystemAdmissionPolicy,
     SystemAdmissionPolicy,
     TaskAdmissionPolicy,
     TaskRunningActivationConfig,
@@ -40,7 +40,7 @@ __all__ = [
     "TaskDispatchConfig",
     "TaskDispatchPacer",
     "DueTaskItemAdmissionPolicy",
-    "PrioritySoftLimitSystemAdmissionPolicy",
+    "RunningSoftLimitSystemAdmissionPolicy",
     "SystemAdmissionPolicy",
     "TaskAdmissionPolicy",
     "TaskRunningActivationConfig",

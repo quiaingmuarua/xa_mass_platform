@@ -55,21 +55,21 @@ The config keys are exactly:
 
 | Key | Meaning | Validation |
 | --- | --- | --- |
-| `priority` | Task scheduling priority used by default RUNNING admission and Worker contention | decimal text in `1..100`; `100` highest |
+| `priority` | Task scheduling priority used by RUNNING admission and Worker contention | decimal text in `0..99`; `0` highest |
 | `maximumCandidateWorkers` | best-effort Task-local candidate target before matching | positive decimal text; retained but unused by `ITEM_DRIVEN` in this slice |
 | `maxRetryTimes` | TaskItem retry budget source used when initializing Item scores | decimal text in `0..98` |
 
 All values are strings in the first cut. Supporting two representations for
 the same setting adds ambiguity without mechanism value.
 
-`priority` is one Task scheduling intent. The default System Admission Policy
-uses it when selecting PRE_DISPATCH Tasks for available RUNNING slots, and the
+`priority` is one Task scheduling intent. Task approval stores it as the
+ADMISSION score suffix, and the
 Worker matcher uses it when multiple RUNNING Tasks contend for Workers. There
 must not be a second admission-priority or allocation-priority field.
 
 `config` is not an unchecked extension bag. New keys require a named owner and
 consumer. The Task resource model deliberately contains no minimum matching
-Worker requirement: PRE_DISPATCH admission must not reserve or count Workers.
+Worker requirement: ADMISSION policy must not reserve or count Workers.
 
 ## Task Type And Allocation Rule
 
@@ -174,14 +174,16 @@ This is an in-memory bounded transformation, not a stored Task state.
 `TaskDescriptor` is available to Task and System admission policies, but the
 default Task policy does not add a descriptor start-condition field. It asks
 the Item score owner whether the Task currently has at least one due ACTIVE
-Item. The default System policy applies the global RUNNING soft limit and Task
-priority.
+Item. ADMISSION timeSlot selects bounded observation-window membership; Task
+priority orders members inside that window. The default System policy only
+applies the global RUNNING soft limit. Every observed Task that does not enter
+RUNNING is moved to its next priority-bucket recheck time.
 
 ```text
-PRE_DISPATCH_VISIBLE
+ADMISSION_VISIBLE
   -> due Item Task policy
-  -> priority + RUNNING soft-limit System policy
-  -> PRE_DISPATCH_VISIBLE -> RUNNING_VISIBLE
+  -> score-ordered priority + RUNNING soft-limit System policy
+  -> ADMISSION_VISIBLE -> RUNNING_VISIBLE
 ```
 
 Worker estimates, quota, tenant rules, and business start conditions may be
@@ -275,7 +277,7 @@ result query API.
 Activation:
 
 ```text
-TaskScoreBandCore.acquire_band_task_candidates(PRE_DISPATCH_VISIBLE, now, limit)
+TaskScoreBandCore.acquire_band_task_candidates(ADMISSION_VISIBLE, now, limit)
   -> TaskResourceCatalog.load_task_allocation_descriptors(taskIds)
   -> Task Admission Policy
   -> System Admission Policy
@@ -338,7 +340,7 @@ taskType is TASK_DRIVEN or ITEM_DRIVEN
 TASK_DRIVEN requires a mapping allocationRule; an empty map means no constraint
 ITEM_DRIVEN requires null Task allocationRule
 config is exactly map<string, string> with the three declared keys
-priority is decimal 1..100
+priority is decimal 0..99; lower values have higher priority
 maximumCandidateWorkers is positive decimal
 maxRetryTimes is decimal 0..98
 emptyCloseAtMillis is a resolved non-negative absolute millisecond value

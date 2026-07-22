@@ -15,7 +15,7 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
 from kernel_design.executable_spec import (
     TaskType,
     DueTaskItemAdmissionPolicy,
-    PrioritySoftLimitSystemAdmissionPolicy,
+    RunningSoftLimitSystemAdmissionPolicy,
     RedisCandidateWorkerCache,
     RedisDeliverSeedRuntime,
     RedisTaskRuntime,
@@ -149,7 +149,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             self.task_score,
             self.task_catalog,
             DueTaskItemAdmissionPolicy(self.item_score),
-            PrioritySoftLimitSystemAdmissionPolicy(
+            RunningSoftLimitSystemAdmissionPolicy(
                 self.task_score,
                 running_task_soft_limit=100,
             ),
@@ -223,7 +223,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             task_type=TaskType.TASK_DRIVEN,
             allocation_rule={"attributes.runtime": {"$eq": "python"}},
             config={
-                "priority": "80",
+                "priority": "0",
                 "maximumCandidateWorkers": "1",
                 "maxRetryTimes": "3",
             },
@@ -355,7 +355,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         self.assertEqual(TaskCreationStatus.CREATED, created.status)
         self.assertEqual(TaskApprovalStatus.APPROVED, approved.status)
         self.assertEqual(0, activation_without_item)
-        self.assertEqual(TaskScoreBand.PRE_DISPATCH_VISIBLE, state_without_item.band)
+        self.assertEqual(TaskScoreBand.ADMISSION_VISIBLE, state_without_item.band)
         self.assertEqual(
             TaskItemAppendStatus.APPENDED,
             appended[self.message_id].status,
@@ -429,6 +429,93 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
                 limit=10,
             ),
         )
+
+    def test_admission_recheck_exposes_task_behind_blocked_window(self) -> None:
+        blocker_ids = ("blocked-1", "blocked-2")
+        task_ids = (*blocker_ids, self.task_id)
+
+        def descriptor(task_id: str) -> TaskDescriptor:
+            return TaskDescriptor(
+                task_id=task_id,
+                worker_group_id="image-workers",
+                task_type=TaskType.TASK_DRIVEN,
+                allocation_rule={},
+                config={
+                    "priority": "0",
+                    "maximumCandidateWorkers": "1",
+                    "maxRetryTimes": "3",
+                },
+                empty_close_at_millis=0,
+            )
+
+        try:
+            for task_id in blocker_ids:
+                self.assertEqual(
+                    TaskCreationStatus.CREATED,
+                    self.task_runtime.create_task(
+                        descriptor=descriptor(task_id),
+                        suffix=5,
+                    ).status,
+                )
+                self.assertEqual(
+                    TaskApprovalStatus.APPROVED,
+                    self.task_lifecycle.approve_task(task_id=task_id).status,
+                )
+
+            time.sleep((self.task_score.SLOT_MILLIS + 20) / 1_000)
+            self.assertEqual(
+                TaskCreationStatus.CREATED,
+                self.task_runtime.create_task(
+                    descriptor=descriptor(self.task_id),
+                    suffix=5,
+                ).status,
+            )
+            self.assertEqual(
+                TaskApprovalStatus.APPROVED,
+                self.task_lifecycle.approve_task(task_id=self.task_id).status,
+            )
+            self.assertEqual(
+                TaskItemAppendStatus.APPENDED,
+                self.task_runtime.append_items(
+                    task_id=self.task_id,
+                    items=(
+                        TaskItem(
+                            message_id=self.message_id,
+                            event_code="image.resize",
+                            created_at_millis=time.time_ns() // 1_000_000 - 1_000,
+                            payload={},
+                        ),
+                    ),
+                )[self.message_id].status,
+            )
+            time.sleep((2 * self.task_score.SLOT_MILLIS + 20) / 1_000)
+
+            first_round = self.activation_pacer.activate_running_visible_tasks(
+                config=TaskRunningActivationConfig(task_batch_limit=2)
+            )
+            second_round = self.activation_pacer.activate_running_visible_tasks(
+                config=TaskRunningActivationConfig(task_batch_limit=2)
+            )
+            state = self.task_score.get_score_states(
+                task_ids=(self.task_id,)
+            )[self.task_id]
+
+            self.assertEqual(0, first_round)
+            self.assertEqual(1, second_round)
+            self.assertIsNotNone(state)
+            self.assertEqual(TaskScoreBand.RUNNING_VISIBLE, state.band)
+        finally:
+            self.redis.delete(
+                *(
+                    key
+                    for task_id in task_ids
+                    for key in (
+                        f"tc:{self.prefix}:task:{task_id}",
+                        f"tr:{self.prefix}:task:{task_id}:items",
+                        f"tr:{self.prefix}:task:{task_id}:item-score",
+                    )
+                )
+            )
 
     def test_item_driven_vertical_redis_proof_uses_complete_item_rules(self) -> None:
         group_result = self.worker_catalog.upsert_worker_group(

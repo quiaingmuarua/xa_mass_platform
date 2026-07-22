@@ -44,7 +44,7 @@ def candidate_constraint(
 class WorkerCandidateMatcherContractTest(unittest.TestCase):
     def test_worker_candidate_constraint_is_bounded_priority_dto(self) -> None:
         constraint = WorkerCandidateConstraint(
-            priority=100,
+            priority=99,
             limit=2,
             allocation_rule={"dynamic.battery": {"$gte": 20}},
         )
@@ -53,7 +53,7 @@ class WorkerCandidateMatcherContractTest(unittest.TestCase):
             {field.name for field in fields(WorkerCandidateConstraint)},
             {"priority", "limit", "allocation_rule"},
         )
-        self.assertEqual(constraint.priority, 100)
+        self.assertEqual(constraint.priority, 99)
         self.assertEqual(constraint.limit, 2)
 
     def test_worker_candidate_matcher_batches_constraint_queries(self) -> None:
@@ -98,6 +98,18 @@ class WorkerCandidateMatcherTest(RedisWorkerRuntimeFixture):
             self.catalog,
             dynamic_attribute_runtime,
         )
+
+    def test_matcher_rejects_priority_outside_lane_range(self) -> None:
+        matcher = self.matcher()
+        for priority in (-1, 100, True):
+            with self.subTest(priority=priority), self.assertRaises(ValueError):
+                matcher.match_worker_candidates(
+                    worker_group_id="image-workers",
+                    worker_lease_scores={},
+                    candidate_constraints={
+                        "candidate": candidate_constraint(priority=priority),
+                    },
+                )
 
     def match_candidates(
         self,
@@ -197,7 +209,7 @@ class WorkerCandidateMatcherTest(RedisWorkerRuntimeFixture):
             worker_group_id="image-workers",
             worker_ids=["worker-2", "outside", "worker-1"],
             candidate_constraints={
-                "all": candidate_constraint(priority=0),
+                "all": candidate_constraint(priority=99),
                 "premium-python-battery": candidate_constraint(
                     {
                         "workerId": {"$in": ["worker-1", "outside"]},
@@ -205,7 +217,7 @@ class WorkerCandidateMatcherTest(RedisWorkerRuntimeFixture):
                         "attributes.runtime": {"$eq": "python"},
                         "dynamic.battery": {"$gte": 20},
                     },
-                    priority=100,
+                    priority=0,
                 ),
             },
         )
@@ -341,9 +353,9 @@ class WorkerCandidateMatcherTest(RedisWorkerRuntimeFixture):
             candidate_constraints={
                 "corrupt": candidate_constraint(
                     {"attributes.runtime": {"$unknown": "python"}},
-                    priority=100,
+                    priority=0,
                 ),
-                "valid": candidate_constraint(priority=0),
+                "valid": candidate_constraint(priority=99),
             },
         )
 
@@ -533,8 +545,8 @@ class WorkerCandidateMatcherTest(RedisWorkerRuntimeFixture):
             worker_group_id="image-workers",
             worker_ids=["worker-1", "worker-2", "worker-3", "worker-4"],
             candidate_constraints={
-                "fallback": candidate_constraint(priority=0, limit=2),
-                "preferred": candidate_constraint(priority=100, limit=1),
+                "fallback": candidate_constraint(priority=99, limit=2),
+                "preferred": candidate_constraint(priority=0, limit=1),
             },
         )
 
@@ -600,14 +612,14 @@ class WorkerCandidateMatcherTest(RedisWorkerRuntimeFixture):
             candidate_constraints={
                 "battery": candidate_constraint(
                     {"dynamic.battery": {"$gte": 20}},
-                    priority=0,
+                    priority=99,
                 ),
                 "python-network": candidate_constraint(
                     {
                         "attributes.runtime": {"$eq": "python"},
                         "dynamic.network": {"$eq": "wifi"},
                     },
-                    priority=100,
+                    priority=0,
                 ),
             },
         )

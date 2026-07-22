@@ -43,9 +43,9 @@ class WorkerCandidateRequest:
         if (
             isinstance(self.priority, bool)
             or not isinstance(self.priority, int)
-            or not 1 <= self.priority <= 100
+            or not 0 <= self.priority <= 99
         ):
-            raise ValueError("candidate priority must be in 1..100")
+            raise ValueError("candidate priority must be in 0..99")
         if (
             isinstance(self.requested_count, bool)
             or not isinstance(self.requested_count, int)
@@ -319,7 +319,7 @@ def _ordered_requests(
     return tuple(
         sorted(
             requests.items(),
-            key=lambda item: (-item[1].priority, item[0]),
+            key=lambda item: (item[1].priority, item[0]),
         )
     )
 

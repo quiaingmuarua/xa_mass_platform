@@ -170,6 +170,9 @@ The shared contract is:
 ```text
 bounded range + limit discovers due identities
 public owner methods accept millisecond time, not internal timeSlot
+timeSlot is the next time the current lane may act
+suffix / low-order fields carry only lane-local ordering or state
+priority and rank ranges are lane-local, with smaller values ordered first
 the score owner mints encoded scores and Redis ranges
 score values crossing an owner boundary are opaque observation / lease fences
 business meaning stays above the score primitive
@@ -514,7 +517,7 @@ no hidden compatibility path or second mainline remains
   - plane contract for independent admission, allocation, and Item-dispatch
     pacing.
 - [Task Running Activation Pacer](doc/scheduling/task-running-activation-pacer.md)
-  - PRE_DISPATCH Task/System admission policy chain and the sole default
+  - ADMISSION Task/System policy chain and the sole default
     transition into RUNNING.
 - [Task-Worker Allocation Pacer](doc/scheduling/task-worker-allocation-pacer.md)
   - RUNNING-only Task scan, bounded Worker lease/match, candidate publication,

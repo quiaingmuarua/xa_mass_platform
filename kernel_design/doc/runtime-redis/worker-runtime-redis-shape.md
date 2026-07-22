@@ -478,7 +478,7 @@ worker matcher preparation derives dynamic fields from allocation_rule
 missing declared dynamic handler is a configuration error
 candidate acquisition unions and deduplicates bounded HOT or point-source Worker ids before matcher
 descriptors read workers:{workerGroupId} once
-candidate order is priority descending, then candidateId ascending
+candidate order is priority ascending (0 highest), then candidateId ascending
 dynamic fields derived from allocation_rule are deduplicated in resolved candidate order
 each dynamic handler batch-reads descriptor-supported bounded workerIds once
 for each workerId, build one temporary context

@@ -203,6 +203,10 @@ class KernelApplicationTest(unittest.TestCase):
             internal.assignment_dispatch.task_dispatch.empty_recheck_interval_millis,
         )
         self.assertEqual(
+            1_000,
+            internal.assignment_dispatch.running_activation.priority_recheck_step_millis,
+        )
+        self.assertEqual(
             100,
             internal.result_routing.routing.per_outcome_batch_limit,
         )
@@ -459,16 +463,55 @@ class KernelApplicationTest(unittest.TestCase):
         )
         self.application.start()
 
-        result = self.application.approve_task(task_id=task_id)
+        with patch(
+            "kernel_design.executable_spec.assembly.application.time_ns",
+            return_value=2_000_000_000,
+        ):
+            result = self.application.approve_task(task_id=task_id)
 
         self.assertEqual(TaskApprovalResult(TaskApprovalStatus.APPROVED), result)
         self.assertEqual(["status", "reason"], [field.name for field in fields(result)])
         self.process._task_score.rewrite_score.assert_called_once_with(
             task_id=task_id,
             expected_band=TaskScoreBand.PRE_REVIEW,
-            target_time_millis=1_000 + TaskScoreBandCore.SLOT_MILLIS,
-            target_band=TaskScoreBand.PRE_DISPATCH_VISIBLE,
-            target_suffix=0,
+            target_time_millis=2_000,
+            target_band=TaskScoreBand.ADMISSION_VISIBLE,
+            target_suffix=80,
+        )
+
+    def test_approval_time_remains_newer_than_future_pre_review_coordinate(self) -> None:
+        task_id = "task-future-review"
+        descriptor = self._task_descriptor(task_id)
+        self.process._task_resource_catalog.load_task_allocation_descriptors.return_value = {
+            task_id: descriptor
+        }
+        self.process._task_score.get_score_states.return_value = {
+            task_id: TaskScoreState(
+                task_id=task_id,
+                score=300,
+                band=TaskScoreBand.PRE_REVIEW,
+                time_millis=3_000,
+                suffix=1,
+            )
+        }
+        self.process._task_score.rewrite_score.return_value = TaskScoreTransitionResult(
+            TaskScoreTransitionStatus.TRANSITIONED
+        )
+        self.application.start()
+
+        with patch(
+            "kernel_design.executable_spec.assembly.application.time_ns",
+            return_value=2_000_000_000,
+        ):
+            result = self.application.approve_task(task_id=task_id)
+
+        self.assertEqual(TaskApprovalStatus.APPROVED, result.status)
+        self.process._task_score.rewrite_score.assert_called_once_with(
+            task_id=task_id,
+            expected_band=TaskScoreBand.PRE_REVIEW,
+            target_time_millis=3_000 + TaskScoreBandCore.SLOT_MILLIS,
+            target_band=TaskScoreBand.ADMISSION_VISIBLE,
+            target_suffix=80,
         )
 
     def test_approval_is_idempotent_and_terminal_is_conflict(self) -> None:
@@ -478,7 +521,7 @@ class KernelApplicationTest(unittest.TestCase):
         }
         self.application.start()
         for band, expected in (
-            (TaskScoreBand.PRE_DISPATCH_VISIBLE, TaskApprovalStatus.ALREADY_APPROVED),
+            (TaskScoreBand.ADMISSION_VISIBLE, TaskApprovalStatus.ALREADY_APPROVED),
             (TaskScoreBand.RUNNING_VISIBLE, TaskApprovalStatus.ALREADY_APPROVED),
             (TaskScoreBand.TERMINAL, TaskApprovalStatus.CONFLICT),
         ):
@@ -548,7 +591,7 @@ class KernelApplicationTest(unittest.TestCase):
         self.application.start()
         for band in (
             TaskScoreBand.PRE_REVIEW,
-            TaskScoreBand.PRE_DISPATCH_VISIBLE,
+            TaskScoreBand.ADMISSION_VISIBLE,
             TaskScoreBand.RUNNING_VISIBLE,
         ):
             with self.subTest(band=band):

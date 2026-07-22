@@ -155,11 +155,11 @@ return {"transitioned", tonumber(next_score)}
         if tag is None or max_time_slot < self.MIN_TIME_SLOT:
             return []
 
-        return self._range_task_ids(
-            self._score(tag, self.MIN_TIME_SLOT, self.MIN_SUFFIX),
-            self._score(tag, max_time_slot, self.MAX_SUFFIX),
-            limit,
-        )
+        min_score = self._score(tag, self.MIN_TIME_SLOT, self.MIN_SUFFIX)
+        max_score = self._score(tag, max_time_slot, self.MAX_SUFFIX)
+        if band is TaskScoreBand.ADMISSION_VISIBLE:
+            return self._range_admission_task_ids(min_score, max_score, limit)
+        return self._range_task_ids(min_score, max_score, limit)
 
     def acquire_dispatch_work_tasks(
         self,
@@ -304,7 +304,7 @@ return {"transitioned", tonumber(next_score)}
 
         observed_tag, observed_time_slot, observed_suffix = observed
         target_time_slot = self._time_slot_from_millis(target_time_millis)
-        if observed_tag not in {self.RUNNING_VISIBLE_TAG, self.PRE_DISPATCH_VISIBLE_TAG}:
+        if observed_tag not in {self.RUNNING_VISIBLE_TAG, self.ADMISSION_VISIBLE_TAG}:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
         if target_time_slot <= observed_time_slot:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
@@ -340,7 +340,7 @@ return {"transitioned", tonumber(next_score)}
         tag, observed_time_slot, suffix = observed
         if tag not in {
             self.RUNNING_VISIBLE_TAG,
-            self.PRE_DISPATCH_VISIBLE_TAG,
+            self.ADMISSION_VISIBLE_TAG,
             self.PRE_REVIEW_TAG,
         }:
             return TaskScoreTransitionResult(TaskScoreTransitionStatus.INVALID)
@@ -468,6 +468,31 @@ return {"transitioned", tonumber(next_score)}
         )
         return [self._decode_task_id(raw_id) for raw_id in raw_ids]
 
+    def _range_admission_task_ids(
+        self,
+        min_score: Score,
+        max_score: Score,
+        limit: int,
+    ) -> list[TaskId]:
+        raw_rows = self.redis.zrangebyscore(
+            self.score_key,
+            min_score,
+            max_score,
+            start=0,
+            num=limit,
+            withscores=True,
+        )
+        rows: list[tuple[int, int, TaskId]] = []
+        for raw_task_id, raw_score in raw_rows:
+            score = self._score_to_int(raw_score)
+            decoded = self._decode_positive(score)
+            if decoded is None or decoded[0] != self.ADMISSION_VISIBLE_TAG:
+                continue
+            _, time_slot, priority = decoded
+            rows.append((priority, time_slot, self._decode_task_id(raw_task_id)))
+        rows.sort()
+        return [task_id for _, _, task_id in rows]
+
     def _decode_state(
         self,
         task_id: TaskId,
@@ -521,8 +546,8 @@ return {"transitioned", tonumber(next_score)}
     def _band_from_tag(self, tag: int) -> TaskScoreBand:
         if tag == self.RUNNING_VISIBLE_TAG:
             return TaskScoreBand.RUNNING_VISIBLE
-        if tag == self.PRE_DISPATCH_VISIBLE_TAG:
-            return TaskScoreBand.PRE_DISPATCH_VISIBLE
+        if tag == self.ADMISSION_VISIBLE_TAG:
+            return TaskScoreBand.ADMISSION_VISIBLE
         if tag == self.PRE_REVIEW_TAG:
             return TaskScoreBand.PRE_REVIEW
         raise ValueError(f"unknown task score tag: {tag}")
@@ -530,8 +555,8 @@ return {"transitioned", tonumber(next_score)}
     def _tag_from_band(self, band: TaskScoreBand) -> int | None:
         if band == TaskScoreBand.RUNNING_VISIBLE:
             return self.RUNNING_VISIBLE_TAG
-        if band == TaskScoreBand.PRE_DISPATCH_VISIBLE:
-            return self.PRE_DISPATCH_VISIBLE_TAG
+        if band == TaskScoreBand.ADMISSION_VISIBLE:
+            return self.ADMISSION_VISIBLE_TAG
         if band == TaskScoreBand.PRE_REVIEW:
             return self.PRE_REVIEW_TAG
         return None

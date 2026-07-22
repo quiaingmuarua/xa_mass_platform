@@ -280,7 +280,7 @@ not own JSON parsing:
 ```python
 candidate_constraints = {
   "task-1": WorkerCandidateConstraint(
-    priority=100,
+    priority=0,
     limit=2,
     allocation_rule={
       "workerId": {"$in": ["worker-1", "worker-2"]},
@@ -317,7 +317,7 @@ rule keys. `workerId`, `platform.*`, and `attributes.*` are already supplied by 
 descriptor batch and require no handler read. The derived dependency union is
 internal matcher state, not a caller-provided constraint field.
 
-`priority` controls worker consumption across candidate constraints. Larger
+`priority` controls worker consumption across candidate constraints. Smaller
 values run first; equal values are ordered by `candidateId` ascending. Map
 insertion order is not scheduling policy.
 
@@ -578,7 +578,7 @@ match_worker_candidates(
 
 The candidate-constraint map makes candidate identity unique. Each constraint
 carries explicit `priority`, `limit`, and map-shaped `allocation_rule`. The matcher
-sorts by priority descending and `candidateId` ascending, then each worker is
+sorts by priority ascending (`0` highest) and `candidateId` ascending, then each worker is
 considered by the first matching candidate with remaining match limit. Every
 matched Worker appears in exactly one candidate result. Each returned
 `CandidateWorkerEntry` contains its Worker id, WorkerGroup id, descriptor-owned

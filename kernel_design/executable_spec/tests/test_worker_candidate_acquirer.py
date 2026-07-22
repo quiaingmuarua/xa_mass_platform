@@ -72,6 +72,22 @@ class WorkerCandidateAcquirerContractTest(unittest.TestCase):
         self.assertEqual(2, request.requested_count)
         self.assertIsNone(request.target_field)
 
+        for priority in (0, 99):
+            with self.subTest(priority=priority):
+                WorkerCandidateRequest(
+                    priority=priority,
+                    requested_count=1,
+                    allocation_rule={},
+                )
+
+        for priority in (-1, 100, True):
+            with self.subTest(priority=priority), self.assertRaises(ValueError):
+                WorkerCandidateRequest(
+                    priority=priority,
+                    requested_count=1,
+                    allocation_rule={},
+                )
+
         with self.assertRaises(ValueError):
             WorkerCandidateRequest(
                 priority=80,

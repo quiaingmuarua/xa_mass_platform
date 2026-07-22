@@ -140,15 +140,17 @@ class FakeRedis:
         *,
         start: int = 0,
         num: int | None = None,
-    ) -> list[str]:
+        withscores: bool = False,
+    ) -> list[object]:
         rows = sorted(
             (score, member)
             for member, score in self.zsets.get(key, {}).items()
             if min_score <= score <= max_score
         )
-        if num is None:
-            return [member for _, member in rows[start:]]
-        return [member for _, member in rows[start : start + num]]
+        selected = rows[start:] if num is None else rows[start : start + num]
+        if withscores:
+            return [(member, score) for score, member in selected]
+        return [member for _, member in selected]
 
     def zcount(self, key: str, min_score: int, max_score: int) -> int:
         return sum(
@@ -182,7 +184,7 @@ class RedisTaskScoreBandCoreTest(unittest.TestCase):
     def test_running_count_includes_due_current_and_future_running_scores(self) -> None:
         running = self.score(self.kernel.RUNNING_VISIBLE_TAG, 999, 5)
         running_current_second = self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 1)
-        pre_dispatch_visible = self.score(self.kernel.PRE_DISPATCH_VISIBLE_TAG, 999, 5)
+        admission_visible = self.score(self.kernel.ADMISSION_VISIBLE_TAG, 999, 5)
         paused = self.score(
             self.kernel.RUNNING_VISIBLE_TAG,
             self.kernel.PAUSE_TIME_SLOT,
@@ -191,7 +193,7 @@ class RedisTaskScoreBandCoreTest(unittest.TestCase):
 
         self.store_score("running", running)
         self.store_score("running-current-second", running_current_second)
-        self.store_score("pre-dispatch-visible", pre_dispatch_visible)
+        self.store_score("admission-visible", admission_visible)
         self.store_score("paused", paused)
 
         self.assertEqual(3, self.kernel.count_running_visible_tasks())
@@ -212,14 +214,14 @@ class RedisTaskScoreBandCoreTest(unittest.TestCase):
             self.score(self.kernel.RUNNING_VISIBLE_TAG, 1_000, 5),
         )
         self.store_score(
-            "pre-dispatch-before",
-            self.score(self.kernel.PRE_DISPATCH_VISIBLE_TAG, 999, 5),
+            "admission-before",
+            self.score(self.kernel.ADMISSION_VISIBLE_TAG, 999, 5),
         )
 
         self.assertEqual(
-            ["pre-dispatch-before"],
+            ["admission-before"],
             self.kernel.acquire_band_task_candidates(
-                band=TaskScoreBand.PRE_DISPATCH_VISIBLE,
+                band=TaskScoreBand.ADMISSION_VISIBLE,
                 before_time_millis=self.millis(1_000),
                 limit=10,
             ),
@@ -233,6 +235,93 @@ class RedisTaskScoreBandCoreTest(unittest.TestCase):
             ),
         )
 
+    def test_admission_candidates_sort_bounded_window_by_priority(self) -> None:
+        self.store_score(
+            "earlier-low-priority",
+            self.score(self.kernel.ADMISSION_VISIBLE_TAG, 998, 99),
+        )
+        self.store_score(
+            "same-slot-low-priority",
+            self.score(self.kernel.ADMISSION_VISIBLE_TAG, 999, 99),
+        )
+        self.store_score(
+            "same-slot-high-priority",
+            self.score(self.kernel.ADMISSION_VISIBLE_TAG, 999, 0),
+        )
+
+        self.assertEqual(
+            ["same-slot-high-priority", "earlier-low-priority"],
+            self.kernel.acquire_band_task_candidates(
+                band=TaskScoreBand.ADMISSION_VISIBLE,
+                before_time_millis=self.millis(1_000),
+                limit=2,
+            ),
+        )
+
+    def test_admission_candidates_use_time_order_for_window_membership(self) -> None:
+        self.store_score(
+            "old-priority-99",
+            self.score(self.kernel.ADMISSION_VISIBLE_TAG, 997, 99),
+        )
+        self.store_score(
+            "middle-priority-50",
+            self.score(self.kernel.ADMISSION_VISIBLE_TAG, 998, 50),
+        )
+        self.store_score(
+            "new-priority-0",
+            self.score(self.kernel.ADMISSION_VISIBLE_TAG, 999, 0),
+        )
+
+        self.assertEqual(
+            ["middle-priority-50", "old-priority-99"],
+            self.kernel.acquire_band_task_candidates(
+                band=TaskScoreBand.ADMISSION_VISIBLE,
+                before_time_millis=self.millis(1_000),
+                limit=2,
+            ),
+        )
+
+    def test_admission_candidates_use_time_then_id_for_equal_priority(self) -> None:
+        self.store_score(
+            "task-b",
+            self.score(self.kernel.ADMISSION_VISIBLE_TAG, 998, 5),
+        )
+        self.store_score(
+            "task-c",
+            self.score(self.kernel.ADMISSION_VISIBLE_TAG, 999, 5),
+        )
+        self.store_score(
+            "task-a",
+            self.score(self.kernel.ADMISSION_VISIBLE_TAG, 999, 5),
+        )
+
+        self.assertEqual(
+            ["task-b", "task-a", "task-c"],
+            self.kernel.acquire_band_task_candidates(
+                band=TaskScoreBand.ADMISSION_VISIBLE,
+                before_time_millis=self.millis(1_000),
+                limit=3,
+            ),
+        )
+
+    def test_running_candidates_keep_score_order(self) -> None:
+        self.store_score(
+            "earlier-suffix-99",
+            self.score(self.kernel.RUNNING_VISIBLE_TAG, 998, 99),
+        )
+        self.store_score(
+            "later-suffix-0",
+            self.score(self.kernel.RUNNING_VISIBLE_TAG, 999, 0),
+        )
+
+        self.assertEqual(
+            ["earlier-suffix-99", "later-suffix-0"],
+            self.kernel.acquire_band_task_candidates(
+                band=TaskScoreBand.RUNNING_VISIBLE,
+                before_time_millis=self.millis(1_000),
+                limit=2,
+            ),
+        )
     def test_acquire_band_candidates_rejects_terminal_band(self) -> None:
         with self.assertRaises(ValueError):
             self.kernel.acquire_band_task_candidates(
@@ -337,19 +426,19 @@ class RedisTaskScoreBandCoreTest(unittest.TestCase):
         result = self.kernel.rewrite_score(
             task_id="task",
             expected_band=TaskScoreBand.RUNNING_VISIBLE,
-            target_band=TaskScoreBand.PRE_DISPATCH_VISIBLE,
+            target_band=TaskScoreBand.ADMISSION_VISIBLE,
             target_time_millis=self.millis(1_001),
         )
 
         self.assertEqual(TaskScoreTransitionStatus.INVALID, result.status)
 
     def test_rewrite_allows_suffix_change_only_with_newer_time(self) -> None:
-        pre_dispatch_visible = self.score(self.kernel.PRE_DISPATCH_VISIBLE_TAG, 1_000, 5)
-        self.store_score("task", pre_dispatch_visible)
+        admission_visible = self.score(self.kernel.ADMISSION_VISIBLE_TAG, 1_000, 5)
+        self.store_score("task", admission_visible)
 
         result = self.kernel.rewrite_score(
             task_id="task",
-            expected_band=TaskScoreBand.PRE_DISPATCH_VISIBLE,
+            expected_band=TaskScoreBand.ADMISSION_VISIBLE,
             target_time_millis=self.millis(1_001),
             target_suffix=4,
         )
@@ -357,17 +446,17 @@ class RedisTaskScoreBandCoreTest(unittest.TestCase):
 
         self.assertEqual(TaskScoreTransitionStatus.TRANSITIONED, result.status)
         self.assertIsNotNone(state)
-        self.assertEqual(TaskScoreBand.PRE_DISPATCH_VISIBLE, state.band)
+        self.assertEqual(TaskScoreBand.ADMISSION_VISIBLE, state.band)
         self.assertEqual(self.millis(1_001), state.time_millis)
         self.assertEqual(4, state.suffix)
 
     def test_rewrite_rejects_suffix_change_without_newer_time(self) -> None:
-        pre_dispatch_visible = self.score(self.kernel.PRE_DISPATCH_VISIBLE_TAG, 1_000, 5)
-        self.store_score("task", pre_dispatch_visible)
+        admission_visible = self.score(self.kernel.ADMISSION_VISIBLE_TAG, 1_000, 5)
+        self.store_score("task", admission_visible)
 
         result = self.kernel.rewrite_score(
             task_id="task",
-            expected_band=TaskScoreBand.PRE_DISPATCH_VISIBLE,
+            expected_band=TaskScoreBand.ADMISSION_VISIBLE,
             target_time_millis=self.millis(1_000),
             target_suffix=4,
         )
@@ -574,8 +663,8 @@ class RedisTaskScoreBandCoreTest(unittest.TestCase):
         self.assertEqual(7, state.suffix)
 
     def test_rewrite_rejects_stale_expected_band(self) -> None:
-        pre_dispatch_visible = self.score(self.kernel.PRE_DISPATCH_VISIBLE_TAG, 1_000, 5)
-        self.store_score("task", pre_dispatch_visible)
+        admission_visible = self.score(self.kernel.ADMISSION_VISIBLE_TAG, 1_000, 5)
+        self.store_score("task", admission_visible)
 
         result = self.kernel.rewrite_score(
             task_id="task",

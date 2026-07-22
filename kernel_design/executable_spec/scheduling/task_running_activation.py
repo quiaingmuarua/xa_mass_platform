@@ -12,6 +12,7 @@ from ..kernel.task_score_band import (
     TaskId,
     TaskScoreBand,
     TaskScoreBandCore,
+    TaskScoreState,
     TaskScoreTransitionStatus,
     TimeMillis,
 )
@@ -20,13 +21,16 @@ from .task_scheduling_profile import resolve_task_scheduling_profile
 
 @dataclass(frozen=True)
 class TaskRunningActivationConfig:
-    """Bounds for one PRE_DISPATCH_VISIBLE activation round."""
+    """Bounds for one ADMISSION_VISIBLE activation round."""
 
     task_batch_limit: int
+    priority_recheck_step_millis: int = 1_000
 
     def __post_init__(self) -> None:
         if self.task_batch_limit <= 0:
             raise ValueError("task batch limit must be positive")
+        if self.priority_recheck_step_millis <= 0:
+            raise ValueError("priority recheck step must be positive")
 
 
 class TaskAdmissionPolicy(Protocol):
@@ -69,8 +73,8 @@ class DueTaskItemAdmissionPolicy:
         )
 
 
-class PrioritySoftLimitSystemAdmissionPolicy:
-    """Apply the built-in priority-first RUNNING soft limit."""
+class RunningSoftLimitSystemAdmissionPolicy:
+    """Apply the built-in RUNNING soft limit to score-ordered Tasks."""
 
     def __init__(
         self,
@@ -97,18 +101,7 @@ class PrioritySoftLimitSystemAdmissionPolicy:
         if available_slots == 0:
             return ()
 
-        input_order = {
-            task_id: index
-            for index, task_id in enumerate(ordered_task_ids)
-        }
-        priority_ordered_task_ids = sorted(
-            ordered_task_ids,
-            key=lambda task_id: (
-                -int(descriptors[task_id].config["priority"]),
-                input_order[task_id],
-            ),
-        )
-        return tuple(priority_ordered_task_ids[:available_slots])
+        return tuple(ordered_task_ids[:available_slots])
 
 
 class TaskRunningActivationPacer:
@@ -136,7 +129,7 @@ class TaskRunningActivationPacer:
         activation_time_millis = self._current_time_millis()
         observed_task_ids = tuple(
             self.task_score.acquire_band_task_candidates(
-                band=TaskScoreBand.PRE_DISPATCH_VISIBLE,
+                band=TaskScoreBand.ADMISSION_VISIBLE,
                 before_time_millis=activation_time_millis,
                 limit=config.task_batch_limit,
             )
@@ -144,6 +137,9 @@ class TaskRunningActivationPacer:
         if not observed_task_ids:
             return 0
 
+        observed_states = self.task_score.get_score_states(
+            task_ids=observed_task_ids,
+        )
         loaded_descriptors = self.task_catalog.load_task_allocation_descriptors(
             task_ids=observed_task_ids,
         )
@@ -153,40 +149,47 @@ class TaskRunningActivationPacer:
             if (descriptor := loaded_descriptors.get(task_id)) is not None
         }
         descriptor_task_ids = tuple(descriptors)
-        if not descriptor_task_ids:
-            return 0
+        task_allowed_ids: tuple[TaskId, ...] = ()
+        if descriptor_task_ids:
+            task_allowed_ids = self._validated_policy_output(
+                input_task_ids=descriptor_task_ids,
+                output_task_ids=self.task_admission_policy.filter_tasks(
+                    ordered_task_ids=descriptor_task_ids,
+                    descriptors=descriptors,
+                ),
+                policy_name="Task admission policy",
+            )
 
-        task_allowed_ids = self._validated_policy_output(
-            input_task_ids=descriptor_task_ids,
-            output_task_ids=self.task_admission_policy.filter_tasks(
-                ordered_task_ids=descriptor_task_ids,
-                descriptors=descriptors,
-            ),
-            policy_name="Task admission policy",
-        )
-        if not task_allowed_ids:
-            return 0
-
-        system_allowed_ids = self._validated_policy_output(
-            input_task_ids=task_allowed_ids,
-            output_task_ids=self.system_admission_policy.select_tasks(
-                ordered_task_ids=task_allowed_ids,
-                descriptors=descriptors,
-            ),
-            policy_name="System admission policy",
-        )
+        system_allowed_ids: tuple[TaskId, ...] = ()
+        if task_allowed_ids:
+            system_allowed_ids = self._validated_policy_output(
+                input_task_ids=task_allowed_ids,
+                output_task_ids=self.system_admission_policy.select_tasks(
+                    ordered_task_ids=task_allowed_ids,
+                    descriptors=descriptors,
+                ),
+                policy_name="System admission policy",
+            )
 
         activated_task_ids: list[TaskId] = []
         for task_id in system_allowed_ids:
             result = self.task_score.rewrite_score(
                 task_id=task_id,
-                expected_band=TaskScoreBand.PRE_DISPATCH_VISIBLE,
+                expected_band=TaskScoreBand.ADMISSION_VISIBLE,
                 target_band=TaskScoreBand.RUNNING_VISIBLE,
                 target_time_millis=activation_time_millis,
                 target_suffix=TaskScoreBandCore.MIN_SUFFIX,
             )
             if result.status is TaskScoreTransitionStatus.TRANSITIONED:
                 activated_task_ids.append(task_id)
+
+        self._reschedule_observed_admission_tasks(
+            observed_task_ids=observed_task_ids,
+            observed_states=observed_states,
+            activated_task_ids=activated_task_ids,
+            activation_time_millis=activation_time_millis,
+            priority_recheck_step_millis=config.priority_recheck_step_millis,
+        )
 
         warmup_task_ids = tuple(
             task_id
@@ -201,6 +204,37 @@ class TaskRunningActivationPacer:
                 due_time_millis=activation_time_millis,
             )
         return len(activated_task_ids)
+
+    def _reschedule_observed_admission_tasks(
+        self,
+        *,
+        observed_task_ids: Sequence[TaskId],
+        observed_states: Mapping[TaskId, TaskScoreState | None],
+        activated_task_ids: Sequence[TaskId],
+        activation_time_millis: TimeMillis,
+        priority_recheck_step_millis: int,
+    ) -> None:
+        activated = set(activated_task_ids)
+        for task_id in observed_task_ids:
+            if task_id in activated:
+                continue
+            state = observed_states.get(task_id)
+            if (
+                state is None
+                or state.band is not TaskScoreBand.ADMISSION_VISIBLE
+                or state.suffix is None
+            ):
+                continue
+            priority_bucket = state.suffix // 10
+            self.task_score.rewrite_same_band_time_millis(
+                task_id=task_id,
+                expected_band=TaskScoreBand.ADMISSION_VISIBLE,
+                target_time_millis=(
+                    activation_time_millis
+                    + TaskScoreBandCore.SLOT_MILLIS
+                    + priority_bucket * priority_recheck_step_millis
+                ),
+            )
 
     @staticmethod
     def _validated_policy_output(

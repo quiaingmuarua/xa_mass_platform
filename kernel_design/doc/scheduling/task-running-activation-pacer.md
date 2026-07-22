@@ -9,7 +9,7 @@ implemented; policy coverage partial.
 approved Task and ordinary Worker allocation:
 
 ```text
-PRE_DISPATCH_VISIBLE Task state
+ADMISSION_VISIBLE Task state
   -> Task Admission Policy
   -> System Admission Policy
   -> TaskScoreBandCore transition
@@ -61,7 +61,7 @@ not directly move Task score; a later activation round observes it.
 
 ## Default System Policy
 
-`PrioritySoftLimitSystemAdmissionPolicy` calculates:
+`RunningSoftLimitSystemAdmissionPolicy` calculates:
 
 ```text
 availableSlots = max(
@@ -74,12 +74,16 @@ availableSlots = max(
 including future hold/pause coordinates. Existing RUNNING Tasks are not
 demoted when the observed count exceeds the soft limit.
 
-The policy orders the admitted batch by:
+The score owner first selects a bounded due observation window in ascending
+`timeSlot` order. It then orders only those observed members by:
 
 ```text
-priority descending: 100 first, 1 last
-same priority: preserve PRE_DISPATCH scan order
+priority ascending, 0 first and 99 last
+same priority: timeSlot ascending, then taskId ascending
 ```
+
+Priority does not change which Tasks enter the bounded observation window and
+does not promise a global strict-priority scan.
 
 It returns at most `availableSlots` Tasks. The limit is deliberately soft:
 concurrent pacer instances may observe the same count and temporarily exceed
@@ -89,19 +93,39 @@ mechanism.
 ## Round Flow
 
 ```text
-1. scan due PRE_DISPATCH_VISIBLE ids with range + limit
-2. batch load TaskDescriptor values; skip missing/corrupt rows
-3. apply TaskAdmissionPolicy
+1. scan one bounded due ADMISSION_VISIBLE observation window
+2. batch load observed score states and TaskDescriptor values
+3. apply TaskAdmissionPolicy to descriptor-backed Tasks
 4. validate ordered subset
 5. apply SystemAdmissionPolicy
 6. validate ordered subset
-7. request PRE_DISPATCH_VISIBLE -> RUNNING_VISIBLE for selected Tasks
-8. count only TRANSITIONED results
+7. request ADMISSION_VISIBLE -> RUNNING_VISIBLE for selected Tasks
+8. reschedule every observed Task that did not transition
+9. count only TRANSITIONED results
 ```
 
 The transition uses the round timestamp and always initializes RUNNING suffix
 to `0`, the ordinary Task dispatch lane. `STALE`, `NOOP`, and `INVALID` are not
-counted; later bounded rounds may observe the Task again when appropriate.
+counted.
+
+Normal rejection reasons do not create separate pacing branches. Every
+observed Task that did not successfully leave ADMISSION keeps its suffix and
+receives:
+
+```text
+priorityBucket = admissionSuffix // 10
+nextTime = roundNow
+         + TaskScoreBandCore.SLOT_MILLIS
+         + priorityBucket * priorityRecheckStepMillis
+```
+
+The built-in step is `1000ms`, producing ten monotonic cadence buckets over
+Task priority `0..99`. Missing descriptors, Task-policy rejection,
+System-policy rejection, and stale transition attempts all use this same
+best-effort same-band rewrite. Concurrent close, band transition, or newer
+recheck evidence wins through the existing score guard. Policy exceptions and
+invalid policy output remain fail-fast contract errors and do not execute the
+normal recheck phase.
 
 No Worker is required for activation. A Task may enter RUNNING before any
 Worker is registered. Worker capacity affects later allocation throughput, not
@@ -112,6 +136,7 @@ the lifecycle admission mechanism.
 ```python
 TaskRunningActivationConfig(
     task_batch_limit,
+    priority_recheck_step_millis=1000,
 )
 
 TaskRunningActivationPacer(
@@ -132,7 +157,9 @@ Zero-config assembly installs the two default policies and exposes only:
 }
 ```
 
-The field is optional, defaults to `100`, and must be a positive integer.
+The public JSON field is optional, defaults to `100`, and must be a positive
+integer. `priority_recheck_step_millis` is internal System Policy configuration
+installed by assembly; it is not a Task field or public JSON option.
 
 ## Scenario-Bound Policy
 
@@ -155,10 +182,12 @@ owner facts and must not create a second transition path.
 
 ## Guardrails
 
-- Do not pre-lease or match Workers for `PRE_DISPATCH_VISIBLE` Tasks.
+- Do not pre-lease or match Workers for `ADMISSION_VISIBLE` Tasks.
 - Do not use candidate-worker count as activation truth.
 - Do not mutate Item score while checking due Item existence.
 - Do not put fairness, quota, or resource-estimate semantics into Task score.
 - Do not make the soft limit an implicit hard-cap promise.
+- Do not leave observed rejected Tasks at the current due head indefinitely.
+- Do not interpret `priority // 10` as changing the full `0..99` ordering value.
 - Do not move existing RUNNING Tasks backward when the limit is exceeded.
 - Do not let a policy return Tasks outside the exact bounded input batch.

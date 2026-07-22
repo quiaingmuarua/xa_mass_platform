@@ -575,10 +575,10 @@ class TaskDispatchPacerTest(unittest.TestCase):
             terminal_score=TaskScoreBandCore.TERMINAL_SCORE_MAX,
         )
 
-    def test_empty_recheck_limit_waits_before_threshold(self) -> None:
+    def test_task_driven_empty_recheck_limit_waits_before_future_threshold(self) -> None:
         self._prepare_task(
             "task-1",
-            task_type=TaskType.ITEM_DRIVEN,
+            task_type=TaskType.TASK_DRIVEN,
             suffix=5,
             score=105,
             empty_close_at_millis=20_000,

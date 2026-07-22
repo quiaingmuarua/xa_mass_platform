@@ -22,7 +22,7 @@ due candidate-warmup TaskId
 ```
 
 It uses Task score only as a bounded read-only eligibility truth. It does not
-acquire, lease, rotate, or rewrite Task score, process PRE_DISPATCH Tasks,
+acquire, lease, rotate, or rewrite Task score, process ADMISSION Tasks,
 decide Task activation, or serve Item-directed TARGETED requests.
 
 ## Warmup Schedule
