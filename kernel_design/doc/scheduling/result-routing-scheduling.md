@@ -63,12 +63,14 @@ DeliverSeed cutoff used before Worker submit.
 ## Routing Round
 
 One round calls the three class lanes in a fixed implementation order. Normal
-protocol produces one SeedResult per DeliverSeed and therefore no cross-class
-precedence decision. If contradictory evidence for one exact Worker lease does
-arrive, the first applicable exact CAS in that fixed order wins; this is
-unsupported protocol-error behavior, not a result winner policy. Each lane may
-consume up to `perOutcomeBatchLimit`, so a complete round handles at most three
-times that limit.
+protocol produces one logical outcome per DeliverSeed, although transport may
+duplicate the same evidence. Duplicate queue records converge through
+last-success storage and exact score fences; they do not create a second Item
+or Worker owner. If contradictory classes for one exact Worker lease do arrive,
+the first applicable exact CAS in that fixed order wins; this is unsupported
+protocol-error behavior, not a result winner policy. Each lane may consume up
+to `perOutcomeBatchLimit`, so a complete round handles at most three times that
+limit.
 
 Each lane decodes once and normalizes its bounded input into two private
 indexes:
@@ -193,6 +195,10 @@ Adapter or Worker produces no SeedResult
 
 process crash after queue pop
   -> ingress evidence may be lost; Item claim and Worker lease expiry recover
+
+duplicate evidence from Adapter/Worker transport
+  -> may be consumed again; owner-local monotonic transition or exact fence
+     determines whether it changes truth
 ```
 
 The class queues are deliberately best-effort. Reliable pending/ack or failure
@@ -211,6 +217,7 @@ projection, and stronger ingress reliability.
 ## Guardrails
 
 - Do not let Adapter or Worker mutate score directly.
+- Do not interpret Adapter-private commandId or messageType in result routing.
 - Do not parse exact `1xxx` or `3xxx` subcodes in result routing.
 - Do not partition queues by exact code, Task, WorkerGroup, or producer source.
 - Do not actively rewrite Item retry time when `1xxx` or `3xxx` arrives.

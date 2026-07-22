@@ -21,7 +21,9 @@ DeliverSeed
 
 This is an executable closure example, not a production transport service. It
 must keep kernel score, lease, lifecycle, matching, and result-classification
-rules outside the adapter.
+rules outside the adapter. The current implementation invokes process-local
+Python functions directly. A cross-process Adapter needs its own command
+protocol, but that protocol does not extend the kernel contracts below.
 
 ## Minimal External Contracts
 
@@ -84,6 +86,10 @@ produce multiple results. Its return value is the number accepted by the
 runtime. A mixed batch is partitioned into three best-effort class queues; a
 cross-class append is not atomic and an exception does not report partial
 acceptance.
+
+`DeliverSeed` and `SeedResult` are the only shapes constrained by the kernel at
+this boundary. Adapter-to-Worker request/response messages are private to the
+Adapter implementation.
 
 ## Worker Startup
 
@@ -163,6 +169,36 @@ Message identity and score fences remain in `opaqueResultContext`, which the
 adapter forwards unchanged. Applications that use an external payload reference
 place that reference inside their own payload mapping; it is not a separate
 adapter contract.
+
+## Adapter-Worker Command Boundary
+
+The local example calls `handler(payload, WorkerMeta)` and therefore needs no
+wire command. A cross-process Adapter may wrap the same seed in a private
+command envelope such as:
+
+```json
+{
+  "commandId": "adapter-owned-command-id",
+  "messageType": "TASK_SEED",
+  "opaqueDeliveryItem": "...",
+  "opaqueResultContext": "...",
+  "taskItemClaimUntilMillis": 1234567890
+}
+```
+
+A corresponding Worker response may use `messageType=TASK_SEED_RESULT`, echo
+the Adapter-owned `commandId` and opaque result context, and add `outcomeCode`
+plus an optional opaque result payload. These names are illustrative Adapter
+protocol, not kernel DTO fields.
+
+`commandId` correlates one Adapter-to-Worker logical call and may be reused for
+wire retries of that call. It is not TaskItem identity, a score fence, or a
+kernel deduplication key. `messageType` routes the Adapter's private protocol.
+Neither field is appended to `SeedResult`. In particular, Task `messageId`
+remains inside `opaqueResultContext`; the Adapter and Worker do not receive it
+as a decoded field. Different Adapter implementations may use RPC, WebSocket,
+message-queue, or local-call envelopes without changing `DeliverSeed` or
+`SeedResult`.
 
 ## Drain Once
 
@@ -256,10 +292,15 @@ When the adapter drops a malformed/expired seed, crashes, or cannot submit a
 result, TaskItem claim and Worker lease time coordinates remain the recovery
 fallback. Missing evidence is never reclassified as `3xxx`.
 
-Handlers run with at-least-once semantics. The first handler API stays small as
-`handler(payload, WorkerMeta)`; handlers requiring idempotency will need a
-later contract that exposes decoded delivery identity without parsing result
-context.
+Execution permits at-least-once behavior: a Worker may finish while its result
+is lost, after which Item claim expiry can produce another dispatch attempt.
+Kernel score fences and result convergence prevent stale evidence from
+rewriting newer owner truth, but they do not undo duplicate external side
+effects. A private Adapter `commandId` can collapse retransmission of one wire
+command; it does not identify a later kernel dispatch attempt. Side-effecting
+handlers that require business idempotency carry an application-owned key in
+their payload or install a Worker-specific execution policy. The kernel does
+not expose Task `messageId` or promise exactly-once Worker execution.
 
 ## Executable Surface
 

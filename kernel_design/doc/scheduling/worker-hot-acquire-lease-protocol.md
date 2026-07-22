@@ -169,8 +169,10 @@ WorkerScoreCore and treats Worker disposition independently from Item movement.
 
 Every result submits its own exact lease evidence without cross-class winner
 aggregation. Stale evidence cannot release or demote a newer lease. Conflicting
-classes for one exact lease violate the one-DeliverSeed/one-SeedResult protocol;
-the score owner accepts at most one applicable disposition.
+classes for one exact lease violate the one-logical-outcome protocol; the score
+owner accepts at most one applicable disposition. A duplicated copy of the same
+transport result is allowed to reach routing, but after the first applicable
+exact transition the old Worker fence is stale and cannot change newer truth.
 
 ## Serviceability Reconciliation And Recovery Demotion
 

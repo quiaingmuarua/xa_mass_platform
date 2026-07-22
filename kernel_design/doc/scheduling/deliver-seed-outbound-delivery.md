@@ -95,6 +95,14 @@ opaqueResultContext
 taskItemClaimUntilMillis
 ```
 
+Together with `SeedResult`, this is the complete kernel contract across the
+external Adapter boundary. A command envelope used between an Adapter and its
+Worker is transport-private. It may carry an Adapter-owned `commandId`, a
+`messageType`, protocol version, or connection correlation, but those fields
+are not added to `DeliverSeed`, `SeedResult`, or result-routing truth. Task
+`messageId` stays encoded inside `opaqueResultContext` and is never exposed as
+an Adapter/Worker protocol field.
+
 `opaqueDeliveryItem` is produced by the assignment-dispatch internal encoder.
 The built-in policy serializes only `eventCode` and `payload`; it does not expose
 message identity, Item score, retry budget, expiry, or Worker lease evidence to
@@ -113,6 +121,21 @@ do not parse the context.
 lost or replayed without becoming the correctness owner: Item claim expiry and
 Worker lease expiry remain the liveness fallback.
 
+## At-Least-Once Boundary
+
+Missing result evidence allows Item claim expiry to make work dispatchable
+again. The same logical TaskItem may therefore reach Worker execution more than
+once. A transport-private `commandId` may deduplicate retries of one
+Adapter-to-Worker command, but a later kernel dispatch is a new attempt and is
+not required to reuse that command identity.
+
+TaskItem score monotonicity, last-success storage, and exact Worker lease fences
+make repeated or stale result evidence converge safely inside the kernel. They
+do not provide exactly-once external side effects. Business operations that
+require idempotency own an application key or a Worker-specific execution
+policy inside the opaque delivery payload. Stronger trusted-execution schemes
+are outside this active boundary.
+
 `endpointManagerId` is copied from matching through `CandidateWorkerEntry` and
 partitions the Deliver Queue key, but is not duplicated in DeliverSeed. The
 outbound owner therefore consumes only its own manager queue and does not
@@ -124,7 +147,7 @@ candidate truth.
 ## Deferred Policy
 
 - Production transports choose their protocol-specific delivery-item
-  conversion and endpoint-local retry behavior.
+  conversion, private command envelope, and endpoint-local retry behavior.
 - Pending/ack reliability requires a named outbound invariant; it is not added
   to the best-effort queue by default.
 - Result payload projection and Worker disposition remain downstream owner
@@ -136,6 +159,8 @@ candidate truth.
 - Do not let transport acceptance become Item result finality.
 - Do not mutate Task score because delivery succeeds or fails.
 - Do not reconstruct or decode `workerLeaseScore`.
+- Do not promote Adapter `commandId`, `messageType`, connection, or response
+  correlation into kernel assignment identity.
 - Do not emit a timeout result for a seed discarded before Worker submit.
 - Do not downgrade a real late Worker result to diagnostics-only handling.
 - Do not move Worker release/retain decisions into outbound queue consumption
