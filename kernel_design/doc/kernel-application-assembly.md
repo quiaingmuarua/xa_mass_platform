@@ -232,12 +232,14 @@ ResourcesCommandClient
   -> KernelApplication
   -> Redis scheduling truth
   -> Worker Adapter HTTP command
+  -> Polling Phone Worker tool execution
   -> Worker Adapter HTTP result
   -> Result-Routing
   -> TaskItem FINAL_SUCCESS + result HASH + Worker lease release
 ```
 
-The proof uses the Worker Adapter HTTP boundary with real Redis clients.
+The proof uses the Worker Adapter HTTP boundary with real Redis clients and the
+same libphonenumber Worker implementation exposed by the runnable example.
 HTTP remains protocol translation rather than scheduling truth. Separate Redis
 proofs cover TASK_DRIVEN default empty close with RUNNING soft-limit release,
 ITEM_DRIVEN future-threshold empty recheck followed by append and dispatch,
@@ -269,10 +271,16 @@ POST /workers/{workerId}/results
 Its command id and message type are Adapter-private wire fields. They are not
 added to DeliverSeed, SeedResult, score, or result context.
 
-These are independent caller boundaries, not a claim that production must
-deploy exactly two processes. The current Worker Adapter slice has no login,
-session, or authorization protocol. The configured endpoint manager selects the
-mailbox bucket; the path WorkerId selects one field inside that bucket.
+The Polling Phone Worker is a third independent example process. It knows only
+its WorkerId, the Adapter HTTP URL, the private command/result envelope, and
+the `telecom.phone.inspect` tool. It does not register resources or import
+Kernel owners.
+
+These are independent caller boundaries, not a claim that production must use
+this exact three-process topology. The current Worker Adapter slice has no
+login, session, or authorization protocol. The configured endpoint manager
+selects the mailbox bucket; the path WorkerId selects one field inside that
+bucket.
 A future Worker-facing API may compose login/session, poll, and result under
 the same Adapter owner, but KernelApplication must not own or expose that
 session.

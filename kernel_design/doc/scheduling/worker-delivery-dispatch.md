@@ -1,13 +1,16 @@
 # Worker Delivery Dispatch
 
-Status: active new-kernel boundary contract; Python executable spec and Worker
-Adapter polling protocol implemented; production Adapter policy deferred.
+Status: active new-kernel boundary contract; Python executable spec, Worker
+Adapter polling protocol, and phone-tool Worker implemented; production
+Adapter policy deferred.
 
 Upstream contract: [Task Dispatch Pacer](task-dispatch-pacer.md).
 Worker lease contract:
 [Worker HOT_ACQUIRE Lease Protocol](worker-hot-acquire-lease-protocol.md).
 Protocol example:
 [Worker Adapter Server](../../examples/worker-adapter-server.md).
+Worker example:
+[Polling Phone Worker](../../examples/polling_phone_worker.py).
 
 ## Purpose
 
@@ -204,7 +207,7 @@ Adapter identity.
 ## Deferred Policy
 
 - Controlled Worker route migration.
-- Occupied-mailbox replacement or Worker serviceability penalties.
+- Worker serviceability penalties based on bounded mailbox residue evidence.
 - Production authentication, session ownership, and Adapter authorization.
 - Pending/ack reliability or mailbox expiry cleanup.
 - Proactive unreachable-Worker recovery evidence.

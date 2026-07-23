@@ -546,6 +546,9 @@ no hidden compatibility path or second mainline remains
 - [Worker Adapter Server](examples/worker-adapter-server.md)
   - independent endpoint-manager-bound delivery process, WorkerId polling,
     Adapter-private command/result envelopes, and opaque SeedResult submission.
+- [Polling Phone Worker](examples/polling_phone_worker.py)
+  - independent Worker process that executes `telecom.phone.inspect` through
+    the Adapter protocol using Google libphonenumber.
 - [Result-Routing Scheduling](doc/scheduling/result-routing-scheduling.md)
   - outcome-class SeedResult consumption, last-success result storage, TaskItem
     final-success invocation, and Worker exact disposition.

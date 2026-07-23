@@ -50,7 +50,7 @@ No mailbox value returns `204`. One available Seed returns:
 {
   "commandId": "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1",
   "messageType": "TASK_SEED",
-  "opaqueDeliveryItem": "{\"eventCode\":\"image.resize\",\"payload\":{}}",
+  "opaqueDeliveryItem": "{\"eventCode\":\"telecom.phone.inspect\",\"payload\":{\"phoneNumber\":\"+14155552671\"}}",
   "opaqueResultContext": "...",
   "taskItemClaimUntilMillis": 1234567890
 }
@@ -78,7 +78,7 @@ POST /workers/{workerId}/results
   "messageType": "TASK_SEED_RESULT",
   "opaqueResultContext": "...",
   "outcomeCode": "200",
-  "opaqueResultPayload": "null"
+  "opaqueResultPayload": "{\"countryCallingCode\":1,\"e164\":\"+14155552671\",\"isPossible\":true,\"isValid\":true,\"regionCode\":\"US\"}"
 }
 ```
 
@@ -99,6 +99,24 @@ The Adapter forwards only `opaqueResultContext`, `outcomeCode`, and
 `opaqueResultPayload` as one `SeedResult`. Accepted evidence returns
 `202 {"accepted": true}`. A zero accepted count returns `503`; runtime
 exceptions remain HTTP failures for the Worker to retry.
+
+The runnable
+[`polling_phone_worker.py`](polling_phone_worker.py) example consumes this
+protocol and executes `telecom.phone.inspect` with Google libphonenumber. It is
+a Worker process, not part of this Adapter host:
+
+```text
+python -m kernel_design.examples.polling_phone_worker --worker-id worker-1
+```
+
+Its outcome mapping is:
+
+```text
+200   inspection completed, including isValid=false
+1400  malformed delivery payload or phoneNumber type
+1404  unsupported eventCode
+1500  unexpected tool or result-encoding failure
+```
 
 The URL WorkerId and echoed commandId are private protocol coordinates. The
 Adapter does not parse opaque context to compare identities and does not add

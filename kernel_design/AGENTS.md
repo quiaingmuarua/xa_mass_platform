@@ -163,7 +163,8 @@ For Worker Delivery Dispatch or a polling Worker:
 3. [doc/scheduling/result-routing-scheduling.md](doc/scheduling/result-routing-scheduling.md)
 4. [doc/kernel-application-assembly.md](doc/kernel-application-assembly.md)
 5. [examples/worker_adapter_server.py](examples/worker_adapter_server.py)
-6. [executable_spec/assembly/transport_clients.py](executable_spec/assembly/transport_clients.py)
+6. [examples/polling_phone_worker.py](examples/polling_phone_worker.py)
+7. [executable_spec/assembly/transport_clients.py](executable_spec/assembly/transport_clients.py)
 
 ## 2.1 Python Naming Rules
 
@@ -179,8 +180,9 @@ constraint_dsl/           standalone constraint compilation/evaluation
 redis_runtime/            Redis-backed implementations of owner contracts
 ```
 
-`kernel_design/examples/` contains external protocol hosts. Those hosts may
-depend on the assembly application boundary, not owner implementations.
+`kernel_design/examples/` contains external protocol hosts and Worker clients.
+They may depend on stable application or wire boundaries, not owner
+implementations.
 
 Use these rules:
 

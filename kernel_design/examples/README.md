@@ -20,7 +20,13 @@ Start the independent Worker polling process:
 python -m kernel_design.examples.worker_adapter_server --endpoint-manager-id endpoint-manager-1
 ```
 
-Their default addresses are:
+Start the international-phone tool Worker:
+
+```text
+python -m kernel_design.examples.polling_phone_worker --worker-id worker-1
+```
+
+The HTTP hosts use:
 
 ```text
 Kernel Command Server   127.0.0.1:18080
@@ -48,12 +54,100 @@ The Worker-facing command/result envelopes belong to the Adapter protocol.
 DeliverSeed and SeedResult remain the only Kernel contracts across this
 boundary.
 
+The Polling Phone Worker depends only on the Worker Adapter HTTP protocol. It
+executes:
+
+```text
+eventCode = telecom.phone.inspect
+payload   = {"phoneNumber": "+14155552671"}
+```
+
+using Google libphonenumber's Python port. A successful result reports the ISO
+region, country calling code, E.164 form, and possible/valid classifications.
+An invalid number is a successful inspection with `isValid=false`.
+
+## Phone Inspection Bootstrap
+
+With the Kernel Command Server and Worker Adapter Server running, create the
+resource declarations:
+
+```http
+PUT /worker-groups/phone-tools
+{
+  "attributes": {},
+  "eventCodes": ["telecom.phone.inspect"],
+  "itemAllocationFields": ["workerId"]
+}
+```
+
+```http
+PUT /worker-groups/phone-tools/workers/worker-1
+{
+  "endpointManagerId": "endpoint-manager-1",
+  "attributes": {"runtime": "python"},
+  "dynamicAttributeNames": []
+}
+```
+
+Create and approve a Task:
+
+```http
+POST /tasks
+{
+  "taskId": "phone-inspection-task",
+  "workerGroupId": "phone-tools",
+  "taskType": "TASK_DRIVEN",
+  "allocationRule": {
+    "attributes.runtime": {"$eq": "python"}
+  },
+  "config": {
+    "priority": "50",
+    "maximumCandidateWorkers": "10",
+    "maxRetryTimes": "3"
+  }
+}
+```
+
+```http
+POST /tasks/phone-inspection-task/approve
+```
+
+Append one due Item using a current or past millisecond timestamp:
+
+```http
+POST /tasks/phone-inspection-task/items
+{
+  "items": [
+    {
+      "messageId": "phone-message-1",
+      "eventCode": "telecom.phone.inspect",
+      "createdAtMillis": 1784764800000,
+      "payload": {"phoneNumber": "+14155552671"}
+    }
+  ]
+}
+```
+
+The Polling Phone Worker receives the command through the Adapter and submits a
+result equivalent to:
+
+```json
+{
+  "countryCallingCode": 1,
+  "e164": "+14155552671",
+  "isPossible": true,
+  "isValid": true,
+  "regionCode": "US"
+}
+```
+
 Task lifecycle routes include explicit approve and close commands. Close is
 available for both Task types and does not expose a terminal score.
 
 Dynamic attribute mutation is intentionally absent until the assembly installs
 a real dynamic-attribute handler owner.
 
-These are not production servers. They intentionally omit authentication,
+These are not production services. They intentionally omit authentication,
 Worker identity proof, Task query/list, result projection, pending/ack,
-production push transport, and API compatibility policy.
+production push transport, Worker self-registration, and API compatibility
+policy.

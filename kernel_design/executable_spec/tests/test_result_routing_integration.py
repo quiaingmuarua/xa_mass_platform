@@ -17,9 +17,15 @@ try:
     from kernel_design.examples.worker_adapter_server import (
         create_app as create_worker_adapter_app,
     )
+    from kernel_design.examples.polling_phone_worker import (
+        PHONE_INSPECT_EVENT_CODE,
+        PollingPhoneWorker,
+    )
 except (ImportError, RuntimeError):  # pragma: no cover - missing example dependencies
     TestClient = None  # type: ignore[assignment,misc]
     create_worker_adapter_app = None  # type: ignore[assignment]
+    PHONE_INSPECT_EVENT_CODE = None  # type: ignore[assignment]
+    PollingPhoneWorker = None  # type: ignore[assignment,misc]
 
 from kernel_design.executable_spec import (
     RedisTaskItemScoreBandCore,
@@ -53,7 +59,8 @@ _REDIS_URL = os.environ.get("KERNEL_DESIGN_REDIS_URL")
     redis_module is not None
     and _REDIS_URL
     and TestClient is not None
-    and create_worker_adapter_app is not None,
+    and create_worker_adapter_app is not None
+    and PollingPhoneWorker is not None,
     "set KERNEL_DESIGN_REDIS_URL to run result-routing Redis closure proof",
 )
 class ResultRoutingIntegrationTest(unittest.TestCase):
@@ -85,6 +92,11 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
                 deliver_seed_consumer=DeliverSeedConsumerClient(self.config),
                 seed_result_commands=SeedResultCommandClient(self.config),
             )
+        )
+        assert PollingPhoneWorker is not None
+        self.phone_worker = PollingPhoneWorker(
+            worker_id="worker-1",
+            adapter_client=self.worker_adapter,
         )
         self.item_score = RedisTaskItemScoreBandCore(
             self.redis,
@@ -125,9 +137,9 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
     def _run_success_e2e(self, task_type: TaskType) -> None:
         group_result = self.resources.upsert_worker_group(
             descriptor=WorkerGroupDescriptor(
-                worker_group_id="image-workers",
+                worker_group_id="phone-tools",
                 attributes={},
-                event_codes=frozenset({"image.resize"}),
+                event_codes=frozenset({PHONE_INSPECT_EVENT_CODE}),
                 item_allocation_fields=(
                     frozenset({"workerId"})
                     if task_type is TaskType.ITEM_DRIVEN
@@ -138,7 +150,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         worker_result = self.resources.upsert_worker(
             declaration=WorkerDeclaration(
                 worker_id="worker-1",
-                worker_group_id="image-workers",
+                worker_group_id="phone-tools",
                 endpoint_manager_id="endpoint-1",
                 attributes={"runtime": "python"},
                 dynamic_attribute_names=frozenset(),
@@ -147,7 +159,10 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
 
         self.application.start()
         creation_result = self.application.create_task(
-            descriptor=self._task_descriptor(task_type)
+            descriptor=self._task_descriptor(
+                task_type,
+                worker_group_id="phone-tools",
+            )
         )
         approval_result = self.application.approve_task(task_id="task-1")
         append_results = self.application.append_task_items(
@@ -155,9 +170,9 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
             items=(
                 TaskItem(
                     message_id="message-1",
-                    event_code="image.resize",
+                    event_code=PHONE_INSPECT_EVENT_CODE,
                     created_at_millis=int(time.time() * 1_000) - 1_000,
-                    payload={"source": "input"},
+                    payload={"phoneNumber": "+14155552671"},
                     allocation_rule=(
                         {"workerId": {"$eq": "worker-1"}}
                         if task_type is TaskType.ITEM_DRIVEN
@@ -177,42 +192,13 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         )
 
         deadline = time.monotonic() + 3
-        poll_response = None
+        completed = False
         while time.monotonic() < deadline:
-            poll_response = self.worker_adapter.post(
-                "/workers/worker-1/commands:poll"
-            )
-            if poll_response.status_code == 200:
+            completed = self.phone_worker.poll_once()
+            if completed:
                 break
-            self.assertEqual(204, poll_response.status_code)
             time.sleep(0.02)
-        self.assertIsNotNone(poll_response)
-        assert poll_response is not None
-        self.assertEqual(200, poll_response.status_code)
-        command = poll_response.json()
-        self.assertEqual("TASK_SEED", command["messageType"])
-        delivery_item = json.loads(command["opaqueDeliveryItem"])
-        self.assertEqual("image.resize", delivery_item["eventCode"])
-
-        result_response = self.worker_adapter.post(
-            "/workers/worker-1/results",
-            json={
-                "commandId": command["commandId"],
-                "messageType": "TASK_SEED_RESULT",
-                "opaqueResultContext": command["opaqueResultContext"],
-                "outcomeCode": "200",
-                "opaqueResultPayload": json.dumps(
-                    {
-                        "handled": delivery_item["payload"]["source"],
-                        "runtime": "polling",
-                    },
-                    sort_keys=True,
-                    separators=(",", ":"),
-                ),
-            },
-        )
-        self.assertEqual(202, result_response.status_code)
-        self.assertEqual({"accepted": True}, result_response.json())
+        self.assertTrue(completed)
 
         state = None
         deadline = time.monotonic() + 3
@@ -234,7 +220,13 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         )
         self.assertIsNotNone(stored_payload)
         self.assertEqual(
-            {"handled": "input", "runtime": "polling"},
+            {
+                "countryCallingCode": 1,
+                "e164": "+14155552671",
+                "isPossible": True,
+                "isValid": True,
+                "regionCode": "US",
+            },
             json.loads(stored_payload),
         )
         self.assertEqual(
@@ -247,7 +239,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         deadline = time.monotonic() + 1
         while time.monotonic() < deadline and "worker-1" not in worker_candidates:
             worker_candidates = self.worker_score.acquire_hot_acquire_candidates(
-                home_bucket_id="image-workers",
+                home_bucket_id="phone-tools",
                 limit=10,
             )
             if "worker-1" not in worker_candidates:
@@ -351,10 +343,14 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         )
 
     @staticmethod
-    def _task_descriptor(task_type: TaskType) -> TaskDescriptor:
+    def _task_descriptor(
+        task_type: TaskType,
+        *,
+        worker_group_id: str = "image-workers",
+    ) -> TaskDescriptor:
         return TaskDescriptor(
             task_id="task-1",
-            worker_group_id="image-workers",
+            worker_group_id=worker_group_id,
             task_type=task_type,
             allocation_rule=(
                 {"attributes.runtime": {"$eq": "python"}}
