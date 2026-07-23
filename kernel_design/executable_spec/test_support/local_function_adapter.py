@@ -65,14 +65,18 @@ class LocalFunctionTransportAdapter:
     def __init__(
         self,
         *,
+        endpoint_manager_id: str,
         deliver_seed_consumer: DeliverSeedConsumerClient,
         seed_result_commands: SeedResultCommandClient,
     ) -> None:
+        if not endpoint_manager_id:
+            raise ValueError("endpoint manager id must be non-empty")
+        self.endpoint_manager_id = endpoint_manager_id
         self.deliver_seed_consumer = deliver_seed_consumer
         self.seed_result_commands = seed_result_commands
         self.workers: dict[str, WorkerMeta] = {}
         self.handlers: dict[str, EventHandler] = {}
-        self._worker_cursor = 0
+        self._cursor: str | None = None
 
     def register_worker(self, worker_id: str, metadata: WorkerMeta) -> None:
         if not worker_id:
@@ -100,18 +104,15 @@ class LocalFunctionTransportAdapter:
     def drain_once(self, *, limit: int) -> int:
         if limit <= 0:
             raise ValueError("drain limit must be positive")
-        worker_ids = self._select_worker_ids(limit)
-        if not worker_ids:
-            return 0
-        seeds = self.deliver_seed_consumer.consume_deliver_seeds(
-            worker_ids=worker_ids,
+        page = self.deliver_seed_consumer.consume_deliver_seeds(
+            endpoint_manager_id=self.endpoint_manager_id,
+            cursor=self._cursor,
+            scan_count=limit,
         )
+        self._cursor = page.next_cursor
         results: list[SeedResult] = []
 
-        for worker_id in worker_ids:
-            seed = seeds.get(worker_id)
-            if seed is None:
-                continue
+        for seed in page.deliver_seeds:
             if self._current_time_millis() >= seed.task_item_claim_until_millis:
                 continue
             item = self._decode_delivery_item(seed.opaque_delivery_item)
@@ -156,21 +157,6 @@ class LocalFunctionTransportAdapter:
         if not results:
             return 0
         return self.seed_result_commands.append_seed_results(results=tuple(results))
-
-    def _select_worker_ids(self, limit: int) -> tuple[str, ...]:
-        worker_ids = tuple(self.workers)
-        if not worker_ids:
-            self._worker_cursor = 0
-            return ()
-
-        start = self._worker_cursor % len(worker_ids)
-        selected_count = min(limit, len(worker_ids))
-        selected = tuple(
-            worker_ids[(start + offset) % len(worker_ids)]
-            for offset in range(selected_count)
-        )
-        self._worker_cursor = (start + selected_count) % len(worker_ids)
-        return selected
 
     @staticmethod
     def _decode_delivery_item(value: str) -> _DeliveryItem | None:

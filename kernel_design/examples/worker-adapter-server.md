@@ -8,7 +8,7 @@ Kernel boundary:
 ## Purpose
 
 The Worker Adapter Server is an independent HTTP process between
-Worker-addressed DeliverSeed mailboxes and polling Workers:
+one configured Adapter DeliverSeed bucket and polling Workers:
 
 ```text
 Worker
@@ -28,11 +28,12 @@ decode result context, mutate score, or classify Item finality.
 ## Start
 
 ```text
-python -m kernel_design.examples.worker_adapter_server
-python -m kernel_design.examples.worker_adapter_server --config kernel.json
+python -m kernel_design.examples.worker_adapter_server --endpoint-manager-id endpoint-manager-1
+python -m kernel_design.examples.worker_adapter_server --endpoint-manager-id endpoint-manager-1 --config kernel.json
 ```
 
-The default address is `127.0.0.1:18081`. `--host`, `--port`, and
+`--endpoint-manager-id` is required and fixes the mailbox bucket this process
+may consume. The default address is `127.0.0.1:18081`. `--host`, `--port`, and
 `--log-level` configure only this HTTP process. The optional JSON is the same
 assembly configuration used by the Kernel process; this Adapter reads only the
 Redis URL and prefix through the two transport clients.
@@ -55,10 +56,12 @@ No mailbox value returns `204`. One available Seed returns:
 }
 ```
 
-The Adapter consumes only the WorkerId named in the URL and rechecks the claim
-deadline before responding. An expired Seed returns `204` without result
-evidence. Consumption is destructive; if the HTTP response is lost, the
-outcome is unknown and Item claim plus Worker lease expiry provide recovery.
+The Adapter consumes only the WorkerId field named in the URL from its
+configured endpoint-manager bucket. The same WorkerId in another Adapter bucket
+is not visible. It rechecks the claim deadline before responding. An expired
+Seed returns `204` without result evidence. Consumption is destructive; if the
+HTTP response is lost, the outcome is unknown and Item claim plus Worker lease
+expiry provide recovery.
 
 `commandId` is generated for wire correlation and diagnostics only. It is not
 persisted, checked as a Kernel fence, or promoted into DeliverSeed/SeedResult.
@@ -112,6 +115,6 @@ connection registry in this slice.
 
 - authentication, authorization, encryption, or trusted Worker identity;
 - pending/ack, command persistence, Adapter retries, or exactly-once execution;
-- push, WebSocket, session, or endpoint-manager routing;
+- push, WebSocket, session, or Worker route migration;
 - Task/result queries or Worker resource registration;
 - score, lease, scheduling, or result-finality ownership.

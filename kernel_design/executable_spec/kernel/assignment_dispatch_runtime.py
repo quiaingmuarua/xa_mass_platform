@@ -6,7 +6,7 @@ from enum import Enum
 from typing import Mapping, Sequence
 
 from .task_score_band import TaskId, TimeMillis
-from .worker_runtime import WorkerGroupId
+from .worker_runtime import EndpointManagerId, WorkerGroupId
 from .worker_score import Score as WorkerScore
 from .worker_score import WorkerId
 
@@ -16,16 +16,17 @@ CandidateId = str
 
 @dataclass(frozen=True)
 class CandidateWorkerEntry:
-    """One Task-local Worker candidate with opaque Worker-score evidence."""
+    """One Task-local Worker candidate with lease and delivery-route evidence."""
 
     worker_id: WorkerId
     worker_group_id: WorkerGroupId
+    endpoint_manager_id: EndpointManagerId
     worker_lease_score: WorkerScore
 
 
 @dataclass(frozen=True)
 class DeliverSeed:
-    """Opaque already-assigned handoff stored in one Worker mailbox."""
+    """Opaque already-assigned handoff stored in one Adapter mailbox field."""
 
     worker_id: WorkerId
     opaque_delivery_item: str
@@ -58,6 +59,14 @@ class DeliverSeedAppendStatus(Enum):
 
     APPENDED = "APPENDED"
     OCCUPIED = "OCCUPIED"
+
+
+@dataclass(frozen=True)
+class DeliverSeedConsumePage:
+    """One sparse Adapter-mailbox scan page."""
+
+    deliver_seeds: tuple[DeliverSeed, ...]
+    next_cursor: str | None
 
 
 class CandidateWorkerCache(ABC):
@@ -119,22 +128,35 @@ class CandidateWarmupSchedule(ABC):
 
 
 class DeliverSeedRuntime(ABC):
-    """Runtime owner for Worker-addressed DeliverSeed mailboxes."""
+    """Runtime owner for Adapter-partitioned DeliverSeed mailboxes."""
 
     @abstractmethod
     def append_deliver_seeds(
         self,
         *,
+        endpoint_manager_id: EndpointManagerId,
         deliver_seeds_by_worker_id: Mapping[WorkerId, DeliverSeed],
     ) -> Mapping[WorkerId, DeliverSeedAppendStatus]:
-        """Store a DeliverSeed only when the Worker mailbox is empty."""
+        """Store each DeliverSeed only when its Adapter-local slot is empty."""
+        pass
+
+    @abstractmethod
+    def consume_deliver_seed(
+        self,
+        *,
+        endpoint_manager_id: EndpointManagerId,
+        worker_id: WorkerId,
+    ) -> DeliverSeed | None:
+        """Atomically consume one Worker slot from one Adapter mailbox."""
         pass
 
     @abstractmethod
     def consume_deliver_seeds(
         self,
         *,
-        worker_ids: Sequence[WorkerId],
-    ) -> Mapping[WorkerId, DeliverSeed]:
-        """Atomically consume mailboxes for a bounded Worker-id batch."""
+        endpoint_manager_id: EndpointManagerId,
+        cursor: str | None,
+        scan_count: int,
+    ) -> DeliverSeedConsumePage:
+        """Scan and atomically consume one sparse Adapter-mailbox page."""
         pass

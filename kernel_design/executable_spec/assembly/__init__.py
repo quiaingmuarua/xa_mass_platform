@@ -1,6 +1,7 @@
 from ..kernel import (
     TaskType,
     DeliverSeed,
+    DeliverSeedConsumePage,
     EndpointManagerId,
     MessageId,
     SeedResult,
@@ -35,6 +36,7 @@ from .transport_clients import (
 __all__ = [
     "TaskType",
     "DeliverSeed",
+    "DeliverSeedConsumePage",
     "DeliverSeedConsumerClient",
     "EndpointManagerId",
     "KernelApplication",

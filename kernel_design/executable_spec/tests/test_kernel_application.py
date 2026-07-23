@@ -807,12 +807,13 @@ class KernelApplicationIntegrationTest(unittest.TestCase):
         )
 
         deadline = time.monotonic() + 3
-        seeds = {}
-        while time.monotonic() < deadline and not seeds:
-            seeds = self.deliver_seed_consumer.consume_deliver_seeds(
-                worker_ids=("worker-1",),
+        seed = None
+        while time.monotonic() < deadline and seed is None:
+            seed = self.deliver_seed_consumer.consume_deliver_seed(
+                endpoint_manager_id=endpoint_manager_id,
+                worker_id="worker-1",
             )
-            if not seeds:
+            if seed is None:
                 time.sleep(0.02)
 
         self.assertEqual(WorkerRuntimeStatus.OK, group_result.status)
@@ -820,18 +821,19 @@ class KernelApplicationIntegrationTest(unittest.TestCase):
         self.assertEqual(TaskCreationStatus.CREATED, created.status)
         self.assertEqual(TaskApprovalStatus.APPROVED, approved.status)
         self.assertEqual(TaskItemAppendStatus.APPENDED, appended[message_id].status)
-        self.assertEqual(1, len(seeds))
-        self.assertEqual("worker-1", seeds["worker-1"].worker_id)
+        self.assertIsNotNone(seed)
+        assert seed is not None
+        self.assertEqual("worker-1", seed.worker_id)
         self.assertEqual(
             message_id,
-            json.loads(seeds["worker-1"].opaque_result_context)["messageId"],
+            json.loads(seed.opaque_result_context)["messageId"],
         )
         self.assertEqual(
             {
                 "eventCode": "image.resize",
                 "payload": {"source": "input"},
             },
-            json.loads(seeds["worker-1"].opaque_delivery_item),
+            json.loads(seed.opaque_delivery_item),
         )
 
     def test_public_close_is_terminal_and_background_rounds_cannot_reopen(self) -> None:

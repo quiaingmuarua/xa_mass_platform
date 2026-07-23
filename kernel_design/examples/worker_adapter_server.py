@@ -57,10 +57,13 @@ class _TaskSeedResultRequest(BaseModel):
 
 def create_app(
     *,
+    endpoint_manager_id: str,
     config_json: str | None = None,
     deliver_seed_consumer: DeliverSeedConsumerClient | None = None,
     seed_result_commands: SeedResultCommandClient | None = None,
 ) -> FastAPI:
+    if not isinstance(endpoint_manager_id, str) or not endpoint_manager_id:
+        raise ValueError("endpoint_manager_id must be non-empty")
     if config_json is not None and (
         deliver_seed_consumer is not None or seed_result_commands is not None
     ):
@@ -81,6 +84,7 @@ def create_app(
     result_commands = seed_result_commands
 
     app = FastAPI(title="Worker Adapter API")
+    app.state.endpoint_manager_id = endpoint_manager_id
     app.state.deliver_seed_consumer_client = deliver_commands
     app.state.seed_result_command_client = result_commands
 
@@ -97,10 +101,10 @@ def create_app(
 
     @app.post("/workers/{worker_id}/commands:poll")
     def poll_worker_command(worker_id: str) -> Response:
-        seeds_by_worker_id = deliver_commands.consume_deliver_seeds(
-            worker_ids=(worker_id,),
+        seed = deliver_commands.consume_deliver_seed(
+            endpoint_manager_id=endpoint_manager_id,
+            worker_id=worker_id,
         )
-        seed = seeds_by_worker_id.get(worker_id)
         if (
             seed is None
             or _current_time_millis() >= seed.task_item_claim_until_millis
@@ -150,6 +154,7 @@ def main() -> None:
         description="Start the Worker Adapter Server."
     )
     parser.add_argument("--config", type=Path, help="optional kernel JSON config")
+    parser.add_argument("--endpoint-manager-id", required=True)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=18081)
     parser.add_argument(
@@ -170,7 +175,10 @@ def main() -> None:
             "uvicorn is required for the Worker Adapter Server"
         ) from error
     uvicorn.run(
-        create_app(config_json=config_json),
+        create_app(
+            endpoint_manager_id=args.endpoint_manager_id,
+            config_json=config_json,
+        ),
         host=args.host,
         port=args.port,
         log_level=args.log_level,

@@ -44,7 +44,7 @@ TaskDispatchPacer
   TaskItemScoreBandCore   ACTIVE existence query for empty recheck
   CandidateWarmupSchedule TASK_DRIVEN reset hints
   TaskItemDispatcher      one suffix-zero Task's Item dispatch
-  DeliverSeedRuntime      round-level Worker mailbox publication
+  DeliverSeedRuntime      round-level Adapter mailbox publication
 
 TaskItemDispatcher
   TaskItemScoreBandCore   due Item observation, expiry/finality, exact claim
@@ -73,9 +73,11 @@ One round computes its dispatch time and Item claim deadline once:
    `expireAtMillis <= roundNowMillis` to `FINAL_FAILED`.
 6. If no dispatchable Item remains, add the Task to the activity-check batch.
 7. Otherwise `TaskItemDispatcher` acquires Workers, exact-claims only
-   Worker-backed Items, and returns `DeliverSeed` values.
-8. The Pacer aggregates all returned Seeds, publishes once to WorkerId-addressed
-   mailboxes, and preserves suffix zero while advancing ordinary dispatch time.
+   Worker-backed Items, and returns `DeliverSeed` values grouped by the
+   CandidateWorker route snapshot.
+8. The Pacer merges all returned groups and publishes once per endpoint manager
+   sparse mailbox while preserving suffix zero and advancing ordinary dispatch
+   time.
    `APPENDED` counts as publication; `OCCUPIED` leaves the existing mailbox
    untouched and relies on the current Item claim and Worker lease expiry.
 9. Call `has_active_items` once for the activity-check batch and apply the
@@ -168,7 +170,7 @@ opaqueResultContext
 taskItemClaimUntilMillis
 ```
 
-Task Dispatch ends when the Worker-addressed mailbox append result is handled.
+Task Dispatch ends when each Adapter mailbox append result is handled.
 It does not consume the mailbox, create a `TASK_SEED` wire command, call a
 Worker, or append a `SeedResult`; those operations belong to Worker Delivery
 Dispatch.
@@ -181,11 +183,12 @@ Dispatch.
   by the bounded round.
 - Unused or failed Worker leases expire naturally; this Pacer does not release
   or demote them.
-- The round sends one `workerId -> DeliverSeed` Map to `DeliverSeedRuntime`.
-  `APPENDED` counts as publication; `OCCUPIED` preserves the existing mailbox
-  value and is a bounded no-op for the new Seed.
-- Cross-shard mailbox writes are not atomic. A runtime failure does not roll
-  back Workers whose mailbox append already completed.
+- The round sends one `workerId -> DeliverSeed` Map per endpoint manager to
+  `DeliverSeedRuntime`. One WorkerId may appear only once in the entire round.
+  `APPENDED` counts as publication; `OCCUPIED` preserves the existing field and
+  is a bounded no-op for the new Seed.
+- Cross-Adapter mailbox writes are not atomic. A runtime failure does not roll
+  back Adapter buckets whose append already completed.
 - Explicit terminal close has precedence. Existing Items, claims, seeds, or
   late results are not rolled back and cannot reopen Task score.
 
@@ -200,4 +203,5 @@ Dispatch.
 - Do not add PRECOMPUTED-miss TARGETED fallback.
 - Do not expose the max empty count or recheck interval through TaskDescriptor.
 - Do not call Worker Delivery Dispatch or Result Routing directly.
-- Do not route or group DeliverSeeds by endpoint manager, Adapter, or session.
+- Group only by the endpointManagerId snapshot in `CandidateWorkerEntry`; do
+  not read live Adapter, connection, or session state.

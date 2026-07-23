@@ -17,7 +17,7 @@ python -m kernel_design.examples.kernel_command_server
 Start the independent Worker polling process:
 
 ```text
-python -m kernel_design.examples.worker_adapter_server
+python -m kernel_design.examples.worker_adapter_server --endpoint-manager-id endpoint-manager-1
 ```
 
 Their default addresses are:
@@ -28,7 +28,8 @@ Worker Adapter Server   127.0.0.1:18081
 ```
 
 Both accept the same optional `--config kernel.json`; `--host`, `--port`, and
-`--log-level` configure only the selected HTTP process.
+`--log-level` configure only the selected HTTP process. Worker Adapter startup
+also requires the immutable `--endpoint-manager-id` mailbox coordinate.
 
 The Kernel host composes `KernelApplication` and `ResourcesCommandClient`.
 Its lifespan starts only the scheduling application. It exposes resource

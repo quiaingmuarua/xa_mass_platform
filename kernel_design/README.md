@@ -534,17 +534,17 @@ no hidden compatibility path or second mainline remains
     and same-band time rotation.
 - [Task Dispatch Pacer](doc/scheduling/task-dispatch-pacer.md)
   - candidate consumption, Item score claim, dispatch-time Worker lease
-    validation/renewal, and Worker-addressed DeliverSeed mailbox append.
+    validation/renewal, and Adapter-partitioned DeliverSeed mailbox append.
 - [Kernel Application Assembly](doc/kernel-application-assembly.md)
   - independent resource upsert and scheduling-process boundaries,
     private Redis composition, background scheduling lifecycles, built-in CLI,
     and the Kernel Command / Worker Adapter HTTP examples.
 - [Worker Delivery Dispatch](doc/scheduling/worker-delivery-dispatch.md)
-  - Worker Delivery Dispatch from WorkerId-addressed mailbox consumption
+  - Worker Delivery Dispatch from one configured Adapter bucket
     through private Worker wire conversion to opaque result handoff, without
     Adapter-owned score mutation.
 - [Worker Adapter Server](examples/worker-adapter-server.md)
-  - independent Worker Delivery Dispatch HTTP process, WorkerId polling,
+  - independent endpoint-manager-bound delivery process, WorkerId polling,
     Adapter-private command/result envelopes, and opaque SeedResult submission.
 - [Result-Routing Scheduling](doc/scheduling/result-routing-scheduling.md)
   - outcome-class SeedResult consumption, last-success result storage, TaskItem

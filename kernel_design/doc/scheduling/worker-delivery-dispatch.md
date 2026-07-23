@@ -11,31 +11,33 @@ Protocol example:
 
 ## Purpose
 
-`DeliverSeedRuntime` is the Worker-addressed handoff between Task Dispatch and
-Worker Delivery Dispatch:
+`DeliverSeedRuntime` is the Adapter-partitioned handoff between Task Dispatch
+and Worker Delivery Dispatch:
 
 ```text
-Task dispatch
-  -> append one DeliverSeed to the selected WorkerId mailbox
-  -> Worker Delivery Dispatch consumes by WorkerId
+Task Dispatch
+  -> snapshot selected Worker's endpointManagerId
+  -> append WorkerId -> DeliverSeed to that Adapter's sparse HASH
+
+Worker Delivery Dispatch
+  -> consume only its configured Adapter bucket
   -> discard if nowMillis >= taskItemClaimUntilMillis
-  -> submit the already-assigned delivery
+  -> submit the already-assigned delivery to seed.workerId
   -> append SeedResult to SeedResultRuntime
+
+Result Routing
+  -> converge TaskItem result truth and Worker score
+  -> never reads endpointManagerId
 ```
 
-It does not select a Worker, match Task constraints, claim a TaskItem, mutate
-Task score, classify result finality, or create another assignment identity.
+Task Dispatch has already selected the Worker. `endpointManagerId` selects the
+delivery bucket; it does not select, rank, or validate the Worker.
 
-The owner boundary starts after Task Dispatch handles the mailbox append result
-and ends after a valid `SeedResult` is accepted by `SeedResultRuntime`. It owns
-mailbox consume, deadline validation, Worker Adapter command/result conversion,
-and result ingress only.
-
-The core mailbox invariant is:
+The mailbox invariant is:
 
 ```text
-one WorkerId = one logical execution slot
-one WorkerId has at most one unconsumed DeliverSeed
+one endpointManagerId = one sparse DeliverSeed HASH
+one (endpointManagerId, workerId) has at most one unconsumed DeliverSeed
 ```
 
 If one physical execution runtime supports multiple independent concurrent
@@ -43,79 +45,84 @@ slots, it exposes multiple globally unique WorkerIds.
 
 ## Runtime Contract
 
-```text
-append_deliver_seeds(workerIdToDeliverSeed)
-  -> workerId -> APPENDED | OCCUPIED
+```python
+append_deliver_seeds(
+    endpoint_manager_id,
+    deliver_seeds_by_worker_id,
+) -> workerId -> APPENDED | OCCUPIED
 
-consume_deliver_seeds(workerIds)
-  -> workerId -> DeliverSeed
+consume_deliver_seed(
+    endpoint_manager_id,
+    worker_id,
+) -> DeliverSeed | None
+
+consume_deliver_seeds(
+    endpoint_manager_id,
+    cursor,
+    scan_count,
+) -> DeliverSeedConsumePage
 ```
 
-Append status means:
+`APPENDED` means the Adapter-local Worker field was empty. `OCCUPIED` means the
+field already exists; append uses `HSETNX` and never compares or overwrites it.
+Only `APPENDED` counts as a newly published Seed.
 
-- `APPENDED`: the Worker mailbox was empty.
-- `OCCUPIED`: a value already exists for that WorkerId; append never reads,
-  compares, or overwrites it.
+The append Map key must equal `DeliverSeed.workerId`. Append rejects a Seed
+whose claim deadline has already passed. A Task dispatch round validates that
+one WorkerId does not produce multiple Seeds, even if inconsistent route
+evidence would place them in different Adapter buckets.
 
-The append Map key must equal `DeliverSeed.workerId`; Map shape makes duplicate
-WorkerIds impossible. Append rejects a Seed whose claim deadline has already
-passed. Consume is bounded by the explicit WorkerId input; there is no
-independent `limit` and no endpoint-manager partition coordinate.
+Point consume atomically removes one Worker field. Cursor consume scans one
+Adapter HASH and returns:
 
-The Redis shape is fixed for this executable spec:
+```python
+DeliverSeedConsumePage(
+    deliver_seeds=(...),
+    next_cursor="..." | None,
+)
+```
+
+`cursor=None` starts at Redis cursor `0`. Redis cursor `0` is returned as
+`next_cursor=None`. `scan_count` is an HSCAN work hint, not an exact result
+limit; an empty page may still carry a continuation cursor.
+
+## Redis Shape
 
 ```text
-shard = CRC32(UTF-8(workerId)) % 64
-
-ad:{prefix}:deliver-seeds:{00..63}
+ad:{prefix}:endpoint-manager:{endpointManagerId}:deliver-seeds
   HASH workerId -> DeliverSeed JSON
 ```
 
-Append computes each shard in `RedisDeliverSeedRuntime` and pipelines native
-`HSETNX` commands. Every Worker field is independent; batches spanning shards
-are best-effort and are not atomic. Lua is not used for append.
+Append pipelines native `HSETNX` commands against one Adapter HASH. No Lua
+computes routing or parses Seed data.
 
-Consume uses a minimal single-key `HGET + HDEL` Lua primitive for each requested
-shard, so two consumers racing for one WorkerId cannot both receive the same
-Seed. An expired, malformed, or WorkerId-mismatched stored value is deleted and
-not returned.
-
-There is no field TTL, expiry index, cleanup scanner, pending/ack state, or FIFO
-backlog. Even an expired or malformed field remains occupied until a consumer
-requests and removes it. A process crash after destructive consume is recovered
-by TaskItem claim and Worker lease expiry, not by a second DeliverSeed
-reliability owner.
-
-## Mainline
+Point consume uses minimal single-key `HGET + HDEL` Lua. Cursor consume first
+uses `HSCAN`, then passes each scanned raw field/value pair to a minimal
+single-key compare-and-delete Lua primitive:
 
 ```text
-polling Worker
-  -> POST /workers/{workerId}/commands:poll
-  -> Worker Adapter consumes one WorkerId mailbox
-  -> Adapter rechecks claim deadline
-  -> Adapter returns TASK_SEED command envelope
-  -> Worker executes opaqueDeliveryItem
-  -> Worker POSTs TASK_SEED_RESULT with 200 or 1xxx
-  -> Adapter appends opaque SeedResult
-
-Worker result appended to SeedResultRuntime
-  -> runtime routes by SUCCESS / WORKER_FAILURE / ADAPTER_REJECTION
-  -> ResultRoutingPacer delegates Task and Worker evidence
+delete field only when currentValue == scannedValue
 ```
 
-The Worker Adapter must request only WorkerIds it is authorized to serve. The
-current protocol example has no authentication slice, so the path WorkerId is
-accepted as the requested mailbox address. An unpolled Worker produces no
-immediate rejection evidence: its mailbox remains until a consumer removes it.
-Item claim and Worker lease expiry still restore scheduling liveness, but later
-append attempts observe `OCCUPIED` and do not displace that delivery evidence.
+This prevents a concurrent consumer followed by a new append from having the
+new Seed deleted by an older scan page. Cross-Adapter operations are not atomic
+and completed buckets are not rolled back.
 
-Task dispatch counts only `APPENDED` results as published. `OCCUPIED` is not a
-program error and does not trigger compensation or cross-Worker rollback.
+Expired, malformed, or WorkerId-mismatched values are deleted during consume
+and not returned. There is no field TTL, expiry index, cleanup scanner,
+pending/ack state, or FIFO backlog. A crash after destructive consume is
+recovered by TaskItem claim and Worker lease expiry.
 
-## DeliverSeed Is Evidence
+## Route Snapshot
 
-DeliverSeed contains:
+`WorkerDescriptor.endpointManagerId` is immutable declaration metadata in the
+current slice. `WorkerCandidateMatcher` copies it into
+`CandidateWorkerEntry.endpointManagerId` when assignment evidence is created.
+PRECOMPUTED candidate cache JSON preserves that value, and TARGETED acquisition
+copies it through the same matcher result.
+
+`TaskItemDispatcher` groups constructed Seeds by this snapshot. `DeliverSeed`
+itself contains only:
 
 ```text
 workerId
@@ -124,87 +131,77 @@ opaqueResultContext
 taskItemClaimUntilMillis
 ```
 
-`workerId` is both the selected logical execution slot and the mailbox address.
-`workerGroupId` remains inside opaque result correlation because it identifies
-the Worker score/catalog home bucket; it is not a delivery address.
+Neither `DeliverSeed` nor `ResultContext` carries Adapter information. The
+bucket key is sufficient for Worker Delivery Dispatch, while Result Routing
+remains Adapter-agnostic.
 
-`endpointManagerId` is not copied into `CandidateWorkerEntry`, `DeliverSeed`,
-mailbox keys, or consumer calls. It remains Worker declaration metadata in this
-first slice but Task Dispatch and Worker Delivery Dispatch do not read it.
-
-`opaqueDeliveryItem` is produced by the assignment-dispatch internal encoder.
-The built-in policy serializes only `eventCode` and `payload`; it does not expose
-message identity, Item score, retry budget, expiry, or Worker lease evidence to
-the Worker handler. The Worker Adapter translates this opaque item into its
-private command before submit. The kernel does not merge multiple TaskItems
-into one delivery item.
-
-`opaqueResultContext` is forwarded unchanged. It contains Task, Item, Worker,
-WorkerGroup home-bucket, and Worker-lease correlation for result routing.
-The Worker Adapter, Worker, and mailbox runtime must not parse it.
-
-`taskItemClaimUntilMillis` is a fast pre-submit stale cutoff. A stale Seed is
-dropped without synthesizing timeout result evidence or mutating Item/Worker
-score.
+`endpointManagerId` is not part of the Worker allocation DSL context. Route
+placement cannot be used as a Worker matching predicate.
 
 ## Worker Adapter Protocol
 
-`DeliverSeed` and `SeedResult` are the complete kernel contracts across the
-Worker Delivery Dispatch boundary. The Worker Adapter wraps a consumed Seed in
-`TASK_SEED` with an Adapter-generated command id. A Worker replies with
-`TASK_SEED_RESULT` and echoes that command id. These fields are wire correlation
-only; they are not persisted, validated as score fences, or promoted into
-kernel assignment identity.
+The Worker Adapter Server starts with one required `endpointManagerId`.
 
-Polling Workers may report only `200` or `1xxx`. They cannot forge Adapter-owned
-`3xxx` rejection evidence. A lost HTTP response, expired Seed, or missing
-result remains unknown and falls back to Item claim and Worker lease expiry.
+```text
+POST /workers/{workerId}/commands:poll
+  -> point consume from the configured Adapter bucket
+  -> return TASK_SEED or 204
 
-The current HTTP slice has no login, session, or authorization protocol.
-`workerId` in the path is therefore a direct mailbox coordinate, not verified
-Worker identity. A future cohesive Worker-facing API may establish a trusted
-session before poll/result, but that session must remain private to Worker
-Delivery Dispatch and must not enter DeliverSeed, SeedResult, or scheduling
-truth.
+POST /workers/{workerId}/results
+  -> accept Worker 200/1xxx
+  -> append opaque SeedResult
+```
 
-Worker Adapter route, connection, session, or pull-channel facts remain outside
-scheduling truth. Worker migration between Adapter processes is therefore a
-Worker Delivery Dispatch concern: whichever process currently owns the Worker
-may consume the same Worker-addressed mailbox.
+The path WorkerId cannot consume another Adapter's bucket. A local batch
+Adapter may instead cursor-scan its configured bucket and demultiplex returned
+Seeds by `seed.workerId`.
+
+The Adapter rechecks `taskItemClaimUntilMillis` before submit. A stale Seed is
+dropped without synthesizing result evidence or mutating Item/Worker score.
+`opaqueResultContext` is forwarded unchanged and must not be parsed by the
+Adapter or Worker.
+
+The Adapter-generated command id and message type are private wire protocol
+coordinates. They are not Kernel assignment identity and do not enter
+DeliverSeed or SeedResult.
 
 ## At-Least-Once Boundary
 
-Missing result evidence allows Item claim expiry to make work dispatchable
-again. The same logical TaskItem may therefore reach Worker execution more than
-once. A transport-private command id may deduplicate retries of one physical
-command, but a later kernel dispatch is a new attempt.
+Mailbox consume is destructive. A process crash or lost response after consume
+produces unknown delivery evidence. Item claim and Worker lease expiry make the
+logical Item dispatchable again, so Worker execution remains at-least-once.
 
 TaskItem score monotonicity, last-success storage, and exact Worker lease fences
-make stale result evidence converge safely inside the kernel. They do not
-provide exactly-once external side effects. Business operations that require
-idempotency own an application key or Worker-specific execution policy inside
-the opaque payload.
+make stale result evidence converge safely inside the Kernel. They do not
+provide exactly-once external side effects.
+
+## Migration Boundary
+
+Worker migration is not implemented by ordinary upsert. A future controlled
+migration command must wait for or hold a non-active Worker lease before
+changing the immutable route declaration.
+
+A Seed already written to an old Adapter bucket is not moved. If a later
+dispatch uses a new route, the two Seeds are different attempts with different
+Worker lease fences. Result Routing accepts either source without understanding
+Adapter identity.
 
 ## Deferred Policy
 
-- Kernel-assigned WorkerId and Adapter-local to global identity mapping are a
-  separate identity slice.
-- Production Worker Adapters choose their private command protocol and
-  endpoint-local retry behavior.
-- Pending/ack reliability and mailbox expiry cleanup require separate named
-  invariants; neither is inferred from this single-slot handoff.
-- Proactive unreachable-Worker classification belongs to future session or
-  recovery evidence, not mailbox expiry.
+- Controlled Worker route migration.
+- Occupied-mailbox replacement or Worker serviceability penalties.
+- Production authentication, session ownership, and Adapter authorization.
+- Pending/ack reliability or mailbox expiry cleanup.
+- Proactive unreachable-Worker recovery evidence.
 
 ## Guardrails
 
 - Do not let Worker Delivery Dispatch choose or replace `seed.workerId`.
-- Do not route DeliverSeed by WorkerGroup, endpoint manager, Adapter, session,
-  or connection.
-- Do not let Worker Adapter command acceptance become Item result finality.
-- Do not parse or reconstruct `workerLeaseScore`.
-- Do not emit rejection evidence for an unrequested Worker mailbox.
-- Do not emit a timeout result for a Seed discarded before Worker submit.
-- Do not move Worker release/retain decisions into mailbox consumption.
+- Do not put endpointManagerId into DeliverSeed or ResultContext.
+- Do not expose endpointManagerId to Worker allocation rules.
+- Do not let an Adapter consume another Adapter's bucket.
+- Do not parse or reconstruct Worker score fences in the Adapter.
+- Do not emit timeout evidence for a Seed discarded before Worker submit.
+- Do not move Worker release/recovery decisions into mailbox consumption.
 - Do not compare or replace an occupied mailbox during append.
-- Do not add cross-shard rollback, cleanup scanners, or compatibility LISTs.
+- Do not add cross-bucket rollback, cleanup scanners, or compatibility keys.

@@ -44,8 +44,8 @@ score ZSET is kernel-owned TaskItem scheduling-serviceability polarity plus
 acquisition/recovery timing truth
 descriptor hashes are resource declaration truth
 dynamic attribute keys are handler-owned projections / indexes
-workerId is globally unique and addresses one DeliverSeed mailbox
-endpointManagerId remains declaration metadata but is not scheduling/delivery routing truth
+workerId is globally unique and identifies one field in an Adapter delivery bucket
+endpointManagerId is immutable declaration metadata and an assignment-time delivery route snapshot
 live transport evidence is not stored in worker catalog or score keys
 Worker upsert establishes immutable declaration identity before ensuring score presence
 reconnect supplies trusted serviceability evidence, replaces Worker attributes,
@@ -136,8 +136,9 @@ Value shape:
 It is not the current value of those attributes.
 
 `endpointManagerId` is required declaration metadata in the current shape. It
-is not read by matching, candidate acquisition, DeliverSeed mailbox addressing,
-or consumption, and is not a live endpoint, session, or reachability fact.
+is copied through matched CandidateWorker evidence to select a DeliverSeed HASH.
+It is not read by the allocation DSL and is not live endpoint, session, or
+reachability evidence.
 
 `workerGroupId` is a required logical locator on worker descriptor read and
 update operations. The current Redis executable spec uses it directly in the
@@ -474,7 +475,8 @@ operations continue through `WorkerScoreCore`. Partial completion is bounded
 and a same-group retry converges it.
 
 `workerId` is globally unique because it addresses one logical execution slot
-and DeliverSeed mailbox. The owner HASH enforces that invariant without adding
+and one field in an Adapter delivery bucket. The owner HASH enforces that
+invariant without adding
 global descriptor discovery or cross-group movement.
 
 ## Dynamic Attribute Operations

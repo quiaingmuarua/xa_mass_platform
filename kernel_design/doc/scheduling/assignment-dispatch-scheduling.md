@@ -141,12 +141,13 @@ CandidateId -> CandidateWorkerEntry[]
 CandidateWorkerEntry
   workerId
   workerGroupId
+  endpointManagerId
   workerLeaseScore
 ```
 
-The persisted JSON uses exactly these three fields. Rows from the superseded
-endpoint-manager projection are consumed and skipped rather than compatibility-
-decoded.
+The persisted JSON uses exactly these four fields. `endpointManagerId` is the
+assignment-time delivery-route snapshot copied from the matched Worker
+descriptor. It is not part of the allocation-rule context.
 
 Owner surface:
 
@@ -196,8 +197,8 @@ dispatch-visible RUNNING Tasks
      -> ITEM_DRIVEN: one messageId TARGETED request per Item
      -> preserve CandidateId-to-messageId binding
      -> exact claim only Worker-backed Items
-     -> return DeliverSeeds
-  -> append DeliverSeeds to WorkerId-addressed mailboxes
+     -> return DeliverSeeds grouped by endpointManagerId
+  -> append each group to its Adapter-partitioned sparse mailbox
   -> same-band reschedule while preserving suffix 0
 
 empty-recheck RUNNING Tasks
@@ -209,8 +210,8 @@ empty-recheck RUNNING Tasks
              otherwise remain low-frequency RUNNING
 ```
 
-Assignment Dispatch ends at Worker mailbox publication. `APPENDED` means the
-new handoff is visible; `OCCUPIED` retains the existing Seed and does not
+Assignment Dispatch ends at Adapter mailbox publication. `APPENDED` means the
+new handoff is visible; `OCCUPIED` retains the existing Worker field and does not
 replace it. Mailbox consume, claim-deadline recheck, Adapter-private command
 conversion, Worker invocation, and SeedResult append belong to Worker Delivery
 Dispatch.
@@ -243,8 +244,9 @@ the dispatch round does not infer type or strategy from Item contents.
   actively released; lease expiry restores visibility.
 - Candidate cache and DeliverSeed mailboxes are handoff evidence, not assignment
   or liveness truth.
-- Assignment Dispatch never routes by endpoint manager, Adapter, connection, or
-  session.
+- Assignment Dispatch routes only by the matched
+  `CandidateWorkerEntry.endpointManagerId` snapshot. It never reads connection
+  or session state and never exposes this route as a Worker matching field.
 
 ## Deferred Policy
 

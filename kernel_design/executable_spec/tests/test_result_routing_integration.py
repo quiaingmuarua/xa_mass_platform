@@ -81,6 +81,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         assert create_worker_adapter_app is not None
         self.worker_adapter = TestClient(
             create_worker_adapter_app(
+                endpoint_manager_id="endpoint-1",
                 deliver_seed_consumer=DeliverSeedConsumerClient(self.config),
                 seed_result_commands=SeedResultCommandClient(self.config),
             )
@@ -292,19 +293,21 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         )
 
         consumer = DeliverSeedConsumerClient(self.config)
-        seeds = {}
+        seed = None
         deadline = time.monotonic() + 3
-        while time.monotonic() < deadline and not seeds:
-            seeds = consumer.consume_deliver_seeds(worker_ids=("worker-1",))
-            if not seeds:
+        while time.monotonic() < deadline and seed is None:
+            seed = consumer.consume_deliver_seed(
+                endpoint_manager_id="endpoint-1",
+                worker_id="worker-1",
+            )
+            if seed is None:
                 time.sleep(0.02)
-        self.assertIn("worker-1", seeds)
+        self.assertIsNotNone(seed)
+        assert seed is not None
         SeedResultCommandClient(self.config).append_seed_results(
             results=(
                 SeedResult(
-                    opaque_result_context=seeds[
-                        "worker-1"
-                    ].opaque_result_context,
+                    opaque_result_context=seed.opaque_result_context,
                     outcome_code="3001",
                 ),
             )

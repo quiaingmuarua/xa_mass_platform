@@ -10,6 +10,7 @@ from kernel_design.executable_spec.test_support import (
 )
 from kernel_design.executable_spec.assembly import (
     DeliverSeed,
+    DeliverSeedConsumePage,
     DeliverSeedConsumerClient,
     SeedResultCommandClient,
 )
@@ -23,6 +24,7 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
         self.result_commands = Mock(spec=SeedResultCommandClient)
         self.result_commands.append_seed_results.return_value = 1
         self.adapter = LocalFunctionTransportAdapter(
+            endpoint_manager_id="endpoint-manager-1",
             deliver_seed_consumer=self.consumer,
             seed_result_commands=self.result_commands,
         )
@@ -55,6 +57,13 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
         ):
             return self.adapter.drain_once(limit=10)
 
+    @staticmethod
+    def page(
+        *seeds: DeliverSeed,
+        next_cursor: str | None = None,
+    ) -> DeliverSeedConsumePage:
+        return DeliverSeedConsumePage(seeds, next_cursor)
+
     def test_handler_success_appends_one_deterministic_result_batch(self) -> None:
         handler = Mock(
             return_value=EventHandlerResult(
@@ -63,9 +72,7 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
             )
         )
         self.adapter.register_event_handler("event-1", handler)
-        self.consumer.consume_deliver_seeds.return_value = {
-            "worker-1": self.seed()
-        }
+        self.consumer.consume_deliver_seeds.return_value = self.page(self.seed())
 
         self.assertEqual(1, self.drain())
 
@@ -85,9 +92,7 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
             "event-1",
             lambda _payload, _worker: EventHandlerResult("1409"),
         )
-        self.consumer.consume_deliver_seeds.return_value = {
-            "worker-1": self.seed()
-        }
+        self.consumer.consume_deliver_seeds.return_value = self.page(self.seed())
 
         self.assertEqual(1, self.drain())
 
@@ -108,9 +113,9 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
                 self.result_commands.reset_mock()
                 self.result_commands.append_seed_results.return_value = 1
                 self.adapter.register_event_handler("event-1", handler)
-                self.consumer.consume_deliver_seeds.return_value = {
-                    "worker-1": self.seed()
-                }
+                self.consumer.consume_deliver_seeds.return_value = self.page(
+                    self.seed()
+                )
 
                 self.assertEqual(1, self.drain())
 
@@ -123,36 +128,39 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
     def test_expired_corrupt_and_missing_handler_are_bounded(self) -> None:
         self.adapter.register_worker("worker-2", WorkerMeta({}))
         self.adapter.register_worker("worker-3", WorkerMeta({}))
-        self.consumer.consume_deliver_seeds.return_value = {
-            "worker-1": self.seed(claim_until_millis=self.NOW_MILLIS),
-            "worker-2": self.seed(
+        self.consumer.consume_deliver_seeds.return_value = self.page(
+            self.seed(claim_until_millis=self.NOW_MILLIS),
+            self.seed(
                 worker_id="worker-2",
                 delivery_item='{"eventCode":"missing","payload":{}}',
             ),
-            "worker-3": self.seed(
+            self.seed(
                 worker_id="worker-3",
                 delivery_item="{bad-json",
             ),
-        }
+        )
 
         self.assertEqual(1, self.drain())
 
         results = self.result_commands.append_seed_results.call_args.kwargs["results"]
         self.assertEqual(["1404"], [result.outcome_code for result in results])
 
-    def test_unregister_worker_is_idempotent_and_unregistered_mailbox_is_not_read(self) -> None:
+    def test_unregister_worker_is_idempotent_and_reports_bucket_seed(self) -> None:
         self.adapter.unregister_worker("worker-1")
         self.adapter.unregister_worker("worker-1")
+        self.consumer.consume_deliver_seeds.return_value = self.page(self.seed())
 
-        self.assertEqual(0, self.drain())
+        self.assertEqual(1, self.drain())
 
-        self.consumer.consume_deliver_seeds.assert_not_called()
-        self.result_commands.append_seed_results.assert_not_called()
+        result = self.result_commands.append_seed_results.call_args.kwargs[
+            "results"
+        ][0]
+        self.assertEqual("3001", result.outcome_code)
 
     def test_worker_removed_after_consume_reports_unavailable(self) -> None:
         def consume(**_: object):
             self.adapter.unregister_worker("worker-1")
-            return {"worker-1": self.seed()}
+            return self.page(self.seed())
 
         self.consumer.consume_deliver_seeds.side_effect = consume
 
@@ -169,19 +177,21 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
             lambda _payload, _worker: EventHandlerResult("200"),
         )
         self.adapter.register_worker("worker-2", WorkerMeta({}))
-        self.consumer.consume_deliver_seeds.return_value = {
-            "worker-1": self.seed(result_context="context-1"),
-            "worker-2": self.seed(
+        self.consumer.consume_deliver_seeds.return_value = self.page(
+            self.seed(result_context="context-1"),
+            self.seed(
                 worker_id="worker-2",
                 result_context="context-2",
             ),
-        }
+        )
         self.result_commands.append_seed_results.return_value = 2
 
         self.assertEqual(2, self.drain())
 
         self.consumer.consume_deliver_seeds.assert_called_once_with(
-            worker_ids=("worker-1", "worker-2"),
+            endpoint_manager_id="endpoint-manager-1",
+            cursor=None,
+            scan_count=10,
         )
         self.result_commands.append_seed_results.assert_called_once()
         results = self.result_commands.append_seed_results.call_args.kwargs["results"]
@@ -194,9 +204,7 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
             "event-1",
             lambda _payload, _worker: EventHandlerResult("200"),
         )
-        self.consumer.consume_deliver_seeds.return_value = {
-            "worker-1": self.seed()
-        }
+        self.consumer.consume_deliver_seeds.return_value = self.page(self.seed())
         self.result_commands.append_seed_results.side_effect = RuntimeError("down")
 
         with self.assertRaisesRegex(RuntimeError, "down"):
@@ -208,27 +216,34 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
         self.adapter.register_event_handler("event-1", first)
         self.adapter.register_event_handler("event-1", second)
         self.adapter.register_worker("worker-1", WorkerMeta({"version": 2}))
-        self.consumer.consume_deliver_seeds.return_value = {
-            "worker-1": self.seed()
-        }
+        self.consumer.consume_deliver_seeds.return_value = self.page(self.seed())
 
         self.drain()
 
         first.assert_not_called()
         self.assertEqual(2, second.call_args.args[1].attributes["version"])
 
-    def test_worker_selection_rotates_across_registered_workers(self) -> None:
-        for worker_id in ("worker-2", "worker-3"):
-            self.adapter.register_worker(worker_id, WorkerMeta({}))
-        self.consumer.consume_deliver_seeds.return_value = {}
+    def test_bucket_scan_continues_from_returned_cursor(self) -> None:
+        self.consumer.consume_deliver_seeds.side_effect = (
+            self.page(next_cursor="17"),
+            self.page(next_cursor=None),
+        )
 
         self.adapter.drain_once(limit=2)
         self.adapter.drain_once(limit=2)
 
         self.assertEqual(
             [
-                call(worker_ids=("worker-1", "worker-2")),
-                call(worker_ids=("worker-3", "worker-1")),
+                call(
+                    endpoint_manager_id="endpoint-manager-1",
+                    cursor=None,
+                    scan_count=2,
+                ),
+                call(
+                    endpoint_manager_id="endpoint-manager-1",
+                    cursor="17",
+                    scan_count=2,
+                ),
             ],
             self.consumer.consume_deliver_seeds.call_args_list,
         )

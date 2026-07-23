@@ -35,6 +35,7 @@ from ..kernel.task_score_band import (
     TaskScoreTransitionStatus,
     TimeMillis,
 )
+from ..kernel.worker_runtime import EndpointManagerId
 from .worker_candidate import (
     WorkerCandidateAcquirer,
     WorkerCandidateRequest,
@@ -165,7 +166,7 @@ class TaskItemDispatcher:
         claimable_items: tuple[tuple[TaskItem, Score], ...],
         claim_until_millis: TimeMillis,
         warmup_due_time_millis: TimeMillis,
-    ) -> tuple[DeliverSeed, ...]:
+    ) -> dict[EndpointManagerId, tuple[DeliverSeed, ...]]:
         candidate_workers_by_message_id = self._acquire_candidate_workers(
             task_id=task_id,
             descriptor=descriptor,
@@ -174,7 +175,7 @@ class TaskItemDispatcher:
             warmup_due_time_millis=warmup_due_time_millis,
         )
         if not candidate_workers_by_message_id:
-            return ()
+            return {}
 
         dispatch_assignments = self._claim_task_items(
             task_id=task_id,
@@ -183,10 +184,11 @@ class TaskItemDispatcher:
             claim_until_millis=claim_until_millis,
         )
         if not dispatch_assignments:
-            return ()
+            return {}
 
-        return tuple(
-            DeliverSeed(
+        deliver_seeds: dict[EndpointManagerId, list[DeliverSeed]] = {}
+        for candidate_worker, task_item in dispatch_assignments:
+            seed = DeliverSeed(
                 worker_id=candidate_worker.worker_id,
                 opaque_delivery_item=self._delivery_item_encoder(task_item),
                 opaque_result_context=encode_result_context(
@@ -200,8 +202,14 @@ class TaskItemDispatcher:
                 ),
                 task_item_claim_until_millis=claim_until_millis,
             )
-            for candidate_worker, task_item in dispatch_assignments
-        )
+            deliver_seeds.setdefault(
+                candidate_worker.endpoint_manager_id,
+                [],
+            ).append(seed)
+        return {
+            endpoint_manager_id: tuple(seeds)
+            for endpoint_manager_id, seeds in deliver_seeds.items()
+        }
 
     def _acquire_candidate_workers(
         self,
@@ -336,7 +344,7 @@ class TaskDispatchPacer:
             limit=config.task_batch_limit,
         )
 
-        round_deliver_seeds: list[DeliverSeed] = []
+        round_deliver_seeds: dict[EndpointManagerId, list[DeliverSeed]] = {}
         activity_recheck_tasks: dict[
             TaskId,
             tuple[TaskDescriptor, TaskScoreState],
@@ -356,7 +364,7 @@ class TaskDispatchPacer:
                 continue
 
             try:
-                round_deliver_seeds.extend(
+                task_deliver_seeds = (
                     self.task_item_dispatcher.dispatch_task_items(
                         task_id=task_id,
                         descriptor=descriptor,
@@ -365,6 +373,11 @@ class TaskDispatchPacer:
                         warmup_due_time_millis=dispatch_time_millis,
                     )
                 )
+                for endpoint_manager_id, seeds in task_deliver_seeds.items():
+                    round_deliver_seeds.setdefault(
+                        endpoint_manager_id,
+                        [],
+                    ).extend(seeds)
             finally:
                 self.task_score.rewrite_same_band_time_millis(
                     task_id=task_id,
@@ -373,7 +386,10 @@ class TaskDispatchPacer:
                 )
 
         published_seed_count = self._publish_deliver_seeds(
-            deliver_seeds=tuple(round_deliver_seeds),
+            deliver_seeds_by_endpoint_manager={
+                endpoint_manager_id: tuple(seeds)
+                for endpoint_manager_id, seeds in round_deliver_seeds.items()
+            },
         )
 
         if activity_recheck_tasks:
@@ -487,23 +503,40 @@ class TaskDispatchPacer:
     def _publish_deliver_seeds(
         self,
         *,
-        deliver_seeds: tuple[DeliverSeed, ...],
+        deliver_seeds_by_endpoint_manager: Mapping[
+            EndpointManagerId,
+            tuple[DeliverSeed, ...],
+        ],
     ) -> int:
-        if not deliver_seeds:
+        if not deliver_seeds_by_endpoint_manager:
             return 0
 
-        deliver_seeds_by_worker_id = {
-            seed.worker_id: seed for seed in deliver_seeds
-        }
-        if len(deliver_seeds_by_worker_id) != len(deliver_seeds):
-            raise RuntimeError("one Worker mailbox received multiple DeliverSeeds")
-        append_results = self.deliver_seed_runtime.append_deliver_seeds(
-            deliver_seeds_by_worker_id=deliver_seeds_by_worker_id,
+        worker_ids = tuple(
+            seed.worker_id
+            for deliver_seeds in deliver_seeds_by_endpoint_manager.values()
+            for seed in deliver_seeds
         )
-        return sum(
-            status is DeliverSeedAppendStatus.APPENDED
-            for status in append_results.values()
-        )
+        if len(set(worker_ids)) != len(worker_ids):
+            raise RuntimeError(
+                "one Worker received multiple DeliverSeeds in one round"
+            )
+
+        published = 0
+        for endpoint_manager_id, deliver_seeds in (
+            deliver_seeds_by_endpoint_manager.items()
+        ):
+            deliver_seeds_by_worker_id: dict[str, DeliverSeed] = {}
+            for seed in deliver_seeds:
+                deliver_seeds_by_worker_id[seed.worker_id] = seed
+            append_results = self.deliver_seed_runtime.append_deliver_seeds(
+                endpoint_manager_id=endpoint_manager_id,
+                deliver_seeds_by_worker_id=deliver_seeds_by_worker_id,
+            )
+            published += sum(
+                status is DeliverSeedAppendStatus.APPENDED
+                for status in append_results.values()
+            )
+        return published
 
     @staticmethod
     def _current_time_millis() -> TimeMillis:

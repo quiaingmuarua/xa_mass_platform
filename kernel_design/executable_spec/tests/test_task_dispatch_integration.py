@@ -179,7 +179,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             task_item_dispatcher,
         )
 
-    def test_worker_mailbox_has_one_atomic_consumer(self) -> None:
+    def test_adapter_mailbox_worker_field_has_one_atomic_consumer(self) -> None:
         seed = DeliverSeed(
             worker_id="worker-1",
             opaque_delivery_item='{"eventCode":"image.resize","payload":{}}',
@@ -189,6 +189,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         self.assertEqual(
             {"worker-1": DeliverSeedAppendStatus.APPENDED},
             self.deliver_seed_runtime.append_deliver_seeds(
+                endpoint_manager_id="endpoint-manager-1",
                 deliver_seeds_by_worker_id={"worker-1": seed}
             ),
         )
@@ -201,6 +202,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         self.assertEqual(
             {"worker-1": DeliverSeedAppendStatus.OCCUPIED},
             self.deliver_seed_runtime.append_deliver_seeds(
+                endpoint_manager_id="endpoint-manager-1",
                 deliver_seeds_by_worker_id={"worker-1": conflicting_seed}
             ),
         )
@@ -212,17 +214,52 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         with ThreadPoolExecutor(max_workers=2) as executor:
             results = tuple(
                 executor.map(
-                    lambda runtime: runtime.consume_deliver_seeds(
-                        worker_ids=("worker-1",)
+                    lambda runtime: runtime.consume_deliver_seed(
+                        endpoint_manager_id="endpoint-manager-1",
+                        worker_id="worker-1",
                     ),
                     (self.deliver_seed_runtime, competing_runtime),
                 )
             )
 
         self.assertEqual(1, sum(bool(result) for result in results))
+        self.assertEqual([seed], [result for result in results if result])
+
+    def test_adapter_mailbox_cursor_consumes_sparse_worker_fields(self) -> None:
+        seeds = tuple(
+            DeliverSeed(
+                worker_id=f"mailbox-worker-{index}",
+                opaque_delivery_item=f'{{"index":{index}}}',
+                opaque_result_context=f'{{"index":{index}}}',
+                task_item_claim_until_millis=int(time.time() * 1_000) + 5_000,
+            )
+            for index in range(3)
+        )
+        self.deliver_seed_runtime.append_deliver_seeds(
+            endpoint_manager_id="endpoint-manager-cursor",
+            deliver_seeds_by_worker_id={
+                seed.worker_id: seed for seed in seeds
+            },
+        )
+
+        consumed: list[DeliverSeed] = []
+        cursor = None
+        for _ in range(10):
+            page = self.deliver_seed_runtime.consume_deliver_seeds(
+                endpoint_manager_id="endpoint-manager-cursor",
+                cursor=cursor,
+                scan_count=1,
+            )
+            consumed.extend(page.deliver_seeds)
+            cursor = page.next_cursor
+            if cursor is None:
+                break
+        else:
+            self.fail("Redis HSCAN cursor did not terminate")
+
         self.assertEqual(
-            [seed],
-            [result["worker-1"] for result in results if result],
+            {seed.worker_id for seed in seeds},
+            {seed.worker_id for seed in consumed},
         )
 
     def tearDown(self) -> None:
@@ -432,11 +469,12 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             item_state.time_millis,
             dispatch_started_millis + 3_000 - self.item_score.SLOT_MILLIS,
         )
-        seeds = self.deliver_seed_runtime.consume_deliver_seeds(
-            worker_ids=("worker-1",),
+        seed = self.deliver_seed_runtime.consume_deliver_seed(
+            endpoint_manager_id="endpoint-manager-1",
+            worker_id="worker-1",
         )
-        self.assertEqual(1, len(seeds))
-        seed = seeds["worker-1"]
+        self.assertIsNotNone(seed)
+        assert seed is not None
         delivery_item = json.loads(seed.opaque_delivery_item)
         result_context = json.loads(seed.opaque_result_context)
         self.assertEqual("worker-1", seed.worker_id)
@@ -462,9 +500,10 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             dispatch_started_millis + 3_000,
         )
         self.assertEqual(
-            {},
-            self.deliver_seed_runtime.consume_deliver_seeds(
-                worker_ids=("worker-1",),
+            None,
+            self.deliver_seed_runtime.consume_deliver_seed(
+                endpoint_manager_id="endpoint-manager-1",
+                worker_id="worker-1",
             ),
         )
 
@@ -670,18 +709,20 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         )
         for index in (1, 2):
             worker_id = f"worker-{index}"
-            seeds = self.deliver_seed_runtime.consume_deliver_seeds(
-                worker_ids=(worker_id,),
+            seed = self.deliver_seed_runtime.consume_deliver_seed(
+                endpoint_manager_id=f"endpoint-manager-{index}",
+                worker_id=worker_id,
             )
-            self.assertEqual(1, len(seeds))
-            self.assertEqual(worker_id, seeds[worker_id].worker_id)
+            self.assertIsNotNone(seed)
+            assert seed is not None
+            self.assertEqual(worker_id, seed.worker_id)
             self.assertEqual(
                 f"message-{index}",
-                json.loads(seeds[worker_id].opaque_result_context)["messageId"],
+                json.loads(seed.opaque_result_context)["messageId"],
             )
             self.assertEqual(
                 {"target": f"worker-{index}"},
-                json.loads(seeds[worker_id].opaque_delivery_item)["payload"],
+                json.loads(seed.opaque_delivery_item)["payload"],
             )
 
     def test_expired_item_finalizes_before_worker_acquisition(self) -> None:
@@ -927,8 +968,9 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         ]
         time.sleep(0.12)
         dispatched = self.pacer.dispatch_tasks(config=config)
-        seeds = self.deliver_seed_runtime.consume_deliver_seeds(
-            worker_ids=("worker-1",),
+        seed = self.deliver_seed_runtime.consume_deliver_seed(
+            endpoint_manager_id="endpoint-manager-1",
+            worker_id="worker-1",
         )
 
         self.assertEqual(TaskScoreBand.RUNNING_VISIBLE, held.band)
@@ -936,10 +978,11 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         self.assertEqual(0, reset_round)
         self.assertEqual(0, reset.suffix)
         self.assertEqual(1, dispatched)
-        self.assertEqual(1, len(seeds))
+        self.assertIsNotNone(seed)
+        assert seed is not None
         self.assertEqual(
             "message-2",
-            json.loads(seeds["worker-1"].opaque_result_context)["messageId"],
+            json.loads(seed.opaque_result_context)["messageId"],
         )
 
     def test_item_driven_empty_rechecks_close_after_explicit_threshold(self) -> None:

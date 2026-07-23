@@ -15,7 +15,7 @@ The kernel has four scheduling planes:
 | --- | --- | --- | --- | --- |
 | Task score-band | Which Tasks may enter a scheduling round now? | Task score coordinate and owner facts | Bounded Task ids or an owner-approved score transition | Task scheduling score only |
 | Worker score-band | Which Workers may enter admission or recovery now? | Worker score coordinate and worker-runtime facts | Bounded Worker observations, leases, holds, or polarity movement | Worker scheduling score only |
-| Assignment-dispatch | Which bounded Task/Worker/Item combination becomes delivery evidence? | Due Tasks, Task descriptors, policy-selected Worker acquisition, TaskItem records and Item scores | Optional CandidateWorker cache evidence and Worker-addressed DeliverSeed mailboxes | Candidate cache plus TaskItem score through declared owner primitives |
+| Assignment-dispatch | Which bounded Task/Worker/Item combination becomes delivery evidence? | Due Tasks, Task descriptors, policy-selected Worker acquisition, TaskItem records and Item scores | Optional CandidateWorker cache evidence and Adapter-partitioned DeliverSeed mailboxes | Candidate cache plus TaskItem score through declared owner primitives |
 | Result-routing | How does returned evidence affect Task success finality and Worker disposition? | SeedResults and opaque result context | Owner-local Task and Worker evidence delegated to policy handlers | No private truth; handlers invoke TaskItem and Worker score owners |
 
 These are logical planes, not mandatory deployment modules. Package placement
@@ -55,7 +55,7 @@ Task score acquire
      -> TaskItem observation
      -> Task-scoped PRECOMPUTED or Item-scoped TARGETED candidate acquisition
      -> TaskItem exact claim
-     -> WorkerId-addressed DeliverSeed mailbox
+     -> endpointManagerId-partitioned sparse DeliverSeed mailbox
   -> Worker Delivery Dispatch
      -> consume mailbox and check claim deadline
      -> Worker Adapter command/result protocol
@@ -130,7 +130,7 @@ TaskItemDispatcher
   mailbox, or background lifecycle
 
 DeliverSeedRuntime
-  owns sharded WorkerId single-slot mailboxes; the mailbox is not lifecycle truth
+  owns sparse Adapter HASH mailboxes; the mailbox is not lifecycle truth
 
 SeedResultRuntime
   owns three bounded best-effort outcome-class queues, not Item or Worker truth

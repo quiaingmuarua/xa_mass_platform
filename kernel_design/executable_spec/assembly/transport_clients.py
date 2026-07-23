@@ -1,8 +1,14 @@
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 
-from ..kernel import DeliverSeed, SeedResult, WorkerId
+from ..kernel import (
+    DeliverSeed,
+    DeliverSeedConsumePage,
+    EndpointManagerId,
+    SeedResult,
+    WorkerId,
+)
 from ..redis_runtime import RedisDeliverSeedRuntime, RedisSeedResultRuntime
 from .application import KernelApplicationConfig
 
@@ -16,7 +22,7 @@ def _redis_client(config: KernelApplicationConfig):
 
 
 class DeliverSeedConsumerClient:
-    """External boundary for consuming Worker-addressed assigned seeds."""
+    """External boundary for consuming one Adapter's assigned seeds."""
 
     def __init__(self, config: KernelApplicationConfig | None = None) -> None:
         if config is not None and not isinstance(config, KernelApplicationConfig):
@@ -34,13 +40,28 @@ class DeliverSeedConsumerClient:
     ) -> DeliverSeedConsumerClient:
         return cls(KernelApplicationConfig.from_json(config_json))
 
+    def consume_deliver_seed(
+        self,
+        *,
+        endpoint_manager_id: EndpointManagerId,
+        worker_id: WorkerId,
+    ) -> DeliverSeed | None:
+        return self._runtime.consume_deliver_seed(
+            endpoint_manager_id=endpoint_manager_id,
+            worker_id=worker_id,
+        )
+
     def consume_deliver_seeds(
         self,
         *,
-        worker_ids: Sequence[WorkerId],
-    ) -> Mapping[WorkerId, DeliverSeed]:
+        endpoint_manager_id: EndpointManagerId,
+        cursor: str | None,
+        scan_count: int,
+    ) -> DeliverSeedConsumePage:
         return self._runtime.consume_deliver_seeds(
-            worker_ids=worker_ids,
+            endpoint_manager_id=endpoint_manager_id,
+            cursor=cursor,
+            scan_count=scan_count,
         )
 
 

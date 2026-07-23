@@ -49,6 +49,7 @@ class WorkerAdapterServerTest(unittest.TestCase):
         self.result_commands.append_seed_results.return_value = 1
         self.client = TestClient(
             create_app(
+                endpoint_manager_id="endpoint-manager-1",
                 deliver_seed_consumer=self.consumer,
                 seed_result_commands=self.result_commands,
             )
@@ -69,21 +70,29 @@ class WorkerAdapterServerTest(unittest.TestCase):
             self.assertFalse(hasattr(boundary, "start"))
             self.assertFalse(hasattr(boundary, "stop"))
 
+    def test_endpoint_manager_id_is_required(self) -> None:
+        assert create_app is not None
+        with self.assertRaisesRegex(ValueError, "non-empty"):
+            create_app(
+                endpoint_manager_id="",
+                deliver_seed_consumer=self.consumer,
+                seed_result_commands=self.result_commands,
+            )
+
     def test_poll_returns_204_when_worker_mailbox_is_empty(self) -> None:
-        self.consumer.consume_deliver_seeds.return_value = {}
+        self.consumer.consume_deliver_seed.return_value = None
 
         response = self.client.post("/workers/worker-1/commands:poll")
 
         self.assertEqual(204, response.status_code)
-        self.consumer.consume_deliver_seeds.assert_called_once_with(
-            worker_ids=("worker-1",),
+        self.consumer.consume_deliver_seed.assert_called_once_with(
+            endpoint_manager_id="endpoint-manager-1",
+            worker_id="worker-1",
         )
         self.result_commands.append_seed_results.assert_not_called()
 
     def test_poll_returns_private_command_envelope(self) -> None:
-        self.consumer.consume_deliver_seeds.return_value = {
-            "worker-1": self.seed()
-        }
+        self.consumer.consume_deliver_seed.return_value = self.seed()
 
         with patch(
             "kernel_design.examples.worker_adapter_server._current_time_millis",
@@ -107,9 +116,9 @@ class WorkerAdapterServerTest(unittest.TestCase):
         )
 
     def test_expired_seed_is_dropped_without_result_evidence(self) -> None:
-        self.consumer.consume_deliver_seeds.return_value = {
-            "worker-1": self.seed(claim_until_millis=self.NOW_MILLIS)
-        }
+        self.consumer.consume_deliver_seed.return_value = self.seed(
+            claim_until_millis=self.NOW_MILLIS
+        )
 
         with patch(
             "kernel_design.examples.worker_adapter_server._current_time_millis",
@@ -208,9 +217,15 @@ class WorkerAdapterServerTest(unittest.TestCase):
     def test_injected_boundaries_must_be_supplied_together(self) -> None:
         assert create_app is not None
         with self.assertRaisesRegex(ValueError, "injected together"):
-            create_app(deliver_seed_consumer=self.consumer)
+            create_app(
+                endpoint_manager_id="endpoint-manager-1",
+                deliver_seed_consumer=self.consumer,
+            )
         with self.assertRaisesRegex(ValueError, "injected together"):
-            create_app(seed_result_commands=self.result_commands)
+            create_app(
+                endpoint_manager_id="endpoint-manager-1",
+                seed_result_commands=self.result_commands,
+            )
 
 
 if __name__ == "__main__":

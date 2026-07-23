@@ -64,6 +64,7 @@ from .assignment_dispatch_runtime import (
     CandidateWorkerEntry,
     DeliverSeed,
     DeliverSeedAppendStatus,
+    DeliverSeedConsumePage,
     DeliverSeedRuntime,
 )
 from .seed_result_runtime import (
@@ -128,6 +129,7 @@ __all__ = [
     "CandidateWorkerEntry",
     "DeliverSeed",
     "DeliverSeedAppendStatus",
+    "DeliverSeedConsumePage",
     "DeliverSeedRuntime",
     "SeedResult",
     "SeedResultOutcomeClass",

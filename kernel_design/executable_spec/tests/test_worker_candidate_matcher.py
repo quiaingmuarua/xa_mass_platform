@@ -222,12 +222,16 @@ class WorkerCandidateMatcherTest(RedisWorkerRuntimeFixture):
             },
         )
         self.assertEqual(tuple(rows), ("premium-python-battery", "all"))
-        self.assertTrue(
-            all(
-                not hasattr(entry, "endpoint_manager_id")
+        self.assertEqual(
+            {
+                "worker-1": "endpoint-manager-1",
+                "worker-2": "endpoint-manager-2",
+            },
+            {
+                entry.worker_id: entry.endpoint_manager_id
                 for entries in rows.values()
                 for entry in entries
-            )
+            },
         )
         self.assertEqual(
             {
@@ -241,7 +245,7 @@ class WorkerCandidateMatcherTest(RedisWorkerRuntimeFixture):
             },
         )
 
-    def test_candidate_matcher_does_not_expose_endpoint_manager_id(self) -> None:
+    def test_endpoint_manager_id_is_route_evidence_not_match_context(self) -> None:
         self.upsert_group()
         self.upsert_worker(self.worker_declaration("worker-1"))
 

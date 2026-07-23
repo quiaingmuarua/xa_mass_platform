@@ -351,8 +351,8 @@ by [Worker HOT_ACQUIRE Lease Protocol](doc/scheduling/worker-hot-acquire-lease-p
 Worker Delivery Dispatch owns:
 
 ```text
-WorkerId-addressed single-slot mailbox consumption
-bounded explicit WorkerId polling
+one configured endpointManagerId sparse mailbox
+point WorkerId polling or bounded cursor consumption inside that bucket
 Adapter-private command conversion for the already selected Worker
 SeedResult creation and append to SeedResultRuntime
 ```

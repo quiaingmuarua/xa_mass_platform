@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import zlib
 from collections.abc import Mapping as MappingABC
 from typing import Any, Mapping, Sequence
 
@@ -12,9 +11,11 @@ from ..kernel.assignment_dispatch_runtime import (
     CandidateWorkerEntry,
     DeliverSeed,
     DeliverSeedAppendStatus,
+    DeliverSeedConsumePage,
     DeliverSeedRuntime,
 )
 from ..kernel.task_score_band import TaskId, TimeMillis
+from ..kernel.worker_runtime import EndpointManagerId
 
 _CONSUME_CANDIDATES_SCRIPT = """
 local now_millis = tonumber(ARGV[1])
@@ -31,19 +32,27 @@ end
 return entries
 """
 
-_CONSUME_DELIVER_SEEDS_SCRIPT = """
-local results = {}
+_CONSUME_DELIVER_SEED_SCRIPT = """
+local current = redis.call('HGET', KEYS[1], ARGV[1])
+if not current then
+    return {}
+end
+redis.call('HDEL', KEYS[1], ARGV[1])
+return {ARGV[1], current}
+"""
 
-for index = 1, #ARGV do
+_CONSUME_SCANNED_DELIVER_SEEDS_SCRIPT = """
+local results = {}
+for index = 1, #ARGV, 2 do
     local worker_id = ARGV[index]
+    local observed = ARGV[index + 1]
     local current = redis.call('HGET', KEYS[1], worker_id)
-    if current then
+    if current and current == observed then
         redis.call('HDEL', KEYS[1], worker_id)
         table.insert(results, worker_id)
         table.insert(results, current)
     end
 end
-
 return results
 """
 
@@ -224,6 +233,7 @@ class RedisCandidateWorkerCache(CandidateWorkerCache):
             {
                 "workerId": entry.worker_id,
                 "workerGroupId": entry.worker_group_id,
+                "endpointManagerId": entry.endpoint_manager_id,
                 "workerLeaseScore": entry.worker_lease_score,
             },
             sort_keys=True,
@@ -244,17 +254,21 @@ class RedisCandidateWorkerCache(CandidateWorkerCache):
             if set(payload) != {
                 "workerId",
                 "workerGroupId",
+                "endpointManagerId",
                 "workerLeaseScore",
             }:
                 return None
             worker_id = payload["workerId"]
             worker_group_id = payload["workerGroupId"]
+            endpoint_manager_id = payload["endpointManagerId"]
             worker_lease_score = payload["workerLeaseScore"]
         except (KeyError, TypeError, ValueError, UnicodeDecodeError):
             return None
         if not isinstance(worker_id, str) or not worker_id:
             return None
         if not isinstance(worker_group_id, str) or not worker_group_id:
+            return None
+        if not isinstance(endpoint_manager_id, str) or not endpoint_manager_id:
             return None
         if (
             isinstance(worker_lease_score, bool)
@@ -265,6 +279,7 @@ class RedisCandidateWorkerCache(CandidateWorkerCache):
         return CandidateWorkerEntry(
             worker_id=worker_id,
             worker_group_id=worker_group_id,
+            endpoint_manager_id=endpoint_manager_id,
             worker_lease_score=worker_lease_score,
         )
 
@@ -275,9 +290,7 @@ class RedisCandidateWorkerCache(CandidateWorkerCache):
 
 
 class RedisDeliverSeedRuntime(DeliverSeedRuntime):
-    """Redis-backed sharded Worker DeliverSeed mailbox runtime."""
-
-    SHARD_COUNT = 64
+    """Redis-backed sparse Adapter DeliverSeed mailbox runtime."""
 
     def __init__(
         self,
@@ -293,8 +306,10 @@ class RedisDeliverSeedRuntime(DeliverSeedRuntime):
     def append_deliver_seeds(
         self,
         *,
+        endpoint_manager_id: EndpointManagerId,
         deliver_seeds_by_worker_id: Mapping[str, DeliverSeed],
     ) -> Mapping[str, DeliverSeedAppendStatus]:
+        self._validate_endpoint_manager_id(endpoint_manager_id)
         if not deliver_seeds_by_worker_id:
             return {}
 
@@ -315,9 +330,7 @@ class RedisDeliverSeedRuntime(DeliverSeedRuntime):
         with self.redis.pipeline(transaction=False) as pipeline:
             for worker_id, seed in deliver_seeds_by_worker_id.items():
                 pipeline.hsetnx(
-                    self._deliver_seed_key(
-                        self._deliver_seed_shard_id(worker_id)
-                    ),
+                    self._deliver_seed_key(endpoint_manager_id),
                     worker_id,
                     self._encode_deliver_seed(seed),
                 )
@@ -332,60 +345,106 @@ class RedisDeliverSeedRuntime(DeliverSeedRuntime):
             for worker_id, was_inserted in zip(worker_ids, inserted)
         }
 
+    def consume_deliver_seed(
+        self,
+        *,
+        endpoint_manager_id: EndpointManagerId,
+        worker_id: str,
+    ) -> DeliverSeed | None:
+        self._validate_endpoint_manager_id(endpoint_manager_id)
+        self._validate_worker_ids((worker_id,))
+        raw_result = self.redis.eval(
+            _CONSUME_DELIVER_SEED_SCRIPT,
+            1,
+            self._deliver_seed_key(endpoint_manager_id),
+            worker_id,
+        )
+        values = self._decode_text_sequence(raw_result)
+        if not values:
+            return None
+        seed = self._decode_deliver_seed(values[1])
+        now_millis = self._current_time_millis()
+        if (
+            seed is None
+            or seed.worker_id != worker_id
+            or seed.task_item_claim_until_millis <= now_millis
+        ):
+            return None
+        return seed
+
     def consume_deliver_seeds(
         self,
         *,
-        worker_ids: Sequence[str],
-    ) -> Mapping[str, DeliverSeed]:
-        if not worker_ids:
-            return {}
-        self._validate_worker_ids(worker_ids)
+        endpoint_manager_id: EndpointManagerId,
+        cursor: str | None,
+        scan_count: int,
+    ) -> DeliverSeedConsumePage:
+        self._validate_endpoint_manager_id(endpoint_manager_id)
+        if (
+            isinstance(scan_count, bool)
+            or not isinstance(scan_count, int)
+            or scan_count <= 0
+        ):
+            raise ValueError("scan count must be positive")
+        if cursor is not None and (
+            not isinstance(cursor, str) or not cursor.isdecimal()
+        ):
+            raise ValueError("cursor must be a non-negative Redis cursor")
 
-        worker_ids_by_shard: dict[int, list[str]] = {}
-        for worker_id in worker_ids:
-            shard_id = self._deliver_seed_shard_id(worker_id)
-            worker_ids_by_shard.setdefault(shard_id, []).append(worker_id)
+        key = self._deliver_seed_key(endpoint_manager_id)
+        next_cursor, scanned = self.redis.hscan(
+            key,
+            cursor=0 if cursor is None else int(cursor),
+            count=scan_count,
+        )
+        next_cursor_value = None if int(next_cursor) == 0 else str(next_cursor)
+        if not scanned:
+            return DeliverSeedConsumePage((), next_cursor_value)
+        if not isinstance(scanned, MappingABC):
+            raise RuntimeError("Redis HSCAN returned an invalid response")
 
-        shard_ids = tuple(worker_ids_by_shard)
-        with self.redis.pipeline(transaction=False) as pipeline:
-            for shard_id in shard_ids:
-                pipeline.eval(
-                    _CONSUME_DELIVER_SEEDS_SCRIPT,
-                    1,
-                    self._deliver_seed_key(shard_id),
-                    *worker_ids_by_shard[shard_id],
-                )
-            raw_results = pipeline.execute()
-
+        script_args: list[Any] = []
+        for worker_id, raw_seed in scanned.items():
+            script_args.extend((worker_id, raw_seed))
+        raw_result = self.redis.eval(
+            _CONSUME_SCANNED_DELIVER_SEEDS_SCRIPT,
+            1,
+            key,
+            *script_args,
+        )
+        values = self._decode_text_sequence(raw_result)
         now_millis = self._current_time_millis()
-        consumed: dict[str, DeliverSeed] = {}
-        for raw_result in raw_results:
-            values = self._decode_text_sequence(raw_result)
-            for index in range(0, len(values), 2):
-                worker_id = values[index]
-                seed = self._decode_deliver_seed(values[index + 1])
-                if (
-                    seed is not None
-                    and seed.worker_id == worker_id
-                    and seed.task_item_claim_until_millis > now_millis
-                ):
-                    consumed[worker_id] = seed
-        return {
-            worker_id: consumed[worker_id]
-            for worker_id in worker_ids
-            if worker_id in consumed
-        }
+        deliver_seeds: list[DeliverSeed] = []
+        for index in range(0, len(values), 2):
+            worker_id = values[index]
+            seed = self._decode_deliver_seed(values[index + 1])
+            if (
+                seed is not None
+                and seed.worker_id == worker_id
+                and seed.task_item_claim_until_millis > now_millis
+            ):
+                deliver_seeds.append(seed)
+        return DeliverSeedConsumePage(tuple(deliver_seeds), next_cursor_value)
 
     def _current_time_millis(self) -> TimeMillis:
         seconds, microseconds = self.redis.time()
         return int(seconds) * 1_000 + int(microseconds) // 1_000
 
-    @classmethod
-    def _deliver_seed_shard_id(cls, worker_id: str) -> int:
-        return zlib.crc32(worker_id.encode("utf-8")) % cls.SHARD_COUNT
+    def _deliver_seed_key(self, endpoint_manager_id: EndpointManagerId) -> str:
+        return (
+            f"ad:{self.prefix}:endpoint-manager:"
+            f"{endpoint_manager_id}:deliver-seeds"
+        )
 
-    def _deliver_seed_key(self, shard_id: int) -> str:
-        return f"ad:{self.prefix}:deliver-seeds:{shard_id:02d}"
+    @staticmethod
+    def _validate_endpoint_manager_id(
+        endpoint_manager_id: EndpointManagerId,
+    ) -> None:
+        if (
+            not isinstance(endpoint_manager_id, str)
+            or not endpoint_manager_id
+        ):
+            raise ValueError("endpoint manager id must be non-empty")
 
     @staticmethod
     def _validate_worker_ids(worker_ids: Sequence[str]) -> None:

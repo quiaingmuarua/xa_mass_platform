@@ -41,7 +41,9 @@ append_task_items
 close_task
 
 DeliverSeedConsumerClient
-consume_deliver_seeds(workerIds) -> workerId-to-DeliverSeed map
+consume_deliver_seed(endpointManagerId, workerId) -> DeliverSeed | None
+consume_deliver_seeds(endpointManagerId, cursor, scanCount)
+  -> DeliverSeedConsumePage
 
 SeedResultCommandClient
 append_seed_results
@@ -255,7 +257,8 @@ The Kernel Command Server constructs `KernelApplication` and
 `ResourcesCommandClient` from one resolved configuration. Lifespan starts and
 stops only `KernelApplication`; it has no DeliverSeed or SeedResult route.
 
-The independent Worker Adapter Server constructs only
+The independent Worker Adapter Server is configured with one
+`endpointManagerId` and constructs only
 `DeliverSeedConsumerClient` and `SeedResultCommandClient`. It exposes:
 
 ```text
@@ -268,7 +271,8 @@ added to DeliverSeed, SeedResult, score, or result context.
 
 These are independent caller boundaries, not a claim that production must
 deploy exactly two processes. The current Worker Adapter slice has no login,
-session, or authorization protocol: the path WorkerId directly names a mailbox.
+session, or authorization protocol. The configured endpoint manager selects the
+mailbox bucket; the path WorkerId selects one field inside that bucket.
 A future Worker-facing API may compose login/session, poll, and result under
 the same Adapter owner, but KernelApplication must not own or expose that
 session.

@@ -313,6 +313,7 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
         return CandidateWorkerEntry(
             worker_id=worker_id,
             worker_group_id=worker_group_id,
+            endpoint_manager_id="endpoint-manager-1",
             worker_lease_score=100,
         )
 

@@ -7,6 +7,7 @@ from kernel_design.executable_spec import (
     CandidateWorkerEntry,
     DeliverSeed,
     DeliverSeedAppendStatus,
+    DeliverSeedConsumePage,
     RedisCandidateWorkerCache,
     RedisDeliverSeedRuntime,
 )
@@ -21,6 +22,8 @@ class FakeRedis:
         self.zsets: dict[str, dict[str, int]] = {}
         self.hashes: dict[str, dict[str, str]] = {}
         self.lists: dict[str, list[str]] = {}
+        self.before_exact_consume = None
+        self.hscan_snapshots: dict[str, tuple[str, ...]] = {}
 
     def time(self) -> tuple[int, int]:
         return self.now_millis // 1_000, (self.now_millis % 1_000) * 1_000
@@ -121,6 +124,32 @@ class FakeRedis:
                 removed += 1
         return removed
 
+    def hscan(
+        self,
+        key: str,
+        *,
+        cursor: int,
+        count: int,
+    ) -> tuple[int, dict[str, str]]:
+        start = int(cursor)
+        if start == 0:
+            self.hscan_snapshots[key] = tuple(
+                sorted(self.hashes.get(key, {}))
+            )
+        fields = self.hscan_snapshots.get(key, ())
+        selected_fields = fields[start : start + count]
+        next_cursor = (
+            0 if start + count >= len(fields) else start + count
+        )
+        selected = {
+            field: self.hashes[key][field]
+            for field in selected_fields
+            if field in self.hashes.get(key, {})
+        }
+        if next_cursor == 0:
+            self.hscan_snapshots.pop(key, None)
+        return next_cursor, selected
+
     def eval(
         self,
         script: str,
@@ -147,6 +176,18 @@ class FakeRedis:
             for member in selected:
                 del row[member]
             return selected
+        if "current == observed" in script:
+            if self.before_exact_consume is not None:
+                self.before_exact_consume(key)
+            results = []
+            for index in range(0, len(args), 2):
+                worker_id = str(args[index])
+                observed = args[index + 1]
+                current = self.hget(key, worker_id)
+                if current is not None and current == observed:
+                    self.hdel(key, worker_id)
+                    results.extend((worker_id, current))
+            return results
         if "HDEL" in script:
             results = []
             for worker_id in map(str, args):
@@ -241,7 +282,7 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
             hasattr(self.deliver_seed_runtime, "append_candidate_workers")
         )
 
-    def test_append_deliver_seeds_writes_worker_mailbox_hash(self) -> None:
+    def test_append_deliver_seeds_writes_sparse_adapter_hash(self) -> None:
         seed = DeliverSeed(
             worker_id="worker-1",
             opaque_delivery_item='{"eventCode":"image.resize"}',
@@ -250,6 +291,7 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
         )
 
         result = self.deliver_seed_runtime.append_deliver_seeds(
+            endpoint_manager_id="endpoint-manager-1",
             deliver_seeds_by_worker_id={"worker-1": seed},
         )
 
@@ -257,7 +299,7 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
             {"worker-1": DeliverSeedAppendStatus.APPENDED},
             result,
         )
-        key = "ad:test:deliver-seeds:32"
+        key = "ad:test:endpoint-manager:endpoint-manager-1:deliver-seeds"
         payload = json.loads(self.redis.hashes[key]["worker-1"])
         self.assertEqual(
             {
@@ -280,43 +322,38 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
             }.isdisjoint(payload)
         )
 
-    def test_consume_deliver_seeds_atomically_pops_requested_mailboxes(self) -> None:
+    def test_adapter_buckets_are_isolated(self) -> None:
         first = self._deliver_seed("message-1", "worker-1")
         second = self._deliver_seed("message-2", "worker-2")
         self.deliver_seed_runtime.append_deliver_seeds(
-            deliver_seeds_by_worker_id={
-                "worker-1": first,
-                "worker-2": second,
-            },
+            endpoint_manager_id="endpoint-manager-1",
+            deliver_seeds_by_worker_id={"worker-1": first},
+        )
+        self.deliver_seed_runtime.append_deliver_seeds(
+            endpoint_manager_id="endpoint-manager-2",
+            deliver_seeds_by_worker_id={"worker-2": second},
         )
 
-        self.assertEqual(
-            {"worker-1": first},
-            self.deliver_seed_runtime.consume_deliver_seeds(
-                worker_ids=("worker-1",),
-            ),
-        )
-        self.assertEqual(
-            {"worker-2": second},
-            self.deliver_seed_runtime.consume_deliver_seeds(
-                worker_ids=("worker-1", "worker-2"),
-            ),
-        )
-        self.assertEqual(
-            {},
-            self.deliver_seed_runtime.consume_deliver_seeds(
-                worker_ids=("worker-1", "worker-2"),
-            ),
-        )
-
-        with self.assertRaises(ValueError):
-            self.deliver_seed_runtime.consume_deliver_seeds(
-                worker_ids=("",),
+        self.assertIsNone(
+            self.deliver_seed_runtime.consume_deliver_seed(
+                endpoint_manager_id="endpoint-manager-2",
+                worker_id="worker-1",
             )
-        with self.assertRaises(ValueError):
-            self.deliver_seed_runtime.consume_deliver_seeds(
-                worker_ids=("worker-1", "worker-1"),
-            )
+        )
+        self.assertEqual(
+            first,
+            self.deliver_seed_runtime.consume_deliver_seed(
+                endpoint_manager_id="endpoint-manager-1",
+                worker_id="worker-1",
+            ),
+        )
+        self.assertEqual(
+            second,
+            self.deliver_seed_runtime.consume_deliver_seed(
+                endpoint_manager_id="endpoint-manager-2",
+                worker_id="worker-2",
+            ),
+        )
 
     def test_mailbox_append_never_overwrites_an_occupied_slot(self) -> None:
         first = self._deliver_seed("message-1", "worker-1")
@@ -325,31 +362,35 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
         self.assertEqual(
             {"worker-1": DeliverSeedAppendStatus.APPENDED},
             self.deliver_seed_runtime.append_deliver_seeds(
+                endpoint_manager_id="endpoint-manager-1",
                 deliver_seeds_by_worker_id={"worker-1": first}
             ),
         )
         self.assertEqual(
             {"worker-1": DeliverSeedAppendStatus.OCCUPIED},
             self.deliver_seed_runtime.append_deliver_seeds(
+                endpoint_manager_id="endpoint-manager-1",
                 deliver_seeds_by_worker_id={"worker-1": first}
             ),
         )
         self.assertEqual(
             {"worker-1": DeliverSeedAppendStatus.OCCUPIED},
             self.deliver_seed_runtime.append_deliver_seeds(
+                endpoint_manager_id="endpoint-manager-1",
                 deliver_seeds_by_worker_id={"worker-1": conflicting}
             ),
         )
         self.assertEqual(
-            {"worker-1": first},
-            self.deliver_seed_runtime.consume_deliver_seeds(
-                worker_ids=("worker-1",)
+            first,
+            self.deliver_seed_runtime.consume_deliver_seed(
+                endpoint_manager_id="endpoint-manager-1",
+                worker_id="worker-1",
             ),
         )
 
     def test_mailbox_keeps_expired_or_corrupt_rows_until_consume(self) -> None:
         seed = self._deliver_seed("message-2", "worker-1", 104_000)
-        key = "ad:test:deliver-seeds:32"
+        key = "ad:test:endpoint-manager:endpoint-manager-1:deliver-seeds"
         expired = self._deliver_seed("message-1", "worker-1")
         expired_value = RedisDeliverSeedRuntime._encode_deliver_seed(expired)
         self.redis.hashes[key] = {"worker-1": expired_value}
@@ -358,40 +399,79 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
         self.assertEqual(
             {"worker-1": DeliverSeedAppendStatus.OCCUPIED},
             self.deliver_seed_runtime.append_deliver_seeds(
+                endpoint_manager_id="endpoint-manager-1",
                 deliver_seeds_by_worker_id={"worker-1": seed}
             ),
         )
         self.assertEqual(expired_value, self.redis.hashes[key]["worker-1"])
         self.assertEqual(
-            {},
-            self.deliver_seed_runtime.consume_deliver_seeds(
-                worker_ids=("worker-1",)
+            None,
+            self.deliver_seed_runtime.consume_deliver_seed(
+                endpoint_manager_id="endpoint-manager-1",
+                worker_id="worker-1",
             ),
         )
         self.redis.hashes[key]["worker-1"] = "{bad-json"
         self.assertEqual(
             {"worker-1": DeliverSeedAppendStatus.OCCUPIED},
             self.deliver_seed_runtime.append_deliver_seeds(
+                endpoint_manager_id="endpoint-manager-1",
                 deliver_seeds_by_worker_id={"worker-1": seed}
             ),
         )
         self.assertEqual(
-            {},
-            self.deliver_seed_runtime.consume_deliver_seeds(
-                worker_ids=("worker-1",)
+            None,
+            self.deliver_seed_runtime.consume_deliver_seed(
+                endpoint_manager_id="endpoint-manager-1",
+                worker_id="worker-1",
             ),
         )
         self.assertEqual(
             {"worker-1": DeliverSeedAppendStatus.APPENDED},
             self.deliver_seed_runtime.append_deliver_seeds(
+                endpoint_manager_id="endpoint-manager-1",
                 deliver_seeds_by_worker_id={"worker-1": seed}
             ),
         )
 
-    def test_mailbox_sharding_uses_stable_crc32_vectors(self) -> None:
-        self.assertEqual(32, RedisDeliverSeedRuntime._deliver_seed_shard_id("worker-1"))
-        self.assertEqual(26, RedisDeliverSeedRuntime._deliver_seed_shard_id("worker-2"))
-        self.assertEqual(59, RedisDeliverSeedRuntime._deliver_seed_shard_id("shared"))
+    def test_cursor_scan_consumes_sparse_pages(self) -> None:
+        seeds = tuple(
+            self._deliver_seed(f"message-{index}", f"worker-{index}")
+            for index in range(1, 4)
+        )
+        self.deliver_seed_runtime.append_deliver_seeds(
+            endpoint_manager_id="endpoint-manager-1",
+            deliver_seeds_by_worker_id={
+                seed.worker_id: seed for seed in seeds
+            },
+        )
+
+        first_page = self.deliver_seed_runtime.consume_deliver_seeds(
+            endpoint_manager_id="endpoint-manager-1",
+            cursor=None,
+            scan_count=2,
+        )
+        second_page = self.deliver_seed_runtime.consume_deliver_seeds(
+            endpoint_manager_id="endpoint-manager-1",
+            cursor=first_page.next_cursor,
+            scan_count=2,
+        )
+
+        self.assertEqual(seeds[:2], first_page.deliver_seeds)
+        self.assertEqual("2", first_page.next_cursor)
+        self.assertEqual(seeds[2:], second_page.deliver_seeds)
+        self.assertIsNone(second_page.next_cursor)
+
+    def test_empty_scan_page_preserves_cursor_progress(self) -> None:
+        self.redis.hscan = lambda *_args, **_kwargs: (9, {})
+
+        page = self.deliver_seed_runtime.consume_deliver_seeds(
+            endpoint_manager_id="endpoint-manager-1",
+            cursor="4",
+            scan_count=10,
+        )
+
+        self.assertEqual(DeliverSeedConsumePage((), "9"), page)
 
     def test_consume_drops_expired_corrupt_and_mismatched_mailboxes(self) -> None:
         rows = {
@@ -403,40 +483,75 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
                 self._deliver_seed("mismatch", "other-worker")
             ),
         }
+        key = self.deliver_seed_runtime._deliver_seed_key("endpoint-manager-1")
         for worker_id, value in rows.items():
-            shard_id = RedisDeliverSeedRuntime._deliver_seed_shard_id(worker_id)
-            key = self.deliver_seed_runtime._deliver_seed_key(shard_id)
             self.redis.hset(key, worker_id, value)
 
         self.assertEqual(
-            {},
+            DeliverSeedConsumePage((), None),
             self.deliver_seed_runtime.consume_deliver_seeds(
-                worker_ids=tuple(rows)
+                endpoint_manager_id="endpoint-manager-1",
+                cursor=None,
+                scan_count=10,
             ),
         )
-        self.assertTrue(all(not row for row in self.redis.hashes.values()))
+        self.assertEqual({}, self.redis.hashes[key])
+
+    def test_scanned_value_is_deleted_only_when_it_is_still_current(self) -> None:
+        old_seed = self._deliver_seed("message-1", "worker-1")
+        replacement = self._deliver_seed("message-2", "worker-1")
+        key = self.deliver_seed_runtime._deliver_seed_key("endpoint-manager-1")
+        self.redis.hset(
+            key,
+            "worker-1",
+            RedisDeliverSeedRuntime._encode_deliver_seed(old_seed),
+        )
+        replacement_value = RedisDeliverSeedRuntime._encode_deliver_seed(
+            replacement
+        )
+        self.redis.before_exact_consume = (
+            lambda current_key: self.redis.hset(
+                current_key,
+                "worker-1",
+                replacement_value,
+            )
+        )
+
+        page = self.deliver_seed_runtime.consume_deliver_seeds(
+            endpoint_manager_id="endpoint-manager-1",
+            cursor=None,
+            scan_count=10,
+        )
+
+        self.assertEqual(DeliverSeedConsumePage((), None), page)
+        self.assertEqual(replacement_value, self.redis.hget(key, "worker-1"))
 
     def test_only_one_consumer_obtains_one_worker_mailbox(self) -> None:
         seed = self._deliver_seed("message-1", "worker-1")
         self.deliver_seed_runtime.append_deliver_seeds(
+            endpoint_manager_id="endpoint-manager-1",
             deliver_seeds_by_worker_id={"worker-1": seed}
         )
         competing_runtime = RedisDeliverSeedRuntime(self.redis, prefix="test")
 
         self.assertEqual(
-            {"worker-1": seed},
-            self.deliver_seed_runtime.consume_deliver_seeds(
-                worker_ids=("worker-1",)
+            seed,
+            self.deliver_seed_runtime.consume_deliver_seed(
+                endpoint_manager_id="endpoint-manager-1",
+                worker_id="worker-1",
             ),
         )
-        self.assertEqual(
-            {},
-            competing_runtime.consume_deliver_seeds(worker_ids=("worker-1",)),
+        self.assertIsNone(
+            competing_runtime.consume_deliver_seed(
+                endpoint_manager_id="endpoint-manager-1",
+                worker_id="worker-1",
+            )
         )
 
     def test_mailbox_rejects_expired_or_mismatched_input(self) -> None:
         with self.assertRaises(ValueError):
             self.deliver_seed_runtime.append_deliver_seeds(
+                endpoint_manager_id="endpoint-manager-1",
                 deliver_seeds_by_worker_id={
                     "worker-1": self._deliver_seed(
                         "expired",
@@ -448,7 +563,26 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
         seed = self._deliver_seed("message-1", "worker-1")
         with self.assertRaises(ValueError):
             self.deliver_seed_runtime.append_deliver_seeds(
+                endpoint_manager_id="endpoint-manager-1",
                 deliver_seeds_by_worker_id={"different-worker": seed}
+            )
+        with self.assertRaises(ValueError):
+            self.deliver_seed_runtime.consume_deliver_seeds(
+                endpoint_manager_id="",
+                cursor=None,
+                scan_count=1,
+            )
+        with self.assertRaises(ValueError):
+            self.deliver_seed_runtime.consume_deliver_seeds(
+                endpoint_manager_id="endpoint-manager-1",
+                cursor="invalid",
+                scan_count=1,
+            )
+        with self.assertRaises(ValueError):
+            self.deliver_seed_runtime.consume_deliver_seeds(
+                endpoint_manager_id="endpoint-manager-1",
+                cursor=None,
+                scan_count=0,
             )
 
     def test_append_stores_batch_expiry_as_zset_score(self) -> None:
@@ -484,16 +618,20 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
         self.assertTrue(
             all(
                 set(payload)
-                == {"workerId", "workerGroupId", "workerLeaseScore"}
+                == {
+                    "workerId",
+                    "workerGroupId",
+                    "endpointManagerId",
+                    "workerLeaseScore",
+                }
                 for payload in payloads
             )
         )
 
     def test_consume_atomically_pops_by_score_and_skips_corrupt_rows(self) -> None:
-        legacy_entry = {
+        old_entry_without_route = {
             "workerId": "legacy",
             "workerGroupId": "group-1",
-            "endpointManagerId": "endpoint-1",
             "workerLeaseScore": 250,
         }
         self.redis.zsets[self.key] = {
@@ -501,7 +639,7 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
                 self._entry("expired", 300)
             ): 99_999,
             "{bad-json": 100_500,
-            json.dumps(legacy_entry): 100_750,
+            json.dumps(old_entry_without_route): 100_750,
             RedisCandidateWorkerCache._encode_entry(
                 self._entry("live", 200)
             ): 101_000,
@@ -623,6 +761,7 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
         return CandidateWorkerEntry(
             worker_id=worker_id,
             worker_group_id="image-workers",
+            endpoint_manager_id="endpoint-manager-1",
             worker_lease_score=worker_lease_score,
         )
 

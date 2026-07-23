@@ -8,6 +8,7 @@ from unittest.mock import Mock, call, patch
 from kernel_design.executable_spec import (
     TaskType,
     CandidateWorkerEntry,
+    DeliverSeed,
     DeliverSeedAppendStatus,
     DeliverSeedRuntime,
     TaskDispatchConfig,
@@ -45,7 +46,7 @@ class TaskDispatchPacerTest(unittest.TestCase):
         self.task_catalog = Mock(spec=TaskResourceCatalog)
         self.deliver_seed_runtime = Mock(spec=DeliverSeedRuntime)
         self.deliver_seed_runtime.append_deliver_seeds.side_effect = (
-            lambda *, deliver_seeds_by_worker_id: {
+            lambda *, endpoint_manager_id, deliver_seeds_by_worker_id: {
                 worker_id: DeliverSeedAppendStatus.APPENDED
                 for worker_id in deliver_seeds_by_worker_id
             }
@@ -133,7 +134,7 @@ class TaskDispatchPacerTest(unittest.TestCase):
             }
         )
         self.deliver_seed_runtime.append_deliver_seeds.side_effect = (
-            lambda *, deliver_seeds_by_worker_id: (
+            lambda *, endpoint_manager_id, deliver_seeds_by_worker_id: (
                 events.append("publish")
                 or {
                     worker_id: DeliverSeedAppendStatus.APPENDED
@@ -180,6 +181,12 @@ class TaskDispatchPacerTest(unittest.TestCase):
             remaining_budget_delta=-1,
         )
         self.deliver_seed_runtime.append_deliver_seeds.assert_called_once()
+        self.assertEqual(
+            "endpoint-manager-1",
+            self.deliver_seed_runtime.append_deliver_seeds.call_args.kwargs[
+                "endpoint_manager_id"
+            ],
+        )
         self.warmup_schedule.schedule_candidate_warmups.assert_called_once_with(
             task_ids=("task-1",),
             due_time_millis=self.NOW_MILLIS,
@@ -294,6 +301,44 @@ class TaskDispatchPacerTest(unittest.TestCase):
             ("worker-1", "worker-2"),
             tuple(seed.worker_id for seed in seeds),
         )
+
+    def test_publish_partitions_seeds_by_endpoint_manager(self) -> None:
+        first = DeliverSeed("worker-1", "delivery-1", "context-1", 20_000)
+        second = DeliverSeed("worker-2", "delivery-2", "context-2", 20_000)
+
+        published = self.pacer._publish_deliver_seeds(
+            deliver_seeds_by_endpoint_manager={
+                "endpoint-manager-1": (first,),
+                "endpoint-manager-2": (second,),
+            }
+        )
+
+        self.assertEqual(2, published)
+        self.assertEqual(
+            [
+                call(
+                    endpoint_manager_id="endpoint-manager-1",
+                    deliver_seeds_by_worker_id={"worker-1": first},
+                ),
+                call(
+                    endpoint_manager_id="endpoint-manager-2",
+                    deliver_seeds_by_worker_id={"worker-2": second},
+                ),
+            ],
+            self.deliver_seed_runtime.append_deliver_seeds.call_args_list,
+        )
+
+    def test_publish_rejects_duplicate_worker_across_endpoint_managers(self) -> None:
+        first = DeliverSeed("worker-1", "delivery-1", "context-1", 20_000)
+        second = DeliverSeed("worker-1", "delivery-2", "context-2", 20_000)
+
+        with self.assertRaisesRegex(RuntimeError, "multiple DeliverSeeds"):
+            self.pacer._publish_deliver_seeds(
+                deliver_seeds_by_endpoint_manager={
+                    "endpoint-manager-1": (first,),
+                    "endpoint-manager-2": (second,),
+                }
+            )
 
     def test_no_acquired_worker_does_not_claim_items(self) -> None:
         self._prepare_task("task-1")
@@ -848,10 +893,12 @@ class TaskDispatchPacerTest(unittest.TestCase):
     def _candidate(
         worker_id: str,
         score: int,
+        endpoint_manager_id: str = "endpoint-manager-1",
     ) -> CandidateWorkerEntry:
         return CandidateWorkerEntry(
             worker_id=worker_id,
             worker_group_id="group-1",
+            endpoint_manager_id=endpoint_manager_id,
             worker_lease_score=score,
         )
 

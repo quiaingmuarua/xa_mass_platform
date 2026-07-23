@@ -4,7 +4,11 @@ import inspect
 import unittest
 from unittest.mock import Mock, patch
 
-from kernel_design.executable_spec import DeliverSeed, SeedResult
+from kernel_design.executable_spec import (
+    DeliverSeed,
+    DeliverSeedConsumePage,
+    SeedResult,
+)
 from kernel_design.executable_spec.assembly import (
     DeliverSeedConsumerClient,
     KernelApplicationConfig,
@@ -43,7 +47,7 @@ class TransportClientsTest(unittest.TestCase):
         result_client = SeedResultCommandClient(self.config)
 
         self.assertEqual(
-            {"consume_deliver_seeds"},
+            {"consume_deliver_seed", "consume_deliver_seeds"},
             {
                 name
                 for name, method in inspect.getmembers(
@@ -68,7 +72,15 @@ class TransportClientsTest(unittest.TestCase):
             self.assertFalse(hasattr(client, "start"))
             self.assertFalse(hasattr(client, "stop"))
         self.assertEqual(
-            ["self", "worker_ids"],
+            ["self", "endpoint_manager_id", "worker_id"],
+            list(
+                inspect.signature(
+                    DeliverSeedConsumerClient.consume_deliver_seed
+                ).parameters
+            ),
+        )
+        self.assertEqual(
+            ["self", "endpoint_manager_id", "cursor", "scan_count"],
             list(
                 inspect.signature(
                     DeliverSeedConsumerClient.consume_deliver_seeds
@@ -86,27 +98,42 @@ class TransportClientsTest(unittest.TestCase):
 
     def test_clients_delegate_to_their_redis_runtime(self) -> None:
         seed = DeliverSeed("worker-1", "delivery", "context", 1)
+        page = DeliverSeedConsumePage((seed,), "7")
         result = SeedResult("context", "200", "null")
-        self.deliver_runtime.consume_deliver_seeds.return_value = {
-            "worker-1": seed
-        }
+        self.deliver_runtime.consume_deliver_seed.return_value = seed
+        self.deliver_runtime.consume_deliver_seeds.return_value = page
         self.result_runtime.append_seed_results.return_value = 1
 
         deliver_client = DeliverSeedConsumerClient(self.config)
         result_client = SeedResultCommandClient(self.config)
 
         self.assertEqual(
-            {"worker-1": seed},
+            seed,
+            deliver_client.consume_deliver_seed(
+                endpoint_manager_id="endpoint-manager-1",
+                worker_id="worker-1",
+            ),
+        )
+        self.assertEqual(
+            page,
             deliver_client.consume_deliver_seeds(
-                worker_ids=("worker-1",),
+                endpoint_manager_id="endpoint-manager-1",
+                cursor="3",
+                scan_count=10,
             ),
         )
         self.assertEqual(
             1,
             result_client.append_seed_results(results=(result,)),
         )
+        self.deliver_runtime.consume_deliver_seed.assert_called_once_with(
+            endpoint_manager_id="endpoint-manager-1",
+            worker_id="worker-1",
+        )
         self.deliver_runtime.consume_deliver_seeds.assert_called_once_with(
-            worker_ids=("worker-1",),
+            endpoint_manager_id="endpoint-manager-1",
+            cursor="3",
+            scan_count=10,
         )
         self.result_runtime.append_seed_results.assert_called_once_with(
             results=(result,),
