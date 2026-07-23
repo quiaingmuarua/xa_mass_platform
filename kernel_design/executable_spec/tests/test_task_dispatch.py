@@ -33,6 +33,7 @@ from kernel_design.executable_spec.scheduling.worker_candidate import (
     WorkerCandidateAcquirer,
     WorkerCandidateAcquisitionStrategy,
 )
+from kernel_design.executable_spec.scheduling import TaskItemDispatcher
 
 
 class TaskDispatchPacerTest(unittest.TestCase):
@@ -53,14 +54,19 @@ class TaskDispatchPacerTest(unittest.TestCase):
         self.task_runtime = Mock(spec=TaskRuntime)
         self.candidate_acquirer = Mock(spec=WorkerCandidateAcquirer)
         self.warmup_schedule = Mock(spec=CandidateWarmupSchedule)
+        self.task_item_dispatcher = TaskItemDispatcher(
+            self.item_score,
+            self.task_runtime,
+            self.candidate_acquirer,
+            self.warmup_schedule,
+        )
         self.pacer = TaskDispatchPacer(
             self.task_score,
             self.task_catalog,
             self.deliver_seed_runtime,
             self.item_score,
-            self.task_runtime,
-            self.candidate_acquirer,
             self.warmup_schedule,
+            self.task_item_dispatcher,
         )
         self.config = TaskDispatchConfig(
             task_batch_limit=10,
@@ -70,19 +76,29 @@ class TaskDispatchPacerTest(unittest.TestCase):
             empty_recheck_interval_millis=1_000,
         )
 
-    def test_contract_has_no_candidate_cache_or_worker_score_dependency(self) -> None:
+    def test_pacer_contract_has_only_round_level_dependencies(self) -> None:
         self.assertEqual(
             {
                 "task_score",
                 "task_catalog",
                 "deliver_seed_runtime",
                 "item_score",
+                "candidate_warmup_schedule",
+                "task_item_dispatcher",
+            },
+            set(inspect.signature(TaskDispatchPacer).parameters),
+        )
+
+    def test_item_dispatcher_owns_item_and_candidate_dependencies(self) -> None:
+        self.assertEqual(
+            {
+                "item_score",
                 "task_runtime",
                 "candidate_acquirer",
                 "candidate_warmup_schedule",
                 "delivery_item_encoder",
             },
-            set(inspect.signature(TaskDispatchPacer).parameters),
+            set(inspect.signature(TaskItemDispatcher).parameters),
         )
 
     def test_observes_items_then_acquires_workers_then_exact_claims(self) -> None:

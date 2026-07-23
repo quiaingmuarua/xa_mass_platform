@@ -191,10 +191,12 @@ Task dispatch:
 ```text
 dispatch-visible RUNNING Tasks
   -> suffix 0: observe due Item scores and load existing records
-  -> TASK_DRIVEN: one TaskId PRECOMPUTED request
-  -> ITEM_DRIVEN: one messageId TARGETED request per Item
-  -> preserve CandidateId-to-messageId binding
-  -> exact claim only Worker-backed Items
+  -> TaskItemDispatcher
+     -> TASK_DRIVEN: one TaskId PRECOMPUTED request
+     -> ITEM_DRIVEN: one messageId TARGETED request per Item
+     -> preserve CandidateId-to-messageId binding
+     -> exact claim only Worker-backed Items
+     -> return DeliverSeeds
   -> append DeliverSeeds to WorkerId-addressed mailboxes
   -> same-band reschedule while preserving suffix 0
 
@@ -225,9 +227,14 @@ the dispatch round does not infer type or strategy from Item contents.
   RUNNING/non-hard-pause validation; it never uses it as a cursor or mutates it.
 - Candidate acquisition owns Worker observation, exact lease, and rematch; it
   does not own cache publication.
-- `TaskDispatchPacer` does not access CandidateWorkerCache or
-  WorkerScoreCore directly. It alone owns routine RUNNING same-band dispatch
-  rescheduling and exact empty-count changes.
+- `TaskDispatchPacer` owns bounded RUNNING discovery, suffix lane routing,
+  mailbox publication, routine same-band rescheduling, and exact empty-count
+  changes.
+- `TaskItemDispatcher` owns one suffix-zero Task's Item observation, candidate
+  acquisition, exact Item claim, and DeliverSeed construction. It has no Task
+  score or mailbox-publication authority.
+- Neither `TaskDispatchPacer` nor `TaskItemDispatcher` accesses
+  CandidateWorkerCache or WorkerScoreCore directly.
 - Item observation is not a claim. Exact claim happens only after a Worker is
   bound to that Item.
 - Cache miss, missing index rows, stale Worker evidence, missing records, and

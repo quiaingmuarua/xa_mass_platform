@@ -337,6 +337,12 @@ dispatch-time Worker lease disposition through WorkerScoreCore owner primitives
 queued DeliverSeed creation
 ```
 
+Within Task Dispatch, `TaskDispatchPacer` owns the bounded RUNNING round,
+suffix routing, mailbox publication, and Task-score pacing.
+`TaskItemDispatcher` owns one suffix-zero Task's Item observation, candidate
+acquisition, exact Item claim, and DeliverSeed construction. It is not another
+Pacer or lifecycle owner.
+
 It does not own task lifecycle truth, worker lifecycle truth, Worker score
 encoding/storage, result finality, transport delivery, or transport session
 internals. The canonical allocation/dispatch/result lease sequence is defined

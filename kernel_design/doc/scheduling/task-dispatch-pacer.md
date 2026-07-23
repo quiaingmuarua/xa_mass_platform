@@ -38,17 +38,26 @@ public JSON fields.
 Dependencies:
 
 ```text
-TaskScoreBandCore       RUNNING discovery, suffix CAS, pacing, and close
-TaskResourceCatalog     bounded Task allocation descriptors
-TaskItemScoreBandCore   due Item observation, ACTIVE existence, exact claim
-TaskRuntime             canonical Item records
-WorkerCandidateAcquirer PRECOMPUTED or TARGETED Worker acquisition
-CandidateWarmupSchedule TASK_DRIVEN replenishment hints
-DeliverSeedRuntime      WorkerId-addressed single-slot mailboxes
+TaskDispatchPacer
+  TaskScoreBandCore       RUNNING discovery, suffix CAS, pacing, and close
+  TaskResourceCatalog     bounded Task allocation descriptors
+  TaskItemScoreBandCore   ACTIVE existence query for empty recheck
+  CandidateWarmupSchedule TASK_DRIVEN reset hints
+  TaskItemDispatcher      one suffix-zero Task's Item dispatch
+  DeliverSeedRuntime      round-level Worker mailbox publication
+
+TaskItemDispatcher
+  TaskItemScoreBandCore   due Item observation, expiry/finality, exact claim
+  TaskRuntime             canonical Item records
+  WorkerCandidateAcquirer PRECOMPUTED or TARGETED Worker acquisition
+  CandidateWarmupSchedule TASK_DRIVEN replenishment hints
+  delivery item encoder   opaque Worker command payload
 ```
 
-The Pacer does not read CandidateWorker cache or Worker score directly. Those
-details remain behind `WorkerCandidateAcquirer`.
+`TaskItemDispatcher` has no background lifecycle and does not scan Tasks,
+rewrite Task score, publish mailboxes, or perform empty recheck. The Pacer does
+not read CandidateWorker cache or Worker score directly. Those details remain
+behind `WorkerCandidateAcquirer`.
 
 ## Round Flow
 
@@ -58,16 +67,18 @@ One round computes its dispatch time and Item claim deadline once:
 2. Batch-load current score states and Task descriptors.
 3. For `suffix > 0`, skip Worker acquisition and Item claim and add the Task to
    the activity-check batch.
-4. For `suffix = 0`, observe record-backed due ACTIVE Items.
+4. For `suffix = 0`, ask `TaskItemDispatcher` to observe record-backed due
+   ACTIVE Items.
 5. Promote observed zero-budget Items and Items whose persisted
    `expireAtMillis <= roundNowMillis` to `FINAL_FAILED`.
 6. If no dispatchable Item remains, add the Task to the activity-check batch.
-7. Otherwise acquire Workers, exact-claim only Worker-backed Items, build
-   `DeliverSeed` values, publish once to WorkerId-addressed mailboxes, and
-   preserve suffix zero while advancing ordinary dispatch time. `APPENDED`
-   counts as publication; `OCCUPIED` leaves the existing mailbox untouched and
-   relies on the current Item claim and Worker lease expiry.
-8. Call `has_active_items` once for the activity-check batch and apply the
+7. Otherwise `TaskItemDispatcher` acquires Workers, exact-claims only
+   Worker-backed Items, and returns `DeliverSeed` values.
+8. The Pacer aggregates all returned Seeds, publishes once to WorkerId-addressed
+   mailboxes, and preserves suffix zero while advancing ordinary dispatch time.
+   `APPENDED` counts as publication; `OCCUPIED` leaves the existing mailbox
+   untouched and relies on the current Item claim and Worker lease expiry.
+9. Call `has_active_items` once for the activity-check batch and apply the
    recheck transition rules below.
 
 Observation precedes Worker acquisition. Worker acquisition precedes Item

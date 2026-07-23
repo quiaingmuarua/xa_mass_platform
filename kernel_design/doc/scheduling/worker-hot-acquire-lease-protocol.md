@@ -115,9 +115,9 @@ The returned fence, unchanged or renewed, is written into
 `opaqueResultContext`.
 
 PRECOMPUTED miss or rejected evidence never falls back to TARGETED acquisition.
-TaskDispatchPacer never calls Worker score directly. It chooses one path
-from `TaskDescriptor.taskType`: PRECOMPUTED for Task-owned rules or
-TARGETED for Item-owned rules. Neither the Pacer nor PRECOMPUTED acquisition
+`TaskItemDispatcher` never calls Worker score directly. It chooses one path
+from `TaskDescriptor.taskType`: PRECOMPUTED for Task-owned rules or TARGETED
+for Item-owned rules. Neither the Dispatcher nor PRECOMPUTED acquisition
 decodes scores, clears dirty, or releases rejected candidates.
 
 ## Dirty Fence
@@ -248,7 +248,8 @@ cross-owner transaction.
 | WorkerCandidateAcquirer TARGETED | explicit point/index source, exact lease and full match | no cache read/write or fallback |
 | WorkerCandidateAcquirer PRECOMPUTED | cache consume, exact active-fence validation/renewal and rematch | no HOT scan or fallback |
 | TaskWorkerAllocationPacer | retain Task-owned rule Tasks, acquire HOT-pool candidates and publish cache evidence | no direct Worker-score or result handling |
-| TaskDispatchPacer | resolve PRECOMPUTED/TARGETED from immutable TaskType, preserve binding, claim and publish DeliverSeed | no cache/Worker-score access or release |
+| TaskItemDispatcher | resolve PRECOMPUTED/TARGETED from immutable TaskType, preserve binding, claim Item and build DeliverSeed | no Task-score, mailbox, cache or Worker-score access |
+| TaskDispatchPacer | bounded Task round, suffix routing, mailbox publication and Task-score pacing | no candidate acquisition, Item claim or Worker-score access |
 | Worker Delivery Dispatch | mailbox consume, deadline check, private wire conversion and SeedResult append | no Worker selection or score parsing/mutation |
 | Future trusted Adapter | direct pre-execution rejection evidence | no inferred `3xxx` from timeout, missing response or mailbox age |
 | ResultRoutingPacer | bounded consume, context decode, owner-key grouping and handler delegation | no direct Task/Worker owner dependency, Worker selection or exact subcode policy |
@@ -266,7 +267,8 @@ payload.
 - Do not expose score encoding, dirty bit, sign or timeSlot to callers.
 - Do not let active renewal clear dirty.
 - Do not let PRECOMPUTED acquisition fall back to TARGETED acquisition.
-- Do not let TaskDispatchPacer call WorkerScoreCore directly.
+- Do not let TaskItemDispatcher or TaskDispatchPacer call WorkerScoreCore
+  directly.
 - Do not release rejected dispatch candidates as compensation.
 - Do not treat missing result as `3xxx`.
 - Do not let old result evidence mutate a newer Worker lease.

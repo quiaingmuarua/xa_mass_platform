@@ -124,6 +124,11 @@ CandidateWarmupSchedule
   owns disposable TASK_DRIVEN cache-replenishment hints only; it is not Task
   score, assignment, or liveness truth
 
+TaskItemDispatcher
+  owns one suffix-zero Task's bounded Item observation, Worker acquisition,
+  exact Item claim, and DeliverSeed construction; it owns no Task score,
+  mailbox, or background lifecycle
+
 DeliverSeedRuntime
   owns sharded WorkerId single-slot mailboxes; the mailbox is not lifecycle truth
 

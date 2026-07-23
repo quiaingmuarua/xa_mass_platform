@@ -57,6 +57,7 @@ from kernel_design.executable_spec.assembly.application import (
 from kernel_design.executable_spec.scheduling.worker_candidate import (
     WorkerCandidateAcquirer,
 )
+from kernel_design.executable_spec.scheduling import TaskItemDispatcher
 from kernel_design.executable_spec.redis_runtime.assignment_dispatch import (
     RedisCandidateWarmupSchedule,
 )
@@ -163,14 +164,19 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             self.task_score,
             self.task_catalog,
         )
+        task_item_dispatcher = TaskItemDispatcher(
+            self.item_score,
+            self.task_runtime,
+            candidate_acquirer,
+            self.warmup_schedule,
+        )
         self.pacer = TaskDispatchPacer(
             self.task_score,
             self.task_catalog,
             self.deliver_seed_runtime,
             self.item_score,
-            self.task_runtime,
-            candidate_acquirer,
             self.warmup_schedule,
+            task_item_dispatcher,
         )
 
     def test_worker_mailbox_has_one_atomic_consumer(self) -> None:

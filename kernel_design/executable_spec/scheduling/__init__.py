@@ -1,6 +1,7 @@
 from .task_dispatch import (
     TaskDispatchConfig,
     TaskDispatchPacer,
+    TaskItemDispatcher,
 )
 from .result_routing import (
     ResultRoutingConfig,
@@ -39,6 +40,7 @@ __all__ = [
     "TaskResultHandler",
     "TaskDispatchConfig",
     "TaskDispatchPacer",
+    "TaskItemDispatcher",
     "DueTaskItemAdmissionPolicy",
     "RunningSoftLimitSystemAdmissionPolicy",
     "SystemAdmissionPolicy",
