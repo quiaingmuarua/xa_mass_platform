@@ -29,10 +29,15 @@ Task score admission and visibility
   -> TaskType profile
      -> TASK_DRIVEN: Task rule, candidate warmup/cache, PRECOMPUTED acquisition
      -> ITEM_DRIVEN: TaskItem rule, no cache, TARGETED acquisition
-  -> Task dispatch
+  -> Task Dispatch
      -> ACTIVE Item: Worker score lease/validation -> TaskItem claim
-                     -> DeliverSeed / SeedResult -> result-routing
+                     -> DeliverSeed mailbox
      -> no ACTIVE Item: shared empty recheck and emptyCloseAtMillis policy
+  -> Worker Delivery Dispatch
+     -> Worker Adapter command/result protocol
+     -> SeedResult
+  -> Result Routing
+     -> TaskItem and Worker truth convergence
 ```
 
 These are scheduling planes, not necessarily modules. A first Python kernel may
@@ -149,15 +154,15 @@ For process assembly or server entry work:
 6. [executable_spec/assembly/transport_clients.py](executable_spec/assembly/transport_clients.py)
 7. [executable_spec/tests/test_kernel_application.py](executable_spec/tests/test_kernel_application.py)
 8. [executable_spec/tests/test_resources_command_client.py](executable_spec/tests/test_resources_command_client.py)
-9. [examples/fastapi_server.py](examples/fastapi_server.py)
+9. [examples/kernel_command_server.py](examples/kernel_command_server.py)
 
-For an external transport-adapter process or polling Worker:
+For Worker Delivery Dispatch or a polling Worker:
 
-1. [examples/local_function_adapter/README.md](examples/local_function_adapter/README.md)
-2. [doc/scheduling/deliver-seed-outbound-delivery.md](doc/scheduling/deliver-seed-outbound-delivery.md)
+1. [examples/worker-adapter-server.md](examples/worker-adapter-server.md)
+2. [doc/scheduling/worker-delivery-dispatch.md](doc/scheduling/worker-delivery-dispatch.md)
 3. [doc/scheduling/result-routing-scheduling.md](doc/scheduling/result-routing-scheduling.md)
 4. [doc/kernel-application-assembly.md](doc/kernel-application-assembly.md)
-5. [examples/local_function_adapter/adapter.py](examples/local_function_adapter/adapter.py)
+5. [examples/worker_adapter_server.py](examples/worker_adapter_server.py)
 6. [executable_spec/assembly/transport_clients.py](executable_spec/assembly/transport_clients.py)
 
 ## 2.1 Python Naming Rules
@@ -337,18 +342,20 @@ encoding/storage, result finality, transport delivery, or transport session
 internals. The canonical allocation/dispatch/result lease sequence is defined
 by [Worker HOT_ACQUIRE Lease Protocol](doc/scheduling/worker-hot-acquire-lease-protocol.md).
 
-DeliverSeed outbound delivery owns:
+Worker Delivery Dispatch owns:
 
 ```text
 WorkerId-addressed single-slot mailbox consumption
 bounded explicit WorkerId polling
-consumer-local Worker resolution
-transport submit for the already selected Worker
+Adapter-private command conversion for the already selected Worker
 SeedResult creation and append to SeedResultRuntime
 ```
 
-It does not select Workers, claim Items, mutate Task score, interpret Worker
-score, or renew/release Worker leases.
+Its boundary starts after Task Dispatch handles mailbox publication and ends
+after SeedResult append. It does not select Workers, claim Items, mutate Task
+score, interpret Worker score, or renew/release Worker leases. The current
+polling HTTP slice accepts Worker-originated `200/1xxx`; `3xxx` is reserved for
+a future trusted Adapter with direct pre-execution rejection evidence.
 
 Result-routing owns:
 

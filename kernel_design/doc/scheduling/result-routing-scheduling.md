@@ -52,6 +52,12 @@ Outcome classification is exact:
 only the class. A `200` must carry a non-empty opaque payload; JSON `"null"`
 represents a successful handler with no business return value.
 
+The current Worker Adapter result endpoint accepts Worker-originated `200` and
+`1xxx` only. The `3xxx` queue remains a kernel protocol lane for a future
+trusted Adapter that can prove a delivery was rejected before entering Worker
+execution. Result routing does not distinguish producers and never derives
+`3xxx` from timeout, missing response, or mailbox age.
+
 Each class has an independent Redis LIST. The result context remains opaque to
 the queue runtime and carries `taskId`, `messageId`, `workerId`,
 `workerGroupId`, and opaque `workerLeaseScore`. `workerGroupId` is the
@@ -63,8 +69,8 @@ DeliverSeed cutoff used before Worker submit.
 ## Routing Round
 
 One round calls the three class lanes in a fixed implementation order. Normal
-protocol produces one logical outcome per DeliverSeed, although transport may
-duplicate the same evidence. Duplicate queue records converge through
+protocol produces one logical outcome per DeliverSeed, although Worker Delivery
+Dispatch may duplicate the same evidence. Duplicate queue records converge through
 last-success storage and exact score fences; they do not create a second Item
 or Worker owner. If contradictory classes for one exact Worker lease do arrive,
 the first applicable exact CAS in that fixed order wins; this is unsupported
@@ -190,7 +196,7 @@ malformed context or result in the wrong class queue
 Worker STALE / NOOP
   -> does not roll back Item or result truth
 
-Adapter or Worker produces no SeedResult
+Worker Delivery Dispatch or Worker produces no SeedResult
   -> UNKNOWN; Item claim and Worker lease expiry recover
 
 process crash after queue pop

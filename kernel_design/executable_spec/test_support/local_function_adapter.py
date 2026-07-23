@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from time import time_ns
 from types import MappingProxyType
 
-from ...executable_spec.assembly import (
+from ..assembly import (
     DeliverSeedConsumerClient,
     SeedResult,
     SeedResultCommandClient,
@@ -22,7 +22,7 @@ ADAPTER_WORKER_UNAVAILABLE_OUTCOME_CODE = "3001"
 
 @dataclass(frozen=True, slots=True)
 class WorkerMeta:
-    """Process-local context supplied to a local Worker handler."""
+    """Process-local context supplied to a test Worker handler."""
 
     attributes: Mapping[str, object]
 
@@ -60,7 +60,7 @@ EventHandler = Callable[[Mapping[str, object], WorkerMeta], EventHandlerResult]
 
 
 class LocalFunctionTransportAdapter:
-    """External transport process backed by local Python handlers."""
+    """Deterministic test harness backed by local Python handlers."""
 
     def __init__(
         self,

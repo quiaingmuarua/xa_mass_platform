@@ -160,12 +160,16 @@ metadata to recover the Worker score bucket:
   -> exact release preserving positive polarity
 
 3xxx
-  -> Adapter confirmed execution was not entered
+  -> a trusted Adapter confirmed this attempt did not enter Worker execution
   -> exact CAS from HOT_ACQUIRE to RECOVERY_RECHECK
 ```
 
-The Adapter emits evidence only; it never mutates score. Result routing invokes
-WorkerScoreCore and treats Worker disposition independently from Item movement.
+A Worker Delivery Dispatch producer emits evidence only; it never mutates
+score. The current
+polling Worker endpoint accepts only `200` and `1xxx`; it cannot manufacture
+`3xxx`. That class is reserved for a future trusted Adapter that owns direct
+pre-execution rejection evidence. Result routing invokes WorkerScoreCore and
+treats Worker disposition independently from Item movement.
 
 Every result submits its own exact lease evidence without cross-class winner
 aggregation. Stale evidence cannot release or demote a newer lease. Conflicting
@@ -222,10 +226,11 @@ demand, bounded classification lag is allowed.
 | Allocation | unmatched or publication failure | retain short lease until expiry |
 | PRECOMPUTED acquisition | dirty/recovery/expired/stale fence or rematch failure | consume candidate, do not claim Item |
 | Item dispatch | Item absent or claim lost | no release; leases expire |
-| Dispatch | queue append failed or ambiguous | no compensation |
-| Adapter | expired or malformed seed | drop; no synthetic result |
-| Adapter | Worker/handler unavailable | emit `3xxx` |
-| Adapter | Worker execution failure | emit `1xxx` |
+| Task Dispatch | mailbox `OCCUPIED`, append failed, or result ambiguous | preserve existing mailbox; no compensation |
+| Worker Delivery Dispatch | expired or malformed Seed | drop; no synthetic result |
+| Polling Worker | unsupported EventCode, handler failure, or execution failure after entry | emit `1xxx` |
+| Future trusted Adapter | direct evidence that execution was not entered | may emit `3xxx` |
+| Worker Delivery Dispatch | response lost, process crash, or no result evidence | `UNKNOWN`; claim and lease expiry recover |
 | Result | `200/1xxx` | exact release |
 | Result | `3xxx` | exact RECOVERY_RECHECK demotion |
 | Result | malformed/missing evidence | no guessed mutation; expiry recovers |
@@ -244,7 +249,8 @@ cross-owner transaction.
 | WorkerCandidateAcquirer PRECOMPUTED | cache consume, exact active-fence validation/renewal and rematch | no HOT scan or fallback |
 | TaskWorkerAllocationPacer | retain Task-owned rule Tasks, acquire HOT-pool candidates and publish cache evidence | no direct Worker-score or result handling |
 | TaskDispatchPacer | resolve PRECOMPUTED/TARGETED from immutable TaskType, preserve binding, claim and publish DeliverSeed | no cache/Worker-score access or release |
-| External Adapter | local final-hop observation and execution evidence | no score parsing or mutation |
+| Worker Delivery Dispatch | mailbox consume, deadline check, private wire conversion and SeedResult append | no Worker selection or score parsing/mutation |
+| Future trusted Adapter | direct pre-execution rejection evidence | no inferred `3xxx` from timeout, missing response or mailbox age |
 | ResultRoutingPacer | bounded consume, context decode, owner-key grouping and handler delegation | no direct Task/Worker owner dependency, Worker selection or exact subcode policy |
 | Result-routing handlers | owner-local Task finality and Worker disposition policy | no queue ownership, score decoding or cross-owner truth |
 

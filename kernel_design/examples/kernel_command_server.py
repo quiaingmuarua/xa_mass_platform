@@ -9,12 +9,10 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 from kernel_design.executable_spec.assembly import (
     TaskType,
-    DeliverSeed,
-    DeliverSeedConsumerClient,
     KernelApplication,
     KernelApplicationConfig,
     ResourcesCommandClient,
@@ -86,19 +84,6 @@ class AppendTaskItemsRequest(BaseModel):
     items: list[TaskItemRequest]
 
 
-class ConsumeDeliverSeedsRequest(BaseModel):
-    worker_ids: list[str] = Field(alias="workerIds")
-
-    @field_validator("worker_ids")
-    @classmethod
-    def validate_worker_ids(cls, worker_ids: list[str]) -> list[str]:
-        if any(not worker_id for worker_id in worker_ids):
-            raise ValueError("Worker ids must be non-empty")
-        if len(set(worker_ids)) != len(worker_ids):
-            raise ValueError("Worker ids must not contain duplicates")
-        return worker_ids
-
-
 def _result_payload(result: Any) -> dict[str, Any]:
     payload: dict[str, Any] = {"status": result.status.value}
     if result.reason is not None:
@@ -161,26 +146,14 @@ def _result_map_payload(
     }
 
 
-def _deliver_seed_payload(seed: DeliverSeed) -> dict[str, Any]:
-    return {
-        "workerId": seed.worker_id,
-        "opaqueDeliveryItem": seed.opaque_delivery_item,
-        "opaqueResultContext": seed.opaque_result_context,
-        "taskItemClaimUntilMillis": seed.task_item_claim_until_millis,
-    }
-
-
 def create_app(
     *,
     config_json: str | None = None,
     application: KernelApplication | None = None,
     resources_client: ResourcesCommandClient | None = None,
-    deliver_seed_consumer: DeliverSeedConsumerClient | None = None,
 ) -> FastAPI:
     if config_json is not None and (
-        application is not None
-        or resources_client is not None
-        or deliver_seed_consumer is not None
+        application is not None or resources_client is not None
     ):
         raise ValueError(
             "config_json and injected application boundaries are mutually exclusive"
@@ -188,26 +161,21 @@ def create_app(
     injected = (
         application,
         resources_client,
-        deliver_seed_consumer,
     )
     if any(boundary is not None for boundary in injected) and not all(
         boundary is not None for boundary in injected
     ):
         raise ValueError(
-            "application, resources_client, and deliver_seed_consumer "
-            "must be injected together"
+            "application and resources_client must be injected together"
         )
     if application is None:
         config = KernelApplicationConfig.from_json(config_json)
         kernel_application = KernelApplication(config)
         resource_commands = ResourcesCommandClient(config)
-        deliver_seed_commands = DeliverSeedConsumerClient(config)
     else:
         assert resources_client is not None
-        assert deliver_seed_consumer is not None
         kernel_application = application
         resource_commands = resources_client
-        deliver_seed_commands = deliver_seed_consumer
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -217,10 +185,9 @@ def create_app(
         finally:
             kernel_application.stop()
 
-    app = FastAPI(title="Kernel Executable Spec", lifespan=lifespan)
+    app = FastAPI(title="Kernel Command API", lifespan=lifespan)
     app.state.kernel_application = kernel_application
     app.state.resources_command_client = resource_commands
-    app.state.deliver_seed_consumer_client = deliver_seed_commands
 
     @app.exception_handler(ValueError)
     async def invalid_contract_value(
@@ -315,27 +282,14 @@ def create_app(
             kernel_application.append_task_items(task_id=task_id, items=items)
         )
 
-    @app.post("/deliver-seeds:consume")
-    def consume_deliver_seeds(
-        request: ConsumeDeliverSeedsRequest,
-    ) -> list[dict[str, Any]]:
-        seeds_by_worker_id = deliver_seed_commands.consume_deliver_seeds(
-            worker_ids=tuple(request.worker_ids),
-        )
-        return [
-            _deliver_seed_payload(seeds_by_worker_id[worker_id])
-            for worker_id in request.worker_ids
-            if worker_id in seeds_by_worker_id
-        ]
-
     return app
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Start the kernel FastAPI example.")
+    parser = argparse.ArgumentParser(description="Start the Kernel Command Server.")
     parser.add_argument("--config", type=Path, help="optional kernel JSON config")
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--port", type=int, default=18080)
     parser.add_argument(
         "--log-level",
         choices=("debug", "info", "warning", "error"),
@@ -350,7 +304,7 @@ def main() -> None:
     try:
         import uvicorn
     except ImportError as error:
-        raise RuntimeError("uvicorn is required for the FastAPI example") from error
+        raise RuntimeError("uvicorn is required for the Kernel Command Server") from error
     uvicorn.run(
         create_app(config_json=config_json),
         host=args.host,

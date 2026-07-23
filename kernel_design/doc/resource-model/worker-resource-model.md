@@ -614,8 +614,9 @@ item `eventCode` resolves the handler only after the task has a selected worker
 group and assignment-dispatch has selected a concrete worker.
 
 Live adapter / transport facts are not part of the public worker resource model.
-`endpointManagerId` remains declaration metadata for compatibility with the
-current resource shape but is not read by scheduling or delivery. Adapter
+`endpointManagerId` remains required immutable declaration metadata in the
+current executable-spec shape but is not read by scheduling or delivery. It is
+not a mailbox address, session identity, or reachability signal. Adapter
 implementation identity, session, route, connection, and polling-channel facts
 remain transport-local. The WorkerId mailbox is kernel handoff state, not live
 transport state. If a policy needs a network category, expose it as a Worker

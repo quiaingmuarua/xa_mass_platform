@@ -45,7 +45,7 @@ class DeliverSeedConsumerClient:
 
 
 class SeedResultCommandClient:
-    """External transport boundary for appending result evidence."""
+    """Worker Delivery Dispatch boundary for appending result evidence."""
 
     def __init__(self, config: KernelApplicationConfig | None = None) -> None:
         if config is not None and not isinstance(config, KernelApplicationConfig):

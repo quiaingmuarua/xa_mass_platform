@@ -157,6 +157,11 @@ opaqueResultContext
 taskItemClaimUntilMillis
 ```
 
+Task Dispatch ends when the Worker-addressed mailbox append result is handled.
+It does not consume the mailbox, create a `TASK_SEED` wire command, call a
+Worker, or append a `SeedResult`; those operations belong to Worker Delivery
+Dispatch.
+
 ## Failure And Concurrency
 
 - Missing Task, descriptor, Item, Worker, or claim success is a bounded no-op.
@@ -165,8 +170,11 @@ taskItemClaimUntilMillis
   by the bounded round.
 - Unused or failed Worker leases expire naturally; this Pacer does not release
   or demote them.
-- DeliverSeed append is fail-fast per endpoint queue; earlier queue writes are
-  not rolled back.
+- The round sends one `workerId -> DeliverSeed` Map to `DeliverSeedRuntime`.
+  `APPENDED` counts as publication; `OCCUPIED` preserves the existing mailbox
+  value and is a bounded no-op for the new Seed.
+- Cross-shard mailbox writes are not atomic. A runtime failure does not roll
+  back Workers whose mailbox append already completed.
 - Explicit terminal close has precedence. Existing Items, claims, seeds, or
   late results are not rolled back and cannot reopen Task score.
 
@@ -180,4 +188,5 @@ taskItemClaimUntilMillis
 - Do not access CandidateWorker cache or Worker score directly.
 - Do not add PRECOMPUTED-miss TARGETED fallback.
 - Do not expose the max empty count or recheck interval through TaskDescriptor.
-- Do not call transport or result-routing directly.
+- Do not call Worker Delivery Dispatch or Result Routing directly.
+- Do not route or group DeliverSeeds by endpoint manager, Adapter, or session.

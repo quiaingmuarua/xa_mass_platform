@@ -11,11 +11,16 @@ try:
 except ImportError:  # pragma: no cover - exercised only without redis-py
     redis_module = None  # type: ignore[assignment]
 
-from kernel_design.examples.local_function_adapter import (
-    EventHandlerResult,
-    LocalFunctionTransportAdapter,
-    WorkerMeta,
-)
+try:
+    from fastapi.testclient import TestClient
+
+    from kernel_design.examples.worker_adapter_server import (
+        create_app as create_worker_adapter_app,
+    )
+except (ImportError, RuntimeError):  # pragma: no cover - missing example dependencies
+    TestClient = None  # type: ignore[assignment,misc]
+    create_worker_adapter_app = None  # type: ignore[assignment]
+
 from kernel_design.executable_spec import (
     RedisTaskItemScoreBandCore,
     RedisWorkerScoreCore,
@@ -45,7 +50,10 @@ _REDIS_URL = os.environ.get("KERNEL_DESIGN_REDIS_URL")
 
 
 @unittest.skipUnless(
-    redis_module is not None and _REDIS_URL,
+    redis_module is not None
+    and _REDIS_URL
+    and TestClient is not None
+    and create_worker_adapter_app is not None,
     "set KERNEL_DESIGN_REDIS_URL to run result-routing Redis closure proof",
 )
 class ResultRoutingIntegrationTest(unittest.TestCase):
@@ -70,9 +78,12 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         )
         self.resources = ResourcesCommandClient(self.config)
         self.application = KernelApplication(self.config)
-        self.adapter = LocalFunctionTransportAdapter(
-            deliver_seed_consumer=DeliverSeedConsumerClient(self.config),
-            seed_result_commands=SeedResultCommandClient(self.config),
+        assert create_worker_adapter_app is not None
+        self.worker_adapter = TestClient(
+            create_worker_adapter_app(
+                deliver_seed_consumer=DeliverSeedConsumerClient(self.config),
+                seed_result_commands=SeedResultCommandClient(self.config),
+            )
         )
         self.item_score = RedisTaskItemScoreBandCore(
             self.redis,
@@ -85,6 +96,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.application.stop()
+        self.worker_adapter.close()
         keys = tuple(self.redis.scan_iter(match=f"*{self.prefix}*"))
         if keys:
             self.redis.delete(*keys)
@@ -121,14 +133,6 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
                     else frozenset()
                 ),
             )
-        )
-        self.adapter.register_worker("worker-1", WorkerMeta({"runtime": "local"}))
-        self.adapter.register_event_handler(
-            "image.resize",
-            lambda payload, worker: EventHandlerResult(
-                "200",
-                {"handled": payload["source"], "runtime": worker.attributes["runtime"]},
-            ),
         )
         worker_result = self.resources.upsert_worker(
             declaration=WorkerDeclaration(
@@ -172,12 +176,42 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         )
 
         deadline = time.monotonic() + 3
-        handled = 0
-        while time.monotonic() < deadline and handled == 0:
-            handled = self.adapter.drain_once(limit=10)
-            if handled == 0:
-                time.sleep(0.02)
-        self.assertEqual(1, handled)
+        poll_response = None
+        while time.monotonic() < deadline:
+            poll_response = self.worker_adapter.post(
+                "/workers/worker-1/commands:poll"
+            )
+            if poll_response.status_code == 200:
+                break
+            self.assertEqual(204, poll_response.status_code)
+            time.sleep(0.02)
+        self.assertIsNotNone(poll_response)
+        assert poll_response is not None
+        self.assertEqual(200, poll_response.status_code)
+        command = poll_response.json()
+        self.assertEqual("TASK_SEED", command["messageType"])
+        delivery_item = json.loads(command["opaqueDeliveryItem"])
+        self.assertEqual("image.resize", delivery_item["eventCode"])
+
+        result_response = self.worker_adapter.post(
+            "/workers/worker-1/results",
+            json={
+                "commandId": command["commandId"],
+                "messageType": "TASK_SEED_RESULT",
+                "opaqueResultContext": command["opaqueResultContext"],
+                "outcomeCode": "200",
+                "opaqueResultPayload": json.dumps(
+                    {
+                        "handled": delivery_item["payload"]["source"],
+                        "runtime": "polling",
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+            },
+        )
+        self.assertEqual(202, result_response.status_code)
+        self.assertEqual({"accepted": True}, result_response.json())
 
         state = None
         deadline = time.monotonic() + 3
@@ -199,7 +233,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         )
         self.assertIsNotNone(stored_payload)
         self.assertEqual(
-            {"handled": "input", "runtime": "local"},
+            {"handled": "input", "runtime": "polling"},
             json.loads(stored_payload),
         )
         self.assertEqual(
@@ -237,8 +271,6 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
             attributes={"runtime": "python"},
             dynamic_attribute_names=frozenset(),
         )
-        self.adapter.register_worker("worker-1", WorkerMeta({"runtime": "local"}))
-        self.adapter.unregister_worker("worker-1")
         self.resources.upsert_worker(declaration=declaration)
 
         self.application.start()

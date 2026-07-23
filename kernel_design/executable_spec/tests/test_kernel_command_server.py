@@ -7,8 +7,6 @@ from unittest.mock import Mock
 
 from kernel_design.executable_spec.assembly import (
     TaskType,
-    DeliverSeed,
-    DeliverSeedConsumerClient,
     KernelApplication,
     ResourcesCommandClient,
     TaskApprovalResult,
@@ -26,16 +24,16 @@ from kernel_design.executable_spec.assembly import (
 try:
     from fastapi.testclient import TestClient
 
-    from kernel_design.examples.fastapi_server import create_app
+    from kernel_design.examples.kernel_command_server import create_app
 except (ImportError, RuntimeError):  # pragma: no cover - missing example dependencies
     TestClient = None  # type: ignore[assignment,misc]
     create_app = None  # type: ignore[assignment]
 
 
-class FastApiBoundaryGuardTest(unittest.TestCase):
+class KernelCommandServerBoundaryGuardTest(unittest.TestCase):
     def test_server_imports_only_the_assembly_application_boundary(self) -> None:
         source_path = (
-            Path(__file__).parents[2] / "examples" / "fastapi_server.py"
+            Path(__file__).parents[2] / "examples" / "kernel_command_server.py"
         )
         source = source_path.read_text(encoding="utf-8")
 
@@ -51,12 +49,11 @@ class FastApiBoundaryGuardTest(unittest.TestCase):
 
 
 @unittest.skipUnless(TestClient is not None, "FastAPI example dependencies missing")
-class FastApiServerTest(unittest.TestCase):
+class KernelCommandServerTest(unittest.TestCase):
     def setUp(self) -> None:
         assert create_app is not None
         self.application = Mock(spec=KernelApplication)
         self.resources_client = Mock(spec=ResourcesCommandClient)
-        self.deliver_seed_consumer = Mock(spec=DeliverSeedConsumerClient)
         self.resources_client.upsert_worker_group.return_value = WorkerRuntimeResult(
             WorkerRuntimeStatus.OK
         )
@@ -75,20 +72,10 @@ class FastApiServerTest(unittest.TestCase):
         self.application.append_task_items.return_value = {
             "message-1": TaskItemAppendResult(TaskItemAppendStatus.APPENDED)
         }
-        seed = DeliverSeed(
-                worker_id="worker-1",
-                opaque_delivery_item="delivery",
-                opaque_result_context="context",
-                task_item_claim_until_millis=5_000,
-            )
-        self.deliver_seed_consumer.consume_deliver_seeds.return_value = {
-            "worker-1": seed
-        }
         self.client_context = TestClient(
             create_app(
                 application=self.application,
                 resources_client=self.resources_client,
-                deliver_seed_consumer=self.deliver_seed_consumer,
             )
         )
         self.client = self.client_context.__enter__()
@@ -150,11 +137,6 @@ class FastApiServerTest(unittest.TestCase):
                 ]
             },
         )
-        consume_response = self.client.post(
-            "/deliver-seeds:consume",
-            json={"workerIds": ["worker-1"]},
-        )
-
         self.assertEqual(200, group_response.status_code)
         self.assertEqual(200, worker_response.status_code)
         self.assertEqual(201, task_response.status_code)
@@ -164,17 +146,6 @@ class FastApiServerTest(unittest.TestCase):
         self.assertEqual(
             {"message-1": {"status": "appended"}},
             append_response.json(),
-        )
-        self.assertEqual(
-            [
-                {
-                    "workerId": "worker-1",
-                    "opaqueDeliveryItem": "delivery",
-                    "opaqueResultContext": "context",
-                    "taskItemClaimUntilMillis": 5_000,
-                }
-            ],
-            consume_response.json(),
         )
         self.assertNotIn(
             "suffix",
@@ -205,9 +176,6 @@ class FastApiServerTest(unittest.TestCase):
         self.assertIsNone(task_descriptor.allocation_rule)
         self.assertEqual(1234, task_descriptor.empty_close_at_millis)
         self.resources_client.upsert_worker.assert_called_once()
-        self.deliver_seed_consumer.consume_deliver_seeds.assert_called_once_with(
-            worker_ids=("worker-1",),
-        )
         self.assertFalse(hasattr(self.application, "consume_deliver_seeds"))
         self.assertEqual(404, self.client.post("/worker-groups").status_code)
         self.assertEqual(404, self.client.post("/workers").status_code)
@@ -215,6 +183,13 @@ class FastApiServerTest(unittest.TestCase):
             404,
             self.client.post(
                 "/endpoint-managers/endpoint-1/deliver-seeds:consume?limit=10"
+            ).status_code,
+        )
+        self.assertEqual(
+            404,
+            self.client.post(
+                "/deliver-seeds:consume",
+                json={"workerIds": ["worker-1"]},
             ).status_code,
         )
 
@@ -262,8 +237,6 @@ class FastApiServerTest(unittest.TestCase):
             create_app(application=self.application)
         with self.assertRaisesRegex(ValueError, "injected together"):
             create_app(resources_client=self.resources_client)
-        with self.assertRaisesRegex(ValueError, "injected together"):
-            create_app(deliver_seed_consumer=self.deliver_seed_consumer)
 
     def test_stop_runs_when_lifespan_closes(self) -> None:
         self.client_context.__exit__(None, None, None)

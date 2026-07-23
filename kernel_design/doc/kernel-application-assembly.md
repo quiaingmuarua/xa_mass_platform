@@ -17,16 +17,13 @@ CLI / FastAPI
      -> private Redis composition root
      -> assignment-dispatch and result-routing background applications
 
-transport-adapter process or polling Worker
+Worker Adapter Server
   -> DeliverSeedConsumerClient
-     -> consume assigned DeliverSeeds by explicit WorkerIds without KernelApplication lifecycle
-
-transport-adapter process
   -> SeedResultCommandClient
-     -> append SeedResults for runtime-internal outcome-class routing
+     -> WorkerId poll and opaque SeedResult append without KernelApplication lifecycle
 ```
 
-Both boundaries expose commands, not runtime objects. Callers cannot obtain
+All four surfaces expose commands, not runtime objects. Callers cannot obtain
 Task/Worker score cores, candidate runtime, matcher, pacers, Redis keys,
 suffixes, or lane ranks.
 
@@ -52,8 +49,8 @@ append_seed_results
 
 WorkerGroup upsert reuses `WorkerGroupDescriptor`. Worker upsert accepts the
 caller-owned `WorkerDeclaration`; the complete `WorkerDescriptor` remains a
-query projection containing platform-owned attributes. The FastAPI example owns
-its HTTP request models because they are protocol-edge translations.
+query projection containing platform-owned attributes. The Kernel Command
+Server owns its HTTP request models because they are protocol-edge translations.
 
 First Worker upsert selects the default lane rank internally and initializes
 the Worker HOT score without requiring the scheduling process to be running.
@@ -156,7 +153,7 @@ KernelApplication.stop()
 
 Task commands require a successful application start. DeliverSeed consumption
 and SeedResult append use independent clients with no `start` or `stop`, so an
-external transport process does not own scheduler lifecycle. Construction
+Worker Delivery Dispatch process does not own scheduler lifecycle. Construction
 establishes the composition graph but performs no Redis I/O. The private process
 root does not close the Redis client on stop, so a clean application instance
 may restart.
@@ -232,18 +229,18 @@ same external process boundaries:
 ResourcesCommandClient
   -> KernelApplication
   -> Redis scheduling truth
-  -> DeliverSeedConsumerClient / Local Function Adapter
-  -> SeedResultCommandClient
+  -> Worker Adapter HTTP command
+  -> Worker Adapter HTTP result
   -> Result-Routing
   -> TaskItem FINAL_SUCCESS + result HASH + Worker lease release
 ```
 
-The proof does not route through FastAPI, because HTTP translation is an
-example-host concern rather than scheduling truth. Separate Redis proofs cover
-TASK_DRIVEN default empty close with RUNNING soft-limit release, ITEM_DRIVEN
-future-threshold empty recheck followed by append and dispatch, shared explicit
-threshold close, and public close remaining terminal. A separate hard-deadline
-scanner remains deferred.
+The proof uses the Worker Adapter HTTP boundary with real Redis clients.
+HTTP remains protocol translation rather than scheduling truth. Separate Redis
+proofs cover TASK_DRIVEN default empty close with RUNNING soft-limit release,
+ITEM_DRIVEN future-threshold empty recheck followed by append and dispatch,
+shared explicit threshold close, and public close remaining terminal. A
+separate hard-deadline scanner remains deferred.
 
 ## External Hosts
 
@@ -254,14 +251,27 @@ python -m kernel_design.executable_spec.assembly
 python -m kernel_design.executable_spec.assembly --config kernel.json
 ```
 
-The FastAPI example constructs `KernelApplication`, `ResourcesCommandClient`,
-and `DeliverSeedConsumerClient` from one resolved configuration. Lifespan starts
-and stops only `KernelApplication`; resource and DeliverSeed routes use their
-independent clients. The Local Function Adapter example additionally uses
-`SeedResultCommandClient`.
+The Kernel Command Server constructs `KernelApplication` and
+`ResourcesCommandClient` from one resolved configuration. Lifespan starts and
+stops only `KernelApplication`; it has no DeliverSeed or SeedResult route.
 
-The FastAPI consumer route is `POST /deliver-seeds:consume` with a bounded,
-unique `workerIds` body. The endpoint-manager path is intentionally absent.
+The independent Worker Adapter Server constructs only
+`DeliverSeedConsumerClient` and `SeedResultCommandClient`. It exposes:
+
+```text
+POST /workers/{workerId}/commands:poll
+POST /workers/{workerId}/results
+```
+
+Its command id and message type are Adapter-private wire fields. They are not
+added to DeliverSeed, SeedResult, score, or result context.
+
+These are independent caller boundaries, not a claim that production must
+deploy exactly two processes. The current Worker Adapter slice has no login,
+session, or authorization protocol: the path WorkerId directly names a mailbox.
+A future Worker-facing API may compose login/session, poll, and result under
+the same Adapter owner, but KernelApplication must not own or expose that
+session.
 
 The examples are not production services. Authentication, Task query/list,
 result projection, production transport, and API compatibility remain out of
@@ -276,6 +286,8 @@ scope.
   assembly contract exist.
 - Do not add a second environment-variable or CLI configuration path.
 - Do not let HTTP handlers perform score reads or transitions.
+- Do not expose DeliverSeed consume or SeedResult ingress from the Kernel
+  Command Server.
 - Do not turn internal Pacer configuration into public JSON without a concrete
   operational requirement.
 - Keep result-routing and assignment-dispatch as separate internal application

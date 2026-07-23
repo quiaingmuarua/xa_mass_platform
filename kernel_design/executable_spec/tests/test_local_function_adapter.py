@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import Mock, call, patch
 
-from kernel_design.examples.local_function_adapter import (
+from kernel_design.executable_spec.test_support import (
     EventHandlerResult,
     LocalFunctionTransportAdapter,
     WorkerMeta,

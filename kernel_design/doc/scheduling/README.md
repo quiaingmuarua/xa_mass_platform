@@ -15,7 +15,7 @@ The kernel has four scheduling planes:
 | --- | --- | --- | --- | --- |
 | Task score-band | Which Tasks may enter a scheduling round now? | Task score coordinate and owner facts | Bounded Task ids or an owner-approved score transition | Task scheduling score only |
 | Worker score-band | Which Workers may enter admission or recovery now? | Worker score coordinate and worker-runtime facts | Bounded Worker observations, leases, holds, or polarity movement | Worker scheduling score only |
-| Assignment-dispatch | Which bounded Task/Worker/Item combination becomes delivery evidence? | Due Tasks, Task descriptors, policy-selected Worker acquisition, TaskItem records and Item scores | Optional CandidateWorker cache evidence and queued DeliverSeeds | Candidate cache plus TaskItem score through declared owner primitives |
+| Assignment-dispatch | Which bounded Task/Worker/Item combination becomes delivery evidence? | Due Tasks, Task descriptors, policy-selected Worker acquisition, TaskItem records and Item scores | Optional CandidateWorker cache evidence and Worker-addressed DeliverSeed mailboxes | Candidate cache plus TaskItem score through declared owner primitives |
 | Result-routing | How does returned evidence affect Task success finality and Worker disposition? | SeedResults and opaque result context | Owner-local Task and Worker evidence delegated to policy handlers | No private truth; handlers invoke TaskItem and Worker score owners |
 
 These are logical planes, not mandatory deployment modules. Package placement
@@ -51,13 +51,16 @@ Task score acquire
   -> ADMISSION Task/System policy evaluation
   -> RUNNING transition
   -> optional RUNNING candidate cache warming through HOT-pool acquisition
-  -> TaskItem observation
-  -> Task-scoped PRECOMPUTED or Item-scoped TARGETED candidate acquisition
-  -> TaskItem exact claim
-  -> WorkerId-addressed DeliverSeed mailbox
-  -> Adapter or polling Worker delivery
-  -> SeedResult queue
-  -> result routing classification
+  -> Task Dispatch
+     -> TaskItem observation
+     -> Task-scoped PRECOMPUTED or Item-scoped TARGETED candidate acquisition
+     -> TaskItem exact claim
+     -> WorkerId-addressed DeliverSeed mailbox
+  -> Worker Delivery Dispatch
+     -> consume mailbox and check claim deadline
+     -> Worker Adapter command/result protocol
+     -> SeedResult queue
+  -> Result Routing
      -> 200: store last-success + FINAL_SUCCESS + Worker exact release
      -> 1xxx: keep Item claim coordinate + Worker exact release
      -> 3xxx: keep Item claim coordinate + Worker exact RECOVERY_RECHECK demotion
@@ -122,7 +125,7 @@ CandidateWarmupSchedule
   score, assignment, or liveness truth
 
 DeliverSeedRuntime
-  owns sharded WorkerId single-slot mailboxes; neither runtime is lifecycle truth
+  owns sharded WorkerId single-slot mailboxes; the mailbox is not lifecycle truth
 
 SeedResultRuntime
   owns three bounded best-effort outcome-class queues, not Item or Worker truth
@@ -136,8 +139,9 @@ ResultRoutingBuiltinPolicies or replacement handlers
 Other scheduling pacers
   compose declared owner operations in bounded rounds; they do not copy truth
 
-Transport adapters
-  consume already-assigned DeliverSeeds and emit SeedResults; they do not
+Worker Delivery Dispatch
+  consumes already-assigned DeliverSeeds, validates the pre-submit deadline,
+  converts private Worker wire messages, and appends SeedResults; it does not
   select Workers or mutate score
 ```
 
@@ -152,16 +156,16 @@ Transport adapters
 | Task running activation | Implemented with due-Item Task policy and priority soft-limit System policy | Scenario-backed quota, tenant, business start condition, and resource-estimate decisions |
 | Worker allocation | Implemented as hint-driven TASK-scope candidate cache warming through HOT-pool acquisition; Task score is read only for RUNNING/non-hard-pause suffix-zero validation; TASK_DRIVEN has deterministic Redis proof through cache consumption | Warmup prioritization beyond bounded due order and matcher priority |
 | Task dispatch | Implemented with acquisition-only TaskType profiles, PRECOMPUTED Task rules, TARGETED complete Item rules, stable Item binding, RUNNING same-band reschedule, shared threshold-based empty close, and DeliverSeed append; both TaskTypes have deterministic Redis proof through DeliverSeed and ITEM_DRIVEN proves no warmup/cache path | Recent-first Redis Task acquisition |
-| Outbound delivery example | Independent clients and Local Function Adapter implemented | Production transport, pending/ack, and protocol-specific conversion |
+| Worker Delivery Dispatch | Independent clients and Worker Adapter polling protocol implemented | Authentication, push transport, pending/ack, and production protocol policy |
 | Result routing | Implemented with unit and Redis orchestration proof; Task/Worker policy handlers are replaceable | Result projection and stronger queue reliability require separate owners and invariants |
 
 Both TaskTypes also have process-boundary Redis E2E proof from
-`ResourcesCommandClient` and `KernelApplication`, through the Local Function
-Adapter and Result-Routing, to `FINAL_SUCCESS`, the Task result HASH, and exact
-Worker lease release. Additional Redis proofs cover TASK_DRIVEN default empty
-close, ITEM_DRIVEN future-threshold empty recheck followed by append, shared
-explicit threshold close, and an external explicit close request. A separate
-hard-deadline scanner remains deferred.
+`ResourcesCommandClient` and `KernelApplication`, through the Worker Adapter
+HTTP command/result boundary and Result-Routing, to `FINAL_SUCCESS`, the Task
+result HASH, and exact Worker lease release. Additional Redis proofs cover
+TASK_DRIVEN default empty close, ITEM_DRIVEN future-threshold empty recheck
+followed by append, shared explicit threshold close, and an external explicit
+close request. A separate hard-deadline scanner remains deferred.
 
 Deferred policy stays in the document of the mechanism that consumes it. There
 is no global policy backlog document and no policy residue may create a second
@@ -188,8 +192,8 @@ Read owner details only when changing that owner:
   [Task-Worker Allocation](task-worker-allocation-pacer.md).
 - Process and transport:
   [Kernel Application Assembly](../kernel-application-assembly.md),
-  [DeliverSeed Outbound Delivery](deliver-seed-outbound-delivery.md), and
-  [Local Function Transport Adapter](../../examples/local_function_adapter/README.md).
+  [Worker Delivery Dispatch](worker-delivery-dispatch.md), and
+  [Worker Adapter Server](../../examples/worker-adapter-server.md).
 - Backend representation:
   [Worker Runtime Redis Shape](../runtime-redis/worker-runtime-redis-shape.md)
   and [Seed Result Runtime Redis Shape](../runtime-redis/seed-result-runtime-redis-shape.md).
@@ -241,7 +245,8 @@ kernel_design/executable_spec/
   truth to reduce the number of calls.
 - Do not make an external event the only scheduling or recovery trigger.
 - Do not let a pacer decode or mint another owner's opaque score evidence.
-- Do not let transport select Workers or result-routing refresh Task score.
+- Do not let Worker Delivery Dispatch select Workers or Result Routing refresh
+  Task score.
 - Do not make transient candidate or SeedResult queues durable lifecycle truth.
 - Do not add a hot-path index, scanner, lock, queue, or transaction without a
   named owner invariant and bounded cost.

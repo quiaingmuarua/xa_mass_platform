@@ -1,4 +1,4 @@
-# FastAPI Kernel Example
+# Kernel HTTP Examples
 
 Status: external protocol example for the isolated executable spec.
 
@@ -8,27 +8,44 @@ Install the example-only dependencies:
 python -m pip install -r kernel_design/examples/requirements.txt
 ```
 
-Start with built-in kernel defaults:
+Start the Kernel command process:
 
 ```text
-python -m kernel_design.examples.fastapi_server
+python -m kernel_design.examples.kernel_command_server
 ```
 
-Or provide the optional JSON shared by all assembly clients:
+Start the independent Worker polling process:
 
 ```text
-python -m kernel_design.examples.fastapi_server --config kernel.json
+python -m kernel_design.examples.worker_adapter_server
 ```
 
-`--host`, `--port`, and `--log-level` configure only the HTTP host. The example
-imports only assembly boundaries. FastAPI lifespan starts only
-`KernelApplication`; WorkerGroup and Worker registration use the independent
-`ResourcesCommandClient`, while DeliverSeed consumption uses
-`DeliverSeedConsumerClient`. The host does not receive score cores, runtime
-implementations, Redis keys, matcher, or pacers.
+Their default addresses are:
 
-DeliverSeed consumption is Worker-addressed: `POST /deliver-seeds:consume`
-accepts a bounded `workerIds` list. It is not partitioned by endpoint manager.
+```text
+Kernel Command Server   127.0.0.1:18080
+Worker Adapter Server   127.0.0.1:18081
+```
+
+Both accept the same optional `--config kernel.json`; `--host`, `--port`, and
+`--log-level` configure only the selected HTTP process.
+
+The Kernel host composes `KernelApplication` and `ResourcesCommandClient`.
+Its lifespan starts only the scheduling application. It exposes resource
+upsert and Task commands, not DeliverSeed consumption or SeedResult append.
+
+The [Worker Adapter Server](worker-adapter-server.md) composes only
+`DeliverSeedConsumerClient` and `SeedResultCommandClient`. It has no scheduling
+lifecycle:
+
+```text
+POST /workers/{workerId}/commands:poll
+POST /workers/{workerId}/results
+```
+
+The Worker-facing command/result envelopes belong to the Adapter protocol.
+DeliverSeed and SeedResult remain the only Kernel contracts across this
+boundary.
 
 Task lifecycle routes include explicit approve and close commands. Close is
 available for both Task types and does not expose a terminal score.
@@ -36,12 +53,6 @@ available for both Task types and does not expose a terminal score.
 Dynamic attribute mutation is intentionally absent until the assembly installs
 a real dynamic-attribute handler owner.
 
-Executable-closure example:
-
-- [Local Function Adapter](local_function_adapter/README.md): consume
-  DeliverSeeds, execute process-local Workers through shared event handlers,
-  and append opaque SeedResults to the kernel SeedResult runtime.
-
-This is not a production server. It intentionally omits authentication, Task
-query/list, result projection, production transport, and API compatibility
-policy.
+These are not production servers. They intentionally omit authentication,
+Worker identity proof, Task query/list, result projection, pending/ack,
+production push transport, and API compatibility policy.

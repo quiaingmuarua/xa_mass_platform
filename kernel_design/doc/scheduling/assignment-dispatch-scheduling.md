@@ -9,7 +9,7 @@ Detailed mechanisms:
 - [Task-Worker Allocation Pacer](task-worker-allocation-pacer.md)
 - [Task Dispatch Pacer](task-dispatch-pacer.md)
 - [Worker HOT_ACQUIRE Lease Protocol](worker-hot-acquire-lease-protocol.md)
-- [DeliverSeed Outbound Delivery](deliver-seed-outbound-delivery.md)
+- [Worker Delivery Dispatch](worker-delivery-dispatch.md)
 
 Process lifecycle is defined by
 [Kernel Application Assembly](../kernel-application-assembly.md).
@@ -207,6 +207,12 @@ empty-recheck RUNNING Tasks
              otherwise remain low-frequency RUNNING
 ```
 
+Assignment Dispatch ends at Worker mailbox publication. `APPENDED` means the
+new handoff is visible; `OCCUPIED` retains the existing Seed and does not
+replace it. Mailbox consume, claim-deadline recheck, Adapter-private command
+conversion, Worker invocation, and SeedResult append belong to Worker Delivery
+Dispatch.
+
 `taskType` is fixed by the Task. The two rule locations cannot be mixed, and
 the dispatch round does not infer type or strategy from Item contents.
 `workerGroupId` always comes from `TaskDescriptor`.
@@ -230,6 +236,8 @@ the dispatch round does not infer type or strategy from Item contents.
   actively released; lease expiry restores visibility.
 - Candidate cache and DeliverSeed mailboxes are handoff evidence, not assignment
   or liveness truth.
+- Assignment Dispatch never routes by endpoint manager, Adapter, connection, or
+  session.
 
 ## Deferred Policy
 

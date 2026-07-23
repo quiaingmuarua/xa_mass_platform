@@ -48,12 +48,16 @@ executable spec:
 ```text
 Task admission and score visibility
   -> TASK_DRIVEN or ITEM_DRIVEN scheduling profile
-  -> Task dispatch
+  -> Task Dispatch
      -> ACTIVE Item: Worker candidate acquisition -> TaskItem claim
-                     -> DeliverSeed -> SeedResult
-                     -> TaskItem outcome and Worker disposition
+                     -> DeliverSeed mailbox
      -> no ACTIVE Item: increment the shared empty-recheck count
                         close only when emptyCloseAtMillis is due
+  -> Worker Delivery Dispatch
+     -> Worker Adapter command/result protocol
+     -> SeedResult
+  -> Result Routing
+     -> TaskItem and Worker truth convergence
   -> kernel applies an explicit close requested by an external owner
 ```
 
@@ -530,17 +534,18 @@ no hidden compatibility path or second mainline remains
     and same-band time rotation.
 - [Task Dispatch Pacer](doc/scheduling/task-dispatch-pacer.md)
   - candidate consumption, Item score claim, dispatch-time Worker lease
-    validation/renewal, and DeliverSeed queue append.
+    validation/renewal, and Worker-addressed DeliverSeed mailbox append.
 - [Kernel Application Assembly](doc/kernel-application-assembly.md)
   - independent resource upsert and scheduling-process boundaries,
     private Redis composition, background scheduling lifecycles, built-in CLI,
-    and the FastAPI protocol example.
-- [DeliverSeed Outbound Delivery](doc/scheduling/deliver-seed-outbound-delivery.md)
-  - WorkerId-addressed mailbox consumption, external transport execution, and
-    opaque result handoff without adapter-owned score mutation.
-- [Local Function Transport Adapter](examples/local_function_adapter/README.md)
-  - independent process startup, local Worker registration, shared event
-    handlers, platform resource upsert, and SeedResult submission.
+    and the Kernel Command / Worker Adapter HTTP examples.
+- [Worker Delivery Dispatch](doc/scheduling/worker-delivery-dispatch.md)
+  - Worker Delivery Dispatch from WorkerId-addressed mailbox consumption
+    through private Worker wire conversion to opaque result handoff, without
+    Adapter-owned score mutation.
+- [Worker Adapter Server](examples/worker-adapter-server.md)
+  - independent Worker Delivery Dispatch HTTP process, WorkerId polling,
+    Adapter-private command/result envelopes, and opaque SeedResult submission.
 - [Result-Routing Scheduling](doc/scheduling/result-routing-scheduling.md)
   - outcome-class SeedResult consumption, last-success result storage, TaskItem
     final-success invocation, and Worker exact disposition.
