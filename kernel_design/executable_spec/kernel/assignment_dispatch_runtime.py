@@ -58,7 +58,7 @@ class DeliverSeedAppendStatus(Enum):
     """Per-Worker outcome of one mailbox append."""
 
     APPENDED = "APPENDED"
-    OCCUPIED = "OCCUPIED"
+    REPLACED = "REPLACED"
 
 
 @dataclass(frozen=True)

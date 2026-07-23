@@ -210,11 +210,12 @@ empty-recheck RUNNING Tasks
              otherwise remain low-frequency RUNNING
 ```
 
-Assignment Dispatch ends at Adapter mailbox publication. `APPENDED` means the
-new handoff is visible; `OCCUPIED` retains the existing Worker field and does not
-replace it. Mailbox consume, claim-deadline recheck, Adapter-private command
-conversion, Worker invocation, and SeedResult append belong to Worker Delivery
-Dispatch.
+Assignment Dispatch ends at Adapter mailbox publication. `APPENDED` and
+`REPLACED` both mean the new handoff is visible. `REPLACED` overwrites only
+unconsumed residue from a previous, already-ended Worker lease; the mailbox
+does not model a competing active assignment. Mailbox consume, claim-deadline
+recheck, Adapter-private command conversion, Worker invocation, and SeedResult
+append belong to Worker Delivery Dispatch.
 
 `taskType` is fixed by the Task. The two rule locations cannot be mixed, and
 the dispatch round does not infer type or strategy from Item contents.

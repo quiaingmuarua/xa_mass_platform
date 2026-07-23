@@ -49,7 +49,7 @@ slots, it exposes multiple globally unique WorkerIds.
 append_deliver_seeds(
     endpoint_manager_id,
     deliver_seeds_by_worker_id,
-) -> workerId -> APPENDED | OCCUPIED
+) -> workerId -> APPENDED | REPLACED
 
 consume_deliver_seed(
     endpoint_manager_id,
@@ -63,9 +63,9 @@ consume_deliver_seeds(
 ) -> DeliverSeedConsumePage
 ```
 
-`APPENDED` means the Adapter-local Worker field was empty. `OCCUPIED` means the
-field already exists; append uses `HSETNX` and never compares or overwrites it.
-Only `APPENDED` counts as a newly published Seed.
+`APPENDED` means the Adapter-local Worker field was empty. `REPLACED` means an
+existing mailbox residue was overwritten. Both outcomes mean the new Seed is
+published.
 
 The append Map key must equal `DeliverSeed.workerId`. Append rejects a Seed
 whose claim deadline has already passed. A Task dispatch round validates that
@@ -93,8 +93,23 @@ ad:{prefix}:endpoint-manager:{endpointManagerId}:deliver-seeds
   HASH workerId -> DeliverSeed JSON
 ```
 
-Append pipelines native `HSETNX` commands against one Adapter HASH. No Lua
-computes routing or parses Seed data.
+Append first pipelines native `HSETNX` commands against one Adapter HASH. It
+then writes the fields that already existed with one native `HSET mapping`
+operation, equivalent to a bounded HMSET. No Lua computes routing, validates a
+Worker lease, or parses Seed data.
+
+Replacement is safe because Task Dispatch may construct a Seed only after
+exactly acquiring or renewing that Worker lease, and the Seed claim deadline is
+the same deadline used for the Worker lease. While that lease is active, the
+Worker cannot be acquired for another dispatch. A later valid Seed for the same
+Worker therefore implies that the previous lease and previous Seed deadline
+have already ended. If the old HASH field still exists, it is unconsumed
+delivery residue, not a second valid assignment.
+
+The mailbox runtime trusts this lease-backed caller contract. It does not add a
+second Worker-score read, compare deadlines, or create an `OCCUPIED` state.
+Observing `REPLACED` may be recorded as lightweight Adapter backlog/residue
+evidence, but it is not a scheduling conflict and does not demote the Worker.
 
 Point consume uses minimal single-key `HGET + HDEL` Lua. Cursor consume first
 uses `HSCAN`, then passes each scanned raw field/value pair to a minimal
@@ -203,5 +218,5 @@ Adapter identity.
 - Do not parse or reconstruct Worker score fences in the Adapter.
 - Do not emit timeout evidence for a Seed discarded before Worker submit.
 - Do not move Worker release/recovery decisions into mailbox consumption.
-- Do not compare or replace an occupied mailbox during append.
+- Do not reinterpret a replaced mailbox residue as a second active assignment.
 - Do not add cross-bucket rollback, cleanup scanners, or compatibility keys.

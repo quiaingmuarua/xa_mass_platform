@@ -327,20 +327,33 @@ class RedisDeliverSeedRuntime(DeliverSeedRuntime):
         ):
             raise ValueError("DeliverSeed claim deadline must be in the future")
 
+        key = self._deliver_seed_key(endpoint_manager_id)
+        encoded_by_worker_id = {
+            worker_id: self._encode_deliver_seed(seed)
+            for worker_id, seed in deliver_seeds_by_worker_id.items()
+        }
         with self.redis.pipeline(transaction=False) as pipeline:
-            for worker_id, seed in deliver_seeds_by_worker_id.items():
+            for worker_id, encoded_seed in encoded_by_worker_id.items():
                 pipeline.hsetnx(
-                    self._deliver_seed_key(endpoint_manager_id),
+                    key,
                     worker_id,
-                    self._encode_deliver_seed(seed),
+                    encoded_seed,
                 )
             inserted = pipeline.execute()
+
+        replaced = {
+            worker_id: encoded_by_worker_id[worker_id]
+            for worker_id, was_inserted in zip(worker_ids, inserted)
+            if not was_inserted
+        }
+        if replaced:
+            self.redis.hset(key, mapping=replaced)
 
         return {
             worker_id: (
                 DeliverSeedAppendStatus.APPENDED
                 if was_inserted
-                else DeliverSeedAppendStatus.OCCUPIED
+                else DeliverSeedAppendStatus.REPLACED
             )
             for worker_id, was_inserted in zip(worker_ids, inserted)
         }

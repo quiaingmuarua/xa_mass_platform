@@ -78,8 +78,9 @@ One round computes its dispatch time and Item claim deadline once:
 8. The Pacer merges all returned groups and publishes once per endpoint manager
    sparse mailbox while preserving suffix zero and advancing ordinary dispatch
    time.
-   `APPENDED` counts as publication; `OCCUPIED` leaves the existing mailbox
-   untouched and relies on the current Item claim and Worker lease expiry.
+   `APPENDED` and `REPLACED` both count as publication. `REPLACED` means the
+   new lease-backed Seed replaced an unconsumed field from an already-ended
+   Worker lease.
 9. Call `has_active_items` once for the activity-check batch and apply the
    recheck transition rules below.
 
@@ -185,8 +186,8 @@ Dispatch.
   or demote them.
 - The round sends one `workerId -> DeliverSeed` Map per endpoint manager to
   `DeliverSeedRuntime`. One WorkerId may appear only once in the entire round.
-  `APPENDED` counts as publication; `OCCUPIED` preserves the existing field and
-  is a bounded no-op for the new Seed.
+  `APPENDED` and `REPLACED` count as publication. Replacement is limited to
+  residue from a previous, already-ended Worker lease.
 - Cross-Adapter mailbox writes are not atomic. A runtime failure does not roll
   back Adapter buckets whose append already completed.
 - Explicit terminal close has precedence. Existing Items, claims, seeds, or

@@ -226,7 +226,8 @@ demand, bounded classification lag is allowed.
 | Allocation | unmatched or publication failure | retain short lease until expiry |
 | PRECOMPUTED acquisition | dirty/recovery/expired/stale fence or rematch failure | consume candidate, do not claim Item |
 | Item dispatch | Item absent or claim lost | no release; leases expire |
-| Task Dispatch | mailbox `OCCUPIED`, append failed, or result ambiguous | preserve existing mailbox; no compensation |
+| Task Dispatch | mailbox residue replaced | publish the new lease-backed Seed; optional bounded residue metric |
+| Task Dispatch | append failed or result ambiguous | no compensation; claim and lease expiry recover |
 | Worker Delivery Dispatch | expired or malformed Seed | drop; no synthetic result |
 | Polling Worker | unsupported EventCode, handler failure, or execution failure after entry | emit `1xxx` |
 | Future trusted Adapter | direct evidence that execution was not entered | may emit `3xxx` |

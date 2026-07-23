@@ -200,7 +200,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             task_item_claim_until_millis=int(time.time() * 1_000) + 5_000,
         )
         self.assertEqual(
-            {"worker-1": DeliverSeedAppendStatus.OCCUPIED},
+            {"worker-1": DeliverSeedAppendStatus.REPLACED},
             self.deliver_seed_runtime.append_deliver_seeds(
                 endpoint_manager_id="endpoint-manager-1",
                 deliver_seeds_by_worker_id={"worker-1": conflicting_seed}
@@ -223,7 +223,10 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             )
 
         self.assertEqual(1, sum(bool(result) for result in results))
-        self.assertEqual([seed], [result for result in results if result])
+        self.assertEqual(
+            [conflicting_seed],
+            [result for result in results if result],
+        )
 
     def test_adapter_mailbox_cursor_consumes_sparse_worker_fields(self) -> None:
         seeds = tuple(

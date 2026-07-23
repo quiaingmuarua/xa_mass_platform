@@ -533,7 +533,11 @@ class TaskDispatchPacer:
                 deliver_seeds_by_worker_id=deliver_seeds_by_worker_id,
             )
             published += sum(
-                status is DeliverSeedAppendStatus.APPENDED
+                status
+                in {
+                    DeliverSeedAppendStatus.APPENDED,
+                    DeliverSeedAppendStatus.REPLACED,
+                }
                 for status in append_results.values()
             )
         return published

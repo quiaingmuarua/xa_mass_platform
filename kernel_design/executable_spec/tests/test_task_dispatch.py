@@ -601,7 +601,7 @@ class TaskDispatchPacerTest(unittest.TestCase):
             target_time_millis=self.NOW_MILLIS,
         )
 
-    def test_occupied_mailbox_is_not_counted_as_published(self) -> None:
+    def test_replaced_mailbox_residue_counts_as_published(self) -> None:
         self._prepare_task("task-1")
         item = self._item("message-1")
         self.item_score.acquire_item_score_candidates.return_value = {
@@ -619,7 +619,7 @@ class TaskDispatchPacerTest(unittest.TestCase):
         }
         self.deliver_seed_runtime.append_deliver_seeds.side_effect = None
         self.deliver_seed_runtime.append_deliver_seeds.return_value = {
-            "worker-1": DeliverSeedAppendStatus.OCCUPIED
+            "worker-1": DeliverSeedAppendStatus.REPLACED
         }
 
         with patch.object(
@@ -629,7 +629,7 @@ class TaskDispatchPacerTest(unittest.TestCase):
         ):
             published = self.pacer.dispatch_tasks(config=self.config)
 
-        self.assertEqual(0, published)
+        self.assertEqual(1, published)
         self.task_score.rewrite_same_band_time_millis.assert_called_once()
 
     def test_non_positive_config_is_rejected(self) -> None:
