@@ -56,6 +56,10 @@ def _worker_descriptors_key(prefix: str, worker_group_id: WorkerGroupId) -> str:
     return f"wr:{prefix}:workers:{worker_group_id}"
 
 
+def _worker_id_owners_key(prefix: str) -> str:
+    return f"wr:{prefix}:worker-id-owners"
+
+
 def _valid_id(value: str) -> bool:
     return isinstance(value, str) and bool(value)
 
@@ -414,6 +418,21 @@ class RedisWorkerRuntime(WorkerRuntime):
             return WorkerRuntimeResult(
                 WorkerRuntimeStatus.NOT_FOUND,
                 "worker group not found",
+            )
+
+        owner_key = _worker_id_owners_key(self.prefix)
+        self.redis.hsetnx(
+            owner_key,
+            declaration.worker_id,
+            declaration.worker_group_id,
+        )
+        worker_group_owner = RedisWorkerResourceCatalog._decode_optional_text(
+            self.redis.hget(owner_key, declaration.worker_id)
+        )
+        if worker_group_owner != declaration.worker_group_id:
+            return WorkerRuntimeResult(
+                WorkerRuntimeStatus.CONFLICT,
+                "workerId is already owned by another workerGroupId",
             )
 
         descriptor = WorkerDescriptor(

@@ -27,6 +27,9 @@ imports only assembly boundaries. FastAPI lifespan starts only
 `DeliverSeedConsumerClient`. The host does not receive score cores, runtime
 implementations, Redis keys, matcher, or pacers.
 
+DeliverSeed consumption is Worker-addressed: `POST /deliver-seeds:consume`
+accepts a bounded `workerIds` list. It is not partitioned by endpoint manager.
+
 Task lifecycle routes include explicit approve and close commands. Close is
 available for both Task types and does not expose a terminal score.
 

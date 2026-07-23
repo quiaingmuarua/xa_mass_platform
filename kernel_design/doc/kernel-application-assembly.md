@@ -17,11 +17,11 @@ CLI / FastAPI
      -> private Redis composition root
      -> assignment-dispatch and result-routing background applications
 
-endpoint-manager process
+transport-adapter process or polling Worker
   -> DeliverSeedConsumerClient
-     -> consume assigned DeliverSeeds without KernelApplication lifecycle
+     -> consume assigned DeliverSeeds by explicit WorkerIds without KernelApplication lifecycle
 
-endpoint-manager process
+transport-adapter process
   -> SeedResultCommandClient
      -> append SeedResults for runtime-internal outcome-class routing
 ```
@@ -44,7 +44,7 @@ append_task_items
 close_task
 
 DeliverSeedConsumerClient
-consume_deliver_seeds
+consume_deliver_seeds(workerIds) -> workerId-to-DeliverSeed map
 
 SeedResultCommandClient
 append_seed_results
@@ -156,7 +156,7 @@ KernelApplication.stop()
 
 Task commands require a successful application start. DeliverSeed consumption
 and SeedResult append use independent clients with no `start` or `stop`, so an
-endpoint-manager process does not own scheduler lifecycle. Construction
+external transport process does not own scheduler lifecycle. Construction
 establishes the composition graph but performs no Redis I/O. The private process
 root does not close the Redis client on stop, so a clean application instance
 may restart.
@@ -220,7 +220,7 @@ claim a blocked round stopped. A timeout is reported rather than hidden.
 
 The application lifecycle owns timers and process coordination only. It does
 not construct policy inside a pacer, combine rounds into one sequential loop,
-own score or runtime truth, consume DeliverSeed queues, or turn append/result/
+own score or runtime truth, consume DeliverSeed mailboxes, or turn append/result/
 heartbeat events into required wakeups.
 
 ## Process-Boundary E2E Proof
@@ -259,6 +259,9 @@ and `DeliverSeedConsumerClient` from one resolved configuration. Lifespan starts
 and stops only `KernelApplication`; resource and DeliverSeed routes use their
 independent clients. The Local Function Adapter example additionally uses
 `SeedResultCommandClient`.
+
+The FastAPI consumer route is `POST /deliver-seeds:consume` with a bounded,
+unique `workerIds` body. The endpoint-manager path is intentionally absent.
 
 The examples are not production services. Authentication, Task query/list,
 result projection, production transport, and API compatibility remain out of

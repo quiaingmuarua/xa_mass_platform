@@ -577,7 +577,7 @@
             <div class="flow-step"><strong>Worker Acquisition</strong><span>TASK_DRIVEN 读取预计算缓存；ITEM_DRIVEN 从 Item 规则做定点 acquisition。</span></div>
             <div class="flow-step"><strong>精确 Worker Lease</strong><span>候选只是 WorkerId；当前 descriptor、dynamic facts 与 observed score 必须再次验证。</span></div>
             <div class="flow-step"><strong>TaskItem Claim</strong><span>只有已经绑定 Worker 的 Item 才通过 exact observed-score fence 领取。</span></div>
-            <div class="flow-step"><strong>DeliverSeed</strong><span>selected Worker、Item 和 opaque context 组成已分配工作，按 endpointManagerId 入队。</span></div>
+            <div class="flow-step"><strong>DeliverSeed</strong><span>selected Worker、Item 和 opaque context 组成已分配工作，写入 WorkerId 单槽 mailbox。</span></div>
             <div class="flow-step"><strong>SeedResult</strong><span>Adapter/Worker 只回传 outcome evidence；结果上下文保持 opaque。</span></div>
             <div class="flow-step"><strong>Result Routing</strong><span>按 outcome class 调用 TaskItem 与 Worker score owner，完成 finality 或恢复。</span></div>
           </div>
@@ -685,7 +685,7 @@
               <tr><td>TaskItem HASH + ZSET</td><td>messageId → record / item score</td><td class="muted">资源记录与调度坐标分离</td></tr>
               <tr><td>Worker score ZSET</td><td>workerId → serviceability / lease coordinate</td><td class="muted">Worker 调度槽真相</td></tr>
               <tr><td>Candidate cache ZSET</td><td>taskId → expiring CandidateWorkerEntry</td><td class="muted">TASK_DRIVEN 可丢弃预计算证据</td></tr>
-              <tr><td>DeliverSeed / SeedResult LIST</td><td>已分配工作 / 返回 evidence</td><td class="muted">handoff queue，不是 lifecycle truth</td></tr>
+              <tr><td>DeliverSeed HASH mailbox / SeedResult LIST</td><td>已分配工作 / 返回 evidence</td><td class="muted">handoff runtime，不是 lifecycle truth</td></tr>
             </tbody>
           </table>
         </section>

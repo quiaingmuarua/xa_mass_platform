@@ -8,6 +8,7 @@ from unittest.mock import Mock, call, patch
 from kernel_design.executable_spec import (
     TaskType,
     CandidateWorkerEntry,
+    DeliverSeedAppendStatus,
     DeliverSeedRuntime,
     TaskDispatchConfig,
     TaskDispatchPacer,
@@ -42,6 +43,12 @@ class TaskDispatchPacerTest(unittest.TestCase):
         self.task_score = Mock(spec=TaskScoreBandCore)
         self.task_catalog = Mock(spec=TaskResourceCatalog)
         self.deliver_seed_runtime = Mock(spec=DeliverSeedRuntime)
+        self.deliver_seed_runtime.append_deliver_seeds.side_effect = (
+            lambda *, deliver_seeds_by_worker_id: {
+                worker_id: DeliverSeedAppendStatus.APPENDED
+                for worker_id in deliver_seeds_by_worker_id
+            }
+        )
         self.item_score = Mock(spec=TaskItemScoreBandCore)
         self.task_runtime = Mock(spec=TaskRuntime)
         self.candidate_acquirer = Mock(spec=WorkerCandidateAcquirer)
@@ -90,8 +97,8 @@ class TaskDispatchPacerTest(unittest.TestCase):
             item.message_id: item for item in items
         }
         candidates = (
-            self._candidate("worker-1", "endpoint-1", 201),
-            self._candidate("worker-2", "endpoint-2", 202),
+            self._candidate("worker-1", 201),
+            self._candidate("worker-2", 202),
         )
         self.candidate_acquirer.acquire_worker_candidates.side_effect = (
             lambda **_: events.append("acquire") or {"task-1": candidates}
@@ -110,7 +117,13 @@ class TaskDispatchPacerTest(unittest.TestCase):
             }
         )
         self.deliver_seed_runtime.append_deliver_seeds.side_effect = (
-            lambda **_: events.append("publish")
+            lambda *, deliver_seeds_by_worker_id: (
+                events.append("publish")
+                or {
+                    worker_id: DeliverSeedAppendStatus.APPENDED
+                    for worker_id in deliver_seeds_by_worker_id
+                }
+            )
         )
 
         with patch.object(
@@ -122,7 +135,7 @@ class TaskDispatchPacerTest(unittest.TestCase):
 
         self.assertEqual(2, appended)
         self.assertEqual(
-            ["observe", "acquire", "claim", "publish", "publish"],
+            ["observe", "acquire", "claim", "publish"],
             events,
         )
         acquisition_call = (
@@ -150,7 +163,7 @@ class TaskDispatchPacerTest(unittest.TestCase):
             target_time_millis=self.CLAIM_UNTIL_MILLIS,
             remaining_budget_delta=-1,
         )
-        self.assertEqual(2, self.deliver_seed_runtime.append_deliver_seeds.call_count)
+        self.deliver_seed_runtime.append_deliver_seeds.assert_called_once()
         self.warmup_schedule.schedule_candidate_warmups.assert_called_once_with(
             task_ids=("task-1",),
             due_time_millis=self.NOW_MILLIS,
@@ -160,9 +173,9 @@ class TaskDispatchPacerTest(unittest.TestCase):
             expected_band=TaskScoreBand.RUNNING_VISIBLE,
             target_time_millis=self.NOW_MILLIS,
         )
-        first_seed = self.deliver_seed_runtime.append_deliver_seeds.call_args_list[
-            0
-        ].kwargs["deliver_seeds"][0]
+        first_seed = self.deliver_seed_runtime.append_deliver_seeds.call_args.kwargs[
+            "deliver_seeds_by_worker_id"
+        ]["worker-1"]
         self.assertEqual("worker-1", first_seed.worker_id)
         self.assertEqual(
             {"eventCode": "event-1", "payload": {"value": "message-1"}},
@@ -180,7 +193,7 @@ class TaskDispatchPacerTest(unittest.TestCase):
             item.message_id: item for item in items
         }
         self.candidate_acquirer.acquire_worker_candidates.return_value = {
-            "task-1": (self._candidate("worker-1", "endpoint-1", 201),)
+            "task-1": (self._candidate("worker-1", 201),)
         }
         self.item_score.rewrite_observed_item_scores.return_value = {
             "message-1": TaskItemScoreTransitionResult(
@@ -202,6 +215,68 @@ class TaskDispatchPacerTest(unittest.TestCase):
             observed_scores={"message-1": 101},
             target_time_millis=self.CLAIM_UNTIL_MILLIS,
             remaining_budget_delta=-1,
+        )
+
+    def test_one_round_publishes_all_task_seeds_in_one_runtime_call(self) -> None:
+        task_ids = ("task-1", "task-2")
+        self.task_score.acquire_dispatch_work_tasks.return_value = task_ids
+        self.task_score.get_score_states.return_value = {
+            task_id: TaskScoreState(
+                task_id=task_id,
+                score=100 + index,
+                band=TaskScoreBand.RUNNING_VISIBLE,
+                time_millis=9_000,
+                suffix=0,
+            )
+            for index, task_id in enumerate(task_ids)
+        }
+        self.task_catalog.load_task_allocation_descriptors.return_value = {
+            task_id: self._descriptor(task_id) for task_id in task_ids
+        }
+        items_by_task = {
+            task_id: self._item(f"message-{index}")
+            for index, task_id in enumerate(task_ids, start=1)
+        }
+        self.item_score.acquire_item_score_candidates.side_effect = (
+            lambda *, task_id, limit: {
+                items_by_task[task_id].message_id: (100, 3)
+            }
+        )
+        self.task_runtime.load_task_items.side_effect = (
+            lambda *, task_id, message_ids: {
+                items_by_task[task_id].message_id: items_by_task[task_id]
+            }
+        )
+        self.candidate_acquirer.acquire_worker_candidates.side_effect = (
+            lambda *, candidate_requests, **_: {
+                candidate_id: (self._candidate(f"worker-{candidate_id[-1]}", 200),)
+                for candidate_id in candidate_requests
+            }
+        )
+        self.item_score.rewrite_observed_item_scores.side_effect = (
+            lambda *, task_id, **_: {
+                items_by_task[task_id].message_id: TaskItemScoreTransitionResult(
+                    TaskItemScoreTransitionStatus.TRANSITIONED,
+                    300,
+                )
+            }
+        )
+
+        with patch.object(
+            self.pacer,
+            "_current_time_millis",
+            return_value=self.NOW_MILLIS,
+        ):
+            appended = self.pacer.dispatch_tasks(config=self.config)
+
+        self.assertEqual(2, appended)
+        self.deliver_seed_runtime.append_deliver_seeds.assert_called_once()
+        seeds = self.deliver_seed_runtime.append_deliver_seeds.call_args.kwargs[
+            "deliver_seeds_by_worker_id"
+        ].values()
+        self.assertEqual(
+            ("worker-1", "worker-2"),
+            tuple(seed.worker_id for seed in seeds),
         )
 
     def test_no_acquired_worker_does_not_claim_items(self) -> None:
@@ -252,8 +327,8 @@ class TaskDispatchPacerTest(unittest.TestCase):
             second_item.message_id: second_item,
         }
         self.candidate_acquirer.acquire_worker_candidates.return_value = {
-            "message-1": (self._candidate("worker-1", "endpoint-1", 201),),
-            "message-2": (self._candidate("worker-2", "endpoint-2", 202),),
+            "message-1": (self._candidate("worker-1", 201),),
+            "message-2": (self._candidate("worker-2", 202),),
         }
         self.item_score.rewrite_observed_item_scores.return_value = {
             "message-1": TaskItemScoreTransitionResult(
@@ -286,10 +361,14 @@ class TaskDispatchPacerTest(unittest.TestCase):
             targeted_request.allocation_rule,
         )
         published = {
-            json.loads(call_.kwargs["deliver_seeds"][0].opaque_delivery_item)[
+            json.loads(seed.opaque_delivery_item)[
                 "payload"
-            ]["value"]: call_.kwargs["deliver_seeds"][0].worker_id
-            for call_ in self.deliver_seed_runtime.append_deliver_seeds.call_args_list
+            ]["value"]: seed.worker_id
+            for seed in (
+                self.deliver_seed_runtime.append_deliver_seeds.call_args.kwargs[
+                    "deliver_seeds_by_worker_id"
+                ].values()
+            )
         }
         self.assertEqual(
             {
@@ -436,7 +515,7 @@ class TaskDispatchPacerTest(unittest.TestCase):
         }
         self.task_runtime.load_task_items.return_value = {"message-1": item}
         self.candidate_acquirer.acquire_worker_candidates.return_value = {
-            "task-1": (self._candidate("worker-1", "endpoint-1", 201),)
+            "task-1": (self._candidate("worker-1", 201),)
         }
         self.item_score.rewrite_observed_item_scores.return_value = {
             "message-1": TaskItemScoreTransitionResult(
@@ -460,6 +539,37 @@ class TaskDispatchPacerTest(unittest.TestCase):
             expected_band=TaskScoreBand.RUNNING_VISIBLE,
             target_time_millis=self.NOW_MILLIS,
         )
+
+    def test_occupied_mailbox_is_not_counted_as_published(self) -> None:
+        self._prepare_task("task-1")
+        item = self._item("message-1")
+        self.item_score.acquire_item_score_candidates.return_value = {
+            "message-1": (101, 3)
+        }
+        self.task_runtime.load_task_items.return_value = {"message-1": item}
+        self.candidate_acquirer.acquire_worker_candidates.return_value = {
+            "task-1": (self._candidate("worker-1", 201),)
+        }
+        self.item_score.rewrite_observed_item_scores.return_value = {
+            "message-1": TaskItemScoreTransitionResult(
+                TaskItemScoreTransitionStatus.TRANSITIONED,
+                301,
+            )
+        }
+        self.deliver_seed_runtime.append_deliver_seeds.side_effect = None
+        self.deliver_seed_runtime.append_deliver_seeds.return_value = {
+            "worker-1": DeliverSeedAppendStatus.OCCUPIED
+        }
+
+        with patch.object(
+            self.pacer,
+            "_current_time_millis",
+            return_value=self.NOW_MILLIS,
+        ):
+            published = self.pacer.dispatch_tasks(config=self.config)
+
+        self.assertEqual(0, published)
+        self.task_score.rewrite_same_band_time_millis.assert_called_once()
 
     def test_non_positive_config_is_rejected(self) -> None:
         invalid = (
@@ -721,13 +831,11 @@ class TaskDispatchPacerTest(unittest.TestCase):
     @staticmethod
     def _candidate(
         worker_id: str,
-        endpoint_manager_id: str,
         score: int,
     ) -> CandidateWorkerEntry:
         return CandidateWorkerEntry(
             worker_id=worker_id,
             worker_group_id="group-1",
-            endpoint_manager_id=endpoint_manager_id,
             worker_lease_score=score,
         )
 

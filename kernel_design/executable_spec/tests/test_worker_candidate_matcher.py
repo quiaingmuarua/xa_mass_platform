@@ -136,14 +136,6 @@ class WorkerCandidateMatcherTest(RedisWorkerRuntimeFixture):
             for candidate_id, entries in rows.items()
         }
 
-    @staticmethod
-    def endpoint_manager_ids(rows):
-        return {
-            entry.worker_id: entry.endpoint_manager_id
-            for entries in rows.values()
-            for entry in entries
-        }
-
     def test_candidate_matcher_matches_bounded_workers_and_preserves_order(self) -> None:
         self.upsert_group()
         other_group = WorkerGroupDescriptor(
@@ -230,12 +222,12 @@ class WorkerCandidateMatcherTest(RedisWorkerRuntimeFixture):
             },
         )
         self.assertEqual(tuple(rows), ("premium-python-battery", "all"))
-        self.assertEqual(
-            self.endpoint_manager_ids(rows),
-            {
-                "worker-1": "endpoint-manager-1",
-                "worker-2": "endpoint-manager-2",
-            },
+        self.assertTrue(
+            all(
+                not hasattr(entry, "endpoint_manager_id")
+                for entries in rows.values()
+                for entry in entries
+            )
         )
         self.assertEqual(
             {
@@ -264,7 +256,6 @@ class WorkerCandidateMatcherTest(RedisWorkerRuntimeFixture):
         )
 
         self.assertEqual(rows["transport-placement"], ())
-        self.assertEqual(self.endpoint_manager_ids(rows), {})
 
     def test_candidate_matcher_rejects_missing_dynamic_handler(self) -> None:
         self.upsert_group()
@@ -557,10 +548,6 @@ class WorkerCandidateMatcherTest(RedisWorkerRuntimeFixture):
                 "fallback": ["worker-2", "worker-3"],
             },
         )
-        self.assertEqual(
-            set(self.endpoint_manager_ids(rows)),
-            {"worker-1", "worker-2", "worker-3"},
-        )
 
     def test_candidate_matcher_batches_declared_fields_and_consumes_by_priority(self) -> None:
         self.upsert_group()
@@ -775,12 +762,8 @@ class WorkerCandidateMatcherTest(RedisWorkerRuntimeFixture):
         )
 
         self.assertEqual(self.reservation_ids(result), {"candidate-1": ["worker-1"]})
-        self.assertEqual(
-            self.endpoint_manager_ids(result),
-            {"worker-1": "endpoint-manager-1"},
-        )
 
-    def test_candidate_matcher_returns_no_endpoint_rows_without_constraints(self) -> None:
+    def test_candidate_matcher_returns_no_rows_without_constraints(self) -> None:
         matcher = self.matcher()
 
         result = self.match_candidates(

@@ -42,10 +42,10 @@ does not choose worker groups and does not prove Worker scheduling
 serviceability.
 
 `Transport` is an internal delivery resource. It resolves how to deliver already
-assigned work to the selected worker; it does not select workers. The worker
-descriptor carries only the stable `endpointManagerId` needed to locate the
-physical endpoint owner after selection. Adapter, session, connection, mailbox,
-and live reachability observations remain outside the scheduling model.
+assigned work to the selected WorkerId; it does not select workers. DeliverSeed
+uses that globally unique WorkerId as its mailbox address. Adapter, session,
+connection, and live reachability observations remain outside the scheduling
+model.
 
 In v0, a worker has exactly one `workerGroupId`. Do not add membership rows,
 multi-group joins, dynamic group selectors, or group-local event binding rows
@@ -68,7 +68,7 @@ slot after DeliverSeed creation.
 
 If one physical runtime can execute `N` independent TaskItems concurrently, it
 must expose `N` logical WorkerIds. Those Workers may share one WorkerGroup and
-one endpoint manager, but each owns an independent score and lease:
+one transport process, but each owns an independent score, lease, and mailbox:
 
 ```text
 physical runtime with concurrency 3
@@ -151,16 +151,16 @@ WorkerDescriptor
   platformAttributes: map<string, value>
 ```
 
-`workerId` is the resource identity used by worker score and assignment.
+`workerId` is the globally unique logical execution-slot identity used by Worker
+score, assignment, and DeliverSeed mailbox addressing. Caller-provided IDs are
+guarded globally in this first slice; kernel-generated identity is deferred.
 
 `workerGroupId` is the only group relationship in v0.
 
-`endpointManagerId` identifies the physical endpoint manager that owns endpoint
-resolution for this Worker. It replaces the old `adapterId` vocabulary because
-the kernel needs a stable owner locator, not a transport implementation type.
-It is read only after `workerId` has already been selected. It does not prove a
-live connection, mailbox, session, or reachability state and must not participate
-in worker matching, score ordering, or candidate selection.
+`endpointManagerId` remains immutable declaration metadata in this first slice.
+It does not address DeliverSeed, locate a mailbox, prove live reachability, or
+participate in matching, score ordering, candidate selection, or consumption.
+Removing or redefining it belongs to the later Worker identity slice.
 
 `WorkerDeclaration` is caller-owned connect/reconnect input. It cannot carry
 platform attributes, score fields, polarity, laneRank, dirty, or time
@@ -181,8 +181,10 @@ conflict. Worker `endpointManagerId` and `dynamicAttributeNames` are also
 immutable after first appearance. Future mutation requires a separate owner
 command rather than expanding upsert.
 
-`workerGroupId` is globally unique. `workerId` is unique inside one
-`workerGroupId`; all worker catalog operations therefore carry both values.
+`workerGroupId` and `workerId` are globally unique in their own namespaces.
+Worker upsert claims `workerId -> workerGroupId` once; reuse in another group is
+a conflict. This uniqueness index is only a write guard, not a global query or
+Worker-home discovery API.
 
 Worker catalog reads and updates require `workerGroupId + workerId`. A bounded
 batch contains one `workerGroupId` and many `workerIds`; callers must not submit
@@ -304,8 +306,8 @@ attributes.*
 dynamic.*
 ```
 
-`endpointManagerId` is deliberately absent. Endpoint ownership is final-hop
-location metadata, not a WorkerConstraintQuery field.
+`endpointManagerId` is deliberately absent. It is retained declaration metadata,
+not a WorkerConstraintQuery or delivery-routing field.
 
 These are worker-runtime owner fields, not DSL-reserved fields. `workerId` is a
 normal context value that may participate in the same DSL operators as any
@@ -584,11 +586,10 @@ carries explicit `priority`, `limit`, and map-shaped `allocation_rule`. The matc
 sorts by priority ascending (`0` highest) and `candidateId` ascending, then each worker is
 considered by the first matching candidate with remaining match limit. Every
 matched Worker appears in exactly one candidate result. Each returned
-`CandidateWorkerEntry` contains its Worker id, WorkerGroup id, descriptor-owned
-`endpointManagerId`, and opaque lease score. The matcher copies but never
-parses or modifies that score. Unmatched Worker ids are not returned; their
-already-acquired leases remain held until natural expiry. `endpointManagerId`
-is a post-selection Deliver Queue partition coordinate, not a matching field.
+`CandidateWorkerEntry` contains only its Worker id, WorkerGroup id, and opaque
+lease score. The matcher copies but never parses or modifies that score.
+Unmatched Worker ids are not returned; their already-acquired leases remain
+held until natural expiry.
 A matcher call handles exactly one selected `workerGroupId`; assignment-dispatch
 must partition candidates by Worker group and acquire bounded Worker lease
 evidence before calling it. The selected candidate acquirer unions and
@@ -613,12 +614,13 @@ item `eventCode` resolves the handler only after the task has a selected worker
 group and assignment-dispatch has selected a concrete worker.
 
 Live adapter / transport facts are not part of the public worker resource model.
-`endpointManagerId` is the narrow exception: it identifies the stable physical
-endpoint owner used after Worker selection. Adapter implementation identity,
-mailbox, session, route, connection, and delivery queue remain internal delivery
-details. If an operator or policy needs a network category, expose it as a
-worker attribute such as `networkType`; do not expose endpoint-manager or
-adapter/session identifiers as worker-selection facts.
+`endpointManagerId` remains declaration metadata for compatibility with the
+current resource shape but is not read by scheduling or delivery. Adapter
+implementation identity, session, route, connection, and polling-channel facts
+remain transport-local. The WorkerId mailbox is kernel handoff state, not live
+transport state. If a policy needs a network category, expose it as a Worker
+attribute such as `networkType`; do not expose transport identifiers as
+worker-selection facts.
 
 Descriptor metadata is the low-frequency matching surface used inside a
 pre-bound worker group. Candidate sources propose a small bounded Worker

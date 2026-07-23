@@ -807,11 +807,10 @@ class KernelApplicationIntegrationTest(unittest.TestCase):
         )
 
         deadline = time.monotonic() + 3
-        seeds = ()
+        seeds = {}
         while time.monotonic() < deadline and not seeds:
             seeds = self.deliver_seed_consumer.consume_deliver_seeds(
-                endpoint_manager_id=endpoint_manager_id,
-                limit=10,
+                worker_ids=("worker-1",),
             )
             if not seeds:
                 time.sleep(0.02)
@@ -822,17 +821,17 @@ class KernelApplicationIntegrationTest(unittest.TestCase):
         self.assertEqual(TaskApprovalStatus.APPROVED, approved.status)
         self.assertEqual(TaskItemAppendStatus.APPENDED, appended[message_id].status)
         self.assertEqual(1, len(seeds))
-        self.assertEqual("worker-1", seeds[0].worker_id)
+        self.assertEqual("worker-1", seeds["worker-1"].worker_id)
         self.assertEqual(
             message_id,
-            json.loads(seeds[0].opaque_result_context)["messageId"],
+            json.loads(seeds["worker-1"].opaque_result_context)["messageId"],
         )
         self.assertEqual(
             {
                 "eventCode": "image.resize",
                 "payload": {"source": "input"},
             },
-            json.loads(seeds[0].opaque_delivery_item),
+            json.loads(seeds["worker-1"].opaque_delivery_item),
         )
 
     def test_public_close_is_terminal_and_background_rounds_cannot_reopen(self) -> None:

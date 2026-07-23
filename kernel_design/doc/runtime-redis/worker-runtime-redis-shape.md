@@ -44,7 +44,8 @@ score ZSET is kernel-owned TaskItem scheduling-serviceability polarity plus
 acquisition/recovery timing truth
 descriptor hashes are resource declaration truth
 dynamic attribute keys are handler-owned projections / indexes
-endpointManagerId is a stable post-selection endpoint-owner locator
+workerId is globally unique and addresses one DeliverSeed mailbox
+endpointManagerId remains declaration metadata but is not scheduling/delivery routing truth
 live transport evidence is not stored in worker catalog or score keys
 Worker upsert establishes immutable declaration identity before ensuring score presence
 reconnect supplies trusted serviceability evidence, replaces Worker attributes,
@@ -134,15 +135,34 @@ Value shape:
 `dynamicAttributeNames` is an allowlist of updateable dynamic attribute names.
 It is not the current value of those attributes.
 
-`endpointManagerId` locates the physical endpoint manager only after a Worker
-has been selected. It is required declaration metadata, not a matcher field,
-score dimension, live endpoint, session, mailbox, or reachability fact.
+`endpointManagerId` is required declaration metadata in the current shape. It
+is not read by matching, candidate acquisition, DeliverSeed mailbox addressing,
+or consumption, and is not a live endpoint, session, or reachability fact.
 
 `workerGroupId` is a required logical locator on worker descriptor read and
 update operations. The current Redis executable spec uses it directly in the
 hash key, but that is only a first-slice storage layout. A later implementation
 may resolve `(workerGroupId, workerId)` to a group bucket, worker-id hash bucket,
 or another physical partition without changing the catalog interface.
+
+### Global WorkerId Owners
+
+```text
+wr:{prefix}:worker-id-owners
+  HASH field = workerId
+  value = workerGroupId
+```
+
+Role:
+
+```text
+write-time global WorkerId uniqueness guard
+```
+
+This HASH is not a catalog projection, global Worker query, or movement index.
+Descriptor reads remain scoped by `workerGroupId`. The owner field is established
+with `HSETNX`; retry in the same group may continue, while reuse in another
+group returns `CONFLICT` before descriptor or score mutation.
 
 There is no worker-to-group reverse lookup key in the runtime mainline. Global
 worker lookup, cross-group diagnostics, or global-id uniqueness would require a
@@ -425,6 +445,7 @@ Upsert Worker:
 ```text
 require workerGroupId exists
 require endpointManagerId is non-empty
+HSETNX workerId owner; different workerGroupId owner -> CONFLICT
 HSETNX establishes workerId + workerGroupId + endpointManagerId + dynamicAttributeNames
 existing immutable declaration mismatch -> CONFLICT
 compatible repeat -> replace attributes, preserve platformAttributes
@@ -447,13 +468,14 @@ and dynamic attribute handlers update their owner data directly. Dirty marking, 
 validated assignment continuation actually depends on a changed field, is a
 separate score-fence concern; it is not a prerequisite for resource updates.
 
-Upsert uses no cross-key Lua script or Redis transaction. `HSETNX` establishes
-one immutable descriptor field; score operations continue through
-`WorkerScoreCore`. Partial completion is bounded and converges through retry.
+Upsert uses no cross-key Lua script or Redis transaction. Independent `HSETNX`
+operations establish the WorkerId owner and descriptor identity; score
+operations continue through `WorkerScoreCore`. Partial completion is bounded
+and a same-group retry converges it.
 
-`workerId` is unique only inside one `workerGroupId`. The runtime does not keep
-a global Worker home index; the same Worker id in different groups represents
-different resources. Do not infer or implement cross-group movement in v0.
+`workerId` is globally unique because it addresses one logical execution slot
+and DeliverSeed mailbox. The owner HASH enforces that invariant without adding
+global descriptor discovery or cross-group movement.
 
 ## Dynamic Attribute Operations
 
@@ -488,7 +510,7 @@ evaluate remaining constraints in resolved priority order; first match consumes 
 missing / unsupported / unresolved handler rows fail closed when read
 matcher returns each workerId in at most one candidate result
 result shape is insertion-ordered candidateId -> CandidateWorkerEntry values
-each entry carries descriptor endpointManagerId and the unchanged opaque lease score
+each entry carries workerId, workerGroupId, and the unchanged opaque lease score
 pacer leaves unmatched leases untouched; lease expiry restores hot visibility
 ```
 
@@ -637,3 +659,4 @@ protects.
 - Do not make dirty a metadata hash, counter, audit sequence, priority, or
   lifecycle reason.
 - Do not expose Redis score encoding details as public API parameters.
+- Do not use `worker-id-owners` as a global descriptor read or routing surface.

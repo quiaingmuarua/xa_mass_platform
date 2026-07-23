@@ -75,14 +75,15 @@ class FastApiServerTest(unittest.TestCase):
         self.application.append_task_items.return_value = {
             "message-1": TaskItemAppendResult(TaskItemAppendStatus.APPENDED)
         }
-        self.deliver_seed_consumer.consume_deliver_seeds.return_value = (
-            DeliverSeed(
+        seed = DeliverSeed(
                 worker_id="worker-1",
                 opaque_delivery_item="delivery",
                 opaque_result_context="context",
                 task_item_claim_until_millis=5_000,
-            ),
-        )
+            )
+        self.deliver_seed_consumer.consume_deliver_seeds.return_value = {
+            "worker-1": seed
+        }
         self.client_context = TestClient(
             create_app(
                 application=self.application,
@@ -150,7 +151,8 @@ class FastApiServerTest(unittest.TestCase):
             },
         )
         consume_response = self.client.post(
-            "/endpoint-managers/endpoint-1/deliver-seeds:consume?limit=10"
+            "/deliver-seeds:consume",
+            json={"workerIds": ["worker-1"]},
         )
 
         self.assertEqual(200, group_response.status_code)
@@ -204,12 +206,17 @@ class FastApiServerTest(unittest.TestCase):
         self.assertEqual(1234, task_descriptor.empty_close_at_millis)
         self.resources_client.upsert_worker.assert_called_once()
         self.deliver_seed_consumer.consume_deliver_seeds.assert_called_once_with(
-            endpoint_manager_id="endpoint-1",
-            limit=10,
+            worker_ids=("worker-1",),
         )
         self.assertFalse(hasattr(self.application, "consume_deliver_seeds"))
         self.assertEqual(404, self.client.post("/worker-groups").status_code)
         self.assertEqual(404, self.client.post("/workers").status_code)
+        self.assertEqual(
+            404,
+            self.client.post(
+                "/endpoint-managers/endpoint-1/deliver-seeds:consume?limit=10"
+            ).status_code,
+        )
 
     def test_task_rejects_invalid_empty_close_threshold(self) -> None:
         base_request = {

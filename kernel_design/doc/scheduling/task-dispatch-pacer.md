@@ -44,7 +44,7 @@ TaskItemScoreBandCore   due Item observation, ACTIVE existence, exact claim
 TaskRuntime             canonical Item records
 WorkerCandidateAcquirer PRECOMPUTED or TARGETED Worker acquisition
 CandidateWarmupSchedule TASK_DRIVEN replenishment hints
-DeliverSeedRuntime      endpoint-manager handoff queues
+DeliverSeedRuntime      WorkerId-addressed single-slot mailboxes
 ```
 
 The Pacer does not read CandidateWorker cache or Worker score directly. Those
@@ -63,8 +63,10 @@ One round computes its dispatch time and Item claim deadline once:
    `expireAtMillis <= roundNowMillis` to `FINAL_FAILED`.
 6. If no dispatchable Item remains, add the Task to the activity-check batch.
 7. Otherwise acquire Workers, exact-claim only Worker-backed Items, build
-   `DeliverSeed` values, publish by endpoint manager, and preserve suffix zero
-   while advancing ordinary dispatch time.
+   `DeliverSeed` values, publish once to WorkerId-addressed mailboxes, and
+   preserve suffix zero while advancing ordinary dispatch time. `APPENDED`
+   counts as publication; `OCCUPIED` leaves the existing mailbox untouched and
+   relies on the current Item claim and Worker lease expiry.
 8. Call `has_active_items` once for the activity-check batch and apply the
    recheck transition rules below.
 

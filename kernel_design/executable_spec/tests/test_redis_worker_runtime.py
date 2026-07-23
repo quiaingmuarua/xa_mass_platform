@@ -102,7 +102,15 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
         self.assertIn("worker-1", self.redis.hashes["wr:test:workers:image-workers"])
         self.assertEqual(
             set(self.redis.hashes),
-            {"wr:test:groups", "wr:test:workers:image-workers"},
+            {
+                "wr:test:groups",
+                "wr:test:worker-id-owners",
+                "wr:test:workers:image-workers",
+            },
+        )
+        self.assertEqual(
+            "image-workers",
+            self.redis.hashes["wr:test:worker-id-owners"]["worker-1"],
         )
         self.assertIn(
             "worker-1",
@@ -326,7 +334,7 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
             all(descriptor is not None for descriptor in descriptors.values())
         )
 
-    def test_same_worker_id_is_independent_across_worker_groups(self) -> None:
+    def test_same_worker_id_conflicts_across_worker_groups(self) -> None:
         self.upsert_group()
         self.catalog.upsert_worker_group(
             descriptor=WorkerGroupDescriptor(
@@ -348,14 +356,14 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
         )
 
         self.assertEqual(image.status, WorkerRuntimeStatus.OK)
-        self.assertEqual(audio.status, WorkerRuntimeStatus.OK)
+        self.assertEqual(audio.status, WorkerRuntimeStatus.CONFLICT)
         self.assertIsNotNone(
             self.catalog.get_worker_descriptors(
                 worker_group_id="image-workers",
                 worker_ids=["shared"],
             )["shared"]
         )
-        self.assertIsNotNone(
+        self.assertIsNone(
             self.catalog.get_worker_descriptors(
                 worker_group_id="audio-workers",
                 worker_ids=["shared"],

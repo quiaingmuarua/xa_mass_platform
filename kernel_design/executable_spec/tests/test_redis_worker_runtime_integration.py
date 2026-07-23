@@ -60,10 +60,46 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
         )
 
     def tearDown(self) -> None:
-        self.redis.delete(
-            f"wr:{self.prefix}:groups",
-            f"wr:{self.prefix}:workers:{self.worker_group_id}",
-            f"{self.score_key_prefix}:{self.worker_group_id}",
+        keys = tuple(self.redis.scan_iter(match=f"*{self.prefix}*"))
+        if keys:
+            self.redis.delete(*keys)
+
+    def test_worker_id_is_globally_unique_across_groups(self) -> None:
+        for worker_group_id in (self.worker_group_id, "audio-workers"):
+            self.catalog.upsert_worker_group(
+                descriptor=WorkerGroupDescriptor(
+                    worker_group_id=worker_group_id,
+                    attributes={},
+                    event_codes=frozenset(),
+                )
+            )
+
+        first = self.runtime.upsert_worker(
+            declaration=WorkerDeclaration(
+                worker_id="shared-worker",
+                worker_group_id=self.worker_group_id,
+                endpoint_manager_id="endpoint-manager-1",
+                attributes={},
+                dynamic_attribute_names=frozenset(),
+            )
+        )
+        conflict = self.runtime.upsert_worker(
+            declaration=WorkerDeclaration(
+                worker_id="shared-worker",
+                worker_group_id="audio-workers",
+                endpoint_manager_id="endpoint-manager-2",
+                attributes={},
+                dynamic_attribute_names=frozenset(),
+            )
+        )
+
+        self.assertEqual(WorkerRuntimeStatus.OK, first.status)
+        self.assertEqual(WorkerRuntimeStatus.CONFLICT, conflict.status)
+        self.assertIsNone(
+            self.catalog.get_worker_descriptors(
+                worker_group_id="audio-workers",
+                worker_ids=("shared-worker",),
+            )["shared-worker"]
         )
 
     def test_upserted_worker_becomes_hot_acquire_candidate(self) -> None:

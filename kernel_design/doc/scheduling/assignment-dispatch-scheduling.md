@@ -141,9 +141,12 @@ CandidateId -> CandidateWorkerEntry[]
 CandidateWorkerEntry
   workerId
   workerGroupId
-  endpointManagerId
   workerLeaseScore
 ```
+
+The persisted JSON uses exactly these three fields. Rows from the superseded
+endpoint-manager projection are consumed and skipped rather than compatibility-
+decoded.
 
 Owner surface:
 
@@ -192,7 +195,7 @@ dispatch-visible RUNNING Tasks
   -> ITEM_DRIVEN: one messageId TARGETED request per Item
   -> preserve CandidateId-to-messageId binding
   -> exact claim only Worker-backed Items
-  -> append DeliverSeeds by endpointManagerId
+  -> append DeliverSeeds to WorkerId-addressed mailboxes
   -> same-band reschedule while preserving suffix 0
 
 empty-recheck RUNNING Tasks
@@ -225,7 +228,7 @@ the dispatch round does not infer type or strategy from Item contents.
   empty match are bounded no-ops.
 - Unused, stale, claim-failed, or publication-failed Worker leases are not
   actively released; lease expiry restores visibility.
-- Candidate cache and DeliverSeed queues are handoff evidence, not assignment
+- Candidate cache and DeliverSeed mailboxes are handoff evidence, not assignment
   or liveness truth.
 
 ## Deferred Policy

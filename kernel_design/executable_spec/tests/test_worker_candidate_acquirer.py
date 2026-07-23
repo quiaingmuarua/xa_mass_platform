@@ -342,7 +342,6 @@ class WorkerCandidateAcquirerTest(unittest.TestCase):
         return CandidateWorkerEntry(
             worker_id=worker_id,
             worker_group_id="group-1",
-            endpoint_manager_id=f"endpoint-{worker_id}",
             worker_lease_score=score,
         )
 

@@ -536,8 +536,8 @@ no hidden compatibility path or second mainline remains
     private Redis composition, background scheduling lifecycles, built-in CLI,
     and the FastAPI protocol example.
 - [DeliverSeed Outbound Delivery](doc/scheduling/deliver-seed-outbound-delivery.md)
-  - queued seed consumption, external endpoint-manager execution, and opaque
-    result handoff without adapter-owned score mutation.
+  - WorkerId-addressed mailbox consumption, external transport execution, and
+    opaque result handoff without adapter-owned score mutation.
 - [Local Function Transport Adapter](examples/local_function_adapter/README.md)
   - independent process startup, local Worker registration, shared event
     handlers, platform resource upsert, and SeedResult submission.

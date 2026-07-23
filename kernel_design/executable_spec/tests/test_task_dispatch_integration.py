@@ -6,6 +6,7 @@ import time
 import unittest
 import uuid
 from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import patch
 
 try:
@@ -15,6 +16,8 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
 
 from kernel_design.executable_spec import (
     TaskType,
+    DeliverSeed,
+    DeliverSeedAppendStatus,
     DueTaskItemAdmissionPolicy,
     RunningSoftLimitSystemAdmissionPolicy,
     RedisCandidateWorkerCache,
@@ -170,26 +173,56 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             self.warmup_schedule,
         )
 
-    def tearDown(self) -> None:
-        self.redis.delete(
-            f"tr:{self.prefix}:task:score",
-            f"tc:{self.prefix}:task:{self.task_id}",
-            f"tr:{self.prefix}:task:{self.task_id}:items",
-            f"tr:{self.prefix}:task:{self.task_id}:item-score",
-            f"wr:{self.prefix}:score:image-workers",
-            f"ad:{self.prefix}:candidate:{self.task_id}:workers",
-            f"ad:{self.prefix}:candidate-warmups",
-            f"wr:{self.prefix}:groups",
-            f"wr:{self.prefix}:workers:image-workers",
-            (
-                f"ad:{self.prefix}:endpoint-manager:endpoint-manager-1:"
-                "deliver-seeds"
-            ),
-            (
-                f"ad:{self.prefix}:endpoint-manager:endpoint-manager-2:"
-                "deliver-seeds"
+    def test_worker_mailbox_has_one_atomic_consumer(self) -> None:
+        seed = DeliverSeed(
+            worker_id="worker-1",
+            opaque_delivery_item='{"eventCode":"image.resize","payload":{}}',
+            opaque_result_context='{"taskId":"task-1"}',
+            task_item_claim_until_millis=int(time.time() * 1_000) + 5_000,
+        )
+        self.assertEqual(
+            {"worker-1": DeliverSeedAppendStatus.APPENDED},
+            self.deliver_seed_runtime.append_deliver_seeds(
+                deliver_seeds_by_worker_id={"worker-1": seed}
             ),
         )
+        conflicting_seed = DeliverSeed(
+            worker_id="worker-1",
+            opaque_delivery_item='{"eventCode":"other","payload":{}}',
+            opaque_result_context='{"taskId":"task-2"}',
+            task_item_claim_until_millis=int(time.time() * 1_000) + 5_000,
+        )
+        self.assertEqual(
+            {"worker-1": DeliverSeedAppendStatus.OCCUPIED},
+            self.deliver_seed_runtime.append_deliver_seeds(
+                deliver_seeds_by_worker_id={"worker-1": conflicting_seed}
+            ),
+        )
+        competing_runtime = RedisDeliverSeedRuntime(
+            self.redis,
+            prefix=self.prefix,
+        )
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = tuple(
+                executor.map(
+                    lambda runtime: runtime.consume_deliver_seeds(
+                        worker_ids=("worker-1",)
+                    ),
+                    (self.deliver_seed_runtime, competing_runtime),
+                )
+            )
+
+        self.assertEqual(1, sum(bool(result) for result in results))
+        self.assertEqual(
+            [seed],
+            [result["worker-1"] for result in results if result],
+        )
+
+    def tearDown(self) -> None:
+        keys = tuple(self.redis.scan_iter(match=f"*{self.prefix}*"))
+        if keys:
+            self.redis.delete(*keys)
 
     def _create_approve_append_activate(
         self,
@@ -394,11 +427,10 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             dispatch_started_millis + 3_000 - self.item_score.SLOT_MILLIS,
         )
         seeds = self.deliver_seed_runtime.consume_deliver_seeds(
-            endpoint_manager_id="endpoint-manager-1",
-            limit=10,
+            worker_ids=("worker-1",),
         )
         self.assertEqual(1, len(seeds))
-        seed = seeds[0]
+        seed = seeds["worker-1"]
         delivery_item = json.loads(seed.opaque_delivery_item)
         result_context = json.loads(seed.opaque_result_context)
         self.assertEqual("worker-1", seed.worker_id)
@@ -424,10 +456,9 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             dispatch_started_millis + 3_000,
         )
         self.assertEqual(
-            (),
+            {},
             self.deliver_seed_runtime.consume_deliver_seeds(
-                endpoint_manager_id="endpoint-manager-1",
-                limit=10,
+                worker_ids=("worker-1",),
             ),
         )
 
@@ -632,19 +663,19 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             )
         )
         for index in (1, 2):
+            worker_id = f"worker-{index}"
             seeds = self.deliver_seed_runtime.consume_deliver_seeds(
-                endpoint_manager_id=f"endpoint-manager-{index}",
-                limit=10,
+                worker_ids=(worker_id,),
             )
             self.assertEqual(1, len(seeds))
-            self.assertEqual(f"worker-{index}", seeds[0].worker_id)
+            self.assertEqual(worker_id, seeds[worker_id].worker_id)
             self.assertEqual(
                 f"message-{index}",
-                json.loads(seeds[0].opaque_result_context)["messageId"],
+                json.loads(seeds[worker_id].opaque_result_context)["messageId"],
             )
             self.assertEqual(
                 {"target": f"worker-{index}"},
-                json.loads(seeds[0].opaque_delivery_item)["payload"],
+                json.loads(seeds[worker_id].opaque_delivery_item)["payload"],
             )
 
     def test_expired_item_finalizes_before_worker_acquisition(self) -> None:
@@ -891,8 +922,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         time.sleep(0.12)
         dispatched = self.pacer.dispatch_tasks(config=config)
         seeds = self.deliver_seed_runtime.consume_deliver_seeds(
-            endpoint_manager_id="endpoint-manager-1",
-            limit=10,
+            worker_ids=("worker-1",),
         )
 
         self.assertEqual(TaskScoreBand.RUNNING_VISIBLE, held.band)
@@ -903,7 +933,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         self.assertEqual(1, len(seeds))
         self.assertEqual(
             "message-2",
-            json.loads(seeds[0].opaque_result_context)["messageId"],
+            json.loads(seeds["worker-1"].opaque_result_context)["messageId"],
         )
 
     def test_item_driven_empty_rechecks_close_after_explicit_threshold(self) -> None:

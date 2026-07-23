@@ -54,8 +54,8 @@ Task score acquire
   -> TaskItem observation
   -> Task-scoped PRECOMPUTED or Item-scoped TARGETED candidate acquisition
   -> TaskItem exact claim
-  -> DeliverSeed queue
-  -> endpoint-manager delivery
+  -> WorkerId-addressed DeliverSeed mailbox
+  -> Adapter or polling Worker delivery
   -> SeedResult queue
   -> result routing classification
      -> 200: store last-success + FINAL_SUCCESS + Worker exact release
@@ -122,7 +122,7 @@ CandidateWarmupSchedule
   score, assignment, or liveness truth
 
 DeliverSeedRuntime
-  owns per-endpoint DeliverSeed queues; neither runtime is lifecycle truth
+  owns sharded WorkerId single-slot mailboxes; neither runtime is lifecycle truth
 
 SeedResultRuntime
   owns three bounded best-effort outcome-class queues, not Item or Worker truth

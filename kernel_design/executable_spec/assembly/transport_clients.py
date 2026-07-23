@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
-from ..kernel import DeliverSeed, EndpointManagerId, SeedResult
+from ..kernel import DeliverSeed, SeedResult, WorkerId
 from ..redis_runtime import RedisDeliverSeedRuntime, RedisSeedResultRuntime
 from .application import KernelApplicationConfig
 
@@ -16,7 +16,7 @@ def _redis_client(config: KernelApplicationConfig):
 
 
 class DeliverSeedConsumerClient:
-    """External endpoint-manager boundary for consuming assigned seeds."""
+    """External boundary for consuming Worker-addressed assigned seeds."""
 
     def __init__(self, config: KernelApplicationConfig | None = None) -> None:
         if config is not None and not isinstance(config, KernelApplicationConfig):
@@ -37,12 +37,10 @@ class DeliverSeedConsumerClient:
     def consume_deliver_seeds(
         self,
         *,
-        endpoint_manager_id: EndpointManagerId,
-        limit: int,
-    ) -> tuple[DeliverSeed, ...]:
+        worker_ids: Sequence[WorkerId],
+    ) -> Mapping[WorkerId, DeliverSeed]:
         return self._runtime.consume_deliver_seeds(
-            endpoint_manager_id=endpoint_manager_id,
-            limit=limit,
+            worker_ids=worker_ids,
         )
 
 

@@ -28,6 +28,7 @@ from kernel_design.executable_spec.assembly import (
     KernelApplication,
     KernelApplicationConfig,
     ResourcesCommandClient,
+    SeedResult,
     SeedResultCommandClient,
     TaskApprovalStatus,
     TaskCreationStatus,
@@ -70,7 +71,6 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         self.resources = ResourcesCommandClient(self.config)
         self.application = KernelApplication(self.config)
         self.adapter = LocalFunctionTransportAdapter(
-            endpoint_manager_id="endpoint-1",
             deliver_seed_consumer=DeliverSeedConsumerClient(self.config),
             seed_result_commands=SeedResultCommandClient(self.config),
         )
@@ -219,7 +219,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
                 time.sleep(self.worker_score.SLOT_MILLIS / 1_000)
         self.assertIn("worker-1", worker_candidates)
 
-    def test_adapter_rejection_demotes_worker_then_reconnect_restores_hot_acquire(
+    def test_adapter_rejection_evidence_demotes_then_reconnect_restores_worker(
         self,
     ) -> None:
         self.resources.upsert_worker_group(
@@ -259,13 +259,24 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
             ),
         )
 
+        consumer = DeliverSeedConsumerClient(self.config)
+        seeds = {}
         deadline = time.monotonic() + 3
-        reported = 0
-        while time.monotonic() < deadline and reported == 0:
-            reported = self.adapter.drain_once(limit=10)
-            if reported == 0:
+        while time.monotonic() < deadline and not seeds:
+            seeds = consumer.consume_deliver_seeds(worker_ids=("worker-1",))
+            if not seeds:
                 time.sleep(0.02)
-        self.assertEqual(1, reported)
+        self.assertIn("worker-1", seeds)
+        SeedResultCommandClient(self.config).append_seed_results(
+            results=(
+                SeedResult(
+                    opaque_result_context=seeds[
+                        "worker-1"
+                    ].opaque_result_context,
+                    outcome_code="3001",
+                ),
+            )
+        )
 
         recovery_state = None
         deadline = time.monotonic() + 3

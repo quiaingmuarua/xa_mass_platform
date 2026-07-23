@@ -102,7 +102,6 @@ class WorkerCandidateMatcher:
                         CandidateWorkerEntry(
                             worker_id=worker_id,
                             worker_group_id=worker_group_id,
-                            endpoint_manager_id=descriptor.endpoint_manager_id,
                             worker_lease_score=worker_lease_scores[worker_id],
                         )
                     )

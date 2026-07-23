@@ -9,7 +9,7 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from kernel_design.executable_spec.assembly import (
     TaskType,
@@ -84,6 +84,19 @@ class TaskItemRequest(BaseModel):
 
 class AppendTaskItemsRequest(BaseModel):
     items: list[TaskItemRequest]
+
+
+class ConsumeDeliverSeedsRequest(BaseModel):
+    worker_ids: list[str] = Field(alias="workerIds")
+
+    @field_validator("worker_ids")
+    @classmethod
+    def validate_worker_ids(cls, worker_ids: list[str]) -> list[str]:
+        if any(not worker_id for worker_id in worker_ids):
+            raise ValueError("Worker ids must be non-empty")
+        if len(set(worker_ids)) != len(worker_ids):
+            raise ValueError("Worker ids must not contain duplicates")
+        return worker_ids
 
 
 def _result_payload(result: Any) -> dict[str, Any]:
@@ -302,19 +315,17 @@ def create_app(
             kernel_application.append_task_items(task_id=task_id, items=items)
         )
 
-    @app.post(
-        "/endpoint-managers/{endpoint_manager_id}/deliver-seeds:consume"
-    )
+    @app.post("/deliver-seeds:consume")
     def consume_deliver_seeds(
-        endpoint_manager_id: str,
-        limit: int,
+        request: ConsumeDeliverSeedsRequest,
     ) -> list[dict[str, Any]]:
+        seeds_by_worker_id = deliver_seed_commands.consume_deliver_seeds(
+            worker_ids=tuple(request.worker_ids),
+        )
         return [
-            _deliver_seed_payload(seed)
-            for seed in deliver_seed_commands.consume_deliver_seeds(
-                endpoint_manager_id=endpoint_manager_id,
-                limit=limit,
-            )
+            _deliver_seed_payload(seeds_by_worker_id[worker_id])
+            for worker_id in request.worker_ids
+            if worker_id in seeds_by_worker_id
         ]
 
     return app

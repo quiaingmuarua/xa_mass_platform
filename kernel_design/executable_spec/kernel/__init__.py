@@ -63,6 +63,7 @@ from .assignment_dispatch_runtime import (
     CandidateWorkerCache,
     CandidateWorkerEntry,
     DeliverSeed,
+    DeliverSeedAppendStatus,
     DeliverSeedRuntime,
 )
 from .seed_result_runtime import (
@@ -126,6 +127,7 @@ __all__ = [
     "TaskItemScoreTransitionStatus",
     "CandidateWorkerEntry",
     "DeliverSeed",
+    "DeliverSeedAppendStatus",
     "DeliverSeedRuntime",
     "SeedResult",
     "SeedResultOutcomeClass",

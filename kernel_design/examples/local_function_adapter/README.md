@@ -35,9 +35,8 @@ class DeliverSeedConsumerClient:
     def consume_deliver_seeds(
         self,
         *,
-        endpoint_manager_id: str,
-        limit: int,
-    ) -> tuple[DeliverSeed, ...]:
+        worker_ids: Sequence[str],
+    ) -> Mapping[str, DeliverSeed]:
         ...
 
 
@@ -61,7 +60,7 @@ class SeedResultCommandClient:
 client. It forwards the append operation to the kernel-owned
 `SeedResultRuntime`; it is not another result owner or queue. The runtime
 partitions by outcome class only, so append carries no partition coordinate and
-consume carries no `endpointManagerId`.
+DeliverSeed consume is addressed by the bounded WorkerId input.
 
 `SeedResult` deliberately does not duplicate `taskId`, `messageId`, `workerId`,
 claim score, or Worker lease score. Those correlations already travel inside
@@ -114,11 +113,13 @@ start bounded adapter draining
 ```
 
 Local registration must happen first. Otherwise kernel scheduling may select a
-Worker before its endpoint-manager process can invoke it.
+Worker before this process can invoke it. The Adapter consumes only mailboxes
+for currently registered Workers; it never drains unrelated Worker mailboxes.
 
 `WorkerMeta` is local invocation context only. It must not mirror platform,
-Worker, or dynamic matching attributes. The platform descriptor's
-`endpointManagerId` must equal the adapter's `endpoint_manager_id`.
+Worker, or dynamic matching attributes. `endpointManagerId` remains required
+Worker declaration metadata in this executable-spec slice, but the local
+Adapter, candidate selection, mailbox, and consumer do not read it.
 
 ## Example Shape
 
@@ -128,7 +129,6 @@ deliver_seeds = DeliverSeedConsumerClient.from_json(config_json)
 seed_results = SeedResultCommandClient.from_json(config_json)
 
 adapter = LocalFunctionTransportAdapter(
-    endpoint_manager_id="local-endpoint",
     deliver_seed_consumer=deliver_seeds,
     seed_result_commands=seed_results,
 )
@@ -152,8 +152,9 @@ while running:
 ```
 
 `adapter.unregister_worker(workerId)` removes local reachability idempotently.
-It does not mutate kernel Worker score; a later consumed Seed for that Worker
-produces adapter rejection evidence.
+It does not mutate kernel Worker score and prevents future rounds from
+requesting that Worker mailbox. If removal races after mailbox consume but
+before invocation, the consumed Seed produces adapter rejection evidence.
 
 One adapter process may host many Workers. They share the process-local
 `eventCode -> EventHandler` registry.
@@ -204,13 +205,17 @@ message-queue, or local-call envelopes without changing `DeliverSeed` or
 
 ```python
 def drain_once(self, *, limit: int) -> int:
-    seeds = self.deliver_seed_consumer.consume_deliver_seeds(
-        endpoint_manager_id=self.endpoint_manager_id,
-        limit=limit,
-    )
+    worker_ids = self.select_registered_workers_round_robin(limit=limit)
+    if not worker_ids:
+        return 0
+
+    seeds = self.deliver_seed_consumer.consume_deliver_seeds(worker_ids=worker_ids)
 
     results = []
-    for seed in seeds:
+    for worker_id in worker_ids:
+        seed = seeds.get(worker_id)
+        if seed is None:
+            continue
         if now_millis() >= seed.task_item_claim_until_millis:
             continue
 
@@ -247,8 +252,9 @@ def drain_once(self, *, limit: int) -> int:
     return self.seed_result_commands.append_seed_results(results=tuple(results))
 ```
 
-The adapter counts only runtime-accepted results. Consuming a queue record is
-not delivery or result success.
+The adapter counts only runtime-accepted results. Consuming a mailbox value is
+not delivery or result success. The round-robin cursor prevents a fixed prefix
+of a large local registry from monopolizing bounded polls.
 
 Handlers may return only `"200"` or `1xxx`; they cannot forge `3xxx` adapter
 evidence. Handler failure, invalid return type, or payload encoding failure is
@@ -264,7 +270,7 @@ do not change Worker scheduling-serviceability classification.
 The adapter owns only:
 
 ```text
-endpointManagerId-local Worker registry
+process-local Worker registry and round-robin poll cursor
 event handler registry
 DeliverSeed decoding
 local handler invocation
@@ -315,6 +321,9 @@ polarity and dirty=1 while preserving its time coordinate and lane rank. It may
 return `CONFLICT` only when an
 immutable declaration field such as `endpointManagerId` or
 `dynamicAttributeNames` differs; an existing score alone is not a conflict.
+`workerId` is globally unique in this first mailbox contract; the resource
+runtime rejects reuse by another WorkerGroup even though descriptor reads stay
+WorkerGroup-scoped.
 
 ## Non-Goals
 

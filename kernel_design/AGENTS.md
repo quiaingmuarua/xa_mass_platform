@@ -151,7 +151,7 @@ For process assembly or server entry work:
 8. [executable_spec/tests/test_resources_command_client.py](executable_spec/tests/test_resources_command_client.py)
 9. [examples/fastapi_server.py](examples/fastapi_server.py)
 
-For an external endpoint-manager or transport-adapter process:
+For an external transport-adapter process or polling Worker:
 
 1. [examples/local_function_adapter/README.md](examples/local_function_adapter/README.md)
 2. [doc/scheduling/deliver-seed-outbound-delivery.md](doc/scheduling/deliver-seed-outbound-delivery.md)
@@ -315,7 +315,7 @@ WorkerDynamicAttributeRuntime
 
 WorkerCandidateMatcher
   one worker group, caller-supplied bounded worker id batch, ordered candidate
-  constraints, matched Worker ids, and matched Worker -> endpointManagerId routing projection
+  constraints, and matched Worker lease evidence
 
 WorkerScoreCore
   bounded HOT observation, batched exact-score lease, RECOVERY_RECHECK acquisition, and score transitions
@@ -340,9 +340,9 @@ by [Worker HOT_ACQUIRE Lease Protocol](doc/scheduling/worker-hot-acquire-lease-p
 DeliverSeed outbound delivery owns:
 
 ```text
-queued DeliverSeed consumption
-endpointManagerId queue partition ownership
-endpoint-manager-local Worker resolution
+WorkerId-addressed single-slot mailbox consumption
+bounded explicit WorkerId polling
+consumer-local Worker resolution
 transport submit for the already selected Worker
 SeedResult creation and append to SeedResultRuntime
 ```
@@ -371,7 +371,7 @@ current Item score, reproduce same-tag/cross-tag rules, select workers, parse
 transport sessions as truth, depend directly on Task/Worker runtime owners, or
 refresh task or worker score as a generic side effect. Built-in owner-operation
 policy belongs to `ResultRoutingBuiltinPolicies`; replacement policy uses the
-same stable handler contracts. Queues are not partitioned by endpointManagerId,
+same stable handler contracts. SeedResult queues are not partitioned by endpointManagerId,
 exact subcode, Task, WorkerGroup, or producer source. The first executable spec
 persists only last-success payload truth, not failure history or a public result
 projection;

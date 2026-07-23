@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from enum import Enum
 from typing import Mapping, Sequence
 
 from .task_score_band import TaskId, TimeMillis
-from .worker_runtime import EndpointManagerId, WorkerGroupId
+from .worker_runtime import WorkerGroupId
 from .worker_score import Score as WorkerScore
 from .worker_score import WorkerId
 
@@ -19,13 +20,12 @@ class CandidateWorkerEntry:
 
     worker_id: WorkerId
     worker_group_id: WorkerGroupId
-    endpoint_manager_id: EndpointManagerId
     worker_lease_score: WorkerScore
 
 
 @dataclass(frozen=True)
 class DeliverSeed:
-    """Opaque already-assigned handoff consumed by one endpoint manager."""
+    """Opaque already-assigned handoff stored in one Worker mailbox."""
 
     worker_id: WorkerId
     opaque_delivery_item: str
@@ -51,6 +51,13 @@ class DeliverSeed:
             or self.task_item_claim_until_millis <= 0
         ):
             raise ValueError("TaskItem claim deadline must be positive")
+
+
+class DeliverSeedAppendStatus(Enum):
+    """Per-Worker outcome of one mailbox append."""
+
+    APPENDED = "APPENDED"
+    OCCUPIED = "OCCUPIED"
 
 
 class CandidateWorkerCache(ABC):
@@ -112,24 +119,22 @@ class CandidateWarmupSchedule(ABC):
 
 
 class DeliverSeedRuntime(ABC):
-    """Runtime owner for endpoint-manager-partitioned DeliverSeed queues."""
+    """Runtime owner for Worker-addressed DeliverSeed mailboxes."""
 
     @abstractmethod
     def append_deliver_seeds(
         self,
         *,
-        endpoint_manager_id: EndpointManagerId,
-        deliver_seeds: Sequence[DeliverSeed],
-    ) -> None:
-        """Append one bounded batch to exactly one endpoint-manager queue."""
+        deliver_seeds_by_worker_id: Mapping[WorkerId, DeliverSeed],
+    ) -> Mapping[WorkerId, DeliverSeedAppendStatus]:
+        """Store a DeliverSeed only when the Worker mailbox is empty."""
         pass
 
     @abstractmethod
     def consume_deliver_seeds(
         self,
         *,
-        endpoint_manager_id: EndpointManagerId,
-        limit: int,
-    ) -> tuple[DeliverSeed, ...]:
-        """Atomically consume a bounded batch from one endpoint-manager queue."""
+        worker_ids: Sequence[WorkerId],
+    ) -> Mapping[WorkerId, DeliverSeed]:
+        """Atomically consume mailboxes for a bounded Worker-id batch."""
         pass
