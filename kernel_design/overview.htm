@@ -3,787 +3,1824 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="XA Mass Platform 新机制内核的单页快速导览：场景、调度主链、Score Band、Owner 边界与验证入口。">
-  <title>XA Mass · Kernel Design 快速导览</title>
+  <meta name="description" content="XA Mass 新内核全景：调度平面、Score 轴、TaskType、Dispatch、Worker Delivery 与 Result Routing。">
+  <title>XA Mass 新内核全景</title>
   <style>
     :root {
       color-scheme: light;
-      --ink: #132033;
-      --ink-soft: #536176;
-      --paper: #f6f3ec;
-      --paper-strong: #fffdf8;
-      --line: #d9d3c7;
-      --navy: #10283d;
-      --teal: #087f78;
-      --teal-soft: #dff4ef;
-      --amber: #d88b26;
-      --amber-soft: #fff0d8;
-      --blue: #2e69a8;
-      --blue-soft: #e5effa;
-      --red: #b9574f;
-      --red-soft: #fae7e4;
-      --green: #377e58;
-      --green-soft: #e4f2e8;
-      --shadow: 0 16px 44px rgba(30, 42, 56, .09);
-      --radius: 22px;
-      --sidebar: 260px;
+      --ink: #142d35;
+      --ink-soft: #496169;
+      --paper: #f7f3e9;
+      --paper-strong: #fffdf7;
+      --line: #d8d1c0;
+      --navy: #0e2b35;
+      --navy-2: #153c47;
+      --teal: #167b76;
+      --teal-soft: #dcefeb;
+      --amber: #d58427;
+      --amber-soft: #f8e8ce;
+      --blue: #4778a5;
+      --blue-soft: #dfeaf3;
+      --plum: #80628e;
+      --plum-soft: #ece3f0;
+      --red: #b75b4b;
+      --red-soft: #f5dfda;
+      --green: #397d59;
+      --green-soft: #dfeee3;
+      --shadow: 0 18px 50px rgba(23, 42, 47, 0.09);
+      --radius-lg: 24px;
+      --radius-md: 16px;
+      --radius-sm: 10px;
+      --sidebar: 250px;
+      --content: 1160px;
+      --mono: "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      --sans: Inter, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
     }
 
-    * { box-sizing: border-box; }
-    html { scroll-behavior: smooth; }
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      background: var(--paper);
+    }
+
     body {
       margin: 0;
       color: var(--ink);
       background:
-        radial-gradient(circle at 12% 4%, rgba(8,127,120,.10), transparent 27rem),
-        radial-gradient(circle at 92% 18%, rgba(216,139,38,.10), transparent 25rem),
+        radial-gradient(circle at 90% 0%, rgba(22, 123, 118, 0.09), transparent 27rem),
+        linear-gradient(90deg, var(--navy) 0 var(--sidebar), transparent var(--sidebar)),
         var(--paper);
-      font-family: Inter, "SF Pro Text", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-family: var(--sans);
       line-height: 1.65;
     }
 
-    a { color: inherit; }
-    button, a { -webkit-tap-highlight-color: transparent; }
-    :focus-visible { outline: 3px solid rgba(8,127,120,.36); outline-offset: 3px; }
+    a {
+      color: inherit;
+      text-decoration-thickness: 1px;
+      text-underline-offset: 3px;
+    }
+
+    button,
+    a {
+      -webkit-tap-highlight-color: transparent;
+    }
 
     .skip-link {
       position: fixed;
-      top: 12px;
-      left: 12px;
       z-index: 100;
-      padding: 10px 14px;
-      border-radius: 10px;
+      top: 10px;
+      left: 10px;
+      padding: 8px 12px;
       color: white;
-      background: var(--navy);
+      background: var(--teal);
+      border-radius: 8px;
       transform: translateY(-160%);
-      transition: transform .2s ease;
     }
-    .skip-link:focus { transform: translateY(0); }
 
-    .read-progress {
+    .skip-link:focus {
+      transform: translateY(0);
+    }
+
+    .progress {
       position: fixed;
-      inset: 0 0 auto 0;
-      z-index: 90;
-      height: 4px;
-      background: rgba(16,40,61,.08);
-    }
-    .read-progress span {
-      display: block;
+      z-index: 80;
+      top: 0;
+      left: 0;
       width: 0;
-      height: 100%;
-      background: linear-gradient(90deg, var(--teal), var(--amber));
-    }
-
-    .layout {
-      display: grid;
-      grid-template-columns: var(--sidebar) minmax(0, 1fr);
-      min-height: 100vh;
+      height: 3px;
+      background: linear-gradient(90deg, var(--amber), #f0b25f);
+      box-shadow: 0 0 12px rgba(213, 132, 39, 0.55);
     }
 
     .sidebar {
-      position: sticky;
-      top: 0;
-      height: 100vh;
-      padding: 34px 24px 24px;
-      color: #e8f0f3;
+      position: fixed;
+      z-index: 40;
+      inset: 0 auto 0 0;
+      width: var(--sidebar);
+      padding: 30px 24px;
+      color: #dbe8e7;
       background:
-        linear-gradient(155deg, rgba(8,127,120,.25), transparent 45%),
-        var(--navy);
+        radial-gradient(circle at 35% 0%, rgba(37, 137, 129, 0.34), transparent 18rem),
+        linear-gradient(180deg, var(--navy-2), var(--navy));
       overflow-y: auto;
     }
 
     .brand {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-bottom: 34px;
-    }
-    .brand-mark {
-      display: grid;
-      place-items: center;
-      width: 42px;
-      height: 42px;
-      border: 1px solid rgba(255,255,255,.22);
-      border-radius: 14px;
+      display: block;
+      margin-bottom: 30px;
       color: white;
-      background: rgba(255,255,255,.08);
-      font-weight: 800;
-      letter-spacing: -.08em;
+      text-decoration: none;
     }
-    .brand strong { display: block; font-size: 14px; letter-spacing: .02em; }
-    .brand small { color: #9fb2bf; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; }
 
-    .sidebar nav { display: grid; gap: 5px; }
-    .sidebar nav a {
+    .brand-mark {
+      display: inline-grid;
+      place-items: center;
+      width: 36px;
+      height: 36px;
+      margin-bottom: 12px;
+      color: var(--navy);
+      background: var(--amber);
+      border-radius: 11px;
+      font-weight: 900;
+      box-shadow: 0 8px 22px rgba(0, 0, 0, 0.18);
+    }
+
+    .brand strong,
+    .brand span {
+      display: block;
+    }
+
+    .brand strong {
+      font-size: 17px;
+      letter-spacing: 0.02em;
+    }
+
+    .brand span {
+      margin-top: 3px;
+      color: #a8bfbe;
+      font-size: 12px;
+    }
+
+    .nav-label {
+      margin: 22px 0 8px;
+      color: #80a6a3;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    .nav {
+      display: grid;
+      gap: 3px;
+    }
+
+    .nav a {
+      padding: 8px 10px;
+      color: #bcd0cf;
+      border-left: 2px solid transparent;
+      border-radius: 0 8px 8px 0;
+      font-size: 13px;
+      text-decoration: none;
+      transition: 160ms ease;
+    }
+
+    .nav a:hover,
+    .nav a:focus-visible,
+    .nav a.active {
+      color: white;
+      background: rgba(255, 255, 255, 0.07);
+      border-left-color: var(--amber);
+      outline: none;
+    }
+
+    .sidebar-note {
+      margin-top: 26px;
+      padding: 14px;
+      color: #a9c0bf;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      font-size: 11px;
+      line-height: 1.55;
+    }
+
+    main {
+      width: min(calc(100% - var(--sidebar)), var(--content));
+      margin-left: max(var(--sidebar), calc((100% - var(--content) + var(--sidebar)) / 2));
+      padding: 58px 48px 100px;
+    }
+
+    section {
+      scroll-margin-top: 26px;
+      margin-top: 76px;
+    }
+
+    .hero {
+      margin-top: 0;
+      padding: 48px;
+      color: #f5fbfa;
+      background:
+        radial-gradient(circle at 94% 0%, rgba(213, 132, 39, 0.28), transparent 20rem),
+        radial-gradient(circle at 30% 120%, rgba(22, 123, 118, 0.42), transparent 28rem),
+        var(--navy);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .eyebrow {
       display: flex;
       align-items: center;
       gap: 10px;
-      padding: 9px 11px;
-      border-radius: 10px;
-      color: #aebfca;
-      text-decoration: none;
-      font-size: 13px;
-      transition: color .18s ease, background .18s ease;
-    }
-    .sidebar nav a::before {
-      content: "";
-      width: 6px;
-      height: 6px;
-      border-radius: 50%;
-      background: currentColor;
-      opacity: .55;
-    }
-    .sidebar nav a:hover,
-    .sidebar nav a.active { color: white; background: rgba(255,255,255,.09); }
-
-    .sidebar-note {
-      margin-top: 34px;
-      padding: 16px;
-      border: 1px solid rgba(255,255,255,.10);
-      border-radius: 15px;
-      color: #adbec8;
-      background: rgba(255,255,255,.045);
-      font-size: 12px;
-    }
-    .sidebar-note strong { color: #fff; }
-
-    main { min-width: 0; padding: 0 5vw 80px; }
-    .content { width: min(1180px, 100%); margin: 0 auto; }
-
-    .hero {
-      min-height: 88vh;
-      display: grid;
-      align-content: center;
-      padding: 72px 0 48px;
-    }
-    .eyebrow {
-      display: inline-flex;
-      align-items: center;
-      gap: 9px;
-      width: fit-content;
-      margin-bottom: 22px;
-      padding: 7px 11px;
-      border: 1px solid rgba(8,127,120,.24);
-      border-radius: 999px;
+      margin: 0 0 14px;
       color: var(--teal);
-      background: rgba(255,255,255,.58);
       font-size: 12px;
-      font-weight: 750;
-      letter-spacing: .08em;
+      font-weight: 900;
+      letter-spacing: 0.13em;
       text-transform: uppercase;
     }
-    .eyebrow::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 0 5px rgba(8,127,120,.12); }
+
+    .hero .eyebrow {
+      color: #93d1cb;
+    }
+
+    .eyebrow::before {
+      width: 24px;
+      height: 2px;
+      content: "";
+      background: currentColor;
+    }
+
+    h1,
+    h2,
+    h3,
+    p {
+      margin-top: 0;
+    }
+
     h1 {
-      max-width: 950px;
-      margin: 0;
-      color: var(--navy);
-      font-size: clamp(44px, 7vw, 88px);
-      line-height: .98;
-      letter-spacing: -.055em;
-    }
-    h1 span { color: var(--teal); }
-    .hero-lead {
       max-width: 820px;
-      margin: 28px 0 0;
-      color: var(--ink-soft);
-      font-size: clamp(17px, 2vw, 22px);
-      line-height: 1.7;
+      margin-bottom: 18px;
+      font-size: clamp(38px, 6vw, 72px);
+      line-height: 1.02;
+      letter-spacing: -0.045em;
     }
-    .hero-lead strong { color: var(--ink); }
-    .hero-tags { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 28px; }
-    .tag {
-      padding: 7px 11px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      color: #435267;
-      background: rgba(255,255,255,.65);
+
+    .hero-lede {
+      max-width: 780px;
+      margin-bottom: 30px;
+      color: #c6d8d6;
+      font-size: 17px;
+    }
+
+    .hero-lede strong {
+      color: white;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+      margin: 0 0 32px;
+    }
+
+    .metric {
+      min-height: 84px;
+      padding: 14px 15px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 14px;
+    }
+
+    .metric b {
+      display: block;
+      color: #f2b45c;
+      font-family: var(--mono);
+      font-size: 24px;
+      line-height: 1.2;
+    }
+
+    .metric span {
+      color: #aac1bf;
       font-size: 12px;
-      font-weight: 650;
     }
 
     .hero-flow {
       display: grid;
-      grid-template-columns: repeat(5, 1fr);
-      gap: 10px;
-      margin-top: 46px;
-      padding: 16px;
-      border: 1px solid rgba(16,40,61,.12);
-      border-radius: var(--radius);
-      background: rgba(255,253,248,.68);
-      box-shadow: var(--shadow);
-      backdrop-filter: blur(12px);
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 18px;
+      align-items: stretch;
+      margin-top: 12px;
     }
-    .hero-flow div {
+
+    .hero-flow .node {
       position: relative;
-      padding: 15px 12px;
-      border-radius: 14px;
-      background: var(--paper-strong);
+      display: grid;
+      align-content: center;
+      min-height: 70px;
+      padding: 11px 10px;
+      color: #dce9e7;
+      background: rgba(255, 255, 255, 0.055);
+      border: 1px solid rgba(255, 255, 255, 0.09);
+      border-radius: 12px;
+      font-size: 11px;
       text-align: center;
     }
-    .hero-flow div:not(:last-child)::after {
-      content: "→";
+
+    .hero-flow .node:not(:last-child)::after {
       position: absolute;
       top: 50%;
       right: -17px;
-      z-index: 2;
-      color: var(--teal);
+      color: #729490;
+      content: "→";
       transform: translateY(-50%);
-      font-weight: 800;
     }
-    .hero-flow small { display: block; color: var(--ink-soft); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
-    .hero-flow strong { display: block; margin-top: 2px; color: var(--navy); font-size: 13px; }
 
-    section:not(.hero) { scroll-margin-top: 28px; padding: 64px 0; }
-    .section-kicker { margin: 0 0 10px; color: var(--teal); font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
-    h2 { margin: 0; color: var(--navy); font-size: clamp(30px, 4vw, 50px); line-height: 1.08; letter-spacing: -.035em; }
-    .section-intro { max-width: 820px; margin: 16px 0 32px; color: var(--ink-soft); font-size: 17px; }
-    h3 { margin: 0; color: var(--navy); font-size: 20px; letter-spacing: -.015em; }
-
-    .grid-2, .grid-3, .grid-4 { display: grid; gap: 18px; }
-    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-    .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-
-    .card {
-      padding: 24px;
-      border: 1px solid rgba(16,40,61,.11);
-      border-radius: var(--radius);
-      background: rgba(255,253,248,.82);
-      box-shadow: 0 10px 30px rgba(30,42,56,.055);
+    .hero-flow .node b {
+      display: block;
+      margin-bottom: 2px;
+      color: white;
+      font-size: 12px;
     }
-    .card p { margin: 10px 0 0; color: var(--ink-soft); }
-    .card ul { margin: 15px 0 0; padding-left: 20px; color: var(--ink-soft); }
-    .card li + li { margin-top: 7px; }
-    .card .number {
+
+    .hero-flow .node.accent {
+      background: rgba(213, 132, 39, 0.14);
+      border-color: rgba(240, 178, 95, 0.45);
+    }
+
+    .section-head {
       display: grid;
-      place-items: center;
-      width: 38px;
-      height: 38px;
-      margin-bottom: 18px;
-      border-radius: 12px;
-      color: var(--teal);
-      background: var(--teal-soft);
-      font-weight: 850;
+      grid-template-columns: minmax(0, 1fr) minmax(260px, 0.62fr);
+      gap: 32px;
+      align-items: end;
+      margin-bottom: 26px;
     }
 
-    .statement {
-      margin-top: 18px;
-      padding: 27px 28px;
-      border-left: 5px solid var(--amber);
-      border-radius: 0 var(--radius) var(--radius) 0;
-      color: #4b3a24;
-      background: var(--amber-soft);
+    h2 {
+      margin-bottom: 0;
+      font-size: clamp(29px, 4vw, 46px);
+      line-height: 1.1;
+      letter-spacing: -0.035em;
+    }
+
+    .section-head > p {
+      margin-bottom: 2px;
+      color: var(--ink-soft);
+      font-size: 14px;
+    }
+
+    h3 {
+      margin-bottom: 8px;
       font-size: 18px;
+      line-height: 1.28;
     }
-    .statement strong { color: #7a4a0d; }
 
-    .flow-board {
+    .panorama {
+      padding: 24px;
+      color: #eaf4f2;
+      background: var(--navy);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow);
+    }
+
+    .plane-grid {
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 12px;
-      counter-reset: flow;
     }
-    .flow-step {
+
+    .plane {
       position: relative;
-      min-height: 160px;
+      min-height: 225px;
       padding: 20px;
-      border: 1px solid rgba(16,40,61,.12);
-      border-radius: 18px;
-      background: var(--paper-strong);
-      counter-increment: flow;
-    }
-    .flow-step::before {
-      content: counter(flow, decimal-leading-zero);
-      display: block;
-      margin-bottom: 22px;
-      color: var(--teal);
-      font-size: 12px;
-      font-weight: 850;
-      letter-spacing: .1em;
-    }
-    .flow-step::after {
-      content: "";
-      position: absolute;
-      top: 49px;
-      left: 52px;
-      right: 20px;
-      height: 1px;
-      background: linear-gradient(90deg, rgba(8,127,120,.44), transparent);
-    }
-    .flow-step strong { display: block; color: var(--navy); font-size: 15px; }
-    .flow-step span { display: block; margin-top: 8px; color: var(--ink-soft); font-size: 13px; }
-
-    .type-card { position: relative; overflow: hidden; padding: 28px; }
-    .type-card::after {
-      content: "";
-      position: absolute;
-      right: -48px;
-      bottom: -48px;
-      width: 160px;
-      height: 160px;
-      border-radius: 50%;
-      background: rgba(255,255,255,.23);
-    }
-    .type-card.dense { background: linear-gradient(145deg, #e4f4f0, #f8fffc); }
-    .type-card.sparse { background: linear-gradient(145deg, #e7eef8, #fafcff); }
-    .type-label { display: inline-block; padding: 5px 9px; border-radius: 8px; font-size: 11px; font-weight: 800; letter-spacing: .08em; }
-    .dense .type-label { color: #08645f; background: rgba(8,127,120,.12); }
-    .sparse .type-label { color: #295c92; background: rgba(46,105,168,.12); }
-    .type-card h3 { margin-top: 14px; font-size: 28px; }
-    .type-path { display: grid; gap: 8px; margin-top: 22px; }
-    .type-path div { position: relative; z-index: 1; padding: 11px 13px; border: 1px solid rgba(16,40,61,.09); border-radius: 11px; background: rgba(255,255,255,.62); font-size: 13px; }
-
-    .shared-rule {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      margin-top: 18px;
-      padding: 17px 20px;
-      border: 1px dashed rgba(8,127,120,.42);
-      border-radius: 16px;
-      color: var(--ink-soft);
-      background: rgba(223,244,239,.36);
-    }
-    .shared-rule b { color: var(--teal); white-space: nowrap; }
-
-    .score-card { display: flex; flex-direction: column; min-height: 390px; }
-    .score-head { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
-    .axis-chip { padding: 5px 8px; border-radius: 7px; font-size: 10px; font-weight: 850; letter-spacing: .07em; }
-    .task-axis .axis-chip { color: #0a6861; background: var(--teal-soft); }
-    .worker-axis .axis-chip { color: #2c5f91; background: var(--blue-soft); }
-    .item-axis .axis-chip { color: #87530f; background: var(--amber-soft); }
-    .axis-line { display: grid; gap: 8px; margin: 22px 0; }
-    .axis-line div { position: relative; padding: 10px 12px 10px 31px; border-radius: 10px; color: #435267; background: rgba(16,40,61,.045); font-size: 12px; }
-    .axis-line div::before { content: ""; position: absolute; left: 13px; top: 50%; width: 7px; height: 7px; border-radius: 50%; background: var(--teal); transform: translateY(-50%); }
-    .worker-axis .axis-line div::before { background: var(--blue); }
-    .item-axis .axis-line div::before { background: var(--amber); }
-    .score-card p { font-size: 13px; }
-    .score-facts { margin-top: auto; padding-top: 15px; border-top: 1px solid var(--line); color: var(--ink-soft); font-size: 12px; }
-
-    .priority-box {
-      display: grid;
-      grid-template-columns: 180px 1fr;
-      gap: 22px;
-      margin-top: 18px;
-      padding: 24px;
-      border-radius: var(--radius);
-      color: #e8f0f3;
-      background: var(--navy);
-    }
-    .priority-meter { display: grid; align-content: center; gap: 8px; }
-    .priority-meter .scale { height: 12px; border-radius: 999px; background: linear-gradient(90deg, #45b8a7, #f0c56e); }
-    .priority-meter .labels { display: flex; justify-content: space-between; color: #b9c9d1; font-size: 11px; }
-    .priority-box h3 { color: white; }
-    .priority-box p { margin: 7px 0 0; color: #b9c9d1; font-size: 13px; }
-
-    .owner-table, .redis-table {
-      width: 100%;
-      border-collapse: separate;
-      border-spacing: 0;
+      border-radius: 17px;
       overflow: hidden;
-      border: 1px solid var(--line);
-      border-radius: 18px;
-      background: var(--paper-strong);
     }
-    .owner-table th, .owner-table td,
-    .redis-table th, .redis-table td { padding: 15px 16px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; font-size: 13px; }
-    .owner-table tr:last-child td, .redis-table tr:last-child td { border-bottom: 0; }
-    .owner-table th, .redis-table th { color: var(--navy); background: rgba(16,40,61,.045); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }
-    .owner-table td:first-child, .redis-table td:first-child { color: var(--navy); font-weight: 750; }
-    .muted { color: var(--ink-soft); }
 
-    .outcome { border-top: 5px solid; }
-    .outcome.success { border-color: var(--green); }
-    .outcome.failure { border-color: var(--amber); }
-    .outcome.reject { border-color: var(--red); }
-    .outcome code { display: inline-block; margin-top: 14px; padding: 5px 8px; border-radius: 7px; background: rgba(16,40,61,.06); font-size: 12px; }
-
-    .rule-list { display: grid; gap: 11px; }
-    .rule {
-      display: grid;
-      grid-template-columns: 34px 1fr;
-      gap: 12px;
-      align-items: start;
-      padding: 16px;
-      border: 1px solid var(--line);
-      border-radius: 14px;
-      background: var(--paper-strong);
+    .plane::after {
+      position: absolute;
+      right: -23px;
+      bottom: -42px;
+      width: 115px;
+      height: 115px;
+      content: "";
+      border: 26px solid rgba(255, 255, 255, 0.06);
+      border-radius: 50%;
     }
-    .rule-mark { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 10px; font-weight: 850; }
-    .rule.good .rule-mark { color: var(--green); background: var(--green-soft); }
-    .rule.bad .rule-mark { color: var(--red); background: var(--red-soft); }
-    .rule strong { display: block; color: var(--navy); font-size: 14px; }
-    .rule span { color: var(--ink-soft); font-size: 12px; }
 
-    .link-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 13px; }
-    .doc-link {
-      display: block;
-      padding: 18px;
-      border: 1px solid var(--line);
-      border-radius: 15px;
-      background: var(--paper-strong);
-      text-decoration: none;
-      transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
+    .plane.task {
+      background: #175d5d;
     }
-    .doc-link:hover { transform: translateY(-2px); border-color: rgba(8,127,120,.45); box-shadow: 0 10px 24px rgba(30,42,56,.07); }
-    .doc-link small { display: block; color: var(--teal); font-size: 10px; font-weight: 850; letter-spacing: .09em; text-transform: uppercase; }
-    .doc-link strong { display: block; margin-top: 6px; color: var(--navy); font-size: 14px; }
-    .doc-link span { display: block; margin-top: 5px; color: var(--ink-soft); font-size: 12px; }
 
-    .command {
+    .plane.worker {
+      background: #385d7c;
+    }
+
+    .plane.dispatch {
+      background: #9a5f24;
+    }
+
+    .plane.result {
+      background: #634d70;
+    }
+
+    .plane-number {
+      display: inline-grid;
+      place-items: center;
+      width: 29px;
+      height: 29px;
+      margin-bottom: 26px;
+      color: white;
+      border: 1px solid rgba(255, 255, 255, 0.34);
+      border-radius: 50%;
+      font-family: var(--mono);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .plane h3 {
+      color: white;
+      font-size: 19px;
+    }
+
+    .plane p {
       position: relative;
-      margin-top: 12px;
-      padding: 19px 60px 19px 18px;
-      border-radius: 14px;
-      color: #dce7eb;
-      background: #122434;
-      overflow-x: auto;
-      font: 12px/1.65 "Cascadia Code", "SFMono-Regular", Consolas, monospace;
+      z-index: 1;
+      margin-bottom: 0;
+      color: rgba(255, 255, 255, 0.76);
+      font-size: 13px;
     }
+
+    .plane .answer {
+      display: block;
+      margin-top: 14px;
+      color: white;
+      font-weight: 800;
+    }
+
+    .bridge {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 14px;
+      align-items: center;
+      margin-top: 14px;
+      padding: 15px 18px;
+      color: #bdd0cd;
+      background: rgba(255, 255, 255, 0.055);
+      border: 1px dashed rgba(255, 255, 255, 0.19);
+      border-radius: 14px;
+      font-size: 12px;
+    }
+
+    .bridge strong {
+      color: white;
+    }
+
+    .bridge-tag {
+      padding: 5px 8px;
+      color: #f4c47f;
+      border: 1px solid rgba(244, 196, 127, 0.38);
+      border-radius: 999px;
+      font-family: var(--mono);
+      font-size: 10px;
+      white-space: nowrap;
+    }
+
+    .grid-2,
+    .grid-3,
+    .grid-4 {
+      display: grid;
+      gap: 16px;
+    }
+
+    .grid-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .grid-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .grid-4 {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .card {
+      padding: 22px;
+      background: rgba(255, 253, 247, 0.78);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      box-shadow: 0 8px 28px rgba(27, 52, 58, 0.04);
+    }
+
+    .card p:last-child,
+    .card ul:last-child {
+      margin-bottom: 0;
+    }
+
+    .card p,
+    .card li {
+      color: var(--ink-soft);
+      font-size: 13px;
+    }
+
+    .card ul {
+      margin: 12px 0 0;
+      padding-left: 18px;
+    }
+
+    .card li + li {
+      margin-top: 6px;
+    }
+
+    .identity {
+      position: relative;
+      padding-top: 48px;
+    }
+
+    .identity-code {
+      position: absolute;
+      top: 18px;
+      left: 22px;
+      color: var(--teal);
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .identity.evidence .identity-code {
+      color: var(--amber);
+    }
+
+    .callout {
+      margin-top: 18px;
+      padding: 19px 21px;
+      background: var(--teal-soft);
+      border-left: 4px solid var(--teal);
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      color: #285b58;
+      font-size: 13px;
+    }
+
+    .callout strong {
+      color: #104d49;
+    }
+
+    .callout.amber {
+      color: #744815;
+      background: var(--amber-soft);
+      border-left-color: var(--amber);
+    }
+
+    .layer-stack {
+      display: grid;
+      gap: 8px;
+    }
+
+    .layer {
+      display: grid;
+      grid-template-columns: 150px 1fr;
+      gap: 22px;
+      align-items: center;
+      padding: 17px 20px;
+      border-radius: 13px;
+    }
+
+    .layer b {
+      font-size: 13px;
+    }
+
+    .layer span {
+      color: var(--ink-soft);
+      font-size: 13px;
+    }
+
+    .layer.mechanism {
+      background: var(--blue-soft);
+      border: 1px solid #c5d7e6;
+    }
+
+    .layer.system {
+      background: var(--teal-soft);
+      border: 1px solid #c2dfdb;
+    }
+
+    .layer.scenario {
+      background: var(--amber-soft);
+      border: 1px solid #ecd1a5;
+    }
+
+    .task-type {
+      position: relative;
+      min-height: 280px;
+      padding: 28px;
+      overflow: hidden;
+    }
+
+    .task-type::before {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 6px;
+      content: "";
+      background: var(--teal);
+    }
+
+    .task-type.item::before {
+      background: var(--amber);
+    }
+
+    .type-kicker {
+      color: var(--teal);
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: 0.1em;
+    }
+
+    .task-type.item .type-kicker {
+      color: #ad6617;
+    }
+
+    .type-equation {
+      margin: 19px 0;
+      padding: 13px 14px;
+      color: var(--ink);
+      background: #f0ece0;
+      border-radius: 10px;
+      font-family: var(--mono);
+      font-size: 12px;
+      line-height: 1.55;
+    }
+
+    .shared-strip {
+      margin-top: 16px;
+      padding: 16px 20px;
+      color: var(--ink-soft);
+      background: rgba(255, 253, 247, 0.62);
+      border: 1px dashed #bfb6a3;
+      border-radius: 13px;
+      font-size: 13px;
+      text-align: center;
+    }
+
+    .shared-strip strong {
+      color: var(--ink);
+    }
+
+    .deep-dive {
+      padding: 26px;
+      background: var(--paper-strong);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow);
+    }
+
+    .cutpoint-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .cutpoint {
+      padding: 18px;
+      border-radius: 14px;
+    }
+
+    .cutpoint:nth-child(1) {
+      background: var(--blue-soft);
+    }
+
+    .cutpoint:nth-child(2) {
+      background: var(--amber-soft);
+    }
+
+    .cutpoint:nth-child(3) {
+      background: var(--teal-soft);
+    }
+
+    .cutpoint code {
+      display: block;
+      margin-bottom: 9px;
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .cutpoint p {
+      margin-bottom: 0;
+      color: var(--ink-soft);
+      font-size: 12px;
+    }
+
+    .sequence {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(0, 1fr));
+      gap: 10px;
+      counter-reset: step;
+    }
+
+    .sequence-step {
+      position: relative;
+      min-height: 136px;
+      padding: 42px 14px 15px;
+      background: #f2eee3;
+      border-radius: 12px;
+      counter-increment: step;
+    }
+
+    .sequence-step::before {
+      position: absolute;
+      top: 13px;
+      left: 14px;
+      display: grid;
+      place-items: center;
+      width: 22px;
+      height: 22px;
+      color: white;
+      background: var(--navy);
+      border-radius: 50%;
+      content: counter(step);
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 800;
+    }
+
+    .sequence-step:not(:last-child)::after {
+      position: absolute;
+      z-index: 2;
+      top: 18px;
+      right: -9px;
+      color: #8a806f;
+      content: "›";
+      font-size: 20px;
+    }
+
+    .sequence-step b {
+      display: block;
+      margin-bottom: 5px;
+      font-size: 12px;
+    }
+
+    .sequence-step span {
+      color: var(--ink-soft);
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .axis {
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      min-height: 295px;
+    }
+
+    .axis-tag {
+      width: fit-content;
+      margin-bottom: 17px;
+      padding: 5px 8px;
+      border-radius: 6px;
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 800;
+    }
+
+    .axis.task .axis-tag {
+      color: #2e695e;
+      background: var(--teal-soft);
+    }
+
+    .axis.worker .axis-tag {
+      color: #345a79;
+      background: var(--blue-soft);
+    }
+
+    .axis.item .axis-tag {
+      color: #6b4f77;
+      background: var(--plum-soft);
+    }
+
+    .axis-path {
+      display: grid;
+      gap: 7px;
+      align-content: start;
+      margin-top: 14px;
+    }
+
+    .axis-node {
+      padding: 9px 10px;
+      background: #f0ece0;
+      border-radius: 8px;
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+
+    .axis-arrow {
+      padding-left: 12px;
+      color: #958a77;
+      font-size: 11px;
+    }
+
+    .handoff {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+      gap: 18px;
+      align-items: stretch;
+    }
+
+    .mailbox {
+      padding: 26px;
+      color: #deebe9;
+      background: var(--navy);
+      border-radius: var(--radius-lg);
+    }
+
+    .mailbox h3 {
+      color: white;
+    }
+
+    .mailbox p {
+      color: #a9bfbd;
+      font-size: 13px;
+    }
+
+    .code-block {
+      position: relative;
+      margin-top: 18px;
+      padding: 18px;
+      color: #dfe9e7;
+      background: #092029;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 13px;
+      overflow-x: auto;
+    }
+
+    .code-block pre {
+      margin: 0;
+      font-family: var(--mono);
+      font-size: 11px;
+      line-height: 1.65;
+      white-space: pre;
+    }
+
     .copy {
       position: absolute;
-      top: 10px;
-      right: 10px;
-      padding: 6px 9px;
-      border: 1px solid rgba(255,255,255,.16);
-      border-radius: 8px;
-      color: #dce7eb;
-      background: rgba(255,255,255,.07);
+      top: 9px;
+      right: 9px;
+      padding: 5px 8px;
+      color: #b9cdca;
+      background: #183943;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 7px;
       cursor: pointer;
-      font: 11px/1.2 inherit;
+      font: 10px var(--mono);
     }
 
-    details {
+    .copy:hover,
+    .copy:focus-visible {
+      color: white;
+      border-color: #6b9d98;
+      outline: none;
+    }
+
+    .outcomes {
+      display: grid;
+      gap: 10px;
+    }
+
+    .outcome {
+      display: grid;
+      grid-template-columns: 64px 1fr;
+      gap: 12px;
+      padding: 15px;
+      background: rgba(255, 253, 247, 0.8);
       border: 1px solid var(--line);
-      border-radius: 14px;
+      border-radius: 12px;
+    }
+
+    .outcome b {
+      font-family: var(--mono);
+      font-size: 12px;
+    }
+
+    .outcome span {
+      color: var(--ink-soft);
+      font-size: 12px;
+    }
+
+    .outcome.success b {
+      color: var(--green);
+    }
+
+    .outcome.worker-fail b {
+      color: var(--amber);
+    }
+
+    .outcome.reject b {
+      color: var(--red);
+    }
+
+    .outcome.missing b {
+      color: var(--blue);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: rgba(255, 253, 247, 0.74);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      box-shadow: 0 8px 28px rgba(27, 52, 58, 0.04);
+      overflow: hidden;
+    }
+
+    th,
+    td {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+      font-size: 12px;
+    }
+
+    th {
+      color: var(--ink);
+      background: #ece6d8;
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    td {
+      color: var(--ink-soft);
+    }
+
+    td:first-child {
+      color: var(--ink);
+      font-family: var(--mono);
+      font-weight: 800;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .status-board {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr 1fr;
+      gap: 14px;
+    }
+
+    .status-col {
+      padding: 22px;
+      border-radius: var(--radius-md);
+    }
+
+    .status-col.done {
+      background: var(--green-soft);
+      border: 1px solid #c7decf;
+    }
+
+    .status-col.deferred {
+      background: var(--amber-soft);
+      border: 1px solid #ecd1a5;
+    }
+
+    .status-col.no {
+      background: var(--red-soft);
+      border: 1px solid #e7c5bc;
+    }
+
+    .status-col h3 {
+      font-size: 15px;
+    }
+
+    .status-col ul {
+      margin: 12px 0 0;
+      padding-left: 18px;
+    }
+
+    .status-col li {
+      color: var(--ink-soft);
+      font-size: 12px;
+    }
+
+    .status-col li + li {
+      margin-top: 6px;
+    }
+
+    .reading-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .reading-link {
+      display: grid;
+      grid-template-columns: 38px 1fr;
+      gap: 13px;
+      align-items: start;
+      padding: 17px;
+      background: rgba(255, 253, 247, 0.78);
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      text-decoration: none;
+      transition: 160ms ease;
+    }
+
+    .reading-link:hover,
+    .reading-link:focus-visible {
       background: var(--paper-strong);
-    }
-    details + details { margin-top: 10px; }
-    summary { padding: 15px 18px; color: var(--navy); cursor: pointer; font-weight: 730; }
-    details p { margin: 0; padding: 0 18px 18px; color: var(--ink-soft); font-size: 13px; }
-
-    footer { margin-top: 70px; padding-top: 24px; border-top: 1px solid var(--line); color: var(--ink-soft); font-size: 12px; }
-
-    @media (max-width: 1050px) {
-      :root { --sidebar: 220px; }
-      .grid-4, .flow-board { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .grid-3 { grid-template-columns: 1fr; }
-      .score-card { min-height: 0; }
-      .link-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      border-color: #aaa08b;
+      transform: translateY(-2px);
+      outline: none;
+      box-shadow: 0 9px 24px rgba(27, 52, 58, 0.06);
     }
 
-    @media (max-width: 760px) {
-      .layout { display: block; }
-      .sidebar { position: relative; width: 100%; height: auto; padding: 20px; }
-      .brand { margin-bottom: 14px; }
-      .sidebar nav { display: flex; overflow-x: auto; padding-bottom: 3px; }
-      .sidebar nav a { flex: 0 0 auto; }
-      .sidebar-note { display: none; }
-      main { padding: 0 20px 60px; }
-      .hero { min-height: auto; padding: 58px 0 34px; }
-      .hero-flow { grid-template-columns: 1fr; }
-      .hero-flow div:not(:last-child)::after { content: "↓"; top: auto; right: 50%; bottom: -19px; transform: translateX(50%); }
-      .grid-2, .grid-4, .flow-board, .link-grid { grid-template-columns: 1fr; }
-      .priority-box { grid-template-columns: 1fr; }
-      .owner-table, .redis-table { display: block; overflow-x: auto; white-space: nowrap; }
-      section:not(.hero) { padding: 50px 0; }
+    .reading-number {
+      display: grid;
+      place-items: center;
+      width: 32px;
+      height: 32px;
+      color: white;
+      background: var(--navy);
+      border-radius: 9px;
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .reading-link b {
+      display: block;
+      margin-bottom: 3px;
+      font-size: 13px;
+    }
+
+    .reading-link span {
+      color: var(--ink-soft);
+      font-size: 11px;
+    }
+
+    .footer {
+      margin-top: 74px;
+      padding-top: 24px;
+      color: #6f7d7f;
+      border-top: 1px solid var(--line);
+      font-size: 11px;
+    }
+
+    code {
+      font-family: var(--mono);
+    }
+
+    :focus-visible {
+      outline: 2px solid var(--amber);
+      outline-offset: 3px;
+    }
+
+    @media (max-width: 1080px) {
+      :root {
+        --sidebar: 220px;
+      }
+
+      main {
+        padding-inline: 30px;
+      }
+
+      .plane-grid,
+      .grid-4 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .sequence {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .sequence-step:nth-child(3)::after {
+        display: none;
+      }
+    }
+
+    @media (max-width: 780px) {
+      body {
+        background: var(--paper);
+      }
+
+      .sidebar {
+        position: sticky;
+        top: 0;
+        width: 100%;
+        height: auto;
+        padding: 11px 16px;
+        overflow-x: auto;
+      }
+
+      .brand,
+      .nav-label,
+      .sidebar-note {
+        display: none;
+      }
+
+      .nav {
+        display: flex;
+        width: max-content;
+        gap: 4px;
+      }
+
+      .nav a {
+        padding: 7px 9px;
+        border: 0;
+        border-radius: 8px;
+        white-space: nowrap;
+      }
+
+      .nav a.active {
+        color: var(--navy);
+        background: var(--amber);
+      }
+
+      main {
+        width: 100%;
+        margin-left: 0;
+        padding: 24px 18px 70px;
+      }
+
+      section {
+        scroll-margin-top: 65px;
+        margin-top: 58px;
+      }
+
+      .hero {
+        padding: 30px 22px;
+      }
+
+      .metrics,
+      .plane-grid,
+      .grid-2,
+      .grid-3,
+      .grid-4,
+      .cutpoint-grid,
+      .status-board,
+      .reading-grid,
+      .handoff {
+        grid-template-columns: 1fr;
+      }
+
+      .metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .hero-flow {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .hero-flow .node::after {
+        display: none;
+      }
+
+      .section-head {
+        grid-template-columns: 1fr;
+        gap: 13px;
+      }
+
+      .plane {
+        min-height: 190px;
+      }
+
+      .bridge {
+        grid-template-columns: 1fr;
+      }
+
+      .layer {
+        grid-template-columns: 1fr;
+        gap: 4px;
+      }
+
+      .sequence {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .sequence-step::after {
+        display: none;
+      }
+
+      table {
+        display: block;
+        overflow-x: auto;
+      }
     }
 
     @media print {
-      body { background: white; }
-      .sidebar, .read-progress, .copy { display: none !important; }
-      .layout { display: block; }
-      main { padding: 0; }
-      .hero { min-height: auto; }
-      .card, .hero-flow { box-shadow: none; break-inside: avoid; }
-      section { break-inside: avoid; }
-      a { text-decoration: none; }
+      body {
+        background: white;
+      }
+
+      .sidebar,
+      .progress,
+      .copy {
+        display: none !important;
+      }
+
+      main {
+        width: 100%;
+        margin: 0;
+        padding: 0;
+      }
+
+      section {
+        break-inside: avoid;
+      }
+
+      .hero,
+      .panorama,
+      .mailbox {
+        color: var(--ink);
+        background: white;
+        border: 1px solid var(--line);
+        box-shadow: none;
+      }
+
+      .hero * ,
+      .panorama *,
+      .mailbox * {
+        color: var(--ink) !important;
+      }
     }
   </style>
 </head>
 <body>
-  <a class="skip-link" href="#main">跳到主要内容</a>
-  <div class="read-progress" aria-hidden="true"><span id="progress"></span></div>
+  <a class="skip-link" href="#main">跳到正文</a>
+  <div class="progress" aria-hidden="true"></div>
 
-  <div class="layout">
-    <aside class="sidebar" aria-label="页面导航">
-      <div class="brand">
-        <div class="brand-mark">XA</div>
-        <div><strong>Kernel Design</strong><small>Quick Orientation</small></div>
-      </div>
-      <nav>
-        <a href="#top" class="active">项目定位</a>
-        <a href="#mental-model">30 秒模型</a>
-        <a href="#mainline">调度主链</a>
-        <a href="#task-types">两类 Task</a>
-        <a href="#score-axes">三条 Score 轴</a>
-        <a href="#owners">Owner 边界</a>
-        <a href="#result">结果闭环</a>
-        <a href="#redis">Redis 形态</a>
-        <a href="#guardrails">避免误读</a>
-        <a href="#reading">继续阅读</a>
-      </nav>
-      <div class="sidebar-note">
-        <strong>阅读目标</strong><br>
-        先理解场景与机制，再进入接口和 Redis 细节。本文基于当前 Python executable spec 与 active kernel 文档。
-      </div>
-    </aside>
+  <aside class="sidebar" aria-label="页面导航">
+    <a class="brand" href="#top">
+      <span class="brand-mark">XA</span>
+      <strong>Kernel Panorama</strong>
+      <span>新内核 · 人类速览</span>
+    </a>
 
-    <main id="main">
-      <div class="content">
-        <section class="hero" id="top">
-          <div class="eyebrow">New scheduling kernel</div>
-          <h1>一个严格、可证明的<br><span>分布式调度机制内核</span></h1>
-          <p class="hero-lead">
-            <strong>kernel_design 不是现有 Java 项目的兼容重构。</strong>
-            它从 Task、Worker、TaskItem 三条独立 Score 轴出发，用受限 Redis 状态、精确租约和 owner-local policy 重新建立调度闭环。
+    <div class="nav-label">5 minute map</div>
+    <nav class="nav">
+      <a href="#top">总览</a>
+      <a href="#planes">四个调度平面</a>
+      <a href="#foundations">对象与分层</a>
+      <a href="#task-types">两类 Task</a>
+      <a href="#dispatch">Dispatch 切点</a>
+      <a href="#scores">三条 Score 轴</a>
+      <a href="#delivery-result">Delivery 与 Result</a>
+      <a href="#owners">Owner 边界</a>
+      <a href="#status">当前边界</a>
+      <a href="#reading">继续阅读</a>
+    </nav>
+
+    <div class="sidebar-note">
+      本页是解释与导航，不是实现证明。当前事实以 executable spec、测试和 owner 文档为准。
+    </div>
+  </aside>
+
+  <main id="main">
+    <section class="hero" id="top">
+      <p class="eyebrow">XA Mass · New Kernel</p>
+      <h1>5 分钟看懂<br>新内核全景</h1>
+      <p class="hero-lede">
+        新内核不是一个“Task Dispatch 模块”，而是一条由
+        <strong>Task、Worker、TaskItem 三类调度真相</strong>共同驱动的闭环：
+        有界发现、精确占用、证据交付、结果收敛，再回到下一次调度机会。
+      </p>
+
+      <div class="metrics" aria-label="内核速记">
+        <div class="metric"><b>4</b><span>个逻辑调度平面</span></div>
+        <div class="metric"><b>3</b><span>条独立 Score 轴</span></div>
+        <div class="metric"><b>2</b><span>种公开 TaskType</span></div>
+        <div class="metric"><b>1</b><span>条调度主线</span></div>
+      </div>
+
+      <div class="hero-flow" aria-label="调度主线">
+        <div class="node"><b>Task Admission</b>进入 RUNNING</div>
+        <div class="node accent"><b>Task Dispatch</b>观察 ACTIVE Item</div>
+        <div class="node"><b>Worker Acquisition</b>取得精确 lease</div>
+        <div class="node"><b>Claim + DeliverSeed</b>绑定并发布 mailbox</div>
+        <div class="node"><b>Worker Delivery</b>执行并返回 SeedResult</div>
+        <div class="node"><b>Result Routing</b>owner truth 收敛</div>
+      </div>
+    </section>
+
+    <section id="planes">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">01 · Panorama</p>
+          <h2>四个平面，共同组成内核</h2>
+        </div>
+        <p>
+          “平面”是逻辑职责，不要求四个独立进程。它们可以共同部署，但不能互相吞并调度真相。
+        </p>
+      </div>
+
+      <div class="panorama">
+        <div class="plane-grid">
+          <article class="plane task">
+            <span class="plane-number">01</span>
+            <h3>Task Score-Band</h3>
+            <p>观察 Task 与系统条件，给出有限的调度进入机会。</p>
+            <span class="answer">回答：哪些 Task 现在可进入调度轮次？</span>
+          </article>
+
+          <article class="plane worker">
+            <span class="plane-number">02</span>
+            <h3>Worker Score-Band</h3>
+            <p>维护 Worker serviceability、HOT/RECOVERY 坐标、dirty fence 与精确 lease。</p>
+            <span class="answer">回答：哪些 Worker 此刻可被占用？</span>
+          </article>
+
+          <article class="plane dispatch">
+            <span class="plane-number">03</span>
+            <h3>Assignment Dispatch</h3>
+            <p>在一个有界轮次中组合 Task、Worker 与 TaskItem，生成 DeliverSeed。</p>
+            <span class="answer">回答：这次具体由谁执行哪个 Item？</span>
+          </article>
+
+          <article class="plane result">
+            <span class="plane-number">04</span>
+            <h3>Result Routing</h3>
+            <p>消费 SeedResult，按结果类别委托 TaskItem 与 Worker owner 操作。</p>
+            <span class="answer">回答：证据如何改变下一次调度机会？</span>
+          </article>
+        </div>
+
+        <div class="bridge">
+          <span class="bridge-tag">HANDOFF BOUNDARY</span>
+          <span>
+            <strong>Worker Delivery Dispatch</strong> 位于 Assignment 与 Result 之间：
+            只把已经选定的 Worker/Item 决定交给 Adapter，并把返回值变成 SeedResult。
+          </span>
+          <span>不是第五个 score owner</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="foundations">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">02 · Foundations</p>
+          <h2>少量真相，少量证据</h2>
+        </div>
+        <p>
+          核心对象拥有长期真相；中间对象只携带一次调度决定的证据，不发展成新的生命周期 aggregate。
+        </p>
+      </div>
+
+      <div class="grid-4">
+        <article class="card identity">
+          <span class="identity-code">taskId</span>
+          <h3>Task</h3>
+          <p>稳定的调度容器，持有 TaskType、WorkerGroup、配置、生命周期与 intake 语义。</p>
+        </article>
+        <article class="card identity">
+          <span class="identity-code">workerGroupId / workerId</span>
+          <h3>Worker</h3>
+          <p>一个 <code>workerId</code> 是一个 scheduler-visible execution slot；并发能力用多个逻辑 WorkerId 表示。</p>
+        </article>
+        <article class="card identity">
+          <span class="identity-code">taskId / messageId</span>
+          <h3>TaskItem</h3>
+          <p>从 append 到 finality 的唯一执行单元；claim 不创建 Work 或 Attempt aggregate。</p>
+        </article>
+        <article class="card identity evidence">
+          <span class="identity-code">opaque evidence</span>
+          <h3>DeliverSeed / SeedResult</h3>
+          <p>分别携带一次出站执行决定与回程结果证据；它们不是新的 owner truth。</p>
+        </article>
+      </div>
+
+      <div class="callout">
+        <strong>一句话心智模型：</strong>
+        kernel core 移动逻辑状态，owner 维护真相，policy 决定映射，transport 只携带证据。
+      </div>
+
+      <div class="layer-stack" style="margin-top: 18px">
+        <div class="layer mechanism">
+          <b>Kernel Mechanism</b>
+          <span>有界扫描、score 编码、CAS、lease、claim、mailbox 与 evidence routing；保证“怎么安全地做”。</span>
+        </div>
+        <div class="layer system">
+          <b>System Policy</b>
+          <span>RUNNING soft limit、优先级、轮次 cadence、空任务 recheck/close、retry 映射；决定“系统希望怎样调”。</span>
+        </div>
+        <div class="layer scenario">
+          <b>TaskType Contract</b>
+          <span>把真实场景固定成受支持的规则 owner、Worker acquisition 与 cache 组合；避免公开无意义的策略笛卡尔积。</span>
+        </div>
+      </div>
+    </section>
+
+    <section id="task-types">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">03 · Scenario contracts</p>
+          <h2>两类 Task，差别在 Worker 规则归属</h2>
+        </div>
+        <p>
+          它们不是 batch/RPC、密集/稀疏或高低延迟标签；唯一稳定差异是完整 Worker 规则由谁拥有，以及候选证据能否复用。
+        </p>
+      </div>
+
+      <div class="grid-2">
+        <article class="card task-type">
+          <span class="type-kicker">TASK_DRIVEN</span>
+          <h3>Task rule · reusable candidates</h3>
+          <p>同一 Task 的 Item 共享完整 Worker allocation rule，因而可以提前缓存并复用 Task 级候选。</p>
+          <div class="type-equation">
+            Task allocationRule<br>
+            + PRECOMPUTED acquisition<br>
+            + CandidateWorkerCache / warmup
+          </div>
+          <ul>
+            <li>Dispatch 精确复验 candidate lease 与最新 Worker facts。</li>
+            <li>缓存只是可丢失 evidence，不是 Task 启动资源预占。</li>
+            <li>没有缓存命中时不暗中切换到 TARGETED 主线。</li>
+          </ul>
+        </article>
+
+        <article class="card task-type item">
+          <span class="type-kicker">ITEM_DRIVEN</span>
+          <h3>Item rule · point acquisition</h3>
+          <p>每个 TaskItem 都拥有完整且非空的 Worker allocation rule，Dispatch 根据 Item 逐个定向获取 Worker。</p>
+          <div class="type-equation">
+            TaskItem allocationRule<br>
+            + TARGETED acquisition<br>
+            + no candidate cache / warmup
+          </div>
+          <ul>
+            <li>适合 deviceId 等 Item 级目标，但不等同于 RPC。</li>
+            <li>Target source 必须有界，不做全量 Worker 扫描。</li>
+            <li>仍使用同一 Worker exact lease 与 TaskItem claim 机制。</li>
+          </ul>
+        </article>
+      </div>
+
+      <div class="shared-strip">
+        <strong>共同部分：</strong>
+        相同的 Task admission、RUNNING dispatch、空任务 recheck/close、显式关闭、DeliverSeed、SeedResult 与 Result Routing 主线。
+      </div>
+    </section>
+
+    <section id="dispatch">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">04 · Execution cutpoint</p>
+          <h2>Dispatch 是主线中段，不是整个内核</h2>
+        </div>
+        <p>
+          它的价值是把三个 owner 的当前证据组合成一次具体执行；前面有 admission/Worker truth，后面有 delivery/result convergence。
+        </p>
+      </div>
+
+      <div class="deep-dive">
+        <div class="cutpoint-grid">
+          <article class="cutpoint">
+            <code>TaskDispatchPacer</code>
+            <p>发现有限 RUNNING Task；处理空任务 suffix、Task score pacing、mailbox publication 与 round lifecycle。</p>
+          </article>
+          <article class="cutpoint">
+            <code>TaskItemDispatcher</code>
+            <p>观察一个 Task 的 record-backed ACTIVE Items，获取 Worker、精确 claim Item，并构造 DeliverSeed。</p>
+          </article>
+          <article class="cutpoint">
+            <code>WorkerCandidateAcquirer</code>
+            <p>按 TaskType 执行 PRECOMPUTED 或 TARGETED acquisition；exact lease 与 matcher 仍由 Worker owner 约束。</p>
+          </article>
+        </div>
+
+        <div class="sequence" aria-label="Task Dispatch 六步">
+          <div class="sequence-step"><b>发现 Task</b><span>只扫描有限 RUNNING score candidates。</span></div>
+          <div class="sequence-step"><b>观察 Item</b><span>加载 due score 与 canonical record；过期/预算耗尽先 final-fail。</span></div>
+          <div class="sequence-step"><b>获取 Worker</b><span>按 TaskType 读取 cache 或做有界 point acquisition。</span></div>
+          <div class="sequence-step"><b>精确 claim</b><span>只 claim 已有 Worker 支撑的 Item，预算在此消耗。</span></div>
+          <div class="sequence-step"><b>构造 Seed</b><span>绑定 workerId、Item snapshot、opaque ResultContext。</span></div>
+          <div class="sequence-step"><b>发布 mailbox</b><span>按 endpointManagerId 分组，best-effort append/replace。</span></div>
+        </div>
+      </div>
+
+      <div class="callout amber">
+        <strong>关键顺序：</strong>
+        先获取并验证 Worker，再 claim TaskItem。Worker acquisition 与 Item claim 使用同一 deadline；
+        candidate 或 mailbox 发布失败不创造第二套恢复真相，lease/claim expiry 负责恢复活性。
+      </div>
+    </section>
+
+    <section id="scores">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">05 · Scheduling truth</p>
+          <h2>三条 Score 轴，共享机制而不共享语义</h2>
+        </div>
+        <p>
+          每个 scheduling identity 对应一个 ZSET member 和一个有序 score。Score 是调度坐标，不是完整资源对象，也不是资源写锁。
+        </p>
+      </div>
+
+      <div class="grid-3">
+        <article class="card axis task">
+          <span class="axis-tag">global taskId</span>
+          <h3>Task Score</h3>
+          <p>控制 Task 的 admission、RUNNING visibility、空任务 recheck 与终结方向。</p>
+          <div class="axis-path">
+            <div class="axis-node">PRE_REVIEW</div>
+            <div class="axis-arrow">↓ owner-approved transition</div>
+            <div class="axis-node">ADMISSION_VISIBLE</div>
+            <div class="axis-arrow">↓ policy AND system soft limit</div>
+            <div class="axis-node">RUNNING_VISIBLE → terminal</div>
+          </div>
+        </article>
+
+        <article class="card axis worker">
+          <span class="axis-tag">workerGroupId / workerId</span>
+          <h3>Worker Score</h3>
+          <p>表达 kernel-authoritative TaskItem serviceability、下一次可行动时间、rank 与 dirty fence。</p>
+          <div class="axis-path">
+            <div class="axis-node">HOT_ACQUIRE (+)</div>
+            <div class="axis-arrow">↕ exact evidence / recovery</div>
+            <div class="axis-node">RECOVERY_RECHECK (−)</div>
+            <div class="axis-arrow">lease time + dirty + lane rank</div>
+          </div>
+        </article>
+
+        <article class="card axis item">
+          <span class="axis-tag">taskId / messageId</span>
+          <h3>TaskItem Score</h3>
+          <p>拥有 Item 的 due/claim/retry 坐标、剩余预算和单调 final outcome precedence。</p>
+          <div class="axis-path">
+            <div class="axis-node">ACTIVE (due / claim)</div>
+            <div class="axis-arrow">→ expiry / policy / result</div>
+            <div class="axis-node">FINAL_FAILED</div>
+            <div class="axis-arrow">→ late success may improve</div>
+            <div class="axis-node">FINAL_SUCCESS</div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section id="delivery-result">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">06 · External cut and convergence</p>
+          <h2>交付是稀疏 mailbox，结果回到 owner</h2>
+        </div>
+        <p>
+          Scheduling Plane 已经选好 Worker。Delivery 不重新选择，不拥有 finality；Result Routing 也不复制 TaskItem 或 Worker truth。
+        </p>
+      </div>
+
+      <div class="handoff">
+        <article class="mailbox">
+          <h3>Worker Delivery Dispatch</h3>
+          <p>
+            Redis 使用每个 <code>endpointManagerId</code> 一张稀疏 HASH mailbox，
+            field 是已选定的 <code>workerId</code>，value 是 DeliverSeed。
           </p>
-          <div class="hero-tags" aria-label="项目特征">
-            <span class="tag">Python executable spec</span>
-            <span class="tag">Redis runtime truth</span>
-            <span class="tag">Bounded scheduling</span>
-            <span class="tag">Exact score fences</span>
-            <span class="tag">No compatibility track</span>
-          </div>
-          <div class="hero-flow" aria-label="核心调度链">
-            <div><small>Visibility</small><strong>Task Score</strong></div>
-            <div><small>Selection</small><strong>Worker Lease</strong></div>
-            <div><small>Claim</small><strong>TaskItem Score</strong></div>
-            <div><small>Delivery</small><strong>DeliverSeed</strong></div>
-            <div><small>Evidence</small><strong>SeedResult</strong></div>
-          </div>
-        </section>
+          <div class="code-block">
+            <button class="copy" type="button" aria-label="复制 mailbox 示例">复制</button>
+            <pre>endpointManagerId mailbox
+├── worker-001 → DeliverSeed
+├── worker-017 → DeliverSeed
+└── worker-204 → DeliverSeed
 
-        <section id="mental-model">
-          <p class="section-kicker">30-second mental model</p>
-          <h2>先记住四件事</h2>
-          <p class="section-intro">项目的大部分设计都可以从下面四个判断推导出来。</p>
-          <div class="grid-4">
-            <article class="card"><div class="number">1</div><h3>Task 是调度容器</h3><p>它承载稳定意图、TaskType、WorkerGroup 和调度配置，不是一次执行尝试。</p></article>
-            <article class="card"><div class="number">2</div><h3>TaskItem 是唯一工作单元</h3><p>从 append、claim、dispatch、retry 到 finality，始终是同一个 messageId。</p></article>
-            <article class="card"><div class="number">3</div><h3>WorkerId 是一个执行槽</h3><p>一个 WorkerId 同时只拥有一个活动租约；物理并发用多个逻辑 WorkerId 表达。</p></article>
-            <article class="card"><div class="number">4</div><h3>Score 是调度真相</h3><p>Score 决定何时值得观察；descriptor、payload、result、transport 不会被塞进 Score。</p></article>
+Worker Adapter
+  → point-poll workerId or bounded cursor consume
+  → check taskItemClaimUntilMillis
+  → invoke selected Worker's local eventCode handler
+  → append SeedResult</pre>
           </div>
-          <div class="statement"><strong>最重要的边界：</strong>Score 不是资源写锁，也不是完整状态对象。资源 owner 写资源真相；调度 plane 只移动自己的调度坐标。</div>
-        </section>
+          <p style="margin-top: 16px; margin-bottom: 0">
+            <code>endpointManagerId</code> 是不可变 route snapshot 与 mailbox partition，
+            不是 Worker matching 输入；<code>eventCode</code> 只选择 Worker 本地 handler。
+          </p>
+        </article>
 
-        <section id="mainline">
-          <p class="section-kicker">Mainline</p>
-          <h2>一条主链，四个调度平面</h2>
-          <p class="section-intro">没有第二条兼容路径，也不靠外部事件维持普通正确性。每一步只产生下一位 owner 所需的最小证据。</p>
-          <div class="flow-board">
-            <div class="flow-step"><strong>创建与批准</strong><span>PRE_REVIEW → ADMISSION_VISIBLE；approval 把 Task priority 写入 admission suffix。</span></div>
-            <div class="flow-step"><strong>RUNNING Admission</strong><span>先取 bounded due window，再按 priority 排序；有 due ACTIVE Item 才进入 RUNNING。</span></div>
-            <div class="flow-step"><strong>Worker Acquisition</strong><span>TASK_DRIVEN 读取预计算缓存；ITEM_DRIVEN 从 Item 规则做定点 acquisition。</span></div>
-            <div class="flow-step"><strong>精确 Worker Lease</strong><span>候选只是 WorkerId；当前 descriptor、dynamic facts 与 observed score 必须再次验证。</span></div>
-            <div class="flow-step"><strong>TaskItem Claim</strong><span>只有已经绑定 Worker 的 Item 才通过 exact observed-score fence 领取。</span></div>
-            <div class="flow-step"><strong>DeliverSeed</strong><span>selected Worker、Item 和 opaque context 组成已分配工作，写入 WorkerId 单槽 mailbox。</span></div>
-            <div class="flow-step"><strong>SeedResult</strong><span>Adapter/Worker 只回传 outcome evidence；结果上下文保持 opaque。</span></div>
-            <div class="flow-step"><strong>Result Routing</strong><span>按 outcome class 调用 TaskItem 与 Worker score owner，完成 finality 或恢复。</span></div>
+        <div class="outcomes" aria-label="Result Routing 结果类别">
+          <div class="outcome success">
+            <b>200</b>
+            <span>保存 last-success payload → TaskItem FINAL_SUCCESS → Worker exact release。</span>
           </div>
-        </section>
-
-        <section id="task-types">
-          <p class="section-kicker">Scenario bundles</p>
-          <h2>TaskType 是场景合约，不是 Policy 拼装器</h2>
-          <p class="section-intro">两类 Task 固定了 rule owner、Worker acquisition 路径和 candidate cache 权限，调用方不能自由重组这些维度。</p>
-          <div class="grid-2">
-            <article class="card type-card dense">
-              <span class="type-label">DENSE / BOUNDED WAVE</span>
-              <h3>TASK_DRIVEN</h3>
-              <p>一批 Item 共享 Task 级 Worker 条件，候选集合有限且值得预热。</p>
-              <div class="type-path">
-                <div><strong>Rule owner</strong> · TaskDescriptor</div>
-                <div><strong>Acquisition</strong> · PRECOMPUTED</div>
-                <div><strong>Candidate cache</strong> · 启用</div>
-                <div><strong>Warmup</strong> · RUNNING 后异步补充</div>
-              </div>
-            </article>
-            <article class="card type-card sparse">
-              <span class="type-label">SPARSE / LONG-LIVED</span>
-              <h3>ITEM_DRIVEN</h3>
-              <p>每个 Item 携带完整 Worker 条件；条件可以相同，也可以不同，不预占候选资源。</p>
-              <div class="type-path">
-                <div><strong>Rule owner</strong> · TaskItem</div>
-                <div><strong>Acquisition</strong> · TARGETED</div>
-                <div><strong>Candidate cache</strong> · 禁止</div>
-                <div><strong>Warmup</strong> · 不存在</div>
-              </div>
-            </article>
+          <div class="outcome worker-fail">
+            <b>1xxx</b>
+            <span>已进入 Worker 但执行失败：释放 Worker；Item 保持 claim，等待到期重试。</span>
           </div>
-          <div class="shared-rule"><b>共享生命周期</b><span>两种 TaskType 使用同一套 RUNNING empty-recheck 与 emptyCloseAtMillis 机制；外部 owner 也可以随时通过明确证据调用 close_task。</span></div>
-        </section>
-
-        <section id="score-axes">
-          <p class="section-kicker">Scheduling coordinates</p>
-          <h2>三条独立 Score 轴</h2>
-          <p class="section-intro">它们共享“一个 identity → 一个 ZSET member → 一个有序坐标”的机制，但状态方向、suffix 含义和并发规则各自独立。</p>
-          <div class="grid-3">
-            <article class="card score-card task-axis">
-              <div class="score-head"><h3>Task Score</h3><span class="axis-chip">GLOBAL TASK</span></div>
-              <div class="axis-line"><div>PRE_REVIEW</div><div>ADMISSION_VISIBLE</div><div>RUNNING_VISIBLE</div><div>TERMINAL</div></div>
-              <p>回答：哪个 Task 现在值得进入 admission 或 dispatch round？</p>
-              <div class="score-facts">ADMISSION suffix = priority 0..99；RUNNING suffix = 连续空检查计数。</div>
-            </article>
-            <article class="card score-card worker-axis">
-              <div class="score-head"><h3>Worker Score</h3><span class="axis-chip">PER HOME BUCKET</span></div>
-              <div class="axis-line"><div>HOT_ACQUIRE · positive</div><div>Exact lease / hold</div><div>RECOVERY_RECHECK · negative</div><div>Back to serviceability</div></div>
-              <p>回答：哪个 Worker 槽当前值得验证、租用或恢复？</p>
-              <div class="score-facts">observedScore 是 opaque fence；matcher 只看 WorkerId，不解析租约。</div>
-            </article>
-            <article class="card score-card item-axis">
-              <div class="score-head"><h3>TaskItem Score</h3><span class="axis-chip">PER TASK</span></div>
-              <div class="axis-line"><div>ACTIVE</div><div>Claim lease / retry due</div><div>FINAL_FAILED</div><div>FINAL_SUCCESS</div></div>
-              <p>回答：Task 内哪些 Item 现在值得 claim、retry 或吸收结果？</p>
-              <div class="score-facts">Item priority 0..10 只影响首次 due；之后由 claim lease 和 retry time 接管。</div>
-            </article>
+          <div class="outcome reject">
+            <b>3xxx</b>
+            <span>可信 Adapter 在执行前拒绝：Worker exact demotion 到 RECOVERY_RECHECK；Item 等待 claim 到期。</span>
           </div>
-          <div class="priority-box">
-            <div class="priority-meter"><div class="scale"></div><div class="labels"><span>0 · highest</span><span>99 · lowest</span></div></div>
-            <div><h3>ADMISSION 中的 timeSlot 与 priority</h3><p>timeSlot 决定 bounded observation window；窗口成员再按 suffix priority 排序。未 transition 的已观察 Task 会被放到未来 recheck time，避免旧 head 永久遮住后续工作，但 priority 本身不会被内核降低。</p></div>
+          <div class="outcome missing">
+            <b>∅</b>
+            <span>没有结果：不猜测失败原因；TaskItem claim 与 Worker lease 自然到期。</span>
           </div>
-        </section>
-
-        <section id="owners">
-          <p class="section-kicker">Ownership</p>
-          <h2>谁可以决定什么</h2>
-          <p class="section-intro">维护这个项目时，先确认 owner，再讨论接口。多数复杂度都来自一个 owner 偷做了另一个 owner 的决定。</p>
-          <table class="owner-table">
-            <thead><tr><th>Owner / Plane</th><th>拥有的真相或决定</th><th>明确不拥有</th></tr></thead>
-            <tbody>
-              <tr><td>TaskScoreBandCore</td><td>Task 可见 band、next-time、bounded acquire、terminal</td><td class="muted">Item retry、Worker lease、candidate cache、result</td></tr>
-              <tr><td>TaskRuntime</td><td>Task descriptor、TaskItem record、last-success payload</td><td class="muted">Task scheduling visibility、Worker selection</td></tr>
-              <tr><td>TaskItemScoreBandCore</td><td>Item 初始化、claim/retry fence、outcome promotion</td><td class="muted">Task lifecycle、transport、Worker serviceability</td></tr>
-              <tr><td>Worker runtime</td><td>WorkerGroup/Worker descriptor、dynamic facts、score lease、matching</td><td class="muted">Task demand、Item finality、transport result</td></tr>
-              <tr><td>Assignment-dispatch</td><td>一轮候选组合、Worker-backed Item claim、DeliverSeed</td><td class="muted">资源真相、Worker score 编码、result winner</td></tr>
-              <tr><td>Transport / Adapter</td><td>消费已分配 DeliverSeed、最终提交、产生 SeedResult</td><td class="muted">选择 Worker、claim Item、刷新 Task score</td></tr>
-              <tr><td>Result-routing</td><td>分类 evidence、按 owner key 分组、调用 policy handler</td><td class="muted">解析 score、主动重试、重新选择 Worker</td></tr>
-            </tbody>
-          </table>
-        </section>
-
-        <section id="result">
-          <p class="section-kicker">Evidence convergence</p>
-          <h2>结果不是回调逻辑，而是 Owner 收敛</h2>
-          <p class="section-intro">SeedResultRuntime 只做三类 outcome queue；ResultRoutingPacer 解码一次，再把 Task evidence 与 Worker evidence 分开交给真实 owner。</p>
-          <div class="grid-3">
-            <article class="card outcome success"><h3>SUCCESS</h3><code>outcomeCode = 200</code><ul><li>保存 Task last-success payload</li><li>Item → FINAL_SUCCESS</li><li>精确释放 Worker lease</li></ul></article>
-            <article class="card outcome failure"><h3>WORKER_FAILURE</h3><code>outcomeCode = 1xxx</code><ul><li>精确释放 Worker lease</li><li>不直接写 Item retry</li><li>Item 在原 claim time 到期后重试</li></ul></article>
-            <article class="card outcome reject"><h3>ADAPTER_REJECTION</h3><code>outcomeCode = 3xxx</code><ul><li>Worker lease → RECOVERY_RECHECK</li><li>不直接写 Item retry</li><li>Item 依靠原 claim coordinate 恢复</li></ul></article>
-          </div>
-        </section>
-
-        <section id="redis">
-          <p class="section-kicker">Runtime truth</p>
-          <h2>Redis 只保存 owner-local runtime truth</h2>
-          <p class="section-intro">每个 key 都应能回答：谁写、谁读、何时删除、失败后如何恢复。这里列的是形态，不是公共 API。</p>
-          <table class="redis-table">
-            <thead><tr><th>Shape</th><th>身份 / 内容</th><th>角色</th></tr></thead>
-            <tbody>
-              <tr><td>Task score ZSET</td><td>taskId → encoded band/time/suffix</td><td class="muted">全局 Task 调度索引</td></tr>
-              <tr><td>Task descriptor HASH</td><td>TaskType、WorkerGroup、rule、config</td><td class="muted">稳定 Task 意图</td></tr>
-              <tr><td>TaskItem HASH + ZSET</td><td>messageId → record / item score</td><td class="muted">资源记录与调度坐标分离</td></tr>
-              <tr><td>Worker score ZSET</td><td>workerId → serviceability / lease coordinate</td><td class="muted">Worker 调度槽真相</td></tr>
-              <tr><td>Candidate cache ZSET</td><td>taskId → expiring CandidateWorkerEntry</td><td class="muted">TASK_DRIVEN 可丢弃预计算证据</td></tr>
-              <tr><td>DeliverSeed HASH mailbox / SeedResult LIST</td><td>已分配工作 / 返回 evidence</td><td class="muted">handoff runtime，不是 lifecycle truth</td></tr>
-            </tbody>
-          </table>
-        </section>
-
-        <section id="guardrails">
-          <p class="section-kicker">Do not misread</p>
-          <h2>最常见的六个误读</h2>
-          <div class="grid-2">
-            <div class="rule-list">
-              <div class="rule good"><div class="rule-mark">✓</div><div><strong>新机制内核</strong><span>以当前 Python executable spec 为实现真相。</span></div></div>
-              <div class="rule good"><div class="rule-mark">✓</div><div><strong>TaskType 是场景 bundle</strong><span>先验证真实场景，再讨论 policy 边缘。</span></div></div>
-              <div class="rule good"><div class="rule-mark">✓</div><div><strong>External event 只是可选加速</strong><span>普通 correctness 与 liveness 必须能靠 score/recheck 自闭环。</span></div></div>
-            </div>
-            <div class="rule-list">
-              <div class="rule bad"><div class="rule-mark">×</div><div><strong>不是 Java 接口兼容工程</strong><span>Java 只提供失败模式与 invariant 证据。</span></div></div>
-              <div class="rule bad"><div class="rule-mark">×</div><div><strong>不是把 policy 正交组合</strong><span>没有业务场景的组合不值得进入内核保护代码。</span></div></div>
-              <div class="rule bad"><div class="rule-mark">×</div><div><strong>Transport 不选择 Worker</strong><span>它只投递已经绑定 selected Worker 的 DeliverSeed。</span></div></div>
-            </div>
-          </div>
-        </section>
-
-        <section id="reading">
-          <p class="section-kicker">Start here</p>
-          <h2>继续阅读与运行验证</h2>
-          <p class="section-intro">先读机制总览，再按 owner 深入。不要直接从 Redis Lua 或零散测试反推整体设计。</p>
-          <div class="link-grid">
-            <a class="doc-link" href="README.md"><small>01 · Positioning</small><strong>Kernel Design README</strong><span>项目定位、三条 Score 轴与总体设计标准。</span></a>
-            <a class="doc-link" href="doc/scheduling/README.md"><small>02 · Scheduling</small><strong>Scheduling Overview</strong><span>四个调度 plane、主链与 executable map。</span></a>
-            <a class="doc-link" href="doc/resource-model/task-resource-model.md"><small>03 · Task</small><strong>Task Resource Model</strong><span>TaskType、rule owner、config 与 runtime surfaces。</span></a>
-            <a class="doc-link" href="doc/resource-model/worker-resource-model.md"><small>04 · Worker</small><strong>Worker Resource Model</strong><span>WorkerGroup、Worker slot、matching 与动态属性。</span></a>
-            <a class="doc-link" href="doc/scheduling/task-score-band-scheduling.md"><small>05 · Score</small><strong>Task Score-Band</strong><span>ADMISSION priority、RUNNING pacing 与 close。</span></a>
-            <a class="doc-link" href="doc/scheduling/assignment-dispatch-scheduling.md"><small>06 · Dispatch</small><strong>Assignment-Dispatch</strong><span>两种 acquisition、cache、claim 与 DeliverSeed。</span></a>
-            <a class="doc-link" href="doc/scheduling/result-routing-scheduling.md"><small>07 · Result</small><strong>Result Routing</strong><span>三类结果、opaque context 与 owner handler。</span></a>
-            <a class="doc-link" href="doc/kernel-application-assembly.md"><small>08 · Assembly</small><strong>Kernel Application</strong><span>公共命令、进程边界、后台 loops 与 E2E。</span></a>
-            <a class="doc-link" href="executable_spec/"><small>09 · Executable</small><strong>Python Spec</strong><span>kernel、redis_runtime、scheduling 与 assembly。</span></a>
-          </div>
-
-          <div class="grid-2" style="margin-top:24px">
-            <div class="card">
-              <h3>快速验证</h3>
-              <p>执行全部 executable-spec 测试。</p>
-              <div class="command"><button class="copy" type="button" data-copy>复制</button><code>python -m unittest discover -s kernel_design/executable_spec/tests -p 'test_*.py'</code></div>
-            </div>
-            <div class="card">
-              <h3>静态检查</h3>
-              <p>检查 Python 编译与工作树格式。</p>
-              <div class="command"><button class="copy" type="button" data-copy>复制</button><code>python -m compileall -q kernel_design/executable_spec<br>git diff --check -- kernel_design</code></div>
-            </div>
-          </div>
-
-          <div style="margin-top:24px">
-            <details><summary>为什么 CandidateWorkerCache 不是生命周期真相？</summary><p>它只保存 TASK_DRIVEN 的短期预计算 Worker evidence。miss、stale 或过期只会让本轮没有候选；Task、Item 和 Worker 的真实状态仍由各自 owner 与 Score 轴决定。</p></details>
-            <details><summary>为什么 Worker failure 不直接把 Item 写回 ready？</summary><p>Item claim 本身已经写入未来 lease coordinate。Worker failure 只释放 Worker；到期后的 Item 会被普通 TaskItem acquisition 再次观察，避免 Result Routing 成为第二个 retry owner。</p></details>
-            <details><summary>为什么不靠 append/result 事件唤醒调度？</summary><p>高频事件容易产生放大和第二套 liveness。当前设计允许事件做有损加速，但 correctness 必须由 bounded score scan、lease expiry 与 owner-local recheck 自行收敛。</p></details>
-          </div>
-        </section>
-
-        <footer>
-          XA Mass Platform · kernel_design quick orientation · 单文件、无外部依赖、支持浏览器打印。
-        </footer>
+        </div>
       </div>
-    </main>
-  </div>
+    </section>
+
+    <section id="owners">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">07 · Ownership</p>
+          <h2>每个 owner 只维护自己的真相</h2>
+        </div>
+        <p>
+          调度闭环可以跨 owner 编排，但不能通过合并存储、复制状态或让中间队列升级为 lifecycle truth 来“简化”。
+        </p>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Owner / contract</th>
+            <th>拥有</th>
+            <th>明确不拥有</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>TaskScoreBandCore</td>
+            <td>Task score encoding、bounded query、lifecycle direction、terminal score</td>
+            <td>TaskItem、Worker、candidate 与 result truth</td>
+          </tr>
+          <tr>
+            <td>TaskRuntime</td>
+            <td>Task descriptor、canonical TaskItem record、last-success payload</td>
+            <td>Task/Item score 与 Worker lease</td>
+          </tr>
+          <tr>
+            <td>TaskItemScoreBandCore</td>
+            <td>Item initialization、claim/retry CAS、final outcome precedence</td>
+            <td>Task lifecycle、Worker serviceability 与 transport</td>
+          </tr>
+          <tr>
+            <td>Worker runtime / score</td>
+            <td>Worker descriptor、attributes、serviceability、dirty、exact lease</td>
+            <td>Task admission、Item finality 与 delivery result</td>
+          </tr>
+          <tr>
+            <td>Candidate / DeliverSeed runtime</td>
+            <td>有界、可过期、可替换的中间 evidence</td>
+            <td>任何 Task、Item 或 Worker lifecycle truth</td>
+          </tr>
+          <tr>
+            <td>ResultRoutingPacer</td>
+            <td>bounded consume、decode、group、delegate</td>
+            <td>TaskItem/Worker 私有 mutation 与 score encoding</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="status">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">08 · Current boundary</p>
+          <h2>现在已证明什么，仍刻意不做什么</h2>
+        </div>
+        <p>
+          这是 executable-spec 当前边界，不是生产就绪声明。真实 Redis 未运行时，单元测试也不能替代并发与跨进程证明。
+        </p>
+      </div>
+
+      <div class="status-board">
+        <article class="status-col done">
+          <h3>已进入 executable baseline</h3>
+          <ul>
+            <li>Task / Worker / TaskItem 三条 score 轴与 Redis owner primitives</li>
+            <li>Task admission 与 RUNNING soft limit</li>
+            <li>TASK_DRIVEN PRECOMPUTED + cache/warmup</li>
+            <li>ITEM_DRIVEN TARGETED point acquisition</li>
+            <li>TaskItem exact claim、DeliverSeed sparse mailbox</li>
+            <li>Worker Adapter polling、SeedResult 与 Result Routing</li>
+          </ul>
+        </article>
+
+        <article class="status-col deferred">
+          <h3>后续 policy / production work</h3>
+          <ul>
+            <li>cadence、优先级、公平性、quota 与 recovery tuning</li>
+            <li>认证、session、授权与受控 Worker route migration</li>
+            <li>push、pending/ack 与生产 transport policy</li>
+            <li>主动 recovery、retention、query projection 与 packaging</li>
+          </ul>
+        </article>
+
+        <article class="status-col no">
+          <h3>明确不是当前承诺</h3>
+          <ul>
+            <li>外部副作用 exactly-once</li>
+            <li>transport 重新选择 Worker</li>
+            <li>candidate/mailbox 成为 durable lifecycle owner</li>
+            <li>gang scheduling、preemption 或任意策略组合</li>
+            <li>为旧 Java 主线保留兼容路径</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section id="reading">
+      <div class="section-head">
+        <div>
+          <p class="eyebrow">09 · Read the contracts</p>
+          <h2>从全景进入当前真相</h2>
+        </div>
+        <p>
+          本页负责建立心智模型。需要修改机制时，继续阅读 owner 文档、代码和对应 vertical proof。
+        </p>
+      </div>
+
+      <div class="reading-grid">
+        <a class="reading-link" href="README.md">
+          <span class="reading-number">01</span>
+          <span><b>Kernel Design Workspace</b>总原则、三条 score 轴与 mutation authority</span>
+        </a>
+        <a class="reading-link" href="doc/scheduling/README.md">
+          <span class="reading-number">02</span>
+          <span><b>Scheduling Index</b>四个平面、当前机制状态与 executable map</span>
+        </a>
+        <a class="reading-link" href="doc/resource-model/task-resource-model.md">
+          <span class="reading-number">03</span>
+          <span><b>Task Resource Model</b>TaskType、allocationRule 与 Item contract</span>
+        </a>
+        <a class="reading-link" href="doc/scheduling/assignment-dispatch-scheduling.md">
+          <span class="reading-number">04</span>
+          <span><b>Assignment Dispatch</b>admission、warmup、dispatch 三个 pacer 的关系</span>
+        </a>
+        <a class="reading-link" href="doc/scheduling/task-dispatch-pacer.md">
+          <span class="reading-number">05</span>
+          <span><b>Task Dispatch Pacer</b>round sequence、空任务与 publication 语义</span>
+        </a>
+        <a class="reading-link" href="doc/scheduling/worker-delivery-dispatch.md">
+          <span class="reading-number">06</span>
+          <span><b>Worker Delivery Dispatch</b>sparse mailbox 与 Adapter protocol</span>
+        </a>
+        <a class="reading-link" href="doc/scheduling/result-routing-scheduling.md">
+          <span class="reading-number">07</span>
+          <span><b>Result Routing</b>outcome lanes 与 owner-local policy handlers</span>
+        </a>
+        <a class="reading-link" href="examples/README.md">
+          <span class="reading-number">08</span>
+          <span><b>Runnable Examples</b>Worker Adapter 与 polling phone Worker</span>
+        </a>
+      </div>
+
+      <div class="code-block" style="margin-top: 20px">
+        <button class="copy" type="button" aria-label="复制验证命令">复制</button>
+        <pre>cd kernel_design
+python -m compileall executable_spec examples
+python -m unittest discover -s executable_spec/tests -p "test_*.py"
+
+# 真实 Redis proof 需要显式配置
+$env:KERNEL_DESIGN_REDIS_URL = "redis://localhost:6379/15"</pre>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <p>
+        XA Mass Platform · Kernel Design Workspace · Human-facing overview.
+        本页不替代代码、测试或 owner contract。
+      </p>
+    </footer>
+  </main>
 
   <script>
-    const progress = document.getElementById('progress');
-    const navLinks = [...document.querySelectorAll('.sidebar nav a')];
-    const sections = navLinks.map(link => document.querySelector(link.getAttribute('href'))).filter(Boolean);
+    (() => {
+      const progress = document.querySelector(".progress");
+      const navLinks = [...document.querySelectorAll(".nav a")];
+      const sections = navLinks
+        .map((link) => document.querySelector(link.getAttribute("href")))
+        .filter(Boolean);
 
-    function updateProgress() {
-      const height = document.documentElement.scrollHeight - window.innerHeight;
-      const ratio = height > 0 ? Math.min(1, window.scrollY / height) : 0;
-      progress.style.width = `${ratio * 100}%`;
-    }
-    updateProgress();
-    window.addEventListener('scroll', updateProgress, { passive: true });
+      const updateProgress = () => {
+        const max = document.documentElement.scrollHeight - window.innerHeight;
+        const ratio = max > 0 ? window.scrollY / max : 0;
+        progress.style.width = `${Math.min(100, Math.max(0, ratio * 100))}%`;
+      };
 
-    const observer = new IntersectionObserver(entries => {
-      const visible = entries
-        .filter(entry => entry.isIntersecting)
-        .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
-      if (!visible) return;
-      navLinks.forEach(link => link.classList.toggle('active', link.getAttribute('href') === `#${visible.target.id}`));
-    }, { rootMargin: '-20% 0px -65% 0px', threshold: [0, .1, .4] });
-    sections.forEach(section => observer.observe(section));
+      const observer = new IntersectionObserver(
+        (entries) => {
+          const visible = entries
+            .filter((entry) => entry.isIntersecting)
+            .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+          if (!visible) return;
+          navLinks.forEach((link) => {
+            const isActive = link.getAttribute("href") === `#${visible.target.id}`;
+            link.classList.toggle("active", isActive);
+            if (isActive) link.setAttribute("aria-current", "location");
+            else link.removeAttribute("aria-current");
+          });
+        },
+        { rootMargin: "-18% 0px -62% 0px", threshold: [0, 0.2, 0.5] }
+      );
 
-    document.querySelectorAll('[data-copy]').forEach(button => {
-      button.addEventListener('click', async () => {
-        const text = button.parentElement.querySelector('code').innerText;
-        try {
-          await navigator.clipboard.writeText(text);
-          button.textContent = '已复制';
-          setTimeout(() => button.textContent = '复制', 1200);
-        } catch (_) {
-          button.textContent = '请手动复制';
-        }
+      sections.forEach((section) => observer.observe(section));
+      window.addEventListener("scroll", updateProgress, { passive: true });
+      updateProgress();
+
+      document.querySelectorAll(".copy").forEach((button) => {
+        button.addEventListener("click", async () => {
+          const pre = button.parentElement.querySelector("pre");
+          if (!pre) return;
+          try {
+            await navigator.clipboard.writeText(pre.innerText);
+            const previous = button.textContent;
+            button.textContent = "已复制";
+            setTimeout(() => {
+              button.textContent = previous;
+            }, 1200);
+          } catch {
+            button.textContent = "复制失败";
+          }
+        });
       });
-    });
+    })();
   </script>
 </body>
 </html>

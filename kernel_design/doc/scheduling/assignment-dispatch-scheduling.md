@@ -211,11 +211,13 @@ empty-recheck RUNNING Tasks
 ```
 
 Assignment Dispatch ends at Adapter mailbox publication. `APPENDED` and
-`REPLACED` both mean the new handoff is visible. `REPLACED` overwrites only
-unconsumed residue from a previous, already-ended Worker lease; the mailbox
-does not model a competing active assignment. Mailbox consume, claim-deadline
-recheck, Adapter-private command conversion, Worker invocation, and SeedResult
-append belong to Worker Delivery Dispatch.
+`REPLACED` both mean the caller's handoff is visible when append returns. The
+normal path expects replacement to overwrite unconsumed residue, not a
+competing active assignment. The mailbox itself does not compare Worker lease
+recency, so a delayed stale publisher can still become the last write; deadline
+checks, exact result fences, and natural expiry preserve owner truth. Mailbox
+consume, claim-deadline recheck, Adapter-private command conversion, Worker
+invocation, and SeedResult append belong to Worker Delivery Dispatch.
 
 `taskType` is fixed by the Task. The two rule locations cannot be mixed, and
 the dispatch round does not infer type or strategy from Item contents.

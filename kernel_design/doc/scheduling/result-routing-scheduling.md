@@ -218,7 +218,11 @@ The built-in interval is `100ms` and the per-class batch limit is `100`; only
 the interval is public JSON.
 
 Deferred policy is limited to cadence, per-class limit tuning, result query
-projection, and stronger ingress reliability.
+projection, stronger ingress reliability, and a possible trusted
+pre-execution-rejection fast retry. That fast path is not present: it requires
+ResultContext to carry an opaque Item claim fence and TaskItemScoreBandCore to
+provide an exact release primitive. Missing response, Adapter crash, timeout,
+or any other `UNKNOWN` evidence must continue waiting for claim expiry.
 
 ## Guardrails
 
@@ -226,6 +230,9 @@ projection, and stronger ingress reliability.
 - Do not interpret Adapter-private commandId or messageType in result routing.
 - Do not parse exact `1xxx` or `3xxx` subcodes in result routing.
 - Do not partition queues by exact code, Task, WorkerGroup, or producer source.
-- Do not actively rewrite Item retry time when `1xxx` or `3xxx` arrives.
+- The current built-in `1xxx/3xxx` handlers do not rewrite Item retry time.
+- Do not introduce a `3xxx` fast retry without an opaque Item claim fence and
+  an exact TaskItem score-owner release operation.
+- Never infer fast retry from `UNKNOWN` delivery evidence.
 - Do not promote Item before its successful payload is stored.
 - Do not reintroduce cross-class outcome precedence or winner aggregation.

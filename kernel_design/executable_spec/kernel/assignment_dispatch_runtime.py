@@ -137,7 +137,7 @@ class DeliverSeedRuntime(ABC):
         endpoint_manager_id: EndpointManagerId,
         deliver_seeds_by_worker_id: Mapping[WorkerId, DeliverSeed],
     ) -> Mapping[WorkerId, DeliverSeedAppendStatus]:
-        """Store each DeliverSeed only when its Adapter-local slot is empty."""
+        """Publish each Seed to its Adapter-local slot, replacing old residue."""
         pass
 
     @abstractmethod

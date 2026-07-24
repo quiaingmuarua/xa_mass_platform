@@ -79,8 +79,8 @@ One round computes its dispatch time and Item claim deadline once:
    sparse mailbox while preserving suffix zero and advancing ordinary dispatch
    time.
    `APPENDED` and `REPLACED` both count as publication. `REPLACED` means the
-   new lease-backed Seed replaced an unconsumed field from an already-ended
-   Worker lease.
+   caller's lease-backed Seed replaced an existing mailbox field; it does not
+   prove that the replaced field came from an older lease.
 9. Call `has_active_items` once for the activity-check batch and apply the
    recheck transition rules below.
 
@@ -186,8 +186,9 @@ Dispatch.
   or demote them.
 - The round sends one `workerId -> DeliverSeed` Map per endpoint manager to
   `DeliverSeedRuntime`. One WorkerId may appear only once in the entire round.
-  `APPENDED` and `REPLACED` count as publication. Replacement is limited to
-  residue from a previous, already-ended Worker lease.
+  `APPENDED` and `REPLACED` count as publication. Replacement is a best-effort
+  last mailbox write, not an attempt-order fence; stale delivery remains
+  bounded by the Seed deadline and score-owner fences.
 - Cross-Adapter mailbox writes are not atomic. A runtime failure does not roll
   back Adapter buckets whose append already completed.
 - Explicit terminal close has precedence. Existing Items, claims, seeds, or

@@ -177,6 +177,44 @@ Deferred policy stays in the document of the mechanism that consumes it. There
 is no global policy backlog document and no policy residue may create a second
 runtime path.
 
+## Current Scale Boundaries
+
+The executable spec deliberately uses a small number of Redis owner keys:
+
+```text
+tr:{prefix}:task:score
+  one global Task score ZSET
+
+wr:{prefix}:score:{workerGroupId}
+  one Worker score ZSET per WorkerGroup
+
+tr:{prefix}:task:{taskId}:item-score
+tr:{prefix}:task:{taskId}:items
+tr:{prefix}:task:{taskId}:results
+  Task-local Item score and record/result HASHes
+
+ad:{prefix}:endpoint-manager:{endpointManagerId}:deliver-seeds
+  one sparse DeliverSeed HASH per Adapter route
+
+rr:{prefix}:seed-results:{outcomeClass}
+  three global best-effort result LISTs
+```
+
+These are current mechanism boundaries, not claims of unlimited throughput.
+Adding Pacer or HTTP threads does not partition a hot Redis key and may only
+increase duplicate observation and exact-CAS contention. WorkerGroup, Task,
+Adapter route, and outcome class are the existing natural batching boundaries.
+A single very large WorkerGroup, one extremely hot Task, the global Task score
+key, or one result-class LIST may require a future explicitly owned
+partitioning design.
+
+The current HTTP polling example performs point mailbox consume. A production
+low-frequency polling Adapter may cursor-consume its sparse bucket in bounded
+batches and serve Workers from bounded process-local memory; a push/WebSocket
+Adapter may use the same Kernel contracts. Neither profile changes assignment
+or finality ownership, and destructive prefetch failure remains `UNKNOWN`
+without pending/ack.
+
 ## Core Reading Path
 
 After this index, a new agent can understand the current scheduling mainline

@@ -67,8 +67,10 @@ consume_deliver_seeds(
 ```
 
 `APPENDED` means the Adapter-local Worker field was empty. `REPLACED` means an
-existing mailbox residue was overwritten. Both outcomes mean the new Seed is
-published.
+existing mailbox field was overwritten. Both outcomes mean the caller's Seed
+is visible when the append returns. `REPLACED` is a best-effort mailbox
+visibility outcome, not a Worker lease comparison or a second assignment
+state.
 
 The append Map key must equal `DeliverSeed.workerId`. Append rejects a Seed
 whose claim deadline has already passed. A Task dispatch round validates that
@@ -97,22 +99,25 @@ ad:{prefix}:endpoint-manager:{endpointManagerId}:deliver-seeds
 ```
 
 Append first pipelines native `HSETNX` commands against one Adapter HASH. It
-then writes the fields that already existed with one native `HSET mapping`
+then writes fields that already existed with one native `HSET mapping`
 operation, equivalent to a bounded HMSET. No Lua computes routing, validates a
-Worker lease, or parses Seed data.
+Worker lease, orders attempts, or parses Seed data.
 
-Replacement is safe because Task Dispatch may construct a Seed only after
-exactly acquiring or renewing that Worker lease, and the Seed claim deadline is
-the same deadline used for the Worker lease. While that lease is active, the
-Worker cannot be acquired for another dispatch. A later valid Seed for the same
-Worker therefore implies that the previous lease and previous Seed deadline
-have already ended. If the old HASH field still exists, it is unconsumed
-delivery residue, not a second valid assignment.
+The normal scheduling path expects an existing field to be unconsumed residue:
+Task Dispatch can construct a Seed only after exactly acquiring or renewing
+the Worker lease, and one WorkerId cannot hold two current allocation leases.
+The mailbox therefore does not model `OCCUPIED` as a second active assignment
+state and does not read Worker score before replacement.
 
-The mailbox runtime trusts this lease-backed caller contract. It does not add a
-second Worker-score read, compare deadlines, or create an `OCCUPIED` state.
-Observing `REPLACED` may be recorded as lightweight Adapter backlog/residue
-evidence, but it is not a scheduling conflict and does not demote the Worker.
+The two Redis writes are deliberately not an attempt-order fence. A delayed
+publisher can pass its deadline check, pause, and later overwrite a Seed from a
+newer lease after its own lease has expired. In that bounded race, Redis shows
+the last mailbox write rather than the lease-newest attempt. The stale Seed
+cannot change TaskItem or Worker truth: pre-submit deadline filtering, result
+fences, and claim/lease expiry preserve correctness, although delivery may wait
+for expiry and retry. `REPLACED` is therefore useful lightweight residue or
+backlog evidence, but it is neither proof of a scheduling conflict nor a reason
+to demote the Worker.
 
 Point consume uses minimal single-key `HGET + HDEL` Lua. Cursor consume first
 uses `HSCAN`, then passes each scanned raw field/value pair to a minimal
@@ -174,6 +179,16 @@ The path WorkerId cannot consume another Adapter's bucket. A local batch
 Adapter may instead cursor-scan its configured bucket and demultiplex returned
 Seeds by `seed.workerId`.
 
+The current executable Worker Adapter performs one point consume for each
+Worker HTTP poll. A production low-frequency polling profile may instead run
+one bounded cursor-consume loop per Adapter, place consumed commands in a
+bounded process-local `workerId -> command` buffer, and serve Worker polls from
+that buffer. This avoids one Redis round trip per short Worker poll without
+changing the Kernel contracts. It remains deferred policy: destructive
+prefetch followed by Adapter failure is still `UNKNOWN`, so claim and Worker
+lease expiry remain the fallback. Push/WebSocket delivery is a separate
+Adapter transport profile over the same DeliverSeed and SeedResult contracts.
+
 The Adapter rechecks `taskItemClaimUntilMillis` before submit. A stale Seed is
 dropped without synthesizing result evidence or mutating Item/Worker score.
 `opaqueResultContext` is forwarded unchanged and must not be parsed by the
@@ -208,7 +223,9 @@ Adapter identity.
 
 - Controlled Worker route migration.
 - Worker serviceability penalties based on bounded mailbox residue evidence.
-- Production authentication, session ownership, and Adapter authorization.
+- Production polling buffer bounds, cursor cadence, authentication, session
+  ownership, and Adapter authorization.
+- Push/WebSocket transport policy.
 - Pending/ack reliability or mailbox expiry cleanup.
 - Proactive unreachable-Worker recovery evidence.
 
@@ -222,4 +239,5 @@ Adapter identity.
 - Do not emit timeout evidence for a Seed discarded before Worker submit.
 - Do not move Worker release/recovery decisions into mailbox consumption.
 - Do not reinterpret a replaced mailbox residue as a second active assignment.
+- Do not claim that a mailbox replacement is ordered by Worker lease recency.
 - Do not add cross-bucket rollback, cleanup scanners, or compatibility keys.

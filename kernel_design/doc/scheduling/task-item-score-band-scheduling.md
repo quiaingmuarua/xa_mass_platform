@@ -482,7 +482,8 @@ rewrite_observed_item_scores(
 For each Item, the core decodes only the caller-returned observed score, validates
 `ACTIVE`, decrements remaining budget, mints a later same-band target score, and
 uses exact Redis score CAS. `TRANSITIONED + score` is the claim result; that
-opaque score is carried by DeliverSeed/result evidence.
+opaque score is used only to accept the Item/Worker binding inside dispatch.
+The current DeliverSeed and ResultContext do not carry Item claim score.
 
 The exhausted set uses cross-band promotion rather than same-band rewrite:
 
@@ -725,6 +726,11 @@ script contains band names, budget, time, result, or retry policy.
 - Dispatch policy chooses the future claim coordinate. Failure result routing
   does not rewrite retry time; the existing claim coordinate becoming due
   restores acquisition visibility without changing score rules.
+- A future trusted pre-execution rejection policy may release an Item claim
+  early only after the opaque claim score is carried back to a
+  TaskItemScoreBandCore exact-CAS primitive. The current ResultContext and score
+  interface intentionally provide no such path; `UNKNOWN` delivery evidence
+  can never justify early release.
 - Final Item retention requires a separate retention owner; score finality does
   not define physical deletion time.
 

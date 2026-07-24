@@ -1078,7 +1078,7 @@ independent MANUAL_DISABLED_BAND
 worker hold hash
 WorkerHoldState
 transition Redis stream
-per-task worker candidate keys
+per-task worker candidate keys owned by WorkerScoreCore
 placement-tag score fanout
 transport/session evidence in worker metadata
 HOT_ACQUIRE laneRank as failure retry truth
@@ -1102,9 +1102,9 @@ slot registry redesign
   execution slot; physical concurrency is multiple logical WorkerIds.
 - Do not release an active Worker lease early to simulate immediate slot reuse
   or assign independent Items concurrently to one WorkerId.
-- Do not pass observed or leased HOT scores across the matcher boundary; the
-  allocation pacer keeps observations in a private sidecar and matcher receives
-  Worker ids only.
+- WorkerCandidateAcquirer owns HOT observations and lease transitions. Matcher
+  may receive leased scores only as opaque values used to construct
+  CandidateWorkerEntry; it must not decode or mutate them.
 - Where an operation explicitly requires `observedScore`, do not trim it to
   time/laneRank/dirty. It remains the full signed score and callers must not
   construct or decode it.
@@ -1124,9 +1124,11 @@ slot registry redesign
 - Do not use RECOVERY_RECHECK scores as assignment leases. Recovery validation
   must move the worker back to HOT_ACQUIRE before any hot score lease primitive
   can run.
-- Do not split the HOT due predicate and future lease write into separate Redis
-  operations.
-- Do not create per-task worker candidate keys.
+- A read-only HOT due observation may precede a lease write, but the write must
+  use exact observed-score CAS. Never write a future lease from WorkerId or due
+  membership alone.
+- Do not create per-task candidate keys inside WorkerScoreCore.
+  CandidateWorkerCache is the separate owner of candidate-scoped keys.
 - Do not fan out score across placement-tag buckets in the first slice.
 - Do not store transport/session evidence in worker scheduling metadata.
 - Do not let read projections or trace materialization drive worker score.

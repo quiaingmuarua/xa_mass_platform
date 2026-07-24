@@ -373,7 +373,8 @@ bounded consume, opaqueResultContext decode, owner-key grouping, and handler
 delegation through ResultRoutingPacer
 Task-scoped last-success result payload storage before FINAL_SUCCESS promotion
 through the selected Task result handler
-no Item score mutation for `1xxx/3xxx`; the existing claim becomes due
+current built-in policy performs no Item score mutation for `1xxx/3xxx`; the
+existing claim becomes due naturally
 workerGroupId plus opaque workerLeaseScore pass-through to WorkerScoreCore exact
 release for `200/1xxx` or exact RECOVERY_RECHECK demotion for `3xxx` through
 the selected Worker result handler
@@ -391,6 +392,11 @@ exact subcode, Task, WorkerGroup, or producer source. The first executable spec
 persists only last-success payload truth, not failure history or a public result
 projection;
 exhausted ACTIVE budget is finalized by Item dispatch acquire.
+
+A future trusted pre-execution-rejection policy may accelerate Item retry only
+after the opaque Item claim fence is carried to a TaskItem score-owner exact
+release operation. Adapter crash, timeout, missing response, and other
+`UNKNOWN` evidence cannot release an Item claim early.
 
 ## 4. Worker-Runtime Boundary Rules
 
