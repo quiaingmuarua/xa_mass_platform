@@ -564,10 +564,11 @@ Design notes define the intended owner contract; executable-spec code and tests
 prove the currently implemented mechanism. If they disagree, identify the drift
 before changing either one.
 
-The Python executable spec lives under `kernel_design/executable_spec/`. Any
-future production implementation may add behavior only through scoped parity
-slices against this workspace. Historical tag material must not constrain
-current interfaces, Redis shapes, or package boundaries.
+The Python executable spec lives under `kernel_design/executable_spec/`. The
+Kotlin production scaffold lives under `kernel_jvm/` and may implement behavior
+only through scoped parity slices against this workspace. Historical tag
+material must not constrain current interfaces, Redis shapes, or package
+boundaries.
 
 ## Agent Rules
 

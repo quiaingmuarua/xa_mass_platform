@@ -1,11 +1,14 @@
 # XA Mass Kernel
 
-Status: clean-kernel mechanism workspace.
+Status: clean-kernel mechanism workspace and JVM rewrite scaffold.
 
-[`kernel_design/`](kernel_design/) contains the Python executable
-specification, mechanism documentation, Redis proofs, and protocol examples. It
-is the current semantic oracle. A production implementation is intentionally
-absent until it can be introduced through scoped parity work.
+The repository contains two active areas:
+
+- [`kernel_design/`](kernel_design/): Python executable specification,
+  mechanism documentation, Redis proofs, and protocol examples. It is the
+  current semantic oracle.
+- [`kernel_jvm/`](kernel_jvm/): empty Kotlin/JVM production implementation
+  scaffold. It does not yet implement kernel behavior.
 
 The superseded Java platform, frontend, SDK, server, transport, infrastructure,
 and integration code are preserved by the annotated Git tag
@@ -26,6 +29,12 @@ Real Redis proof:
 ```text
 KERNEL_DESIGN_REDIS_URL=redis://localhost:6379/15 \
   python -m unittest discover -s kernel_design/executable_spec/tests
+```
+
+Kotlin/JVM scaffold:
+
+```text
+./mvnw verify
 ```
 
 See [`AGENTS.md`](AGENTS.md) before changing mechanism behavior and

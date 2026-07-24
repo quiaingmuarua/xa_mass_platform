@@ -10,11 +10,16 @@
     <packaging>pom</packaging>
 
     <name>XA Mass Kernel</name>
-    <description>Clean-kernel executable specification workspace</description>
+    <description>Clean-kernel executable specification and Kotlin rewrite</description>
+
+    <modules>
+        <module>kernel_jvm</module>
+    </modules>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <java.version>21</java.version>
+        <kotlin.version>2.4.0</kotlin.version>
     </properties>
 </project>

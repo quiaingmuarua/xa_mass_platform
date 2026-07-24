@@ -1,0 +1,35 @@
+name: Kernel JVM
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "kernel_jvm/**"
+      - "pom.xml"
+      - "mvnw"
+      - "mvnw.cmd"
+      - ".mvn/**"
+      - ".github/workflows/kernel-jvm.yml"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "kernel_jvm/**"
+      - "pom.xml"
+      - "mvnw"
+      - "mvnw.cmd"
+      - ".mvn/**"
+      - ".github/workflows/kernel-jvm.yml"
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Verify JVM scaffold
+        run: ./mvnw -B verify

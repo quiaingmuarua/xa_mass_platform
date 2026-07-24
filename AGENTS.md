@@ -5,7 +5,7 @@ Status: current repository handoff.
 ## Mainline
 
 - `kernel_design/` is the current mechanism oracle.
-- A production implementation is not currently present.
+- `kernel_jvm/` is a production implementation scaffold only.
 - The legacy Java platform is available exclusively from
   `legacy-java-platform-final-2026-07-24`.
 - There is no compatibility obligation to legacy Java APIs, modules, Redis
@@ -33,14 +33,25 @@ tag.
 - Keep score values opaque outside their owner operations.
 - Use real Redis proof for Redis behavior and concurrency claims.
 - Update the owning mechanism document when behavior changes.
-- Do not add production behavior until a scoped parity slice names the Python
-  contract and proof it replaces.
+- Do not implement Kotlin behavior until a scoped parity slice names the
+  Python contract and proof it replaces.
+
+## JVM Scaffold
+
+`kernel_jvm` is intentionally one Maven module. Packages may separate owner
+responsibilities, but a new Maven module requires a real publication,
+dependency, or lifecycle boundary.
+
+The scaffold currently contains no public API, DTO, runtime implementation,
+Redis code, Pacer, or server. Empty package directories are not implementation
+progress.
 
 ## Verification
 
 ```text
 python -m unittest discover -s kernel_design/executable_spec/tests
 python -m compileall -q kernel_design/executable_spec
+./mvnw verify
 git diff --check
 ```
 
