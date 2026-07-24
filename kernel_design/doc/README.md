@@ -1,6 +1,6 @@
 # Kernel Design Documents
 
-Status: current document index for the isolated new-kernel workspace.
+Status: current document index for the clean-kernel mechanism workspace.
 
 The document families are grouped by design concern:
 
@@ -17,5 +17,5 @@ The document families are grouped by design concern:
 - Runtime Redis shapes:
   [Worker Runtime](runtime-redis/worker-runtime-redis-shape.md) and
   [Seed Result Runtime](runtime-redis/seed-result-runtime-redis-shape.md).
-Python executable-spec code lives under `../executable_spec/`; these documents do
-not create a second implementation path or current Java implementation truth.
+Python executable-spec code lives under `../executable_spec/`; these documents
+and proofs are the semantic input for future production parity work.

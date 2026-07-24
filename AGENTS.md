@@ -1,346 +1,49 @@
-# XA Mass Platform Agent Handoff
+# XA Mass Kernel Agent Handoff
 
-Status: current repo-root agent handoff.
+Status: current repository handoff.
 
-Fast entry only. Use module owner READMEs and `doc/` contracts for detail.
+## Mainline
 
-## 0. TL;DR
+- `kernel_design/` is the current mechanism oracle.
+- A production implementation is not currently present.
+- The legacy Java platform is available exclusively from
+  `legacy-java-platform-final-2026-07-24`.
+- There is no compatibility obligation to legacy Java APIs, modules, Redis
+  shapes, SDKs, server routes, transport contracts, or frontend models.
 
-- XA Mass Platform is a general distributed task scheduling platform.
-- Core primitives: `Task + Worker + Scheduling Plane`. `WorkerGroup` and
-  `Adapter` are boundary concepts around worker capability and final-hop
-  connectivity, not extra scheduling owners.
-- `Task`: shell, contract, intake window, runtime work, result, and terminal
-  aggregate.
-- `WorkerGroup`: capability declaration and scheduling entry boundary.
-- `Worker`: execution identity plus WorkerGroup membership, attributes, load,
-  state, and scheduling evidence. Worker rows do not own project/event
-  capability truth and cannot self-declare new event capability.
-- `Adapter`: worker network/session/endpoint-lease carrier for the final hop.
-  It does not expand worker capability and does not choose workers.
-- `Scheduling Plane`: decides when work may enter, retry, pause, resume, or
-  leave dispatch competition, which worker universe it may compete in, and
-  which concrete worker receives it.
-- Scheduling Plane owners:
-  `TaskSchedulingPolicyExecution + WorkerSchedulingPolicyResolution +
-  RuntimeWorkerSelection`.
-- Scheduling Plane inputs and constraints:
-  `TaskDispatchIntent`, `ResolvedTaskSchedulingPolicy`, and
-  `ResolvedWorkerSchedulingPolicy` are current engine-facing value contracts
-  derived from task fields and shared config; `SchedulingPolicyCatalog` /
-  `ProjectSchedulingBinding` remain target-only policy product boundaries until
-  a successor decision proves caller, cost, storage owner, and runtime consumer;
-  `WorkerGroupCapability` remains external project/event capability truth; item
-  `eventCode` plus payload select only the worker-local handler invocation.
-- Scheduling-related ownership has three separate categories:
-  `TaskSchedulingPolicy` for competition admission/cadence/priority/fairness/
-  budget, `WorkerSchedulingPolicy` for worker resource-universe selection and
-  pool constraints, and `RuntimeWorkerSelection` for concrete worker choice
-  from live evidence and admission state. Current resolved views cover part of
-  this boundary; catalog/binding/configurable policy modules are not
-  implemented.
-- Canonical shorthand:
-  - `TaskSchedulingPolicy` = how work enters dispatch competition
-  - `WorkerSchedulingPolicy` = which worker universe work competes in
-  - `RuntimeWorkerSelection` = which currently eligible workers are selected
-    inside that universe
-- `Matching` is the current worker-selection mechanism inside Scheduling Plane,
-  not a top-level owner.
-- Kernel truth is currently split across:
-  - `Task.contract` as the current public/runtime preset input
-  - `Task.intakeStatus` for intake-window truth
-  - `TaskWorkRuntime` for ready/delayed/lease/counter truth
-  - `TaskResultRuntime` for stable-final result rows and result-side barriers
-- result convergence is runtime-first, but the lifecycle owner split must be
-  verified from `doc/TASK_LIFECYCLE_BASELINE.md` plus current engine/runtime
-  code rather than inferred from historical `TaskWorkRuntime` wording alone
-- Transport is three explicit channels: task dispatch, result ingest, and system events.
-  Its runtime responsibilities split into network/session evidence production
-  and best-effort assigned-delivery execution; only the assigned-delivery lane
-  is the pure delivery executor.
-- Runtime entry is SDK-first; server HTTP/UI surfaces provide the backend
-  product/API host, control-console support, and validation surface without
-  redefining kernel ownership.
-- Infra truth is three-layered: control-plane storage, runtime state, and
-  trace/audit stream. SQLite-first means control-plane storage only; Redis is
-  runtime truth; trace DB materialization is trace-owned and deferred.
-- Core acceptance is `perf + concurrency + Boot-shell E2E`.
+## Trust Order
 
-Current mainline execution path:
+1. `kernel_design/executable_spec/` code and tests.
+2. Verified Redis behavior.
+3. Current `kernel_design/doc/` mechanism contracts.
+4. `kernel_design/README.md` and `kernel_design/AGENTS.md`.
+5. Historical tag material only as failure-mode evidence.
 
-- `Task shell -> item append -> runtime enqueue -> scheduling eligibility -> worker selection and assignment -> transport dispatch -> result convergence -> task state`
+If executable code and a current mechanism document disagree, identify the
+drift before changing either one. Do not infer new behavior from the legacy
+tag.
 
-Task item dispatch boundary:
+## Working Rules
 
-- by the time an item reaches transport, Scheduling Plane has already selected
-  a concrete worker and engine has bound that decision into
-  `TaskDispatchBinding.workerId`
-- transport carries that value as `selectedWorkerId`, a delivery constraint, not
-  scheduling truth or worker lifecycle truth
-- delivery integration resolves that selected worker through worker-runtime
-  delivery target evidence into an opaque `adapterMailboxKey`; engine/base
-  assignment does not carry mailbox, adapter, route, connection, or session
-  facts
-- transport queues by `adapterMailboxKey` and preserves `selectedWorkerId` as
-  the final-hop correctness constraint; concrete adapters demux that selected
-  worker to a local session, channel, or pull buffer
-- `routeKey`, `deliveryQueueKey`, connection ids, endpoint lease ids, and
-  session handles are not assigned-dispatch routing contracts. If they remain
-  inside adapter/session diagnostics, they must not drive worker correctness or
-  producer-side queue choice.
-- the assigned-delivery lane is a best-effort delivery executor, not the message
-  reliability owner. Known offer rejection, unavailable mailbox, missing
-  endpoint, corrupt dispatch input, or adapter final-hop failure must become a
-  `DispatchOutcome` or retryable failure evidence; accepted work with no later
-  worker consumption or result falls back to engine-owned task attempt timeout,
-  retry, reassign, and compensation.
-- engine must not select workers by transport implementation identifiers such
-  as `adapterId`, `adapterMailboxKey`, `routeKey`, `connectionId`, endpoint
-  lease ids, or session handles. If delivery reachability is needed for
-  scheduling, expose it as worker-runtime scheduling evidence instead of raw
-  transport facts.
+- Scope mechanism searches, diffs, and Python tests to `kernel_design/`.
+- Preserve explicit owner boundaries across core contracts, scheduling,
+  Redis implementations, assembly, and external protocol examples.
+- Do not add bridges, compatibility aliases, mirrored DTOs, or speculative
+  modules.
+- Keep score values opaque outside their owner operations.
+- Use real Redis proof for Redis behavior and concurrency claims.
+- Update the owning mechanism document when behavior changes.
+- Do not add production behavior until a scoped parity slice names the Python
+  contract and proof it replaces.
 
-## 0.1 Abstraction Test
+## Verification
 
-This repo is not anti-abstraction. It is anti-fake abstraction.
+```text
+python -m unittest discover -s kernel_design/executable_spec/tests
+python -m compileall -q kernel_design/executable_spec
+git diff --check
+```
 
-- module-internal direct dependency is not a problem by itself
-- add a new seam only when it creates a real owner boundary, protocol seam,
-  lifecycle split, or external/default caller surface
-- a same-module pass-through `bridge` / `facade` / `wrapper` / `adapter`
-  that only forwards to an existing owner is usually noise, not architecture
-- narrow surfaces are still required for hot paths, cross-module callers,
-  startup/watchdog wiring, and stable external entry points
-- if a new layer does not change who owns the decision, who may call it, or
-  what lifecycle boundary it protects, it probably should not exist
-
-Public runtime interfaces must expose stable contracts, not internal
-observation records. Interface parameters should be one of:
-
-- primitive fields or stable value objects owned by the caller or shared
-  contract, such as `workerId`, `workerGroupId`, or `observedAtMillis`
-- explicit public contract DTOs whose fields are stable, meaningful, and
-  constructible by the caller
-- functional interfaces / callbacks that represent deferred behavior without
-  carrying owner-internal state
-- opaque handles or refs that callers only store and return, without reading
-  implementation fields
-
-If the caller cannot validate, construct, or own the fields, the object is not
-a public contract. Do not pass internal observations, cache snapshots,
-state-machine evidence, score/lease internals, or convenience wrapper records
-through public interfaces just to make call sites compile.
-
-Common misreads to avoid:
-
-- `TaskManager` implementing multiple engine seams is current owner design, not
-  proof that a second internal bridge layer is needed
-- historical message/attempt vocabulary does not mean those names are still
-  the current hot-path runtime owner shape in code
-- refusing a new wrapper is not "less design"; it is often the design choice
-  that keeps owner boundaries visible
-
-## 1. First Read
-
-For a new session, read only these before changing behavior:
-
-1. [README.md](README.md)
-2. [doc/AGENT_BASELINE.md](doc/AGENT_BASELINE.md)
-3. [doc/TASK_LIFECYCLE_BASELINE.md](doc/TASK_LIFECYCLE_BASELINE.md)
-4. [doc/INFRA_TRUTH_LAYERS.md](doc/INFRA_TRUTH_LAYERS.md) when the change touches storage, runtime, audit, or observability placement
-5. [xa-mass-trace/README.md](xa-mass-trace/README.md) when the change touches
-   trace, lifecycle observability, or trace-observed integration testing
-
-Then jump to the owning module README or owner contract. Use
-[doc/README.md](doc/README.md) as the expanded reading map only when needed.
-
-For complex cross-module iteration methodology, read
-[doc/AGENT_NATIVE_ENGINEERING_HYGIENE.md](doc/AGENT_NATIVE_ENGINEERING_HYGIENE.md).
-
-## 2. Trust Order
-
-1. code
-2. verified runtime behavior
-3. this handoff
-4. active owner docs and ledgers (`doc/*`, `transport/*`, `DEPRECATION_LEDGER.md`)
-5. module README files
-6. refactor inventories and older notes only after re-verification
-
-Direction-doc rule:
-
-- target-direction or roadmap docs may be used as north-star constraints to keep new work from drifting across intended owner boundaries
-- they must not be cited as proof that the current implementation already behaves that way
-- when a direction doc and current code disagree, describe the gap explicitly and keep implementation claims tied to code and verified behavior
-
-## 3. Fast Routing
-
-Start here based on the change:
-
-- engine lifecycle, matching, assignment, result, or concurrency:
-  [xa-mass-engine/README.md](xa-mass-engine/README.md)
-- task lifecycle, result-side ownership, and runtime/public-result boundaries:
-  [doc/TASK_LIFECYCLE_BASELINE.md](doc/TASK_LIFECYCLE_BASELINE.md)
-- runtime queue/lease/counter ownership or storage/runtime/trace placement:
-  [platform_infra/README.md](platform_infra/README.md),
-  [doc/INFRA_TRUTH_LAYERS.md](doc/INFRA_TRUTH_LAYERS.md)
-- transport runtime or adapter work:
-  [transport/AGENTS.md](transport/AGENTS.md)
-- understanding the current testing system or deciding where a new test belongs:
-  read [doc/TESTING_INDEX.md](doc/TESTING_INDEX.md) first, especially
-  `0. Fast Intent`; if the question is "what is the authoritative proof for
-  this invariant?" or "where is the current proof gap?", read
-  [doc/PROOF_REGISTRY.md](doc/PROOF_REGISTRY.md) next before jumping to the
-  owning lane README or suite
-- lifecycle/trace/E2E contracts:
-  [doc/TASK_LIFECYCLE_BASELINE.md](doc/TASK_LIFECYCLE_BASELINE.md),
-  [doc/TRACE_CONTRACT.md](doc/TRACE_CONTRACT.md),
-  [doc/TESTING_INDEX.md](doc/TESTING_INDEX.md)
-- trace operator CLI / local trace diagnosis:
-  [xa-mass-trace/README.md](xa-mass-trace/README.md),
-  [doc/TRACE_CONTRACT.md](doc/TRACE_CONTRACT.md)
-- perf/concurrency/core acceptance:
-  [doc/TESTING_INDEX.md](doc/TESTING_INDEX.md),
-  [xa-mass-testing/README.md](xa-mass-testing/README.md),
-  [xa-mass-engine/README.md](xa-mass-engine/README.md)
-- startup/runtime verification:
-  [xa-mass-testing/VERIFIED_RUNBOOK.md](xa-mass-testing/VERIFIED_RUNBOOK.md)
-- HTTP/API contracts:
-  [xa-mass-server/doc/INTERNAL_API_REFERENCE.md](xa-mass-server/doc/INTERNAL_API_REFERENCE.md)
-- SDK/integrations boundary guard:
-  [doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md](doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md)
-- server/frontend API and control-console boundary:
-  [doc/FRONTEND_BACKEND_CONTRACT.md](doc/FRONTEND_BACKEND_CONTRACT.md)
-- active cross-module roadmap or decision work:
-  [roadmap/README.md](roadmap/README.md)
-- legacy/compatibility/deprecation work:
-  [DEPRECATION_LEDGER.md](DEPRECATION_LEDGER.md)
-
-## 4. Agent Contract
-
-Hard rules:
-
-- act as a codebase owner, not a passive executor; form an independent technical judgment from code and verified runtime behavior first, and argue before coding when a requested direction conflicts with mainline ownership, runtime truth, or boundary clarity
-- within this repository, there is no compatibility obligation for superseded internal paths; update in-repo callers instead of preserving the old path, and never leave deprecated and replacement paths as two live tracks
-- do not preserve the old path through adapters, aliases, wrappers, fallbacks, rename-only relabeling, or phase markers; outside genuine new-feature work, determine whether the existing path should be replaced, converged, or removed
-- `@Deprecated` is a temporary convergence marker only; never extend deprecated or legacy seams, and a failing test is never a reason to add a compatibility layer
-- rename is justified when logic meaning changed or when an existing name materially misleads a hot-path mainline method; broad rename-only churn is not cheap
-- if code changes a documented contract, ownership rule, or mainline workflow assumption, update the owning doc in the same change
-
-Planning rule for multi-file or core changes:
-
-- include scope, out of scope, files and symbols, alternative considered, costs,
-  test impact with classifications, risk, and verification
-- if reality materially diverges from the approved plan, stop and report before continuing
-
-## 5. Highest-Priority Guardrails
-
-- do not let transport-specific shapes redefine the kernel
-- `engine` is a runtime kernel, not a CRUD backend module
-- `Task.sharedConfig` plus runtime item payload or `payloadRef` are the generic payload boundaries
-- `target` is only a conventional key inside the runtime item payload, not a model field
-- task shell create enters through `POST /api/v1/tasks`, and work-item ingest is explicit through `POST /api/v1/tasks/{taskId}/items`
-- `eventCode` is handler/capability identity plus intake/runtime validation
-  evidence; scheduling candidate truth is explicit `workerGroupId` /
-  `workerGroupIds`
-- `eventCode` is handler/capability identity, not a worker selector; it should
-  validate selected WorkerGroup event binding and drive worker-local handler
-  dispatch, not scan all workers or reinterpret item payload as worker-selection policy
-- target direction: platform scheduling policy is split into task scheduling
-  policy, worker scheduling policy, and runtime worker selection. Project/
-  workload binding owns allowed/default policy selection and config, task
-  dispatch intent selects or inherits policies, and runtime worker selection
-  owns live evidence/rank/reserve/admission. This is not fully implemented yet;
-  current policy is still distributed across resolved task policy, task runtime
-  profile residue, group selectors, matching rules, assignment policy,
-  backpressure, and admission
-- do not add scan-heavy observability or reconciliation loops to hot paths
-- high-cost runtime mechanisms require a named high-ROI decision before they
-  are introduced. Threads, pollers, scanners, periodic jobs, lifecycle owners,
-  event-triggered wakeups, queues, indexes, and cross-module push signals are
-  high-cost by default; use opportunistic point reads or owner-local validation
-  unless the roadmap proves why the higher-cost mechanism protects a
-  high-value invariant.
-- trace and query concerns must not reverse-drive runtime ownership or mainline lifecycle design
-- SQLite/control-plane storage must not absorb runtime queue, lease, heartbeat,
-  dispatch, result convergence, or trace/audit truth; server profiles such as
-  `memory-local` and `durable-local` may change infra and seed source, not
-  public API contracts
-- server-owned API-key, IAM, usage, and submitter-viewer schema/store decisions
-  stay in `xa-mass-server`; do not add server API/IAM tables or concepts to
-  `platform_infra`, and do not persist viewer sessions in JDBC/SQLite
-- server-owned DB resources belong under
-  `xa-mass-server/src/main/resources/db/schema/server-control-plane` and
-  `xa-mass-server/src/main/resources/db/migration/server-control-plane`; generic
-  platform storage SQL stays under `platform_infra/mass-storage-jdbc`
-- during the current pre-release stage, DB schema changes may require
-  deleting/recreating local/prod DBs; prove clean DB creation and current-schema
-  restart behavior, not historical upgrade compatibility
-- server profile, startup, auth, or infra assembly changes must include a
-  startup-level proof, not only unit/service tests. If a change touches
-  `@Configuration`, component-scanned `@Component`/`@Service` beans,
-  constructor `@Value` injection, startup guards, profile defaults, seed/import,
-  fail-closed infra mode checks, or `XaMassServerApplication` assembly, verify a
-  Spring context or Boot-shell path with the relevant profile active.
-- bias transport and lifecycle writes toward idempotent operations and retry safety
-- for SDK or integrations changes, read
-  [doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md](doc/SDK_INTEGRATIONS_BOUNDARY_GUARD.md)
-  before adding dependencies, DTOs, samples, worker-pack capability paths, or
-  server bootstrap behavior
-- this repo is currently server + SDK first. Frontend is the control-console
-  consumer and validation surface; if a UI need requires new data/action, define
-  the backend contract and owner proof first instead of inventing frontend-only
-  models, permissions, route aliases, or mock-only production behavior.
-  Maintain [doc/FRONTEND_BACKEND_CONTRACT.md](doc/FRONTEND_BACKEND_CONTRACT.md)
-  when server/frontend API, auth, permission, DTO, or console ownership changes
-
-## 6. Working Defaults
-
-- verify the current code path before changing behavior
-- apply the abstraction test above; do not introduce `bridge` / `facade` / `wrapper` / `adapter` shells without a real owner boundary, protocol seam, lifecycle split, or concrete replacement need
-- judge refactors by visibility, owner clarity, dependency surface, and whether the mainline becomes easier to reason about; a large internal orchestrator is acceptable when ownership stays explicit and splitting it would only fragment the mainline
-- prefer logs, traces, and bounded diagnostics over model-coupled realtime observability
-- prefer E2E or integration coverage for lifecycle changes
-- prefer startup/context smoke coverage for server wiring changes. Direct
-  constructor tests are support coverage only when the production caller is
-  Spring; add a Spring instantiation/context test for new component-scanned
-  beans with `@Value`, `Environment`, profile, or startup-order behavior.
-- when lifecycle semantics change, update
-  [doc/TASK_LIFECYCLE_BASELINE.md](doc/TASK_LIFECYCLE_BASELINE.md),
-  [doc/TRACE_CONTRACT.md](doc/TRACE_CONTRACT.md), and
-  [doc/TESTING_INDEX.md](doc/TESTING_INDEX.md) together
-- keep docs concise and current; delete stale notes instead of preserving parallel narratives
-- keep module-owned docs inside the owning module; `doc/` is for global contracts, constraints, indexes, and runbooks
-- do not add new root directories unless they are cross-module entry points
-  linked from this handoff or the root README; otherwise put the material under
-  the owning module or archive it
-- do not document target state as already implemented
-- do not recreate removed archive/v2 code
-
-## 7. Documentation Governance
-
-Hard rules for new or updated docs:
-
-- new cross-module roadmap, inventory, decision, or direction records go under
-  [roadmap/](roadmap/), not under global `doc/`
-- when a roadmap is complete, run a residue scan, move still-current facts into
-  the owning README/baseline, then archive the completed record under
-  `doc/archive/<owner>/YYYY-MM-DD_NAME.md`
-- module-local implementation truth belongs in the owning module README,
-  module `doc/README.md`, or owner baseline; do not promote it into global
-  `doc/` unless it is a cross-module contract or constraint
-- root [README.md](README.md) is only for current facts, entry lanes, and
-  top-level directory rationale; do not grow it into a roadmap or design log
-- `kernel_design/` is an isolated new-kernel design workspace for scheduling
-  mechanisms, runtime/state-transition notes, and future Python executable-spec
-  preparation. Do not cite or link its internal documents from current Java
-  implementation docs, active roadmaps, architecture explanations, proof
-  registries, or acceptance runbooks. It is not current Java implementation
-  truth, not acceptance proof, and not a substitute for a scoped roadmap or
-  executable-spec plan before execution.
-- [architecture/](architecture/README.md) is human-facing explanation and
-  onboarding material, not implementation truth or acceptance proof
-- SDK, public-contract, or integrations boundary changes must update
-  [sdk/README.md](sdk/README.md) and
-  [integrations/README.md](integrations/README.md) in the same change; update
-  the external SDK quickstart and boundary guard when caller behavior or
-  dependency rules change
+For real Redis proof, set
+`KERNEL_DESIGN_REDIS_URL=redis://localhost:6379/15` before running the Python
+suite.

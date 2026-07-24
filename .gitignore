@@ -1,76 +1,39 @@
-HELP.md
 target/
-.mvn/wrapper/maven-wrapper.jar
-!**/src/main/**/target/
-!**/src/test/**/target/
-
-### STS ###
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
-
-### IntelliJ IDEA ###
-.idea
-*.iws
-*.iml
-*.ipr
-*.ps1
-
-### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
 build/
-!**/src/main/**/build/
-!**/src/test/**/build/
 
-### VS Code ###
+.idea/
 .vscode/
 .cursor/
-cursor.rules
-/.mvn/
-/.mvn/
-/log/
-/catalina.base_IS_UNDEFINED/
-/logs/
-/xa-mass-server/logs/
-.DS_Store
-**/.DS_Store
-/.claude/
+.claude/
+.github/java-upgrade/
+.github/modernize/
+*.iml
 
-### Local runtime/test artifacts ###
-*.log
-*.log.*
-/.codex-root-test.log
-
-### Archived docs ###
-doc/archive/
 __pycache__/
 *.py[cod]
 *$py.class
 
-### Local environment and secrets ###
 .env
 .env.*
 !.env.example
 !**/.env.example
 *.local
-*.pem
-*.key
-*.p12
-*.jks
-*.keystore
-/integrations/xa-mass-scenario-launcher/examples/secrets/
-/tools/xa-mass-admin-cli/examples/secrets/
-/tools/xa-mass-admin-cli/examples/.state/
-/tmp/
-/data/
-/identifier.sqlite
-.vercel
+*.log
+*.log.*
+*.sqlite
 
+data/
+frontend/
+integrations/
+logs/
+tmp/
+.vercel/
+.DS_Store
+**/.DS_Store
+
+# Local historical archives are preserved only by the legacy Git tag.
+doc/archive/**
+!doc/archive/trace/
+!doc/archive/trace/legacy-trace-assets.md
+!doc/archive/testing/
+!doc/archive/testing/legacy-testing-assets.md

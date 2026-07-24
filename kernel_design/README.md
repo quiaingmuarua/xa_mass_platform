@@ -1,11 +1,11 @@
 # Kernel Core Design Workspace
 
-Status: new-kernel design workspace, not current implementation truth and not
-an implementation roadmap.
+Status: current clean-kernel mechanism workspace and Python executable
+specification.
 
-This directory is primarily for the next kernel design. The current Java
-project is a historical reference for failure modes, invariants, and
-anti-patterns; it is not the architecture to preserve.
+This directory is the semantic oracle for the clean kernel. The superseded Java
+platform is preserved by `legacy-java-platform-final-2026-07-24` as historical
+failure-mode evidence; it is not an architecture or compatibility target.
 
 Treat this workspace as kernel-core design notes and Python executable specs
 for a clean rewrite, not as a roadmap for incrementally repairing the current
@@ -560,23 +560,14 @@ no hidden compatibility path or second mainline remains
 
 ## Boundary
 
-These design notes are not proof that the current implementation already
-behaves this way. Use them as target mechanism constraints. Use current code
-only as legacy evidence when checking why the old design failed or which
-invariants the new kernel must preserve.
+Design notes define the intended owner contract; executable-spec code and tests
+prove the currently implemented mechanism. If they disagree, identify the drift
+before changing either one.
 
-This workspace is isolated from the current Java project. Current
-implementation docs, active roadmaps, architecture explanations, proof
-registries, and runbooks should not deep-link these internal design notes as
-execution input, implementation proof, or migration direction. If a current
-Java roadmap needs a mechanism or Redis shape, define it inside that roadmap or
-the owning module contract instead.
-
-The current Python executable spec lives under `kernel_design/executable_spec/` and
-is governed by these design contracts. A future production package may move to
-a dedicated `kernel_core/` root only through an explicit packaging decision.
-Current Java project roadmaps must not execute these design notes or Python
-specs as if they were current-platform migration steps.
+The Python executable spec lives under `kernel_design/executable_spec/`. Any
+future production implementation may add behavior only through scoped parity
+slices against this workspace. Historical tag material must not constrain
+current interfaces, Redis shapes, or package boundaries.
 
 ## Agent Rules
 

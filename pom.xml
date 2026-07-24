@@ -1,117 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0"
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
-    <parent>
-        <groupId>org.springframework.boot</groupId>
-        <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.3.0</version>
-    </parent>
+
     <groupId>com.xa.mass</groupId>
-    <artifactId>xa_mass_platform</artifactId>
-    <version>0.0.1-SNAPSHOT</version>
+    <artifactId>xa-mass-platform</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
     <packaging>pom</packaging>
-    <name>xa_mass_platform</name>
-    <description>xa_mass_platform</description>
-    <url/>
-    <licenses>
-        <license/>
-    </licenses>
-    <developers>
-        <developer/>
-    </developers>
-    <modules>
-        <module>xa-mass-base</module>
-        <module>xa-mass-kernel-spi</module>
-        <module>platform_infra/mass-queue-primitives</module>
-        <module>platform_infra/mass-runtime-api</module>
-        <module>platform_infra/mass-runtime-memory</module>
-        <module>platform_infra/mass-runtime-redis</module>
-        <module>platform_infra/mass-storage-api</module>
-        <module>platform_infra/mass-storage-memory</module>
-        <module>platform_infra/mass-storage-jdbc</module>
-        <module>platform_infra/mass-trace-sink</module>
-        <module>xa-mass-trace</module>
-        <module>xa-mass-worker-runtime</module>
-        <module>transport/transport_api</module>
-        <module>transport/polling-adapter</module>
-        <module>transport/transport_runtime</module>
-        <module>transport/socket-adapter</module>
-        <module>xa-mass-engine</module>
-        <module>transport/websocket-adapter</module>
-        <module>transport/adapter-starter</module>
-        <module>sdk/xa-mass-public-contract</module>
-        <module>sdk/xa-mass-embedded-sdk-api</module>
-        <module>sdk/xa-mass-embedded-sdk</module>
-        <module>sdk/xa-mass-java-sdk</module>
-        <module>integrations/xa-mass-scenario-launcher</module>
-        <module>tools/xa-mass-admin-cli</module>
-        <module>xa-mass-testing</module>
-        <module>integrations/xa-mass-worker-pack</module>
-        <module>xa-mass-server</module>
-    </modules>
+
+    <name>XA Mass Kernel</name>
+    <description>Clean-kernel executable specification workspace</description>
+
     <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
         <java.version>21</java.version>
-        <maven.compiler.release>21</maven.compiler.release>
     </properties>
-    <scm>
-        <connection/>
-        <developerConnection/>
-        <tag/>
-        <url/>
-    </scm>
-
-    <dependencyManagement>
-        <dependencies>
-            <dependency>
-                <groupId>com.google.code.gson</groupId>
-                <artifactId>gson</artifactId>
-                <version>2.10.1</version>
-            </dependency>
-            <dependency>
-                <groupId>io.lettuce</groupId>
-                <artifactId>lettuce-core</artifactId>
-                <version>6.3.1.RELEASE</version>
-            </dependency>
-            <dependency>
-                <groupId>org.java-websocket</groupId>
-                <artifactId>Java-WebSocket</artifactId>
-                <version>1.5.4</version>
-            </dependency>
-            <dependency>
-                <groupId>net.logstash.logback</groupId>
-                <artifactId>logstash-logback-encoder</artifactId>
-                <version>7.4</version>
-            </dependency>
-        </dependencies>
-    </dependencyManagement>
-
-    <build>
-        <pluginManagement>
-            <plugins>
-                <plugin>
-                    <groupId>org.apache.maven.plugins</groupId>
-                    <artifactId>maven-surefire-plugin</artifactId>
-                    <configuration>
-                        <!-- Windows manifest classpaths can span workspace and ~/.m2 roots. -->
-                        <argLine>-Djdk.net.URLClassPath.disableClassPathURLCheck=true</argLine>
-                        <!-- Keep the full test classpath explicit so forked JVMs do not drop classes on mixed-drive workspaces. -->
-                        <useManifestOnlyJar>false</useManifestOnlyJar>
-                    </configuration>
-                </plugin>
-            </plugins>
-        </pluginManagement>
-        <plugins>
-            <!-- Spring Boot plugin is configured only in xa-mass-server (the runnable module). -->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <configuration>
-                    <release>${maven.compiler.release}</release>
-                </configuration>
-            </plugin>
-        </plugins>
-    </build>
-
-
 </project>

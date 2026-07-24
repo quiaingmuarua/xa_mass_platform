@@ -1,3 +1,0 @@
-# Supported active profiles for the packaged-process confidence matrix.
-memory-local
-durable-local

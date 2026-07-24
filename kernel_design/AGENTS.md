@@ -1,19 +1,18 @@
 # Kernel Design Agent Handoff
 
-Status: local handoff for `kernel_design/`.
+Status: current local handoff for `kernel_design/`.
 
-This directory is the clean-kernel design workspace. It is not current Java
-implementation truth, not a Java migration roadmap, and not acceptance proof
-for the existing platform. Use it to align new-kernel mechanisms and the
-current Python executable spec.
+This directory owns clean-kernel mechanism contracts and the current Python
+executable specification. Any future production implementation must use this
+workspace as its parity oracle.
 
 ## 0. TL;DR
 
-- `kernel_design/` is isolated from the current Java implementation.
-- Current Java code is useful only as failure-mode evidence, invariant input,
-  or anti-pattern context.
-- Do not cite `kernel_design/` from current Java docs, active roadmaps, proof
-  registries, or runbooks as implementation truth.
+- `kernel_design/` is the current mechanism oracle.
+- The superseded Java platform exists only in
+  `legacy-java-platform-final-2026-07-24`.
+- Historical Java code is useful only as failure-mode evidence, invariant
+  input, or anti-pattern context.
 - The design target is a small strict kernel, not a simplified weak kernel.
 - Owner boundaries matter more than closing a broad demo loop.
 - Prefer owner-local executable proof before crossing into another runtime.
@@ -53,7 +52,7 @@ Use this order inside `kernel_design/`:
    and `doc/runtime-redis/`
 3. Superseded shape docs only when their status says they are retained as
    historical context
-4. Current Java implementation only as legacy/failure-mode context
+4. Historical tag material only as legacy/failure-mode context
 
 If a design doc and Python executable spec disagree, describe the gap and do
 not silently bend one into the other.
@@ -523,7 +522,7 @@ python -m unittest \
 
 ## 6. Guardrails
 
-- Do not copy current Java engine/module shapes into new-kernel design.
+- Do not copy historical Java engine/module shapes into clean-kernel design.
 - Do not create bridges, facades, or wrappers unless they protect a real owner
   boundary or executable-spec seam.
 - Do not add scan-heavy observability or reconciliation loops to hot paths.
