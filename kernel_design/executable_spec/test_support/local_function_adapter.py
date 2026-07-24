@@ -7,17 +7,17 @@ from time import time_ns
 from types import MappingProxyType
 
 from ..assembly import (
-    DeliverSeedConsumerClient,
     SeedResult,
     SeedResultCommandClient,
     SeedResultOutcomeClass,
+    WorkerCommandConsumerClient,
     classify_seed_result_outcome_code,
+    decode_deliver_seed,
 )
 
 
 WORKER_HANDLER_FAILURE_OUTCOME_CODE = "1500"
 WORKER_HANDLER_UNAVAILABLE_OUTCOME_CODE = "1404"
-ADAPTER_WORKER_UNAVAILABLE_OUTCOME_CODE = "3001"
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,13 +66,13 @@ class LocalFunctionTransportAdapter:
         self,
         *,
         endpoint_manager_id: str,
-        deliver_seed_consumer: DeliverSeedConsumerClient,
+        worker_command_consumer: WorkerCommandConsumerClient,
         seed_result_commands: SeedResultCommandClient,
     ) -> None:
         if not endpoint_manager_id:
             raise ValueError("endpoint manager id must be non-empty")
         self.endpoint_manager_id = endpoint_manager_id
-        self.deliver_seed_consumer = deliver_seed_consumer
+        self.worker_command_consumer = worker_command_consumer
         self.seed_result_commands = seed_result_commands
         self.workers: dict[str, WorkerMeta] = {}
         self.handlers: dict[str, EventHandler] = {}
@@ -104,7 +104,7 @@ class LocalFunctionTransportAdapter:
     def drain_once(self, *, limit: int) -> int:
         if limit <= 0:
             raise ValueError("drain limit must be positive")
-        page = self.deliver_seed_consumer.consume_deliver_seeds(
+        page = self.worker_command_consumer.consume_worker_commands(
             endpoint_manager_id=self.endpoint_manager_id,
             cursor=self._cursor,
             scan_count=limit,
@@ -112,29 +112,26 @@ class LocalFunctionTransportAdapter:
         self._cursor = page.next_cursor
         results: list[SeedResult] = []
 
-        for seed in page.deliver_seeds:
-            if self._current_time_millis() >= seed.task_item_claim_until_millis:
+        for worker_id, command in page.worker_commands_by_worker_id.items():
+            if self._current_time_millis() >= command.execute_before_millis:
+                continue
+            seed = decode_deliver_seed(command.opaque_item)
+            if seed is None or seed.worker_id != worker_id:
                 continue
             item = self._decode_delivery_item(seed.opaque_delivery_item)
             if item is None:
                 continue
-            worker = self.workers.get(seed.worker_id)
+            worker = self.workers.get(worker_id)
             if worker is None:
-                results.append(
-                    SeedResult(
-                        opaque_result_context=seed.opaque_result_context,
-                        outcome_code=ADAPTER_WORKER_UNAVAILABLE_OUTCOME_CODE,
-                    )
-                )
                 continue
             handler = self.handlers.get(item.event_code)
             if handler is None:
-                results.append(
-                    SeedResult(
-                        opaque_result_context=seed.opaque_result_context,
-                        outcome_code=WORKER_HANDLER_UNAVAILABLE_OUTCOME_CODE,
-                    )
+                result = SeedResult(
+                    command_id=command.command_id,
+                    opaque_result_context=seed.opaque_result_context,
+                    outcome_code=WORKER_HANDLER_UNAVAILABLE_OUTCOME_CODE,
                 )
+                results.append(result)
                 continue
 
             try:
@@ -143,12 +140,14 @@ class LocalFunctionTransportAdapter:
                     raise TypeError("handler must return EventHandlerResult")
                 opaque_payload = self._encode_result_payload(handled.payload)
                 result = SeedResult(
+                    command_id=command.command_id,
                     opaque_result_context=seed.opaque_result_context,
                     outcome_code=handled.outcome_code,
                     opaque_result_payload=opaque_payload,
                 )
             except Exception:
                 result = SeedResult(
+                    command_id=command.command_id,
                     opaque_result_context=seed.opaque_result_context,
                     outcome_code=WORKER_HANDLER_FAILURE_OUTCOME_CODE,
                 )
@@ -156,7 +155,9 @@ class LocalFunctionTransportAdapter:
 
         if not results:
             return 0
-        return self.seed_result_commands.append_seed_results(results=tuple(results))
+        return self.seed_result_commands.append_seed_results(
+            results=tuple(results)
+        )
 
     @staticmethod
     def _decode_delivery_item(value: str) -> _DeliveryItem | None:

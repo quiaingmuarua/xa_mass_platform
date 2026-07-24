@@ -62,10 +62,18 @@ from .assignment_dispatch_runtime import (
     CandidateId,
     CandidateWorkerCache,
     CandidateWorkerEntry,
+)
+from .worker_delivery import (
     DeliverSeed,
-    DeliverSeedAppendStatus,
-    DeliverSeedConsumePage,
-    DeliverSeedRuntime,
+    WorkerCommandAppendStatus,
+    WorkerCommandConsumePage,
+    WorkerCommandEnvelope,
+    WorkerCommandRuntime,
+    WorkerMessageType,
+    decode_deliver_seed,
+    decode_worker_command_envelope,
+    encode_deliver_seed,
+    encode_worker_command_envelope,
 )
 from .seed_result_runtime import (
     SUCCESS_OUTCOME_CODE,
@@ -73,6 +81,8 @@ from .seed_result_runtime import (
     SeedResultOutcomeClass,
     SeedResultRuntime,
     classify_seed_result_outcome_code,
+    decode_seed_result,
+    encode_seed_result,
 )
 
 __all__ = [
@@ -128,9 +138,17 @@ __all__ = [
     "TaskItemScoreTransitionStatus",
     "CandidateWorkerEntry",
     "DeliverSeed",
-    "DeliverSeedAppendStatus",
-    "DeliverSeedConsumePage",
-    "DeliverSeedRuntime",
+    "WorkerCommandAppendStatus",
+    "WorkerCommandConsumePage",
+    "WorkerCommandEnvelope",
+    "WorkerCommandRuntime",
+    "WorkerMessageType",
+    "decode_deliver_seed",
+    "decode_seed_result",
+    "decode_worker_command_envelope",
+    "encode_deliver_seed",
+    "encode_seed_result",
+    "encode_worker_command_envelope",
     "SeedResult",
     "SeedResultOutcomeClass",
     "SeedResultRuntime",

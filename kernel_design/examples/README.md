@@ -39,10 +39,12 @@ also requires the immutable `--endpoint-manager-id` mailbox coordinate.
 
 The Kernel host composes `KernelApplication` and `ResourcesCommandClient`.
 Its lifespan starts only the scheduling application. It exposes resource
-upsert and Task commands, not DeliverSeed consumption or SeedResult append.
+upsert and Task commands, not Worker command consumption or Worker result
+ingress.
 
 The [Worker Adapter Server](worker-adapter-server.md) composes only
-`DeliverSeedConsumerClient` and `SeedResultCommandClient`. It has no scheduling
+`WorkerCommandConsumerClient` and `SeedResultCommandClient`. It has no
+scheduling
 lifecycle:
 
 ```text
@@ -50,9 +52,11 @@ POST /workers/{workerId}/commands:poll
 POST /workers/{workerId}/results
 ```
 
-The Worker-facing command/result envelopes belong to the Adapter protocol.
-DeliverSeed and SeedResult remain the only Kernel contracts across this
-boundary.
+The Worker-facing `WorkerCommandEnvelope` is the Kernel-defined,
+transport-neutral outbound command DTO. Its opaque item contains DeliverSeed.
+The Adapter forwards command identity, message type, deadline, and opaque item
+unchanged. The Worker returns a semantic `SeedResult` directly, copying only
+the commandId for trace correlation.
 
 The Polling Phone Worker depends only on the Worker Adapter HTTP protocol. It
 executes:

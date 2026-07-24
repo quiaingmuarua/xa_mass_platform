@@ -31,11 +31,12 @@ Task score admission and visibility
      -> ITEM_DRIVEN: TaskItem rule, no cache, TARGETED acquisition
   -> Task Dispatch
      -> ACTIVE Item: Worker score lease/validation -> TaskItem claim
-                     -> DeliverSeed mailbox
+                     -> DeliverSeed -> WorkerCommand mailbox
      -> no ACTIVE Item: shared empty recheck and emptyCloseAtMillis policy
   -> Worker Delivery Dispatch
-     -> Worker Adapter command/result protocol
-     -> SeedResult
+     -> outbound Worker command protocol
+     -> semantic SeedResult ingress
+     -> outcome-class SeedResult queues
   -> Result Routing
      -> TaskItem and Worker truth convergence
 ```
@@ -143,6 +144,15 @@ For result routing:
 5. [executable_spec/scheduling/result_routing.py](executable_spec/scheduling/result_routing.py)
 6. [executable_spec/redis_runtime/result_routing.py](executable_spec/redis_runtime/result_routing.py)
 7. [executable_spec/tests/test_result_routing.py](executable_spec/tests/test_result_routing.py)
+
+For Worker Delivery Protocol changes:
+
+1. [doc/scheduling/worker-delivery-dispatch.md](doc/scheduling/worker-delivery-dispatch.md)
+2. [executable_spec/kernel/worker_delivery.py](executable_spec/kernel/worker_delivery.py)
+3. [executable_spec/redis_runtime/worker_delivery.py](executable_spec/redis_runtime/worker_delivery.py)
+4. [executable_spec/assembly/transport_clients.py](executable_spec/assembly/transport_clients.py)
+5. [examples/worker_adapter_server.py](examples/worker_adapter_server.py)
+6. [executable_spec/tests/test_worker_delivery.py](executable_spec/tests/test_worker_delivery.py)
 
 For process assembly or server entry work:
 
@@ -342,8 +352,8 @@ queued DeliverSeed creation
 Within Task Dispatch, `TaskDispatchPacer` owns the bounded RUNNING round,
 suffix routing, mailbox publication, and Task-score pacing.
 `TaskItemDispatcher` owns one suffix-zero Task's Item observation, candidate
-acquisition, exact Item claim, and DeliverSeed construction. It is not another
-Pacer or lifecycle owner.
+acquisition, exact Item claim, DeliverSeed construction, and Worker command
+construction. It is not another Pacer or lifecycle owner.
 
 It does not own task lifecycle truth, worker lifecycle truth, Worker score
 encoding/storage, result finality, transport delivery, or transport session
@@ -355,8 +365,8 @@ Worker Delivery Dispatch owns:
 ```text
 one configured endpointManagerId sparse mailbox
 point WorkerId polling or bounded cursor consumption inside that bucket
-Adapter-private command conversion for the already selected Worker
-SeedResult creation and append to SeedResultRuntime
+stable WorkerCommandEnvelope forwarding to the already selected Worker
+direct semantic SeedResult validation and outcome-class append
 ```
 
 Its boundary starts after Task Dispatch handles mailbox publication and ends

@@ -5,13 +5,11 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from time import time_ns
 from typing import cast
+from uuid import uuid4
 
 from ..kernel.assignment_dispatch_runtime import (
     CandidateWarmupSchedule,
     CandidateWorkerEntry,
-    DeliverSeed,
-    DeliverSeedAppendStatus,
-    DeliverSeedRuntime,
 )
 from ..kernel.result_context import ResultContext, encode_result_context
 from ..kernel.task_item_score_band import (
@@ -36,6 +34,14 @@ from ..kernel.task_score_band import (
     TimeMillis,
 )
 from ..kernel.worker_runtime import EndpointManagerId
+from ..kernel.worker_delivery import (
+    DeliverSeed,
+    WorkerCommandAppendStatus,
+    WorkerCommandEnvelope,
+    WorkerCommandRuntime,
+    WorkerMessageType,
+    encode_deliver_seed,
+)
 from .worker_candidate import (
     WorkerCandidateAcquirer,
     WorkerCandidateRequest,
@@ -86,7 +92,7 @@ class TaskDispatchConfig:
 
 
 class TaskItemDispatcher:
-    """Bind bounded TaskItems to Workers and build DeliverSeeds for one Task."""
+    """Bind bounded TaskItems to Workers and build commands for one Task."""
 
     def __init__(
         self,
@@ -166,7 +172,10 @@ class TaskItemDispatcher:
         claimable_items: tuple[tuple[TaskItem, Score], ...],
         claim_until_millis: TimeMillis,
         warmup_due_time_millis: TimeMillis,
-    ) -> dict[EndpointManagerId, tuple[DeliverSeed, ...]]:
+    ) -> dict[
+        EndpointManagerId,
+        dict[str, WorkerCommandEnvelope],
+    ]:
         candidate_workers_by_message_id = self._acquire_candidate_workers(
             task_id=task_id,
             descriptor=descriptor,
@@ -186,7 +195,10 @@ class TaskItemDispatcher:
         if not dispatch_assignments:
             return {}
 
-        deliver_seeds: dict[EndpointManagerId, list[DeliverSeed]] = {}
+        worker_commands: dict[
+            EndpointManagerId,
+            dict[str, WorkerCommandEnvelope],
+        ] = {}
         for candidate_worker, task_item in dispatch_assignments:
             seed = DeliverSeed(
                 worker_id=candidate_worker.worker_id,
@@ -200,16 +212,18 @@ class TaskItemDispatcher:
                         worker_lease_score=candidate_worker.worker_lease_score,
                     )
                 ),
-                task_item_claim_until_millis=claim_until_millis,
             )
-            deliver_seeds.setdefault(
+            command = WorkerCommandEnvelope(
+                command_id=str(uuid4()),
+                message_type=WorkerMessageType.TASK_ITEM,
+                execute_before_millis=claim_until_millis,
+                opaque_item=encode_deliver_seed(seed),
+            )
+            worker_commands.setdefault(
                 candidate_worker.endpoint_manager_id,
-                [],
-            ).append(seed)
-        return {
-            endpoint_manager_id: tuple(seeds)
-            for endpoint_manager_id, seeds in deliver_seeds.items()
-        }
+                {},
+            )[candidate_worker.worker_id] = command
+        return worker_commands
 
     def _acquire_candidate_workers(
         self,
@@ -319,14 +333,14 @@ class TaskDispatchPacer:
         self,
         task_score: TaskScoreBandCore,
         task_catalog: TaskResourceCatalog,
-        deliver_seed_runtime: DeliverSeedRuntime,
+        worker_command_runtime: WorkerCommandRuntime,
         item_score: TaskItemScoreBandCore,
         candidate_warmup_schedule: CandidateWarmupSchedule,
         task_item_dispatcher: TaskItemDispatcher,
     ) -> None:
         self.task_score = task_score
         self.task_catalog = task_catalog
-        self.deliver_seed_runtime = deliver_seed_runtime
+        self.worker_command_runtime = worker_command_runtime
         self.item_score = item_score
         self.candidate_warmup_schedule = candidate_warmup_schedule
         self.task_item_dispatcher = task_item_dispatcher
@@ -344,7 +358,10 @@ class TaskDispatchPacer:
             limit=config.task_batch_limit,
         )
 
-        round_deliver_seeds: dict[EndpointManagerId, list[DeliverSeed]] = {}
+        round_worker_commands: dict[
+            EndpointManagerId,
+            dict[str, WorkerCommandEnvelope],
+        ] = {}
         activity_recheck_tasks: dict[
             TaskId,
             tuple[TaskDescriptor, TaskScoreState],
@@ -364,7 +381,7 @@ class TaskDispatchPacer:
                 continue
 
             try:
-                task_deliver_seeds = (
+                task_worker_commands = (
                     self.task_item_dispatcher.dispatch_task_items(
                         task_id=task_id,
                         descriptor=descriptor,
@@ -373,11 +390,19 @@ class TaskDispatchPacer:
                         warmup_due_time_millis=dispatch_time_millis,
                     )
                 )
-                for endpoint_manager_id, seeds in task_deliver_seeds.items():
-                    round_deliver_seeds.setdefault(
+                for endpoint_manager_id, commands in task_worker_commands.items():
+                    endpoint_commands = round_worker_commands.setdefault(
                         endpoint_manager_id,
-                        [],
-                    ).extend(seeds)
+                        {},
+                    )
+                    duplicate_worker_ids = (
+                        endpoint_commands.keys() & commands.keys()
+                    )
+                    if duplicate_worker_ids:
+                        raise RuntimeError(
+                            "one Worker received multiple commands in one round"
+                        )
+                    endpoint_commands.update(commands)
             finally:
                 self.task_score.rewrite_same_band_time_millis(
                     task_id=task_id,
@@ -385,11 +410,8 @@ class TaskDispatchPacer:
                     target_time_millis=dispatch_time_millis,
                 )
 
-        published_seed_count = self._publish_deliver_seeds(
-            deliver_seeds_by_endpoint_manager={
-                endpoint_manager_id: tuple(seeds)
-                for endpoint_manager_id, seeds in round_deliver_seeds.items()
-            },
+        published_command_count = self._publish_worker_commands(
+            worker_commands_by_endpoint_manager=round_worker_commands,
         )
 
         if activity_recheck_tasks:
@@ -405,7 +427,7 @@ class TaskDispatchPacer:
                     dispatch_time_millis=dispatch_time_millis,
                     config=config,
                 )
-        return published_seed_count
+        return published_command_count
 
     def _acquire_dispatchable_tasks(
         self,
@@ -500,43 +522,40 @@ class TaskDispatchPacer:
             suffix_delta=1,
         )
 
-    def _publish_deliver_seeds(
+    def _publish_worker_commands(
         self,
         *,
-        deliver_seeds_by_endpoint_manager: Mapping[
+        worker_commands_by_endpoint_manager: Mapping[
             EndpointManagerId,
-            tuple[DeliverSeed, ...],
+            Mapping[str, WorkerCommandEnvelope],
         ],
     ) -> int:
-        if not deliver_seeds_by_endpoint_manager:
+        if not worker_commands_by_endpoint_manager:
             return 0
 
         worker_ids = tuple(
-            seed.worker_id
-            for deliver_seeds in deliver_seeds_by_endpoint_manager.values()
-            for seed in deliver_seeds
+            worker_id
+            for commands in worker_commands_by_endpoint_manager.values()
+            for worker_id in commands
         )
         if len(set(worker_ids)) != len(worker_ids):
             raise RuntimeError(
-                "one Worker received multiple DeliverSeeds in one round"
+                "one Worker received multiple commands in one round"
             )
 
         published = 0
-        for endpoint_manager_id, deliver_seeds in (
-            deliver_seeds_by_endpoint_manager.items()
+        for endpoint_manager_id, worker_commands in (
+            worker_commands_by_endpoint_manager.items()
         ):
-            deliver_seeds_by_worker_id: dict[str, DeliverSeed] = {}
-            for seed in deliver_seeds:
-                deliver_seeds_by_worker_id[seed.worker_id] = seed
-            append_results = self.deliver_seed_runtime.append_deliver_seeds(
+            append_results = self.worker_command_runtime.append_worker_commands(
                 endpoint_manager_id=endpoint_manager_id,
-                deliver_seeds_by_worker_id=deliver_seeds_by_worker_id,
+                worker_commands_by_worker_id=worker_commands,
             )
             published += sum(
                 status
                 in {
-                    DeliverSeedAppendStatus.APPENDED,
-                    DeliverSeedAppendStatus.REPLACED,
+                    WorkerCommandAppendStatus.APPENDED,
+                    WorkerCommandAppendStatus.REPLACED,
                 }
                 for status in append_results.values()
             )

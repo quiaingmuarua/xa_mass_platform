@@ -28,6 +28,7 @@ except (ImportError, RuntimeError):  # pragma: no cover - missing example depend
     PollingPhoneWorker = None  # type: ignore[assignment,misc]
 
 from kernel_design.executable_spec import (
+    RedisSeedResultRuntime,
     RedisTaskItemScoreBandCore,
     RedisWorkerScoreCore,
     TaskItemScoreBand,
@@ -35,7 +36,7 @@ from kernel_design.executable_spec import (
 )
 from kernel_design.executable_spec.assembly import (
     TaskType,
-    DeliverSeedConsumerClient,
+    WorkerCommandConsumerClient,
     KernelApplication,
     KernelApplicationConfig,
     ResourcesCommandClient,
@@ -49,6 +50,7 @@ from kernel_design.executable_spec.assembly import (
     WorkerDeclaration,
     WorkerGroupDescriptor,
     WorkerRuntimeStatus,
+    decode_deliver_seed,
 )
 
 
@@ -89,7 +91,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         self.worker_adapter = TestClient(
             create_worker_adapter_app(
                 endpoint_manager_id="endpoint-1",
-                deliver_seed_consumer=DeliverSeedConsumerClient(self.config),
+                worker_command_consumer=WorkerCommandConsumerClient(self.config),
                 seed_result_commands=SeedResultCommandClient(self.config),
             )
         )
@@ -284,21 +286,28 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
             ),
         )
 
-        consumer = DeliverSeedConsumerClient(self.config)
-        seed = None
+        consumer = WorkerCommandConsumerClient(self.config)
+        command = None
         deadline = time.monotonic() + 3
-        while time.monotonic() < deadline and seed is None:
-            seed = consumer.consume_deliver_seed(
+        while time.monotonic() < deadline and command is None:
+            command = consumer.consume_worker_command(
                 endpoint_manager_id="endpoint-1",
                 worker_id="worker-1",
             )
-            if seed is None:
+            if command is None:
                 time.sleep(0.02)
+        self.assertIsNotNone(command)
+        assert command is not None
+        seed = decode_deliver_seed(command.opaque_item)
         self.assertIsNotNone(seed)
         assert seed is not None
-        SeedResultCommandClient(self.config).append_seed_results(
+        RedisSeedResultRuntime(
+            self.redis,
+            prefix=self.prefix,
+        ).append_seed_results(
             results=(
                 SeedResult(
+                    command_id=command.command_id,
                     opaque_result_context=seed.opaque_result_context,
                     outcome_code="3001",
                 ),

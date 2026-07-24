@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
-from typing import Sequence
+from typing import Any, Sequence
+from uuid import UUID
 
 
 class SeedResultOutcomeClass(Enum):
@@ -37,11 +40,13 @@ def classify_seed_result_outcome_code(
 class SeedResult:
     """Opaque transport outcome evidence consumed by result-routing."""
 
+    command_id: str
     opaque_result_context: str
     outcome_code: str
     opaque_result_payload: str | None = None
 
     def __post_init__(self) -> None:
+        _require_canonical_uuid(self.command_id)
         if (
             not isinstance(self.opaque_result_context, str)
             or not self.opaque_result_context
@@ -62,6 +67,55 @@ class SeedResult:
             )
         ):
             raise ValueError("opaque result payload must be non-empty when present")
+
+
+def encode_seed_result(result: SeedResult) -> str:
+    return json.dumps(
+        {
+            "commandId": result.command_id,
+            "opaqueResultContext": result.opaque_result_context,
+            "opaqueResultPayload": result.opaque_result_payload,
+            "outcomeCode": result.outcome_code,
+        },
+        allow_nan=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+
+def decode_seed_result(value: str | bytes) -> SeedResult | None:
+    try:
+        text = value.decode("utf-8") if isinstance(value, bytes) else value
+        payload = json.loads(text)
+    except (TypeError, ValueError, UnicodeDecodeError):
+        return None
+    if not isinstance(payload, Mapping) or set(payload) != {
+        "commandId",
+        "opaqueResultContext",
+        "opaqueResultPayload",
+        "outcomeCode",
+    }:
+        return None
+    try:
+        return SeedResult(
+            command_id=payload["commandId"],
+            opaque_result_context=payload["opaqueResultContext"],
+            outcome_code=payload["outcomeCode"],
+            opaque_result_payload=payload["opaqueResultPayload"],
+        )
+    except (TypeError, ValueError):
+        return None
+
+
+def _require_canonical_uuid(value: object) -> None:
+    if not isinstance(value, str) or not value:
+        raise ValueError("command id must be non-empty")
+    try:
+        parsed = UUID(value)
+    except ValueError as error:
+        raise ValueError("command id must be a canonical UUID") from error
+    if str(parsed) != value:
+        raise ValueError("command id must be a canonical UUID")
 
 
 class SeedResultRuntime(ABC):

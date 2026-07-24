@@ -44,7 +44,7 @@ TaskDispatchPacer
   TaskItemScoreBandCore   ACTIVE existence query for empty recheck
   CandidateWarmupSchedule TASK_DRIVEN reset hints
   TaskItemDispatcher      one suffix-zero Task's Item dispatch
-  DeliverSeedRuntime      round-level Adapter mailbox publication
+  WorkerCommandRuntime    round-level Adapter mailbox publication
 
 TaskItemDispatcher
   TaskItemScoreBandCore   due Item observation, expiry/finality, exact claim
@@ -73,8 +73,8 @@ One round computes its dispatch time and Item claim deadline once:
    `expireAtMillis <= roundNowMillis` to `FINAL_FAILED`.
 6. If no dispatchable Item remains, add the Task to the activity-check batch.
 7. Otherwise `TaskItemDispatcher` acquires Workers, exact-claims only
-   Worker-backed Items, and returns `DeliverSeed` values grouped by the
-   CandidateWorker route snapshot.
+   Worker-backed Items, constructs one DeliverSeed and WorkerCommandEnvelope
+   per assignment, and groups commands by the CandidateWorker route snapshot.
 8. The Pacer merges all returned groups and publishes once per endpoint manager
    sparse mailbox while preserving suffix zero and advancing ordinary dispatch
    time.
@@ -85,8 +85,9 @@ One round computes its dispatch time and Item claim deadline once:
    recheck transition rules below.
 
 Observation precedes Worker acquisition. Worker acquisition precedes Item
-claim. Item claim precedes DeliverSeed publication. Expiry classification
-therefore cannot acquire a Worker, consume retry budget, or emit a DeliverSeed.
+claim. Item claim precedes command identity generation and mailbox publication.
+Expiry classification therefore cannot acquire a Worker, consume retry budget,
+or emit a Worker command.
 An already-claimed attempt is not revoked when its Item later expires.
 
 ## ACTIVE Item Truth
@@ -162,19 +163,25 @@ Neither path falls back to the other. CandidateId-to-messageId binding is
 preserved through exact Item claim; Workers and Items are not flattened and
 re-zipped.
 
-Each successful assignment produces one `DeliverSeed` containing:
+Each successful assignment first produces one `DeliverSeed` containing:
 
 ```text
 workerId
 opaqueDeliveryItem
 opaqueResultContext
-taskItemClaimUntilMillis
 ```
 
-Task Dispatch ends when each Adapter mailbox append result is handled.
-It does not consume the mailbox, create a `TASK_SEED` wire command, call a
-Worker, or append a `SeedResult`; those operations belong to Worker Delivery
-Dispatch.
+It is encoded as `WorkerCommandEnvelope.opaqueItem`. The outer envelope adds:
+
+```text
+commandId                  canonical UUID generated after exact Item claim
+messageType                TASK_ITEM
+executeBeforeMillis        the same Item claim deadline used by this round
+```
+
+Task Dispatch ends when each Adapter mailbox append result is handled. It does
+not consume the mailbox, call a Worker, decode a Worker result, or append a
+`SeedResult`; those operations belong to Worker Delivery Dispatch.
 
 ## Failure And Concurrency
 
@@ -184,11 +191,12 @@ Dispatch.
   by the bounded round.
 - Unused or failed Worker leases expire naturally; this Pacer does not release
   or demote them.
-- The round sends one `workerId -> DeliverSeed` Map per endpoint manager to
-  `DeliverSeedRuntime`. One WorkerId may appear only once in the entire round.
+- The round sends one `workerId -> WorkerCommandEnvelope` Map per endpoint
+  manager to `WorkerCommandRuntime`. One WorkerId may appear only once in the
+  entire round.
   `APPENDED` and `REPLACED` count as publication. Replacement is a best-effort
   last mailbox write, not an attempt-order fence; stale delivery remains
-  bounded by the Seed deadline and score-owner fences.
+  bounded by `executeBeforeMillis` and score-owner fences.
 - Cross-Adapter mailbox writes are not atomic. A runtime failure does not roll
   back Adapter buckets whose append already completed.
 - Explicit terminal close has precedence. Existing Items, claims, seeds, or

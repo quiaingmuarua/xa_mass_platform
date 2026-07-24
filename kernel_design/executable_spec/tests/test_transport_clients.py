@@ -6,11 +6,14 @@ from unittest.mock import Mock, patch
 
 from kernel_design.executable_spec import (
     DeliverSeed,
-    DeliverSeedConsumePage,
+    WorkerCommandConsumePage,
     SeedResult,
+    WorkerCommandEnvelope,
+    WorkerMessageType,
+    encode_deliver_seed,
 )
 from kernel_design.executable_spec.assembly import (
-    DeliverSeedConsumerClient,
+    WorkerCommandConsumerClient,
     KernelApplicationConfig,
     SeedResultCommandClient,
 )
@@ -25,7 +28,7 @@ class TransportClientsTest(unittest.TestCase):
             patch("redis.Redis.from_url", return_value=self.redis_client),
             patch(
                 "kernel_design.executable_spec.assembly.transport_clients."
-                "RedisDeliverSeedRuntime",
+                "RedisWorkerCommandRuntime",
                 return_value=self.deliver_runtime,
             ),
             patch(
@@ -43,15 +46,15 @@ class TransportClientsTest(unittest.TestCase):
         )
 
     def test_clients_are_independent_command_surfaces_without_lifecycle(self) -> None:
-        deliver_client = DeliverSeedConsumerClient(self.config)
+        deliver_client = WorkerCommandConsumerClient(self.config)
         result_client = SeedResultCommandClient(self.config)
 
         self.assertEqual(
-            {"consume_deliver_seed", "consume_deliver_seeds"},
+            {"consume_worker_command", "consume_worker_commands"},
             {
                 name
                 for name, method in inspect.getmembers(
-                    DeliverSeedConsumerClient,
+                    WorkerCommandConsumerClient,
                     predicate=inspect.isfunction,
                 )
                 if not name.startswith("_")
@@ -75,7 +78,7 @@ class TransportClientsTest(unittest.TestCase):
             ["self", "endpoint_manager_id", "worker_id"],
             list(
                 inspect.signature(
-                    DeliverSeedConsumerClient.consume_deliver_seed
+                    WorkerCommandConsumerClient.consume_worker_command
                 ).parameters
             ),
         )
@@ -83,7 +86,7 @@ class TransportClientsTest(unittest.TestCase):
             ["self", "endpoint_manager_id", "cursor", "scan_count"],
             list(
                 inspect.signature(
-                    DeliverSeedConsumerClient.consume_deliver_seeds
+                    WorkerCommandConsumerClient.consume_worker_commands
                 ).parameters
             ),
         )
@@ -97,26 +100,38 @@ class TransportClientsTest(unittest.TestCase):
         )
 
     def test_clients_delegate_to_their_redis_runtime(self) -> None:
-        seed = DeliverSeed("worker-1", "delivery", "context", 1)
-        page = DeliverSeedConsumePage((seed,), "7")
-        result = SeedResult("context", "200", "null")
-        self.deliver_runtime.consume_deliver_seed.return_value = seed
-        self.deliver_runtime.consume_deliver_seeds.return_value = page
+        command = WorkerCommandEnvelope(
+            "a5e9e10d-f78b-469e-93ab-864b49c189c1",
+            WorkerMessageType.TASK_ITEM,
+            10_000,
+            encode_deliver_seed(
+                DeliverSeed("worker-1", "delivery", "context")
+            ),
+        )
+        page = WorkerCommandConsumePage({"worker-1": command}, "7")
+        seed_result = SeedResult(
+            command.command_id,
+            "context",
+            "200",
+            "null",
+        )
+        self.deliver_runtime.consume_worker_command.return_value = command
+        self.deliver_runtime.consume_worker_commands.return_value = page
         self.result_runtime.append_seed_results.return_value = 1
 
-        deliver_client = DeliverSeedConsumerClient(self.config)
+        deliver_client = WorkerCommandConsumerClient(self.config)
         result_client = SeedResultCommandClient(self.config)
 
         self.assertEqual(
-            seed,
-            deliver_client.consume_deliver_seed(
+            command,
+            deliver_client.consume_worker_command(
                 endpoint_manager_id="endpoint-manager-1",
                 worker_id="worker-1",
             ),
         )
         self.assertEqual(
             page,
-            deliver_client.consume_deliver_seeds(
+            deliver_client.consume_worker_commands(
                 endpoint_manager_id="endpoint-manager-1",
                 cursor="3",
                 scan_count=10,
@@ -124,19 +139,40 @@ class TransportClientsTest(unittest.TestCase):
         )
         self.assertEqual(
             1,
-            result_client.append_seed_results(results=(result,)),
+            result_client.append_seed_results(results=(seed_result,)),
         )
-        self.deliver_runtime.consume_deliver_seed.assert_called_once_with(
+        self.deliver_runtime.consume_worker_command.assert_called_once_with(
             endpoint_manager_id="endpoint-manager-1",
             worker_id="worker-1",
         )
-        self.deliver_runtime.consume_deliver_seeds.assert_called_once_with(
+        self.deliver_runtime.consume_worker_commands.assert_called_once_with(
             endpoint_manager_id="endpoint-manager-1",
             cursor="3",
             scan_count=10,
         )
         self.result_runtime.append_seed_results.assert_called_once_with(
-            results=(result,),
+            results=(seed_result,),
+        )
+
+    def test_result_client_accepts_all_seed_result_outcome_classes(self) -> None:
+        client = SeedResultCommandClient(self.config)
+        results = (
+            SeedResult(
+                "a5e9e10d-f78b-469e-93ab-864b49c189c1",
+                "worker-context",
+                "1500",
+            ),
+            SeedResult(
+                "9f0d983c-8010-4d59-a6d2-e8fedb8d0059",
+                "adapter-context",
+                "3001",
+            ),
+        )
+        self.result_runtime.append_seed_results.return_value = 2
+
+        self.assertEqual(2, client.append_seed_results(results=results))
+        self.result_runtime.append_seed_results.assert_called_once_with(
+            results=results
         )
 
 

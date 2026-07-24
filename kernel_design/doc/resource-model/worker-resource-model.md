@@ -161,7 +161,7 @@ guarded globally in this first slice; kernel-generated identity is deferred.
 
 `endpointManagerId` remains immutable declaration metadata in this first slice.
 It is copied into CandidateWorker assignment evidence and selects the
-DeliverSeed HASH at publication. It does not prove live reachability or
+WorkerCommand HASH at publication. It does not prove live reachability or
 participate in matching, score ordering, or candidate selection. Removing or
 changing it requires a separate controlled Worker-route command.
 
@@ -591,7 +591,7 @@ considered by the first matching candidate with remaining match limit. Every
 matched Worker appears in exactly one candidate result. Each returned
 `CandidateWorkerEntry` contains the Worker id, WorkerGroup id, immutable
 `endpointManagerId` route snapshot, and opaque lease score. The route snapshot
-selects only the DeliverSeed mailbox bucket and is not part of matching. The
+selects only the WorkerCommand mailbox bucket and is not part of matching. The
 matcher copies but never parses or modifies the lease score.
 Unmatched Worker ids are not returned; their already-acquired leases remain
 held until natural expiry.

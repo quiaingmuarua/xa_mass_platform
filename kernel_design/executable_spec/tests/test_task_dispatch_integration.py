@@ -17,11 +17,13 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
 from kernel_design.executable_spec import (
     TaskType,
     DeliverSeed,
-    DeliverSeedAppendStatus,
+    WorkerCommandEnvelope,
+    WorkerCommandAppendStatus,
+    WorkerMessageType,
     DueTaskItemAdmissionPolicy,
     RunningSoftLimitSystemAdmissionPolicy,
     RedisCandidateWorkerCache,
-    RedisDeliverSeedRuntime,
+    RedisWorkerCommandRuntime,
     RedisTaskRuntime,
     RedisTaskResourceCatalog,
     RedisTaskItemScoreBandCore,
@@ -48,6 +50,8 @@ from kernel_design.executable_spec import (
     WorkerDeclaration,
     WorkerGroupDescriptor,
     WorkerRuntimeStatus,
+    decode_deliver_seed,
+    encode_deliver_seed,
 )
 from kernel_design.executable_spec.assembly.application import (
     TaskApprovalResult,
@@ -111,7 +115,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             self.redis,
             prefix=self.prefix,
         )
-        self.deliver_seed_runtime = RedisDeliverSeedRuntime(
+        self.worker_command_runtime = RedisWorkerCommandRuntime(
             self.redis,
             prefix=self.prefix,
         )
@@ -173,40 +177,38 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         self.pacer = TaskDispatchPacer(
             self.task_score,
             self.task_catalog,
-            self.deliver_seed_runtime,
+            self.worker_command_runtime,
             self.item_score,
             self.warmup_schedule,
             task_item_dispatcher,
         )
 
     def test_adapter_mailbox_worker_field_has_one_atomic_consumer(self) -> None:
-        seed = DeliverSeed(
+        seed = self._worker_command(
             worker_id="worker-1",
             opaque_delivery_item='{"eventCode":"image.resize","payload":{}}',
             opaque_result_context='{"taskId":"task-1"}',
-            task_item_claim_until_millis=int(time.time() * 1_000) + 5_000,
         )
         self.assertEqual(
-            {"worker-1": DeliverSeedAppendStatus.APPENDED},
-            self.deliver_seed_runtime.append_deliver_seeds(
+            {"worker-1": WorkerCommandAppendStatus.APPENDED},
+            self.worker_command_runtime.append_worker_commands(
                 endpoint_manager_id="endpoint-manager-1",
-                deliver_seeds_by_worker_id={"worker-1": seed}
+                worker_commands_by_worker_id={"worker-1": seed}
             ),
         )
-        conflicting_seed = DeliverSeed(
+        conflicting_seed = self._worker_command(
             worker_id="worker-1",
             opaque_delivery_item='{"eventCode":"other","payload":{}}',
             opaque_result_context='{"taskId":"task-2"}',
-            task_item_claim_until_millis=int(time.time() * 1_000) + 5_000,
         )
         self.assertEqual(
-            {"worker-1": DeliverSeedAppendStatus.REPLACED},
-            self.deliver_seed_runtime.append_deliver_seeds(
+            {"worker-1": WorkerCommandAppendStatus.REPLACED},
+            self.worker_command_runtime.append_worker_commands(
                 endpoint_manager_id="endpoint-manager-1",
-                deliver_seeds_by_worker_id={"worker-1": conflicting_seed}
+                worker_commands_by_worker_id={"worker-1": conflicting_seed}
             ),
         )
-        competing_runtime = RedisDeliverSeedRuntime(
+        competing_runtime = RedisWorkerCommandRuntime(
             self.redis,
             prefix=self.prefix,
         )
@@ -214,11 +216,11 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         with ThreadPoolExecutor(max_workers=2) as executor:
             results = tuple(
                 executor.map(
-                    lambda runtime: runtime.consume_deliver_seed(
+                    lambda runtime: runtime.consume_worker_command(
                         endpoint_manager_id="endpoint-manager-1",
                         worker_id="worker-1",
                     ),
-                    (self.deliver_seed_runtime, competing_runtime),
+                    (self.worker_command_runtime, competing_runtime),
                 )
             )
 
@@ -229,31 +231,28 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         )
 
     def test_adapter_mailbox_cursor_consumes_sparse_worker_fields(self) -> None:
-        seeds = tuple(
-            DeliverSeed(
+        commands_by_worker_id = {
+            f"mailbox-worker-{index}": self._worker_command(
                 worker_id=f"mailbox-worker-{index}",
                 opaque_delivery_item=f'{{"index":{index}}}',
                 opaque_result_context=f'{{"index":{index}}}',
-                task_item_claim_until_millis=int(time.time() * 1_000) + 5_000,
             )
             for index in range(3)
-        )
-        self.deliver_seed_runtime.append_deliver_seeds(
+        }
+        self.worker_command_runtime.append_worker_commands(
             endpoint_manager_id="endpoint-manager-cursor",
-            deliver_seeds_by_worker_id={
-                seed.worker_id: seed for seed in seeds
-            },
+            worker_commands_by_worker_id=commands_by_worker_id,
         )
 
-        consumed: list[DeliverSeed] = []
+        consumed: dict[str, WorkerCommandEnvelope] = {}
         cursor = None
         for _ in range(10):
-            page = self.deliver_seed_runtime.consume_deliver_seeds(
+            page = self.worker_command_runtime.consume_worker_commands(
                 endpoint_manager_id="endpoint-manager-cursor",
                 cursor=cursor,
                 scan_count=1,
             )
-            consumed.extend(page.deliver_seeds)
+            consumed.update(page.worker_commands_by_worker_id)
             cursor = page.next_cursor
             if cursor is None:
                 break
@@ -261,14 +260,34 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             self.fail("Redis HSCAN cursor did not terminate")
 
         self.assertEqual(
-            {seed.worker_id for seed in seeds},
-            {seed.worker_id for seed in consumed},
+            commands_by_worker_id,
+            consumed,
         )
 
     def tearDown(self) -> None:
         keys = tuple(self.redis.scan_iter(match=f"*{self.prefix}*"))
         if keys:
             self.redis.delete(*keys)
+
+    @staticmethod
+    def _worker_command(
+        *,
+        worker_id: str,
+        opaque_delivery_item: str,
+        opaque_result_context: str,
+    ) -> WorkerCommandEnvelope:
+        return WorkerCommandEnvelope(
+            command_id=str(uuid.uuid4()),
+            message_type=WorkerMessageType.TASK_ITEM,
+            execute_before_millis=int(time.time() * 1_000) + 5_000,
+            opaque_item=encode_deliver_seed(
+                DeliverSeed(
+                    worker_id=worker_id,
+                    opaque_delivery_item=opaque_delivery_item,
+                    opaque_result_context=opaque_result_context,
+                )
+            ),
+        )
 
     def _create_approve_append_activate(
         self,
@@ -472,10 +491,13 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             item_state.time_millis,
             dispatch_started_millis + 3_000 - self.item_score.SLOT_MILLIS,
         )
-        seed = self.deliver_seed_runtime.consume_deliver_seed(
+        command = self.worker_command_runtime.consume_worker_command(
             endpoint_manager_id="endpoint-manager-1",
             worker_id="worker-1",
         )
+        self.assertIsNotNone(command)
+        assert command is not None
+        seed = decode_deliver_seed(command.opaque_item)
         self.assertIsNotNone(seed)
         assert seed is not None
         delivery_item = json.loads(seed.opaque_delivery_item)
@@ -499,12 +521,12 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             result_context,
         )
         self.assertGreaterEqual(
-            seed.task_item_claim_until_millis,
+            command.execute_before_millis,
             dispatch_started_millis + 3_000,
         )
         self.assertEqual(
             None,
-            self.deliver_seed_runtime.consume_deliver_seed(
+            self.worker_command_runtime.consume_worker_command(
                 endpoint_manager_id="endpoint-manager-1",
                 worker_id="worker-1",
             ),
@@ -712,10 +734,13 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         )
         for index in (1, 2):
             worker_id = f"worker-{index}"
-            seed = self.deliver_seed_runtime.consume_deliver_seed(
+            command = self.worker_command_runtime.consume_worker_command(
                 endpoint_manager_id=f"endpoint-manager-{index}",
                 worker_id=worker_id,
             )
+            self.assertIsNotNone(command)
+            assert command is not None
+            seed = decode_deliver_seed(command.opaque_item)
             self.assertIsNotNone(seed)
             assert seed is not None
             self.assertEqual(worker_id, seed.worker_id)
@@ -791,8 +816,9 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         )
         self.assertEqual(
             0,
-            self.redis.llen(
-                f"ad:{self.prefix}:endpoint-manager:endpoint-manager-1:deliver-seeds"
+            self.redis.hlen(
+                f"wd:{self.prefix}:endpoint-manager:"
+                "endpoint-manager-1:worker-commands"
             ),
         )
 
@@ -971,7 +997,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         ]
         time.sleep(0.12)
         dispatched = self.pacer.dispatch_tasks(config=config)
-        seed = self.deliver_seed_runtime.consume_deliver_seed(
+        command = self.worker_command_runtime.consume_worker_command(
             endpoint_manager_id="endpoint-manager-1",
             worker_id="worker-1",
         )
@@ -981,6 +1007,9 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         self.assertEqual(0, reset_round)
         self.assertEqual(0, reset.suffix)
         self.assertEqual(1, dispatched)
+        self.assertIsNotNone(command)
+        assert command is not None
+        seed = decode_deliver_seed(command.opaque_item)
         self.assertIsNotNone(seed)
         assert seed is not None
         self.assertEqual(

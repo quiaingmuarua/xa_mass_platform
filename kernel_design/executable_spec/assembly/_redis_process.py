@@ -17,7 +17,7 @@ from ..scheduling import (
 from ..scheduling.worker_candidate import WorkerCandidateAcquirer
 from ..redis_runtime import (
     RedisCandidateWorkerCache,
-    RedisDeliverSeedRuntime,
+    RedisWorkerCommandRuntime,
     RedisTaskItemScoreBandCore,
     RedisTaskResourceCatalog,
     RedisTaskRuntime,
@@ -112,7 +112,7 @@ class _RedisKernelProcess:
             redis_client,
             prefix=config.prefix,
         )
-        self._deliver_seed_runtime = RedisDeliverSeedRuntime(
+        self._worker_command_runtime = RedisWorkerCommandRuntime(
             redis_client,
             prefix=config.prefix,
         )
@@ -154,7 +154,7 @@ class _RedisKernelProcess:
         task_dispatch_pacer = TaskDispatchPacer(
             self._task_score,
             self._task_resource_catalog,
-            self._deliver_seed_runtime,
+            self._worker_command_runtime,
             task_item_score,
             candidate_warmup_schedule,
             task_item_dispatcher,

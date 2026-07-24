@@ -89,7 +89,7 @@ The `PRECOMPUTED` path consumes bounded cache evidence and calls:
 renew_active_hot_score_leases(
     workerGroupId,
     observedScores,
-    taskItemClaimUntilMillis,
+    targetTimeMillis,
 )
 ```
 
@@ -251,7 +251,7 @@ cross-owner transaction.
 | TaskWorkerAllocationPacer | retain Task-owned rule Tasks, acquire HOT-pool candidates and publish cache evidence | no direct Worker-score or result handling |
 | TaskItemDispatcher | resolve PRECOMPUTED/TARGETED from immutable TaskType, preserve binding, claim Item and build DeliverSeed | no Task-score, mailbox, cache or Worker-score access |
 | TaskDispatchPacer | bounded Task round, suffix routing, mailbox publication and Task-score pacing | no candidate acquisition, Item claim or Worker-score access |
-| Worker Delivery Dispatch | mailbox consume, deadline check, private wire conversion and SeedResult append | no Worker selection or score parsing/mutation |
+| Worker Delivery Dispatch | mailbox consume, deadline check, command forwarding and SeedResult append | no Worker selection or score parsing/mutation |
 | Future trusted Adapter | direct pre-execution rejection evidence | no inferred `3xxx` from timeout, missing response or mailbox age |
 | ResultRoutingPacer | bounded consume, context decode, owner-key grouping and handler delegation | no direct Task/Worker owner dependency, Worker selection or exact subcode policy |
 | Result-routing handlers | owner-local Task finality and Worker disposition policy | no queue ownership, score decoding or cross-owner truth |
@@ -274,7 +274,7 @@ payload.
 - Do not treat missing result as `3xxx`.
 - Do not let old result evidence mutate a newer Worker lease.
 - Do not create separate Attempt, reservation, session epoch or lease registry.
-- Do not release a Worker fence after DeliverSeed append to simulate immediate
-  slot reuse.
+- Do not release a Worker fence after WorkerCommand append to simulate
+  immediate slot reuse.
 - Do not assign independent TaskItems or different Tasks concurrently to one
   WorkerId.

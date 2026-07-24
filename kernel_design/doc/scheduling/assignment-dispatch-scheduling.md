@@ -22,7 +22,7 @@ Assignment-dispatch keeps three independently paced mechanisms:
 | --- | --- | --- |
 | RUNNING activation | Which ADMISSION Tasks pass Task and System admission policy? | `ADMISSION_VISIBLE -> RUNNING_VISIBLE` transition |
 | Worker allocation | Which stable RUNNING Task rules should have candidates prefetched? | Expiring CandidateWorker cache evidence |
-| Task dispatch | Does a RUNNING Task dispatch Items or advance empty recheck? | Claimed Items, `DeliverSeed` values, or Task empty-count transition |
+| Task dispatch | Does a RUNNING Task dispatch Items or advance empty recheck? | Claimed Items, `WorkerCommandEnvelope` values, or Task empty-count transition |
 
 The mechanisms have different cadence, cost, and policy inputs. They do not
 share a transaction, lock, or assignment lifecycle object. Candidate warming
@@ -197,7 +197,8 @@ dispatch-visible RUNNING Tasks
      -> ITEM_DRIVEN: one messageId TARGETED request per Item
      -> preserve CandidateId-to-messageId binding
      -> exact claim only Worker-backed Items
-     -> return DeliverSeeds grouped by endpointManagerId
+     -> encode one DeliverSeed in each WorkerCommandEnvelope
+     -> return Worker commands grouped by endpointManagerId
   -> append each group to its Adapter-partitioned sparse mailbox
   -> same-band reschedule while preserving suffix 0
 
@@ -216,8 +217,8 @@ normal path expects replacement to overwrite unconsumed residue, not a
 competing active assignment. The mailbox itself does not compare Worker lease
 recency, so a delayed stale publisher can still become the last write; deadline
 checks, exact result fences, and natural expiry preserve owner truth. Mailbox
-consume, claim-deadline recheck, Adapter-private command conversion, Worker
-invocation, and SeedResult append belong to Worker Delivery Dispatch.
+consume, execute-before recheck, protocol forwarding, Worker invocation, and
+SeedResult append belong to Worker Delivery Dispatch.
 
 `taskType` is fixed by the Task. The two rule locations cannot be mixed, and
 the dispatch round does not infer type or strategy from Item contents.
@@ -235,8 +236,8 @@ the dispatch round does not infer type or strategy from Item contents.
   mailbox publication, routine same-band rescheduling, and exact empty-count
   changes.
 - `TaskItemDispatcher` owns one suffix-zero Task's Item observation, candidate
-  acquisition, exact Item claim, and DeliverSeed construction. It has no Task
-  score or mailbox-publication authority.
+  acquisition, exact Item claim, DeliverSeed construction, and Worker command
+  construction. It has no Task score or mailbox-publication authority.
 - Neither `TaskDispatchPacer` nor `TaskItemDispatcher` accesses
   CandidateWorkerCache or WorkerScoreCore directly.
 - Item observation is not a claim. Exact claim happens only after a Worker is
@@ -245,8 +246,8 @@ the dispatch round does not infer type or strategy from Item contents.
   empty match are bounded no-ops.
 - Unused, stale, claim-failed, or publication-failed Worker leases are not
   actively released; lease expiry restores visibility.
-- Candidate cache and DeliverSeed mailboxes are handoff evidence, not assignment
-  or liveness truth.
+- Candidate cache and WorkerCommand mailboxes are handoff evidence, not
+  assignment or liveness truth.
 - Assignment Dispatch routes only by the matched
   `CandidateWorkerEntry.endpointManagerId` snapshot. It never reads connection
   or session state and never exposes this route as a Worker matching field.

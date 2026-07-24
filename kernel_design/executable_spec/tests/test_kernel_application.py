@@ -19,7 +19,7 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
 
 from kernel_design.executable_spec.assembly import (
     TaskType,
-    DeliverSeedConsumerClient,
+    WorkerCommandConsumerClient,
     KernelApplication,
     KernelApplicationConfig,
     ResourcesCommandClient,
@@ -36,6 +36,7 @@ from kernel_design.executable_spec.assembly import (
     WorkerDeclaration,
     WorkerGroupDescriptor,
     WorkerRuntimeStatus,
+    decode_deliver_seed,
 )
 from kernel_design.executable_spec.assembly._redis_process import _RedisKernelProcess
 from kernel_design.executable_spec.kernel import (
@@ -757,7 +758,7 @@ class KernelApplicationIntegrationTest(unittest.TestCase):
             stop_timeout_millis=1_000,
         )
         self.resources_client = ResourcesCommandClient(self.config)
-        self.deliver_seed_consumer = DeliverSeedConsumerClient(self.config)
+        self.worker_command_consumer = WorkerCommandConsumerClient(self.config)
         self.application = KernelApplication(self.config)
 
     def tearDown(self) -> None:
@@ -807,13 +808,13 @@ class KernelApplicationIntegrationTest(unittest.TestCase):
         )
 
         deadline = time.monotonic() + 3
-        seed = None
-        while time.monotonic() < deadline and seed is None:
-            seed = self.deliver_seed_consumer.consume_deliver_seed(
+        command = None
+        while time.monotonic() < deadline and command is None:
+            command = self.worker_command_consumer.consume_worker_command(
                 endpoint_manager_id=endpoint_manager_id,
                 worker_id="worker-1",
             )
-            if seed is None:
+            if command is None:
                 time.sleep(0.02)
 
         self.assertEqual(WorkerRuntimeStatus.OK, group_result.status)
@@ -821,6 +822,9 @@ class KernelApplicationIntegrationTest(unittest.TestCase):
         self.assertEqual(TaskCreationStatus.CREATED, created.status)
         self.assertEqual(TaskApprovalStatus.APPROVED, approved.status)
         self.assertEqual(TaskItemAppendStatus.APPENDED, appended[message_id].status)
+        self.assertIsNotNone(command)
+        assert command is not None
+        seed = decode_deliver_seed(command.opaque_item)
         self.assertIsNotNone(seed)
         assert seed is not None
         self.assertEqual("worker-1", seed.worker_id)

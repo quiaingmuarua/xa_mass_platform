@@ -176,22 +176,9 @@ class KernelCommandServerTest(unittest.TestCase):
         self.assertIsNone(task_descriptor.allocation_rule)
         self.assertEqual(1234, task_descriptor.empty_close_at_millis)
         self.resources_client.upsert_worker.assert_called_once()
-        self.assertFalse(hasattr(self.application, "consume_deliver_seeds"))
+        self.assertFalse(hasattr(self.application, "consume_worker_commands"))
         self.assertEqual(404, self.client.post("/worker-groups").status_code)
         self.assertEqual(404, self.client.post("/workers").status_code)
-        self.assertEqual(
-            404,
-            self.client.post(
-                "/endpoint-managers/endpoint-1/deliver-seeds:consume?limit=10"
-            ).status_code,
-        )
-        self.assertEqual(
-            404,
-            self.client.post(
-                "/deliver-seeds:consume",
-                json={"workerIds": ["worker-1"]},
-            ).status_code,
-        )
 
     def test_task_rejects_invalid_empty_close_threshold(self) -> None:
         base_request = {

@@ -5,6 +5,7 @@ import json
 import unittest
 from dataclasses import fields
 from unittest.mock import Mock, call, patch
+from uuid import NAMESPACE_DNS, uuid5
 
 from kernel_design.executable_spec import kernel, scheduling
 from kernel_design.executable_spec import (
@@ -126,6 +127,12 @@ class ResultRoutingPacerTest(unittest.TestCase):
         payload: str | None = '{"value":1}',
     ) -> SeedResult:
         return SeedResult(
+            command_id=str(
+                uuid5(
+                    NAMESPACE_DNS,
+                    f"{task_id}:{message_id}:{worker_id}:{outcome_code}",
+                )
+            ),
             opaque_result_context=encode_result_context(
                 ResultContext(
                     task_id=task_id,
@@ -161,7 +168,12 @@ class ResultRoutingPacerTest(unittest.TestCase):
             list(inspect.signature(ResultRoutingPacer.__init__).parameters),
         )
         self.assertEqual(
-            ["opaque_result_context", "outcome_code", "opaque_result_payload"],
+            [
+                "command_id",
+                "opaque_result_context",
+                "outcome_code",
+                "opaque_result_payload",
+            ],
             [field.name for field in fields(SeedResult)],
         )
         self.assertEqual(
@@ -441,7 +453,12 @@ class ResultRoutingPacerTest(unittest.TestCase):
 
     def test_corrupt_or_misrouted_results_are_consumed_without_owner_writes(self) -> None:
         self.queues[SeedResultOutcomeClass.SUCCESS] = (
-            SeedResult("{bad-json", "200", "null"),
+            SeedResult(
+                "a5e9e10d-f78b-469e-93ab-864b49c189c1",
+                "{bad-json",
+                "200",
+                "null",
+            ),
             self.result(outcome_code="1000", payload=None),
         )
 

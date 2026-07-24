@@ -15,7 +15,7 @@ The kernel has four scheduling planes:
 | --- | --- | --- | --- | --- |
 | Task score-band | Which Tasks may enter a scheduling round now? | Task score coordinate and owner facts | Bounded Task ids or an owner-approved score transition | Task scheduling score only |
 | Worker score-band | Which Workers may enter admission or recovery now? | Worker score coordinate and worker-runtime facts | Bounded Worker observations, leases, holds, or polarity movement | Worker scheduling score only |
-| Assignment-dispatch | Which bounded Task/Worker/Item combination becomes delivery evidence? | Due Tasks, Task descriptors, policy-selected Worker acquisition, TaskItem records and Item scores | Optional CandidateWorker cache evidence and Adapter-partitioned DeliverSeed mailboxes | Candidate cache plus TaskItem score through declared owner primitives |
+| Assignment-dispatch | Which bounded Task/Worker/Item combination becomes delivery evidence? | Due Tasks, Task descriptors, policy-selected Worker acquisition, TaskItem records and Item scores | Optional CandidateWorker cache evidence and Adapter-partitioned WorkerCommand mailboxes | Candidate cache plus TaskItem score through declared owner primitives |
 | Result-routing | How does returned evidence affect Task success finality and Worker disposition? | SeedResults and opaque result context | Owner-local Task and Worker evidence delegated to policy handlers | No private truth; handlers invoke TaskItem and Worker score owners |
 
 These are logical planes, not mandatory deployment modules. Package placement
@@ -55,10 +55,12 @@ Task score acquire
      -> TaskItem observation
      -> Task-scoped PRECOMPUTED or Item-scoped TARGETED candidate acquisition
      -> TaskItem exact claim
-     -> endpointManagerId-partitioned sparse DeliverSeed mailbox
+     -> DeliverSeed encoded inside WorkerCommandEnvelope
+     -> endpointManagerId-partitioned sparse WorkerCommand mailbox
   -> Worker Delivery Dispatch
-     -> consume mailbox and check claim deadline
-     -> Worker Adapter command/result protocol
+     -> consume mailbox and check execute-before deadline
+     -> forward WorkerCommandEnvelope to Worker
+     -> accept semantic SeedResult
      -> SeedResult queue
   -> Result Routing
      -> 200: store last-success + FINAL_SUCCESS + Worker exact release
@@ -126,10 +128,10 @@ CandidateWarmupSchedule
 
 TaskItemDispatcher
   owns one suffix-zero Task's bounded Item observation, Worker acquisition,
-  exact Item claim, and DeliverSeed construction; it owns no Task score,
-  mailbox, or background lifecycle
+  exact Item claim, DeliverSeed construction, and Worker command construction;
+  it owns no Task score, mailbox, or background lifecycle
 
-DeliverSeedRuntime
+WorkerCommandRuntime
   owns sparse Adapter HASH mailboxes; the mailbox is not lifecycle truth
 
 SeedResultRuntime
@@ -145,9 +147,10 @@ Other scheduling pacers
   compose declared owner operations in bounded rounds; they do not copy truth
 
 Worker Delivery Dispatch
-  consumes already-assigned DeliverSeeds, validates the pre-submit deadline,
-  converts private Worker wire messages, and appends SeedResults; it does not
-  select Workers or mutate score
+  consumes already-assigned Worker commands, validates the pre-submit
+  deadline, forwards stable command envelopes, and appends semantic
+  SeedResults; it
+  does not select Workers or mutate score
 ```
 
 ## Mechanism Status
@@ -160,13 +163,14 @@ Worker Delivery Dispatch
 | TaskItem score-band | Implemented with Redis proof | Initial retry budget and claim-duration values |
 | Task running activation | Implemented with due-Item Task policy and priority soft-limit System policy | Scenario-backed quota, tenant, business start condition, and resource-estimate decisions |
 | Worker allocation | Implemented as hint-driven TASK-scope candidate cache warming through HOT-pool acquisition; Task score is read only for RUNNING/non-hard-pause suffix-zero validation; TASK_DRIVEN has deterministic Redis proof through cache consumption | Warmup prioritization beyond bounded due order and matcher priority |
-| Task dispatch | Implemented with acquisition-only TaskType profiles, PRECOMPUTED Task rules, TARGETED complete Item rules, stable Item binding, RUNNING same-band reschedule, shared threshold-based empty close, and DeliverSeed append; both TaskTypes have deterministic Redis proof through DeliverSeed and ITEM_DRIVEN proves no warmup/cache path | Recent-first Redis Task acquisition |
-| Worker Delivery Dispatch | Independent clients, Worker Adapter polling protocol, and runnable libphonenumber Worker implemented | Authentication, push transport, pending/ack, and production protocol policy |
+| Task dispatch | Implemented with acquisition-only TaskType profiles, PRECOMPUTED Task rules, TARGETED complete Item rules, stable Item binding, RUNNING same-band reschedule, shared threshold-based empty close, and WorkerCommand append; both TaskTypes have deterministic Redis proof through the command mailbox and ITEM_DRIVEN proves no warmup/cache path | Recent-first Redis Task acquisition |
+| Worker Delivery Dispatch | Stable Worker command and SeedResult contracts, independent clients, Worker Adapter polling protocol, and runnable libphonenumber Worker implemented | Authentication, WebSocket transport, pending/ack, and production protocol policy |
 | Result routing | Implemented with unit and Redis orchestration proof; Task/Worker policy handlers are replaceable | Result projection and stronger queue reliability require separate owners and invariants |
 
 Both TaskTypes also have process-boundary Redis E2E proof from
 `ResourcesCommandClient` and `KernelApplication`, through the Worker Adapter
-HTTP command/result boundary and the polling phone tool, to Result-Routing,
+HTTP Worker-command and SeedResult boundaries and the polling phone tool, to
+Result-Routing,
 `FINAL_SUCCESS`, the Task result HASH, and exact Worker lease release.
 Additional Redis proofs cover
 TASK_DRIVEN default empty close, ITEM_DRIVEN future-threshold empty recheck
@@ -193,8 +197,8 @@ tr:{prefix}:task:{taskId}:items
 tr:{prefix}:task:{taskId}:results
   Task-local Item score and record/result HASHes
 
-ad:{prefix}:endpoint-manager:{endpointManagerId}:deliver-seeds
-  one sparse DeliverSeed HASH per Adapter route
+wd:{prefix}:endpoint-manager:{endpointManagerId}:worker-commands
+  one sparse WorkerCommandEnvelope HASH per Adapter route
 
 rr:{prefix}:seed-results:{outcomeClass}
   three global best-effort result LISTs
@@ -261,6 +265,7 @@ kernel_design/executable_spec/
     assignment_dispatch_runtime.py
     result_context.py
     seed_result_runtime.py
+    worker_delivery.py
   scheduling/
     worker_candidate/
       acquisition.py
@@ -277,6 +282,7 @@ kernel_design/executable_spec/
     worker_runtime.py
     assignment_dispatch.py
     result_routing.py
+    worker_delivery.py
   assembly/
     application.py
     assignment_dispatch_application.py

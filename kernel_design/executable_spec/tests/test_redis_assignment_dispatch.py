@@ -2,14 +2,20 @@ from __future__ import annotations
 
 import json
 import unittest
+from uuid import NAMESPACE_DNS, uuid5
 
 from kernel_design.executable_spec import (
     CandidateWorkerEntry,
     DeliverSeed,
-    DeliverSeedAppendStatus,
-    DeliverSeedConsumePage,
+    WorkerCommandEnvelope,
+    WorkerCommandAppendStatus,
+    WorkerCommandConsumePage,
+    WorkerMessageType,
     RedisCandidateWorkerCache,
-    RedisDeliverSeedRuntime,
+    RedisWorkerCommandRuntime,
+    decode_deliver_seed,
+    encode_deliver_seed,
+    encode_worker_command_envelope,
 )
 from kernel_design.executable_spec.redis_runtime.assignment_dispatch import (
     RedisCandidateWarmupSchedule,
@@ -283,119 +289,109 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
             self.redis,
             prefix="test",
         )
-        self.deliver_seed_runtime = RedisDeliverSeedRuntime(
+        self.worker_command_runtime = RedisWorkerCommandRuntime(
             self.redis,
             prefix="test",
         )
         self.key = "ad:test:candidate:task-1:workers"
 
-    def test_candidate_and_deliver_seed_owners_are_separate(self) -> None:
-        self.assertFalse(hasattr(self.runtime, "append_deliver_seeds"))
+    def test_candidate_and_worker_command_owners_are_separate(self) -> None:
+        self.assertFalse(hasattr(self.runtime, "append_worker_commands"))
         self.assertFalse(
-            hasattr(self.deliver_seed_runtime, "append_candidate_workers")
+            hasattr(self.worker_command_runtime, "append_candidate_workers")
         )
 
-    def test_append_deliver_seeds_writes_sparse_adapter_hash(self) -> None:
-        seed = DeliverSeed(
-            worker_id="worker-1",
-            opaque_delivery_item='{"eventCode":"image.resize"}',
-            opaque_result_context='{"taskId":"task-1"}',
-            task_item_claim_until_millis=103_000,
-        )
+    def test_append_worker_commands_writes_sparse_adapter_hash(self) -> None:
+        command = self._worker_command("message-1", "worker-1")
 
-        result = self.deliver_seed_runtime.append_deliver_seeds(
+        result = self.worker_command_runtime.append_worker_commands(
             endpoint_manager_id="endpoint-manager-1",
-            deliver_seeds_by_worker_id={"worker-1": seed},
+            worker_commands_by_worker_id={"worker-1": command},
         )
 
         self.assertEqual(
-            {"worker-1": DeliverSeedAppendStatus.APPENDED},
+            {"worker-1": WorkerCommandAppendStatus.APPENDED},
             result,
         )
-        key = "ad:test:endpoint-manager:endpoint-manager-1:deliver-seeds"
+        key = (
+            "wd:test:endpoint-manager:endpoint-manager-1:worker-commands"
+        )
         payload = json.loads(self.redis.hashes[key]["worker-1"])
         self.assertEqual(
             {
-                "workerId": "worker-1",
-                "opaqueDeliveryItem": '{"eventCode":"image.resize"}',
-                "opaqueResultContext": '{"taskId":"task-1"}',
-                "taskItemClaimUntilMillis": 103_000,
+                "commandId": command.command_id,
+                "executeBeforeMillis": 103_000,
+                "messageType": "TASK_ITEM",
+                "opaqueItem": command.opaque_item,
             },
             payload,
         )
-        self.assertTrue(
-            {
-                "taskId",
-                "selectedWorkerId",
-                "workerGroupId",
-                "endpointManagerId",
-                "taskItem",
-                "claimScore",
-                "workerLeaseScore",
-            }.isdisjoint(payload)
+        self.assertEqual(
+            "worker-1",
+            decode_deliver_seed(payload["opaqueItem"]).worker_id,
         )
 
     def test_adapter_buckets_are_isolated(self) -> None:
-        first = self._deliver_seed("message-1", "worker-1")
-        second = self._deliver_seed("message-2", "worker-2")
-        self.deliver_seed_runtime.append_deliver_seeds(
+        first = self._worker_command("message-1", "worker-1")
+        second = self._worker_command("message-2", "worker-2")
+        self.worker_command_runtime.append_worker_commands(
             endpoint_manager_id="endpoint-manager-1",
-            deliver_seeds_by_worker_id={"worker-1": first},
+            worker_commands_by_worker_id={"worker-1": first},
         )
-        self.deliver_seed_runtime.append_deliver_seeds(
+        self.worker_command_runtime.append_worker_commands(
             endpoint_manager_id="endpoint-manager-2",
-            deliver_seeds_by_worker_id={"worker-2": second},
+            worker_commands_by_worker_id={"worker-2": second},
         )
 
         self.assertIsNone(
-            self.deliver_seed_runtime.consume_deliver_seed(
+            self.worker_command_runtime.consume_worker_command(
                 endpoint_manager_id="endpoint-manager-2",
                 worker_id="worker-1",
             )
         )
         self.assertEqual(
             first,
-            self.deliver_seed_runtime.consume_deliver_seed(
+            self.worker_command_runtime.consume_worker_command(
                 endpoint_manager_id="endpoint-manager-1",
                 worker_id="worker-1",
             ),
         )
         self.assertEqual(
             second,
-            self.deliver_seed_runtime.consume_deliver_seed(
+            self.worker_command_runtime.consume_worker_command(
                 endpoint_manager_id="endpoint-manager-2",
                 worker_id="worker-2",
             ),
         )
 
     def test_mailbox_append_replaces_existing_residue(self) -> None:
-        first = self._deliver_seed("message-1", "worker-1")
-        replacement = self._deliver_seed("message-2", "worker-1")
+        first = self._worker_command("message-1", "worker-1")
+        replacement = self._worker_command("message-2", "worker-1")
 
         self.assertEqual(
-            {"worker-1": DeliverSeedAppendStatus.APPENDED},
-            self.deliver_seed_runtime.append_deliver_seeds(
+            {"worker-1": WorkerCommandAppendStatus.APPENDED},
+            self.worker_command_runtime.append_worker_commands(
                 endpoint_manager_id="endpoint-manager-1",
-                deliver_seeds_by_worker_id={"worker-1": first}
+                worker_commands_by_worker_id={"worker-1": first}
             ),
         )
         self.assertEqual(
-            {"worker-1": DeliverSeedAppendStatus.REPLACED},
-            self.deliver_seed_runtime.append_deliver_seeds(
+            {"worker-1": WorkerCommandAppendStatus.REPLACED},
+            self.worker_command_runtime.append_worker_commands(
                 endpoint_manager_id="endpoint-manager-1",
-                deliver_seeds_by_worker_id={"worker-1": first}
+                worker_commands_by_worker_id={"worker-1": first}
             ),
         )
         self.assertEqual(
-            {"worker-1": DeliverSeedAppendStatus.REPLACED},
-            self.deliver_seed_runtime.append_deliver_seeds(
+            {"worker-1": WorkerCommandAppendStatus.REPLACED},
+            self.worker_command_runtime.append_worker_commands(
                 endpoint_manager_id="endpoint-manager-1",
-                deliver_seeds_by_worker_id={"worker-1": replacement}
+                worker_commands_by_worker_id={"worker-1": replacement}
             ),
         )
         self.assertEqual(
             replacement,
-            self.deliver_seed_runtime.consume_deliver_seed(
+            self.worker_command_runtime.consume_worker_command(
                 endpoint_manager_id="endpoint-manager-1",
                 worker_id="worker-1",
             ),
@@ -404,17 +400,17 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
     def test_mailbox_append_batches_new_fields_and_residue_replacements(
         self,
     ) -> None:
-        old_seed = self._deliver_seed("old-message", "worker-1")
-        replacement = self._deliver_seed("new-message", "worker-1")
-        appended = self._deliver_seed("other-message", "worker-2")
-        self.deliver_seed_runtime.append_deliver_seeds(
+        old_seed = self._worker_command("old-message", "worker-1")
+        replacement = self._worker_command("new-message", "worker-1")
+        appended = self._worker_command("other-message", "worker-2")
+        self.worker_command_runtime.append_worker_commands(
             endpoint_manager_id="endpoint-manager-1",
-            deliver_seeds_by_worker_id={"worker-1": old_seed},
+            worker_commands_by_worker_id={"worker-1": old_seed},
         )
 
-        results = self.deliver_seed_runtime.append_deliver_seeds(
+        results = self.worker_command_runtime.append_worker_commands(
             endpoint_manager_id="endpoint-manager-1",
-            deliver_seeds_by_worker_id={
+            worker_commands_by_worker_id={
                 "worker-1": replacement,
                 "worker-2": appended,
             },
@@ -422,127 +418,136 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
 
         self.assertEqual(
             {
-                "worker-1": DeliverSeedAppendStatus.REPLACED,
-                "worker-2": DeliverSeedAppendStatus.APPENDED,
+                "worker-1": WorkerCommandAppendStatus.REPLACED,
+                "worker-2": WorkerCommandAppendStatus.APPENDED,
             },
             results,
         )
         self.assertEqual(
             replacement,
-            self.deliver_seed_runtime.consume_deliver_seed(
+            self.worker_command_runtime.consume_worker_command(
                 endpoint_manager_id="endpoint-manager-1",
                 worker_id="worker-1",
             ),
         )
         self.assertEqual(
             appended,
-            self.deliver_seed_runtime.consume_deliver_seed(
+            self.worker_command_runtime.consume_worker_command(
                 endpoint_manager_id="endpoint-manager-1",
                 worker_id="worker-2",
             ),
         )
 
     def test_mailbox_replaces_expired_or_corrupt_residue(self) -> None:
-        seed = self._deliver_seed("message-2", "worker-1", 104_000)
-        key = "ad:test:endpoint-manager:endpoint-manager-1:deliver-seeds"
-        expired = self._deliver_seed("message-1", "worker-1")
-        expired_value = RedisDeliverSeedRuntime._encode_deliver_seed(expired)
+        seed = self._worker_command("message-2", "worker-1", 104_000)
+        key = (
+            "wd:test:endpoint-manager:endpoint-manager-1:worker-commands"
+        )
+        expired = self._worker_command("message-1", "worker-1")
+        expired_value = encode_worker_command_envelope(expired)
         self.redis.hashes[key] = {"worker-1": expired_value}
-        self.redis.now_millis = expired.task_item_claim_until_millis
+        self.redis.now_millis = expired.execute_before_millis
 
         self.assertEqual(
-            {"worker-1": DeliverSeedAppendStatus.REPLACED},
-            self.deliver_seed_runtime.append_deliver_seeds(
+            {"worker-1": WorkerCommandAppendStatus.REPLACED},
+            self.worker_command_runtime.append_worker_commands(
                 endpoint_manager_id="endpoint-manager-1",
-                deliver_seeds_by_worker_id={"worker-1": seed}
+                worker_commands_by_worker_id={"worker-1": seed}
             ),
         )
         self.assertEqual(
             seed,
-            self.deliver_seed_runtime.consume_deliver_seed(
+            self.worker_command_runtime.consume_worker_command(
                 endpoint_manager_id="endpoint-manager-1",
                 worker_id="worker-1",
             ),
         )
         self.redis.hashes[key]["worker-1"] = "{bad-json"
         self.assertEqual(
-            {"worker-1": DeliverSeedAppendStatus.REPLACED},
-            self.deliver_seed_runtime.append_deliver_seeds(
+            {"worker-1": WorkerCommandAppendStatus.REPLACED},
+            self.worker_command_runtime.append_worker_commands(
                 endpoint_manager_id="endpoint-manager-1",
-                deliver_seeds_by_worker_id={"worker-1": seed}
+                worker_commands_by_worker_id={"worker-1": seed}
             ),
         )
         self.assertEqual(
             seed,
-            self.deliver_seed_runtime.consume_deliver_seed(
+            self.worker_command_runtime.consume_worker_command(
                 endpoint_manager_id="endpoint-manager-1",
                 worker_id="worker-1",
             ),
         )
         self.assertEqual(
-            {"worker-1": DeliverSeedAppendStatus.APPENDED},
-            self.deliver_seed_runtime.append_deliver_seeds(
+            {"worker-1": WorkerCommandAppendStatus.APPENDED},
+            self.worker_command_runtime.append_worker_commands(
                 endpoint_manager_id="endpoint-manager-1",
-                deliver_seeds_by_worker_id={"worker-1": seed}
+                worker_commands_by_worker_id={"worker-1": seed}
             ),
         )
 
     def test_cursor_scan_consumes_sparse_pages(self) -> None:
-        seeds = tuple(
-            self._deliver_seed(f"message-{index}", f"worker-{index}")
+        worker_commands_by_worker_id = {
+            f"worker-{index}": self._worker_command(
+                f"message-{index}",
+                f"worker-{index}",
+            )
             for index in range(1, 4)
-        )
-        self.deliver_seed_runtime.append_deliver_seeds(
+        }
+        self.worker_command_runtime.append_worker_commands(
             endpoint_manager_id="endpoint-manager-1",
-            deliver_seeds_by_worker_id={
-                seed.worker_id: seed for seed in seeds
-            },
+            worker_commands_by_worker_id=worker_commands_by_worker_id,
         )
 
-        first_page = self.deliver_seed_runtime.consume_deliver_seeds(
+        first_page = self.worker_command_runtime.consume_worker_commands(
             endpoint_manager_id="endpoint-manager-1",
             cursor=None,
             scan_count=2,
         )
-        second_page = self.deliver_seed_runtime.consume_deliver_seeds(
+        second_page = self.worker_command_runtime.consume_worker_commands(
             endpoint_manager_id="endpoint-manager-1",
             cursor=first_page.next_cursor,
             scan_count=2,
         )
 
-        self.assertEqual(seeds[:2], first_page.deliver_seeds)
+        self.assertEqual(
+            {
+                worker_id: worker_commands_by_worker_id[worker_id]
+                for worker_id in ("worker-1", "worker-2")
+            },
+            first_page.worker_commands_by_worker_id,
+        )
         self.assertEqual("2", first_page.next_cursor)
-        self.assertEqual(seeds[2:], second_page.deliver_seeds)
+        self.assertEqual(
+            {"worker-3": worker_commands_by_worker_id["worker-3"]},
+            second_page.worker_commands_by_worker_id,
+        )
         self.assertIsNone(second_page.next_cursor)
 
     def test_empty_scan_page_preserves_cursor_progress(self) -> None:
         self.redis.hscan = lambda *_args, **_kwargs: (9, {})
 
-        page = self.deliver_seed_runtime.consume_deliver_seeds(
+        page = self.worker_command_runtime.consume_worker_commands(
             endpoint_manager_id="endpoint-manager-1",
             cursor="4",
             scan_count=10,
         )
 
-        self.assertEqual(DeliverSeedConsumePage((), "9"), page)
+        self.assertEqual(WorkerCommandConsumePage({}, "9"), page)
 
-    def test_consume_drops_expired_corrupt_and_mismatched_mailboxes(self) -> None:
+    def test_consume_drops_expired_and_corrupt_mailboxes(self) -> None:
         rows = {
-            "worker-1": RedisDeliverSeedRuntime._encode_deliver_seed(
-                self._deliver_seed("expired", "worker-1", self.redis.now_millis)
+            "worker-1": encode_worker_command_envelope(
+                self._worker_command("expired", "worker-1", self.redis.now_millis)
             ),
             "worker-2": "{bad-json",
-            "worker-3": RedisDeliverSeedRuntime._encode_deliver_seed(
-                self._deliver_seed("mismatch", "other-worker")
-            ),
         }
-        key = self.deliver_seed_runtime._deliver_seed_key("endpoint-manager-1")
+        key = self.worker_command_runtime._worker_command_key("endpoint-manager-1")
         for worker_id, value in rows.items():
             self.redis.hset(key, worker_id, value)
 
         self.assertEqual(
-            DeliverSeedConsumePage((), None),
-            self.deliver_seed_runtime.consume_deliver_seeds(
+            WorkerCommandConsumePage({}, None),
+            self.worker_command_runtime.consume_worker_commands(
                 endpoint_manager_id="endpoint-manager-1",
                 cursor=None,
                 scan_count=10,
@@ -551,15 +556,15 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
         self.assertEqual({}, self.redis.hashes[key])
 
     def test_scanned_value_is_deleted_only_when_it_is_still_current(self) -> None:
-        old_seed = self._deliver_seed("message-1", "worker-1")
-        replacement = self._deliver_seed("message-2", "worker-1")
-        key = self.deliver_seed_runtime._deliver_seed_key("endpoint-manager-1")
+        old_seed = self._worker_command("message-1", "worker-1")
+        replacement = self._worker_command("message-2", "worker-1")
+        key = self.worker_command_runtime._worker_command_key("endpoint-manager-1")
         self.redis.hset(
             key,
             "worker-1",
-            RedisDeliverSeedRuntime._encode_deliver_seed(old_seed),
+            encode_worker_command_envelope(old_seed),
         )
-        replacement_value = RedisDeliverSeedRuntime._encode_deliver_seed(
+        replacement_value = encode_worker_command_envelope(
             replacement
         )
         self.redis.before_exact_consume = (
@@ -570,69 +575,63 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
             )
         )
 
-        page = self.deliver_seed_runtime.consume_deliver_seeds(
+        page = self.worker_command_runtime.consume_worker_commands(
             endpoint_manager_id="endpoint-manager-1",
             cursor=None,
             scan_count=10,
         )
 
-        self.assertEqual(DeliverSeedConsumePage((), None), page)
+        self.assertEqual(WorkerCommandConsumePage({}, None), page)
         self.assertEqual(replacement_value, self.redis.hget(key, "worker-1"))
 
     def test_only_one_consumer_obtains_one_worker_mailbox(self) -> None:
-        seed = self._deliver_seed("message-1", "worker-1")
-        self.deliver_seed_runtime.append_deliver_seeds(
+        seed = self._worker_command("message-1", "worker-1")
+        self.worker_command_runtime.append_worker_commands(
             endpoint_manager_id="endpoint-manager-1",
-            deliver_seeds_by_worker_id={"worker-1": seed}
+            worker_commands_by_worker_id={"worker-1": seed}
         )
-        competing_runtime = RedisDeliverSeedRuntime(self.redis, prefix="test")
+        competing_runtime = RedisWorkerCommandRuntime(self.redis, prefix="test")
 
         self.assertEqual(
             seed,
-            self.deliver_seed_runtime.consume_deliver_seed(
+            self.worker_command_runtime.consume_worker_command(
                 endpoint_manager_id="endpoint-manager-1",
                 worker_id="worker-1",
             ),
         )
         self.assertIsNone(
-            competing_runtime.consume_deliver_seed(
+            competing_runtime.consume_worker_command(
                 endpoint_manager_id="endpoint-manager-1",
                 worker_id="worker-1",
             )
         )
 
-    def test_mailbox_rejects_expired_or_mismatched_input(self) -> None:
+    def test_mailbox_rejects_expired_or_invalid_input(self) -> None:
         with self.assertRaises(ValueError):
-            self.deliver_seed_runtime.append_deliver_seeds(
+            self.worker_command_runtime.append_worker_commands(
                 endpoint_manager_id="endpoint-manager-1",
-                deliver_seeds_by_worker_id={
-                    "worker-1": self._deliver_seed(
+                worker_commands_by_worker_id={
+                    "worker-1": self._worker_command(
                         "expired",
                         "worker-1",
                         self.redis.now_millis,
                     )
                 }
             )
-        seed = self._deliver_seed("message-1", "worker-1")
         with self.assertRaises(ValueError):
-            self.deliver_seed_runtime.append_deliver_seeds(
-                endpoint_manager_id="endpoint-manager-1",
-                deliver_seeds_by_worker_id={"different-worker": seed}
-            )
-        with self.assertRaises(ValueError):
-            self.deliver_seed_runtime.consume_deliver_seeds(
+            self.worker_command_runtime.consume_worker_commands(
                 endpoint_manager_id="",
                 cursor=None,
                 scan_count=1,
             )
         with self.assertRaises(ValueError):
-            self.deliver_seed_runtime.consume_deliver_seeds(
+            self.worker_command_runtime.consume_worker_commands(
                 endpoint_manager_id="endpoint-manager-1",
                 cursor="invalid",
                 scan_count=1,
             )
         with self.assertRaises(ValueError):
-            self.deliver_seed_runtime.consume_deliver_seeds(
+            self.worker_command_runtime.consume_worker_commands(
                 endpoint_manager_id="endpoint-manager-1",
                 cursor=None,
                 scan_count=0,
@@ -819,24 +818,32 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
         )
 
     @staticmethod
-    def _deliver_seed(
+    def _worker_command(
         message_id: str,
         worker_id: str,
         claim_until_millis: int = 103_000,
-    ) -> DeliverSeed:
-        return DeliverSeed(
-            worker_id=worker_id,
-            opaque_delivery_item=json.dumps(
-                {"messageId": message_id},
-                sort_keys=True,
-                separators=(",", ":"),
+    ) -> WorkerCommandEnvelope:
+        return WorkerCommandEnvelope(
+            command_id=str(
+                uuid5(NAMESPACE_DNS, f"{worker_id}:{message_id}")
             ),
-            opaque_result_context=json.dumps(
-                {"taskId": "task-1", "messageId": message_id},
-                sort_keys=True,
-                separators=(",", ":"),
+            message_type=WorkerMessageType.TASK_ITEM,
+            execute_before_millis=claim_until_millis,
+            opaque_item=encode_deliver_seed(
+                DeliverSeed(
+                    worker_id=worker_id,
+                    opaque_delivery_item=json.dumps(
+                        {"messageId": message_id},
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                    opaque_result_context=json.dumps(
+                        {"taskId": "task-1", "messageId": message_id},
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                )
             ),
-            task_item_claim_until_millis=claim_until_millis,
         )
 
 

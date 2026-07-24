@@ -14,6 +14,7 @@ Each key is a Redis LIST containing deterministic SeedResult JSON:
 
 ```json
 {
+  "commandId": "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1",
   "opaqueResultContext": "...",
   "outcomeCode": "200",
   "opaqueResultPayload": "... or null"
@@ -23,7 +24,9 @@ Each key is a Redis LIST containing deterministic SeedResult JSON:
 `append_seed_results` classifies only the public `outcomeCode`, groups a mixed
 batch by `SeedResultOutcomeClass`, and uses a non-transaction pipeline to
 `RPUSH` the non-empty groups. Cross-class append is best-effort and not atomic.
-The runtime never decodes `opaqueResultContext`.
+The runtime never decodes `opaqueResultContext`. `commandId` is stored
+unchanged for trace correlation and is not used for partitioning,
+deduplication, result precedence, or score fencing.
 
 `consume_seed_results(outcomeClass, limit)` performs bounded `LPOP` operations
 against exactly one class queue. FIFO is preserved within each class. Corrupt

@@ -34,6 +34,7 @@ truth.
 
 ```python
 SeedResult(
+    command_id: str,
     opaque_result_context: str,
     outcome_code: str,
     opaque_result_payload: str | None,
@@ -51,6 +52,9 @@ Outcome classification is exact:
 `1xxx` and `3xxx` are exactly four ASCII digits. Result routing understands
 only the class. A `200` must carry a non-empty opaque payload; JSON `"null"`
 represents a successful handler with no business return value.
+`commandId` is canonical trace correlation copied from the outbound command.
+Result routing does not use it as an Item identity, deduplication key, outcome
+winner, or Worker lease fence.
 
 The current Worker Adapter result endpoint accepts Worker-originated `200` and
 `1xxx` only. The `3xxx` queue remains a kernel protocol lane for a future
@@ -64,7 +68,7 @@ the queue runtime and carries `taskId`, `messageId`, `workerId`,
 home-bucket coordinate of the opaque Worker lease fence; result routing does
 not reread Task metadata to recover it. Item claim score and claim-until time
 are not result-routing inputs. The claim-until time remains a top-level
-DeliverSeed cutoff used before Worker submit.
+`WorkerCommandEnvelope.executeBeforeMillis` cutoff used before Worker submit.
 
 ## Routing Round
 
@@ -227,7 +231,11 @@ or any other `UNKNOWN` evidence must continue waiting for claim expiry.
 ## Guardrails
 
 - Do not let Adapter or Worker mutate score directly.
-- Do not interpret Adapter-private commandId or messageType in result routing.
+- Do not interpret `SeedResult.commandId` as result truth or a fence.
+- Do not carry Worker command `messageType` or `executeBeforeMillis` into
+  result routing.
+- Do not add a generic result envelope ahead of SeedResult outcome
+  partitioning.
 - Do not parse exact `1xxx` or `3xxx` subcodes in result routing.
 - Do not partition queues by exact code, Task, WorkerGroup, or producer source.
 - The current built-in `1xxx/3xxx` handlers do not rewrite Item retry time.

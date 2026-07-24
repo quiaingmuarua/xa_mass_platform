@@ -13,6 +13,13 @@ import httpx2
 import phonenumbers
 from phonenumbers.phonenumberutil import NumberParseException
 
+from kernel_design.executable_spec.assembly import (
+    SeedResult,
+    WorkerCommandEnvelope,
+    WorkerMessageType,
+    decode_deliver_seed,
+)
+
 
 PHONE_INSPECT_EVENT_CODE = "telecom.phone.inspect"
 
@@ -76,24 +83,26 @@ class PollingPhoneWorker:
         if response.status_code == 204:
             return False
         response.raise_for_status()
-        command = response.json()
-        self._validate_command(command)
-        if self._current_time_millis() >= command[
-            "taskItemClaimUntilMillis"
-        ]:
+        command = self._decode_command(response.json())
+        if self._current_time_millis() >= command.execute_before_millis:
             return False
 
-        result = self._execute_delivery_item(command["opaqueDeliveryItem"])
+        seed = decode_deliver_seed(command.opaque_item)
+        if seed is None or seed.worker_id != self.worker_id:
+            raise RuntimeError("Worker Adapter returned an invalid DeliverSeed")
+        result = self._execute_delivery_item(seed.opaque_delivery_item)
+        seed_result = SeedResult(
+            command_id=command.command_id,
+            opaque_result_context=seed.opaque_result_context,
+            outcome_code=result.outcome_code,
+            opaque_result_payload=result.opaque_result_payload,
+        )
         result_request: dict[str, object] = {
-            "commandId": command["commandId"],
-            "messageType": "TASK_SEED_RESULT",
-            "opaqueResultContext": command["opaqueResultContext"],
-            "outcomeCode": result.outcome_code,
+            "commandId": seed_result.command_id,
+            "opaqueResultContext": seed_result.opaque_result_context,
+            "outcomeCode": seed_result.outcome_code,
+            "opaqueResultPayload": seed_result.opaque_result_payload,
         }
-        if result.opaque_result_payload is not None:
-            result_request["opaqueResultPayload"] = (
-                result.opaque_result_payload
-            )
 
         result_response = self.adapter_client.post(
             f"/workers/{quote(self.worker_id, safe='')}/results",
@@ -107,24 +116,24 @@ class PollingPhoneWorker:
         return True
 
     @staticmethod
-    def _validate_command(command: object) -> None:
+    def _decode_command(command: object) -> WorkerCommandEnvelope:
         if not isinstance(command, Mapping):
             raise RuntimeError("Worker Adapter returned an invalid command")
-        required_fields = {
-            "commandId": str,
-            "messageType": str,
-            "opaqueDeliveryItem": str,
-            "opaqueResultContext": str,
-            "taskItemClaimUntilMillis": int,
-        }
-        if any(
-            field_name not in command
-            or isinstance(command[field_name], bool)
-            or not isinstance(command[field_name], field_type)
-            for field_name, field_type in required_fields.items()
-        ):
+        if set(command) != {
+            "commandId",
+            "executeBeforeMillis",
+            "messageType",
+            "opaqueItem",
+        }:
             raise RuntimeError("Worker Adapter returned an invalid command")
-        if command["messageType"] != "TASK_SEED":
+        try:
+            return WorkerCommandEnvelope(
+                command_id=command["commandId"],
+                message_type=WorkerMessageType(command["messageType"]),
+                execute_before_millis=command["executeBeforeMillis"],
+                opaque_item=command["opaqueItem"],
+            )
+        except (KeyError, TypeError, ValueError) as error:
             raise RuntimeError("Worker Adapter returned an invalid message type")
 
     @staticmethod

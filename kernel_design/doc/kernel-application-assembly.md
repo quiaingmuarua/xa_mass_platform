@@ -18,9 +18,9 @@ CLI / FastAPI
      -> assignment-dispatch and result-routing background applications
 
 Worker Adapter Server
-  -> DeliverSeedConsumerClient
+  -> WorkerCommandConsumerClient
   -> SeedResultCommandClient
-     -> WorkerId poll and opaque SeedResult append without KernelApplication lifecycle
+     -> Worker command poll and result ingress without KernelApplication lifecycle
 ```
 
 All four surfaces expose commands, not runtime objects. Callers cannot obtain
@@ -40,13 +40,14 @@ approve_task
 append_task_items
 close_task
 
-DeliverSeedConsumerClient
-consume_deliver_seed(endpointManagerId, workerId) -> DeliverSeed | None
-consume_deliver_seeds(endpointManagerId, cursor, scanCount)
-  -> DeliverSeedConsumePage
+WorkerCommandConsumerClient
+consume_worker_command(endpointManagerId, workerId)
+  -> WorkerCommandEnvelope | None
+consume_worker_commands(endpointManagerId, cursor, scanCount)
+  -> WorkerCommandConsumePage
 
 SeedResultCommandClient
-append_seed_results
+append_seed_results(SeedResult...)
 ```
 
 WorkerGroup upsert reuses `WorkerGroupDescriptor`. Worker upsert accepts the
@@ -102,8 +103,8 @@ application = KernelApplication()
 application = KernelApplication.from_json("{}")
 resources = ResourcesCommandClient()
 resources = ResourcesCommandClient.from_json("{}")
-deliver_seeds = DeliverSeedConsumerClient()
-seed_results = SeedResultCommandClient()
+worker_commands = WorkerCommandConsumerClient()
+worker_results = SeedResultCommandClient()
 ```
 
 The optional JSON contract is:
@@ -153,14 +154,14 @@ KernelApplication.stop()
   -> keep the application started if stop times out
 ```
 
-Task commands require a successful application start. DeliverSeed consumption
-and SeedResult append use independent clients with no `start` or `stop`, so an
-Worker Delivery Dispatch process does not own scheduler lifecycle. Construction
-establishes the composition graph but performs no Redis I/O. The private process
-root does not close the Redis client on stop, so a clean application instance
-may restart.
+Task commands require a successful application start. Worker command
+consumption and Worker result ingress use independent clients with no `start`
+or `stop`, so a Worker Delivery Dispatch process does not own scheduler
+lifecycle. Construction establishes the composition graph but performs no
+Redis I/O. The private process root does not close the Redis client on stop, so
+a clean application instance may restart.
 
-`ResourcesCommandClient`, `DeliverSeedConsumerClient`, and
+`ResourcesCommandClient`, `WorkerCommandConsumerClient`, and
 `SeedResultCommandClient` have no `start` or `stop`. Each may use a separate
 redis-py pool while sharing the same URL, prefix, and Redis owner truth.
 
@@ -219,8 +220,8 @@ claim a blocked round stopped. A timeout is reported rather than hidden.
 
 The application lifecycle owns timers and process coordination only. It does
 not construct policy inside a pacer, combine rounds into one sequential loop,
-own score or runtime truth, consume DeliverSeed mailboxes, or turn append/result/
-heartbeat events into required wakeups.
+own score or runtime truth, consume WorkerCommand mailboxes, or turn
+append/result/heartbeat events into required wakeups.
 
 ## Process-Boundary E2E Proof
 
@@ -257,22 +258,25 @@ python -m kernel_design.executable_spec.assembly --config kernel.json
 
 The Kernel Command Server constructs `KernelApplication` and
 `ResourcesCommandClient` from one resolved configuration. Lifespan starts and
-stops only `KernelApplication`; it has no DeliverSeed or SeedResult route.
+stops only `KernelApplication`; it has no Worker command or result route.
 
 The independent Worker Adapter Server is configured with one
 `endpointManagerId` and constructs only
-`DeliverSeedConsumerClient` and `SeedResultCommandClient`. It exposes:
+`WorkerCommandConsumerClient` and `SeedResultCommandClient`. It exposes:
 
 ```text
 POST /workers/{workerId}/commands:poll
 POST /workers/{workerId}/results
 ```
 
-Its command id and message type are Adapter-private wire fields. They are not
-added to DeliverSeed, SeedResult, score, or result context.
+`WorkerCommandEnvelope` is the Kernel-defined transport-neutral outbound
+command DTO. Task Dispatch generates its canonical UUID `commandId`,
+`TASK_ITEM` message type, execute-before deadline, and opaque DeliverSeed.
+Worker results use `SeedResult` directly and copy only `commandId` for trace
+correlation. Result ingress does not carry command message type or deadline.
 
 The Polling Phone Worker is a third independent example process. It knows only
-its WorkerId, the Adapter HTTP URL, the private command/result envelope, and
+its WorkerId, the Adapter HTTP URL, the Worker Delivery envelopes, and
 the `telecom.phone.inspect` tool. It does not register resources or import
 Kernel owners.
 
@@ -298,7 +302,7 @@ scope.
   assembly contract exist.
 - Do not add a second environment-variable or CLI configuration path.
 - Do not let HTTP handlers perform score reads or transitions.
-- Do not expose DeliverSeed consume or SeedResult ingress from the Kernel
+- Do not expose Worker command consume or Worker result ingress from the Kernel
   Command Server.
 - Do not turn internal Pacer configuration into public JSON without a concrete
   operational requirement.

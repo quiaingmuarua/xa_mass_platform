@@ -3,12 +3,15 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
-from uuid import UUID
 
 from kernel_design.executable_spec.assembly import (
     DeliverSeed,
-    DeliverSeedConsumerClient,
+    SeedResult,
+    WorkerCommandConsumerClient,
+    WorkerCommandEnvelope,
+    WorkerMessageType,
     SeedResultCommandClient,
+    encode_deliver_seed,
 )
 
 try:
@@ -44,24 +47,35 @@ class WorkerAdapterServerTest(unittest.TestCase):
 
     def setUp(self) -> None:
         assert create_app is not None
-        self.consumer = Mock(spec=DeliverSeedConsumerClient)
+        self.consumer = Mock(spec=WorkerCommandConsumerClient)
         self.result_commands = Mock(spec=SeedResultCommandClient)
         self.result_commands.append_seed_results.return_value = 1
         self.client = TestClient(
             create_app(
                 endpoint_manager_id="endpoint-manager-1",
-                deliver_seed_consumer=self.consumer,
+                worker_command_consumer=self.consumer,
                 seed_result_commands=self.result_commands,
             )
         )
 
     @staticmethod
-    def seed(*, claim_until_millis: int = 105_000) -> DeliverSeed:
-        return DeliverSeed(
-            worker_id="worker-1",
-            opaque_delivery_item='{"eventCode":"event-1","payload":{"value":1}}',
-            opaque_result_context="opaque-context",
-            task_item_claim_until_millis=claim_until_millis,
+    def command(
+        *,
+        execute_before_millis: int = 105_000,
+    ) -> WorkerCommandEnvelope:
+        return WorkerCommandEnvelope(
+            command_id="a5e9e10d-f78b-469e-93ab-864b49c189c1",
+            message_type=WorkerMessageType.TASK_ITEM,
+            execute_before_millis=execute_before_millis,
+            opaque_item=encode_deliver_seed(
+                DeliverSeed(
+                    worker_id="worker-1",
+                    opaque_delivery_item=(
+                        '{"eventCode":"event-1","payload":{"value":1}}'
+                    ),
+                    opaque_result_context="opaque-context",
+                )
+            ),
         )
 
     def test_health_does_not_require_kernel_lifecycle(self) -> None:
@@ -75,24 +89,25 @@ class WorkerAdapterServerTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "non-empty"):
             create_app(
                 endpoint_manager_id="",
-                deliver_seed_consumer=self.consumer,
+                worker_command_consumer=self.consumer,
                 seed_result_commands=self.result_commands,
             )
 
     def test_poll_returns_204_when_worker_mailbox_is_empty(self) -> None:
-        self.consumer.consume_deliver_seed.return_value = None
+        self.consumer.consume_worker_command.return_value = None
 
         response = self.client.post("/workers/worker-1/commands:poll")
 
         self.assertEqual(204, response.status_code)
-        self.consumer.consume_deliver_seed.assert_called_once_with(
+        self.consumer.consume_worker_command.assert_called_once_with(
             endpoint_manager_id="endpoint-manager-1",
             worker_id="worker-1",
         )
         self.result_commands.append_seed_results.assert_not_called()
 
-    def test_poll_returns_private_command_envelope(self) -> None:
-        self.consumer.consume_deliver_seed.return_value = self.seed()
+    def test_poll_forwards_kernel_command_envelope_unchanged(self) -> None:
+        command = self.command()
+        self.consumer.consume_worker_command.return_value = command
 
         with patch(
             "kernel_design.examples.worker_adapter_server._current_time_millis",
@@ -101,23 +116,19 @@ class WorkerAdapterServerTest(unittest.TestCase):
             response = self.client.post("/workers/worker-1/commands:poll")
 
         self.assertEqual(200, response.status_code)
-        payload = response.json()
-        UUID(payload.pop("commandId"))
         self.assertEqual(
             {
-                "messageType": "TASK_SEED",
-                "opaqueDeliveryItem": (
-                    '{"eventCode":"event-1","payload":{"value":1}}'
-                ),
-                "opaqueResultContext": "opaque-context",
-                "taskItemClaimUntilMillis": 105_000,
+                "commandId": command.command_id,
+                "executeBeforeMillis": 105_000,
+                "messageType": "TASK_ITEM",
+                "opaqueItem": command.opaque_item,
             },
-            payload,
+            response.json(),
         )
 
-    def test_expired_seed_is_dropped_without_result_evidence(self) -> None:
-        self.consumer.consume_deliver_seed.return_value = self.seed(
-            claim_until_millis=self.NOW_MILLIS
+    def test_expired_command_is_dropped_without_result_evidence(self) -> None:
+        self.consumer.consume_worker_command.return_value = self.command(
+            execute_before_millis=self.NOW_MILLIS
         )
 
         with patch(
@@ -129,63 +140,61 @@ class WorkerAdapterServerTest(unittest.TestCase):
         self.assertEqual(204, response.status_code)
         self.result_commands.append_seed_results.assert_not_called()
 
-    def test_worker_success_and_failure_are_forwarded_as_seed_results(self) -> None:
-        requests = (
-            {
-                "commandId": "a5e9e10d-f78b-469e-93ab-864b49c189c1",
-                "messageType": "TASK_SEED_RESULT",
-                "opaqueResultContext": "success-context",
-                "outcomeCode": "200",
-                "opaqueResultPayload": "null",
-            },
-            {
-                "commandId": "9f0d983c-8010-4d59-a6d2-e8fedb8d0059",
-                "messageType": "TASK_SEED_RESULT",
-                "opaqueResultContext": "failure-context",
-                "outcomeCode": "1500",
-            },
+    def test_worker_seed_results_are_forwarded_without_command_wrapping(
+        self,
+    ) -> None:
+        results = (
+            SeedResult(
+                "a5e9e10d-f78b-469e-93ab-864b49c189c1",
+                "success-context",
+                "200",
+                "null",
+            ),
+            SeedResult(
+                "9f0d983c-8010-4d59-a6d2-e8fedb8d0059",
+                "failure-context",
+                "1500",
+            ),
         )
 
-        for request in requests:
-            with self.subTest(outcome=request["outcomeCode"]):
+        for result in results:
+            with self.subTest(command_id=result.command_id):
                 self.result_commands.reset_mock()
                 self.result_commands.append_seed_results.return_value = 1
 
                 response = self.client.post(
                     "/workers/worker-1/results",
-                    json=request,
+                    json={
+                        "commandId": result.command_id,
+                        "opaqueResultContext": result.opaque_result_context,
+                        "outcomeCode": result.outcome_code,
+                        "opaqueResultPayload": result.opaque_result_payload,
+                    },
                 )
 
                 self.assertEqual(202, response.status_code)
                 self.assertEqual({"accepted": True}, response.json())
-                result = self.result_commands.append_seed_results.call_args.kwargs[
+                submitted = self.result_commands.append_seed_results.call_args.kwargs[
                     "results"
                 ][0]
-                self.assertEqual(
-                    request["opaqueResultContext"],
-                    result.opaque_result_context,
-                )
-                self.assertEqual(request["outcomeCode"], result.outcome_code)
-                self.assertEqual(
-                    request.get("opaqueResultPayload"),
-                    result.opaque_result_payload,
-                )
+                self.assertEqual(result, submitted)
 
-    def test_worker_result_contract_rejects_adapter_and_invalid_envelopes(
+    def test_worker_result_contract_rejects_invalid_seed_results(
         self,
     ) -> None:
         base_request = {
             "commandId": "a5e9e10d-f78b-469e-93ab-864b49c189c1",
-            "messageType": "TASK_SEED_RESULT",
             "opaqueResultContext": "context",
             "outcomeCode": "200",
             "opaqueResultPayload": "null",
         }
         invalid_requests = (
-            {**base_request, "outcomeCode": "3001", "opaqueResultPayload": None},
-            {**base_request, "messageType": "TASK_SEED"},
-            {**base_request, "opaqueResultPayload": None},
+            {**base_request, "outcomeCode": "3001"},
+            {**base_request, "outcomeCode": "500"},
+            {**base_request, "opaqueResultContext": ""},
             {**base_request, "commandId": "not-a-uuid"},
+            {**base_request, "opaqueResultPayload": None},
+            {**base_request, "messageType": "TASK_ITEM"},
         )
 
         for request in invalid_requests:
@@ -205,7 +214,6 @@ class WorkerAdapterServerTest(unittest.TestCase):
             "/workers/worker-1/results",
             json={
                 "commandId": "a5e9e10d-f78b-469e-93ab-864b49c189c1",
-                "messageType": "TASK_SEED_RESULT",
                 "opaqueResultContext": "context",
                 "outcomeCode": "200",
                 "opaqueResultPayload": "null",
@@ -219,7 +227,7 @@ class WorkerAdapterServerTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "injected together"):
             create_app(
                 endpoint_manager_id="endpoint-manager-1",
-                deliver_seed_consumer=self.consumer,
+                worker_command_consumer=self.consumer,
             )
         with self.assertRaisesRegex(ValueError, "injected together"):
             create_app(

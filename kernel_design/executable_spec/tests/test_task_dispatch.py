@@ -4,13 +4,16 @@ import inspect
 import json
 import unittest
 from unittest.mock import Mock, call, patch
+from uuid import NAMESPACE_DNS, uuid5
 
 from kernel_design.executable_spec import (
     TaskType,
     CandidateWorkerEntry,
     DeliverSeed,
-    DeliverSeedAppendStatus,
-    DeliverSeedRuntime,
+    WorkerCommandAppendStatus,
+    WorkerCommandEnvelope,
+    WorkerCommandRuntime,
+    WorkerMessageType,
     TaskDispatchConfig,
     TaskDispatchPacer,
     TaskDescriptor,
@@ -26,6 +29,8 @@ from kernel_design.executable_spec import (
     TaskScoreState,
     TaskScoreTransitionResult,
     TaskScoreTransitionStatus,
+    decode_deliver_seed,
+    encode_deliver_seed,
 )
 from kernel_design.executable_spec.kernel.assignment_dispatch_runtime import (
     CandidateWarmupSchedule,
@@ -44,11 +49,11 @@ class TaskDispatchPacerTest(unittest.TestCase):
     def setUp(self) -> None:
         self.task_score = Mock(spec=TaskScoreBandCore)
         self.task_catalog = Mock(spec=TaskResourceCatalog)
-        self.deliver_seed_runtime = Mock(spec=DeliverSeedRuntime)
-        self.deliver_seed_runtime.append_deliver_seeds.side_effect = (
-            lambda *, endpoint_manager_id, deliver_seeds_by_worker_id: {
-                worker_id: DeliverSeedAppendStatus.APPENDED
-                for worker_id in deliver_seeds_by_worker_id
+        self.worker_command_runtime = Mock(spec=WorkerCommandRuntime)
+        self.worker_command_runtime.append_worker_commands.side_effect = (
+            lambda *, endpoint_manager_id, worker_commands_by_worker_id: {
+                worker_id: WorkerCommandAppendStatus.APPENDED
+                for worker_id in worker_commands_by_worker_id
             }
         )
         self.item_score = Mock(spec=TaskItemScoreBandCore)
@@ -64,7 +69,7 @@ class TaskDispatchPacerTest(unittest.TestCase):
         self.pacer = TaskDispatchPacer(
             self.task_score,
             self.task_catalog,
-            self.deliver_seed_runtime,
+            self.worker_command_runtime,
             self.item_score,
             self.warmup_schedule,
             self.task_item_dispatcher,
@@ -82,7 +87,7 @@ class TaskDispatchPacerTest(unittest.TestCase):
             {
                 "task_score",
                 "task_catalog",
-                "deliver_seed_runtime",
+                "worker_command_runtime",
                 "item_score",
                 "candidate_warmup_schedule",
                 "task_item_dispatcher",
@@ -133,12 +138,12 @@ class TaskDispatchPacerTest(unittest.TestCase):
                 ),
             }
         )
-        self.deliver_seed_runtime.append_deliver_seeds.side_effect = (
-            lambda *, endpoint_manager_id, deliver_seeds_by_worker_id: (
+        self.worker_command_runtime.append_worker_commands.side_effect = (
+            lambda *, endpoint_manager_id, worker_commands_by_worker_id: (
                 events.append("publish")
                 or {
-                    worker_id: DeliverSeedAppendStatus.APPENDED
-                    for worker_id in deliver_seeds_by_worker_id
+                    worker_id: WorkerCommandAppendStatus.APPENDED
+                    for worker_id in worker_commands_by_worker_id
                 }
             )
         )
@@ -180,10 +185,10 @@ class TaskDispatchPacerTest(unittest.TestCase):
             target_time_millis=self.CLAIM_UNTIL_MILLIS,
             remaining_budget_delta=-1,
         )
-        self.deliver_seed_runtime.append_deliver_seeds.assert_called_once()
+        self.worker_command_runtime.append_worker_commands.assert_called_once()
         self.assertEqual(
             "endpoint-manager-1",
-            self.deliver_seed_runtime.append_deliver_seeds.call_args.kwargs[
+            self.worker_command_runtime.append_worker_commands.call_args.kwargs[
                 "endpoint_manager_id"
             ],
         )
@@ -196,13 +201,17 @@ class TaskDispatchPacerTest(unittest.TestCase):
             expected_band=TaskScoreBand.RUNNING_VISIBLE,
             target_time_millis=self.NOW_MILLIS,
         )
-        first_seed = self.deliver_seed_runtime.append_deliver_seeds.call_args.kwargs[
-            "deliver_seeds_by_worker_id"
+        first_command = self.worker_command_runtime.append_worker_commands.call_args.kwargs[
+            "worker_commands_by_worker_id"
         ]["worker-1"]
-        self.assertEqual("worker-1", first_seed.worker_id)
+        self.assertEqual(self.CLAIM_UNTIL_MILLIS, first_command.execute_before_millis)
+        seed = decode_deliver_seed(first_command.opaque_item)
+        self.assertIsNotNone(seed)
+        assert seed is not None
+        self.assertEqual("worker-1", seed.worker_id)
         self.assertEqual(
             {"eventCode": "event-1", "payload": {"value": "message-1"}},
-            json.loads(first_seed.opaque_delivery_item),
+            json.loads(seed.opaque_delivery_item),
         )
 
     def test_partial_candidate_result_claims_only_matching_item_count(self) -> None:
@@ -293,23 +302,27 @@ class TaskDispatchPacerTest(unittest.TestCase):
             appended = self.pacer.dispatch_tasks(config=self.config)
 
         self.assertEqual(2, appended)
-        self.deliver_seed_runtime.append_deliver_seeds.assert_called_once()
-        seeds = self.deliver_seed_runtime.append_deliver_seeds.call_args.kwargs[
-            "deliver_seeds_by_worker_id"
-        ].values()
+        self.worker_command_runtime.append_worker_commands.assert_called_once()
+        commands = self.worker_command_runtime.append_worker_commands.call_args.kwargs[
+            "worker_commands_by_worker_id"
+        ]
         self.assertEqual(
             ("worker-1", "worker-2"),
-            tuple(seed.worker_id for seed in seeds),
+            tuple(commands),
+        )
+        self.assertEqual(
+            2,
+            len({command.command_id for command in commands.values()}),
         )
 
-    def test_publish_partitions_seeds_by_endpoint_manager(self) -> None:
-        first = DeliverSeed("worker-1", "delivery-1", "context-1", 20_000)
-        second = DeliverSeed("worker-2", "delivery-2", "context-2", 20_000)
+    def test_publish_partitions_commands_by_endpoint_manager(self) -> None:
+        first = self._command("worker-1")
+        second = self._command("worker-2")
 
-        published = self.pacer._publish_deliver_seeds(
-            deliver_seeds_by_endpoint_manager={
-                "endpoint-manager-1": (first,),
-                "endpoint-manager-2": (second,),
+        published = self.pacer._publish_worker_commands(
+            worker_commands_by_endpoint_manager={
+                "endpoint-manager-1": {"worker-1": first},
+                "endpoint-manager-2": {"worker-2": second},
             }
         )
 
@@ -318,25 +331,25 @@ class TaskDispatchPacerTest(unittest.TestCase):
             [
                 call(
                     endpoint_manager_id="endpoint-manager-1",
-                    deliver_seeds_by_worker_id={"worker-1": first},
+                    worker_commands_by_worker_id={"worker-1": first},
                 ),
                 call(
                     endpoint_manager_id="endpoint-manager-2",
-                    deliver_seeds_by_worker_id={"worker-2": second},
+                    worker_commands_by_worker_id={"worker-2": second},
                 ),
             ],
-            self.deliver_seed_runtime.append_deliver_seeds.call_args_list,
+            self.worker_command_runtime.append_worker_commands.call_args_list,
         )
 
     def test_publish_rejects_duplicate_worker_across_endpoint_managers(self) -> None:
-        first = DeliverSeed("worker-1", "delivery-1", "context-1", 20_000)
-        second = DeliverSeed("worker-1", "delivery-2", "context-2", 20_000)
+        first = self._command("worker-1")
+        second = self._command("worker-1")
 
-        with self.assertRaisesRegex(RuntimeError, "multiple DeliverSeeds"):
-            self.pacer._publish_deliver_seeds(
-                deliver_seeds_by_endpoint_manager={
-                    "endpoint-manager-1": (first,),
-                    "endpoint-manager-2": (second,),
+        with self.assertRaisesRegex(RuntimeError, "multiple commands"):
+            self.pacer._publish_worker_commands(
+                worker_commands_by_endpoint_manager={
+                    "endpoint-manager-1": {"worker-1": first},
+                    "endpoint-manager-2": {"worker-1": second},
                 }
             )
 
@@ -360,7 +373,7 @@ class TaskDispatchPacerTest(unittest.TestCase):
 
         self.assertEqual(0, appended)
         self.item_score.rewrite_observed_item_scores.assert_not_called()
-        self.deliver_seed_runtime.append_deliver_seeds.assert_not_called()
+        self.worker_command_runtime.append_worker_commands.assert_not_called()
         self.warmup_schedule.schedule_candidate_warmups.assert_called_once_with(
             task_ids=("task-1",),
             due_time_millis=self.NOW_MILLIS,
@@ -425,11 +438,12 @@ class TaskDispatchPacerTest(unittest.TestCase):
             json.loads(seed.opaque_delivery_item)[
                 "payload"
             ]["value"]: seed.worker_id
-            for seed in (
-                self.deliver_seed_runtime.append_deliver_seeds.call_args.kwargs[
-                    "deliver_seeds_by_worker_id"
+            for command in (
+                self.worker_command_runtime.append_worker_commands.call_args.kwargs[
+                    "worker_commands_by_worker_id"
                 ].values()
             )
+            if (seed := decode_deliver_seed(command.opaque_item)) is not None
         }
         self.assertEqual(
             {
@@ -498,7 +512,7 @@ class TaskDispatchPacerTest(unittest.TestCase):
         )
         self.candidate_acquirer.acquire_worker_candidates.assert_not_called()
         self.item_score.rewrite_observed_item_scores.assert_not_called()
-        self.deliver_seed_runtime.append_deliver_seeds.assert_not_called()
+        self.worker_command_runtime.append_worker_commands.assert_not_called()
 
     def test_missing_descriptor_skips_item_observation(self) -> None:
         self.task_score.acquire_dispatch_work_tasks.return_value = ("task-1",)
@@ -584,7 +598,7 @@ class TaskDispatchPacerTest(unittest.TestCase):
                 301,
             )
         }
-        self.deliver_seed_runtime.append_deliver_seeds.side_effect = RuntimeError(
+        self.worker_command_runtime.append_worker_commands.side_effect = RuntimeError(
             "queue unavailable"
         )
 
@@ -617,9 +631,9 @@ class TaskDispatchPacerTest(unittest.TestCase):
                 301,
             )
         }
-        self.deliver_seed_runtime.append_deliver_seeds.side_effect = None
-        self.deliver_seed_runtime.append_deliver_seeds.return_value = {
-            "worker-1": DeliverSeedAppendStatus.REPLACED
+        self.worker_command_runtime.append_worker_commands.side_effect = None
+        self.worker_command_runtime.append_worker_commands.return_value = {
+            "worker-1": WorkerCommandAppendStatus.REPLACED
         }
 
         with patch.object(
@@ -900,6 +914,17 @@ class TaskDispatchPacerTest(unittest.TestCase):
             worker_group_id="group-1",
             endpoint_manager_id=endpoint_manager_id,
             worker_lease_score=score,
+        )
+
+    @staticmethod
+    def _command(worker_id: str) -> WorkerCommandEnvelope:
+        return WorkerCommandEnvelope(
+            command_id=str(uuid5(NAMESPACE_DNS, worker_id)),
+            message_type=WorkerMessageType.TASK_ITEM,
+            execute_before_millis=20_000,
+            opaque_item=encode_deliver_seed(
+                DeliverSeed(worker_id, "delivery", "context")
+            ),
         )
 
 

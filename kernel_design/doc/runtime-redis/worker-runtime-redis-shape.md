@@ -136,9 +136,9 @@ Value shape:
 It is not the current value of those attributes.
 
 `endpointManagerId` is required declaration metadata in the current shape. It
-is copied through matched CandidateWorker evidence to select a DeliverSeed HASH.
-It is not read by the allocation DSL and is not live endpoint, session, or
-reachability evidence.
+is copied through matched CandidateWorker evidence to select a WorkerCommand
+HASH. It is not read by the allocation DSL and is not live endpoint, session,
+or reachability evidence.
 
 `workerGroupId` is a required logical locator on worker descriptor read and
 update operations. The current Redis executable spec uses it directly in the

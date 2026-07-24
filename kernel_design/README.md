@@ -50,12 +50,13 @@ Task admission and score visibility
   -> TASK_DRIVEN or ITEM_DRIVEN scheduling profile
   -> Task Dispatch
      -> ACTIVE Item: Worker candidate acquisition -> TaskItem claim
-                     -> DeliverSeed mailbox
+                     -> DeliverSeed -> WorkerCommand mailbox
      -> no ACTIVE Item: increment the shared empty-recheck count
                         close only when emptyCloseAtMillis is due
   -> Worker Delivery Dispatch
-     -> Worker Adapter command/result protocol
-     -> SeedResult
+     -> outbound Worker command protocol
+     -> semantic SeedResult ingress
+     -> outcome-class SeedResult queues
   -> Result Routing
      -> TaskItem and Worker truth convergence
   -> kernel applies an explicit close requested by an external owner
@@ -535,18 +536,19 @@ no hidden compatibility path or second mainline remains
     RUNNING/non-pause/suffix-zero validation.
 - [Task Dispatch Pacer](doc/scheduling/task-dispatch-pacer.md)
   - candidate consumption, Item score claim, dispatch-time Worker lease
-    validation/renewal, and Adapter-partitioned DeliverSeed mailbox append.
+    validation/renewal, DeliverSeed construction, and Adapter-partitioned
+    WorkerCommand mailbox append.
 - [Kernel Application Assembly](doc/kernel-application-assembly.md)
   - independent resource upsert and scheduling-process boundaries,
     private Redis composition, background scheduling lifecycles, built-in CLI,
     and the Kernel Command / Worker Adapter HTTP examples.
 - [Worker Delivery Dispatch](doc/scheduling/worker-delivery-dispatch.md)
   - Worker Delivery Dispatch from one configured Adapter bucket
-    through private Worker wire conversion to opaque result handoff, without
-    Adapter-owned score mutation.
+    through transport-neutral Worker commands to semantic SeedResult handoff,
+    without Adapter-owned score mutation.
 - [Worker Adapter Server](examples/worker-adapter-server.md)
   - independent endpoint-manager-bound delivery process, WorkerId polling,
-    Adapter-private command/result envelopes, and opaque SeedResult submission.
+    stable command forwarding, and direct SeedResult submission.
 - [Polling Phone Worker](examples/polling_phone_worker.py)
   - independent Worker process that executes `telecom.phone.inspect` through
     the Adapter protocol using Google libphonenumber.

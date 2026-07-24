@@ -5,6 +5,11 @@ import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from kernel_design.executable_spec.assembly import (
+    DeliverSeed,
+    encode_deliver_seed,
+)
+
 try:
     from kernel_design.examples.polling_phone_worker import (
         PHONE_INSPECT_EVENT_CODE,
@@ -116,8 +121,14 @@ class PollingPhoneWorkerTest(unittest.TestCase):
         self.assertTrue(self.worker.poll_once())
 
         result_request = self.client.post.call_args_list[1].kwargs["json"]
-        self.assertEqual("command-1", result_request["commandId"])
-        self.assertEqual("opaque-context", result_request["opaqueResultContext"])
+        self.assertEqual(
+            "a5e9e10d-f78b-469e-93ab-864b49c189c1",
+            result_request["commandId"],
+        )
+        self.assertEqual(
+            "opaque-context",
+            result_request["opaqueResultContext"],
+        )
         self.assertEqual("200", result_request["outcomeCode"])
         self.assertEqual(
             {
@@ -163,7 +174,7 @@ class PollingPhoneWorkerTest(unittest.TestCase):
                     expected_outcome,
                     result_request["outcomeCode"],
                 )
-                self.assertNotIn("opaqueResultPayload", result_request)
+                self.assertIsNone(result_request["opaqueResultPayload"])
 
     def test_unexpected_tool_failure_returns_1500(self) -> None:
         self.client.post.side_effect = (
@@ -187,7 +198,7 @@ class PollingPhoneWorkerTest(unittest.TestCase):
 
         result_request = self.client.post.call_args_list[1].kwargs["json"]
         self.assertEqual("1500", result_request["outcomeCode"])
-        self.assertNotIn("opaqueResultPayload", result_request)
+        self.assertIsNone(result_request["opaqueResultPayload"])
 
     def test_expired_command_is_not_executed_or_reported(self) -> None:
         self.client.post.return_value = self._command_response(
@@ -195,7 +206,7 @@ class PollingPhoneWorkerTest(unittest.TestCase):
                 PHONE_INSPECT_EVENT_CODE,
                 {"phoneNumber": "+14155552671"},
             ),
-            claim_until_millis=self.NOW_MILLIS,
+            execute_before_millis=self.NOW_MILLIS,
         )
 
         self.assertFalse(self.worker.poll_once())
@@ -237,15 +248,20 @@ class PollingPhoneWorkerTest(unittest.TestCase):
     def _command_response(
         delivery_item: str,
         *,
-        claim_until_millis: int = 105_000,
+        execute_before_millis: int = 105_000,
     ) -> Mock:
         response = Mock(status_code=200)
         response.json.return_value = {
-            "commandId": "command-1",
-            "messageType": "TASK_SEED",
-            "opaqueDeliveryItem": delivery_item,
-            "opaqueResultContext": "opaque-context",
-            "taskItemClaimUntilMillis": claim_until_millis,
+            "commandId": "a5e9e10d-f78b-469e-93ab-864b49c189c1",
+            "executeBeforeMillis": execute_before_millis,
+            "messageType": "TASK_ITEM",
+            "opaqueItem": encode_deliver_seed(
+                DeliverSeed(
+                    "worker-1",
+                    delivery_item,
+                    "opaque-context",
+                )
+            ),
         }
         return response
 
@@ -259,8 +275,12 @@ class PollingPhoneWorkerBoundaryGuardTest(unittest.TestCase):
         )
         source = source_path.read_text(encoding="utf-8")
 
+        self.assertIn(
+            "from kernel_design.executable_spec.assembly import",
+            source,
+        )
         for forbidden in (
-            "kernel_design.executable_spec",
+            "executable_spec.redis_runtime",
             "redis_runtime",
             "KernelApplication",
             "WorkerScoreCore",

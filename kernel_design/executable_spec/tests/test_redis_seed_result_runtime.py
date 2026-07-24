@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import unittest
+from uuid import NAMESPACE_DNS, uuid5
 
 from kernel_design.executable_spec import (
     RedisSeedResultRuntime,
     SeedResult,
     SeedResultOutcomeClass,
     classify_seed_result_outcome_code,
+    encode_seed_result,
 )
 
 
@@ -66,10 +68,23 @@ class RedisSeedResultRuntimeTest(unittest.TestCase):
     def key(self, outcome_class: SeedResultOutcomeClass) -> str:
         return self.runtime._queue_key(outcome_class)
 
+    @staticmethod
+    def result(
+        context: str,
+        outcome_code: str,
+        payload: str | None = None,
+    ) -> SeedResult:
+        return SeedResult(
+            str(uuid5(NAMESPACE_DNS, context)),
+            context,
+            outcome_code,
+            payload,
+        )
+
     def test_mixed_append_partitions_three_fifo_queues(self) -> None:
-        success = SeedResult("context-success", "200", '{"value":1}')
-        worker_failure = SeedResult("context-worker", "1000")
-        adapter_rejection = SeedResult("context-adapter", "3001")
+        success = self.result("context-success", "200", '{"value":1}')
+        worker_failure = self.result("context-worker", "1000")
+        adapter_rejection = self.result("context-adapter", "3001")
 
         self.assertEqual(
             3,
@@ -102,8 +117,8 @@ class RedisSeedResultRuntimeTest(unittest.TestCase):
         self.assertEqual([False, True, True, True], self.redis.pipeline_transaction_flags)
 
     def test_each_class_is_independently_bounded_and_fifo(self) -> None:
-        first = SeedResult("context-1", "1000")
-        second = SeedResult("context-2", "1001")
+        first = self.result("context-1", "1000")
+        second = self.result("context-2", "1001")
         self.runtime.append_seed_results(results=(first, second))
 
         self.assertEqual(
@@ -122,14 +137,14 @@ class RedisSeedResultRuntimeTest(unittest.TestCase):
         )
 
     def test_corrupt_envelopes_are_consumed_and_skipped(self) -> None:
-        valid = SeedResult("context-1", "200", "null")
+        valid = self.result("context-1", "200", "null")
         key = self.key(SeedResultOutcomeClass.SUCCESS)
         self.redis.lists[key] = [
             "{bad-json",
             '{"outcomeCode":"200"}',
             '{"opaqueResultContext":"context","outcomeCode":"500",'
             '"opaqueResultPayload":null}',
-            RedisSeedResultRuntime._encode_result(valid),
+            encode_seed_result(valid),
         ]
 
         self.assertEqual(
@@ -155,12 +170,12 @@ class RedisSeedResultRuntimeTest(unittest.TestCase):
             classify_seed_result_outcome_code("3999"),
         )
         with self.assertRaises(ValueError):
-            SeedResult("context", "200")
+            self.result("context", "200")
         for invalid in ("", "500", "2000", "300", "30000", "３００１"):
             with self.subTest(invalid=invalid):
                 self.assertIsNone(classify_seed_result_outcome_code(invalid))
                 with self.assertRaises(ValueError):
-                    SeedResult("context", invalid)
+                    self.result("context", invalid)
 
     def test_empty_append_and_invalid_consume_arguments(self) -> None:
         self.assertEqual(0, self.runtime.append_seed_results(results=()))

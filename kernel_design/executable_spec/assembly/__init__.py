@@ -1,7 +1,6 @@
 from ..kernel import (
     TaskType,
     DeliverSeed,
-    DeliverSeedConsumePage,
     EndpointManagerId,
     MessageId,
     SeedResult,
@@ -18,7 +17,14 @@ from ..kernel import (
     WorkerGroupDescriptor,
     WorkerRuntimeResult,
     WorkerRuntimeStatus,
+    WorkerCommandConsumePage,
+    WorkerCommandEnvelope,
+    WorkerMessageType,
     classify_seed_result_outcome_code,
+    decode_deliver_seed,
+    decode_seed_result,
+    encode_deliver_seed,
+    encode_seed_result,
 )
 from .application import (
     KernelApplication,
@@ -30,22 +36,24 @@ from .application import (
 )
 from .resources_command_client import ResourcesCommandClient
 from .transport_clients import (
-    DeliverSeedConsumerClient,
     SeedResultCommandClient,
+    WorkerCommandConsumerClient,
 )
 __all__ = [
     "TaskType",
     "DeliverSeed",
-    "DeliverSeedConsumePage",
-    "DeliverSeedConsumerClient",
     "EndpointManagerId",
     "KernelApplication",
     "KernelApplicationConfig",
     "MessageId",
     "ResourcesCommandClient",
     "SeedResult",
-    "SeedResultOutcomeClass",
     "SeedResultCommandClient",
+    "SeedResultOutcomeClass",
+    "WorkerCommandConsumePage",
+    "WorkerCommandConsumerClient",
+    "WorkerCommandEnvelope",
+    "WorkerMessageType",
     "TaskApprovalResult",
     "TaskApprovalStatus",
     "TaskCloseResult",
@@ -63,4 +71,8 @@ __all__ = [
     "WorkerRuntimeResult",
     "WorkerRuntimeStatus",
     "classify_seed_result_outcome_code",
+    "decode_deliver_seed",
+    "decode_seed_result",
+    "encode_deliver_seed",
+    "encode_seed_result",
 ]
