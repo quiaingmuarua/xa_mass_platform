@@ -10,6 +10,10 @@ The repository contains two active areas:
 - [`kernel_jvm/`](kernel_jvm/): empty Kotlin/JVM production implementation
   scaffold. It does not yet implement kernel behavior.
 
+Gradle is the JVM build boundary so a future Worker SDK can be added as an
+Android-compatible library module without making the kernel runtime an Android
+module. The Worker SDK does not exist in this scaffold yet.
+
 The superseded Java platform, frontend, SDK, server, transport, infrastructure,
 and integration code are preserved by the annotated Git tag
 `legacy-java-platform-final-2026-07-24`. They are historical evidence, not
@@ -34,7 +38,7 @@ KERNEL_DESIGN_REDIS_URL=redis://localhost:6379/15 \
 Kotlin/JVM scaffold:
 
 ```text
-./mvnw verify
+./gradlew build
 ```
 
 See [`AGENTS.md`](AGENTS.md) before changing mechanism behavior and

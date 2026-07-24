@@ -38,20 +38,26 @@ tag.
 
 ## JVM Scaffold
 
-`kernel_jvm` is intentionally one Maven module. Packages may separate owner
-responsibilities, but a new Maven module requires a real publication,
+`kernel_jvm` is intentionally one Gradle module. Packages may separate owner
+responsibilities, but a new Gradle module requires a real publication,
 dependency, or lifecycle boundary.
 
 The scaffold currently contains no public API, DTO, runtime implementation,
 Redis code, Pacer, or server. Empty package directories are not implementation
 progress.
 
+Gradle is intentional because a future Worker SDK must be consumable as an
+Android library module. Keep that SDK separate from `kernel_jvm`; it may depend
+only on a narrow Android-compatible Worker Delivery contract module, not on
+`kernel_jvm`, Redis, scheduling, assembly, or server implementations. Do not
+create that contract module before its public DTO and codec surface is defined.
+
 ## Verification
 
 ```text
 python -m unittest discover -s kernel_design/executable_spec/tests
 python -m compileall -q kernel_design/executable_spec
-./mvnw verify
+./gradlew build
 git diff --check
 ```
 

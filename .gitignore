@@ -1,5 +1,7 @@
 target/
 build/
+.gradle/
+.kotlin/
 
 .idea/
 .vscode/

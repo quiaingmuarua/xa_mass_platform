@@ -5,19 +5,21 @@ on:
     branches: ["main"]
     paths:
       - "kernel_jvm/**"
-      - "pom.xml"
-      - "mvnw"
-      - "mvnw.cmd"
-      - ".mvn/**"
+      - "build.gradle"
+      - "settings.gradle"
+      - "gradle/**"
+      - "gradlew"
+      - "gradlew.bat"
       - ".github/workflows/kernel-jvm.yml"
   pull_request:
     branches: ["main"]
     paths:
       - "kernel_jvm/**"
-      - "pom.xml"
-      - "mvnw"
-      - "mvnw.cmd"
-      - ".mvn/**"
+      - "build.gradle"
+      - "settings.gradle"
+      - "gradle/**"
+      - "gradlew"
+      - "gradlew.bat"
       - ".github/workflows/kernel-jvm.yml"
   workflow_dispatch:
 
@@ -30,6 +32,6 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
-          cache: maven
+          cache: gradle
       - name: Verify JVM scaffold
-        run: ./mvnw -B verify
+        run: bash ./gradlew --no-daemon build
