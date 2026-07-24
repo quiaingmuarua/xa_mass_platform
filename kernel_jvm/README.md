@@ -15,11 +15,13 @@ Package responsibilities:
 | `scheduling` | Bounded policy and Pacer orchestration |
 | `redis` | Redis-backed owner implementations |
 | `assembly` | Process composition, lifecycle, and external clients |
-| `server` | Future HTTP process boundary |
 
 These are packages inside one Gradle module, not promises of future Gradle
 modules. Add code only through a parity slice that identifies the corresponding
 Python owner contract and tests.
+
+The external Runtime API belongs to [`server_jvm/`](../server_jvm/) and does
+not depend on this module while the Python kernel remains the runtime owner.
 
 `kernel_jvm` targets JDK 21 and is not an Android module. A future
 Android-compatible Worker SDK belongs in a separate Gradle module with its own

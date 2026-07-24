@@ -15,3 +15,4 @@ dependencyResolutionManagement {
 rootProject.name = 'xa-mass-platform'
 
 include ':kernel_jvm'
+include ':server_jvm'

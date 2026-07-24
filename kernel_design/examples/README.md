@@ -1,6 +1,6 @@
 # Kernel HTTP Examples
 
-Status: external protocol example for the isolated executable spec.
+Status: internal kernel HTTP boundary and Worker Delivery protocol examples.
 
 Install the example-only dependencies:
 
@@ -40,7 +40,8 @@ also requires the immutable `--endpoint-manager-id` mailbox coordinate.
 The Kernel host composes `KernelApplication` and `ResourcesCommandClient`.
 Its lifespan starts only the scheduling application. It exposes resource
 upsert and Task commands, not Worker command consumption or Worker result
-ingress.
+ingress. It is the current internal HTTP target of the
+[JVM Runtime API Server](../../server_jvm/README.md), not the final public API.
 
 The [Worker Adapter Server](worker-adapter-server.md) composes only
 `WorkerCommandConsumerClient` and `SeedResultCommandClient`. It has no
@@ -151,7 +152,9 @@ available for both Task types and does not expose a terminal score.
 Dynamic attribute mutation is intentionally absent until the assembly installs
 a real dynamic-attribute handler owner.
 
-These are not production services. They intentionally omit authentication,
-Worker identity proof, Task query/list, result projection, pending/ack,
-production push transport, Worker self-registration, and API compatibility
-policy.
+The Python Kernel Command Server is not a historical or control-plane CRUD
+service. Its commands mutate current runtime truth. Public API compatibility,
+authentication, and process-level error mapping belong to `server_jvm`.
+
+The Worker examples still intentionally omit Worker identity proof,
+pending/ack, production push transport, and Worker self-registration.

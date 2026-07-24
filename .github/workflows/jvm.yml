@@ -1,0 +1,91 @@
+name: JVM
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - "kernel_jvm/**"
+      - "server_jvm/**"
+      - "kernel_design/examples/kernel_command_server.py"
+      - "kernel_design/executable_spec/assembly/**"
+      - "kernel_design/executable_spec/kernel/**"
+      - "build.gradle"
+      - "settings.gradle"
+      - "gradle/**"
+      - "gradlew"
+      - "gradlew.bat"
+      - ".github/workflows/jvm.yml"
+  pull_request:
+    branches: ["main"]
+    paths:
+      - "kernel_jvm/**"
+      - "server_jvm/**"
+      - "kernel_design/examples/kernel_command_server.py"
+      - "kernel_design/executable_spec/assembly/**"
+      - "kernel_design/executable_spec/kernel/**"
+      - "build.gradle"
+      - "settings.gradle"
+      - "gradle/**"
+      - "gradlew"
+      - "gradlew.bat"
+      - ".github/workflows/jvm.yml"
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - name: Verify JVM modules
+        run: bash ./gradlew --no-daemon build
+
+  runtime-api-integration:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      KERNEL_COMMAND_INTEGRATION_URL: http://127.0.0.1:18080
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: kernel_design/examples/requirements.txt
+      - name: Install Python dependencies
+        run: python -m pip install -r kernel_design/examples/requirements.txt
+      - name: Start Python Kernel Command Server
+        run: |
+          python -m kernel_design.examples.kernel_command_server \
+            --host 127.0.0.1 --port 18080 > kernel-command-server.log 2>&1 &
+          for attempt in $(seq 1 30); do
+            if python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18080/health')" ; then
+              exit 0
+            fi
+            sleep 1
+          done
+          cat kernel-command-server.log
+          exit 1
+      - name: Verify Java to Python runtime boundary
+        run: bash ./gradlew --no-daemon :server_jvm:integrationTest
+      - name: Print Kernel server log on failure
+        if: failure()
+        run: cat kernel-command-server.log
