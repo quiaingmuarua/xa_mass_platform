@@ -36,6 +36,7 @@ from .application import (
 )
 from .resources_command_client import ResourcesCommandClient
 from .transport_clients import (
+    SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
     SeedResultCommandClient,
     WorkerCommandConsumerClient,
 )
@@ -47,6 +48,7 @@ __all__ = [
     "KernelApplicationConfig",
     "MessageId",
     "ResourcesCommandClient",
+    "SYSTEM_POLLING_ENDPOINT_MANAGER_ID",
     "SeedResult",
     "SeedResultCommandClient",
     "SeedResultOutcomeClass",

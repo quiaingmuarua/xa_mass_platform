@@ -13,6 +13,9 @@ from ..redis_runtime import RedisSeedResultRuntime, RedisWorkerCommandRuntime
 from .application import KernelApplicationConfig
 
 
+SYSTEM_POLLING_ENDPOINT_MANAGER_ID: EndpointManagerId = "system-polling"
+
+
 def _redis_client(config: KernelApplicationConfig):
     try:
         import redis

@@ -17,15 +17,17 @@ CLI / FastAPI
      -> private Redis composition root
      -> assignment-dispatch and result-routing background applications
 
-Worker Adapter Server
-  -> WorkerCommandConsumerClient
-  -> SeedResultCommandClient
-     -> Worker command poll and result ingress without KernelApplication lifecycle
+Kernel Runtime Server
+  -> Worker Delivery Gateway
+     -> WorkerCommandConsumerClient
+     -> SeedResultCommandClient
+     -> point Worker access and long-lived Adapter batch access
 ```
 
 All four surfaces expose commands, not runtime objects. Callers cannot obtain
 Task/Worker score cores, candidate runtime, matcher, pacers, Redis keys,
-suffixes, or lane ranks.
+suffixes, or lane ranks. The two Worker Delivery clients have no lifecycle;
+only `KernelApplication` starts background scheduling.
 
 ## Public Commands
 
@@ -52,7 +54,7 @@ append_seed_results(SeedResult...)
 
 WorkerGroup upsert reuses `WorkerGroupDescriptor`. Worker upsert accepts the
 caller-owned `WorkerDeclaration`; the complete `WorkerDescriptor` remains a
-query projection containing platform-owned attributes. The Kernel Command
+query projection containing platform-owned attributes. The Kernel Runtime
 Server owns its HTTP request models because they are protocol-edge translations.
 
 First Worker upsert selects the default lane rank internally and initializes
@@ -232,14 +234,14 @@ same external process boundaries:
 ResourcesCommandClient
   -> KernelApplication
   -> Redis scheduling truth
-  -> Worker Adapter HTTP command
+  -> Worker Delivery Gateway point command
   -> Polling Phone Worker tool execution
-  -> Worker Adapter HTTP result
+  -> Worker Delivery Gateway point result
   -> Result-Routing
   -> TaskItem FINAL_SUCCESS + result HASH + Worker lease release
 ```
 
-The proof uses the Worker Adapter HTTP boundary with real Redis clients and the
+The proof uses the unified Runtime Server HTTP boundary with real Redis clients and the
 same libphonenumber Worker implementation exposed by the runnable example.
 HTTP remains protocol translation rather than scheduling truth. Separate Redis
 proofs cover TASK_DRIVEN default empty close with RUNNING soft-limit release,
@@ -256,18 +258,29 @@ python -m kernel_design.executable_spec.assembly
 python -m kernel_design.executable_spec.assembly --config kernel.json
 ```
 
-The Kernel Command Server constructs `KernelApplication` and
-`ResourcesCommandClient` from one resolved configuration. Lifespan starts and
-stops only `KernelApplication`; it has no Worker command or result route.
-
-The independent Worker Adapter Server is configured with one
-`endpointManagerId` and constructs only
-`WorkerCommandConsumerClient` and `SeedResultCommandClient`. It exposes:
+The Kernel Runtime Server constructs `KernelApplication`,
+`ResourcesCommandClient`, `WorkerCommandConsumerClient`, and
+`SeedResultCommandClient` from one resolved configuration. Lifespan starts and
+stops only `KernelApplication`. The mounted Worker Delivery Gateway exposes:
 
 ```text
-POST /workers/{workerId}/commands:poll
-POST /workers/{workerId}/results
+python -m kernel_design.runtime_server
+python -m kernel_design.runtime_server --config kernel.json
 ```
+
+```text
+POST /worker-delivery/endpoint-managers/{endpointManagerId}/
+     workers/{workerId}/commands:poll
+POST /worker-delivery/endpoint-managers/{endpointManagerId}/
+     workers/{workerId}/results
+POST /worker-delivery/endpoint-managers/{endpointManagerId}/commands:consume
+POST /worker-delivery/endpoint-managers/{endpointManagerId}/results:append
+```
+
+The first two operations are point Worker access. Pure polling Workers bind to
+the fixed logical `system-polling` endpoint manager. They cannot scan the
+mailbox. Cursor consume and batch result append are long-lived Adapter
+operations and reject the built-in polling identity.
 
 `WorkerCommandEnvelope` is the Kernel-defined transport-neutral outbound
 command DTO. Task Dispatch generates its canonical UUID `commandId`,
@@ -275,23 +288,21 @@ command DTO. Task Dispatch generates its canonical UUID `commandId`,
 Worker results use `SeedResult` directly and copy only `commandId` for trace
 correlation. Result ingress does not carry command message type or deadline.
 
-The Polling Phone Worker is a third independent example process. It knows only
-its WorkerId, the Adapter HTTP URL, the Worker Delivery envelopes, and
+The Polling Phone Worker is a separate example process. It knows only
+its WorkerId, endpoint-manager binding, Runtime Server URL, Worker Delivery envelopes, and
 the `telecom.phone.inspect` tool. It does not register resources or import
 Kernel owners.
 
-These are independent caller boundaries, not a claim that production must use
-this exact three-process topology. The current Worker Adapter slice has no
-login, session, or authorization protocol. The configured endpoint manager
-selects the mailbox bucket; the path WorkerId selects one field inside that
-bucket.
-A future Worker-facing API may compose login/session, poll, and result under
-the same Adapter owner, but KernelApplication must not own or expose that
-session.
+Polling is a base request-driven protocol, not an independently deployed
+Adapter. A future WebSocket Adapter uses its own endpoint manager, cursor
+consumes its sparse mailbox, maintains sessions, and actively pushes the same
+WorkerCommandEnvelope. The current Gateway has no login, session, or
+authorization protocol. KernelApplication must not own or expose those facts.
 
-The examples are not production services. Authentication, Task query/list,
-result projection, production transport, and API compatibility remain out of
-scope.
+The Python Runtime Server is the executable-spec protocol host, not a new
+Kernel owner or a production compatibility commitment. The Phone Worker is a
+runnable example. Authentication, Task query/list, result projection,
+production transport, and API compatibility remain out of scope.
 
 ## Guardrails
 
@@ -302,8 +313,9 @@ scope.
   assembly contract exist.
 - Do not add a second environment-variable or CLI configuration path.
 - Do not let HTTP handlers perform score reads or transitions.
-- Do not expose Worker command consume or Worker result ingress from the Kernel
-  Command Server.
+- Do not expose Worker Delivery methods on `KernelApplication`; the Runtime
+  Server composes the independent clients through the Gateway router.
+- Do not expose cursor scanning through the polling Worker endpoint.
 - Do not turn internal Pacer configuration into public JSON without a concrete
   operational requirement.
 - Keep result-routing and assignment-dispatch as separate internal application

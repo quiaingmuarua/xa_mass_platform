@@ -10,7 +10,7 @@ historical records, result projections, or Redis state.
 External Client
 -> server_jvm /api/v1
 -> KernelCommandClient
--> Python Kernel Command Server
+-> Python Kernel Runtime Server
 -> KernelApplication / Redis runtime truth
 ```
 
@@ -36,14 +36,14 @@ GET /actuator/health/readiness
 ```
 
 Liveness describes this JVM process. Readiness also requires the configured
-Python Kernel Command Server to answer `/health`.
+Python Kernel Runtime Server to answer `/health`.
 
 ## Run
 
 Start the Python kernel process first:
 
 ```text
-python -m kernel_design.examples.kernel_command_server
+python -m kernel_design.runtime_server
 ```
 
 Then start the external Runtime API Server:

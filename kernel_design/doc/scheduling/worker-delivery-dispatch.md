@@ -1,14 +1,14 @@
 # Worker Delivery Dispatch
 
 Status: active new-kernel boundary contract; Python protocol, Redis mailbox,
-polling Adapter, and phone-tool Worker implemented; production Adapter policy
-deferred.
+Worker Delivery Gateway, and phone-tool Worker implemented; production Adapter
+policy deferred.
 
 Upstream contract: [Task Dispatch Pacer](task-dispatch-pacer.md).
 Worker lease contract:
 [Worker HOT_ACQUIRE Lease Protocol](worker-hot-acquire-lease-protocol.md).
-Protocol example:
-[Worker Adapter Server](../../examples/worker-adapter-server.md).
+Executable HTTP host:
+[Worker Delivery Gateway](../../runtime_server/worker_delivery_gateway.py).
 
 ## Purpose
 
@@ -20,10 +20,10 @@ Task Dispatch
   -> WorkerCommandEnvelope
   -> endpointManagerId-partitioned WorkerCommand mailbox
 
-Worker Adapter
-  -> consume its mailbox
-  -> forward WorkerCommandEnvelope unchanged
-  -> accept one semantic SeedResult
+Worker Delivery Gateway
+  -> point-consume one target Worker for request-driven polling
+  -> cursor-consume one long-lived Adapter mailbox
+  -> accept Worker point results or Adapter result batches
 
 Worker
   -> decode the command's opaque DeliverSeed
@@ -188,23 +188,86 @@ identity. `endpointManagerId` is not available to the Worker allocation DSL.
 
 ## Adapter And Worker
 
-The Worker Adapter starts with one configured `endpointManagerId`:
+The unified Kernel Runtime Server exposes the Worker Delivery Gateway. Pure
+polling Workers bind to:
 
 ```text
-POST /workers/{workerId}/commands:poll
+endpointManagerId = system-polling
+```
+
+This is a fixed logical route identity, not an independently deployed Adapter,
+session owner, thread, or runtime truth.
+
+Start the executable-spec host with:
+
+```text
+python -m kernel_design.runtime_server
+python -m kernel_design.runtime_server --config kernel.json
+```
+
+The default address is `127.0.0.1:18080`. The same process hosts Runtime
+commands and Worker Delivery access; only `KernelApplication` participates in
+its lifecycle.
+
+Point polling is always Worker-specific:
+
+```text
+POST /worker-delivery/endpoint-managers/{endpointManagerId}/
+     workers/{workerId}/commands:poll
   -> point consume WorkerCommandEnvelope
   -> recheck executeBeforeMillis
   -> return the same commandId, messageType, deadline, and opaqueItem
+  -> return 204 when the field is empty or the command is expired
 
-POST /workers/{workerId}/results
+POST /worker-delivery/endpoint-managers/{endpointManagerId}/
+     workers/{workerId}/results
   -> accept SeedResult fields directly
   -> append through SeedResultCommandClient
   -> allow Worker-owned 200 or 1xxx evidence
 ```
 
-The Adapter does not generate `commandId`, define `messageType`, decode
-`DeliverSeed`, or parse `opaqueResultContext`. A Java WebSocket Adapter and the
-Python polling Adapter can therefore implement the same command and SeedResult
+The polling API accepts no cursor, scan count, Worker list, or fallback source.
+It is request-driven and naturally applies Worker-side backpressure.
+
+A long-lived Adapter uses separate role-specific endpoints:
+
+```text
+POST /worker-delivery/endpoint-managers/{endpointManagerId}/commands:consume
+  -> cursor-consume a sparse mailbox page
+
+POST /worker-delivery/endpoint-managers/{endpointManagerId}/results:append
+  -> append one non-empty 200/1xxx/3xxx SeedResult batch
+```
+
+The built-in `system-polling` identity is rejected from both Adapter batch
+operations. Cursor scanning is not a polling Worker capability.
+
+The cursor request and response are:
+
+```json
+{"cursor": null, "scanCount": 100}
+```
+
+```json
+{
+  "workerCommandsByWorkerId": {
+    "worker-1": {
+      "commandId": "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1",
+      "executeBeforeMillis": 1234567890,
+      "messageType": "TASK_ITEM",
+      "opaqueItem": "..."
+    }
+  },
+  "nextCursor": "7"
+}
+```
+
+Point and cursor consumers compete for the same Worker field; atomic consume
+allows only one winner and never republishes the command.
+
+The Gateway does not generate `commandId`, define `messageType`, decode
+`DeliverSeed`, or parse `opaqueResultContext`. A future Java WebSocket Adapter
+and the Python polling Worker therefore use the same command and SeedResult
 contracts without creating transport-specific variants.
 
 The Worker decodes `DeliverSeed`, verifies `seed.workerId` matches its identity,
@@ -212,13 +275,13 @@ executes `opaqueDeliveryItem`, and copies `opaqueResultContext` into
 `SeedResult`. It copies only the original `commandId`; `messageType` and
 `executeBeforeMillis` are command-side coordinates.
 
-`3xxx` remains reserved for trusted Adapter rejection evidence. The current
-polling Worker cannot submit it, and this slice adds no Adapter rejection API.
+`3xxx` remains reserved for trusted Adapter rejection evidence. A polling
+Worker cannot submit it; the Adapter batch endpoint is its protocol ingress.
+Authentication of that Adapter role is deferred.
 
-A production polling Adapter may cursor-consume commands into a bounded
-process-local `workerId -> command` buffer. Push or WebSocket delivery is
-another transport profile over the same command envelope. Buffer size, session
-ownership, and push policy do not change Kernel contracts.
+A long-lived Adapter may cursor-consume commands into a bounded process-local
+`workerId -> command` buffer and actively push them over WebSocket. Buffer size,
+session ownership, and push policy do not change Kernel contracts.
 
 ## At-Least-Once Boundary
 
@@ -232,11 +295,10 @@ external Worker side effects exactly-once.
 
 ## Deferred Policy
 
-- Java WebSocket Adapter implementation.
+- Java WebSocket Adapter implementation and external Server proxy.
 - Authentication, Worker session identity, and Adapter authorization.
 - Controlled Worker route migration.
-- Production polling buffer bounds and cursor cadence.
-- Trusted Adapter rejection ingress.
+- Long-lived Adapter buffer bounds and cursor cadence.
 - Pending/ack reliability or mailbox expiry cleanup.
 - Proactive unreachable-Worker recovery evidence.
 
@@ -245,6 +307,8 @@ external Worker side effects exactly-once.
 - Do not let Worker Delivery Dispatch choose or replace `seed.workerId`.
 - Do not put `endpointManagerId` into protocol envelopes or ResultContext.
 - Do not let an Adapter consume another Adapter's bucket.
+- Do not expose cursor scanning through the polling Worker API.
+- Do not allow the `system-polling` identity to use Adapter batch operations.
 - Do not let Adapters generate command identity or message types.
 - Do not wrap SeedResult in WorkerCommandEnvelope or add a generic result
   message dispatcher; a future Worker evidence family needs its own semantic

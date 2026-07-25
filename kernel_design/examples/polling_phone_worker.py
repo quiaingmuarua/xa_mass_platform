@@ -14,6 +14,7 @@ import phonenumbers
 from phonenumbers.phonenumberutil import NumberParseException
 
 from kernel_design.executable_spec.assembly import (
+    SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
     SeedResult,
     WorkerCommandEnvelope,
     WorkerMessageType,
@@ -65,20 +66,24 @@ class PollingPhoneWorker:
         self,
         *,
         worker_id: str,
-        adapter_client: Any,
+        delivery_client: Any,
+        endpoint_manager_id: str = SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
         current_time_millis: Callable[[], int] | None = None,
     ) -> None:
         if not worker_id:
             raise ValueError("worker_id must be non-empty")
+        if not endpoint_manager_id:
+            raise ValueError("endpoint_manager_id must be non-empty")
         self.worker_id = worker_id
-        self.adapter_client = adapter_client
+        self.endpoint_manager_id = endpoint_manager_id
+        self.delivery_client = delivery_client
         self._current_time_millis = (
             current_time_millis or _system_time_millis
         )
 
     def poll_once(self) -> bool:
-        response = self.adapter_client.post(
-            f"/workers/{quote(self.worker_id, safe='')}/commands:poll"
+        response = self.delivery_client.post(
+            self._worker_delivery_path("commands:poll")
         )
         if response.status_code == 204:
             return False
@@ -89,7 +94,9 @@ class PollingPhoneWorker:
 
         seed = decode_deliver_seed(command.opaque_item)
         if seed is None or seed.worker_id != self.worker_id:
-            raise RuntimeError("Worker Adapter returned an invalid DeliverSeed")
+            raise RuntimeError(
+                "Worker Delivery Gateway returned an invalid DeliverSeed"
+            )
         result = self._execute_delivery_item(seed.opaque_delivery_item)
         seed_result = SeedResult(
             command_id=command.command_id,
@@ -104,28 +111,40 @@ class PollingPhoneWorker:
             "opaqueResultPayload": seed_result.opaque_result_payload,
         }
 
-        result_response = self.adapter_client.post(
-            f"/workers/{quote(self.worker_id, safe='')}/results",
+        result_response = self.delivery_client.post(
+            self._worker_delivery_path("results"),
             json=result_request,
         )
         result_response.raise_for_status()
         if result_response.status_code != 202:
             raise RuntimeError(
-                "Worker Adapter did not accept the SeedResult"
+                "Worker Delivery Gateway did not accept the SeedResult"
             )
         return True
+
+    def _worker_delivery_path(self, action: str) -> str:
+        endpoint_manager_id = quote(self.endpoint_manager_id, safe="")
+        worker_id = quote(self.worker_id, safe="")
+        return (
+            "/worker-delivery/endpoint-managers/"
+            f"{endpoint_manager_id}/workers/{worker_id}/{action}"
+        )
 
     @staticmethod
     def _decode_command(command: object) -> WorkerCommandEnvelope:
         if not isinstance(command, Mapping):
-            raise RuntimeError("Worker Adapter returned an invalid command")
+            raise RuntimeError(
+                "Worker Delivery Gateway returned an invalid command"
+            )
         if set(command) != {
             "commandId",
             "executeBeforeMillis",
             "messageType",
             "opaqueItem",
         }:
-            raise RuntimeError("Worker Adapter returned an invalid command")
+            raise RuntimeError(
+                "Worker Delivery Gateway returned an invalid command"
+            )
         try:
             return WorkerCommandEnvelope(
                 command_id=command["commandId"],
@@ -134,7 +153,9 @@ class PollingPhoneWorker:
                 opaque_item=command["opaqueItem"],
             )
         except (KeyError, TypeError, ValueError) as error:
-            raise RuntimeError("Worker Adapter returned an invalid message type")
+            raise RuntimeError(
+                "Worker Delivery Gateway returned an invalid message type"
+            )
 
     @staticmethod
     def _execute_delivery_item(value: str) -> _ExecutionResult:
@@ -179,8 +200,12 @@ def main() -> None:
     )
     parser.add_argument("--worker-id", required=True)
     parser.add_argument(
-        "--adapter-url",
-        default="http://127.0.0.1:18081",
+        "--server-url",
+        default="http://127.0.0.1:18080",
+    )
+    parser.add_argument(
+        "--endpoint-manager-id",
+        default=SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
     )
     parser.add_argument(
         "--poll-interval-millis",
@@ -205,12 +230,13 @@ def main() -> None:
 
     logging.basicConfig(level=args.log_level.upper())
     with httpx2.Client(
-        base_url=args.adapter_url,
+        base_url=args.server_url,
         timeout=args.request_timeout_seconds,
-    ) as adapter_client:
+    ) as delivery_client:
         worker = PollingPhoneWorker(
             worker_id=args.worker_id,
-            adapter_client=adapter_client,
+            endpoint_manager_id=args.endpoint_manager_id,
+            delivery_client=delivery_client,
         )
         try:
             while True:

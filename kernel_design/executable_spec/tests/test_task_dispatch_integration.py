@@ -264,6 +264,53 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             consumed,
         )
 
+    def test_point_poll_and_adapter_scan_compete_for_one_command(self) -> None:
+        command = self._worker_command(
+            worker_id="worker-1",
+            opaque_delivery_item='{"eventCode":"image.resize","payload":{}}',
+            opaque_result_context='{"taskId":"task-1"}',
+        )
+        self.worker_command_runtime.append_worker_commands(
+            endpoint_manager_id="endpoint-manager-1",
+            worker_commands_by_worker_id={"worker-1": command},
+        )
+        competing_runtime = RedisWorkerCommandRuntime(
+            self.redis,
+            prefix=self.prefix,
+        )
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            point_future = executor.submit(
+                self.worker_command_runtime.consume_worker_command,
+                endpoint_manager_id="endpoint-manager-1",
+                worker_id="worker-1",
+            )
+            scan_future = executor.submit(
+                competing_runtime.consume_worker_commands,
+                endpoint_manager_id="endpoint-manager-1",
+                cursor=None,
+                scan_count=10,
+            )
+            point_result = point_future.result()
+            scan_result = scan_future.result()
+
+        consumed_commands = [
+            candidate
+            for candidate in (
+                point_result,
+                scan_result.worker_commands_by_worker_id.get("worker-1"),
+            )
+            if candidate is not None
+        ]
+        self.assertEqual([command], consumed_commands)
+        self.assertEqual(
+            0,
+            self.redis.hlen(
+                f"wd:{self.prefix}:endpoint-manager:"
+                "endpoint-manager-1:worker-commands"
+            ),
+        )
+
     def tearDown(self) -> None:
         keys = tuple(self.redis.scan_iter(match=f"*{self.prefix}*"))
         if keys:

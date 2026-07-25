@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from kernel_design.executable_spec.assembly import (
+    SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
     DeliverSeed,
     encode_deliver_seed,
 )
@@ -95,7 +96,7 @@ class PollingPhoneWorkerTest(unittest.TestCase):
         self.client = Mock()
         self.worker = PollingPhoneWorker(
             worker_id="worker-1",
-            adapter_client=self.client,
+            delivery_client=self.client,
             current_time_millis=lambda: self.NOW_MILLIS,
         )
 
@@ -105,6 +106,8 @@ class PollingPhoneWorkerTest(unittest.TestCase):
 
         self.assertFalse(self.worker.poll_once())
         self.client.post.assert_called_once_with(
+            "/worker-delivery/endpoint-managers/"
+            f"{SYSTEM_POLLING_ENDPOINT_MANAGER_ID}"
             "/workers/worker-1/commands:poll"
         )
 
@@ -267,7 +270,7 @@ class PollingPhoneWorkerTest(unittest.TestCase):
 
 
 class PollingPhoneWorkerBoundaryGuardTest(unittest.TestCase):
-    def test_worker_depends_only_on_adapter_protocol_and_tool_library(
+    def test_worker_depends_only_on_delivery_protocol_and_tool_library(
         self,
     ) -> None:
         source_path = (

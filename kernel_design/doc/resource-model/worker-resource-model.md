@@ -628,6 +628,10 @@ transport state. If a policy needs a network category, expose it as a Worker
 attribute such as `networkType`; do not expose transport identifiers as
 worker-selection facts.
 
+Pure polling Workers use the fixed `system-polling` endpoint-manager binding.
+This is only a mailbox route convention. It does not add a Polling Adapter
+process or make polling/session facts part of Worker resource truth.
+
 Descriptor metadata is the low-frequency matching surface used inside a
 pre-bound worker group. Candidate sources propose a small bounded Worker
 universe; descriptor and dynamic point reads validate it after exact score

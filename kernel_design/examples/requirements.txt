@@ -1,5 +1,2 @@
-fastapi
 httpx2
 phonenumbers
-redis
-uvicorn

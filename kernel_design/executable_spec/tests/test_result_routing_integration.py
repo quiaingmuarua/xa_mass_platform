@@ -14,8 +14,8 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
 try:
     from fastapi.testclient import TestClient
 
-    from kernel_design.examples.worker_adapter_server import (
-        create_app as create_worker_adapter_app,
+    from kernel_design.runtime_server import (
+        create_app as create_runtime_app,
     )
     from kernel_design.examples.polling_phone_worker import (
         PHONE_INSPECT_EVENT_CODE,
@@ -23,12 +23,11 @@ try:
     )
 except (ImportError, RuntimeError):  # pragma: no cover - missing example dependencies
     TestClient = None  # type: ignore[assignment,misc]
-    create_worker_adapter_app = None  # type: ignore[assignment]
+    create_runtime_app = None  # type: ignore[assignment]
     PHONE_INSPECT_EVENT_CODE = None  # type: ignore[assignment]
     PollingPhoneWorker = None  # type: ignore[assignment,misc]
 
 from kernel_design.executable_spec import (
-    RedisSeedResultRuntime,
     RedisTaskItemScoreBandCore,
     RedisWorkerScoreCore,
     TaskItemScoreBand,
@@ -36,20 +35,15 @@ from kernel_design.executable_spec import (
 )
 from kernel_design.executable_spec.assembly import (
     TaskType,
+    SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
     WorkerCommandConsumerClient,
+    WorkerCommandEnvelope,
+    WorkerMessageType,
     KernelApplication,
     KernelApplicationConfig,
     ResourcesCommandClient,
-    SeedResult,
     SeedResultCommandClient,
-    TaskApprovalStatus,
-    TaskCreationStatus,
-    TaskDescriptor,
-    TaskItem,
     TaskItemAppendStatus,
-    WorkerDeclaration,
-    WorkerGroupDescriptor,
-    WorkerRuntimeStatus,
     decode_deliver_seed,
 )
 
@@ -61,7 +55,7 @@ _REDIS_URL = os.environ.get("KERNEL_DESIGN_REDIS_URL")
     redis_module is not None
     and _REDIS_URL
     and TestClient is not None
-    and create_worker_adapter_app is not None
+    and create_runtime_app is not None
     and PollingPhoneWorker is not None,
     "set KERNEL_DESIGN_REDIS_URL to run result-routing Redis closure proof",
 )
@@ -87,18 +81,23 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         )
         self.resources = ResourcesCommandClient(self.config)
         self.application = KernelApplication(self.config)
-        assert create_worker_adapter_app is not None
-        self.worker_adapter = TestClient(
-            create_worker_adapter_app(
-                endpoint_manager_id="endpoint-1",
-                worker_command_consumer=WorkerCommandConsumerClient(self.config),
+        assert create_runtime_app is not None
+        self.runtime_server_context = TestClient(
+            create_runtime_app(
+                application=self.application,
+                resources_client=self.resources,
+                worker_command_consumer=WorkerCommandConsumerClient(
+                    self.config
+                ),
                 seed_result_commands=SeedResultCommandClient(self.config),
             )
         )
+        self.runtime_server = self.runtime_server_context.__enter__()
+        self.runtime_server_open = True
         assert PollingPhoneWorker is not None
         self.phone_worker = PollingPhoneWorker(
             worker_id="worker-1",
-            adapter_client=self.worker_adapter,
+            delivery_client=self.runtime_server,
         )
         self.item_score = RedisTaskItemScoreBandCore(
             self.redis,
@@ -110,8 +109,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         )
 
     def tearDown(self) -> None:
-        self.application.stop()
-        self.worker_adapter.close()
+        self._close_runtime_server()
         keys = tuple(self.redis.scan_iter(match=f"*{self.prefix}*"))
         if keys:
             self.redis.delete(*keys)
@@ -137,60 +135,55 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         )
 
     def _run_success_e2e(self, task_type: TaskType) -> None:
-        group_result = self.resources.upsert_worker_group(
-            descriptor=WorkerGroupDescriptor(
-                worker_group_id="phone-tools",
-                attributes={},
-                event_codes=frozenset({PHONE_INSPECT_EVENT_CODE}),
-                item_allocation_fields=(
-                    frozenset({"workerId"})
+        group_response = self.runtime_server.put(
+            "/worker-groups/phone-tools",
+            json={
+                "attributes": {},
+                "eventCodes": [PHONE_INSPECT_EVENT_CODE],
+                "itemAllocationFields": (
+                    ["workerId"]
                     if task_type is TaskType.ITEM_DRIVEN
-                    else frozenset()
+                    else []
                 ),
-            )
+            },
         )
-        worker_result = self.resources.upsert_worker(
-            declaration=WorkerDeclaration(
-                worker_id="worker-1",
-                worker_group_id="phone-tools",
-                endpoint_manager_id="endpoint-1",
-                attributes={"runtime": "python"},
-                dynamic_attribute_names=frozenset(),
-            )
+        worker_response = self.runtime_server.put(
+            "/worker-groups/phone-tools/workers/worker-1",
+            json={
+                "endpointManagerId": SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
+                "attributes": {"runtime": "python"},
+                "dynamicAttributeNames": [],
+            },
         )
-
-        self.application.start()
-        creation_result = self.application.create_task(
-            descriptor=self._task_descriptor(
+        creation_response = self.runtime_server.post(
+            "/tasks",
+            json=self._task_request(
                 task_type,
                 worker_group_id="phone-tools",
-            )
-        )
-        approval_result = self.application.approve_task(task_id="task-1")
-        append_results = self.application.append_task_items(
-            task_id="task-1",
-            items=(
-                TaskItem(
-                    message_id="message-1",
-                    event_code=PHONE_INSPECT_EVENT_CODE,
-                    created_at_millis=int(time.time() * 1_000) - 1_000,
-                    payload={"phoneNumber": "+14155552671"},
-                    allocation_rule=(
-                        {"workerId": {"$eq": "worker-1"}}
-                        if task_type is TaskType.ITEM_DRIVEN
-                        else None
-                    ),
-                ),
             ),
         )
+        approval_response = self.runtime_server.post("/tasks/task-1/approve")
+        item: dict[str, object] = {
+            "messageId": "message-1",
+            "eventCode": PHONE_INSPECT_EVENT_CODE,
+            "createdAtMillis": int(time.time() * 1_000) - 1_000,
+            "payload": {"phoneNumber": "+14155552671"},
+        }
+        if task_type is TaskType.ITEM_DRIVEN:
+            item["allocationRule"] = {"workerId": {"$eq": "worker-1"}}
+        append_response = self.runtime_server.post(
+            "/tasks/task-1/items",
+            json={"items": [item]},
+        )
 
-        self.assertIs(WorkerRuntimeStatus.OK, group_result.status)
-        self.assertIs(WorkerRuntimeStatus.OK, worker_result.status)
-        self.assertIs(TaskCreationStatus.CREATED, creation_result.status)
-        self.assertIs(TaskApprovalStatus.APPROVED, approval_result.status)
-        self.assertIs(
-            TaskItemAppendStatus.APPENDED,
-            append_results["message-1"].status,
+        self.assertEqual(200, group_response.status_code)
+        self.assertEqual(200, worker_response.status_code)
+        self.assertEqual(201, creation_response.status_code)
+        self.assertEqual(200, approval_response.status_code)
+        self.assertEqual(200, append_response.status_code)
+        self.assertEqual(
+            {"message-1": {"status": TaskItemAppendStatus.APPENDED.value}},
+            append_response.json(),
         )
 
         deadline = time.monotonic() + 3
@@ -236,7 +229,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
             self.redis.exists(f"rr:{self.prefix}:seed-results"),
         )
 
-        self.application.stop()
+        self._close_runtime_server()
         worker_candidates = {}
         deadline = time.monotonic() + 1
         while time.monotonic() < deadline and "worker-1" not in worker_candidates:
@@ -251,68 +244,84 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
     def test_adapter_rejection_evidence_demotes_then_reconnect_restores_worker(
         self,
     ) -> None:
-        self.resources.upsert_worker_group(
-            descriptor=WorkerGroupDescriptor(
-                worker_group_id="image-workers",
-                attributes={},
-                event_codes=frozenset({"image.resize"}),
-                item_allocation_fields=frozenset({"workerId"}),
-            )
+        self.runtime_server.put(
+            "/worker-groups/image-workers",
+            json={
+                "attributes": {},
+                "eventCodes": ["image.resize"],
+                "itemAllocationFields": ["workerId"],
+            },
         )
-        declaration = WorkerDeclaration(
-            worker_id="worker-1",
-            worker_group_id="image-workers",
-            endpoint_manager_id="endpoint-1",
-            attributes={"runtime": "python"},
-            dynamic_attribute_names=frozenset(),
+        worker_request = {
+            "endpointManagerId": "endpoint-1",
+            "attributes": {"runtime": "python"},
+            "dynamicAttributeNames": [],
+        }
+        self.runtime_server.put(
+            "/worker-groups/image-workers/workers/worker-1",
+            json=worker_request,
         )
-        self.resources.upsert_worker(declaration=declaration)
+        self.runtime_server.post(
+            "/tasks",
+            json=self._task_request(TaskType.ITEM_DRIVEN),
+        )
+        self.runtime_server.post("/tasks/task-1/approve")
+        self.runtime_server.post(
+            "/tasks/task-1/items",
+            json={
+                "items": [
+                    {
+                        "messageId": "message-1",
+                        "eventCode": "image.resize",
+                        "createdAtMillis": int(time.time() * 1_000) - 1_000,
+                        "payload": {"source": "input"},
+                        "allocationRule": {
+                            "workerId": {"$eq": "worker-1"}
+                        },
+                    }
+                ]
+            },
+        )
 
-        self.application.start()
-        self.application.create_task(
-            descriptor=self._task_descriptor(TaskType.ITEM_DRIVEN)
-        )
-        self.application.approve_task(task_id="task-1")
-        self.application.append_task_items(
-            task_id="task-1",
-            items=(
-                TaskItem(
-                    message_id="message-1",
-                    event_code="image.resize",
-                    created_at_millis=int(time.time() * 1_000) - 1_000,
-                    payload={"source": "input"},
-                    allocation_rule={"workerId": {"$eq": "worker-1"}},
-                ),
-            ),
-        )
-
-        consumer = WorkerCommandConsumerClient(self.config)
-        command = None
+        command_payload = None
         deadline = time.monotonic() + 3
-        while time.monotonic() < deadline and command is None:
-            command = consumer.consume_worker_command(
-                endpoint_manager_id="endpoint-1",
-                worker_id="worker-1",
-            )
-            if command is None:
-                time.sleep(0.02)
-        self.assertIsNotNone(command)
-        assert command is not None
+        poll_path = (
+            "/worker-delivery/endpoint-managers/endpoint-1/"
+            "workers/worker-1/commands:poll"
+        )
+        while time.monotonic() < deadline and command_payload is None:
+            response = self.runtime_server.post(poll_path)
+            if response.status_code == 200:
+                command_payload = response.json()
+                break
+            self.assertEqual(204, response.status_code)
+            time.sleep(0.02)
+        self.assertIsNotNone(command_payload)
+        assert command_payload is not None
+        command = WorkerCommandEnvelope(
+            command_id=command_payload["commandId"],
+            message_type=WorkerMessageType(command_payload["messageType"]),
+            execute_before_millis=command_payload["executeBeforeMillis"],
+            opaque_item=command_payload["opaqueItem"],
+        )
         seed = decode_deliver_seed(command.opaque_item)
         self.assertIsNotNone(seed)
         assert seed is not None
-        RedisSeedResultRuntime(
-            self.redis,
-            prefix=self.prefix,
-        ).append_seed_results(
-            results=(
-                SeedResult(
-                    command_id=command.command_id,
-                    opaque_result_context=seed.opaque_result_context,
-                    outcome_code="3001",
-                ),
-            )
+        rejection_response = self.runtime_server.post(
+            "/worker-delivery/endpoint-managers/"
+            "endpoint-1/results:append",
+            json={
+                "results": [
+                    {
+                        "commandId": command.command_id,
+                        "opaqueResultContext": seed.opaque_result_context,
+                        "outcomeCode": "3001",
+                        "opaqueResultPayload": None,
+                    }
+                ]
+            },
         )
+        self.assertEqual(202, rejection_response.status_code)
 
         recovery_state = None
         deadline = time.monotonic() + 3
@@ -335,7 +344,10 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
             recovery_state.polarity,
         )
 
-        self.resources.upsert_worker(declaration=declaration)
+        self.runtime_server.put(
+            "/worker-groups/image-workers/workers/worker-1",
+            json=worker_request,
+        )
         hot_state = self.worker_score.get_score_states(
             home_bucket_id="image-workers",
             worker_ids=["worker-1"],
@@ -351,27 +363,32 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
             ),
         )
 
+    def _close_runtime_server(self) -> None:
+        if self.runtime_server_open:
+            self.runtime_server_context.__exit__(None, None, None)
+            self.runtime_server_open = False
+
     @staticmethod
-    def _task_descriptor(
+    def _task_request(
         task_type: TaskType,
         *,
         worker_group_id: str = "image-workers",
-    ) -> TaskDescriptor:
-        return TaskDescriptor(
-            task_id="task-1",
-            worker_group_id=worker_group_id,
-            task_type=task_type,
-            allocation_rule=(
+    ) -> dict[str, object]:
+        return {
+            "taskId": "task-1",
+            "workerGroupId": worker_group_id,
+            "taskType": task_type.value,
+            "allocationRule": (
                 {"attributes.runtime": {"$eq": "python"}}
                 if task_type is TaskType.TASK_DRIVEN
                 else None
             ),
-            config={
+            "config": {
                 "priority": "80",
                 "maximumCandidateWorkers": "10",
                 "maxRetryTimes": "3",
             },
-        )
+        }
 
 
 if __name__ == "__main__":

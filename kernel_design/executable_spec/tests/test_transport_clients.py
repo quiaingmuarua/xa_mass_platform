@@ -13,6 +13,7 @@ from kernel_design.executable_spec import (
     encode_deliver_seed,
 )
 from kernel_design.executable_spec.assembly import (
+    SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
     WorkerCommandConsumerClient,
     KernelApplicationConfig,
     SeedResultCommandClient,
@@ -43,6 +44,12 @@ class TransportClientsTest(unittest.TestCase):
         self.config = KernelApplicationConfig(
             redis_url="redis://redis:6379/9",
             redis_prefix="transport-test",
+        )
+
+    def test_system_polling_binding_is_a_fixed_logical_route(self) -> None:
+        self.assertEqual(
+            "system-polling",
+            SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
         )
 
     def test_clients_are_independent_command_surfaces_without_lifecycle(self) -> None:

@@ -9,6 +9,7 @@ from kernel_design.executable_spec.assembly import (
     TaskType,
     KernelApplication,
     ResourcesCommandClient,
+    SeedResultCommandClient,
     TaskApprovalResult,
     TaskApprovalStatus,
     TaskCloseResult,
@@ -19,21 +20,22 @@ from kernel_design.executable_spec.assembly import (
     TaskItemAppendStatus,
     WorkerRuntimeResult,
     WorkerRuntimeStatus,
+    WorkerCommandConsumerClient,
 )
 
 try:
     from fastapi.testclient import TestClient
 
-    from kernel_design.examples.kernel_command_server import create_app
+    from kernel_design.runtime_server import create_app
 except (ImportError, RuntimeError):  # pragma: no cover - missing example dependencies
     TestClient = None  # type: ignore[assignment,misc]
     create_app = None  # type: ignore[assignment]
 
 
-class KernelCommandServerBoundaryGuardTest(unittest.TestCase):
+class KernelRuntimeServerBoundaryGuardTest(unittest.TestCase):
     def test_server_imports_only_the_assembly_application_boundary(self) -> None:
         source_path = (
-            Path(__file__).parents[2] / "examples" / "kernel_command_server.py"
+            Path(__file__).parents[2] / "runtime_server" / "app.py"
         )
         source = source_path.read_text(encoding="utf-8")
 
@@ -49,11 +51,13 @@ class KernelCommandServerBoundaryGuardTest(unittest.TestCase):
 
 
 @unittest.skipUnless(TestClient is not None, "FastAPI example dependencies missing")
-class KernelCommandServerTest(unittest.TestCase):
+class KernelRuntimeServerTest(unittest.TestCase):
     def setUp(self) -> None:
         assert create_app is not None
         self.application = Mock(spec=KernelApplication)
         self.resources_client = Mock(spec=ResourcesCommandClient)
+        self.command_consumer = Mock(spec=WorkerCommandConsumerClient)
+        self.result_commands = Mock(spec=SeedResultCommandClient)
         self.resources_client.upsert_worker_group.return_value = WorkerRuntimeResult(
             WorkerRuntimeStatus.OK
         )
@@ -76,6 +80,8 @@ class KernelCommandServerTest(unittest.TestCase):
             create_app(
                 application=self.application,
                 resources_client=self.resources_client,
+                worker_command_consumer=self.command_consumer,
+                seed_result_commands=self.result_commands,
             )
         )
         self.client = self.client_context.__enter__()
@@ -86,7 +92,12 @@ class KernelCommandServerTest(unittest.TestCase):
     def test_lifespan_and_health_use_one_kernel_application(self) -> None:
         self.assertEqual({"status": "ok"}, self.client.get("/health").json())
         self.application.start.assert_called_once_with()
-        self.assertFalse(hasattr(self.resources_client, "start"))
+        for boundary in (
+            self.resources_client,
+            self.command_consumer,
+            self.result_commands,
+        ):
+            self.assertFalse(hasattr(boundary, "start"))
 
     def test_routes_translate_http_values_to_assembly_contracts(self) -> None:
         group_response = self.client.put(
@@ -224,6 +235,10 @@ class KernelCommandServerTest(unittest.TestCase):
             create_app(application=self.application)
         with self.assertRaisesRegex(ValueError, "injected together"):
             create_app(resources_client=self.resources_client)
+        with self.assertRaisesRegex(ValueError, "injected together"):
+            create_app(worker_command_consumer=self.command_consumer)
+        with self.assertRaisesRegex(ValueError, "injected together"):
+            create_app(seed_result_commands=self.result_commands)
 
     def test_stop_runs_when_lifespan_closes(self) -> None:
         self.client_context.__exit__(None, None, None)

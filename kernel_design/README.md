@@ -54,8 +54,9 @@ Task admission and score visibility
      -> no ACTIVE Item: increment the shared empty-recheck count
                         close only when emptyCloseAtMillis is due
   -> Worker Delivery Dispatch
-     -> outbound Worker command protocol
-     -> semantic SeedResult ingress
+     -> point polling for one target Worker
+     -> cursor batches for long-lived Adapters
+     -> semantic Worker/Adapter SeedResult ingress
      -> outcome-class SeedResult queues
   -> Result Routing
      -> TaskItem and Worker truth convergence
@@ -541,17 +542,17 @@ no hidden compatibility path or second mainline remains
 - [Kernel Application Assembly](doc/kernel-application-assembly.md)
   - independent resource upsert and scheduling-process boundaries,
     private Redis composition, background scheduling lifecycles, built-in CLI,
-    and the Kernel Command / Worker Adapter HTTP examples.
+    and the executable-spec Kernel Runtime HTTP host.
 - [Worker Delivery Dispatch](doc/scheduling/worker-delivery-dispatch.md)
-  - Worker Delivery Dispatch from one configured Adapter bucket
-    through transport-neutral Worker commands to semantic SeedResult handoff,
+  - Adapter-partitioned mailbox access through target Worker polling or
+    long-lived Adapter batches, including the Runtime Server Gateway contract,
     without Adapter-owned score mutation.
-- [Worker Adapter Server](examples/worker-adapter-server.md)
-  - independent endpoint-manager-bound delivery process, WorkerId polling,
-    stable command forwarding, and direct SeedResult submission.
+- [Kernel Runtime Server](runtime_server/app.py)
+  - executable-spec FastAPI host for Runtime commands and Worker Delivery
+    access; only `KernelApplication` owns background lifecycle.
 - [Polling Phone Worker](examples/polling_phone_worker.py)
   - independent Worker process that executes `telecom.phone.inspect` through
-    the Adapter protocol using Google libphonenumber.
+    the built-in `system-polling` binding using Google libphonenumber.
 - [Result-Routing Scheduling](doc/scheduling/result-routing-scheduling.md)
   - outcome-class SeedResult consumption, last-success result storage, TaskItem
     final-success invocation, and Worker exact disposition.
@@ -564,11 +565,12 @@ Design notes define the intended owner contract; executable-spec code and tests
 prove the currently implemented mechanism. If they disagree, identify the drift
 before changing either one.
 
-The Python executable spec lives under `kernel_design/executable_spec/`. The
-Kotlin production scaffold lives under `kernel_jvm/` and may implement behavior
-only through scoped parity slices against this workspace. Historical tag
-material must not constrain current interfaces, Redis shapes, or package
-boundaries.
+The Python executable spec lives under `kernel_design/executable_spec/`.
+`kernel_design/runtime_server/` is its FastAPI protocol host, while
+`kernel_design/examples/` contains external Worker examples only. The Kotlin
+production scaffold lives under `kernel_jvm/` and may implement behavior only
+through scoped parity slices against this workspace. Historical tag material
+must not constrain current interfaces, Redis shapes, or package boundaries.
 
 ## Agent Rules
 

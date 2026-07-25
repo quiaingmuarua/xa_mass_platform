@@ -256,6 +256,7 @@
       margin-bottom: 12px;
       font-size: 48px;
       line-height: 1.08;
+      overflow-wrap: anywhere;
     }
 
     .lede {
@@ -263,6 +264,7 @@
       margin-bottom: 26px;
       color: var(--ink-2);
       font-size: 16px;
+      overflow-wrap: anywhere;
     }
 
     .lede strong {
@@ -1051,7 +1053,7 @@
       }
 
       h1 {
-        font-size: 36px;
+        font-size: 32px;
       }
 
       h2 {
@@ -1232,12 +1234,12 @@
           <div class="flow-stage delivery">
             <div class="stage-label">
               <b>Worker Delivery Dispatch</b>
-              <span>ADAPTER BOUNDARY</span>
+              <span>GATEWAY / ADAPTER ACCESS</span>
             </div>
             <div class="stage-steps two">
               <div class="stage-step">
-                <strong>Consume Mailbox</strong>
-                endpointManagerId bucket
+                <strong>Point / Cursor Access</strong>
+                system-polling / long-lived Adapter
               </div>
               <div class="stage-step">
                 <strong>Worker Protocol</strong>
@@ -1497,7 +1499,7 @@
         </div>
         <div class="owner-stage">
           <b>Worker Delivery Dispatch</b>
-          <p>消费已分配 command，检查开始执行截止时间，原样转发稳定协议，并将 Worker result 送入结果队列。</p>
+          <p>Gateway 为目标 Worker提供 point poll，为长连接 Adapter提供 cursor batch，并将 Worker/Adapter result 送入结果队列。</p>
           <code>output = SeedResult</code>
         </div>
         <div class="owner-stage">
@@ -1561,7 +1563,7 @@
         <article class="outcome adapter-rejection">
           <span class="outcome-code">3xxx · ADAPTER_REJECTION</span>
           <p>预留给可信的“尚未进入 Worker”证据。当前策略 exact demote Worker 到 recovery，不修改 Item score。</p>
-          <small>当前 polling HTTP Worker 不能伪造该类别。</small>
+          <small>Point polling Worker不能伪造该类别；长连接 Adapter使用batch ingress。</small>
         </article>
         <article class="outcome unknown">
           <span class="outcome-code">UNKNOWN</span>
@@ -1677,7 +1679,7 @@
           <h3>Deferred policy</h3>
           <ul>
             <li>公平、quota、resource estimate 与 cadence tuning</li>
-            <li>生产 polling buffer 与 WebSocket/push Adapter</li>
+            <li>WebSocket/push Adapter 与生产 session/flow-control</li>
             <li>认证、session ownership 与受控 Worker migration</li>
             <li>trusted 3xxx Item fast release fence</li>
             <li>pending/ack、retention、query projection 与分片</li>
@@ -1737,9 +1739,13 @@
           <span class="reading-number">07</span>
           <span><b>Result Routing</b>outcome lanes 与可替换 owner-local policies。</span>
         </a>
-        <a class="reading-link" href="examples/README.md">
+        <a class="reading-link" href="runtime_server/app.py">
           <span class="reading-number">08</span>
-          <span><b>Runnable Examples</b>Kernel Command、Worker Adapter 与 phone Worker。</span>
+          <span><b>Kernel Runtime Server</b>Runtime commands 与 Worker Delivery Gateway 的协议宿主。</span>
+        </a>
+        <a class="reading-link" href="examples/README.md">
+          <span class="reading-number">09</span>
+          <span><b>Polling Worker Example</b>内置 polling binding 与 phone Worker。</span>
         </a>
       </div>
     </section>

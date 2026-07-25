@@ -1,1 +1,1 @@
-"""External protocol examples for the isolated executable kernel."""
+"""Runnable Worker examples for the executable kernel."""

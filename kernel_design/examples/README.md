@@ -1,80 +1,54 @@
-# Kernel HTTP Examples
+# Polling Phone Worker Example
 
-Status: internal kernel HTTP boundary and Worker Delivery protocol examples.
+Status: runnable Worker client for the executable-spec Runtime Server.
 
-Install the example-only dependencies:
+Install the Runtime Server and Worker dependencies:
 
 ```text
+python -m pip install -r kernel_design/runtime_server/requirements.txt
 python -m pip install -r kernel_design/examples/requirements.txt
 ```
 
-Start the Kernel command process:
+Start the prerequisite Runtime Server:
 
 ```text
-python -m kernel_design.examples.kernel_command_server
+python -m kernel_design.runtime_server
 ```
 
-Start the independent Worker polling process:
-
-```text
-python -m kernel_design.examples.worker_adapter_server --endpoint-manager-id endpoint-manager-1
-```
-
-Start the international-phone tool Worker:
+Start the international-phone polling Worker:
 
 ```text
 python -m kernel_design.examples.polling_phone_worker --worker-id worker-1
 ```
 
-The HTTP hosts use:
+The Runtime Server listens on `127.0.0.1:18080`. Its protocol contract is
+owned by
+[Worker Delivery Dispatch](../doc/scheduling/worker-delivery-dispatch.md):
 
 ```text
-Kernel Command Server   127.0.0.1:18080
-Worker Adapter Server   127.0.0.1:18081
+Runtime Command API
+  -> WorkerGroup/Worker upsert
+  -> Task create/approve/close/Item append
+
+Worker Delivery Gateway
+  -> target Worker point poll/result
+  -> long-lived Adapter cursor consume/batch result
 ```
 
-Both accept the same optional `--config kernel.json`; `--host`, `--port`, and
-`--log-level` configure only the selected HTTP process. Worker Adapter startup
-also requires the immutable `--endpoint-manager-id` mailbox coordinate.
-
-The Kernel host composes `KernelApplication` and `ResourcesCommandClient`.
-Its lifespan starts only the scheduling application. It exposes resource
-upsert and Task commands, not Worker command consumption or Worker result
-ingress. It is the current internal HTTP target of the
-[JVM Runtime API Server](../../server_jvm/README.md), not the final public API.
-
-The [Worker Adapter Server](worker-adapter-server.md) composes only
-`WorkerCommandConsumerClient` and `SeedResultCommandClient`. It has no
-scheduling
-lifecycle:
+Polling is not an independent Adapter process. Pure polling Workers explicitly
+bind their declarations to the built-in logical route:
 
 ```text
-POST /workers/{workerId}/commands:poll
-POST /workers/{workerId}/results
+endpointManagerId = system-polling
 ```
 
-The Worker-facing `WorkerCommandEnvelope` is the Kernel-defined,
-transport-neutral outbound command DTO. Its opaque item contains DeliverSeed.
-The Adapter forwards command identity, message type, deadline, and opaque item
-unchanged. The Worker returns a semantic `SeedResult` directly, copying only
-the commandId for trace correlation.
-
-The Polling Phone Worker depends only on the Worker Adapter HTTP protocol. It
-executes:
-
-```text
-eventCode = telecom.phone.inspect
-payload   = {"phoneNumber": "+14155552671"}
-```
-
-using Google libphonenumber's Python port. A successful result reports the ISO
-region, country calling code, E.164 form, and possible/valid classifications.
-An invalid number is a successful inspection with `isValid=false`.
+The Gateway uses `WorkerCommandConsumerClient` and
+`SeedResultCommandClient`; only `KernelApplication` participates in the
+Server lifespan.
 
 ## Phone Inspection Bootstrap
 
-With the Kernel Command Server and Worker Adapter Server running, create the
-resource declarations:
+Create the resource declarations:
 
 ```http
 PUT /worker-groups/phone-tools
@@ -88,7 +62,7 @@ PUT /worker-groups/phone-tools
 ```http
 PUT /worker-groups/phone-tools/workers/worker-1
 {
-  "endpointManagerId": "endpoint-manager-1",
+  "endpointManagerId": "system-polling",
   "attributes": {"runtime": "python"},
   "dynamicAttributeNames": []
 }
@@ -117,7 +91,7 @@ POST /tasks
 POST /tasks/phone-inspection-task/approve
 ```
 
-Append one due Item using a current or past millisecond timestamp:
+Append one due Item:
 
 ```http
 POST /tasks/phone-inspection-task/items
@@ -133,8 +107,15 @@ POST /tasks/phone-inspection-task/items
 }
 ```
 
-The Polling Phone Worker receives the command through the Adapter and submits a
-result equivalent to:
+The Worker point-polls:
+
+```text
+/worker-delivery/endpoint-managers/system-polling/
+  workers/worker-1/commands:poll
+```
+
+and submits a result through the corresponding point result route. A successful
+inspection stores:
 
 ```json
 {
@@ -146,15 +127,12 @@ result equivalent to:
 }
 ```
 
-Task lifecycle routes include explicit approve and close commands. Close is
-available for both Task types and does not expose a terminal score.
+## Worker Boundary
 
-Dynamic attribute mutation is intentionally absent until the assembly installs
-a real dynamic-attribute handler owner.
+This directory contains Worker examples, not the Runtime Server or scheduling
+implementation. The Phone Worker depends only on the Worker Delivery HTTP
+contract and its phone-number library.
 
-The Python Kernel Command Server is not a historical or control-plane CRUD
-service. Its commands mutate current runtime truth. Public API compatibility,
-authentication, and process-level error mapping belong to `server_jvm`.
-
-The Worker examples still intentionally omit Worker identity proof,
-pending/ack, production push transport, and Worker self-registration.
+The example does not implement WebSocket transport, Adapter sessions,
+pending/ack, Worker self-registration, result views, or exactly-once
+execution.

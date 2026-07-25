@@ -58,9 +58,9 @@ Task score acquire
      -> DeliverSeed encoded inside WorkerCommandEnvelope
      -> endpointManagerId-partitioned sparse WorkerCommand mailbox
   -> Worker Delivery Dispatch
-     -> consume mailbox and check execute-before deadline
-     -> forward WorkerCommandEnvelope to Worker
-     -> accept semantic SeedResult
+     -> target Worker point poll through system-polling or another binding
+     -> long-lived Adapter cursor consume for active push transports
+     -> accept Worker point results or Adapter result batches
      -> SeedResult queue
   -> Result Routing
      -> 200: store last-success + FINAL_SUCCESS + Worker exact release
@@ -164,12 +164,12 @@ Worker Delivery Dispatch
 | Task running activation | Implemented with due-Item Task policy and priority soft-limit System policy | Scenario-backed quota, tenant, business start condition, and resource-estimate decisions |
 | Worker allocation | Implemented as hint-driven TASK-scope candidate cache warming through HOT-pool acquisition; Task score is read only for RUNNING/non-hard-pause suffix-zero validation; TASK_DRIVEN has deterministic Redis proof through cache consumption | Warmup prioritization beyond bounded due order and matcher priority |
 | Task dispatch | Implemented with acquisition-only TaskType profiles, PRECOMPUTED Task rules, TARGETED complete Item rules, stable Item binding, RUNNING same-band reschedule, shared threshold-based empty close, and WorkerCommand append; both TaskTypes have deterministic Redis proof through the command mailbox and ITEM_DRIVEN proves no warmup/cache path | Recent-first Redis Task acquisition |
-| Worker Delivery Dispatch | Stable Worker command and SeedResult contracts, independent clients, Worker Adapter polling protocol, and runnable libphonenumber Worker implemented | Authentication, WebSocket transport, pending/ack, and production protocol policy |
+| Worker Delivery Dispatch | Stable Worker command and SeedResult contracts, unified Gateway point protocol, long-lived Adapter cursor/batch protocol, fixed system-polling binding, and runnable libphonenumber Worker implemented | Authentication, WebSocket transport, pending/ack, and production protocol policy |
 | Result routing | Implemented with unit and Redis orchestration proof; Task/Worker policy handlers are replaceable | Result projection and stronger queue reliability require separate owners and invariants |
 
 Both TaskTypes also have process-boundary Redis E2E proof from
-`ResourcesCommandClient` and `KernelApplication`, through the Worker Adapter
-HTTP Worker-command and SeedResult boundaries and the polling phone tool, to
+the unified Kernel Runtime Server, through its Worker Delivery Gateway and
+the polling phone tool, to
 Result-Routing,
 `FINAL_SUCCESS`, the Task result HASH, and exact Worker lease release.
 Additional Redis proofs cover
@@ -212,12 +212,12 @@ A single very large WorkerGroup, one extremely hot Task, the global Task score
 key, or one result-class LIST may require a future explicitly owned
 partitioning design.
 
-The current HTTP polling example performs point mailbox consume. A production
-low-frequency polling Adapter may cursor-consume its sparse bucket in bounded
-batches and serve Workers from bounded process-local memory; a push/WebSocket
-Adapter may use the same Kernel contracts. Neither profile changes assignment
-or finality ownership, and destructive prefetch failure remains `UNKNOWN`
-without pending/ack.
+The polling API performs only point mailbox consume for one target Worker. It
+never scans a bucket. A long-lived push/WebSocket Adapter may cursor-consume
+its own sparse bucket in bounded batches and serve connected Workers from
+bounded process-local memory. Both use the same WorkerCommand contract, but
+only the Adapter role owns scan, session, and push policy. Destructive prefetch
+failure remains `UNKNOWN` without pending/ack.
 
 ## Core Reading Path
 
@@ -241,7 +241,7 @@ Read owner details only when changing that owner:
 - Process and transport:
   [Kernel Application Assembly](../kernel-application-assembly.md),
   [Worker Delivery Dispatch](worker-delivery-dispatch.md), and
-  [Worker Adapter Server](../../examples/worker-adapter-server.md).
+  [Kernel Runtime Server Gateway](../../runtime_server/worker_delivery_gateway.py).
 - Backend representation:
   [Worker Runtime Redis Shape](../runtime-redis/worker-runtime-redis-shape.md)
   and [Seed Result Runtime Redis Shape](../runtime-redis/seed-result-runtime-redis-shape.md).

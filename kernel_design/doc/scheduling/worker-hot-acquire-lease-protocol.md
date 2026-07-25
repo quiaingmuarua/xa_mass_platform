@@ -165,11 +165,11 @@ metadata to recover the Worker score bucket:
 ```
 
 A Worker Delivery Dispatch producer emits evidence only; it never mutates
-score. The current
-polling Worker endpoint accepts only `200` and `1xxx`; it cannot manufacture
-`3xxx`. That class is reserved for a future trusted Adapter that owns direct
-pre-execution rejection evidence. Result routing invokes WorkerScoreCore and
-treats Worker disposition independently from Item movement.
+score. The polling Worker endpoint accepts only `200` and `1xxx`; it cannot
+manufacture `3xxx`. The long-lived Adapter batch endpoint accepts trusted
+pre-execution rejection evidence; authentication of that role remains
+deferred. Result routing invokes WorkerScoreCore and treats Worker disposition
+independently from Item movement.
 
 Every result submits its own exact lease evidence without cross-class winner
 aggregation. Stale evidence cannot release or demote a newer lease. Conflicting
@@ -230,7 +230,7 @@ demand, bounded classification lag is allowed.
 | Task Dispatch | append failed or result ambiguous | no compensation; claim and lease expiry recover |
 | Worker Delivery Dispatch | expired or malformed Seed | drop; no synthetic result |
 | Polling Worker | unsupported EventCode, handler failure, or execution failure after entry | emit `1xxx` |
-| Future trusted Adapter | direct evidence that execution was not entered | may emit `3xxx` |
+| Long-lived Adapter | direct evidence that execution was not entered | may emit `3xxx` through Adapter batch ingress |
 | Worker Delivery Dispatch | response lost, process crash, or no result evidence | `UNKNOWN`; claim and lease expiry recover |
 | Result | `200/1xxx` | exact release |
 | Result | `3xxx` | exact RECOVERY_RECHECK demotion |

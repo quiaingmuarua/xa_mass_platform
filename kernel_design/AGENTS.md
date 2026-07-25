@@ -150,7 +150,7 @@ For Worker Delivery Protocol changes:
 2. [executable_spec/kernel/worker_delivery.py](executable_spec/kernel/worker_delivery.py)
 3. [executable_spec/redis_runtime/worker_delivery.py](executable_spec/redis_runtime/worker_delivery.py)
 4. [executable_spec/assembly/transport_clients.py](executable_spec/assembly/transport_clients.py)
-5. [examples/worker_adapter_server.py](examples/worker_adapter_server.py)
+5. [runtime_server/worker_delivery_gateway.py](runtime_server/worker_delivery_gateway.py)
 6. [executable_spec/tests/test_worker_delivery.py](executable_spec/tests/test_worker_delivery.py)
 
 For process assembly or server entry work:
@@ -163,35 +163,37 @@ For process assembly or server entry work:
 6. [executable_spec/assembly/transport_clients.py](executable_spec/assembly/transport_clients.py)
 7. [executable_spec/tests/test_kernel_application.py](executable_spec/tests/test_kernel_application.py)
 8. [executable_spec/tests/test_resources_command_client.py](executable_spec/tests/test_resources_command_client.py)
-9. [examples/kernel_command_server.py](examples/kernel_command_server.py)
+9. [runtime_server/app.py](runtime_server/app.py)
 
 For Worker Delivery Dispatch or a polling Worker:
 
-1. [examples/worker-adapter-server.md](examples/worker-adapter-server.md)
-2. [doc/scheduling/worker-delivery-dispatch.md](doc/scheduling/worker-delivery-dispatch.md)
-3. [doc/scheduling/result-routing-scheduling.md](doc/scheduling/result-routing-scheduling.md)
-4. [doc/kernel-application-assembly.md](doc/kernel-application-assembly.md)
-5. [examples/worker_adapter_server.py](examples/worker_adapter_server.py)
-6. [examples/polling_phone_worker.py](examples/polling_phone_worker.py)
-7. [executable_spec/assembly/transport_clients.py](executable_spec/assembly/transport_clients.py)
+1. [doc/scheduling/worker-delivery-dispatch.md](doc/scheduling/worker-delivery-dispatch.md)
+2. [doc/scheduling/result-routing-scheduling.md](doc/scheduling/result-routing-scheduling.md)
+3. [doc/kernel-application-assembly.md](doc/kernel-application-assembly.md)
+4. [runtime_server/worker_delivery_gateway.py](runtime_server/worker_delivery_gateway.py)
+5. [examples/polling_phone_worker.py](examples/polling_phone_worker.py)
+6. [executable_spec/assembly/transport_clients.py](executable_spec/assembly/transport_clients.py)
 
 ## 2.1 Python Naming Rules
 
-Names in `executable_spec/` expose owner and mechanism, not historical status or
-storage trivia:
+Python workspace names expose owner, mechanism, or process responsibility, not
+historical status or storage trivia:
 
 ```text
-executable_spec/          stable executable-spec package, never example/demo
-kernel/                   owner contracts, score mechanisms, and internal protocols
-scheduling/               bounded matching and cross-owner pacer orchestration
-assembly/                 application lifecycle and dependency composition
-constraint_dsl/           standalone constraint compilation/evaluation
-redis_runtime/            Redis-backed implementations of owner contracts
+executable_spec/              stable mechanism package, never example/demo
+  kernel/                     owner contracts, score mechanisms, internal protocols
+  scheduling/                 bounded matching and cross-owner pacer orchestration
+  assembly/                   application lifecycle and dependency composition
+  constraint_dsl/             standalone constraint compilation/evaluation
+  redis_runtime/              Redis-backed implementations of owner contracts
+runtime_server/               executable-spec HTTP host and Worker Delivery routes
+examples/                     runnable external Worker examples only
 ```
 
-`kernel_design/examples/` contains external protocol hosts and Worker clients.
-They may depend on stable application or wire boundaries, not owner
-implementations.
+`kernel_design/runtime_server/` may compose stable application and transport
+clients but must not implement owner truth. `kernel_design/examples/` contains
+only external Worker clients; examples may depend on stable wire boundaries,
+not owner implementations.
 
 Use these rules:
 
@@ -362,17 +364,18 @@ by [Worker HOT_ACQUIRE Lease Protocol](doc/scheduling/worker-hot-acquire-lease-p
 Worker Delivery Dispatch owns:
 
 ```text
-one configured endpointManagerId sparse mailbox
-point WorkerId polling or bounded cursor consumption inside that bucket
+point WorkerId polling through an explicit endpointManagerId binding
+bounded cursor consumption for a long-lived Adapter's sparse mailbox
 stable WorkerCommandEnvelope forwarding to the already selected Worker
-direct semantic SeedResult validation and outcome-class append
+point Worker result and Adapter batch SeedResult validation/append
 ```
 
 Its boundary starts after Task Dispatch handles mailbox publication and ends
 after SeedResult append. It does not select Workers, claim Items, mutate Task
 score, interpret Worker score, or renew/release Worker leases. The current
-polling HTTP slice accepts Worker-originated `200/1xxx`; `3xxx` is reserved for
-a future trusted Adapter with direct pre-execution rejection evidence.
+polling HTTP slice accepts Worker-originated `200/1xxx`; the long-lived Adapter
+batch ingress accepts `3xxx` pre-execution rejection evidence. Polling never
+scans a mailbox, and `system-polling` is only a logical route binding.
 
 Result-routing owns:
 
