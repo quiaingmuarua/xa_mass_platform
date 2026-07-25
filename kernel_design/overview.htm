@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta
     name="description"
-    content="XA Mass 新内核的人类全景入口：Task Dispatch、Worker Delivery Dispatch、Result Routing、TaskType 与三条 Score 轴。"
+    content="XA Mass 新内核的人类全景入口：对等的 Task/Worker System、Task Dispatch、Worker Delivery Dispatch、Result Routing、TaskType 与三条 Score 轴。"
   >
   <title>XA Mass Kernel · 机制全景</title>
   <style>
@@ -257,6 +257,7 @@
       font-size: 48px;
       line-height: 1.08;
       overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .lede {
@@ -265,10 +266,13 @@
       color: var(--ink-2);
       font-size: 16px;
       overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .lede strong {
       color: var(--ink);
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .principle-strip {
@@ -1053,7 +1057,11 @@
       }
 
       h1 {
-        font-size: 32px;
+        font-size: 30px;
+      }
+
+      .lede {
+        font-size: 15px;
       }
 
       h2 {
@@ -1183,6 +1191,8 @@
 
       <h1>XA Mass Kernel<br>机制全景</h1>
       <p class="lede">
+        Task System 与 Worker System 是对等的 Kernel 核心系统；
+        Assignment Dispatch 跨 owner 形成绑定，但任何一方都不附属于另一方。
         新内核把调度拆成三个连续边界：
         <strong>Task Dispatch 完成选择与 claim，Worker Delivery Dispatch 完成投递，
         Result Routing 让 TaskItem 与 Worker truth 收敛。</strong>
@@ -1723,28 +1733,32 @@
           <span class="reading-number">03</span>
           <span><b>Task Resource Model</b>TaskType、allocationRule 与 empty-close。</span>
         </a>
-        <a class="reading-link" href="doc/scheduling/assignment-dispatch-scheduling.md">
+        <a class="reading-link" href="doc/worker-system.md">
           <span class="reading-number">04</span>
+          <span><b>Worker System</b>Resource、scheduling、binding、connectivity 与 execution 边界。</span>
+        </a>
+        <a class="reading-link" href="doc/scheduling/assignment-dispatch-scheduling.md">
+          <span class="reading-number">05</span>
           <span><b>Assignment Dispatch</b>activation、warmup 与 Task dispatch 组合。</span>
         </a>
         <a class="reading-link" href="doc/scheduling/worker-hot-acquire-lease-protocol.md">
-          <span class="reading-number">05</span>
+          <span class="reading-number">06</span>
           <span><b>Worker Lease Protocol</b>serviceability、dirty fence 与 exact lease。</span>
         </a>
         <a class="reading-link" href="doc/scheduling/worker-delivery-dispatch.md">
-          <span class="reading-number">06</span>
+          <span class="reading-number">07</span>
           <span><b>Worker Delivery Dispatch</b>Adapter mailbox 与 Worker protocol。</span>
         </a>
         <a class="reading-link" href="doc/scheduling/result-routing-scheduling.md">
-          <span class="reading-number">07</span>
+          <span class="reading-number">08</span>
           <span><b>Result Routing</b>outcome lanes 与可替换 owner-local policies。</span>
         </a>
         <a class="reading-link" href="runtime_server/app.py">
-          <span class="reading-number">08</span>
+          <span class="reading-number">09</span>
           <span><b>Kernel Runtime Server</b>Runtime commands 与 Worker Delivery Gateway 的协议宿主。</span>
         </a>
         <a class="reading-link" href="examples/README.md">
-          <span class="reading-number">09</span>
+          <span class="reading-number">10</span>
           <span><b>Polling Worker Example</b>内置 polling binding 与 phone Worker。</span>
         </a>
       </div>

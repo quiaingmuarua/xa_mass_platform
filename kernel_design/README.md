@@ -46,6 +46,12 @@ The declared scheduling baseline is mechanism-complete in the Python
 executable spec:
 
 ```text
+Task System and Worker System are peer Kernel subsystems.
+Assignment Dispatch observes both; neither subsystem owns the other.
+One Runtime Server or KernelApplication may host both without merging truth.
+```
+
+```text
 Task admission and score visibility
   -> TASK_DRIVEN or ITEM_DRIVEN scheduling profile
   -> Task Dispatch
@@ -513,6 +519,10 @@ no hidden compatibility path or second mainline remains
 - [Kernel Core Scheduling](doc/scheduling/README.md)
   - four scheduling planes for the new kernel core: task score-band, worker
     score-band, assignment-dispatch, and result-routing.
+- [Worker System](doc/worker-system.md)
+  - first-class owner map for Worker resource, scheduling, binding,
+    connectivity, and execution dimensions, including current deferred
+    mechanisms.
 - [Worker Resource Model](doc/resource-model/worker-resource-model.md)
   - v0 metadata/query projection for worker groups, workers, and dynamic
     attribute allowlists.
