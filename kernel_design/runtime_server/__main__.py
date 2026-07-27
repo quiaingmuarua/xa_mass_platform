@@ -8,7 +8,7 @@ from .app import create_app
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Start the Kernel Runtime Server.")
+    parser = argparse.ArgumentParser(description="Start the Python Kernel Command Server.")
     parser.add_argument("--config", type=Path, help="optional kernel JSON config")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=18080)
@@ -26,7 +26,7 @@ def main() -> None:
     try:
         import uvicorn
     except ImportError as error:
-        raise RuntimeError("uvicorn is required for the Kernel Runtime Server") from error
+        raise RuntimeError("uvicorn is required for the Python Kernel Command Server") from error
     uvicorn.run(
         create_app(config_json=config_json),
         host=args.host,

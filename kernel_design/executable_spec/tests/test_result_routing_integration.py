@@ -19,13 +19,13 @@ try:
     )
     from kernel_design.examples.polling_phone_worker import (
         PHONE_INSPECT_EVENT_CODE,
-        PollingPhoneWorker,
+        inspect_international_phone_number,
     )
 except (ImportError, RuntimeError):  # pragma: no cover - missing example dependencies
     TestClient = None  # type: ignore[assignment,misc]
     create_runtime_app = None  # type: ignore[assignment]
     PHONE_INSPECT_EVENT_CODE = None  # type: ignore[assignment]
-    PollingPhoneWorker = None  # type: ignore[assignment,misc]
+    inspect_international_phone_number = None  # type: ignore[assignment]
 
 from kernel_design.executable_spec import (
     RedisTaskItemScoreBandCore,
@@ -36,9 +36,8 @@ from kernel_design.executable_spec import (
 from kernel_design.executable_spec.assembly import (
     TaskType,
     SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
+    SeedResult,
     WorkerCommandConsumerClient,
-    WorkerCommandEnvelope,
-    WorkerMessageType,
     KernelApplication,
     KernelApplicationConfig,
     ResourcesCommandClient,
@@ -56,7 +55,7 @@ _REDIS_URL = os.environ.get("KERNEL_DESIGN_REDIS_URL")
     and _REDIS_URL
     and TestClient is not None
     and create_runtime_app is not None
-    and PollingPhoneWorker is not None,
+    and inspect_international_phone_number is not None,
     "set KERNEL_DESIGN_REDIS_URL to run result-routing Redis closure proof",
 )
 class ResultRoutingIntegrationTest(unittest.TestCase):
@@ -81,24 +80,17 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         )
         self.resources = ResourcesCommandClient(self.config)
         self.application = KernelApplication(self.config)
+        self.command_consumer = WorkerCommandConsumerClient(self.config)
+        self.result_commands = SeedResultCommandClient(self.config)
         assert create_runtime_app is not None
         self.runtime_server_context = TestClient(
             create_runtime_app(
                 application=self.application,
                 resources_client=self.resources,
-                worker_command_consumer=WorkerCommandConsumerClient(
-                    self.config
-                ),
-                seed_result_commands=SeedResultCommandClient(self.config),
             )
         )
         self.runtime_server = self.runtime_server_context.__enter__()
         self.runtime_server_open = True
-        assert PollingPhoneWorker is not None
-        self.phone_worker = PollingPhoneWorker(
-            worker_id="worker-1",
-            delivery_client=self.runtime_server,
-        )
         self.item_score = RedisTaskItemScoreBandCore(
             self.redis,
             prefix=self.prefix,
@@ -189,7 +181,10 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         deadline = time.monotonic() + 3
         completed = False
         while time.monotonic() < deadline:
-            completed = self.phone_worker.poll_once()
+            completed = self._execute_phone_command(
+                endpoint_manager_id=SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
+                worker_id="worker-1",
+            )
             if completed:
                 break
             time.sleep(0.02)
@@ -283,45 +278,31 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
             },
         )
 
-        command_payload = None
+        command = None
         deadline = time.monotonic() + 3
-        poll_path = (
-            "/worker-delivery/endpoint-managers/endpoint-1/"
-            "workers/worker-1/commands:poll"
-        )
-        while time.monotonic() < deadline and command_payload is None:
-            response = self.runtime_server.post(poll_path)
-            if response.status_code == 200:
-                command_payload = response.json()
+        while time.monotonic() < deadline and command is None:
+            command = self.command_consumer.consume_worker_command(
+                endpoint_manager_id="endpoint-1",
+                worker_id="worker-1",
+            )
+            if command is not None:
                 break
-            self.assertEqual(204, response.status_code)
             time.sleep(0.02)
-        self.assertIsNotNone(command_payload)
-        assert command_payload is not None
-        command = WorkerCommandEnvelope(
-            command_id=command_payload["commandId"],
-            message_type=WorkerMessageType(command_payload["messageType"]),
-            execute_before_millis=command_payload["executeBeforeMillis"],
-            opaque_item=command_payload["opaqueItem"],
-        )
+        self.assertIsNotNone(command)
+        assert command is not None
         seed = decode_deliver_seed(command.opaque_item)
         self.assertIsNotNone(seed)
         assert seed is not None
-        rejection_response = self.runtime_server.post(
-            "/worker-delivery/endpoint-managers/"
-            "endpoint-1/results:append",
-            json={
-                "results": [
-                    {
-                        "commandId": command.command_id,
-                        "opaqueResultContext": seed.opaque_result_context,
-                        "outcomeCode": "3001",
-                        "opaqueResultPayload": None,
-                    }
-                ]
-            },
+        accepted = self.result_commands.append_seed_results(
+            results=(
+                SeedResult(
+                    command_id=command.command_id,
+                    opaque_result_context=seed.opaque_result_context,
+                    outcome_code="3001",
+                ),
+            )
         )
-        self.assertEqual(202, rejection_response.status_code)
+        self.assertEqual(1, accepted)
 
         recovery_state = None
         deadline = time.monotonic() + 3
@@ -362,6 +343,46 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
                 f"ad:{self.prefix}:candidate:task-1:workers"
             ),
         )
+
+    def _execute_phone_command(
+        self,
+        *,
+        endpoint_manager_id: str,
+        worker_id: str,
+    ) -> bool:
+        command = self.command_consumer.consume_worker_command(
+            endpoint_manager_id=endpoint_manager_id,
+            worker_id=worker_id,
+        )
+        if command is None:
+            return False
+        seed = decode_deliver_seed(command.opaque_item)
+        self.assertIsNotNone(seed)
+        assert seed is not None
+        self.assertEqual(worker_id, seed.worker_id)
+        delivery_item = json.loads(seed.opaque_delivery_item)
+        self.assertEqual(PHONE_INSPECT_EVENT_CODE, delivery_item["eventCode"])
+        assert inspect_international_phone_number is not None
+        result_payload = inspect_international_phone_number(
+            delivery_item["payload"]["phoneNumber"]
+        )
+        accepted = self.result_commands.append_seed_results(
+            results=(
+                SeedResult(
+                    command_id=command.command_id,
+                    opaque_result_context=seed.opaque_result_context,
+                    outcome_code="200",
+                    opaque_result_payload=json.dumps(
+                        result_payload,
+                        allow_nan=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ),
+                ),
+            )
+        )
+        self.assertEqual(1, accepted)
+        return True
 
     def _close_runtime_server(self) -> None:
         if self.runtime_server_open:

@@ -126,7 +126,7 @@ class PollingPhoneWorker:
         endpoint_manager_id = quote(self.endpoint_manager_id, safe="")
         worker_id = quote(self.worker_id, safe="")
         return (
-            "/worker-delivery/endpoint-managers/"
+            "/api/v1/worker-delivery/endpoint-managers/"
             f"{endpoint_manager_id}/workers/{worker_id}/{action}"
         )
 
@@ -201,7 +201,7 @@ def main() -> None:
     parser.add_argument("--worker-id", required=True)
     parser.add_argument(
         "--server-url",
-        default="http://127.0.0.1:18080",
+        default="http://127.0.0.1:18082",
     )
     parser.add_argument(
         "--endpoint-manager-id",

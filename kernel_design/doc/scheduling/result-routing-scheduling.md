@@ -56,12 +56,13 @@ represents a successful handler with no business return value.
 Result routing does not use it as an Item identity, deduplication key, outcome
 winner, or Worker lease fence.
 
-The Worker Delivery Gateway point result endpoint accepts Worker-originated
-`200` and `1xxx` only. Its long-lived Adapter batch endpoint also accepts
-trusted `3xxx` evidence that a delivery was rejected before entering Worker
-execution. Authentication of that Adapter role remains deferred. Result
-routing does not distinguish producers and never derives `3xxx` from timeout,
-missing response, or mailbox age.
+The Java Worker Delivery Gateway point result endpoint accepts
+Worker-originated `200` and `1xxx` only. Its long-lived Adapter batch endpoint
+also accepts trusted `3xxx` evidence that a delivery was rejected before
+entering Worker execution. Java appends the corresponding outcome-class Redis
+queue but does not consume or interpret routing policy. Authentication of that
+Adapter role remains deferred. Result routing does not distinguish producers
+and never derives `3xxx` from timeout, missing response, or mailbox age.
 
 Each class has an independent Redis LIST. The result context remains opaque to
 the queue runtime and carries `taskId`, `messageId`, `workerId`,

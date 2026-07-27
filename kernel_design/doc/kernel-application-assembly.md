@@ -4,7 +4,7 @@ Status: active new-kernel application contract; Python executable spec implement
 
 ## Purpose
 
-The executable spec exposes four narrow process boundaries:
+The current system exposes three narrow process boundaries:
 
 ```text
 FastAPI / SDK
@@ -17,19 +17,19 @@ CLI / FastAPI
      -> private Redis composition root
      -> assignment-dispatch and result-routing background applications
 
-Kernel Runtime Server
-  -> Worker Delivery Gateway
-     -> WorkerCommandConsumerClient
-     -> SeedResultCommandClient
-     -> point Worker access and long-lived Adapter batch access
+Java Runtime API Server
+  -> Task/resource controllers call the Python Kernel Runtime Server
+  -> Worker Delivery Gateway directly consumes WorkerCommand
+  -> Worker Delivery Gateway directly appends SeedResult
 ```
 
-All four surfaces expose commands, not runtime objects. Callers cannot obtain
+All three surfaces expose commands, not runtime objects. Callers cannot obtain
 Task/Worker score cores, candidate runtime, matcher, pacers, Redis keys,
-suffixes, or lane ranks. The two Worker Delivery clients have no lifecycle;
-only `KernelApplication` starts background scheduling.
+suffixes, or lane ranks. Only `KernelApplication` starts background
+scheduling. Java's direct Redis access is limited to Worker Delivery
+consume/delete and SeedResult append.
 
-## Public Commands
+## Application And Executable-Spec Commands
 
 ```text
 ResourcesCommandClient
@@ -51,6 +51,11 @@ consume_worker_commands(endpointManagerId, cursor, scanCount)
 SeedResultCommandClient
 append_seed_results(SeedResult...)
 ```
+
+`ResourcesCommandClient` and `KernelApplication` back the Python command host.
+The two Worker Delivery clients remain stable Python executable-spec and test
+support surfaces; they are not mounted as Python HTTP routes. The Java Gateway
+implements the public Worker Delivery operations against the same Redis shape.
 
 WorkerGroup upsert reuses `WorkerGroupDescriptor`. Worker upsert accepts the
 caller-owned `WorkerDeclaration`; the complete `WorkerDescriptor` remains a
@@ -157,15 +162,16 @@ KernelApplication.stop()
 ```
 
 Task commands require a successful application start. Worker command
-consumption and Worker result ingress use independent clients with no `start`
-or `stop`, so a Worker Delivery Dispatch process does not own scheduler
-lifecycle. Construction establishes the composition graph but performs no
-Redis I/O. The private process root does not close the Redis client on stop, so
-a clean application instance may restart.
+consumption and Worker result ingress do not own scheduler lifecycle.
+Construction establishes the composition graph but performs no Redis I/O. The
+private process root does not close the Redis client on stop, so a clean
+application instance may restart.
 
 `ResourcesCommandClient`, `WorkerCommandConsumerClient`, and
 `SeedResultCommandClient` have no `start` or `stop`. Each may use a separate
-redis-py pool while sharing the same URL, prefix, and Redis owner truth.
+redis-py pool while sharing the same URL, prefix, and Redis owner truth. The
+latter two remain Python executable-spec/test-support clients; Java owns the
+public Worker Delivery HTTP operations.
 
 ## Background Loop Contract
 
@@ -227,27 +233,26 @@ append/result/heartbeat events into required wakeups.
 
 ## Process-Boundary E2E Proof
 
-The executable spec proves both `TASK_DRIVEN` and `ITEM_DRIVEN` through the
-same external process boundaries:
+Cross-process integration proves both `TASK_DRIVEN` and `ITEM_DRIVEN` through
+the current external process boundaries:
 
 ```text
 ResourcesCommandClient
   -> KernelApplication
   -> Redis scheduling truth
-  -> Worker Delivery Gateway point command
+  -> Java Worker Delivery Gateway point command
   -> Polling Phone Worker tool execution
-  -> Worker Delivery Gateway point result
+  -> Java Worker Delivery Gateway point result
   -> Result-Routing
   -> TaskItem FINAL_SUCCESS + result HASH + Worker lease release
 ```
 
-The proof uses the unified Runtime Server HTTP boundary with real Redis clients and the
-same libphonenumber Worker implementation exposed by the runnable example.
-HTTP remains protocol translation rather than scheduling truth. Separate Redis
+The proof starts Task/resource commands at the Java API, crosses the Python
+Kernel Runtime Server for scheduling, then uses the Java Gateway's direct
+Worker Delivery Redis slice. Java never parses score state. Separate Redis
 proofs cover TASK_DRIVEN default empty close with RUNNING soft-limit release,
 ITEM_DRIVEN future-threshold empty recheck followed by append and dispatch,
-shared explicit threshold close, and public close remaining terminal. A
-separate hard-deadline scanner remains deferred.
+shared explicit threshold close, and public close remaining terminal.
 
 ## External Hosts
 
@@ -258,23 +263,24 @@ python -m kernel_design.executable_spec.assembly
 python -m kernel_design.executable_spec.assembly --config kernel.json
 ```
 
-The Kernel Runtime Server constructs `KernelApplication`,
-`ResourcesCommandClient`, `WorkerCommandConsumerClient`, and
-`SeedResultCommandClient` from one resolved configuration. Lifespan starts and
-stops only `KernelApplication`. The mounted Worker Delivery Gateway exposes:
+The Python Kernel Runtime Server constructs `KernelApplication` and
+`ResourcesCommandClient` from one resolved configuration. Lifespan starts and
+stops only `KernelApplication`:
 
 ```text
 python -m kernel_design.runtime_server
 python -m kernel_design.runtime_server --config kernel.json
 ```
 
+The Java Runtime API Server exposes Worker Delivery at port `18082`:
+
 ```text
-POST /worker-delivery/endpoint-managers/{endpointManagerId}/
+POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/
      workers/{workerId}/commands:poll
-POST /worker-delivery/endpoint-managers/{endpointManagerId}/
+POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/
      workers/{workerId}/results
-POST /worker-delivery/endpoint-managers/{endpointManagerId}/commands:consume
-POST /worker-delivery/endpoint-managers/{endpointManagerId}/results:append
+POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/commands:consume
+POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/results:append
 ```
 
 The first two operations are point Worker access. Pure polling Workers bind to
@@ -289,9 +295,9 @@ Worker results use `SeedResult` directly and copy only `commandId` for trace
 correlation. Result ingress does not carry command message type or deadline.
 
 The Polling Phone Worker is a separate example process. It knows only
-its WorkerId, endpoint-manager binding, Runtime Server URL, Worker Delivery envelopes, and
-the `telecom.phone.inspect` tool. It does not register resources or import
-Kernel owners.
+its WorkerId, endpoint-manager binding, Java Runtime API URL, Worker Delivery
+envelopes, and the `telecom.phone.inspect` tool. It does not register resources
+or import Kernel owners.
 
 Polling is a base request-driven protocol, not an independently deployed
 Adapter. A future WebSocket Adapter uses its own endpoint manager, cursor
@@ -299,10 +305,11 @@ consumes its sparse mailbox, maintains sessions, and actively pushes the same
 WorkerCommandEnvelope. The current Gateway has no login, session, or
 authorization protocol. KernelApplication must not own or expose those facts.
 
-The Python Runtime Server is the executable-spec protocol host, not a new
-Kernel owner or a production compatibility commitment. The Phone Worker is a
-runnable example. Authentication, Task query/list, result projection,
-production transport, and API compatibility remain out of scope.
+The Python Runtime Server remains the scheduling command host and mechanism
+oracle. The Java Gateway is the current Worker Delivery HTTP owner, not a
+second scheduler or Redis owner for scores. The Phone Worker is a runnable
+example. Authentication, Task query/list, result projection, production
+WebSocket transport, and API compatibility remain out of scope.
 
 ## Guardrails
 
@@ -313,8 +320,11 @@ production transport, and API compatibility remain out of scope.
   assembly contract exist.
 - Do not add a second environment-variable or CLI configuration path.
 - Do not let HTTP handlers perform score reads or transitions.
-- Do not expose Worker Delivery methods on `KernelApplication`; the Runtime
-  Server composes the independent clients through the Gateway router.
+- Do not expose Worker Delivery methods on `KernelApplication`.
+- Do not restore Python Worker Delivery HTTP routes. Python transport clients
+  remain executable-spec and test-support surfaces.
+- Do not let Java Worker Delivery Redis code append WorkerCommand, consume
+  SeedResult, or access score/Pacer state.
 - Do not expose cursor scanning through the polling Worker endpoint.
 - Do not turn internal Pacer configuration into public JSON without a concrete
   operational requirement.

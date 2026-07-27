@@ -6,8 +6,10 @@ Status: current repository handoff.
 
 - `kernel_design/` is the current mechanism oracle.
 - `kernel_jvm/` is a production implementation scaffold only.
-- `server_jvm/` is the external Runtime Command API process. It owns HTTP
-  contracts and process concerns, not scheduling or Redis truth.
+- `server_jvm/` is the external Runtime API process. Task and resource commands
+  still call the Python `KernelCommandClient`. Worker Delivery is the one
+  deliberate cutover: Java consumes WorkerCommand mailbox fields and appends
+  SeedResult queue entries directly through `workerdelivery.redis`.
 - The legacy Java platform is available exclusively from
   `legacy-java-platform-final-2026-07-24`.
 - There is no compatibility obligation to legacy Java APIs, modules, Redis
@@ -37,9 +39,15 @@ tag.
 - Update the owning mechanism document when behavior changes.
 - Do not implement Kotlin behavior until a scoped parity slice names the
   Python contract and proof it replaces.
-- Keep `server_jvm` on the Python `KernelCommandClient` boundary until a
-  complete Kotlin owner slice is ready to replace that client. It must not
-  access Redis, scores, Pacers, or `kernel_jvm` implementation packages.
+- Keep Task and resource controllers in `server_jvm` on the Python
+  `KernelCommandClient` boundary until a complete Kotlin owner slice replaces
+  that client. Redis access is allowed only under
+  `com.xa.mass.server.workerdelivery.redis`, and only for WorkerCommand
+  consume/delete plus SeedResult append. Java must not access scores, Pacers,
+  scheduling owners, or `kernel_jvm` implementation packages.
+- Keep `workerdelivery.protocol` transport-neutral. HTTP and future WebSocket
+  packages may call `WorkerDeliveryService` but must not import
+  `workerdelivery.redis` or `WorkerDeliveryRuntime`.
 
 ## JVM Scaffold
 
@@ -48,8 +56,8 @@ responsibilities, but a new Gradle module requires a real publication,
 dependency, or lifecycle boundary.
 
 The scaffold currently contains no public API, DTO, runtime implementation,
-Redis code, or Pacer. The server is a separate process/module and is not
-evidence of Kotlin kernel implementation progress.
+Redis code, or Pacer. The Java Worker Delivery Gateway is a server-side
+transport cutover, not evidence of Kotlin kernel implementation progress.
 
 Gradle is intentional because a future Worker SDK must be consumable as an
 Android library module. Keep that SDK separate from `kernel_jvm`; it may depend

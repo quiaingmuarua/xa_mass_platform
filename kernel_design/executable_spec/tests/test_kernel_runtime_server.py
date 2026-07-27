@@ -9,7 +9,6 @@ from kernel_design.executable_spec.assembly import (
     TaskType,
     KernelApplication,
     ResourcesCommandClient,
-    SeedResultCommandClient,
     TaskApprovalResult,
     TaskApprovalStatus,
     TaskCloseResult,
@@ -20,7 +19,6 @@ from kernel_design.executable_spec.assembly import (
     TaskItemAppendStatus,
     WorkerRuntimeResult,
     WorkerRuntimeStatus,
-    WorkerCommandConsumerClient,
 )
 
 try:
@@ -46,6 +44,9 @@ class KernelRuntimeServerBoundaryGuardTest(unittest.TestCase):
             "WorkerScoreCore",
             "TaskWorkerAllocationPacer",
             "_RedisKernelProcess",
+            "WorkerCommandConsumerClient",
+            "SeedResultCommandClient",
+            "worker_delivery",
         ):
             self.assertNotIn(forbidden, source)
 
@@ -56,8 +57,6 @@ class KernelRuntimeServerTest(unittest.TestCase):
         assert create_app is not None
         self.application = Mock(spec=KernelApplication)
         self.resources_client = Mock(spec=ResourcesCommandClient)
-        self.command_consumer = Mock(spec=WorkerCommandConsumerClient)
-        self.result_commands = Mock(spec=SeedResultCommandClient)
         self.resources_client.upsert_worker_group.return_value = WorkerRuntimeResult(
             WorkerRuntimeStatus.OK
         )
@@ -80,8 +79,6 @@ class KernelRuntimeServerTest(unittest.TestCase):
             create_app(
                 application=self.application,
                 resources_client=self.resources_client,
-                worker_command_consumer=self.command_consumer,
-                seed_result_commands=self.result_commands,
             )
         )
         self.client = self.client_context.__enter__()
@@ -92,12 +89,7 @@ class KernelRuntimeServerTest(unittest.TestCase):
     def test_lifespan_and_health_use_one_kernel_application(self) -> None:
         self.assertEqual({"status": "ok"}, self.client.get("/health").json())
         self.application.start.assert_called_once_with()
-        for boundary in (
-            self.resources_client,
-            self.command_consumer,
-            self.result_commands,
-        ):
-            self.assertFalse(hasattr(boundary, "start"))
+        self.assertFalse(hasattr(self.resources_client, "start"))
 
     def test_routes_translate_http_values_to_assembly_contracts(self) -> None:
         group_response = self.client.put(
@@ -228,6 +220,13 @@ class KernelRuntimeServerTest(unittest.TestCase):
                 json={"opaqueResultContext": "context", "outcomeCode": "200"},
             ).status_code,
         )
+        self.assertEqual(
+            404,
+            self.client.post(
+                "/worker-delivery/endpoint-managers/system-polling/"
+                "workers/worker-1/commands:poll"
+            ).status_code,
+        )
 
     def test_injected_boundaries_must_be_supplied_together(self) -> None:
         assert create_app is not None
@@ -235,10 +234,6 @@ class KernelRuntimeServerTest(unittest.TestCase):
             create_app(application=self.application)
         with self.assertRaisesRegex(ValueError, "injected together"):
             create_app(resources_client=self.resources_client)
-        with self.assertRaisesRegex(ValueError, "injected together"):
-            create_app(worker_command_consumer=self.command_consumer)
-        with self.assertRaisesRegex(ValueError, "injected together"):
-            create_app(seed_result_commands=self.result_commands)
 
     def test_stop_runs_when_lifespan_closes(self) -> None:
         self.client_context.__exit__(None, None, None)

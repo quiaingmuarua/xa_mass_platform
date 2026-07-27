@@ -7,6 +7,9 @@ xa:
       base-url: http://127.0.0.1:18080
       connect-timeout: 1s
       read-timeout: 5s
+    worker-delivery:
+      redis-url: redis://localhost:6379/15
+      redis-prefix: default
 
 management:
   endpoints:
@@ -19,4 +22,4 @@ management:
         enabled: true
       group:
         readiness:
-          include: readinessState,kernel
+          include: readinessState,kernel,workerDeliveryRedis

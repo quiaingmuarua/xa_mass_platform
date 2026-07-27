@@ -1,6 +1,7 @@
 # Seed Result Runtime Redis Shape
 
-Status: active new-kernel Redis shape; Python executable spec implemented.
+Status: active new-kernel Redis shape; Java ingress append and Python
+executable-spec consume/routing implemented.
 
 ## Keys
 
@@ -21,12 +22,13 @@ Each key is a Redis LIST containing deterministic SeedResult JSON:
 }
 ```
 
-`append_seed_results` classifies only the public `outcomeCode`, groups a mixed
-batch by `SeedResultOutcomeClass`, and uses a non-transaction pipeline to
-`RPUSH` the non-empty groups. Cross-class append is best-effort and not atomic.
-The runtime never decodes `opaqueResultContext`. `commandId` is stored
-unchanged for trace correlation and is not used for partitioning,
-deduplication, result precedence, or score fencing.
+Ingress classifies only the public `outcomeCode`, groups a mixed batch by
+`SeedResultOutcomeClass`, and `RPUSH`es the non-empty groups. The Java Gateway
+owns the public ingress operation; the Python runtime retains equivalent
+executable-spec/test-support behavior. Cross-class append is best-effort and
+not atomic. Neither ingress implementation decodes `opaqueResultContext`.
+`commandId` is stored unchanged for trace correlation and is not used for
+partitioning, deduplication, result precedence, or score fencing.
 
 `consume_seed_results(outcomeClass, limit)` performs bounded `LPOP` operations
 against exactly one class queue. FIFO is preserved within each class. Corrupt
@@ -52,8 +54,11 @@ for the same Task-scoped `messageId`. Failure payloads are not stored in v0.
 ## Owner Rules
 
 ```text
+Java Worker Delivery Redis ingress
+  owns public class queue encoding, partitioning, and bounded append
+
 RedisSeedResultRuntime
-  owns class queue encoding, partitioning, and bounded append/consume
+  owns Python executable-spec append proof and production bounded consume
 
 ResultRoutingPacer
   owns bounded class consumption, context decoding, owner-key grouping,

@@ -13,7 +13,6 @@ from kernel_design.executable_spec.assembly import (
     KernelApplication,
     KernelApplicationConfig,
     ResourcesCommandClient,
-    SeedResultCommandClient,
     TaskApprovalResult,
     TaskApprovalStatus,
     TaskCloseResult,
@@ -25,12 +24,8 @@ from kernel_design.executable_spec.assembly import (
     TaskItemAppendResult,
     WorkerDeclaration,
     WorkerGroupDescriptor,
-    WorkerCommandConsumerClient,
     WorkerRuntimeResult,
     WorkerRuntimeStatus,
-)
-from kernel_design.runtime_server.worker_delivery_gateway import (
-    create_worker_delivery_router,
 )
 
 
@@ -153,14 +148,10 @@ def create_app(
     config_json: str | None = None,
     application: KernelApplication | None = None,
     resources_client: ResourcesCommandClient | None = None,
-    worker_command_consumer: WorkerCommandConsumerClient | None = None,
-    seed_result_commands: SeedResultCommandClient | None = None,
 ) -> FastAPI:
     if config_json is not None and (
         application is not None
         or resources_client is not None
-        or worker_command_consumer is not None
-        or seed_result_commands is not None
     ):
         raise ValueError(
             "config_json and injected application boundaries are mutually exclusive"
@@ -168,30 +159,21 @@ def create_app(
     injected = (
         application,
         resources_client,
-        worker_command_consumer,
-        seed_result_commands,
     )
     if any(boundary is not None for boundary in injected) and not all(
         boundary is not None for boundary in injected
     ):
         raise ValueError(
-            "application, resource, command-consumer, and result boundaries "
-            "must be injected together"
+            "application and resource boundaries must be injected together"
         )
     if application is None:
         config = KernelApplicationConfig.from_json(config_json)
         kernel_application = KernelApplication(config)
         resource_commands = ResourcesCommandClient(config)
-        command_consumer = WorkerCommandConsumerClient(config)
-        result_commands = SeedResultCommandClient(config)
     else:
         assert resources_client is not None
-        assert worker_command_consumer is not None
-        assert seed_result_commands is not None
         kernel_application = application
         resource_commands = resources_client
-        command_consumer = worker_command_consumer
-        result_commands = seed_result_commands
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -201,11 +183,9 @@ def create_app(
         finally:
             kernel_application.stop()
 
-    app = FastAPI(title="Kernel Runtime API", lifespan=lifespan)
+    app = FastAPI(title="Python Kernel Command API", lifespan=lifespan)
     app.state.kernel_application = kernel_application
     app.state.resources_command_client = resource_commands
-    app.state.worker_command_consumer_client = command_consumer
-    app.state.seed_result_command_client = result_commands
 
     @app.exception_handler(ValueError)
     async def invalid_contract_value(
@@ -299,12 +279,5 @@ def create_app(
         return _result_map_payload(
             kernel_application.append_task_items(task_id=task_id, items=items)
         )
-
-    app.include_router(
-        create_worker_delivery_router(
-            worker_command_consumer=command_consumer,
-            seed_result_commands=result_commands,
-        )
-    )
 
     return app

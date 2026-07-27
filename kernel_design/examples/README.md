@@ -1,6 +1,6 @@
 # Polling Phone Worker Example
 
-Status: runnable Worker client for the executable-spec Runtime Server.
+Status: runnable Worker client for the Java Runtime API Server.
 
 Install the Runtime Server and Worker dependencies:
 
@@ -9,10 +9,11 @@ python -m pip install -r kernel_design/runtime_server/requirements.txt
 python -m pip install -r kernel_design/examples/requirements.txt
 ```
 
-Start the prerequisite Runtime Server:
+Start the Python scheduling process and Java Runtime API Server:
 
 ```text
 python -m kernel_design.runtime_server
+./gradlew :server_jvm:bootRun
 ```
 
 Start the international-phone polling Worker:
@@ -21,16 +22,16 @@ Start the international-phone polling Worker:
 python -m kernel_design.examples.polling_phone_worker --worker-id worker-1
 ```
 
-The Runtime Server listens on `127.0.0.1:18080`. Its protocol contract is
+The Worker calls the Java server at `127.0.0.1:18082`. Its protocol contract is
 owned by
 [Worker Delivery Dispatch](../doc/scheduling/worker-delivery-dispatch.md):
 
 ```text
-Runtime Command API
+Java Runtime Command API
   -> WorkerGroup/Worker upsert
   -> Task create/approve/close/Item append
 
-Worker Delivery Gateway
+Java Worker Delivery Gateway
   -> target Worker point poll/result
   -> long-lived Adapter cursor consume/batch result
 ```
@@ -42,16 +43,16 @@ bind their declarations to the built-in logical route:
 endpointManagerId = system-polling
 ```
 
-The Gateway uses `WorkerCommandConsumerClient` and
-`SeedResultCommandClient`; only `KernelApplication` participates in the
-Server lifespan.
+The Java Gateway reads only WorkerCommand mailbox fields and appends only
+SeedResult queue entries. Python remains the scheduling and ResultRouting
+owner.
 
 ## Phone Inspection Bootstrap
 
 Create the resource declarations:
 
 ```http
-PUT /worker-groups/phone-tools
+PUT /api/v1/worker-groups/phone-tools
 {
   "attributes": {},
   "eventCodes": ["telecom.phone.inspect"],
@@ -60,7 +61,7 @@ PUT /worker-groups/phone-tools
 ```
 
 ```http
-PUT /worker-groups/phone-tools/workers/worker-1
+PUT /api/v1/worker-groups/phone-tools/workers/worker-1
 {
   "endpointManagerId": "system-polling",
   "attributes": {"runtime": "python"},
@@ -71,7 +72,7 @@ PUT /worker-groups/phone-tools/workers/worker-1
 Create and approve a Task:
 
 ```http
-POST /tasks
+POST /api/v1/tasks
 {
   "taskId": "phone-inspection-task",
   "workerGroupId": "phone-tools",
@@ -88,13 +89,13 @@ POST /tasks
 ```
 
 ```http
-POST /tasks/phone-inspection-task/approve
+POST /api/v1/tasks/phone-inspection-task/approve
 ```
 
 Append one due Item:
 
 ```http
-POST /tasks/phone-inspection-task/items
+POST /api/v1/tasks/phone-inspection-task/items
 {
   "items": [
     {
@@ -110,7 +111,7 @@ POST /tasks/phone-inspection-task/items
 The Worker point-polls:
 
 ```text
-/worker-delivery/endpoint-managers/system-polling/
+/api/v1/worker-delivery/endpoint-managers/system-polling/
   workers/worker-1/commands:poll
 ```
 

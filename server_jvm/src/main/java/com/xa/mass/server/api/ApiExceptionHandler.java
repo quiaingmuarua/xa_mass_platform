@@ -2,6 +2,7 @@ package com.xa.mass.server.api;
 
 import com.xa.mass.server.api.v1.model.ApiErrorResponse;
 import com.xa.mass.server.kernelclient.KernelClientException;
+import com.xa.mass.server.workerdelivery.WorkerDeliveryException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
@@ -41,6 +42,28 @@ public final class ApiExceptionHandler {
                 new ApiErrorResponse(
                         "MALFORMED_REQUEST",
                         "Request body or parameters are invalid",
+                        requestId(request)
+                )
+        );
+    }
+
+    @ExceptionHandler(WorkerDeliveryException.class)
+    public ResponseEntity<ApiErrorResponse> workerDeliveryFailure(
+            WorkerDeliveryException error,
+            HttpServletRequest request
+    ) {
+        HttpStatus status = error.kind()
+                == WorkerDeliveryException.Kind.INVALID
+                ? HttpStatus.BAD_REQUEST
+                : HttpStatus.SERVICE_UNAVAILABLE;
+        String code = error.kind()
+                == WorkerDeliveryException.Kind.INVALID
+                ? "INVALID_WORKER_DELIVERY_REQUEST"
+                : "WORKER_DELIVERY_UNAVAILABLE";
+        return ResponseEntity.status(status).body(
+                new ApiErrorResponse(
+                        code,
+                        error.getMessage(),
                         requestId(request)
                 )
         );

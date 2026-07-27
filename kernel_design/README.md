@@ -553,11 +553,15 @@ no hidden compatibility path or second mainline remains
     and the executable-spec Kernel Runtime HTTP host.
 - [Worker Delivery Dispatch](doc/scheduling/worker-delivery-dispatch.md)
   - Adapter-partitioned mailbox access through target Worker polling or
-    long-lived Adapter batches, including the Runtime Server Gateway contract,
+    long-lived Adapter batches, including the Java Runtime API Gateway contract,
     without Adapter-owned score mutation.
 - [Kernel Runtime Server](runtime_server/app.py)
-  - executable-spec FastAPI host for Runtime commands and Worker Delivery
-    access; only `KernelApplication` owns background lifecycle.
+  - executable-spec FastAPI host for Task/resource commands; only
+    `KernelApplication` owns background lifecycle.
+- [JVM Runtime API Server](../server_jvm/README.md)
+  - external Task/resource HTTP proxy and Java Worker Delivery Gateway; its
+    direct Redis access is limited to WorkerCommand consume/delete and
+    SeedResult append.
 - [Polling Phone Worker](examples/polling_phone_worker.py)
   - independent Worker process that executes `telecom.phone.inspect` through
     the built-in `system-polling` binding using Google libphonenumber.
@@ -574,7 +578,7 @@ prove the currently implemented mechanism. If they disagree, identify the drift
 before changing either one.
 
 The Python executable spec lives under `kernel_design/executable_spec/`.
-`kernel_design/runtime_server/` is its FastAPI protocol host, while
+`kernel_design/runtime_server/` is its Task/resource FastAPI host, while
 `kernel_design/examples/` contains external Worker examples only. The Kotlin
 production scaffold lives under `kernel_jvm/` and may implement behavior only
 through scoped parity slices against this workspace. Historical tag material

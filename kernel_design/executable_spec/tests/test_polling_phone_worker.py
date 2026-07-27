@@ -106,7 +106,7 @@ class PollingPhoneWorkerTest(unittest.TestCase):
 
         self.assertFalse(self.worker.poll_once())
         self.client.post.assert_called_once_with(
-            "/worker-delivery/endpoint-managers/"
+            "/api/v1/worker-delivery/endpoint-managers/"
             f"{SYSTEM_POLLING_ENDPOINT_MANAGER_ID}"
             "/workers/worker-1/commands:poll"
         )

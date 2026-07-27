@@ -1,14 +1,14 @@
 # Worker Delivery Dispatch
 
-Status: active new-kernel boundary contract; Python protocol, Redis mailbox,
-Worker Delivery Gateway, and phone-tool Worker implemented; production Adapter
-policy deferred.
+Status: active new-kernel boundary contract; Python protocol/Redis oracle,
+Java Worker Delivery Gateway, and phone-tool Worker implemented; production
+Adapter policy deferred.
 
 Upstream contract: [Task Dispatch Pacer](task-dispatch-pacer.md).
 Worker lease contract:
 [Worker HOT_ACQUIRE Lease Protocol](worker-hot-acquire-lease-protocol.md).
 Executable HTTP host:
-[Worker Delivery Gateway](../../runtime_server/worker_delivery_gateway.py).
+[JVM Runtime API Server](../../../server_jvm/README.md).
 
 ## Purpose
 
@@ -188,8 +188,8 @@ identity. `endpointManagerId` is not available to the Worker allocation DSL.
 
 ## Adapter And Worker
 
-The unified Kernel Runtime Server exposes the Worker Delivery Gateway. Pure
-polling Workers bind to:
+The Java Runtime API Server exposes the Worker Delivery Gateway. Pure polling
+Workers bind to:
 
 ```text
 endpointManagerId = system-polling
@@ -198,31 +198,31 @@ endpointManagerId = system-polling
 This is a fixed logical route identity, not an independently deployed Adapter,
 session owner, thread, or runtime truth.
 
-Start the executable-spec host with:
+Start Python scheduling and the Java external server:
 
 ```text
 python -m kernel_design.runtime_server
-python -m kernel_design.runtime_server --config kernel.json
+./gradlew :server_jvm:bootRun
 ```
 
-The default address is `127.0.0.1:18080`. The same process hosts Runtime
-commands and Worker Delivery access; only `KernelApplication` participates in
-its lifecycle.
+The Worker Delivery address is `127.0.0.1:18082`. Task/resource controllers
+still call the Python server at `127.0.0.1:18080`; Worker Delivery directly
+uses only the command-mailbox and result-queue Redis shapes.
 
 Point polling is always Worker-specific:
 
 ```text
-POST /worker-delivery/endpoint-managers/{endpointManagerId}/
+POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/
      workers/{workerId}/commands:poll
   -> point consume WorkerCommandEnvelope
   -> recheck executeBeforeMillis
   -> return the same commandId, messageType, deadline, and opaqueItem
   -> return 204 when the field is empty or the command is expired
 
-POST /worker-delivery/endpoint-managers/{endpointManagerId}/
+POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/
      workers/{workerId}/results
   -> accept SeedResult fields directly
-  -> append through SeedResultCommandClient
+  -> Java Gateway appends the classified SeedResult queue entry
   -> allow Worker-owned 200 or 1xxx evidence
 ```
 
@@ -232,10 +232,10 @@ It is request-driven and naturally applies Worker-side backpressure.
 A long-lived Adapter uses separate role-specific endpoints:
 
 ```text
-POST /worker-delivery/endpoint-managers/{endpointManagerId}/commands:consume
+POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/commands:consume
   -> cursor-consume a sparse mailbox page
 
-POST /worker-delivery/endpoint-managers/{endpointManagerId}/results:append
+POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/results:append
   -> append one non-empty 200/1xxx/3xxx SeedResult batch
 ```
 
@@ -265,10 +265,12 @@ The cursor request and response are:
 Point and cursor consumers compete for the same Worker field; atomic consume
 allows only one winner and never republishes the command.
 
-The Gateway does not generate `commandId`, define `messageType`, decode
+The Java Gateway does not generate `commandId`, define `messageType`, decode
 `DeliverSeed`, or parse `opaqueResultContext`. A future Java WebSocket Adapter
 and the Python polling Worker therefore use the same command and SeedResult
-contracts without creating transport-specific variants.
+contracts without creating transport-specific variants. Java is allowed to
+read/delete WorkerCommand mailbox entries and append SeedResult queue entries;
+it must not append commands, consume results, or access score/Pacer state.
 
 The Worker decodes `DeliverSeed`, verifies `seed.workerId` matches its identity,
 executes `opaqueDeliveryItem`, and copies `opaqueResultContext` into
