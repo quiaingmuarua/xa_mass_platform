@@ -268,7 +268,7 @@ Java control API -> Python KernelApplication
   -> Java TaskData append
   -> Redis scheduling truth
   -> Java Server Worker Delivery HTTP command access
-  -> Java polling Worker or HTTP-consuming WebSocket Adapter
+  -> Java polling Worker
   -> Java phone tool execution
   -> Java Server Worker Delivery HTTP SeedResult ingress
   -> Result-Routing
@@ -279,9 +279,10 @@ Java control API -> Python KernelApplication
 The proof starts resource and Task-control commands at the Java API, crosses
 the Python Kernel Control API, appends TaskItems through Java TaskData, then
 uses the Java Server's Worker Delivery owner providers. Polling calls the point
-HTTP API directly. WebSocket uses the same Server batch HTTP API in both
-embedded and standalone Adapter deployments. Java never parses Task or Worker
-score state. Separate Redis proofs cover TaskData Item-score
+HTTP API directly. The Adapter Core is proved independently against the batch
+HTTP contract; no concrete WebSocket host is currently part of the assembled
+cross-process path. Java never parses Task or Worker score state. Separate
+Redis proofs cover TaskData Item-score
 initialization, TASK_DRIVEN default empty close with RUNNING soft-limit
 release, ITEM_DRIVEN future-threshold empty recheck followed by append and
 dispatch, shared explicit threshold close, and public close remaining
@@ -337,14 +338,15 @@ or import Kernel owners. Polling and WebSocket share one serial command
 execution core.
 
 Polling is a base request-driven protocol, not an independently deployed
-Adapter. The Java WebSocket Adapter owns one configured non-`system-polling`
-endpoint manager, cursor-consumes that sparse mailbox through the Server batch
-HTTP API, maintains one process-local session generation per WorkerId, and
-pushes the same WorkerCommandEnvelope. It can be embedded in `server_jvm` or
-started independently on port `18083`; embedded mode deliberately uses HTTP
-loopback instead of an in-process shortcut. Workers upsert before connecting.
-The Adapter has no Kernel/Redis dependency, login, or authorization protocol,
-and KernelApplication does not own or expose session facts.
+Adapter. The framework-free Java Adapter Core owns one configured
+non-`system-polling` endpoint manager, cursor-consumes that sparse mailbox
+through the Server batch HTTP API, maintains one process-local session
+generation per WorkerId, and applies dispatch/result-buffer policy. A future
+transport host converts WebSocket frames and lifecycle callbacks into Core
+calls and schedules bounded rounds. The current Server neither embeds nor
+starts such a host. Workers upsert before connecting. The Core has no
+Spring/Kernel/Redis/thread dependency, and KernelApplication does not own or
+expose session facts.
 
 The Python Runtime Server remains the scheduling command host and mechanism
 oracle. Java TaskData and Worker Delivery own their current external HTTP
@@ -372,7 +374,9 @@ delivery, and API compatibility remain out of scope.
   candidate cache, WorkerCommand mailbox, SeedResult queues, or Pacer state.
 - Do not expose cursor scanning through the polling Worker endpoint.
 - Do not let the WebSocket Adapter bypass Server batch HTTP through Redis or
-  an embedded in-process call.
+  an in-process call.
+- Do not move Adapter cursor, session-generation, result-buffer, `3001`, or
+  `UNKNOWN` policy into a WebSocket lifecycle host.
 - Do not turn internal Pacer configuration into public JSON without a concrete
   operational requirement.
 - Keep result-routing and assignment-dispatch as separate internal application

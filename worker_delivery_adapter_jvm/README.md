@@ -1,86 +1,84 @@
-# XA Mass JVM Worker Delivery Adapter
+# XA Mass JVM Worker Delivery Adapter Core
 
-Status: embeddable and standalone Java 21 WebSocket Adapter.
+Status: framework-free Java 21 Adapter mechanism.
 
-This module owns transport behavior only:
+This module owns the transport-independent Adapter behavior:
 
 ```text
 Server Adapter batch HTTP API
   -> WorkerDeliveryGatewayClient
-  -> bounded mailbox pump
-  -> process-local WebSocket sessions
-  -> WorkerCommand push
-  -> Worker/Adapter results
+  -> WorkerDeliveryAdapter.dispatchOnce
+  -> WorkerSessionDirectory
+  -> WorkerConnection
+  -> bounded Worker/Adapter result buffering
   -> Server Adapter batch result API
 ```
 
-It does not own WorkerCommand or SeedResult Redis truth. It has no dependency
-on `server_jvm`, `kernel_jvm`, Redis, Task scheduling, scores, or Pacers.
-Embedded mode deliberately uses HTTP loopback; there is no in-process fast
-path.
+It has no Spring, Spring Boot, WebSocket, Server, Kernel, Redis, scheduling,
+score, thread, or lifecycle dependency.
 
-## WebSocket Contract
+## Stable Core
 
-Workers connect to:
+The stable boundaries are:
 
 ```text
-GET /api/v1/worker-delivery/websocket/workers/{workerId}
+WorkerDeliveryGatewayClient
+  consume one bounded command page and append one result batch
+
+WorkerConnection
+  attempt one already-assigned command and close one transport connection
+
+WorkerSessionDirectory
+  issue generation tokens, replace sessions, deliver by WorkerId, and close
+
+WorkerDeliveryAdapter
+  accept current-session results and execute one bounded dispatch round
 ```
 
-Server-to-Worker text frames are exact `WorkerCommandEnvelope` JSON.
-Worker-to-Server frames are exact `SeedResult` JSON limited to `200/1xxx`.
-Binary frames, malformed JSON, and Worker-originated `3xxx` close the session.
+`WorkerSessionToken` exposes `workerId + generation`, while each Directory
+implementation privately creates its token. A newer binding replaces the
+previous connection; stale disconnect callbacks and stale results cannot act
+as the current generation.
 
-One Adapter instance owns one non-`system-polling` endpoint-manager identity.
-The pump cursor-consumes that identity's Server mailbox through HTTP. A command
-for which no session exists produces trusted `3001` evidence. An ambiguous
-failure after send begins remains `UNKNOWN` and does not produce `3xxx`.
+Delivery evidence is explicit:
 
-Results are retained only in a bounded process-memory buffer. Failed Server
-submissions are retried before more commands are consumed. Process failure may
-lose buffered results; the Kernel lease fences remain the convergence
+```text
+DELIVERED
+  transport accepted the command
+
+REJECTED_BEFORE_SEND
+  command was confirmed not to have entered Worker delivery
+  -> Core may generate 3001
+
+UNKNOWN
+  send started or the outcome is ambiguous
+  -> no 3xxx evidence
+```
+
+The Core keeps the mailbox cursor, bounded result buffer, one pending result
+batch, deadline filtering, and trusted `3001` construction. Pending results are
+retried before consuming more commands. Process failure may lose in-memory
+results; Kernel Item claims and Worker lease fences remain the convergence
 boundary.
 
-## Configuration
+`InMemoryWorkerSessionDirectory` is the current process-local implementation.
+Different Adapter instances may own different endpoint-manager IDs. The Core
+does not provide same-endpoint distributed ownership.
 
-```yaml
-xa:
-  mass:
-    worker-delivery:
-      adapter:
-        websocket:
-          enabled: true
-          endpoint-manager-id: websocket-adapter-1
-          gateway-base-url: http://127.0.0.1:18082
-          request-timeout: 5s
-          pump-interval: 100ms
-          scan-count: 100
-          result-batch-size: 100
-          result-buffer-capacity: 1000
-          send-time-limit: 5s
-```
+## HTTP Client And Host Boundary
 
-The endpoint-manager ID must be nonblank and cannot be `system-polling`.
-The Gateway URL must be an absolute HTTP or HTTPS URL. All durations and
-bounds must be positive.
+The JDK `HttpClient` Gateway implementation remains in this module. Its JSON
+DTOs are private and do not enter the shared Worker protocol.
 
-## Deployment
+The Core has no executable Main and no concrete WebSocket transport host.
+`server_jvm` exposes the point/batch Worker Delivery HTTP API but does not
+start or embed this Adapter.
 
-Embedded mode is enabled through `server_jvm`; it still calls the Server's
-batch HTTP routes. The Server defaults this mode to disabled.
-
-Standalone mode listens on port `18083` by default:
-
-```text
-./gradlew :worker_delivery_adapter_jvm:bootRun --args="--xa.mass.worker-delivery.adapter.websocket.endpoint-manager-id=websocket-adapter-1"
-```
-
-Its default Gateway is `http://127.0.0.1:18082`. Standalone exposes only the
-WebSocket endpoint and health probes; it does not expose Worker point/batch
-Gateway routes, Kernel resource APIs, or Redis health.
-
-Do not run embedded and standalone Adapters for the same endpoint-manager ID.
-The first version has no distributed ownership lease.
+A future host supplies `WorkerConnection` implementations, converts transport
+connect/result/disconnect events into Core calls, and schedules
+`dispatchOnce()`. That host is a deployment decision and must not move cursor,
+session generation, result buffering, `3001`, or `UNKNOWN` semantics out of
+this module.
 
 ## Verification
 

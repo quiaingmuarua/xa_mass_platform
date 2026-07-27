@@ -144,6 +144,25 @@ class HttpWorkerDeliveryGatewayClientTest {
         )).isInstanceOf(WorkerDeliveryAdapterException.class);
     }
 
+    @Test
+    void rejectsInvalidGatewayConfiguration() {
+        assertThatThrownBy(() -> new HttpWorkerDeliveryGatewayClient(
+                URI.create("/relative"),
+                Duration.ofSeconds(1),
+                codec
+        )).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new HttpWorkerDeliveryGatewayClient(
+                URI.create("redis://127.0.0.1:6379"),
+                Duration.ofSeconds(1),
+                codec
+        )).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new HttpWorkerDeliveryGatewayClient(
+                URI.create("http://127.0.0.1:18082"),
+                Duration.ZERO,
+                codec
+        )).isInstanceOf(IllegalArgumentException.class);
+    }
+
     private void respond(int status, String body) {
         responseStatus = status;
         responseBody = body;

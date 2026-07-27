@@ -2,14 +2,9 @@ package com.xa.mass.server.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import io.lettuce.core.RedisClient;
-import io.lettuce.core.api.StatefulRedisConnection;
-import io.lettuce.core.codec.StringCodec;
 import com.xa.mass.worker.execution.PhoneInspectHandler;
 import com.xa.mass.worker.execution.WorkerCommandProcessor;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
-import com.xa.mass.worker.transport.websocket.WebSocketWorkerTransport;
-import com.xa.mass.workerdelivery.adapter.standalone.WorkerDeliveryAdapterApplication;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
 import java.net.URI;
@@ -24,11 +19,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
-import org.springframework.boot.builder.SpringApplicationBuilder;
-import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import tools.jackson.databind.json.JsonMapper;
@@ -41,13 +33,6 @@ class RuntimeApiPythonIntegrationTest {
             System.getenv("KERNEL_COMMAND_INTEGRATION_URL");
     private static final String REDIS_URL =
             System.getenv("KERNEL_DESIGN_REDIS_URL");
-    private static final String REDIS_PREFIX =
-            System.getenv().getOrDefault(
-                    "KERNEL_DESIGN_REDIS_PREFIX",
-                    "default"
-            );
-    private static final String ENDPOINT_MANAGER_ID =
-            "java-websocket-integration";
     private static final int SERVER_PORT = availablePort();
     private static final String PHONE_RESULT = """
             {"countryCallingCode":1,"e164":"+14155552671",\
@@ -57,9 +42,6 @@ class RuntimeApiPythonIntegrationTest {
 
     @LocalServerPort
     private int port;
-
-    @Autowired
-    private RedisClient redisClient;
 
     @DynamicPropertySource
     static void integrationProperties(DynamicPropertyRegistry registry) {
@@ -79,29 +61,14 @@ class RuntimeApiPythonIntegrationTest {
         );
         registry.add(
                 "xa.mass.kernel-redis.redis-prefix",
-                () -> REDIS_PREFIX
+                () -> System.getenv().getOrDefault(
+                        "KERNEL_DESIGN_REDIS_PREFIX",
+                        "default"
+                )
         );
         registry.add(
                 "server.port",
                 () -> Integer.toString(SERVER_PORT)
-        );
-        registry.add(
-                "xa.mass.worker-delivery.adapter.websocket.enabled",
-                () -> "true"
-        );
-        registry.add(
-                "xa.mass.worker-delivery.adapter.websocket."
-                        + "endpoint-manager-id",
-                () -> ENDPOINT_MANAGER_ID
-        );
-        registry.add(
-                "xa.mass.worker-delivery.adapter.websocket."
-                        + "gateway-base-url",
-                () -> "http://127.0.0.1:" + SERVER_PORT
-        );
-        registry.add(
-                "xa.mass.worker-delivery.adapter.websocket.pump-interval",
-                () -> "20ms"
         );
     }
 
@@ -112,44 +79,9 @@ class RuntimeApiPythonIntegrationTest {
     }
 
     @Test
-    void itemDrivenClosesThroughTheJavaWebSocketWorker()
+    void itemDrivenClosesThroughTheJavaPollingWorker()
             throws Exception {
         runWorkerDeliveryClosure("ITEM_DRIVEN");
-    }
-
-    @Test
-    void itemDrivenClosesThroughAStandaloneWebSocketAdapter()
-            throws Exception {
-        requireExternalRuntime();
-        int adapterPort = availablePort();
-        String endpointManagerId = "java-websocket-split-"
-                + UUID.randomUUID();
-        try (ConfigurableApplicationContext ignored =
-                     new SpringApplicationBuilder(
-                             WorkerDeliveryAdapterApplication.class
-                     )
-                             .run(
-                                     "--server.port=" + adapterPort,
-                                     "--xa.mass.worker-delivery.adapter."
-                                             + "websocket.enabled=true",
-                                     "--xa.mass.worker-delivery.adapter."
-                                             + "websocket.endpoint-manager-id="
-                                             + endpointManagerId,
-                                     "--xa.mass.worker-delivery.adapter."
-                                             + "websocket.gateway-base-url="
-                                             + "http://127.0.0.1:" + port,
-                                     "--xa.mass.worker-delivery.adapter."
-                                             + "websocket.pump-interval=20ms",
-                                     "--management.endpoint.health.group."
-                                             + "readiness.include="
-                                             + "readinessState"
-                             )) {
-            runWorkerDeliveryClosure(
-                    "ITEM_DRIVEN",
-                    endpointManagerId,
-                    URI.create("http://127.0.0.1:" + adapterPort)
-            );
-        }
     }
 
     @Test
@@ -177,69 +109,7 @@ class RuntimeApiPythonIntegrationTest {
         assertThat(response.statusCode()).isEqualTo(404);
     }
 
-    @Test
-    void missingWebSocketSessionProducesTrustedRecoveryEvidence()
-            throws Exception {
-        requireExternalRuntime();
-        String suffix = UUID.randomUUID().toString();
-        String workerGroupId = "missing-session-" + suffix;
-        String workerId = "worker-" + suffix;
-        String taskId = "task-" + suffix;
-
-        assertThat(send(
-                "PUT",
-                "/api/v1/worker-groups/" + workerGroupId,
-                """
-                        {"eventCodes":["telecom.phone.inspect"],\
-                        "itemAllocationFields":[]}\
-                        """
-        ).statusCode()).isEqualTo(200);
-        assertThat(send(
-                "PUT",
-                "/api/v1/worker-groups/" + workerGroupId
-                        + "/workers/" + workerId,
-                """
-                        {"endpointManagerId":"%s","attributes":{},\
-                        "dynamicAttributeNames":[]}\
-                        """.formatted(ENDPOINT_MANAGER_ID)
-        ).statusCode()).isEqualTo(200);
-        assertThat(send(
-                "POST",
-                "/api/v1/tasks",
-                taskRequest(taskId, workerGroupId, "TASK_DRIVEN")
-        ).statusCode()).isEqualTo(201);
-        assertThat(send(
-                "POST",
-                "/api/v1/tasks/" + taskId + "/approve",
-                null
-        ).statusCode()).isEqualTo(200);
-        appendItem(taskId, "message-" + suffix, workerId, false);
-
-        awaitNegativeWorkerScore(workerGroupId, workerId);
-
-        assertThat(send(
-                "POST",
-                "/api/v1/tasks/" + taskId + "/close",
-                null
-        ).statusCode()).isEqualTo(200);
-    }
-
     private void runWorkerDeliveryClosure(String taskType) throws Exception {
-        String endpointManagerId = "TASK_DRIVEN".equals(taskType)
-                ? WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID
-                : ENDPOINT_MANAGER_ID;
-        runWorkerDeliveryClosure(
-                taskType,
-                endpointManagerId,
-                URI.create("http://127.0.0.1:" + port)
-        );
-    }
-
-    private void runWorkerDeliveryClosure(
-            String taskType,
-            String endpointManagerId,
-            URI workerServerUrl
-    ) throws Exception {
         requireExternalRuntime();
         String suffix = UUID.randomUUID().toString();
         String workerGroupId = "phone-tools-" + suffix;
@@ -269,17 +139,16 @@ class RuntimeApiPythonIntegrationTest {
                         + "/workers/" + workerId,
                 """
                         {
-                          "endpointManagerId": "%s",
+                          "endpointManagerId": "system-polling",
                           "attributes": {"runtime": "java"},
                           "dynamicAttributeNames": []
                         }
-                        """.formatted(endpointManagerId)
+                        """
         ).statusCode()).isEqualTo(200);
 
         RunningWorker worker = startWorker(
-                taskType,
                 workerId,
-                workerServerUrl
+                URI.create("http://127.0.0.1:" + port)
         );
         try {
             assertThat(send(
@@ -352,7 +221,6 @@ class RuntimeApiPythonIntegrationTest {
     }
 
     private RunningWorker startWorker(
-            String taskType,
             String workerId,
             URI serverUrl
     ) {
@@ -365,28 +233,14 @@ class RuntimeApiPythonIntegrationTest {
                         new PhoneInspectHandler()
                 )
         );
-        if ("TASK_DRIVEN".equals(taskType)) {
-            return new PollingWorkerHandle(new PollingWorkerTransport(
-                    serverUrl,
-                    WorkerDeliveryProtocol
-                            .SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
-                    workerId,
-                    Duration.ofSeconds(2),
-                    codec,
-                    processor
-            ));
-        }
-        WebSocketWorkerTransport transport =
-                new WebSocketWorkerTransport(
-                        serverUrl,
-                        workerId,
-                        Duration.ofSeconds(2),
-                        Duration.ofMillis(20),
-                        codec,
-                        processor
-                );
-        transport.start();
-        return transport::close;
+        return new PollingWorkerHandle(new PollingWorkerTransport(
+                serverUrl,
+                WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
+                workerId,
+                Duration.ofSeconds(2),
+                codec,
+                processor
+        ));
     }
 
     private void awaitStoredResult(
@@ -413,30 +267,6 @@ class RuntimeApiPythonIntegrationTest {
             Thread.sleep(20);
         }
         throw new AssertionError("TaskItem success result was not stored");
-    }
-
-    private void awaitNegativeWorkerScore(
-            String workerGroupId,
-            String workerId
-    ) throws Exception {
-        try (StatefulRedisConnection<String, String> connection =
-                     redisClient.connect(StringCodec.UTF8)) {
-            var redis = connection.sync();
-            String scoreKey = "wr:" + REDIS_PREFIX + ":score:"
-                    + workerGroupId;
-            long deadline = System.nanoTime()
-                    + Duration.ofSeconds(8).toNanos();
-            while (System.nanoTime() < deadline) {
-                Double score = redis.zscore(scoreKey, workerId);
-                if (score != null && score < 0) {
-                    return;
-                }
-                Thread.sleep(20);
-            }
-        }
-        throw new AssertionError(
-                "Adapter rejection did not move Worker to recovery"
-        );
     }
 
     private String taskRequest(

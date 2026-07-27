@@ -14,10 +14,9 @@ Status: current repository handoff.
   providers; it does not define a second set of Kernel runtime ports.
 - `worker_delivery_contract_jvm/` is the Java 21 transport-neutral
   WorkerCommand/DeliverSeed/SeedResult contract shared by Server and Worker.
-- `worker_delivery_adapter_jvm/` is the WebSocket Adapter implementation. It
-  consumes the Server's Adapter batch HTTP API and owns process-local Worker
-  sessions, push, and bounded result buffering. It has no Kernel or Redis
-  dependency.
+- `worker_delivery_adapter_jvm/` is the framework-free Adapter Core. It owns
+  the Gateway client contract, process-local session mechanism, one-round
+  dispatch, trusted pre-send rejection, and bounded result buffering.
 - `worker_jvm/` is the runnable one-slot Java reference Worker. Polling and
   WebSocket are transport profiles over one serial command execution core.
 - The legacy Java platform is available exclusively from
@@ -63,19 +62,20 @@ tag.
   `KernelOperationNotImplementedException`; do not hide gaps with default
   methods, compatibility clients, or remote fallback.
 - Keep `worker_delivery_contract_jvm` transport-neutral. Worker Delivery HTTP
-  access and the Kernel delivery owner facade live in `server_jvm`. WebSocket
-  transport lives in `worker_delivery_adapter_jvm` and may reach that facade
-  only through the Adapter batch HTTP contract, including when embedded.
+  access and the Kernel delivery owner facade live in `server_jvm`. The
+  framework-free Adapter Core may reach that facade only through the Adapter
+  batch HTTP contract.
 - `worker_delivery_adapter_jvm` must not depend on `server_jvm`, `kernel_jvm`,
-  Redis, scores, Pacers, or Server HTTP DTOs. Its private HTTP DTOs are proved
-  against Server JSON with bilateral golden tests; do not add an in-process
-  fast path.
+  Spring, Spring Boot, Redis, scores, Pacers, or Server HTTP DTOs. It must not
+  create threads or implement framework lifecycle. Its private HTTP DTOs are
+  proved against Server JSON with bilateral golden tests; do not add an
+  in-process fast path.
 - `worker_jvm` may depend only on the shared contract and Worker tool
   libraries. It must not depend on `server_jvm`, `kernel_jvm`, Python
   packages, Redis, score, Pacer, or TaskType.
-- One enabled Java WebSocket Adapter owns one configured non-system-polling
-  endpoint-manager mailbox. Its session registry and bounded pump are
-  process-local evidence, not Kernel Worker truth.
+- A future WebSocket host must adapt its connections and lifecycle to the
+  Adapter Core without moving sessions, cursor handling, result buffering, or
+  trusted rejection policy into `server_jvm`.
 
 ## JVM Incremental Assembly
 
@@ -116,14 +116,13 @@ WorkerDeliveryConfiguration
 
 worker_delivery_adapter_jvm
   -> Adapter batch HTTP client
-  -> WebSocket sessions and bounded pump
+  -> session directory, one-round dispatch, and result buffer
 ```
 
-The main Server always owns the HTTP and Redis boundaries. It may embed the
-Adapter module, but the embedded Adapter still calls those HTTP routes through
-loopback. The same Adapter implementation can instead start on port `18083`;
-embedded and standalone modes are alternative deployments for one
-endpoint-manager identity, not two owners.
+The main Server owns the HTTP and Redis boundaries but does not start or host a
+WebSocket Adapter. The concrete WebSocket transport host and its deployment
+composition remain deferred; adding one must not change the Core or bypass the
+Server batch HTTP boundary.
 
 `worker_delivery_contract_jvm` is currently a repository-local Java 21 jar,
 not a published SDK and not an Android compatibility promise. A future

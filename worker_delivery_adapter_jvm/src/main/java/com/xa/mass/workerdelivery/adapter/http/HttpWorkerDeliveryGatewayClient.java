@@ -14,6 +14,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.Objects;
 
 public final class HttpWorkerDeliveryGatewayClient
         implements WorkerDeliveryGatewayClient {
@@ -30,7 +31,7 @@ public final class HttpWorkerDeliveryGatewayClient
     ) {
         this(
                 HttpClient.newBuilder()
-                        .connectTimeout(requestTimeout)
+                        .connectTimeout(requireTimeout(requestTimeout))
                         .version(HttpClient.Version.HTTP_1_1)
                         .build(),
                 gatewayBaseUrl,
@@ -45,10 +46,12 @@ public final class HttpWorkerDeliveryGatewayClient
             Duration requestTimeout,
             WorkerDeliveryCodec codec
     ) {
-        this.http = http;
-        this.gatewayBaseUrl = gatewayBaseUrl;
-        this.requestTimeout = requestTimeout;
-        contract = new WorkerDeliveryGatewayHttpContract(codec);
+        this.http = Objects.requireNonNull(http, "http");
+        this.gatewayBaseUrl = requireGatewayBaseUrl(gatewayBaseUrl);
+        this.requestTimeout = requireTimeout(requestTimeout);
+        contract = new WorkerDeliveryGatewayHttpContract(
+                Objects.requireNonNull(codec, "codec")
+        );
     }
 
     @Override
@@ -162,6 +165,30 @@ public final class HttpWorkerDeliveryGatewayClient
             end--;
         }
         return value.substring(0, end);
+    }
+
+    private static URI requireGatewayBaseUrl(URI value) {
+        Objects.requireNonNull(value, "gatewayBaseUrl");
+        String scheme = value.getScheme();
+        if (!value.isAbsolute()
+                || value.getHost() == null
+                || !("http".equalsIgnoreCase(scheme)
+                || "https".equalsIgnoreCase(scheme))) {
+            throw new IllegalArgumentException(
+                    "gatewayBaseUrl must be an absolute HTTP(S) URI"
+            );
+        }
+        return value;
+    }
+
+    private static Duration requireTimeout(Duration value) {
+        Objects.requireNonNull(value, "requestTimeout");
+        if (value.isZero() || value.isNegative()) {
+            throw new IllegalArgumentException(
+                    "requestTimeout must be positive"
+            );
+        }
+        return value;
     }
 
     private static String encodePathSegment(String value) {

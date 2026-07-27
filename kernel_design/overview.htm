@@ -1253,7 +1253,7 @@
               </div>
               <div class="stage-step">
                 <strong>Worker Protocol</strong>
-                polling or WebSocket push → result
+                polling now; WebSocket host deferred
               </div>
             </div>
           </div>
@@ -1509,7 +1509,7 @@
         </div>
         <div class="owner-stage">
           <b>Worker Delivery Dispatch</b>
-          <p>Server 拥有 point/batch HTTP 与 delivery runtime；外部 WebSocket Adapter 通过 HTTP 拉取 mailbox、维护 Worker session，并批量回传结果。</p>
+          <p>Server 拥有 point/batch HTTP 与 delivery runtime；framework-free Adapter Core 定义 session、单轮 dispatch 与结果缓冲机制，具体 WebSocket host 暂未装配。</p>
           <code>output = SeedResult</code>
         </div>
         <div class="owner-stage">
@@ -1691,8 +1691,8 @@
             <li>ITEM_DRIVEN TARGETED point/index acquisition</li>
             <li>TaskItem exact claim 与 shared empty-close</li>
             <li>稳定 Worker command、语义化 SeedResult 与 Adapter-partitioned mailbox</li>
-            <li>Java Server delivery HTTP owner 与可嵌入/独立 WebSocket Adapter</li>
-            <li>Adapter HTTP loopback/split 部署、session generation 与 bounded result retry</li>
+            <li>Java Server delivery point/batch HTTP owner</li>
+            <li>framework-free Adapter Core、session generation 与 bounded result retry</li>
             <li>三类 SeedResult queue 与 owner-local Result Routing</li>
           </ul>
         </article>
@@ -1700,7 +1700,7 @@
           <h3>Deferred policy</h3>
           <ul>
             <li>公平、quota、resource estimate 与 cadence tuning</li>
-            <li>WebSocket Adapter 多实例 ownership、认证与生产 flow-control</li>
+            <li>具体 WebSocket host、Adapter 多实例 ownership、认证与生产 flow-control</li>
             <li>受控 Worker route migration 与自动 failover</li>
             <li>trusted 3xxx Item fast release fence</li>
             <li>pending/ack、retention、query projection 与分片</li>
@@ -1774,7 +1774,7 @@
         </a>
         <a class="reading-link" href="../worker_delivery_adapter_jvm/README.md">
           <span class="reading-number">11</span>
-          <span><b>Java WebSocket Adapter</b>批量 HTTP consumer、Worker session 与 embedded / standalone 部署。</span>
+          <span><b>Java Adapter Core</b>批量 HTTP client、Worker session、单轮 dispatch 与结果缓冲机制。</span>
         </a>
         <a class="reading-link" href="../worker_jvm/README.md">
           <span class="reading-number">12</span>

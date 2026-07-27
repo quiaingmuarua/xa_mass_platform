@@ -1,8 +1,5 @@
-import org.springframework.boot.gradle.plugin.SpringBootPlugin
-
 plugins {
     id 'java-library'
-    id 'org.springframework.boot'
 }
 
 base {
@@ -15,29 +12,15 @@ java {
     }
 }
 
-springBoot {
-    mainClass = 'com.xa.mass.workerdelivery.adapter.standalone.WorkerDeliveryAdapterApplication'
-}
-
 dependencies {
-    implementation platform(SpringBootPlugin.BOM_COORDINATES)
     implementation platform('tools.jackson:jackson-bom:3.1.4')
-    annotationProcessor platform(SpringBootPlugin.BOM_COORDINATES)
-    testImplementation platform(SpringBootPlugin.BOM_COORDINATES)
-
-    implementation 'org.springframework.boot:spring-boot-starter-webmvc'
-    implementation 'org.springframework.boot:spring-boot-starter-websocket'
-    implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'tools.jackson.core:jackson-databind'
-    implementation project(':worker_delivery_contract_jvm')
+    api project(':worker_delivery_contract_jvm')
 
-    annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
-
-    testImplementation 'org.springframework.boot:spring-boot-starter-test'
-}
-
-tasks.named('jar') {
-    enabled = true
+    testImplementation platform('org.junit:junit-bom:6.0.3')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation 'org.assertj:assertj-core:3.27.7'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 tasks.named('test') {

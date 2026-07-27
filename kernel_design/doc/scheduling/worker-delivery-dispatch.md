@@ -1,9 +1,9 @@
 # Worker Delivery Dispatch
 
 Status: active new-kernel boundary contract; Python protocol/Redis oracle,
-shared Java protocol, Java Server point/batch API, external WebSocket Adapter,
-and one-slot polling/WebSocket phone Worker implemented; production
-authentication and multi-instance policy deferred.
+shared Java protocol, Java Server point/batch API, framework-free Adapter Core,
+and one-slot polling phone Worker implemented; concrete WebSocket host,
+production authentication, and same-endpoint HA policy deferred.
 
 Upstream contract: [Task Dispatch Pacer](task-dispatch-pacer.md).
 Worker lease contract:
@@ -32,8 +32,9 @@ Server Worker Delivery API
 
 WebSocket Adapter
   -> call the Server batch HTTP API
-  -> maintain Worker sessions and push commands
-  -> batch Worker results and trusted Adapter rejection evidence
+  -> Core maintains Worker sessions, dispatch and result buffering
+  -> a future transport host adapts frames and lifecycle
+  -> push commands and batch Worker/trusted Adapter results
 
 Worker
   -> decode the command's opaque DeliverSeed
@@ -313,43 +314,34 @@ profile accesses Adapter batch APIs, Redis, scores, Pacers, or TaskType.
 Worker cannot submit it; the Adapter batch endpoint is its protocol ingress.
 Authentication of that Adapter role is deferred.
 
-The Java WebSocket Adapter exposes:
+One Adapter Core instance owns one configured non-`system-polling`
+endpoint-manager mailbox. One WorkerId has one current session; a newer
+connection replaces the old session without allowing the old close callback to
+remove the new generation.
 
-```text
-GET /api/v1/worker-delivery/websocket/workers/{workerId}
-```
+The framework-free Core cursor-consumes one bounded page through the Server
+batch HTTP API, rechecks the command deadline, dispatches the exact
+WorkerCommand, accepts current-session `200/1xxx` results, buffers them in
+bounded process memory, and submits them through the Server batch result HTTP
+API. A concrete transport host must translate connection events and frames into
+`WorkerConnection` and Core calls, then schedule `dispatchOnce`; no such
+WebSocket host is currently assembled by `server_jvm`. The Core has no Spring,
+Redis, Kernel runtime, score, thread, or Pacer dependency.
 
-One Adapter instance owns one configured non-`system-polling`
-endpoint-manager mailbox. A Worker first performs its existing upsert, then
-connects. One WorkerId has one current session; a newer connection replaces the
-old session without allowing the old close callback to remove the new
-generation.
+There is no process-local fast path and no command or result ACK. Server/Redis
+failure retains one pending batch for retry; Adapter process failure may lose
+buffered results.
 
-The Adapter cursor-consumes one bounded page through the Server batch HTTP
-API, rechecks the command deadline, and forwards the exact WorkerCommand JSON.
-Exact Worker result JSON is accepted only for `200/1xxx`, buffered in bounded
-process memory, and submitted through the Server batch result HTTP API. The
-Adapter has no Redis, Kernel runtime, score, or Pacer dependency.
+No current session, or another rejection confirmed before send starts, is
+direct evidence that the command did not enter the Worker and generates
+`3001`. Expiry, disconnect, missing result, or a failure after send was
+attempted remains unknown and cannot generate `3xxx`.
 
-The same implementation supports two mutually exclusive deployment profiles:
-
-```text
-embedded
-  -> loaded by server_jvm
-  -> calls the Server through HTTP loopback
-
-standalone
-  -> listens on port 18083
-  -> calls a configured Server URL
-```
-
-There is no process-local fast path. There is no command or result ACK.
-Server/Redis failure retains one pending batch for retry; Adapter process
-failure may lose buffered results.
-
-No current session is direct evidence that the command did not enter the
-Worker and generates `3001`. Expiry, disconnect, missing result, or a failure
-after send was attempted remains unknown and cannot generate `3xxx`.
+The Core permits different Adapter instances to own different
+endpoint-manager mailboxes. A future host must preserve that boundary.
+Multiple instances consuming the same endpoint manager are unsupported:
+process-local session generations do not provide distributed ownership, and
+destructive cursor consumption cannot be used as HA coordination.
 
 ## At-Least-Once Boundary
 
@@ -377,6 +369,12 @@ external Worker side effects exactly-once.
 - Do not expose cursor scanning through the polling Worker API.
 - Do not allow the `system-polling` identity to use Adapter batch operations.
 - Do not let the WebSocket Adapter access Redis or Kernel runtimes directly.
+- Do not put WebSocket frames, framework lifecycle, or threads into the
+  framework-free Adapter Core.
+- Do not put mailbox cursor, result buffering, `3001`, or `UNKNOWN` policy into
+  a transport host.
+- Do not make `server_jvm` a WebSocket Adapter owner merely because it exposes
+  the batch HTTP access boundary.
 - Do not add an embedded in-process shortcut around the Server batch HTTP API.
 - Do not let Adapters generate command identity or message types.
 - Do not wrap SeedResult in WorkerCommandEnvelope or add a generic result

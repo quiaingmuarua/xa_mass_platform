@@ -36,10 +36,9 @@ Upsert the Worker before starting it. A polling Worker must bind to:
 endpointManagerId = system-polling
 ```
 
-A WebSocket Worker must bind to the non-`system-polling` endpoint manager
-configured at
-`xa.mass.worker-delivery.adapter.websocket.endpoint-manager-id` on either the
-embedded or standalone Adapter.
+A WebSocket Worker must bind to the non-`system-polling` endpoint manager owned
+by a compatible Adapter host. This repository currently provides the
+framework-free Adapter Core but does not assemble a concrete WebSocket host.
 
 ## Run
 
@@ -55,9 +54,9 @@ WebSocket:
 ./gradlew :worker_jvm:run --args="--transport websocket --worker-id worker-1"
 ```
 
-The WebSocket `--server-url` points to the process hosting the Adapter:
-`http://127.0.0.1:18082` in embedded mode or
-`http://127.0.0.1:18083` in standalone mode.
+The WebSocket `--server-url` points to a compatible process hosting the
+Adapter endpoint. There is no default in-repository WebSocket host address in
+this slice.
 
 Common options:
 

@@ -17,12 +17,13 @@ class WorkerDeliveryAdapterArchitectureTest {
         String build = Files.readString(Path.of("build.gradle"));
         assertThat(build)
                 .contains(
-                        "implementation project("
+                        "api project("
                                 + "':worker_delivery_contract_jvm')"
                 )
+                .doesNotContain("org.springframework")
+                .doesNotContain("spring-boot")
                 .doesNotContain("project(':server_jvm')")
                 .doesNotContain("project(':kernel_jvm')")
-                .doesNotContain("spring-boot-starter-data-redis")
                 .doesNotContain("lettuce");
 
         String sources = readSources(SOURCE);
@@ -30,7 +31,7 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("com.xa.mass.server")
                 .doesNotContain("com.xa.mass.kernel")
                 .doesNotContain("io.lettuce")
-                .doesNotContain("org.springframework.data.redis")
+                .doesNotContain("org.springframework")
                 .doesNotContain("\"wd:")
                 .doesNotContain("\"rr:")
                 .doesNotContain("WorkerCommandRuntime")
@@ -38,16 +39,19 @@ class WorkerDeliveryAdapterArchitectureTest {
     }
 
     @Test
-    void websocketUsesTheHttpClientPortRatherThanServerInternals()
+    void coreContainsNoFrameworkHostThreadOrLifecycleTypes()
             throws IOException {
-        String websocket = readSources(SOURCE.resolve(
-                "com/xa/mass/workerdelivery/adapter/websocket"
-        ));
-        assertThat(websocket)
-                .contains("WorkerDeliveryGatewayClient")
-                .doesNotContain("HttpWorkerDeliveryGatewayClient")
-                .doesNotContain("WorkerDeliveryService")
-                .doesNotContain("WorkerDeliveryHttpContract");
+        String sources = readSources(SOURCE);
+        assertThat(sources)
+                .contains("interface WorkerConnection")
+                .contains("interface WorkerSessionDirectory")
+                .contains("final class WorkerDeliveryAdapter")
+                .doesNotContain("WebSocketSession")
+                .doesNotContain("SmartLifecycle")
+                .doesNotContain("ScheduledExecutorService")
+                .doesNotContain("Executors.")
+                .doesNotContain("@Configuration")
+                .doesNotContain("@Component");
     }
 
     private static String readSources(Path root) throws IOException {

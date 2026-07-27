@@ -84,7 +84,7 @@ kernel_jvm delivery contracts/providers
   WorkerCommand consume and SeedResult append owner operations
 
 worker_delivery_adapter_jvm
-  external batch HTTP client, WebSocket sessions, command push, result buffer
+  framework-free Gateway client, session mechanism, dispatch, result buffer
 ```
 
 The Server is the only Worker Delivery HTTP and Redis owner. Point and batch
@@ -92,12 +92,11 @@ controllers call `WorkerDeliveryService`, which calls the two Kernel delivery
 runtime contracts. The shared contract module has no Spring Web or Redis
 dependency.
 
-The WebSocket Adapter is implemented by the separate
-[`worker_delivery_adapter_jvm`](../worker_delivery_adapter_jvm/README.md)
-module. It consumes the Server's batch HTTP API and never imports Server,
-Kernel, Redis, or owner implementations. When embedded in this Server it still
-uses HTTP loopback; there is no process-local shortcut. The same module can run
-standalone on port `18083`.
+The Adapter mechanism is implemented by the framework-free
+[`worker_delivery_adapter_jvm`](../worker_delivery_adapter_jvm/README.md).
+This Server does not depend on, embed, or start that Adapter Core. A future
+WebSocket host must consume the existing batch HTTP API and must not gain an
+in-process or Redis shortcut.
 
 ## Runtime Commands
 
@@ -147,17 +146,6 @@ POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/results:appen
 `system-polling` may use only the point Worker operations. Cursor consume and
 batch result append are reserved for long-lived Adapter identities.
 
-When the Adapter module is embedded, it additionally exposes:
-
-```text
-GET /api/v1/worker-delivery/websocket/workers/{workerId}
-```
-
-The Adapter owns one configured non-`system-polling` endpoint-manager mailbox
-through the batch HTTP routes above. Session behavior, bounded result
-buffering, `3001` generation, and standalone operation belong to the Adapter
-module, not to the Server delivery service.
-
 Management endpoints:
 
 ```text
@@ -166,8 +154,7 @@ GET /actuator/health/readiness
 ```
 
 Liveness describes this JVM process. Readiness requires both the configured
-Python Kernel Control API and the shared Kernel Redis connection. A standalone
-Adapter has its own process-only readiness and reaches this Server over HTTP.
+Python Kernel Control API and the shared Kernel Redis connection.
 
 ## Run
 
@@ -183,8 +170,9 @@ Then start the external Runtime API Server:
 ./gradlew :server_jvm:bootRun
 ```
 
-Run the Java reference Worker through polling or WebSocket as documented in
-[worker_jvm](../worker_jvm/README.md).
+Run the Java reference Worker through point polling as documented in
+[worker_jvm](../worker_jvm/README.md). Its WebSocket transport has no active
+host in this slice.
 
 Defaults:
 
@@ -195,28 +183,11 @@ connect timeout          1s
 read timeout             5s
 Kernel Redis              redis://localhost:6379/15
 Kernel Redis prefix        default
-WebSocket Adapter          disabled
 ```
 
 The Redis labels above use the shared `xa.mass.kernel-redis.redis-url` and
 `xa.mass.kernel-redis.redis-prefix` properties. Override the Python control
-address under `xa.mass.kernel`; WebSocket settings remain under
-`xa.mass.worker-delivery.adapter`. Enable the embedded Adapter with:
-
-```yaml
-xa:
-  mass:
-    worker-delivery:
-      adapter:
-        websocket:
-          enabled: true
-          endpoint-manager-id: websocket-adapter-1
-          gateway-base-url: http://127.0.0.1:18082
-```
-
-The loopback URL must match the actual Server address. Embedded and standalone
-Adapter deployments are alternatives and must not own the same endpoint
-manager concurrently.
+address under `xa.mass.kernel`.
 
 ## Verification
 
@@ -227,10 +198,9 @@ KERNEL_DESIGN_REDIS_URL=redis://localhost:6379/15 \
   ./gradlew :server_jvm:integrationTest
 ```
 
-The cross-process integration proves `TASK_DRIVEN` with the real Java polling
-Worker and `ITEM_DRIVEN` with the real Java WebSocket Worker in both embedded
-and standalone Adapter deployments. Both paths use the Server HTTP boundary,
+The cross-process integration proves both `TASK_DRIVEN` and `ITEM_DRIVEN`
+through the real Java polling Worker. Both paths use the Server HTTP boundary,
 Python scheduling/ResultRouting, Java last-success query, and exact Worker
-release. The first release intentionally has no authentication, multi-instance
-Adapter ownership, pending/ack, failure-result projection, historical storage,
-tenant model, quota, or OpenAPI generator.
+release. The current Server intentionally has no WebSocket host,
+authentication, multi-instance Adapter ownership, pending/ack, failure-result
+projection, historical storage, tenant model, quota, or OpenAPI generator.

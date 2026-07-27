@@ -41,20 +41,13 @@ class ServerArchitectureBoundaryTest {
     private static final Path DELIVERY_APPLICATION = SERVER_SOURCE.resolve(
             "com/xa/mass/server/workerdelivery/application"
     );
-    private static final Path WEBSOCKET = SERVER_SOURCE.resolve(
-            "com/xa/mass/server/workerdelivery/websocket"
-    );
-
     @Test
     void serverDependsOnKernelContractsWithoutOwningRedisKeys()
             throws IOException {
         String build = Files.readString(Path.of("build.gradle"));
         assertThat(build)
                 .contains("implementation project(':kernel_jvm')")
-                .contains(
-                        "implementation project("
-                                + "':worker_delivery_adapter_jvm')"
-                )
+                .doesNotContain("worker_delivery_adapter_jvm")
                 .doesNotContain("spring-boot-starter-websocket")
                 .doesNotContain("implementation project(':worker_jvm')")
                 .contains("testImplementation project(':worker_jvm')");
@@ -130,10 +123,12 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("WorkerDeliveryHttpContract");
         assertThat(readSources(DELIVERY_APPLICATION))
                 .doesNotContain(".server.api")
-                .doesNotContain(".workerdelivery.websocket")
                 .doesNotContain(".delivery.redis")
                 .doesNotContain("io.lettuce");
-        assertThat(readSources(WEBSOCKET)).isEmpty();
+        assertThat(readSources(SERVER_SOURCE))
+                .doesNotContain("WebSocketSession")
+                .doesNotContain("WorkerDeliveryAdapter")
+                .doesNotContain("WorkerSessionDirectory");
     }
 
     @Test
