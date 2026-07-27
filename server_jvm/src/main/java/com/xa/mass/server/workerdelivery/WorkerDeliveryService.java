@@ -6,7 +6,9 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliverSeed;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultOutcomeClass;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
-import com.xa.mass.server.workerdelivery.WorkerDeliveryRuntime.WorkerCommandPage;
+import com.xa.mass.kernel.delivery.SeedResultRuntime;
+import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
+import com.xa.mass.kernel.delivery.WorkerCommandRuntime.WorkerCommandConsumePage;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -20,14 +22,17 @@ public final class WorkerDeliveryService {
     private static final Logger LOGGER = LoggerFactory.getLogger(
             WorkerDeliveryService.class
     );
-    private final WorkerDeliveryRuntime runtime;
+    private final WorkerCommandRuntime commandRuntime;
+    private final SeedResultRuntime resultRuntime;
     private final WorkerDeliveryCodec codec;
 
     public WorkerDeliveryService(
-            WorkerDeliveryRuntime runtime,
+            WorkerCommandRuntime commandRuntime,
+            SeedResultRuntime resultRuntime,
             WorkerDeliveryCodec codec
     ) {
-        this.runtime = runtime;
+        this.commandRuntime = commandRuntime;
+        this.resultRuntime = resultRuntime;
         this.codec = codec;
     }
 
@@ -36,7 +41,7 @@ public final class WorkerDeliveryService {
             String workerId
     ) {
         try {
-            WorkerCommandEnvelope command = runtime.consumeWorkerCommand(
+            WorkerCommandEnvelope command = commandRuntime.consumeWorkerCommand(
                     endpointManagerId,
                     workerId
             );
@@ -51,14 +56,15 @@ public final class WorkerDeliveryService {
         }
     }
 
-    public WorkerCommandPage consumeWorkerCommands(
+    public WorkerCommandConsumePage consumeWorkerCommands(
             String endpointManagerId,
             String cursor,
             int scanCount
     ) {
         requireAdapterBatchIdentity(endpointManagerId);
         try {
-            WorkerCommandPage page = runtime.consumeWorkerCommands(
+            WorkerCommandConsumePage page =
+                    commandRuntime.consumeWorkerCommands(
                     endpointManagerId,
                     cursor,
                     scanCount
@@ -73,7 +79,10 @@ public final class WorkerDeliveryService {
                     active.put(workerId, command);
                 }
             });
-            return new WorkerCommandPage(active, page.nextCursor());
+            return new WorkerCommandConsumePage(
+                    active,
+                    page.nextCursor()
+            );
         } catch (WorkerDeliveryException error) {
             throw error;
         } catch (RuntimeException error) {
@@ -172,7 +181,7 @@ public final class WorkerDeliveryService {
 
     private void appendResults(List<SeedResult> results) {
         try {
-            int accepted = runtime.appendSeedResults(results);
+            int accepted = resultRuntime.appendSeedResults(results);
             if (accepted != results.size()) {
                 throw WorkerDeliveryException.unavailable(
                         new IllegalStateException(

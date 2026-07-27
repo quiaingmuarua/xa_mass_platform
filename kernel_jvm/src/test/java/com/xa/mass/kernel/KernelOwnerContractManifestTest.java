@@ -1,0 +1,353 @@
+package com.xa.mass.kernel;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import com.xa.mass.kernel.assignment.CandidateWarmupSchedule;
+import com.xa.mass.kernel.assignment.CandidateWorkerCache;
+import com.xa.mass.kernel.delivery.SeedResultRuntime;
+import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
+import com.xa.mass.kernel.score.TaskItemScoreBandCore;
+import com.xa.mass.kernel.score.TaskScoreBandCore;
+import com.xa.mass.kernel.score.WorkerScoreCore;
+import com.xa.mass.kernel.task.TaskResourceCatalog;
+import com.xa.mass.kernel.task.TaskRuntime;
+import com.xa.mass.kernel.worker.WorkerDynamicAttributeRuntime;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog;
+import com.xa.mass.kernel.worker.WorkerRuntime;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
+import java.lang.reflect.Method;
+import java.lang.reflect.Modifier;
+import java.lang.reflect.RecordComponent;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
+import tools.jackson.core.type.TypeReference;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
+import org.junit.jupiter.api.Test;
+
+class KernelOwnerContractManifestTest {
+
+    private static final Map<String, Class<?>> CONTRACTS = Map.ofEntries(
+            Map.entry("TaskRuntime", TaskRuntime.class),
+            Map.entry("TaskResourceCatalog", TaskResourceCatalog.class),
+            Map.entry("WorkerRuntime", WorkerRuntime.class),
+            Map.entry(
+                    "WorkerDynamicAttributeRuntime",
+                    WorkerDynamicAttributeRuntime.class
+            ),
+            Map.entry(
+                    "WorkerResourceCatalog",
+                    WorkerResourceCatalog.class
+            ),
+            Map.entry("TaskScoreBandCore", TaskScoreBandCore.class),
+            Map.entry(
+                    "TaskItemScoreBandCore",
+                    TaskItemScoreBandCore.class
+            ),
+            Map.entry("WorkerScoreCore", WorkerScoreCore.class),
+            Map.entry(
+                    "CandidateWorkerCache",
+                    CandidateWorkerCache.class
+            ),
+            Map.entry(
+                    "CandidateWarmupSchedule",
+                    CandidateWarmupSchedule.class
+            ),
+            Map.entry(
+                    "WorkerCommandRuntime",
+                    WorkerCommandRuntime.class
+            ),
+            Map.entry("SeedResultRuntime", SeedResultRuntime.class)
+    );
+
+    private static final Map<String, Class<?>> DTOS = Map.ofEntries(
+            Map.entry(
+                    "CandidateWorkerEntry",
+                    CandidateWorkerCache.CandidateWorkerEntry.class
+            ),
+            Map.entry(
+                    "DeliverSeed",
+                    WorkerDeliveryProtocol.DeliverSeed.class
+            ),
+            Map.entry(
+                    "DynamicAttributeReadResult",
+                    WorkerDynamicAttributeRuntime
+                            .DynamicAttributeReadResult.class
+            ),
+            Map.entry(
+                    "SeedResult",
+                    WorkerDeliveryProtocol.SeedResult.class
+            ),
+            Map.entry(
+                    "TaskCreationResult",
+                    TaskRuntime.TaskCreationResult.class
+            ),
+            Map.entry(
+                    "TaskDescriptor",
+                    TaskRuntime.TaskDescriptor.class
+            ),
+            Map.entry("TaskItem", TaskRuntime.TaskItem.class),
+            Map.entry(
+                    "TaskItemAppendResult",
+                    TaskRuntime.TaskItemAppendResult.class
+            ),
+            Map.entry(
+                    "TaskItemScoreState",
+                    TaskItemScoreBandCore.TaskItemScoreState.class
+            ),
+            Map.entry(
+                    "TaskItemScoreTransitionResult",
+                    TaskItemScoreBandCore
+                            .TaskItemScoreTransitionResult.class
+            ),
+            Map.entry(
+                    "TaskScoreState",
+                    TaskScoreBandCore.TaskScoreState.class
+            ),
+            Map.entry(
+                    "TaskScoreTransitionResult",
+                    TaskScoreBandCore.TaskScoreTransitionResult.class
+            ),
+            Map.entry(
+                    "WorkerCommandConsumePage",
+                    WorkerCommandRuntime.WorkerCommandConsumePage.class
+            ),
+            Map.entry(
+                    "WorkerCommandEnvelope",
+                    WorkerDeliveryProtocol.WorkerCommandEnvelope.class
+            ),
+            Map.entry(
+                    "WorkerDeclaration",
+                    WorkerRuntime.WorkerDeclaration.class
+            ),
+            Map.entry(
+                    "WorkerDescriptor",
+                    WorkerRuntime.WorkerDescriptor.class
+            ),
+            Map.entry(
+                    "WorkerGroupDescriptor",
+                    WorkerRuntime.WorkerGroupDescriptor.class
+            ),
+            Map.entry(
+                    "WorkerRuntimeResult",
+                    WorkerRuntime.WorkerRuntimeResult.class
+            ),
+            Map.entry(
+                    "WorkerScoreState",
+                    WorkerScoreCore.WorkerScoreState.class
+            ),
+            Map.entry(
+                    "WorkerScoreTransitionResult",
+                    WorkerScoreCore.WorkerScoreTransitionResult.class
+            )
+    );
+
+    private static final Map<String, Class<? extends Enum<?>>> ENUMS =
+            Map.ofEntries(
+                    Map.entry(
+                            "SeedResultOutcomeClass",
+                            WorkerDeliveryProtocol
+                                    .SeedResultOutcomeClass.class
+                    ),
+                    Map.entry(
+                            "TaskCreationStatus",
+                            TaskRuntime.TaskCreationStatus.class
+                    ),
+                    Map.entry(
+                            "TaskItemAppendStatus",
+                            TaskRuntime.TaskItemAppendStatus.class
+                    ),
+                    Map.entry(
+                            "TaskItemScoreBand",
+                            TaskItemScoreBandCore.TaskItemScoreBand.class
+                    ),
+                    Map.entry(
+                            "TaskItemScoreTransitionStatus",
+                            TaskItemScoreBandCore
+                                    .TaskItemScoreTransitionStatus.class
+                    ),
+                    Map.entry(
+                            "TaskScoreBand",
+                            TaskScoreBandCore.TaskScoreBand.class
+                    ),
+                    Map.entry(
+                            "TaskScoreTransitionStatus",
+                            TaskScoreBandCore
+                                    .TaskScoreTransitionStatus.class
+                    ),
+                    Map.entry("TaskType", TaskRuntime.TaskType.class),
+                    Map.entry(
+                            "WorkerCommandAppendStatus",
+                            WorkerCommandRuntime
+                                    .WorkerCommandAppendStatus.class
+                    ),
+                    Map.entry(
+                            "WorkerMessageType",
+                            WorkerDeliveryProtocol.WorkerMessageType.class
+                    ),
+                    Map.entry(
+                            "WorkerRuntimeStatus",
+                            WorkerRuntime.WorkerRuntimeStatus.class
+                    ),
+                    Map.entry(
+                            "WorkerScorePolarity",
+                            WorkerScoreCore.WorkerScorePolarity.class
+                    ),
+                    Map.entry(
+                            "WorkerScoreTransitionStatus",
+                            WorkerScoreCore
+                                    .WorkerScoreTransitionStatus.class
+                    )
+            );
+
+    @Test
+    void jvmContractsMatchThePythonOwnerManifest() throws Exception {
+        Map<String, Object> manifest = manifest();
+        assertEquals(
+                manifest.get("contracts"),
+                contractMethods()
+        );
+        assertEquals(manifest.get("dtos"), dtoFields());
+        assertEquals(
+                normalizeNumbers(manifest.get("enums")),
+                normalizeNumbers(enumValues())
+        );
+        assertEquals(
+                normalizeNumbers(manifest.get("constants")),
+                constants()
+        );
+    }
+
+    private static Map<String, List<String>> contractMethods() {
+        var actual = new TreeMap<String, List<String>>();
+        CONTRACTS.forEach((name, contract) -> actual.put(
+                name,
+                Arrays.stream(contract.getDeclaredMethods())
+                        .filter(method -> !Modifier.isStatic(
+                                method.getModifiers()
+                        ))
+                        .map(Method::getName)
+                        .map(KernelOwnerContractManifestTest::snakeCase)
+                        .sorted()
+                        .toList()
+        ));
+        return actual;
+    }
+
+    private static Map<String, List<String>> dtoFields() {
+        var actual = new TreeMap<String, List<String>>();
+        DTOS.forEach((name, dto) -> actual.put(
+                name,
+                Arrays.stream(dto.getRecordComponents())
+                        .map(RecordComponent::getName)
+                        .map(KernelOwnerContractManifestTest::snakeCase)
+                        .toList()
+        ));
+        return actual;
+    }
+
+    private static Map<String, List<Object>> enumValues() {
+        var actual = new TreeMap<String, List<Object>>();
+        ENUMS.forEach((name, enumType) -> {
+            var values = new ArrayList<>();
+            for (Enum<?> value : enumType.getEnumConstants()) {
+                values.add(enumValue(value));
+            }
+            actual.put(name, values);
+        });
+        return actual;
+    }
+
+    private static Object enumValue(Enum<?> value) {
+        try {
+            Method wireValue = value.getClass().getMethod("wireValue");
+            return wireValue.invoke(value);
+        } catch (ReflectiveOperationException ignored) {
+            try {
+                Method numericValue = value.getClass().getMethod("value");
+                return ((Number) numericValue.invoke(value)).longValue();
+            } catch (ReflectiveOperationException noValueMethod) {
+                return value.name();
+            }
+        }
+    }
+
+    private static Map<String, Map<String, Long>> constants()
+            throws IllegalAccessException {
+        var classes = Map.of(
+                "TaskScoreBandCore", TaskScoreBandCore.class,
+                "TaskItemScoreBandCore", TaskItemScoreBandCore.class,
+                "WorkerScoreCore", WorkerScoreCore.class
+        );
+        var expected = new TreeMap<String, Map<String, Long>>();
+        classes.forEach((name, type) -> {
+            var values = new TreeMap<String, Long>();
+            try {
+                @SuppressWarnings("unchecked")
+                Map<String, Number> names =
+                        (Map<String, Number>) ((Map<?, ?>) manifest()
+                                .get("constants"))
+                                .get(name);
+                for (String constantName : names.keySet()) {
+                    Number value = (Number) type.getField(constantName)
+                            .get(null);
+                    values.put(constantName, value.longValue());
+                }
+            } catch (ReflectiveOperationException error) {
+                throw new IllegalStateException(error);
+            }
+            expected.put(name, values);
+        });
+        return expected;
+    }
+
+    private static Map<String, Object> manifest() {
+        try {
+            ObjectMapper mapper = JsonMapper.builder().build();
+            return mapper.readValue(
+                    Files.readString(Path.of(
+                            "../kernel_design/executable_spec/"
+                                    + "kernel_owner_contract_manifest.json"
+                    )),
+                    new TypeReference<LinkedHashMap<String, Object>>() {
+                    }
+            );
+        } catch (Exception error) {
+            throw new IllegalStateException(
+                    "Could not read Kernel owner contract manifest",
+                    error
+            );
+        }
+    }
+
+    private static Object normalizeNumbers(Object value) {
+        if (value instanceof Number number) {
+            return number.longValue();
+        }
+        if (value instanceof Map<?, ?> map) {
+            var normalized = new TreeMap<String, Object>();
+            map.forEach((key, child) -> normalized.put(
+                    String.valueOf(key),
+                    normalizeNumbers(child)
+            ));
+            return normalized;
+        }
+        if (value instanceof List<?> list) {
+            return list.stream()
+                    .map(KernelOwnerContractManifestTest::normalizeNumbers)
+                    .toList();
+        }
+        return value;
+    }
+
+    private static String snakeCase(String value) {
+        return value.replaceAll("([a-z0-9])([A-Z])", "$1_$2")
+                .toLowerCase(java.util.Locale.ROOT);
+    }
+}

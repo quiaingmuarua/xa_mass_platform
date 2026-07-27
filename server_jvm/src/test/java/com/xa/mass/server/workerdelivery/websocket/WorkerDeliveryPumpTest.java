@@ -14,7 +14,7 @@ import com.xa.mass.server.workerdelivery.WorkerDeliveryService;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
-import com.xa.mass.server.workerdelivery.WorkerDeliveryRuntime.WorkerCommandPage;
+import com.xa.mass.kernel.delivery.WorkerCommandRuntime.WorkerCommandConsumePage;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
 import com.xa.mass.server.workerdelivery.websocket.WorkerSessionRegistry.DeliveryAttempt;
 import java.util.List;
@@ -64,7 +64,7 @@ class WorkerDeliveryPumpTest {
                 "websocket-adapter-1",
                 null,
                 100
-        )).thenReturn(new WorkerCommandPage(
+        )).thenReturn(new WorkerCommandConsumePage(
                 Map.of(
                         "worker-1", delivered,
                         "worker-2", missing,
@@ -113,7 +113,7 @@ class WorkerDeliveryPumpTest {
                 "websocket-adapter-1",
                 null,
                 100
-        )).thenReturn(new WorkerCommandPage(
+        )).thenReturn(new WorkerCommandConsumePage(
                 Map.of("worker-1", expired),
                 null
         ));
@@ -134,12 +134,12 @@ class WorkerDeliveryPumpTest {
                 "websocket-adapter-1",
                 null,
                 100
-        )).thenReturn(new WorkerCommandPage(Map.of(), "7"));
+        )).thenReturn(new WorkerCommandConsumePage(Map.of(), "7"));
         when(service.consumeWorkerCommands(
                 "websocket-adapter-1",
                 "7",
                 100
-        )).thenReturn(new WorkerCommandPage(Map.of(), null));
+        )).thenReturn(new WorkerCommandConsumePage(Map.of(), null));
 
         pump.runOnce();
         pump.runOnce();
@@ -172,7 +172,7 @@ class WorkerDeliveryPumpTest {
                 "websocket-adapter-1",
                 null,
                 100
-        )).thenReturn(new WorkerCommandPage(Map.of(), null));
+        )).thenReturn(new WorkerCommandConsumePage(Map.of(), null));
 
         pump.runOnce();
         verify(service, never()).consumeWorkerCommands(

@@ -1,56 +1,73 @@
 # XA Mass JVM Runtime API Server
 
-Status: active external Runtime API with Java-owned TaskData and Worker
-Delivery access.
+Status: active external Runtime API with Kernel owner-contract assembly.
 
 `server_jvm` owns the versioned HTTP contract, request validation, error
 mapping, timeouts, and process health. WorkerGroup/Worker upsert and Task
-create/approve/close still proxy to the Python kernel process. TaskItem append,
-last-success result reads, and Worker Delivery operate directly on their
-current Redis owner shapes.
+create/approve/close bind to Python HTTP owner providers. TaskItem append,
+last-success reads, and Worker Delivery bind to Java Redis owner providers.
+Controllers and services depend only on contracts from `kernel_jvm`.
 
 ```text
 Control client
   -> server_jvm /api/v1
-  -> KernelCommandClient
-  -> Python Kernel Control API
+  -> TaskRuntime / WorkerRuntime / WorkerResourceCatalog
+  -> Python HTTP owner providers
   -> KernelApplication / scheduling truth
 
 Task data client
   -> Java TaskDataService
-  -> TaskItem record + ACTIVE score initialization / last-success HASH read
-  -> Redis
+  -> TaskRuntime + TaskResourceCatalog + WorkerResourceCatalog
+  -> Java owner Redis providers
   -> Python scheduling and ResultRouting
 
 Worker / long-lived Adapter
   -> server_jvm /api/v1/worker-delivery
   -> Java WorkerDeliveryService
-  -> WorkerCommand consume / SeedResult append
-  -> Redis
+  -> WorkerCommandRuntime + SeedResultRuntime
+  -> Java owner Redis providers
   -> Python ResultRouting
 ```
 
-The module is Java 21 and Spring Boot 4.1. It has no dependency on
-`kernel_jvm` and does not start the Python process. The shared
-`kernelredis` package owns only connection and health. Owner key operations
-are confined to `taskdata.redis` and `workerdelivery.redis`. Java does not
-read Task or Worker scheduling scores, invoke Pacers, append Worker commands,
-or consume SeedResult queues.
+The module is Java 21 and Spring Boot 4.1. It depends on `kernel_jvm` contracts
+but does not start the Python process. `kernelbinding` is the only provider
+composition boundary. Its package-private HTTP transport handles wire concerns;
+owner adapters translate between wire JSON and Kernel DTOs. The shared
+`kernelredis` package owns only connection and health. Redis key operations are
+implemented in owner-local `kernel_jvm` packages. Java does not read Task or
+Worker scheduling scores, invoke Pacers, append Worker commands, or consume
+SeedResult queues.
+
+Current provider matrix:
+
+| Operation | Provider |
+| --- | --- |
+| WorkerGroup upsert | Python HTTP |
+| Worker upsert | Python HTTP |
+| Task create | Python HTTP |
+| Task approve/close | Python HTTP application command |
+| Task and WorkerGroup descriptor reads | Java Redis |
+| TaskItem append and last-success load | Java Redis |
+| WorkerCommand consume | Java Redis |
+| SeedResult append | Java Redis |
+| Score, candidate, dynamic attribute, scheduling internals | no Server bean / explicit not implemented |
 
 Task Data boundaries:
 
 ```text
 taskdata
-  application service, runtime port, error mapping
-taskdata.redis
-  Task/WorkerGroup declaration reads, Item record/score initialization,
-  last-success result reads
+  cross-owner validation, use-case orchestration, error mapping
+kernel_jvm task/worker contracts
+  owner DTO and operation boundaries
+kernel_jvm owner Redis packages
+  descriptor reads, Item record/score initialization, last-success reads
 ```
 
 `TaskDataService` is the only HTTP use-case facade. Re-appending a messageId
 replaces its Item record but `ZADD NX` preserves any existing Item score.
 Result reads return opaque last-success payload strings or `null`; they do not
-infer pending or failure state.
+infer pending or failure state. The service validates TaskType and WorkerGroup
+policy across owners; `RedisTaskRuntime` does not read WorkerGroup truth.
 
 Worker Delivery boundaries:
 
@@ -58,13 +75,13 @@ Worker Delivery boundaries:
 worker_delivery_contract_jvm
   transport-neutral WorkerCommand/DeliverSeed/SeedResult contracts and codec
 workerdelivery
-  application service, runtime port, error mapping, Bean composition
+  application service, access policy, error mapping
 workerdelivery.http
   point Worker and Adapter batch HTTP access profiles
-workerdelivery.redis
-  WorkerCommand consume and SeedResult append implementation
 workerdelivery.websocket
   one configured Adapter mailbox pump, Worker sessions, and result buffering
+kernel_jvm delivery contracts/providers
+  WorkerCommand consume and SeedResult append owner operations
 ```
 
 HTTP and WebSocket call `WorkerDeliveryService`; neither imports the Redis
@@ -84,8 +101,9 @@ POST /api/v1/tasks/{taskId}/items
 POST /api/v1/tasks/{taskId}/results:load
 ```
 
-The first five operations are control commands routed to Python. Item append
-and result load are Java TaskData operations. Append returns per-message
+The first five operations use Kernel owner/application contracts backed by
+Python HTTP providers. Item append and result load use the same owner contracts
+backed by Java Redis providers. Append returns per-message
 `appended / not_found / invalid / retryable` status. `TASK_DRIVEN` forbids an
 Item rule; `ITEM_DRIVEN` currently accepts only a WorkerGroup-allowed
 `workerId $eq/$in` rule.

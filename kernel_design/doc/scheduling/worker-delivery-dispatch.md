@@ -211,10 +211,11 @@ python -m kernel_design.runtime_server
 ```
 
 The Worker Delivery address is `127.0.0.1:18082`. WorkerGroup/Worker upsert and
-Task create/approve/close still call the Python control server at
-`127.0.0.1:18080`. Java TaskData separately owns Item append/result reads;
-Worker Delivery itself still uses only the command-mailbox and result-queue
-Redis shapes.
+Task create/approve/close are bound by Server assembly to Python owner
+providers at `127.0.0.1:18080`. Java Task data operations use the JVM
+`TaskRuntime` provider; Worker Delivery uses the separate JVM
+`WorkerCommandRuntime` and `SeedResultRuntime` owner providers. Delivery still
+touches only the command-mailbox and result-queue Redis shapes.
 
 Point polling is always Worker-specific:
 

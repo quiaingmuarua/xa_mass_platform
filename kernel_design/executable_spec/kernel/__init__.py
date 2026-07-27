@@ -23,6 +23,7 @@ from .worker_score import (
 from .worker_runtime import (
     AttributeName,
     AttributeValue,
+    DynamicAttributeReadResult,
     DynamicAttributePayload,
     EndpointManagerId,
     EventCode,
@@ -62,6 +63,7 @@ from .assignment_dispatch_runtime import (
     CandidateId,
     CandidateWorkerCache,
     CandidateWorkerEntry,
+    CandidateWarmupSchedule,
 )
 from .worker_delivery import (
     DeliverSeed,
@@ -108,6 +110,7 @@ __all__ = [
     "WorkerScoreTransitionStatus",
     "AttributeName",
     "AttributeValue",
+    "DynamicAttributeReadResult",
     "DynamicAttributePayload",
     "EndpointManagerId",
     "EventCode",
@@ -137,6 +140,7 @@ __all__ = [
     "TaskItemScoreTransitionResult",
     "TaskItemScoreTransitionStatus",
     "CandidateWorkerEntry",
+    "CandidateWarmupSchedule",
     "DeliverSeed",
     "WorkerCommandAppendStatus",
     "WorkerCommandConsumePage",

@@ -7,6 +7,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.xa.mass.kernel.delivery.SeedResultRuntime;
+import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
@@ -21,21 +23,24 @@ class WorkerDeliveryServiceTest {
 
     private static final String COMMAND_ID =
             "a5e9e10d-f78b-469e-93ab-864b49c189c1";
-    private WorkerDeliveryRuntime runtime;
+    private WorkerCommandRuntime commandRuntime;
+    private SeedResultRuntime resultRuntime;
     private WorkerDeliveryService service;
 
     @BeforeEach
     void setUp() {
-        runtime = mock(WorkerDeliveryRuntime.class);
+        commandRuntime = mock(WorkerCommandRuntime.class);
+        resultRuntime = mock(SeedResultRuntime.class);
         service = new WorkerDeliveryService(
-                runtime,
+                commandRuntime,
+                resultRuntime,
                 new WorkerDeliveryCodec()
         );
     }
 
     @Test
     void pointPollDropsACommandThatExpiredAfterRedisConsumption() {
-        when(runtime.consumeWorkerCommand("endpoint-1", "worker-1"))
+        when(commandRuntime.consumeWorkerCommand("endpoint-1", "worker-1"))
                 .thenReturn(new WorkerCommandEnvelope(
                         COMMAND_ID,
                         WorkerMessageType.TASK_ITEM,
@@ -64,7 +69,7 @@ class WorkerDeliveryServiceTest {
                 .isInstanceOf(WorkerDeliveryException.class)
                 .extracting(error -> ((WorkerDeliveryException) error).kind())
                 .isEqualTo(WorkerDeliveryException.Kind.INVALID);
-        verify(runtime, never()).appendSeedResults(List.of(result));
+        verify(resultRuntime, never()).appendSeedResults(List.of(result));
     }
 
     @Test
@@ -84,11 +89,12 @@ class WorkerDeliveryServiceTest {
                         null
                 )
         );
-        when(runtime.appendSeedResults(results)).thenReturn(results.size());
+        when(resultRuntime.appendSeedResults(results))
+                .thenReturn(results.size());
 
         assertThat(service.appendAdapterResults("endpoint-1", results))
                 .isEqualTo(3);
-        verify(runtime).appendSeedResults(results);
+        verify(resultRuntime).appendSeedResults(results);
     }
 
     @Test
@@ -104,7 +110,7 @@ class WorkerDeliveryServiceTest {
                 "endpoint-1",
                 List.of(rejection)
         )).isInstanceOf(WorkerDeliveryException.class);
-        verify(runtime, never()).appendSeedResults(List.of(rejection));
+        verify(resultRuntime, never()).appendSeedResults(List.of(rejection));
     }
 
     @Test

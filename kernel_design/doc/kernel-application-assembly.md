@@ -18,17 +18,18 @@ CLI / FastAPI
      -> assignment-dispatch and result-routing background applications
 
 Java Runtime API Server
-  -> WorkerGroup/Worker and Task-control controllers call Python
-  -> TaskData directly appends TaskItems and reads last-success results
-  -> Worker Delivery Gateway directly consumes WorkerCommand
-  -> Worker Delivery Gateway directly appends SeedResult
+  -> controllers/services depend on Kernel owner contracts
+  -> assembly binds control operations to Python HTTP providers
+  -> assembly binds selected data/delivery operations to Java Redis providers
 ```
 
-All three surfaces expose commands, not runtime objects. Callers cannot obtain
-Task/Worker score cores, candidate runtime, matcher, pacers, Redis keys,
-suffixes, or lane ranks. Only `KernelApplication` starts background
-scheduling. Java's direct Redis access is limited to TaskData Item
-append/result read and Worker Delivery consume/result-ingress operations.
+External callers see commands, not runtime objects. Inside the Java process,
+controllers and services depend on owner contracts rather than route-shaped
+clients or Redis implementations. Callers cannot obtain Task/Worker score
+cores, candidate runtime, matcher, pacers, Redis keys, suffixes, or lane ranks.
+Only `KernelApplication` starts background scheduling. Java's direct Redis
+providers are limited to Task Item append/result read and Worker Delivery
+consume/result-ingress operations.
 
 ## Application And Executable-Spec Commands
 
@@ -51,8 +52,8 @@ consume_worker_commands(endpointManagerId, cursor, scanCount)
 SeedResultCommandClient
 append_seed_results(SeedResult...)
 
-Java TaskDataRuntime
-appendTaskItems(taskId, items)
+JVM TaskRuntime provider
+appendItems(taskId, items)
 loadTaskItemSuccessResults(taskId, messageIds)
 ```
 
@@ -62,8 +63,26 @@ support surfaces; they are not mounted as Python HTTP routes. The Java Gateway
 implements the public Worker Delivery operations against the same Redis shape.
 `TaskRuntime.append_items` and `load_task_item_success_results` likewise remain
 the Python mechanism oracle. The public Task data HTTP operations are
-implemented by Java `TaskDataService` and `TaskDataRuntime`; Python exposes no
+orchestrated by Java `TaskDataService` and delegated to the Java
+`RedisTaskRuntime` provider through the same owner contract; Python exposes no
 TaskItem append or result-query route.
+
+The JVM incremental assembly is explicit per operation:
+
+```text
+WorkerGroup upsert              -> Python HTTP WorkerResourceCatalog provider
+Worker upsert                   -> Python HTTP WorkerRuntime provider
+Task create                     -> Python HTTP TaskRuntime provider
+Task approve / close            -> Python HTTP application commands
+Task / WorkerGroup reads        -> Java Redis catalog providers
+TaskItem append / result load   -> Java Redis TaskRuntime provider
+WorkerCommand consume           -> Java Redis WorkerCommandRuntime provider
+SeedResult append               -> Java Redis SeedResultRuntime provider
+score / candidate / scheduling  -> no Server provider
+```
+
+Unimplemented JVM owner operations fail explicitly. They are not forwarded to
+Python and do not silently select another provider.
 
 WorkerGroup upsert reuses `WorkerGroupDescriptor`. Worker upsert accepts the
 caller-owned `WorkerDeclaration`; the complete `WorkerDescriptor` remains a

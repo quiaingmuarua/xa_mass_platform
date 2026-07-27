@@ -1,7 +1,7 @@
 package com.xa.mass.server.api;
 
 import com.xa.mass.server.api.v1.model.ApiErrorResponse;
-import com.xa.mass.server.kernelclient.KernelClientException;
+import com.xa.mass.server.kernelbinding.PythonKernelBindingException;
 import com.xa.mass.server.taskdata.TaskDataException;
 import com.xa.mass.server.workerdelivery.WorkerDeliveryException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -16,9 +16,9 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public final class ApiExceptionHandler {
 
-    @ExceptionHandler(KernelClientException.class)
+    @ExceptionHandler(PythonKernelBindingException.class)
     public ResponseEntity<ApiErrorResponse> kernelClientFailure(
-            KernelClientException error,
+            PythonKernelBindingException error,
             HttpServletRequest request
     ) {
         return ResponseEntity.status(error.responseStatus()).body(

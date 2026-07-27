@@ -1,35 +1,48 @@
 package com.xa.mass.server.api.v1;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.xa.mass.kernel.task.TaskResourceCatalog;
+import com.xa.mass.kernel.task.TaskRuntime;
+import com.xa.mass.kernel.task.TaskRuntime.TaskCreationResult;
+import com.xa.mass.kernel.task.TaskRuntime.TaskCreationStatus;
+import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
+import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
+import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
+import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendStatus;
+import com.xa.mass.kernel.task.TaskRuntime.TaskType;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog;
+import com.xa.mass.kernel.worker.WorkerRuntime;
+import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeResult;
+import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeStatus;
 import com.xa.mass.server.api.ApiExceptionHandler;
 import com.xa.mass.server.api.RequestIdFilter;
-import com.xa.mass.server.api.v1.model.CommandResultResponse;
-import com.xa.mass.server.api.v1.model.RuntimeCommandStatus;
-import com.xa.mass.server.api.v1.model.TaskCreateRequest;
-import com.xa.mass.server.api.v1.model.WorkerGroupUpsertRequest;
-import com.xa.mass.server.api.v1.model.WorkerUpsertRequest;
-import com.xa.mass.server.kernelclient.KernelCommandClient;
-import com.xa.mass.server.kernelclient.KernelClientException;
-import com.xa.mass.server.kernelclient.KernelResponse;
-import com.xa.mass.server.taskdata.TaskDataException;
-import com.xa.mass.server.taskdata.TaskDataRuntime;
-import com.xa.mass.server.taskdata.TaskDataRuntime.TaskItemAppendResult;
-import com.xa.mass.server.taskdata.TaskDataRuntime.TaskItemAppendStatus;
-import com.xa.mass.server.taskdata.TaskDataRuntime.TaskItemRecord;
+import com.xa.mass.server.kernelbinding.PythonKernelBindingException;
+import com.xa.mass.server.kernelbinding.TaskLifecycleCommands;
+import com.xa.mass.server.kernelbinding.TaskLifecycleCommands.TaskApprovalResult;
+import com.xa.mass.server.kernelbinding.TaskLifecycleCommands.TaskApprovalStatus;
+import com.xa.mass.server.kernelbinding.TaskLifecycleCommands.TaskCloseResult;
+import com.xa.mass.server.kernelbinding.TaskLifecycleCommands.TaskCloseStatus;
 import com.xa.mass.server.taskdata.TaskDataService;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.http.HttpStatus;
+import org.mockito.ArgumentCaptor;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -37,22 +50,88 @@ import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 
 class RuntimeApiControllerTest {
 
-    private RecordingKernelClient kernelClient;
-    private RecordingTaskDataRuntime taskDataRuntime;
+    private WorkerRuntime workerRuntime;
+    private WorkerResourceCatalog workerCatalog;
+    private TaskRuntime taskRuntime;
+    private TaskResourceCatalog taskCatalog;
+    private TaskLifecycleCommands taskLifecycle;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        kernelClient = new RecordingKernelClient();
-        taskDataRuntime = new RecordingTaskDataRuntime();
+        workerRuntime = mock(WorkerRuntime.class);
+        workerCatalog = mock(WorkerResourceCatalog.class);
+        taskRuntime = mock(TaskRuntime.class);
+        taskCatalog = mock(TaskResourceCatalog.class);
+        taskLifecycle = mock(TaskLifecycleCommands.class);
+
+        when(workerCatalog.upsertWorkerGroup(any()))
+                .thenReturn(new WorkerRuntimeResult(WorkerRuntimeStatus.OK));
+        when(workerRuntime.upsertWorker(any()))
+                .thenReturn(new WorkerRuntimeResult(WorkerRuntimeStatus.OK));
+        when(taskRuntime.createTask(any(), eq(0)))
+                .thenReturn(new TaskCreationResult(
+                        TaskCreationStatus.CREATED
+                ));
+        when(taskLifecycle.approveTask("task-1"))
+                .thenReturn(new TaskApprovalResult(
+                        TaskApprovalStatus.APPROVED,
+                        null
+                ));
+        when(taskLifecycle.closeTask("task-1"))
+                .thenReturn(new TaskCloseResult(
+                        TaskCloseStatus.CLOSED,
+                        null
+                ));
+        when(taskCatalog.loadTaskAllocationDescriptors(anyList()))
+                .thenAnswer(invocation -> {
+                    List<String> ids = invocation.getArgument(0);
+                    var descriptors =
+                            new LinkedHashMap<String, TaskDescriptor>();
+                    ids.forEach(id -> descriptors.put(
+                            id,
+                            descriptor(id)
+                    ));
+                    return descriptors;
+                });
+        when(taskRuntime.appendItems(eq("task-1"), anyList()))
+                .thenReturn(Map.of(
+                        "message-1",
+                        new TaskItemAppendResult(
+                                TaskItemAppendStatus.APPENDED
+                        )
+                ));
+        when(taskRuntime.loadTaskItemSuccessResults(
+                eq("task-1"),
+                anyList()
+        )).thenAnswer(invocation -> {
+            List<String> ids = invocation.getArgument(1);
+            var results = new LinkedHashMap<String, String>();
+            ids.forEach(id -> results.put(
+                    id,
+                    "message-1".equals(id)
+                            ? "{\"valid\":true}"
+                            : null
+            ));
+            return results;
+        });
+
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
         mockMvc = MockMvcBuilders.standaloneSetup(
-                        new ResourceCommandController(kernelClient),
-                        new TaskControlController(kernelClient),
-                        new TaskDataController(
-                                new TaskDataService(taskDataRuntime)
-                        )
+                        new ResourceCommandController(
+                                workerRuntime,
+                                workerCatalog
+                        ),
+                        new TaskControlController(
+                                taskRuntime,
+                                taskLifecycle
+                        ),
+                        new TaskDataController(new TaskDataService(
+                                taskRuntime,
+                                taskCatalog,
+                                workerCatalog
+                        ))
                 )
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setValidator(validator)
@@ -132,7 +211,12 @@ class RuntimeApiControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.results.message-1.status")
                         .value("appended"));
-        assertThat(taskDataRuntime.appendedItems).singleElement()
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<TaskItem>> itemCaptor =
+                ArgumentCaptor.forClass(List.class);
+        verify(taskRuntime).appendItems(eq("task-1"), itemCaptor.capture());
+        assertThat(itemCaptor.getValue()).singleElement()
                 .satisfies(item -> assertThat(item.priority()).isEqualTo(5));
 
         mockMvc.perform(post("/api/v1/tasks/task-1/results:load")
@@ -178,7 +262,14 @@ class RuntimeApiControllerTest {
                                 """))
                 .andExpect(status().isOk());
 
-        assertThat(taskDataRuntime.loadedMessageIds)
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<String>> idsCaptor =
+                ArgumentCaptor.forClass(List.class);
+        verify(taskRuntime).loadTaskItemSuccessResults(
+                eq("task-1"),
+                idsCaptor.capture()
+        );
+        assertThat(idsCaptor.getValue())
                 .containsExactly("message-2", "message-1");
 
         mockMvc.perform(post("/api/v1/tasks/task-1/results:load")
@@ -197,9 +288,9 @@ class RuntimeApiControllerTest {
 
     @Test
     void missingTaskResultQueryReturnsNotFound() throws Exception {
-        taskDataRuntime.loadFailure = TaskDataException.notFound(
-                "Task was not found"
-        );
+        when(taskCatalog.loadTaskAllocationDescriptors(
+                List.of("missing")
+        )).thenReturn(new LinkedHashMap<>(Map.of()));
 
         mockMvc.perform(post("/api/v1/tasks/missing/results:load")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -210,8 +301,10 @@ class RuntimeApiControllerTest {
 
     @Test
     void kernelTransportFailureUsesThePublicErrorContract() throws Exception {
-        kernelClient.failure = KernelClientException.unavailable(
-                new IllegalStateException("offline")
+        when(taskLifecycle.approveTask("task-1")).thenThrow(
+                PythonKernelBindingException.unavailable(
+                        new IllegalStateException("offline")
+                )
         );
 
         mockMvc.perform(post("/api/v1/tasks/task-1/approve")
@@ -222,96 +315,18 @@ class RuntimeApiControllerTest {
                         .value("unavailable-request"));
     }
 
-    private static final class RecordingKernelClient
-            implements KernelCommandClient {
-
-        private RuntimeException failure;
-
-        @Override
-        public KernelResponse<CommandResultResponse> upsertWorkerGroup(
-                String workerGroupId,
-                WorkerGroupUpsertRequest request
-        ) {
-            return command(HttpStatus.OK, RuntimeCommandStatus.OK);
-        }
-
-        @Override
-        public KernelResponse<CommandResultResponse> upsertWorker(
-                String workerGroupId,
-                String workerId,
-                WorkerUpsertRequest request
-        ) {
-            return command(HttpStatus.OK, RuntimeCommandStatus.OK);
-        }
-
-        @Override
-        public KernelResponse<CommandResultResponse> createTask(
-                TaskCreateRequest request
-        ) {
-            return command(HttpStatus.CREATED, RuntimeCommandStatus.CREATED);
-        }
-
-        @Override
-        public KernelResponse<CommandResultResponse> approveTask(String taskId) {
-            if (failure != null) {
-                throw failure;
-            }
-            return command(HttpStatus.OK, RuntimeCommandStatus.APPROVED);
-        }
-
-        @Override
-        public KernelResponse<CommandResultResponse> closeTask(String taskId) {
-            return command(HttpStatus.OK, RuntimeCommandStatus.CLOSED);
-        }
-
-        @Override
-        public boolean isHealthy() {
-            return true;
-        }
-
-        private static KernelResponse<CommandResultResponse> command(
-                HttpStatus status,
-                RuntimeCommandStatus commandStatus
-        ) {
-            return new KernelResponse<>(
-                    status,
-                    new CommandResultResponse(commandStatus, null)
-            );
-        }
-    }
-
-    private static final class RecordingTaskDataRuntime
-            implements TaskDataRuntime {
-
-        private List<String> loadedMessageIds;
-        private List<TaskItemRecord> appendedItems;
-        private RuntimeException loadFailure;
-
-        @Override
-        public Map<String, TaskItemAppendResult> appendTaskItems(
-                String taskId,
-                List<TaskItemRecord> items
-        ) {
-            appendedItems = List.copyOf(items);
-            return Map.of(
-                    "message-1",
-                    new TaskItemAppendResult(TaskItemAppendStatus.APPENDED)
-            );
-        }
-
-        @Override
-        public Map<String, String> loadTaskItemSuccessResults(
-                String taskId,
-                List<String> messageIds
-        ) {
-            if (loadFailure != null) {
-                throw loadFailure;
-            }
-            loadedMessageIds = List.copyOf(messageIds);
-            var results = new java.util.LinkedHashMap<String, String>();
-            results.put("message-1", "{\"valid\":true}");
-            results.put("message-2", null);
-            return results;
-        }
+    private static TaskDescriptor descriptor(String taskId) {
+        return new TaskDescriptor(
+                taskId,
+                "phone-tools",
+                TaskType.TASK_DRIVEN,
+                Map.of(),
+                Map.of(
+                        "priority", "0",
+                        "maximumCandidateWorkers", "1",
+                        "maxRetryTimes", "3"
+                ),
+                0L
+        );
     }
 }

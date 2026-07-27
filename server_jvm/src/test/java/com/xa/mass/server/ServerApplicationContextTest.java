@@ -5,7 +5,18 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.xa.mass.server.api.v1.ResourceCommandController;
 import com.xa.mass.server.api.v1.TaskControlController;
 import com.xa.mass.server.api.v1.TaskDataController;
-import com.xa.mass.server.kernelclient.KernelCommandClient;
+import com.xa.mass.kernel.assignment.CandidateWarmupSchedule;
+import com.xa.mass.kernel.assignment.CandidateWorkerCache;
+import com.xa.mass.kernel.delivery.SeedResultRuntime;
+import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
+import com.xa.mass.kernel.score.TaskItemScoreBandCore;
+import com.xa.mass.kernel.score.TaskScoreBandCore;
+import com.xa.mass.kernel.score.WorkerScoreCore;
+import com.xa.mass.kernel.task.TaskResourceCatalog;
+import com.xa.mass.kernel.task.TaskRuntime;
+import com.xa.mass.kernel.worker.WorkerDynamicAttributeRuntime;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog;
+import com.xa.mass.kernel.worker.WorkerRuntime;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -34,7 +45,17 @@ class ServerApplicationContextTest {
 
     @Test
     void assemblesTheRuntimeApiWithoutStartingThePythonKernel() throws Exception {
-        assertThat(applicationContext.getBean(KernelCommandClient.class))
+        assertThat(applicationContext.getBean(TaskRuntime.class))
+                .isNotNull();
+        assertThat(applicationContext.getBean(TaskResourceCatalog.class))
+                .isNotNull();
+        assertThat(applicationContext.getBean(WorkerRuntime.class))
+                .isNotNull();
+        assertThat(applicationContext.getBean(WorkerResourceCatalog.class))
+                .isNotNull();
+        assertThat(applicationContext.getBean(WorkerCommandRuntime.class))
+                .isNotNull();
+        assertThat(applicationContext.getBean(SeedResultRuntime.class))
                 .isNotNull();
         assertThat(applicationContext.getBean(ResourceCommandController.class))
                 .isNotNull();
@@ -42,6 +63,24 @@ class ServerApplicationContextTest {
                 .isNotNull();
         assertThat(applicationContext.getBean(TaskDataController.class))
                 .isNotNull();
+        assertThat(applicationContext.getBeansOfType(
+                TaskScoreBandCore.class
+        )).isEmpty();
+        assertThat(applicationContext.getBeansOfType(
+                TaskItemScoreBandCore.class
+        )).isEmpty();
+        assertThat(applicationContext.getBeansOfType(
+                WorkerScoreCore.class
+        )).isEmpty();
+        assertThat(applicationContext.getBeansOfType(
+                WorkerDynamicAttributeRuntime.class
+        )).isEmpty();
+        assertThat(applicationContext.getBeansOfType(
+                CandidateWorkerCache.class
+        )).isEmpty();
+        assertThat(applicationContext.getBeansOfType(
+                CandidateWarmupSchedule.class
+        )).isEmpty();
 
         HttpClient client = HttpClient.newHttpClient();
         HttpResponse<String> liveness = client.send(

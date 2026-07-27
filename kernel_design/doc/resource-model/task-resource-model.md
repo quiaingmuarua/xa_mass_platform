@@ -454,9 +454,9 @@ Redis implementations:
 - [`redis_runtime/task_runtime.py`](../../executable_spec/redis_runtime/task_runtime.py)
 - [`redis_runtime/task_score_band.py`](../../executable_spec/redis_runtime/task_score_band.py)
 - [`redis_runtime/task_item_score_band.py`](../../executable_spec/redis_runtime/task_item_score_band.py)
-- [`server_jvm/taskdata/redis`](../../../server_jvm/src/main/java/com/xa/mass/server/taskdata/redis)
-  implements the current public Java Item append and last-success read
-  operations against the same Redis shape.
+- [`kernel_jvm/task/redis`](../../../kernel_jvm/src/main/java/com/xa/mass/kernel/task/redis)
+  implements the current public JVM `TaskRuntime` Item append and last-success
+  read operations against the same Redis shape.
 
 ## Explicit Non-Owners
 

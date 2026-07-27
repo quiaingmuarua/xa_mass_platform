@@ -160,7 +160,7 @@ Worker Delivery Dispatch
 | Task score-band | Implemented with Redis proof | Cadence, scan horizons, and no-work budget values |
 | Worker score-band | Implemented with Redis proof, including dirty lease fence | Dirty marking policy when a persisted assignment continuation exists; recovery cadence and ranking |
 | Worker HOT_ACQUIRE lease protocol | HOT-pool precomputation, TARGETED point lease-match, PRECOMPUTED exact recheck-rematch, result disposition, reconnect dirty fence, and one-WorkerId/one-slot invariant implemented | Recovery probe cadence and ranking |
-| TaskItem score-band | Implemented with Python oracle plus Java TaskData append/last-success Redis proof | Initial retry budget and claim-duration values |
+| TaskItem score-band | Implemented with Python oracle plus JVM `TaskRuntime` append/last-success Redis-provider proof | Initial retry budget and claim-duration values |
 | Task running activation | Implemented with due-Item Task policy and priority soft-limit System policy | Scenario-backed quota, tenant, business start condition, and resource-estimate decisions |
 | Worker allocation | Implemented as hint-driven TASK-scope candidate cache warming through HOT-pool acquisition; Task score is read only for RUNNING/non-hard-pause suffix-zero validation; TASK_DRIVEN has deterministic Redis proof through cache consumption | Warmup prioritization beyond bounded due order and matcher priority |
 | Task dispatch | Implemented with acquisition-only TaskType profiles, PRECOMPUTED Task rules, TARGETED complete Item rules, stable Item binding, RUNNING same-band reschedule, shared threshold-based empty close, and WorkerCommand append; both TaskTypes have deterministic Redis proof through the command mailbox and ITEM_DRIVEN proves no warmup/cache path | Recent-first Redis Task acquisition |
@@ -168,9 +168,11 @@ Worker Delivery Dispatch
 | Result routing | Implemented with unit and Redis orchestration proof; Task/Worker policy handlers are replaceable; Java exposes bounded last-success reads | Failure/history projection and stronger queue reliability require separate owners and invariants |
 
 Both TaskTypes also have cross-process Redis E2E proof from Java control and
-TaskData APIs through Python scheduling, the Java Worker Delivery Gateway, the
+Task data APIs through Python scheduling, the Java Worker Delivery Gateway, the
 Java polling/WebSocket phone Worker, Result-Routing, `FINAL_SUCCESS`, Java
-last-success query, and exact Worker lease release.
+last-success query, and exact Worker lease release. Java controllers use the
+same Kernel owner contracts as the Python executable spec; Server assembly
+chooses Python HTTP or Java Redis providers per operation.
 Additional Redis proofs cover
 TASK_DRIVEN default empty close, ITEM_DRIVEN future-threshold empty recheck
 followed by append, shared explicit threshold close, and an external explicit

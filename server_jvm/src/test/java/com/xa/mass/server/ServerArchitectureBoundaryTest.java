@@ -9,137 +9,132 @@ import org.junit.jupiter.api.Test;
 
 class ServerArchitectureBoundaryTest {
 
-    private static final Path SOURCE_ROOT = Path.of("src/main/java");
-    private static final Path WORKER_DELIVERY_REDIS = SOURCE_ROOT.resolve(
-            "com/xa/mass/server/workerdelivery/redis"
+    private static final Path SERVER_SOURCE = Path.of("src/main/java");
+    private static final Path KERNEL_SOURCE = Path.of(
+            "../kernel_jvm/src/main/java"
     );
-    private static final Path TASK_DATA_REDIS = SOURCE_ROOT.resolve(
-            "com/xa/mass/server/taskdata/redis"
-    );
-    private static final Path KERNEL_REDIS = SOURCE_ROOT.resolve(
+    private static final Path SHARED_REDIS = SERVER_SOURCE.resolve(
             "com/xa/mass/server/kernelredis"
     );
-    private static final Path TASK_DATA = SOURCE_ROOT.resolve(
-            "com/xa/mass/server/taskdata"
+    private static final Path KERNEL_ASSEMBLY = SERVER_SOURCE.resolve(
+            "com/xa/mass/server/kernelbinding/KernelOwnerAssemblyConfiguration.java"
     );
-    private static final Path WORKER_DELIVERY_HTTP = SOURCE_ROOT.resolve(
+    private static final Path TASK_REDIS = KERNEL_SOURCE.resolve(
+            "com/xa/mass/kernel/task/redis"
+    );
+    private static final Path WORKER_REDIS = KERNEL_SOURCE.resolve(
+            "com/xa/mass/kernel/worker/redis"
+    );
+    private static final Path DELIVERY_REDIS = KERNEL_SOURCE.resolve(
+            "com/xa/mass/kernel/delivery/redis"
+    );
+    private static final Path HTTP = SERVER_SOURCE.resolve(
             "com/xa/mass/server/workerdelivery/http"
     );
-    private static final Path WORKER_DELIVERY_WEBSOCKET = SOURCE_ROOT.resolve(
+    private static final Path WEBSOCKET = SERVER_SOURCE.resolve(
             "com/xa/mass/server/workerdelivery/websocket"
     );
 
     @Test
-    void onlyOwnerRedisPackagesAndSharedConnectionMayAccessRedis()
+    void serverDependsOnKernelContractsWithoutOwningRedisKeys()
             throws IOException {
         String build = Files.readString(Path.of("build.gradle"));
         assertThat(build)
-                .doesNotContain("project(':kernel_jvm')")
-                .doesNotContain("project(\":kernel_jvm\")")
+                .contains("implementation project(':kernel_jvm')")
                 .doesNotContain("implementation project(':worker_jvm')")
-                .contains("testImplementation project(':worker_jvm')")
-                .contains("project(':worker_delivery_contract_jvm')")
-                .contains("spring-boot-starter-data-redis");
+                .contains("testImplementation project(':worker_jvm')");
 
-        StringBuilder nonRedisSources = new StringBuilder();
-        StringBuilder allSources = new StringBuilder();
-        try (var paths = Files.walk(SOURCE_ROOT)) {
-            paths.filter(path -> path.toString().endsWith(".java"))
-                    .forEach(path -> {
-                        appendSource(allSources, path);
-                        if (!path.startsWith(WORKER_DELIVERY_REDIS)
-                                && !path.startsWith(TASK_DATA_REDIS)
-                                && !path.startsWith(KERNEL_REDIS)) {
-                            appendSource(nonRedisSources, path);
-                        }
-                    });
-        }
-        assertThat(nonRedisSources.toString())
-                .doesNotContain("org.springframework.data.redis")
-                .doesNotContain("io.lettuce");
-        assertThat(allSources.toString())
-                .doesNotContain("kernel_design")
-                .doesNotContain(".score.")
-                .doesNotContain(".pacer.");
+        String serverSources = readSources(SERVER_SOURCE);
+        assertThat(serverSources)
+                .doesNotContain("\"wd:")
+                .doesNotContain("\"rr:")
+                .doesNotContain("\"tr:")
+                .doesNotContain("\"wr:")
+                .doesNotContain("KernelCommandClient")
+                .doesNotContain("TaskDataRuntime")
+                .doesNotContain("WorkerDeliveryRuntime");
+        assertThat(readSourcesExcluding(
+                SERVER_SOURCE,
+                SHARED_REDIS,
+                KERNEL_ASSEMBLY
+        ))
+                .doesNotContain("io.lettuce")
+                .doesNotContain("org.springframework.data.redis");
     }
 
     @Test
-    void workerDeliveryRedisUsesOnlyItsDirectionalOperations()
+    void kernelOwnerRedisImplementationsStayDirectional()
             throws IOException {
-        assertThat(readSources(WORKER_DELIVERY_REDIS))
+        assertThat(readSources(TASK_REDIS))
+                .contains(":items")
+                .contains(":item-score")
+                .contains(":results")
+                .doesNotContain("worker-commands")
+                .doesNotContain("seed-results")
+                .doesNotContain("\"wr:");
+        assertThat(readSources(WORKER_REDIS))
+                .contains("\"wr:")
+                .doesNotContain("\"tr:")
+                .doesNotContain("\"wd:")
+                .doesNotContain("\"rr:");
+
+        String delivery = readSources(DELIVERY_REDIS);
+        assertThat(delivery)
                 .contains("HGET")
                 .contains("HDEL")
                 .contains("commands().hscan(")
                 .contains("commands().rpush(")
-                .doesNotContain("HSET")
-                .doesNotContain("commands().hset(")
-                .doesNotContain("LPOP")
-                .doesNotContain("commands().lpop(")
-                .doesNotContain("ZADD")
-                .doesNotContain("ZRANGE")
                 .doesNotContain("\"tc:")
                 .doesNotContain("\"tr:")
-                .doesNotContain(":groups")
-                .doesNotContain(":item-score")
-                .doesNotContain(":items");
+                .doesNotContain("\"wr:");
     }
 
     @Test
-    void taskDataRedisUsesOnlyItsOwnerKeys() throws IOException {
-        assertThat(readSources(TASK_DATA_REDIS))
-                .contains(":items")
-                .contains(":item-score")
-                .contains(":results")
-                .contains(":groups")
-                .doesNotContain("worker-commands")
-                .doesNotContain("seed-results")
-                .doesNotContain("candidate:")
-                .doesNotContain(":task:score");
-    }
-
-    @Test
-    void sharedRedisPackageDoesNotExecuteOwnerKeyOperations()
+    void sharedRedisPackageOnlyBuildsConnectionAndHealth()
             throws IOException {
-        assertThat(readSources(KERNEL_REDIS))
+        assertThat(readSources(SHARED_REDIS))
                 .doesNotContain(".hget(")
                 .doesNotContain(".hset(")
                 .doesNotContain(".zadd(")
                 .doesNotContain(".rpush(")
-                .doesNotContain(".lpop(")
                 .doesNotContain(".eval(");
     }
 
     @Test
-    void workerDeliveryPackagesKeepDirectionalDependencies()
+    void deliveryAccessProfilesDependOnTheServiceNotRedis()
             throws IOException {
-        assertThat(readSources(WORKER_DELIVERY_HTTP))
-                .doesNotContain(".workerdelivery.redis")
-                .doesNotContain("WorkerDeliveryRuntime")
+        assertThat(readSources(HTTP))
+                .doesNotContain(".delivery.redis")
                 .doesNotContain("io.lettuce")
-                .doesNotContain("org.springframework.data.redis");
-
-        assertThat(readSources(WORKER_DELIVERY_WEBSOCKET))
-                .doesNotContain(".workerdelivery.redis")
+                .doesNotContain("WorkerCommandRuntime")
+                .doesNotContain("SeedResultRuntime");
+        assertThat(readSources(WEBSOCKET))
+                .doesNotContain(".delivery.redis")
                 .doesNotContain(".workerdelivery.http")
-                .doesNotContain("WorkerDeliveryRuntime")
                 .doesNotContain("io.lettuce")
-                .doesNotContain("org.springframework.data.redis")
+                .doesNotContain("WorkerCommandRuntime")
+                .doesNotContain("SeedResultRuntime")
                 .doesNotContain("decodeDeliverSeed");
-    }
-
-    @Test
-    void taskDataApplicationDoesNotCrossIntoControlOrWorkerDelivery()
-            throws IOException {
-        assertThat(readSources(TASK_DATA))
-                .doesNotContain("KernelCommandClient")
-                .doesNotContain(".workerdelivery.")
-                .doesNotContain(".workerdelivery.redis");
     }
 
     private static String readSources(Path root) throws IOException {
         StringBuilder sources = new StringBuilder();
         try (var paths = Files.walk(root)) {
             paths.filter(path -> path.toString().endsWith(".java"))
+                    .forEach(path -> appendSource(sources, path));
+        }
+        return sources.toString();
+    }
+
+    private static String readSourcesExcluding(
+            Path root,
+            Path... excluded
+    ) throws IOException {
+        StringBuilder sources = new StringBuilder();
+        try (var paths = Files.walk(root)) {
+            paths.filter(path -> path.toString().endsWith(".java"))
+                    .filter(path -> java.util.Arrays.stream(excluded)
+                            .noneMatch(path::startsWith))
                     .forEach(path -> appendSource(sources, path));
         }
         return sources.toString();

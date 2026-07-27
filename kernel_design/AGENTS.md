@@ -300,11 +300,13 @@ batch Item append orchestration through TaskItemScoreBandCore initialization
 Task-scoped last-success payload storage and bounded requested-id reads
 ```
 
-The external process implementation is split by owner operation, not by truth:
-Java `TaskDataRuntime` implements public Item append and last-success reads;
-Python `RedisTaskRuntime` remains the mechanism oracle and performs internal
-ResultRouting storage. Both use the same keys. There is no proxy fallback,
-mirrored result store, or double write.
+The external process implementation is split by owner operation, not by truth.
+Java implements the same `TaskRuntime` contract in `kernel_jvm` for public Item
+append and last-success reads; Python `RedisTaskRuntime` remains the mechanism
+oracle and performs internal ResultRouting storage. Both use the same keys.
+`server_jvm` selects providers in assembly; it does not define a route-shaped
+or Server-local Kernel runtime. There is no proxy fallback, mirrored result
+store, or double write.
 
 TaskItemScoreBandCore owns:
 
@@ -321,9 +323,9 @@ does not create a `Work` / `WorkItem` model, id, store, runtime, or owner.
 Item append callers provide TaskItem fields only. Append scheduling policy maps
 Item priority to initial due milliseconds; Task config owns `maxRetryTimes`.
 The Python oracle passes those stable initialization inputs to
-TaskItemScoreBandCore. The Java TaskData implementation reproduces only this
-initial record-plus-score operation behind its runtime port. Tag, timeSlot,
-suffix, score bounds, and initial score never cross the HTTP API.
+TaskItemScoreBandCore. The Java `RedisTaskRuntime` provider reproduces only this
+initial record-plus-score operation behind the same owner contract. Tag,
+timeSlot, suffix, score bounds, and initial score never cross the HTTP API.
 
 Score is not a resource mutation lock. Task/worker metadata writes, dynamic
 attribute writes, item append, result/evidence writes, projections, and trace

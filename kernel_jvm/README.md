@@ -1,27 +1,65 @@
 # XA Mass Kernel JVM
 
-Status: empty Kotlin/JVM production implementation scaffold.
+Status: JVM Kernel owner-contract parity and selected owner provider
+implementation.
 
-This module will implement the contracts proven by
-[`kernel_design/`](../kernel_design/). It currently contains no kernel
-behavior and does not preserve the superseded Java architecture.
+This module mirrors the public owner boundary exported by
+[`kernel_design.executable_spec.kernel`](../kernel_design/executable_spec/kernel/).
+Python remains the mechanism oracle. JVM contracts use idiomatic camelCase but
+preserve the Python method set, DTO fields, enum values, nullability, and key
+score constants. Owner packages are `@NullMarked`; Python optional values are
+spelled with explicit JSpecify `@Nullable` type-use annotations.
 
 Package responsibilities:
 
 | Package | Intended responsibility |
 | --- | --- |
-| `core` | Owner contracts, stable values, and score primitives |
-| `constraintdsl` | Allocation-rule compilation and evaluation |
-| `scheduling` | Bounded policy and Pacer orchestration |
-| `redis` | Redis-backed owner implementations |
-| `assembly` | Process composition, lifecycle, and external clients |
+| `task` | `TaskRuntime` and `TaskResourceCatalog` contracts |
+| `worker` | Worker runtime, catalog, and dynamic-attribute contracts |
+| `score` | Task, TaskItem, and Worker score owner contracts |
+| `assignment` | Candidate cache and warmup schedule contracts |
+| `delivery` | WorkerCommand and SeedResult runtime contracts |
+| owner-local `redis` packages | Selected Redis implementations |
 
-These are packages inside one Gradle module, not promises of future Gradle
-modules. Add code only through a parity slice that identifies the corresponding
-Python owner contract and tests.
+The current implemented provider subset is:
 
-The external Runtime API belongs to [`server_jvm/`](../server_jvm/) and does
-not depend on this module while the Python kernel remains the runtime owner.
+```text
+TaskRuntime
+  appendItems
+  loadTaskItemSuccessResults
+
+TaskResourceCatalog
+  bounded descriptor reads
+
+WorkerResourceCatalog
+  WorkerGroup descriptor reads
+
+WorkerCommandRuntime
+  point and cursor consume
+
+SeedResultRuntime
+  append
+```
+
+Every other translated operation is explicit and throws
+`KernelOperationNotImplementedException` when invoked by a partial provider.
+There are no default-method fallbacks.
+
+The shared
+[`kernel_owner_contract_manifest.json`](../kernel_design/executable_spec/kernel_owner_contract_manifest.json)
+is test evidence only. Python generates and checks the semantic side; JVM
+reflection checks the normalized Java side. It does not generate source and is
+not an external protocol.
+
+The external Runtime API belongs to [`server_jvm/`](../server_jvm/). Its
+controllers and services depend on these owner contracts. Server assembly
+chooses a Python HTTP provider, Java Redis provider, or explicit unimplemented
+provider per operation. Provider selection never appears in HTTP controllers
+or business services.
+
+There is no TaskData runtime, combined WorkerDelivery runtime, Pacer,
+scheduling policy, or Kernel application lifecycle in this module. Those
+boundaries must be migrated through separate parity slices.
 
 `kernel_jvm` targets JDK 21 and is not an Android module. A future
 Android-compatible Worker SDK belongs in a separate Gradle module with its own

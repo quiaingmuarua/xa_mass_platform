@@ -15,7 +15,7 @@ import com.xa.mass.server.workerdelivery.WorkerDeliveryException;
 import com.xa.mass.server.workerdelivery.WorkerDeliveryAccessPolicy;
 import com.xa.mass.server.workerdelivery.WorkerDeliveryService;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
-import com.xa.mass.server.workerdelivery.WorkerDeliveryRuntime.WorkerCommandPage;
+import com.xa.mass.kernel.delivery.WorkerCommandRuntime.WorkerCommandConsumePage;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
 import java.util.Map;
 import java.time.Duration;
@@ -72,7 +72,7 @@ class AdapterBatchDeliveryControllerTest {
     @Test
     void adapterBatchPreservesWorkerDemuxAndCursor() throws Exception {
         when(service.consumeWorkerCommands("endpoint-1", null, 100))
-                .thenReturn(new WorkerCommandPage(
+                .thenReturn(new WorkerCommandConsumePage(
                         Map.of("worker-1", command()),
                         "7"
                 ));

@@ -242,11 +242,13 @@ TaskRuntime append owns canonical TaskItem persistence and invokes
 TaskItemScoreBandCore for initial Item-score creation. It does not make a Task
 schedulable, refresh Task score, or emit a required wakeup.
 
-The current external process realization is intentionally split by operation:
-Java `TaskDataRuntime` implements public TaskItem append and last-success reads
-against the same Redis shapes; Python `RedisTaskRuntime` remains the
-executable-spec oracle and is used internally by scheduling and ResultRouting.
-This is one Task data truth, not mirrored storage or a fallback path.
+The current external process realization is intentionally split by operation
+behind one owner contract. Java `RedisTaskRuntime` implements public TaskItem
+append and last-success reads against the same Redis shapes; Python
+`RedisTaskRuntime` remains the executable-spec oracle and is used internally by
+scheduling and ResultRouting. `server_jvm` assembles the provider per operation
+without defining another runtime interface. This is one Task data truth, not
+mirrored storage or a fallback path.
 
 Append acceptance is deliberately narrow:
 

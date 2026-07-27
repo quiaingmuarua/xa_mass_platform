@@ -15,3 +15,20 @@ kotlin {
         jvmTarget.set(JvmTarget.JVM_21)
     }
 }
+
+dependencies {
+    api project(':worker_delivery_contract_jvm')
+    api 'org.jspecify:jspecify:1.0.0'
+
+    implementation platform('tools.jackson:jackson-bom:3.1.4')
+    implementation 'tools.jackson.core:jackson-databind'
+    implementation 'io.lettuce:lettuce-core:7.5.2.RELEASE'
+
+    testImplementation platform('org.junit:junit-bom:6.0.3')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

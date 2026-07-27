@@ -413,10 +413,11 @@ initialDueMillis
 maxRetryTimes
 ```
 
-The current external HTTP realization is Java `TaskDataRuntime`. It performs
-the same record-first append and ACTIVE `ZADD NX` initialization directly
-against the shared Redis shape. Python `RedisTaskRuntime` and
-`TaskItemScoreBandCore` remain the executable-spec oracle. There is no Python
+The current external HTTP realization is Java `TaskDataService` calling the
+JVM `TaskRuntime` contract. Its Java `RedisTaskRuntime` provider performs the
+same record-first append and ACTIVE `ZADD NX` initialization directly against
+the shared Redis shape. Python `RedisTaskRuntime` and `TaskItemScoreBandCore`
+remain the executable-spec oracle. There is no Python
 HTTP fallback or dual write.
 
 For each Item independently:
@@ -621,7 +622,8 @@ The normal path is direct:
 
 ```text
 Java Runtime Server
-  -> TaskDataRuntime.appendTaskItems
+  -> TaskDataService
+  -> TaskRuntime.appendItems
   -> persist TaskItem record
   -> initialize ItemScore with ZADD NX
 ```

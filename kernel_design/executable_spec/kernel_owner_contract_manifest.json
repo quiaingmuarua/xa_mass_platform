@@ -1,0 +1,337 @@
+{
+  "constants": {
+    "TaskItemScoreBandCore": {
+      "ACTIVE_TAG": 1,
+      "FINAL_FAILED_TAG": 5,
+      "FINAL_SUFFIX": 0,
+      "FINAL_SUCCESS_TAG": 9,
+      "MAX_REMAINING_BUDGET": 99,
+      "MAX_SAME_BAND_SCORE_DELTA": 9999999999999,
+      "MAX_TIME_MILLIS": 9999999999900,
+      "MAX_TIME_SLOT": 99999999999,
+      "MIN_REMAINING_BUDGET": 0,
+      "MIN_TIME_MILLIS": 0,
+      "MIN_TIME_SLOT": 0,
+      "SLOT_MILLIS": 100,
+      "SUFFIX_FACTOR": 100,
+      "TAG_FACTOR": 10000000000000,
+      "TAG_STRIDE": 4,
+      "TIME_SLOT_FACTOR": 100000000000
+    },
+    "TaskScoreBandCore": {
+      "ADMISSION_VISIBLE_TAG": 2,
+      "DEFAULT_TAG_FACTOR": 10000000000000,
+      "MAX_SUFFIX": 99,
+      "MAX_TIME_MILLIS": 9999999999900,
+      "MAX_TIME_SLOT": 99999999999,
+      "MIN_SUFFIX": 0,
+      "MIN_TIME_MILLIS": 0,
+      "MIN_TIME_SLOT": 0,
+      "MUTABLE_SCORE_MIN": 1,
+      "PAUSE_TIME_MILLIS": 9999999999900,
+      "PAUSE_TIME_SLOT": 99999999999,
+      "PRE_REVIEW_TAG": 3,
+      "RUNNING_VISIBLE_TAG": 1,
+      "SLOT_MILLIS": 100,
+      "SUFFIX_FACTOR": 100,
+      "TERMINAL_SCORE_MAX": -1,
+      "TIME_SCALE": 10,
+      "TIME_SLOT_FACTOR": 100000000000
+    },
+    "WorkerScoreCore": {
+      "DIRTY_FACTOR": 2,
+      "HOT_ACQUIRE_POLARITY": 1,
+      "LANE_RANK_FACTOR": 100,
+      "MAX_DIRTY": 1,
+      "MAX_LANE_RANK": 99,
+      "MAX_TIME_MILLIS": 9999999999900,
+      "MAX_TIME_SLOT": 99999999999,
+      "MIN_BASE": 1,
+      "MIN_DIRTY": 0,
+      "MIN_LANE_RANK": 0,
+      "MIN_TIME_MILLIS": 0,
+      "MIN_TIME_SLOT": 0,
+      "PAUSE_TIME_MILLIS": 9999999999900,
+      "PAUSE_TIME_SLOT": 99999999999,
+      "RECOVERY_RECHECK_POLARITY": -1,
+      "SLOT_FACTOR": 200,
+      "SLOT_MILLIS": 100,
+      "TIME_SCALE": 10,
+      "ZERO_SCORE": 0
+    }
+  },
+  "contracts": {
+    "CandidateWarmupSchedule": [
+      "consume_due_candidate_warmups",
+      "schedule_candidate_warmups"
+    ],
+    "CandidateWorkerCache": [
+      "append_candidate_workers",
+      "candidate_worker_counts",
+      "consume_candidate_workers"
+    ],
+    "SeedResultRuntime": [
+      "append_seed_results",
+      "consume_seed_results"
+    ],
+    "TaskItemScoreBandCore": [
+      "acquire_item_score_candidates",
+      "get_item_score_states",
+      "has_active_items",
+      "has_due_active_items",
+      "initialize_item_scores",
+      "promote_item_outcomes",
+      "rewrite_observed_item_scores"
+    ],
+    "TaskResourceCatalog": [
+      "load_task_allocation_descriptors"
+    ],
+    "TaskRuntime": [
+      "append_items",
+      "create_task",
+      "load_task_item_success_results",
+      "load_task_items",
+      "store_task_item_success_results"
+    ],
+    "TaskScoreBandCore": [
+      "acquire_band_task_candidates",
+      "acquire_dispatch_work_tasks",
+      "close_score",
+      "count_running_visible_tasks",
+      "get_score_states",
+      "initialize_score",
+      "release_observed_score_hold",
+      "rewrite_observed_same_band_suffix",
+      "rewrite_same_band_time_millis",
+      "rewrite_score"
+    ],
+    "WorkerCommandRuntime": [
+      "append_worker_commands",
+      "consume_worker_command",
+      "consume_worker_commands"
+    ],
+    "WorkerDynamicAttributeRuntime": [
+      "get_worker_dynamic_attribute_values",
+      "query_candidate_worker_ids",
+      "supports_candidate_query",
+      "update_worker_dynamic_attributes"
+    ],
+    "WorkerResourceCatalog": [
+      "get_worker_descriptors",
+      "get_worker_group_descriptors",
+      "update_worker_platform_attributes",
+      "upsert_worker_group"
+    ],
+    "WorkerRuntime": [
+      "upsert_worker"
+    ],
+    "WorkerScoreCore": [
+      "acquire_hot_acquire_candidates",
+      "acquire_observed_hot_score_leases",
+      "acquire_recovery_recheck_candidates",
+      "demote_observed_worker_leases_to_recovery",
+      "exhaust_recovery_recheck",
+      "get_score_states",
+      "initialize_hot_acquire_score",
+      "mark_current_lease_dirty",
+      "observe_due_hot_scores",
+      "reconcile_worker_hot_acquire",
+      "release_score_holds",
+      "renew_active_hot_score_leases",
+      "rewrite_current_scores",
+      "toggle_current_polarity"
+    ]
+  },
+  "dtos": {
+    "CandidateWorkerEntry": [
+      "worker_id",
+      "worker_group_id",
+      "endpoint_manager_id",
+      "worker_lease_score"
+    ],
+    "DeliverSeed": [
+      "worker_id",
+      "opaque_delivery_item",
+      "opaque_result_context"
+    ],
+    "DynamicAttributeReadResult": [
+      "status",
+      "value",
+      "observed_at_millis",
+      "reason"
+    ],
+    "SeedResult": [
+      "command_id",
+      "opaque_result_context",
+      "outcome_code",
+      "opaque_result_payload"
+    ],
+    "TaskCreationResult": [
+      "status",
+      "reason"
+    ],
+    "TaskDescriptor": [
+      "task_id",
+      "worker_group_id",
+      "task_type",
+      "allocation_rule",
+      "config",
+      "empty_close_at_millis"
+    ],
+    "TaskItem": [
+      "message_id",
+      "event_code",
+      "created_at_millis",
+      "payload",
+      "priority",
+      "expire_at_millis",
+      "allocation_rule"
+    ],
+    "TaskItemAppendResult": [
+      "status",
+      "reason"
+    ],
+    "TaskItemScoreState": [
+      "score",
+      "band",
+      "time_millis",
+      "remaining_budget"
+    ],
+    "TaskItemScoreTransitionResult": [
+      "status",
+      "score"
+    ],
+    "TaskScoreState": [
+      "task_id",
+      "score",
+      "band",
+      "time_millis",
+      "suffix"
+    ],
+    "TaskScoreTransitionResult": [
+      "status",
+      "score"
+    ],
+    "WorkerCommandConsumePage": [
+      "worker_commands_by_worker_id",
+      "next_cursor"
+    ],
+    "WorkerCommandEnvelope": [
+      "command_id",
+      "message_type",
+      "execute_before_millis",
+      "opaque_item"
+    ],
+    "WorkerDeclaration": [
+      "worker_id",
+      "worker_group_id",
+      "endpoint_manager_id",
+      "attributes",
+      "dynamic_attribute_names"
+    ],
+    "WorkerDescriptor": [
+      "worker_id",
+      "worker_group_id",
+      "endpoint_manager_id",
+      "attributes",
+      "platform_attributes",
+      "dynamic_attribute_names"
+    ],
+    "WorkerGroupDescriptor": [
+      "worker_group_id",
+      "attributes",
+      "event_codes",
+      "item_allocation_fields"
+    ],
+    "WorkerRuntimeResult": [
+      "status",
+      "reason"
+    ],
+    "WorkerScoreState": [
+      "worker_id",
+      "score",
+      "polarity",
+      "time_millis",
+      "lane_rank",
+      "dirty"
+    ],
+    "WorkerScoreTransitionResult": [
+      "status",
+      "score"
+    ]
+  },
+  "enums": {
+    "SeedResultOutcomeClass": [
+      "SUCCESS",
+      "WORKER_FAILURE",
+      "ADAPTER_REJECTION"
+    ],
+    "TaskCreationStatus": [
+      "created",
+      "retryable",
+      "conflict",
+      "invalid"
+    ],
+    "TaskItemAppendStatus": [
+      "appended",
+      "retryable",
+      "not_found",
+      "invalid"
+    ],
+    "TaskItemScoreBand": [
+      "active",
+      "final_failed",
+      "final_success"
+    ],
+    "TaskItemScoreTransitionStatus": [
+      "transitioned",
+      "noop",
+      "stale",
+      "not_found",
+      "invalid",
+      "corrupt"
+    ],
+    "TaskScoreBand": [
+      "pre_review",
+      "running_visible",
+      "admission_visible",
+      "terminal"
+    ],
+    "TaskScoreTransitionStatus": [
+      "transitioned",
+      "noop",
+      "stale",
+      "invalid"
+    ],
+    "TaskType": [
+      "TASK_DRIVEN",
+      "ITEM_DRIVEN"
+    ],
+    "WorkerCommandAppendStatus": [
+      "APPENDED",
+      "REPLACED"
+    ],
+    "WorkerMessageType": [
+      "TASK_ITEM"
+    ],
+    "WorkerRuntimeStatus": [
+      "ok",
+      "noop",
+      "rejected",
+      "not_found",
+      "stale",
+      "conflict",
+      "invalid"
+    ],
+    "WorkerScorePolarity": [
+      1,
+      -1
+    ],
+    "WorkerScoreTransitionStatus": [
+      "transitioned",
+      "noop",
+      "stale",
+      "invalid"
+    ]
+  }
+}
