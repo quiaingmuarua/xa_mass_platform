@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.server.ServerHttpRequest;
 import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.web.socket.WebSocketHandler;
@@ -15,6 +16,11 @@ import org.springframework.web.util.UriUtils;
 
 @Configuration
 @EnableWebSocket
+@Import({
+        WorkerWebSocketHandler.class,
+        WorkerSessionRegistry.class,
+        WorkerDeliveryPump.class
+})
 @ConditionalOnProperty(
         prefix = "xa.mass.worker-delivery.websocket",
         name = "enabled",

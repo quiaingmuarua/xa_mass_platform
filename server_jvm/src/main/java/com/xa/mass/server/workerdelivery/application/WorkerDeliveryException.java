@@ -1,4 +1,4 @@
-package com.xa.mass.server.workerdelivery;
+package com.xa.mass.server.workerdelivery.application;
 
 public final class WorkerDeliveryException extends RuntimeException {
 

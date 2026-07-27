@@ -1,4 +1,4 @@
-package com.xa.mass.server.workerdelivery.http;
+package com.xa.mass.server.api.v1.workerdelivery;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -11,11 +11,9 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.xa.mass.server.api.ApiExceptionHandler;
 import com.xa.mass.server.api.RequestIdFilter;
-import com.xa.mass.server.workerdelivery.WorkerDeliveryException;
-import com.xa.mass.server.workerdelivery.WorkerDeliveryAccessPolicy;
-import com.xa.mass.server.workerdelivery.WorkerDeliveryService;
-import com.xa.mass.server.workerdelivery.websocket.WorkerWebSocketProperties;
-import java.time.Duration;
+import com.xa.mass.server.workerdelivery.application.WorkerDeliveryAccessPolicy;
+import com.xa.mass.server.workerdelivery.application.WorkerDeliveryException;
+import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,7 +38,7 @@ class WorkerPointDeliveryControllerTest {
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new WorkerPointDeliveryController(
                                 service,
-                                accessPolicy(false, "")
+                                accessPolicy(null)
                         )
                 )
                 .setControllerAdvice(new ApiExceptionHandler())
@@ -55,7 +53,7 @@ class WorkerPointDeliveryControllerTest {
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new WorkerPointDeliveryController(
                                 service,
-                                accessPolicy(true, "endpoint-1")
+                                accessPolicy("endpoint-1")
                         )
                 )
                 .setControllerAdvice(new ApiExceptionHandler())
@@ -149,17 +147,8 @@ class WorkerPointDeliveryControllerTest {
     }
 
     private static WorkerDeliveryAccessPolicy accessPolicy(
-            boolean enabled,
             String endpointManagerId
     ) {
-        return new WorkerDeliveryAccessPolicy(new WorkerWebSocketProperties(
-                enabled,
-                endpointManagerId,
-                Duration.ofMillis(100),
-                100,
-                100,
-                1000,
-                Duration.ofSeconds(5)
-        ));
+        return new WorkerDeliveryAccessPolicy(endpointManagerId);
     }
 }

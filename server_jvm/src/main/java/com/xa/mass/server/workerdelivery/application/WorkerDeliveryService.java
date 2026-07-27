@@ -1,4 +1,4 @@
-package com.xa.mass.server.workerdelivery;
+package com.xa.mass.server.workerdelivery.application;
 
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
@@ -14,9 +14,7 @@ import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Service;
 
-@Service
 public final class WorkerDeliveryService {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(

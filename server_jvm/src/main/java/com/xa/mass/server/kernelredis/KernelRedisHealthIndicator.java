@@ -4,14 +4,12 @@ import io.lettuce.core.RedisClient;
 import io.lettuce.core.codec.StringCodec;
 import org.springframework.boot.health.contributor.Health;
 import org.springframework.boot.health.contributor.HealthIndicator;
-import org.springframework.stereotype.Component;
 
-@Component("kernelRedis")
-final class KernelRedisHealthIndicator implements HealthIndicator {
+public final class KernelRedisHealthIndicator implements HealthIndicator {
 
     private final RedisClient redisClient;
 
-    KernelRedisHealthIndicator(RedisClient redisClient) {
+    public KernelRedisHealthIndicator(RedisClient redisClient) {
         this.redisClient = redisClient;
     }
 

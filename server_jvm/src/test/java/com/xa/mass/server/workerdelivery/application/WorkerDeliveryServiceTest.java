@@ -1,4 +1,4 @@
-package com.xa.mass.server.workerdelivery;
+package com.xa.mass.server.workerdelivery.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;

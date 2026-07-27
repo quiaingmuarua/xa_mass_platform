@@ -19,6 +19,10 @@ class ServerArchitectureBoundaryTest {
     private static final Path KERNEL_ASSEMBLY = SERVER_SOURCE.resolve(
             "com/xa/mass/server/kernelbinding/KernelOwnerAssemblyConfiguration.java"
     );
+    private static final Path DELIVERY_ASSEMBLY = SERVER_SOURCE.resolve(
+            "com/xa/mass/server/workerdelivery/"
+                    + "WorkerDeliveryOwnerAssemblyConfiguration.java"
+    );
     private static final Path TASK_REDIS = KERNEL_SOURCE.resolve(
             "com/xa/mass/kernel/task/redis"
     );
@@ -29,7 +33,13 @@ class ServerArchitectureBoundaryTest {
             "com/xa/mass/kernel/delivery/redis"
     );
     private static final Path HTTP = SERVER_SOURCE.resolve(
-            "com/xa/mass/server/workerdelivery/http"
+            "com/xa/mass/server/api/v1/workerdelivery"
+    );
+    private static final Path DELIVERY = SERVER_SOURCE.resolve(
+            "com/xa/mass/server/workerdelivery"
+    );
+    private static final Path DELIVERY_APPLICATION = SERVER_SOURCE.resolve(
+            "com/xa/mass/server/workerdelivery/application"
     );
     private static final Path WEBSOCKET = SERVER_SOURCE.resolve(
             "com/xa/mass/server/workerdelivery/websocket"
@@ -56,7 +66,8 @@ class ServerArchitectureBoundaryTest {
         assertThat(readSourcesExcluding(
                 SERVER_SOURCE,
                 SHARED_REDIS,
-                KERNEL_ASSEMBLY
+                KERNEL_ASSEMBLY,
+                DELIVERY_ASSEMBLY
         ))
                 .doesNotContain("io.lettuce")
                 .doesNotContain("org.springframework.data.redis");
@@ -104,17 +115,47 @@ class ServerArchitectureBoundaryTest {
     void deliveryAccessProfilesDependOnTheServiceNotRedis()
             throws IOException {
         assertThat(readSources(HTTP))
+                .contains("@RestController")
                 .doesNotContain(".delivery.redis")
                 .doesNotContain("io.lettuce")
                 .doesNotContain("WorkerCommandRuntime")
                 .doesNotContain("SeedResultRuntime");
+        assertThat(readSources(DELIVERY))
+                .doesNotContain("@RestController")
+                .doesNotContain("WorkerDeliveryHttpContract");
+        assertThat(readSources(DELIVERY_APPLICATION))
+                .doesNotContain(".server.api")
+                .doesNotContain(".workerdelivery.websocket")
+                .doesNotContain(".delivery.redis")
+                .doesNotContain("io.lettuce");
         assertThat(readSources(WEBSOCKET))
                 .doesNotContain(".delivery.redis")
-                .doesNotContain(".workerdelivery.http")
+                .doesNotContain(".server.api.v1.workerdelivery")
                 .doesNotContain("io.lettuce")
                 .doesNotContain("WorkerCommandRuntime")
                 .doesNotContain("SeedResultRuntime")
                 .doesNotContain("decodeDeliverSeed");
+    }
+
+    @Test
+    void deliveryOwnerAssemblyDoesNotCreateOtherKernelOwners()
+            throws IOException {
+        String deliveryAssembly = Files.readString(DELIVERY_ASSEMBLY);
+        assertThat(deliveryAssembly)
+                .contains("RedisWorkerCommandRuntime")
+                .contains("RedisSeedResultRuntime")
+                .doesNotContain("TaskRuntime")
+                .doesNotContain("TaskResourceCatalog")
+                .doesNotContain("WorkerRuntime")
+                .doesNotContain("WorkerResourceCatalog")
+                .doesNotContain("PythonKernelHttpTransport")
+                .doesNotContain("ScoreBandCore");
+
+        assertThat(Files.readString(KERNEL_ASSEMBLY))
+                .doesNotContain("WorkerCommandRuntime")
+                .doesNotContain("SeedResultRuntime")
+                .doesNotContain("RedisWorkerCommandRuntime")
+                .doesNotContain("RedisSeedResultRuntime");
     }
 
     private static String readSources(Path root) throws IOException {

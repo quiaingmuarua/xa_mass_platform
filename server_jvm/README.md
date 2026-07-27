@@ -30,9 +30,9 @@ Worker / long-lived Adapter
 ```
 
 The module is Java 21 and Spring Boot 4.1. It depends on `kernel_jvm` contracts
-but does not start the Python process. `kernelbinding` is the only provider
-composition boundary. Its package-private HTTP transport handles wire concerns;
-owner adapters translate between wire JSON and Kernel DTOs. The shared
+but does not start the Python process. `kernelbinding` composes Task and Worker
+control/data providers. `WorkerDeliveryOwnerAssemblyConfiguration` separately
+composes only the WorkerCommand and SeedResult Redis providers. The shared
 `kernelredis` package owns only connection and health. Redis key operations are
 implemented in owner-local `kernel_jvm` packages. Java does not read Task or
 Worker scheduling scores, invoke Pacers, append Worker commands, or consume
@@ -74,12 +74,14 @@ Worker Delivery boundaries:
 ```text
 worker_delivery_contract_jvm
   transport-neutral WorkerCommand/DeliverSeed/SeedResult contracts and codec
-workerdelivery
-  application service, access policy, error mapping
-workerdelivery.http
+api.v1.workerdelivery
   point Worker and Adapter batch HTTP access profiles
+workerdelivery.application
+  transport-neutral application service, access policy, application errors
 workerdelivery.websocket
   one configured Adapter mailbox pump, Worker sessions, and result buffering
+workerdelivery
+  application and delivery-owner composition
 kernel_jvm delivery contracts/providers
   WorkerCommand consume and SeedResult append owner operations
 ```
@@ -88,6 +90,16 @@ HTTP and WebSocket call `WorkerDeliveryService`; neither imports the Redis
 implementation. The shared contract module has no Spring Web or Redis
 dependency. The WebSocket Adapter is an access profile inside this server
 module, not a second runtime owner or independently published module.
+
+The current Server loads Worker Delivery together with the control/data API.
+An isolated composition test fixes the complete Gateway dependency set:
+Kernel Redis connection/health, delivery owner assembly, Worker Delivery
+application, point/batch HTTP API, WebSocket Adapter, and common HTTP error
+support. A future standalone Gateway therefore needs only a new Spring Boot
+composition root. It does not require package moves, copied DTOs, or another
+runtime interface. That standalone process would host point polling, Adapter
+batch access, and WebSocket together; `system-polling` remains only a logical
+mailbox binding.
 
 ## Runtime Commands
 
@@ -163,6 +175,9 @@ GET /actuator/health/readiness
 
 Liveness describes this JVM process. Readiness requires both the configured
 Python Kernel Control API and the shared Kernel Redis connection.
+The isolated Worker Delivery composition has no Python Kernel dependency; if
+deployed later as its own process, its readiness requires only process
+liveness and Kernel Redis.
 
 ## Run
 

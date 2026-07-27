@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.xa.mass.server.api.v1.ResourceCommandController;
 import com.xa.mass.server.api.v1.TaskControlController;
 import com.xa.mass.server.api.v1.TaskDataController;
+import com.xa.mass.server.api.v1.workerdelivery.AdapterBatchDeliveryController;
+import com.xa.mass.server.api.v1.workerdelivery.WorkerPointDeliveryController;
 import com.xa.mass.kernel.assignment.CandidateWarmupSchedule;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
 import com.xa.mass.kernel.delivery.SeedResultRuntime;
@@ -17,6 +19,9 @@ import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.worker.WorkerDynamicAttributeRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime;
+import com.xa.mass.server.kernelbinding.KernelOwnerAssemblyConfiguration;
+import com.xa.mass.server.workerdelivery.WorkerDeliveryOwnerAssemblyConfiguration;
+import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -57,12 +62,26 @@ class ServerApplicationContextTest {
                 .isNotNull();
         assertThat(applicationContext.getBean(SeedResultRuntime.class))
                 .isNotNull();
+        assertThat(applicationContext.getBean(
+                KernelOwnerAssemblyConfiguration.class
+        )).isNotNull();
+        assertThat(applicationContext.getBean(
+                WorkerDeliveryOwnerAssemblyConfiguration.class
+        )).isNotNull();
+        assertThat(applicationContext.getBean(WorkerDeliveryService.class))
+                .isNotNull();
         assertThat(applicationContext.getBean(ResourceCommandController.class))
                 .isNotNull();
         assertThat(applicationContext.getBean(TaskControlController.class))
                 .isNotNull();
         assertThat(applicationContext.getBean(TaskDataController.class))
                 .isNotNull();
+        assertThat(applicationContext.getBean(
+                WorkerPointDeliveryController.class
+        )).isNotNull();
+        assertThat(applicationContext.getBean(
+                AdapterBatchDeliveryController.class
+        )).isNotNull();
         assertThat(applicationContext.getBeansOfType(
                 TaskScoreBandCore.class
         )).isEmpty();

@@ -1,6 +1,6 @@
 package com.xa.mass.server.workerdelivery.websocket;
 
-import com.xa.mass.server.workerdelivery.WorkerDeliveryService;
+import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;

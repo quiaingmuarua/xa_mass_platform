@@ -1,9 +1,9 @@
-package com.xa.mass.server.workerdelivery.http;
+package com.xa.mass.server.api.v1.workerdelivery;
 
-import com.xa.mass.server.workerdelivery.WorkerDeliveryService;
-import com.xa.mass.server.workerdelivery.WorkerDeliveryAccessPolicy;
-import com.xa.mass.server.workerdelivery.http.WorkerDeliveryHttpContract.AcceptedResponse;
-import com.xa.mass.server.workerdelivery.http.WorkerDeliveryHttpContract.SeedResultRequest;
+import com.xa.mass.server.api.v1.workerdelivery.WorkerDeliveryHttpContract.AcceptedResponse;
+import com.xa.mass.server.api.v1.workerdelivery.WorkerDeliveryHttpContract.SeedResultRequest;
+import com.xa.mass.server.workerdelivery.application.WorkerDeliveryAccessPolicy;
+import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;

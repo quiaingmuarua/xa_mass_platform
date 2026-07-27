@@ -1,12 +1,12 @@
-package com.xa.mass.server.workerdelivery.http;
+package com.xa.mass.server.api.v1.workerdelivery;
 
-import com.xa.mass.server.workerdelivery.WorkerDeliveryService;
-import com.xa.mass.server.workerdelivery.WorkerDeliveryAccessPolicy;
-import com.xa.mass.server.workerdelivery.http.WorkerDeliveryHttpContract.AcceptedCountResponse;
-import com.xa.mass.server.workerdelivery.http.WorkerDeliveryHttpContract.SeedResultBatchRequest;
-import com.xa.mass.server.workerdelivery.http.WorkerDeliveryHttpContract.SeedResultRequest;
-import com.xa.mass.server.workerdelivery.http.WorkerDeliveryHttpContract.WorkerCommandConsumeRequest;
-import com.xa.mass.server.workerdelivery.http.WorkerDeliveryHttpContract.WorkerCommandConsumeResponse;
+import com.xa.mass.server.api.v1.workerdelivery.WorkerDeliveryHttpContract.AcceptedCountResponse;
+import com.xa.mass.server.api.v1.workerdelivery.WorkerDeliveryHttpContract.SeedResultBatchRequest;
+import com.xa.mass.server.api.v1.workerdelivery.WorkerDeliveryHttpContract.SeedResultRequest;
+import com.xa.mass.server.api.v1.workerdelivery.WorkerDeliveryHttpContract.WorkerCommandConsumeRequest;
+import com.xa.mass.server.api.v1.workerdelivery.WorkerDeliveryHttpContract.WorkerCommandConsumeResponse;
+import com.xa.mass.server.workerdelivery.application.WorkerDeliveryAccessPolicy;
+import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.ResponseEntity;

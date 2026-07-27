@@ -1,9 +1,5 @@
 package com.xa.mass.server.kernelbinding;
 
-import com.xa.mass.kernel.delivery.SeedResultRuntime;
-import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
-import com.xa.mass.kernel.delivery.redis.RedisSeedResultRuntime;
-import com.xa.mass.kernel.delivery.redis.RedisWorkerCommandRuntime;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.redis.RedisTaskResourceCatalog;
@@ -12,7 +8,6 @@ import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime;
 import com.xa.mass.kernel.worker.redis.RedisWorkerResourceCatalog;
 import com.xa.mass.server.kernelredis.KernelRedisProperties;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import io.lettuce.core.RedisClient;
 import java.net.http.HttpClient;
 import org.springframework.context.annotation.Bean;
@@ -131,29 +126,4 @@ public class KernelOwnerAssemblyConfiguration {
         return new HttpTaskLifecycleCommands(transport);
     }
 
-    @Bean(destroyMethod = "close")
-    WorkerCommandRuntime workerCommandRuntime(
-            RedisClient redisClient,
-            WorkerDeliveryCodec codec,
-            KernelRedisProperties properties
-    ) {
-        return new RedisWorkerCommandRuntime(
-                redisClient,
-                codec,
-                properties.redisPrefix()
-        );
-    }
-
-    @Bean(destroyMethod = "close")
-    SeedResultRuntime seedResultRuntime(
-            RedisClient redisClient,
-            WorkerDeliveryCodec codec,
-            KernelRedisProperties properties
-    ) {
-        return new RedisSeedResultRuntime(
-                redisClient,
-                codec,
-                properties.redisPrefix()
-        );
-    }
 }

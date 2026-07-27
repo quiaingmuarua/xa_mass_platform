@@ -3,7 +3,7 @@ package com.xa.mass.server.api;
 import com.xa.mass.server.api.v1.model.ApiErrorResponse;
 import com.xa.mass.server.kernelbinding.PythonKernelBindingException;
 import com.xa.mass.server.taskdata.TaskDataException;
-import com.xa.mass.server.workerdelivery.WorkerDeliveryException;
+import com.xa.mass.server.workerdelivery.application.WorkerDeliveryException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;

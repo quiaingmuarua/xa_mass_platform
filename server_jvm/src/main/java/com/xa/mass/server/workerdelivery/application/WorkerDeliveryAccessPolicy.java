@@ -1,17 +1,13 @@
-package com.xa.mass.server.workerdelivery;
-
-import com.xa.mass.server.workerdelivery.websocket.WorkerWebSocketProperties;
+package com.xa.mass.server.workerdelivery.application;
 
 public final class WorkerDeliveryAccessPolicy {
 
     private final String websocketEndpointManagerId;
 
     public WorkerDeliveryAccessPolicy(
-            WorkerWebSocketProperties websocketProperties
+            String websocketEndpointManagerId
     ) {
-        this.websocketEndpointManagerId = websocketProperties.enabled()
-                ? websocketProperties.endpointManagerId()
-                : null;
+        this.websocketEndpointManagerId = websocketEndpointManagerId;
     }
 
     public void requireHttpAccess(String endpointManagerId) {

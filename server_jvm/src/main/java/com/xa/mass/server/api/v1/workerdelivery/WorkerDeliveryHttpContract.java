@@ -1,7 +1,7 @@
-package com.xa.mass.server.workerdelivery.http;
+package com.xa.mass.server.api.v1.workerdelivery;
 
 import com.fasterxml.jackson.annotation.JsonAnySetter;
-import com.xa.mass.server.workerdelivery.WorkerDeliveryException;
+import com.xa.mass.server.workerdelivery.application.WorkerDeliveryException;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import jakarta.validation.Valid;

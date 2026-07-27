@@ -58,8 +58,10 @@ tag.
 - Missing JVM owner operations must fail with
   `KernelOperationNotImplementedException`; do not hide gaps with default
   methods, compatibility clients, or remote fallback.
-- Keep `worker_delivery_contract_jvm` transport-neutral. HTTP and WebSocket
-  packages may call `WorkerDeliveryService` but must not import owner Redis
+- Keep `worker_delivery_contract_jvm` transport-neutral. Worker Delivery HTTP
+  access lives under `server.api.v1.workerdelivery`; WebSocket transport lives
+  under `server.workerdelivery.websocket`. Both call the application facade
+  under `server.workerdelivery.application` and must not import owner Redis
   providers or owner runtime ports directly.
 - `worker_jvm` may depend only on the shared contract and Worker tool
   libraries. It must not depend on `server_jvm`, `kernel_jvm`, Python
@@ -81,7 +83,7 @@ currently implement TaskItem append/result reads, Task/WorkerGroup descriptor
 reads, WorkerCommand consume, and SeedResult append. All other translated
 operations remain explicit gaps.
 
-`server_jvm.kernelbinding` is the composition boundary:
+`server_jvm.kernelbinding` composes Task and Worker control/data providers:
 
 ```text
 Kernel owner operation
@@ -93,6 +95,23 @@ Kernel owner operation
 This provider matrix is incremental implementation evidence. It does not make
 the Server a scheduling owner and does not weaken Python's role as the current
 mechanism oracle.
+
+Worker Delivery has a separate composition boundary:
+
+```text
+WorkerDeliveryOwnerAssemblyConfiguration
+  -> WorkerCommandRuntime Redis provider
+  -> SeedResultRuntime Redis provider
+
+WorkerDeliveryConfiguration
+  -> shared codec
+  -> application service and access policy
+```
+
+The main Server currently loads both boundaries. Keep Worker Delivery
+independently composable without introducing a second process or Gradle module;
+a future standalone Gateway should require only a new composition root and
+Kernel Redis readiness.
 
 `worker_delivery_contract_jvm` is currently a repository-local Java 21 jar,
 not a published SDK and not an Android compatibility promise. A future
