@@ -14,6 +14,10 @@ Status: current repository handoff.
   providers; it does not define a second set of Kernel runtime ports.
 - `worker_delivery_contract_jvm/` is the Java 21 transport-neutral
   WorkerCommand/DeliverSeed/SeedResult contract shared by Server and Worker.
+- `worker_delivery_adapter_jvm/` is the WebSocket Adapter implementation. It
+  consumes the Server's Adapter batch HTTP API and owns process-local Worker
+  sessions, push, and bounded result buffering. It has no Kernel or Redis
+  dependency.
 - `worker_jvm/` is the runnable one-slot Java reference Worker. Polling and
   WebSocket are transport profiles over one serial command execution core.
 - The legacy Java platform is available exclusively from
@@ -59,10 +63,13 @@ tag.
   `KernelOperationNotImplementedException`; do not hide gaps with default
   methods, compatibility clients, or remote fallback.
 - Keep `worker_delivery_contract_jvm` transport-neutral. Worker Delivery HTTP
-  access lives under `server.api.v1.workerdelivery`; WebSocket transport lives
-  under `server.workerdelivery.websocket`. Both call the application facade
-  under `server.workerdelivery.application` and must not import owner Redis
-  providers or owner runtime ports directly.
+  access and the Kernel delivery owner facade live in `server_jvm`. WebSocket
+  transport lives in `worker_delivery_adapter_jvm` and may reach that facade
+  only through the Adapter batch HTTP contract, including when embedded.
+- `worker_delivery_adapter_jvm` must not depend on `server_jvm`, `kernel_jvm`,
+  Redis, scores, Pacers, or Server HTTP DTOs. Its private HTTP DTOs are proved
+  against Server JSON with bilateral golden tests; do not add an in-process
+  fast path.
 - `worker_jvm` may depend only on the shared contract and Worker tool
   libraries. It must not depend on `server_jvm`, `kernel_jvm`, Python
   packages, Redis, score, Pacer, or TaskType.
@@ -105,13 +112,18 @@ WorkerDeliveryOwnerAssemblyConfiguration
 
 WorkerDeliveryConfiguration
   -> shared codec
-  -> application service and access policy
+  -> Server point/batch HTTP application service
+
+worker_delivery_adapter_jvm
+  -> Adapter batch HTTP client
+  -> WebSocket sessions and bounded pump
 ```
 
-The main Server currently loads both boundaries. Keep Worker Delivery
-independently composable without introducing a second process or Gradle module;
-a future standalone Gateway should require only a new composition root and
-Kernel Redis readiness.
+The main Server always owns the HTTP and Redis boundaries. It may embed the
+Adapter module, but the embedded Adapter still calls those HTTP routes through
+loopback. The same Adapter implementation can instead start on port `18083`;
+embedded and standalone modes are alternative deployments for one
+endpoint-manager identity, not two owners.
 
 `worker_delivery_contract_jvm` is currently a repository-local Java 21 jar,
 not a published SDK and not an Android compatibility promise. A future

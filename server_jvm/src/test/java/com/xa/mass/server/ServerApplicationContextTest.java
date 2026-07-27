@@ -22,6 +22,9 @@ import com.xa.mass.kernel.worker.WorkerRuntime;
 import com.xa.mass.server.kernelbinding.KernelOwnerAssemblyConfiguration;
 import com.xa.mass.server.workerdelivery.WorkerDeliveryOwnerAssemblyConfiguration;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
+import com.xa.mass.workerdelivery.adapter.websocket.WorkerDeliveryPump;
+import com.xa.mass.workerdelivery.adapter.websocket.WorkerWebSocketHandler;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -82,6 +85,15 @@ class ServerApplicationContextTest {
         assertThat(applicationContext.getBean(
                 AdapterBatchDeliveryController.class
         )).isNotNull();
+        assertThat(applicationContext.getBeansOfType(
+                WorkerDeliveryGatewayClient.class
+        )).isEmpty();
+        assertThat(applicationContext.getBeansOfType(
+                WorkerWebSocketHandler.class
+        )).isEmpty();
+        assertThat(applicationContext.getBeansOfType(
+                WorkerDeliveryPump.class
+        )).isEmpty();
         assertThat(applicationContext.getBeansOfType(
                 TaskScoreBandCore.class
         )).isEmpty();

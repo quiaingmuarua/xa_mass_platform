@@ -1,10 +1,12 @@
-package com.xa.mass.server.workerdelivery.websocket;
+package com.xa.mass.workerdelivery.adapter.websocket;
 
-import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
+import com.xa.mass.workerdelivery.adapter.application.WorkerCommandPage;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliverSeed;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
-import com.xa.mass.server.workerdelivery.websocket.WorkerSessionRegistry.DeliveryAttempt;
+import com.xa.mass.workerdelivery.adapter.websocket.WorkerSessionRegistry.DeliveryAttempt;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -25,7 +27,7 @@ import org.springframework.web.socket.CloseStatus;
 
 @Component
 @ConditionalOnProperty(
-        prefix = "xa.mass.worker-delivery.websocket",
+        prefix = "xa.mass.worker-delivery.adapter.websocket",
         name = "enabled",
         havingValue = "true"
 )
@@ -39,7 +41,7 @@ public final class WorkerDeliveryPump implements SmartLifecycle {
             1013,
             "Worker result buffer is full"
     );
-    private final WorkerDeliveryService service;
+    private final WorkerDeliveryGatewayClient gateway;
     private final WorkerDeliveryCodec codec;
     private final WorkerSessionRegistry sessions;
     private final WorkerWebSocketProperties properties;
@@ -48,17 +50,17 @@ public final class WorkerDeliveryPump implements SmartLifecycle {
     private volatile boolean running;
     private ScheduledExecutorService executor;
     private String cursor;
-    private PendingResultBatch pendingResults;
+    private List<SeedResult> pendingResults;
 
     @Autowired
     public WorkerDeliveryPump(
-            WorkerDeliveryService service,
+            WorkerDeliveryGatewayClient gateway,
             WorkerDeliveryCodec codec,
             WorkerSessionRegistry sessions,
             WorkerWebSocketProperties properties
     ) {
         this(
-                service,
+                gateway,
                 codec,
                 sessions,
                 properties,
@@ -67,13 +69,13 @@ public final class WorkerDeliveryPump implements SmartLifecycle {
     }
 
     WorkerDeliveryPump(
-            WorkerDeliveryService service,
+            WorkerDeliveryGatewayClient gateway,
             WorkerDeliveryCodec codec,
             WorkerSessionRegistry sessions,
             WorkerWebSocketProperties properties,
             LongSupplier nowMillis
     ) {
-        this.service = service;
+        this.gateway = gateway;
         this.codec = codec;
         this.sessions = sessions;
         this.properties = properties;
@@ -96,7 +98,7 @@ public final class WorkerDeliveryPump implements SmartLifecycle {
             return;
         }
 
-        var page = service.consumeWorkerCommands(
+        WorkerCommandPage page = gateway.consumeWorkerCommands(
                 properties.endpointManagerId(),
                 cursor,
                 properties.scanCount()
@@ -123,12 +125,7 @@ public final class WorkerDeliveryPump implements SmartLifecycle {
             }
         });
         if (!rejected.isEmpty()) {
-            List<SeedResult> rejections = service.createAdapterRejections(
-                    properties.endpointManagerId(),
-                    rejected,
-                    UNAVAILABLE_WORKER_OUTCOME_CODE
-            );
-            appendOrRetain(rejections, ResultSource.ADAPTER);
+            appendOrRetain(createAdapterRejections(rejected));
         }
     }
 
@@ -222,31 +219,19 @@ public final class WorkerDeliveryPump implements SmartLifecycle {
             return true;
         }
         try {
-            appendResults(new PendingResultBatch(
-                    List.copyOf(batch),
-                    ResultSource.WORKER
-            ));
+            appendResults(List.copyOf(batch));
             return true;
         } catch (RuntimeException error) {
-            pendingResults = new PendingResultBatch(
-                    List.copyOf(batch),
-                    ResultSource.WORKER
-            );
+            pendingResults = List.copyOf(batch);
             return false;
         }
     }
 
-    private void appendOrRetain(
-            List<SeedResult> results,
-            ResultSource source
-    ) {
+    private void appendOrRetain(List<SeedResult> results) {
         if (results.isEmpty()) {
             return;
         }
-        PendingResultBatch batch = new PendingResultBatch(
-                List.copyOf(results),
-                source
-        );
+        List<SeedResult> batch = List.copyOf(results);
         try {
             appendResults(batch);
         } catch (RuntimeException error) {
@@ -254,28 +239,34 @@ public final class WorkerDeliveryPump implements SmartLifecycle {
         }
     }
 
-    private void appendResults(PendingResultBatch batch) {
-        if (batch.source() == ResultSource.WORKER) {
-            service.appendWorkerResults(
-                    properties.endpointManagerId(),
-                    batch.results()
-            );
-            return;
-        }
-        service.appendAdapterResults(
+    private void appendResults(List<SeedResult> batch) {
+        gateway.appendResults(
                 properties.endpointManagerId(),
-                batch.results()
+                batch
         );
     }
 
-    private enum ResultSource {
-        WORKER,
-        ADAPTER
-    }
-
-    private record PendingResultBatch(
-            List<SeedResult> results,
-            ResultSource source
+    private List<SeedResult> createAdapterRejections(
+            Map<String, WorkerCommandEnvelope> commandsByWorkerId
     ) {
+        List<SeedResult> results = new ArrayList<>();
+        commandsByWorkerId.forEach((workerId, command) -> {
+            DeliverSeed seed = codec.decodeDeliverSeed(command.opaqueItem());
+            if (seed == null || !workerId.equals(seed.workerId())) {
+                LOGGER.warn(
+                        "Dropped invalid Adapter rejection commandId={} workerId={}",
+                        command.commandId(),
+                        workerId
+                );
+                return;
+            }
+            results.add(new SeedResult(
+                    command.commandId(),
+                    seed.opaqueResultContext(),
+                    UNAVAILABLE_WORKER_OUTCOME_CODE,
+                    null
+            ));
+        });
+        return List.copyOf(results);
     }
 }

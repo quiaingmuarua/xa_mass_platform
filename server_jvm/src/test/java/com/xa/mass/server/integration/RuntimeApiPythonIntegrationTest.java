@@ -9,9 +9,11 @@ import com.xa.mass.worker.execution.PhoneInspectHandler;
 import com.xa.mass.worker.execution.WorkerCommandProcessor;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
 import com.xa.mass.worker.transport.websocket.WebSocketWorkerTransport;
+import com.xa.mass.workerdelivery.adapter.standalone.WorkerDeliveryAdapterApplication;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
 import java.net.URI;
+import java.net.ServerSocket;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -25,11 +27,13 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import tools.jackson.databind.json.JsonMapper;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.DEFINED_PORT)
 @Tag("integration")
 class RuntimeApiPythonIntegrationTest {
 
@@ -44,6 +48,7 @@ class RuntimeApiPythonIntegrationTest {
             );
     private static final String ENDPOINT_MANAGER_ID =
             "java-websocket-integration";
+    private static final int SERVER_PORT = availablePort();
     private static final String PHONE_RESULT = """
             {"countryCallingCode":1,"e164":"+14155552671",\
             "isPossible":true,"isValid":true,"regionCode":"US"}\
@@ -77,15 +82,25 @@ class RuntimeApiPythonIntegrationTest {
                 () -> REDIS_PREFIX
         );
         registry.add(
-                "xa.mass.worker-delivery.websocket.enabled",
+                "server.port",
+                () -> Integer.toString(SERVER_PORT)
+        );
+        registry.add(
+                "xa.mass.worker-delivery.adapter.websocket.enabled",
                 () -> "true"
         );
         registry.add(
-                "xa.mass.worker-delivery.websocket.endpoint-manager-id",
+                "xa.mass.worker-delivery.adapter.websocket."
+                        + "endpoint-manager-id",
                 () -> ENDPOINT_MANAGER_ID
         );
         registry.add(
-                "xa.mass.worker-delivery.websocket.pump-interval",
+                "xa.mass.worker-delivery.adapter.websocket."
+                        + "gateway-base-url",
+                () -> "http://127.0.0.1:" + SERVER_PORT
+        );
+        registry.add(
+                "xa.mass.worker-delivery.adapter.websocket.pump-interval",
                 () -> "20ms"
         );
     }
@@ -100,6 +115,41 @@ class RuntimeApiPythonIntegrationTest {
     void itemDrivenClosesThroughTheJavaWebSocketWorker()
             throws Exception {
         runWorkerDeliveryClosure("ITEM_DRIVEN");
+    }
+
+    @Test
+    void itemDrivenClosesThroughAStandaloneWebSocketAdapter()
+            throws Exception {
+        requireExternalRuntime();
+        int adapterPort = availablePort();
+        String endpointManagerId = "java-websocket-split-"
+                + UUID.randomUUID();
+        try (ConfigurableApplicationContext ignored =
+                     new SpringApplicationBuilder(
+                             WorkerDeliveryAdapterApplication.class
+                     )
+                             .run(
+                                     "--server.port=" + adapterPort,
+                                     "--xa.mass.worker-delivery.adapter."
+                                             + "websocket.enabled=true",
+                                     "--xa.mass.worker-delivery.adapter."
+                                             + "websocket.endpoint-manager-id="
+                                             + endpointManagerId,
+                                     "--xa.mass.worker-delivery.adapter."
+                                             + "websocket.gateway-base-url="
+                                             + "http://127.0.0.1:" + port,
+                                     "--xa.mass.worker-delivery.adapter."
+                                             + "websocket.pump-interval=20ms",
+                                     "--management.endpoint.health.group."
+                                             + "readiness.include="
+                                             + "readinessState"
+                             )) {
+            runWorkerDeliveryClosure(
+                    "ITEM_DRIVEN",
+                    endpointManagerId,
+                    URI.create("http://127.0.0.1:" + adapterPort)
+            );
+        }
     }
 
     @Test
@@ -175,6 +225,21 @@ class RuntimeApiPythonIntegrationTest {
     }
 
     private void runWorkerDeliveryClosure(String taskType) throws Exception {
+        String endpointManagerId = "TASK_DRIVEN".equals(taskType)
+                ? WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID
+                : ENDPOINT_MANAGER_ID;
+        runWorkerDeliveryClosure(
+                taskType,
+                endpointManagerId,
+                URI.create("http://127.0.0.1:" + port)
+        );
+    }
+
+    private void runWorkerDeliveryClosure(
+            String taskType,
+            String endpointManagerId,
+            URI workerServerUrl
+    ) throws Exception {
         requireExternalRuntime();
         String suffix = UUID.randomUUID().toString();
         String workerGroupId = "phone-tools-" + suffix;
@@ -182,9 +247,6 @@ class RuntimeApiPythonIntegrationTest {
         String taskId = "task-" + suffix;
         String firstMessageId = "message-1-" + suffix;
         String secondMessageId = "message-2-" + suffix;
-        String endpointManagerId = "TASK_DRIVEN".equals(taskType)
-                ? WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID
-                : ENDPOINT_MANAGER_ID;
 
         assertThat(send(
                 "PUT",
@@ -214,7 +276,11 @@ class RuntimeApiPythonIntegrationTest {
                         """.formatted(endpointManagerId)
         ).statusCode()).isEqualTo(200);
 
-        RunningWorker worker = startWorker(taskType, workerId);
+        RunningWorker worker = startWorker(
+                taskType,
+                workerId,
+                workerServerUrl
+        );
         try {
             assertThat(send(
                     "POST",
@@ -285,7 +351,11 @@ class RuntimeApiPythonIntegrationTest {
         assertThat(response.body()).contains("\"status\":\"appended\"");
     }
 
-    private RunningWorker startWorker(String taskType, String workerId) {
+    private RunningWorker startWorker(
+            String taskType,
+            String workerId,
+            URI serverUrl
+    ) {
         WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
         WorkerCommandProcessor processor = new WorkerCommandProcessor(
                 workerId,
@@ -295,7 +365,6 @@ class RuntimeApiPythonIntegrationTest {
                         new PhoneInspectHandler()
                 )
         );
-        URI serverUrl = URI.create("http://127.0.0.1:" + port);
         if ("TASK_DRIVEN".equals(taskType)) {
             return new PollingWorkerHandle(new PollingWorkerTransport(
                     serverUrl,
@@ -440,6 +509,17 @@ class RuntimeApiPythonIntegrationTest {
 
     private static String configured(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private static int availablePort() {
+        try (ServerSocket socket = new ServerSocket(0)) {
+            return socket.getLocalPort();
+        } catch (java.io.IOException error) {
+            throw new IllegalStateException(
+                    "Could not reserve an integration-test port",
+                    error
+            );
+        }
     }
 
     private interface RunningWorker extends AutoCloseable {

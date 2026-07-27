@@ -2,7 +2,6 @@ package com.xa.mass.server.api.v1.workerdelivery;
 
 import com.xa.mass.server.api.v1.workerdelivery.WorkerDeliveryHttpContract.AcceptedResponse;
 import com.xa.mass.server.api.v1.workerdelivery.WorkerDeliveryHttpContract.SeedResultRequest;
-import com.xa.mass.server.workerdelivery.application.WorkerDeliveryAccessPolicy;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import jakarta.validation.Valid;
@@ -23,14 +22,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class WorkerPointDeliveryController {
 
     private final WorkerDeliveryService workerDelivery;
-    private final WorkerDeliveryAccessPolicy accessPolicy;
 
     public WorkerPointDeliveryController(
-            WorkerDeliveryService workerDelivery,
-            WorkerDeliveryAccessPolicy accessPolicy
+            WorkerDeliveryService workerDelivery
     ) {
         this.workerDelivery = workerDelivery;
-        this.accessPolicy = accessPolicy;
     }
 
     @PostMapping("/workers/{workerId}/commands:poll")
@@ -38,7 +34,6 @@ public class WorkerPointDeliveryController {
             @PathVariable @NotBlank String endpointManagerId,
             @PathVariable @NotBlank String workerId
     ) {
-        accessPolicy.requireHttpAccess(endpointManagerId);
         WorkerCommandEnvelope command = workerDelivery.pollWorkerCommand(
                 endpointManagerId,
                 workerId
@@ -54,7 +49,6 @@ public class WorkerPointDeliveryController {
             @PathVariable @NotBlank String workerId,
             @Valid @RequestBody SeedResultRequest request
     ) {
-        accessPolicy.requireHttpAccess(endpointManagerId);
         workerDelivery.appendWorkerResult(
                 endpointManagerId,
                 workerId,

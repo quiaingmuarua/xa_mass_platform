@@ -563,17 +563,20 @@ no hidden compatibility path or second mainline remains
     private Redis composition, background scheduling lifecycles, built-in CLI,
     and the executable-spec Kernel Runtime HTTP host.
 - [Worker Delivery Dispatch](doc/scheduling/worker-delivery-dispatch.md)
-  - Adapter-partitioned mailbox access through target Worker polling or
-    the Java single-owner WebSocket Adapter, including bounded result buffering
-    and trusted pre-execution rejection without Adapter-owned score mutation.
+  - Server-owned point/batch mailbox access plus the external HTTP-consuming
+    WebSocket Adapter, including bounded result buffering and trusted
+    pre-execution rejection without Adapter-owned score mutation.
 - [Kernel Runtime Server](runtime_server/app.py)
   - executable-spec FastAPI control host for WorkerGroup/Worker upsert and
     Task create/approve/close; only
     `KernelApplication` owns background lifecycle.
 - [JVM Runtime API Server](../server_jvm/README.md)
   - external control proxy, Java TaskItem append/last-success query, point
-    Gateway, and WebSocket Adapter; its owner-scoped Redis access is limited to
-    TaskData and Worker Delivery operations.
+    polling and Adapter batch HTTP API; its owner-scoped Redis access is
+    limited to TaskData and Worker Delivery operations.
+- [JVM Worker Delivery Adapter](../worker_delivery_adapter_jvm/README.md)
+  - embeddable or standalone WebSocket session/push process that consumes the
+    Server batch HTTP API and has no Kernel or Redis dependency.
 - [JVM Worker](../worker_jvm/README.md)
   - one-slot Java Worker that executes `telecom.phone.inspect` through polling
     or WebSocket using the shared Worker Delivery contract.

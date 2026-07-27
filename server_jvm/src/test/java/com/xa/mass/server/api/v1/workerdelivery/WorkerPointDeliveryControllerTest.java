@@ -11,7 +11,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.xa.mass.server.api.ApiExceptionHandler;
 import com.xa.mass.server.api.RequestIdFilter;
-import com.xa.mass.server.workerdelivery.application.WorkerDeliveryAccessPolicy;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryException;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
@@ -36,32 +35,12 @@ class WorkerPointDeliveryControllerTest {
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
         mockMvc = MockMvcBuilders.standaloneSetup(
-                        new WorkerPointDeliveryController(
-                                service,
-                                accessPolicy(null)
-                        )
+                        new WorkerPointDeliveryController(service)
                 )
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setValidator(validator)
                 .addFilters(new RequestIdFilter())
                 .build();
-    }
-
-    @Test
-    void configuredWebSocketEndpointIsReservedFromPointHttp()
-            throws Exception {
-        mockMvc = MockMvcBuilders.standaloneSetup(
-                        new WorkerPointDeliveryController(
-                                service,
-                                accessPolicy("endpoint-1")
-                        )
-                )
-                .setControllerAdvice(new ApiExceptionHandler())
-                .addFilters(new RequestIdFilter())
-                .build();
-
-        mockMvc.perform(post(pointPath("commands:poll")))
-                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -146,9 +125,4 @@ class WorkerPointDeliveryControllerTest {
                 + "/workers/worker-1/" + action;
     }
 
-    private static WorkerDeliveryAccessPolicy accessPolicy(
-            String endpointManagerId
-    ) {
-        return new WorkerDeliveryAccessPolicy(endpointManagerId);
-    }
 }

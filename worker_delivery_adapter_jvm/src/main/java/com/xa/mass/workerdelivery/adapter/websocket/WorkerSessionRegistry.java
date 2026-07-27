@@ -1,4 +1,4 @@
-package com.xa.mass.server.workerdelivery.websocket;
+package com.xa.mass.workerdelivery.adapter.websocket;
 
 import java.io.IOException;
 import java.util.Map;
@@ -13,7 +13,7 @@ import org.springframework.web.socket.handler.ConcurrentWebSocketSessionDecorato
 
 @Component
 @ConditionalOnProperty(
-        prefix = "xa.mass.worker-delivery.websocket",
+        prefix = "xa.mass.worker-delivery.adapter.websocket",
         name = "enabled",
         havingValue = "true"
 )

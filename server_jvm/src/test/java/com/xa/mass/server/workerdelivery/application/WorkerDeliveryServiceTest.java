@@ -10,12 +10,10 @@ import static org.mockito.Mockito.when;
 import com.xa.mass.kernel.delivery.SeedResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
 import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -33,8 +31,7 @@ class WorkerDeliveryServiceTest {
         resultRuntime = mock(SeedResultRuntime.class);
         service = new WorkerDeliveryService(
                 commandRuntime,
-                resultRuntime,
-                new WorkerDeliveryCodec()
+                resultRuntime
         );
     }
 
@@ -95,68 +92,6 @@ class WorkerDeliveryServiceTest {
         assertThat(service.appendAdapterResults("endpoint-1", results))
                 .isEqualTo(3);
         verify(resultRuntime).appendSeedResults(results);
-    }
-
-    @Test
-    void workerBatchRejectsAdapterEvidence() {
-        SeedResult rejection = new SeedResult(
-                COMMAND_ID,
-                "context",
-                "3001",
-                null
-        );
-
-        assertThatThrownBy(() -> service.appendWorkerResults(
-                "endpoint-1",
-                List.of(rejection)
-        )).isInstanceOf(WorkerDeliveryException.class);
-        verify(resultRuntime, never()).appendSeedResults(List.of(rejection));
-    }
-
-    @Test
-    void createsTrustedAdapterRejectionsFromDeliverSeeds() {
-        WorkerCommandEnvelope command = new WorkerCommandEnvelope(
-                COMMAND_ID,
-                WorkerMessageType.TASK_ITEM,
-                999_999,
-                """
-                        {"opaqueDeliveryItem":"item",\
-                        "opaqueResultContext":"context","workerId":"worker-1"}\
-                        """
-        );
-
-        assertThat(service.createAdapterRejections(
-                "endpoint-1",
-                Map.of("worker-1", command),
-                "3001"
-        )).containsExactly(
-                new SeedResult(COMMAND_ID, "context", "3001", null)
-        );
-    }
-
-    @Test
-    void skipsCorruptOrMismatchedAdapterRejectionCommands() {
-        WorkerCommandEnvelope corrupt = new WorkerCommandEnvelope(
-                COMMAND_ID,
-                WorkerMessageType.TASK_ITEM,
-                999_999,
-                "not-json"
-        );
-        WorkerCommandEnvelope mismatch = new WorkerCommandEnvelope(
-                "9f0d983c-8010-4d59-a6d2-e8fedb8d0059",
-                WorkerMessageType.TASK_ITEM,
-                999_999,
-                """
-                        {"opaqueDeliveryItem":"item",\
-                        "opaqueResultContext":"context","workerId":"other"}\
-                        """
-        );
-
-        assertThat(service.createAdapterRejections(
-                "endpoint-1",
-                Map.of("worker-1", corrupt, "worker-2", mismatch),
-                "3001"
-        )).isEmpty();
     }
 
     @Test

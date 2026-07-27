@@ -11,7 +11,6 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.xa.mass.server.api.ApiExceptionHandler;
 import com.xa.mass.server.api.RequestIdFilter;
-import com.xa.mass.server.workerdelivery.application.WorkerDeliveryAccessPolicy;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryException;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
@@ -38,33 +37,12 @@ class AdapterBatchDeliveryControllerTest {
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
         mockMvc = MockMvcBuilders.standaloneSetup(
-                        new AdapterBatchDeliveryController(
-                                service,
-                                accessPolicy(null)
-                        )
+                        new AdapterBatchDeliveryController(service)
                 )
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setValidator(validator)
                 .addFilters(new RequestIdFilter())
                 .build();
-    }
-
-    @Test
-    void configuredWebSocketEndpointIsReservedFromBatchHttp()
-            throws Exception {
-        mockMvc = MockMvcBuilders.standaloneSetup(
-                        new AdapterBatchDeliveryController(
-                                service,
-                                accessPolicy("endpoint-1")
-                        )
-                )
-                .setControllerAdvice(new ApiExceptionHandler())
-                .build();
-
-        mockMvc.perform(post(batchPath("commands:consume"))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"cursor\":null,\"scanCount\":100}"))
-                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -149,9 +127,4 @@ class AdapterBatchDeliveryControllerTest {
                 + action;
     }
 
-    private static WorkerDeliveryAccessPolicy accessPolicy(
-            String endpointManagerId
-    ) {
-        return new WorkerDeliveryAccessPolicy(endpointManagerId);
-    }
 }

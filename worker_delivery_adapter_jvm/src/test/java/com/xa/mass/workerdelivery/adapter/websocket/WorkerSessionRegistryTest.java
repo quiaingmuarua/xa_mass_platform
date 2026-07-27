@@ -1,4 +1,4 @@
-package com.xa.mass.server.workerdelivery.websocket;
+package com.xa.mass.workerdelivery.adapter.websocket;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -8,6 +8,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import java.io.IOException;
+import java.net.URI;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.socket.CloseStatus;
@@ -74,6 +75,8 @@ class WorkerSessionRegistryTest {
         return new WorkerWebSocketProperties(
                 true,
                 "websocket-adapter-1",
+                URI.create("http://127.0.0.1:18082"),
+                Duration.ofSeconds(5),
                 Duration.ofMillis(100),
                 100,
                 100,

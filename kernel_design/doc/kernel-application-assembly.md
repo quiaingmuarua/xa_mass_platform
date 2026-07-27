@@ -267,9 +267,10 @@ the current external process boundaries:
 Java control API -> Python KernelApplication
   -> Java TaskData append
   -> Redis scheduling truth
-  -> Java Worker Delivery Gateway command access
-  -> Java Worker polling or WebSocket phone tool execution
-  -> Java Worker Delivery Gateway SeedResult ingress
+  -> Java Server Worker Delivery HTTP command access
+  -> Java polling Worker or HTTP-consuming WebSocket Adapter
+  -> Java phone tool execution
+  -> Java Server Worker Delivery HTTP SeedResult ingress
   -> Result-Routing
   -> TaskItem FINAL_SUCCESS + result HASH + Worker lease release
   -> Java last-success result query
@@ -277,8 +278,10 @@ Java control API -> Python KernelApplication
 
 The proof starts resource and Task-control commands at the Java API, crosses
 the Python Kernel Control API, appends TaskItems through Java TaskData, then
-uses the Java Gateway's direct Worker Delivery Redis slice. Java never parses
-Task or Worker score state. Separate Redis proofs cover TaskData Item-score
+uses the Java Server's Worker Delivery owner providers. Polling calls the point
+HTTP API directly. WebSocket uses the same Server batch HTTP API in both
+embedded and standalone Adapter deployments. Java never parses Task or Worker
+score state. Separate Redis proofs cover TaskData Item-score
 initialization, TASK_DRIVEN default empty close with RUNNING soft-limit
 release, ITEM_DRIVEN future-threshold empty recheck followed by append and
 dispatch, shared explicit threshold close, and public close remaining
@@ -316,10 +319,10 @@ POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/commands:cons
 POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/results:append
 ```
 
-The first two operations are point Worker access. Pure polling Workers bind to
-the fixed logical `system-polling` endpoint manager. They cannot scan the
-mailbox. Cursor consume and batch result append are long-lived Adapter
-operations and reject the built-in polling identity.
+The two Worker-specific operations are point Worker access. Pure polling
+Workers bind to the fixed logical `system-polling` endpoint manager. They
+cannot scan the mailbox. Cursor consume and batch result append are
+long-lived Adapter operations and reject the built-in polling identity.
 
 `WorkerCommandEnvelope` is the Kernel-defined transport-neutral outbound
 command DTO. Task Dispatch generates its canonical UUID `commandId`,
@@ -335,11 +338,13 @@ execution core.
 
 Polling is a base request-driven protocol, not an independently deployed
 Adapter. The Java WebSocket Adapter owns one configured non-`system-polling`
-endpoint manager, cursor-consumes that sparse mailbox, maintains one
-process-local session generation per WorkerId, and pushes the same
-WorkerCommandEnvelope. Workers upsert before connecting. The Adapter has no
-login or authorization protocol, and KernelApplication does not own or expose
-session facts.
+endpoint manager, cursor-consumes that sparse mailbox through the Server batch
+HTTP API, maintains one process-local session generation per WorkerId, and
+pushes the same WorkerCommandEnvelope. It can be embedded in `server_jvm` or
+started independently on port `18083`; embedded mode deliberately uses HTTP
+loopback instead of an in-process shortcut. Workers upsert before connecting.
+The Adapter has no Kernel/Redis dependency, login, or authorization protocol,
+and KernelApplication does not own or expose session facts.
 
 The Python Runtime Server remains the scheduling command host and mechanism
 oracle. Java TaskData and Worker Delivery own their current external HTTP
@@ -366,6 +371,8 @@ delivery, and API compatibility remain out of scope.
 - Do not let Java TaskData Redis code access Task score, Worker score,
   candidate cache, WorkerCommand mailbox, SeedResult queues, or Pacer state.
 - Do not expose cursor scanning through the polling Worker endpoint.
+- Do not let the WebSocket Adapter bypass Server batch HTTP through Redis or
+  an embedded in-process call.
 - Do not turn internal Pacer configuration into public JSON without a concrete
   operational requirement.
 - Keep result-routing and assignment-dispatch as separate internal application

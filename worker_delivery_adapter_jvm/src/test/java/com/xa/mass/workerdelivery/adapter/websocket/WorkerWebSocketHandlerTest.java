@@ -1,4 +1,4 @@
-package com.xa.mass.server.workerdelivery.websocket;
+package com.xa.mass.workerdelivery.adapter.websocket;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;

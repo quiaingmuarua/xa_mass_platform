@@ -77,29 +77,27 @@ worker_delivery_contract_jvm
 api.v1.workerdelivery
   point Worker and Adapter batch HTTP access profiles
 workerdelivery.application
-  transport-neutral application service, access policy, application errors
-workerdelivery.websocket
-  one configured Adapter mailbox pump, Worker sessions, and result buffering
+  Kernel delivery use-case service and application errors
 workerdelivery
-  application and delivery-owner composition
+  HTTP application and delivery-owner composition
 kernel_jvm delivery contracts/providers
   WorkerCommand consume and SeedResult append owner operations
+
+worker_delivery_adapter_jvm
+  external batch HTTP client, WebSocket sessions, command push, result buffer
 ```
 
-HTTP and WebSocket call `WorkerDeliveryService`; neither imports the Redis
-implementation. The shared contract module has no Spring Web or Redis
-dependency. The WebSocket Adapter is an access profile inside this server
-module, not a second runtime owner or independently published module.
+The Server is the only Worker Delivery HTTP and Redis owner. Point and batch
+controllers call `WorkerDeliveryService`, which calls the two Kernel delivery
+runtime contracts. The shared contract module has no Spring Web or Redis
+dependency.
 
-The current Server loads Worker Delivery together with the control/data API.
-An isolated composition test fixes the complete Gateway dependency set:
-Kernel Redis connection/health, delivery owner assembly, Worker Delivery
-application, point/batch HTTP API, WebSocket Adapter, and common HTTP error
-support. A future standalone Gateway therefore needs only a new Spring Boot
-composition root. It does not require package moves, copied DTOs, or another
-runtime interface. That standalone process would host point polling, Adapter
-batch access, and WebSocket together; `system-polling` remains only a logical
-mailbox binding.
+The WebSocket Adapter is implemented by the separate
+[`worker_delivery_adapter_jvm`](../worker_delivery_adapter_jvm/README.md)
+module. It consumes the Server's batch HTTP API and never imports Server,
+Kernel, Redis, or owner implementations. When embedded in this Server it still
+uses HTTP loopback; there is no process-local shortcut. The same module can run
+standalone on port `18083`.
 
 ## Runtime Commands
 
@@ -149,22 +147,16 @@ POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/results:appen
 `system-polling` may use only the point Worker operations. Cursor consume and
 batch result append are reserved for long-lived Adapter identities.
 
-WebSocket Worker access:
+When the Adapter module is embedded, it additionally exposes:
 
 ```text
 GET /api/v1/worker-delivery/websocket/workers/{workerId}
 ```
 
-One enabled server instance owns one configured non-`system-polling`
-endpoint-manager mailbox. The Worker first uses the resource API to upsert
-itself with that endpoint-manager identity, then connects. Server-to-Worker
-text frames are exact `WorkerCommandEnvelope` JSON; Worker-to-Server frames
-are exact `SeedResult` JSON limited to `200/1xxx`.
-
-There is no application ACK. Results are buffered and retried only in bounded
-process memory; a JVM failure may lose them. A command consumed without a
-current Worker session produces trusted `3001` evidence. A send attempted
-before an ambiguous failure remains unknown and does not produce `3xxx`.
+The Adapter owns one configured non-`system-polling` endpoint-manager mailbox
+through the batch HTTP routes above. Session behavior, bounded result
+buffering, `3001` generation, and standalone operation belong to the Adapter
+module, not to the Server delivery service.
 
 Management endpoints:
 
@@ -174,10 +166,8 @@ GET /actuator/health/readiness
 ```
 
 Liveness describes this JVM process. Readiness requires both the configured
-Python Kernel Control API and the shared Kernel Redis connection.
-The isolated Worker Delivery composition has no Python Kernel dependency; if
-deployed later as its own process, its readiness requires only process
-liveness and Kernel Redis.
+Python Kernel Control API and the shared Kernel Redis connection. A standalone
+Adapter has its own process-only readiness and reaches this Server over HTTP.
 
 ## Run
 
@@ -211,16 +201,22 @@ WebSocket Adapter          disabled
 The Redis labels above use the shared `xa.mass.kernel-redis.redis-url` and
 `xa.mass.kernel-redis.redis-prefix` properties. Override the Python control
 address under `xa.mass.kernel`; WebSocket settings remain under
-`xa.mass.worker-delivery`. Enable one WebSocket Adapter with:
+`xa.mass.worker-delivery.adapter`. Enable the embedded Adapter with:
 
 ```yaml
 xa:
   mass:
     worker-delivery:
-      websocket:
-        enabled: true
-        endpoint-manager-id: websocket-adapter-1
+      adapter:
+        websocket:
+          enabled: true
+          endpoint-manager-id: websocket-adapter-1
+          gateway-base-url: http://127.0.0.1:18082
 ```
+
+The loopback URL must match the actual Server address. Embedded and standalone
+Adapter deployments are alternatives and must not own the same endpoint
+manager concurrently.
 
 ## Verification
 
@@ -232,9 +228,9 @@ KERNEL_DESIGN_REDIS_URL=redis://localhost:6379/15 \
 ```
 
 The cross-process integration proves `TASK_DRIVEN` with the real Java polling
-Worker and `ITEM_DRIVEN` with the real Java WebSocket Worker through Python
-scheduling, Java TaskItem append, Java Worker Delivery, Python ResultRouting,
-Java last-success query, and exact Worker release. The first release
-intentionally has no authentication, multi-instance Adapter ownership,
-pending/ack, failure-result projection, historical storage, tenant model,
-quota, or OpenAPI generator.
+Worker and `ITEM_DRIVEN` with the real Java WebSocket Worker in both embedded
+and standalone Adapter deployments. Both paths use the Server HTTP boundary,
+Python scheduling/ResultRouting, Java last-success query, and exact Worker
+release. The first release intentionally has no authentication, multi-instance
+Adapter ownership, pending/ack, failure-result projection, historical storage,
+tenant model, quota, or OpenAPI generator.

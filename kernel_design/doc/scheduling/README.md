@@ -147,10 +147,10 @@ Other scheduling pacers
   compose declared owner operations in bounded rounds; they do not copy truth
 
 Worker Delivery Dispatch
-  consumes already-assigned Worker commands, validates the pre-submit
-  deadline, forwards stable command envelopes, and appends semantic
-  SeedResults; it
-  does not select Workers or mutate score
+  Server exposes point/batch access to already-assigned commands and semantic
+  result ingress; the external WebSocket Adapter consumes the batch API,
+  validates pre-submit deadlines, pushes stable command envelopes, and
+  batches results; neither selects Workers nor mutates score
 ```
 
 ## Mechanism Status
@@ -164,15 +164,16 @@ Worker Delivery Dispatch
 | Task running activation | Implemented with due-Item Task policy and priority soft-limit System policy | Scenario-backed quota, tenant, business start condition, and resource-estimate decisions |
 | Worker allocation | Implemented as hint-driven TASK-scope candidate cache warming through HOT-pool acquisition; Task score is read only for RUNNING/non-hard-pause suffix-zero validation; TASK_DRIVEN has deterministic Redis proof through cache consumption | Warmup prioritization beyond bounded due order and matcher priority |
 | Task dispatch | Implemented with acquisition-only TaskType profiles, PRECOMPUTED Task rules, TARGETED complete Item rules, stable Item binding, RUNNING same-band reschedule, shared threshold-based empty close, and WorkerCommand append; both TaskTypes have deterministic Redis proof through the command mailbox and ITEM_DRIVEN proves no warmup/cache path | Recent-first Redis Task acquisition |
-| Worker Delivery Dispatch | Shared Java Worker Delivery contract, Java point Gateway, single-owner WebSocket Adapter, fixed system-polling binding, and one-slot polling/WebSocket libphonenumber Worker implemented | Authentication, multi-instance Adapter ownership, pending/ack, and production protocol policy |
+| Worker Delivery Dispatch | Shared Java Worker Delivery contract, Server point/batch HTTP API, embeddable or standalone HTTP-consuming WebSocket Adapter, fixed system-polling binding, and one-slot polling/WebSocket libphonenumber Worker implemented | Authentication, multi-instance Adapter ownership, pending/ack, and production protocol policy |
 | Result routing | Implemented with unit and Redis orchestration proof; Task/Worker policy handlers are replaceable; Java exposes bounded last-success reads | Failure/history projection and stronger queue reliability require separate owners and invariants |
 
 Both TaskTypes also have cross-process Redis E2E proof from Java control and
-Task data APIs through Python scheduling, the Java Worker Delivery Gateway, the
-Java polling/WebSocket phone Worker, Result-Routing, `FINAL_SUCCESS`, Java
-last-success query, and exact Worker lease release. Java controllers use the
-same Kernel owner contracts as the Python executable spec; Server assembly
-chooses Python HTTP or Java Redis providers per operation.
+Task data APIs through Python scheduling, the Java Server Worker Delivery API,
+the Java polling Worker or embedded/standalone WebSocket Adapter, the Java
+phone Worker, Result-Routing, `FINAL_SUCCESS`, Java last-success query, and
+exact Worker lease release. Java controllers use the same Kernel owner
+contracts as the Python executable spec; Server assembly chooses Python HTTP
+or Java Redis providers per operation.
 Additional Redis proofs cover
 TASK_DRIVEN default empty close, ITEM_DRIVEN future-threshold empty recheck
 followed by append, shared explicit threshold close, and an external explicit
@@ -215,10 +216,11 @@ partitioning design.
 
 The polling API performs only point mailbox consume for one target Worker. It
 never scans a bucket. A long-lived push/WebSocket Adapter may cursor-consume
-its own sparse bucket in bounded batches and serve connected Workers from
-bounded process-local memory. Both use the same WorkerCommand contract, but
-only the Adapter role owns scan, session, and push policy. Destructive prefetch
-failure remains `UNKNOWN` without pending/ack.
+its own sparse bucket through the Server batch HTTP API and serve connected
+Workers from bounded process-local memory. Embedded mode uses the same HTTP
+path as standalone mode. Both use the same WorkerCommand contract, but only the
+Adapter role owns scan, session, and push policy. Destructive prefetch failure
+remains `UNKNOWN` without pending/ack.
 
 ## Core Reading Path
 

@@ -1,0 +1,167 @@
+package com.xa.mass.workerdelivery.adapter.http;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.time.Duration;
+import java.util.List;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+class HttpWorkerDeliveryGatewayClientTest {
+
+    private static final String COMMAND_ID =
+            "a5e9e10d-f78b-469e-93ab-864b49c189c1";
+    private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
+    private HttpServer server;
+    private volatile String responseBody;
+    private volatile int responseStatus;
+    private volatile String requestPath;
+    private volatile String requestBody;
+    private HttpWorkerDeliveryGatewayClient client;
+
+    @BeforeEach
+    void setUp() throws IOException {
+        server = HttpServer.create(
+                new InetSocketAddress("127.0.0.1", 0),
+                0
+        );
+        server.createContext("/", this::handle);
+        server.start();
+        client = new HttpWorkerDeliveryGatewayClient(
+                URI.create(
+                        "http://127.0.0.1:"
+                                + server.getAddress().getPort()
+                ),
+                Duration.ofSeconds(2),
+                codec
+        );
+    }
+
+    @AfterEach
+    void tearDown() {
+        server.stop(0);
+    }
+
+    @Test
+    void consumesTheExactEndpointBucketAndDecodesThePage() {
+        WorkerCommandEnvelope command = new WorkerCommandEnvelope(
+                COMMAND_ID,
+                WorkerMessageType.TASK_ITEM,
+                9_999_999_999_999L,
+                "opaque-item"
+        );
+        respond(
+                200,
+                "{\"workerCommandsByWorkerId\":{\"worker-1\":"
+                        + codec.encodeWorkerCommand(command)
+                        + "},\"nextCursor\":\"7\"}"
+        );
+
+        var page = client.consumeWorkerCommands(
+                "adapter/one",
+                null,
+                100
+        );
+
+        assertThat(requestPath).isEqualTo(
+                "/api/v1/worker-delivery/endpoint-managers/"
+                        + "adapter%2Fone/commands:consume"
+        );
+        assertThat(requestBody)
+                .isEqualTo("{\"cursor\":null,\"scanCount\":100}");
+        assertThat(page.workerCommandsByWorkerId())
+                .containsEntry("worker-1", command);
+        assertThat(page.nextCursor()).isEqualTo("7");
+    }
+
+    @Test
+    void appendsMixedResultsAndRequiresTheFullAcceptedCount() {
+        List<SeedResult> results = List.of(
+                new SeedResult(COMMAND_ID, "context-1", "200", "null"),
+                new SeedResult(
+                        "9f0d983c-8010-4d59-a6d2-e8fedb8d0059",
+                        "context-2",
+                        "3001",
+                        null
+                )
+        );
+        respond(202, "{\"acceptedCount\":2}");
+
+        client.appendResults("adapter-1", results);
+
+        assertThat(requestPath).endsWith(
+                "/adapter-1/results:append"
+        );
+        assertThat(requestBody)
+                .isEqualTo(
+                        "{\"results\":["
+                                + codec.encodeSeedResult(results.get(0))
+                                + ","
+                                + codec.encodeSeedResult(results.get(1))
+                                + "]}"
+                );
+
+        respond(202, "{\"acceptedCount\":1}");
+        assertThatThrownBy(() ->
+                client.appendResults("adapter-1", results)
+        ).isInstanceOf(WorkerDeliveryAdapterException.class);
+    }
+
+    @Test
+    void rejectsUnexpectedStatusAndMalformedResponses() {
+        respond(503, "{}");
+        assertThatThrownBy(() ->
+                client.consumeWorkerCommands("adapter-1", null, 100)
+        ).isInstanceOf(WorkerDeliveryAdapterException.class);
+
+        respond(200, "{\"workerCommandsByWorkerId\":{}}");
+        assertThatThrownBy(() ->
+                client.consumeWorkerCommands("adapter-1", null, 100)
+        ).isInstanceOf(WorkerDeliveryAdapterException.class);
+
+        respond(202, "{\"acceptedCount\":\"one\"}");
+        assertThatThrownBy(() -> client.appendResults(
+                "adapter-1",
+                List.of(new SeedResult(
+                        COMMAND_ID,
+                        "context",
+                        "200",
+                        "null"
+                ))
+        )).isInstanceOf(WorkerDeliveryAdapterException.class);
+    }
+
+    private void respond(int status, String body) {
+        responseStatus = status;
+        responseBody = body;
+    }
+
+    private void handle(HttpExchange exchange) throws IOException {
+        requestPath = exchange.getRequestURI().getRawPath();
+        requestBody = new String(
+                exchange.getRequestBody().readAllBytes(),
+                StandardCharsets.UTF_8
+        );
+        byte[] body = responseBody.getBytes(StandardCharsets.UTF_8);
+        exchange.getResponseHeaders().set(
+                "Content-Type",
+                "application/json"
+        );
+        exchange.sendResponseHeaders(responseStatus, body.length);
+        exchange.getResponseBody().write(body);
+        exchange.close();
+    }
+}

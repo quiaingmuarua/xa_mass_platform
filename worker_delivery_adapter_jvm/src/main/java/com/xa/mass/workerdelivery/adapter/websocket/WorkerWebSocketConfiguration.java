@@ -1,4 +1,4 @@
-package com.xa.mass.server.workerdelivery.websocket;
+package com.xa.mass.workerdelivery.adapter.websocket;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
@@ -22,7 +22,7 @@ import org.springframework.web.util.UriUtils;
         WorkerDeliveryPump.class
 })
 @ConditionalOnProperty(
-        prefix = "xa.mass.worker-delivery.websocket",
+        prefix = "xa.mass.worker-delivery.adapter.websocket",
         name = "enabled",
         havingValue = "true"
 )

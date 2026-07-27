@@ -16,16 +16,12 @@ import com.xa.mass.server.kernelbinding.TaskLifecycleCommands;
 import com.xa.mass.server.kernelredis.KernelRedisConfiguration;
 import com.xa.mass.server.kernelredis.KernelRedisHealthIndicator;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
-import com.xa.mass.server.workerdelivery.websocket.WorkerDeliveryPump;
-import com.xa.mass.server.workerdelivery.websocket.WorkerWebSocketConfiguration;
-import com.xa.mass.server.workerdelivery.websocket.WorkerWebSocketHandler;
-import com.xa.mass.server.workerdelivery.websocket.WorkerWebSocketProperties;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 
-class WorkerDeliveryGatewayCompositionTest {
+class WorkerDeliveryHttpCompositionTest {
 
     private final ApplicationContextRunner contextRunner =
             new ApplicationContextRunner()
@@ -36,13 +32,7 @@ class WorkerDeliveryGatewayCompositionTest {
                             "xa.mass.kernel-redis.redis-url="
                                     + "redis://127.0.0.1:6379/15",
                             "xa.mass.kernel-redis.redis-prefix="
-                                    + "isolated-worker-delivery",
-                            "xa.mass.worker-delivery.websocket.enabled=true",
-                            "xa.mass.worker-delivery.websocket."
-                                    + "endpoint-manager-id="
-                                    + "isolated-websocket-adapter",
-                            "xa.mass.worker-delivery.websocket."
-                                    + "pump-interval=1h"
+                                    + "isolated-worker-delivery"
                     );
 
     @Test
@@ -55,12 +45,6 @@ class WorkerDeliveryGatewayCompositionTest {
                     .hasSingleBean(WorkerPointDeliveryController.class);
             assertThat(context)
                     .hasSingleBean(AdapterBatchDeliveryController.class);
-            assertThat(context)
-                    .hasSingleBean(WorkerWebSocketProperties.class);
-            assertThat(context)
-                    .hasSingleBean(WorkerWebSocketConfiguration.class);
-            assertThat(context).hasSingleBean(WorkerWebSocketHandler.class);
-            assertThat(context).hasSingleBean(WorkerDeliveryPump.class);
             assertThat(context)
                     .hasSingleBean(KernelRedisHealthIndicator.class);
             assertThat(context).hasSingleBean(ApiExceptionHandler.class);
@@ -88,7 +72,6 @@ class WorkerDeliveryGatewayCompositionTest {
             WorkerDeliveryConfiguration.class,
             WorkerPointDeliveryController.class,
             AdapterBatchDeliveryController.class,
-            WorkerWebSocketConfiguration.class,
             ApiExceptionHandler.class,
             RequestIdFilter.class
     })

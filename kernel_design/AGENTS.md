@@ -205,7 +205,9 @@ create/approve/close, and `KernelApplication` lifecycle. Java `server_jvm`
 hosts TaskItem append, last-success reads, and Worker Delivery. The Python
 TaskRuntime and Worker Delivery runtime/clients remain executable-spec oracles
 and test support. The runnable external Worker lives in `worker_jvm` and
-depends on the shared Java protocol module.
+depends on the shared Java protocol module. The WebSocket transport Adapter
+lives in `worker_delivery_adapter_jvm`, consumes Server batch HTTP, and has no
+Kernel or Redis dependency.
 
 Use these rules:
 
@@ -386,11 +388,11 @@ defined by
 Worker Delivery Dispatch owns:
 
 ```text
-point WorkerId polling through an explicit endpointManagerId binding
-bounded cursor consumption for a long-lived Adapter's sparse mailbox
+Server point WorkerId polling through an explicit endpointManagerId binding
+Server bounded cursor access for a long-lived Adapter's sparse mailbox
 stable WorkerCommandEnvelope forwarding to the already selected Worker
-point Worker result and Adapter batch SeedResult validation/append
-one configured Java WebSocket Adapter mailbox pump and process-local sessions
+Server point Worker result and Adapter batch SeedResult validation/append
+external Java WebSocket Adapter HTTP pump and process-local sessions
 ```
 
 Its boundary starts after Task Dispatch handles mailbox publication and ends
@@ -401,10 +403,13 @@ batch ingress accepts `3xxx` pre-execution rejection evidence. Polling never
 scans a mailbox, and `system-polling` is only a logical route binding.
 
 The Java WebSocket Adapter owns one configured non-system-polling mailbox per
-JVM instance. Workers upsert before connecting. Missing session evidence may
-produce `3001`; expiry, disconnect, missing result, and any failure after send
-was attempted remain UNKNOWN. The result buffer has bounded in-memory retry
-and no application ACK or durable pending state.
+instance through the Server batch HTTP API. Embedded mode still uses HTTP
+loopback; standalone mode uses a configured Server URL. The Adapter must not
+access Redis, Kernel owner contracts, or an in-process Server facade. Workers
+upsert before connecting. Missing session evidence may produce `3001`; expiry,
+disconnect, missing result, and any failure after send was attempted remain
+UNKNOWN. The result buffer has bounded in-memory retry and no application ACK
+or durable pending state.
 
 Result-routing owns:
 

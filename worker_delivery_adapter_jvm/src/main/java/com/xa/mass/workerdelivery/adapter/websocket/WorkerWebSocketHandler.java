@@ -1,4 +1,4 @@
-package com.xa.mass.server.workerdelivery.websocket;
+package com.xa.mass.workerdelivery.adapter.websocket;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultOutcomeClass.ADAPTER_REJECTION;
 
@@ -16,7 +16,7 @@ import org.springframework.web.socket.handler.TextWebSocketHandler;
 
 @Component
 @ConditionalOnProperty(
-        prefix = "xa.mass.worker-delivery.websocket",
+        prefix = "xa.mass.worker-delivery.adapter.websocket",
         name = "enabled",
         havingValue = "true"
 )

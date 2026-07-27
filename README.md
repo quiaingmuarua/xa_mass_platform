@@ -3,7 +3,7 @@
 Status: clean-kernel mechanism workspace, incremental JVM owner parity, and
 Runtime API.
 
-The repository contains five active areas:
+The repository contains six active areas:
 
 - [`kernel_design/`](kernel_design/): Python executable specification,
   mechanism documentation, and Redis proofs. It is the
@@ -16,6 +16,9 @@ The repository contains five active areas:
   and Java Redis providers without redefining Kernel runtime contracts.
 - [`worker_delivery_contract_jvm/`](worker_delivery_contract_jvm/): shared
   Java 21 Worker Delivery DTO, validation, outcome classification, and codec.
+- [`worker_delivery_adapter_jvm/`](worker_delivery_adapter_jvm/): embeddable
+  or standalone WebSocket Adapter. It consumes the Server batch HTTP API and
+  owns only Worker sessions, command push, and bounded result forwarding.
 - [`worker_jvm/`](worker_jvm/): runnable one-slot Java Worker with polling and
   WebSocket transports over one command execution core.
 

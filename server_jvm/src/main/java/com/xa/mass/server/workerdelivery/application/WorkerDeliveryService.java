@@ -1,37 +1,25 @@
 package com.xa.mass.server.workerdelivery.application;
 
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliverSeed;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultOutcomeClass;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import com.xa.mass.kernel.delivery.SeedResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime.WorkerCommandConsumePage;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 public final class WorkerDeliveryService {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(
-            WorkerDeliveryService.class
-    );
     private final WorkerCommandRuntime commandRuntime;
     private final SeedResultRuntime resultRuntime;
-    private final WorkerDeliveryCodec codec;
 
     public WorkerDeliveryService(
             WorkerCommandRuntime commandRuntime,
-            SeedResultRuntime resultRuntime,
-            WorkerDeliveryCodec codec
+            SeedResultRuntime resultRuntime
     ) {
         this.commandRuntime = commandRuntime;
         this.resultRuntime = resultRuntime;
-        this.codec = codec;
     }
 
     public WorkerCommandEnvelope pollWorkerCommand(
@@ -105,62 +93,6 @@ public final class WorkerDeliveryService {
             );
         }
         appendResults(List.of(result));
-    }
-
-    public int appendWorkerResults(
-            String endpointManagerId,
-            List<SeedResult> results
-    ) {
-        requireAdapterBatchIdentity(endpointManagerId);
-        if (results.isEmpty()) {
-            throw WorkerDeliveryException.invalid(
-                    "Worker result batch must not be empty"
-            );
-        }
-        for (SeedResult result : results) {
-            if (WorkerDeliveryProtocol.classifyOutcomeCode(
-                    result.outcomeCode()
-            ) == SeedResultOutcomeClass.ADAPTER_REJECTION) {
-                throw WorkerDeliveryException.invalid(
-                        "Worker result outcome code must be 200 or 1xxx"
-                );
-            }
-        }
-        appendResults(results);
-        return results.size();
-    }
-
-    public List<SeedResult> createAdapterRejections(
-            String endpointManagerId,
-            Map<String, WorkerCommandEnvelope> commandsByWorkerId,
-            String outcomeCode
-    ) {
-        requireAdapterBatchIdentity(endpointManagerId);
-        if (WorkerDeliveryProtocol.classifyOutcomeCode(outcomeCode)
-                != SeedResultOutcomeClass.ADAPTER_REJECTION) {
-            throw WorkerDeliveryException.invalid(
-                    "Adapter rejection outcome code must be 3xxx"
-            );
-        }
-        List<SeedResult> results = new ArrayList<>();
-        commandsByWorkerId.forEach((workerId, command) -> {
-            DeliverSeed seed = codec.decodeDeliverSeed(command.opaqueItem());
-            if (seed == null || !workerId.equals(seed.workerId())) {
-                LOGGER.warn(
-                        "Dropped invalid Adapter rejection commandId={} workerId={}",
-                        command.commandId(),
-                        workerId
-                );
-                return;
-            }
-            results.add(new SeedResult(
-                    command.commandId(),
-                    seed.opaqueResultContext(),
-                    outcomeCode,
-                    null
-            ));
-        });
-        return List.copyOf(results);
     }
 
     public int appendAdapterResults(

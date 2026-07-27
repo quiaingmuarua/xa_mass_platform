@@ -51,6 +51,11 @@ class ServerArchitectureBoundaryTest {
         String build = Files.readString(Path.of("build.gradle"));
         assertThat(build)
                 .contains("implementation project(':kernel_jvm')")
+                .contains(
+                        "implementation project("
+                                + "':worker_delivery_adapter_jvm')"
+                )
+                .doesNotContain("spring-boot-starter-websocket")
                 .doesNotContain("implementation project(':worker_jvm')")
                 .contains("testImplementation project(':worker_jvm')");
 
@@ -128,13 +133,7 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain(".workerdelivery.websocket")
                 .doesNotContain(".delivery.redis")
                 .doesNotContain("io.lettuce");
-        assertThat(readSources(WEBSOCKET))
-                .doesNotContain(".delivery.redis")
-                .doesNotContain(".server.api.v1.workerdelivery")
-                .doesNotContain("io.lettuce")
-                .doesNotContain("WorkerCommandRuntime")
-                .doesNotContain("SeedResultRuntime")
-                .doesNotContain("decodeDeliverSeed");
+        assertThat(readSources(WEBSOCKET)).isEmpty();
     }
 
     @Test
@@ -159,6 +158,9 @@ class ServerArchitectureBoundaryTest {
     }
 
     private static String readSources(Path root) throws IOException {
+        if (!Files.exists(root)) {
+            return "";
+        }
         StringBuilder sources = new StringBuilder();
         try (var paths = Files.walk(root)) {
             paths.filter(path -> path.toString().endsWith(".java"))
