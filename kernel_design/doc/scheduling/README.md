@@ -150,8 +150,9 @@ Worker Delivery Dispatch
   Server exposes point/batch access to already-assigned commands and semantic
   result ingress; the framework-free Adapter Core consumes the batch API,
   validates pre-submit deadlines, owns sessions/dispatch/result buffering,
-  while a concrete WebSocket host remains deferred; neither current path
-  selects Workers nor mutates score
+  while the Adapter module owns concrete WebSocket frame/connection adaptation
+  and Server supplies hosting/lifecycle; neither path selects Workers nor
+  mutates score
 ```
 
 ## Mechanism Status
@@ -165,14 +166,16 @@ Worker Delivery Dispatch
 | Task running activation | Implemented with due-Item Task policy and priority soft-limit System policy | Scenario-backed quota, tenant, business start condition, and resource-estimate decisions |
 | Worker allocation | Implemented as hint-driven TASK-scope candidate cache warming through HOT-pool acquisition; Task score is read only for RUNNING/non-hard-pause suffix-zero validation; TASK_DRIVEN has deterministic Redis proof through cache consumption | Warmup prioritization beyond bounded due order and matcher priority |
 | Task dispatch | Implemented with acquisition-only TaskType profiles, PRECOMPUTED Task rules, TARGETED complete Item rules, stable Item binding, RUNNING same-band reschedule, shared threshold-based empty close, and WorkerCommand append; both TaskTypes have deterministic Redis proof through the command mailbox and ITEM_DRIVEN proves no warmup/cache path | Recent-first Redis Task acquisition |
-| Worker Delivery Dispatch | Shared Java Worker Delivery contract, Server point/batch HTTP API, framework-free Adapter Core, fixed system-polling binding, and one-slot polling libphonenumber Worker implemented | Concrete WebSocket host, authentication, same-endpoint Adapter HA, pending/ack, and production protocol policy |
+| Worker Delivery Dispatch | Shared Java Worker Delivery contract, Server point/batch HTTP API, framework-free Adapter Core, concrete Spring WebSocket transport, fixed system-polling binding, and one-slot polling/WebSocket libphonenumber Worker implemented | Authentication, same-endpoint Adapter HA, pending/ack, and production protocol policy |
 | Result routing | Implemented with unit and Redis orchestration proof; Task/Worker policy handlers are replaceable; Java exposes bounded last-success reads | Failure/history projection and stronger queue reliability require separate owners and invariants |
 
 Both TaskTypes also have cross-process Redis E2E proof from Java control and
-Task data APIs through Python scheduling, the Java Server Worker Delivery API,
-the Java polling phone Worker, Result-Routing, `FINAL_SUCCESS`, Java
-last-success query, and exact Worker lease release. Java controllers use the
-same Kernel owner contracts as the Python executable spec; Server assembly
+Task data APIs through Python scheduling and the Java Server Worker Delivery
+API. `TASK_DRIVEN` uses the Java polling phone Worker; `ITEM_DRIVEN` uses the
+Server-hosted Adapter and Java WebSocket Worker. Both converge through
+Result-Routing, `FINAL_SUCCESS`, Java last-success query, and exact Worker
+lease release. Java controllers use the same Kernel owner contracts as the
+Python executable spec; Server assembly
 chooses Python HTTP or Java Redis providers per operation.
 Additional Redis proofs cover
 TASK_DRIVEN default empty close, ITEM_DRIVEN future-threshold empty recheck

@@ -1253,7 +1253,7 @@
               </div>
               <div class="stage-step">
                 <strong>Worker Protocol</strong>
-                polling now; WebSocket host deferred
+                polling + WebSocket Adapter
               </div>
             </div>
           </div>
@@ -1509,7 +1509,7 @@
         </div>
         <div class="owner-stage">
           <b>Worker Delivery Dispatch</b>
-          <p>Server 拥有 point/batch HTTP 与 delivery runtime；framework-free Adapter Core 定义 session、单轮 dispatch 与结果缓冲机制，具体 WebSocket host 暂未装配。</p>
+          <p>Server 拥有 point/batch HTTP 与 delivery runtime；Adapter 模块拥有 framework-free Core 与具体 WebSocket transport，Server 只负责可选宿主和生命周期。</p>
           <code>output = SeedResult</code>
         </div>
         <div class="owner-stage">
@@ -1692,7 +1692,7 @@
             <li>TaskItem exact claim 与 shared empty-close</li>
             <li>稳定 Worker command、语义化 SeedResult 与 Adapter-partitioned mailbox</li>
             <li>Java Server delivery point/batch HTTP owner</li>
-            <li>framework-free Adapter Core、session generation 与 bounded result retry</li>
+            <li>framework-free Adapter Core、具体 WebSocket transport、session generation 与 bounded result retry</li>
             <li>三类 SeedResult queue 与 owner-local Result Routing</li>
           </ul>
         </article>
@@ -1700,7 +1700,7 @@
           <h3>Deferred policy</h3>
           <ul>
             <li>公平、quota、resource estimate 与 cadence tuning</li>
-            <li>具体 WebSocket host、Adapter 多实例 ownership、认证与生产 flow-control</li>
+            <li>同 endpoint Adapter 多实例 ownership、认证与生产 flow-control</li>
             <li>受控 Worker route migration 与自动 failover</li>
             <li>trusted 3xxx Item fast release fence</li>
             <li>pending/ack、retention、query projection 与分片</li>

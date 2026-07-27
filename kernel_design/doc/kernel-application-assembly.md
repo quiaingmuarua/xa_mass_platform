@@ -268,7 +268,7 @@ Java control API -> Python KernelApplication
   -> Java TaskData append
   -> Redis scheduling truth
   -> Java Server Worker Delivery HTTP command access
-  -> Java polling Worker
+  -> Java polling Worker or Server-hosted WebSocket Adapter + Worker
   -> Java phone tool execution
   -> Java Server Worker Delivery HTTP SeedResult ingress
   -> Result-Routing
@@ -278,10 +278,10 @@ Java control API -> Python KernelApplication
 
 The proof starts resource and Task-control commands at the Java API, crosses
 the Python Kernel Control API, appends TaskItems through Java TaskData, then
-uses the Java Server's Worker Delivery owner providers. Polling calls the point
-HTTP API directly. The Adapter Core is proved independently against the batch
-HTTP contract; no concrete WebSocket host is currently part of the assembled
-cross-process path. Java never parses Task or Worker score state. Separate
+uses the Java Server's Worker Delivery owner providers. `TASK_DRIVEN` polling
+calls the point HTTP API directly. `ITEM_DRIVEN` uses the Server-hosted
+WebSocket Adapter, which still calls the same batch HTTP contract through
+loopback. Java never parses Task or Worker score state. Separate
 Redis proofs cover TaskData Item-score
 initialization, TASK_DRIVEN default empty close with RUNNING soft-limit
 release, ITEM_DRIVEN future-threshold empty recheck followed by append and
@@ -341,10 +341,10 @@ Polling is a base request-driven protocol, not an independently deployed
 Adapter. The framework-free Java Adapter Core owns one configured
 non-`system-polling` endpoint manager, cursor-consumes that sparse mailbox
 through the Server batch HTTP API, maintains one process-local session
-generation per WorkerId, and applies dispatch/result-buffer policy. A future
-transport host converts WebSocket frames and lifecycle callbacks into Core
-calls and schedules bounded rounds. The current Server neither embeds nor
-starts such a host. Workers upsert before connecting. The Core has no
+generation per WorkerId, and applies dispatch/result-buffer policy. The
+Adapter module converts WebSocket frames and connection callbacks into Core
+calls. The Server only hosts the endpoint, configures it, and schedules bounded
+rounds. Workers upsert before connecting. The Core has no
 Spring/Kernel/Redis/thread dependency, and KernelApplication does not own or
 expose session facts.
 

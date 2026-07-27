@@ -84,7 +84,7 @@ kernel_jvm delivery contracts/providers
   WorkerCommand consume and SeedResult append owner operations
 
 worker_delivery_adapter_jvm
-  framework-free Gateway client, session mechanism, dispatch, result buffer
+  framework-free Core plus concrete Spring WebSocket transport
 ```
 
 The Server is the only Worker Delivery HTTP and Redis owner. Point and batch
@@ -92,11 +92,11 @@ controllers call `WorkerDeliveryService`, which calls the two Kernel delivery
 runtime contracts. The shared contract module has no Spring Web or Redis
 dependency.
 
-The Adapter mechanism is implemented by the framework-free
+The Adapter mechanism is implemented by
 [`worker_delivery_adapter_jvm`](../worker_delivery_adapter_jvm/README.md).
-This Server does not depend on, embed, or start that Adapter Core. A future
-WebSocket host must consume the existing batch HTTP API and must not gain an
-in-process or Redis shortcut.
+This Server can optionally host that module's WebSocket endpoint and scheduled
+dispatch loop. The embedded Adapter still consumes the existing batch HTTP API
+through loopback and has no in-process or Redis shortcut.
 
 ## Runtime Commands
 
@@ -170,9 +170,19 @@ Then start the external Runtime API Server:
 ./gradlew :server_jvm:bootRun
 ```
 
-Run the Java reference Worker through point polling as documented in
-[worker_jvm](../worker_jvm/README.md). Its WebSocket transport has no active
-host in this slice.
+Run the Java reference Worker through point polling, or enable the embedded
+WebSocket Adapter and use the WebSocket profile, as documented in
+[worker_jvm](../worker_jvm/README.md).
+
+Embedded WebSocket Adapter:
+
+```text
+xa.mass.worker-delivery.adapter.websocket.enabled=true
+xa.mass.worker-delivery.adapter.websocket.endpoint-manager-id=websocket-1
+```
+
+The Worker declaration must use the same endpoint-manager ID. The Adapter
+calls this Server's batch HTTP API at the configured `gateway-base-url`.
 
 Defaults:
 
@@ -198,9 +208,10 @@ KERNEL_DESIGN_REDIS_URL=redis://localhost:6379/15 \
   ./gradlew :server_jvm:integrationTest
 ```
 
-The cross-process integration proves both `TASK_DRIVEN` and `ITEM_DRIVEN`
-through the real Java polling Worker. Both paths use the Server HTTP boundary,
-Python scheduling/ResultRouting, Java last-success query, and exact Worker
-release. The current Server intentionally has no WebSocket host,
-authentication, multi-instance Adapter ownership, pending/ack, failure-result
-projection, historical storage, tenant model, quota, or OpenAPI generator.
+The cross-process integration proves `TASK_DRIVEN` through the real Java
+polling Worker and `ITEM_DRIVEN` through the embedded WebSocket Adapter and
+Java WebSocket Worker. Both paths use the Server HTTP boundary, Python
+scheduling/ResultRouting, Java last-success query, and exact Worker release.
+Authentication, same-endpoint multi-instance ownership, pending/ack,
+failure-result projection, historical storage, tenant model, quota, and an
+OpenAPI generator remain out of scope.

@@ -205,10 +205,11 @@ create/approve/close, and `KernelApplication` lifecycle. Java `server_jvm`
 hosts TaskItem append, last-success reads, and Worker Delivery. The Python
 TaskRuntime and Worker Delivery runtime/clients remain executable-spec oracles
 and test support. The runnable external Worker lives in `worker_jvm` and
-depends on the shared Java protocol module. The framework-free Adapter
-mechanism lives in `worker_delivery_adapter_jvm`; its concrete WebSocket host
-is not currently assembled. The Core consumes Server batch HTTP and has no
-Spring, Kernel, Redis, thread, or framework lifecycle dependency.
+depends on the shared Java protocol module. The Adapter mechanism and concrete
+Spring WebSocket transport live in `worker_delivery_adapter_jvm`; `server_jvm`
+supplies only configuration, endpoint hosting, round scheduling, and process
+lifecycle. The Core consumes Server batch HTTP and has no Spring, Kernel,
+Redis, thread, or framework lifecycle dependency.
 
 Use these rules:
 
@@ -394,6 +395,7 @@ Server bounded cursor access for a long-lived Adapter's sparse mailbox
 stable WorkerCommandEnvelope forwarding to the already selected Worker
 Server point Worker result and Adapter batch SeedResult validation/append
 framework-free Java Adapter session/dispatch/result-buffer mechanism
+concrete Adapter-owned WebSocket frame/connection adaptation
 ```
 
 Its boundary starts after Task Dispatch handles mailbox publication and ends
@@ -406,9 +408,9 @@ scans a mailbox, and `system-polling` is only a logical route binding.
 The framework-free Java Adapter Core owns one configured non-system-polling
 mailbox per instance through the Server batch HTTP API, session generations,
 one-round dispatch, bounded result buffering, and `3001` versus `UNKNOWN`
-classification. A future WebSocket host may own only frame/connection
-adaptation, round scheduling, and process lifecycle; `server_jvm` does not
-currently start that host. Workers upsert before connecting. Missing session
+classification. The Adapter module owns WebSocket frame/connection adaptation;
+`server_jvm` may configure and host the endpoint and schedule rounds, but does
+not own Adapter semantics. Workers upsert before connecting. Missing session
 evidence may produce `3001`; expiry, disconnect, missing result, and any
 failure after send was attempted remain UNKNOWN. Different endpoint-manager
 identities may run in parallel; same-endpoint distributed ownership remains

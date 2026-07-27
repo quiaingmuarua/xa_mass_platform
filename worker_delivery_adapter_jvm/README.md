@@ -1,8 +1,9 @@
-# XA Mass JVM Worker Delivery Adapter Core
+# XA Mass JVM Worker Delivery Adapter
 
-Status: framework-free Java 21 Adapter mechanism.
+Status: Java 21 Adapter mechanism with a framework-free Core and a concrete
+Spring WebSocket transport.
 
-This module owns the transport-independent Adapter behavior:
+The module's Core owns the transport-independent Adapter behavior:
 
 ```text
 Server Adapter batch HTTP API
@@ -14,8 +15,8 @@ Server Adapter batch HTTP API
   -> Server Adapter batch result API
 ```
 
-It has no Spring, Spring Boot, WebSocket, Server, Kernel, Redis, scheduling,
-score, thread, or lifecycle dependency.
+The `application` and `http` packages have no Spring, Spring Boot, Server,
+Kernel, Redis, scheduling, score, thread, or lifecycle dependency.
 
 ## Stable Core
 
@@ -65,20 +66,29 @@ boundary.
 Different Adapter instances may own different endpoint-manager IDs. The Core
 does not provide same-endpoint distributed ownership.
 
-## HTTP Client And Host Boundary
+## HTTP Client And WebSocket Transport
 
 The JDK `HttpClient` Gateway implementation remains in this module. Its JSON
 DTOs are private and do not enter the shared Worker protocol.
 
-The Core has no executable Main and no concrete WebSocket transport host.
-`server_jvm` exposes the point/batch Worker Delivery HTTP API but does not
-start or embed this Adapter.
+The module also implements the concrete WebSocket transport:
 
-A future host supplies `WorkerConnection` implementations, converts transport
-connect/result/disconnect events into Core calls, and schedules
-`dispatchOnce()`. That host is a deployment decision and must not move cursor,
-session generation, result buffering, `3001`, or `UNKNOWN` semantics out of
-this module.
+```text
+WorkerWebSocketHandler
+  frame and connection event adaptation
+
+SpringWebSocketWorkerConnection
+  WorkerCommand text-frame delivery
+
+WorkerWebSocketEndpointConfigurer
+  /api/v1/worker-delivery/websocket/workers/{workerId}
+```
+
+This dependency is Spring Framework WebSocket, not Spring Boot. The module has
+no application Main, configuration properties, scheduled thread, or framework
+lifecycle. `server_jvm` supplies those process concerns and may enable this
+Adapter. The Server host must not move cursor, session generation, result
+buffering, `3001`, or `UNKNOWN` semantics out of the Core.
 
 ## Verification
 

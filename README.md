@@ -17,8 +17,9 @@ The repository contains six active areas:
 - [`worker_delivery_contract_jvm/`](worker_delivery_contract_jvm/): shared
   Java 21 Worker Delivery DTO, validation, outcome classification, and codec.
 - [`worker_delivery_adapter_jvm/`](worker_delivery_adapter_jvm/):
-  framework-free Adapter Core. It owns session generation, one-round command
-  dispatch, bounded result buffering, and the Server batch HTTP client.
+  Worker Delivery Adapter. It owns the framework-free session/dispatch/result
+  Core, the Server batch HTTP client, and the concrete Spring WebSocket
+  transport without depending on Spring Boot or Server implementation.
 - [`worker_jvm/`](worker_jvm/): runnable one-slot Java Worker with polling and
   WebSocket transports over one command execution core.
 

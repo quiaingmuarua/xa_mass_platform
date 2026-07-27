@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.xa.mass.worker.execution.PhoneInspectHandler;
 import com.xa.mass.worker.execution.WorkerCommandProcessor;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
+import com.xa.mass.worker.transport.websocket.WebSocketWorkerTransport;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
 import java.net.URI;
@@ -34,6 +35,8 @@ class RuntimeApiPythonIntegrationTest {
     private static final String REDIS_URL =
             System.getenv("KERNEL_DESIGN_REDIS_URL");
     private static final int SERVER_PORT = availablePort();
+    private static final String WEBSOCKET_ENDPOINT_MANAGER_ID =
+            "java-websocket-integration";
     private static final String PHONE_RESULT = """
             {"countryCallingCode":1,"e164":"+14155552671",\
             "isPossible":true,"isValid":true,"regionCode":"US"}\
@@ -70,6 +73,22 @@ class RuntimeApiPythonIntegrationTest {
                 "server.port",
                 () -> Integer.toString(SERVER_PORT)
         );
+        registry.add(
+                "xa.mass.worker-delivery.adapter.websocket.enabled",
+                () -> "true"
+        );
+        registry.add(
+                "xa.mass.worker-delivery.adapter.websocket.endpoint-manager-id",
+                () -> WEBSOCKET_ENDPOINT_MANAGER_ID
+        );
+        registry.add(
+                "xa.mass.worker-delivery.adapter.websocket.gateway-base-url",
+                () -> "http://127.0.0.1:" + SERVER_PORT
+        );
+        registry.add(
+                "xa.mass.worker-delivery.adapter.websocket.pump-interval",
+                () -> "20ms"
+        );
     }
 
     @Test
@@ -79,7 +98,7 @@ class RuntimeApiPythonIntegrationTest {
     }
 
     @Test
-    void itemDrivenClosesThroughTheJavaPollingWorker()
+    void itemDrivenClosesThroughTheJavaWebSocketWorker()
             throws Exception {
         runWorkerDeliveryClosure("ITEM_DRIVEN");
     }
@@ -139,14 +158,20 @@ class RuntimeApiPythonIntegrationTest {
                         + "/workers/" + workerId,
                 """
                         {
-                          "endpointManagerId": "system-polling",
+                          "endpointManagerId": "%s",
                           "attributes": {"runtime": "java"},
                           "dynamicAttributeNames": []
                         }
-                        """
+                        """.formatted(
+                        "ITEM_DRIVEN".equals(taskType)
+                                ? WEBSOCKET_ENDPOINT_MANAGER_ID
+                                : WorkerDeliveryProtocol
+                                        .SYSTEM_POLLING_ENDPOINT_MANAGER_ID
+                )
         ).statusCode()).isEqualTo(200);
 
         RunningWorker worker = startWorker(
+                taskType,
                 workerId,
                 URI.create("http://127.0.0.1:" + port)
         );
@@ -221,6 +246,7 @@ class RuntimeApiPythonIntegrationTest {
     }
 
     private RunningWorker startWorker(
+            String taskType,
             String workerId,
             URI serverUrl
     ) {
@@ -233,6 +259,18 @@ class RuntimeApiPythonIntegrationTest {
                         new PhoneInspectHandler()
                 )
         );
+        if ("ITEM_DRIVEN".equals(taskType)) {
+            return new WebSocketWorkerHandle(
+                    new WebSocketWorkerTransport(
+                            serverUrl,
+                            workerId,
+                            Duration.ofSeconds(2),
+                            Duration.ofMillis(20),
+                            codec,
+                            processor
+                    )
+            );
+        }
         return new PollingWorkerHandle(new PollingWorkerTransport(
                 serverUrl,
                 WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
@@ -394,6 +432,24 @@ class RuntimeApiPythonIntegrationTest {
             } catch (InterruptedException error) {
                 Thread.currentThread().interrupt();
             }
+        }
+    }
+
+    private static final class WebSocketWorkerHandle
+            implements RunningWorker {
+
+        private final WebSocketWorkerTransport transport;
+
+        private WebSocketWorkerHandle(
+                WebSocketWorkerTransport transport
+        ) {
+            this.transport = transport;
+            transport.start();
+        }
+
+        @Override
+        public void close() {
+            transport.close();
         }
     }
 }

@@ -41,14 +41,21 @@ class ServerArchitectureBoundaryTest {
     private static final Path DELIVERY_APPLICATION = SERVER_SOURCE.resolve(
             "com/xa/mass/server/workerdelivery/application"
     );
+    private static final Path DELIVERY_ADAPTER_HOST = SERVER_SOURCE.resolve(
+            "com/xa/mass/server/workerdelivery/adapter"
+    );
+    private static final Path ADAPTER_SOURCE = Path.of(
+            "../worker_delivery_adapter_jvm/src/main/java"
+    );
+
     @Test
     void serverDependsOnKernelContractsWithoutOwningRedisKeys()
             throws IOException {
         String build = Files.readString(Path.of("build.gradle"));
         assertThat(build)
                 .contains("implementation project(':kernel_jvm')")
-                .doesNotContain("worker_delivery_adapter_jvm")
-                .doesNotContain("spring-boot-starter-websocket")
+                .contains("implementation project(':worker_delivery_adapter_jvm')")
+                .contains("spring-boot-starter-websocket")
                 .doesNotContain("implementation project(':worker_jvm')")
                 .contains("testImplementation project(':worker_jvm')");
 
@@ -125,10 +132,26 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain(".server.api")
                 .doesNotContain(".delivery.redis")
                 .doesNotContain("io.lettuce");
-        assertThat(readSources(SERVER_SOURCE))
+    }
+
+    @Test
+    void serverOnlyHostsTheAdapterMechanism() throws IOException {
+        String host = readSources(DELIVERY_ADAPTER_HOST);
+        assertThat(host)
+                .contains("WorkerDeliveryAdapter")
+                .contains("WorkerWebSocketHandler")
+                .contains("adapter.dispatchOnce()")
                 .doesNotContain("WebSocketSession")
-                .doesNotContain("WorkerDeliveryAdapter")
-                .doesNotContain("WorkerSessionDirectory");
+                .doesNotContain("TextMessage")
+                .doesNotContain("SeedResult")
+                .doesNotContain("\"3001\"")
+                .doesNotContain("ArrayBlockingQueue");
+
+        String adapter = readSources(ADAPTER_SOURCE);
+        assertThat(adapter)
+                .contains("class WorkerWebSocketHandler")
+                .contains("class SpringWebSocketWorkerConnection")
+                .contains("class WorkerDeliveryAdapter");
     }
 
     @Test

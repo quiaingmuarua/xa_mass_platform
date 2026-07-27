@@ -1,9 +1,9 @@
 # Worker Delivery Dispatch
 
 Status: active new-kernel boundary contract; Python protocol/Redis oracle,
-shared Java protocol, Java Server point/batch API, framework-free Adapter Core,
-and one-slot polling phone Worker implemented; concrete WebSocket host,
-production authentication, and same-endpoint HA policy deferred.
+shared Java protocol, Java Server point/batch API, Adapter Core and concrete
+WebSocket transport, and one-slot polling/WebSocket phone Worker implemented;
+production authentication and same-endpoint HA policy deferred.
 
 Upstream contract: [Task Dispatch Pacer](task-dispatch-pacer.md).
 Worker lease contract:
@@ -33,7 +33,8 @@ Server Worker Delivery API
 WebSocket Adapter
   -> call the Server batch HTTP API
   -> Core maintains Worker sessions, dispatch and result buffering
-  -> a future transport host adapts frames and lifecycle
+  -> Adapter transport adapts Spring WebSocket frames and connections
+  -> Server host configures the endpoint and schedules Core rounds
   -> push commands and batch Worker/trusted Adapter results
 
 Worker
@@ -323,10 +324,11 @@ The framework-free Core cursor-consumes one bounded page through the Server
 batch HTTP API, rechecks the command deadline, dispatches the exact
 WorkerCommand, accepts current-session `200/1xxx` results, buffers them in
 bounded process memory, and submits them through the Server batch result HTTP
-API. A concrete transport host must translate connection events and frames into
-`WorkerConnection` and Core calls, then schedule `dispatchOnce`; no such
-WebSocket host is currently assembled by `server_jvm`. The Core has no Spring,
-Redis, Kernel runtime, score, thread, or Pacer dependency.
+API. The Adapter module's concrete WebSocket package translates connection
+events and frames into `WorkerConnection` and Core calls. `server_jvm` only
+configures that endpoint and schedules `dispatchOnce`. The Core has no Spring,
+Redis, Kernel runtime, score, thread, or Pacer dependency; the Adapter module
+has Spring WebSocket but no Spring Boot dependency.
 
 There is no process-local fast path and no command or result ACK. Server/Redis
 failure retains one pending batch for retry; Adapter process failure may lose
@@ -338,7 +340,7 @@ direct evidence that the command did not enter the Worker and generates
 attempted remains unknown and cannot generate `3xxx`.
 
 The Core permits different Adapter instances to own different
-endpoint-manager mailboxes. A future host must preserve that boundary.
+endpoint-manager mailboxes. Every host must preserve that boundary.
 Multiple instances consuming the same endpoint manager are unsupported:
 process-local session generations do not provide distributed ownership, and
 destructive cursor consumption cannot be used as HA coordination.
@@ -370,11 +372,11 @@ external Worker side effects exactly-once.
 - Do not allow the `system-polling` identity to use Adapter batch operations.
 - Do not let the WebSocket Adapter access Redis or Kernel runtimes directly.
 - Do not put WebSocket frames, framework lifecycle, or threads into the
-  framework-free Adapter Core.
+  framework-free Adapter Core packages.
 - Do not put mailbox cursor, result buffering, `3001`, or `UNKNOWN` policy into
   a transport host.
-- Do not make `server_jvm` a WebSocket Adapter owner merely because it exposes
-  the batch HTTP access boundary.
+- Do not make `server_jvm` a WebSocket Adapter mechanism owner merely because
+  it hosts the endpoint and exposes the batch HTTP access boundary.
 - Do not add an embedded in-process shortcut around the Server batch HTTP API.
 - Do not let Adapters generate command identity or message types.
 - Do not wrap SeedResult in WorkerCommandEnvelope or add a generic result

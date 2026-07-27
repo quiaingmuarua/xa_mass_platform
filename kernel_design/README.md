@@ -563,10 +563,9 @@ no hidden compatibility path or second mainline remains
     private Redis composition, background scheduling lifecycles, built-in CLI,
     and the executable-spec Kernel Runtime HTTP host.
 - [Worker Delivery Dispatch](doc/scheduling/worker-delivery-dispatch.md)
-  - Server-owned point/batch mailbox access and framework-free Adapter Core,
-    including bounded result buffering and trusted pre-execution rejection
-    without Adapter-owned score mutation; a concrete WebSocket host is
-    deferred.
+  - Server-owned point/batch mailbox access, framework-free Adapter Core, and
+    concrete WebSocket transport, including bounded result buffering and
+    trusted pre-execution rejection without Adapter-owned score mutation.
 - [Kernel Runtime Server](runtime_server/app.py)
   - executable-spec FastAPI control host for WorkerGroup/Worker upsert and
     Task create/approve/close; only
@@ -576,8 +575,8 @@ no hidden compatibility path or second mainline remains
     polling and Adapter batch HTTP API; its owner-scoped Redis access is
     limited to TaskData and Worker Delivery operations.
 - [JVM Worker Delivery Adapter](../worker_delivery_adapter_jvm/README.md)
-  - framework-free session, one-round dispatch, trusted rejection, result
-    buffering, and Server batch HTTP client mechanism.
+  - framework-free session/dispatch/result mechanism, Server batch HTTP
+    client, and concrete Spring WebSocket transport.
 - [JVM Worker](../worker_jvm/README.md)
   - one-slot Java Worker that executes `telecom.phone.inspect` through polling
     or WebSocket using the shared Worker Delivery contract.
