@@ -1,0 +1,26 @@
+plugins {
+    id 'java-library'
+}
+
+base {
+    archivesName.set('xa-mass-worker-delivery-contract-jvm')
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+dependencies {
+    implementation platform('tools.jackson:jackson-bom:3.1.4')
+    implementation 'tools.jackson.core:jackson-databind'
+
+    testImplementation platform('org.junit:junit-bom:6.0.3')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

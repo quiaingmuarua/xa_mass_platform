@@ -27,13 +27,13 @@ The module is Java 21 and Spring Boot 4.1. It has no dependency on
 confined to `com.xa.mass.server.workerdelivery.redis`; Java does not read
 scores, invoke Pacers, append Worker commands, or consume SeedResult queues.
 
-Worker Delivery package boundaries:
+Worker Delivery boundaries:
 
 ```text
+worker_delivery_contract_jvm
+  transport-neutral WorkerCommand/DeliverSeed/SeedResult contracts and codec
 workerdelivery
   application service, runtime port, error mapping, Bean composition
-workerdelivery.protocol
-  transport-neutral WorkerCommand/SeedResult contracts and JSON codec
 workerdelivery.http
   point Worker and Adapter batch HTTP access profiles
 workerdelivery.redis
@@ -43,9 +43,9 @@ workerdelivery.websocket
 ```
 
 HTTP and WebSocket call `WorkerDeliveryService`; neither imports the Redis
-implementation. `protocol` has no Spring Web or Redis dependency. The
-WebSocket Adapter is an access profile inside this server module, not a second
-runtime owner or independently published module.
+implementation. The shared contract module has no Spring Web or Redis
+dependency. The WebSocket Adapter is an access profile inside this server
+module, not a second runtime owner or independently published module.
 
 ## Runtime Commands
 
@@ -113,6 +113,9 @@ Then start the external Runtime API Server:
 ./gradlew :server_jvm:bootRun
 ```
 
+Run the Java reference Worker through polling or WebSocket as documented in
+[worker_jvm](../worker_jvm/README.md).
+
 Defaults:
 
 ```text
@@ -146,8 +149,9 @@ KERNEL_DESIGN_REDIS_URL=redis://localhost:6379/15 \
   ./gradlew :server_jvm:integrationTest
 ```
 
-The cross-process integration proves both TaskTypes through Python scheduling,
-Java WebSocket command/result delivery, Python ResultRouting, result HASH
-storage, and exact Worker release. The first release intentionally has no
+The cross-process integration proves `TASK_DRIVEN` with the real Java polling
+Worker and `ITEM_DRIVEN` with the real Java WebSocket Worker through Python
+scheduling, Java Worker Delivery, Python ResultRouting, result HASH storage,
+and exact Worker release. The first release intentionally has no
 authentication, multi-instance Adapter ownership, pending/ack, query API,
 historical storage, result view, tenant model, quota, or OpenAPI generator.

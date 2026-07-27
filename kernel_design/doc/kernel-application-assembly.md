@@ -240,9 +240,9 @@ the current external process boundaries:
 ResourcesCommandClient
   -> KernelApplication
   -> Redis scheduling truth
-  -> Java Worker Delivery Gateway point command
-  -> Polling Phone Worker tool execution
-  -> Java Worker Delivery Gateway point result
+  -> Java Worker Delivery Gateway command access
+  -> Java Worker polling or WebSocket phone tool execution
+  -> Java Worker Delivery Gateway SeedResult ingress
   -> Result-Routing
   -> TaskItem FINAL_SUCCESS + result HASH + Worker lease release
 ```
@@ -294,10 +294,11 @@ command DTO. Task Dispatch generates its canonical UUID `commandId`,
 Worker results use `SeedResult` directly and copy only `commandId` for trace
 correlation. Result ingress does not carry command message type or deadline.
 
-The Polling Phone Worker is a separate example process. It knows only
-its WorkerId, endpoint-manager binding, Java Runtime API URL, Worker Delivery
+The Java Worker is a separate process. It knows only its WorkerId, optional
+polling endpoint-manager binding, Java Runtime API URL, Worker Delivery
 envelopes, and the `telecom.phone.inspect` tool. It does not register resources
-or import Kernel owners.
+or import Kernel owners. Polling and WebSocket share one serial command
+execution core.
 
 Polling is a base request-driven protocol, not an independently deployed
 Adapter. The Java WebSocket Adapter owns one configured non-`system-polling`
@@ -309,8 +310,9 @@ session facts.
 
 The Python Runtime Server remains the scheduling command host and mechanism
 oracle. The Java Gateway is the current Worker Delivery HTTP owner, not a
-second scheduler or Redis owner for scores. The Phone Worker is a runnable
-example. Authentication, multi-instance WebSocket ownership, Task query/list,
+second scheduler or Redis owner for scores. The Java Worker is the only
+external Worker demonstration mainline. Authentication, multi-instance
+WebSocket ownership, Task query/list,
 result projection, reliable pending/ack delivery, and API compatibility remain
 out of scope.
 

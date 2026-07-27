@@ -1,12 +1,12 @@
 package com.xa.mass.server.workerdelivery;
 
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.DeliverSeed;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultOutcomeClass;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandPage;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliverSeed;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultOutcomeClass;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.server.workerdelivery.WorkerDeliveryRuntime.WorkerCommandPage;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -86,11 +86,8 @@ public final class WorkerDeliveryService {
             String workerId,
             SeedResult result
     ) {
-        WorkerDeliveryProtocol.requireNonBlank(
-                endpointManagerId,
-                "endpointManagerId"
-        );
-        WorkerDeliveryProtocol.requireNonBlank(workerId, "workerId");
+        requireNonBlank(endpointManagerId, "endpointManagerId");
+        requireNonBlank(workerId, "workerId");
         SeedResultOutcomeClass outcomeClass =
                 WorkerDeliveryProtocol.classifyOutcomeCode(
                         result.outcomeCode()
@@ -193,15 +190,20 @@ public final class WorkerDeliveryService {
     private static void requireAdapterBatchIdentity(
             String endpointManagerId
     ) {
-        WorkerDeliveryProtocol.requireNonBlank(
-                endpointManagerId,
-                "endpointManagerId"
-        );
+        requireNonBlank(endpointManagerId, "endpointManagerId");
         if (WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID.equals(
                 endpointManagerId
         )) {
             throw WorkerDeliveryException.invalid(
                     "system-polling supports only point Worker access"
+            );
+        }
+    }
+
+    private static void requireNonBlank(String value, String name) {
+        if (value == null || value.isBlank()) {
+            throw WorkerDeliveryException.invalid(
+                    name + " must be non-blank"
             );
         }
     }

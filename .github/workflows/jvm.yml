@@ -6,7 +6,9 @@ on:
     paths:
       - "kernel_jvm/**"
       - "server_jvm/**"
-      - "kernel_design/examples/kernel_command_server.py"
+      - "worker_delivery_contract_jvm/**"
+      - "worker_jvm/**"
+      - "kernel_design/runtime_server/**"
       - "kernel_design/executable_spec/assembly/**"
       - "kernel_design/executable_spec/kernel/**"
       - "build.gradle"
@@ -20,7 +22,9 @@ on:
     paths:
       - "kernel_jvm/**"
       - "server_jvm/**"
-      - "kernel_design/examples/kernel_command_server.py"
+      - "worker_delivery_contract_jvm/**"
+      - "worker_jvm/**"
+      - "kernel_design/runtime_server/**"
       - "kernel_design/executable_spec/assembly/**"
       - "kernel_design/executable_spec/kernel/**"
       - "build.gradle"
@@ -69,23 +73,23 @@ jobs:
         with:
           python-version: "3.13"
           cache: pip
-          cache-dependency-path: kernel_design/examples/requirements.txt
+          cache-dependency-path: kernel_design/runtime_server/requirements.txt
       - name: Install Python dependencies
-        run: python -m pip install -r kernel_design/examples/requirements.txt
-      - name: Start Python Kernel Command Server
+        run: python -m pip install -r kernel_design/runtime_server/requirements.txt
+      - name: Start Python Kernel Runtime Server
         run: |
-          python -m kernel_design.examples.kernel_command_server \
-            --host 127.0.0.1 --port 18080 > kernel-command-server.log 2>&1 &
+          python -m kernel_design.runtime_server \
+            --host 127.0.0.1 --port 18080 > kernel-runtime-server.log 2>&1 &
           for attempt in $(seq 1 30); do
             if python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:18080/health')" ; then
               exit 0
             fi
             sleep 1
           done
-          cat kernel-command-server.log
+          cat kernel-runtime-server.log
           exit 1
       - name: Verify Java to Python runtime boundary
         run: bash ./gradlew --no-daemon :server_jvm:integrationTest
       - name: Print Kernel server log on failure
         if: failure()
-        run: cat kernel-command-server.log
+        run: cat kernel-runtime-server.log

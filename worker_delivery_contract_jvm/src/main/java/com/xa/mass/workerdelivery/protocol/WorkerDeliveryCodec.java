@@ -1,13 +1,15 @@
-package com.xa.mass.server.workerdelivery.protocol;
+package com.xa.mass.workerdelivery.protocol;
 
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.DeliverSeed;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliverSeed;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
+import java.util.HashSet;
 import java.util.Set;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 public final class WorkerDeliveryCodec {
@@ -30,11 +32,7 @@ public final class WorkerDeliveryCodec {
             "outcomeCode"
     );
 
-    private final ObjectMapper objectMapper;
-
-    public WorkerDeliveryCodec(ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
-    }
+    private final ObjectMapper objectMapper = JsonMapper.builder().build();
 
     public WorkerCommandEnvelope decodeWorkerCommand(String value) {
         try {
@@ -98,6 +96,14 @@ public final class WorkerDeliveryCodec {
         }
     }
 
+    public String encodeDeliverSeed(DeliverSeed seed) {
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("opaqueDeliveryItem", seed.opaqueDeliveryItem());
+        payload.put("opaqueResultContext", seed.opaqueResultContext());
+        payload.put("workerId", seed.workerId());
+        return write(payload, "DeliverSeed");
+    }
+
     public SeedResult decodeSeedResult(String value) {
         try {
             JsonNode payload = objectMapper.readTree(value);
@@ -150,6 +156,6 @@ public final class WorkerDeliveryCodec {
     }
 
     private static Set<String> fieldNames(ObjectNode object) {
-        return new java.util.HashSet<>(object.propertyNames());
+        return new HashSet<>(object.propertyNames());
     }
 }

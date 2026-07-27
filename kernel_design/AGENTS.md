@@ -175,14 +175,15 @@ For process assembly or server entry work:
 8. [executable_spec/tests/test_resources_command_client.py](executable_spec/tests/test_resources_command_client.py)
 9. [runtime_server/app.py](runtime_server/app.py)
 
-For Worker Delivery Dispatch or a polling Worker:
+For Worker Delivery Dispatch or a Java Worker:
 
 1. [doc/scheduling/worker-delivery-dispatch.md](doc/scheduling/worker-delivery-dispatch.md)
 2. [doc/scheduling/result-routing-scheduling.md](doc/scheduling/result-routing-scheduling.md)
 3. [doc/kernel-application-assembly.md](doc/kernel-application-assembly.md)
 4. [../server_jvm/src/main/java/com/xa/mass/server/workerdelivery](../server_jvm/src/main/java/com/xa/mass/server/workerdelivery)
-5. [examples/polling_phone_worker.py](examples/polling_phone_worker.py)
-6. [executable_spec/assembly/transport_clients.py](executable_spec/assembly/transport_clients.py)
+5. [../worker_delivery_contract_jvm](../worker_delivery_contract_jvm)
+6. [../worker_jvm](../worker_jvm)
+7. [executable_spec/assembly/transport_clients.py](executable_spec/assembly/transport_clients.py)
 
 ## 2.1 Python Naming Rules
 
@@ -197,15 +198,13 @@ executable_spec/              stable mechanism package, never example/demo
   constraint_dsl/             standalone constraint compilation/evaluation
   redis_runtime/              Redis-backed implementations of owner contracts
 runtime_server/               Python Task/resource command host
-examples/                     runnable external Worker examples only
 ```
 
 `kernel_design/runtime_server/` composes only the Python Task/resource command
 host and `KernelApplication` lifecycle. The Java Worker Delivery HTTP host
 lives in `server_jvm`; the Python Worker Delivery runtime and clients remain
-the executable-spec oracle and test support. `kernel_design/examples/`
-contains only external Worker clients; examples may depend on stable wire
-boundaries, not owner implementations.
+the executable-spec oracle and test support. The runnable external Worker
+lives in `worker_jvm` and depends on the shared Java protocol module.
 
 Use these rules:
 

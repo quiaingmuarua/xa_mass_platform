@@ -562,9 +562,11 @@ no hidden compatibility path or second mainline remains
   - external Task/resource HTTP proxy, point Gateway, and WebSocket Adapter; its
     direct Redis access is limited to WorkerCommand consume/delete and
     SeedResult append.
-- [Polling Phone Worker](examples/polling_phone_worker.py)
-  - independent Worker process that executes `telecom.phone.inspect` through
-    the built-in `system-polling` binding using Google libphonenumber.
+- [JVM Worker](../worker_jvm/README.md)
+  - one-slot Java Worker that executes `telecom.phone.inspect` through polling
+    or WebSocket using the shared Worker Delivery contract.
+- [JVM Worker Delivery Contract](../worker_delivery_contract_jvm/README.md)
+  - transport-neutral Java DTO, validation, outcome classification, and codec.
 - [Result-Routing Scheduling](doc/scheduling/result-routing-scheduling.md)
   - outcome-class SeedResult consumption, last-success result storage, TaskItem
     final-success invocation, and Worker exact disposition.
@@ -578,11 +580,12 @@ prove the currently implemented mechanism. If they disagree, identify the drift
 before changing either one.
 
 The Python executable spec lives under `kernel_design/executable_spec/`.
-`kernel_design/runtime_server/` is its Task/resource FastAPI host, while
-`kernel_design/examples/` contains external Worker examples only. The Kotlin
-production scaffold lives under `kernel_jvm/` and may implement behavior only
-through scoped parity slices against this workspace. Historical tag material
-must not constrain current interfaces, Redis shapes, or package boundaries.
+`kernel_design/runtime_server/` is its Task/resource FastAPI host.
+`worker_jvm/` is the external Worker reference implementation; it is not a
+Kernel owner. The Kotlin production scaffold lives under `kernel_jvm/` and may
+implement behavior only through scoped parity slices against this workspace.
+Historical tag material must not constrain current interfaces, Redis shapes,
+or package boundaries.
 
 ## Agent Rules
 

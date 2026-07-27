@@ -1,14 +1,13 @@
 package com.xa.mass.server.workerdelivery.redis;
 
-import static com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.classifyOutcomeCode;
-import static com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.requireNonBlank;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.classifyOutcomeCode;
 
 import com.xa.mass.server.workerdelivery.WorkerDeliveryRuntime;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultOutcomeClass;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandPage;
+import com.xa.mass.server.workerdelivery.WorkerDeliveryRuntime.WorkerCommandPage;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultOutcomeClass;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import io.lettuce.core.MapScanCursor;
 import io.lettuce.core.ScanArgs;
 import io.lettuce.core.ScanCursor;
@@ -107,9 +106,7 @@ public final class RedisWorkerDeliveryRuntime implements WorkerDeliveryRuntime {
         if (scanCount <= 0) {
             throw new IllegalArgumentException("scanCount must be positive");
         }
-        if (cursor != null
-                && !com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol
-                .isDecimal(cursor)) {
+        if (cursor != null && !isDecimal(cursor)) {
             throw new IllegalArgumentException(
                     "cursor must be a non-negative Redis cursor"
             );
@@ -235,6 +232,29 @@ public final class RedisWorkerDeliveryRuntime implements WorkerDeliveryRuntime {
 
     private String resultKey(SeedResultOutcomeClass outcomeClass) {
         return "rr:" + prefix + ":seed-results:"
-                + outcomeClass.redisKeySuffix();
+                + switch (outcomeClass) {
+                    case SUCCESS -> "success";
+                    case WORKER_FAILURE -> "worker-failure";
+                    case ADAPTER_REJECTION -> "adapter-rejection";
+                };
+    }
+
+    private static void requireNonBlank(String value, String name) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(name + " must be non-blank");
+        }
+    }
+
+    private static boolean isDecimal(String value) {
+        if (value.isEmpty()) {
+            return false;
+        }
+        for (int index = 0; index < value.length(); index++) {
+            char character = value.charAt(index);
+            if (character < '0' || character > '9') {
+                return false;
+            }
+        }
+        return true;
     }
 }

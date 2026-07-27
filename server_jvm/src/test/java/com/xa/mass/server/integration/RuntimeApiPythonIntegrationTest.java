@@ -5,18 +5,20 @@ import static org.assertj.core.api.Assertions.assertThat;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.codec.StringCodec;
+import com.xa.mass.worker.execution.PhoneInspectHandler;
+import com.xa.mass.worker.execution.WorkerCommandProcessor;
+import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
+import com.xa.mass.worker.transport.websocket.WebSocketWorkerTransport;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.net.http.WebSocket;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.CompletionStage;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -25,8 +27,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Tag("integration")
@@ -50,9 +50,6 @@ class RuntimeApiPythonIntegrationTest {
 
     @LocalServerPort
     private int port;
-
-    @Autowired
-    private ObjectMapper objectMapper;
 
     @Autowired
     private RedisClient redisClient;
@@ -92,13 +89,13 @@ class RuntimeApiPythonIntegrationTest {
     }
 
     @Test
-    void taskDrivenClosesThroughTheJavaWorkerDeliveryGateway()
+    void taskDrivenClosesThroughTheJavaPollingWorker()
             throws Exception {
         runWorkerDeliveryClosure("TASK_DRIVEN");
     }
 
     @Test
-    void itemDrivenClosesThroughTheJavaWorkerDeliveryGateway()
+    void itemDrivenClosesThroughTheJavaWebSocketWorker()
             throws Exception {
         runWorkerDeliveryClosure("ITEM_DRIVEN");
     }
@@ -158,6 +155,9 @@ class RuntimeApiPythonIntegrationTest {
         String taskId = "task-" + suffix;
         String firstMessageId = "message-1-" + suffix;
         String secondMessageId = "message-2-" + suffix;
+        String endpointManagerId = "TASK_DRIVEN".equals(taskType)
+                ? WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID
+                : ENDPOINT_MANAGER_ID;
 
         assertThat(send(
                 "PUT",
@@ -184,10 +184,10 @@ class RuntimeApiPythonIntegrationTest {
                           "attributes": {"runtime": "java"},
                           "dynamicAttributeNames": []
                         }
-                        """.formatted(ENDPOINT_MANAGER_ID)
+                        """.formatted(endpointManagerId)
         ).statusCode()).isEqualTo(200);
 
-        WorkerSocket worker = connectWorker(workerId);
+        RunningWorker worker = startWorker(taskType, workerId);
         try {
             assertThat(send(
                     "POST",
@@ -206,8 +206,6 @@ class RuntimeApiPythonIntegrationTest {
                     workerId,
                     "ITEM_DRIVEN".equals(taskType)
             );
-            JsonNode firstCommand = worker.awaitCommand();
-            worker.submitSuccess(firstCommand);
             awaitStoredResult(taskId, firstMessageId);
 
             appendItem(
@@ -216,10 +214,6 @@ class RuntimeApiPythonIntegrationTest {
                     workerId,
                     "ITEM_DRIVEN".equals(taskType)
             );
-            JsonNode secondCommand = worker.awaitCommand();
-            assertThat(secondCommand.get("commandId").textValue())
-                    .isNotEqualTo(firstCommand.get("commandId").textValue());
-            worker.submitSuccess(secondCommand);
             awaitStoredResult(taskId, secondMessageId);
 
             assertThat(send(
@@ -264,21 +258,39 @@ class RuntimeApiPythonIntegrationTest {
         assertThat(response.body()).contains("\"status\":\"appended\"");
     }
 
-    private WorkerSocket connectWorker(String workerId) {
-        WorkerSocket listener = new WorkerSocket(workerId);
-        WebSocket socket = HttpClient.newHttpClient()
-                .newWebSocketBuilder()
-                .buildAsync(
-                        URI.create(
-                                "ws://127.0.0.1:" + port
-                                        + "/api/v1/worker-delivery/"
-                                        + "websocket/workers/" + workerId
-                        ),
-                        listener
+    private RunningWorker startWorker(String taskType, String workerId) {
+        WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
+        WorkerCommandProcessor processor = new WorkerCommandProcessor(
+                workerId,
+                codec,
+                Map.of(
+                        PhoneInspectHandler.EVENT_CODE,
+                        new PhoneInspectHandler()
                 )
-                .join();
-        listener.attach(socket);
-        return listener;
+        );
+        URI serverUrl = URI.create("http://127.0.0.1:" + port);
+        if ("TASK_DRIVEN".equals(taskType)) {
+            return new PollingWorkerHandle(new PollingWorkerTransport(
+                    serverUrl,
+                    WorkerDeliveryProtocol
+                            .SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
+                    workerId,
+                    Duration.ofSeconds(2),
+                    codec,
+                    processor
+            ));
+        }
+        WebSocketWorkerTransport transport =
+                new WebSocketWorkerTransport(
+                        serverUrl,
+                        workerId,
+                        Duration.ofSeconds(2),
+                        Duration.ofMillis(20),
+                        codec,
+                        processor
+                );
+        transport.start();
+        return transport::close;
     }
 
     private void awaitStoredResult(
@@ -399,82 +411,47 @@ class RuntimeApiPythonIntegrationTest {
         return value == null || value.isBlank() ? fallback : value;
     }
 
-    private final class WorkerSocket implements WebSocket.Listener {
+    private interface RunningWorker extends AutoCloseable {
 
-        private final String workerId;
-        private final BlockingQueue<String> commands =
-                new LinkedBlockingQueue<>();
-        private final StringBuilder fragmented = new StringBuilder();
-        private WebSocket socket;
+        @Override
+        void close();
+    }
 
-        private WorkerSocket(String workerId) {
-            this.workerId = workerId;
-        }
+    private static final class PollingWorkerHandle
+            implements RunningWorker {
 
-        private void attach(WebSocket value) {
-            socket = value;
+        private final Thread thread;
+
+        private PollingWorkerHandle(PollingWorkerTransport transport) {
+            thread = Thread.ofPlatform()
+                    .name("integration-polling-worker")
+                    .daemon(true)
+                    .start(() -> {
+                        while (!Thread.currentThread().isInterrupted()) {
+                            try {
+                                if (!transport.runOnce()) {
+                                    Thread.sleep(20);
+                                }
+                            } catch (InterruptedException error) {
+                                Thread.currentThread().interrupt();
+                            } catch (Exception error) {
+                                try {
+                                    Thread.sleep(20);
+                                } catch (InterruptedException interrupted) {
+                                    Thread.currentThread().interrupt();
+                                }
+                            }
+                        }
+                    });
         }
 
         @Override
-        public void onOpen(WebSocket webSocket) {
-            webSocket.request(1);
-        }
-
-        @Override
-        public CompletionStage<?> onText(
-                WebSocket webSocket,
-                CharSequence data,
-                boolean last
-        ) {
-            fragmented.append(data);
-            if (last) {
-                commands.add(fragmented.toString());
-                fragmented.setLength(0);
-            }
-            webSocket.request(1);
-            return null;
-        }
-
-        private JsonNode awaitCommand() throws Exception {
-            String encoded = commands.poll(8, TimeUnit.SECONDS);
-            if (encoded == null) {
-                throw new AssertionError("Worker command was not produced");
-            }
-            JsonNode command = objectMapper.readTree(encoded);
-            assertThat(command.get("messageType").textValue())
-                    .isEqualTo("TASK_ITEM");
-            return command;
-        }
-
-        private void submitSuccess(JsonNode command) throws Exception {
-            JsonNode seed = objectMapper.readTree(
-                    command.get("opaqueItem").textValue()
-            );
-            assertThat(seed.get("workerId").textValue())
-                    .isEqualTo(workerId);
-            var result = objectMapper.createObjectNode();
-            result.put(
-                    "commandId",
-                    command.get("commandId").textValue()
-            );
-            result.put(
-                    "opaqueResultContext",
-                    seed.get("opaqueResultContext").textValue()
-            );
-            result.put("outcomeCode", "200");
-            result.put("opaqueResultPayload", PHONE_RESULT);
-            socket.sendText(
-                    objectMapper.writeValueAsString(result),
-                    true
-            ).join();
-        }
-
-        private void close() {
-            if (socket != null) {
-                socket.sendClose(
-                        WebSocket.NORMAL_CLOSURE,
-                        "complete"
-                ).join();
+        public void close() {
+            thread.interrupt();
+            try {
+                thread.join(1_000);
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
             }
         }
     }

@@ -16,9 +16,6 @@ class ServerArchitectureBoundaryTest {
     private static final Path WORKER_DELIVERY_HTTP = SOURCE_ROOT.resolve(
             "com/xa/mass/server/workerdelivery/http"
     );
-    private static final Path WORKER_DELIVERY_PROTOCOL = SOURCE_ROOT.resolve(
-            "com/xa/mass/server/workerdelivery/protocol"
-    );
     private static final Path WORKER_DELIVERY_WEBSOCKET = SOURCE_ROOT.resolve(
             "com/xa/mass/server/workerdelivery/websocket"
     );
@@ -29,6 +26,9 @@ class ServerArchitectureBoundaryTest {
         assertThat(build)
                 .doesNotContain("project(':kernel_jvm')")
                 .doesNotContain("project(\":kernel_jvm\")")
+                .doesNotContain("implementation project(':worker_jvm')")
+                .contains("testImplementation project(':worker_jvm')")
+                .contains("project(':worker_delivery_contract_jvm')")
                 .contains("spring-boot-starter-data-redis");
 
         StringBuilder nonRedisSources = new StringBuilder();
@@ -70,14 +70,6 @@ class ServerArchitectureBoundaryTest {
     @Test
     void workerDeliveryPackagesKeepDirectionalDependencies()
             throws IOException {
-        assertThat(readSources(WORKER_DELIVERY_PROTOCOL))
-                .doesNotContain("org.springframework")
-                .doesNotContain("jakarta.")
-                .doesNotContain(".workerdelivery.http")
-                .doesNotContain(".workerdelivery.redis")
-                .doesNotContain("WorkerDeliveryService")
-                .doesNotContain("WorkerDeliveryRuntime");
-
         assertThat(readSources(WORKER_DELIVERY_HTTP))
                 .doesNotContain(".workerdelivery.redis")
                 .doesNotContain("WorkerDeliveryRuntime")

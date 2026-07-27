@@ -1,14 +1,17 @@
 # Worker Delivery Dispatch
 
 Status: active new-kernel boundary contract; Python protocol/Redis oracle,
-Java point Gateway and WebSocket Adapter, and phone-tool Worker implemented;
-production authentication and multi-instance policy deferred.
+shared Java protocol, Java point Gateway and WebSocket Adapter, and one-slot
+polling/WebSocket phone Worker implemented; production authentication and
+multi-instance policy deferred.
 
 Upstream contract: [Task Dispatch Pacer](task-dispatch-pacer.md).
 Worker lease contract:
 [Worker HOT_ACQUIRE Lease Protocol](worker-hot-acquire-lease-protocol.md).
 Executable HTTP host:
 [JVM Runtime API Server](../../../server_jvm/README.md).
+Java Worker:
+[JVM Worker](../../../worker_jvm/README.md).
 
 ## Purpose
 
@@ -280,6 +283,22 @@ The Worker decodes `DeliverSeed`, verifies `seed.workerId` matches its identity,
 executes `opaqueDeliveryItem`, and copies `opaqueResultContext` into
 `SeedResult`. It copies only the original `commandId`; `messageType` and
 `executeBeforeMillis` are command-side coordinates.
+
+The repository's Java reference Worker implements this boundary once and
+selects either polling or WebSocket at startup. Both profiles are serial:
+
+```text
+WorkerCommandEnvelope
+  -> deadline check
+  -> DeliverSeed decode and WorkerId check
+  -> event handler
+  -> SeedResult
+```
+
+Polling retains one failed result in process memory and retries it before
+polling another command. WebSocket requests another message only after result
+send completion and retains a failed send for the next connection. Neither
+profile accesses Adapter batch APIs, Redis, scores, Pacers, or TaskType.
 
 `3xxx` remains reserved for trusted Adapter rejection evidence. A polling
 Worker cannot submit it; the Adapter batch endpoint is its protocol ingress.

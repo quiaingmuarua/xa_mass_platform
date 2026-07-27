@@ -10,6 +10,10 @@ Status: current repository handoff.
   still call the Python `KernelCommandClient`. Worker Delivery is the one
   deliberate cutover: Java consumes WorkerCommand mailbox fields and appends
   SeedResult queue entries directly through `workerdelivery.redis`.
+- `worker_delivery_contract_jvm/` is the Java 21 transport-neutral
+  WorkerCommand/DeliverSeed/SeedResult contract shared by Server and Worker.
+- `worker_jvm/` is the runnable one-slot Java reference Worker. Polling and
+  WebSocket are transport profiles over one serial command execution core.
 - The legacy Java platform is available exclusively from
   `legacy-java-platform-final-2026-07-24`.
 - There is no compatibility obligation to legacy Java APIs, modules, Redis
@@ -45,9 +49,12 @@ tag.
   `com.xa.mass.server.workerdelivery.redis`, and only for WorkerCommand
   consume/delete plus SeedResult append. Java must not access scores, Pacers,
   scheduling owners, or `kernel_jvm` implementation packages.
-- Keep `workerdelivery.protocol` transport-neutral. HTTP and WebSocket
+- Keep `worker_delivery_contract_jvm` transport-neutral. HTTP and WebSocket
   packages may call `WorkerDeliveryService` but must not import
   `workerdelivery.redis` or `WorkerDeliveryRuntime`.
+- `worker_jvm` may depend only on the shared contract and Worker tool
+  libraries. It must not depend on `server_jvm`, `kernel_jvm`, Python
+  packages, Redis, score, Pacer, or TaskType.
 - One enabled Java WebSocket Adapter owns one configured non-system-polling
   endpoint-manager mailbox. Its session registry and bounded pump are
   process-local evidence, not Kernel Worker truth.
@@ -62,11 +69,11 @@ The scaffold currently contains no public API, DTO, runtime implementation,
 Redis code, or Pacer. The Java Worker Delivery Gateway is a server-side
 transport cutover, not evidence of Kotlin kernel implementation progress.
 
-Gradle is intentional because a future Worker SDK must be consumable as an
-Android library module. Keep that SDK separate from `kernel_jvm`; it may depend
-only on a narrow Android-compatible Worker Delivery contract module, not on
-`kernel_jvm`, Redis, scheduling, assembly, or server implementations. Do not
-create that contract module before its public DTO and codec surface is defined.
+`worker_delivery_contract_jvm` is currently a repository-local Java 21 jar,
+not a published SDK and not an Android compatibility promise. A future
+Java/Android SDK may be evaluated only from a real external-consumer need; it
+must not pull Server, Kernel, Redis, scheduling, or assembly implementations
+into the Worker boundary.
 
 ## Verification
 

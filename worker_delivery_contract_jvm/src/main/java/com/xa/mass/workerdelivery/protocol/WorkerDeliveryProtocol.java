@@ -1,15 +1,12 @@
-package com.xa.mass.server.workerdelivery.protocol;
+package com.xa.mass.workerdelivery.protocol;
 
-import java.util.Collections;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.UUID;
 
 public final class WorkerDeliveryProtocol {
 
     public static final String SYSTEM_POLLING_ENDPOINT_MANAGER_ID =
             "system-polling";
-    public static final String SUCCESS_OUTCOME_CODE = "200";
+    private static final String SUCCESS_OUTCOME_CODE = "200";
 
     private WorkerDeliveryProtocol() {
     }
@@ -19,19 +16,9 @@ public final class WorkerDeliveryProtocol {
     }
 
     public enum SeedResultOutcomeClass {
-        SUCCESS("success"),
-        WORKER_FAILURE("worker-failure"),
-        ADAPTER_REJECTION("adapter-rejection");
-
-        private final String redisKeySuffix;
-
-        SeedResultOutcomeClass(String redisKeySuffix) {
-            this.redisKeySuffix = redisKeySuffix;
-        }
-
-        public String redisKeySuffix() {
-            return redisKeySuffix;
-        }
+        SUCCESS,
+        WORKER_FAILURE,
+        ADAPTER_REJECTION
     }
 
     public record DeliverSeed(
@@ -68,34 +55,6 @@ public final class WorkerDeliveryProtocol {
         }
     }
 
-    public record WorkerCommandPage(
-            Map<String, WorkerCommandEnvelope> workerCommandsByWorkerId,
-            String nextCursor
-    ) {
-        public WorkerCommandPage {
-            if (workerCommandsByWorkerId == null) {
-                throw new IllegalArgumentException(
-                        "workerCommandsByWorkerId must be present"
-                );
-            }
-            var commands = new LinkedHashMap<>(workerCommandsByWorkerId);
-            commands.forEach((workerId, command) -> {
-                requireNonBlank(workerId, "workerId");
-                if (command == null) {
-                    throw new IllegalArgumentException(
-                            "Worker command must be present"
-                    );
-                }
-            });
-            workerCommandsByWorkerId = Collections.unmodifiableMap(commands);
-            if (nextCursor != null && !isDecimal(nextCursor)) {
-                throw new IllegalArgumentException(
-                        "nextCursor must be a Redis cursor or null"
-                );
-            }
-        }
-    }
-
     public record SeedResult(
             String commandId,
             String opaqueResultContext,
@@ -116,7 +75,8 @@ public final class WorkerDeliveryProtocol {
                         "Successful result must carry an opaque payload"
                 );
             }
-            if (opaqueResultPayload != null && opaqueResultPayload.isEmpty()) {
+            if (opaqueResultPayload != null
+                    && opaqueResultPayload.isEmpty()) {
                 throw new IllegalArgumentException(
                         "opaqueResultPayload must be non-empty when present"
                 );
@@ -142,7 +102,7 @@ public final class WorkerDeliveryProtocol {
         };
     }
 
-    public static void requireCanonicalUuid(String value) {
+    private static void requireCanonicalUuid(String value) {
         requireNonBlank(value, "commandId");
         try {
             if (!UUID.fromString(value).toString().equals(value)) {
@@ -156,16 +116,13 @@ public final class WorkerDeliveryProtocol {
         }
     }
 
-    public static void requireNonBlank(String value, String name) {
+    private static void requireNonBlank(String value, String name) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(name + " must be non-blank");
         }
     }
 
-    public static boolean isDecimal(String value) {
-        if (value == null || value.isEmpty()) {
-            return false;
-        }
+    private static boolean isDecimal(String value) {
         for (int index = 0; index < value.length(); index++) {
             char character = value.charAt(index);
             if (character < '0' || character > '9') {

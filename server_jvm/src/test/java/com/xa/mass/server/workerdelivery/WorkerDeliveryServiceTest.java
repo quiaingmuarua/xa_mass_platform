@@ -7,16 +7,15 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import tools.jackson.databind.json.JsonMapper;
 
 class WorkerDeliveryServiceTest {
 
@@ -30,7 +29,7 @@ class WorkerDeliveryServiceTest {
         runtime = mock(WorkerDeliveryRuntime.class);
         service = new WorkerDeliveryService(
                 runtime,
-                new WorkerDeliveryCodec(JsonMapper.builder().build())
+                new WorkerDeliveryCodec()
         );
     }
 

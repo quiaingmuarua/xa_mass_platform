@@ -1,10 +1,10 @@
 package com.xa.mass.server.workerdelivery.websocket;
 
-import static com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultOutcomeClass.ADAPTER_REJECTION;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultOutcomeClass.ADAPTER_REJECTION;
 
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import java.io.IOException;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;

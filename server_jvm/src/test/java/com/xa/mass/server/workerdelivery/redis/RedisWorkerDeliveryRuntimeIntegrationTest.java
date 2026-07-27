@@ -2,9 +2,9 @@ package com.xa.mass.server.workerdelivery.redis;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -17,7 +17,6 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
-import tools.jackson.databind.json.JsonMapper;
 
 @Tag("integration")
 class RedisWorkerDeliveryRuntimeIntegrationTest {
@@ -47,7 +46,7 @@ class RedisWorkerDeliveryRuntimeIntegrationTest {
         redis = connection.sync();
         runtime = new RedisWorkerDeliveryRuntime(
                 redisClient,
-                new WorkerDeliveryCodec(JsonMapper.builder().build()),
+                new WorkerDeliveryCodec(),
                 properties
         );
     }

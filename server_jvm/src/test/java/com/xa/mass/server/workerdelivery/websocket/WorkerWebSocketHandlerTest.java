@@ -8,8 +8,8 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,7 +18,6 @@ import org.springframework.web.socket.BinaryMessage;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
-import tools.jackson.databind.json.JsonMapper;
 
 class WorkerWebSocketHandlerTest {
 
@@ -36,7 +35,7 @@ class WorkerWebSocketHandlerTest {
                 WorkerSessionRegistryTest.properties(1000)
         );
         handler = new WorkerWebSocketHandler(
-                new WorkerDeliveryCodec(JsonMapper.builder().build()),
+                new WorkerDeliveryCodec(),
                 sessions,
                 pump
         );

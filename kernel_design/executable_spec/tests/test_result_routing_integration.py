@@ -17,15 +17,9 @@ try:
     from kernel_design.runtime_server import (
         create_app as create_runtime_app,
     )
-    from kernel_design.examples.polling_phone_worker import (
-        PHONE_INSPECT_EVENT_CODE,
-        inspect_international_phone_number,
-    )
-except (ImportError, RuntimeError):  # pragma: no cover - missing example dependencies
+except (ImportError, RuntimeError):  # pragma: no cover - missing HTTP dependencies
     TestClient = None  # type: ignore[assignment,misc]
     create_runtime_app = None  # type: ignore[assignment]
-    PHONE_INSPECT_EVENT_CODE = None  # type: ignore[assignment]
-    inspect_international_phone_number = None  # type: ignore[assignment]
 
 from kernel_design.executable_spec import (
     RedisTaskItemScoreBandCore,
@@ -48,14 +42,21 @@ from kernel_design.executable_spec.assembly import (
 
 
 _REDIS_URL = os.environ.get("KERNEL_DESIGN_REDIS_URL")
+_PHONE_INSPECT_EVENT_CODE = "telecom.phone.inspect"
+_FIXED_WORKER_RESULT = {
+    "countryCallingCode": 1,
+    "e164": "+14155552671",
+    "isPossible": True,
+    "isValid": True,
+    "regionCode": "US",
+}
 
 
 @unittest.skipUnless(
     redis_module is not None
     and _REDIS_URL
     and TestClient is not None
-    and create_runtime_app is not None
-    and inspect_international_phone_number is not None,
+    and create_runtime_app is not None,
     "set KERNEL_DESIGN_REDIS_URL to run result-routing Redis closure proof",
 )
 class ResultRoutingIntegrationTest(unittest.TestCase):
@@ -131,7 +132,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
             "/worker-groups/phone-tools",
             json={
                 "attributes": {},
-                "eventCodes": [PHONE_INSPECT_EVENT_CODE],
+                "eventCodes": [_PHONE_INSPECT_EVENT_CODE],
                 "itemAllocationFields": (
                     ["workerId"]
                     if task_type is TaskType.ITEM_DRIVEN
@@ -157,7 +158,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         approval_response = self.runtime_server.post("/tasks/task-1/approve")
         item: dict[str, object] = {
             "messageId": "message-1",
-            "eventCode": PHONE_INSPECT_EVENT_CODE,
+            "eventCode": _PHONE_INSPECT_EVENT_CODE,
             "createdAtMillis": int(time.time() * 1_000) - 1_000,
             "payload": {"phoneNumber": "+14155552671"},
         }
@@ -210,13 +211,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         )
         self.assertIsNotNone(stored_payload)
         self.assertEqual(
-            {
-                "countryCallingCode": 1,
-                "e164": "+14155552671",
-                "isPossible": True,
-                "isValid": True,
-                "regionCode": "US",
-            },
+            _FIXED_WORKER_RESULT,
             json.loads(stored_payload),
         )
         self.assertEqual(
@@ -361,10 +356,9 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         assert seed is not None
         self.assertEqual(worker_id, seed.worker_id)
         delivery_item = json.loads(seed.opaque_delivery_item)
-        self.assertEqual(PHONE_INSPECT_EVENT_CODE, delivery_item["eventCode"])
-        assert inspect_international_phone_number is not None
-        result_payload = inspect_international_phone_number(
-            delivery_item["payload"]["phoneNumber"]
+        self.assertEqual(
+            _PHONE_INSPECT_EVENT_CODE,
+            delivery_item["eventCode"],
         )
         accepted = self.result_commands.append_seed_results(
             results=(
@@ -373,7 +367,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
                     opaque_result_context=seed.opaque_result_context,
                     outcome_code="200",
                     opaque_result_payload=json.dumps(
-                        result_payload,
+                        _FIXED_WORKER_RESULT,
                         allow_nan=False,
                         sort_keys=True,
                         separators=(",", ":"),

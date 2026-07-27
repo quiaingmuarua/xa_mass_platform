@@ -1,6 +1,6 @@
 package com.xa.mass.server.workerdelivery.websocket;
 
-import static com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID;
 
 import java.time.Duration;
 import org.springframework.boot.context.properties.ConfigurationProperties;

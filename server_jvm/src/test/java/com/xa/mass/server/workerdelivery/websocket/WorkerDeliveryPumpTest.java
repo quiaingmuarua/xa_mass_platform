@@ -11,17 +11,16 @@ import static org.mockito.Mockito.when;
 
 import com.xa.mass.server.workerdelivery.WorkerDeliveryException;
 import com.xa.mass.server.workerdelivery.WorkerDeliveryService;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandPage;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.server.workerdelivery.WorkerDeliveryRuntime.WorkerCommandPage;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
 import com.xa.mass.server.workerdelivery.websocket.WorkerSessionRegistry.DeliveryAttempt;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import tools.jackson.databind.json.JsonMapper;
 
 class WorkerDeliveryPumpTest {
 
@@ -37,7 +36,7 @@ class WorkerDeliveryPumpTest {
         sessions = mock(WorkerSessionRegistry.class);
         pump = new WorkerDeliveryPump(
                 service,
-                new WorkerDeliveryCodec(JsonMapper.builder().build()),
+                new WorkerDeliveryCodec(),
                 sessions,
                 WorkerSessionRegistryTest.properties(2),
                 () -> 1_000L

@@ -2,9 +2,8 @@ package com.xa.mass.server.workerdelivery.http;
 
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.xa.mass.server.workerdelivery.WorkerDeliveryException;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -22,7 +21,7 @@ public final class WorkerDeliveryHttpContract {
             @Positive int scanCount
     ) {
         public WorkerCommandConsumeRequest {
-            if (cursor != null && !WorkerDeliveryProtocol.isDecimal(cursor)) {
+            if (cursor != null && !isDecimal(cursor)) {
                 throw new IllegalArgumentException(
                         "cursor must be a non-negative Redis cursor"
                 );
@@ -85,5 +84,18 @@ public final class WorkerDeliveryHttpContract {
     }
 
     public record AcceptedCountResponse(int acceptedCount) {
+    }
+
+    private static boolean isDecimal(String value) {
+        if (value.isEmpty()) {
+            return false;
+        }
+        for (int index = 0; index < value.length(); index++) {
+            char character = value.charAt(index);
+            if (character < '0' || character > '9') {
+                return false;
+            }
+        }
+        return true;
     }
 }

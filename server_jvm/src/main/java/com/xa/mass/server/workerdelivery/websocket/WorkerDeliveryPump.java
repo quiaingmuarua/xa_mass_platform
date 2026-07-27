@@ -1,9 +1,9 @@
 package com.xa.mass.server.workerdelivery.websocket;
 
 import com.xa.mass.server.workerdelivery.WorkerDeliveryService;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
-import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import com.xa.mass.server.workerdelivery.websocket.WorkerSessionRegistry.DeliveryAttempt;
 import java.time.Duration;
 import java.util.ArrayList;
