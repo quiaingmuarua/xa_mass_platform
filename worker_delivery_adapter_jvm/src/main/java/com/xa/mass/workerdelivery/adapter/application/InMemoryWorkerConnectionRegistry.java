@@ -2,52 +2,44 @@ package com.xa.mass.workerdelivery.adapter.application;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerConnection.CommandDeliveryAttempt;
 import com.xa.mass.workerdelivery.adapter.application.WorkerConnection.WorkerConnectionCloseReason;
-import com.xa.mass.workerdelivery.adapter.application.WorkerSessionDirectory.WorkerSessionToken;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicLong;
 
-public final class InMemoryWorkerSessionDirectory
-        implements WorkerSessionDirectory {
+public final class InMemoryWorkerConnectionRegistry
+        implements WorkerConnectionRegistry {
 
-    private final Map<String, SessionHandle> sessions =
+    private final Map<String, ConnectionHandle> connections =
             new ConcurrentHashMap<>();
-    private final AtomicLong generations = new AtomicLong();
 
     @Override
-    public WorkerSessionToken bind(
+    public void bind(
             String workerId,
             WorkerConnection connection
     ) {
         requireWorkerId(workerId);
         Objects.requireNonNull(connection, "connection");
-        WorkerSessionToken token = new InMemoryWorkerSessionToken(
+        ConnectionHandle replacement = new ConnectionHandle(connection);
+        ConnectionHandle previous = connections.put(
                 workerId,
-                generations.incrementAndGet()
+                replacement
         );
-        SessionHandle replacement = new SessionHandle(token, connection);
-        SessionHandle previous = sessions.put(workerId, replacement);
         if (previous != null) {
             close(previous, WorkerConnectionCloseReason.REPLACED);
         }
-        return token;
     }
 
     @Override
-    public void unbind(WorkerSessionToken token) {
-        Objects.requireNonNull(token, "token");
-        sessions.computeIfPresent(token.workerId(), (ignored, current) ->
-                current.token().equals(token) ? null : current
+    public void unbind(
+            String workerId,
+            WorkerConnection connection
+    ) {
+        requireWorkerId(workerId);
+        Objects.requireNonNull(connection, "connection");
+        connections.computeIfPresent(workerId, (ignored, current) ->
+                current.connection() == connection ? null : current
         );
-    }
-
-    @Override
-    public boolean isCurrent(WorkerSessionToken token) {
-        Objects.requireNonNull(token, "token");
-        SessionHandle current = sessions.get(token.workerId());
-        return current != null && current.token().equals(token);
     }
 
     @Override
@@ -57,7 +49,7 @@ public final class InMemoryWorkerSessionDirectory
     ) {
         requireWorkerId(workerId);
         Objects.requireNonNull(command, "command");
-        SessionHandle current = sessions.get(workerId);
+        ConnectionHandle current = connections.get(workerId);
         if (current == null) {
             return CommandDeliveryAttempt.REJECTED_BEFORE_SEND;
         }
@@ -72,6 +64,7 @@ public final class InMemoryWorkerSessionDirectory
         }
         if (attempt != CommandDeliveryAttempt.DELIVERED) {
             removeAndClose(
+                    workerId,
                     current,
                     WorkerConnectionCloseReason.TRANSPORT_ERROR
             );
@@ -80,47 +73,42 @@ public final class InMemoryWorkerSessionDirectory
     }
 
     @Override
-    public void close(
-            WorkerSessionToken token,
-            WorkerConnectionCloseReason reason
-    ) {
-        Objects.requireNonNull(token, "token");
-        Objects.requireNonNull(reason, "reason");
-        SessionHandle current = sessions.get(token.workerId());
-        if (current != null && current.token().equals(token)) {
-            removeAndClose(current, reason);
-        }
-    }
-
-    @Override
     public void closeAll(WorkerConnectionCloseReason reason) {
         Objects.requireNonNull(reason, "reason");
-        sessions.forEach((ignored, current) ->
-                removeAndClose(current, reason)
+        connections.forEach((workerId, current) ->
+                removeAndClose(workerId, current, reason)
         );
     }
 
-    int activeSessionCount() {
-        return sessions.size();
+    int activeConnectionCount() {
+        return connections.size();
     }
 
     private void removeAndClose(
-            SessionHandle handle,
+            String workerId,
+            ConnectionHandle handle,
             WorkerConnectionCloseReason reason
     ) {
-        if (sessions.remove(handle.token().workerId(), handle)) {
+        if (removeExact(workerId, handle)) {
             close(handle, reason);
         }
     }
 
+    private boolean removeExact(
+            String workerId,
+            ConnectionHandle expected
+    ) {
+        return connections.remove(workerId, expected);
+    }
+
     private static void close(
-            SessionHandle handle,
+            ConnectionHandle handle,
             WorkerConnectionCloseReason reason
     ) {
         try {
             handle.connection().close(reason);
         } catch (RuntimeException ignored) {
-            // Session teardown is best effort.
+            // Connection teardown is best effort.
         }
     }
 
@@ -132,23 +120,16 @@ public final class InMemoryWorkerSessionDirectory
         }
     }
 
-    private record SessionHandle(
-            WorkerSessionToken token,
-            WorkerConnection connection
-    ) {
-    }
+    private static final class ConnectionHandle {
 
-    private record InMemoryWorkerSessionToken(
-            String workerId,
-            long generation
-    ) implements WorkerSessionToken {
-        private InMemoryWorkerSessionToken {
-            requireWorkerId(workerId);
-            if (generation <= 0) {
-                throw new IllegalArgumentException(
-                        "generation must be positive"
-                );
-            }
+        private final WorkerConnection connection;
+
+        private ConnectionHandle(WorkerConnection connection) {
+            this.connection = connection;
+        }
+
+        private WorkerConnection connection() {
+            return connection;
         }
     }
 }

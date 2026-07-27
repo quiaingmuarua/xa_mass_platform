@@ -3,13 +3,11 @@ package com.xa.mass.workerdelivery.adapter.application;
 import static com.xa.mass.workerdelivery.adapter.application.WorkerConnection.CommandDeliveryAttempt.DELIVERED;
 import static com.xa.mass.workerdelivery.adapter.application.WorkerConnection.CommandDeliveryAttempt.REJECTED_BEFORE_SEND;
 import static com.xa.mass.workerdelivery.adapter.application.WorkerConnection.WorkerConnectionCloseReason.ADAPTER_STOPPING;
-import static com.xa.mass.workerdelivery.adapter.application.WorkerConnection.WorkerConnectionCloseReason.RESULT_BUFFER_FULL;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultOutcomeClass.SUCCESS;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultOutcomeClass.WORKER_FAILURE;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerConnection.CommandDeliveryAttempt;
-import com.xa.mass.workerdelivery.adapter.application.WorkerSessionDirectory.WorkerSessionToken;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliverSeed;
@@ -27,7 +25,7 @@ public final class WorkerDeliveryAdapter implements AutoCloseable {
     private static final String UNAVAILABLE_WORKER_OUTCOME_CODE = "3001";
     private final WorkerDeliveryGatewayClient gateway;
     private final WorkerDeliveryCodec codec;
-    private final WorkerSessionDirectory sessions;
+    private final WorkerConnectionRegistry connections;
     private final Config config;
     private final LongSupplier nowMillis;
     private final ArrayBlockingQueue<SeedResult> resultBuffer;
@@ -37,22 +35,25 @@ public final class WorkerDeliveryAdapter implements AutoCloseable {
     public WorkerDeliveryAdapter(
             WorkerDeliveryGatewayClient gateway,
             WorkerDeliveryCodec codec,
-            WorkerSessionDirectory sessions,
+            WorkerConnectionRegistry connections,
             Config config
     ) {
-        this(gateway, codec, sessions, config, System::currentTimeMillis);
+        this(gateway, codec, connections, config, System::currentTimeMillis);
     }
 
     WorkerDeliveryAdapter(
             WorkerDeliveryGatewayClient gateway,
             WorkerDeliveryCodec codec,
-            WorkerSessionDirectory sessions,
+            WorkerConnectionRegistry connections,
             Config config,
             LongSupplier nowMillis
     ) {
         this.gateway = Objects.requireNonNull(gateway, "gateway");
         this.codec = Objects.requireNonNull(codec, "codec");
-        this.sessions = Objects.requireNonNull(sessions, "sessions");
+        this.connections = Objects.requireNonNull(
+                connections,
+                "connections"
+        );
         this.config = Objects.requireNonNull(config, "config");
         this.nowMillis = Objects.requireNonNull(nowMillis, "nowMillis");
         resultBuffer = new ArrayBlockingQueue<>(
@@ -60,26 +61,24 @@ public final class WorkerDeliveryAdapter implements AutoCloseable {
         );
     }
 
-    public WorkerSessionToken connectWorker(
+    public void connectWorker(
             String workerId,
             WorkerConnection connection
     ) {
-        return sessions.bind(workerId, connection);
+        connections.bind(workerId, connection);
     }
 
-    public void disconnectWorker(WorkerSessionToken token) {
-        sessions.unbind(token);
+    public void disconnectWorker(
+            String workerId,
+            WorkerConnection connection
+    ) {
+        connections.unbind(workerId, connection);
     }
 
     public WorkerResultAcceptance acceptWorkerResult(
-            WorkerSessionToken token,
             SeedResult result
     ) {
-        Objects.requireNonNull(token, "token");
         Objects.requireNonNull(result, "result");
-        if (!sessions.isCurrent(token)) {
-            return WorkerResultAcceptance.STALE_SESSION;
-        }
         var outcomeClass = WorkerDeliveryProtocol.classifyOutcomeCode(
                 result.outcomeCode()
         );
@@ -87,7 +86,6 @@ public final class WorkerDeliveryAdapter implements AutoCloseable {
             return WorkerResultAcceptance.INVALID_OUTCOME;
         }
         if (!resultBuffer.offer(result)) {
-            sessions.close(token, RESULT_BUFFER_FULL);
             return WorkerResultAcceptance.BUFFER_FULL;
         }
         return WorkerResultAcceptance.ACCEPTED;
@@ -119,7 +117,7 @@ public final class WorkerDeliveryAdapter implements AutoCloseable {
                 expiredCount++;
                 continue;
             }
-            CommandDeliveryAttempt attempt = sessions.deliver(
+            CommandDeliveryAttempt attempt = connections.deliver(
                     workerId,
                     command
             );
@@ -159,7 +157,7 @@ public final class WorkerDeliveryAdapter implements AutoCloseable {
             flushPendingResults();
             flushBufferedResults();
         } finally {
-            sessions.closeAll(ADAPTER_STOPPING);
+            connections.closeAll(ADAPTER_STOPPING);
         }
     }
 
@@ -245,7 +243,6 @@ public final class WorkerDeliveryAdapter implements AutoCloseable {
 
     public enum WorkerResultAcceptance {
         ACCEPTED,
-        STALE_SESSION,
         INVALID_OUTCOME,
         BUFFER_FULL
     }

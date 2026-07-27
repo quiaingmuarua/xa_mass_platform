@@ -929,7 +929,7 @@ Worker score-band does not:
 read TaskItem records
 claim Item score
 select transport route
-inspect adapter sessions directly
+inspect adapter connections directly
 write task score
 create or own Worker candidate cache; transient `CandidateWorkerCache` ZSETs
 belong to assignment-dispatch

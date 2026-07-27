@@ -2,10 +2,11 @@ package com.xa.mass.workerdelivery.adapter.websocket;
 
 import static com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter.WorkerResultAcceptance.ACCEPTED;
 import static com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter.WorkerResultAcceptance.BUFFER_FULL;
+import static com.xa.mass.workerdelivery.adapter.application.WorkerConnection.WorkerConnectionCloseReason.RESULT_BUFFER_FULL;
 
+import com.xa.mass.workerdelivery.adapter.application.WorkerConnection;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter.WorkerResultAcceptance;
-import com.xa.mass.workerdelivery.adapter.application.WorkerSessionDirectory.WorkerSessionToken;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import java.io.IOException;
@@ -25,8 +26,8 @@ public final class WorkerWebSocketHandler extends TextWebSocketHandler {
             "/api/v1/worker-delivery/websocket/workers/";
     public static final String WORKER_ID_ATTRIBUTE =
             WorkerWebSocketHandler.class.getName() + ".workerId";
-    private static final String SESSION_TOKEN_ATTRIBUTE =
-            WorkerWebSocketHandler.class.getName() + ".sessionToken";
+    private static final String CONNECTION_ATTRIBUTE =
+            WorkerWebSocketHandler.class.getName() + ".connection";
     private final WorkerDeliveryCodec codec;
     private final WorkerDeliveryAdapter adapter;
     private final Duration sendTimeLimit;
@@ -46,15 +47,13 @@ public final class WorkerWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) {
-        WorkerSessionToken token = adapter.connectWorker(
-                workerId(session),
-                new SpringWebSocketWorkerConnection(
-                        session,
-                        codec,
-                        sendTimeLimit
-                )
+        WorkerConnection connection = new SpringWebSocketWorkerConnection(
+                session,
+                codec,
+                sendTimeLimit
         );
-        session.getAttributes().put(SESSION_TOKEN_ATTRIBUTE, token);
+        session.getAttributes().put(CONNECTION_ATTRIBUTE, connection);
+        adapter.connectWorker(workerId(session), connection);
     }
 
     @Override
@@ -64,20 +63,20 @@ public final class WorkerWebSocketHandler extends TextWebSocketHandler {
     ) throws IOException {
         SeedResult result = codec.decodeSeedResult(message.getPayload());
         if (result == null) {
-            close(session, CloseStatus.BAD_DATA);
+            disconnectAndClose(session, CloseStatus.BAD_DATA);
             return;
         }
         WorkerResultAcceptance acceptance =
-                adapter.acceptWorkerResult(token(session), result);
-        if (acceptance == ACCEPTED || acceptance == BUFFER_FULL) {
+                adapter.acceptWorkerResult(result);
+        if (acceptance == ACCEPTED) {
             return;
         }
-        close(
-                session,
-                acceptance == WorkerResultAcceptance.INVALID_OUTCOME
-                        ? CloseStatus.BAD_DATA
-                        : CloseStatus.POLICY_VIOLATION
-        );
+        if (acceptance == BUFFER_FULL) {
+            disconnect(session);
+            connection(session).close(RESULT_BUFFER_FULL);
+            return;
+        }
+        disconnectAndClose(session, CloseStatus.BAD_DATA);
     }
 
     @Override
@@ -86,7 +85,7 @@ public final class WorkerWebSocketHandler extends TextWebSocketHandler {
             BinaryMessage message
     ) {
         try {
-            close(session, CloseStatus.NOT_ACCEPTABLE);
+            disconnectAndClose(session, CloseStatus.NOT_ACCEPTABLE);
         } catch (IOException ignored) {
             // Transport teardown is best effort.
         }
@@ -110,20 +109,25 @@ public final class WorkerWebSocketHandler extends TextWebSocketHandler {
     }
 
     private void disconnect(WebSocketSession session) {
-        Object token = session.getAttributes().get(SESSION_TOKEN_ATTRIBUTE);
-        if (token instanceof WorkerSessionToken sessionToken) {
-            adapter.disconnectWorker(sessionToken);
+        Object connection = session.getAttributes().get(
+                CONNECTION_ATTRIBUTE
+        );
+        Object workerId = session.getAttributes().get(WORKER_ID_ATTRIBUTE);
+        if (connection instanceof WorkerConnection workerConnection
+                && workerId instanceof String value
+                && !value.isBlank()) {
+            adapter.disconnectWorker(value, workerConnection);
         }
     }
 
-    private static WorkerSessionToken token(WebSocketSession session) {
-        Object value = session.getAttributes().get(SESSION_TOKEN_ATTRIBUTE);
-        if (!(value instanceof WorkerSessionToken token)) {
+    private static WorkerConnection connection(WebSocketSession session) {
+        Object value = session.getAttributes().get(CONNECTION_ATTRIBUTE);
+        if (!(value instanceof WorkerConnection connection)) {
             throw new IllegalStateException(
-                    "Worker WebSocket session has no session token"
+                    "Worker WebSocket session has no connection"
             );
         }
-        return token;
+        return connection;
     }
 
     private static String workerId(WebSocketSession session) {
@@ -143,5 +147,13 @@ public final class WorkerWebSocketHandler extends TextWebSocketHandler {
         if (session.isOpen()) {
             session.close(status);
         }
+    }
+
+    private void disconnectAndClose(
+            WebSocketSession session,
+            CloseStatus status
+    ) throws IOException {
+        disconnect(session);
+        close(session, status);
     }
 }

@@ -340,13 +340,13 @@ execution core.
 Polling is a base request-driven protocol, not an independently deployed
 Adapter. The framework-free Java Adapter Core owns one configured
 non-`system-polling` endpoint manager, cursor-consumes that sparse mailbox
-through the Server batch HTTP API, maintains one process-local session
-generation per WorkerId, and applies dispatch/result-buffer policy. The
+through the Server batch HTTP API, maintains one current connection per
+WorkerId, and applies dispatch/result-buffer policy. The
 Adapter module converts WebSocket frames and connection callbacks into Core
 calls. The Server only hosts the endpoint, configures it, and schedules bounded
 rounds. Workers upsert before connecting. The Core has no
 Spring/Kernel/Redis/thread dependency, and KernelApplication does not own or
-expose session facts.
+expose connection facts.
 
 The Python Runtime Server remains the scheduling command host and mechanism
 oracle. Java TaskData and Worker Delivery own their current external HTTP
@@ -375,8 +375,8 @@ delivery, and API compatibility remain out of scope.
 - Do not expose cursor scanning through the polling Worker endpoint.
 - Do not let the WebSocket Adapter bypass Server batch HTTP through Redis or
   an in-process call.
-- Do not move Adapter cursor, session-generation, result-buffer, `3001`, or
-  `UNKNOWN` policy into a WebSocket lifecycle host.
+- Do not move Adapter cursor, current-connection selection, result-buffer,
+  `3001`, or `UNKNOWN` policy into the Server lifecycle host.
 - Do not turn internal Pacer configuration into public JSON without a concrete
   operational requirement.
 - Keep result-routing and assignment-dispatch as separate internal application

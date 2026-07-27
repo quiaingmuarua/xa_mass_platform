@@ -9,7 +9,7 @@ The module's Core owns the transport-independent Adapter behavior:
 Server Adapter batch HTTP API
   -> WorkerDeliveryGatewayClient
   -> WorkerDeliveryAdapter.dispatchOnce
-  -> WorkerSessionDirectory
+  -> WorkerConnectionRegistry
   -> WorkerConnection
   -> bounded Worker/Adapter result buffering
   -> Server Adapter batch result API
@@ -29,17 +29,22 @@ WorkerDeliveryGatewayClient
 WorkerConnection
   attempt one already-assigned command and close one transport connection
 
-WorkerSessionDirectory
-  issue generation tokens, replace sessions, deliver by WorkerId, and close
+WorkerConnectionRegistry
+  retain one current connection per WorkerId, replace, deliver, and close
 
 WorkerDeliveryAdapter
-  accept current-session results and execute one bounded dispatch round
+  accept Worker results and execute one bounded dispatch round
 ```
 
-`WorkerSessionToken` exposes `workerId + generation`, while each Directory
-implementation privately creates its token. A newer binding replaces the
-previous connection; stale disconnect callbacks and stale results cannot act
-as the current generation.
+A newer binding immediately becomes the only command-delivery connection.
+Unbind uses `workerId + WorkerConnection` identity, so an old connection's
+delayed close callback cannot remove its replacement. The replaced connection
+is closed best-effort for resource cleanup.
+
+SeedResult acceptance is deliberately independent of the current connection.
+A result already produced through a replaced connection remains valid evidence
+for Kernel ResultRouting; opaque result context and Worker lease fences, not
+Adapter connection identity, decide whether it can affect current truth.
 
 Delivery evidence is explicit:
 
@@ -62,7 +67,7 @@ retried before consuming more commands. Process failure may lose in-memory
 results; Kernel Item claims and Worker lease fences remain the convergence
 boundary.
 
-`InMemoryWorkerSessionDirectory` is the current process-local implementation.
+`InMemoryWorkerConnectionRegistry` is the current process-local implementation.
 Different Adapter instances may own different endpoint-manager IDs. The Core
 does not provide same-endpoint distributed ownership.
 
@@ -87,8 +92,8 @@ WorkerWebSocketEndpointConfigurer
 This dependency is Spring Framework WebSocket, not Spring Boot. The module has
 no application Main, configuration properties, scheduled thread, or framework
 lifecycle. `server_jvm` supplies those process concerns and may enable this
-Adapter. The Server host must not move cursor, session generation, result
-buffering, `3001`, or `UNKNOWN` semantics out of the Core.
+Adapter. The Server host must not move cursor, active-connection selection,
+result buffering, `3001`, or `UNKNOWN` semantics out of the Core.
 
 ## Verification
 

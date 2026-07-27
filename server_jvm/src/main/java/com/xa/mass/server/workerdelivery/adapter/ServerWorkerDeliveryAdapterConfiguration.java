@@ -1,9 +1,9 @@
 package com.xa.mass.server.workerdelivery.adapter;
 
-import com.xa.mass.workerdelivery.adapter.application.InMemoryWorkerSessionDirectory;
+import com.xa.mass.workerdelivery.adapter.application.InMemoryWorkerConnectionRegistry;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
-import com.xa.mass.workerdelivery.adapter.application.WorkerSessionDirectory;
+import com.xa.mass.workerdelivery.adapter.application.WorkerConnectionRegistry;
 import com.xa.mass.workerdelivery.adapter.http.HttpWorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.adapter.websocket.WorkerWebSocketEndpointConfigurer;
 import com.xa.mass.workerdelivery.adapter.websocket.WorkerWebSocketHandler;
@@ -39,21 +39,21 @@ public class ServerWorkerDeliveryAdapterConfiguration {
     }
 
     @Bean
-    WorkerSessionDirectory workerSessionDirectory() {
-        return new InMemoryWorkerSessionDirectory();
+    WorkerConnectionRegistry workerConnectionRegistry() {
+        return new InMemoryWorkerConnectionRegistry();
     }
 
     @Bean(destroyMethod = "")
     WorkerDeliveryAdapter workerDeliveryAdapter(
             WorkerDeliveryGatewayClient gateway,
             WorkerDeliveryCodec codec,
-            WorkerSessionDirectory sessions,
+            WorkerConnectionRegistry connections,
             ServerWorkerDeliveryAdapterProperties properties
     ) {
         return new WorkerDeliveryAdapter(
                 gateway,
                 codec,
-                sessions,
+                connections,
                 new WorkerDeliveryAdapter.Config(
                         properties.endpointManagerId(),
                         properties.scanCount(),

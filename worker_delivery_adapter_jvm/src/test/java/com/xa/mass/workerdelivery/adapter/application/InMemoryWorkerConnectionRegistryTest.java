@@ -9,60 +9,84 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerConnection.CommandDeliveryAttempt;
 import com.xa.mass.workerdelivery.adapter.application.WorkerConnection.WorkerConnectionCloseReason;
-import com.xa.mass.workerdelivery.adapter.application.WorkerSessionDirectory.WorkerSessionToken;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
 import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
-class InMemoryWorkerSessionDirectoryTest {
+class InMemoryWorkerConnectionRegistryTest {
 
     @Test
-    void replacementAndStaleUnbindPreserveNewGeneration() {
-        InMemoryWorkerSessionDirectory directory =
-                new InMemoryWorkerSessionDirectory();
+    void replacementAndOldUnbindPreserveCurrentConnection() {
+        InMemoryWorkerConnectionRegistry registry =
+                new InMemoryWorkerConnectionRegistry();
         FakeConnection first = new FakeConnection(DELIVERED);
         FakeConnection second = new FakeConnection(DELIVERED);
 
-        WorkerSessionToken firstToken =
-                directory.bind("worker-1", first);
-        WorkerSessionToken secondToken =
-                directory.bind("worker-1", second);
-        directory.unbind(firstToken);
+        registry.bind("worker-1", first);
+        registry.bind("worker-1", second);
+        registry.unbind("worker-1", first);
 
         assertThat(first.closedReasons).containsExactly(REPLACED);
-        assertThat(directory.isCurrent(firstToken)).isFalse();
-        assertThat(directory.isCurrent(secondToken)).isTrue();
-        assertThat(secondToken.generation())
-                .isGreaterThan(firstToken.generation());
-        assertThat(directory.activeSessionCount()).isEqualTo(1);
+        assertThat(registry.deliver("worker-1", command()))
+                .isEqualTo(DELIVERED);
+        assertThat(first.deliverCount).isZero();
+        assertThat(second.deliverCount).isEqualTo(1);
+        assertThat(registry.activeConnectionCount()).isEqualTo(1);
     }
 
     @Test
-    void missingSessionRejectsBeforeSend() {
-        InMemoryWorkerSessionDirectory directory =
-                new InMemoryWorkerSessionDirectory();
+    void missingConnectionRejectsBeforeSend() {
+        InMemoryWorkerConnectionRegistry registry =
+                new InMemoryWorkerConnectionRegistry();
 
-        assertThat(directory.deliver("worker-1", command()))
+        assertThat(registry.deliver("worker-1", command()))
                 .isEqualTo(REJECTED_BEFORE_SEND);
     }
 
     @Test
     void unknownSendRemovesAndClosesCurrentConnection() {
-        InMemoryWorkerSessionDirectory directory =
-                new InMemoryWorkerSessionDirectory();
+        InMemoryWorkerConnectionRegistry registry =
+                new InMemoryWorkerConnectionRegistry();
         FakeConnection connection = new FakeConnection(UNKNOWN);
-        WorkerSessionToken token =
-                directory.bind("worker-1", connection);
+        registry.bind("worker-1", connection);
 
         CommandDeliveryAttempt result =
-                directory.deliver("worker-1", command());
+                registry.deliver("worker-1", command());
 
         assertThat(result).isEqualTo(UNKNOWN);
-        assertThat(directory.isCurrent(token)).isFalse();
+        assertThat(registry.activeConnectionCount()).isZero();
         assertThat(connection.closedReasons)
                 .containsExactly(TRANSPORT_ERROR);
+    }
+
+    @Test
+    void failedOldSendCannotRemoveConnectionBoundDuringSend() {
+        InMemoryWorkerConnectionRegistry registry =
+                new InMemoryWorkerConnectionRegistry();
+        FakeConnection replacement = new FakeConnection(DELIVERED);
+        WorkerConnection old = new WorkerConnection() {
+            @Override
+            public CommandDeliveryAttempt deliver(
+                    WorkerCommandEnvelope command
+            ) {
+                registry.bind("worker-1", replacement);
+                return UNKNOWN;
+            }
+
+            @Override
+            public void close(WorkerConnectionCloseReason reason) {
+            }
+        };
+        registry.bind("worker-1", old);
+
+        assertThat(registry.deliver("worker-1", command()))
+                .isEqualTo(UNKNOWN);
+        assertThat(registry.deliver("worker-1", command()))
+                .isEqualTo(DELIVERED);
+        assertThat(replacement.deliverCount).isEqualTo(1);
+        assertThat(registry.activeConnectionCount()).isEqualTo(1);
     }
 
     private static WorkerCommandEnvelope command() {
@@ -79,6 +103,7 @@ class InMemoryWorkerSessionDirectoryTest {
         private final CommandDeliveryAttempt attempt;
         private final List<WorkerConnectionCloseReason> closedReasons =
                 new ArrayList<>();
+        private int deliverCount;
 
         private FakeConnection(CommandDeliveryAttempt attempt) {
             this.attempt = attempt;
@@ -88,6 +113,7 @@ class InMemoryWorkerSessionDirectoryTest {
         public CommandDeliveryAttempt deliver(
                 WorkerCommandEnvelope command
         ) {
+            deliverCount++;
             return attempt;
         }
 

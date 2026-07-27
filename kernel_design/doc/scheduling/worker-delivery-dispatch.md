@@ -32,7 +32,7 @@ Server Worker Delivery API
 
 WebSocket Adapter
   -> call the Server batch HTTP API
-  -> Core maintains Worker sessions, dispatch and result buffering
+  -> Core maintains current Worker connections, dispatch and result buffering
   -> Adapter transport adapts Spring WebSocket frames and connections
   -> Server host configures the endpoint and schedules Core rounds
   -> push commands and batch Worker/trusted Adapter results
@@ -211,7 +211,7 @@ endpointManagerId = system-polling
 ```
 
 This is a fixed logical route identity, not an independently deployed Adapter,
-session owner, thread, or runtime truth.
+connection owner, thread, or runtime truth.
 
 Start Python scheduling and the Java external server:
 
@@ -316,15 +316,19 @@ Worker cannot submit it; the Adapter batch endpoint is its protocol ingress.
 Authentication of that Adapter role is deferred.
 
 One Adapter Core instance owns one configured non-`system-polling`
-endpoint-manager mailbox. One WorkerId has one current session; a newer
-connection replaces the old session without allowing the old close callback to
-remove the new generation.
+endpoint-manager mailbox. One WorkerId has one current command-delivery
+connection. A newer connection replaces and best-effort closes the old
+connection; exact instance removal prevents the old close callback from
+removing the replacement.
 
 The framework-free Core cursor-consumes one bounded page through the Server
 batch HTTP API, rechecks the command deadline, dispatches the exact
-WorkerCommand, accepts current-session `200/1xxx` results, buffers them in
+WorkerCommand, accepts Worker-originated `200/1xxx` results, buffers them in
 bounded process memory, and submits them through the Server batch result HTTP
-API. The Adapter module's concrete WebSocket package translates connection
+API. Result acceptance is not fenced by the current connection: evidence
+already produced through a replaced connection is still submitted, and Kernel
+ResultContext/Worker lease fences decide whether it affects current truth. The
+Adapter module's concrete WebSocket package translates connection
 events and frames into `WorkerConnection` and Core calls. `server_jvm` only
 configures that endpoint and schedules `dispatchOnce`. The Core has no Spring,
 Redis, Kernel runtime, score, thread, or Pacer dependency; the Adapter module
@@ -334,7 +338,7 @@ There is no process-local fast path and no command or result ACK. Server/Redis
 failure retains one pending batch for retry; Adapter process failure may lose
 buffered results.
 
-No current session, or another rejection confirmed before send starts, is
+No current connection, or another rejection confirmed before send starts, is
 direct evidence that the command did not enter the Worker and generates
 `3001`. Expiry, disconnect, missing result, or a failure after send was
 attempted remains unknown and cannot generate `3xxx`.
@@ -342,8 +346,9 @@ attempted remains unknown and cannot generate `3xxx`.
 The Core permits different Adapter instances to own different
 endpoint-manager mailboxes. Every host must preserve that boundary.
 Multiple instances consuming the same endpoint manager are unsupported:
-process-local session generations do not provide distributed ownership, and
-destructive cursor consumption cannot be used as HA coordination.
+the process-local current-connection registry does not provide distributed
+ownership, and destructive cursor consumption cannot be used as HA
+coordination.
 
 ## At-Least-Once Boundary
 
@@ -357,7 +362,7 @@ external Worker side effects exactly-once.
 
 ## Deferred Policy
 
-- Authentication, Worker session identity, and Adapter authorization.
+- Authentication, Worker connection identity, and Adapter authorization.
 - Same-endpoint multi-instance ownership and automatic failover.
 - Controlled Worker route migration.
 - Pending/ack reliability or mailbox expiry cleanup.

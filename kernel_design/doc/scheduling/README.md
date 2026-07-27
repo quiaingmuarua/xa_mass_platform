@@ -149,10 +149,10 @@ Other scheduling pacers
 Worker Delivery Dispatch
   Server exposes point/batch access to already-assigned commands and semantic
   result ingress; the framework-free Adapter Core consumes the batch API,
-  validates pre-submit deadlines, owns sessions/dispatch/result buffering,
-  while the Adapter module owns concrete WebSocket frame/connection adaptation
-  and Server supplies hosting/lifecycle; neither path selects Workers nor
-  mutates score
+  validates pre-submit deadlines, owns current connection selection, dispatch,
+  and result buffering, while the Adapter module owns concrete WebSocket
+  frame/connection adaptation and Server supplies hosting/lifecycle; neither
+  path selects Workers nor mutates score
 ```
 
 ## Mechanism Status
@@ -220,9 +220,10 @@ partitioning design.
 The polling API performs only point mailbox consume for one target Worker. It
 never scans a bucket. A long-lived Adapter Core may cursor-consume its own
 sparse bucket through the Server batch HTTP API and serve transport-hosted
-Workers from bounded process-local memory. The Core owns scan, session
-generation, dispatch, `3001`/`UNKNOWN`, and result-buffer policy; a future host
-may own only frames, connections, scheduling of rounds, and lifecycle.
+Workers through bounded process-local state. The Core owns scan, current
+connection selection, dispatch, `3001`/`UNKNOWN`, and result-buffer policy;
+the Server host owns only configuration, endpoint hosting, scheduling of
+rounds, and lifecycle.
 Destructive prefetch failure remains `UNKNOWN` without pending/ack.
 
 ## Core Reading Path

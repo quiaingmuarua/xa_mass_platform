@@ -52,8 +52,12 @@ class WorkerDeliveryAdapterArchitectureTest {
         String sources = readSources(CORE) + readSources(HTTP);
         assertThat(sources)
                 .contains("interface WorkerConnection")
-                .contains("interface WorkerSessionDirectory")
+                .contains("interface WorkerConnectionRegistry")
                 .contains("final class WorkerDeliveryAdapter")
+                .doesNotContain("WorkerSessionToken")
+                .doesNotContain("generation")
+                .doesNotContain("isCurrent")
+                .doesNotContain("STALE_SESSION")
                 .doesNotContain("WebSocketSession")
                 .doesNotContain("SmartLifecycle")
                 .doesNotContain("ScheduledExecutorService")

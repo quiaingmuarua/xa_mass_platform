@@ -15,9 +15,9 @@ Status: current repository handoff.
 - `worker_delivery_contract_jvm/` is the Java 21 transport-neutral
   WorkerCommand/DeliverSeed/SeedResult contract shared by Server and Worker.
 - `worker_delivery_adapter_jvm/` owns the Adapter mechanism: a framework-free
-  Gateway/session/dispatch/result Core plus the concrete Spring WebSocket
-  transport adaptation. It has no Spring Boot, Server, Kernel, or Redis
-  dependency.
+  Gateway/active-connection/dispatch/result Core plus the concrete Spring
+  WebSocket transport adaptation. It has no Spring Boot, Server, Kernel, or
+  Redis dependency.
 - `worker_jvm/` is the runnable one-slot Java reference Worker. Polling and
   WebSocket are transport profiles over one serial command execution core.
 - The legacy Java platform is available exclusively from
@@ -69,15 +69,16 @@ tag.
 - `worker_delivery_adapter_jvm` must not depend on `server_jvm`, `kernel_jvm`,
   Spring Boot, Redis, scores, Pacers, or Server HTTP DTOs. Its Core packages
   must not depend on Spring WebSocket, create threads, or implement framework
-  lifecycle. Only its `websocket` package may adapt Spring WebSocket sessions
-  and frames. Its private HTTP DTOs are proved against Server JSON with
-  bilateral golden tests; do not add an in-process fast path.
+  lifecycle. Only its `websocket` package may adapt Spring WebSocket
+  connections and frames. Its private HTTP DTOs are proved against Server JSON
+  with bilateral golden tests; do not add an in-process fast path.
 - `worker_jvm` may depend only on the shared contract and Worker tool
   libraries. It must not depend on `server_jvm`, `kernel_jvm`, Python
   packages, Redis, score, Pacer, or TaskType.
 - `server_jvm` may host the concrete WebSocket Adapter by configuring its
-  endpoint and scheduling `dispatchOnce()`. Hosting must not move sessions,
-  cursor handling, result buffering, or trusted rejection policy into Server.
+  endpoint and scheduling `dispatchOnce()`. Hosting must not move active
+  connection selection, cursor handling, result buffering, or trusted
+  rejection policy into Server.
 
 ## JVM Incremental Assembly
 
@@ -118,7 +119,7 @@ WorkerDeliveryConfiguration
 
 worker_delivery_adapter_jvm
   -> Adapter batch HTTP client
-  -> session directory, one-round dispatch, and result buffer
+  -> current connection registry, one-round dispatch, and result buffer
   -> concrete Spring WebSocket connection/frame adaptation
 ```
 

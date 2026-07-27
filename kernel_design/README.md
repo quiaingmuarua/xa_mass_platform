@@ -174,7 +174,7 @@ one scheduling identity -> one ZSET member -> one ordered score coordinate
 
 The score is the only scheduling truth for that identity. It is not the
 complete resource object and does not absorb descriptors, payload, result
-reason, transport session, trace, or query projection truth.
+reason, transport connection, trace, or query projection truth.
 
 | Axis | Scheduling identity | Encoded direction | Time rule | Final/recovery rule |
 | --- | --- | --- | --- | --- |
@@ -575,8 +575,8 @@ no hidden compatibility path or second mainline remains
     polling and Adapter batch HTTP API; its owner-scoped Redis access is
     limited to TaskData and Worker Delivery operations.
 - [JVM Worker Delivery Adapter](../worker_delivery_adapter_jvm/README.md)
-  - framework-free session/dispatch/result mechanism, Server batch HTTP
-    client, and concrete Spring WebSocket transport.
+  - framework-free active-connection/dispatch/result mechanism, Server batch
+    HTTP client, and concrete Spring WebSocket transport.
 - [JVM Worker](../worker_jvm/README.md)
   - one-slot Java Worker that executes `telecom.phone.inspect` through polling
     or WebSocket using the shared Worker Delivery contract.

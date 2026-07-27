@@ -383,7 +383,7 @@ construction. It is not another Pacer or lifecycle owner.
 
 It does not own Task lifecycle truth, Worker resource or score truth, Worker
 score encoding/storage, result finality, transport delivery, or transport
-session internals. The canonical allocation/dispatch/result lease sequence is
+connection internals. The canonical allocation/dispatch/result lease sequence is
 defined by
 [Worker HOT_ACQUIRE Lease Protocol](doc/scheduling/worker-hot-acquire-lease-protocol.md).
 
@@ -394,7 +394,7 @@ Server point WorkerId polling through an explicit endpointManagerId binding
 Server bounded cursor access for a long-lived Adapter's sparse mailbox
 stable WorkerCommandEnvelope forwarding to the already selected Worker
 Server point Worker result and Adapter batch SeedResult validation/append
-framework-free Java Adapter session/dispatch/result-buffer mechanism
+framework-free Java Adapter active-connection/dispatch/result-buffer mechanism
 concrete Adapter-owned WebSocket frame/connection adaptation
 ```
 
@@ -406,11 +406,12 @@ batch ingress accepts `3xxx` pre-execution rejection evidence. Polling never
 scans a mailbox, and `system-polling` is only a logical route binding.
 
 The framework-free Java Adapter Core owns one configured non-system-polling
-mailbox per instance through the Server batch HTTP API, session generations,
-one-round dispatch, bounded result buffering, and `3001` versus `UNKNOWN`
-classification. The Adapter module owns WebSocket frame/connection adaptation;
+mailbox per instance through the Server batch HTTP API, one current connection
+per WorkerId, one-round dispatch, bounded result buffering, and `3001` versus
+`UNKNOWN` classification. The Adapter module owns WebSocket frame/connection
+adaptation;
 `server_jvm` may configure and host the endpoint and schedule rounds, but does
-not own Adapter semantics. Workers upsert before connecting. Missing session
+not own Adapter semantics. Workers upsert before connecting. Missing connection
 evidence may produce `3001`; expiry, disconnect, missing result, and any
 failure after send was attempted remain UNKNOWN. Different endpoint-manager
 identities may run in parallel; same-endpoint distributed ownership remains
@@ -435,7 +436,7 @@ valid routed-evidence counting
 SeedResultRuntime may classify only the public outcome class needed to select
 its queue; it must not decode context. ResultRoutingPacer must not interpret
 current Item score, reproduce same-tag/cross-tag rules, select workers, parse
-transport sessions as truth, depend directly on Task/Worker runtime owners, or
+transport connections as truth, depend directly on Task/Worker runtime owners, or
 refresh task or worker score as a generic side effect. Built-in owner-operation
 policy belongs to `ResultRoutingBuiltinPolicies`; replacement policy uses the
 same stable handler contracts. SeedResult queues are not partitioned by endpointManagerId,

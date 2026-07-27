@@ -6,7 +6,6 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerConnection.CommandDe
 import com.xa.mass.workerdelivery.adapter.application.WorkerConnection.WorkerConnectionCloseReason;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter.AdapterRoundResult;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter.WorkerResultAcceptance;
-import com.xa.mass.workerdelivery.adapter.application.WorkerSessionDirectory.WorkerSessionToken;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
@@ -27,23 +26,20 @@ class WorkerDeliveryAdapterContractTest {
     }
 
     @Test
-    void locksConnectionAndSessionContracts() {
+    void locksConnectionAndRegistryContracts() {
         assertThat(signatures(WorkerConnection.class))
                 .containsExactlyInAnyOrder(
                         "close(WorkerConnectionCloseReason):void",
                         "deliver(WorkerCommandEnvelope)"
                                 + ":CommandDeliveryAttempt"
                 );
-        assertThat(signatures(WorkerSessionDirectory.class))
+        assertThat(signatures(WorkerConnectionRegistry.class))
                 .containsExactlyInAnyOrder(
-                        "bind(String,WorkerConnection):WorkerSessionToken",
-                        "close(WorkerSessionToken,"
-                                + "WorkerConnectionCloseReason):void",
+                        "bind(String,WorkerConnection):void",
                         "closeAll(WorkerConnectionCloseReason):void",
                         "deliver(String,WorkerCommandEnvelope)"
                                 + ":CommandDeliveryAttempt",
-                        "isCurrent(WorkerSessionToken):boolean",
-                        "unbind(WorkerSessionToken):void"
+                        "unbind(String,WorkerConnection):void"
                 );
     }
 
@@ -51,12 +47,12 @@ class WorkerDeliveryAdapterContractTest {
     void locksAdapterContractAndExplicitOutcomes() {
         assertThat(signatures(WorkerDeliveryAdapter.class))
                 .containsExactlyInAnyOrder(
-                        "acceptWorkerResult(WorkerSessionToken,SeedResult)"
+                        "acceptWorkerResult(SeedResult)"
                                 + ":WorkerResultAcceptance",
                         "close():void",
                         "connectWorker(String,WorkerConnection)"
-                                + ":WorkerSessionToken",
-                        "disconnectWorker(WorkerSessionToken):void",
+                                + ":void",
+                        "disconnectWorker(String,WorkerConnection):void",
                         "dispatchOnce():AdapterRoundResult"
                 );
         assertThat(Set.of(CommandDeliveryAttempt.values()))
@@ -68,7 +64,6 @@ class WorkerDeliveryAdapterContractTest {
         assertThat(Set.of(WorkerResultAcceptance.values()))
                 .containsExactlyInAnyOrder(
                         WorkerResultAcceptance.ACCEPTED,
-                        WorkerResultAcceptance.STALE_SESSION,
                         WorkerResultAcceptance.INVALID_OUTCOME,
                         WorkerResultAcceptance.BUFFER_FULL
                 );
@@ -80,19 +75,6 @@ class WorkerDeliveryAdapterContractTest {
                         WorkerConnectionCloseReason.ADAPTER_STOPPING
                 );
         assertThat(AdapterRoundResult.class.isRecord()).isTrue();
-    }
-
-    @Test
-    void sessionTokensAreOpaqueAndIssuedByDirectoryImplementations()
-            throws ReflectiveOperationException {
-        assertThat(WorkerSessionToken.class.isInterface()).isTrue();
-        assertThat(WorkerSessionToken.class.getDeclaredConstructors())
-                .isEmpty();
-        assertThat(WorkerSessionToken.class.getMethod("workerId").getReturnType())
-                .isEqualTo(String.class);
-        assertThat(
-                WorkerSessionToken.class.getMethod("generation").getReturnType()
-        ).isEqualTo(long.class);
     }
 
     private static Set<String> signatures(Class<?> type) {
