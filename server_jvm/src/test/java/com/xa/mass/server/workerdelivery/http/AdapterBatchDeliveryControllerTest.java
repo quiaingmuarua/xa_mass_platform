@@ -12,11 +12,14 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.xa.mass.server.api.ApiExceptionHandler;
 import com.xa.mass.server.api.RequestIdFilter;
 import com.xa.mass.server.workerdelivery.WorkerDeliveryException;
+import com.xa.mass.server.workerdelivery.WorkerDeliveryAccessPolicy;
 import com.xa.mass.server.workerdelivery.WorkerDeliveryService;
 import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandPage;
 import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
 import java.util.Map;
+import java.time.Duration;
+import com.xa.mass.server.workerdelivery.websocket.WorkerWebSocketProperties;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -37,12 +40,33 @@ class AdapterBatchDeliveryControllerTest {
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
         mockMvc = MockMvcBuilders.standaloneSetup(
-                        new AdapterBatchDeliveryController(service)
+                        new AdapterBatchDeliveryController(
+                                service,
+                                accessPolicy(false, "")
+                        )
                 )
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setValidator(validator)
                 .addFilters(new RequestIdFilter())
                 .build();
+    }
+
+    @Test
+    void configuredWebSocketEndpointIsReservedFromBatchHttp()
+            throws Exception {
+        mockMvc = MockMvcBuilders.standaloneSetup(
+                        new AdapterBatchDeliveryController(
+                                service,
+                                accessPolicy(true, "endpoint-1")
+                        )
+                )
+                .setControllerAdvice(new ApiExceptionHandler())
+                .build();
+
+        mockMvc.perform(post(batchPath("commands:consume"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"cursor\":null,\"scanCount\":100}"))
+                .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -125,5 +149,20 @@ class AdapterBatchDeliveryControllerTest {
     private static String batchPath(String action) {
         return "/api/v1/worker-delivery/endpoint-managers/endpoint-1/"
                 + action;
+    }
+
+    private static WorkerDeliveryAccessPolicy accessPolicy(
+            boolean enabled,
+            String endpointManagerId
+    ) {
+        return new WorkerDeliveryAccessPolicy(new WorkerWebSocketProperties(
+                enabled,
+                endpointManagerId,
+                Duration.ofMillis(100),
+                100,
+                100,
+                1000,
+                Duration.ofSeconds(5)
+        ));
     }
 }

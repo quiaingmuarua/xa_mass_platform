@@ -19,6 +19,9 @@ class ServerArchitectureBoundaryTest {
     private static final Path WORKER_DELIVERY_PROTOCOL = SOURCE_ROOT.resolve(
             "com/xa/mass/server/workerdelivery/protocol"
     );
+    private static final Path WORKER_DELIVERY_WEBSOCKET = SOURCE_ROOT.resolve(
+            "com/xa/mass/server/workerdelivery/websocket"
+    );
 
     @Test
     void onlyWorkerDeliveryRedisPackageMayAccessRedis() throws IOException {
@@ -80,6 +83,14 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("WorkerDeliveryRuntime")
                 .doesNotContain("io.lettuce")
                 .doesNotContain("org.springframework.data.redis");
+
+        assertThat(readSources(WORKER_DELIVERY_WEBSOCKET))
+                .doesNotContain(".workerdelivery.redis")
+                .doesNotContain(".workerdelivery.http")
+                .doesNotContain("WorkerDeliveryRuntime")
+                .doesNotContain("io.lettuce")
+                .doesNotContain("org.springframework.data.redis")
+                .doesNotContain("decodeDeliverSeed");
     }
 
     private static String readSources(Path root) throws IOException {

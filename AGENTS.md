@@ -45,9 +45,12 @@ tag.
   `com.xa.mass.server.workerdelivery.redis`, and only for WorkerCommand
   consume/delete plus SeedResult append. Java must not access scores, Pacers,
   scheduling owners, or `kernel_jvm` implementation packages.
-- Keep `workerdelivery.protocol` transport-neutral. HTTP and future WebSocket
+- Keep `workerdelivery.protocol` transport-neutral. HTTP and WebSocket
   packages may call `WorkerDeliveryService` but must not import
   `workerdelivery.redis` or `WorkerDeliveryRuntime`.
+- One enabled Java WebSocket Adapter owns one configured non-system-polling
+  endpoint-manager mailbox. Its session registry and bounded pump are
+  process-local evidence, not Kernel Worker truth.
 
 ## JVM Scaffold
 

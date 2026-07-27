@@ -38,12 +38,14 @@ workerdelivery.http
   point Worker and Adapter batch HTTP access profiles
 workerdelivery.redis
   WorkerCommand consume and SeedResult append implementation
+workerdelivery.websocket
+  one configured Adapter mailbox pump, Worker sessions, and result buffering
 ```
 
-HTTP and a future WebSocket Adapter call `WorkerDeliveryService`; neither may
-import the Redis implementation. `protocol` has no Spring Web or Redis
-dependency. A WebSocket package will be added only with a real session and
-delivery-loop slice.
+HTTP and WebSocket call `WorkerDeliveryService`; neither imports the Redis
+implementation. `protocol` has no Spring Web or Redis dependency. The
+WebSocket Adapter is an access profile inside this server module, not a second
+runtime owner or independently published module.
 
 ## Runtime Commands
 
@@ -69,6 +71,23 @@ POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/results:appen
 
 `system-polling` may use only the point Worker operations. Cursor consume and
 batch result append are reserved for long-lived Adapter identities.
+
+WebSocket Worker access:
+
+```text
+GET /api/v1/worker-delivery/websocket/workers/{workerId}
+```
+
+One enabled server instance owns one configured non-`system-polling`
+endpoint-manager mailbox. The Worker first uses the resource API to upsert
+itself with that endpoint-manager identity, then connects. Server-to-Worker
+text frames are exact `WorkerCommandEnvelope` JSON; Worker-to-Server frames
+are exact `SeedResult` JSON limited to `200/1xxx`.
+
+There is no application ACK. Results are buffered and retried only in bounded
+process memory; a JVM failure may lose them. A command consumed without a
+current Worker session produces trusted `3001` evidence. A send attempted
+before an ambiguous failure remains unknown and does not produce `3xxx`.
 
 Management endpoints:
 
@@ -103,10 +122,20 @@ connect timeout          1s
 read timeout             5s
 Worker Delivery Redis     redis://localhost:6379/15
 Worker Delivery prefix    default
+WebSocket Adapter          disabled
 ```
 
 Override them with Spring properties under `xa.mass.kernel` and
-`xa.mass.worker-delivery`.
+`xa.mass.worker-delivery`. Enable one WebSocket Adapter with:
+
+```yaml
+xa:
+  mass:
+    worker-delivery:
+      websocket:
+        enabled: true
+        endpoint-manager-id: websocket-adapter-1
+```
 
 ## Verification
 
@@ -118,7 +147,7 @@ KERNEL_DESIGN_REDIS_URL=redis://localhost:6379/15 \
 ```
 
 The cross-process integration proves both TaskTypes through Python scheduling,
-Java command polling/result ingress, Python ResultRouting, result HASH storage,
-and exact Worker release. The first release intentionally has no
-authentication, WebSocket transport, query API, historical storage, result
-view, tenant model, quota, or OpenAPI generator.
+Java WebSocket command/result delivery, Python ResultRouting, result HASH
+storage, and exact Worker release. The first release intentionally has no
+authentication, multi-instance Adapter ownership, pending/ack, query API,
+historical storage, result view, tenant model, quota, or OpenAPI generator.

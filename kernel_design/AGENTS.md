@@ -381,6 +381,7 @@ point WorkerId polling through an explicit endpointManagerId binding
 bounded cursor consumption for a long-lived Adapter's sparse mailbox
 stable WorkerCommandEnvelope forwarding to the already selected Worker
 point Worker result and Adapter batch SeedResult validation/append
+one configured Java WebSocket Adapter mailbox pump and process-local sessions
 ```
 
 Its boundary starts after Task Dispatch handles mailbox publication and ends
@@ -389,6 +390,12 @@ score, interpret Worker score, or renew/release Worker leases. The current
 polling HTTP slice accepts Worker-originated `200/1xxx`; the long-lived Adapter
 batch ingress accepts `3xxx` pre-execution rejection evidence. Polling never
 scans a mailbox, and `system-polling` is only a logical route binding.
+
+The Java WebSocket Adapter owns one configured non-system-polling mailbox per
+JVM instance. Workers upsert before connecting. Missing session evidence may
+produce `3001`; expiry, disconnect, missing result, and any failure after send
+was attempted remain UNKNOWN. The result buffer has bounded in-memory retry
+and no application ACK or durable pending state.
 
 Result-routing owns:
 

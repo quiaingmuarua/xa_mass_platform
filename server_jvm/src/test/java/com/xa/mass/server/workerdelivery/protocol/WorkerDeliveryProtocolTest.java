@@ -3,6 +3,7 @@ package com.xa.mass.server.workerdelivery.protocol;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.DeliverSeed;
 import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultOutcomeClass;
 import com.xa.mass.server.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
@@ -42,13 +43,25 @@ class WorkerDeliveryProtocolTest {
         assertThat(codec.decodeWorkerCommand(
                 encoded.replace("TASK_ITEM", "UNKNOWN")
         )).isNull();
+        assertThat(codec.encodeWorkerCommand(
+                new WorkerCommandEnvelope(
+                        COMMAND_ID,
+                        WorkerMessageType.TASK_ITEM,
+                        123_456,
+                        "opaque-command-item"
+                )
+        )).isEqualTo(encoded);
     }
 
     @Test
     void encodesSeedResultInThePythonGoldenShape() {
-        String encoded = codec.encodeSeedResult(
-                new SeedResult(COMMAND_ID, "context", "200", "null")
+        SeedResult result = new SeedResult(
+                COMMAND_ID,
+                "context",
+                "200",
+                "null"
         );
+        String encoded = codec.encodeSeedResult(result);
 
         assertThat(encoded).isEqualTo(
                 "{\"commandId\":\"" + COMMAND_ID + "\","
@@ -56,6 +69,28 @@ class WorkerDeliveryProtocolTest {
                         + "\"opaqueResultPayload\":\"null\","
                         + "\"outcomeCode\":\"200\"}"
         );
+        assertThat(codec.decodeSeedResult(encoded)).isEqualTo(result);
+        assertThat(codec.decodeSeedResult(
+                encoded.replace(
+                        "\"outcomeCode\"",
+                        "\"unknown\""
+                )
+        )).isNull();
+    }
+
+    @Test
+    void decodesThePythonGoldenDeliverSeedStrictly() {
+        String encoded = """
+                {"opaqueDeliveryItem":"item","opaqueResultContext":"context",\
+                "workerId":"worker-1"}\
+                """;
+
+        assertThat(codec.decodeDeliverSeed(encoded)).isEqualTo(
+                new DeliverSeed("worker-1", "item", "context")
+        );
+        assertThat(codec.decodeDeliverSeed(
+                encoded.replace("\"workerId\"", "\"unknown\"")
+        )).isNull();
     }
 
     @Test

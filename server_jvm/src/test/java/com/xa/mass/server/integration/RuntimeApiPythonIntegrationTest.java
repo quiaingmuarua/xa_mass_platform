@@ -9,9 +9,14 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.WebSocket;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.UUID;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CompletionStage;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -36,7 +41,8 @@ class RuntimeApiPythonIntegrationTest {
                     "KERNEL_DESIGN_REDIS_PREFIX",
                     "default"
             );
-    private static final String ENDPOINT_MANAGER_ID = "system-polling";
+    private static final String ENDPOINT_MANAGER_ID =
+            "java-websocket-integration";
     private static final String PHONE_RESULT = """
             {"countryCallingCode":1,"e164":"+14155552671",\
             "isPossible":true,"isValid":true,"regionCode":"US"}\
@@ -71,6 +77,18 @@ class RuntimeApiPythonIntegrationTest {
                 "xa.mass.worker-delivery.redis-prefix",
                 () -> REDIS_PREFIX
         );
+        registry.add(
+                "xa.mass.worker-delivery.websocket.enabled",
+                () -> "true"
+        );
+        registry.add(
+                "xa.mass.worker-delivery.websocket.endpoint-manager-id",
+                () -> ENDPOINT_MANAGER_ID
+        );
+        registry.add(
+                "xa.mass.worker-delivery.websocket.pump-interval",
+                () -> "20ms"
+        );
     }
 
     @Test
@@ -83,6 +101,53 @@ class RuntimeApiPythonIntegrationTest {
     void itemDrivenClosesThroughTheJavaWorkerDeliveryGateway()
             throws Exception {
         runWorkerDeliveryClosure("ITEM_DRIVEN");
+    }
+
+    @Test
+    void missingWebSocketSessionProducesTrustedRecoveryEvidence()
+            throws Exception {
+        requireExternalRuntime();
+        String suffix = UUID.randomUUID().toString();
+        String workerGroupId = "missing-session-" + suffix;
+        String workerId = "worker-" + suffix;
+        String taskId = "task-" + suffix;
+
+        assertThat(send(
+                "PUT",
+                "/api/v1/worker-groups/" + workerGroupId,
+                """
+                        {"eventCodes":["telecom.phone.inspect"],\
+                        "itemAllocationFields":[]}\
+                        """
+        ).statusCode()).isEqualTo(200);
+        assertThat(send(
+                "PUT",
+                "/api/v1/worker-groups/" + workerGroupId
+                        + "/workers/" + workerId,
+                """
+                        {"endpointManagerId":"%s","attributes":{},\
+                        "dynamicAttributeNames":[]}\
+                        """.formatted(ENDPOINT_MANAGER_ID)
+        ).statusCode()).isEqualTo(200);
+        assertThat(send(
+                "POST",
+                "/api/v1/tasks",
+                taskRequest(taskId, workerGroupId, "TASK_DRIVEN")
+        ).statusCode()).isEqualTo(201);
+        assertThat(send(
+                "POST",
+                "/api/v1/tasks/" + taskId + "/approve",
+                null
+        ).statusCode()).isEqualTo(200);
+        appendItem(taskId, "message-" + suffix, workerId, false);
+
+        awaitNegativeWorkerScore(workerGroupId, workerId);
+
+        assertThat(send(
+                "POST",
+                "/api/v1/tasks/" + taskId + "/close",
+                null
+        ).statusCode()).isEqualTo(200);
     }
 
     private void runWorkerDeliveryClosure(String taskType) throws Exception {
@@ -115,51 +180,56 @@ class RuntimeApiPythonIntegrationTest {
                         + "/workers/" + workerId,
                 """
                         {
-                          "endpointManagerId": "system-polling",
+                          "endpointManagerId": "%s",
                           "attributes": {"runtime": "java"},
                           "dynamicAttributeNames": []
                         }
-                        """
+                        """.formatted(ENDPOINT_MANAGER_ID)
         ).statusCode()).isEqualTo(200);
 
-        assertThat(send(
-                "POST",
-                "/api/v1/tasks",
-                taskRequest(taskId, workerGroupId, taskType)
-        ).statusCode()).isEqualTo(201);
-        assertThat(send(
-                "POST",
-                "/api/v1/tasks/" + taskId + "/approve",
-                null
-        ).statusCode()).isEqualTo(200);
+        WorkerSocket worker = connectWorker(workerId);
+        try {
+            assertThat(send(
+                    "POST",
+                    "/api/v1/tasks",
+                    taskRequest(taskId, workerGroupId, taskType)
+            ).statusCode()).isEqualTo(201);
+            assertThat(send(
+                    "POST",
+                    "/api/v1/tasks/" + taskId + "/approve",
+                    null
+            ).statusCode()).isEqualTo(200);
 
-        appendItem(
-                taskId,
-                firstMessageId,
-                workerId,
-                "ITEM_DRIVEN".equals(taskType)
-        );
-        JsonNode firstCommand = pollCommand(workerId);
-        submitSuccess(workerId, firstCommand);
-        awaitStoredResult(taskId, firstMessageId);
+            appendItem(
+                    taskId,
+                    firstMessageId,
+                    workerId,
+                    "ITEM_DRIVEN".equals(taskType)
+            );
+            JsonNode firstCommand = worker.awaitCommand();
+            worker.submitSuccess(firstCommand);
+            awaitStoredResult(taskId, firstMessageId);
 
-        appendItem(
-                taskId,
-                secondMessageId,
-                workerId,
-                "ITEM_DRIVEN".equals(taskType)
-        );
-        JsonNode secondCommand = pollCommand(workerId);
-        assertThat(secondCommand.get("commandId").textValue())
-                .isNotEqualTo(firstCommand.get("commandId").textValue());
-        submitSuccess(workerId, secondCommand);
-        awaitStoredResult(taskId, secondMessageId);
+            appendItem(
+                    taskId,
+                    secondMessageId,
+                    workerId,
+                    "ITEM_DRIVEN".equals(taskType)
+            );
+            JsonNode secondCommand = worker.awaitCommand();
+            assertThat(secondCommand.get("commandId").textValue())
+                    .isNotEqualTo(firstCommand.get("commandId").textValue());
+            worker.submitSuccess(secondCommand);
+            awaitStoredResult(taskId, secondMessageId);
 
-        assertThat(send(
-                "POST",
-                "/api/v1/tasks/" + taskId + "/close",
-                null
-        ).statusCode()).isEqualTo(200);
+            assertThat(send(
+                    "POST",
+                    "/api/v1/tasks/" + taskId + "/close",
+                    null
+            ).statusCode()).isEqualTo(200);
+        } finally {
+            worker.close();
+        }
     }
 
     private void appendItem(
@@ -194,50 +264,21 @@ class RuntimeApiPythonIntegrationTest {
         assertThat(response.body()).contains("\"status\":\"appended\"");
     }
 
-    private JsonNode pollCommand(String workerId) throws Exception {
-        String path = "/api/v1/worker-delivery/endpoint-managers/"
-                + ENDPOINT_MANAGER_ID + "/workers/" + workerId
-                + "/commands:poll";
-        long deadline = System.nanoTime()
-                + Duration.ofSeconds(8).toNanos();
-        while (System.nanoTime() < deadline) {
-            HttpResponse<String> response = send("POST", path, null);
-            if (response.statusCode() == 200) {
-                JsonNode command = objectMapper.readTree(response.body());
-                assertThat(command.get("messageType").textValue())
-                        .isEqualTo("TASK_ITEM");
-                return command;
-            }
-            assertThat(response.statusCode()).isEqualTo(204);
-            Thread.sleep(20);
-        }
-        throw new AssertionError("Worker command was not produced");
-    }
-
-    private void submitSuccess(
-            String workerId,
-            JsonNode command
-    ) throws Exception {
-        JsonNode seed = objectMapper.readTree(
-                command.get("opaqueItem").textValue()
-        );
-        assertThat(seed.get("workerId").textValue()).isEqualTo(workerId);
-        var request = objectMapper.createObjectNode();
-        request.put("commandId", command.get("commandId").textValue());
-        request.put(
-                "opaqueResultContext",
-                seed.get("opaqueResultContext").textValue()
-        );
-        request.put("outcomeCode", "200");
-        request.put("opaqueResultPayload", PHONE_RESULT);
-
-        assertThat(send(
-                "POST",
-                "/api/v1/worker-delivery/endpoint-managers/"
-                        + ENDPOINT_MANAGER_ID + "/workers/" + workerId
-                        + "/results",
-                objectMapper.writeValueAsString(request)
-        ).statusCode()).isEqualTo(202);
+    private WorkerSocket connectWorker(String workerId) {
+        WorkerSocket listener = new WorkerSocket(workerId);
+        WebSocket socket = HttpClient.newHttpClient()
+                .newWebSocketBuilder()
+                .buildAsync(
+                        URI.create(
+                                "ws://127.0.0.1:" + port
+                                        + "/api/v1/worker-delivery/"
+                                        + "websocket/workers/" + workerId
+                        ),
+                        listener
+                )
+                .join();
+        listener.attach(socket);
+        return listener;
     }
 
     private void awaitStoredResult(
@@ -260,6 +301,30 @@ class RuntimeApiPythonIntegrationTest {
             }
         }
         throw new AssertionError("TaskItem success result was not stored");
+    }
+
+    private void awaitNegativeWorkerScore(
+            String workerGroupId,
+            String workerId
+    ) throws Exception {
+        try (StatefulRedisConnection<String, String> connection =
+                     redisClient.connect(StringCodec.UTF8)) {
+            var redis = connection.sync();
+            String scoreKey = "wr:" + REDIS_PREFIX + ":score:"
+                    + workerGroupId;
+            long deadline = System.nanoTime()
+                    + Duration.ofSeconds(8).toNanos();
+            while (System.nanoTime() < deadline) {
+                Double score = redis.zscore(scoreKey, workerId);
+                if (score != null && score < 0) {
+                    return;
+                }
+                Thread.sleep(20);
+            }
+        }
+        throw new AssertionError(
+                "Adapter rejection did not move Worker to recovery"
+        );
     }
 
     private String taskRequest(
@@ -332,5 +397,85 @@ class RuntimeApiPythonIntegrationTest {
 
     private static String configured(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value;
+    }
+
+    private final class WorkerSocket implements WebSocket.Listener {
+
+        private final String workerId;
+        private final BlockingQueue<String> commands =
+                new LinkedBlockingQueue<>();
+        private final StringBuilder fragmented = new StringBuilder();
+        private WebSocket socket;
+
+        private WorkerSocket(String workerId) {
+            this.workerId = workerId;
+        }
+
+        private void attach(WebSocket value) {
+            socket = value;
+        }
+
+        @Override
+        public void onOpen(WebSocket webSocket) {
+            webSocket.request(1);
+        }
+
+        @Override
+        public CompletionStage<?> onText(
+                WebSocket webSocket,
+                CharSequence data,
+                boolean last
+        ) {
+            fragmented.append(data);
+            if (last) {
+                commands.add(fragmented.toString());
+                fragmented.setLength(0);
+            }
+            webSocket.request(1);
+            return null;
+        }
+
+        private JsonNode awaitCommand() throws Exception {
+            String encoded = commands.poll(8, TimeUnit.SECONDS);
+            if (encoded == null) {
+                throw new AssertionError("Worker command was not produced");
+            }
+            JsonNode command = objectMapper.readTree(encoded);
+            assertThat(command.get("messageType").textValue())
+                    .isEqualTo("TASK_ITEM");
+            return command;
+        }
+
+        private void submitSuccess(JsonNode command) throws Exception {
+            JsonNode seed = objectMapper.readTree(
+                    command.get("opaqueItem").textValue()
+            );
+            assertThat(seed.get("workerId").textValue())
+                    .isEqualTo(workerId);
+            var result = objectMapper.createObjectNode();
+            result.put(
+                    "commandId",
+                    command.get("commandId").textValue()
+            );
+            result.put(
+                    "opaqueResultContext",
+                    seed.get("opaqueResultContext").textValue()
+            );
+            result.put("outcomeCode", "200");
+            result.put("opaqueResultPayload", PHONE_RESULT);
+            socket.sendText(
+                    objectMapper.writeValueAsString(result),
+                    true
+            ).join();
+        }
+
+        private void close() {
+            if (socket != null) {
+                socket.sendClose(
+                        WebSocket.NORMAL_CLOSURE,
+                        "complete"
+                ).join();
+            }
+        }
     }
 }

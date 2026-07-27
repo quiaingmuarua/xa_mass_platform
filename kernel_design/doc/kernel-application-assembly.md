@@ -300,16 +300,19 @@ envelopes, and the `telecom.phone.inspect` tool. It does not register resources
 or import Kernel owners.
 
 Polling is a base request-driven protocol, not an independently deployed
-Adapter. A future WebSocket Adapter uses its own endpoint manager, cursor
-consumes its sparse mailbox, maintains sessions, and actively pushes the same
-WorkerCommandEnvelope. The current Gateway has no login, session, or
-authorization protocol. KernelApplication must not own or expose those facts.
+Adapter. The Java WebSocket Adapter owns one configured non-`system-polling`
+endpoint manager, cursor-consumes that sparse mailbox, maintains one
+process-local session generation per WorkerId, and pushes the same
+WorkerCommandEnvelope. Workers upsert before connecting. The Adapter has no
+login or authorization protocol, and KernelApplication does not own or expose
+session facts.
 
 The Python Runtime Server remains the scheduling command host and mechanism
 oracle. The Java Gateway is the current Worker Delivery HTTP owner, not a
 second scheduler or Redis owner for scores. The Phone Worker is a runnable
-example. Authentication, Task query/list, result projection, production
-WebSocket transport, and API compatibility remain out of scope.
+example. Authentication, multi-instance WebSocket ownership, Task query/list,
+result projection, reliable pending/ack delivery, and API compatibility remain
+out of scope.
 
 ## Guardrails
 

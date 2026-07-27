@@ -553,13 +553,13 @@ no hidden compatibility path or second mainline remains
     and the executable-spec Kernel Runtime HTTP host.
 - [Worker Delivery Dispatch](doc/scheduling/worker-delivery-dispatch.md)
   - Adapter-partitioned mailbox access through target Worker polling or
-    long-lived Adapter batches, including the Java Runtime API Gateway contract,
-    without Adapter-owned score mutation.
+    the Java single-owner WebSocket Adapter, including bounded result buffering
+    and trusted pre-execution rejection without Adapter-owned score mutation.
 - [Kernel Runtime Server](runtime_server/app.py)
   - executable-spec FastAPI host for Task/resource commands; only
     `KernelApplication` owns background lifecycle.
 - [JVM Runtime API Server](../server_jvm/README.md)
-  - external Task/resource HTTP proxy and Java Worker Delivery Gateway; its
+  - external Task/resource HTTP proxy, point Gateway, and WebSocket Adapter; its
     direct Redis access is limited to WorkerCommand consume/delete and
     SeedResult append.
 - [Polling Phone Worker](examples/polling_phone_worker.py)

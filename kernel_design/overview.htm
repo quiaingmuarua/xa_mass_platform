@@ -1509,7 +1509,7 @@
         </div>
         <div class="owner-stage">
           <b>Worker Delivery Dispatch</b>
-          <p>Gateway 为目标 Worker提供 point poll，为长连接 Adapter提供 cursor batch，并将 Worker/Adapter result 送入结果队列。</p>
+          <p>Gateway 提供 point poll；单 owner WebSocket Adapter 批量拉取 mailbox、维护 Worker session，并将结果送入 outcome queue。</p>
           <code>output = SeedResult</code>
         </div>
         <div class="owner-stage">
@@ -1682,6 +1682,7 @@
             <li>ITEM_DRIVEN TARGETED point/index acquisition</li>
             <li>TaskItem exact claim 与 shared empty-close</li>
             <li>稳定 Worker command、语义化 SeedResult 与 Adapter-partitioned mailbox</li>
+            <li>Java 单 owner WebSocket Adapter、session generation 与 bounded result retry</li>
             <li>三类 SeedResult queue 与 owner-local Result Routing</li>
           </ul>
         </article>
@@ -1689,8 +1690,8 @@
           <h3>Deferred policy</h3>
           <ul>
             <li>公平、quota、resource estimate 与 cadence tuning</li>
-            <li>WebSocket/push Adapter 与生产 session/flow-control</li>
-            <li>认证、session ownership 与受控 Worker migration</li>
+            <li>WebSocket Adapter 多实例 ownership、认证与生产 flow-control</li>
+            <li>受控 Worker route migration 与自动 failover</li>
             <li>trusted 3xxx Item fast release fence</li>
             <li>pending/ack、retention、query projection 与分片</li>
           </ul>

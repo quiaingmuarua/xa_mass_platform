@@ -1,8 +1,8 @@
 # Worker Delivery Dispatch
 
 Status: active new-kernel boundary contract; Python protocol/Redis oracle,
-Java Worker Delivery Gateway, and phone-tool Worker implemented; production
-Adapter policy deferred.
+Java point Gateway and WebSocket Adapter, and phone-tool Worker implemented;
+production authentication and multi-instance policy deferred.
 
 Upstream contract: [Task Dispatch Pacer](task-dispatch-pacer.md).
 Worker lease contract:
@@ -22,7 +22,7 @@ Task Dispatch
 
 Worker Delivery Gateway
   -> point-consume one target Worker for request-driven polling
-  -> cursor-consume one long-lived Adapter mailbox
+  -> cursor-consume one configured WebSocket Adapter mailbox
   -> accept Worker point results or Adapter result batches
 
 Worker
@@ -65,7 +65,9 @@ SeedResult(
 )
 ```
 
-`DeliverSeed` is assignment handoff data. It remains opaque to the Adapter.
+`DeliverSeed` is assignment handoff data. It remains opaque to Adapter session
+and pump code. `WorkerDeliveryService` may strictly decode it only when it must
+construct trusted pre-execution Adapter rejection evidence.
 `WorkerCommandEnvelope` is the stable cross-Adapter and cross-language outbound
 command DTO. `SeedResult` is the independent Result Routing evidence DTO.
 These types are deliberately asymmetric because command mailboxes are
@@ -262,15 +264,17 @@ The cursor request and response are:
 }
 ```
 
-Point and cursor consumers compete for the same Worker field; atomic consume
-allows only one winner and never republishes the command.
+Point and cursor consumers mechanically compete for the same Worker field, but
+an endpoint-manager identity configured for the Java WebSocket Adapter is
+reserved from HTTP point and batch access. `system-polling` remains point-only.
 
-The Java Gateway does not generate `commandId`, define `messageType`, decode
-`DeliverSeed`, or parse `opaqueResultContext`. A future Java WebSocket Adapter
-and the Python polling Worker therefore use the same command and SeedResult
-contracts without creating transport-specific variants. Java is allowed to
-read/delete WorkerCommand mailbox entries and append SeedResult queue entries;
-it must not append commands, consume results, or access score/Pacer state.
+The Java Gateway does not generate `commandId` or define `messageType`.
+WebSocket session and pump code do not decode `DeliverSeed` or parse
+`opaqueResultContext`; only `WorkerDeliveryService` decodes the inner seed to
+construct trusted `3001` when a consumed command has no current target
+session. Java may read/delete WorkerCommand fields and append SeedResult queue
+entries; it must not append commands, consume results, or access score/Pacer
+state.
 
 The Worker decodes `DeliverSeed`, verifies `seed.workerId` matches its identity,
 executes `opaqueDeliveryItem`, and copies `opaqueResultContext` into
@@ -281,9 +285,26 @@ executes `opaqueDeliveryItem`, and copies `opaqueResultContext` into
 Worker cannot submit it; the Adapter batch endpoint is its protocol ingress.
 Authentication of that Adapter role is deferred.
 
-A long-lived Adapter may cursor-consume commands into a bounded process-local
-`workerId -> command` buffer and actively push them over WebSocket. Buffer size,
-session ownership, and push policy do not change Kernel contracts.
+The Java WebSocket Adapter exposes:
+
+```text
+GET /api/v1/worker-delivery/websocket/workers/{workerId}
+```
+
+One JVM instance owns one configured non-`system-polling` endpoint-manager
+mailbox. A Worker first performs its existing upsert, then connects. One
+WorkerId has one current session; a newer connection replaces the old session
+without allowing the old close callback to remove the new generation.
+
+The Adapter cursor-consumes one bounded page, rechecks the command deadline,
+and forwards the exact WorkerCommand JSON. Exact Worker result JSON is accepted
+only for `200/1xxx`, buffered in bounded process memory, and batch-appended to
+the existing result queues. There is no command or result ACK. Redis failure
+retains one pending batch for retry; JVM failure may lose buffered results.
+
+No current session is direct evidence that the command did not enter the
+Worker and generates `3001`. Expiry, disconnect, missing result, or a failure
+after send was attempted remains unknown and cannot generate `3xxx`.
 
 ## At-Least-Once Boundary
 
@@ -297,10 +318,9 @@ external Worker side effects exactly-once.
 
 ## Deferred Policy
 
-- Java WebSocket Adapter implementation and external Server proxy.
 - Authentication, Worker session identity, and Adapter authorization.
+- Same-endpoint multi-instance ownership and automatic failover.
 - Controlled Worker route migration.
-- Long-lived Adapter buffer bounds and cursor cadence.
 - Pending/ack reliability or mailbox expiry cleanup.
 - Proactive unreachable-Worker recovery evidence.
 

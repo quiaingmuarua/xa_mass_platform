@@ -10,6 +10,14 @@ xa:
     worker-delivery:
       redis-url: redis://localhost:6379/15
       redis-prefix: default
+      websocket:
+        enabled: false
+        endpoint-manager-id: ""
+        pump-interval: 100ms
+        scan-count: 100
+        result-batch-size: 100
+        result-buffer-capacity: 1000
+        send-time-limit: 5s
 
 management:
   endpoints:

@@ -1,6 +1,7 @@
 package com.xa.mass.server.workerdelivery.http;
 
 import com.xa.mass.server.workerdelivery.WorkerDeliveryService;
+import com.xa.mass.server.workerdelivery.WorkerDeliveryAccessPolicy;
 import com.xa.mass.server.workerdelivery.http.WorkerDeliveryHttpContract.AcceptedCountResponse;
 import com.xa.mass.server.workerdelivery.http.WorkerDeliveryHttpContract.SeedResultBatchRequest;
 import com.xa.mass.server.workerdelivery.http.WorkerDeliveryHttpContract.SeedResultRequest;
@@ -24,11 +25,14 @@ import org.springframework.web.bind.annotation.RestController;
 public class AdapterBatchDeliveryController {
 
     private final WorkerDeliveryService workerDelivery;
+    private final WorkerDeliveryAccessPolicy accessPolicy;
 
     public AdapterBatchDeliveryController(
-            WorkerDeliveryService workerDelivery
+            WorkerDeliveryService workerDelivery,
+            WorkerDeliveryAccessPolicy accessPolicy
     ) {
         this.workerDelivery = workerDelivery;
+        this.accessPolicy = accessPolicy;
     }
 
     @PostMapping("/commands:consume")
@@ -36,6 +40,7 @@ public class AdapterBatchDeliveryController {
             @PathVariable @NotBlank String endpointManagerId,
             @Valid @RequestBody WorkerCommandConsumeRequest request
     ) {
+        accessPolicy.requireHttpAccess(endpointManagerId);
         var page = workerDelivery.consumeWorkerCommands(
                 endpointManagerId,
                 request.cursor(),
@@ -52,6 +57,7 @@ public class AdapterBatchDeliveryController {
             @PathVariable @NotBlank String endpointManagerId,
             @Valid @RequestBody SeedResultBatchRequest request
     ) {
+        accessPolicy.requireHttpAccess(endpointManagerId);
         int acceptedCount = workerDelivery.appendAdapterResults(
                 endpointManagerId,
                 request.results().stream()

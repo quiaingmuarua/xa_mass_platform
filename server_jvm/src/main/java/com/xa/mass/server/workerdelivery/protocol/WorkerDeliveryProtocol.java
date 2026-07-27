@@ -34,6 +34,18 @@ public final class WorkerDeliveryProtocol {
         }
     }
 
+    public record DeliverSeed(
+            String workerId,
+            String opaqueDeliveryItem,
+            String opaqueResultContext
+    ) {
+        public DeliverSeed {
+            requireNonBlank(workerId, "workerId");
+            requireNonBlank(opaqueDeliveryItem, "opaqueDeliveryItem");
+            requireNonBlank(opaqueResultContext, "opaqueResultContext");
+        }
+    }
+
     public record WorkerCommandEnvelope(
             String commandId,
             WorkerMessageType messageType,
