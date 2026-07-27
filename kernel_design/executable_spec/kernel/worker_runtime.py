@@ -30,11 +30,14 @@ class WorkerRuntimeStatus(Enum):
 
 @dataclass(frozen=True)
 class WorkerGroupDescriptor:
-    """Worker group metadata/query projection.
+    """Worker capability-group declaration and query projection.
 
-    event_codes is a declared capability for external bootstrap and operator
-    validation. Kernel append, matching, and dispatch do not enforce it;
-    event-code resolution remains worker-local after assignment.
+    One group names a base execution-capability contract and the scheduling
+    namespace for Workers that conform to it. event_codes is the declared
+    capability set; item_allocation_fields is the bounded candidate-source
+    contract. Kernel append, matching, and dispatch do not compare TaskItem
+    event codes with this declaration. Server/control-plane validation and
+    worker-local handler resolution remain outside the scheduling hot path.
     """
 
     worker_group_id: WorkerGroupId
@@ -46,6 +49,11 @@ class WorkerGroupDescriptor:
 @dataclass(frozen=True)
 class WorkerDeclaration:
     """Worker-owned resource declaration used by connect/reconnect upsert.
+
+    Supplying worker_group_id asserts that this logical execution slot conforms
+    to the selected group's capability contract. The kernel protects the group
+    identity and scheduling coordinates but does not re-prove handler coverage
+    during each upsert or dispatch.
 
     endpoint_manager_id locates the physical endpoint owner after this Worker
     has been selected. It is not a matching field or live transport evidence.

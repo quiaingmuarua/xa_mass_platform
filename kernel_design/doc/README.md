@@ -2,13 +2,16 @@
 
 Status: current document index for the clean-kernel mechanism workspace.
 
+Task scheduling is the current control-flow mainline. Worker resource and score
+remain independent owner contracts used by that mainline; delivery routes,
+Adapter connectivity, and execution evidence are not a second Worker lifecycle
+system.
+
 The document families are grouped by design concern:
 
 - [Kernel Application Assembly](kernel-application-assembly.md): zero-config
   scheduling application and resource-command boundaries, private Redis
   composition, and CLI/FastAPI hosts.
-- [Worker System](worker-system.md): first-class Worker owner map across
-  resource, scheduling, binding, connectivity, and execution dimensions.
 - [Scheduling](scheduling/README.md): score axes, the cross-pacer Worker
   HOT_ACQUIRE lease protocol, assignment-dispatch pacers, outbound handoff, and
   result routing.

@@ -20,6 +20,16 @@ must use this workspace as its parity oracle.
   orthogonal policy switches.
 - Add a TaskType only when a concrete scenario cannot be represented by the
   existing types and has its own vertical executable proof.
+- Treat Task scheduling as the current control-flow mainline. Worker resource
+  and score are independent truth owners called by that mainline, not a second
+  peer scheduling application.
+- Do not promote route metadata, Adapter connectivity observations, command
+  handoff, or result evidence into a Worker lifecycle without a concrete
+  scenario and an implemented owner.
+- Treat `WorkerGroup.eventCodes` as an immutable capability declaration, not a
+  scheduling predicate. Server/control-plane code may validate semantic
+  compatibility; Kernel append, matching, and dispatch must not add per-Item
+  EventCode checks.
 
 Core kernel shape:
 
@@ -95,16 +105,15 @@ For general kernel work:
 
 For worker-runtime work:
 
-1. [doc/worker-system.md](doc/worker-system.md)
-2. [doc/resource-model/worker-resource-model.md](doc/resource-model/worker-resource-model.md)
-3. [doc/scheduling/worker-score-band-scheduling.md](doc/scheduling/worker-score-band-scheduling.md)
-4. [doc/scheduling/worker-hot-acquire-lease-protocol.md](doc/scheduling/worker-hot-acquire-lease-protocol.md)
-5. [doc/scheduling/assignment-dispatch-scheduling.md](doc/scheduling/assignment-dispatch-scheduling.md)
-6. [executable_spec/kernel/worker_runtime.py](executable_spec/kernel/worker_runtime.py)
-7. [executable_spec/kernel/worker_score.py](executable_spec/kernel/worker_score.py)
-8. [executable_spec/redis_runtime/worker_score.py](executable_spec/redis_runtime/worker_score.py)
-9. [executable_spec/tests/test_worker_runtime_contract.py](executable_spec/tests/test_worker_runtime_contract.py)
-10. [executable_spec/tests/test_redis_worker_score.py](executable_spec/tests/test_redis_worker_score.py)
+1. [doc/resource-model/worker-resource-model.md](doc/resource-model/worker-resource-model.md)
+2. [doc/scheduling/worker-score-band-scheduling.md](doc/scheduling/worker-score-band-scheduling.md)
+3. [doc/scheduling/worker-hot-acquire-lease-protocol.md](doc/scheduling/worker-hot-acquire-lease-protocol.md)
+4. [doc/scheduling/assignment-dispatch-scheduling.md](doc/scheduling/assignment-dispatch-scheduling.md)
+5. [executable_spec/kernel/worker_runtime.py](executable_spec/kernel/worker_runtime.py)
+6. [executable_spec/kernel/worker_score.py](executable_spec/kernel/worker_score.py)
+7. [executable_spec/redis_runtime/worker_score.py](executable_spec/redis_runtime/worker_score.py)
+8. [executable_spec/tests/test_worker_runtime_contract.py](executable_spec/tests/test_worker_runtime_contract.py)
+9. [executable_spec/tests/test_redis_worker_score.py](executable_spec/tests/test_redis_worker_score.py)
 
 For task runtime or task score-band work:
 
@@ -357,10 +366,11 @@ suffix routing, mailbox publication, and Task-score pacing.
 acquisition, exact Item claim, DeliverSeed construction, and Worker command
 construction. It is not another Pacer or lifecycle owner.
 
-It does not own task lifecycle truth, worker lifecycle truth, Worker score
-encoding/storage, result finality, transport delivery, or transport session
-internals. The canonical allocation/dispatch/result lease sequence is defined
-by [Worker HOT_ACQUIRE Lease Protocol](doc/scheduling/worker-hot-acquire-lease-protocol.md).
+It does not own Task lifecycle truth, Worker resource or score truth, Worker
+score encoding/storage, result finality, transport delivery, or transport
+session internals. The canonical allocation/dispatch/result lease sequence is
+defined by
+[Worker HOT_ACQUIRE Lease Protocol](doc/scheduling/worker-hot-acquire-lease-protocol.md).
 
 Worker Delivery Dispatch owns:
 

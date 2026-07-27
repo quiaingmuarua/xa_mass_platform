@@ -10,8 +10,8 @@ metadata is a query projection and upsert declaration shape, not score truth.
 ## Core Decision
 
 ```text
-WorkerGroup = one schedulable worker universe
-Worker = one resource identity inside exactly one worker group
+WorkerGroup = one declared base capability contract plus one scheduling namespace
+Worker = one logical execution-slot resource inside exactly one worker group
 ```
 
 The resource model is intentionally a short tree:
@@ -22,6 +22,12 @@ WorkerCandidateConstraint -> worker predicates inside selected WorkerGroup
 TaskItem / DeliverSeed -> worker-local EventHandler
 Transport           -> internal delivery resource
 ```
+
+`WorkerGroup` is not a generic operator, tenant, Adapter, or display grouping
+label. Its `eventCodes` define the common base execution-capability declaration
+for group members. Its `itemAllocationFields` define the bounded candidate
+sources available inside that scheduling namespace. Mutable group attributes
+may describe the group but do not redefine membership or capability identity.
 
 `Task admission -> selected WorkerGroup` is fixed at task create/admission time.
 In v0, admission accepts exactly one registered `workerGroupId`.
@@ -38,8 +44,10 @@ query attributes.
 worker. Kernel assignment passes the TaskItem's `eventCode` through without
 using it for admission or matching. The selected Worker resolves it to a local
 handler and reports an unsupported code as Worker failure evidence. EventCode
-does not choose worker groups and does not prove Worker scheduling
-serviceability.
+does not choose worker groups, become a dispatch gate, or prove Worker
+scheduling serviceability. A Server or control-plane may validate compatibility
+before calling Kernel commands without moving that check into the scheduling
+hot path.
 
 `Transport` is an internal delivery resource. It resolves how to deliver already
 assigned work to the selected WorkerId; it does not select workers. Assignment
@@ -102,23 +110,27 @@ WorkerGroupDescriptor
   itemAllocationFields: set<string>
 ```
 
-`workerGroupId` names a steady scheduling universe configured for operations.
-Task admission fixes the worker group before task scheduling starts. The task
-does not select or query worker groups during dispatch.
+`workerGroupId` names one declared capability group and its steady scheduling
+namespace. Task admission fixes the worker group before task scheduling starts.
+The task does not select or query worker groups during dispatch.
 
-`attributes` are metadata/query fields. They may describe grouping, display,
-classification, policy hints, or operator-facing facts. They are not live
-worker score lease truth.
+`attributes` are metadata/query fields. They may describe display,
+classification, policy hints, or operator-facing facts. They do not redefine
+the group's capability contract, create a second grouping dimension, or carry
+live Worker score lease truth.
 
-`eventCodes` declares the task item event families this worker group can
-handle. It is capability metadata for external bootstrap, control-plane, and
-operator validation. Kernel Item append, Worker matching, and dispatch do not
-read it as an admission gate. It is not proof that a specific worker is
-currently reachable, score-leased, or able to receive work.
+`eventCodes` is the declared base execution-capability set shared by Worker
+members of this group. Worker membership asserts compatibility with the complete
+set. Kernel stores this declaration and keeps it immutable, but Item append,
+Worker matching, and dispatch do not compare each TaskItem against it. Server
+and control-plane validation may prove handler coverage before resource or Task
+commands reach the Kernel. The declaration is not proof that a specific Worker
+is currently reachable, score-leased, or able to receive work.
 
 `itemAllocationFields` declares which bounded candidate-source fields a
 `ITEM_DRIVEN` Task may use in Item rules. `workerId` is built in;
 `dynamic.<name>` also requires a registered handler-owned candidate index.
+This is an acquisition capability of the group, not an EventHandler capability.
 The declaration does not expose handler functions or Redis keys.
 
 Normal WorkerGroup upsert may replace only `attributes`. `eventCodes` and
@@ -167,7 +179,10 @@ changing it requires a separate controlled Worker-route command.
 
 `WorkerDeclaration` is caller-owned connect/reconnect input. It cannot carry
 platform attributes, score fields, polarity, laneRank, dirty, or time
-coordinates. `WorkerDescriptor` is the complete runtime query projection.
+coordinates. Supplying `workerGroupId` asserts that the Worker conforms to the
+group's capability contract; Kernel upsert protects that immutable membership
+but does not perform expensive handler-bundle inspection.
+`WorkerDescriptor` is the complete runtime query projection.
 
 `WorkerRuntime.upsert_worker` establishes or refreshes the Worker. First
 appearance writes the immutable declaration identity and initializes the first
@@ -247,26 +262,34 @@ dynamicAttributeNames = {
 
 ## EventCode Declaration
 
-`WorkerGroupDescriptor.eventCodes` declares the expected event-handler universe
-for a WorkerGroup:
+`WorkerGroupDescriptor.eventCodes` declares the base event-handler capability
+contract for a WorkerGroup:
 
 ```text
 every accepted worker in the group must be compatible with the group's eventCodes
 ```
 
-An external Worker bootstrap or control-plane validator may verify:
+This is a Kernel-defined resource declaration, not a Kernel scheduling gate.
+Kernel owns the stored shape, immutable update rule, and Worker membership
+coordinate. It deliberately does not perform handler discovery or compare every
+TaskItem `eventCode` during append, matching, or dispatch.
+
+A Server, Worker bootstrap, or control-plane validator may enforce the semantic
+contract before invoking Kernel commands:
 
 ```text
 workerGroupId exists
 attributes satisfy group policy / attributes
 Worker declaration evidence or platform handler catalog covers eventCodes
+Task / TaskItem eventCode is compatible with the selected WorkerGroup
 ```
 
-That validation is not a kernel reconnect or scheduling transition. The kernel
-does not reject TaskItems by comparing EventCode with this declaration. After
-assignment, unsupported EventCode resolution is Worker execution failure, not
-Adapter rejection and not Worker matching failure. Do not solve ordinary
-handler differences by adding per-worker event binding rows in v0.
+Validation depth is a Server policy decision. Skipping an expensive semantic
+check must not make Kernel scheduling unsafe: after assignment, unsupported
+EventCode resolution becomes Worker execution failure, not Adapter rejection
+and not Worker matching failure. Do not solve ordinary handler differences by
+adding per-Worker event binding rows or by adding EventCode reads to the hot
+dispatch path.
 
 Version compatibility is metadata validation through `attributes`.
 Assignment-dispatch must not interpret version fields directly as runtime

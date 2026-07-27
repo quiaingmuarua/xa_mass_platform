@@ -95,13 +95,16 @@ Value shape:
 }
 ```
 
-`eventCodes` is a declared group capability for external bootstrap and
-operator validation. Kernel append, matching, and dispatch do not read it as an
-admission gate. It is not a worker selector and not runtime
-scheduling-serviceability proof.
+`eventCodes` is the group's declared base execution-capability contract.
+Worker membership asserts compatibility with the complete set. Redis stores the
+declaration and upsert keeps it immutable; Kernel append, matching, and dispatch
+do not compare each TaskItem against it. Server/control-plane validation may
+check handler coverage before invoking Kernel commands. The field is not a
+Worker selector or runtime scheduling-serviceability proof.
 
 `itemAllocationFields` is the immutable WorkerGroup allowlist for TaskItem
-TARGETED rules. It names candidate-source fields, not Redis keys or handler
+TARGETED rules. It is a bounded candidate-source contract, separate from the
+EventHandler capability set, and names fields rather than Redis keys or handler
 functions.
 
 ### Worker Descriptors

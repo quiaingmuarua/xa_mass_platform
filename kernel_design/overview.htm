@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta
     name="description"
-    content="XA Mass 新内核的人类全景入口：对等的 Task/Worker System、Task Dispatch、Worker Delivery Dispatch、Result Routing、TaskType 与三条 Score 轴。"
+    content="XA Mass 新内核的人类全景入口：以 Task 调度为主线，连接 Worker owner、Worker Delivery Dispatch、Result Routing、TaskType 与三条 Score 轴。"
   >
   <title>XA Mass Kernel · 机制全景</title>
   <style>
@@ -1191,8 +1191,8 @@
 
       <h1>XA Mass Kernel<br>机制全景</h1>
       <p class="lede">
-        Task System 与 Worker System 是对等的 Kernel 核心系统；
-        Assignment Dispatch 跨 owner 形成绑定，但任何一方都不附属于另一方。
+        Task 调度是当前 Kernel 的控制流主线；Worker resource 与 score 保持独立
+        truth owner，由 Task 驱动的 scheduling 在需要分配和收敛时调用。
         新内核把调度拆成三个连续边界：
         <strong>Task Dispatch 完成选择与 claim，Worker Delivery Dispatch 完成投递，
         Result Routing 让 TaskItem 与 Worker truth 收敛。</strong>
@@ -1733,9 +1733,9 @@
           <span class="reading-number">03</span>
           <span><b>Task Resource Model</b>TaskType、allocationRule 与 empty-close。</span>
         </a>
-        <a class="reading-link" href="doc/worker-system.md">
+        <a class="reading-link" href="doc/resource-model/worker-resource-model.md">
           <span class="reading-number">04</span>
-          <span><b>Worker System</b>Resource、scheduling、binding、connectivity 与 execution 边界。</span>
+          <span><b>Worker Resource Model</b>WorkerGroup、Worker declaration 与属性 owner。</span>
         </a>
         <a class="reading-link" href="doc/scheduling/assignment-dispatch-scheduling.md">
           <span class="reading-number">05</span>
