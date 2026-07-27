@@ -15,8 +15,6 @@ from kernel_design.executable_spec.assembly import (
     TaskCloseStatus,
     TaskCreationResult,
     TaskCreationStatus,
-    TaskItemAppendResult,
-    TaskItemAppendStatus,
     WorkerRuntimeResult,
     WorkerRuntimeStatus,
 )
@@ -72,9 +70,6 @@ class KernelRuntimeServerTest(unittest.TestCase):
         self.application.close_task.return_value = TaskCloseResult(
             TaskCloseStatus.CLOSED
         )
-        self.application.append_task_items.return_value = {
-            "message-1": TaskItemAppendResult(TaskItemAppendStatus.APPENDED)
-        }
         self.client_context = TestClient(
             create_app(
                 application=self.application,
@@ -124,7 +119,7 @@ class KernelRuntimeServerTest(unittest.TestCase):
         )
         approval_response = self.client.post("/tasks/task-1/approve")
         close_response = self.client.post("/tasks/task-1/close")
-        append_response = self.client.post(
+        removed_append_response = self.client.post(
             "/tasks/task-1/items",
             json={
                 "items": [
@@ -146,10 +141,7 @@ class KernelRuntimeServerTest(unittest.TestCase):
         self.assertEqual(200, approval_response.status_code)
         self.assertEqual(200, close_response.status_code)
         self.assertEqual({"status": "closed"}, close_response.json())
-        self.assertEqual(
-            {"message-1": {"status": "appended"}},
-            append_response.json(),
-        )
+        self.assertEqual(404, removed_append_response.status_code)
         self.assertNotIn(
             "suffix",
             inspect.signature(self.application.create_task).parameters,
@@ -163,13 +155,6 @@ class KernelRuntimeServerTest(unittest.TestCase):
         self.assertEqual(
             frozenset({"workerId"}),
             group_descriptor.item_allocation_fields,
-        )
-        appended_item = self.application.append_task_items.call_args.kwargs[
-            "items"
-        ][0]
-        self.assertEqual(
-            {"workerId": {"$eq": "worker-1"}},
-            appended_item.allocation_rule,
         )
         task_descriptor = self.application.create_task.call_args.kwargs["descriptor"]
         self.assertIs(

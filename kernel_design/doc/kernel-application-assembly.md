@@ -4,7 +4,7 @@ Status: active new-kernel application contract; Python executable spec implement
 
 ## Purpose
 
-The current system exposes three narrow process boundaries:
+The current system exposes narrow control, data, and delivery boundaries:
 
 ```text
 FastAPI / SDK
@@ -18,7 +18,8 @@ CLI / FastAPI
      -> assignment-dispatch and result-routing background applications
 
 Java Runtime API Server
-  -> Task/resource controllers call the Python Kernel Runtime Server
+  -> WorkerGroup/Worker and Task-control controllers call Python
+  -> TaskData directly appends TaskItems and reads last-success results
   -> Worker Delivery Gateway directly consumes WorkerCommand
   -> Worker Delivery Gateway directly appends SeedResult
 ```
@@ -26,8 +27,8 @@ Java Runtime API Server
 All three surfaces expose commands, not runtime objects. Callers cannot obtain
 Task/Worker score cores, candidate runtime, matcher, pacers, Redis keys,
 suffixes, or lane ranks. Only `KernelApplication` starts background
-scheduling. Java's direct Redis access is limited to Worker Delivery
-consume/delete and SeedResult append.
+scheduling. Java's direct Redis access is limited to TaskData Item
+append/result read and Worker Delivery consume/result-ingress operations.
 
 ## Application And Executable-Spec Commands
 
@@ -39,7 +40,6 @@ upsert_worker
 KernelApplication
 create_task
 approve_task
-append_task_items
 close_task
 
 WorkerCommandConsumerClient
@@ -50,12 +50,20 @@ consume_worker_commands(endpointManagerId, cursor, scanCount)
 
 SeedResultCommandClient
 append_seed_results(SeedResult...)
+
+Java TaskDataRuntime
+appendTaskItems(taskId, items)
+loadTaskItemSuccessResults(taskId, messageIds)
 ```
 
 `ResourcesCommandClient` and `KernelApplication` back the Python command host.
 The two Worker Delivery clients remain stable Python executable-spec and test
 support surfaces; they are not mounted as Python HTTP routes. The Java Gateway
 implements the public Worker Delivery operations against the same Redis shape.
+`TaskRuntime.append_items` and `load_task_item_success_results` likewise remain
+the Python mechanism oracle. The public Task data HTTP operations are
+implemented by Java `TaskDataService` and `TaskDataRuntime`; Python exposes no
+TaskItem append or result-query route.
 
 WorkerGroup upsert reuses `WorkerGroupDescriptor`. Worker upsert accepts the
 caller-owned `WorkerDeclaration`; the complete `WorkerDescriptor` remains a
@@ -84,12 +92,12 @@ The caller owns the close decision and its business evidence. For
 `ITEM_DRIVEN`, a server or other control-plane owner may call this command from
 deadline or completion evidence; `KernelApplication` does not infer completion
 from an empty Item set.
-`append_task_items` enforces the Task's immutable `taskType`.
-`TASK_DRIVEN` forbids Item rules; `ITEM_DRIVEN` requires them and validates each rule
-against the selected WorkerGroup `itemAllocationFields` and installed
-candidate-query handlers before delegating valid records to TaskRuntime. Item
-rules cannot change WorkerGroup. The common `TASK_DRIVEN` path performs no WorkerGroup
-or dynamic-index read during append.
+Java TaskData append enforces the Task's immutable `taskType`.
+`TASK_DRIVEN` forbids Item rules. `ITEM_DRIVEN` requires a complete rule and
+the first Java cutover supports only bounded `workerId $eq/$in`, declared by
+the selected WorkerGroup `itemAllocationFields`. Dynamic candidate sources
+remain supported by the Python mechanism oracle and tests but are not exposed
+through the first Java TaskData ingress. Item rules cannot change WorkerGroup.
 
 The assembly does not accept acquisition strategy, cache participation, or
 rule-owner configuration. Scheduling derives those decisions from the two
@@ -237,22 +245,25 @@ Cross-process integration proves both `TASK_DRIVEN` and `ITEM_DRIVEN` through
 the current external process boundaries:
 
 ```text
-ResourcesCommandClient
-  -> KernelApplication
+Java control API -> Python KernelApplication
+  -> Java TaskData append
   -> Redis scheduling truth
   -> Java Worker Delivery Gateway command access
   -> Java Worker polling or WebSocket phone tool execution
   -> Java Worker Delivery Gateway SeedResult ingress
   -> Result-Routing
   -> TaskItem FINAL_SUCCESS + result HASH + Worker lease release
+  -> Java last-success result query
 ```
 
-The proof starts Task/resource commands at the Java API, crosses the Python
-Kernel Runtime Server for scheduling, then uses the Java Gateway's direct
-Worker Delivery Redis slice. Java never parses score state. Separate Redis
-proofs cover TASK_DRIVEN default empty close with RUNNING soft-limit release,
-ITEM_DRIVEN future-threshold empty recheck followed by append and dispatch,
-shared explicit threshold close, and public close remaining terminal.
+The proof starts resource and Task-control commands at the Java API, crosses
+the Python Kernel Control API, appends TaskItems through Java TaskData, then
+uses the Java Gateway's direct Worker Delivery Redis slice. Java never parses
+Task or Worker score state. Separate Redis proofs cover TaskData Item-score
+initialization, TASK_DRIVEN default empty close with RUNNING soft-limit
+release, ITEM_DRIVEN future-threshold empty recheck followed by append and
+dispatch, shared explicit threshold close, and public close remaining
+terminal.
 
 ## External Hosts
 
@@ -263,7 +274,7 @@ python -m kernel_design.executable_spec.assembly
 python -m kernel_design.executable_spec.assembly --config kernel.json
 ```
 
-The Python Kernel Runtime Server constructs `KernelApplication` and
+The Python Kernel Control API constructs `KernelApplication` and
 `ResourcesCommandClient` from one resolved configuration. Lifespan starts and
 stops only `KernelApplication`:
 
@@ -272,9 +283,12 @@ python -m kernel_design.runtime_server
 python -m kernel_design.runtime_server --config kernel.json
 ```
 
-The Java Runtime API Server exposes Worker Delivery at port `18082`:
+The Java Runtime API Server exposes Task data and Worker Delivery at port
+`18082`:
 
 ```text
+POST /api/v1/tasks/{taskId}/items
+POST /api/v1/tasks/{taskId}/results:load
 POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/
      workers/{workerId}/commands:poll
 POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/
@@ -309,12 +323,11 @@ login or authorization protocol, and KernelApplication does not own or expose
 session facts.
 
 The Python Runtime Server remains the scheduling command host and mechanism
-oracle. The Java Gateway is the current Worker Delivery HTTP owner, not a
-second scheduler or Redis owner for scores. The Java Worker is the only
-external Worker demonstration mainline. Authentication, multi-instance
-WebSocket ownership, Task query/list,
-result projection, reliable pending/ack delivery, and API compatibility remain
-out of scope.
+oracle. Java TaskData and Worker Delivery own their current external HTTP
+operations, not a second scheduler. The Java Worker is the only external
+Worker demonstration mainline. Authentication, multi-instance WebSocket
+ownership, Task query/list, failure-result projection, reliable pending/ack
+delivery, and API compatibility remain out of scope.
 
 ## Guardrails
 
@@ -325,11 +338,14 @@ out of scope.
   assembly contract exist.
 - Do not add a second environment-variable or CLI configuration path.
 - Do not let HTTP handlers perform score reads or transitions.
+- Do not restore Python TaskItem append or result-query HTTP routes.
 - Do not expose Worker Delivery methods on `KernelApplication`.
 - Do not restore Python Worker Delivery HTTP routes. Python transport clients
   remain executable-spec and test-support surfaces.
 - Do not let Java Worker Delivery Redis code append WorkerCommand, consume
   SeedResult, or access score/Pacer state.
+- Do not let Java TaskData Redis code access Task score, Worker score,
+  candidate cache, WorkerCommand mailbox, SeedResult queues, or Pacer state.
 - Do not expose cursor scanning through the polling Worker endpoint.
 - Do not turn internal Pacer configuration into public JSON without a concrete
   operational requirement.

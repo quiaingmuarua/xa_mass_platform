@@ -3,7 +3,8 @@ package com.xa.mass.server;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.server.api.v1.ResourceCommandController;
-import com.xa.mass.server.api.v1.TaskCommandController;
+import com.xa.mass.server.api.v1.TaskControlController;
+import com.xa.mass.server.api.v1.TaskDataController;
 import com.xa.mass.server.kernelclient.KernelCommandClient;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -37,7 +38,9 @@ class ServerApplicationContextTest {
                 .isNotNull();
         assertThat(applicationContext.getBean(ResourceCommandController.class))
                 .isNotNull();
-        assertThat(applicationContext.getBean(TaskCommandController.class))
+        assertThat(applicationContext.getBean(TaskControlController.class))
+                .isNotNull();
+        assertThat(applicationContext.getBean(TaskDataController.class))
                 .isNotNull();
 
         HttpClient client = HttpClient.newHttpClient();

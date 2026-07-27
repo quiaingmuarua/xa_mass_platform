@@ -2,6 +2,7 @@ package com.xa.mass.server.api;
 
 import com.xa.mass.server.api.v1.model.ApiErrorResponse;
 import com.xa.mass.server.kernelclient.KernelClientException;
+import com.xa.mass.server.taskdata.TaskDataException;
 import com.xa.mass.server.workerdelivery.WorkerDeliveryException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
@@ -60,6 +61,30 @@ public final class ApiExceptionHandler {
                 == WorkerDeliveryException.Kind.INVALID
                 ? "INVALID_WORKER_DELIVERY_REQUEST"
                 : "WORKER_DELIVERY_UNAVAILABLE";
+        return ResponseEntity.status(status).body(
+                new ApiErrorResponse(
+                        code,
+                        error.getMessage(),
+                        requestId(request)
+                )
+        );
+    }
+
+    @ExceptionHandler(TaskDataException.class)
+    public ResponseEntity<ApiErrorResponse> taskDataFailure(
+            TaskDataException error,
+            HttpServletRequest request
+    ) {
+        HttpStatus status = switch (error.kind()) {
+            case INVALID -> HttpStatus.BAD_REQUEST;
+            case NOT_FOUND -> HttpStatus.NOT_FOUND;
+            case UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE;
+        };
+        String code = switch (error.kind()) {
+            case INVALID -> "INVALID_TASK_DATA_REQUEST";
+            case NOT_FOUND -> "TASK_NOT_FOUND";
+            case UNAVAILABLE -> "TASK_DATA_UNAVAILABLE";
+        };
         return ResponseEntity.status(status).body(
                 new ApiErrorResponse(
                         code,

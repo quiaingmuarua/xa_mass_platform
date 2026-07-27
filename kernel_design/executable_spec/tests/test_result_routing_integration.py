@@ -23,6 +23,8 @@ except (ImportError, RuntimeError):  # pragma: no cover - missing HTTP dependenc
 
 from kernel_design.executable_spec import (
     RedisTaskItemScoreBandCore,
+    RedisTaskRuntime,
+    RedisTaskScoreBandCore,
     RedisWorkerScoreCore,
     TaskItemScoreBand,
     WorkerScorePolarity,
@@ -37,6 +39,7 @@ from kernel_design.executable_spec.assembly import (
     ResourcesCommandClient,
     SeedResultCommandClient,
     TaskItemAppendStatus,
+    TaskItem,
     decode_deliver_seed,
 )
 
@@ -94,6 +97,15 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         self.runtime_server_open = True
         self.item_score = RedisTaskItemScoreBandCore(
             self.redis,
+            prefix=self.prefix,
+        )
+        self.task_runtime = RedisTaskRuntime(
+            self.redis,
+            RedisTaskScoreBandCore(
+                self.redis,
+                score_key=f"tr:{self.prefix}:task:score",
+            ),
+            self.item_score,
             prefix=self.prefix,
         )
         self.worker_score = RedisWorkerScoreCore(
@@ -156,27 +168,30 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
             ),
         )
         approval_response = self.runtime_server.post("/tasks/task-1/approve")
-        item: dict[str, object] = {
-            "messageId": "message-1",
-            "eventCode": _PHONE_INSPECT_EVENT_CODE,
-            "createdAtMillis": int(time.time() * 1_000) - 1_000,
-            "payload": {"phoneNumber": "+14155552671"},
-        }
-        if task_type is TaskType.ITEM_DRIVEN:
-            item["allocationRule"] = {"workerId": {"$eq": "worker-1"}}
-        append_response = self.runtime_server.post(
-            "/tasks/task-1/items",
-            json={"items": [item]},
+        append_result = self.task_runtime.append_items(
+            task_id="task-1",
+            items=(
+                TaskItem(
+                    message_id="message-1",
+                    event_code=_PHONE_INSPECT_EVENT_CODE,
+                    created_at_millis=int(time.time() * 1_000) - 1_000,
+                    payload={"phoneNumber": "+14155552671"},
+                    allocation_rule=(
+                        {"workerId": {"$eq": "worker-1"}}
+                        if task_type is TaskType.ITEM_DRIVEN
+                        else None
+                    ),
+                ),
+            ),
         )
 
         self.assertEqual(200, group_response.status_code)
         self.assertEqual(200, worker_response.status_code)
         self.assertEqual(201, creation_response.status_code)
         self.assertEqual(200, approval_response.status_code)
-        self.assertEqual(200, append_response.status_code)
         self.assertEqual(
-            {"message-1": {"status": TaskItemAppendStatus.APPENDED.value}},
-            append_response.json(),
+            TaskItemAppendStatus.APPENDED,
+            append_result["message-1"].status,
         )
 
         deadline = time.monotonic() + 3
@@ -256,21 +271,21 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
             json=self._task_request(TaskType.ITEM_DRIVEN),
         )
         self.runtime_server.post("/tasks/task-1/approve")
-        self.runtime_server.post(
-            "/tasks/task-1/items",
-            json={
-                "items": [
-                    {
-                        "messageId": "message-1",
-                        "eventCode": "image.resize",
-                        "createdAtMillis": int(time.time() * 1_000) - 1_000,
-                        "payload": {"source": "input"},
-                        "allocationRule": {
-                            "workerId": {"$eq": "worker-1"}
-                        },
-                    }
-                ]
-            },
+        append_result = self.task_runtime.append_items(
+            task_id="task-1",
+            items=(
+                TaskItem(
+                    message_id="message-1",
+                    event_code="image.resize",
+                    created_at_millis=int(time.time() * 1_000) - 1_000,
+                    payload={"source": "input"},
+                    allocation_rule={"workerId": {"$eq": "worker-1"}},
+                ),
+            ),
+        )
+        self.assertEqual(
+            TaskItemAppendStatus.APPENDED,
+            append_result["message-1"].status,
         )
 
         command = None

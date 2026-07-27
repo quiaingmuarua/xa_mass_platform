@@ -40,7 +40,7 @@ tasks.named('test') {
 }
 
 tasks.register('integrationTest', Test) {
-    description = 'Runs cross-process tests against the Python Kernel Command Server.'
+    description = 'Runs Redis and cross-process tests against the Python Kernel Control API.'
     group = 'verification'
     testClassesDirs = sourceSets.test.output.classesDirs
     classpath = sourceSets.test.runtimeClasspath

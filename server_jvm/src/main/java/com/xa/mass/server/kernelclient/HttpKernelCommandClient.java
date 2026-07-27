@@ -3,13 +3,10 @@ package com.xa.mass.server.kernelclient;
 import com.xa.mass.server.api.v1.model.CommandResultResponse;
 import com.xa.mass.server.api.v1.model.RuntimeCommandStatus;
 import com.xa.mass.server.api.v1.model.TaskCreateRequest;
-import com.xa.mass.server.api.v1.model.TaskItemsAppendRequest;
-import com.xa.mass.server.api.v1.model.TaskItemsAppendResponse;
 import com.xa.mass.server.api.v1.model.WorkerGroupUpsertRequest;
 import com.xa.mass.server.api.v1.model.WorkerUpsertRequest;
 import java.net.SocketTimeoutException;
 import java.net.http.HttpTimeoutException;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -82,48 +79,6 @@ final class HttpKernelCommandClient implements KernelCommandClient {
         return exchangeCommand(
                 restClient.post().uri("/tasks/{taskId}/close", taskId)
         );
-    }
-
-    @Override
-    public KernelResponse<TaskItemsAppendResponse> appendTaskItems(
-            String taskId,
-            TaskItemsAppendRequest request
-    ) {
-        try {
-            return restClient.post()
-                    .uri("/tasks/{taskId}/items", taskId)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(request)
-                    .exchange((ignoredRequest, response) -> {
-                        Map<String, Object> body = readMap(response);
-                        if (response.getStatusCode().isError()) {
-                            throw rejectedResponse(response.getStatusCode().value(), body);
-                        }
-                        Map<String, CommandResultResponse> results =
-                                new LinkedHashMap<>();
-                        for (Map.Entry<String, Object> entry : body.entrySet()) {
-                            if (!(entry.getValue() instanceof Map<?, ?> value)) {
-                                throw KernelClientException.invalidResponse(
-                                        "Kernel Item append result is malformed"
-                                );
-                            }
-                            results.put(entry.getKey(), parseCommandResult(value));
-                        }
-                        return new KernelResponse<>(
-                                response.getStatusCode(),
-                                new TaskItemsAppendResponse(results)
-                        );
-                    });
-        } catch (KernelClientException error) {
-            throw error;
-        } catch (ResourceAccessException error) {
-            throw transportFailure(error);
-        } catch (RestClientException error) {
-            throw KernelClientException.invalidResponse(
-                    "Kernel Item append response could not be decoded",
-                    error
-            );
-        }
     }
 
     @Override

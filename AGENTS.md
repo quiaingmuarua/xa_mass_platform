@@ -6,10 +6,10 @@ Status: current repository handoff.
 
 - `kernel_design/` is the current mechanism oracle.
 - `kernel_jvm/` is a production implementation scaffold only.
-- `server_jvm/` is the external Runtime API process. Task and resource commands
-  still call the Python `KernelCommandClient`. Worker Delivery is the one
-  deliberate cutover: Java consumes WorkerCommand mailbox fields and appends
-  SeedResult queue entries directly through `workerdelivery.redis`.
+- `server_jvm/` is the external Runtime API process. WorkerGroup/Worker upsert
+  and Task create/approve/close still call the Python `KernelCommandClient`.
+  Java directly owns TaskItem append, last-success result reads, WorkerCommand
+  consumption, and SeedResult ingress against the current Redis shapes.
 - `worker_delivery_contract_jvm/` is the Java 21 transport-neutral
   WorkerCommand/DeliverSeed/SeedResult contract shared by Server and Worker.
 - `worker_jvm/` is the runnable one-slot Java reference Worker. Polling and
@@ -43,12 +43,16 @@ tag.
 - Update the owning mechanism document when behavior changes.
 - Do not implement Kotlin behavior until a scoped parity slice names the
   Python contract and proof it replaces.
-- Keep Task and resource controllers in `server_jvm` on the Python
-  `KernelCommandClient` boundary until a complete Kotlin owner slice replaces
-  that client. Redis access is allowed only under
-  `com.xa.mass.server.workerdelivery.redis`, and only for WorkerCommand
-  consume/delete plus SeedResult append. Java must not access scores, Pacers,
-  scheduling owners, or `kernel_jvm` implementation packages.
+- Keep WorkerGroup/Worker upsert and Task create/approve/close controllers in
+  `server_jvm` on the Python `KernelCommandClient` boundary until a complete
+  Kotlin owner slice replaces that client.
+- Java Redis access is limited to `kernelredis` connection/health,
+  `taskdata.redis` TaskItem append/result-read operations, and
+  `workerdelivery.redis` WorkerCommand consume/SeedResult append operations.
+  TaskData may read Task and WorkerGroup declarations, write Item records and
+  ACTIVE Item initialization scores, and read the last-success HASH. Java must
+  not read or mutate Task score, Worker score, candidate cache, Pacers,
+  ResultRouting consumption, or `kernel_jvm` implementation packages.
 - Keep `worker_delivery_contract_jvm` transport-neutral. HTTP and WebSocket
   packages may call `WorkerDeliveryService` but must not import
   `workerdelivery.redis` or `WorkerDeliveryRuntime`.
@@ -66,8 +70,9 @@ responsibilities, but a new Gradle module requires a real publication,
 dependency, or lifecycle boundary.
 
 The scaffold currently contains no public API, DTO, runtime implementation,
-Redis code, or Pacer. The Java Worker Delivery Gateway is a server-side
-transport cutover, not evidence of Kotlin kernel implementation progress.
+Redis code, or Pacer. The Java TaskData and Worker Delivery server operations
+are process-boundary cutovers, not evidence of Kotlin kernel implementation
+progress.
 
 `worker_delivery_contract_jvm` is currently a repository-local Java 21 jar,
 not a published SDK and not an Android compatibility promise. A future

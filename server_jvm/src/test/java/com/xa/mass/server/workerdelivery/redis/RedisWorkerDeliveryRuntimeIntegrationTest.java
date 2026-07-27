@@ -5,6 +5,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.server.kernelredis.KernelRedisConfiguration;
+import com.xa.mass.server.kernelredis.KernelRedisProperties;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -36,12 +38,12 @@ class RedisWorkerDeliveryRuntimeIntegrationTest {
                 "KERNEL_DESIGN_REDIS_URL is not configured"
         );
         prefix = "java-worker-delivery-" + UUID.randomUUID();
-        var properties = new WorkerDeliveryRedisProperties(
+        var properties = new KernelRedisProperties(
                 URI.create(REDIS_URL),
                 prefix
         );
-        var configuration = new WorkerDeliveryRedisConfiguration();
-        redisClient = configuration.workerDeliveryRedisClient(properties);
+        var configuration = new KernelRedisConfiguration();
+        redisClient = configuration.kernelRedisClient(properties);
         connection = redisClient.connect(StringCodec.UTF8);
         redis = connection.sync();
         runtime = new RedisWorkerDeliveryRuntime(

@@ -1,4 +1,4 @@
-"""Executable-spec Kernel Runtime Server."""
+"""Executable-spec Python Kernel Control API."""
 
 from .app import create_app
 

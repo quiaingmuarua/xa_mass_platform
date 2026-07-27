@@ -2,8 +2,6 @@ package com.xa.mass.server.api.v1;
 
 import com.xa.mass.server.api.v1.model.CommandResultResponse;
 import com.xa.mass.server.api.v1.model.TaskCreateRequest;
-import com.xa.mass.server.api.v1.model.TaskItemsAppendRequest;
-import com.xa.mass.server.api.v1.model.TaskItemsAppendResponse;
 import com.xa.mass.server.kernelclient.KernelCommandClient;
 import com.xa.mass.server.kernelclient.KernelResponse;
 import jakarta.validation.Valid;
@@ -19,11 +17,11 @@ import org.springframework.web.bind.annotation.RestController;
 @Validated
 @RestController
 @RequestMapping("/api/v1/tasks")
-public class TaskCommandController {
+public class TaskControlController {
 
     private final KernelCommandClient kernelClient;
 
-    public TaskCommandController(KernelCommandClient kernelClient) {
+    public TaskControlController(KernelCommandClient kernelClient) {
         this.kernelClient = kernelClient;
     }
 
@@ -46,16 +44,6 @@ public class TaskCommandController {
             @PathVariable @NotBlank String taskId
     ) {
         return commandResponse(kernelClient.closeTask(taskId));
-    }
-
-    @PostMapping("/{taskId}/items")
-    public ResponseEntity<TaskItemsAppendResponse> appendTaskItems(
-            @PathVariable @NotBlank String taskId,
-            @Valid @RequestBody TaskItemsAppendRequest request
-    ) {
-        KernelResponse<TaskItemsAppendResponse> response =
-                kernelClient.appendTaskItems(taskId, request);
-        return ResponseEntity.status(response.statusCode()).body(response.body());
     }
 
     private static ResponseEntity<CommandResultResponse> commandResponse(

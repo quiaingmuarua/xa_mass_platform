@@ -2,8 +2,6 @@ package com.xa.mass.server.kernelclient;
 
 import com.xa.mass.server.api.v1.model.CommandResultResponse;
 import com.xa.mass.server.api.v1.model.TaskCreateRequest;
-import com.xa.mass.server.api.v1.model.TaskItemsAppendRequest;
-import com.xa.mass.server.api.v1.model.TaskItemsAppendResponse;
 import com.xa.mass.server.api.v1.model.WorkerGroupUpsertRequest;
 import com.xa.mass.server.api.v1.model.WorkerUpsertRequest;
 
@@ -25,11 +23,6 @@ public interface KernelCommandClient {
     KernelResponse<CommandResultResponse> approveTask(String taskId);
 
     KernelResponse<CommandResultResponse> closeTask(String taskId);
-
-    KernelResponse<TaskItemsAppendResponse> appendTaskItems(
-            String taskId,
-            TaskItemsAppendRequest request
-    );
 
     boolean isHealthy();
 }

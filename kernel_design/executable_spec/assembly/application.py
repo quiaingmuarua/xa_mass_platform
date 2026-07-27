@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from enum import Enum
 from threading import Lock
@@ -13,20 +13,10 @@ from ..scheduling import (
     TaskRunningActivationConfig,
     TaskWorkerAllocationConfig,
 )
-from ..scheduling.worker_candidate.rules import validate_targeted_allocation_rule
-from ..scheduling.task_scheduling_profile import (
-    ResolvedTaskSchedulingProfile,
-    TaskAllocationRuleOwner,
-    resolve_task_scheduling_profile,
-)
 from ..kernel import (
-    MessageId,
     TaskCreationResult,
     TaskDescriptor,
     TaskId,
-    TaskItem,
-    TaskItemAppendResult,
-    TaskItemAppendStatus,
     TaskResourceCatalog,
     TaskScoreBand,
     TaskScoreBandCore,
@@ -451,104 +441,6 @@ class KernelApplication:
     def close_task(self, *, task_id: TaskId) -> TaskCloseResult:
         self._require_started()
         return self._task_lifecycle.close_task(task_id=task_id)
-
-    def append_task_items(
-        self,
-        *,
-        task_id: TaskId,
-        items: Sequence[TaskItem],
-    ) -> Mapping[MessageId, TaskItemAppendResult]:
-        self._require_started()
-        if not items:
-            return {}
-        ordered_items = {item.message_id: item for item in items}
-        descriptor = self._process._task_resource_catalog.load_task_allocation_descriptors(
-            task_ids=(task_id,),
-        ).get(task_id)
-        if descriptor is None:
-            return {
-                message_id: TaskItemAppendResult(TaskItemAppendStatus.NOT_FOUND)
-                for message_id in ordered_items
-            }
-        scheduling_profile = resolve_task_scheduling_profile(
-            descriptor.task_type
-        )
-        allowed_item_fields: frozenset[str] = frozenset()
-        if (
-            scheduling_profile.allocation_rule_owner
-            is TaskAllocationRuleOwner.TASK_ITEM
-        ):
-            worker_groups = self._process._worker_resource_catalog.get_worker_group_descriptors(
-                worker_group_ids=(descriptor.worker_group_id,),
-            )
-            worker_group = worker_groups.get(descriptor.worker_group_id)
-            if worker_group is None:
-                return {
-                    message_id: TaskItemAppendResult(
-                        TaskItemAppendStatus.INVALID,
-                        "Task WorkerGroup declaration was not found",
-                    )
-                    for message_id in ordered_items
-                }
-            allowed_item_fields = worker_group.item_allocation_fields
-
-        valid_items: list[TaskItem] = []
-        results: dict[MessageId, TaskItemAppendResult] = {}
-        for message_id, item in ordered_items.items():
-            try:
-                self._validate_item_allocation_rule(
-                    item=item,
-                    scheduling_profile=scheduling_profile,
-                    allowed_fields=allowed_item_fields,
-                )
-            except ValueError as error:
-                results[message_id] = TaskItemAppendResult(
-                    TaskItemAppendStatus.INVALID,
-                    str(error),
-                )
-            else:
-                valid_items.append(item)
-
-        if len(valid_items) == len(ordered_items):
-            return self._process._task_runtime.append_items(
-                task_id=task_id,
-                items=valid_items,
-            )
-        if valid_items:
-            results.update(
-                self._process._task_runtime.append_items(
-                    task_id=task_id,
-                    items=valid_items,
-                )
-            )
-        return {
-            message_id: results[message_id]
-            for message_id in ordered_items
-        }
-
-    def _validate_item_allocation_rule(
-        self,
-        *,
-        item: TaskItem,
-        scheduling_profile: ResolvedTaskSchedulingProfile,
-        allowed_fields: frozenset[str],
-    ) -> None:
-        if (
-            scheduling_profile.allocation_rule_owner
-            is TaskAllocationRuleOwner.TASK
-        ):
-            if item.allocation_rule is not None:
-                raise ValueError("TASK_DRIVEN forbids a TaskItem allocation rule")
-            return
-        if item.allocation_rule is None:
-            raise ValueError("ITEM_DRIVEN requires a TaskItem allocation rule")
-        validate_targeted_allocation_rule(
-            item.allocation_rule,
-            allowed_fields=allowed_fields,
-            dynamic_attributes=(
-                self._process._worker_dynamic_attribute_runtime
-            ),
-        )
 
     def _require_started(self) -> None:
         with self._lifecycle_lock:

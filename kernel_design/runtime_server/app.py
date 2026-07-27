@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -20,8 +19,6 @@ from kernel_design.executable_spec.assembly import (
     TaskCreationResult,
     TaskCreationStatus,
     TaskDescriptor,
-    TaskItem,
-    TaskItemAppendResult,
     WorkerDeclaration,
     WorkerGroupDescriptor,
     WorkerRuntimeResult,
@@ -62,23 +59,6 @@ class TaskRequest(BaseModel):
         ge=0,
         strict=True,
     )
-
-
-class TaskItemRequest(BaseModel):
-    message_id: str = Field(alias="messageId")
-    event_code: str = Field(alias="eventCode")
-    created_at_millis: int = Field(alias="createdAtMillis")
-    payload: dict[str, Any]
-    priority: int = 5
-    expire_at_millis: int | None = Field(default=None, alias="expireAtMillis")
-    allocation_rule: dict[str, Any] | None = Field(
-        default=None,
-        alias="allocationRule",
-    )
-
-
-class AppendTaskItemsRequest(BaseModel):
-    items: list[TaskItemRequest]
 
 
 def _result_payload(result: Any) -> dict[str, Any]:
@@ -134,15 +114,6 @@ def _close_response(result: TaskCloseResult) -> JSONResponse:
     return JSONResponse(_result_payload(result), status_code=status_code)
 
 
-def _result_map_payload(
-    results: Mapping[str, TaskItemAppendResult],
-) -> dict[str, dict[str, Any]]:
-    return {
-        message_id: _result_payload(result)
-        for message_id, result in results.items()
-    }
-
-
 def create_app(
     *,
     config_json: str | None = None,
@@ -183,7 +154,7 @@ def create_app(
         finally:
             kernel_application.stop()
 
-    app = FastAPI(title="Python Kernel Command API", lifespan=lifespan)
+    app = FastAPI(title="Python Kernel Control API", lifespan=lifespan)
     app.state.kernel_application = kernel_application
     app.state.resources_command_client = resource_commands
 
@@ -258,26 +229,5 @@ def create_app(
     @app.post("/tasks/{task_id}/close")
     def close_task(task_id: str) -> JSONResponse:
         return _close_response(kernel_application.close_task(task_id=task_id))
-
-    @app.post("/tasks/{task_id}/items")
-    def append_task_items(
-        task_id: str,
-        request: AppendTaskItemsRequest,
-    ) -> dict[str, dict[str, Any]]:
-        items = tuple(
-            TaskItem(
-                message_id=item.message_id,
-                event_code=item.event_code,
-                created_at_millis=item.created_at_millis,
-                payload=item.payload,
-                priority=item.priority,
-                expire_at_millis=item.expire_at_millis,
-                allocation_rule=item.allocation_rule,
-            )
-            for item in request.items
-        )
-        return _result_map_payload(
-            kernel_application.append_task_items(task_id=task_id, items=items)
-        )
 
     return app

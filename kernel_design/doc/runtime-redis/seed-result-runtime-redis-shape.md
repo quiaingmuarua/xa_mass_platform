@@ -50,6 +50,9 @@ tr:{prefix}:task:{taskId}:results
 
 The HASH is last-success: a later accepted `200` overwrites the prior payload
 for the same Task-scoped `messageId`. Failure payloads are not stored in v0.
+Java `TaskDataRuntime` exposes a bounded requested-id `HMGET` over this HASH.
+Missing fields return `null`; the query does not read Item score or infer
+pending/failure state.
 
 ## Owner Rules
 
@@ -69,6 +72,9 @@ ResultRoutingBuiltinPolicies / replacement handlers
 
 TaskRuntime
   owns Task-scoped last-success result payload truth
+
+Java TaskDataRuntime
+  owns the current external bounded read operation over that same truth
 
 TaskItemScoreBandCore / WorkerScoreCore
   own all score validation and mutation

@@ -413,6 +413,12 @@ initialDueMillis
 maxRetryTimes
 ```
 
+The current external HTTP realization is Java `TaskDataRuntime`. It performs
+the same record-first append and ACTIVE `ZADD NX` initialization directly
+against the shared Redis shape. Python `RedisTaskRuntime` and
+`TaskItemScoreBandCore` remain the executable-spec oracle. There is no Python
+HTTP fallback or dual write.
+
 For each Item independently:
 
 ```text
@@ -614,16 +620,16 @@ scheduling round; neither axis rewrites the other as routine evidence.
 The normal path is direct:
 
 ```text
-server / SDK
-  -> TaskRuntime.append_items
-  -> TaskRuntime persists TaskItem
-  -> TaskItemScoreBandCore initializes ItemScore
+Java Runtime Server
+  -> TaskDataRuntime.appendTaskItems
+  -> persist TaskItem record
+  -> initialize ItemScore with ZADD NX
 ```
 
-A caller may add an outbox or broker before `append_items`, but only for a named
-caller-side requirement. The kernel does not require, inspect, poll, or repair
-that buffer. If the caller acknowledges before canonical append, the caller owns
-durable replay until `append_items` succeeds.
+A caller may add an outbox or broker before the append operation, but only for
+a named caller-side requirement. The kernel does not require, inspect, poll,
+or repair that buffer. If the caller acknowledges before canonical append, the
+caller owns durable replay until append succeeds.
 
 ```text
 accepted after HASH write + ItemScore initialization call
@@ -702,6 +708,11 @@ complete owner composition:
 ```text
 append -> acquire -> claim -> load -> retry -> final promotion
 ```
+
+The public Java append and last-success query are implemented by
+[`server_jvm/taskdata`](../../../server_jvm/src/main/java/com/xa/mass/server/taskdata).
+Real-Redis parity tests lock record JSON, due-score encoding, retry convergence,
+`ZADD NX` behavior, and opaque result reads.
 
 The Redis implementation uses only:
 

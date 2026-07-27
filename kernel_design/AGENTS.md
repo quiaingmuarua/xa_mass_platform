@@ -197,14 +197,15 @@ executable_spec/              stable mechanism package, never example/demo
   assembly/                   application lifecycle and dependency composition
   constraint_dsl/             standalone constraint compilation/evaluation
   redis_runtime/              Redis-backed implementations of owner contracts
-runtime_server/               Python Task/resource command host
+runtime_server/               Python Kernel control command host
 ```
 
-`kernel_design/runtime_server/` composes only the Python Task/resource command
-host and `KernelApplication` lifecycle. The Java Worker Delivery HTTP host
-lives in `server_jvm`; the Python Worker Delivery runtime and clients remain
-the executable-spec oracle and test support. The runnable external Worker
-lives in `worker_jvm` and depends on the shared Java protocol module.
+`kernel_design/runtime_server/` composes only WorkerGroup/Worker upsert, Task
+create/approve/close, and `KernelApplication` lifecycle. Java `server_jvm`
+hosts TaskItem append, last-success reads, and Worker Delivery. The Python
+TaskRuntime and Worker Delivery runtime/clients remain executable-spec oracles
+and test support. The runnable external Worker lives in `worker_jvm` and
+depends on the shared Java protocol module.
 
 Use these rules:
 
@@ -296,7 +297,14 @@ TaskRuntime owns:
 canonical per-Task Item records
 TaskItem validation, defaults, persistence, and bounded record reads
 batch Item append orchestration through TaskItemScoreBandCore initialization
+Task-scoped last-success payload storage and bounded requested-id reads
 ```
+
+The external process implementation is split by owner operation, not by truth:
+Java `TaskDataRuntime` implements public Item append and last-success reads;
+Python `RedisTaskRuntime` remains the mechanism oracle and performs internal
+ResultRouting storage. Both use the same keys. There is no proxy fallback,
+mirrored result store, or double write.
 
 TaskItemScoreBandCore owns:
 
@@ -310,12 +318,12 @@ strict-tag ACTIVE < FINAL_FAILED < FINAL_SUCCESS outcome promotion
 `TaskItem` is the only runtime unit from append through finality. Claiming it
 does not create a `Work` / `WorkItem` model, id, store, runtime, or owner.
 
-Item append callers provide `TaskItem` values only. Append scheduling policy
-maps Item priority to initial due milliseconds; Task config owns
-`maxRetryTimes`. TaskRuntime passes those stable initialization inputs to
-TaskItemScoreBandCore, which converts time and budget to internal coordinates.
-Tag, timeSlot, suffix, score bounds, and initial score never cross the append
-API.
+Item append callers provide TaskItem fields only. Append scheduling policy maps
+Item priority to initial due milliseconds; Task config owns `maxRetryTimes`.
+The Python oracle passes those stable initialization inputs to
+TaskItemScoreBandCore. The Java TaskData implementation reproduces only this
+initial record-plus-score operation behind its runtime port. Tag, timeSlot,
+suffix, score bounds, and initial score never cross the HTTP API.
 
 Score is not a resource mutation lock. Task/worker metadata writes, dynamic
 attribute writes, item append, result/evidence writes, projections, and trace
@@ -419,10 +427,10 @@ transport sessions as truth, depend directly on Task/Worker runtime owners, or
 refresh task or worker score as a generic side effect. Built-in owner-operation
 policy belongs to `ResultRoutingBuiltinPolicies`; replacement policy uses the
 same stable handler contracts. SeedResult queues are not partitioned by endpointManagerId,
-exact subcode, Task, WorkerGroup, or producer source. The first executable spec
-persists only last-success payload truth, not failure history or a public result
-projection;
-exhausted ACTIVE budget is finalized by Item dispatch acquire.
+exact subcode, Task, WorkerGroup, or producer source. The current result
+projection is a bounded Java read of requested Task-scoped last-success
+payloads. It exposes neither failure history nor pending/final state. Exhausted
+ACTIVE budget is finalized by Item dispatch acquire.
 
 A future trusted pre-execution-rejection policy may accelerate Item retry only
 after the opaque Item claim fence is carried to a TaskItem score-owner exact

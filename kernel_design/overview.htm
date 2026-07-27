@@ -1217,7 +1217,7 @@
       <div class="architecture" role="img" aria-label="新内核三段调度主线">
         <div class="architecture-head">
           <b>当前完整主线</b>
-          <span>资源注册与 Task command 在主线外提供输入</span>
+          <span>Python 提供 control；Java 提供 TaskItem ingress / result query</span>
         </div>
         <div class="flow">
           <div class="flow-stage dispatch">
@@ -1270,7 +1270,7 @@
               </div>
               <div class="stage-step">
                 <strong>Invoke Owners</strong>
-                Item finality + Worker disposition
+                Item finality + Worker disposition + last-success
               </div>
             </div>
           </div>
@@ -1518,6 +1518,15 @@
           <code>output = owner transitions</code>
         </div>
       </div>
+      <div class="contract-line">
+        <code>Java TaskData append</code>
+        <span>→</span>
+        <code>TaskItem record + ACTIVE score</code>
+        <span>→</span>
+        <code>Python scheduling / ResultRouting</code>
+        <span>→</span>
+        <code>Java last-success query</code>
+      </div>
 
       <div class="evidence-grid">
         <div class="evidence">
@@ -1756,11 +1765,11 @@
         </a>
         <a class="reading-link" href="runtime_server/app.py">
           <span class="reading-number">09</span>
-          <span><b>Python Kernel Runtime Server</b>Task/resource commands 与 scheduling lifecycle。</span>
+          <span><b>Python Kernel Control API</b>资源 upsert、Task control 与 scheduling lifecycle。</span>
         </a>
         <a class="reading-link" href="../server_jvm/README.md">
           <span class="reading-number">10</span>
-          <span><b>Java Runtime API Server</b>外部 API 与 Worker Delivery Gateway。</span>
+          <span><b>Java Runtime API Server</b>Task data ingress/query 与 Worker Delivery Gateway。</span>
         </a>
         <a class="reading-link" href="../worker_jvm/README.md">
           <span class="reading-number">11</span>

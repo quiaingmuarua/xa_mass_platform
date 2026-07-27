@@ -289,15 +289,18 @@ would be a separate gang-reservation mechanism with a bundle identity,
 multi-lease commit, and bundle failure semantics. No such requirement is
 assumed by the current kernel.
 
-Before application-level append, the selected WorkerGroup must allow every
-Item rule field through `itemAllocationFields`. `workerId` supports bounded
-`$eq/$in`; dynamic fields require a registered bounded candidate-query handler.
+At the public Java TaskData ingress, the selected WorkerGroup must allow the
+Item rule field through `itemAllocationFields`. The first Java cutover supports
+only bounded `workerId $eq/$in`; dynamic fields return `INVALID`. The Python
+mechanism oracle retains injectable bounded dynamic candidate-query coverage,
+but that capability is not advertised by the current external append API.
 TaskRuntime itself owns only canonical JSON and DSL syntax validation, not
 Worker catalog or candidate-index policy.
 
 The success-result HASH is last-success truth. It is separate from TaskItem
-score outcome and does not store failure history or provide a general external
-result query API.
+score outcome and does not store failure history. Java exposes a bounded
+Task-scoped read of requested `messageId` values. It returns each opaque
+last-success payload or `null` and does not infer pending or failure state.
 
 ## Scheduling Read Paths
 
@@ -451,6 +454,9 @@ Redis implementations:
 - [`redis_runtime/task_runtime.py`](../../executable_spec/redis_runtime/task_runtime.py)
 - [`redis_runtime/task_score_band.py`](../../executable_spec/redis_runtime/task_score_band.py)
 - [`redis_runtime/task_item_score_band.py`](../../executable_spec/redis_runtime/task_item_score_band.py)
+- [`server_jvm/taskdata/redis`](../../../server_jvm/src/main/java/com/xa/mass/server/taskdata/redis)
+  implements the current public Java Item append and last-success read
+  operations against the same Redis shape.
 
 ## Explicit Non-Owners
 

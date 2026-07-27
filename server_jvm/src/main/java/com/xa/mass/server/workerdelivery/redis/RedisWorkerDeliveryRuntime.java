@@ -4,6 +4,7 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.classif
 
 import com.xa.mass.server.workerdelivery.WorkerDeliveryRuntime;
 import com.xa.mass.server.workerdelivery.WorkerDeliveryRuntime.WorkerCommandPage;
+import com.xa.mass.server.kernelredis.KernelRedisProperties;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultOutcomeClass;
@@ -58,7 +59,7 @@ public final class RedisWorkerDeliveryRuntime implements WorkerDeliveryRuntime {
     public RedisWorkerDeliveryRuntime(
             RedisClient redisClient,
             WorkerDeliveryCodec codec,
-            WorkerDeliveryRedisProperties properties
+            KernelRedisProperties properties
     ) {
         this.redisClient = redisClient;
         this.codec = codec;
@@ -189,10 +190,6 @@ public final class RedisWorkerDeliveryRuntime implements WorkerDeliveryRuntime {
                 )
         );
         return results.size();
-    }
-
-    public boolean ping() {
-        return "PONG".equals(commands().ping());
     }
 
     private long redisTimeMillis() {

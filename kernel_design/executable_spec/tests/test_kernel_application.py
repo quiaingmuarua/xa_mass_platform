@@ -11,6 +11,11 @@ from unittest.mock import Mock, patch
 
 import kernel_design.executable_spec as executable_spec_package
 import kernel_design.executable_spec.assembly as assembly_package
+from kernel_design.executable_spec import (
+    RedisTaskItemScoreBandCore,
+    RedisTaskRuntime,
+    RedisTaskScoreBandCore,
+)
 
 try:
     import redis as redis_module
@@ -31,7 +36,6 @@ from kernel_design.executable_spec.assembly import (
     TaskCreationStatus,
     TaskDescriptor,
     TaskItem,
-    TaskItemAppendResult,
     TaskItemAppendStatus,
     WorkerDeclaration,
     WorkerGroupDescriptor,
@@ -155,7 +159,6 @@ class KernelApplicationTest(unittest.TestCase):
         }
         self.assertEqual(
             {
-                "append_task_items",
                 "approve_task",
                 "close_task",
                 "create_task",
@@ -245,39 +248,18 @@ class KernelApplicationTest(unittest.TestCase):
         self.application.stop()
         self.assertFalse(self.application._started)
 
-    def test_task_commands_hide_initial_suffix(self) -> None:
+    def test_create_task_hides_initial_suffix(self) -> None:
         task = self._task_descriptor()
-        item = TaskItem(
-            message_id="message-1",
-            event_code="image.resize",
-            created_at_millis=1,
-            payload={"source": "input"},
-        )
         creation_result = TaskCreationResult(TaskCreationStatus.CREATED)
-        append_result = {
-            item.message_id: TaskItemAppendResult(TaskItemAppendStatus.APPENDED)
-        }
         self.process._task_runtime.create_task.return_value = creation_result
-        self.process._task_runtime.append_items.return_value = append_result
-        self.process._task_resource_catalog.load_task_allocation_descriptors.return_value = {
-            task.task_id: task
-        }
         self.application.start()
 
         self.assertIs(creation_result, self.application.create_task(descriptor=task))
-        self.assertIs(
-            append_result,
-            self.application.append_task_items(task_id=task.task_id, items=(item,)),
-        )
 
         self.process._task_runtime.create_task.assert_called_once_with(
             descriptor=replace(task, empty_close_at_millis=0),
             suffix=1,
         )
-        get_worker_groups = (
-            self.process._worker_resource_catalog.get_worker_group_descriptors
-        )
-        get_worker_groups.assert_not_called()
 
     def test_create_task_resolves_item_driven_empty_close_once(self) -> None:
         task = self._task_descriptor(
@@ -320,127 +302,6 @@ class KernelApplicationTest(unittest.TestCase):
             descriptor=task,
             suffix=1,
         )
-
-    def test_append_validates_item_rules_without_event_code_gate(self) -> None:
-        task = self._task_descriptor(
-            task_type=TaskType.ITEM_DRIVEN,
-        )
-        group = WorkerGroupDescriptor(
-            worker_group_id=task.worker_group_id,
-            attributes={},
-            event_codes=frozenset({"different.event"}),
-            item_allocation_fields=frozenset(
-                {"workerId", "dynamic.battery", "dynamic.missing"}
-            ),
-        )
-        items = (
-            TaskItem(
-                message_id="plain",
-                event_code="image.resize",
-                created_at_millis=1,
-                payload={},
-            ),
-            TaskItem(
-                message_id="targeted",
-                event_code="image.resize",
-                created_at_millis=1,
-                payload={},
-                allocation_rule={"workerId": {"$in": ["worker-1"]}},
-            ),
-            TaskItem(
-                message_id="dynamic",
-                event_code="image.resize",
-                created_at_millis=1,
-                payload={},
-                allocation_rule={"dynamic.battery": {"$gte": 80}},
-            ),
-            TaskItem(
-                message_id="not-allowed",
-                event_code="image.resize",
-                created_at_millis=1,
-                payload={},
-                allocation_rule={"dynamic.region": {"$eq": "east"}},
-            ),
-            TaskItem(
-                message_id="bad-worker-op",
-                event_code="image.resize",
-                created_at_millis=1,
-                payload={},
-                allocation_rule={"workerId": {"$gte": "worker-1"}},
-            ),
-            TaskItem(
-                message_id="missing-index",
-                event_code="image.resize",
-                created_at_millis=1,
-                payload={},
-                allocation_rule={"dynamic.missing": {"$eq": 1}},
-            ),
-        )
-        self.process._task_resource_catalog.load_task_allocation_descriptors.return_value = {
-            task.task_id: task
-        }
-        self.process._worker_resource_catalog.get_worker_group_descriptors.return_value = {
-            group.worker_group_id: group
-        }
-        self.process._worker_dynamic_attribute_runtime.supports_candidate_query.side_effect = (
-            lambda **kwargs: kwargs["attribute_name"] == "battery"
-            and set(kwargs["operator_rule"]) == {"$gte"}
-        )
-        self.process._task_runtime.append_items.return_value = {
-            "targeted": TaskItemAppendResult(TaskItemAppendStatus.APPENDED),
-            "dynamic": TaskItemAppendResult(TaskItemAppendStatus.APPENDED),
-        }
-        self.application.start()
-
-        results = self.application.append_task_items(
-            task_id=task.task_id,
-            items=items,
-        )
-
-        self.assertEqual(TaskItemAppendStatus.INVALID, results["plain"].status)
-        self.assertEqual(TaskItemAppendStatus.APPENDED, results["targeted"].status)
-        self.assertEqual(TaskItemAppendStatus.APPENDED, results["dynamic"].status)
-        self.assertEqual(TaskItemAppendStatus.INVALID, results["not-allowed"].status)
-        self.assertEqual(TaskItemAppendStatus.INVALID, results["bad-worker-op"].status)
-        self.assertEqual(TaskItemAppendStatus.INVALID, results["missing-index"].status)
-        self.process._task_runtime.append_items.assert_called_once_with(
-            task_id=task.task_id,
-            items=[items[1], items[2]],
-        )
-
-    def test_task_driven_append_rejects_item_rule(self) -> None:
-        task = self._task_descriptor()
-        item = TaskItem(
-            message_id="message-1",
-            event_code="image.resize",
-            created_at_millis=1,
-            payload={},
-            allocation_rule={"workerId": {"$eq": "worker-1"}},
-        )
-        self.process._task_resource_catalog.load_task_allocation_descriptors.return_value = {
-            task.task_id: task
-        }
-        self.process._worker_resource_catalog.get_worker_group_descriptors.return_value = {
-            task.worker_group_id: WorkerGroupDescriptor(
-                worker_group_id=task.worker_group_id,
-                attributes={},
-                event_codes=frozenset({item.event_code}),
-                item_allocation_fields=frozenset({"workerId"}),
-            )
-        }
-        self.application.start()
-
-        result = self.application.append_task_items(
-            task_id=task.task_id,
-            items=(item,),
-        )[item.message_id]
-
-        self.assertEqual(TaskItemAppendStatus.INVALID, result.status)
-        self.process._task_runtime.append_items.assert_not_called()
-        get_worker_groups = (
-            self.process._worker_resource_catalog.get_worker_group_descriptors
-        )
-        get_worker_groups.assert_not_called()
 
     def test_approval_transitions_without_returning_score(self) -> None:
         task_id = "task-1"
@@ -759,6 +620,18 @@ class KernelApplicationIntegrationTest(unittest.TestCase):
         )
         self.resources_client = ResourcesCommandClient(self.config)
         self.worker_command_consumer = WorkerCommandConsumerClient(self.config)
+        self.task_runtime = RedisTaskRuntime(
+            self.redis,
+            RedisTaskScoreBandCore(
+                self.redis,
+                score_key=f"tr:{self.prefix}:task:score",
+            ),
+            RedisTaskItemScoreBandCore(
+                self.redis,
+                prefix=self.prefix,
+            ),
+            prefix=self.prefix,
+        )
         self.application = KernelApplication(self.config)
 
     def tearDown(self) -> None:
@@ -767,7 +640,7 @@ class KernelApplicationIntegrationTest(unittest.TestCase):
         if keys:
             self.redis.delete(*keys)
 
-    def test_application_boundary_reaches_deliver_seed(self) -> None:
+    def test_control_application_and_task_runtime_reach_worker_command(self) -> None:
         worker_group_id = "image-workers"
         endpoint_manager_id = "endpoint-manager-1"
         task_id = "task-1"
@@ -795,7 +668,7 @@ class KernelApplicationIntegrationTest(unittest.TestCase):
             descriptor=KernelApplicationTest._task_descriptor(task_id)
         )
         approved = self.application.approve_task(task_id=task_id)
-        appended = self.application.append_task_items(
+        appended = self.task_runtime.append_items(
             task_id=task_id,
             items=(
                 TaskItem(

@@ -27,6 +27,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import tools.jackson.databind.json.JsonMapper;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Tag("integration")
@@ -47,6 +48,7 @@ class RuntimeApiPythonIntegrationTest {
             {"countryCallingCode":1,"e164":"+14155552671",\
             "isPossible":true,"isValid":true,"regionCode":"US"}\
             """;
+    private static final JsonMapper JSON = JsonMapper.builder().build();
 
     @LocalServerPort
     private int port;
@@ -64,14 +66,14 @@ class RuntimeApiPythonIntegrationTest {
                 )
         );
         registry.add(
-                "xa.mass.worker-delivery.redis-url",
+                "xa.mass.kernel-redis.redis-url",
                 () -> configured(
                         REDIS_URL,
                         "redis://127.0.0.1:6379/15"
                 )
         );
         registry.add(
-                "xa.mass.worker-delivery.redis-prefix",
+                "xa.mass.kernel-redis.redis-prefix",
                 () -> REDIS_PREFIX
         );
         registry.add(
@@ -98,6 +100,31 @@ class RuntimeApiPythonIntegrationTest {
     void itemDrivenClosesThroughTheJavaWebSocketWorker()
             throws Exception {
         runWorkerDeliveryClosure("ITEM_DRIVEN");
+    }
+
+    @Test
+    void pythonControlApiDoesNotExposeTaskItemAppend() throws Exception {
+        requireExternalRuntime();
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(KERNEL_URL + "/tasks/missing/items"))
+                .header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(
+                        "{\"items\":[]}",
+                        StandardCharsets.UTF_8
+                ))
+                .build();
+
+        HttpResponse<String> response = HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .build()
+                .send(
+                        request,
+                        HttpResponse.BodyHandlers.ofString(
+                                StandardCharsets.UTF_8
+                        )
+                );
+
+        assertThat(response.statusCode()).isEqualTo(404);
     }
 
     @Test
@@ -297,20 +324,24 @@ class RuntimeApiPythonIntegrationTest {
             String taskId,
             String messageId
     ) throws Exception {
-        try (StatefulRedisConnection<String, String> connection =
-                     redisClient.connect(StringCodec.UTF8)) {
-            var redis = connection.sync();
-            String resultKey = "tr:" + REDIS_PREFIX + ":task:"
-                    + taskId + ":results";
-            long deadline = System.nanoTime()
-                    + Duration.ofSeconds(8).toNanos();
-            while (System.nanoTime() < deadline) {
-                String result = redis.hget(resultKey, messageId);
+        long deadline = System.nanoTime()
+                + Duration.ofSeconds(8).toNanos();
+        while (System.nanoTime() < deadline) {
+            HttpResponse<String> response = send(
+                    "POST",
+                    "/api/v1/tasks/" + taskId + "/results:load",
+                    "{\"messageIds\":[\"" + messageId + "\"]}"
+            );
+            if (response.statusCode() == 200) {
+                String result = JSON.readTree(response.body())
+                        .get("results")
+                        .get(messageId)
+                        .stringValue();
                 if (PHONE_RESULT.equals(result)) {
                     return;
                 }
-                Thread.sleep(20);
             }
+            Thread.sleep(20);
         }
         throw new AssertionError("TaskItem success result was not stored");
     }

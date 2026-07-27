@@ -54,6 +54,8 @@ their truth or mutation authority.
 ```
 
 ```text
+Java Task Data ingress
+  -> canonical TaskItem record + ACTIVE Item-score initialization
 Task admission and score visibility
   -> TASK_DRIVEN or ITEM_DRIVEN scheduling profile
   -> Task Dispatch
@@ -68,6 +70,7 @@ Task admission and score visibility
      -> outcome-class SeedResult queues
   -> Result Routing
      -> TaskItem and Worker truth convergence
+  -> Java last-success result query
   -> kernel applies an explicit close requested by an external owner
 ```
 
@@ -238,6 +241,12 @@ become score transitions and must not wait for score ownership. In particular,
 TaskRuntime append owns canonical TaskItem persistence and invokes
 TaskItemScoreBandCore for initial Item-score creation. It does not make a Task
 schedulable, refresh Task score, or emit a required wakeup.
+
+The current external process realization is intentionally split by operation:
+Java `TaskDataRuntime` implements public TaskItem append and last-success reads
+against the same Redis shapes; Python `RedisTaskRuntime` remains the
+executable-spec oracle and is used internally by scheduling and ResultRouting.
+This is one Task data truth, not mirrored storage or a fallback path.
 
 Append acceptance is deliberately narrow:
 
@@ -556,12 +565,13 @@ no hidden compatibility path or second mainline remains
     the Java single-owner WebSocket Adapter, including bounded result buffering
     and trusted pre-execution rejection without Adapter-owned score mutation.
 - [Kernel Runtime Server](runtime_server/app.py)
-  - executable-spec FastAPI host for Task/resource commands; only
+  - executable-spec FastAPI control host for WorkerGroup/Worker upsert and
+    Task create/approve/close; only
     `KernelApplication` owns background lifecycle.
 - [JVM Runtime API Server](../server_jvm/README.md)
-  - external Task/resource HTTP proxy, point Gateway, and WebSocket Adapter; its
-    direct Redis access is limited to WorkerCommand consume/delete and
-    SeedResult append.
+  - external control proxy, Java TaskItem append/last-success query, point
+    Gateway, and WebSocket Adapter; its owner-scoped Redis access is limited to
+    TaskData and Worker Delivery operations.
 - [JVM Worker](../worker_jvm/README.md)
   - one-slot Java Worker that executes `telecom.phone.inspect` through polling
     or WebSocket using the shared Worker Delivery contract.
@@ -580,7 +590,7 @@ prove the currently implemented mechanism. If they disagree, identify the drift
 before changing either one.
 
 The Python executable spec lives under `kernel_design/executable_spec/`.
-`kernel_design/runtime_server/` is its Task/resource FastAPI host.
+`kernel_design/runtime_server/` is its Kernel Control FastAPI host.
 `worker_jvm/` is the external Worker reference implementation; it is not a
 Kernel owner. The Kotlin production scaffold lives under `kernel_jvm/` and may
 implement behavior only through scoped parity slices against this workspace.

@@ -5,7 +5,7 @@ import jakarta.validation.constraints.NotNull;
 import java.util.List;
 
 public record TaskItemsAppendRequest(
-        @NotNull List<@Valid TaskItemRequest> items
+        @NotNull List<@NotNull @Valid TaskItemRequest> items
 ) {
     public TaskItemsAppendRequest {
         if (items != null) {

@@ -223,9 +223,10 @@ is defined by [Kernel Application Assembly](../kernel-application-assembly.md).
 The built-in interval is `100ms` and the per-class batch limit is `100`; only
 the interval is public JSON.
 
-Deferred policy is limited to cadence, per-class limit tuning, result query
+Deferred policy is limited to cadence, per-class limit tuning, failure/history
 projection, stronger ingress reliability, and a possible trusted
-pre-execution-rejection fast retry. That fast path is not present: it requires
+pre-execution-rejection fast retry. The current Java query reads only requested
+Task-scoped last-success payloads. That fast path is not present: it requires
 ResultContext to carry an opaque Item claim fence and TaskItemScoreBandCore to
 provide an exact release primitive. Missing response, Adapter crash, timeout,
 or any other `UNKNOWN` evidence must continue waiting for claim expiry.

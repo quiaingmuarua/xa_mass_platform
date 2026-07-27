@@ -1,15 +1,15 @@
-package com.xa.mass.server.workerdelivery.redis;
+package com.xa.mass.server.kernelredis;
 
 import java.net.URI;
 import java.util.Objects;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-@ConfigurationProperties("xa.mass.worker-delivery")
-public record WorkerDeliveryRedisProperties(
+@ConfigurationProperties("xa.mass.kernel-redis")
+public record KernelRedisProperties(
         URI redisUrl,
         String redisPrefix
 ) {
-    public WorkerDeliveryRedisProperties {
+    public KernelRedisProperties {
         Objects.requireNonNull(redisUrl, "redisUrl");
         if (!"redis".equalsIgnoreCase(redisUrl.getScheme())
                 && !"rediss".equalsIgnoreCase(redisUrl.getScheme())) {

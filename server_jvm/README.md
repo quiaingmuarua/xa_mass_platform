@@ -1,18 +1,26 @@
 # XA Mass JVM Runtime API Server
 
-Status: active external Runtime API with Java-owned Worker Delivery access.
+Status: active external Runtime API with Java-owned TaskData and Worker
+Delivery access.
 
 `server_jvm` owns the versioned HTTP contract, request validation, error
-mapping, timeouts, and process health. Task and resource commands still proxy
-to the Python kernel process. Worker Delivery is implemented directly in Java:
-it consumes WorkerCommand mailbox fields and appends SeedResult queue entries.
+mapping, timeouts, and process health. WorkerGroup/Worker upsert and Task
+create/approve/close still proxy to the Python kernel process. TaskItem append,
+last-success result reads, and Worker Delivery operate directly on their
+current Redis owner shapes.
 
 ```text
-Task/resource client
+Control client
   -> server_jvm /api/v1
   -> KernelCommandClient
-  -> Python Kernel Runtime Server
+  -> Python Kernel Control API
   -> KernelApplication / scheduling truth
+
+Task data client
+  -> Java TaskDataService
+  -> TaskItem record + ACTIVE score initialization / last-success HASH read
+  -> Redis
+  -> Python scheduling and ResultRouting
 
 Worker / long-lived Adapter
   -> server_jvm /api/v1/worker-delivery
@@ -23,9 +31,26 @@ Worker / long-lived Adapter
 ```
 
 The module is Java 21 and Spring Boot 4.1. It has no dependency on
-`kernel_jvm` and does not start the Python process. Redis dependencies are
-confined to `com.xa.mass.server.workerdelivery.redis`; Java does not read
-scores, invoke Pacers, append Worker commands, or consume SeedResult queues.
+`kernel_jvm` and does not start the Python process. The shared
+`kernelredis` package owns only connection and health. Owner key operations
+are confined to `taskdata.redis` and `workerdelivery.redis`. Java does not
+read Task or Worker scheduling scores, invoke Pacers, append Worker commands,
+or consume SeedResult queues.
+
+Task Data boundaries:
+
+```text
+taskdata
+  application service, runtime port, error mapping
+taskdata.redis
+  Task/WorkerGroup declaration reads, Item record/score initialization,
+  last-success result reads
+```
+
+`TaskDataService` is the only HTTP use-case facade. Re-appending a messageId
+replaces its Item record but `ZADD NX` preserves any existing Item score.
+Result reads return opaque last-success payload strings or `null`; they do not
+infer pending or failure state.
 
 Worker Delivery boundaries:
 
@@ -56,7 +81,29 @@ POST /api/v1/tasks
 POST /api/v1/tasks/{taskId}/approve
 POST /api/v1/tasks/{taskId}/close
 POST /api/v1/tasks/{taskId}/items
+POST /api/v1/tasks/{taskId}/results:load
 ```
+
+The first five operations are control commands routed to Python. Item append
+and result load are Java TaskData operations. Append returns per-message
+`appended / not_found / invalid / retryable` status. `TASK_DRIVEN` forbids an
+Item rule; `ITEM_DRIVEN` currently accepts only a WorkerGroup-allowed
+`workerId $eq/$in` rule.
+
+Result load accepts 1 to 1000 nonblank `messageIds`, removes duplicates in
+first-seen order, and returns:
+
+```json
+{
+  "results": {
+    "message-1": "{\"value\":1}",
+    "message-2": null
+  }
+}
+```
+
+The payload is opaque. A missing Task returns `404`; `null` means only that no
+last-success payload exists for that Task-scoped messageId.
 
 Worker Delivery:
 
@@ -97,7 +144,7 @@ GET /actuator/health/readiness
 ```
 
 Liveness describes this JVM process. Readiness requires both the configured
-Python Kernel Runtime Server and Worker Delivery Redis.
+Python Kernel Control API and the shared Kernel Redis connection.
 
 ## Run
 
@@ -123,12 +170,14 @@ Java Runtime API Server  http://127.0.0.1:18082
 Python Kernel Server     http://127.0.0.1:18080
 connect timeout          1s
 read timeout             5s
-Worker Delivery Redis     redis://localhost:6379/15
-Worker Delivery prefix    default
+Kernel Redis              redis://localhost:6379/15
+Kernel Redis prefix        default
 WebSocket Adapter          disabled
 ```
 
-Override them with Spring properties under `xa.mass.kernel` and
+The Redis labels above use the shared `xa.mass.kernel-redis.redis-url` and
+`xa.mass.kernel-redis.redis-prefix` properties. Override the Python control
+address under `xa.mass.kernel`; WebSocket settings remain under
 `xa.mass.worker-delivery`. Enable one WebSocket Adapter with:
 
 ```yaml
@@ -151,7 +200,8 @@ KERNEL_DESIGN_REDIS_URL=redis://localhost:6379/15 \
 
 The cross-process integration proves `TASK_DRIVEN` with the real Java polling
 Worker and `ITEM_DRIVEN` with the real Java WebSocket Worker through Python
-scheduling, Java Worker Delivery, Python ResultRouting, result HASH storage,
-and exact Worker release. The first release intentionally has no
-authentication, multi-instance Adapter ownership, pending/ack, query API,
-historical storage, result view, tenant model, quota, or OpenAPI generator.
+scheduling, Java TaskItem append, Java Worker Delivery, Python ResultRouting,
+Java last-success query, and exact Worker release. The first release
+intentionally has no authentication, multi-instance Adapter ownership,
+pending/ack, failure-result projection, historical storage, tenant model,
+quota, or OpenAPI generator.

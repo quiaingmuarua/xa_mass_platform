@@ -210,9 +210,11 @@ python -m kernel_design.runtime_server
 ./gradlew :server_jvm:bootRun
 ```
 
-The Worker Delivery address is `127.0.0.1:18082`. Task/resource controllers
-still call the Python server at `127.0.0.1:18080`; Worker Delivery directly
-uses only the command-mailbox and result-queue Redis shapes.
+The Worker Delivery address is `127.0.0.1:18082`. WorkerGroup/Worker upsert and
+Task create/approve/close still call the Python control server at
+`127.0.0.1:18080`. Java TaskData separately owns Item append/result reads;
+Worker Delivery itself still uses only the command-mailbox and result-queue
+Redis shapes.
 
 Point polling is always Worker-specific:
 

@@ -11,8 +11,6 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 
 import com.xa.mass.server.api.v1.model.RuntimeCommandStatus;
 import com.xa.mass.server.api.v1.model.TaskCreateRequest;
-import com.xa.mass.server.api.v1.model.TaskItemRequest;
-import com.xa.mass.server.api.v1.model.TaskItemsAppendRequest;
 import com.xa.mass.server.api.v1.model.TaskType;
 import com.xa.mass.server.api.v1.model.WorkerGroupUpsertRequest;
 import com.xa.mass.server.api.v1.model.WorkerUpsertRequest;
@@ -144,46 +142,6 @@ class HttpKernelCommandClientTest {
     }
 
     @Test
-    void wrapsPythonItemResultsInThePublicResponse() {
-        server.expect(requestTo("http://kernel/tasks/task-1/items"))
-                .andExpect(method(POST))
-                .andExpect(content().json("""
-                        {
-                          "items": [{
-                            "messageId": "message-1",
-                            "eventCode": "telecom.phone.inspect",
-                            "createdAtMillis": 1000,
-                            "payload": {"phoneNumber": "+14155552671"},
-                            "priority": 5,
-                            "expireAtMillis": null,
-                            "allocationRule": null
-                          }]
-                        }
-                        """))
-                .andRespond(withStatus(HttpStatus.OK)
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .body("""
-                                {
-                                  "message-1": {
-                                    "status": "appended"
-                                  }
-                                }
-                                """));
-
-        KernelResponse<?> response = client.appendTaskItems(
-                "task-1",
-                itemAppendRequest()
-        );
-
-        assertThat(response.statusCode().value()).isEqualTo(200);
-        assertThat(response.body())
-                .extracting("results")
-                .asString()
-                .contains("APPENDED");
-        server.verify();
-    }
-
-    @Test
     void exposesOwnerConflictWithoutReclassifyingIt() {
         server.expect(requestTo("http://kernel/tasks"))
                 .andRespond(withStatus(HttpStatus.CONFLICT)
@@ -285,20 +243,6 @@ class HttpKernelCommandClientTest {
                 ),
                 0L
         );
-    }
-
-    private static TaskItemsAppendRequest itemAppendRequest() {
-        return new TaskItemsAppendRequest(List.of(
-                new TaskItemRequest(
-                        "message-1",
-                        "telecom.phone.inspect",
-                        1000,
-                        Map.of("phoneNumber", "+14155552671"),
-                        null,
-                        null,
-                        null
-                )
-        ));
     }
 
     private static HttpKernelCommandClient clientThatThrows(IOException failure) {

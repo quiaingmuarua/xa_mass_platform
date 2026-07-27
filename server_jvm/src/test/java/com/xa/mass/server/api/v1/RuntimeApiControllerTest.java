@@ -1,5 +1,6 @@
 package com.xa.mass.server.api.v1;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -11,14 +12,21 @@ import com.xa.mass.server.api.RequestIdFilter;
 import com.xa.mass.server.api.v1.model.CommandResultResponse;
 import com.xa.mass.server.api.v1.model.RuntimeCommandStatus;
 import com.xa.mass.server.api.v1.model.TaskCreateRequest;
-import com.xa.mass.server.api.v1.model.TaskItemsAppendRequest;
-import com.xa.mass.server.api.v1.model.TaskItemsAppendResponse;
 import com.xa.mass.server.api.v1.model.WorkerGroupUpsertRequest;
 import com.xa.mass.server.api.v1.model.WorkerUpsertRequest;
 import com.xa.mass.server.kernelclient.KernelCommandClient;
 import com.xa.mass.server.kernelclient.KernelClientException;
 import com.xa.mass.server.kernelclient.KernelResponse;
+import com.xa.mass.server.taskdata.TaskDataException;
+import com.xa.mass.server.taskdata.TaskDataRuntime;
+import com.xa.mass.server.taskdata.TaskDataRuntime.TaskItemAppendResult;
+import com.xa.mass.server.taskdata.TaskDataRuntime.TaskItemAppendStatus;
+import com.xa.mass.server.taskdata.TaskDataRuntime.TaskItemRecord;
+import com.xa.mass.server.taskdata.TaskDataService;
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -30,16 +38,21 @@ import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 class RuntimeApiControllerTest {
 
     private RecordingKernelClient kernelClient;
+    private RecordingTaskDataRuntime taskDataRuntime;
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         kernelClient = new RecordingKernelClient();
+        taskDataRuntime = new RecordingTaskDataRuntime();
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new ResourceCommandController(kernelClient),
-                        new TaskCommandController(kernelClient)
+                        new TaskControlController(kernelClient),
+                        new TaskDataController(
+                                new TaskDataService(taskDataRuntime)
+                        )
                 )
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setValidator(validator)
@@ -119,6 +132,18 @@ class RuntimeApiControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.results.message-1.status")
                         .value("appended"));
+        assertThat(taskDataRuntime.appendedItems).singleElement()
+                .satisfies(item -> assertThat(item.priority()).isEqualTo(5));
+
+        mockMvc.perform(post("/api/v1/tasks/task-1/results:load")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"messageIds":["message-1","message-2"]}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.results.message-1")
+                        .value("{\"valid\":true}"))
+                .andExpect(jsonPath("$.results.message-2").isEmpty());
     }
 
     @Test
@@ -130,6 +155,57 @@ class RuntimeApiControllerTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("MALFORMED_REQUEST"))
                 .andExpect(jsonPath("$.requestId").value("bad-request"));
+
+        mockMvc.perform(post("/api/v1/tasks/task-1/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"items\":[null]}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MALFORMED_REQUEST"));
+    }
+
+    @Test
+    void resultQueryDeduplicatesIdsAndEnforcesItsBound() throws Exception {
+        mockMvc.perform(post("/api/v1/tasks/task-1/results:load")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "messageIds": [
+                                    "message-2",
+                                    "message-1",
+                                    "message-2"
+                                  ]
+                                }
+                                """))
+                .andExpect(status().isOk());
+
+        assertThat(taskDataRuntime.loadedMessageIds)
+                .containsExactly("message-2", "message-1");
+
+        mockMvc.perform(post("/api/v1/tasks/task-1/results:load")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"messageIds\":[]}"))
+                .andExpect(status().isBadRequest());
+
+        String tooManyIds = IntStream.range(0, 1_001)
+                .mapToObj(index -> "\"message-" + index + "\"")
+                .collect(Collectors.joining(",", "[", "]"));
+        mockMvc.perform(post("/api/v1/tasks/task-1/results:load")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"messageIds\":" + tooManyIds + "}"))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void missingTaskResultQueryReturnsNotFound() throws Exception {
+        taskDataRuntime.loadFailure = TaskDataException.notFound(
+                "Task was not found"
+        );
+
+        mockMvc.perform(post("/api/v1/tasks/missing/results:load")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"messageIds\":[\"message-1\"]}"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("TASK_NOT_FOUND"));
     }
 
     @Test
@@ -189,23 +265,6 @@ class RuntimeApiControllerTest {
         }
 
         @Override
-        public KernelResponse<TaskItemsAppendResponse> appendTaskItems(
-                String taskId,
-                TaskItemsAppendRequest request
-        ) {
-            return new KernelResponse<>(
-                    HttpStatus.OK,
-                    new TaskItemsAppendResponse(Map.of(
-                            "message-1",
-                            new CommandResultResponse(
-                                    RuntimeCommandStatus.APPENDED,
-                                    null
-                            )
-                    ))
-            );
-        }
-
-        @Override
         public boolean isHealthy() {
             return true;
         }
@@ -218,6 +277,41 @@ class RuntimeApiControllerTest {
                     status,
                     new CommandResultResponse(commandStatus, null)
             );
+        }
+    }
+
+    private static final class RecordingTaskDataRuntime
+            implements TaskDataRuntime {
+
+        private List<String> loadedMessageIds;
+        private List<TaskItemRecord> appendedItems;
+        private RuntimeException loadFailure;
+
+        @Override
+        public Map<String, TaskItemAppendResult> appendTaskItems(
+                String taskId,
+                List<TaskItemRecord> items
+        ) {
+            appendedItems = List.copyOf(items);
+            return Map.of(
+                    "message-1",
+                    new TaskItemAppendResult(TaskItemAppendStatus.APPENDED)
+            );
+        }
+
+        @Override
+        public Map<String, String> loadTaskItemSuccessResults(
+                String taskId,
+                List<String> messageIds
+        ) {
+            if (loadFailure != null) {
+                throw loadFailure;
+            }
+            loadedMessageIds = List.copyOf(messageIds);
+            var results = new java.util.LinkedHashMap<String, String>();
+            results.put("message-1", "{\"valid\":true}");
+            results.put("message-2", null);
+            return results;
         }
     }
 }
