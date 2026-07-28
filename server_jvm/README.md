@@ -73,7 +73,8 @@ Worker Delivery boundaries:
 
 ```text
 worker_delivery_contract_jvm
-  transport-neutral WorkerCommand/DeliverSeed/SeedResult contracts and codec
+  transport-neutral WorkerCommand/DeliverSeed/SeedResult contracts,
+  long-connection WorkerConnectionMessage union, and strict codecs
 api.v1.workerdelivery
   point Worker and Adapter batch HTTP access profiles
 workerdelivery.application
@@ -98,9 +99,11 @@ The Adapter runtime is implemented by
 This Server reads the configured Adapter instance map, creates complete
 WebSocket Adapter instances, registers them, and forwards
 process-ready/process-close events. Each Adapter owns its Netty listener,
-mailbox cursor, dispatch loop, connection registry, and result buffer. It
-still consumes the existing batch HTTP API through loopback and has no
-in-process or Redis shortcut.
+mailbox cursor, dispatch loop, connection registry, immutable message
+dispatcher, built-in handlers, and bounded result buffer. It still consumes
+the existing batch HTTP API through loopback and has no in-process or Redis
+shortcut. Polling does not use the long-connection message union; it continues
+to exchange WorkerCommand and SeedResult through point HTTP.
 
 ## Runtime Commands
 

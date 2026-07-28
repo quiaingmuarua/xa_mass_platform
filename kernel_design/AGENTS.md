@@ -392,11 +392,13 @@ Worker Delivery Dispatch owns:
 ```text
 Server point WorkerId polling through an explicit endpointManagerId binding
 Server bounded cursor access for a long-lived Adapter's sparse mailbox
-stable WorkerCommandEnvelope forwarding to the already selected Worker
+point HTTP forwarding of WorkerCommandEnvelope to the selected Worker
+strict flat WorkerConnectionMessage frames for long-lived transports
 Server point Worker result and Adapter batch SeedResult validation/append
 complete Java Adapter instance registration/start/close and scheduled dispatch
 single-cursor active-connection/bounded-delivery/result-buffer mechanism
-Adapter-owned Netty listener and WebSocket frame/connection adaptation
+Adapter-owned Netty listener, immutable dispatcher, static result handler,
+and WebSocket frame/connection adaptation
 ```
 
 Its boundary starts after Task Dispatch handles mailbox publication and ends
@@ -409,7 +411,8 @@ scans a mailbox, and `system-polling` is only a logical route binding.
 Each Java Adapter instance owns one configured non-system-polling mailbox,
 one independent Netty listener, one cursor, one scheduled dispatch loop,
 bounded concurrent Worker delivery, one current connection per WorkerId,
-bounded result buffering, and `3001` versus `UNKNOWN` classification.
+bounded result buffering, statically installed connection-message handlers,
+and `3001` versus `UNKNOWN` classification.
 `server_jvm` may turn each configured JSON tree into a concrete instance,
 register it, and invoke lifecycle events, but must not host WebSocket
 endpoints, call `dispatchOnce`, or own Adapter semantics. Multiple instances

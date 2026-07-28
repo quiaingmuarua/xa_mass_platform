@@ -3,16 +3,15 @@ package com.xa.mass.workerdelivery.adapter.websocket;
 import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.CommandDeliveryAttempt.DELIVERED;
 import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.CommandDeliveryAttempt.REJECTED_BEFORE_SEND;
 import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.CommandDeliveryAttempt.UNKNOWN;
+import static com.xa.mass.workerdelivery.adapter.message.BoundedWorkerResultBuffer.OfferStatus.ACCEPTED;
+import static com.xa.mass.workerdelivery.adapter.message.BoundedWorkerResultBuffer.OfferStatus.CLOSED;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static com.xa.mass.workerdelivery.adapter.websocket.WorkerDeliveryAdapterCore.WorkerResultAcceptance.ACCEPTED;
-import static com.xa.mass.workerdelivery.adapter.websocket.WorkerDeliveryAdapterCore.WorkerResultAcceptance.ADAPTER_CLOSED;
-import static com.xa.mass.workerdelivery.adapter.websocket.WorkerDeliveryAdapterCore.WorkerResultAcceptance.BUFFER_FULL;
-import static com.xa.mass.workerdelivery.adapter.websocket.WorkerDeliveryAdapterCore.WorkerResultAcceptance.INVALID_OUTCOME;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerCommandPage;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
+import com.xa.mass.workerdelivery.adapter.message.BoundedWorkerResultBuffer;
 import com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.CommandDeliveryAttempt;
 import com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.ConnectionCloseReason;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
@@ -20,7 +19,6 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
 import io.netty.channel.Channel;
-import io.netty.channel.embedded.EmbeddedChannel;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -32,7 +30,6 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -189,18 +186,18 @@ class WorkerDeliveryAdapterCoreTest {
     @Test
     void retriesPendingBeforeConsumingAndCloseFlushesEveryBatch() {
         FakeGateway gateway = new FakeGateway();
+        BoundedWorkerResultBuffer resultBuffer =
+                new BoundedWorkerResultBuffer(10);
         WorkerDeliveryAdapterCore core = core(
                 gateway,
                 new FakeConnectionRegistry(),
-                10,
+                resultBuffer,
                 2
         );
         for (int index = 0; index < 5; index++) {
-            assertThat(core.acceptWorkerResult(result(index, "200")))
+            assertThat(resultBuffer.offer(result(index, "200")))
                     .isEqualTo(ACCEPTED);
         }
-        assertThat(core.acceptWorkerResult(result(9, "3001")))
-                .isEqualTo(INVALID_OUTCOME);
         gateway.appendFailures = 1;
         gateway.pages.add(new WorkerCommandPage(Map.of(), null));
 
@@ -213,62 +210,28 @@ class WorkerDeliveryAdapterCoreTest {
         assertThat(gateway.appendedResults)
                 .extracting(List::size)
                 .containsExactly(2, 2, 1);
-        assertThat(core.acceptWorkerResult(result(8, "200")))
-                .isEqualTo(ADAPTER_CLOSED);
-    }
-
-    @Test
-    void boundedWorkerResultBufferRejectsExcess() {
-        WorkerDeliveryAdapterCore core = core(
-                new FakeGateway(),
-                new FakeConnectionRegistry(),
-                1,
-                100
-        );
-
-        assertThat(core.acceptWorkerResult(result(1, "1500")))
-                .isEqualTo(ACCEPTED);
-        assertThat(core.acceptWorkerResult(result(2, "1500")))
-                .isEqualTo(BUFFER_FULL);
-    }
-
-    @Test
-    void bindFinishingDuringCloseCannotLeaveAnActiveChannel()
-            throws Exception {
-        BlockingBindRegistry connections =
-                new BlockingBindRegistry();
-        WorkerDeliveryAdapterCore core = core(
-                new FakeGateway(),
-                connections,
-                10,
-                100
-        );
-        EmbeddedChannel channel = new EmbeddedChannel();
-        AtomicReference<Boolean> accepted = new AtomicReference<>();
-        Thread connecting = Thread.ofPlatform().start(() ->
-                accepted.set(core.connectWorker("worker-1", channel))
-        );
-
-        assertThat(connections.bindStarted.await(
-                2,
-                TimeUnit.SECONDS
-        )).isTrue();
-        core.close();
-        connections.releaseBind.countDown();
-        connecting.join(2_000);
-
-        assertThat(connecting.isAlive()).isFalse();
-        assertThat(accepted.get()).isFalse();
-        assertThat(connections.closedReason)
-                .isEqualTo(ConnectionCloseReason.ADAPTER_STOPPING);
-        assertThat(connections.closeAllCount).isEqualTo(1);
-        channel.finishAndReleaseAll();
+        assertThat(resultBuffer.offer(result(8, "200")))
+                .isEqualTo(CLOSED);
     }
 
     private WorkerDeliveryAdapterCore core(
             WorkerDeliveryGatewayClient gateway,
             WorkerConnectionRegistry connections,
             int capacity,
+            int batchSize
+    ) {
+        return core(
+                gateway,
+                connections,
+                new BoundedWorkerResultBuffer(capacity),
+                batchSize
+        );
+    }
+
+    private WorkerDeliveryAdapterCore core(
+            WorkerDeliveryGatewayClient gateway,
+            WorkerConnectionRegistry connections,
+            BoundedWorkerResultBuffer resultBuffer,
             int batchSize
     ) {
         return new WorkerDeliveryAdapterCore(
@@ -278,7 +241,7 @@ class WorkerDeliveryAdapterCoreTest {
                 "websocket-adapter-1",
                 100,
                 batchSize,
-                capacity,
+                resultBuffer,
                 () -> 1_000L
         );
     }
@@ -365,54 +328,6 @@ class WorkerDeliveryAdapterCoreTest {
     private interface DeliveryBehavior {
 
         CommandDeliveryAttempt deliver(WorkerCommandEnvelope command);
-    }
-
-    private static final class BlockingBindRegistry
-            implements WorkerConnectionRegistry {
-
-        private final CountDownLatch bindStarted =
-                new CountDownLatch(1);
-        private final CountDownLatch releaseBind =
-                new CountDownLatch(1);
-        private volatile ConnectionCloseReason closedReason;
-        private volatile int closeAllCount;
-
-        @Override
-        public void bind(String workerId, Channel channel) {
-            bindStarted.countDown();
-            try {
-                releaseBind.await(2, TimeUnit.SECONDS);
-            } catch (InterruptedException error) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException(error);
-            }
-        }
-
-        @Override
-        public void unbind(String workerId, Channel channel) {
-        }
-
-        @Override
-        public CommandDeliveryAttempt deliver(
-                String workerId,
-                WorkerCommandEnvelope command
-        ) {
-            return REJECTED_BEFORE_SEND;
-        }
-
-        @Override
-        public void close(
-                String workerId,
-                Channel channel,
-                ConnectionCloseReason reason
-        ) {
-            closedReason = reason;
-        }
-
-        @Override
-        public void closeAll(ConnectionCloseReason reason) {
-            closeAllCount++;
-        }
     }
 
     private static class FakeGateway

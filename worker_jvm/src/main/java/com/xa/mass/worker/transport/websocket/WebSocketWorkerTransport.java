@@ -4,6 +4,8 @@ import com.xa.mass.worker.execution.WorkerCommandProcessor;
 import com.xa.mass.worker.execution.WorkerProtocolException;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemCommandMessage;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemResultMessage;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -132,11 +134,12 @@ public final class WebSocketWorkerTransport
             }
             String value = textFragments.toString();
             textFragments.setLength(0);
-            WorkerCommandEnvelope command = codec.decodeWorkerCommand(value);
-            if (command == null) {
+            var message = codec.decodeWorkerConnectionMessage(value);
+            if (!(message instanceof TaskItemCommandMessage commandMessage)) {
                 closeProtocolError(webSocket, BAD_DATA);
                 return CompletableFuture.completedFuture(null);
             }
+            WorkerCommandEnvelope command = commandMessage.command();
             try {
                 var result = processor.process(command);
                 if (result.isEmpty()) {
@@ -241,7 +244,12 @@ public final class WebSocketWorkerTransport
     private void sendPending(WebSocket webSocket) {
         SeedResult sending = pendingResult;
         try {
-            webSocket.sendText(codec.encodeSeedResult(sending), true)
+            webSocket.sendText(
+                    codec.encodeWorkerConnectionMessage(
+                            new TaskItemResultMessage(sending)
+                    ),
+                    true
+            )
                     .whenComplete((ignored, error) -> {
                         synchronized (WebSocketWorkerTransport.this) {
                             if (!running || webSocket != socket) {

@@ -10,6 +10,8 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterState
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemCommandMessage;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemResultMessage;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
 import java.io.IOException;
@@ -99,16 +101,35 @@ class WebSocketWorkerDeliveryAdapterTest {
                     TimeUnit.SECONDS
             )).isTrue();
             WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
-            assertThat(codec.decodeWorkerCommand(
+            assertThat(codec.decodeWorkerConnectionMessage(
                     firstProbe.messages.getFirst()
-            )).isEqualTo(firstCommand);
-            assertThat(codec.decodeWorkerCommand(
+            )).isEqualTo(new TaskItemCommandMessage(firstCommand));
+            assertThat(codec.decodeWorkerConnectionMessage(
                     secondProbe.messages.getFirst()
-            )).isEqualTo(secondCommand);
+            )).isEqualTo(new TaskItemCommandMessage(secondCommand));
             assertThat(firstGateway.endpointManagerIds)
                     .containsOnly("websocket-1");
             assertThat(secondGateway.endpointManagerIds)
                     .containsOnly("websocket-2");
+
+            SeedResult result = new SeedResult(
+                    firstCommand.commandId(),
+                    "context",
+                    "200",
+                    "null"
+            );
+            firstSocket.sendText(
+                    codec.encodeWorkerConnectionMessage(
+                            new TaskItemResultMessage(result)
+                    ),
+                    true
+            ).get(2, TimeUnit.SECONDS);
+            assertThat(firstGateway.resultAppended.await(
+                    2,
+                    TimeUnit.SECONDS
+            )).isTrue();
+            assertThat(firstGateway.appendedResults)
+                    .containsExactly(List.of(result));
         } finally {
             firstSocket.abort();
             secondSocket.abort();
@@ -217,6 +238,10 @@ class WebSocketWorkerDeliveryAdapterTest {
                 new ConcurrentLinkedQueue<>();
         private final List<String> endpointManagerIds =
                 new CopyOnWriteArrayList<>();
+        private final List<List<SeedResult>> appendedResults =
+                new CopyOnWriteArrayList<>();
+        private final CountDownLatch resultAppended =
+                new CountDownLatch(1);
 
         @Override
         public WorkerCommandPage consumeWorkerCommands(
@@ -237,6 +262,8 @@ class WebSocketWorkerDeliveryAdapterTest {
                 List<SeedResult> results
         ) {
             endpointManagerIds.add(endpointManagerId);
+            appendedResults.add(List.copyOf(results));
+            resultAppended.countDown();
         }
     }
 

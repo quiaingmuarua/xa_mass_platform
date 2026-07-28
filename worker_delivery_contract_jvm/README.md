@@ -6,6 +6,17 @@ This module contains the transport-neutral Worker Delivery DTOs, validation,
 outcome classification, and strict deterministic JSON codec shared by
 `server_jvm` and `worker_jvm`.
 
+Polling uses `WorkerCommandEnvelope` and `SeedResult` directly. Long-lived
+transports use the strict flat `WorkerConnectionMessage` union:
+
+```text
+TASK_ITEM_COMMAND -> TaskItemCommandMessage(WorkerCommandEnvelope)
+TASK_ITEM_RESULT  -> TaskItemResultMessage(SeedResult)
+```
+
+The union has no generic payload and is not a Kernel runtime or persistence
+contract.
+
 ```text
 server_jvm -> worker_delivery_contract_jvm
 worker_jvm -> worker_delivery_contract_jvm

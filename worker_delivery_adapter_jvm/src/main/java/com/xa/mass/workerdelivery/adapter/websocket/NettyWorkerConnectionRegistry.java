@@ -3,6 +3,7 @@ package com.xa.mass.workerdelivery.adapter.websocket;
 import com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.CommandDeliveryAttempt;
 import com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.ConnectionCloseReason;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemCommandMessage;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
@@ -118,7 +119,9 @@ final class NettyWorkerConnectionRegistry
         if (!channel.isActive() || !channel.isWritable()) {
             return CommandDeliveryAttempt.REJECTED_BEFORE_SEND;
         }
-        String encoded = codec.encodeWorkerCommand(command);
+        String encoded = codec.encodeWorkerConnectionMessage(
+                new TaskItemCommandMessage(command)
+        );
         ChannelFuture send;
         try {
             send = channel.writeAndFlush(

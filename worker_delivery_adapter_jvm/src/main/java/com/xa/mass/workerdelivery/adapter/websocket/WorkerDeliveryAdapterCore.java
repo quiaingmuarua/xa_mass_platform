@@ -2,26 +2,21 @@ package com.xa.mass.workerdelivery.adapter.websocket;
 
 import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.CommandDeliveryAttempt.REJECTED_BEFORE_SEND;
 import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.ConnectionCloseReason.ADAPTER_STOPPING;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultOutcomeClass.SUCCESS;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultOutcomeClass.WORKER_FAILURE;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerCommandPage;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
+import com.xa.mass.workerdelivery.adapter.message.BoundedWorkerResultBuffer;
 import com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.CommandDeliveryAttempt;
-import com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.ConnectionCloseReason;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliverSeed;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
-import io.netty.channel.Channel;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
@@ -39,7 +34,7 @@ final class WorkerDeliveryAdapterCore {
     private final int scanCount;
     private final int resultBatchSize;
     private final LongSupplier nowMillis;
-    private final ArrayBlockingQueue<SeedResult> resultBuffer;
+    private final BoundedWorkerResultBuffer resultBuffer;
     private final ArrayDeque<SeedResult> pendingResults =
             new ArrayDeque<>();
     private final ReentrantLock roundLock = new ReentrantLock();
@@ -53,7 +48,7 @@ final class WorkerDeliveryAdapterCore {
             String adapterId,
             int scanCount,
             int resultBatchSize,
-            int resultBufferCapacity
+            BoundedWorkerResultBuffer resultBuffer
     ) {
         this(
                 gateway,
@@ -62,7 +57,7 @@ final class WorkerDeliveryAdapterCore {
                 adapterId,
                 scanCount,
                 resultBatchSize,
-                resultBufferCapacity,
+                resultBuffer,
                 System::currentTimeMillis
         );
     }
@@ -74,7 +69,7 @@ final class WorkerDeliveryAdapterCore {
             String adapterId,
             int scanCount,
             int resultBatchSize,
-            int resultBufferCapacity,
+            BoundedWorkerResultBuffer resultBuffer,
             LongSupplier nowMillis
     ) {
         this.gateway = Objects.requireNonNull(gateway, "gateway");
@@ -89,8 +84,7 @@ final class WorkerDeliveryAdapterCore {
             );
         }
         if (scanCount <= 0
-                || resultBatchSize <= 0
-                || resultBufferCapacity <= 0) {
+                || resultBatchSize <= 0) {
             throw new IllegalArgumentException(
                     "Adapter bounds must be positive"
             );
@@ -98,59 +92,11 @@ final class WorkerDeliveryAdapterCore {
         this.adapterId = adapterId;
         this.scanCount = scanCount;
         this.resultBatchSize = resultBatchSize;
-        this.nowMillis = Objects.requireNonNull(nowMillis, "nowMillis");
-        resultBuffer = new ArrayBlockingQueue<>(resultBufferCapacity);
-    }
-
-    boolean connectWorker(
-            String workerId,
-            Channel channel
-    ) {
-        if (closed) {
-            return false;
-        }
-        connections.bind(workerId, channel);
-        if (closed) {
-            connections.close(
-                    workerId,
-                    channel,
-                    ADAPTER_STOPPING
-            );
-            return false;
-        }
-        return true;
-    }
-
-    void disconnectWorker(
-            String workerId,
-            Channel channel
-    ) {
-        connections.unbind(workerId, channel);
-    }
-
-    void closeWorker(
-            String workerId,
-            Channel channel,
-            ConnectionCloseReason reason
-    ) {
-        connections.close(workerId, channel, reason);
-    }
-
-    WorkerResultAcceptance acceptWorkerResult(SeedResult result) {
-        Objects.requireNonNull(result, "result");
-        if (closed) {
-            return WorkerResultAcceptance.ADAPTER_CLOSED;
-        }
-        var outcomeClass = WorkerDeliveryProtocol.classifyOutcomeCode(
-                result.outcomeCode()
+        this.resultBuffer = Objects.requireNonNull(
+                resultBuffer,
+                "resultBuffer"
         );
-        if (outcomeClass != SUCCESS && outcomeClass != WORKER_FAILURE) {
-            return WorkerResultAcceptance.INVALID_OUTCOME;
-        }
-        if (!resultBuffer.offer(result)) {
-            return WorkerResultAcceptance.BUFFER_FULL;
-        }
-        return WorkerResultAcceptance.ACCEPTED;
+        this.nowMillis = Objects.requireNonNull(nowMillis, "nowMillis");
     }
 
     void dispatchOnce(ExecutorService deliveryExecutor) {
@@ -184,6 +130,7 @@ final class WorkerDeliveryAdapterCore {
                 return;
             }
             closed = true;
+            resultBuffer.stopAccepting();
             connections.closeAll(ADAPTER_STOPPING);
             flushPendingResults();
             while (!resultBuffer.isEmpty()) {
@@ -251,9 +198,7 @@ final class WorkerDeliveryAdapterCore {
     }
 
     private void drainOneBufferedResultBatch() {
-        List<SeedResult> batch = new ArrayList<>(resultBatchSize);
-        resultBuffer.drainTo(batch, resultBatchSize);
-        pendingResults.addAll(batch);
+        pendingResults.addAll(resultBuffer.drain(resultBatchSize));
     }
 
     private void flushPendingResults() {
@@ -293,13 +238,6 @@ final class WorkerDeliveryAdapterCore {
                     "Worker Delivery Adapter core is closed"
             );
         }
-    }
-
-    enum WorkerResultAcceptance {
-        ACCEPTED,
-        INVALID_OUTCOME,
-        BUFFER_FULL,
-        ADAPTER_CLOSED
     }
 
     private record DeliveryOutcome(

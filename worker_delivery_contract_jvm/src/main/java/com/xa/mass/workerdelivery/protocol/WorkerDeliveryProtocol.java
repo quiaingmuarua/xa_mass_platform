@@ -15,6 +15,53 @@ public final class WorkerDeliveryProtocol {
         TASK_ITEM
     }
 
+    public enum WorkerConnectionMessageType {
+        TASK_ITEM_COMMAND,
+        TASK_ITEM_RESULT
+    }
+
+    public sealed interface WorkerConnectionMessage
+            permits TaskItemCommandMessage, TaskItemResultMessage {
+
+        WorkerConnectionMessageType messageType();
+    }
+
+    public record TaskItemCommandMessage(
+            WorkerCommandEnvelope command
+    ) implements WorkerConnectionMessage {
+
+        public TaskItemCommandMessage {
+            if (command == null) {
+                throw new IllegalArgumentException(
+                        "command must be present"
+                );
+            }
+        }
+
+        @Override
+        public WorkerConnectionMessageType messageType() {
+            return WorkerConnectionMessageType.TASK_ITEM_COMMAND;
+        }
+    }
+
+    public record TaskItemResultMessage(
+            SeedResult result
+    ) implements WorkerConnectionMessage {
+
+        public TaskItemResultMessage {
+            if (result == null) {
+                throw new IllegalArgumentException(
+                        "result must be present"
+                );
+            }
+        }
+
+        @Override
+        public WorkerConnectionMessageType messageType() {
+            return WorkerConnectionMessageType.TASK_ITEM_RESULT;
+        }
+    }
+
     public enum SeedResultOutcomeClass {
         SUCCESS,
         WORKER_FAILURE,

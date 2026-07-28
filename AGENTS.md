@@ -14,6 +14,8 @@ Status: current repository handoff.
   providers; it does not define a second set of Kernel runtime ports.
 - `worker_delivery_contract_jvm/` is the Java 21 transport-neutral
   WorkerCommand/DeliverSeed/SeedResult contract shared by Server and Worker.
+  It also owns the strict flat WorkerConnectionMessage union used only by
+  long-lived transports.
 - `worker_delivery_adapter_jvm/` owns complete Adapter instances: local
   registration, start/close lifecycle, scheduled Gateway consumption, active
   connections, bounded concurrent delivery, result buffering, and independent
@@ -70,9 +72,11 @@ tag.
 - `worker_delivery_adapter_jvm` must not depend on `server_jvm`, `kernel_jvm`,
   Spring, Redis, scores, Pacers, or Server HTTP DTOs. The Adapter module owns
   its complete instances, Netty listeners, scheduled dispatch loops, active
-  connections, cursors, delivery executors, and bounded results. Its private
-  HTTP DTOs are proved against Server JSON with bilateral golden tests; do not
-  add an in-process fast path.
+  connections, immutable message dispatcher, statically installed handlers,
+  cursors, delivery executors, and bounded results. Handler assembly is not a
+  dynamic registration or discovery surface. Its private HTTP DTOs are proved
+  against Server JSON with bilateral golden tests; do not add an in-process
+  fast path.
 - `worker_jvm` may depend only on the shared contract and Worker tool
   libraries. It must not depend on `server_jvm`, `kernel_jvm`, Python
   packages, Redis, score, Pacer, or TaskType.
@@ -121,8 +125,9 @@ WorkerDeliveryConfiguration
 
 worker_delivery_adapter_jvm
   -> Adapter batch HTTP client
-  -> per-endpoint cursor, current connection registry, concurrent delivery,
-     and result buffer
+  -> per-endpoint cursor, current connection registry, concurrent delivery
+  -> flat long-connection message codec, immutable dispatcher, built-in result
+     handler, and bounded result buffer
   -> independent Netty WebSocket listeners
 ```
 

@@ -1,14 +1,14 @@
 package com.xa.mass.workerdelivery.adapter.websocket;
 
-import static com.xa.mass.workerdelivery.adapter.websocket.WorkerDeliveryAdapterCore.WorkerResultAcceptance.ACCEPTED;
-import static com.xa.mass.workerdelivery.adapter.websocket.WorkerDeliveryAdapterCore.WorkerResultAcceptance.ADAPTER_CLOSED;
-import static com.xa.mass.workerdelivery.adapter.websocket.WorkerDeliveryAdapterCore.WorkerResultAcceptance.BUFFER_FULL;
+import static com.xa.mass.workerdelivery.adapter.message.WorkerMessageHandlingResult.ACCEPTED;
+import static com.xa.mass.workerdelivery.adapter.message.WorkerMessageHandlingResult.ADAPTER_CLOSED;
+import static com.xa.mass.workerdelivery.adapter.message.WorkerMessageHandlingResult.BUFFER_FULL;
 import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.ConnectionCloseReason.ADAPTER_STOPPING;
 import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.ConnectionCloseReason.RESULT_BUFFER_FULL;
 import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.ConnectionCloseReason.TRANSPORT_ERROR;
 
+import com.xa.mass.workerdelivery.adapter.message.WorkerConnectionMessageDispatcher;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -21,6 +21,7 @@ import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.Objects;
+import java.util.function.BooleanSupplier;
 
 final class WorkerWebSocketHandler
         extends SimpleChannelInboundHandler<WebSocketFrame> {
@@ -29,17 +30,32 @@ final class WorkerWebSocketHandler
             "/api/v1/worker-delivery/websocket/workers";
     static final String WORKER_PATH_PREFIX = WORKER_PATH + "/";
 
-    private final WebSocketWorkerDeliveryAdapter adapter;
+    private final WorkerConnectionRegistry connections;
     private final WorkerDeliveryCodec codec;
+    private final WorkerConnectionMessageDispatcher dispatcher;
+    private final BooleanSupplier acceptingConnections;
     private String workerId;
     private Channel workerChannel;
 
     WorkerWebSocketHandler(
-            WebSocketWorkerDeliveryAdapter adapter,
-            WorkerDeliveryCodec codec
+            WorkerConnectionRegistry connections,
+            WorkerDeliveryCodec codec,
+            WorkerConnectionMessageDispatcher dispatcher,
+            BooleanSupplier acceptingConnections
     ) {
-        this.adapter = Objects.requireNonNull(adapter, "adapter");
+        this.connections = Objects.requireNonNull(
+                connections,
+                "connections"
+        );
         this.codec = Objects.requireNonNull(codec, "codec");
+        this.dispatcher = Objects.requireNonNull(
+                dispatcher,
+                "dispatcher"
+        );
+        this.acceptingConnections = Objects.requireNonNull(
+                acceptingConnections,
+                "acceptingConnections"
+        );
     }
 
     @Override
@@ -57,8 +73,17 @@ final class WorkerWebSocketHandler
                 return;
             }
             Channel opened = context.channel();
-            if (!adapter.connectWorker(resolvedWorkerId, opened)) {
+            if (!acceptingConnections.getAsBoolean()) {
                 close(context, 1001, "Adapter is stopping");
+                return;
+            }
+            connections.bind(resolvedWorkerId, opened);
+            if (!acceptingConnections.getAsBoolean()) {
+                connections.close(
+                        resolvedWorkerId,
+                        opened,
+                        ADAPTER_STOPPING
+                );
                 return;
             }
             workerId = resolvedWorkerId;
@@ -102,7 +127,7 @@ final class WorkerWebSocketHandler
         String currentWorkerId = workerId;
         clearConnection();
         if (current != null && currentWorkerId != null) {
-            adapter.closeWorker(
+            connections.close(
                     currentWorkerId,
                     current,
                     TRANSPORT_ERROR
@@ -116,13 +141,13 @@ final class WorkerWebSocketHandler
             ChannelHandlerContext context,
             String payload
     ) {
-        SeedResult result = codec.decodeSeedResult(payload);
-        if (result == null) {
+        var message = codec.decodeWorkerConnectionMessage(payload);
+        if (message == null) {
             disconnect();
             close(context, 1007, "Invalid Worker result");
             return;
         }
-        var acceptance = adapter.acceptWorkerResult(result);
+        var acceptance = dispatcher.dispatch(workerId, message);
         if (acceptance == ACCEPTED) {
             return;
         }
@@ -131,21 +156,21 @@ final class WorkerWebSocketHandler
         clearConnection();
         if (current != null && currentWorkerId != null
                 && acceptance == BUFFER_FULL) {
-            adapter.closeWorker(
+            connections.close(
                     currentWorkerId,
                     current,
                     RESULT_BUFFER_FULL
             );
         } else if (current != null && currentWorkerId != null
                 && acceptance == ADAPTER_CLOSED) {
-            adapter.closeWorker(
+            connections.close(
                     currentWorkerId,
                     current,
                     ADAPTER_STOPPING
             );
         } else {
             if (current != null && currentWorkerId != null) {
-                adapter.disconnectWorker(currentWorkerId, current);
+                connections.unbind(currentWorkerId, current);
             }
             close(context, 1007, "Invalid Worker result");
         }
@@ -156,7 +181,7 @@ final class WorkerWebSocketHandler
         String currentWorkerId = workerId;
         clearConnection();
         if (current != null && currentWorkerId != null) {
-            adapter.disconnectWorker(currentWorkerId, current);
+            connections.unbind(currentWorkerId, current);
         }
     }
 

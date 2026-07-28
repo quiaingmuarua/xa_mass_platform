@@ -565,8 +565,9 @@ no hidden compatibility path or second mainline remains
 - [Worker Delivery Dispatch](doc/scheduling/worker-delivery-dispatch.md)
   - Server-owned point/batch mailbox access plus Adapter-owned complete Netty
     instances, independent listeners, single-cursor bounded concurrent
-    delivery, result buffering, and trusted pre-execution rejection without
-    Adapter-owned score mutation.
+    delivery, strict long-connection messages, static result handling,
+    result buffering, and trusted pre-execution rejection without Adapter-owned
+    score mutation.
 - [Kernel Runtime Server](runtime_server/app.py)
   - executable-spec FastAPI control host for WorkerGroup/Worker upsert and
     Task create/approve/close; only
@@ -583,7 +584,8 @@ no hidden compatibility path or second mainline remains
   - one-slot Java Worker that executes `telecom.phone.inspect` through polling
     or WebSocket using the shared Worker Delivery contract.
 - [JVM Worker Delivery Contract](../worker_delivery_contract_jvm/README.md)
-  - transport-neutral Java DTO, validation, outcome classification, and codec.
+  - transport-neutral Java DTOs, strict flat long-connection messages,
+    validation, outcome classification, and codec.
 - [Result-Routing Scheduling](doc/scheduling/result-routing-scheduling.md)
   - outcome-class SeedResult consumption, last-success result storage, TaskItem
     final-success invocation, and Worker exact disposition.

@@ -63,6 +63,12 @@ WorkerDeliveryGatewayClient
 
 WebSocket-private WorkerConnectionRegistry
   retain the current Netty Channel for each WorkerId
+
+WorkerConnectionMessageDispatcher
+  immutable messageType -> handler dispatch
+
+TaskItemResultMessageHandler
+  validate Worker-owned outcomes and offer SeedResult to the bounded buffer
 ```
 
 The Manager does not deserialize configuration or construct Adapters. Server
@@ -82,6 +88,32 @@ Unbind compares both `workerId` and connection instance, so a delayed close
 from the replaced connection cannot remove the replacement. Results already
 produced through an old connection remain valid evidence; Kernel
 ResultContext and Worker lease fences decide whether they can affect truth.
+
+## Message Boundary
+
+Long-lived transports use the shared flat `WorkerConnectionMessage` union:
+
+```text
+outbound WorkerCommandEnvelope
+  -> TaskItemCommandMessage
+  -> TASK_ITEM_COMMAND text frame
+
+inbound TASK_ITEM_RESULT text frame
+  -> TaskItemResultMessage
+  -> immutable dispatcher
+  -> TaskItemResultMessageHandler
+  -> bounded SeedResult buffer
+```
+
+The message family is a connection protocol, not another Kernel runtime or
+result truth. Polling continues to use `WorkerCommandEnvelope` and
+`SeedResult` directly through the Server point HTTP API.
+
+Handlers are installed once when an Adapter instance is assembled. The
+dispatcher has no runtime registration, discovery, fallback, or generic JSON
+payload. The first implementation installs only the Task Item result handler.
+Trusted Adapter-generated `3001` evidence bypasses Worker message handling and
+enters the Adapter's pending result path directly.
 
 ## Dispatch
 
@@ -121,9 +153,12 @@ boundary.
 
 Each instance owns an embedded Netty listener with one I/O event-loop thread.
 Command delivery concurrency is controlled separately by
-`deliveryParallelism`. The WebSocket handler only adapts frames and connection
-events; cursor, result buffering, `3001`, and `UNKNOWN` semantics stay in the
-Adapter core.
+`deliveryParallelism`. The WebSocket handler only resolves `workerId`, decodes
+text frames, invokes the static dispatcher, and maps handling results to
+Channel actions. The connection registry stores the current Netty Channel
+directly. Cursor, Gateway calls, `3001`, pending result retry, and `UNKNOWN`
+semantics stay in the Adapter core; outcome validation stays in the installed
+message handler; queue mechanics stay in the bounded result buffer.
 
 The JDK `HttpClient` Gateway implementation also lives in this module. Its
 private HTTP DTOs match the Server batch API but are not part of the shared

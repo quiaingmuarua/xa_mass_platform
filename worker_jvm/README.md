@@ -17,9 +17,18 @@ websocket
   -> send one result frame
 ```
 
-Both profiles decode the shared `WorkerCommandEnvelope`, verify the nested
-`DeliverSeed.workerId`, execute `telecom.phone.inspect`, and return the shared
-`SeedResult`. Transport selection is independent of `TaskType`.
+Both profiles ultimately execute the shared `WorkerCommandEnvelope`, verify
+the nested `DeliverSeed.workerId`, and produce the shared `SeedResult`.
+Polling exchanges those DTOs directly through point HTTP. WebSocket exchanges
+the flat long-connection union:
+
+```text
+TASK_ITEM_COMMAND -> TaskItemCommandMessage(WorkerCommandEnvelope)
+TASK_ITEM_RESULT  -> TaskItemResultMessage(SeedResult)
+```
+
+The WebSocket Worker accepts only command messages and emits only result
+messages. Transport selection is independent of `TaskType`.
 
 ## Prerequisites
 

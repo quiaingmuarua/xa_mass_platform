@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliverSeed;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultOutcomeClass;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemCommandMessage;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemResultMessage;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
 import org.junit.jupiter.api.Test;
@@ -74,6 +76,84 @@ class WorkerDeliveryProtocolTest {
         assertEquals(result, codec.decodeSeedResult(encoded));
         assertNull(codec.decodeSeedResult(
                 encoded.replace("\"outcomeCode\"", "\"unknown\"")
+        ));
+    }
+
+    @Test
+    void workerConnectionMessagesUseFlatStrictJson() {
+        WorkerCommandEnvelope command = new WorkerCommandEnvelope(
+                COMMAND_ID,
+                WorkerMessageType.TASK_ITEM,
+                123_456,
+                "opaque-command-item"
+        );
+        String commandJson = "{\"messageType\":\"TASK_ITEM_COMMAND\","
+                + "\"commandId\":\"" + COMMAND_ID + "\","
+                + "\"executeBeforeMillis\":123456,"
+                + "\"opaqueItem\":\"opaque-command-item\"}";
+        TaskItemCommandMessage commandMessage =
+                new TaskItemCommandMessage(command);
+
+        assertEquals(
+                commandJson,
+                codec.encodeWorkerConnectionMessage(commandMessage)
+        );
+        assertEquals(
+                commandMessage,
+                codec.decodeWorkerConnectionMessage(commandJson)
+        );
+
+        SeedResult result = new SeedResult(
+                COMMAND_ID,
+                "context",
+                "200",
+                "null"
+        );
+        String resultJson = "{\"messageType\":\"TASK_ITEM_RESULT\","
+                + "\"commandId\":\"" + COMMAND_ID + "\","
+                + "\"opaqueResultContext\":\"context\","
+                + "\"opaqueResultPayload\":\"null\","
+                + "\"outcomeCode\":\"200\"}";
+        TaskItemResultMessage resultMessage =
+                new TaskItemResultMessage(result);
+
+        assertEquals(
+                resultJson,
+                codec.encodeWorkerConnectionMessage(resultMessage)
+        );
+        assertEquals(
+                resultMessage,
+                codec.decodeWorkerConnectionMessage(resultJson)
+        );
+    }
+
+    @Test
+    void workerConnectionMessagesRejectOldAndUnknownShapes() {
+        String oldCommand = codec.encodeWorkerCommand(
+                new WorkerCommandEnvelope(
+                        COMMAND_ID,
+                        WorkerMessageType.TASK_ITEM,
+                        123_456,
+                        "opaque-command-item"
+                )
+        );
+        String oldResult = codec.encodeSeedResult(new SeedResult(
+                COMMAND_ID,
+                "context",
+                "200",
+                "null"
+        ));
+
+        assertNull(codec.decodeWorkerConnectionMessage(oldCommand));
+        assertNull(codec.decodeWorkerConnectionMessage(oldResult));
+        assertNull(codec.decodeWorkerConnectionMessage(
+                "{\"messageType\":\"UNKNOWN\"}"
+        ));
+        assertNull(codec.decodeWorkerConnectionMessage(
+                "{\"messageType\":\"TASK_ITEM_COMMAND\","
+                        + "\"commandId\":\"" + COMMAND_ID + "\","
+                        + "\"executeBeforeMillis\":123456,"
+                        + "\"opaqueItem\":\"item\",\"extra\":true}"
         ));
     }
 

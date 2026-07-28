@@ -9,6 +9,8 @@ import com.xa.mass.worker.execution.WorkerCommandProcessor;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliverSeed;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemCommandMessage;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemResultMessage;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
 import java.net.URI;
@@ -73,7 +75,11 @@ class WebSocketWorkerTransportTest {
         transport.onText(socket, command.substring(midpoint), true);
         assertEquals(1, socket.sentTexts.size());
         assertEquals(2, socket.requestCount);
-        SeedResult result = codec.decodeSeedResult(socket.sentTexts.getFirst());
+        var resultMessage = codec.decodeWorkerConnectionMessage(
+                socket.sentTexts.getFirst()
+        );
+        assertTrue(resultMessage instanceof TaskItemResultMessage);
+        SeedResult result = ((TaskItemResultMessage) resultMessage).result();
         assertEquals("200", result.outcomeCode());
 
         socket.completeSend();
@@ -144,16 +150,18 @@ class WebSocketWorkerTransportTest {
                 {"eventCode":"telecom.phone.inspect",\
                 "payload":{"phoneNumber":"+14155552671"}}\
                 """;
-        return codec.encodeWorkerCommand(new WorkerCommandEnvelope(
-                COMMAND_ID,
-                WorkerMessageType.TASK_ITEM,
-                System.currentTimeMillis() + 10_000,
-                codec.encodeDeliverSeed(new DeliverSeed(
-                        "worker-1",
-                        deliveryItem,
-                        "context"
+        return codec.encodeWorkerConnectionMessage(
+                new TaskItemCommandMessage(new WorkerCommandEnvelope(
+                        COMMAND_ID,
+                        WorkerMessageType.TASK_ITEM,
+                        System.currentTimeMillis() + 10_000,
+                        codec.encodeDeliverSeed(new DeliverSeed(
+                                "worker-1",
+                                deliveryItem,
+                                "context"
+                        ))
                 ))
-        ));
+        );
     }
 
     private static final class FakeConnector

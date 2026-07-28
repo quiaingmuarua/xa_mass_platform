@@ -105,6 +105,26 @@ The only current `WorkerMessageType` is `TASK_ITEM`. It identifies how a Worker
 interprets the command's `opaqueItem`; Result Routing does not consume or
 interpret Worker message types.
 
+Long-lived transports use one additional, transport-neutral connection
+contract:
+
+```text
+WorkerConnectionMessage
+  TASK_ITEM_COMMAND -> TaskItemCommandMessage(WorkerCommandEnvelope)
+  TASK_ITEM_RESULT  -> TaskItemResultMessage(SeedResult)
+```
+
+Its wire form is a strict flat discriminated union. It does not add a generic
+`payload`, wrap one JSON document inside another, or create another result
+owner. Decoding a command reconstructs the existing
+`WorkerCommandEnvelope(messageType=TASK_ITEM)`; decoding a result reconstructs
+the existing `SeedResult`. Polling continues to exchange the existing command
+and result DTOs directly through point HTTP.
+
+The connection message contract exists so WebSocket and future long-lived
+transports share one frame vocabulary. It is not stored in the WorkerCommand
+mailbox or SeedResult queues and is not consumed by Result Routing.
+
 ## Runtime Contract
 
 ```python
@@ -297,8 +317,8 @@ executes `opaqueDeliveryItem`, and copies `opaqueResultContext` into
 `SeedResult`. It copies only the original `commandId`; `messageType` and
 `executeBeforeMillis` are command-side coordinates.
 
-The repository's Java reference Worker implements this boundary once and
-selects either polling or WebSocket at startup. Both profiles are serial:
+The repository's Java reference Worker implements the execution boundary once
+and selects either polling or WebSocket at startup. Both profiles are serial:
 
 ```text
 WorkerCommandEnvelope
@@ -307,6 +327,12 @@ WorkerCommandEnvelope
   -> event handler
   -> SeedResult
 ```
+
+Polling receives and submits the command/result DTOs through point HTTP.
+WebSocket receives `TASK_ITEM_COMMAND`, extracts its
+`WorkerCommandEnvelope`, and returns `TASK_ITEM_RESULT` carrying the resulting
+`SeedResult`. Bare command or result frames are invalid on the WebSocket
+transport.
 
 Polling retains one failed result in process memory and retries it before
 polling another command. WebSocket requests another message only after result
@@ -342,20 +368,24 @@ Each Adapter cursor-consumes one bounded page through the Server batch HTTP
 API, rechecks command deadlines, and dispatches different Worker commands
 through a fixed-size delivery executor. One round completes before the next
 HSCAN, so the cursor has one writer. Worker-originated `200/1xxx` results are
-buffered in bounded process memory and submitted through the Server batch
-result HTTP API. Result acceptance is not fenced by the current connection:
+decoded as `TASK_ITEM_RESULT`, passed through an immutable message dispatcher
+and the statically installed Task Item result handler, then offered to a
+bounded process-memory buffer and submitted through the Server batch result
+HTTP API. Result acceptance is not fenced by the current connection:
 evidence already produced through a replaced connection is still submitted,
 and Kernel ResultContext/Worker lease fences decide whether it affects current
 truth.
 
 The Adapter module owns its scheduled runtime, Netty listeners, frame
-translation, WebSocket-private process-local connection registry, cursor,
-delivery executor, and result buffer. A live connection registry is not Redis
-truth and is not serializable. `server_jvm` only converts configured JSON trees into concrete
-instances, registers them, and maps process-ready/process-close events to
-Manager `start()`/`close()`. Server must not host WebSocket endpoints or call
-`dispatchOnce`. The Adapter module has no Spring, Redis, Kernel runtime, score,
-or Pacer dependency.
+translation, immutable message dispatcher, built-in message handlers,
+WebSocket-private process-local connection registry, cursor, delivery executor,
+and result buffer. Handler selection is static assembly, not runtime
+registration or policy discovery. A live connection registry is not Redis
+truth and is not serializable. `server_jvm` only converts configured JSON
+trees into concrete instances, registers them, and maps
+process-ready/process-close events to Manager `start()`/`close()`. Server must
+not host WebSocket endpoints or call `dispatchOnce`. The Adapter module has no
+Spring, Redis, Kernel runtime, score, or Pacer dependency.
 
 There is no process-local fast path and no command or result ACK. Server/Redis
 failure retains one pending batch for retry; Adapter process failure may lose
@@ -411,9 +441,11 @@ external Worker side effects exactly-once.
   the instance's scan bound, delivery parallelism, and cadence.
 - Do not add an embedded in-process shortcut around the Server batch HTTP API.
 - Do not let Adapters generate command identity or message types.
-- Do not wrap SeedResult in WorkerCommandEnvelope or add a generic result
-  message dispatcher; a future Worker evidence family needs its own semantic
-  DTO and owner runtime.
+- Do not wrap SeedResult in WorkerCommandEnvelope or in a generic opaque
+  payload. The long-connection discriminated union must decode directly to the
+  existing SeedResult contract.
+- Do not add runtime handler registration, discovery, or fallback. Connection
+  message handlers are immutable Adapter assembly.
 - Do not parse or reconstruct Worker score fences in an Adapter.
 - Do not emit timeout evidence for a command discarded before Worker submit.
 - Do not move Worker release/recovery decisions into mailbox consumption.

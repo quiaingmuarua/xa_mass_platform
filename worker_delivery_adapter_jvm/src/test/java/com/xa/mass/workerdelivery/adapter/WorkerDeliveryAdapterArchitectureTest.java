@@ -16,6 +16,9 @@ class WorkerDeliveryAdapterArchitectureTest {
     private static final Path HTTP = SOURCE.resolve(
             "com/xa/mass/workerdelivery/adapter/http"
     );
+    private static final Path MESSAGE = SOURCE.resolve(
+            "com/xa/mass/workerdelivery/adapter/message"
+    );
     private static final Path WEBSOCKET = SOURCE.resolve(
             "com/xa/mass/workerdelivery/adapter/websocket"
     );
@@ -91,6 +94,36 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("NettyWebSocketWorkerConnection")
                 .doesNotContain("SpringWebSocket")
                 .doesNotContain("WorkerWebSocketEndpointConfigurer");
+    }
+
+    @Test
+    void messageMechanismIsStaticAndTransportIndependent()
+            throws IOException {
+        String messageSources = readSources(MESSAGE);
+        assertThat(messageSources)
+                .contains("interface WorkerConnectionMessageHandler")
+                .contains("class WorkerConnectionMessageDispatcher")
+                .contains("class TaskItemResultMessageHandler")
+                .contains("class BoundedWorkerResultBuffer")
+                .contains("Map.copyOf(indexed)")
+                .doesNotContain("register(")
+                .doesNotContain("unregister(")
+                .doesNotContain("ServiceLoader")
+                .doesNotContain("io.netty")
+                .doesNotContain("org.springframework")
+                .doesNotContain("com.xa.mass.server")
+                .doesNotContain("com.xa.mass.kernel")
+                .doesNotContain("io.lettuce");
+
+        String websocketSources = readSources(WEBSOCKET);
+        assertThat(websocketSources)
+                .contains("decodeWorkerConnectionMessage")
+                .contains("encodeWorkerConnectionMessage")
+                .contains("WorkerConnectionMessageDispatcher")
+                .doesNotContain(
+                        "private final "
+                                + "WebSocketWorkerDeliveryAdapter adapter"
+                );
     }
 
     private static String readSources(Path root) throws IOException {

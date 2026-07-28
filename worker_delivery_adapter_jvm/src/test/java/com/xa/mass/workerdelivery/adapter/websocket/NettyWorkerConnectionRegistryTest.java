@@ -6,6 +6,7 @@ import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegis
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemCommandMessage;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
 import io.netty.channel.embedded.EmbeddedChannel;
@@ -37,8 +38,9 @@ class NettyWorkerConnectionRegistryTest {
             TextWebSocketFrame delivered = second.readOutbound();
             try {
                 assertThat(replacement.statusCode()).isEqualTo(1008);
-                assertThat(codec.decodeWorkerCommand(delivered.text()))
-                        .isEqualTo(command());
+            assertThat(codec.decodeWorkerConnectionMessage(
+                    delivered.text()
+            )).isEqualTo(new TaskItemCommandMessage(command()));
             } finally {
                 ReferenceCountUtil.release(replacement);
                 ReferenceCountUtil.release(delivered);

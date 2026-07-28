@@ -6,8 +6,10 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterState;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
+import com.xa.mass.workerdelivery.adapter.message.BoundedWorkerResultBuffer;
+import com.xa.mass.workerdelivery.adapter.message.TaskItemResultMessageHandler;
+import com.xa.mass.workerdelivery.adapter.message.WorkerConnectionMessageDispatcher;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelInitializer;
@@ -22,6 +24,7 @@ import io.netty.handler.codec.http.HttpServerCodec;
 import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler;
 import java.net.InetSocketAddress;
 import java.time.Duration;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -46,6 +49,7 @@ public final class WebSocketWorkerDeliveryAdapter
     private final WorkerDeliveryCodec codec;
     private final NettyWorkerConnectionRegistry connections;
     private final WorkerDeliveryAdapterCore core;
+    private final WorkerConnectionMessageDispatcher messageDispatcher;
     private volatile WorkerDeliveryAdapterState state =
             WorkerDeliveryAdapterState.REGISTERED;
     private EventLoopGroup eventLoopGroup;
@@ -99,6 +103,11 @@ public final class WebSocketWorkerDeliveryAdapter
                 codec,
                 sendTimeLimit
         );
+        BoundedWorkerResultBuffer resultBuffer =
+                new BoundedWorkerResultBuffer(resultBufferCapacity);
+        messageDispatcher = new WorkerConnectionMessageDispatcher(
+                List.of(new TaskItemResultMessageHandler(resultBuffer))
+        );
         core = new WorkerDeliveryAdapterCore(
                 Objects.requireNonNull(gateway, "gateway"),
                 codec,
@@ -106,7 +115,7 @@ public final class WebSocketWorkerDeliveryAdapter
                 adapterId,
                 scanCount,
                 resultBatchSize,
-                resultBufferCapacity
+                resultBuffer
         );
     }
 
@@ -198,36 +207,6 @@ public final class WebSocketWorkerDeliveryAdapter
         }
     }
 
-    boolean connectWorker(
-            String workerId,
-            Channel channel
-    ) {
-        if (state != WorkerDeliveryAdapterState.RUNNING) {
-            return false;
-        }
-        return core.connectWorker(workerId, channel);
-    }
-
-    void disconnectWorker(
-            String workerId,
-            Channel channel
-    ) {
-        core.disconnectWorker(workerId, channel);
-    }
-
-    void closeWorker(
-            String workerId,
-            Channel channel,
-            WorkerConnectionRegistry.ConnectionCloseReason reason
-    ) {
-        core.closeWorker(workerId, channel, reason);
-    }
-
-    WorkerDeliveryAdapterCore.WorkerResultAcceptance
-    acceptWorkerResult(SeedResult result) {
-        return core.acceptWorkerResult(result);
-    }
-
     private void initializeExecutors() {
         scheduler = Executors.newSingleThreadScheduledExecutor(
                 daemonThreadFactory(adapterId + "-mailbox")
@@ -269,8 +248,12 @@ public final class WebSocketWorkerDeliveryAdapter
                                         )
                                 )
                                 .addLast(new WorkerWebSocketHandler(
-                                        WebSocketWorkerDeliveryAdapter.this,
-                                        codec
+                                        connections,
+                                        codec,
+                                        messageDispatcher,
+                                        () -> state
+                                                == WorkerDeliveryAdapterState
+                                                .RUNNING
                                 ));
                     }
                 });
