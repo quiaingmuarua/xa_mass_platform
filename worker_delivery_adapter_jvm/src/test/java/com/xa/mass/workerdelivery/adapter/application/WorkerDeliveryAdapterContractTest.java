@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerConnection.CommandDeliveryAttempt;
 import com.xa.mass.workerdelivery.adapter.application.WorkerConnection.WorkerConnectionCloseReason;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter.AdapterRoundResult;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter.WorkerResultAcceptance;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterCore.AdapterRoundResult;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterCore.WorkerResultAcceptance;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
@@ -47,13 +47,26 @@ class WorkerDeliveryAdapterContractTest {
     void locksAdapterContractAndExplicitOutcomes() {
         assertThat(signatures(WorkerDeliveryAdapter.class))
                 .containsExactlyInAnyOrder(
-                        "acceptWorkerResult(SeedResult)"
-                                + ":WorkerResultAcceptance",
+                        "adapterType():WorkerDeliveryAdapterType",
                         "close():void",
-                        "connectWorker(String,WorkerConnection)"
-                                + ":void",
-                        "disconnectWorker(String,WorkerConnection):void",
-                        "dispatchOnce():AdapterRoundResult"
+                        "endpointManagerId():String",
+                        "start():void",
+                        "state():WorkerDeliveryAdapterState"
+                );
+        assertThat(signatures(WorkerDeliveryAdapterFactory.class))
+                .containsExactlyInAnyOrder(
+                        "adapterType():WorkerDeliveryAdapterType",
+                        "create(WorkerDeliveryAdapterRuntimeConfig,"
+                                + "WorkerDeliveryAdapterPrivateConfig)"
+                                + ":WorkerDeliveryAdapter",
+                        "privateConfigType():Class"
+                );
+        assertThat(signatures(WorkerDeliveryAdapterManager.class))
+                .containsExactlyInAnyOrder(
+                        "close():void",
+                        "register(WorkerDeliveryAdapterDefinition):void",
+                        "start():void",
+                        "state():WorkerDeliveryAdapterState"
                 );
         assertThat(Set.of(CommandDeliveryAttempt.values()))
                 .containsExactlyInAnyOrder(
@@ -65,7 +78,8 @@ class WorkerDeliveryAdapterContractTest {
                 .containsExactlyInAnyOrder(
                         WorkerResultAcceptance.ACCEPTED,
                         WorkerResultAcceptance.INVALID_OUTCOME,
-                        WorkerResultAcceptance.BUFFER_FULL
+                        WorkerResultAcceptance.BUFFER_FULL,
+                        WorkerResultAcceptance.ADAPTER_CLOSED
                 );
         assertThat(Set.of(WorkerConnectionCloseReason.values()))
                 .containsExactlyInAnyOrder(
@@ -73,8 +87,23 @@ class WorkerDeliveryAdapterContractTest {
                         WorkerConnectionCloseReason.RESULT_BUFFER_FULL,
                         WorkerConnectionCloseReason.TRANSPORT_ERROR,
                         WorkerConnectionCloseReason.ADAPTER_STOPPING
-                );
+        );
         assertThat(AdapterRoundResult.class.isRecord()).isTrue();
+        assertThat(Set.of(WorkerDeliveryAdapterType.values()))
+                .containsExactly(WorkerDeliveryAdapterType.WEBSOCKET);
+        assertThat(Set.of(WorkerDeliveryAdapterState.values()))
+                .containsExactlyInAnyOrder(
+                        WorkerDeliveryAdapterState.REGISTERED,
+                        WorkerDeliveryAdapterState.RUNNING,
+                        WorkerDeliveryAdapterState.STOPPING,
+                        WorkerDeliveryAdapterState.CLOSED
+                );
+        assertThat(WorkerDeliveryAdapterDefinition.class.isRecord())
+                .isTrue();
+        assertThat(WorkerDeliveryAdapterRuntimeConfig.class.isRecord())
+                .isTrue();
+        assertThat(WebSocketWorkerDeliveryAdapterConfig.class.isRecord())
+                .isTrue();
     }
 
     private static Set<String> signatures(Class<?> type) {

@@ -84,7 +84,8 @@ kernel_jvm delivery contracts/providers
   WorkerCommand consume and SeedResult append owner operations
 
 worker_delivery_adapter_jvm
-  framework-free Core plus concrete Spring WebSocket transport
+  typed local registration/start/close runtime, one-round Core,
+  and concrete Spring WebSocket transport
 ```
 
 The Server is the only Worker Delivery HTTP and Redis owner. Point and batch
@@ -92,11 +93,13 @@ controllers call `WorkerDeliveryService`, which calls the two Kernel delivery
 runtime contracts. The shared contract module has no Spring Web or Redis
 dependency.
 
-The Adapter mechanism is implemented by
+The Adapter runtime is implemented by
 [`worker_delivery_adapter_jvm`](../worker_delivery_adapter_jvm/README.md).
-This Server can optionally host that module's WebSocket endpoint and scheduled
-dispatch loop. The embedded Adapter still consumes the existing batch HTTP API
-through loopback and has no in-process or Redis shortcut.
+This Server can optionally bind one typed WebSocket Adapter definition, host
+its endpoint, and forward process-ready/process-close events. The Adapter
+module owns its scheduled dispatch loop. The embedded Adapter still consumes
+the existing batch HTTP API through loopback and has no in-process or Redis
+shortcut.
 
 ## Runtime Commands
 
@@ -176,13 +179,27 @@ WebSocket Adapter and use the WebSocket profile, as documented in
 
 Embedded WebSocket Adapter:
 
-```text
-xa.mass.worker-delivery.adapter.websocket.enabled=true
-xa.mass.worker-delivery.adapter.websocket.endpoint-manager-id=websocket-1
+```yaml
+xa.mass.worker-delivery.adapter:
+  enabled: true
+  type: WEBSOCKET
+  runtime:
+    endpoint-manager-id: websocket-1
+    gateway-base-url: http://127.0.0.1:18082
+    request-timeout: 5s
+    dispatch-interval: 100ms
+    scan-count: 100
+    result-batch-size: 100
+    result-buffer-capacity: 1000
+  websocket:
+    send-time-limit: 5s
 ```
 
 The Worker declaration must use the same endpoint-manager ID. The Adapter
-calls this Server's batch HTTP API at the configured `gateway-base-url`.
+locally registers one `WEBSOCKET` definition, starts its own bounded dispatch
+loop after the Server is ready, and calls this Server's batch HTTP API at the
+configured `gateway-base-url`. Server shutdown invokes the Adapter's bounded
+close lifecycle.
 
 Defaults:
 

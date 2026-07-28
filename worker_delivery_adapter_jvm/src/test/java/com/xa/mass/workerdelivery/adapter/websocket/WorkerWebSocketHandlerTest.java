@@ -1,8 +1,8 @@
 package com.xa.mass.workerdelivery.adapter.websocket;
 
-import static com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter.WorkerResultAcceptance.ACCEPTED;
-import static com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter.WorkerResultAcceptance.BUFFER_FULL;
-import static com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter.WorkerResultAcceptance.INVALID_OUTCOME;
+import static com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterCore.WorkerResultAcceptance.ACCEPTED;
+import static com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterCore.WorkerResultAcceptance.BUFFER_FULL;
+import static com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterCore.WorkerResultAcceptance.INVALID_OUTCOME;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.same;
@@ -13,6 +13,8 @@ import static org.mockito.Mockito.when;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerConnection;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterCore;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterState;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import java.time.Duration;
@@ -30,16 +32,24 @@ class WorkerWebSocketHandlerTest {
 
     private static final String COMMAND_ID =
             "a5e9e10d-f78b-469e-93ab-864b49c189c1";
-    private WorkerDeliveryAdapter adapter;
+    private WorkerDeliveryAdapterCore core;
+    private WorkerDeliveryAdapter lifecycle;
     private WorkerWebSocketHandler handler;
     private WebSocketSession session;
 
     @BeforeEach
     void setUp() {
-        adapter = mock(WorkerDeliveryAdapter.class);
+        core = mock(WorkerDeliveryAdapterCore.class);
+        lifecycle = mock(WorkerDeliveryAdapter.class);
+        when(lifecycle.state()).thenReturn(
+                WorkerDeliveryAdapterState.RUNNING
+        );
+        when(core.connectWorker(eq("worker-1"), any()))
+                .thenReturn(true);
         handler = new WorkerWebSocketHandler(
                 new WorkerDeliveryCodec(),
-                adapter,
+                core,
+                lifecycle,
                 Duration.ofSeconds(1)
         );
         session = mock(WebSocketSession.class);
@@ -59,7 +69,7 @@ class WorkerWebSocketHandlerTest {
         handler.afterConnectionEstablished(session);
         ArgumentCaptor<WorkerConnection> connection =
                 ArgumentCaptor.forClass(WorkerConnection.class);
-        verify(adapter).connectWorker(
+        verify(core).connectWorker(
                 eq("worker-1"),
                 connection.capture()
         );
@@ -69,7 +79,7 @@ class WorkerWebSocketHandlerTest {
                 "200",
                 "null"
         );
-        when(adapter.acceptWorkerResult(result))
+        when(core.acceptWorkerResult(result))
                 .thenReturn(ACCEPTED);
 
         handler.handleMessage(
@@ -80,8 +90,8 @@ class WorkerWebSocketHandlerTest {
         );
         handler.afterConnectionClosed(session, CloseStatus.NORMAL);
 
-        verify(adapter).acceptWorkerResult(result);
-        verify(adapter).disconnectWorker(
+        verify(core).acceptWorkerResult(result);
+        verify(core).disconnectWorker(
                 eq("worker-1"),
                 same(connection.getValue())
         );
@@ -93,7 +103,7 @@ class WorkerWebSocketHandlerTest {
         handler.afterConnectionEstablished(session);
         ArgumentCaptor<WorkerConnection> connection =
                 ArgumentCaptor.forClass(WorkerConnection.class);
-        verify(adapter).connectWorker(
+        verify(core).connectWorker(
                 eq("worker-1"),
                 connection.capture()
         );
@@ -103,7 +113,7 @@ class WorkerWebSocketHandlerTest {
                 "3001",
                 null
         );
-        when(adapter.acceptWorkerResult(rejection))
+        when(core.acceptWorkerResult(rejection))
                 .thenReturn(INVALID_OUTCOME);
 
         handler.handleMessage(
@@ -114,7 +124,7 @@ class WorkerWebSocketHandlerTest {
         );
 
         verify(session).close(CloseStatus.BAD_DATA);
-        verify(adapter).disconnectWorker(
+        verify(core).disconnectWorker(
                 eq("worker-1"),
                 same(connection.getValue())
         );
@@ -130,10 +140,10 @@ class WorkerWebSocketHandlerTest {
                 "200",
                 "null"
         );
-        when(adapter.acceptWorkerResult(result)).thenReturn(BUFFER_FULL);
+        when(core.acceptWorkerResult(result)).thenReturn(BUFFER_FULL);
         ArgumentCaptor<WorkerConnection> connection =
                 ArgumentCaptor.forClass(WorkerConnection.class);
-        verify(adapter).connectWorker(
+        verify(core).connectWorker(
                 eq("worker-1"),
                 connection.capture()
         );
@@ -145,7 +155,7 @@ class WorkerWebSocketHandlerTest {
                 )
         );
 
-        verify(adapter).disconnectWorker(
+        verify(core).disconnectWorker(
                 eq("worker-1"),
                 same(connection.getValue())
         );
@@ -167,7 +177,7 @@ class WorkerWebSocketHandlerTest {
         handler.afterConnectionEstablished(session);
         ArgumentCaptor<WorkerConnection> connection =
                 ArgumentCaptor.forClass(WorkerConnection.class);
-        verify(adapter).connectWorker(
+        verify(core).connectWorker(
                 eq("worker-1"),
                 connection.capture()
         );
@@ -175,10 +185,48 @@ class WorkerWebSocketHandlerTest {
         handler.handleMessage(session, new TextMessage("{\"broken\":true}"));
 
         verify(session).close(CloseStatus.BAD_DATA);
-        verify(adapter).disconnectWorker(
+        verify(core).disconnectWorker(
                 eq("worker-1"),
                 same(connection.getValue())
         );
-        verify(adapter, never()).acceptWorkerResult(any());
+        verify(core, never()).acceptWorkerResult(any());
+    }
+
+    @Test
+    void rejectsConnectionsBeforeAdapterIsRunning() throws Exception {
+        when(lifecycle.state()).thenReturn(
+                WorkerDeliveryAdapterState.REGISTERED
+        );
+
+        handler.afterConnectionEstablished(session);
+
+        verify(session).close(CloseStatus.SERVICE_RESTARTED);
+        verify(core, never()).connectWorker(any(), any());
+    }
+
+    @Test
+    void acceptsAnExistingConnectionResultWhileStopping()
+            throws Exception {
+        handler.afterConnectionEstablished(session);
+        SeedResult result = new SeedResult(
+                COMMAND_ID,
+                "context",
+                "200",
+                "null"
+        );
+        when(lifecycle.state()).thenReturn(
+                WorkerDeliveryAdapterState.STOPPING
+        );
+        when(core.acceptWorkerResult(result)).thenReturn(ACCEPTED);
+
+        handler.handleMessage(
+                session,
+                new TextMessage(
+                        new WorkerDeliveryCodec().encodeSeedResult(result)
+                )
+        );
+
+        verify(core).acceptWorkerResult(result);
+        verify(session, never()).close(any(CloseStatus.class));
     }
 }

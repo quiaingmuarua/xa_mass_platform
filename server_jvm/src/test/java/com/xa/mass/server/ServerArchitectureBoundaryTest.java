@@ -138,9 +138,12 @@ class ServerArchitectureBoundaryTest {
     void serverOnlyHostsTheAdapterMechanism() throws IOException {
         String host = readSources(DELIVERY_ADAPTER_HOST);
         assertThat(host)
-                .contains("WorkerDeliveryAdapter")
+                .contains("WorkerDeliveryAdapterManager")
                 .contains("WorkerWebSocketHandler")
-                .contains("adapter.dispatchOnce()")
+                .contains("manager.start()")
+                .contains("manager.close()")
+                .doesNotContain("dispatchOnce")
+                .doesNotContain("ScheduledExecutorService")
                 .doesNotContain("WebSocketSession")
                 .doesNotContain("TextMessage")
                 .doesNotContain("SeedResult")
@@ -151,7 +154,9 @@ class ServerArchitectureBoundaryTest {
         assertThat(adapter)
                 .contains("class WorkerWebSocketHandler")
                 .contains("class SpringWebSocketWorkerConnection")
-                .contains("class WorkerDeliveryAdapter");
+                .contains("interface WorkerDeliveryAdapter")
+                .contains("class WorkerDeliveryAdapterCore")
+                .contains("class ScheduledWorkerDeliveryAdapter");
     }
 
     @Test

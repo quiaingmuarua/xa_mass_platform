@@ -37,9 +37,9 @@ endpointManagerId = system-polling
 ```
 
 A WebSocket Worker must bind to the non-`system-polling` endpoint manager owned
-by the Server-hosted Adapter. Enable
-`xa.mass.worker-delivery.adapter.websocket.enabled` and configure the same
-`endpoint-manager-id` before starting the Worker.
+by the local Adapter Runtime hosted by the Server. Enable
+`xa.mass.worker-delivery.adapter.enabled`, select `type: WEBSOCKET`, and set the
+same `runtime.endpoint-manager-id` before starting the Worker.
 
 ## Run
 

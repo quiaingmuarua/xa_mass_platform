@@ -1,10 +1,15 @@
 package com.xa.mass.server.workerdelivery.adapter;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterType;
 import java.net.URI;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.test.context.runner.ApplicationContextRunner;
+import org.springframework.context.annotation.Configuration;
 
 class ServerWorkerDeliveryAdapterPropertiesTest {
 
@@ -22,29 +27,38 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
     void rejectsInvalidGatewayAndBounds() {
         assertThatThrownBy(() -> new ServerWorkerDeliveryAdapterProperties(
                 true,
-                "websocket-adapter",
-                URI.create("file:///tmp/gateway"),
-                Duration.ofSeconds(1),
-                Duration.ofMillis(100),
-                100,
-                100,
-                1000,
-                Duration.ofSeconds(1)
+                WorkerDeliveryAdapterType.WEBSOCKET,
+                runtime(
+                        "websocket-adapter",
+                        URI.create("file:///tmp/gateway"),
+                        Duration.ofMillis(100)
+                ),
+                websocket()
         )).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("HTTP");
 
         assertThatThrownBy(() -> new ServerWorkerDeliveryAdapterProperties(
                 true,
-                "websocket-adapter",
-                URI.create("http://127.0.0.1:18082"),
-                Duration.ofSeconds(1),
-                Duration.ZERO,
-                100,
-                100,
-                1000,
-                Duration.ofSeconds(1)
+                WorkerDeliveryAdapterType.WEBSOCKET,
+                runtime(
+                        "websocket-adapter",
+                        URI.create("http://127.0.0.1:18082"),
+                        Duration.ZERO
+                ),
+                websocket()
         )).isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("pumpInterval");
+                .hasMessageContaining("dispatchInterval");
+    }
+
+    @Test
+    void oldWebSocketSpecificNamespaceIsRejected() {
+        new ApplicationContextRunner()
+                .withUserConfiguration(PropertiesConfiguration.class)
+                .withPropertyValues(
+                        "xa.mass.worker-delivery.adapter.websocket"
+                                + ".enabled=true"
+                )
+                .run(context -> assertThat(context).hasFailed());
     }
 
     private static ServerWorkerDeliveryAdapterProperties properties(
@@ -53,14 +67,44 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
     ) {
         return new ServerWorkerDeliveryAdapterProperties(
                 enabled,
+                WorkerDeliveryAdapterType.WEBSOCKET,
+                runtime(
+                        endpointManagerId,
+                        URI.create("http://127.0.0.1:18082"),
+                        Duration.ofMillis(100)
+                ),
+                websocket()
+        );
+    }
+
+    private static ServerWorkerDeliveryAdapterProperties.RuntimeProperties
+    runtime(
+            String endpointManagerId,
+            URI gatewayBaseUrl,
+            Duration dispatchInterval
+    ) {
+        return new ServerWorkerDeliveryAdapterProperties.RuntimeProperties(
                 endpointManagerId,
-                URI.create("http://127.0.0.1:18082"),
+                gatewayBaseUrl,
                 Duration.ofSeconds(1),
-                Duration.ofMillis(100),
+                dispatchInterval,
                 100,
                 100,
-                1000,
+                1000
+        );
+    }
+
+    private static ServerWorkerDeliveryAdapterProperties.WebSocketProperties
+    websocket() {
+        return new ServerWorkerDeliveryAdapterProperties.WebSocketProperties(
                 Duration.ofSeconds(1)
         );
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    @EnableConfigurationProperties(
+            ServerWorkerDeliveryAdapterProperties.class
+    )
+    static class PropertiesConfiguration {
     }
 }

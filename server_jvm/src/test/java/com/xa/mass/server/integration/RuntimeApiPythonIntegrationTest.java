@@ -74,19 +74,23 @@ class RuntimeApiPythonIntegrationTest {
                 () -> Integer.toString(SERVER_PORT)
         );
         registry.add(
-                "xa.mass.worker-delivery.adapter.websocket.enabled",
+                "xa.mass.worker-delivery.adapter.enabled",
                 () -> "true"
         );
         registry.add(
-                "xa.mass.worker-delivery.adapter.websocket.endpoint-manager-id",
+                "xa.mass.worker-delivery.adapter.type",
+                () -> "WEBSOCKET"
+        );
+        registry.add(
+                "xa.mass.worker-delivery.adapter.runtime.endpoint-manager-id",
                 () -> WEBSOCKET_ENDPOINT_MANAGER_ID
         );
         registry.add(
-                "xa.mass.worker-delivery.adapter.websocket.gateway-base-url",
+                "xa.mass.worker-delivery.adapter.runtime.gateway-base-url",
                 () -> "http://127.0.0.1:" + SERVER_PORT
         );
         registry.add(
-                "xa.mass.worker-delivery.adapter.websocket.pump-interval",
+                "xa.mass.worker-delivery.adapter.runtime.dispatch-interval",
                 () -> "20ms"
         );
     }

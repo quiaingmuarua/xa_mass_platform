@@ -3,15 +3,16 @@ package com.xa.mass.workerdelivery.adapter.application;
 import static com.xa.mass.workerdelivery.adapter.application.WorkerConnection.CommandDeliveryAttempt.DELIVERED;
 import static com.xa.mass.workerdelivery.adapter.application.WorkerConnection.CommandDeliveryAttempt.UNKNOWN;
 import static com.xa.mass.workerdelivery.adapter.application.WorkerConnection.WorkerConnectionCloseReason.ADAPTER_STOPPING;
-import static com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter.WorkerResultAcceptance.ACCEPTED;
-import static com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter.WorkerResultAcceptance.BUFFER_FULL;
-import static com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter.WorkerResultAcceptance.INVALID_OUTCOME;
+import static com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterCore.WorkerResultAcceptance.ACCEPTED;
+import static com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterCore.WorkerResultAcceptance.ADAPTER_CLOSED;
+import static com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterCore.WorkerResultAcceptance.BUFFER_FULL;
+import static com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterCore.WorkerResultAcceptance.INVALID_OUTCOME;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerConnection.CommandDeliveryAttempt;
 import com.xa.mass.workerdelivery.adapter.application.WorkerConnection.WorkerConnectionCloseReason;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter.AdapterRoundResult;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterCore.AdapterRoundResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
@@ -23,7 +24,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
-class WorkerDeliveryAdapterTest {
+class WorkerDeliveryAdapterCoreTest {
 
     private static final String COMMAND_ID =
             "a5e9e10d-f78b-469e-93ab-864b49c189c1";
@@ -33,7 +34,11 @@ class WorkerDeliveryAdapterTest {
         FakeGateway gateway = new FakeGateway();
         InMemoryWorkerConnectionRegistry connections =
                 new InMemoryWorkerConnectionRegistry();
-        WorkerDeliveryAdapter adapter = adapter(gateway, connections, 10);
+        WorkerDeliveryAdapterCore adapter = adapter(
+                gateway,
+                connections,
+                10
+        );
         FakeConnection connected = new FakeConnection(DELIVERED);
         FakeConnection unknown = new FakeConnection(UNKNOWN);
         adapter.connectWorker("worker-1", connected);
@@ -84,7 +89,11 @@ class WorkerDeliveryAdapterTest {
         FakeGateway gateway = new FakeGateway();
         InMemoryWorkerConnectionRegistry connections =
                 new InMemoryWorkerConnectionRegistry();
-        WorkerDeliveryAdapter adapter = adapter(gateway, connections, 10);
+        WorkerDeliveryAdapterCore adapter = adapter(
+                gateway,
+                connections,
+                10
+        );
         gateway.pages.add(new WorkerCommandPage(
                 Map.of(
                         "worker-1",
@@ -108,7 +117,11 @@ class WorkerDeliveryAdapterTest {
         FakeGateway gateway = new FakeGateway();
         InMemoryWorkerConnectionRegistry connections =
                 new InMemoryWorkerConnectionRegistry();
-        WorkerDeliveryAdapter adapter = adapter(gateway, connections, 2);
+        WorkerDeliveryAdapterCore adapter = adapter(
+                gateway,
+                connections,
+                2
+        );
         FakeConnection oldConnection = new FakeConnection(DELIVERED);
         FakeConnection currentConnection = new FakeConnection(DELIVERED);
         adapter.connectWorker("worker-1", oldConnection);
@@ -140,7 +153,11 @@ class WorkerDeliveryAdapterTest {
         FakeGateway gateway = new FakeGateway();
         InMemoryWorkerConnectionRegistry connections =
                 new InMemoryWorkerConnectionRegistry();
-        WorkerDeliveryAdapter adapter = adapter(gateway, connections, 10);
+        WorkerDeliveryAdapterCore adapter = adapter(
+                gateway,
+                connections,
+                10
+        );
         adapter.connectWorker(
                 "worker-1",
                 new FakeConnection(DELIVERED)
@@ -168,7 +185,11 @@ class WorkerDeliveryAdapterTest {
         FakeGateway gateway = new FakeGateway();
         InMemoryWorkerConnectionRegistry connections =
                 new InMemoryWorkerConnectionRegistry();
-        WorkerDeliveryAdapter adapter = adapter(gateway, connections, 10);
+        WorkerDeliveryAdapterCore adapter = adapter(
+                gateway,
+                connections,
+                10
+        );
         FakeConnection connection = new FakeConnection(DELIVERED);
         adapter.connectWorker("worker-1", connection);
         SeedResult result = result(COMMAND_ID, "200");
@@ -181,39 +202,23 @@ class WorkerDeliveryAdapterTest {
                 .containsExactly(List.of(result));
         assertThat(connection.closedReasons)
                 .containsExactly(ADAPTER_STOPPING);
+        assertThat(adapter.acceptWorkerResult(result))
+                .isEqualTo(ADAPTER_CLOSED);
     }
 
-    @Test
-    void configRequiresAnAdapterEndpointAndPositiveBounds() {
-        assertThatThrownBy(() -> new WorkerDeliveryAdapter.Config(
-                "system-polling",
-                100,
-                100,
-                1000
-        )).isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> new WorkerDeliveryAdapter.Config(
-                "adapter-1",
-                0,
-                100,
-                1000
-        )).isInstanceOf(IllegalArgumentException.class);
-    }
-
-    private static WorkerDeliveryAdapter adapter(
+    private static WorkerDeliveryAdapterCore adapter(
             FakeGateway gateway,
             InMemoryWorkerConnectionRegistry connections,
             int resultBufferCapacity
     ) {
-        return new WorkerDeliveryAdapter(
+        return new WorkerDeliveryAdapterCore(
                 gateway,
                 new WorkerDeliveryCodec(),
                 connections,
-                new WorkerDeliveryAdapter.Config(
-                        "websocket-adapter-1",
-                        100,
-                        100,
-                        resultBufferCapacity
-                ),
+                "websocket-adapter-1",
+                100,
+                100,
+                resultBufferCapacity,
                 () -> 1_000L
         );
     }

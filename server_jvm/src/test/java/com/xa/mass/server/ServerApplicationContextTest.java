@@ -22,9 +22,8 @@ import com.xa.mass.kernel.worker.WorkerRuntime;
 import com.xa.mass.server.kernelbinding.KernelOwnerAssemblyConfiguration;
 import com.xa.mass.server.workerdelivery.WorkerDeliveryOwnerAssemblyConfiguration;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
-import com.xa.mass.server.workerdelivery.adapter.WorkerDeliveryAdapterLoop;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
+import com.xa.mass.server.workerdelivery.adapter.WorkerDeliveryAdapterLifecycleHost;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
 import com.xa.mass.workerdelivery.adapter.websocket.WorkerWebSocketHandler;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -105,16 +104,13 @@ class ServerApplicationContextTest {
                 CandidateWarmupSchedule.class
         )).isEmpty();
         assertThat(applicationContext.getBeansOfType(
-                WorkerDeliveryAdapter.class
-        )).isEmpty();
-        assertThat(applicationContext.getBeansOfType(
-                WorkerDeliveryGatewayClient.class
+                WorkerDeliveryAdapterManager.class
         )).isEmpty();
         assertThat(applicationContext.getBeansOfType(
                 WorkerWebSocketHandler.class
         )).isEmpty();
         assertThat(applicationContext.getBeansOfType(
-                WorkerDeliveryAdapterLoop.class
+                WorkerDeliveryAdapterLifecycleHost.class
         )).isEmpty();
 
         HttpClient client = HttpClient.newHttpClient();

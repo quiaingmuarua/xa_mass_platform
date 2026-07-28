@@ -12,15 +12,17 @@ xa:
       redis-prefix: default
     worker-delivery:
       adapter:
-        websocket:
-          enabled: false
+        enabled: false
+        type: WEBSOCKET
+        runtime:
           endpoint-manager-id: ""
           gateway-base-url: http://127.0.0.1:${server.port:18082}
           request-timeout: 5s
-          pump-interval: 100ms
+          dispatch-interval: 100ms
           scan-count: 100
           result-batch-size: 100
           result-buffer-capacity: 1000
+        websocket:
           send-time-limit: 5s
 
 management:

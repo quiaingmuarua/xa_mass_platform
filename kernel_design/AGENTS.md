@@ -394,7 +394,8 @@ Server point WorkerId polling through an explicit endpointManagerId binding
 Server bounded cursor access for a long-lived Adapter's sparse mailbox
 stable WorkerCommandEnvelope forwarding to the already selected Worker
 Server point Worker result and Adapter batch SeedResult validation/append
-framework-free Java Adapter active-connection/dispatch/result-buffer mechanism
+typed Java Adapter local registration/start/close and scheduled dispatch
+one-round Adapter Core active-connection/result-buffer mechanism
 concrete Adapter-owned WebSocket frame/connection adaptation
 ```
 
@@ -405,17 +406,17 @@ polling HTTP slice accepts Worker-originated `200/1xxx`; the long-lived Adapter
 batch ingress accepts `3xxx` pre-execution rejection evidence. Polling never
 scans a mailbox, and `system-polling` is only a logical route binding.
 
-The framework-free Java Adapter Core owns one configured non-system-polling
-mailbox per instance through the Server batch HTTP API, one current connection
-per WorkerId, one-round dispatch, bounded result buffering, and `3001` versus
-`UNKNOWN` classification. The Adapter module owns WebSocket frame/connection
-adaptation;
-`server_jvm` may configure and host the endpoint and schedule rounds, but does
-not own Adapter semantics. Workers upsert before connecting. Missing connection
-evidence may produce `3001`; expiry, disconnect, missing result, and any
-failure after send was attempted remain UNKNOWN. Different endpoint-manager
-identities may run in parallel; same-endpoint distributed ownership remains
-unsupported.
+The Java Adapter Runtime owns one configured non-system-polling mailbox per
+process through the Server batch HTTP API, local definition registration,
+start/close lifecycle, scheduled dispatch, one current connection per
+WorkerId, bounded result buffering, and `3001` versus `UNKNOWN`
+classification. `WorkerDeliveryAdapterCore` remains the thread-free one-round
+mechanism. `server_jvm` may bind configuration, install the WebSocket endpoint,
+and invoke lifecycle events, but must not call `dispatchOnce` or own Adapter
+semantics. Workers upsert before connecting. Missing connection evidence may
+produce `3001`; expiry, disconnect, missing result, and any failure after send
+was attempted remain UNKNOWN. Different endpoint-manager identities may run in
+parallel processes; same-endpoint distributed ownership remains unsupported.
 
 Result-routing owns:
 

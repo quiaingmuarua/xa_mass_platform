@@ -1509,7 +1509,7 @@
         </div>
         <div class="owner-stage">
           <b>Worker Delivery Dispatch</b>
-          <p>Server 拥有 point/batch HTTP 与 delivery runtime；Adapter 模块拥有 framework-free Core 与具体 WebSocket transport，Server 只负责可选宿主和生命周期。</p>
+          <p>Server 拥有 point/batch HTTP 与 delivery runtime；Adapter 模块拥有 typed definition、register/start/close、dispatch loop、active connection 与具体 WebSocket transport，Server 只负责配置绑定、endpoint 宿主和生命周期事件转发。</p>
           <code>output = SeedResult</code>
         </div>
         <div class="owner-stage">
@@ -1692,7 +1692,7 @@
             <li>TaskItem exact claim 与 shared empty-close</li>
             <li>稳定 Worker command、语义化 SeedResult 与 Adapter-partitioned mailbox</li>
             <li>Java Server delivery point/batch HTTP owner</li>
-            <li>framework-free Adapter Core、具体 WebSocket transport、current active connection 与 bounded result retry</li>
+            <li>typed Adapter registration、start/close runtime、单轮 Core、具体 WebSocket transport、current active connection 与 bounded result retry</li>
             <li>三类 SeedResult queue 与 owner-local Result Routing</li>
           </ul>
         </article>
@@ -1774,7 +1774,7 @@
         </a>
         <a class="reading-link" href="../worker_delivery_adapter_jvm/README.md">
           <span class="reading-number">11</span>
-          <span><b>Java Adapter Core</b>批量 HTTP client、Worker active connection、单轮 dispatch 与结果缓冲机制。</span>
+          <span><b>Java Adapter Runtime</b>类型化本地注册、start/close、批量 HTTP client、Worker active connection、scheduled dispatch 与结果缓冲机制。</span>
         </a>
         <a class="reading-link" href="../worker_jvm/README.md">
           <span class="reading-number">12</span>

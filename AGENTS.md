@@ -14,8 +14,9 @@ Status: current repository handoff.
   providers; it does not define a second set of Kernel runtime ports.
 - `worker_delivery_contract_jvm/` is the Java 21 transport-neutral
   WorkerCommand/DeliverSeed/SeedResult contract shared by Server and Worker.
-- `worker_delivery_adapter_jvm/` owns the Adapter mechanism: a framework-free
-  Gateway/active-connection/dispatch/result Core plus the concrete Spring
+- `worker_delivery_adapter_jvm/` owns the Adapter mechanism: typed local
+  registration, start/close lifecycle, scheduled Gateway consumption,
+  active connections, the one-round dispatch/result Core, and concrete Spring
   WebSocket transport adaptation. It has no Spring Boot, Server, Kernel, or
   Redis dependency.
 - `worker_jvm/` is the runnable one-slot Java reference Worker. Polling and
@@ -64,21 +65,24 @@ tag.
   methods, compatibility clients, or remote fallback.
 - Keep `worker_delivery_contract_jvm` transport-neutral. Worker Delivery HTTP
   access and the Kernel delivery owner facade live in `server_jvm`. The
-  Adapter Core may reach that facade only through the Adapter batch HTTP
+  Adapter Runtime may reach that facade only through the Adapter batch HTTP
   contract.
 - `worker_delivery_adapter_jvm` must not depend on `server_jvm`, `kernel_jvm`,
   Spring Boot, Redis, scores, Pacers, or Server HTTP DTOs. Its Core packages
-  must not depend on Spring WebSocket, create threads, or implement framework
-  lifecycle. Only its `websocket` package may adapt Spring WebSocket
-  connections and frames. Its private HTTP DTOs are proved against Server JSON
-  with bilateral golden tests; do not add an in-process fast path.
+  must not depend on Spring WebSocket. The Adapter module owns its local
+  definition registration, scheduled dispatch loop, lifecycle, active
+  connections, cursor, and bounded results. Only its `websocket` package may
+  adapt Spring WebSocket connections and frames. Its private HTTP DTOs are
+  proved against Server JSON with bilateral golden tests; do not add an
+  in-process fast path.
 - `worker_jvm` may depend only on the shared contract and Worker tool
   libraries. It must not depend on `server_jvm`, `kernel_jvm`, Python
   packages, Redis, score, Pacer, or TaskType.
-- `server_jvm` may host the concrete WebSocket Adapter by configuring its
-  endpoint and scheduling `dispatchOnce()`. Hosting must not move active
-  connection selection, cursor handling, result buffering, or trusted
-  rejection policy into Server.
+- `server_jvm` may host the concrete WebSocket Adapter by binding one typed
+  definition, installing its endpoint, and invoking `manager.start()` /
+  `manager.close()` at process boundaries. Server must not call
+  `dispatchOnce()` or own Adapter scheduling, active connection selection,
+  cursor handling, result buffering, or trusted rejection policy.
 
 ## JVM Incremental Assembly
 

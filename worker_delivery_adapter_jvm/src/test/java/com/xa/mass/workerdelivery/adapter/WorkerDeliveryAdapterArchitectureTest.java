@@ -47,25 +47,31 @@ class WorkerDeliveryAdapterArchitectureTest {
     }
 
     @Test
-    void coreContainsNoFrameworkHostThreadOrLifecycleTypes()
+    void adapterCoreOwnsLifecycleWithoutServerOrKernelTypes()
             throws IOException {
         String sources = readSources(CORE) + readSources(HTTP);
         assertThat(sources)
                 .contains("interface WorkerConnection")
                 .contains("interface WorkerConnectionRegistry")
-                .contains("final class WorkerDeliveryAdapter")
+                .contains("interface WorkerDeliveryAdapter")
+                .contains("final class WorkerDeliveryAdapterCore")
+                .contains("final class WorkerDeliveryAdapterManager")
+                .contains("ScheduledExecutorService")
                 .doesNotContain("WorkerSessionToken")
                 .doesNotContain("generation")
                 .doesNotContain("isCurrent")
                 .doesNotContain("STALE_SESSION")
                 .doesNotContain("WebSocketSession")
                 .doesNotContain("SmartLifecycle")
-                .doesNotContain("ScheduledExecutorService")
-                .doesNotContain("Executors.")
                 .doesNotContain("@Configuration")
                 .doesNotContain("@Component");
 
-        assertThat(readSources(WEBSOCKET))
+        String websocketTransport = Files.readString(
+                WEBSOCKET.resolve("WorkerWebSocketHandler.java")
+        ) + Files.readString(
+                WEBSOCKET.resolve("SpringWebSocketWorkerConnection.java")
+        );
+        assertThat(websocketTransport)
                 .contains("WebSocketSession")
                 .doesNotContain("WorkerDeliveryGatewayClient")
                 .doesNotContain("WorkerCommandPage")

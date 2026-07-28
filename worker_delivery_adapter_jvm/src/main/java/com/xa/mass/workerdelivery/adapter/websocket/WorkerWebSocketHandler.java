@@ -1,12 +1,15 @@
 package com.xa.mass.workerdelivery.adapter.websocket;
 
-import static com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter.WorkerResultAcceptance.ACCEPTED;
-import static com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter.WorkerResultAcceptance.BUFFER_FULL;
+import static com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterCore.WorkerResultAcceptance.ACCEPTED;
+import static com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterCore.WorkerResultAcceptance.ADAPTER_CLOSED;
+import static com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterCore.WorkerResultAcceptance.BUFFER_FULL;
 import static com.xa.mass.workerdelivery.adapter.application.WorkerConnection.WorkerConnectionCloseReason.RESULT_BUFFER_FULL;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerConnection;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter.WorkerResultAcceptance;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterCore;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterCore.WorkerResultAcceptance;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterState;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import java.io.IOException;
@@ -29,16 +32,22 @@ public final class WorkerWebSocketHandler extends TextWebSocketHandler {
     private static final String CONNECTION_ATTRIBUTE =
             WorkerWebSocketHandler.class.getName() + ".connection";
     private final WorkerDeliveryCodec codec;
-    private final WorkerDeliveryAdapter adapter;
+    private final WorkerDeliveryAdapterCore core;
+    private final WorkerDeliveryAdapter lifecycle;
     private final Duration sendTimeLimit;
 
     public WorkerWebSocketHandler(
             WorkerDeliveryCodec codec,
-            WorkerDeliveryAdapter adapter,
+            WorkerDeliveryAdapterCore core,
+            WorkerDeliveryAdapter lifecycle,
             Duration sendTimeLimit
     ) {
         this.codec = Objects.requireNonNull(codec, "codec");
-        this.adapter = Objects.requireNonNull(adapter, "adapter");
+        this.core = Objects.requireNonNull(core, "core");
+        this.lifecycle = Objects.requireNonNull(
+                lifecycle,
+                "lifecycle"
+        );
         this.sendTimeLimit = Objects.requireNonNull(
                 sendTimeLimit,
                 "sendTimeLimit"
@@ -46,14 +55,22 @@ public final class WorkerWebSocketHandler extends TextWebSocketHandler {
     }
 
     @Override
-    public void afterConnectionEstablished(WebSocketSession session) {
+    public void afterConnectionEstablished(
+            WebSocketSession session
+    ) throws IOException {
+        if (lifecycle.state() != WorkerDeliveryAdapterState.RUNNING) {
+            close(session, CloseStatus.SERVICE_RESTARTED);
+            return;
+        }
         WorkerConnection connection = new SpringWebSocketWorkerConnection(
                 session,
                 codec,
                 sendTimeLimit
         );
         session.getAttributes().put(CONNECTION_ATTRIBUTE, connection);
-        adapter.connectWorker(workerId(session), connection);
+        if (!core.connectWorker(workerId(session), connection)) {
+            close(session, CloseStatus.SERVICE_RESTARTED);
+        }
     }
 
     @Override
@@ -66,14 +83,30 @@ public final class WorkerWebSocketHandler extends TextWebSocketHandler {
             disconnectAndClose(session, CloseStatus.BAD_DATA);
             return;
         }
+        WorkerDeliveryAdapterState state = lifecycle.state();
+        if (state == WorkerDeliveryAdapterState.REGISTERED
+                || state == WorkerDeliveryAdapterState.CLOSED) {
+            disconnectAndClose(
+                    session,
+                    CloseStatus.SERVICE_RESTARTED
+            );
+            return;
+        }
         WorkerResultAcceptance acceptance =
-                adapter.acceptWorkerResult(result);
+                core.acceptWorkerResult(result);
         if (acceptance == ACCEPTED) {
             return;
         }
         if (acceptance == BUFFER_FULL) {
             disconnect(session);
             connection(session).close(RESULT_BUFFER_FULL);
+            return;
+        }
+        if (acceptance == ADAPTER_CLOSED) {
+            disconnectAndClose(
+                    session,
+                    CloseStatus.SERVICE_RESTARTED
+            );
             return;
         }
         disconnectAndClose(session, CloseStatus.BAD_DATA);
@@ -116,7 +149,7 @@ public final class WorkerWebSocketHandler extends TextWebSocketHandler {
         if (connection instanceof WorkerConnection workerConnection
                 && workerId instanceof String value
                 && !value.isBlank()) {
-            adapter.disconnectWorker(value, workerConnection);
+            core.disconnectWorker(value, workerConnection);
         }
     }
 
