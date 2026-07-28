@@ -1,6 +1,8 @@
 package com.xa.mass.worker;
 
+import com.xa.mass.worker.execution.DomainInspectHandler;
 import com.xa.mass.worker.execution.PhoneInspectHandler;
+import com.xa.mass.worker.execution.StringTransformHandler;
 import com.xa.mass.worker.execution.WorkerCommandProcessor;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
 import com.xa.mass.worker.transport.socket.SocketWorkerTransport;
@@ -32,7 +34,11 @@ public final class WorkerMain {
                 codec,
                 Map.of(
                         PhoneInspectHandler.EVENT_CODE,
-                        new PhoneInspectHandler()
+                        new PhoneInspectHandler(),
+                        StringTransformHandler.EVENT_CODE,
+                        new StringTransformHandler(),
+                        DomainInspectHandler.EVENT_CODE,
+                        new DomainInspectHandler()
                 )
         );
         switch (configuration.transport()) {

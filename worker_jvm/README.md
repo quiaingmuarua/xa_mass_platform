@@ -115,7 +115,13 @@ message only after result send completion. WebSocket and Socket retain a
 failed result across reconnect and resend it immediately after the new Bind.
 Process failure may still lose an in-memory pending result.
 
-## Phone Tool
+## Built-in Events
+
+The reference Worker installs three business handlers statically. Their
+payloads and results belong to the Worker example, not to the Kernel or Worker
+Delivery protocol.
+
+Phone inspection:
 
 Input:
 
@@ -141,11 +147,48 @@ Successful result payload:
 Worker outcomes are `200`, `1400`, `1404`, or `1500`. Invalid phone numbers
 are completed tool results, not Worker failures.
 
+String transform uses one event code for all supported operations:
+
+```json
+{
+  "eventCode": "utility.string.transform",
+  "payload": {
+    "operation": "MD5",
+    "value": "hello"
+  }
+}
+```
+
+`operation` is one of `BASE64`, `MD5`, or `SHA1`. All operations use UTF-8.
+MD5 and SHA1 are compatibility digests, not encryption or secure signatures.
+
+Domain inspection performs a real A/AAAA lookup through the JDK DNS provider
+and the host's configured resolver:
+
+```json
+{
+  "eventCode": "network.domain.inspect",
+  "payload": {"domain": "example.com"}
+}
+```
+
+It returns the normalized ASCII domain, a `resolves` flag, and the current
+IPv4/IPv6 addresses. DNS results, latency, and failures are inherently
+environment-dependent. NXDOMAIN is a completed result with `resolves=false`;
+timeouts and resolver failures become Worker outcome `1500`. No third-party
+HTTP API, WHOIS, or target-site request is used.
+
+Business handlers are allowed to return environment-dependent results or fail.
+Worker scheduling and transport integration tests use local or temporary
+handlers when they need deterministic, observable evidence; they do not use
+public DNS output as a platform acceptance condition.
+
 ## Boundary
 
 This module depends only on `worker_delivery_contract_jvm` and the phone tool
-library. It does not register resources and cannot access Server internals,
-Redis, Kernel owners, scores, Pacers, or TaskType.
+library; domain lookup uses only JDK naming/DNS APIs. It does not register
+resources and cannot access Server internals, Redis, Kernel owners, scores,
+Pacers, or TaskType.
 
 ```text
 ./gradlew :worker_jvm:test
