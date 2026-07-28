@@ -74,7 +74,9 @@ public record WorkerConfiguration(
         String workerId = values.get("--worker-id");
         URI serverUrl = URI.create(values.getOrDefault(
                 "--server-url",
-                "http://127.0.0.1:18082"
+                transport == WorkerTransportMode.POLLING
+                        ? "http://127.0.0.1:18082"
+                        : "http://127.0.0.1:18083"
         ));
         Duration timeout = positiveDuration(
                 values.getOrDefault("--request-timeout-millis", "5000"),

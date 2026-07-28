@@ -24,7 +24,6 @@ import com.xa.mass.server.workerdelivery.WorkerDeliveryOwnerAssemblyConfiguratio
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
 import com.xa.mass.server.workerdelivery.adapter.WorkerDeliveryAdapterLifecycleHost;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
-import com.xa.mass.workerdelivery.adapter.websocket.WorkerWebSocketHandler;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -103,15 +102,12 @@ class ServerApplicationContextTest {
         assertThat(applicationContext.getBeansOfType(
                 CandidateWarmupSchedule.class
         )).isEmpty();
-        assertThat(applicationContext.getBeansOfType(
+        assertThat(applicationContext.getBean(
                 WorkerDeliveryAdapterManager.class
-        )).isEmpty();
-        assertThat(applicationContext.getBeansOfType(
-                WorkerWebSocketHandler.class
-        )).isEmpty();
-        assertThat(applicationContext.getBeansOfType(
+        ).adapters()).isEmpty();
+        assertThat(applicationContext.getBean(
                 WorkerDeliveryAdapterLifecycleHost.class
-        )).isEmpty();
+        )).isNotNull();
 
         HttpClient client = HttpClient.newHttpClient();
         HttpResponse<String> liveness = client.send(

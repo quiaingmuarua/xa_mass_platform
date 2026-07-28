@@ -205,11 +205,11 @@ create/approve/close, and `KernelApplication` lifecycle. Java `server_jvm`
 hosts TaskItem append, last-success reads, and Worker Delivery. The Python
 TaskRuntime and Worker Delivery runtime/clients remain executable-spec oracles
 and test support. The runnable external Worker lives in `worker_jvm` and
-depends on the shared Java protocol module. The Adapter mechanism and concrete
-Spring WebSocket transport live in `worker_delivery_adapter_jvm`; `server_jvm`
-supplies only configuration, endpoint hosting, round scheduling, and process
-lifecycle. The Core consumes Server batch HTTP and has no Spring, Kernel,
-Redis, thread, or framework lifecycle dependency.
+depends on the shared Java protocol module. Complete Adapter instances and
+their Netty WebSocket listeners live in `worker_delivery_adapter_jvm`;
+`server_jvm` supplies only instance configuration and process lifecycle
+events. Each Adapter consumes Server batch HTTP and has no Spring, Kernel, or
+Redis dependency.
 
 Use these rules:
 
@@ -394,9 +394,9 @@ Server point WorkerId polling through an explicit endpointManagerId binding
 Server bounded cursor access for a long-lived Adapter's sparse mailbox
 stable WorkerCommandEnvelope forwarding to the already selected Worker
 Server point Worker result and Adapter batch SeedResult validation/append
-typed Java Adapter local registration/start/close and scheduled dispatch
-one-round Adapter Core active-connection/result-buffer mechanism
-concrete Adapter-owned WebSocket frame/connection adaptation
+complete Java Adapter instance registration/start/close and scheduled dispatch
+single-cursor active-connection/bounded-delivery/result-buffer mechanism
+Adapter-owned Netty listener and WebSocket frame/connection adaptation
 ```
 
 Its boundary starts after Task Dispatch handles mailbox publication and ends
@@ -406,17 +406,18 @@ polling HTTP slice accepts Worker-originated `200/1xxx`; the long-lived Adapter
 batch ingress accepts `3xxx` pre-execution rejection evidence. Polling never
 scans a mailbox, and `system-polling` is only a logical route binding.
 
-The Java Adapter Runtime owns one configured non-system-polling mailbox per
-process through the Server batch HTTP API, local definition registration,
-start/close lifecycle, scheduled dispatch, one current connection per
-WorkerId, bounded result buffering, and `3001` versus `UNKNOWN`
-classification. `WorkerDeliveryAdapterCore` remains the thread-free one-round
-mechanism. `server_jvm` may bind configuration, install the WebSocket endpoint,
-and invoke lifecycle events, but must not call `dispatchOnce` or own Adapter
-semantics. Workers upsert before connecting. Missing connection evidence may
-produce `3001`; expiry, disconnect, missing result, and any failure after send
-was attempted remain UNKNOWN. Different endpoint-manager identities may run in
-parallel processes; same-endpoint distributed ownership remains unsupported.
+Each Java Adapter instance owns one configured non-system-polling mailbox,
+one independent Netty listener, one cursor, one scheduled dispatch loop,
+bounded concurrent Worker delivery, one current connection per WorkerId,
+bounded result buffering, and `3001` versus `UNKNOWN` classification.
+`server_jvm` may turn each configured JSON tree into a concrete instance,
+register it, and invoke lifecycle events, but must not host WebSocket
+endpoints, call `dispatchOnce`, or own Adapter semantics. Multiple instances
+in one JVM must use different endpoint-manager IDs and listener ports.
+Workers upsert before connecting. Missing connection evidence may produce
+`3001`; expiry, disconnect, missing result, and any failure after send was
+attempted remain UNKNOWN. Same-endpoint distributed ownership remains
+unsupported.
 
 Result-routing owns:
 

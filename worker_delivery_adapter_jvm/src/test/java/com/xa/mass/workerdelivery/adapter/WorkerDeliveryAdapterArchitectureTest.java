@@ -29,8 +29,10 @@ class WorkerDeliveryAdapterArchitectureTest {
                         "api project("
                                 + "':worker_delivery_contract_jvm')"
                 )
-                .contains("org.springframework:spring-websocket")
+                .contains("io.netty:netty-transport")
+                .contains("io.netty:netty-codec-http")
                 .doesNotContain("spring-boot")
+                .doesNotContain("spring-websocket")
                 .doesNotContain("project(':server_jvm')")
                 .doesNotContain("project(':kernel_jvm')")
                 .doesNotContain("lettuce");
@@ -40,6 +42,7 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("com.xa.mass.server")
                 .doesNotContain("com.xa.mass.kernel")
                 .doesNotContain("io.lettuce")
+                .doesNotContain("org.springframework")
                 .doesNotContain("\"wd:")
                 .doesNotContain("\"rr:")
                 .doesNotContain("WorkerCommandRuntime")
@@ -47,38 +50,38 @@ class WorkerDeliveryAdapterArchitectureTest {
     }
 
     @Test
-    void adapterCoreOwnsLifecycleWithoutServerOrKernelTypes()
+    void concreteAdapterOwnsListenerLifecycleAndDispatchMechanism()
             throws IOException {
         String sources = readSources(CORE) + readSources(HTTP);
         assertThat(sources)
                 .contains("interface WorkerConnection")
                 .contains("interface WorkerConnectionRegistry")
                 .contains("interface WorkerDeliveryAdapter")
-                .contains("final class WorkerDeliveryAdapterCore")
                 .contains("final class WorkerDeliveryAdapterManager")
-                .contains("ScheduledExecutorService")
+                .contains("register(WorkerDeliveryAdapter adapter)")
                 .doesNotContain("WorkerSessionToken")
                 .doesNotContain("generation")
                 .doesNotContain("isCurrent")
                 .doesNotContain("STALE_SESSION")
                 .doesNotContain("WebSocketSession")
+                .doesNotContain("WorkerDeliveryAdapterDefinition")
+                .doesNotContain("WorkerDeliveryAdapterFactory")
                 .doesNotContain("SmartLifecycle")
                 .doesNotContain("@Configuration")
                 .doesNotContain("@Component");
 
-        String websocketTransport = Files.readString(
-                WEBSOCKET.resolve("WorkerWebSocketHandler.java")
-        ) + Files.readString(
-                WEBSOCKET.resolve("SpringWebSocketWorkerConnection.java")
-        );
+        String websocketTransport = readSources(WEBSOCKET);
         assertThat(websocketTransport)
-                .contains("WebSocketSession")
-                .doesNotContain("WorkerDeliveryGatewayClient")
-                .doesNotContain("WorkerCommandPage")
-                .doesNotContain("dispatchOnce")
-                .doesNotContain("ArrayBlockingQueue")
-                .doesNotContain("\"3001\"")
-                .doesNotContain("cursor");
+                .contains("class WebSocketWorkerDeliveryAdapter")
+                .contains("ServerBootstrap")
+                .contains("NioServerSocketChannel")
+                .contains("newFixedThreadPool")
+                .contains("final class WorkerDeliveryAdapterCore")
+                .contains("void dispatchOnce")
+                .doesNotContain("WebSocketWorkerDeliveryAdapterFactory")
+                .doesNotContain("AdapterRoundResult")
+                .doesNotContain("SpringWebSocket")
+                .doesNotContain("WorkerWebSocketEndpointConfigurer");
     }
 
     private static String readSources(Path root) throws IOException {

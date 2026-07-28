@@ -215,6 +215,10 @@ public final class WebSocketWorkerTransport
         return pendingResult != null;
     }
 
+    public synchronized boolean isConnected() {
+        return running && socket != null;
+    }
+
     public URI socketUri() {
         return socketUri;
     }

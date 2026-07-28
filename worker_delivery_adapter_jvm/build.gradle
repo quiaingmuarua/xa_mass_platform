@@ -14,9 +14,12 @@ java {
 
 dependencies {
     implementation platform('tools.jackson:jackson-bom:3.1.4')
+    implementation platform('io.netty:netty-bom:4.2.15.Final')
     implementation 'tools.jackson.core:jackson-databind'
     api project(':worker_delivery_contract_jvm')
-    api 'org.springframework:spring-websocket:7.0.8'
+    implementation 'io.netty:netty-transport'
+    implementation 'io.netty:netty-handler'
+    implementation 'io.netty:netty-codec-http'
 
     testImplementation platform('org.junit:junit-bom:6.0.3')
     testImplementation 'org.junit.jupiter:junit-jupiter'

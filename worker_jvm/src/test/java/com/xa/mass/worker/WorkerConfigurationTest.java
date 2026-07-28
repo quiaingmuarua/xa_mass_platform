@@ -50,6 +50,10 @@ class WorkerConfigurationTest {
                 Duration.ofSeconds(1),
                 configuration.reconnectInterval()
         );
+        assertEquals(
+                URI.create("http://127.0.0.1:18083"),
+                configuration.serverUrl()
+        );
         assertNull(configuration.endpointManagerId());
         assertNull(configuration.pollInterval());
     }

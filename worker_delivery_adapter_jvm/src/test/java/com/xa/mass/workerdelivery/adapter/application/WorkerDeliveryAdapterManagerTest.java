@@ -3,151 +3,173 @@ package com.xa.mass.workerdelivery.adapter.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import java.net.URI;
-import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class WorkerDeliveryAdapterManagerTest {
 
     @Test
-    void registersStartsAndClosesExactlyOneLocalAdapter() {
-        FakeAdapter adapter = new FakeAdapter(false);
+    void managesAdaptersInRegistrationOrder() {
+        List<String> events = new ArrayList<>();
+        FakeAdapter first = new FakeAdapter("adapter-1", events, false);
+        FakeAdapter second = new FakeAdapter("adapter-2", events, false);
         WorkerDeliveryAdapterManager manager =
-                new WorkerDeliveryAdapterManager(List.of(
-                        new FakeFactory(adapter)
-                ));
+                new WorkerDeliveryAdapterManager();
 
-        assertThatThrownBy(manager::start)
-                .isInstanceOf(IllegalStateException.class);
+        manager.register(first);
+        manager.register(second);
 
-        manager.register(definition());
-        assertThat(manager.state())
-                .isEqualTo(WorkerDeliveryAdapterState.REGISTERED);
+        assertThat(manager.adapters())
+                .containsExactly(
+                        java.util.Map.entry("adapter-1", first),
+                        java.util.Map.entry("adapter-2", second)
+                );
+        assertThat(manager.requireAdapter("adapter-2")).isSameAs(second);
 
         manager.start();
         manager.start();
-        assertThat(adapter.startCount).isEqualTo(1);
-        assertThat(manager.state())
-                .isEqualTo(WorkerDeliveryAdapterState.RUNNING);
-
-        assertThatThrownBy(() -> manager.register(definition()))
-                .isInstanceOf(IllegalStateException.class);
-
         manager.close();
         manager.close();
-        assertThat(adapter.closeCount).isEqualTo(1);
-        assertThat(manager.state())
-                .isEqualTo(WorkerDeliveryAdapterState.CLOSED);
+
+        assertThat(events).containsExactly(
+                "start:adapter-1",
+                "start:adapter-2",
+                "close:adapter-2",
+                "close:adapter-1"
+        );
     }
 
     @Test
-    void missingFactoryAndClosedManagerRejectRegistration() {
-        WorkerDeliveryAdapterManager missingFactory =
-                new WorkerDeliveryAdapterManager(List.of());
+    void rejectsInvalidRegistration() {
+        WorkerDeliveryAdapterManager manager =
+                new WorkerDeliveryAdapterManager();
+        FakeAdapter adapter = new FakeAdapter(
+                "adapter-1",
+                new ArrayList<>(),
+                false
+        );
+        manager.register(adapter);
 
-        assertThatThrownBy(() -> missingFactory.register(definition()))
+        assertThatThrownBy(() -> manager.register(adapter))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("No factory");
+                .hasMessageContaining("Duplicate");
 
-        WorkerDeliveryAdapterManager closed =
-                new WorkerDeliveryAdapterManager(List.of(
-                        new FakeFactory(new FakeAdapter(false))
-                ));
-        closed.close();
+        manager.start();
+        assertThatThrownBy(() -> manager.register(new FakeAdapter(
+                "adapter-2",
+                new ArrayList<>(),
+                false
+        ))).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("before start");
 
-        assertThatThrownBy(() -> closed.register(definition()))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("closed");
+        assertThatThrownBy(() -> manager.requireAdapter("missing"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unknown");
+        manager.close();
+
+        WorkerDeliveryAdapterManager polling =
+                new WorkerDeliveryAdapterManager();
+        assertThatThrownBy(() -> polling.register(new FakeAdapter(
+                "system-polling",
+                new ArrayList<>(),
+                false
+        ))).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("system-polling");
     }
 
     @Test
-    void startFailureClosesTheRegisteredAdapter() {
-        FakeAdapter adapter = new FakeAdapter(true);
+    void startFailureClosesCurrentAndEarlierAdaptersInReverse() {
+        List<String> events = new ArrayList<>();
+        FakeAdapter first = new FakeAdapter("adapter-1", events, false);
+        FakeAdapter second = new FakeAdapter("adapter-2", events, true);
+        FakeAdapter third = new FakeAdapter("adapter-3", events, false);
         WorkerDeliveryAdapterManager manager =
-                new WorkerDeliveryAdapterManager(List.of(
-                        new FakeFactory(adapter)
-                ));
-        manager.register(definition());
+                new WorkerDeliveryAdapterManager();
+        manager.register(first);
+        manager.register(second);
+        manager.register(third);
 
         assertThatThrownBy(manager::start)
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("start failed");
 
-        assertThat(adapter.closeCount).isEqualTo(1);
-        assertThat(manager.state())
-                .isEqualTo(WorkerDeliveryAdapterState.CLOSED);
-    }
-
-    private static WorkerDeliveryAdapterDefinition definition() {
-        return new WorkerDeliveryAdapterDefinition(
-                WorkerDeliveryAdapterType.WEBSOCKET,
-                new WorkerDeliveryAdapterRuntimeConfig(
-                        "websocket-1",
-                        URI.create("http://127.0.0.1:18082"),
-                        Duration.ofSeconds(1),
-                        Duration.ofMillis(100),
-                        100,
-                        100,
-                        1000
-                ),
-                new WebSocketWorkerDeliveryAdapterConfig(
-                        Duration.ofSeconds(1)
-                )
+        assertThat(events).containsExactly(
+                "start:adapter-1",
+                "start:adapter-2",
+                "close:adapter-2",
+                "close:adapter-1"
         );
+        assertThat(third.state())
+                .isEqualTo(WorkerDeliveryAdapterState.REGISTERED);
+        assertThatThrownBy(manager::start)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("closed");
     }
 
-    private static final class FakeFactory
-            implements WorkerDeliveryAdapterFactory<
-            WebSocketWorkerDeliveryAdapterConfig> {
+    @Test
+    void closeAggregatesFailuresWithoutSkippingAdapters() {
+        List<String> events = new ArrayList<>();
+        WorkerDeliveryAdapterManager manager =
+                new WorkerDeliveryAdapterManager();
+        manager.register(new FakeAdapter(
+                "adapter-1",
+                events,
+                false,
+                true
+        ));
+        manager.register(new FakeAdapter(
+                "adapter-2",
+                events,
+                false,
+                true
+        ));
 
-        private final WorkerDeliveryAdapter adapter;
+        RuntimeException failure = org.assertj.core.api.Assertions.catchThrowableOfType(
+                manager::close,
+                RuntimeException.class
+        );
 
-        private FakeFactory(WorkerDeliveryAdapter adapter) {
-            this.adapter = adapter;
-        }
-
-        @Override
-        public WorkerDeliveryAdapterType adapterType() {
-            return WorkerDeliveryAdapterType.WEBSOCKET;
-        }
-
-        @Override
-        public Class<WebSocketWorkerDeliveryAdapterConfig>
-        privateConfigType() {
-            return WebSocketWorkerDeliveryAdapterConfig.class;
-        }
-
-        @Override
-        public WorkerDeliveryAdapter create(
-                WorkerDeliveryAdapterRuntimeConfig runtimeConfig,
-                WebSocketWorkerDeliveryAdapterConfig privateConfig
-        ) {
-            return adapter;
-        }
+        assertThat(events).containsExactly(
+                "close:adapter-2",
+                "close:adapter-1"
+        );
+        assertThat(failure.getSuppressed()).hasSize(1);
     }
 
     private static final class FakeAdapter
             implements WorkerDeliveryAdapter {
 
+        private final String adapterId;
+        private final List<String> events;
         private final boolean failStart;
+        private final boolean failClose;
         private WorkerDeliveryAdapterState state =
                 WorkerDeliveryAdapterState.REGISTERED;
-        private int startCount;
-        private int closeCount;
 
-        private FakeAdapter(boolean failStart) {
+        private FakeAdapter(
+                String adapterId,
+                List<String> events,
+                boolean failStart
+        ) {
+            this(adapterId, events, failStart, false);
+        }
+
+        private FakeAdapter(
+                String adapterId,
+                List<String> events,
+                boolean failStart,
+                boolean failClose
+        ) {
+            this.adapterId = adapterId;
+            this.events = events;
             this.failStart = failStart;
+            this.failClose = failClose;
         }
 
         @Override
-        public WorkerDeliveryAdapterType adapterType() {
-            return WorkerDeliveryAdapterType.WEBSOCKET;
-        }
-
-        @Override
-        public String endpointManagerId() {
-            return "websocket-1";
+        public String adapterId() {
+            return adapterId;
         }
 
         @Override
@@ -157,7 +179,7 @@ class WorkerDeliveryAdapterManagerTest {
 
         @Override
         public void start() {
-            startCount++;
+            events.add("start:" + adapterId);
             if (failStart) {
                 throw new IllegalStateException("start failed");
             }
@@ -169,8 +191,13 @@ class WorkerDeliveryAdapterManagerTest {
             if (state == WorkerDeliveryAdapterState.CLOSED) {
                 return;
             }
-            closeCount++;
+            events.add("close:" + adapterId);
             state = WorkerDeliveryAdapterState.CLOSED;
+            if (failClose) {
+                throw new IllegalStateException(
+                        "close failed: " + adapterId
+                );
+            }
         }
     }
 }

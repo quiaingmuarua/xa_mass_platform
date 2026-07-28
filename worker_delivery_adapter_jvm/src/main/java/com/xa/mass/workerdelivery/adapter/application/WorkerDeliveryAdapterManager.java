@@ -1,117 +1,100 @@
 package com.xa.mass.workerdelivery.adapter.application;
 
-import java.util.EnumMap;
-import java.util.List;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
 public final class WorkerDeliveryAdapterManager implements AutoCloseable {
 
-    private final Map<
-            WorkerDeliveryAdapterType,
-            WorkerDeliveryAdapterFactory<?>
-            > factories;
-    private WorkerDeliveryAdapter adapter;
+    private final LinkedHashMap<String, WorkerDeliveryAdapter> adapters =
+            new LinkedHashMap<>();
+    private boolean started;
     private boolean closed;
 
-    public WorkerDeliveryAdapterManager(
-            List<WorkerDeliveryAdapterFactory<?>> factories
-    ) {
-        Objects.requireNonNull(factories, "factories");
-        Map<
-                WorkerDeliveryAdapterType,
-                WorkerDeliveryAdapterFactory<?>
-                > byType = new EnumMap<>(WorkerDeliveryAdapterType.class);
-        for (WorkerDeliveryAdapterFactory<?> factory : factories) {
-            Objects.requireNonNull(factory, "factory");
-            WorkerDeliveryAdapterFactory<?> previous = byType.put(
-                    factory.adapterType(),
-                    factory
-            );
-            if (previous != null) {
-                throw new IllegalArgumentException(
-                        "Duplicate Adapter factory: "
-                                + factory.adapterType()
-                );
-            }
-        }
-        this.factories = Map.copyOf(byType);
-    }
-
-    public synchronized void register(
-            WorkerDeliveryAdapterDefinition definition
-    ) {
-        Objects.requireNonNull(definition, "definition");
+    public synchronized void register(WorkerDeliveryAdapter adapter) {
+        Objects.requireNonNull(adapter, "adapter");
         if (closed) {
             throw new IllegalStateException(
                     "Worker Delivery Adapter manager is closed"
             );
         }
-        if (adapter != null) {
+        if (started) {
             throw new IllegalStateException(
-                    "A Worker Delivery Adapter is already registered"
+                    "Adapters can only be registered before start"
             );
         }
-        WorkerDeliveryAdapterFactory<?> factory = factories.get(
-                definition.adapterType()
-        );
-        if (factory == null) {
+        String adapterId = requireAdapterId(adapter.adapterId());
+        if (adapter.state() != WorkerDeliveryAdapterState.REGISTERED) {
             throw new IllegalArgumentException(
-                    "No factory for Adapter type: "
-                            + definition.adapterType()
+                    "Registered Adapter must be in REGISTERED state"
             );
         }
-        if (definition.privateConfig().getClass()
-                != factory.privateConfigType()) {
+        if (adapters.putIfAbsent(adapterId, adapter) != null) {
             throw new IllegalArgumentException(
-                    "Private config does not match Adapter type "
-                            + definition.adapterType()
+                    "Duplicate Adapter ID: " + adapterId
             );
         }
-        WorkerDeliveryAdapter created = create(
-                factory,
-                definition
+    }
+
+    public synchronized WorkerDeliveryAdapter requireAdapter(
+            String adapterId
+    ) {
+        WorkerDeliveryAdapter adapter = adapters.get(
+                requireAdapterId(adapterId)
         );
-        if (created.adapterType() != definition.adapterType()
-                || !created.endpointManagerId().equals(
-                definition.runtimeConfig().endpointManagerId()
-        )) {
-            created.close();
-            throw new IllegalStateException(
-                    "Adapter factory returned inconsistent identity"
+        if (adapter == null) {
+            throw new IllegalArgumentException(
+                    "Unknown Adapter ID: " + adapterId
             );
         }
-        adapter = created;
+        return adapter;
+    }
+
+    public synchronized Map<String, WorkerDeliveryAdapter> adapters() {
+        return Collections.unmodifiableMap(
+                new LinkedHashMap<>(adapters)
+        );
     }
 
     public synchronized void start() {
-        WorkerDeliveryAdapter current = requireAdapter();
-        if (current.state() == WorkerDeliveryAdapterState.RUNNING) {
+        if (closed) {
+            throw new IllegalStateException(
+                    "Worker Delivery Adapter manager is closed"
+            );
+        }
+        if (started) {
             return;
         }
-        if (current.state() != WorkerDeliveryAdapterState.REGISTERED) {
-            throw new IllegalStateException(
-                    "Cannot start Adapter from state " + current.state()
-            );
-        }
+        ArrayList<WorkerDeliveryAdapter> startedAdapters =
+                new ArrayList<>();
+        WorkerDeliveryAdapter starting = null;
         try {
-            current.start();
-        } catch (RuntimeException error) {
-            current.close();
-            throw error;
-        }
-    }
-
-    public synchronized WorkerDeliveryAdapterState state() {
-        if (adapter == null) {
-            if (closed) {
-                return WorkerDeliveryAdapterState.CLOSED;
+            for (WorkerDeliveryAdapter adapter : adapters.values()) {
+                starting = adapter;
+                adapter.start();
+                startedAdapters.add(adapter);
             }
-            throw new IllegalStateException(
-                    "No Worker Delivery Adapter is registered"
-            );
+            started = true;
+        } catch (RuntimeException startFailure) {
+            closed = true;
+            if (starting != null
+                    && !startedAdapters.contains(starting)) {
+                closeAndSuppress(starting, startFailure);
+            }
+            for (int index = startedAdapters.size() - 1;
+                    index >= 0;
+                    index--) {
+                closeAndSuppress(
+                        startedAdapters.get(index),
+                        startFailure
+                );
+            }
+            throw startFailure;
         }
-        return adapter.state();
     }
 
     @Override
@@ -120,31 +103,46 @@ public final class WorkerDeliveryAdapterManager implements AutoCloseable {
             return;
         }
         closed = true;
-        if (adapter != null) {
-            adapter.close();
+        RuntimeException failure = null;
+        var registered = new ArrayList<>(adapters.values());
+        for (int index = registered.size() - 1; index >= 0; index--) {
+            try {
+                registered.get(index).close();
+            } catch (RuntimeException error) {
+                if (failure == null) {
+                    failure = error;
+                } else {
+                    failure.addSuppressed(error);
+                }
+            }
+        }
+        if (failure != null) {
+            throw failure;
         }
     }
 
-    private WorkerDeliveryAdapter requireAdapter() {
-        if (adapter == null) {
-            throw new IllegalStateException(
-                    "No Worker Delivery Adapter is registered"
+    private static String requireAdapterId(String adapterId) {
+        if (adapterId == null || adapterId.isBlank()) {
+            throw new IllegalArgumentException(
+                    "adapterId must be non-blank"
             );
         }
-        return adapter;
+        if (SYSTEM_POLLING_ENDPOINT_MANAGER_ID.equals(adapterId)) {
+            throw new IllegalArgumentException(
+                    "system-polling cannot own an active Adapter"
+            );
+        }
+        return adapterId;
     }
 
-    @SuppressWarnings("unchecked")
-    private static <C extends WorkerDeliveryAdapterPrivateConfig>
-    WorkerDeliveryAdapter create(
-            WorkerDeliveryAdapterFactory<?> factory,
-            WorkerDeliveryAdapterDefinition definition
+    private static void closeAndSuppress(
+            WorkerDeliveryAdapter adapter,
+            RuntimeException failure
     ) {
-        WorkerDeliveryAdapterFactory<C> typedFactory =
-                (WorkerDeliveryAdapterFactory<C>) factory;
-        return typedFactory.create(
-                definition.runtimeConfig(),
-                (C) definition.privateConfig()
-        );
+        try {
+            adapter.close();
+        } catch (RuntimeException closeFailure) {
+            failure.addSuppressed(closeFailure);
+        }
     }
 }

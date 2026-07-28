@@ -148,11 +148,11 @@ Other scheduling pacers
 
 Worker Delivery Dispatch
   Server exposes point/batch access to already-assigned commands and semantic
-  result ingress; the Adapter Runtime locally registers one typed definition
-  and owns start/close, scheduled batch consumption, current connection
-  selection, dispatch, and result buffering. Its one-round Core validates
-  pre-submit deadlines, while Server only hosts the WebSocket endpoint and
-  invokes lifecycle; neither path selects Workers nor mutates score
+  result ingress; the Adapter Runtime registers complete instances, each of
+  which owns a Netty listener, start/close, scheduled batch consumption,
+  current connection selection, bounded concurrent delivery, and result
+  buffering. Server only binds instance config and invokes lifecycle; neither
+  path selects Workers nor mutates score
 ```
 
 ## Mechanism Status
@@ -166,13 +166,13 @@ Worker Delivery Dispatch
 | Task running activation | Implemented with due-Item Task policy and priority soft-limit System policy | Scenario-backed quota, tenant, business start condition, and resource-estimate decisions |
 | Worker allocation | Implemented as hint-driven TASK-scope candidate cache warming through HOT-pool acquisition; Task score is read only for RUNNING/non-hard-pause suffix-zero validation; TASK_DRIVEN has deterministic Redis proof through cache consumption | Warmup prioritization beyond bounded due order and matcher priority |
 | Task dispatch | Implemented with acquisition-only TaskType profiles, PRECOMPUTED Task rules, TARGETED complete Item rules, stable Item binding, RUNNING same-band reschedule, shared threshold-based empty close, and WorkerCommand append; both TaskTypes have deterministic Redis proof through the command mailbox and ITEM_DRIVEN proves no warmup/cache path | Recent-first Redis Task acquisition |
-| Worker Delivery Dispatch | Shared Java Worker Delivery contract, Server point/batch HTTP API, typed local Adapter registration/start/close runtime, one-round Core, concrete Spring WebSocket transport, fixed system-polling binding, and one-slot polling/WebSocket libphonenumber Worker implemented | Authentication, same-endpoint Adapter HA, pending/ack, and production protocol policy |
+| Worker Delivery Dispatch | Shared Java Worker Delivery contract, Server point/batch HTTP API, complete multi-endpoint Adapter instances with independent Netty listeners, single-cursor bounded concurrent delivery, fixed system-polling binding, and one-slot polling/WebSocket libphonenumber Worker implemented | Authentication, same-endpoint Adapter HA, pending/ack, and production protocol policy |
 | Result routing | Implemented with unit and Redis orchestration proof; Task/Worker policy handlers are replaceable; Java exposes bounded last-success reads | Failure/history projection and stronger queue reliability require separate owners and invariants |
 
 Both TaskTypes also have cross-process Redis E2E proof from Java control and
 Task data APIs through Python scheduling and the Java Server Worker Delivery
-API. `TASK_DRIVEN` uses the Java polling phone Worker; `ITEM_DRIVEN` uses the
-locally registered WebSocket Adapter Runtime and Java WebSocket Worker. Both
+API. `TASK_DRIVEN` uses the Java polling phone Worker; `ITEM_DRIVEN` uses
+independent Netty WebSocket Adapter endpoints and Java WebSocket Workers. Both
 converge through
 Result-Routing, `FINAL_SUCCESS`, Java last-success query, and exact Worker
 lease release. Java controllers use the same Kernel owner contracts as the
@@ -219,13 +219,12 @@ key, or one result-class LIST may require a future explicitly owned
 partitioning design.
 
 The polling API performs only point mailbox consume for one target Worker. It
-never scans a bucket. A locally registered Adapter Runtime may cursor-consume
-its own sparse bucket through the Server batch HTTP API and serve
-transport-hosted Workers through bounded process-local state. The Adapter owns
-its scheduler; the one-round Core owns scan, current connection selection,
-dispatch, `3001`/`UNKNOWN`, and result-buffer policy. The Server host only
-binds configuration, installs the endpoint, and forwards process lifecycle
-events.
+never scans a bucket. Each locally registered Adapter instance may
+cursor-consume its own sparse bucket through the Server batch HTTP API and
+serve Workers through an independent Netty listener. The Adapter owns its
+scheduler, cursor, current connection selection, bounded delivery,
+`3001`/`UNKNOWN`, and result-buffer policy. The Server host only binds
+configuration and forwards process lifecycle events.
 Destructive prefetch failure remains `UNKNOWN` without pending/ack.
 
 ## Core Reading Path

@@ -2,9 +2,7 @@ package com.xa.mass.workerdelivery.adapter.application;
 
 public interface WorkerDeliveryAdapter extends AutoCloseable {
 
-    WorkerDeliveryAdapterType adapterType();
-
-    String endpointManagerId();
+    String adapterId();
 
     WorkerDeliveryAdapterState state();
 

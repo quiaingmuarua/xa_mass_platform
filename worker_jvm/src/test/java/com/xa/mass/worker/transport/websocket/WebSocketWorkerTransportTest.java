@@ -62,6 +62,7 @@ class WebSocketWorkerTransportTest {
     void fragmentedCommandMaintainsSerialBackpressure() {
         FakeWebSocket socket = connector.socket;
         transport.onOpen(socket);
+        assertTrue(transport.isConnected());
         assertEquals(1, socket.requestCount);
 
         String command = command();
@@ -78,6 +79,9 @@ class WebSocketWorkerTransportTest {
         socket.completeSend();
         assertEquals(3, socket.requestCount);
         assertFalse(transport.hasPendingResult());
+
+        transport.close();
+        assertFalse(transport.isConnected());
     }
 
     @Test

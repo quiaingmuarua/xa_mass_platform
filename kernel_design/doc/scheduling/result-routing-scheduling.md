@@ -59,12 +59,11 @@ winner, or Worker lease fence.
 The Java Server Worker Delivery point result endpoint accepts Worker-originated
 `200` and `1xxx` only. Its Adapter batch endpoint also accepts trusted `3xxx`
 evidence that a delivery was rejected before entering Worker execution. A
-WebSocket Adapter reaches that endpoint over HTTP in both embedded and
-standalone deployments. The Server appends the corresponding outcome-class
-Redis queue but does not consume or interpret routing policy. Authentication
-of that Adapter role remains deferred. Result routing does not distinguish
-producers and never derives `3xxx` from timeout, missing response, or mailbox
-age.
+WebSocket Adapter instance reaches that endpoint over HTTP. The Server appends
+the corresponding outcome-class Redis queue but does not consume or interpret
+routing policy. Authentication of that Adapter role remains deferred. Result
+routing does not distinguish producers and never derives `3xxx` from timeout,
+missing response, or mailbox age.
 
 Each class has an independent Redis LIST. The result context remains opaque to
 the queue runtime and carries `taskId`, `messageId`, `workerId`,

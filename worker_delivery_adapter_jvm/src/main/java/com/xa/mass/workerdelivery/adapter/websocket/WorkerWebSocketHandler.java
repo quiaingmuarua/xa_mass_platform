@@ -1,53 +1,46 @@
 package com.xa.mass.workerdelivery.adapter.websocket;
 
-import static com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterCore.WorkerResultAcceptance.ACCEPTED;
-import static com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterCore.WorkerResultAcceptance.ADAPTER_CLOSED;
-import static com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterCore.WorkerResultAcceptance.BUFFER_FULL;
 import static com.xa.mass.workerdelivery.adapter.application.WorkerConnection.WorkerConnectionCloseReason.RESULT_BUFFER_FULL;
+import static com.xa.mass.workerdelivery.adapter.application.WorkerConnection.WorkerConnectionCloseReason.TRANSPORT_ERROR;
+import static com.xa.mass.workerdelivery.adapter.websocket.WorkerDeliveryAdapterCore.WorkerResultAcceptance.ACCEPTED;
+import static com.xa.mass.workerdelivery.adapter.websocket.WorkerDeliveryAdapterCore.WorkerResultAcceptance.ADAPTER_CLOSED;
+import static com.xa.mass.workerdelivery.adapter.websocket.WorkerDeliveryAdapterCore.WorkerResultAcceptance.BUFFER_FULL;
 
-import com.xa.mass.workerdelivery.adapter.application.WorkerConnection;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterCore;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterCore.WorkerResultAcceptance;
-import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterState;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
-import java.io.IOException;
+import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.SimpleChannelInboundHandler;
+import io.netty.handler.codec.http.websocketx.BinaryWebSocketFrame;
+import io.netty.handler.codec.http.websocketx.CloseWebSocketFrame;
+import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
+import io.netty.handler.codec.http.websocketx.WebSocketFrame;
+import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler;
+import java.net.URI;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Objects;
-import org.springframework.web.socket.BinaryMessage;
-import org.springframework.web.socket.CloseStatus;
-import org.springframework.web.socket.TextMessage;
-import org.springframework.web.socket.WebSocketSession;
-import org.springframework.web.socket.handler.TextWebSocketHandler;
 
-public final class WorkerWebSocketHandler extends TextWebSocketHandler {
+final class WorkerWebSocketHandler
+        extends SimpleChannelInboundHandler<WebSocketFrame> {
 
-    public static final String WORKER_PATH =
-            "/api/v1/worker-delivery/websocket/workers/*";
-    public static final String WORKER_PATH_PREFIX =
-            "/api/v1/worker-delivery/websocket/workers/";
-    public static final String WORKER_ID_ATTRIBUTE =
-            WorkerWebSocketHandler.class.getName() + ".workerId";
-    private static final String CONNECTION_ATTRIBUTE =
-            WorkerWebSocketHandler.class.getName() + ".connection";
+    static final String WORKER_PATH =
+            "/api/v1/worker-delivery/websocket/workers";
+    static final String WORKER_PATH_PREFIX = WORKER_PATH + "/";
+
+    private final WebSocketWorkerDeliveryAdapter adapter;
     private final WorkerDeliveryCodec codec;
-    private final WorkerDeliveryAdapterCore core;
-    private final WorkerDeliveryAdapter lifecycle;
     private final Duration sendTimeLimit;
+    private String workerId;
+    private NettyWebSocketWorkerConnection connection;
 
-    public WorkerWebSocketHandler(
+    WorkerWebSocketHandler(
+            WebSocketWorkerDeliveryAdapter adapter,
             WorkerDeliveryCodec codec,
-            WorkerDeliveryAdapterCore core,
-            WorkerDeliveryAdapter lifecycle,
             Duration sendTimeLimit
     ) {
+        this.adapter = Objects.requireNonNull(adapter, "adapter");
         this.codec = Objects.requireNonNull(codec, "codec");
-        this.core = Objects.requireNonNull(core, "core");
-        this.lifecycle = Objects.requireNonNull(
-                lifecycle,
-                "lifecycle"
-        );
         this.sendTimeLimit = Objects.requireNonNull(
                 sendTimeLimit,
                 "sendTimeLimit"
@@ -55,138 +48,147 @@ public final class WorkerWebSocketHandler extends TextWebSocketHandler {
     }
 
     @Override
-    public void afterConnectionEstablished(
-            WebSocketSession session
-    ) throws IOException {
-        if (lifecycle.state() != WorkerDeliveryAdapterState.RUNNING) {
-            close(session, CloseStatus.SERVICE_RESTARTED);
+    public void userEventTriggered(
+            ChannelHandlerContext context,
+            Object event
+    ) {
+        if (event instanceof WebSocketServerProtocolHandler.HandshakeComplete
+                handshake) {
+            String resolvedWorkerId = parseWorkerId(
+                    handshake.requestUri()
+            );
+            if (resolvedWorkerId == null) {
+                close(context, 1008, "Invalid Worker identity");
+                return;
+            }
+            NettyWebSocketWorkerConnection opened =
+                    new NettyWebSocketWorkerConnection(
+                            context.channel(),
+                            codec,
+                            sendTimeLimit
+                    );
+            if (!adapter.connectWorker(resolvedWorkerId, opened)) {
+                opened.close(
+                        com.xa.mass.workerdelivery.adapter.application
+                                .WorkerConnection
+                                .WorkerConnectionCloseReason
+                                .ADAPTER_STOPPING
+                );
+                return;
+            }
+            workerId = resolvedWorkerId;
+            connection = opened;
             return;
         }
-        WorkerConnection connection = new SpringWebSocketWorkerConnection(
-                session,
-                codec,
-                sendTimeLimit
-        );
-        session.getAttributes().put(CONNECTION_ATTRIBUTE, connection);
-        if (!core.connectWorker(workerId(session), connection)) {
-            close(session, CloseStatus.SERVICE_RESTARTED);
+        context.fireUserEventTriggered(event);
+    }
+
+    @Override
+    protected void channelRead0(
+            ChannelHandlerContext context,
+            WebSocketFrame frame
+    ) {
+        if (connection == null) {
+            close(context, 1008, "Worker handshake is incomplete");
+            return;
+        }
+        if (frame instanceof TextWebSocketFrame text) {
+            handleResult(context, text.text());
+            return;
+        }
+        if (frame instanceof BinaryWebSocketFrame) {
+            disconnect();
+            close(context, 1003, "Binary frames are unsupported");
         }
     }
 
     @Override
-    protected void handleTextMessage(
-            WebSocketSession session,
-            TextMessage message
-    ) throws IOException {
-        SeedResult result = codec.decodeSeedResult(message.getPayload());
+    public void channelInactive(ChannelHandlerContext context) {
+        disconnect();
+        context.fireChannelInactive();
+    }
+
+    @Override
+    public void exceptionCaught(
+            ChannelHandlerContext context,
+            Throwable cause
+    ) {
+        NettyWebSocketWorkerConnection current = connection;
+        disconnect();
+        if (current != null) {
+            current.close(TRANSPORT_ERROR);
+        } else {
+            context.close();
+        }
+    }
+
+    private void handleResult(
+            ChannelHandlerContext context,
+            String payload
+    ) {
+        SeedResult result = codec.decodeSeedResult(payload);
         if (result == null) {
-            disconnectAndClose(session, CloseStatus.BAD_DATA);
+            disconnect();
+            close(context, 1007, "Invalid Worker result");
             return;
         }
-        WorkerDeliveryAdapterState state = lifecycle.state();
-        if (state == WorkerDeliveryAdapterState.REGISTERED
-                || state == WorkerDeliveryAdapterState.CLOSED) {
-            disconnectAndClose(
-                    session,
-                    CloseStatus.SERVICE_RESTARTED
-            );
-            return;
-        }
-        WorkerResultAcceptance acceptance =
-                core.acceptWorkerResult(result);
+        var acceptance = adapter.acceptWorkerResult(result);
         if (acceptance == ACCEPTED) {
             return;
         }
-        if (acceptance == BUFFER_FULL) {
-            disconnect(session);
-            connection(session).close(RESULT_BUFFER_FULL);
-            return;
+        NettyWebSocketWorkerConnection current = connection;
+        disconnect();
+        if (acceptance == BUFFER_FULL && current != null) {
+            current.close(RESULT_BUFFER_FULL);
+        } else if (acceptance == ADAPTER_CLOSED) {
+            close(context, 1001, "Adapter is stopping");
+        } else {
+            close(context, 1007, "Invalid Worker result");
         }
-        if (acceptance == ADAPTER_CLOSED) {
-            disconnectAndClose(
-                    session,
-                    CloseStatus.SERVICE_RESTARTED
-            );
-            return;
-        }
-        disconnectAndClose(session, CloseStatus.BAD_DATA);
     }
 
-    @Override
-    protected void handleBinaryMessage(
-            WebSocketSession session,
-            BinaryMessage message
-    ) {
+    private void disconnect() {
+        NettyWebSocketWorkerConnection current = connection;
+        String currentWorkerId = workerId;
+        connection = null;
+        workerId = null;
+        if (current != null && currentWorkerId != null) {
+            adapter.disconnectWorker(currentWorkerId, current);
+        }
+    }
+
+    private static String parseWorkerId(String requestUri) {
         try {
-            disconnectAndClose(session, CloseStatus.NOT_ACCEPTABLE);
-        } catch (IOException ignored) {
-            // Transport teardown is best effort.
-        }
-    }
-
-    @Override
-    public void handleTransportError(
-            WebSocketSession session,
-            Throwable exception
-    ) throws IOException {
-        disconnect(session);
-        close(session, CloseStatus.SERVER_ERROR);
-    }
-
-    @Override
-    public void afterConnectionClosed(
-            WebSocketSession session,
-            CloseStatus status
-    ) {
-        disconnect(session);
-    }
-
-    private void disconnect(WebSocketSession session) {
-        Object connection = session.getAttributes().get(
-                CONNECTION_ATTRIBUTE
-        );
-        Object workerId = session.getAttributes().get(WORKER_ID_ATTRIBUTE);
-        if (connection instanceof WorkerConnection workerConnection
-                && workerId instanceof String value
-                && !value.isBlank()) {
-            core.disconnectWorker(value, workerConnection);
-        }
-    }
-
-    private static WorkerConnection connection(WebSocketSession session) {
-        Object value = session.getAttributes().get(CONNECTION_ATTRIBUTE);
-        if (!(value instanceof WorkerConnection connection)) {
-            throw new IllegalStateException(
-                    "Worker WebSocket session has no connection"
+            String rawPath = URI.create(requestUri).getRawPath();
+            if (rawPath == null
+                    || !rawPath.startsWith(WORKER_PATH_PREFIX)) {
+                return null;
+            }
+            String encoded = rawPath.substring(
+                    WORKER_PATH_PREFIX.length()
             );
-        }
-        return connection;
-    }
-
-    private static String workerId(WebSocketSession session) {
-        Object value = session.getAttributes().get(WORKER_ID_ATTRIBUTE);
-        if (!(value instanceof String workerId) || workerId.isBlank()) {
-            throw new IllegalStateException(
-                    "Worker WebSocket session has no Worker identity"
+            if (encoded.isEmpty() || encoded.contains("/")) {
+                return null;
+            }
+            String workerId = URLDecoder.decode(
+                    encoded,
+                    StandardCharsets.UTF_8
             );
+            if (workerId.isBlank() || workerId.contains("/")) {
+                return null;
+            }
+            return workerId;
+        } catch (IllegalArgumentException error) {
+            return null;
         }
-        return workerId;
     }
 
     private static void close(
-            WebSocketSession session,
-            CloseStatus status
-    ) throws IOException {
-        if (session.isOpen()) {
-            session.close(status);
-        }
-    }
-
-    private void disconnectAndClose(
-            WebSocketSession session,
-            CloseStatus status
-    ) throws IOException {
-        disconnect(session);
-        close(session, status);
+            ChannelHandlerContext context,
+            int code,
+            String reason
+    ) {
+        context.writeAndFlush(new CloseWebSocketFrame(code, reason))
+                .addListener(ignored -> context.close());
     }
 }

@@ -37,9 +37,9 @@ endpointManagerId = system-polling
 ```
 
 A WebSocket Worker must bind to the non-`system-polling` endpoint manager owned
-by the local Adapter Runtime hosted by the Server. Enable
-`xa.mass.worker-delivery.adapter.enabled`, select `type: WEBSOCKET`, and set the
-same `runtime.endpoint-manager-id` before starting the Worker.
+by one configured Adapter instance. The instance map key is the
+`endpointManagerId`, and its `listen-host/listen-port` identifies the
+WebSocket endpoint.
 
 ## Run
 
@@ -55,13 +55,14 @@ WebSocket:
 ./gradlew :worker_jvm:run --args="--transport websocket --worker-id worker-1"
 ```
 
-The WebSocket `--server-url` points to the Server hosting the Adapter endpoint;
-the repository default is `http://127.0.0.1:18082`.
+The WebSocket `--server-url` points to the selected Adapter's Netty listener;
+the default is `http://127.0.0.1:18083`. Polling continues to point to the
+Server API at `http://127.0.0.1:18082`.
 
 Common options:
 
 ```text
---server-url http://127.0.0.1:18082
+--server-url <Server URL for polling, Adapter URL for WebSocket>
 --request-timeout-millis 5000
 ```
 

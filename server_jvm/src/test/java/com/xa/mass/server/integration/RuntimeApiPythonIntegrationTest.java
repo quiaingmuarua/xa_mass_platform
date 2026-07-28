@@ -35,8 +35,12 @@ class RuntimeApiPythonIntegrationTest {
     private static final String REDIS_URL =
             System.getenv("KERNEL_DESIGN_REDIS_URL");
     private static final int SERVER_PORT = availablePort();
-    private static final String WEBSOCKET_ENDPOINT_MANAGER_ID =
-            "java-websocket-integration";
+    private static final int[] WEBSOCKET_ADAPTER_PORTS =
+            availablePorts(2);
+    private static final String WEBSOCKET_ENDPOINT_MANAGER_ID_1 =
+            "java-websocket-integration-1";
+    private static final String WEBSOCKET_ENDPOINT_MANAGER_ID_2 =
+            "java-websocket-integration-2";
     private static final String PHONE_RESULT = """
             {"countryCallingCode":1,"e164":"+14155552671",\
             "isPossible":true,"isValid":true,"regionCode":"US"}\
@@ -74,37 +78,54 @@ class RuntimeApiPythonIntegrationTest {
                 () -> Integer.toString(SERVER_PORT)
         );
         registry.add(
-                "xa.mass.worker-delivery.adapter.enabled",
-                () -> "true"
-        );
-        registry.add(
-                "xa.mass.worker-delivery.adapter.type",
-                () -> "WEBSOCKET"
-        );
-        registry.add(
-                "xa.mass.worker-delivery.adapter.runtime.endpoint-manager-id",
-                () -> WEBSOCKET_ENDPOINT_MANAGER_ID
-        );
-        registry.add(
-                "xa.mass.worker-delivery.adapter.runtime.gateway-base-url",
+                "xa.mass.worker-delivery.adapter.gateway.base-url",
                 () -> "http://127.0.0.1:" + SERVER_PORT
         );
         registry.add(
-                "xa.mass.worker-delivery.adapter.runtime.dispatch-interval",
-                () -> "20ms"
+                "xa.mass.worker-delivery.adapter.gateway.request-timeout",
+                () -> "2s"
+        );
+        addWebSocketAdapter(
+                registry,
+                WEBSOCKET_ENDPOINT_MANAGER_ID_1,
+                WEBSOCKET_ADAPTER_PORTS[0]
+        );
+        addWebSocketAdapter(
+                registry,
+                WEBSOCKET_ENDPOINT_MANAGER_ID_2,
+                WEBSOCKET_ADAPTER_PORTS[1]
         );
     }
 
     @Test
     void taskDrivenClosesThroughTheJavaPollingWorker()
             throws Exception {
-        runWorkerDeliveryClosure("TASK_DRIVEN");
+        runWorkerDeliveryClosure(
+                "TASK_DRIVEN",
+                WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
+                URI.create("http://127.0.0.1:" + port)
+        );
     }
 
     @Test
-    void itemDrivenClosesThroughTheJavaWebSocketWorker()
+    void itemDrivenClosesThroughTwoJavaWebSocketAdapters()
             throws Exception {
-        runWorkerDeliveryClosure("ITEM_DRIVEN");
+        runWorkerDeliveryClosure(
+                "ITEM_DRIVEN",
+                WEBSOCKET_ENDPOINT_MANAGER_ID_1,
+                URI.create(
+                        "http://127.0.0.1:"
+                                + WEBSOCKET_ADAPTER_PORTS[0]
+                )
+        );
+        runWorkerDeliveryClosure(
+                "ITEM_DRIVEN",
+                WEBSOCKET_ENDPOINT_MANAGER_ID_2,
+                URI.create(
+                        "http://127.0.0.1:"
+                                + WEBSOCKET_ADAPTER_PORTS[1]
+                )
+        );
     }
 
     @Test
@@ -132,7 +153,11 @@ class RuntimeApiPythonIntegrationTest {
         assertThat(response.statusCode()).isEqualTo(404);
     }
 
-    private void runWorkerDeliveryClosure(String taskType) throws Exception {
+    private void runWorkerDeliveryClosure(
+            String taskType,
+            String endpointManagerId,
+            URI workerServerUrl
+    ) throws Exception {
         requireExternalRuntime();
         String suffix = UUID.randomUUID().toString();
         String workerGroupId = "phone-tools-" + suffix;
@@ -166,18 +191,13 @@ class RuntimeApiPythonIntegrationTest {
                           "attributes": {"runtime": "java"},
                           "dynamicAttributeNames": []
                         }
-                        """.formatted(
-                        "ITEM_DRIVEN".equals(taskType)
-                                ? WEBSOCKET_ENDPOINT_MANAGER_ID
-                                : WorkerDeliveryProtocol
-                                        .SYSTEM_POLLING_ENDPOINT_MANAGER_ID
-                )
+                        """.formatted(endpointManagerId)
         ).statusCode()).isEqualTo(200);
 
         RunningWorker worker = startWorker(
                 taskType,
                 workerId,
-                URI.create("http://127.0.0.1:" + port)
+                workerServerUrl
         );
         try {
             assertThat(send(
@@ -253,7 +273,7 @@ class RuntimeApiPythonIntegrationTest {
             String taskType,
             String workerId,
             URI serverUrl
-    ) {
+    ) throws Exception {
         WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
         WorkerCommandProcessor processor = new WorkerCommandProcessor(
                 workerId,
@@ -394,6 +414,52 @@ class RuntimeApiPythonIntegrationTest {
         }
     }
 
+    private static int[] availablePorts(int count) {
+        ServerSocket[] sockets = new ServerSocket[count];
+        try {
+            int[] ports = new int[count];
+            for (int index = 0; index < count; index++) {
+                sockets[index] = new ServerSocket(0);
+                ports[index] = sockets[index].getLocalPort();
+            }
+            return ports;
+        } catch (java.io.IOException error) {
+            throw new IllegalStateException(
+                    "Could not reserve integration-test Adapter ports",
+                    error
+            );
+        } finally {
+            for (ServerSocket socket : sockets) {
+                if (socket == null) {
+                    continue;
+                }
+                try {
+                    socket.close();
+                } catch (java.io.IOException ignored) {
+                    // Best-effort release during static test setup.
+                }
+            }
+        }
+    }
+
+    private static void addWebSocketAdapter(
+            DynamicPropertyRegistry registry,
+            String adapterId,
+            int listenPort
+    ) {
+        String prefix = "xa.mass.worker-delivery.adapter.instances."
+                + adapterId;
+        registry.add(prefix + ".type", () -> "WEBSOCKET");
+        registry.add(prefix + ".listen-host", () -> "127.0.0.1");
+        registry.add(
+                prefix + ".listen-port",
+                () -> Integer.toString(listenPort)
+        );
+        registry.add(prefix + ".dispatch-interval", () -> "20ms");
+        registry.add(prefix + ".scan-count", () -> "100");
+        registry.add(prefix + ".delivery-parallelism", () -> "8");
+    }
+
     private interface RunningWorker extends AutoCloseable {
 
         @Override
@@ -446,9 +512,21 @@ class RuntimeApiPythonIntegrationTest {
 
         private WebSocketWorkerHandle(
                 WebSocketWorkerTransport transport
-        ) {
+        ) throws Exception {
             this.transport = transport;
             transport.start();
+            long deadline = System.nanoTime()
+                    + Duration.ofSeconds(2).toNanos();
+            while (!transport.isConnected()
+                    && System.nanoTime() < deadline) {
+                Thread.sleep(10);
+            }
+            if (!transport.isConnected()) {
+                transport.close();
+                throw new AssertionError(
+                        "WebSocket Worker did not connect to its Adapter"
+                );
+            }
         }
 
         @Override

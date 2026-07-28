@@ -14,11 +14,11 @@ Status: current repository handoff.
   providers; it does not define a second set of Kernel runtime ports.
 - `worker_delivery_contract_jvm/` is the Java 21 transport-neutral
   WorkerCommand/DeliverSeed/SeedResult contract shared by Server and Worker.
-- `worker_delivery_adapter_jvm/` owns the Adapter mechanism: typed local
-  registration, start/close lifecycle, scheduled Gateway consumption,
-  active connections, the one-round dispatch/result Core, and concrete Spring
-  WebSocket transport adaptation. It has no Spring Boot, Server, Kernel, or
-  Redis dependency.
+- `worker_delivery_adapter_jvm/` owns complete Adapter instances: local
+  registration, start/close lifecycle, scheduled Gateway consumption, active
+  connections, bounded concurrent delivery, result buffering, and independent
+  Netty WebSocket listeners. It has no Spring, Server, Kernel, or Redis
+  dependency.
 - `worker_jvm/` is the runnable one-slot Java reference Worker. Polling and
   WebSocket are transport profiles over one serial command execution core.
 - The legacy Java platform is available exclusively from
@@ -68,21 +68,19 @@ tag.
   Adapter Runtime may reach that facade only through the Adapter batch HTTP
   contract.
 - `worker_delivery_adapter_jvm` must not depend on `server_jvm`, `kernel_jvm`,
-  Spring Boot, Redis, scores, Pacers, or Server HTTP DTOs. Its Core packages
-  must not depend on Spring WebSocket. The Adapter module owns its local
-  definition registration, scheduled dispatch loop, lifecycle, active
-  connections, cursor, and bounded results. Only its `websocket` package may
-  adapt Spring WebSocket connections and frames. Its private HTTP DTOs are
-  proved against Server JSON with bilateral golden tests; do not add an
-  in-process fast path.
+  Spring, Redis, scores, Pacers, or Server HTTP DTOs. The Adapter module owns
+  its complete instances, Netty listeners, scheduled dispatch loops, active
+  connections, cursors, delivery executors, and bounded results. Its private
+  HTTP DTOs are proved against Server JSON with bilateral golden tests; do not
+  add an in-process fast path.
 - `worker_jvm` may depend only on the shared contract and Worker tool
   libraries. It must not depend on `server_jvm`, `kernel_jvm`, Python
   packages, Redis, score, Pacer, or TaskType.
-- `server_jvm` may host the concrete WebSocket Adapter by binding one typed
-  definition, installing its endpoint, and invoking `manager.start()` /
-  `manager.close()` at process boundaries. Server must not call
-  `dispatchOnce()` or own Adapter scheduling, active connection selection,
-  cursor handling, result buffering, or trusted rejection policy.
+- `server_jvm` may bind a `Map<adapterId, JsonNode>`, construct concrete
+  Adapter instances, register them, and invoke `manager.start()` /
+  `manager.close()` at process boundaries. It must not host WebSocket
+  endpoints, call `dispatchOnce()`, or own Adapter scheduling, connection
+  selection, cursor handling, result buffering, or trusted rejection policy.
 
 ## JVM Incremental Assembly
 
@@ -123,14 +121,14 @@ WorkerDeliveryConfiguration
 
 worker_delivery_adapter_jvm
   -> Adapter batch HTTP client
-  -> current connection registry, one-round dispatch, and result buffer
-  -> concrete Spring WebSocket connection/frame adaptation
+  -> per-endpoint cursor, current connection registry, concurrent delivery,
+     and result buffer
+  -> independent Netty WebSocket listeners
 ```
 
-The main Server owns the HTTP and Redis boundaries. It can optionally host the
-Adapter module's WebSocket endpoint and drive one scheduled Core round. Even
-when embedded, the Adapter reaches Worker Delivery only through the same batch
-HTTP boundary.
+The main Server owns the Worker Delivery HTTP and Redis boundaries. It only
+composes and starts configured Adapter instances. Every Adapter still reaches
+Worker Delivery through the same batch HTTP boundary.
 
 `worker_delivery_contract_jvm` is currently a repository-local Java 21 jar,
 not a published SDK and not an Android compatibility promise. A future

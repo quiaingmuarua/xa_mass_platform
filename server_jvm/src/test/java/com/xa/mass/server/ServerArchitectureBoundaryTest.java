@@ -55,7 +55,7 @@ class ServerArchitectureBoundaryTest {
         assertThat(build)
                 .contains("implementation project(':kernel_jvm')")
                 .contains("implementation project(':worker_delivery_adapter_jvm')")
-                .contains("spring-boot-starter-websocket")
+                .doesNotContain("spring-boot-starter-websocket")
                 .doesNotContain("implementation project(':worker_jvm')")
                 .contains("testImplementation project(':worker_jvm')");
 
@@ -139,12 +139,12 @@ class ServerArchitectureBoundaryTest {
         String host = readSources(DELIVERY_ADAPTER_HOST);
         assertThat(host)
                 .contains("WorkerDeliveryAdapterManager")
-                .contains("WorkerWebSocketHandler")
                 .contains("manager.start()")
                 .contains("manager.close()")
                 .doesNotContain("dispatchOnce")
                 .doesNotContain("ScheduledExecutorService")
                 .doesNotContain("WebSocketSession")
+                .doesNotContain("WorkerWebSocketHandler")
                 .doesNotContain("TextMessage")
                 .doesNotContain("SeedResult")
                 .doesNotContain("\"3001\"")
@@ -153,10 +153,14 @@ class ServerArchitectureBoundaryTest {
         String adapter = readSources(ADAPTER_SOURCE);
         assertThat(adapter)
                 .contains("class WorkerWebSocketHandler")
-                .contains("class SpringWebSocketWorkerConnection")
+                .contains("class NettyWebSocketWorkerConnection")
+                .contains("class WebSocketWorkerDeliveryAdapter")
                 .contains("interface WorkerDeliveryAdapter")
                 .contains("class WorkerDeliveryAdapterCore")
-                .contains("class ScheduledWorkerDeliveryAdapter");
+                .contains("io.netty")
+                .doesNotContain("org.springframework")
+                .doesNotContain("SpringWebSocketWorkerConnection")
+                .doesNotContain("ScheduledWorkerDeliveryAdapter");
     }
 
     @Test

@@ -17,11 +17,10 @@ The repository contains six active areas:
 - [`worker_delivery_contract_jvm/`](worker_delivery_contract_jvm/): shared
   Java 21 Worker Delivery DTO, validation, outcome classification, and codec.
 - [`worker_delivery_adapter_jvm/`](worker_delivery_adapter_jvm/):
-  Worker Delivery Adapter Runtime. It owns local type registration,
-  start/close lifecycle, bounded dispatch scheduling, active connections,
-  result buffering, the Server batch HTTP client, and the concrete Spring
-  WebSocket Adapter type without depending on Spring Boot or Server
-  implementation.
+  Worker Delivery Adapter Runtime. It owns complete Adapter instances,
+  independent Netty WebSocket listeners, start/close lifecycle, bounded
+  mailbox dispatch, active connections, result buffering, and the Server
+  batch HTTP client without depending on Spring, Server, Kernel, or Redis.
 - [`worker_jvm/`](worker_jvm/): runnable one-slot Java Worker with polling and
   WebSocket transports over one command execution core.
 

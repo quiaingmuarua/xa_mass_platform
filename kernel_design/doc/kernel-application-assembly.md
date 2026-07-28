@@ -268,7 +268,7 @@ Java control API -> Python KernelApplication
   -> Java TaskData append
   -> Redis scheduling truth
   -> Java Server Worker Delivery HTTP command access
-  -> Java polling Worker or registered WebSocket Adapter Runtime + Worker
+  -> Java polling Worker or Netty WebSocket Adapter instance + Worker
   -> Java phone tool execution
   -> Java Server Worker Delivery HTTP SeedResult ingress
   -> Result-Routing
@@ -279,8 +279,8 @@ Java control API -> Python KernelApplication
 The proof starts resource and Task-control commands at the Java API, crosses
 the Python Kernel Control API, appends TaskItems through Java TaskData, then
 uses the Java Server's Worker Delivery owner providers. `TASK_DRIVEN` polling
-calls the point HTTP API directly. `ITEM_DRIVEN` uses the locally registered
-WebSocket Adapter Runtime, which still calls the same batch HTTP contract
+calls the point HTTP API directly. `ITEM_DRIVEN` uses configured WebSocket
+Adapter instances, each of which still calls the same batch HTTP contract
 through loopback. Java never parses Task or Worker score state. Separate
 Redis proofs cover TaskData Item-score
 initialization, TASK_DRIVEN default empty close with RUNNING soft-limit
@@ -338,22 +338,21 @@ or import Kernel owners. Polling and WebSocket share one serial command
 execution core.
 
 Polling is a base request-driven protocol, not an independently deployed
-Adapter. The Java Adapter Runtime locally registers one typed
-non-`system-polling` definition, owns its scheduled cursor consumption through
-the Server batch HTTP API, maintains one current connection per WorkerId, and
-applies dispatch/result-buffer policy. `WorkerDeliveryAdapterCore` remains the
-thread-free one-round mechanism. The Adapter module converts WebSocket frames
-and connection callbacks into Core calls. The Server only binds configuration,
-installs the endpoint, and invokes Adapter `start()`/`close()` at process
-boundaries. Workers upsert before connecting. KernelApplication does not own or
-expose connection facts.
+Adapter. Each configured Java Adapter instance owns one non-`system-polling`
+endpoint-manager mailbox, one independent Netty listener, one scheduled
+cursor-consumption loop through the Server batch HTTP API, one current
+connection per WorkerId, bounded concurrent delivery, and result-buffer
+policy. The Server only parses instance configuration, registers concrete
+instances, and invokes Adapter `start()`/`close()` at process boundaries.
+Workers upsert before connecting. KernelApplication does not own or expose
+connection facts.
 
 The Python Runtime Server remains the scheduling command host and mechanism
 oracle. Java TaskData and Worker Delivery own their current external HTTP
 operations, not a second scheduler. The Java Worker is the only external
-Worker demonstration mainline. Authentication, multi-instance WebSocket
-ownership, Task query/list, failure-result projection, reliable pending/ack
-delivery, and API compatibility remain out of scope.
+Worker demonstration mainline. Authentication, same-endpoint Adapter HA,
+Task query/list, failure-result projection, reliable pending/ack delivery, and
+API compatibility remain out of scope.
 
 ## Guardrails
 

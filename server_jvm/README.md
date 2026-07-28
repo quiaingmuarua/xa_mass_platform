@@ -84,8 +84,8 @@ kernel_jvm delivery contracts/providers
   WorkerCommand consume and SeedResult append owner operations
 
 worker_delivery_adapter_jvm
-  typed local registration/start/close runtime, one-round Core,
-  and concrete Spring WebSocket transport
+  complete Adapter instances, independent Netty WebSocket listeners,
+  mailbox loops, active connections, and bounded delivery
 ```
 
 The Server is the only Worker Delivery HTTP and Redis owner. Point and batch
@@ -95,11 +95,12 @@ dependency.
 
 The Adapter runtime is implemented by
 [`worker_delivery_adapter_jvm`](../worker_delivery_adapter_jvm/README.md).
-This Server can optionally bind one typed WebSocket Adapter definition, host
-its endpoint, and forward process-ready/process-close events. The Adapter
-module owns its scheduled dispatch loop. The embedded Adapter still consumes
-the existing batch HTTP API through loopback and has no in-process or Redis
-shortcut.
+This Server reads the configured Adapter instance map, creates complete
+WebSocket Adapter instances, registers them, and forwards
+process-ready/process-close events. Each Adapter owns its Netty listener,
+mailbox cursor, dispatch loop, connection registry, and result buffer. It
+still consumes the existing batch HTTP API through loopback and has no
+in-process or Redis shortcut.
 
 ## Runtime Commands
 
@@ -173,33 +174,43 @@ Then start the external Runtime API Server:
 ./gradlew :server_jvm:bootRun
 ```
 
-Run the Java reference Worker through point polling, or enable the embedded
-WebSocket Adapter and use the WebSocket profile, as documented in
+Run the Java reference Worker through point polling, or configure one or more
+WebSocket Adapter instances and use the WebSocket profile, as documented in
 [worker_jvm](../worker_jvm/README.md).
 
-Embedded WebSocket Adapter:
+Two WebSocket Adapter instances:
 
 ```yaml
 xa.mass.worker-delivery.adapter:
-  enabled: true
-  type: WEBSOCKET
-  runtime:
-    endpoint-manager-id: websocket-1
-    gateway-base-url: http://127.0.0.1:18082
+  gateway:
+    base-url: http://127.0.0.1:18082
     request-timeout: 5s
-    dispatch-interval: 100ms
-    scan-count: 100
-    result-batch-size: 100
-    result-buffer-capacity: 1000
-  websocket:
-    send-time-limit: 5s
+  instances:
+    websocket-1:
+      type: WEBSOCKET
+      listen-host: 0.0.0.0
+      listen-port: 18083
+      dispatch-interval: 100ms
+      scan-count: 100
+      delivery-parallelism: 16
+      result-batch-size: 100
+      result-buffer-capacity: 1000
+      send-time-limit: 5s
+    websocket-2:
+      type: WEBSOCKET
+      listen-host: 0.0.0.0
+      listen-port: 18084
 ```
 
-The Worker declaration must use the same endpoint-manager ID. The Adapter
-locally registers one `WEBSOCKET` definition, starts its own bounded dispatch
-loop after the Server is ready, and calls this Server's batch HTTP API at the
-configured `gateway-base-url`. Server shutdown invokes the Adapter's bounded
-close lifecycle.
+The instance map key is both `adapterId` and `endpointManagerId`; the Worker
+declaration must use the matching value. Each instance starts an independent
+Netty listener after the Server is ready and calls the shared Gateway
+`base-url`. An empty `instances` map starts no active Adapter.
+
+Instances must use distinct IDs and listener ports. Do not duplicate an
+endpoint-manager ID for throughput. A single instance uses one mailbox cursor
+and bounded concurrent Worker delivery controlled by `scan-count`,
+`delivery-parallelism`, and `dispatch-interval`.
 
 Defaults:
 
@@ -226,9 +237,10 @@ KERNEL_DESIGN_REDIS_URL=redis://localhost:6379/15 \
 ```
 
 The cross-process integration proves `TASK_DRIVEN` through the real Java
-polling Worker and `ITEM_DRIVEN` through the embedded WebSocket Adapter and
-Java WebSocket Worker. Both paths use the Server HTTP boundary, Python
-scheduling/ResultRouting, Java last-success query, and exact Worker release.
+polling Worker and `ITEM_DRIVEN` through two independent Netty WebSocket
+Adapter endpoints and Java WebSocket Workers. All paths use the Server HTTP
+boundary, Python scheduling/ResultRouting, Java last-success query, and exact
+Worker release.
 Authentication, same-endpoint multi-instance ownership, pending/ack,
 failure-result projection, historical storage, tenant model, quota, and an
 OpenAPI generator remain out of scope.
