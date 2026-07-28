@@ -7,12 +7,11 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemCommandMessage;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemResultMessage;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
 import java.net.URI;
-import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.WebSocket;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
@@ -28,6 +27,7 @@ public final class WebSocketWorkerTransport
     private static final int UNSUPPORTED_DATA = 1003;
     private final WebSocketConnector connector;
     private final URI socketUri;
+    private final String workerId;
     private final Duration reconnectInterval;
     private final WorkerDeliveryCodec codec;
     private final WorkerCommandProcessor processor;
@@ -71,10 +71,16 @@ public final class WebSocketWorkerTransport
             WorkerCommandProcessor processor
     ) {
         this.connector = connector;
+        if (workerId == null || workerId.isBlank()) {
+            throw new IllegalArgumentException(
+                    "workerId must be non-blank"
+            );
+        }
+        this.workerId = workerId;
         this.reconnectInterval = reconnectInterval;
         this.codec = codec;
         this.processor = processor;
-        socketUri = workerSocketUri(serverUrl, workerId);
+        socketUri = workerSocketUri(serverUrl);
         scheduler = Executors.newSingleThreadScheduledExecutor(runnable -> {
             Thread thread = new Thread(
                     runnable,
@@ -106,11 +112,7 @@ public final class WebSocketWorkerTransport
         }
         socket = webSocket;
         reconnectScheduled = false;
-        if (pendingResult == null) {
-            webSocket.request(1);
-        } else {
-            sendPending(webSocket);
-        }
+        sendBind(webSocket);
     }
 
     @Override
@@ -276,6 +278,38 @@ public final class WebSocketWorkerTransport
         }
     }
 
+    private void sendBind(WebSocket webSocket) {
+        try {
+            webSocket.sendText(
+                    codec.encodeWorkerConnectionBind(
+                            new WorkerConnectionBind(workerId)
+                    ),
+                    true
+            ).whenComplete((ignored, error) -> {
+                synchronized (WebSocketWorkerTransport.this) {
+                    if (!running || webSocket != socket) {
+                        return;
+                    }
+                    if (error != null) {
+                        socket = null;
+                        webSocket.abort();
+                        scheduleReconnect();
+                    } else if (pendingResult == null) {
+                        webSocket.request(1);
+                    } else {
+                        sendPending(webSocket);
+                    }
+                }
+            });
+        } catch (RuntimeException error) {
+            if (webSocket == socket) {
+                socket = null;
+            }
+            webSocket.abort();
+            scheduleReconnect();
+        }
+    }
+
     private void closeProtocolError(WebSocket webSocket, int code) {
         if (webSocket == socket) {
             socket = null;
@@ -307,7 +341,7 @@ public final class WebSocketWorkerTransport
         );
     }
 
-    private static URI workerSocketUri(URI serverUrl, String workerId) {
+    private static URI workerSocketUri(URI serverUrl) {
         String scheme = switch (serverUrl.getScheme()) {
             case "http" -> "ws";
             case "https" -> "wss";
@@ -323,11 +357,7 @@ public final class WebSocketWorkerTransport
         return URI.create(
                 scheme
                         + base.substring(httpScheme.length())
-                        + "/api/v1/worker-delivery/websocket/workers/"
-                        + URLEncoder.encode(
-                                workerId,
-                                StandardCharsets.UTF_8
-                        ).replace("+", "%20")
+                        + "/api/v1/worker-delivery/websocket"
         );
     }
 

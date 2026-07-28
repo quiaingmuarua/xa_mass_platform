@@ -1,13 +1,12 @@
-package com.xa.mass.workerdelivery.adapter.websocket;
+package com.xa.mass.workerdelivery.adapter.dispatch;
 
-import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.CommandDeliveryAttempt.REJECTED_BEFORE_SEND;
-import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.ConnectionCloseReason.ADAPTER_STOPPING;
+import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.REJECTED_BEFORE_SEND;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerCommandPage;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.adapter.message.BoundedWorkerResultBuffer;
-import com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.CommandDeliveryAttempt;
+import com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliverSeed;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
@@ -23,13 +22,13 @@ import java.util.concurrent.Future;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.LongSupplier;
 
-final class WorkerDeliveryAdapterCore {
+public final class WorkerDeliveryAdapterCore {
 
     private static final String UNAVAILABLE_WORKER_OUTCOME_CODE = "3001";
 
     private final WorkerDeliveryGatewayClient gateway;
     private final WorkerDeliveryCodec codec;
-    private final WorkerConnectionRegistry connections;
+    private final WorkerCommandDelivery commandDelivery;
     private final String adapterId;
     private final int scanCount;
     private final int resultBatchSize;
@@ -41,10 +40,10 @@ final class WorkerDeliveryAdapterCore {
     private volatile boolean closed;
     private String cursor;
 
-    WorkerDeliveryAdapterCore(
+    public WorkerDeliveryAdapterCore(
             WorkerDeliveryGatewayClient gateway,
             WorkerDeliveryCodec codec,
-            WorkerConnectionRegistry connections,
+            WorkerCommandDelivery commandDelivery,
             String adapterId,
             int scanCount,
             int resultBatchSize,
@@ -53,7 +52,7 @@ final class WorkerDeliveryAdapterCore {
         this(
                 gateway,
                 codec,
-                connections,
+                commandDelivery,
                 adapterId,
                 scanCount,
                 resultBatchSize,
@@ -65,7 +64,7 @@ final class WorkerDeliveryAdapterCore {
     WorkerDeliveryAdapterCore(
             WorkerDeliveryGatewayClient gateway,
             WorkerDeliveryCodec codec,
-            WorkerConnectionRegistry connections,
+            WorkerCommandDelivery commandDelivery,
             String adapterId,
             int scanCount,
             int resultBatchSize,
@@ -74,9 +73,9 @@ final class WorkerDeliveryAdapterCore {
     ) {
         this.gateway = Objects.requireNonNull(gateway, "gateway");
         this.codec = Objects.requireNonNull(codec, "codec");
-        this.connections = Objects.requireNonNull(
-                connections,
-                "connections"
+        this.commandDelivery = Objects.requireNonNull(
+                commandDelivery,
+                "commandDelivery"
         );
         if (adapterId == null || adapterId.isBlank()) {
             throw new IllegalArgumentException(
@@ -99,7 +98,7 @@ final class WorkerDeliveryAdapterCore {
         this.nowMillis = Objects.requireNonNull(nowMillis, "nowMillis");
     }
 
-    void dispatchOnce(ExecutorService deliveryExecutor) {
+    public void dispatchOnce(ExecutorService deliveryExecutor) {
         Objects.requireNonNull(deliveryExecutor, "deliveryExecutor");
         roundLock.lock();
         try {
@@ -123,7 +122,7 @@ final class WorkerDeliveryAdapterCore {
         }
     }
 
-    void close() {
+    public void close() {
         roundLock.lock();
         try {
             if (closed) {
@@ -131,7 +130,6 @@ final class WorkerDeliveryAdapterCore {
             }
             closed = true;
             resultBuffer.stopAccepting();
-            connections.closeAll(ADAPTER_STOPPING);
             flushPendingResults();
             while (!resultBuffer.isEmpty()) {
                 drainOneBufferedResultBatch();
@@ -161,7 +159,7 @@ final class WorkerDeliveryAdapterCore {
                     new DeliveryOutcome(
                             workerId,
                             command,
-                            connections.deliver(workerId, command)
+                            commandDelivery.deliver(workerId, command)
                     )
             ));
         }

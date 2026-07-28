@@ -1,8 +1,8 @@
-package com.xa.mass.workerdelivery.adapter.websocket;
+package com.xa.mass.workerdelivery.adapter.dispatch;
 
-import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.CommandDeliveryAttempt.DELIVERED;
-import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.CommandDeliveryAttempt.REJECTED_BEFORE_SEND;
-import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.CommandDeliveryAttempt.UNKNOWN;
+import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.DELIVERED;
+import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.REJECTED_BEFORE_SEND;
+import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.UNKNOWN;
 import static com.xa.mass.workerdelivery.adapter.message.BoundedWorkerResultBuffer.OfferStatus.ACCEPTED;
 import static com.xa.mass.workerdelivery.adapter.message.BoundedWorkerResultBuffer.OfferStatus.CLOSED;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -12,13 +12,11 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerCommandPage;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.adapter.message.BoundedWorkerResultBuffer;
-import com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.CommandDeliveryAttempt;
-import com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.ConnectionCloseReason;
+import com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
-import io.netty.channel.Channel;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -216,7 +214,7 @@ class WorkerDeliveryAdapterCoreTest {
 
     private WorkerDeliveryAdapterCore core(
             WorkerDeliveryGatewayClient gateway,
-            WorkerConnectionRegistry connections,
+            WorkerCommandDelivery connections,
             int capacity,
             int batchSize
     ) {
@@ -230,7 +228,7 @@ class WorkerDeliveryAdapterCoreTest {
 
     private WorkerDeliveryAdapterCore core(
             WorkerDeliveryGatewayClient gateway,
-            WorkerConnectionRegistry connections,
+            WorkerCommandDelivery connections,
             BoundedWorkerResultBuffer resultBuffer,
             int batchSize
     ) {
@@ -277,7 +275,7 @@ class WorkerDeliveryAdapterCoreTest {
     }
 
     private static final class FakeConnectionRegistry
-            implements WorkerConnectionRegistry {
+            implements WorkerCommandDelivery {
 
         private final Map<String, DeliveryBehavior> deliveries =
                 new HashMap<>();
@@ -287,16 +285,6 @@ class WorkerDeliveryAdapterCoreTest {
                 DeliveryBehavior behavior
         ) {
             deliveries.put(workerId, behavior);
-        }
-
-        @Override
-        public void bind(String workerId, Channel channel) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public void unbind(String workerId, Channel channel) {
-            throw new UnsupportedOperationException();
         }
 
         @Override
@@ -310,18 +298,6 @@ class WorkerDeliveryAdapterCoreTest {
                     : behavior.deliver(command);
         }
 
-        @Override
-        public void close(
-                String workerId,
-                Channel channel,
-                ConnectionCloseReason reason
-        ) {
-            throw new UnsupportedOperationException();
-        }
-
-        @Override
-        public void closeAll(ConnectionCloseReason reason) {
-        }
     }
 
     @FunctionalInterface

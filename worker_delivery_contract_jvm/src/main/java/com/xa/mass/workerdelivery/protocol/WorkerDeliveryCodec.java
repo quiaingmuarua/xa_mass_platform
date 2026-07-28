@@ -5,6 +5,7 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemCommandMessage;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemResultMessage;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessage;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessageType;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
@@ -18,6 +19,11 @@ import tools.jackson.databind.node.ObjectNode;
 
 public final class WorkerDeliveryCodec {
 
+    private static final String WORKER_BIND_MESSAGE_TYPE = "WORKER_BIND";
+    private static final Set<String> CONNECTION_BIND_FIELDS = Set.of(
+            "messageType",
+            "workerId"
+    );
     private static final Set<String> COMMAND_FIELDS = Set.of(
             "commandId",
             "executeBeforeMillis",
@@ -50,6 +56,40 @@ public final class WorkerDeliveryCodec {
     );
 
     private final ObjectMapper objectMapper = JsonMapper.builder().build();
+
+    public WorkerConnectionBind decodeWorkerConnectionBind(String value) {
+        try {
+            JsonNode payload = objectMapper.readTree(value);
+            if (!(payload instanceof ObjectNode object)
+                    || !fieldNames(object).equals(CONNECTION_BIND_FIELDS)) {
+                return null;
+            }
+            JsonNode messageType = object.get("messageType");
+            JsonNode workerId = object.get("workerId");
+            if (!messageType.isTextual()
+                    || !WORKER_BIND_MESSAGE_TYPE.equals(
+                            messageType.textValue()
+                    )
+                    || !workerId.isTextual()) {
+                return null;
+            }
+            return new WorkerConnectionBind(workerId.textValue());
+        } catch (JacksonException | IllegalArgumentException error) {
+            return null;
+        }
+    }
+
+    public String encodeWorkerConnectionBind(WorkerConnectionBind bind) {
+        if (bind == null) {
+            throw new IllegalArgumentException(
+                    "WorkerConnectionBind must be present"
+            );
+        }
+        ObjectNode payload = objectMapper.createObjectNode();
+        payload.put("messageType", WORKER_BIND_MESSAGE_TYPE);
+        payload.put("workerId", bind.workerId());
+        return write(payload, "WorkerConnectionBind");
+    }
 
     public WorkerCommandEnvelope decodeWorkerCommand(String value) {
         try {

@@ -10,6 +10,7 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultOutc
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemCommandMessage;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemResultMessage;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
 import org.junit.jupiter.api.Test;
 
@@ -18,6 +19,25 @@ class WorkerDeliveryProtocolTest {
     private static final String COMMAND_ID =
             "a5e9e10d-f78b-469e-93ab-864b49c189c1";
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
+
+    @Test
+    void workerConnectionBindUsesItsOwnStrictWireContract() {
+        WorkerConnectionBind bind = new WorkerConnectionBind("worker-1");
+        String encoded = """
+                {"messageType":"WORKER_BIND","workerId":"worker-1"}\
+                """;
+
+        assertEquals(encoded, codec.encodeWorkerConnectionBind(bind));
+        assertEquals(bind, codec.decodeWorkerConnectionBind(encoded));
+        assertNull(codec.decodeWorkerConnectionBind(
+                "{\"messageType\":\"WORKER_BIND\",\"workerId\":\"\"}"
+        ));
+        assertNull(codec.decodeWorkerConnectionBind(
+                "{\"messageType\":\"WORKER_BIND\",\"workerId\":\"worker-1\","
+                        + "\"extra\":true}"
+        ));
+        assertNull(codec.decodeWorkerConnectionMessage(encoded));
+    }
 
     @Test
     void workerCommandMatchesThePythonGoldenJson() {

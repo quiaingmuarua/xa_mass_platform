@@ -13,6 +13,7 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemCommandMessage;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemResultMessage;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
 import java.io.IOException;
 import java.net.ServerSocket;
@@ -59,12 +60,11 @@ class WebSocketWorkerDeliveryAdapterTest {
         manager.register(second);
         manager.start();
 
-        Probe firstProbe = new Probe();
-        Probe secondProbe = new Probe();
-        WebSocket firstSocket = connect(firstPort, "worker-1", firstProbe);
+        Probe firstProbe = new Probe("worker-1");
+        Probe secondProbe = new Probe("worker-1");
+        WebSocket firstSocket = connect(firstPort, firstProbe);
         WebSocket secondSocket = connect(
                 secondPort,
-                "worker-1",
                 secondProbe
         );
         try {
@@ -76,6 +76,8 @@ class WebSocketWorkerDeliveryAdapterTest {
                     2,
                     TimeUnit.SECONDS
             )).isTrue();
+            awaitBound(first);
+            awaitBound(second);
 
             WorkerCommandEnvelope firstCommand = command(
                     "a5e9e10d-f78b-469e-93ab-864b49c189c1"
@@ -170,6 +172,80 @@ class WebSocketWorkerDeliveryAdapterTest {
                 .isEqualTo(WorkerDeliveryAdapterState.CLOSED);
     }
 
+    @Test
+    void requiresOneBindAndRejectsTheOldIdentityPath()
+            throws Exception {
+        int port = availablePort();
+        WebSocketWorkerDeliveryAdapter adapter = adapter(
+                "websocket-1",
+                port,
+                new FakeGateway()
+        );
+        adapter.start();
+        WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
+        try {
+            Probe unbound = new Probe();
+            WebSocket unboundSocket = connect(port, unbound);
+            assertThat(unbound.opened.await(
+                    2,
+                    TimeUnit.SECONDS
+            )).isTrue();
+            unboundSocket.sendText(
+                    codec.encodeWorkerConnectionMessage(
+                            new TaskItemResultMessage(new SeedResult(
+                                    "a5e9e10d-f78b-469e-93ab-864b49c189c1",
+                                    "context",
+                                    "200",
+                                    "null"
+                            ))
+                    ),
+                    true
+            ).get(2, TimeUnit.SECONDS);
+            assertThat(unbound.closed.await(
+                    2,
+                    TimeUnit.SECONDS
+            )).isTrue();
+
+            Probe bound = new Probe("worker-1");
+            WebSocket boundSocket = connect(port, bound);
+            assertThat(bound.opened.await(
+                    2,
+                    TimeUnit.SECONDS
+            )).isTrue();
+            awaitBound(adapter);
+            boundSocket.sendText(
+                    codec.encodeWorkerConnectionBind(
+                            new WorkerConnectionBind("worker-1")
+                    ),
+                    true
+            ).get(2, TimeUnit.SECONDS);
+            assertThat(bound.closed.await(
+                    2,
+                    TimeUnit.SECONDS
+            )).isTrue();
+
+            Probe oldPath = new Probe();
+            assertThatThrownBy(() -> HttpClient.newHttpClient()
+                    .newWebSocketBuilder()
+                    .connectTimeout(Duration.ofSeconds(2))
+                    .buildAsync(
+                            URI.create(
+                                    "ws://127.0.0.1:" + port
+                                            + WorkerWebSocketHandler
+                                            .WORKER_PATH
+                                            + "/workers/worker-1"
+                            ),
+                            oldPath
+                    )
+                    .get(2, TimeUnit.SECONDS))
+                    .hasCauseInstanceOf(
+                            java.net.http.WebSocketHandshakeException.class
+                    );
+        } finally {
+            adapter.close();
+        }
+    }
+
     private static WebSocketWorkerDeliveryAdapter adapter(
             String adapterId,
             int port,
@@ -202,7 +278,6 @@ class WebSocketWorkerDeliveryAdapterTest {
 
     private static WebSocket connect(
             int port,
-            String workerId,
             Probe probe
     ) throws Exception {
         return HttpClient.newHttpClient()
@@ -211,13 +286,24 @@ class WebSocketWorkerDeliveryAdapterTest {
                 .buildAsync(
                         URI.create(
                                 "ws://127.0.0.1:" + port
-                                        + WorkerWebSocketHandler
-                                                .WORKER_PATH_PREFIX
-                                        + workerId
+                                        + WorkerWebSocketHandler.WORKER_PATH
                         ),
                         probe
                 )
                 .get(2, TimeUnit.SECONDS);
+    }
+
+    private static void awaitBound(WebSocketWorkerDeliveryAdapter adapter)
+            throws InterruptedException {
+        long deadline = System.nanoTime()
+                + Duration.ofSeconds(2).toNanos();
+        while (System.nanoTime() < deadline) {
+            if (adapter.activeConnectionCount() == 1) {
+                return;
+            }
+            Thread.sleep(5);
+        }
+        throw new AssertionError("Worker connection was not bound");
     }
 
     private static int availablePort() {
@@ -269,15 +355,41 @@ class WebSocketWorkerDeliveryAdapterTest {
 
     private static final class Probe implements WebSocket.Listener {
 
+        private final String workerId;
+        private final WorkerDeliveryCodec codec =
+                new WorkerDeliveryCodec();
         private final CountDownLatch opened = new CountDownLatch(1);
         private final CountDownLatch message = new CountDownLatch(1);
+        private final CountDownLatch closed = new CountDownLatch(1);
         private final List<String> messages = new ArrayList<>();
         private final StringBuilder fragments = new StringBuilder();
 
+        private Probe(String workerId) {
+            this.workerId = workerId;
+        }
+
+        private Probe() {
+            this.workerId = null;
+        }
+
         @Override
         public void onOpen(WebSocket webSocket) {
-            opened.countDown();
-            webSocket.request(1);
+            if (workerId == null) {
+                opened.countDown();
+                webSocket.request(1);
+                return;
+            }
+            webSocket.sendText(
+                    codec.encodeWorkerConnectionBind(
+                            new WorkerConnectionBind(workerId)
+                    ),
+                    true
+            ).whenComplete((ignored, error) -> {
+                if (error == null) {
+                    opened.countDown();
+                    webSocket.request(1);
+                }
+            });
         }
 
         @Override
@@ -293,6 +405,16 @@ class WebSocketWorkerDeliveryAdapterTest {
                 message.countDown();
             }
             webSocket.request(1);
+            return CompletableFuture.completedFuture(null);
+        }
+
+        @Override
+        public CompletionStage<?> onClose(
+                WebSocket webSocket,
+                int statusCode,
+                String reason
+        ) {
+            closed.countDown();
             return CompletableFuture.completedFuture(null);
         }
     }

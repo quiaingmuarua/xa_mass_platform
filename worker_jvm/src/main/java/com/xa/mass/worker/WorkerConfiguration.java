@@ -33,23 +33,15 @@ public record WorkerConfiguration(
             throw new IllegalArgumentException("transport must be present");
         }
         requireNonBlank(workerId, "--worker-id");
-        if (serverUrl == null
-                || serverUrl.getScheme() == null
-                || serverUrl.getHost() == null
-                || !Set.of("http", "https").contains(
-                        serverUrl.getScheme()
-                )) {
-            throw new IllegalArgumentException(
-                    "--server-url must be an absolute HTTP URL"
-            );
-        }
+        requireServerUrl(transport, serverUrl);
         requirePositive(requestTimeout, "--request-timeout-millis");
         if (transport == WorkerTransportMode.POLLING) {
             requireNonBlank(endpointManagerId, "--endpoint-manager-id");
             requirePositive(pollInterval, "--poll-interval-millis");
             if (reconnectInterval != null) {
                 throw new IllegalArgumentException(
-                        "--reconnect-interval-millis is WebSocket-only"
+                        "--reconnect-interval-millis is for "
+                                + "WebSocket/Socket transports"
                 );
             }
         } else {
@@ -76,7 +68,9 @@ public record WorkerConfiguration(
                 "--server-url",
                 transport == WorkerTransportMode.POLLING
                         ? "http://127.0.0.1:18082"
-                        : "http://127.0.0.1:18083"
+                        : transport == WorkerTransportMode.WEBSOCKET
+                                ? "http://127.0.0.1:18083"
+                                : "tcp://127.0.0.1:18084"
         ));
         Duration timeout = positiveDuration(
                 values.getOrDefault("--request-timeout-millis", "5000"),
@@ -86,7 +80,8 @@ public record WorkerConfiguration(
         if (transport == WorkerTransportMode.POLLING) {
             if (values.containsKey("--reconnect-interval-millis")) {
                 throw new IllegalArgumentException(
-                        "--reconnect-interval-millis is WebSocket-only"
+                        "--reconnect-interval-millis is for "
+                                + "WebSocket/Socket transports"
                 );
             }
             return new WorkerConfiguration(
@@ -180,6 +175,35 @@ public record WorkerConfiguration(
     private static void requireNonBlank(String value, String option) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(option + " is required");
+        }
+    }
+
+    private static void requireServerUrl(
+            WorkerTransportMode transport,
+            URI serverUrl
+    ) {
+        if (serverUrl == null
+                || serverUrl.getScheme() == null
+                || serverUrl.getHost() == null) {
+            throw new IllegalArgumentException(
+                    "--server-url must be absolute"
+            );
+        }
+        boolean valid = transport == WorkerTransportMode.SOCKET
+                ? "tcp".equalsIgnoreCase(serverUrl.getScheme())
+                && serverUrl.getPort() > 0
+                && (serverUrl.getPath() == null
+                || serverUrl.getPath().isEmpty())
+                : Set.of("http", "https").contains(
+                        serverUrl.getScheme().toLowerCase()
+                );
+        if (!valid) {
+            throw new IllegalArgumentException(
+                    transport == WorkerTransportMode.SOCKET
+                            ? "--server-url must be tcp://host:port "
+                            + "for socket"
+                            : "--server-url must be an absolute HTTP URL"
+            );
         }
     }
 }

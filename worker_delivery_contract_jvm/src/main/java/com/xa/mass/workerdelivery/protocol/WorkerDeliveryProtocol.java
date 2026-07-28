@@ -68,6 +68,12 @@ public final class WorkerDeliveryProtocol {
         ADAPTER_REJECTION
     }
 
+    public record WorkerConnectionBind(String workerId) {
+        public WorkerConnectionBind {
+            requireNonBlank(workerId, "workerId");
+        }
+    }
+
     public record DeliverSeed(
             String workerId,
             String opaqueDeliveryItem,

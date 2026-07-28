@@ -59,6 +59,35 @@ class WorkerConfigurationTest {
     }
 
     @Test
+    void socketUsesTcpEndpointAndLongLivedReconnectPolicy() {
+        WorkerConfiguration configuration = WorkerConfiguration.parse(
+                new String[]{
+                        "--transport", "socket",
+                        "--worker-id", "worker-1"
+                }
+        );
+
+        assertEquals(WorkerTransportMode.SOCKET, configuration.transport());
+        assertEquals(
+                URI.create("tcp://127.0.0.1:18084"),
+                configuration.serverUrl()
+        );
+        assertEquals(
+                Duration.ofSeconds(1),
+                configuration.reconnectInterval()
+        );
+        assertNull(configuration.endpointManagerId());
+        assertNull(configuration.pollInterval());
+        assertThrows(IllegalArgumentException.class, () ->
+                WorkerConfiguration.parse(new String[]{
+                        "--transport", "socket",
+                        "--worker-id", "worker-1",
+                        "--server-url", "http://127.0.0.1:18084"
+                })
+        );
+    }
+
+    @Test
     void pollingRejectsWebsocketOnlyAndInvalidOptions() {
         assertThrows(IllegalArgumentException.class, () ->
                 WorkerConfiguration.parse(new String[]{

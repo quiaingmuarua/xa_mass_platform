@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
+import com.xa.mass.workerdelivery.adapter.socket.SocketWorkerDeliveryAdapter;
 import com.xa.mass.workerdelivery.adapter.websocket.WebSocketWorkerDeliveryAdapter;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import java.net.URI;
@@ -25,7 +26,7 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
                     );
 
     @Test
-    void bindsTwoOrderedInstanceTreesAndAppliesDefaults() {
+    void bindsOrderedWebSocketAndSocketInstancesAndAppliesDefaults() {
         contextRunner.withPropertyValues(
                 "xa.mass.worker-delivery.adapter.gateway"
                         + ".base-url=http://127.0.0.1:18082",
@@ -34,26 +35,26 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
                 "xa.mass.worker-delivery.adapter.instances"
                         + ".websocket-1.listen-port=18083",
                 "xa.mass.worker-delivery.adapter.instances"
-                        + ".websocket-2.type=WEBSOCKET",
+                        + ".socket-1.type=SOCKET",
                 "xa.mass.worker-delivery.adapter.instances"
-                        + ".websocket-2.listen-host=127.0.0.1",
+                        + ".socket-1.listen-host=127.0.0.1",
                 "xa.mass.worker-delivery.adapter.instances"
-                        + ".websocket-2.listen-port=18084",
+                        + ".socket-1.listen-port=18084",
                 "xa.mass.worker-delivery.adapter.instances"
-                        + ".websocket-2.delivery-parallelism=8"
+                        + ".socket-1.delivery-parallelism=8"
         ).run(context -> {
             assertThat(context).hasNotFailed();
             WorkerDeliveryAdapterManager manager = context.getBean(
                     WorkerDeliveryAdapterManager.class
             );
             assertThat(manager.adapters().keySet())
-                    .containsExactly("websocket-1", "websocket-2");
+                    .containsExactly("websocket-1", "socket-1");
             WebSocketWorkerDeliveryAdapter first =
                     (WebSocketWorkerDeliveryAdapter)
                             manager.requireAdapter("websocket-1");
-            WebSocketWorkerDeliveryAdapter second =
-                    (WebSocketWorkerDeliveryAdapter)
-                            manager.requireAdapter("websocket-2");
+            SocketWorkerDeliveryAdapter second =
+                    (SocketWorkerDeliveryAdapter)
+                            manager.requireAdapter("socket-1");
             assertThat(first.listenHost()).isEqualTo("0.0.0.0");
             assertThat(first.listenPort()).isEqualTo(18083);
             assertThat(second.listenHost()).isEqualTo("127.0.0.1");

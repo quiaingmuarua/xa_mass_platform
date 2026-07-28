@@ -178,10 +178,10 @@ Then start the external Runtime API Server:
 ```
 
 Run the Java reference Worker through point polling, or configure one or more
-WebSocket Adapter instances and use the WebSocket profile, as documented in
-[worker_jvm](../worker_jvm/README.md).
+WebSocket/Socket Adapter instances and use the matching long-lived profile, as
+documented in [worker_jvm](../worker_jvm/README.md).
 
-Two WebSocket Adapter instances:
+One WebSocket and one Socket Adapter instance:
 
 ```yaml
 xa.mass.worker-delivery.adapter:
@@ -199,8 +199,8 @@ xa.mass.worker-delivery.adapter:
       result-batch-size: 100
       result-buffer-capacity: 1000
       send-time-limit: 5s
-    websocket-2:
-      type: WEBSOCKET
+    socket-1:
+      type: SOCKET
       listen-host: 0.0.0.0
       listen-port: 18084
 ```
@@ -208,7 +208,9 @@ xa.mass.worker-delivery.adapter:
 The instance map key is both `adapterId` and `endpointManagerId`; the Worker
 declaration must use the matching value. Each instance starts an independent
 Netty listener after the Server is ready and calls the shared Gateway
-`base-url`. An empty `instances` map starts no active Adapter.
+`base-url`. A WebSocket Worker connects to the instance's fixed WebSocket path;
+a Socket Worker connects to its TCP port. Both send `WORKER_BIND` before
+business messages. An empty `instances` map starts no active Adapter.
 
 Instances must use distinct IDs and listener ports. Do not duplicate an
 endpoint-manager ID for throughput. A single instance uses one mailbox cursor

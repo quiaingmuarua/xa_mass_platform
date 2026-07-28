@@ -1,4 +1,4 @@
-package com.xa.mass.workerdelivery.adapter.websocket;
+package com.xa.mass.workerdelivery.adapter.socket;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID;
 
@@ -20,10 +20,11 @@ import io.netty.channel.MultiThreadIoEventLoopGroup;
 import io.netty.channel.nio.NioIoHandler;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
-import io.netty.handler.codec.http.HttpObjectAggregator;
-import io.netty.handler.codec.http.HttpServerCodec;
-import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler;
+import io.netty.handler.codec.LineBasedFrameDecoder;
+import io.netty.handler.codec.string.StringDecoder;
+import io.netty.handler.codec.string.StringEncoder;
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
@@ -33,12 +34,12 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
-public final class WebSocketWorkerDeliveryAdapter
+public final class SocketWorkerDeliveryAdapter
         implements WorkerDeliveryAdapter {
 
-    private static final int MAX_HTTP_CONTENT_BYTES = 1_048_576;
+    private static final int MAX_LINE_BYTES = 1_048_576;
     private static final System.Logger LOGGER = System.getLogger(
-            WebSocketWorkerDeliveryAdapter.class.getName()
+            SocketWorkerDeliveryAdapter.class.getName()
     );
 
     private final String adapterId;
@@ -48,7 +49,7 @@ public final class WebSocketWorkerDeliveryAdapter
     private final int deliveryParallelism;
     private final Duration shutdownTimeout;
     private final WorkerDeliveryCodec codec;
-    private final NettyWorkerConnectionRegistry connections;
+    private final NettySocketWorkerConnectionRegistry connections;
     private final WorkerDeliveryAdapterCore core;
     private final WorkerConnectionMessageDispatcher messageDispatcher;
     private volatile WorkerDeliveryAdapterState state =
@@ -58,7 +59,7 @@ public final class WebSocketWorkerDeliveryAdapter
     private ScheduledExecutorService scheduler;
     private ExecutorService deliveryExecutor;
 
-    public WebSocketWorkerDeliveryAdapter(
+    public SocketWorkerDeliveryAdapter(
             String adapterId,
             WorkerDeliveryGatewayClient gateway,
             WorkerDeliveryCodec codec,
@@ -100,7 +101,7 @@ public final class WebSocketWorkerDeliveryAdapter
         this.dispatchInterval = dispatchInterval;
         this.deliveryParallelism = deliveryParallelism;
         this.shutdownTimeout = shutdownTimeout;
-        connections = new NettyWorkerConnectionRegistry(
+        connections = new NettySocketWorkerConnectionRegistry(
                 codec,
                 sendTimeLimit
         );
@@ -199,10 +200,7 @@ public final class WebSocketWorkerDeliveryAdapter
             failure = accumulate(failure, error);
         }
         try {
-            connections.closeAll(
-                    WorkerConnectionRegistry.ConnectionCloseReason
-                            .ADAPTER_STOPPING
-            );
+            connections.closeAll();
         } catch (RuntimeException error) {
             failure = accumulate(failure, error);
         }
@@ -214,6 +212,10 @@ public final class WebSocketWorkerDeliveryAdapter
         if (failure != null) {
             throw failure;
         }
+    }
+
+    int activeConnectionCount() {
+        return connections.activeConnectionCount();
     }
 
     private void initializeExecutors() {
@@ -241,25 +243,18 @@ public final class WebSocketWorkerDeliveryAdapter
                     @Override
                     protected void initChannel(SocketChannel channel) {
                         channel.pipeline()
-                                .addLast(new HttpServerCodec())
-                                .addLast(new HttpObjectAggregator(
-                                        MAX_HTTP_CONTENT_BYTES
+                                .addLast(new LineBasedFrameDecoder(
+                                        MAX_LINE_BYTES,
+                                        true,
+                                        true
                                 ))
-                                .addLast(
-                                        new WebSocketServerProtocolHandler(
-                                                WorkerWebSocketHandler
-                                                        .WORKER_PATH,
-                                                null,
-                                                false,
-                                                MAX_HTTP_CONTENT_BYTES,
-                                                false,
-                                                false
-                                        )
-                                )
-                                .addLast(
-                                        new UnmatchedWebSocketRequestHandler()
-                                )
-                                .addLast(new WorkerWebSocketHandler(
+                                .addLast(new StringDecoder(
+                                        StandardCharsets.UTF_8
+                                ))
+                                .addLast(new StringEncoder(
+                                        StandardCharsets.UTF_8
+                                ))
+                                .addLast(new SocketWorkerHandler(
                                         connections,
                                         codec,
                                         messageDispatcher,
@@ -277,12 +272,12 @@ public final class WebSocketWorkerDeliveryAdapter
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
             throw new WorkerDeliveryAdapterException(
-                    "WebSocket listener start was interrupted",
+                    "Socket listener start was interrupted",
                     error
             );
         } catch (Exception error) {
             throw new WorkerDeliveryAdapterException(
-                    "Could not bind WebSocket Adapter " + adapterId,
+                    "Could not bind Socket Adapter " + adapterId,
                     error
             );
         }
@@ -307,10 +302,6 @@ public final class WebSocketWorkerDeliveryAdapter
                     error.getClass().getName()
             );
         }
-    }
-
-    int activeConnectionCount() {
-        return connections.activeConnectionCount();
     }
 
     private RuntimeException stopScheduler(

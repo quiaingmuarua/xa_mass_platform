@@ -2,8 +2,8 @@
 
 Status: active new-kernel boundary contract; Python protocol/Redis oracle,
 shared Java protocol, Java Server point/batch API, multi-endpoint Netty
-WebSocket Adapter Runtime, and one-slot polling/WebSocket phone Worker
-implemented;
+WebSocket/Socket Adapter Runtime, and one-slot polling/WebSocket/Socket phone
+Worker implemented;
 production authentication and same-endpoint HA policy deferred.
 
 Upstream contract: [Task Dispatch Pacer](task-dispatch-pacer.md).
@@ -11,7 +11,7 @@ Worker lease contract:
 [Worker HOT_ACQUIRE Lease Protocol](worker-hot-acquire-lease-protocol.md).
 Executable HTTP host:
 [JVM Runtime API Server](../../../server_jvm/README.md).
-WebSocket Adapter:
+Active Adapter:
 [JVM Worker Delivery Adapter](../../../worker_delivery_adapter_jvm/README.md).
 Java Worker:
 [JVM Worker](../../../worker_jvm/README.md).
@@ -31,7 +31,7 @@ Server Worker Delivery API
   -> expose cursor consume and result batch operations to Adapters
   -> own WorkerCommand consume and SeedResult append
 
-WebSocket Adapter
+Active Adapter
   -> call the Server batch HTTP API
   -> register complete Adapter instances by endpointManagerId
   -> each instance owns a Netty listener, cursor, scheduler and result buffer
@@ -80,7 +80,7 @@ SeedResult(
 ```
 
 `DeliverSeed` is assignment handoff data. The Server HTTP and delivery owner
-code treats it as opaque. A WebSocket Adapter may strictly decode it only when
+code treats it as opaque. An active Adapter may strictly decode it only when
 it must validate the command target and construct trusted pre-execution
 Adapter rejection evidence.
 `WorkerCommandEnvelope` is the stable cross-Adapter and cross-language outbound
@@ -105,8 +105,21 @@ The only current `WorkerMessageType` is `TASK_ITEM`. It identifies how a Worker
 interprets the command's `opaqueItem`; Result Routing does not consume or
 interpret Worker message types.
 
-Long-lived transports use one additional, transport-neutral connection
-contract:
+Long-lived transports first establish their process-local connection binding:
+
+```text
+WorkerConnectionBind
+  {"messageType":"WORKER_BIND","workerId":"worker-1"}
+```
+
+`WORKER_BIND` is connection setup. It is not a
+`WorkerConnectionMessageType`, does not enter the business dispatcher, and is
+never stored in a WorkerCommand mailbox or SeedResult queue. A connection
+starts `UNBOUND`, accepts Bind exactly once, and only then accepts business
+messages.
+
+After binding, long-lived transports use one transport-neutral business
+connection contract:
 
 ```text
 WorkerConnectionMessage
@@ -121,9 +134,9 @@ owner. Decoding a command reconstructs the existing
 the existing `SeedResult`. Polling continues to exchange the existing command
 and result DTOs directly through point HTTP.
 
-The connection message contract exists so WebSocket and future long-lived
-transports share one frame vocabulary. It is not stored in the WorkerCommand
-mailbox or SeedResult queues and is not consumed by Result Routing.
+The connection message contract exists so WebSocket and Socket share one
+business-message vocabulary. It is not stored in the WorkerCommand mailbox or
+SeedResult queues and is not consumed by Result Routing.
 
 ## Runtime Contract
 
@@ -303,7 +316,7 @@ The cursor request and response are:
 ```
 
 Point and cursor consumers mechanically compete for the same Worker field.
-There is no Server-side reservation for a configured WebSocket identity;
+There is no Server-side reservation for a configured active Adapter identity;
 deployment must give one endpoint-manager bucket to one active Adapter
 consumer. `system-polling` remains point-only.
 
@@ -318,7 +331,7 @@ executes `opaqueDeliveryItem`, and copies `opaqueResultContext` into
 `executeBeforeMillis` are command-side coordinates.
 
 The repository's Java reference Worker implements the execution boundary once
-and selects either polling or WebSocket at startup. Both profiles are serial:
+and selects polling, WebSocket, or Socket at startup. All profiles are serial:
 
 ```text
 WorkerCommandEnvelope
@@ -329,15 +342,17 @@ WorkerCommandEnvelope
 ```
 
 Polling receives and submits the command/result DTOs through point HTTP.
-WebSocket receives `TASK_ITEM_COMMAND`, extracts its
-`WorkerCommandEnvelope`, and returns `TASK_ITEM_RESULT` carrying the resulting
-`SeedResult`. Bare command or result frames are invalid on the WebSocket
-transport.
+WebSocket and Socket first send `WORKER_BIND`, then receive
+`TASK_ITEM_COMMAND`, extract its `WorkerCommandEnvelope`, and return
+`TASK_ITEM_RESULT` carrying the resulting `SeedResult`. Bare command/result
+messages and business messages sent before Bind are invalid on both
+long-lived transports.
 
 Polling retains one failed result in process memory and retries it before
 polling another command. WebSocket requests another message only after result
-send completion and retains a failed send for the next connection. Neither
-profile accesses Adapter batch APIs, Redis, scores, Pacers, or TaskType.
+send completion. WebSocket and Socket retain a failed result for the next
+connection and resend it after Bind. No profile accesses Adapter batch APIs,
+Redis, scores, Pacers, or TaskType.
 
 `3xxx` remains reserved for trusted Adapter rejection evidence. A polling
 Worker cannot submit it; the Adapter batch endpoint is its protocol ingress.
@@ -347,18 +362,30 @@ One Adapter instance owns one configured non-`system-polling` endpoint-manager
 mailbox and one independent network listener. Its process-local lifecycle is:
 
 ```text
-WebSocketWorkerDeliveryAdapter
+WebSocketWorkerDeliveryAdapter | SocketWorkerDeliveryAdapter
   -> manager.register(instance)
   -> start Netty listener and bounded dispatch loop
   -> close listener, connections, loop and buffered results
 ```
 
 Registration is local composition, not Kernel or Server lifecycle truth. The
-first implementation supports only `WEBSOCKET`, but one JVM may register
-multiple complete instances when they have different endpoint-manager IDs and
-listen ports. The instance-map key is both `adapterId` and
-`endpointManagerId`; Adapter identity is not added to the WebSocket path.
-`system-polling` is not an active Adapter type.
+implemented types are `WEBSOCKET` and `SOCKET`. One JVM may register multiple
+complete instances when they have different endpoint-manager IDs and listen
+ports. The instance-map key is both `adapterId` and `endpointManagerId`;
+Adapter identity is not encoded into the WebSocket path or connection
+messages. `system-polling` is not an active Adapter type.
+
+Every WebSocket connection uses the fixed path:
+
+```text
+/api/v1/worker-delivery/websocket
+```
+
+Every Socket connection uses newline-delimited UTF-8 JSON. The first line is
+Bind; each later line is one connection business message. The Netty
+`LineBasedFrameDecoder` owns TCP fragmentation and coalescing, accepts LF or
+CRLF, and enforces the current 1 MiB frame bound. Commands are emitted with
+LF.
 
 One WorkerId has one current command-delivery connection. A newer connection
 replaces and best-effort closes the old connection; exact instance removal
@@ -376,15 +403,20 @@ evidence already produced through a replaced connection is still submitted,
 and Kernel ResultContext/Worker lease fences decide whether it affects current
 truth.
 
-The Adapter module owns its scheduled runtime, Netty listeners, frame
+The Adapter module owns its scheduled runtime, Netty listeners, transport
 translation, immutable message dispatcher, built-in message handlers,
-WebSocket-private process-local connection registry, cursor, delivery executor,
-and result buffer. Handler selection is static assembly, not runtime
-registration or policy discovery. A live connection registry is not Redis
-truth and is not serializable. `server_jvm` only converts configured JSON
-trees into concrete instances, registers them, and maps
+transport-private process-local Channel registries, cursor, delivery executor,
+and result buffer. Each concrete registry directly stores
+`workerId -> current Netty Channel`; it is not a generic session model or
+serializable DTO.
+
+The shared dispatch core does not import Netty, WebSocket, Socket, Bind, or
+transport close semantics. It only invokes the narrow
+`deliver(workerId, command)` seam. Handler selection is static assembly, not
+runtime registration or policy discovery. `server_jvm` only converts
+configured JSON trees into concrete instances, registers them, and maps
 process-ready/process-close events to Manager `start()`/`close()`. Server must
-not host WebSocket endpoints or call `dispatchOnce`. The Adapter module has no
+not host Adapter endpoints or call `dispatchOnce`. The Adapter module has no
 Spring, Redis, Kernel runtime, score, or Pacer dependency.
 
 There is no process-local fast path and no command or result ACK. Server/Redis
@@ -428,15 +460,16 @@ external Worker side effects exactly-once.
 - Do not let an Adapter consume another Adapter's bucket.
 - Do not expose cursor scanning through the polling Worker API.
 - Do not allow the `system-polling` identity to use Adapter batch operations.
-- Do not let the WebSocket Adapter access Redis or Kernel runtimes directly.
+- Do not let an active Adapter access Redis or Kernel runtimes directly.
 - Do not put mailbox cursor, result buffering, `3001`, or `UNKNOWN` policy into
   `server_jvm`.
-- Do not make `server_jvm` a WebSocket Adapter mechanism owner merely because
+- Do not make `server_jvm` an Adapter mechanism owner merely because
   it constructs configured instances, invokes Adapter lifecycle, and exposes
   the batch HTTP access boundary.
 - Do not let `server_jvm` call `dispatchOnce` or create the Adapter scheduler.
-- Do not encode Adapter identity into the common WebSocket path; host/port and
-  Worker route binding identify the Adapter instance.
+- Do not encode Adapter identity or Worker identity into the common WebSocket
+  path; host/port identifies the Adapter instance and Bind establishes the
+  process-local Worker connection.
 - Do not duplicate one endpoint-manager Adapter to increase throughput; tune
   the instance's scan bound, delivery parallelism, and cadence.
 - Do not add an embedded in-process shortcut around the Server batch HTTP API.

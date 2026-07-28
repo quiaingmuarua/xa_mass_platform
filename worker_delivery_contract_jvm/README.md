@@ -7,15 +7,31 @@ outcome classification, and strict deterministic JSON codec shared by
 `server_jvm` and `worker_jvm`.
 
 Polling uses `WorkerCommandEnvelope` and `SeedResult` directly. Long-lived
-transports use the strict flat `WorkerConnectionMessage` union:
+transports first establish the process-local Worker binding:
+
+```text
+connect
+-> WorkerConnectionBind(workerId)
+-> business messages
+```
+
+The strict bind wire is:
+
+```json
+{"messageType":"WORKER_BIND","workerId":"worker-1"}
+```
+
+`WORKER_BIND` is connection setup, not a business message type, and therefore
+does not enter `WorkerConnectionMessage` or its dispatcher. After binding,
+long-lived transports use the strict flat business-message union:
 
 ```text
 TASK_ITEM_COMMAND -> TaskItemCommandMessage(WorkerCommandEnvelope)
 TASK_ITEM_RESULT  -> TaskItemResultMessage(SeedResult)
 ```
 
-The union has no generic payload and is not a Kernel runtime or persistence
-contract.
+The bind DTO and business union have no generic payload and are not Kernel
+runtime or persistence contracts.
 
 ```text
 server_jvm -> worker_delivery_contract_jvm

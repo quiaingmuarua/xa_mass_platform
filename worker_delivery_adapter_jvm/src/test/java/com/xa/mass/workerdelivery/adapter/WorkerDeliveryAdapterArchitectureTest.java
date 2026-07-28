@@ -19,6 +19,12 @@ class WorkerDeliveryAdapterArchitectureTest {
     private static final Path MESSAGE = SOURCE.resolve(
             "com/xa/mass/workerdelivery/adapter/message"
     );
+    private static final Path DISPATCH = SOURCE.resolve(
+            "com/xa/mass/workerdelivery/adapter/dispatch"
+    );
+    private static final Path SOCKET = SOURCE.resolve(
+            "com/xa/mass/workerdelivery/adapter/socket"
+    );
     private static final Path WEBSOCKET = SOURCE.resolve(
             "com/xa/mass/workerdelivery/adapter/websocket"
     );
@@ -33,6 +39,7 @@ class WorkerDeliveryAdapterArchitectureTest {
                                 + "':worker_delivery_contract_jvm')"
                 )
                 .contains("io.netty:netty-transport")
+                .contains("io.netty:netty-codec")
                 .contains("io.netty:netty-codec-http")
                 .doesNotContain("spring-boot")
                 .doesNotContain("spring-websocket")
@@ -85,8 +92,6 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .contains("ServerBootstrap")
                 .contains("NioServerSocketChannel")
                 .contains("newFixedThreadPool")
-                .contains("final class WorkerDeliveryAdapterCore")
-                .contains("void dispatchOnce")
                 .doesNotContain("WebSocketWorkerDeliveryAdapterFactory")
                 .doesNotContain("AdapterRoundResult")
                 .doesNotContain("interface WorkerConnection {")
@@ -94,6 +99,27 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("NettyWebSocketWorkerConnection")
                 .doesNotContain("SpringWebSocket")
                 .doesNotContain("WorkerWebSocketEndpointConfigurer");
+
+        String socketTransport = readSources(SOCKET);
+        assertThat(socketTransport)
+                .contains("class SocketWorkerDeliveryAdapter")
+                .contains("Map<String, Channel> channels")
+                .contains("class NettySocketWorkerConnectionRegistry")
+                .contains("LineBasedFrameDecoder")
+                .contains("StringDecoder")
+                .contains("StringEncoder")
+                .doesNotContain("ConnectionHandle")
+                .doesNotContain("WorkerSessionToken");
+
+        String dispatch = readSources(DISPATCH);
+        assertThat(dispatch)
+                .contains("interface WorkerCommandDelivery")
+                .contains("final class WorkerDeliveryAdapterCore")
+                .contains("void dispatchOnce")
+                .doesNotContain("io.netty")
+                .doesNotContain(".websocket")
+                .doesNotContain(".socket")
+                .doesNotContain("Channel");
     }
 
     @Test
@@ -115,10 +141,12 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("com.xa.mass.kernel")
                 .doesNotContain("io.lettuce");
 
-        String websocketSources = readSources(WEBSOCKET);
-        assertThat(websocketSources)
+        String transportSources =
+                readSources(WEBSOCKET) + readSources(SOCKET);
+        assertThat(transportSources)
                 .contains("decodeWorkerConnectionMessage")
                 .contains("encodeWorkerConnectionMessage")
+                .contains("decodeWorkerConnectionBind")
                 .contains("WorkerConnectionMessageDispatcher")
                 .doesNotContain(
                         "private final "

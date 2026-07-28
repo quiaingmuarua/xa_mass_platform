@@ -1,8 +1,7 @@
-package com.xa.mass.workerdelivery.adapter.websocket;
+package com.xa.mass.workerdelivery.adapter.socket;
 
 import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.DELIVERED;
 import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.REJECTED_BEFORE_SEND;
-import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.ConnectionCloseReason.TRANSPORT_ERROR;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
@@ -10,19 +9,16 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemComman
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
 import io.netty.channel.embedded.EmbeddedChannel;
-import io.netty.handler.codec.http.websocketx.CloseWebSocketFrame;
-import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
-import io.netty.util.ReferenceCountUtil;
 import java.time.Duration;
 import org.junit.jupiter.api.Test;
 
-class NettyWorkerConnectionRegistryTest {
+class NettySocketWorkerConnectionRegistryTest {
 
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
 
     @Test
-    void replacementAndOldUnbindPreserveCurrentChannel() {
-        NettyWorkerConnectionRegistry registry = registry();
+    void replacementPreservesTheLatestChannelAndWritesOneLine() {
+        NettySocketWorkerConnectionRegistry registry = registry();
         EmbeddedChannel first = new EmbeddedChannel();
         EmbeddedChannel second = new EmbeddedChannel();
         try {
@@ -32,19 +28,14 @@ class NettyWorkerConnectionRegistryTest {
 
             assertThat(registry.deliver("worker-1", command()))
                     .isEqualTo(DELIVERED);
+            assertThat(first.isOpen()).isFalse();
             assertThat(registry.activeConnectionCount()).isEqualTo(1);
 
-            CloseWebSocketFrame replacement = first.readOutbound();
-            TextWebSocketFrame delivered = second.readOutbound();
-            try {
-                assertThat(replacement.statusCode()).isEqualTo(1008);
+            String delivered = second.readOutbound();
+            assertThat(delivered).endsWith("\n");
             assertThat(codec.decodeWorkerConnectionMessage(
-                    delivered.text()
+                    delivered.stripTrailing()
             )).isEqualTo(new TaskItemCommandMessage(command()));
-            } finally {
-                ReferenceCountUtil.release(replacement);
-                ReferenceCountUtil.release(delivered);
-            }
         } finally {
             first.finishAndReleaseAll();
             second.finishAndReleaseAll();
@@ -53,7 +44,7 @@ class NettyWorkerConnectionRegistryTest {
 
     @Test
     void missingOrInactiveChannelRejectsBeforeSend() {
-        NettyWorkerConnectionRegistry registry = registry();
+        NettySocketWorkerConnectionRegistry registry = registry();
 
         assertThat(registry.deliver("worker-1", command()))
                 .isEqualTo(REJECTED_BEFORE_SEND);
@@ -68,31 +59,8 @@ class NettyWorkerConnectionRegistryTest {
         inactive.finishAndReleaseAll();
     }
 
-    @Test
-    void closingAnOldChannelCannotRemoveItsReplacement() {
-        NettyWorkerConnectionRegistry registry = registry();
-        EmbeddedChannel first = new EmbeddedChannel();
-        EmbeddedChannel second = new EmbeddedChannel();
-        try {
-            registry.bind("worker-1", first);
-            registry.bind("worker-1", second);
-            registry.close(
-                    "worker-1",
-                    first,
-                    TRANSPORT_ERROR
-            );
-
-            assertThat(registry.deliver("worker-1", command()))
-                    .isEqualTo(DELIVERED);
-            assertThat(registry.activeConnectionCount()).isEqualTo(1);
-        } finally {
-            first.finishAndReleaseAll();
-            second.finishAndReleaseAll();
-        }
-    }
-
-    private NettyWorkerConnectionRegistry registry() {
-        return new NettyWorkerConnectionRegistry(
+    private NettySocketWorkerConnectionRegistry registry() {
+        return new NettySocketWorkerConnectionRegistry(
                 codec,
                 Duration.ofSeconds(1)
         );

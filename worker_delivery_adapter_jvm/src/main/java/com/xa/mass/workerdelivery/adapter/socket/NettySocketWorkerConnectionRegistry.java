@@ -1,30 +1,27 @@
-package com.xa.mass.workerdelivery.adapter.websocket;
+package com.xa.mass.workerdelivery.adapter.socket;
 
+import com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery;
 import com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt;
-import com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.ConnectionCloseReason;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemCommandMessage;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
-import io.netty.channel.ChannelFutureListener;
-import io.netty.handler.codec.http.websocketx.CloseWebSocketFrame;
-import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
-final class NettyWorkerConnectionRegistry
-        implements WorkerConnectionRegistry {
+final class NettySocketWorkerConnectionRegistry
+        implements WorkerCommandDelivery {
 
     private final Map<String, Channel> channels =
             new ConcurrentHashMap<>();
     private final WorkerDeliveryCodec codec;
     private final long sendTimeLimitMillis;
 
-    NettyWorkerConnectionRegistry(
+    NettySocketWorkerConnectionRegistry(
             WorkerDeliveryCodec codec,
             Duration sendTimeLimit
     ) {
@@ -40,24 +37,16 @@ final class NettyWorkerConnectionRegistry
         sendTimeLimitMillis = sendTimeLimit.toMillis();
     }
 
-    @Override
-    public void bind(
-            String workerId,
-            Channel channel
-    ) {
+    void bind(String workerId, Channel channel) {
         requireWorkerId(workerId);
         Objects.requireNonNull(channel, "channel");
         Channel previous = channels.put(workerId, channel);
         if (previous != null && previous != channel) {
-            closeChannel(previous, ConnectionCloseReason.REPLACED);
+            closeChannel(previous);
         }
     }
 
-    @Override
-    public void unbind(
-            String workerId,
-            Channel channel
-    ) {
+    void unbind(String workerId, Channel channel) {
         requireWorkerId(workerId);
         Objects.requireNonNull(channel, "channel");
         channels.computeIfPresent(workerId, (ignored, current) ->
@@ -78,34 +67,19 @@ final class NettyWorkerConnectionRegistry
         }
         CommandDeliveryAttempt attempt = deliver(current, command);
         if (attempt != CommandDeliveryAttempt.DELIVERED) {
-            removeAndClose(
-                    workerId,
-                    current,
-                    ConnectionCloseReason.TRANSPORT_ERROR
-            );
+            removeAndClose(workerId, current);
         }
         return attempt;
     }
 
-    @Override
-    public void close(
-            String workerId,
-            Channel channel,
-            ConnectionCloseReason reason
-    ) {
+    void close(String workerId, Channel channel) {
         requireWorkerId(workerId);
         Objects.requireNonNull(channel, "channel");
-        Objects.requireNonNull(reason, "reason");
-        unbind(workerId, channel);
-        closeChannel(channel, reason);
+        removeAndClose(workerId, channel);
     }
 
-    @Override
-    public void closeAll(ConnectionCloseReason reason) {
-        Objects.requireNonNull(reason, "reason");
-        channels.forEach((workerId, current) ->
-                removeAndClose(workerId, current, reason)
-        );
+    void closeAll() {
+        channels.forEach(this::removeAndClose);
     }
 
     int activeConnectionCount() {
@@ -121,12 +95,10 @@ final class NettyWorkerConnectionRegistry
         }
         String encoded = codec.encodeWorkerConnectionMessage(
                 new TaskItemCommandMessage(command)
-        );
+        ) + "\n";
         ChannelFuture send;
         try {
-            send = channel.writeAndFlush(
-                    new TextWebSocketFrame(encoded)
-            );
+            send = channel.writeAndFlush(encoded);
         } catch (RuntimeException error) {
             return CommandDeliveryAttempt.UNKNOWN;
         }
@@ -146,44 +118,17 @@ final class NettyWorkerConnectionRegistry
         }
     }
 
-    private void removeAndClose(
-            String workerId,
-            Channel channel,
-            ConnectionCloseReason reason
-    ) {
+    private void removeAndClose(String workerId, Channel channel) {
         if (channels.remove(workerId, channel)) {
-            closeChannel(channel, reason);
+            closeChannel(channel);
         }
     }
 
-    private static void closeChannel(
-            Channel channel,
-            ConnectionCloseReason reason
-    ) {
-        if (!channel.isOpen()) {
-            return;
-        }
-        int code = switch (reason) {
-            case REPLACED -> 1008;
-            case RESULT_BUFFER_FULL -> 1013;
-            case TRANSPORT_ERROR -> 1011;
-            case ADAPTER_STOPPING -> 1001;
-        };
-        String message = switch (reason) {
-            case REPLACED -> "Replaced by a newer Worker connection";
-            case RESULT_BUFFER_FULL -> "Worker result buffer is full";
-            case TRANSPORT_ERROR -> "Worker transport failed";
-            case ADAPTER_STOPPING -> "Adapter is stopping";
-        };
+    private static void closeChannel(Channel channel) {
         try {
-            channel.writeAndFlush(new CloseWebSocketFrame(code, message))
-                    .addListener(ChannelFutureListener.CLOSE);
+            channel.close();
         } catch (RuntimeException ignored) {
-            try {
-                channel.close();
-            } catch (RuntimeException closeIgnored) {
-                // Channel teardown is best effort.
-            }
+            // Channel teardown is best effort.
         }
     }
 
@@ -194,5 +139,4 @@ final class NettyWorkerConnectionRegistry
             );
         }
     }
-
 }

@@ -12,6 +12,7 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemCommandMessage;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemResultMessage;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
 import java.net.URI;
 import java.net.http.WebSocket;
@@ -65,6 +66,13 @@ class WebSocketWorkerTransportTest {
         FakeWebSocket socket = connector.socket;
         transport.onOpen(socket);
         assertTrue(transport.isConnected());
+        assertEquals(
+                new WorkerConnectionBind("worker-1"),
+                codec.decodeWorkerConnectionBind(
+                        socket.sentTexts.getFirst()
+                )
+        );
+        socket.completeSend();
         assertEquals(1, socket.requestCount);
 
         String command = command();
@@ -73,10 +81,10 @@ class WebSocketWorkerTransportTest {
         assertEquals(2, socket.requestCount);
 
         transport.onText(socket, command.substring(midpoint), true);
-        assertEquals(1, socket.sentTexts.size());
+        assertEquals(2, socket.sentTexts.size());
         assertEquals(2, socket.requestCount);
         var resultMessage = codec.decodeWorkerConnectionMessage(
-                socket.sentTexts.getFirst()
+                socket.sentTexts.get(1)
         );
         assertTrue(resultMessage instanceof TaskItemResultMessage);
         SeedResult result = ((TaskItemResultMessage) resultMessage).result();
@@ -94,6 +102,7 @@ class WebSocketWorkerTransportTest {
     void failedResultSendIsRetainedForReconnect() {
         FakeWebSocket first = connector.socket;
         transport.onOpen(first);
+        first.completeSend();
         transport.onText(first, command(), true);
         first.failSend();
 
@@ -103,6 +112,14 @@ class WebSocketWorkerTransportTest {
         FakeWebSocket second = new FakeWebSocket();
         transport.onOpen(second);
         assertEquals(1, second.sentTexts.size());
+        assertEquals(
+                new WorkerConnectionBind("worker-1"),
+                codec.decodeWorkerConnectionBind(
+                        second.sentTexts.getFirst()
+                )
+        );
+        second.completeSend();
+        assertEquals(2, second.sentTexts.size());
         second.completeSend();
 
         assertFalse(transport.hasPendingResult());
@@ -112,8 +129,9 @@ class WebSocketWorkerTransportTest {
     @Test
     void synchronousSendFailureIsAlsoRetained() {
         FakeWebSocket first = connector.socket;
-        first.throwOnSend = true;
         transport.onOpen(first);
+        first.completeSend();
+        first.throwOnSend = true;
 
         transport.onText(first, command(), true);
 
@@ -125,21 +143,23 @@ class WebSocketWorkerTransportTest {
     void invalidTextAndBinaryCloseTheCurrentConnection() {
         FakeWebSocket invalidText = connector.socket;
         transport.onOpen(invalidText);
+        invalidText.completeSend();
         transport.onText(invalidText, "{bad-json", true);
         assertEquals(1007, invalidText.closeCode);
 
         FakeWebSocket binary = new FakeWebSocket();
         transport.onOpen(binary);
+        binary.completeSend();
         transport.onBinary(binary, ByteBuffer.wrap(new byte[]{1}), true);
         assertEquals(1003, binary.closeCode);
     }
 
     @Test
-    void websocketPathContainsOnlyTheTargetWorker() {
+    void websocketPathDoesNotCarryWorkerIdentity() {
         assertEquals(
                 URI.create(
                         "ws://127.0.0.1:18082/api/v1/worker-delivery/"
-                                + "websocket/workers/worker-1"
+                                + "websocket"
                 ),
                 transport.socketUri()
         );

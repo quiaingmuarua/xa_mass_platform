@@ -1,8 +1,10 @@
 package com.xa.mass.server.workerdelivery.adapter;
 
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.adapter.http.HttpWorkerDeliveryGatewayClient;
+import com.xa.mass.workerdelivery.adapter.socket.SocketWorkerDeliveryAdapter;
 import com.xa.mass.workerdelivery.adapter.websocket.WebSocketWorkerDeliveryAdapter;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import java.time.Duration;
@@ -54,7 +56,7 @@ public class ServerWorkerDeliveryAdapterConfiguration {
         WorkerDeliveryAdapterManager manager =
                 new WorkerDeliveryAdapterManager();
         properties.instanceConfigs().forEach((adapterId, config) ->
-                manager.register(createWebSocketAdapter(
+                manager.register(createAdapter(
                         adapterId,
                         config,
                         properties.gateway().requestTimeout(),
@@ -73,8 +75,7 @@ public class ServerWorkerDeliveryAdapterConfiguration {
         return new WorkerDeliveryAdapterLifecycleHost(manager);
     }
 
-    private static WebSocketWorkerDeliveryAdapter
-    createWebSocketAdapter(
+    private static WorkerDeliveryAdapter createAdapter(
             String adapterId,
             JsonNode config,
             Duration shutdownTimeout,
@@ -93,61 +94,87 @@ public class ServerWorkerDeliveryAdapterConfiguration {
             );
         }
         String type = requiredText(object, "type", adapterId);
-        if (!"WEBSOCKET".equals(type)) {
-            throw invalid(
-                    adapterId,
-                    "type must be WEBSOCKET"
-            );
-        }
         int listenPort = requiredInt(
                 object,
                 "listen-port",
                 adapterId
         );
-        return new WebSocketWorkerDeliveryAdapter(
-                adapterId,
-                gateway,
-                codec,
-                optionalText(
-                        object,
-                        "listen-host",
-                        "0.0.0.0",
-                        adapterId
-                ),
-                listenPort,
-                optionalDuration(
-                        object,
-                        "dispatch-interval",
-                        Duration.ofMillis(100),
-                        adapterId
-                ),
-                optionalInt(object, "scan-count", 100, adapterId),
-                optionalInt(
-                        object,
-                        "delivery-parallelism",
-                        16,
-                        adapterId
-                ),
-                optionalInt(
-                        object,
-                        "result-batch-size",
-                        100,
-                        adapterId
-                ),
-                optionalInt(
-                        object,
-                        "result-buffer-capacity",
-                        1000,
-                        adapterId
-                ),
-                optionalDuration(
-                        object,
-                        "send-time-limit",
-                        Duration.ofSeconds(5),
-                        adapterId
-                ),
-                shutdownTimeout
+        String listenHost = optionalText(
+                object,
+                "listen-host",
+                "0.0.0.0",
+                adapterId
         );
+        Duration dispatchInterval = optionalDuration(
+                object,
+                "dispatch-interval",
+                Duration.ofMillis(100),
+                adapterId
+        );
+        int scanCount = optionalInt(
+                object,
+                "scan-count",
+                100,
+                adapterId
+        );
+        int deliveryParallelism = optionalInt(
+                object,
+                "delivery-parallelism",
+                16,
+                adapterId
+        );
+        int resultBatchSize = optionalInt(
+                object,
+                "result-batch-size",
+                100,
+                adapterId
+        );
+        int resultBufferCapacity = optionalInt(
+                object,
+                "result-buffer-capacity",
+                1000,
+                adapterId
+        );
+        Duration sendTimeLimit = optionalDuration(
+                object,
+                "send-time-limit",
+                Duration.ofSeconds(5),
+                adapterId
+        );
+        return switch (type) {
+            case "WEBSOCKET" -> new WebSocketWorkerDeliveryAdapter(
+                    adapterId,
+                    gateway,
+                    codec,
+                    listenHost,
+                    listenPort,
+                    dispatchInterval,
+                    scanCount,
+                    deliveryParallelism,
+                    resultBatchSize,
+                    resultBufferCapacity,
+                    sendTimeLimit,
+                    shutdownTimeout
+            );
+            case "SOCKET" -> new SocketWorkerDeliveryAdapter(
+                    adapterId,
+                    gateway,
+                    codec,
+                    listenHost,
+                    listenPort,
+                    dispatchInterval,
+                    scanCount,
+                    deliveryParallelism,
+                    resultBatchSize,
+                    resultBufferCapacity,
+                    sendTimeLimit,
+                    shutdownTimeout
+            );
+            default -> throw invalid(
+                    adapterId,
+                    "type must be WEBSOCKET or SOCKET"
+            );
+        };
     }
 
     private static String requiredText(

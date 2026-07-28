@@ -17,9 +17,6 @@ import io.netty.handler.codec.http.websocketx.CloseWebSocketFrame;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
 import io.netty.handler.codec.http.websocketx.WebSocketFrame;
 import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler;
-import java.net.URI;
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import java.util.function.BooleanSupplier;
 
@@ -27,13 +24,13 @@ final class WorkerWebSocketHandler
         extends SimpleChannelInboundHandler<WebSocketFrame> {
 
     static final String WORKER_PATH =
-            "/api/v1/worker-delivery/websocket/workers";
-    static final String WORKER_PATH_PREFIX = WORKER_PATH + "/";
+            "/api/v1/worker-delivery/websocket";
 
     private final WorkerConnectionRegistry connections;
     private final WorkerDeliveryCodec codec;
     private final WorkerConnectionMessageDispatcher dispatcher;
     private final BooleanSupplier acceptingConnections;
+    private boolean handshakeComplete;
     private String workerId;
     private Channel workerChannel;
 
@@ -64,30 +61,12 @@ final class WorkerWebSocketHandler
             Object event
     ) {
         if (event instanceof WebSocketServerProtocolHandler.HandshakeComplete
-                handshake) {
-            String resolvedWorkerId = parseWorkerId(
-                    handshake.requestUri()
-            );
-            if (resolvedWorkerId == null) {
-                close(context, 1008, "Invalid Worker identity");
-                return;
-            }
-            Channel opened = context.channel();
+                ignored) {
             if (!acceptingConnections.getAsBoolean()) {
                 close(context, 1001, "Adapter is stopping");
                 return;
             }
-            connections.bind(resolvedWorkerId, opened);
-            if (!acceptingConnections.getAsBoolean()) {
-                connections.close(
-                        resolvedWorkerId,
-                        opened,
-                        ADAPTER_STOPPING
-                );
-                return;
-            }
-            workerId = resolvedWorkerId;
-            workerChannel = opened;
+            handshakeComplete = true;
             return;
         }
         context.fireUserEventTriggered(event);
@@ -98,12 +77,16 @@ final class WorkerWebSocketHandler
             ChannelHandlerContext context,
             WebSocketFrame frame
     ) {
-        if (workerChannel == null) {
+        if (!handshakeComplete) {
             close(context, 1008, "Worker handshake is incomplete");
             return;
         }
         if (frame instanceof TextWebSocketFrame text) {
-            handleResult(context, text.text());
+            if (workerChannel == null) {
+                handleBind(context, text.text());
+            } else {
+                handleResult(context, text.text());
+            }
             return;
         }
         if (frame instanceof BinaryWebSocketFrame) {
@@ -141,6 +124,11 @@ final class WorkerWebSocketHandler
             ChannelHandlerContext context,
             String payload
     ) {
+        if (codec.decodeWorkerConnectionBind(payload) != null) {
+            disconnect();
+            close(context, 1008, "Worker is already bound");
+            return;
+        }
         var message = codec.decodeWorkerConnectionMessage(payload);
         if (message == null) {
             disconnect();
@@ -185,35 +173,37 @@ final class WorkerWebSocketHandler
         }
     }
 
+    private void handleBind(
+            ChannelHandlerContext context,
+            String payload
+    ) {
+        var bind = codec.decodeWorkerConnectionBind(payload);
+        if (bind == null) {
+            close(context, 1008, "Worker binding is required");
+            return;
+        }
+        if (!acceptingConnections.getAsBoolean()) {
+            close(context, 1001, "Adapter is stopping");
+            return;
+        }
+        Channel opened = context.channel();
+        workerId = bind.workerId();
+        workerChannel = opened;
+        connections.bind(workerId, opened);
+        if (!acceptingConnections.getAsBoolean()) {
+            String boundWorkerId = workerId;
+            clearConnection();
+            connections.close(
+                    boundWorkerId,
+                    opened,
+                    ADAPTER_STOPPING
+            );
+        }
+    }
+
     private void clearConnection() {
         workerChannel = null;
         workerId = null;
-    }
-
-    private static String parseWorkerId(String requestUri) {
-        try {
-            String rawPath = URI.create(requestUri).getRawPath();
-            if (rawPath == null
-                    || !rawPath.startsWith(WORKER_PATH_PREFIX)) {
-                return null;
-            }
-            String encoded = rawPath.substring(
-                    WORKER_PATH_PREFIX.length()
-            );
-            if (encoded.isEmpty() || encoded.contains("/")) {
-                return null;
-            }
-            String workerId = URLDecoder.decode(
-                    encoded,
-                    StandardCharsets.UTF_8
-            );
-            if (workerId.isBlank() || workerId.contains("/")) {
-                return null;
-            }
-            return workerId;
-        } catch (IllegalArgumentException error) {
-            return null;
-        }
     }
 
     private static void close(

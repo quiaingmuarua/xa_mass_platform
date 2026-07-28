@@ -3,6 +3,7 @@ package com.xa.mass.worker;
 import com.xa.mass.worker.execution.PhoneInspectHandler;
 import com.xa.mass.worker.execution.WorkerCommandProcessor;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
+import com.xa.mass.worker.transport.socket.SocketWorkerTransport;
 import com.xa.mass.worker.transport.websocket.WebSocketWorkerTransport;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import java.util.Map;
@@ -34,8 +35,8 @@ public final class WorkerMain {
                         new PhoneInspectHandler()
                 )
         );
-        if (configuration.transport() == WorkerTransportMode.POLLING) {
-            new PollingWorkerTransport(
+        switch (configuration.transport()) {
+            case POLLING -> new PollingWorkerTransport(
                     configuration.serverUrl(),
                     configuration.endpointManagerId(),
                     configuration.workerId(),
@@ -43,9 +44,16 @@ public final class WorkerMain {
                     codec,
                     processor
             ).runForever(configuration.pollInterval());
-            return;
+            case WEBSOCKET -> runWebSocket(configuration, codec, processor);
+            case SOCKET -> runSocket(configuration, codec, processor);
         }
+    }
 
+    private static void runWebSocket(
+            WorkerConfiguration configuration,
+            WorkerDeliveryCodec codec,
+            WorkerCommandProcessor processor
+    ) throws InterruptedException {
         try (WebSocketWorkerTransport transport =
                      new WebSocketWorkerTransport(
                              configuration.serverUrl(),
@@ -55,10 +63,46 @@ public final class WorkerMain {
                              codec,
                              processor
                      )) {
-            Runtime.getRuntime().addShutdownHook(
-                    new Thread(transport::close, "worker-shutdown")
-            );
-            transport.runForever();
+            runLongLived(transport, transport::runForever);
         }
+    }
+
+    private static void runSocket(
+            WorkerConfiguration configuration,
+            WorkerDeliveryCodec codec,
+            WorkerCommandProcessor processor
+    ) throws InterruptedException {
+        try (SocketWorkerTransport transport = new SocketWorkerTransport(
+                configuration.serverUrl(),
+                configuration.workerId(),
+                configuration.requestTimeout(),
+                configuration.reconnectInterval(),
+                codec,
+                processor
+        )) {
+            runLongLived(transport, transport::runForever);
+        }
+    }
+
+    private static void runLongLived(
+            AutoCloseable transport,
+            InterruptibleRun run
+    ) throws InterruptedException {
+        Runtime.getRuntime().addShutdownHook(
+                new Thread(() -> {
+                    try {
+                        transport.close();
+                    } catch (Exception ignored) {
+                        // Process shutdown is best effort.
+                    }
+                }, "worker-shutdown")
+        );
+        run.run();
+    }
+
+    @FunctionalInterface
+    private interface InterruptibleRun {
+
+        void run() throws InterruptedException;
     }
 }

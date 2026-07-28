@@ -1,9 +1,10 @@
 package com.xa.mass.workerdelivery.adapter.websocket;
 
+import com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import io.netty.channel.Channel;
 
-interface WorkerConnectionRegistry {
+interface WorkerConnectionRegistry extends WorkerCommandDelivery {
 
     void bind(
             String workerId,
@@ -15,6 +16,7 @@ interface WorkerConnectionRegistry {
             Channel channel
     );
 
+    @Override
     CommandDeliveryAttempt deliver(
             String workerId,
             WorkerCommandEnvelope command
@@ -27,12 +29,6 @@ interface WorkerConnectionRegistry {
     );
 
     void closeAll(ConnectionCloseReason reason);
-
-    enum CommandDeliveryAttempt {
-        DELIVERED,
-        REJECTED_BEFORE_SEND,
-        UNKNOWN
-    }
 
     enum ConnectionCloseReason {
         REPLACED,
