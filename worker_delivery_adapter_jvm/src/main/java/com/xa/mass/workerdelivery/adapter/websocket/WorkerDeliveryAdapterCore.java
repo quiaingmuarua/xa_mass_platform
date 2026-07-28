@@ -1,20 +1,21 @@
 package com.xa.mass.workerdelivery.adapter.websocket;
 
-import static com.xa.mass.workerdelivery.adapter.application.WorkerConnection.CommandDeliveryAttempt.REJECTED_BEFORE_SEND;
-import static com.xa.mass.workerdelivery.adapter.application.WorkerConnection.WorkerConnectionCloseReason.ADAPTER_STOPPING;
+import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.CommandDeliveryAttempt.REJECTED_BEFORE_SEND;
+import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.ConnectionCloseReason.ADAPTER_STOPPING;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultOutcomeClass.SUCCESS;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultOutcomeClass.WORKER_FAILURE;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerCommandPage;
-import com.xa.mass.workerdelivery.adapter.application.WorkerConnection.CommandDeliveryAttempt;
-import com.xa.mass.workerdelivery.adapter.application.WorkerConnectionRegistry;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
+import com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.CommandDeliveryAttempt;
+import com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.ConnectionCloseReason;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliverSeed;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import io.netty.channel.Channel;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
@@ -103,22 +104,36 @@ final class WorkerDeliveryAdapterCore {
 
     boolean connectWorker(
             String workerId,
-            com.xa.mass.workerdelivery.adapter.application.WorkerConnection
-                    connection
+            Channel channel
     ) {
         if (closed) {
             return false;
         }
-        connections.bind(workerId, connection);
+        connections.bind(workerId, channel);
+        if (closed) {
+            connections.close(
+                    workerId,
+                    channel,
+                    ADAPTER_STOPPING
+            );
+            return false;
+        }
         return true;
     }
 
     void disconnectWorker(
             String workerId,
-            com.xa.mass.workerdelivery.adapter.application.WorkerConnection
-                    connection
+            Channel channel
     ) {
-        connections.unbind(workerId, connection);
+        connections.unbind(workerId, channel);
+    }
+
+    void closeWorker(
+            String workerId,
+            Channel channel,
+            ConnectionCloseReason reason
+    ) {
+        connections.close(workerId, channel, reason);
     }
 
     WorkerResultAcceptance acceptWorkerResult(SeedResult result) {

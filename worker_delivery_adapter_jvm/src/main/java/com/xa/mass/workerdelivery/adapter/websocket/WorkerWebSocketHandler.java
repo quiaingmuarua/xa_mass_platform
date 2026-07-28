@@ -1,13 +1,15 @@
 package com.xa.mass.workerdelivery.adapter.websocket;
 
-import static com.xa.mass.workerdelivery.adapter.application.WorkerConnection.WorkerConnectionCloseReason.RESULT_BUFFER_FULL;
-import static com.xa.mass.workerdelivery.adapter.application.WorkerConnection.WorkerConnectionCloseReason.TRANSPORT_ERROR;
 import static com.xa.mass.workerdelivery.adapter.websocket.WorkerDeliveryAdapterCore.WorkerResultAcceptance.ACCEPTED;
 import static com.xa.mass.workerdelivery.adapter.websocket.WorkerDeliveryAdapterCore.WorkerResultAcceptance.ADAPTER_CLOSED;
 import static com.xa.mass.workerdelivery.adapter.websocket.WorkerDeliveryAdapterCore.WorkerResultAcceptance.BUFFER_FULL;
+import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.ConnectionCloseReason.ADAPTER_STOPPING;
+import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.ConnectionCloseReason.RESULT_BUFFER_FULL;
+import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.ConnectionCloseReason.TRANSPORT_ERROR;
 
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
+import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.codec.http.websocketx.BinaryWebSocketFrame;
@@ -18,7 +20,6 @@ import io.netty.handler.codec.http.websocketx.WebSocketServerProtocolHandler;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
 import java.util.Objects;
 
 final class WorkerWebSocketHandler
@@ -30,21 +31,15 @@ final class WorkerWebSocketHandler
 
     private final WebSocketWorkerDeliveryAdapter adapter;
     private final WorkerDeliveryCodec codec;
-    private final Duration sendTimeLimit;
     private String workerId;
-    private NettyWebSocketWorkerConnection connection;
+    private Channel workerChannel;
 
     WorkerWebSocketHandler(
             WebSocketWorkerDeliveryAdapter adapter,
-            WorkerDeliveryCodec codec,
-            Duration sendTimeLimit
+            WorkerDeliveryCodec codec
     ) {
         this.adapter = Objects.requireNonNull(adapter, "adapter");
         this.codec = Objects.requireNonNull(codec, "codec");
-        this.sendTimeLimit = Objects.requireNonNull(
-                sendTimeLimit,
-                "sendTimeLimit"
-        );
     }
 
     @Override
@@ -61,23 +56,13 @@ final class WorkerWebSocketHandler
                 close(context, 1008, "Invalid Worker identity");
                 return;
             }
-            NettyWebSocketWorkerConnection opened =
-                    new NettyWebSocketWorkerConnection(
-                            context.channel(),
-                            codec,
-                            sendTimeLimit
-                    );
+            Channel opened = context.channel();
             if (!adapter.connectWorker(resolvedWorkerId, opened)) {
-                opened.close(
-                        com.xa.mass.workerdelivery.adapter.application
-                                .WorkerConnection
-                                .WorkerConnectionCloseReason
-                                .ADAPTER_STOPPING
-                );
+                close(context, 1001, "Adapter is stopping");
                 return;
             }
             workerId = resolvedWorkerId;
-            connection = opened;
+            workerChannel = opened;
             return;
         }
         context.fireUserEventTriggered(event);
@@ -88,7 +73,7 @@ final class WorkerWebSocketHandler
             ChannelHandlerContext context,
             WebSocketFrame frame
     ) {
-        if (connection == null) {
+        if (workerChannel == null) {
             close(context, 1008, "Worker handshake is incomplete");
             return;
         }
@@ -113,10 +98,15 @@ final class WorkerWebSocketHandler
             ChannelHandlerContext context,
             Throwable cause
     ) {
-        NettyWebSocketWorkerConnection current = connection;
-        disconnect();
-        if (current != null) {
-            current.close(TRANSPORT_ERROR);
+        Channel current = workerChannel;
+        String currentWorkerId = workerId;
+        clearConnection();
+        if (current != null && currentWorkerId != null) {
+            adapter.closeWorker(
+                    currentWorkerId,
+                    current,
+                    TRANSPORT_ERROR
+            );
         } else {
             context.close();
         }
@@ -136,25 +126,43 @@ final class WorkerWebSocketHandler
         if (acceptance == ACCEPTED) {
             return;
         }
-        NettyWebSocketWorkerConnection current = connection;
-        disconnect();
-        if (acceptance == BUFFER_FULL && current != null) {
-            current.close(RESULT_BUFFER_FULL);
-        } else if (acceptance == ADAPTER_CLOSED) {
-            close(context, 1001, "Adapter is stopping");
+        Channel current = workerChannel;
+        String currentWorkerId = workerId;
+        clearConnection();
+        if (current != null && currentWorkerId != null
+                && acceptance == BUFFER_FULL) {
+            adapter.closeWorker(
+                    currentWorkerId,
+                    current,
+                    RESULT_BUFFER_FULL
+            );
+        } else if (current != null && currentWorkerId != null
+                && acceptance == ADAPTER_CLOSED) {
+            adapter.closeWorker(
+                    currentWorkerId,
+                    current,
+                    ADAPTER_STOPPING
+            );
         } else {
+            if (current != null && currentWorkerId != null) {
+                adapter.disconnectWorker(currentWorkerId, current);
+            }
             close(context, 1007, "Invalid Worker result");
         }
     }
 
     private void disconnect() {
-        NettyWebSocketWorkerConnection current = connection;
+        Channel current = workerChannel;
         String currentWorkerId = workerId;
-        connection = null;
-        workerId = null;
+        clearConnection();
         if (current != null && currentWorkerId != null) {
             adapter.disconnectWorker(currentWorkerId, current);
         }
+    }
+
+    private void clearConnection() {
+        workerChannel = null;
+        workerId = null;
     }
 
     private static String parseWorkerId(String requestUri) {

@@ -27,7 +27,7 @@ listenHost + listenPort
 one WorkerCommand mailbox cursor
 one scheduled consume loop
 one bounded delivery executor
-one current WorkerConnection per WorkerId
+one current Netty Channel per WorkerId
 one bounded result buffer
 ```
 
@@ -61,13 +61,21 @@ WorkerDeliveryAdapterManager
 WorkerDeliveryGatewayClient
   consume one command page and append one result batch through Server HTTP
 
-WorkerConnectionRegistry
-  retain the current connection for each WorkerId
+WebSocket-private WorkerConnectionRegistry
+  retain the current Netty Channel for each WorkerId
 ```
 
 The Manager does not deserialize configuration or construct Adapters. Server
 composition converts each configured JSON tree into a concrete instance, then
 registers that instance.
+
+A connection registry is an Adapter implementation detail, not a cross-type
+contract or persistence boundary. The WebSocket implementation stores the
+actual process-local transport directly as `workerId -> Netty Channel`; it
+does not insert a generic connection wrapper between the registry and Netty.
+A live Channel is intentionally not Redis-serializable. A future distributed
+Adapter ownership record would be separate evidence such as instance identity
+and lease time, not a serialized connection registry.
 
 A new Worker connection replaces the current connection for its WorkerId.
 Unbind compares both `workerId` and connection instance, so a delayed close

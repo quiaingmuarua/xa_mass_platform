@@ -2,8 +2,6 @@ package com.xa.mass.workerdelivery.adapter.websocket;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID;
 
-import com.xa.mass.workerdelivery.adapter.application.InMemoryWorkerConnectionRegistry;
-import com.xa.mass.workerdelivery.adapter.application.WorkerConnection;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterState;
@@ -44,11 +42,9 @@ public final class WebSocketWorkerDeliveryAdapter
     private final int listenPort;
     private final Duration dispatchInterval;
     private final int deliveryParallelism;
-    private final Duration sendTimeLimit;
     private final Duration shutdownTimeout;
     private final WorkerDeliveryCodec codec;
-    private final InMemoryWorkerConnectionRegistry connections =
-            new InMemoryWorkerConnectionRegistry();
+    private final NettyWorkerConnectionRegistry connections;
     private final WorkerDeliveryAdapterCore core;
     private volatile WorkerDeliveryAdapterState state =
             WorkerDeliveryAdapterState.REGISTERED;
@@ -98,8 +94,11 @@ public final class WebSocketWorkerDeliveryAdapter
         this.listenPort = listenPort;
         this.dispatchInterval = dispatchInterval;
         this.deliveryParallelism = deliveryParallelism;
-        this.sendTimeLimit = sendTimeLimit;
         this.shutdownTimeout = shutdownTimeout;
+        connections = new NettyWorkerConnectionRegistry(
+                codec,
+                sendTimeLimit
+        );
         core = new WorkerDeliveryAdapterCore(
                 Objects.requireNonNull(gateway, "gateway"),
                 codec,
@@ -201,19 +200,27 @@ public final class WebSocketWorkerDeliveryAdapter
 
     boolean connectWorker(
             String workerId,
-            WorkerConnection connection
+            Channel channel
     ) {
         if (state != WorkerDeliveryAdapterState.RUNNING) {
             return false;
         }
-        return core.connectWorker(workerId, connection);
+        return core.connectWorker(workerId, channel);
     }
 
     void disconnectWorker(
             String workerId,
-            WorkerConnection connection
+            Channel channel
     ) {
-        core.disconnectWorker(workerId, connection);
+        core.disconnectWorker(workerId, channel);
+    }
+
+    void closeWorker(
+            String workerId,
+            Channel channel,
+            WorkerConnectionRegistry.ConnectionCloseReason reason
+    ) {
+        core.closeWorker(workerId, channel, reason);
     }
 
     WorkerDeliveryAdapterCore.WorkerResultAcceptance
@@ -263,8 +270,7 @@ public final class WebSocketWorkerDeliveryAdapter
                                 )
                                 .addLast(new WorkerWebSocketHandler(
                                         WebSocketWorkerDeliveryAdapter.this,
-                                        codec,
-                                        sendTimeLimit
+                                        codec
                                 ));
                     }
                 });

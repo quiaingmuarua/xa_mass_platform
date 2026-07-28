@@ -1,7 +1,8 @@
 package com.xa.mass.workerdelivery.adapter.websocket;
 
-import static com.xa.mass.workerdelivery.adapter.application.WorkerConnection.CommandDeliveryAttempt.DELIVERED;
-import static com.xa.mass.workerdelivery.adapter.application.WorkerConnection.CommandDeliveryAttempt.UNKNOWN;
+import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.CommandDeliveryAttempt.DELIVERED;
+import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.CommandDeliveryAttempt.REJECTED_BEFORE_SEND;
+import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.CommandDeliveryAttempt.UNKNOWN;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static com.xa.mass.workerdelivery.adapter.websocket.WorkerDeliveryAdapterCore.WorkerResultAcceptance.ACCEPTED;
@@ -9,18 +10,19 @@ import static com.xa.mass.workerdelivery.adapter.websocket.WorkerDeliveryAdapter
 import static com.xa.mass.workerdelivery.adapter.websocket.WorkerDeliveryAdapterCore.WorkerResultAcceptance.BUFFER_FULL;
 import static com.xa.mass.workerdelivery.adapter.websocket.WorkerDeliveryAdapterCore.WorkerResultAcceptance.INVALID_OUTCOME;
 
-import com.xa.mass.workerdelivery.adapter.application.InMemoryWorkerConnectionRegistry;
 import com.xa.mass.workerdelivery.adapter.application.WorkerCommandPage;
-import com.xa.mass.workerdelivery.adapter.application.WorkerConnection;
-import com.xa.mass.workerdelivery.adapter.application.WorkerConnection.CommandDeliveryAttempt;
-import com.xa.mass.workerdelivery.adapter.application.WorkerConnection.WorkerConnectionCloseReason;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
+import com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.CommandDeliveryAttempt;
+import com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.ConnectionCloseReason;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
+import io.netty.channel.Channel;
+import io.netty.channel.embedded.EmbeddedChannel;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,6 +32,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -47,22 +50,16 @@ class WorkerDeliveryAdapterCoreTest {
     @Test
     void deliversConnectedWorkersAndReportsOnlyKnownPreSendRejection() {
         FakeGateway gateway = new FakeGateway();
-        InMemoryWorkerConnectionRegistry connections =
-                new InMemoryWorkerConnectionRegistry();
+        FakeConnectionRegistry connections =
+                new FakeConnectionRegistry();
         WorkerDeliveryAdapterCore core = core(
                 gateway,
                 connections,
                 10,
                 100
         );
-        connections.bind(
-                "worker-1",
-                new FakeConnection(DELIVERED)
-        );
-        connections.bind(
-                "worker-3",
-                new FakeConnection(UNKNOWN)
-        );
+        connections.respond("worker-1", ignored -> DELIVERED);
+        connections.respond("worker-3", ignored -> UNKNOWN);
         Map<String, WorkerCommandEnvelope> commands =
                 new LinkedHashMap<>();
         commands.put("worker-1", command(COMMAND_ID, "worker-1", 2_000));
@@ -101,8 +98,8 @@ class WorkerDeliveryAdapterCoreTest {
     void dispatchesOnePageConcurrentlyWithinTheConfiguredExecutorBound()
             throws Exception {
         FakeGateway gateway = new FakeGateway();
-        InMemoryWorkerConnectionRegistry connections =
-                new InMemoryWorkerConnectionRegistry();
+        FakeConnectionRegistry connections =
+                new FakeConnectionRegistry();
         WorkerDeliveryAdapterCore core = core(
                 gateway,
                 connections,
@@ -117,15 +114,20 @@ class WorkerDeliveryAdapterCoreTest {
                 new LinkedHashMap<>();
         for (int index = 0; index < 8; index++) {
             String workerId = "worker-" + index;
-            connections.bind(
-                    workerId,
-                    new BlockingConnection(
-                            started,
-                            release,
-                            active,
-                            maximum
-                    )
-            );
+            connections.respond(workerId, ignored -> {
+                int current = active.incrementAndGet();
+                maximum.accumulateAndGet(current, Math::max);
+                started.countDown();
+                try {
+                    release.await(2, TimeUnit.SECONDS);
+                    return DELIVERED;
+                } catch (InterruptedException error) {
+                    Thread.currentThread().interrupt();
+                    return UNKNOWN;
+                } finally {
+                    active.decrementAndGet();
+                }
+            });
             commands.put(
                     workerId,
                     command(
@@ -157,7 +159,7 @@ class WorkerDeliveryAdapterCoreTest {
         BlockingGateway gateway = new BlockingGateway();
         WorkerDeliveryAdapterCore core = core(
                 gateway,
-                new InMemoryWorkerConnectionRegistry(),
+                new FakeConnectionRegistry(),
                 10,
                 100
         );
@@ -189,7 +191,7 @@ class WorkerDeliveryAdapterCoreTest {
         FakeGateway gateway = new FakeGateway();
         WorkerDeliveryAdapterCore core = core(
                 gateway,
-                new InMemoryWorkerConnectionRegistry(),
+                new FakeConnectionRegistry(),
                 10,
                 2
         );
@@ -219,7 +221,7 @@ class WorkerDeliveryAdapterCoreTest {
     void boundedWorkerResultBufferRejectsExcess() {
         WorkerDeliveryAdapterCore core = core(
                 new FakeGateway(),
-                new InMemoryWorkerConnectionRegistry(),
+                new FakeConnectionRegistry(),
                 1,
                 100
         );
@@ -230,9 +232,42 @@ class WorkerDeliveryAdapterCoreTest {
                 .isEqualTo(BUFFER_FULL);
     }
 
+    @Test
+    void bindFinishingDuringCloseCannotLeaveAnActiveChannel()
+            throws Exception {
+        BlockingBindRegistry connections =
+                new BlockingBindRegistry();
+        WorkerDeliveryAdapterCore core = core(
+                new FakeGateway(),
+                connections,
+                10,
+                100
+        );
+        EmbeddedChannel channel = new EmbeddedChannel();
+        AtomicReference<Boolean> accepted = new AtomicReference<>();
+        Thread connecting = Thread.ofPlatform().start(() ->
+                accepted.set(core.connectWorker("worker-1", channel))
+        );
+
+        assertThat(connections.bindStarted.await(
+                2,
+                TimeUnit.SECONDS
+        )).isTrue();
+        core.close();
+        connections.releaseBind.countDown();
+        connecting.join(2_000);
+
+        assertThat(connecting.isAlive()).isFalse();
+        assertThat(accepted.get()).isFalse();
+        assertThat(connections.closedReason)
+                .isEqualTo(ConnectionCloseReason.ADAPTER_STOPPING);
+        assertThat(connections.closeAllCount).isEqualTo(1);
+        channel.finishAndReleaseAll();
+    }
+
     private WorkerDeliveryAdapterCore core(
             WorkerDeliveryGatewayClient gateway,
-            InMemoryWorkerConnectionRegistry connections,
+            WorkerConnectionRegistry connections,
             int capacity,
             int batchSize
     ) {
@@ -278,67 +313,105 @@ class WorkerDeliveryAdapterCoreTest {
         );
     }
 
-    private static final class FakeConnection
-            implements WorkerConnection {
+    private static final class FakeConnectionRegistry
+            implements WorkerConnectionRegistry {
 
-        private final CommandDeliveryAttempt attempt;
+        private final Map<String, DeliveryBehavior> deliveries =
+                new HashMap<>();
 
-        private FakeConnection(CommandDeliveryAttempt attempt) {
-            this.attempt = attempt;
+        private void respond(
+                String workerId,
+                DeliveryBehavior behavior
+        ) {
+            deliveries.put(workerId, behavior);
+        }
+
+        @Override
+        public void bind(String workerId, Channel channel) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void unbind(String workerId, Channel channel) {
+            throw new UnsupportedOperationException();
         }
 
         @Override
         public CommandDeliveryAttempt deliver(
+                String workerId,
                 WorkerCommandEnvelope command
         ) {
-            return attempt;
+            DeliveryBehavior behavior = deliveries.get(workerId);
+            return behavior == null
+                    ? REJECTED_BEFORE_SEND
+                    : behavior.deliver(command);
         }
 
         @Override
-        public void close(WorkerConnectionCloseReason reason) {
+        public void close(
+                String workerId,
+                Channel channel,
+                ConnectionCloseReason reason
+        ) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void closeAll(ConnectionCloseReason reason) {
         }
     }
 
-    private static final class BlockingConnection
-            implements WorkerConnection {
+    @FunctionalInterface
+    private interface DeliveryBehavior {
 
-        private final CountDownLatch started;
-        private final CountDownLatch release;
-        private final AtomicInteger active;
-        private final AtomicInteger maximum;
+        CommandDeliveryAttempt deliver(WorkerCommandEnvelope command);
+    }
 
-        private BlockingConnection(
-                CountDownLatch started,
-                CountDownLatch release,
-                AtomicInteger active,
-                AtomicInteger maximum
-        ) {
-            this.started = started;
-            this.release = release;
-            this.active = active;
-            this.maximum = maximum;
-        }
+    private static final class BlockingBindRegistry
+            implements WorkerConnectionRegistry {
+
+        private final CountDownLatch bindStarted =
+                new CountDownLatch(1);
+        private final CountDownLatch releaseBind =
+                new CountDownLatch(1);
+        private volatile ConnectionCloseReason closedReason;
+        private volatile int closeAllCount;
 
         @Override
-        public CommandDeliveryAttempt deliver(
-                WorkerCommandEnvelope command
-        ) {
-            int current = active.incrementAndGet();
-            maximum.accumulateAndGet(current, Math::max);
-            started.countDown();
+        public void bind(String workerId, Channel channel) {
+            bindStarted.countDown();
             try {
-                release.await(2, TimeUnit.SECONDS);
-                return DELIVERED;
+                releaseBind.await(2, TimeUnit.SECONDS);
             } catch (InterruptedException error) {
                 Thread.currentThread().interrupt();
-                return UNKNOWN;
-            } finally {
-                active.decrementAndGet();
+                throw new IllegalStateException(error);
             }
         }
 
         @Override
-        public void close(WorkerConnectionCloseReason reason) {
+        public void unbind(String workerId, Channel channel) {
+        }
+
+        @Override
+        public CommandDeliveryAttempt deliver(
+                String workerId,
+                WorkerCommandEnvelope command
+        ) {
+            return REJECTED_BEFORE_SEND;
+        }
+
+        @Override
+        public void close(
+                String workerId,
+                Channel channel,
+                ConnectionCloseReason reason
+        ) {
+            closedReason = reason;
+        }
+
+        @Override
+        public void closeAll(ConnectionCloseReason reason) {
+            closeAllCount++;
         }
     }
 

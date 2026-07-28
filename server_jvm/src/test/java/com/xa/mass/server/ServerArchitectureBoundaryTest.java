@@ -153,7 +153,7 @@ class ServerArchitectureBoundaryTest {
         String adapter = readSources(ADAPTER_SOURCE);
         assertThat(adapter)
                 .contains("class WorkerWebSocketHandler")
-                .contains("class NettyWebSocketWorkerConnection")
+                .contains("class NettyWorkerConnectionRegistry")
                 .contains("class WebSocketWorkerDeliveryAdapter")
                 .contains("interface WorkerDeliveryAdapter")
                 .contains("class WorkerDeliveryAdapterCore")

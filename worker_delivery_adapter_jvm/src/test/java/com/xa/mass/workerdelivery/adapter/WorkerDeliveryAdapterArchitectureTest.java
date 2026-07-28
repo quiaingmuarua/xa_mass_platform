@@ -54,11 +54,12 @@ class WorkerDeliveryAdapterArchitectureTest {
             throws IOException {
         String sources = readSources(CORE) + readSources(HTTP);
         assertThat(sources)
-                .contains("interface WorkerConnection")
-                .contains("interface WorkerConnectionRegistry")
                 .contains("interface WorkerDeliveryAdapter")
                 .contains("final class WorkerDeliveryAdapterManager")
                 .contains("register(WorkerDeliveryAdapter adapter)")
+                .doesNotContain("interface WorkerConnection {")
+                .doesNotContain("interface WorkerConnectionRegistry")
+                .doesNotContain("NettyWorkerConnectionRegistry")
                 .doesNotContain("WorkerSessionToken")
                 .doesNotContain("generation")
                 .doesNotContain("isCurrent")
@@ -73,6 +74,11 @@ class WorkerDeliveryAdapterArchitectureTest {
         String websocketTransport = readSources(WEBSOCKET);
         assertThat(websocketTransport)
                 .contains("class WebSocketWorkerDeliveryAdapter")
+                .contains("interface WorkerConnectionRegistry")
+                .contains(
+                        "Map<String, Channel> channels"
+                )
+                .contains("class NettyWorkerConnectionRegistry")
                 .contains("ServerBootstrap")
                 .contains("NioServerSocketChannel")
                 .contains("newFixedThreadPool")
@@ -80,6 +86,9 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .contains("void dispatchOnce")
                 .doesNotContain("WebSocketWorkerDeliveryAdapterFactory")
                 .doesNotContain("AdapterRoundResult")
+                .doesNotContain("interface WorkerConnection {")
+                .doesNotContain("ConnectionHandle")
+                .doesNotContain("NettyWebSocketWorkerConnection")
                 .doesNotContain("SpringWebSocket")
                 .doesNotContain("WorkerWebSocketEndpointConfigurer");
     }

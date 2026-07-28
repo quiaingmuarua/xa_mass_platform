@@ -349,8 +349,9 @@ and Kernel ResultContext/Worker lease fences decide whether it affects current
 truth.
 
 The Adapter module owns its scheduled runtime, Netty listeners, frame
-translation, connection registry, cursor, delivery executor, and result
-buffer. `server_jvm` only converts configured JSON trees into concrete
+translation, WebSocket-private process-local connection registry, cursor,
+delivery executor, and result buffer. A live connection registry is not Redis
+truth and is not serializable. `server_jvm` only converts configured JSON trees into concrete
 instances, registers them, and maps process-ready/process-close events to
 Manager `start()`/`close()`. Server must not host WebSocket endpoints or call
 `dispatchOnce`. The Adapter module has no Spring, Redis, Kernel runtime, score,
