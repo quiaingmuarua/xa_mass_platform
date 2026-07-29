@@ -1,16 +1,17 @@
 package com.xa.mass.workerdelivery.protocol;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliverSeed;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultOutcomeClass;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemCommandMessage;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemResultMessage;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessage;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessageType;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
 import org.junit.jupiter.api.Test;
 
@@ -23,20 +24,16 @@ class WorkerDeliveryProtocolTest {
     @Test
     void workerConnectionBindUsesItsOwnStrictWireContract() {
         WorkerConnectionBind bind = new WorkerConnectionBind("worker-1");
-        String encoded = """
-                {"messageType":"WORKER_BIND","workerId":"worker-1"}\
-                """;
+        String encoded = "{\"workerId\":\"worker-1\"}";
 
         assertEquals(encoded, codec.encodeWorkerConnectionBind(bind));
         assertEquals(bind, codec.decodeWorkerConnectionBind(encoded));
         assertNull(codec.decodeWorkerConnectionBind(
-                "{\"messageType\":\"WORKER_BIND\",\"workerId\":\"\"}"
+                "{\"workerId\":\"\"}"
         ));
         assertNull(codec.decodeWorkerConnectionBind(
-                "{\"messageType\":\"WORKER_BIND\",\"workerId\":\"worker-1\","
-                        + "\"extra\":true}"
+                "{\"workerId\":\"worker-1\",\"extra\":true}"
         ));
-        assertNull(codec.decodeWorkerConnectionMessage(encoded));
     }
 
     @Test
@@ -100,20 +97,43 @@ class WorkerDeliveryProtocolTest {
     }
 
     @Test
-    void workerConnectionMessagesUseFlatStrictJson() {
+    void workerConnectionMessagesCarryEncodedRealDtos() {
+        WorkerConnectionMessage bindMessage =
+                new WorkerConnectionMessage(
+                        WorkerConnectionMessageType.WORKER_BIND.name(),
+                        codec.encodeWorkerConnectionBind(
+                                new WorkerConnectionBind("worker-1")
+                        )
+                );
+        String bindJson = "{\"messageType\":\"WORKER_BIND\","
+                + "\"payload\":\"{\\\"workerId\\\":\\\"worker-1\\\"}\"}";
+        assertEquals(
+                bindJson,
+                codec.encodeWorkerConnectionMessage(bindMessage)
+        );
+        assertEquals(
+                bindMessage,
+                codec.decodeWorkerConnectionMessage(bindJson)
+        );
+
         WorkerCommandEnvelope command = new WorkerCommandEnvelope(
                 COMMAND_ID,
                 WorkerMessageType.TASK_ITEM,
                 123_456,
                 "opaque-command-item"
         );
+        String encodedCommand = codec.encodeWorkerCommand(command);
+        WorkerConnectionMessage commandMessage =
+                new WorkerConnectionMessage(
+                        WorkerConnectionMessageType
+                                .TASK_ITEM_COMMAND.name(),
+                        encodedCommand
+                );
         String commandJson = "{\"messageType\":\"TASK_ITEM_COMMAND\","
-                + "\"commandId\":\"" + COMMAND_ID + "\","
-                + "\"executeBeforeMillis\":123456,"
-                + "\"opaqueItem\":\"opaque-command-item\"}";
-        TaskItemCommandMessage commandMessage =
-                new TaskItemCommandMessage(command);
-
+                + "\"payload\":\"{\\\"commandId\\\":\\\"" + COMMAND_ID
+                + "\\\",\\\"executeBeforeMillis\\\":123456,"
+                + "\\\"messageType\\\":\\\"TASK_ITEM\\\","
+                + "\\\"opaqueItem\\\":\\\"opaque-command-item\\\"}\"}";
         assertEquals(
                 commandJson,
                 codec.encodeWorkerConnectionMessage(commandMessage)
@@ -122,6 +142,9 @@ class WorkerDeliveryProtocolTest {
                 commandMessage,
                 codec.decodeWorkerConnectionMessage(commandJson)
         );
+        assertEquals(command, codec.decodeWorkerCommand(
+                commandMessage.payload()
+        ));
 
         SeedResult result = new SeedResult(
                 COMMAND_ID,
@@ -129,14 +152,17 @@ class WorkerDeliveryProtocolTest {
                 "200",
                 "null"
         );
+        WorkerConnectionMessage resultMessage =
+                new WorkerConnectionMessage(
+                        WorkerConnectionMessageType
+                                .TASK_ITEM_RESULT.name(),
+                        codec.encodeSeedResult(result)
+                );
         String resultJson = "{\"messageType\":\"TASK_ITEM_RESULT\","
-                + "\"commandId\":\"" + COMMAND_ID + "\","
-                + "\"opaqueResultContext\":\"context\","
-                + "\"opaqueResultPayload\":\"null\","
-                + "\"outcomeCode\":\"200\"}";
-        TaskItemResultMessage resultMessage =
-                new TaskItemResultMessage(result);
-
+                + "\"payload\":\"{\\\"commandId\\\":\\\"" + COMMAND_ID
+                + "\\\",\\\"opaqueResultContext\\\":\\\"context\\\","
+                + "\\\"opaqueResultPayload\\\":\\\"null\\\","
+                + "\\\"outcomeCode\\\":\\\"200\\\"}\"}";
         assertEquals(
                 resultJson,
                 codec.encodeWorkerConnectionMessage(resultMessage)
@@ -145,36 +171,36 @@ class WorkerDeliveryProtocolTest {
                 resultMessage,
                 codec.decodeWorkerConnectionMessage(resultJson)
         );
+        assertFalse(resultMessage.toString().contains(
+                resultMessage.payload()
+        ));
+        assertEquals(result, codec.decodeSeedResult(
+                resultMessage.payload()
+        ));
     }
 
     @Test
-    void workerConnectionMessagesRejectOldAndUnknownShapes() {
-        String oldCommand = codec.encodeWorkerCommand(
-                new WorkerCommandEnvelope(
+    void workerConnectionMessageRejectsOldFlatAndMalformedFrames() {
+        assertNull(codec.decodeWorkerConnectionMessage(
+                codec.encodeWorkerCommand(new WorkerCommandEnvelope(
                         COMMAND_ID,
                         WorkerMessageType.TASK_ITEM,
                         123_456,
                         "opaque-command-item"
-                )
-        );
-        String oldResult = codec.encodeSeedResult(new SeedResult(
-                COMMAND_ID,
-                "context",
-                "200",
-                "null"
-        ));
-
-        assertNull(codec.decodeWorkerConnectionMessage(oldCommand));
-        assertNull(codec.decodeWorkerConnectionMessage(oldResult));
-        assertNull(codec.decodeWorkerConnectionMessage(
-                "{\"messageType\":\"UNKNOWN\"}"
+                ))
         ));
         assertNull(codec.decodeWorkerConnectionMessage(
-                "{\"messageType\":\"TASK_ITEM_COMMAND\","
-                        + "\"commandId\":\"" + COMMAND_ID + "\","
-                        + "\"executeBeforeMillis\":123456,"
-                        + "\"opaqueItem\":\"item\",\"extra\":true}"
+                "{\"messageType\":\"TASK_ITEM_COMMAND\",\"payload\":\"x\","
+                        + "\"extra\":true}"
         ));
+        assertNull(codec.decodeWorkerConnectionMessage(
+                "{\"messageType\":\"TASK_ITEM_COMMAND\",\"payload\":\"\"}"
+        ));
+        WorkerConnectionMessage unknown =
+                codec.decodeWorkerConnectionMessage(
+                        "{\"messageType\":\"UNKNOWN\",\"payload\":\"x\"}"
+                );
+        assertEquals("UNKNOWN", unknown.messageType());
     }
 
     @Test

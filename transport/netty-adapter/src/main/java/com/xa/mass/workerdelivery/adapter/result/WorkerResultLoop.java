@@ -3,7 +3,8 @@ package com.xa.mass.workerdelivery.adapter.result;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultSource;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Objects;
 
@@ -16,7 +17,8 @@ public final class WorkerResultLoop implements Runnable {
     private final WorkerDeliveryGatewayClient gateway;
     private final String adapterId;
     private final BoundedWorkerResultQueue resultQueue;
-    private List<SeedResult> pendingBatch;
+    private final EnumMap<SeedResultSource, List<String>> pendingBatches =
+            new EnumMap<>(SeedResultSource.class);
     private volatile boolean closed;
 
     public WorkerResultLoop(
@@ -42,7 +44,9 @@ public final class WorkerResultLoop implements Runnable {
         if (closed) {
             return;
         }
-        submitAtMostOneBatch();
+        for (SeedResultSource source : SeedResultSource.values()) {
+            submitAtMostOneBatch(source);
+        }
     }
 
     public void stopAccepting() {
@@ -55,42 +59,54 @@ public final class WorkerResultLoop implements Runnable {
         }
         resultQueue.stopAccepting();
 
-        if (pendingBatch != null && !submit(pendingBatch)) {
-            closed = true;
-            return;
-        }
-        pendingBatch = null;
+        for (SeedResultSource source : SeedResultSource.values()) {
+            List<String> pending = pendingBatches.get(source);
+            if (pending != null) {
+                SubmissionOutcome outcome = submit(source, pending);
+                if (outcome == SubmissionOutcome.RETRY) {
+                    continue;
+                }
+                pendingBatches.remove(source);
+            }
 
-        List<SeedResult> remaining = resultQueue.drainAll();
-        if (!remaining.isEmpty() && !submit(remaining)) {
-            pendingBatch = remaining;
+            List<String> remaining = resultQueue.drain(source);
+            if (remaining.isEmpty()) {
+                continue;
+            }
+            if (submit(source, remaining) == SubmissionOutcome.RETRY) {
+                pendingBatches.put(source, remaining);
+            }
         }
         closed = true;
     }
 
-    List<SeedResult> pendingBatch() {
-        return pendingBatch;
+    List<String> pendingBatch(SeedResultSource source) {
+        return pendingBatches.get(source);
     }
 
-    private void submitAtMostOneBatch() {
-        List<SeedResult> batch = pendingBatch;
+    private void submitAtMostOneBatch(SeedResultSource source) {
+        List<String> batch = pendingBatches.get(source);
         if (batch == null) {
-            batch = resultQueue.drainAll();
+            batch = resultQueue.drain(source);
         }
         if (batch.isEmpty()) {
             return;
         }
-        if (submit(batch)) {
-            pendingBatch = null;
+        SubmissionOutcome outcome = submit(source, batch);
+        if (outcome == SubmissionOutcome.RETRY) {
+            pendingBatches.put(source, batch);
         } else {
-            pendingBatch = batch;
+            pendingBatches.remove(source);
         }
     }
 
-    private boolean submit(List<SeedResult> batch) {
+    private SubmissionOutcome submit(
+            SeedResultSource source,
+            List<String> batch
+    ) {
         try {
-            gateway.appendResults(adapterId, batch);
-            return true;
+            gateway.appendResults(adapterId, source, batch);
+            return SubmissionOutcome.SUCCESS;
         } catch (RuntimeException error) {
             WorkerDeliveryAdapterException failure = classify(error);
             LOGGER.log(
@@ -101,7 +117,11 @@ public final class WorkerResultLoop implements Runnable {
                     adapterId,
                     failure.getMessage()
             );
-            return false;
+            return failure.errorCode()
+                    == WorkerDeliveryAdapterErrorCode
+                    .GATEWAY_PROTOCOL_ERROR
+                    ? SubmissionOutcome.DROP
+                    : SubmissionOutcome.RETRY;
         }
     }
 
@@ -117,5 +137,11 @@ public final class WorkerResultLoop implements Runnable {
                 "Worker result submission failed",
                 error
         );
+    }
+
+    private enum SubmissionOutcome {
+        SUCCESS,
+        RETRY,
+        DROP
     }
 }

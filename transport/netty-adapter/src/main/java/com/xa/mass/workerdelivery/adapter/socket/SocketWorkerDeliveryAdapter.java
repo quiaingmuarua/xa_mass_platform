@@ -8,11 +8,14 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterError
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterState;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandLoop;
-import com.xa.mass.workerdelivery.adapter.message.TaskItemResultMessageHandler;
-import com.xa.mass.workerdelivery.adapter.message.WorkerConnectionMessageDispatcher;
+import com.xa.mass.workerdelivery.adapter.message.AdapterMessageDefinition;
+import com.xa.mass.workerdelivery.adapter.message.AdapterMessageDefinitionManager;
+import com.xa.mass.workerdelivery.adapter.message.WorkerResultPayloadHandler;
+import com.xa.mass.workerdelivery.adapter.message.WorkerResultHandlingResult;
 import com.xa.mass.workerdelivery.adapter.result.BoundedWorkerResultQueue;
 import com.xa.mass.workerdelivery.adapter.result.WorkerResultLoop;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessageType;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelInitializer;
@@ -29,7 +32,7 @@ import io.netty.handler.timeout.WriteTimeoutHandler;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -56,7 +59,9 @@ public final class SocketWorkerDeliveryAdapter
     private final NettySocketWorkerConnectionRegistry connections;
     private final WorkerCommandLoop commandLoop;
     private final WorkerResultLoop resultLoop;
-    private final WorkerConnectionMessageDispatcher messageDispatcher;
+    private final AdapterMessageDefinitionManager<
+            WorkerResultHandlingResult
+            > messageDefinitions;
     private volatile WorkerDeliveryAdapterState state =
             WorkerDeliveryAdapterState.REGISTERED;
     private EventLoopGroup eventLoopGroup;
@@ -114,9 +119,13 @@ public final class SocketWorkerDeliveryAdapter
         connections = new NettySocketWorkerConnectionRegistry(codec);
         BoundedWorkerResultQueue resultQueue =
                 new BoundedWorkerResultQueue(resultQueueCapacity);
-        messageDispatcher = new WorkerConnectionMessageDispatcher(
-                List.of(new TaskItemResultMessageHandler(resultQueue))
-        );
+        messageDefinitions = new AdapterMessageDefinitionManager<>(Map.of(
+                WorkerConnectionMessageType.TASK_ITEM_RESULT.name(),
+                AdapterMessageDefinition.of(
+                        payload -> payload,
+                        new WorkerResultPayloadHandler(resultQueue)
+                )
+        ));
         WorkerDeliveryGatewayClient requiredGateway =
                 Objects.requireNonNull(gateway, "gateway");
         commandLoop = new WorkerCommandLoop(
@@ -300,7 +309,7 @@ public final class SocketWorkerDeliveryAdapter
                                 .addLast(new SocketWorkerHandler(
                                         connections,
                                         codec,
-                                        messageDispatcher,
+                                        messageDefinitions,
                                         () -> state
                                                 == WorkerDeliveryAdapterState
                                                 .RUNNING

@@ -90,7 +90,7 @@ Worker Delivery boundaries:
 ```text
 worker_delivery_contract_jvm
   transport-neutral WorkerCommand/DeliverSeed/SeedResult contracts,
-  long-connection WorkerConnectionMessage union, and strict codecs
+  stable long-connection message envelope, and strict codecs
 api.v1.workerdelivery
   point Worker and Adapter batch HTTP access profiles
 workerdelivery.application
@@ -115,9 +115,8 @@ The Adapter runtime is implemented by
 This Server reads the configured Adapter instance map, creates complete
 WebSocket or Socket Adapter instances, registers them, and forwards
 process-ready/process-close events. Each Adapter owns its Netty listener,
-bounded mailbox consume loop, connection registry, immutable message
-dispatcher, built-in result-message handler, and bounded result buffer. It
-still consumes
+bounded Command/Result loops, connection registry, static message
+Definitions, and source-tagged opaque result buffer. It still consumes
 the existing batch HTTP API through loopback and has no in-process or Redis
 shortcut. Polling does not use the long-connection message union; it continues
 to exchange WorkerCommand and SeedResult through point HTTP.
@@ -169,6 +168,11 @@ POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/results:appen
 
 `system-polling` may use only the point Worker operations. Bounded batch
 consume and batch result append are reserved for long-lived Adapter identities.
+The Adapter result request carries a batch-level `source=WORKER|ADAPTER` and
+an array of encoded `SeedResult` strings. Server decodes each item, permits
+`WORKER -> 200/1xxx` and `ADAPTER -> 3xxx`, appends the valid subset, and
+returns both `acceptedCount` and `rejectedCount`. Source is ingress metadata
+and is not written to Redis.
 
 Management endpoints:
 
@@ -234,7 +238,8 @@ Instances must use distinct IDs and listener ports. Do not duplicate an
 endpoint-manager ID for throughput. Each instance runs independent Command and
 Result loops. The Command Loop refills a bounded local queue and initiates
 non-blocking Channel writes; the Result Loop aggregates Worker results and
-submits at most one batch per `result-submit-interval`.
+Adapter rejections separately and submits at most one batch per source per
+`result-submit-interval`.
 
 Defaults:
 
@@ -261,8 +266,8 @@ KERNEL_DESIGN_REDIS_URL=redis://localhost:6379/15 \
 ```
 
 The cross-process integration proves `TASK_DRIVEN` through the real Java
-polling Worker and `ITEM_DRIVEN` through two independent Netty WebSocket
-Adapter endpoints and Java WebSocket Workers. All paths use the Server HTTP
+polling Worker and `ITEM_DRIVEN` through Netty WebSocket and Socket Adapter
+endpoints. All paths use the Server HTTP
 boundary, Python scheduling/ResultRouting, Java last-success query, and exact
 Worker release.
 Authentication, same-endpoint multi-instance ownership, pending/ack,

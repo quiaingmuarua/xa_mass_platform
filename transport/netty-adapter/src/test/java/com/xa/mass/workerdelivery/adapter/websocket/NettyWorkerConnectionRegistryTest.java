@@ -3,10 +3,10 @@ package com.xa.mass.workerdelivery.adapter.websocket;
 import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.RETRY_LATER;
 import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.STARTED;
 import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.ConnectionCloseReason.TRANSPORT_ERROR;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessageType.TASK_ITEM_COMMAND;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemCommandMessage;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
 import io.netty.channel.embedded.EmbeddedChannel;
@@ -37,9 +37,13 @@ class NettyWorkerConnectionRegistryTest {
             TextWebSocketFrame delivered = second.readOutbound();
             try {
                 assertThat(replacement.statusCode()).isEqualTo(1008);
-            assertThat(codec.decodeWorkerConnectionMessage(
-                    delivered.text()
-            )).isEqualTo(new TaskItemCommandMessage(command()));
+                var message = codec.decodeWorkerConnectionMessage(
+                        delivered.text()
+                );
+                assertThat(message.messageType())
+                        .isEqualTo(TASK_ITEM_COMMAND.name());
+                assertThat(codec.decodeWorkerCommand(message.payload()))
+                        .isEqualTo(command());
             } finally {
                 ReferenceCountUtil.release(replacement);
                 ReferenceCountUtil.release(delivered);

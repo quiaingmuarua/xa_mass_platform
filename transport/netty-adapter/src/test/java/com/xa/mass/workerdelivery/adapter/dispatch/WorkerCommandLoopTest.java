@@ -3,11 +3,16 @@ package com.xa.mass.workerdelivery.adapter.dispatch;
 import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.RETRY_LATER;
 import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.STARTED;
 import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.UNKNOWN;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultSource.ADAPTER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultSource.WORKER;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.adapter.result.BoundedWorkerResultQueue;
+import com.xa.mass.workerdelivery.adapter.result.WorkerResultLoop;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultSource;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
 import java.util.ArrayList;
@@ -136,9 +141,14 @@ class WorkerCommandLoopTest {
         );
 
         loop.run();
+        new WorkerResultLoop(gateway, "adapter-1", results).run();
 
         assertThat(loop.queuedCommandCount()).isZero();
-        assertThat(results.drainAll()).containsExactly(new SeedResult(
+        assertThat(gateway.appendedSources).containsExactly(ADAPTER);
+        assertThat(gateway.appendedResults).hasSize(1);
+        assertThat(new WorkerDeliveryCodec().decodeSeedResult(
+                gateway.appendedResults.get(0).get(0)
+        )).isEqualTo(new SeedResult(
                 COMMAND_ID,
                 "context",
                 "3001",
@@ -155,7 +165,12 @@ class WorkerCommandLoopTest {
         ));
         BoundedWorkerResultQueue results =
                 new BoundedWorkerResultQueue(1);
-        results.offer(result("b5e9e10d-f78b-469e-93ab-864b49c189c1"));
+        SeedResult existing =
+                result("b5e9e10d-f78b-469e-93ab-864b49c189c1");
+        results.offer(
+                WORKER,
+                new WorkerDeliveryCodec().encodeSeedResult(existing)
+        );
         WorkerCommandLoop loop = loop(
                 gateway,
                 (workerId, command) -> RETRY_LATER,
@@ -166,11 +181,15 @@ class WorkerCommandLoopTest {
         );
 
         loop.run();
+        new WorkerResultLoop(gateway, "adapter-1", results).run();
 
         assertThat(loop.queuedCommandCount()).isZero();
-        assertThat(results.drainAll()).containsExactly(
-                result("b5e9e10d-f78b-469e-93ab-864b49c189c1")
-        );
+        assertThat(gateway.appendedSources).containsExactly(WORKER);
+        assertThat(gateway.appendedResults)
+                .containsExactly(List.of(
+                        new WorkerDeliveryCodec()
+                                .encodeSeedResult(existing)
+                ));
     }
 
     private static WorkerCommandLoop loop(
@@ -257,6 +276,10 @@ class WorkerCommandLoopTest {
                 Map<String, WorkerCommandEnvelope>
                 > batches = new ConcurrentLinkedQueue<>();
         private final List<Integer> requestedLimits = new ArrayList<>();
+        private final List<SeedResultSource> appendedSources =
+                new ArrayList<>();
+        private final List<List<String>> appendedResults =
+                new ArrayList<>();
         private int consumeFailures;
 
         @Override
@@ -276,9 +299,11 @@ class WorkerCommandLoopTest {
         @Override
         public void appendResults(
                 String endpointManagerId,
-                List<SeedResult> results
+                SeedResultSource source,
+                List<String> results
         ) {
-            throw new AssertionError("Command loop must not append directly");
+            appendedSources.add(source);
+            appendedResults.add(List.copyOf(results));
         }
     }
 }

@@ -286,10 +286,14 @@ class RuntimeApiPythonIntegrationTest {
                 codec,
                 Map.of(
                         TEST_EVENT_CODE,
-                        WorkerEventDefinition.map(payload -> Map.of(
-                                "observed",
-                                payload.get("value")
-                        ))
+                        WorkerEventDefinition.map(payload ->
+                                com.xa.mass.workerdelivery.json.Jsons.toJson(
+                                        Map.of(
+                                                "observed",
+                                                payload.get("value")
+                                        )
+                                )
+                        )
                 )
         );
         return switch (transportProfile) {

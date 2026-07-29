@@ -2,10 +2,10 @@ package com.xa.mass.workerdelivery.adapter.socket;
 
 import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.RETRY_LATER;
 import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.STARTED;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessageType.TASK_ITEM_COMMAND;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemCommandMessage;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
 import io.netty.channel.embedded.EmbeddedChannel;
@@ -32,9 +32,13 @@ class NettySocketWorkerConnectionRegistryTest {
 
             String delivered = second.readOutbound();
             assertThat(delivered).endsWith("\n");
-            assertThat(codec.decodeWorkerConnectionMessage(
+            var message = codec.decodeWorkerConnectionMessage(
                     delivered.stripTrailing()
-            )).isEqualTo(new TaskItemCommandMessage(command()));
+            );
+            assertThat(message.messageType())
+                    .isEqualTo(TASK_ITEM_COMMAND.name());
+            assertThat(codec.decodeWorkerCommand(message.payload()))
+                    .isEqualTo(command());
         } finally {
             first.finishAndReleaseAll();
             second.finishAndReleaseAll();

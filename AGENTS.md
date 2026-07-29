@@ -19,13 +19,14 @@ Status: current repository handoff.
 - `worker_delivery_contract_jvm/` is the Java 11 compatible transport-neutral
   WorkerCommand/DeliverSeed/SeedResult contract shared by Server, Adapter, and
   Worker.
-  It also owns the strict flat WorkerConnectionMessage union used only by
-  long-lived transports.
+  It also owns the stable `messageType + payload` long-connection envelope;
+  Adapter and Worker resolve payloads through separate local Definition
+  Managers.
 - `transport/netty-adapter/` owns complete Adapter instances: local
   registration, start/close lifecycle, scheduled Gateway consumption, active
-  connections, bounded concurrent delivery, result buffering, and independent
-  Netty WebSocket/Socket listeners. It has no Spring, Server, Kernel, or Redis
-  dependency.
+  connections, bounded Command/Result queues, and independent Netty
+  WebSocket/Socket listeners. Worker result payloads remain opaque until
+  Server ingress. It has no Spring, Server, Kernel, or Redis dependency.
 - `transport/okhttp-worker/` is the Java 11 compatible Worker library. It owns
   serial command execution, the handler contract, OkHttp Polling/WebSocket,
   and line-oriented Socket transport. It is not a CLI, application, Android
@@ -86,10 +87,12 @@ tag.
   Spring, Redis, scores, Pacers, or Server HTTP DTOs. The Adapter module owns
   its complete instances, Netty listeners, scheduled dispatch loops, active
   connections, immutable message dispatcher, statically installed handlers,
-  cursors, delivery executors, and bounded results. Handler assembly is not a
-  dynamic registration or discovery surface. Its private HTTP DTOs are proved
-  against Server JSON with bilateral golden tests; do not add an in-process
-  fast path.
+  bounded Command/Result queues, and source-specific pending result batches.
+  Handler assembly is not a dynamic registration or discovery surface.
+  Worker `SeedResult` payloads must not be decoded or rebuilt in Adapter; only
+  Adapter-owned `3xxx` construction is allowed. Its private HTTP DTOs are
+  proved against Server JSON with bilateral golden tests; do not add an
+  in-process fast path.
 - `transport/okhttp-worker` may depend only on `foundation_jvm`, the shared
   Worker Delivery contract, and Android-compatible transport libraries. It
   must compile with `--release 11`,
@@ -101,7 +104,7 @@ tag.
   Adapter instances, register them, and invoke `manager.start()` /
   `manager.close()` at process boundaries. It must not host WebSocket
   endpoints, call `dispatchOnce()`, or own Adapter scheduling, connection
-  selection, cursor handling, result buffering, or trusted rejection policy.
+  selection, queue handling, result buffering, or trusted rejection policy.
 
 ## JVM Incremental Assembly
 
@@ -142,10 +145,10 @@ WorkerDeliveryConfiguration
 
 transport/netty-adapter
   -> Adapter batch HTTP client
-  -> per-endpoint cursor, current connection registry, concurrent delivery
-  -> flat long-connection message codec, immutable dispatcher, built-in result
-     handler, and bounded result buffer
-  -> independent Netty WebSocket listeners
+  -> per-endpoint Command/Result loops and current connection registry
+  -> stable long-connection envelope, immutable Definitions, opaque Worker
+     result forwarding, and Adapter-owned 3xxx generation
+  -> independent Netty WebSocket and Socket listeners
 ```
 
 The main Server owns the Worker Delivery HTTP and Redis boundaries. It only

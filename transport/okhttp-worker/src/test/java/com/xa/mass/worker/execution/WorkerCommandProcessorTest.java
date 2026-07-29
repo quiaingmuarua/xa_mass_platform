@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
+import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliverSeed;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
@@ -29,7 +30,7 @@ class WorkerCommandProcessorTest {
                     Map<String, Object> observed =
                             new LinkedHashMap<>();
                     observed.put("observed", payload.get("value"));
-                    return observed;
+                    return Jsons.toJson(observed);
                 })
         )).process(command(
                 "worker-1",
@@ -47,26 +48,19 @@ class WorkerCommandProcessorTest {
 
     @Test
     void typedDefinitionResolvesParametersBeforeHandler() {
-        WorkerEventDefinition<
-                ObserveParameters,
-                Map<String, Object>
-        > definition = WorkerEventDefinition.of(
+        WorkerEventDefinition<ObserveParameters> definition =
+                WorkerEventDefinition.of(
                 payload -> new ObserveParameters(
                         requireString(payload, "value")
                 ),
-                parameters -> Map.of(
+                parameters -> Jsons.toJson(Map.of(
                         "observed",
                         parameters.value()
-                )
+                ))
         );
 
-        Map<
-                String,
-                WorkerEventDefinition<
-                        ObserveParameters,
-                        Map<String, Object>
-                >
-        > definitions = Map.of(
+        Map<String, WorkerEventDefinition<ObserveParameters>> definitions =
+                Map.of(
                 "test.observe",
                 definition
         );
@@ -152,7 +146,7 @@ class WorkerCommandProcessorTest {
                                     "invalid"
                             );
                         },
-                        parameters -> Map.of()
+                        parameters -> "null"
                 )
         ));
         assertEquals(
@@ -169,7 +163,7 @@ class WorkerCommandProcessorTest {
                         payload -> {
                             throw new IllegalStateException("failed");
                         },
-                        parameters -> Map.of()
+                        parameters -> "null"
                 )
         ));
         assertEquals(
@@ -182,10 +176,7 @@ class WorkerCommandProcessorTest {
 
         WorkerCommandProcessor invalidResult = processor(Map.of(
                 "test.observe",
-                WorkerEventDefinition.map(payload -> Map.of(
-                        "unsupported",
-                        new Object()
-                ))
+                WorkerEventDefinition.map(payload -> "")
         ));
         assertEquals(
                 "1500",
@@ -241,13 +232,7 @@ class WorkerCommandProcessorTest {
     }
 
     private WorkerCommandProcessor processor(
-            Map<
-                    String,
-                    ? extends WorkerEventDefinition<
-                            ?,
-                            ? extends Map<String, Object>
-                    >
-            > definitions
+            Map<String, ? extends WorkerEventDefinition<?>> definitions
     ) {
         return new WorkerCommandProcessor(
                 "worker-1",

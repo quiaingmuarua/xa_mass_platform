@@ -16,21 +16,13 @@ public final class WorkerCommandProcessor {
 
     private final String workerId;
     private final WorkerDeliveryCodec codec;
-    private final WorkerEventDefinitionManager<
-            Map<String, Object>
-    > eventDefinitionManager;
+    private final WorkerEventDefinitionManager eventDefinitionManager;
     private final LongSupplier nowMillis;
 
     public WorkerCommandProcessor(
             String workerId,
             WorkerDeliveryCodec codec,
-            Map<
-                    String,
-                    ? extends WorkerEventDefinition<
-                            ?,
-                            ? extends Map<String, Object>
-                    >
-            > eventDefinitions
+            Map<String, ? extends WorkerEventDefinition<?>> eventDefinitions
     ) {
         this(
                 workerId,
@@ -43,13 +35,7 @@ public final class WorkerCommandProcessor {
     WorkerCommandProcessor(
             String workerId,
             WorkerDeliveryCodec codec,
-            Map<
-                    String,
-                    ? extends WorkerEventDefinition<
-                            ?,
-                            ? extends Map<String, Object>
-                    >
-            > eventDefinitions,
+            Map<String, ? extends WorkerEventDefinition<?>> eventDefinitions,
             LongSupplier nowMillis
     ) {
         if (workerId == null || workerId.isBlank()) {
@@ -60,7 +46,7 @@ public final class WorkerCommandProcessor {
         this.workerId = workerId;
         this.codec = codec;
         this.eventDefinitionManager =
-                new WorkerEventDefinitionManager<>(eventDefinitions);
+                new WorkerEventDefinitionManager(eventDefinitions);
         this.nowMillis = nowMillis;
     }
 
@@ -110,13 +96,16 @@ public final class WorkerCommandProcessor {
             return ExecutionResult.failure("1400");
         }
         try {
-            Map<String, Object> result = eventDefinitionManager.dispatch(
+            String result = eventDefinitionManager.dispatch(
                     (String) eventCodeValue,
                     stringKeyedMap((Map<?, ?>) payloadValue)
             );
+            if (result == null || result.isEmpty()) {
+                return ExecutionResult.failure("1500");
+            }
             return new ExecutionResult(
                     "200",
-                    Jsons.toJson(result)
+                    result
             );
         } catch (WorkerException error) {
             if (error.errorCode()

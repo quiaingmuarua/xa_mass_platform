@@ -1,5 +1,9 @@
 package com.xa.mass.workerdelivery.adapter.websocket;
 
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultSource.WORKER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessageType.TASK_ITEM_COMMAND;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessageType.TASK_ITEM_RESULT;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessageType.WORKER_BIND;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -10,10 +14,10 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterState
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemCommandMessage;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemResultMessage;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultSource;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessage;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
 import java.io.IOException;
 import java.net.ServerSocket;
@@ -97,12 +101,22 @@ class WebSocketWorkerDeliveryAdapterTest {
                     TimeUnit.SECONDS
             )).isTrue();
             WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
-            assertThat(codec.decodeWorkerConnectionMessage(
-                    firstProbe.messages.getFirst()
-            )).isEqualTo(new TaskItemCommandMessage(firstCommand));
-            assertThat(codec.decodeWorkerConnectionMessage(
-                    secondProbe.messages.getFirst()
-            )).isEqualTo(new TaskItemCommandMessage(secondCommand));
+            WorkerConnectionMessage firstMessage =
+                    codec.decodeWorkerConnectionMessage(
+                            firstProbe.messages.getFirst()
+                    );
+            WorkerConnectionMessage secondMessage =
+                    codec.decodeWorkerConnectionMessage(
+                            secondProbe.messages.getFirst()
+                    );
+            assertThat(firstMessage.messageType())
+                    .isEqualTo(TASK_ITEM_COMMAND.name());
+            assertThat(secondMessage.messageType())
+                    .isEqualTo(TASK_ITEM_COMMAND.name());
+            assertThat(codec.decodeWorkerCommand(firstMessage.payload()))
+                    .isEqualTo(firstCommand);
+            assertThat(codec.decodeWorkerCommand(secondMessage.payload()))
+                    .isEqualTo(secondCommand);
             assertThat(firstGateway.endpointManagerIds)
                     .containsOnly("websocket-1");
             assertThat(secondGateway.endpointManagerIds)
@@ -114,9 +128,13 @@ class WebSocketWorkerDeliveryAdapterTest {
                     "200",
                     "null"
             );
+            String encodedResult = codec.encodeSeedResult(result);
             firstSocket.sendText(
                     codec.encodeWorkerConnectionMessage(
-                            new TaskItemResultMessage(result)
+                            new WorkerConnectionMessage(
+                                    TASK_ITEM_RESULT.name(),
+                                    encodedResult
+                            )
                     ),
                     true
             ).get(2, TimeUnit.SECONDS);
@@ -125,7 +143,9 @@ class WebSocketWorkerDeliveryAdapterTest {
                     TimeUnit.SECONDS
             )).isTrue();
             assertThat(firstGateway.appendedResults)
-                    .containsExactly(List.of(result));
+                    .containsExactly(List.of(encodedResult));
+            assertThat(firstGateway.appendedSources)
+                    .containsExactly(WORKER);
         } finally {
             firstSocket.abort();
             secondSocket.abort();
@@ -233,12 +253,15 @@ class WebSocketWorkerDeliveryAdapterTest {
             )).isTrue();
             unboundSocket.sendText(
                     codec.encodeWorkerConnectionMessage(
-                            new TaskItemResultMessage(new SeedResult(
-                                    "a5e9e10d-f78b-469e-93ab-864b49c189c1",
-                                    "context",
-                                    "200",
-                                    "null"
-                            ))
+                            new WorkerConnectionMessage(
+                                    TASK_ITEM_RESULT.name(),
+                                    codec.encodeSeedResult(new SeedResult(
+                                            "a5e9e10d-f78b-469e-93ab-864b49c189c1",
+                                            "context",
+                                            "200",
+                                            "null"
+                                    ))
+                            )
                     ),
                     true
             ).get(2, TimeUnit.SECONDS);
@@ -255,9 +278,7 @@ class WebSocketWorkerDeliveryAdapterTest {
             )).isTrue();
             awaitBound(adapter);
             boundSocket.sendText(
-                    codec.encodeWorkerConnectionBind(
-                            new WorkerConnectionBind("worker-1")
-                    ),
+                    encodeBind(codec, "worker-1"),
                     true
             ).get(2, TimeUnit.SECONDS);
             assertThat(bound.closed.await(
@@ -366,7 +387,9 @@ class WebSocketWorkerDeliveryAdapterTest {
                 new ConcurrentLinkedQueue<>();
         private final List<String> endpointManagerIds =
                 new CopyOnWriteArrayList<>();
-        private final List<List<SeedResult>> appendedResults =
+        private final List<SeedResultSource> appendedSources =
+                new CopyOnWriteArrayList<>();
+        private final List<List<String>> appendedResults =
                 new CopyOnWriteArrayList<>();
         private final CountDownLatch resultAppended =
                 new CountDownLatch(1);
@@ -384,9 +407,11 @@ class WebSocketWorkerDeliveryAdapterTest {
         @Override
         public void appendResults(
                 String endpointManagerId,
-                List<SeedResult> results
+                SeedResultSource source,
+                List<String> results
         ) {
             endpointManagerIds.add(endpointManagerId);
+            appendedSources.add(source);
             appendedResults.add(List.copyOf(results));
             resultAppended.countDown();
         }
@@ -415,7 +440,8 @@ class WebSocketWorkerDeliveryAdapterTest {
         @Override
         public void appendResults(
                 String endpointManagerId,
-                List<SeedResult> results
+                SeedResultSource source,
+                List<String> results
         ) {
         }
     }
@@ -447,9 +473,7 @@ class WebSocketWorkerDeliveryAdapterTest {
                 return;
             }
             webSocket.sendText(
-                    codec.encodeWorkerConnectionBind(
-                            new WorkerConnectionBind(workerId)
-                    ),
+                    encodeBind(codec, workerId),
                     true
             ).whenComplete((ignored, error) -> {
                 if (error == null) {
@@ -484,5 +508,19 @@ class WebSocketWorkerDeliveryAdapterTest {
             closed.countDown();
             return CompletableFuture.completedFuture(null);
         }
+    }
+
+    private static String encodeBind(
+            WorkerDeliveryCodec codec,
+            String workerId
+    ) {
+        return codec.encodeWorkerConnectionMessage(
+                new WorkerConnectionMessage(
+                        WORKER_BIND.name(),
+                        codec.encodeWorkerConnectionBind(
+                                new WorkerConnectionBind(workerId)
+                        )
+                )
+        );
     }
 }

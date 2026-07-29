@@ -1,9 +1,7 @@
 package com.xa.mass.workerdelivery.adapter.message;
 
-public enum WorkerMessageHandlingResult {
+public enum WorkerResultHandlingResult {
     ACCEPTED,
-    UNSUPPORTED_MESSAGE,
-    INVALID_OUTCOME,
     BUFFER_FULL,
     ADAPTER_CLOSED
 }

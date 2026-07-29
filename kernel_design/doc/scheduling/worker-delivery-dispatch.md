@@ -109,35 +109,44 @@ interpret Worker message types.
 Long-lived transports first establish their process-local connection binding:
 
 ```text
-WorkerConnectionBind
-  {"messageType":"WORKER_BIND","workerId":"worker-1"}
+WorkerConnectionMessage
+  messageType = WORKER_BIND
+  payload = "{\"workerId\":\"worker-1\"}"
 ```
 
-`WORKER_BIND` is connection setup. It is not a
-`WorkerConnectionMessageType`, does not enter the business dispatcher, and is
+`WORKER_BIND` is connection setup. It is part of the stable outer message
+vocabulary but does not enter either side's business Definition Manager and is
 never stored in a WorkerCommand mailbox or SeedResult queue. A connection
 starts `UNBOUND`, accepts Bind exactly once, and only then accepts business
 messages.
 
-After binding, long-lived transports use one transport-neutral business
-connection contract:
+All long-lived transports use one stable transport-neutral outer frame:
 
 ```text
-WorkerConnectionMessage
-  TASK_ITEM_COMMAND -> TaskItemCommandMessage(WorkerCommandEnvelope)
-  TASK_ITEM_RESULT  -> TaskItemResultMessage(SeedResult)
+WorkerConnectionMessage(
+  messageType: String,
+  payload: String
+)
+
+WORKER_BIND.payload        = encoded WorkerConnectionBind
+TASK_ITEM_COMMAND.payload  = encoded WorkerCommandEnvelope
+TASK_ITEM_RESULT.payload   = encoded SeedResult
 ```
 
-Its wire form is a strict flat discriminated union. It does not add a generic
-`payload`, wrap one JSON document inside another, or create another result
-owner. Decoding a command reconstructs the existing
-`WorkerCommandEnvelope(messageType=TASK_ITEM)`; decoding a result reconstructs
-the existing `SeedResult`. Polling continues to exchange the existing command
-and result DTOs directly through point HTTP.
+The outer wire is strictly discriminated by its String `messageType` and
+contains exactly `messageType/payload`. It does not flatten inner contracts
+into the frame or introduce another result owner. Worker resolves command
+payload into the existing
+`WorkerCommandEnvelope(messageType=TASK_ITEM)`. Worker constructs and
+serializes the complete `SeedResult`; Adapter treats the result payload as an
+opaque String. Polling continues to exchange the existing command and result
+DTOs directly through point HTTP.
 
-The connection message contract exists so WebSocket and Socket share one
-business-message vocabulary. It is not stored in the WorkerCommand mailbox or
-SeedResult queues and is not consumed by Result Routing.
+WebSocket and Socket share the same frame vocabulary and strict codec.
+Adapter and Worker each own a static local Definition Manager because their
+accepted directions, handlers, and return types differ. Frames are not stored
+in the WorkerCommand mailbox or SeedResult queues and are not consumed by
+Result Routing.
 
 ## Runtime Contract
 
@@ -291,7 +300,8 @@ POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/commands:cons
   -> consume at most limit commands from the sparse mailbox
 
 POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/results:append
-  -> append one non-empty 200/1xxx/3xxx SeedResult batch
+  -> accept one source-tagged batch of encoded SeedResult strings
+  -> decode and validate each item at Server ingress
 ```
 
 The built-in `system-polling` identity is rejected from both Adapter batch
@@ -316,6 +326,26 @@ The batch request and response are:
 }
 ```
 
+Result append uses:
+
+```json
+{
+  "source": "WORKER",
+  "results": [
+    "{\"commandId\":\"32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1\",\"opaqueResultContext\":\"...\",\"opaqueResultPayload\":\"null\",\"outcomeCode\":\"200\"}"
+  ]
+}
+```
+
+```json
+{"acceptedCount":1,"rejectedCount":0}
+```
+
+`WORKER` permits only `200/1xxx`; `ADAPTER` permits only `3xxx`. Malformed or
+source-mismatched items increment `rejectedCount` while valid items in the same
+batch continue to `SeedResultRuntime`. Source is ingress metadata only: it is
+not written into `SeedResult`, Redis, or Result Routing.
+
 Point and batch consumers mechanically compete for the same Worker field.
 There is no Server-side reservation for a configured active Adapter identity;
 deployment must give one endpoint-manager bucket to one active Adapter
@@ -329,7 +359,10 @@ results, or access score/Pacer state.
 The Worker decodes `DeliverSeed`, verifies `seed.workerId` matches its identity,
 executes `opaqueDeliveryItem`, and copies `opaqueResultContext` into
 `SeedResult`. It copies only the original `commandId`; `messageType` and
-`executeBeforeMillis` are command-side coordinates.
+`executeBeforeMillis` are command-side coordinates. A Worker Event Handler
+returns an already serialized, non-empty `opaqueResultPayload` String. The
+Processor constructs the complete `SeedResult`; Adapter never fills in its
+fields.
 
 The repository's Java Worker library implements the execution boundary once
 and exposes polling, WebSocket, and Socket transports. A host selects and
@@ -345,10 +378,10 @@ WorkerCommandEnvelope
 
 Polling receives and submits the command/result DTOs through point HTTP.
 WebSocket and Socket first send `WORKER_BIND`, then receive
-`TASK_ITEM_COMMAND`, extract its `WorkerCommandEnvelope`, and return
-`TASK_ITEM_RESULT` carrying the resulting `SeedResult`. Bare command/result
-messages and business messages sent before Bind are invalid on both
-long-lived transports.
+`TASK_ITEM_COMMAND` with an encoded `WorkerCommandEnvelope` payload, and return
+`TASK_ITEM_RESULT` with an encoded `SeedResult` payload. Bare inner
+command/result messages and business messages sent before Bind are invalid on
+both long-lived transports.
 
 Polling retains one failed result in process memory and retries it before
 polling another command. WebSocket requests another message only after result
@@ -401,13 +434,14 @@ asynchronous send failure closes only that Channel and remains `UNKNOWN`.
 There is no per-command executor, blocking `ChannelFuture` wait, WorkerId queue
 index, or concurrent mailbox acquisition.
 
-Worker-originated `200/1xxx` results are
-decoded as `TASK_ITEM_RESULT`, passed through an immutable message dispatcher
-and the statically installed Task Item result handler, then offered to a
-bounded process-memory Result Queue. The independent Result Loop runs at
-`resultSubmitInterval`, submits at most one batch per tick, and retries a
-failed pending batch before draining current results. Result acceptance is not
-fenced by the current connection:
+Worker-originated results are decoded only at the outer
+`WorkerConnectionMessage` boundary. The immutable Adapter Definition selects
+`TASK_ITEM_RESULT`, tags its payload String as `source=WORKER`, and offers it
+unchanged to a bounded process-memory Result Queue. Adapter neither decodes
+`SeedResult` nor validates its outcome. The independent Result Loop runs at
+`resultSubmitInterval`; for each of `WORKER/ADAPTER`, it submits at most one
+batch per tick and retries that source's pending batch before draining current
+results. Result acceptance is not fenced by the current connection:
 evidence already produced through a replaced connection is still submitted,
 and Kernel ResultContext/Worker lease fences decide whether it affects current
 truth.
@@ -431,8 +465,8 @@ Spring, Redis, Kernel runtime, score, or Pacer dependency.
 
 There is no process-local fast path and no command or result ACK. Server/Redis
 failure during command consume does not stop forwarding already buffered
-commands. Result append failure retains one pending batch for retry. Adapter
-process failure may lose buffered commands and results.
+commands. Result append failure retains one pending batch per source for
+retry. Adapter process failure may lose buffered commands and results.
 
 A missing or temporarily unwritable connection retains the command until a
 later Command Loop round. If its `executeBeforeMillis` is reached before send
@@ -486,9 +520,11 @@ external Worker side effects exactly-once.
   the instance's command consume bound, queue capacity, and cadence.
 - Do not add an embedded in-process shortcut around the Server batch HTTP API.
 - Do not let Adapters generate command identity or message types.
-- Do not wrap SeedResult in WorkerCommandEnvelope or in a generic opaque
-  payload. The long-connection discriminated union must decode directly to the
-  existing SeedResult contract.
+- Do not wrap `SeedResult` in `WorkerCommandEnvelope`. The stable connection
+  frame deliberately carries the encoded `SeedResult` as its payload String;
+  Adapter must forward that String without decoding or rebuilding it.
+- Do not let Adapter validate Worker outcome families. Server batch ingress
+  validates `WORKER -> 200/1xxx` and `ADAPTER -> 3xxx`.
 - Do not add runtime handler registration, discovery, or fallback. Connection
   message handlers are immutable Adapter assembly.
 - Do not parse or reconstruct Worker score fences in an Adapter.

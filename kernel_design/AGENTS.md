@@ -391,28 +391,30 @@ Worker Delivery Dispatch owns:
 
 ```text
 Server point WorkerId polling through an explicit endpointManagerId binding
-Server bounded cursor access for a long-lived Adapter's sparse mailbox
+Server bounded no-cursor access for a long-lived Adapter's sparse mailbox
 point HTTP forwarding of WorkerCommandEnvelope to the selected Worker
-strict flat WorkerConnectionMessage frames for long-lived transports
-Server point Worker result and Adapter batch SeedResult validation/append
+stable messageType/payload frames with side-local Definitions
+Server point Worker result and source-tagged Adapter batch validation/append
 complete Java Adapter instance registration/start/close and scheduled dispatch
-single-cursor active-connection/bounded-delivery/result-buffer mechanism
-Adapter-owned Netty listener, immutable dispatcher, static result handler,
-and WebSocket frame/connection adaptation
+independent bounded Command/Result loops and active-connection mechanism
+Adapter-owned Netty listeners, static payload handlers, and opaque Worker
+result forwarding
 ```
 
 Its boundary starts after Task Dispatch handles mailbox publication and ends
 after SeedResult append. It does not select Workers, claim Items, mutate Task
 score, interpret Worker score, or renew/release Worker leases. The current
-polling HTTP slice accepts Worker-originated `200/1xxx`; the long-lived Adapter
-batch ingress accepts `3xxx` pre-execution rejection evidence. Polling never
-scans a mailbox, and `system-polling` is only a logical route binding.
+polling HTTP slice accepts Worker-originated `200/1xxx`; long-lived Adapter
+batch ingress uses `source=WORKER|ADAPTER` to enforce `200/1xxx` versus `3xxx`.
+The source is not ResultRouting truth. Polling never scans a mailbox, and
+`system-polling` is only a logical route binding.
 
 Each Java Adapter instance owns one configured non-system-polling mailbox,
-one independent Netty listener, one cursor, one scheduled dispatch loop,
-bounded concurrent Worker delivery, one current connection per WorkerId,
-bounded result buffering, statically installed connection-message handlers,
-and `3001` versus `UNKNOWN` classification.
+one independent Netty listener, separate scheduled Command/Result loops,
+bounded command/result queues, one current connection per WorkerId, statically
+installed connection-message Definitions, and `3001` versus `UNKNOWN`
+classification. Worker result payloads remain encoded Strings in Adapter;
+only Server ingress decodes and classifies them.
 `server_jvm` may turn each configured JSON tree into a concrete instance,
 register it, and invoke lifecycle events, but must not host WebSocket
 endpoints, call `dispatchOnce`, or own Adapter semantics. Multiple instances

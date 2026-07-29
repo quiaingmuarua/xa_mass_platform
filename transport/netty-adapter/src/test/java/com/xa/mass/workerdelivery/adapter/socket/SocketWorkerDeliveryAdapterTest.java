@@ -1,15 +1,19 @@
 package com.xa.mass.workerdelivery.adapter.socket;
 
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultSource.WORKER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessageType.TASK_ITEM_COMMAND;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessageType.TASK_ITEM_RESULT;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessageType.WORKER_BIND;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemCommandMessage;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemResultMessage;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultSource;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessage;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -57,9 +61,7 @@ class SocketWorkerDeliveryAdapterTest {
                         )
                 )) {
             socket.setSoTimeout(2_000);
-            writer.write(codec.encodeWorkerConnectionBind(
-                    new WorkerConnectionBind("worker-1")
-            ));
+            writer.write(bind("worker-1"));
             writer.write("\r\n");
             writer.flush();
             awaitBound(adapter);
@@ -67,8 +69,13 @@ class SocketWorkerDeliveryAdapterTest {
             WorkerCommandEnvelope command = command();
             gateway.batches.add(Map.of("worker-1", command));
             String commandLine = reader.readLine();
-            assertThat(codec.decodeWorkerConnectionMessage(commandLine))
-                    .isEqualTo(new TaskItemCommandMessage(command));
+            WorkerConnectionMessage commandMessage =
+                    codec.decodeWorkerConnectionMessage(commandLine);
+            assertThat(commandMessage.messageType())
+                    .isEqualTo(TASK_ITEM_COMMAND.name());
+            assertThat(codec.decodeWorkerCommand(
+                    commandMessage.payload()
+            )).isEqualTo(command);
 
             SeedResult result = new SeedResult(
                     command.commandId(),
@@ -76,8 +83,12 @@ class SocketWorkerDeliveryAdapterTest {
                     "200",
                     "null"
             );
+            String encodedResult = codec.encodeSeedResult(result);
             writer.write(codec.encodeWorkerConnectionMessage(
-                    new TaskItemResultMessage(result)
+                    new WorkerConnectionMessage(
+                            TASK_ITEM_RESULT.name(),
+                            encodedResult
+                    )
             ));
             writer.write('\n');
             writer.flush();
@@ -87,7 +98,9 @@ class SocketWorkerDeliveryAdapterTest {
                     TimeUnit.SECONDS
             )).isTrue();
             assertThat(gateway.appendedResults)
-                    .containsExactly(List.of(result));
+                    .containsExactly(List.of(encodedResult));
+            assertThat(gateway.appendedSources)
+                    .containsExactly(WORKER);
             assertThat(gateway.endpointManagerIds)
                     .containsOnly("socket-1");
         } finally {
@@ -108,12 +121,15 @@ class SocketWorkerDeliveryAdapterTest {
             assertClosedAfterLine(
                     port,
                     codec.encodeWorkerConnectionMessage(
-                            new TaskItemResultMessage(new SeedResult(
-                                    "a5e9e10d-f78b-469e-93ab-864b49c189c1",
-                                    "context",
-                                    "200",
-                                    "null"
-                            ))
+                            new WorkerConnectionMessage(
+                                    TASK_ITEM_RESULT.name(),
+                                    codec.encodeSeedResult(new SeedResult(
+                                            "a5e9e10d-f78b-469e-93ab-864b49c189c1",
+                                            "context",
+                                            "200",
+                                            "null"
+                                    ))
+                            )
                     )
             );
 
@@ -129,14 +145,12 @@ class SocketWorkerDeliveryAdapterTest {
                                     socket.getOutputStream(),
                                     StandardCharsets.UTF_8
                             )
-                    )) {
+                )) {
                 socket.setSoTimeout(2_000);
-                String bind = codec.encodeWorkerConnectionBind(
-                        new WorkerConnectionBind("worker-1")
-                );
-                writer.write(bind);
+                String encodedBind = bind("worker-1");
+                writer.write(encodedBind);
                 writer.write('\n');
-                writer.write(bind);
+                writer.write(encodedBind);
                 writer.write('\n');
                 writer.flush();
                 assertThat(reader.readLine()).isNull();
@@ -188,6 +202,17 @@ class SocketWorkerDeliveryAdapterTest {
         );
     }
 
+    private String bind(String workerId) {
+        return codec.encodeWorkerConnectionMessage(
+                new WorkerConnectionMessage(
+                        WORKER_BIND.name(),
+                        codec.encodeWorkerConnectionBind(
+                                new WorkerConnectionBind(workerId)
+                        )
+                )
+        );
+    }
+
     private static WorkerCommandEnvelope command() {
         return new WorkerCommandEnvelope(
                 "a5e9e10d-f78b-469e-93ab-864b49c189c1",
@@ -230,7 +255,9 @@ class SocketWorkerDeliveryAdapterTest {
                 new ConcurrentLinkedQueue<>();
         private final List<String> endpointManagerIds =
                 new CopyOnWriteArrayList<>();
-        private final List<List<SeedResult>> appendedResults =
+        private final List<SeedResultSource> appendedSources =
+                new CopyOnWriteArrayList<>();
+        private final List<List<String>> appendedResults =
                 new CopyOnWriteArrayList<>();
         private final CountDownLatch resultAppended =
                 new CountDownLatch(1);
@@ -248,9 +275,11 @@ class SocketWorkerDeliveryAdapterTest {
         @Override
         public void appendResults(
                 String endpointManagerId,
-                List<SeedResult> results
+                SeedResultSource source,
+                List<String> results
         ) {
             endpointManagerIds.add(endpointManagerId);
+            appendedSources.add(source);
             appendedResults.add(List.copyOf(results));
             resultAppended.countDown();
         }

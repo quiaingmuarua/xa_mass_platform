@@ -1,7 +1,7 @@
 package com.xa.mass.worker.execution;
 
 @FunctionalInterface
-public interface WorkerEventHandler<P, R> {
+public interface WorkerEventHandler<P> {
 
-    R execute(P parameters) throws Exception;
+    String execute(P parameters) throws Exception;
 }

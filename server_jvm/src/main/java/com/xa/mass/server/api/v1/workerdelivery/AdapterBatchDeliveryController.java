@@ -1,8 +1,7 @@
 package com.xa.mass.server.api.v1.workerdelivery;
 
-import com.xa.mass.server.api.v1.workerdelivery.WorkerDeliveryHttpContract.AcceptedCountResponse;
 import com.xa.mass.server.api.v1.workerdelivery.WorkerDeliveryHttpContract.SeedResultBatchRequest;
-import com.xa.mass.server.api.v1.workerdelivery.WorkerDeliveryHttpContract.SeedResultRequest;
+import com.xa.mass.server.api.v1.workerdelivery.WorkerDeliveryHttpContract.SeedResultBatchResponse;
 import com.xa.mass.server.api.v1.workerdelivery.WorkerDeliveryHttpContract.WorkerCommandConsumeRequest;
 import com.xa.mass.server.api.v1.workerdelivery.WorkerDeliveryHttpContract.WorkerCommandConsumeResponse;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
@@ -44,18 +43,20 @@ public class AdapterBatchDeliveryController {
     }
 
     @PostMapping("/results:append")
-    public ResponseEntity<AcceptedCountResponse> appendAdapterResults(
+    public ResponseEntity<SeedResultBatchResponse> appendAdapterResults(
             @PathVariable @NotBlank String endpointManagerId,
             @Valid @RequestBody SeedResultBatchRequest request
     ) {
-        int acceptedCount = workerDelivery.appendAdapterResults(
+        var counts = workerDelivery.appendAdapterResults(
                 endpointManagerId,
-                request.results().stream()
-                        .map(SeedResultRequest::toSeedResult)
-                        .toList()
+                request.source(),
+                request.results()
         );
         return ResponseEntity.accepted().body(
-                new AcceptedCountResponse(acceptedCount)
+                new SeedResultBatchResponse(
+                        counts.acceptedCount(),
+                        counts.rejectedCount()
+                )
         );
     }
 }

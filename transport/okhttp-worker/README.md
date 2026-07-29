@@ -60,15 +60,17 @@ acknowledgement.
 Definitions bind parameter conversion and execution:
 
 ```java
-WorkerEventDefinition<P, R> definition =
+WorkerEventDefinition<P> definition =
         WorkerEventDefinition.of(resolver, handler);
 ```
 
-The registration key is always a String `eventCode`. The current Processor
-requires each Definition to return `Map<String, Object>`, which it encodes as
-the opaque success payload. Definitions are copied into an immutable Manager;
-there is no runtime handler registration. The library does not install example
-or business handlers and does not require deterministic business results.
+The registration key is always a String `eventCode`. A Handler returns the
+already serialized, non-empty `opaqueResultPayload` String; `"null"` expresses
+no business value. The framework does not require that String to contain JSON
+and does not decode it again. Definitions are copied into an immutable
+Manager; there is no runtime handler registration. The library does not
+install example or business handlers and does not require deterministic
+business results.
 
 ## Library Use
 
@@ -82,7 +84,10 @@ WorkerCommandProcessor processor = new WorkerCommandProcessor(
         Map.of(
                 "sample.observe",
                 WorkerEventDefinition.map(payload ->
-                        Map.of("observed", payload.get("value")))
+                        Jsons.toJson(Map.of(
+                                "observed",
+                                payload.get("value")
+                        )))
         )
 );
 
@@ -99,15 +104,15 @@ PollingWorkerTransport transport = new PollingWorkerTransport(
 Typed Handler parameters use an explicit resolver without reflection:
 
 ```java
-WorkerEventDefinition<ObserveParameters, Map<String, Object>> observe =
+WorkerEventDefinition<ObserveParameters> observe =
         WorkerEventDefinition.of(
                 payload -> new ObserveParameters(
                         (String) payload.get("value")
                 ),
-                parameters -> Map.of(
+                parameters -> Jsons.toJson(Map.of(
                         "observed",
                         parameters.value()
-                )
+                ))
         );
 ```
 
@@ -121,15 +126,23 @@ exactly-once delivery.
 Long-lived transports first send:
 
 ```json
-{"messageType":"WORKER_BIND","workerId":"worker-1"}
+{"messageType":"WORKER_BIND","payload":"{\"workerId\":\"worker-1\"}"}
 ```
 
-They then exchange the flat connection messages:
+They then exchange the same stable outer message with different encoded
+payload contracts:
 
 ```text
-TASK_ITEM_COMMAND -> TaskItemCommandMessage(WorkerCommandEnvelope)
-TASK_ITEM_RESULT  -> TaskItemResultMessage(SeedResult)
+TASK_ITEM_COMMAND.payload -> WorkerCommandEnvelope
+TASK_ITEM_RESULT.payload  <- encoded SeedResult
 ```
+
+The Worker Definition Manager is statically assembled and local to this
+module. The Transport decodes `WorkerConnectionMessage` once; the Definition
+receives only its payload String, decodes `WorkerCommandEnvelope`, and passes
+that command directly to `WorkerCommandProcessor`. The Processor constructs
+the complete `SeedResult`; WebSocket and Socket serialize it before placing it
+in the outbound `TASK_ITEM_RESULT` message.
 
 Transport selection is independent of `TaskType`.
 

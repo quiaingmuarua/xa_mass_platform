@@ -6,13 +6,14 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.xa.mass.worker.execution.WorkerCommandProcessor;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
+import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliverSeed;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemCommandMessage;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemResultMessage;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessage;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessageType;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -61,10 +62,11 @@ class SocketWorkerTransportTest {
                 codec,
                 Map.of(
                         "test.observe",
-                        WorkerEventDefinition.map(payload -> Map.of(
+                        WorkerEventDefinition.map(payload -> Jsons.toJson(
+                                Map.of(
                                 "observed",
                                 payload.get("value")
-                        ))
+                        )))
                 )
         );
         SocketWorkerTransport transport = new SocketWorkerTransport(
@@ -98,20 +100,17 @@ class SocketWorkerTransportTest {
         assertEquals(1, firstLines.length);
         assertEquals(
                 new WorkerConnectionBind("worker-1"),
-                codec.decodeWorkerConnectionBind(firstLines[0])
+                decodeBind(firstLines[0])
         );
 
         String[] secondLines = lines(secondOutput);
         assertEquals(
                 new WorkerConnectionBind("worker-1"),
-                codec.decodeWorkerConnectionBind(secondLines[0])
+                decodeBind(secondLines[0])
         );
-        WorkerConnectionMessage result =
-                codec.decodeWorkerConnectionMessage(secondLines[1]);
-        assertTrue(result instanceof TaskItemResultMessage);
         assertEquals(
                 "200",
-                ((TaskItemResultMessage) result).result().outcomeCode()
+                decodeResult(secondLines[1]).outcomeCode()
         );
         assertTrue(connects.get() >= 2);
         assertFalse(transport.hasPendingResult());
@@ -125,18 +124,43 @@ class SocketWorkerTransportTest {
     private String command() {
         String deliveryItem = "{\"eventCode\":\"test.observe\","
                 + "\"payload\":{\"value\":\"input\"}}";
-        return codec.encodeWorkerConnectionMessage(
-                new TaskItemCommandMessage(new WorkerCommandEnvelope(
-                        COMMAND_ID,
-                        WorkerMessageType.TASK_ITEM,
-                        System.currentTimeMillis() + 10_000,
-                        codec.encodeDeliverSeed(new DeliverSeed(
-                                "worker-1",
-                                deliveryItem,
-                                "context"
-                        ))
+        WorkerCommandEnvelope command = new WorkerCommandEnvelope(
+                COMMAND_ID,
+                WorkerMessageType.TASK_ITEM,
+                System.currentTimeMillis() + 10_000,
+                codec.encodeDeliverSeed(new DeliverSeed(
+                        "worker-1",
+                        deliveryItem,
+                        "context"
                 ))
         );
+        return codec.encodeWorkerConnectionMessage(
+                new WorkerConnectionMessage(
+                        WorkerConnectionMessageType
+                                .TASK_ITEM_COMMAND.name(),
+                        codec.encodeWorkerCommand(command)
+                )
+        );
+    }
+
+    private WorkerConnectionBind decodeBind(String encoded) {
+        WorkerConnectionMessage message =
+                codec.decodeWorkerConnectionMessage(encoded);
+        assertEquals(
+                WorkerConnectionMessageType.WORKER_BIND.name(),
+                message.messageType()
+        );
+        return codec.decodeWorkerConnectionBind(message.payload());
+    }
+
+    private SeedResult decodeResult(String encoded) {
+        WorkerConnectionMessage message =
+                codec.decodeWorkerConnectionMessage(encoded);
+        assertEquals(
+                WorkerConnectionMessageType.TASK_ITEM_RESULT.name(),
+                message.messageType()
+        );
+        return codec.decodeSeedResult(message.payload());
     }
 
     private static void await(Condition condition) throws Exception {

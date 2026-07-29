@@ -30,20 +30,35 @@ connect
 The strict bind wire is:
 
 ```json
-{"messageType":"WORKER_BIND","workerId":"worker-1"}
+{"messageType":"WORKER_BIND","payload":"{\"workerId\":\"worker-1\"}"}
 ```
 
-`WORKER_BIND` is connection setup, not a business message type, and therefore
-does not enter `WorkerConnectionMessage` or its dispatcher. After binding,
-long-lived transports use the strict flat business-message union:
+All long-lived messages use the same stable outer DTO:
 
 ```text
-TASK_ITEM_COMMAND -> TaskItemCommandMessage(WorkerCommandEnvelope)
-TASK_ITEM_RESULT  -> TaskItemResultMessage(SeedResult)
+WorkerConnectionMessage(
+  messageType: String,
+  payload: String
+)
 ```
 
-The bind DTO and business union have no generic payload and are not Kernel
-runtime or persistence contracts.
+The payload is the deterministic encoding of the real inner contract:
+
+```text
+WORKER_BIND       -> WorkerConnectionBind
+TASK_ITEM_COMMAND -> WorkerCommandEnvelope
+TASK_ITEM_RESULT  -> SeedResult
+```
+
+`WORKER_BIND` is connection setup and does not enter either side's business
+Definition Manager. Adapter and Worker install different static Definitions
+for the directions they accept. The outer codec validates only
+`messageType/payload`; each receiving owner decides whether and when to decode
+the payload.
+
+`SeedResultSource` is batch-ingress metadata used between an Adapter and the
+Server. It is not part of `SeedResult`, a Worker connection frame, or Redis
+result truth.
 
 ```text
 kernel_jvm -> worker_delivery_contract_jvm

@@ -1,21 +1,29 @@
 package com.xa.mass.server.workerdelivery.application;
 
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultOutcomeClass;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultSource;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import com.xa.mass.kernel.delivery.SeedResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 public final class WorkerDeliveryService {
 
+    private static final System.Logger LOGGER = System.getLogger(
+            WorkerDeliveryService.class.getName()
+    );
+
     private final WorkerCommandRuntime commandRuntime;
     private final SeedResultRuntime resultRuntime;
+    private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
 
     public WorkerDeliveryService(
             WorkerCommandRuntime commandRuntime,
@@ -94,20 +102,79 @@ public final class WorkerDeliveryService {
         appendResults(List.of(result), operation);
     }
 
-    public int appendAdapterResults(
+    public SeedResultAppendCounts appendAdapterResults(
             String endpointManagerId,
-            List<SeedResult> results
+            SeedResultSource source,
+            List<String> encodedSeedResults
     ) {
         String operation = "workerDelivery.appendAdapterResults";
         requireAdapterBatchIdentity(endpointManagerId, operation);
-        if (results.isEmpty()) {
+        if (source == null) {
+            throw invalid(operation, "SeedResult source must be present");
+        }
+        if (encodedSeedResults == null || encodedSeedResults.isEmpty()) {
             throw invalid(
                     operation,
                     "Adapter result batch must not be empty"
             );
         }
-        appendResults(results, operation);
-        return results.size();
+
+        List<SeedResult> acceptedResults = new ArrayList<>();
+        int rejectedCount = 0;
+        for (String encodedSeedResult : encodedSeedResults) {
+            if (encodedSeedResult == null
+                    || encodedSeedResult.isBlank()) {
+                rejectedCount++;
+                continue;
+            }
+            try {
+                SeedResult result = codec.decodeSeedResult(
+                        encodedSeedResult
+                );
+                if (result == null || !sourceAllows(source, result)) {
+                    rejectedCount++;
+                    continue;
+                }
+                acceptedResults.add(result);
+            } catch (IllegalArgumentException error) {
+                rejectedCount++;
+            }
+        }
+
+        if (!acceptedResults.isEmpty()) {
+            appendResults(acceptedResults, operation);
+        }
+        if (rejectedCount > 0) {
+            LOGGER.log(
+                    System.Logger.Level.WARNING,
+                    "endpointManagerId={0} source={1} "
+                            + "acceptedCount={2} rejectedCount={3}",
+                    endpointManagerId,
+                    source,
+                    acceptedResults.size(),
+                    rejectedCount
+            );
+        }
+        return new SeedResultAppendCounts(
+                acceptedResults.size(),
+                rejectedCount
+        );
+    }
+
+    private static boolean sourceAllows(
+            SeedResultSource source,
+            SeedResult result
+    ) {
+        SeedResultOutcomeClass outcomeClass =
+                WorkerDeliveryProtocol.classifyOutcomeCode(
+                        result.outcomeCode()
+                );
+        return source == SeedResultSource.WORKER
+                ? outcomeClass == SeedResultOutcomeClass.SUCCESS
+                || outcomeClass
+                == SeedResultOutcomeClass.WORKER_FAILURE
+                : outcomeClass
+                == SeedResultOutcomeClass.ADAPTER_REJECTION;
     }
 
     private void appendResults(
@@ -185,5 +252,11 @@ public final class WorkerDeliveryService {
                 null,
                 cause
         );
+    }
+
+    public record SeedResultAppendCounts(
+            int acceptedCount,
+            int rejectedCount
+    ) {
     }
 }

@@ -85,7 +85,7 @@ WorkerDeliveryAdapterManager
   register complete instances, look them up, start in order, close in reverse
 
 WorkerDeliveryGatewayClient
-  consume one bounded command Map and append one result batch through Server HTTP
+  consume one bounded command Map and append source-tagged opaque result batches
 
 transport-private connection registry
   retain the current Netty Channel for each WorkerId
@@ -93,11 +93,11 @@ transport-private connection registry
 WorkerCommandDelivery
   narrow Command Loop seam for deliver(workerId, command)
 
-WorkerConnectionMessageDispatcher
-  immutable messageType -> handler dispatch
+AdapterMessageDefinitionManager
+  immutable messageType -> payload resolver + typed handler
 
-TaskItemResultMessageHandler
-  validate Worker-owned outcomes and offer SeedResult to the Result Queue
+WorkerResultPayloadHandler
+  tag a Worker payload and offer it unchanged to the Result Queue
 ```
 
 The Manager does not deserialize configuration or construct Adapters. Server
@@ -124,30 +124,38 @@ Long-lived transports use two protocol phases:
 
 ```text
 first inbound message
-  -> WORKER_BIND
+  -> WorkerConnectionMessage(WORKER_BIND, encoded WorkerConnectionBind)
   -> bind workerId to current Channel
 
 outbound WorkerCommandEnvelope
-  -> TaskItemCommandMessage
-  -> TASK_ITEM_COMMAND message
+  -> WorkerConnectionMessage(
+       TASK_ITEM_COMMAND,
+       encoded WorkerCommandEnvelope
+     )
+  -> current Worker Channel
 
 inbound TASK_ITEM_RESULT message
-  -> TaskItemResultMessage
-  -> immutable dispatcher
-  -> TaskItemResultMessageHandler
-  -> bounded Result Queue
+  -> Adapter Message Definition
+  -> payload String remains opaque
+  -> WorkerResultPayloadHandler tags source=WORKER
+  -> bounded Result Queue stores source + encoded result
 ```
 
-Bind is handled by each transport before the business dispatcher. The message
-family is a connection protocol, not another Kernel runtime or result truth.
+Bind is handled by each transport before the Definition Manager. Every
+long-lived frame has exactly two String fields: `messageType` and `payload`.
+This connection protocol is not another Kernel runtime or result truth.
 Polling continues to use `WorkerCommandEnvelope` and `SeedResult` directly
 through the Server point HTTP API.
 
-Handlers are installed once when an Adapter instance is assembled. The
-dispatcher has no runtime registration, discovery, fallback, or generic JSON
-payload. The first implementation installs only the Task Item result handler.
-Trusted Adapter-generated `3001` evidence bypasses Worker message handling and
-enters the Adapter's pending result path directly.
+Definitions are installed once when an Adapter instance is assembled. The
+Netty handler decodes the stable outer message once. The Manager uses its
+String `messageType` as the key and gives only `payload` to the resolver. It
+has no runtime registration, class token, discovery, or fallback. The first
+implementation installs only the Task Item result Definition, whose resolver
+is identity: Adapter does not decode `SeedResult`, inspect its outcome, or
+re-encode it. Trusted Adapter-generated `3001` evidence bypasses Worker
+message handling; only this path constructs and encodes a `SeedResult` inside
+the Adapter.
 
 ## Command And Result Loops
 
@@ -163,9 +171,9 @@ Command Loop
   -> remove a command as soon as writeAndFlush starts
 
 Result Loop
-  -> retry one pending result batch first
-  -> otherwise drain the current Result Queue
-  -> issue at most one Server append request per resultSubmitInterval
+  -> independently retry one pending WORKER and ADAPTER batch
+  -> otherwise drain each source from the current Result Queue
+  -> issue at most one request per source per resultSubmitInterval
 ```
 
 The Server runtime acquires a random bounded set of distinct Worker fields
@@ -191,11 +199,14 @@ UNKNOWN
   -> remove the command and generate no 3xxx evidence
 ```
 
-Worker-originated results enter the Result Queue directly from Netty handlers.
+Worker-originated encoded results enter the Result Queue unchanged from Netty
+handlers and carry only process-local `source=WORKER` metadata.
 Command acquisition and forwarding continue while result submission is
-temporarily unavailable. The Result Loop retains one failed batch and retries
-it before draining new results; it never submits a second batch in the same
-tick.
+temporarily unavailable. The Result Loop retains failed batches independently
+by source and retries each before draining new results of that source. A tick
+may therefore make at most two result HTTP calls, one for `WORKER` and one for
+`ADAPTER`. Gateway protocol rejection drops that source batch; network or
+Server failure retains it for retry.
 
 Both queues and pending retry state are process-local and bounded. Shutdown
 stops the Command Loop, closes the listener and Channels, stops the Result
@@ -232,8 +243,10 @@ Both connection registries store current Netty Channels directly. The
 transport-neutral `WorkerCommandLoop` only calls `WorkerCommandDelivery`; it
 does not import Netty, WebSocket, Socket, bind/unbind, or close reasons.
 `WorkerResultLoop` independently owns timed batch submission and pending retry.
-Outcome validation stays in the installed message handler, and queue mechanics
-stay in the bounded Result Queue.
+Worker outcome validation belongs to Server ingress, while queue mechanics
+stay in the bounded Result Queue. The Adapter HTTP request carries one
+batch-level source plus encoded SeedResult strings; Server returns accepted
+and rejected counts for the complete batch.
 
 The JDK `HttpClient` Gateway implementation also lives in this module. Its
 private HTTP DTOs match the Server batch API but are not part of the shared

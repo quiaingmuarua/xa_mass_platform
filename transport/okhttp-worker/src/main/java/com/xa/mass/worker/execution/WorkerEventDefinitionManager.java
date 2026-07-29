@@ -7,25 +7,19 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
-public final class WorkerEventDefinitionManager<R> {
+public final class WorkerEventDefinitionManager {
 
-    private final Map<
-            String,
-            WorkerEventDefinition<?, ? extends R>
-    > definitions;
+    private final Map<String, WorkerEventDefinition<?>> definitions;
 
     public WorkerEventDefinitionManager(
-            Map<
-                    String,
-                    ? extends WorkerEventDefinition<?, ? extends R>
-            > definitions
+            Map<String, ? extends WorkerEventDefinition<?>> definitions
     ) {
         Objects.requireNonNull(definitions, "definitions");
-        Map<String, WorkerEventDefinition<?, ? extends R>> copy =
+        Map<String, WorkerEventDefinition<?>> copy =
                 new LinkedHashMap<>();
         for (Map.Entry<
                 String,
-                ? extends WorkerEventDefinition<?, ? extends R>
+                ? extends WorkerEventDefinition<?>
         > entry : definitions.entrySet()) {
             String eventCode = entry.getKey();
             if (eventCode == null || eventCode.isBlank()) {
@@ -44,11 +38,11 @@ public final class WorkerEventDefinitionManager<R> {
         this.definitions = Collections.unmodifiableMap(copy);
     }
 
-    public R dispatch(
+    public String dispatch(
             String eventCode,
             Map<String, Object> parameters
     ) throws Exception {
-        WorkerEventDefinition<?, ? extends R> definition =
+        WorkerEventDefinition<?> definition =
                 definitions.get(eventCode);
         if (definition == null) {
             throw new WorkerException(

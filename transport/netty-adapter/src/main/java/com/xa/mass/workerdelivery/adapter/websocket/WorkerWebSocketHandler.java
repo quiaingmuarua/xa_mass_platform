@@ -1,14 +1,17 @@
 package com.xa.mass.workerdelivery.adapter.websocket;
 
-import static com.xa.mass.workerdelivery.adapter.message.WorkerMessageHandlingResult.ACCEPTED;
-import static com.xa.mass.workerdelivery.adapter.message.WorkerMessageHandlingResult.ADAPTER_CLOSED;
-import static com.xa.mass.workerdelivery.adapter.message.WorkerMessageHandlingResult.BUFFER_FULL;
+import static com.xa.mass.workerdelivery.adapter.message.WorkerResultHandlingResult.ACCEPTED;
+import static com.xa.mass.workerdelivery.adapter.message.WorkerResultHandlingResult.ADAPTER_CLOSED;
+import static com.xa.mass.workerdelivery.adapter.message.WorkerResultHandlingResult.BUFFER_FULL;
 import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.ConnectionCloseReason.ADAPTER_STOPPING;
 import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.ConnectionCloseReason.RESULT_BUFFER_FULL;
 import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.ConnectionCloseReason.TRANSPORT_ERROR;
 
-import com.xa.mass.workerdelivery.adapter.message.WorkerConnectionMessageDispatcher;
+import com.xa.mass.workerdelivery.adapter.message.AdapterMessageDefinitionManager;
+import com.xa.mass.workerdelivery.adapter.message.WorkerResultHandlingResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessage;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessageType;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -28,7 +31,9 @@ final class WorkerWebSocketHandler
 
     private final WorkerConnectionRegistry connections;
     private final WorkerDeliveryCodec codec;
-    private final WorkerConnectionMessageDispatcher dispatcher;
+    private final AdapterMessageDefinitionManager<
+            WorkerResultHandlingResult
+            > messageDefinitions;
     private final BooleanSupplier acceptingConnections;
     private boolean handshakeComplete;
     private String workerId;
@@ -37,7 +42,9 @@ final class WorkerWebSocketHandler
     WorkerWebSocketHandler(
             WorkerConnectionRegistry connections,
             WorkerDeliveryCodec codec,
-            WorkerConnectionMessageDispatcher dispatcher,
+            AdapterMessageDefinitionManager<
+                    WorkerResultHandlingResult
+                    > messageDefinitions,
             BooleanSupplier acceptingConnections
     ) {
         this.connections = Objects.requireNonNull(
@@ -45,9 +52,9 @@ final class WorkerWebSocketHandler
                 "connections"
         );
         this.codec = Objects.requireNonNull(codec, "codec");
-        this.dispatcher = Objects.requireNonNull(
-                dispatcher,
-                "dispatcher"
+        this.messageDefinitions = Objects.requireNonNull(
+                messageDefinitions,
+                "messageDefinitions"
         );
         this.acceptingConnections = Objects.requireNonNull(
                 acceptingConnections,
@@ -82,10 +89,17 @@ final class WorkerWebSocketHandler
             return;
         }
         if (frame instanceof TextWebSocketFrame text) {
+            WorkerConnectionMessage message =
+                    codec.decodeWorkerConnectionMessage(text.text());
+            if (message == null) {
+                disconnect();
+                close(context, 1007, "Invalid Worker message");
+                return;
+            }
             if (workerChannel == null) {
-                handleBind(context, text.text());
+                handleBind(context, message);
             } else {
-                handleResult(context, text.text());
+                handleResult(context, message);
             }
             return;
         }
@@ -122,20 +136,23 @@ final class WorkerWebSocketHandler
 
     private void handleResult(
             ChannelHandlerContext context,
-            String payload
+            WorkerConnectionMessage message
     ) {
-        if (codec.decodeWorkerConnectionBind(payload) != null) {
+        if (WorkerConnectionMessageType.WORKER_BIND.name().equals(
+                message.messageType()
+        )) {
             disconnect();
             close(context, 1008, "Worker is already bound");
             return;
         }
-        var message = codec.decodeWorkerConnectionMessage(payload);
-        if (message == null) {
+        WorkerResultHandlingResult acceptance;
+        try {
+            acceptance = messageDefinitions.dispatch(workerId, message);
+        } catch (IllegalArgumentException error) {
             disconnect();
             close(context, 1007, "Invalid Worker result");
             return;
         }
-        var acceptance = dispatcher.dispatch(workerId, message);
         if (acceptance == ACCEPTED) {
             return;
         }
@@ -175,9 +192,15 @@ final class WorkerWebSocketHandler
 
     private void handleBind(
             ChannelHandlerContext context,
-            String payload
+            WorkerConnectionMessage message
     ) {
-        var bind = codec.decodeWorkerConnectionBind(payload);
+        if (!WorkerConnectionMessageType.WORKER_BIND.name().equals(
+                message.messageType()
+        )) {
+            close(context, 1008, "Worker binding is required");
+            return;
+        }
+        var bind = codec.decodeWorkerConnectionBind(message.payload());
         if (bind == null) {
             close(context, 1008, "Worker binding is required");
             return;

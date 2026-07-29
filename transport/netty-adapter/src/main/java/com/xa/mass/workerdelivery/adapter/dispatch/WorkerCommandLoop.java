@@ -1,6 +1,7 @@
 package com.xa.mass.workerdelivery.adapter.dispatch;
 
 import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.RETRY_LATER;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultSource.ADAPTER;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
@@ -176,7 +177,10 @@ public final class WorkerCommandLoop implements Runnable {
                 UNAVAILABLE_WORKER_OUTCOME_CODE,
                 null
         );
-        var status = resultQueue.offer(rejection);
+        var status = resultQueue.offer(
+                ADAPTER,
+                codec.encodeSeedResult(rejection)
+        );
         if (status != BoundedWorkerResultQueue.OfferStatus.ACCEPTED) {
             LOGGER.log(
                     System.Logger.Level.WARNING,

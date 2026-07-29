@@ -10,6 +10,7 @@ import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
 import com.xa.mass.worker.execution.WorkerCommandProcessor;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
+import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliverSeed;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
@@ -51,7 +52,7 @@ class PollingWorkerTransportTest {
                             Map<String, Object> result =
                                     new LinkedHashMap<>();
                             result.put("observed", payload.get("value"));
-                            return result;
+                            return Jsons.toJson(result);
                         })
                 )
         );

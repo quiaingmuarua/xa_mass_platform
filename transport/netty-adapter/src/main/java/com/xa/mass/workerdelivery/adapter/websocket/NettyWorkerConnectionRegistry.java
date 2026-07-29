@@ -3,8 +3,9 @@ package com.xa.mass.workerdelivery.adapter.websocket;
 import com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt;
 import com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.ConnectionCloseReason;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemCommandMessage;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessage;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessageType;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
@@ -74,7 +75,11 @@ final class NettyWorkerConnectionRegistry
         }
 
         String encoded = codec.encodeWorkerConnectionMessage(
-                new TaskItemCommandMessage(command)
+                new WorkerConnectionMessage(
+                        WorkerConnectionMessageType
+                                .TASK_ITEM_COMMAND.name(),
+                        codec.encodeWorkerCommand(command)
+                )
         );
         ChannelFuture send;
         try {

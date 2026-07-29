@@ -3,7 +3,7 @@ package com.xa.mass.workerdelivery.adapter.http;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultSource;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -26,8 +26,9 @@ final class WorkerDeliveryGatewayHttpContract {
     private static final Set<String> COMMAND_BATCH_FIELDS = Set.of(
             "workerCommandsByWorkerId"
     );
-    private static final Set<String> ACCEPTED_FIELDS = Set.of(
-            "acceptedCount"
+    private static final Set<String> RESULT_APPEND_FIELDS = Set.of(
+            "acceptedCount",
+            "rejectedCount"
     );
     private final ObjectMapper mapper = JsonMapper.builder().build();
     private final WorkerDeliveryCodec codec;
@@ -97,42 +98,63 @@ final class WorkerDeliveryGatewayHttpContract {
         }
     }
 
-    String encodeResultBatch(List<SeedResult> results) {
-        if (results == null || results.isEmpty()) {
+    String encodeResultBatch(
+            SeedResultSource source,
+            List<String> encodedSeedResults
+    ) {
+        if (source == null) {
+            throw new IllegalArgumentException(
+                    "source must be present"
+            );
+        }
+        if (encodedSeedResults == null || encodedSeedResults.isEmpty()) {
             throw new IllegalArgumentException(
                     "results must not be empty"
             );
         }
         ObjectNode payload = mapper.createObjectNode();
+        payload.put("source", source.name());
         ArrayNode encodedResults = payload.putArray("results");
-        for (SeedResult result : results) {
-            try {
-                encodedResults.add(
-                        mapper.readTree(codec.encodeSeedResult(result))
-                );
-            } catch (JacksonException error) {
-                throw new IllegalStateException(
-                        "Could not encode SeedResult",
-                        error
+        for (String encodedSeedResult : encodedSeedResults) {
+            if (encodedSeedResult == null || encodedSeedResult.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "encoded SeedResult must be non-empty"
                 );
             }
+            encodedResults.add(encodedSeedResult);
         }
         return write(payload, "SeedResult batch");
     }
 
-    int decodeAcceptedCount(String value) {
+    void requireCompleteResultResponse(
+            String value,
+            int expectedCount
+    ) {
         try {
             JsonNode payload = mapper.readTree(value);
             if (!(payload instanceof ObjectNode object)
-                    || !fieldNames(object).equals(ACCEPTED_FIELDS)
-                    || !object.get("acceptedCount").isIntegralNumber()) {
+                    || !fieldNames(object).equals(RESULT_APPEND_FIELDS)
+                    || !object.get("acceptedCount").isIntegralNumber()
+                    || !object.get("rejectedCount").isIntegralNumber()) {
                 throw malformed(
                         RESULT_DECODE_OPERATION,
                         "SeedResult append response"
                 );
             }
-            return object.get("acceptedCount").intValue();
-        } catch (JacksonException error) {
+            int acceptedCount = object.get("acceptedCount").intValue();
+            int rejectedCount = object.get("rejectedCount").intValue();
+            if (acceptedCount < 0
+                    || rejectedCount < 0
+                    || (long) acceptedCount + rejectedCount
+                    != expectedCount) {
+                throw malformed(
+                        RESULT_DECODE_OPERATION,
+                        "SeedResult append response"
+                );
+            }
+        } catch (WorkerDeliveryAdapterException error) {
+            throw error;
+        } catch (JacksonException | ArithmeticException error) {
             throw new WorkerDeliveryAdapterException(
                     WorkerDeliveryAdapterErrorCode.GATEWAY_PROTOCOL_ERROR,
                     RESULT_DECODE_OPERATION,

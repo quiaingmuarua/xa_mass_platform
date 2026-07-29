@@ -7,8 +7,10 @@ import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
+import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultSource;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
 import java.io.IOException;
@@ -85,7 +87,7 @@ class HttpWorkerDeliveryGatewayClientTest {
     }
 
     @Test
-    void appendsMixedResultsAndRequiresTheFullAcceptedCount() {
+    void appendsOpaqueResultsWithOneBatchSourceAndRequiresFullAccounting() {
         List<SeedResult> results = List.of(
                 new SeedResult(COMMAND_ID, "context-1", "200", "null"),
                 new SeedResult(
@@ -95,25 +97,37 @@ class HttpWorkerDeliveryGatewayClientTest {
                         null
                 )
         );
-        respond(202, "{\"acceptedCount\":2}");
+        List<String> encodedResults = results.stream()
+                .map(codec::encodeSeedResult)
+                .toList();
+        respond(
+                202,
+                "{\"acceptedCount\":1,\"rejectedCount\":1}"
+        );
 
-        client.appendResults("adapter-1", results);
+        client.appendResults(
+                "adapter-1",
+                SeedResultSource.WORKER,
+                encodedResults
+        );
 
         assertThat(requestPath).endsWith(
                 "/adapter-1/results:append"
         );
-        assertThat(requestBody)
-                .isEqualTo(
-                        "{\"results\":["
-                                + codec.encodeSeedResult(results.get(0))
-                                + ","
-                                + codec.encodeSeedResult(results.get(1))
-                                + "]}"
-                );
+        assertThat(Jsons.parseObject(requestBody))
+                .containsEntry("source", "WORKER")
+                .containsEntry("results", encodedResults);
 
-        respond(202, "{\"acceptedCount\":1}");
+        respond(
+                202,
+                "{\"acceptedCount\":1,\"rejectedCount\":0}"
+        );
         assertThatThrownBy(() ->
-                client.appendResults("adapter-1", results)
+                client.appendResults(
+                        "adapter-1",
+                        SeedResultSource.WORKER,
+                        encodedResults
+                )
         )
                 .isInstanceOfSatisfying(
                         WorkerDeliveryAdapterException.class,
@@ -123,7 +137,9 @@ class HttpWorkerDeliveryGatewayClientTest {
                                             .GATEWAY_PROTOCOL_ERROR
                             );
                             assertThat(error.operation())
-                                    .isEqualTo("gateway.appendResults");
+                                    .isEqualTo(
+                                            "gateway.decodeResultResponse"
+                                    );
                         }
                 );
     }
@@ -166,15 +182,19 @@ class HttpWorkerDeliveryGatewayClientTest {
                         }
                 );
 
-        respond(202, "{\"acceptedCount\":\"one\"}");
+        respond(
+                202,
+                "{\"acceptedCount\":\"one\",\"rejectedCount\":0}"
+        );
         assertThatThrownBy(() -> client.appendResults(
                 "adapter-1",
-                List.of(new SeedResult(
-                        COMMAND_ID,
-                        "context",
-                        "200",
-                        "null"
-                ))
+                SeedResultSource.WORKER,
+                List.of(codec.encodeSeedResult(new SeedResult(
+                            COMMAND_ID,
+                            "context",
+                            "200",
+                            "null"
+                    )))
         ))
                 .isInstanceOfSatisfying(
                         WorkerDeliveryAdapterException.class,
@@ -187,6 +207,20 @@ class HttpWorkerDeliveryGatewayClientTest {
                                     "gateway.decodeResultResponse"
                             );
                         }
+                );
+
+        respond(400, "{}");
+        assertThatThrownBy(() -> client.appendResults(
+                "adapter-1",
+                SeedResultSource.ADAPTER,
+                List.of("opaque")
+        ))
+                .isInstanceOfSatisfying(
+                        WorkerDeliveryAdapterException.class,
+                        error -> assertThat(error.errorCode()).isEqualTo(
+                                WorkerDeliveryAdapterErrorCode
+                                        .GATEWAY_PROTOCOL_ERROR
+                        )
                 );
     }
 

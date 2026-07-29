@@ -17,111 +17,69 @@ public final class WorkerDeliveryProtocol {
     }
 
     public enum WorkerConnectionMessageType {
+        WORKER_BIND,
         TASK_ITEM_COMMAND,
         TASK_ITEM_RESULT
     }
 
-    public interface WorkerConnectionMessage {
-
-        WorkerConnectionMessageType messageType();
-    }
-
-    public static final class TaskItemCommandMessage
-            implements WorkerConnectionMessage {
-
-        private final WorkerCommandEnvelope command;
-
-        public TaskItemCommandMessage(WorkerCommandEnvelope command) {
-            if (command == null) {
-                throw new IllegalArgumentException(
-                        "command must be present"
-                );
-            }
-            this.command = command;
-        }
-
-        public WorkerCommandEnvelope command() {
-            return command;
-        }
-
-        @Override
-        public WorkerConnectionMessageType messageType() {
-            return WorkerConnectionMessageType.TASK_ITEM_COMMAND;
-        }
-
-        @Override
-        public boolean equals(Object value) {
-            if (this == value) {
-                return true;
-            }
-            if (!(value instanceof TaskItemCommandMessage)) {
-                return false;
-            }
-            TaskItemCommandMessage other = (TaskItemCommandMessage) value;
-            return command.equals(other.command);
-        }
-
-        @Override
-        public int hashCode() {
-            return command.hashCode();
-        }
-
-        @Override
-        public String toString() {
-            return "TaskItemCommandMessage[command=" + command + "]";
-        }
-    }
-
-    public static final class TaskItemResultMessage
-            implements WorkerConnectionMessage {
-
-        private final SeedResult result;
-
-        public TaskItemResultMessage(SeedResult result) {
-            if (result == null) {
-                throw new IllegalArgumentException(
-                        "result must be present"
-                );
-            }
-            this.result = result;
-        }
-
-        public SeedResult result() {
-            return result;
-        }
-
-        @Override
-        public WorkerConnectionMessageType messageType() {
-            return WorkerConnectionMessageType.TASK_ITEM_RESULT;
-        }
-
-        @Override
-        public boolean equals(Object value) {
-            if (this == value) {
-                return true;
-            }
-            if (!(value instanceof TaskItemResultMessage)) {
-                return false;
-            }
-            TaskItemResultMessage other = (TaskItemResultMessage) value;
-            return result.equals(other.result);
-        }
-
-        @Override
-        public int hashCode() {
-            return result.hashCode();
-        }
-
-        @Override
-        public String toString() {
-            return "TaskItemResultMessage[result=" + result + "]";
-        }
+    public enum SeedResultSource {
+        WORKER,
+        ADAPTER
     }
 
     public enum SeedResultOutcomeClass {
         SUCCESS,
         WORKER_FAILURE,
         ADAPTER_REJECTION
+    }
+
+    public static final class WorkerConnectionMessage {
+
+        private final String messageType;
+        private final String payload;
+
+        public WorkerConnectionMessage(
+                String messageType,
+                String payload
+        ) {
+            requireNonBlank(messageType, "messageType");
+            requireNonBlank(payload, "payload");
+            this.messageType = messageType;
+            this.payload = payload;
+        }
+
+        public String messageType() {
+            return messageType;
+        }
+
+        public String payload() {
+            return payload;
+        }
+
+        @Override
+        public boolean equals(Object value) {
+            if (this == value) {
+                return true;
+            }
+            if (!(value instanceof WorkerConnectionMessage)) {
+                return false;
+            }
+            WorkerConnectionMessage other =
+                    (WorkerConnectionMessage) value;
+            return messageType.equals(other.messageType)
+                    && payload.equals(other.payload);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(messageType, payload);
+        }
+
+        @Override
+        public String toString() {
+            return "WorkerConnectionMessage[messageType="
+                    + messageType + ", payload=<opaque>]";
+        }
     }
 
     public static final class WorkerConnectionBind {

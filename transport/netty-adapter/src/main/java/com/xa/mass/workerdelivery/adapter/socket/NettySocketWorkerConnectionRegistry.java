@@ -3,8 +3,9 @@ package com.xa.mass.workerdelivery.adapter.socket;
 import com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery;
 import com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemCommandMessage;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessage;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessageType;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import java.util.Map;
@@ -59,7 +60,11 @@ final class NettySocketWorkerConnectionRegistry
         }
 
         String encoded = codec.encodeWorkerConnectionMessage(
-                new TaskItemCommandMessage(command)
+                new WorkerConnectionMessage(
+                        WorkerConnectionMessageType
+                                .TASK_ITEM_COMMAND.name(),
+                        codec.encodeWorkerCommand(command)
+                )
         ) + "\n";
         ChannelFuture send;
         try {
