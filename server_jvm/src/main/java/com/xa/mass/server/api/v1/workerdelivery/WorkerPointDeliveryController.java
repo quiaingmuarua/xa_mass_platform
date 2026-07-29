@@ -2,6 +2,7 @@ package com.xa.mass.server.api.v1.workerdelivery;
 
 import com.xa.mass.server.api.v1.workerdelivery.WorkerDeliveryHttpContract.AcceptedResponse;
 import com.xa.mass.server.api.v1.workerdelivery.WorkerDeliveryHttpContract.SeedResultRequest;
+import com.xa.mass.server.api.v1.workerdelivery.WorkerDeliveryHttpContract.WorkerCommandResponse;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import jakarta.validation.Valid;
@@ -30,7 +31,7 @@ public class WorkerPointDeliveryController {
     }
 
     @PostMapping("/workers/{workerId}/commands:poll")
-    public ResponseEntity<WorkerCommandEnvelope> pollWorkerCommand(
+    public ResponseEntity<WorkerCommandResponse> pollWorkerCommand(
             @PathVariable @NotBlank String endpointManagerId,
             @PathVariable @NotBlank String workerId
     ) {
@@ -40,7 +41,7 @@ public class WorkerPointDeliveryController {
         );
         return command == null
                 ? ResponseEntity.noContent().build()
-                : ResponseEntity.ok(command);
+                : ResponseEntity.ok(WorkerCommandResponse.from(command));
     }
 
     @PostMapping("/workers/{workerId}/results")

@@ -56,8 +56,12 @@ class ServerArchitectureBoundaryTest {
                 .contains("implementation project(':kernel_jvm')")
                 .contains("implementation project(':worker_delivery_adapter_jvm')")
                 .doesNotContain("spring-boot-starter-websocket")
-                .doesNotContain("implementation project(':worker_jvm')")
-                .contains("testImplementation project(':worker_jvm')");
+                .doesNotContain(
+                        "implementation project(':worker:okhttp-worker')"
+                )
+                .contains(
+                        "testImplementation project(':worker:okhttp-worker')"
+                );
 
         String serverSources = readSources(SERVER_SOURCE);
         assertThat(serverSources)

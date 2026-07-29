@@ -100,7 +100,8 @@ This Server reads the configured Adapter instance map, creates complete
 WebSocket Adapter instances, registers them, and forwards
 process-ready/process-close events. Each Adapter owns its Netty listener,
 mailbox cursor, dispatch loop, connection registry, immutable message
-dispatcher, built-in handlers, and bounded result buffer. It still consumes
+dispatcher, built-in result-message handler, and bounded result buffer. It
+still consumes
 the existing batch HTTP API through loopback and has no in-process or Redis
 shortcut. Polling does not use the long-connection message union; it continues
 to exchange WorkerCommand and SeedResult through point HTTP.
@@ -177,9 +178,10 @@ Then start the external Runtime API Server:
 ./gradlew :server_jvm:bootRun
 ```
 
-Run the Java reference Worker through point polling, or configure one or more
-WebSocket/Socket Adapter instances and use the matching long-lived profile, as
-documented in [worker_jvm](../worker_jvm/README.md).
+Host the [OkHttp Worker](../worker/okhttp-worker/README.md) in a JVM or Android
+application. A polling host calls the Server point API directly. A WebSocket
+or Socket host connects to the selected Adapter listener. The library does not
+provide a CLI or own application lifecycle.
 
 One WebSocket and one Socket Adapter instance:
 

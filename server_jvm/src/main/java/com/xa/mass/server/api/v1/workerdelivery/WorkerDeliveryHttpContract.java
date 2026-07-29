@@ -8,6 +8,8 @@ import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Positive;
+import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -36,10 +38,41 @@ public final class WorkerDeliveryHttpContract {
         }
     }
 
+    public record WorkerCommandResponse(
+            String commandId,
+            String messageType,
+            long executeBeforeMillis,
+            String opaqueItem
+    ) {
+        static WorkerCommandResponse from(WorkerCommandEnvelope command) {
+            return new WorkerCommandResponse(
+                    command.commandId(),
+                    command.messageType().name(),
+                    command.executeBeforeMillis(),
+                    command.opaqueItem()
+            );
+        }
+    }
+
     public record WorkerCommandConsumeResponse(
-            Map<String, WorkerCommandEnvelope> workerCommandsByWorkerId,
+            Map<String, WorkerCommandResponse> workerCommandsByWorkerId,
             String nextCursor
     ) {
+        static WorkerCommandConsumeResponse from(
+                Map<String, WorkerCommandEnvelope> commands,
+                String nextCursor
+        ) {
+            Map<String, WorkerCommandResponse> response =
+                    new LinkedHashMap<>();
+            commands.forEach((workerId, command) -> response.put(
+                    workerId,
+                    WorkerCommandResponse.from(command)
+            ));
+            return new WorkerCommandConsumeResponse(
+                    Collections.unmodifiableMap(response),
+                    nextCursor
+            );
+        }
     }
 
     public record SeedResultRequest(

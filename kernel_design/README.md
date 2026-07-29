@@ -580,9 +580,9 @@ no hidden compatibility path or second mainline remains
   - complete Adapter instance registration, independent Netty WebSocket
     listeners, start/close lifecycle, single-cursor mailbox dispatch, bounded
     concurrent delivery, active connections, and Server batch HTTP client.
-- [JVM Worker](../worker_jvm/README.md)
-  - one-slot Java Worker that executes `telecom.phone.inspect` through polling
-    or WebSocket using the shared Worker Delivery contract.
+- [OkHttp Worker](../worker/README.md)
+  - Java 11 compatible serial execution and Polling/WebSocket/Socket
+    transports for JVM or Android hosts.
 - [JVM Worker Delivery Contract](../worker_delivery_contract_jvm/README.md)
   - transport-neutral Java DTOs, strict flat long-connection messages,
     validation, outcome classification, and codec.
@@ -600,7 +600,7 @@ before changing either one.
 
 The Python executable spec lives under `kernel_design/executable_spec/`.
 `kernel_design/runtime_server/` is its Kernel Control FastAPI host.
-`worker_jvm/` is the external Worker reference implementation; it is not a
+`worker/` contains the external Worker implementation library; it is not a
 Kernel owner. The Kotlin production scaffold lives under `kernel_jvm/` and may
 implement behavior only through scoped parity slices against this workspace.
 Historical tag material must not constrain current interfaces, Redis shapes,

@@ -2,8 +2,8 @@
 
 Status: active new-kernel boundary contract; Python protocol/Redis oracle,
 shared Java protocol, Java Server point/batch API, multi-endpoint Netty
-WebSocket/Socket Adapter Runtime, and one-slot polling/WebSocket/Socket phone
-Worker implemented;
+WebSocket/Socket Adapter Runtime, and a Java 11 compatible serial
+Polling/WebSocket/Socket Worker library implemented;
 production authentication and same-endpoint HA policy deferred.
 
 Upstream contract: [Task Dispatch Pacer](task-dispatch-pacer.md).
@@ -13,8 +13,8 @@ Executable HTTP host:
 [JVM Runtime API Server](../../../server_jvm/README.md).
 Active Adapter:
 [JVM Worker Delivery Adapter](../../../worker_delivery_adapter_jvm/README.md).
-Java Worker:
-[JVM Worker](../../../worker_jvm/README.md).
+Worker library:
+[OkHttp Worker](../../../worker/README.md).
 
 ## Purpose
 
@@ -330,8 +330,9 @@ executes `opaqueDeliveryItem`, and copies `opaqueResultContext` into
 `SeedResult`. It copies only the original `commandId`; `messageType` and
 `executeBeforeMillis` are command-side coordinates.
 
-The repository's Java reference Worker implements the execution boundary once
-and selects polling, WebSocket, or Socket at startup. All profiles are serial:
+The repository's Java Worker library implements the execution boundary once
+and exposes polling, WebSocket, and Socket transports. A host selects and
+starts one transport; all profiles are serial:
 
 ```text
 WorkerCommandEnvelope

@@ -12,17 +12,20 @@ Status: current repository handoff.
   depend on `kernel_jvm` owner contracts. Its assembly binds control operations
   to Python HTTP providers and selected data/delivery operations to Java Redis
   providers; it does not define a second set of Kernel runtime ports.
-- `worker_delivery_contract_jvm/` is the Java 21 transport-neutral
-  WorkerCommand/DeliverSeed/SeedResult contract shared by Server and Worker.
+- `worker_delivery_contract_jvm/` is the Java 11 compatible transport-neutral
+  WorkerCommand/DeliverSeed/SeedResult contract shared by Server, Adapter, and
+  Worker.
   It also owns the strict flat WorkerConnectionMessage union used only by
   long-lived transports.
 - `worker_delivery_adapter_jvm/` owns complete Adapter instances: local
   registration, start/close lifecycle, scheduled Gateway consumption, active
   connections, bounded concurrent delivery, result buffering, and independent
-  Netty WebSocket listeners. It has no Spring, Server, Kernel, or Redis
+  Netty WebSocket/Socket listeners. It has no Spring, Server, Kernel, or Redis
   dependency.
-- `worker_jvm/` is the runnable one-slot Java reference Worker. Polling and
-  WebSocket are transport profiles over one serial command execution core.
+- `worker/okhttp-worker/` is the Java 11 compatible Worker library. It owns
+  serial command execution, the handler contract, OkHttp Polling/WebSocket,
+  and line-oriented Socket transport. It is not a CLI, application, Android
+  wrapper, or business handler collection.
 - The legacy Java platform is available exclusively from
   `legacy-java-platform-final-2026-07-24`.
 - There is no compatibility obligation to legacy Java APIs, modules, Redis
@@ -77,9 +80,12 @@ tag.
   dynamic registration or discovery surface. Its private HTTP DTOs are proved
   against Server JSON with bilateral golden tests; do not add an in-process
   fast path.
-- `worker_jvm` may depend only on the shared contract and Worker tool
-  libraries. It must not depend on `server_jvm`, `kernel_jvm`, Python
-  packages, Redis, score, Pacer, or TaskType.
+- `worker/okhttp-worker` may depend only on the shared contract and
+  Android-compatible transport libraries. It must compile with `--release 11`,
+  expose no OkHttp types, and must not import Android, JNDI, Server, Kernel,
+  Redis, platform business handlers, score, Pacer, or TaskType. JVM and Android
+  applications own threads, lifecycle, permissions, and static handler
+  assembly.
 - `server_jvm` may bind a `Map<adapterId, JsonNode>`, construct concrete
   Adapter instances, register them, and invoke `manager.start()` /
   `manager.close()` at process boundaries. It must not host WebSocket
@@ -135,11 +141,10 @@ The main Server owns the Worker Delivery HTTP and Redis boundaries. It only
 composes and starts configured Adapter instances. Every Adapter still reaches
 Worker Delivery through the same batch HTTP boundary.
 
-`worker_delivery_contract_jvm` is currently a repository-local Java 21 jar,
-not a published SDK and not an Android compatibility promise. A future
-Java/Android SDK may be evaluated only from a real external-consumer need; it
-must not pull Server, Kernel, Redis, scheduling, or assembly implementations
-into the Worker boundary.
+`worker_delivery_contract_jvm` and `worker/okhttp-worker` compile to Java 11
+bytecode. They are repository-local libraries, not published SDKs. Neither may
+pull Server, Kernel, Redis, scheduling, or assembly implementations into the
+Worker boundary.
 
 ## Verification
 

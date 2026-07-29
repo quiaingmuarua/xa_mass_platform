@@ -17,7 +17,6 @@ import com.xa.mass.kernel.worker.WorkerRuntime;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.lang.reflect.RecordComponent;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -244,12 +243,36 @@ class KernelOwnerContractManifestTest {
         var actual = new TreeMap<String, List<String>>();
         DTOS.forEach((name, dto) -> actual.put(
                 name,
-                Arrays.stream(dto.getRecordComponents())
-                        .map(RecordComponent::getName)
-                        .map(KernelOwnerContractManifestTest::snakeCase)
-                        .toList()
+                dtoFieldNames(dto)
         ));
         return actual;
+    }
+
+    private static List<String> dtoFieldNames(Class<?> dto) {
+        if (dto.isRecord()) {
+            return Arrays.stream(dto.getRecordComponents())
+                    .map(component -> component.getName())
+                    .map(KernelOwnerContractManifestTest::snakeCase)
+                    .toList();
+        }
+        return Arrays.stream(dto.getDeclaredFields())
+                .filter(field -> !Modifier.isStatic(field.getModifiers()))
+                .filter(field -> !field.isSynthetic())
+                .peek(field -> requireAccessor(dto, field.getName()))
+                .map(field -> field.getName())
+                .map(KernelOwnerContractManifestTest::snakeCase)
+                .toList();
+    }
+
+    private static void requireAccessor(Class<?> dto, String fieldName) {
+        try {
+            dto.getMethod(fieldName);
+        } catch (NoSuchMethodException error) {
+            throw new IllegalStateException(
+                    dto.getName() + " has no accessor for " + fieldName,
+                    error
+            );
+        }
     }
 
     private static Map<String, List<Object>> enumValues() {

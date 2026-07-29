@@ -3,7 +3,7 @@ plugins {
 }
 
 base {
-    archivesName.set('xa-mass-worker-delivery-contract-jvm')
+    archivesName.set('xa-mass-okhttp-worker')
 }
 
 java {
@@ -18,16 +18,18 @@ tasks.named('compileJava', JavaCompile) {
     options.release = 11
 }
 
+tasks.named('compileTestJava', JavaCompile) {
+    options.release = 11
+}
+
 dependencies {
-    implementation 'com.google.code.gson:gson:2.14.0'
+    api project(':worker_delivery_contract_jvm')
+    implementation 'com.squareup.okhttp3:okhttp:5.3.0'
 
     testImplementation platform('org.junit:junit-bom:5.12.2')
     testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation 'com.squareup.okhttp3:mockwebserver3:5.3.0'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-}
-
-tasks.named('compileTestJava', JavaCompile) {
-    options.release = 21
 }
 
 tasks.named('test') {

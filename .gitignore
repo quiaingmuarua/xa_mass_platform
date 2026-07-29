@@ -39,3 +39,4 @@ doc/archive/**
 !doc/archive/trace/legacy-trace-assets.md
 !doc/archive/testing/
 !doc/archive/testing/legacy-testing-assets.md
+/archive_readonly/

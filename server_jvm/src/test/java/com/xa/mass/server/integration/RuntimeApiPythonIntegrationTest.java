@@ -2,9 +2,7 @@ package com.xa.mass.server.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.xa.mass.worker.execution.PhoneInspectHandler;
 import com.xa.mass.worker.execution.WorkerCommandProcessor;
-import com.xa.mass.worker.WorkerTransportMode;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
 import com.xa.mass.worker.transport.socket.SocketWorkerTransport;
 import com.xa.mass.worker.transport.websocket.WebSocketWorkerTransport;
@@ -43,10 +41,9 @@ class RuntimeApiPythonIntegrationTest {
             "java-websocket-integration";
     private static final String SOCKET_ENDPOINT_MANAGER_ID =
             "java-socket-integration";
-    private static final String PHONE_RESULT = """
-            {"countryCallingCode":1,"e164":"+14155552671",\
-            "isPossible":true,"isValid":true,"regionCode":"US"}\
-            """;
+    private static final String TEST_EVENT_CODE =
+            "test.integration.observe";
+    private static final String TEST_RESULT = "{\"observed\":\"input\"}";
     private static final JsonMapper JSON = JsonMapper.builder().build();
 
     @LocalServerPort
@@ -106,7 +103,7 @@ class RuntimeApiPythonIntegrationTest {
                 "TASK_DRIVEN",
                 WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
                 URI.create("http://127.0.0.1:" + port),
-                WorkerTransportMode.POLLING
+                TransportProfile.POLLING
         );
     }
 
@@ -120,7 +117,7 @@ class RuntimeApiPythonIntegrationTest {
                         "http://127.0.0.1:"
                                 + ACTIVE_ADAPTER_PORTS[0]
                 ),
-                WorkerTransportMode.WEBSOCKET
+                TransportProfile.WEBSOCKET
         );
         runWorkerDeliveryClosure(
                 "ITEM_DRIVEN",
@@ -129,7 +126,7 @@ class RuntimeApiPythonIntegrationTest {
                         "tcp://127.0.0.1:"
                                 + ACTIVE_ADAPTER_PORTS[1]
                 ),
-                WorkerTransportMode.SOCKET
+                TransportProfile.SOCKET
         );
     }
 
@@ -162,11 +159,11 @@ class RuntimeApiPythonIntegrationTest {
             String taskType,
             String endpointManagerId,
             URI workerServerUrl,
-            WorkerTransportMode transportMode
+            TransportProfile transportProfile
     ) throws Exception {
         requireExternalRuntime();
         String suffix = UUID.randomUUID().toString();
-        String workerGroupId = "phone-tools-" + suffix;
+        String workerGroupId = "integration-tools-" + suffix;
         String workerId = "worker-" + suffix;
         String taskId = "task-" + suffix;
         String firstMessageId = "message-1-" + suffix;
@@ -177,10 +174,11 @@ class RuntimeApiPythonIntegrationTest {
                 "/api/v1/worker-groups/" + workerGroupId,
                 """
                         {
-                          "eventCodes": ["telecom.phone.inspect"],
+                          "eventCodes": ["%s"],
                           "itemAllocationFields": %s
                         }
                         """.formatted(
+                        TEST_EVENT_CODE,
                         "ITEM_DRIVEN".equals(taskType)
                                 ? "[\"workerId\"]"
                                 : "[]"
@@ -203,7 +201,7 @@ class RuntimeApiPythonIntegrationTest {
         RunningWorker worker = startWorker(
                 workerId,
                 workerServerUrl,
-                transportMode
+                transportProfile
         );
         try {
             assertThat(send(
@@ -260,13 +258,14 @@ class RuntimeApiPythonIntegrationTest {
                         {
                           "items": [{
                             "messageId": "%s",
-                            "eventCode": "telecom.phone.inspect",
+                            "eventCode": "%s",
                             "createdAtMillis": %d,
-                            "payload": {"phoneNumber": "+14155552671"}%s
+                            "payload": {"value": "input"}%s
                           }]
                         }
                         """.formatted(
                         messageId,
+                        TEST_EVENT_CODE,
                         System.currentTimeMillis() - 1_000,
                         allocationRule
                 )
@@ -278,18 +277,21 @@ class RuntimeApiPythonIntegrationTest {
     private RunningWorker startWorker(
             String workerId,
             URI serverUrl,
-            WorkerTransportMode transportMode
+            TransportProfile transportProfile
     ) throws Exception {
         WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
         WorkerCommandProcessor processor = new WorkerCommandProcessor(
                 workerId,
                 codec,
                 Map.of(
-                        PhoneInspectHandler.EVENT_CODE,
-                        new PhoneInspectHandler()
+                        TEST_EVENT_CODE,
+                        payload -> Map.of(
+                                "observed",
+                                payload.get("value")
+                        )
                 )
         );
-        return switch (transportMode) {
+        return switch (transportProfile) {
             case WEBSOCKET -> new WebSocketWorkerHandle(
                     new WebSocketWorkerTransport(
                             serverUrl,
@@ -341,7 +343,7 @@ class RuntimeApiPythonIntegrationTest {
                         .get("results")
                         .get(messageId)
                         .stringValue();
-                if (PHONE_RESULT.equals(result)) {
+                if (TEST_RESULT.equals(result)) {
                     return;
                 }
             }
@@ -501,6 +503,12 @@ class RuntimeApiPythonIntegrationTest {
 
         @Override
         void close();
+    }
+
+    private enum TransportProfile {
+        POLLING,
+        WEBSOCKET,
+        SOCKET
     }
 
     private static final class PollingWorkerHandle

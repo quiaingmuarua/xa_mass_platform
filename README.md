@@ -15,17 +15,18 @@ The repository contains six active areas:
   the stable `/api/v1` surface and assembles owner operations from Python HTTP
   and Java Redis providers without redefining Kernel runtime contracts.
 - [`worker_delivery_contract_jvm/`](worker_delivery_contract_jvm/): shared
-  Java 21 Worker Delivery DTO, validation, outcome classification, and codec.
+  Java 11 compatible Worker Delivery DTO, validation, outcome classification,
+  strict codec, and JDK-value JSON facade shared with Android.
 - [`worker_delivery_adapter_jvm/`](worker_delivery_adapter_jvm/):
   Worker Delivery Adapter Runtime. It owns complete Adapter instances,
   independent Netty WebSocket listeners, start/close lifecycle, bounded
   mailbox dispatch, active connections, result buffering, and the Server
   batch HTTP client without depending on Spring, Server, Kernel, or Redis.
-- [`worker_jvm/`](worker_jvm/): runnable one-slot Java Worker with polling and
-  WebSocket transports over one command execution core.
+- [`worker/`](worker/): Java 11 compatible OkHttp Worker library with
+  Polling/WebSocket/Socket transports for JVM and Android source dependency.
 
-The shared contract jar is repository-local and targets Java 21. It is not a
-published Worker SDK or an Android compatibility promise.
+The shared contract and Worker jars are repository-local artifacts; they are
+not published SDKs.
 
 The superseded Java platform, frontend, SDK, server, transport, infrastructure,
 and integration code are preserved by the annotated Git tag

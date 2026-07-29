@@ -182,7 +182,7 @@ For Worker Delivery Dispatch or a Java Worker:
 3. [doc/kernel-application-assembly.md](doc/kernel-application-assembly.md)
 4. [../server_jvm/src/main/java/com/xa/mass/server/workerdelivery](../server_jvm/src/main/java/com/xa/mass/server/workerdelivery)
 5. [../worker_delivery_contract_jvm](../worker_delivery_contract_jvm)
-6. [../worker_jvm](../worker_jvm)
+6. [../worker](../worker)
 7. [executable_spec/assembly/transport_clients.py](executable_spec/assembly/transport_clients.py)
 
 ## 2.1 Python Naming Rules
@@ -204,8 +204,8 @@ runtime_server/               Python Kernel control command host
 create/approve/close, and `KernelApplication` lifecycle. Java `server_jvm`
 hosts TaskItem append, last-success reads, and Worker Delivery. The Python
 TaskRuntime and Worker Delivery runtime/clients remain executable-spec oracles
-and test support. The runnable external Worker lives in `worker_jvm` and
-depends on the shared Java protocol module. Complete Adapter instances and
+and test support. External Worker implementations live under `worker/` and
+share one Java 11 compatible execution core and protocol module. Complete Adapter instances and
 their Netty WebSocket listeners live in `worker_delivery_adapter_jvm`;
 `server_jvm` supplies only instance configuration and process lifecycle
 events. Each Adapter consumes Server batch HTTP and has no Spring, Kernel, or

@@ -41,7 +41,7 @@ public class AdapterBatchDeliveryController {
                 request.cursor(),
                 request.scanCount()
         );
-        return new WorkerCommandConsumeResponse(
+        return WorkerCommandConsumeResponse.from(
                 page.workerCommandsByWorkerId(),
                 page.nextCursor()
         );

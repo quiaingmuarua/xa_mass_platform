@@ -166,14 +166,15 @@ Worker Delivery Dispatch
 | Task running activation | Implemented with due-Item Task policy and priority soft-limit System policy | Scenario-backed quota, tenant, business start condition, and resource-estimate decisions |
 | Worker allocation | Implemented as hint-driven TASK-scope candidate cache warming through HOT-pool acquisition; Task score is read only for RUNNING/non-hard-pause suffix-zero validation; TASK_DRIVEN has deterministic Redis proof through cache consumption | Warmup prioritization beyond bounded due order and matcher priority |
 | Task dispatch | Implemented with acquisition-only TaskType profiles, PRECOMPUTED Task rules, TARGETED complete Item rules, stable Item binding, RUNNING same-band reschedule, shared threshold-based empty close, and WorkerCommand append; both TaskTypes have deterministic Redis proof through the command mailbox and ITEM_DRIVEN proves no warmup/cache path | Recent-first Redis Task acquisition |
-| Worker Delivery Dispatch | Shared Java Worker Delivery contract, Server point/batch HTTP API, complete multi-endpoint WebSocket/Socket Adapter instances with independent Netty listeners, bind-first long-lived connections, single-cursor bounded concurrent delivery, fixed system-polling binding, and one-slot polling/WebSocket/Socket libphonenumber Worker implemented | Authentication, same-endpoint Adapter HA, pending/ack, and production protocol policy |
+| Worker Delivery Dispatch | Shared Java Worker Delivery contract, Server point/batch HTTP API, complete multi-endpoint WebSocket/Socket Adapter instances with independent Netty listeners, bind-first long-lived connections, single-cursor bounded concurrent delivery, fixed system-polling binding, and a Java 11 serial Polling/WebSocket/Socket Worker library | Authentication, same-endpoint Adapter HA, pending/ack, and production protocol policy |
 | Result routing | Implemented with unit and Redis orchestration proof; Task/Worker policy handlers are replaceable; Java exposes bounded last-success reads | Failure/history projection and stronger queue reliability require separate owners and invariants |
 
 Both TaskTypes also have cross-process Redis E2E proof from Java control and
 Task data APIs through Python scheduling and the Java Server Worker Delivery
-API. `TASK_DRIVEN` uses the Java polling phone Worker; `ITEM_DRIVEN` uses
-independent Netty WebSocket Adapter endpoints and Java WebSocket Workers. Both
-converge through
+API. `TASK_DRIVEN` uses the Worker library's polling transport;
+`ITEM_DRIVEN` uses independent Netty WebSocket/Socket Adapter endpoints and
+the matching Worker transports. Tests install a local observable handler
+rather than a framework-owned business handler. All paths converge through
 Result-Routing, `FINAL_SUCCESS`, Java last-success query, and exact Worker
 lease release. Java controllers use the same Kernel owner contracts as the
 Python executable spec; Server assembly

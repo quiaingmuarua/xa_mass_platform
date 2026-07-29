@@ -2,6 +2,7 @@ package com.xa.mass.workerdelivery.protocol;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -26,6 +27,7 @@ class WorkerDeliveryContractBoundaryTest {
         }
         assertEquals(
                 Set.of(
+                        "Jsons.java",
                         "WorkerDeliveryCodec.java",
                         "WorkerDeliveryProtocol.java"
                 ),
@@ -40,14 +42,44 @@ class WorkerDeliveryContractBoundaryTest {
                 "org.springframework",
                 "io.lettuce",
                 "redis",
+                "jackson",
                 "com.xa.mass.server",
                 "kernel_design",
                 "WorkerCommandPage",
-                "redisKeySuffix"
+                "redisKeySuffix",
+                " record ",
+                " sealed "
         }) {
-            assertFalse(source.toString().contains(forbidden), forbidden);
-            assertFalse(build.contains(forbidden), forbidden);
+            assertFalse(
+                    source.toString().toLowerCase().contains(
+                            forbidden.toLowerCase()
+                    ),
+                    forbidden
+            );
+            assertFalse(
+                    build.toLowerCase().contains(forbidden.toLowerCase()),
+                    forbidden
+            );
         }
+        assertTrue(build.contains("gson:2.14.0"));
+        assertTrue(build.contains("options.release = 11"));
+
+        long gsonImports;
+        try (var paths = Files.walk(sourceRoot)) {
+            gsonImports = paths
+                    .filter(path -> path.toString().endsWith(".java"))
+                    .filter(path -> {
+                        try {
+                            return Files.readString(path).contains(
+                                    "import com.google.gson"
+                            );
+                        } catch (IOException error) {
+                            throw new IllegalStateException(error);
+                        }
+                    })
+                    .count();
+        }
+        assertEquals(1, gsonImports);
     }
 
     private static void append(StringBuilder target, Path path) {
