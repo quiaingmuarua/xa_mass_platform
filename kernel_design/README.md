@@ -576,11 +576,11 @@ no hidden compatibility path or second mainline remains
   - external control proxy, Java TaskItem append/last-success query, point
     polling and Adapter batch HTTP API; its owner-scoped Redis access is
     limited to TaskData and Worker Delivery operations.
-- [JVM Worker Delivery Adapter](../worker_delivery_adapter_jvm/README.md)
+- [JVM Worker Delivery Adapter](../transport/netty-adapter/README.md)
   - complete Adapter instance registration, independent Netty WebSocket
     listeners, start/close lifecycle, single-cursor mailbox dispatch, bounded
     concurrent delivery, active connections, and Server batch HTTP client.
-- [OkHttp Worker](../worker/README.md)
+- [OkHttp Worker](../transport/okhttp-worker/README.md)
   - Java 11 compatible serial execution and Polling/WebSocket/Socket
     transports for JVM or Android hosts.
 - [JVM Worker Delivery Contract](../worker_delivery_contract_jvm/README.md)
@@ -600,8 +600,9 @@ before changing either one.
 
 The Python executable spec lives under `kernel_design/executable_spec/`.
 `kernel_design/runtime_server/` is its Kernel Control FastAPI host.
-`worker/` contains the external Worker implementation library; it is not a
-Kernel owner. The Kotlin production scaffold lives under `kernel_jvm/` and may
+`transport/okhttp-worker/` contains the external Worker implementation
+library; it is not a Kernel owner. The Kotlin production scaffold lives under
+`kernel_jvm/` and may
 implement behavior only through scoped parity slices against this workspace.
 Historical tag material must not constrain current interfaces, Redis shapes,
 or package boundaries.

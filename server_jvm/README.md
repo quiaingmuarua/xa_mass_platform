@@ -100,7 +100,7 @@ workerdelivery
 kernel_jvm delivery contracts/providers
   WorkerCommand consume and SeedResult append owner operations
 
-worker_delivery_adapter_jvm
+transport/netty-adapter
   complete Adapter instances, independent Netty WebSocket listeners,
   mailbox loops, active connections, and bounded delivery
 ```
@@ -111,7 +111,7 @@ runtime contracts. The shared contract module has no Spring Web or Redis
 dependency.
 
 The Adapter runtime is implemented by
-[`worker_delivery_adapter_jvm`](../worker_delivery_adapter_jvm/README.md).
+[`transport/netty-adapter`](../transport/netty-adapter/README.md).
 This Server reads the configured Adapter instance map, creates complete
 WebSocket or Socket Adapter instances, registers them, and forwards
 process-ready/process-close events. Each Adapter owns its Netty listener,
@@ -194,7 +194,7 @@ Then start the external Runtime API Server:
 ./gradlew :server_jvm:bootRun
 ```
 
-Host the [OkHttp Worker](../worker/okhttp-worker/README.md) in a JVM or Android
+Host the [OkHttp Worker](../transport/okhttp-worker/README.md) in a JVM or Android
 application. A polling host calls the Server point API directly. A WebSocket
 or Socket host connects to the selected Adapter listener. The library does not
 provide a CLI or own application lifecycle.

@@ -3,7 +3,7 @@
 Status: Java 11 compatible Worker library with OkHttp Polling/WebSocket and
 line-oriented Socket transports.
 
-`:worker:okhttp-worker` provides one serial Worker execution model and three
+`:transport:okhttp-worker` provides one serial Worker execution model and three
 transport implementations:
 
 ```text
@@ -139,7 +139,7 @@ A repository Android application may consume the source module directly:
 
 ```gradle
 dependencies {
-    implementation project(':worker:okhttp-worker')
+    implementation project(':transport:okhttp-worker')
 }
 ```
 
@@ -166,5 +166,5 @@ This module:
 Verification:
 
 ```text
-./gradlew :worker:okhttp-worker:test
+./gradlew :transport:okhttp-worker:test
 ```

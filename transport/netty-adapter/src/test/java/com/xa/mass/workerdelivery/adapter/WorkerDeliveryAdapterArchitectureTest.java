@@ -35,6 +35,9 @@ class WorkerDeliveryAdapterArchitectureTest {
         String build = Files.readString(Path.of("build.gradle"));
         assertThat(build)
                 .contains(
+                        "archivesName.set('xa-mass-netty-adapter')"
+                )
+                .contains(
                         "api project("
                                 + "':worker_delivery_contract_jvm')"
                 )

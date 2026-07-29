@@ -4,8 +4,8 @@ Status: repository-local Java 11 compatible protocol boundary.
 
 This module contains the transport-neutral Worker Delivery DTOs, validation,
 outcome classification, strict deterministic codec, and `Jsons` facade shared
-by `server_jvm`, `worker_delivery_adapter_jvm`, and
-`worker/okhttp-worker`.
+by `kernel_jvm`, `server_jvm`, `transport/netty-adapter`, and
+`transport/okhttp-worker`.
 
 `Jsons` exposes only JDK JSON values:
 
@@ -46,9 +46,10 @@ The bind DTO and business union have no generic payload and are not Kernel
 runtime or persistence contracts.
 
 ```text
+kernel_jvm -> worker_delivery_contract_jvm
 server_jvm -> worker_delivery_contract_jvm
-worker_delivery_adapter_jvm -> worker_delivery_contract_jvm
-worker/okhttp-worker -> worker_delivery_contract_jvm
+transport/netty-adapter -> worker_delivery_contract_jvm
+transport/okhttp-worker -> worker_delivery_contract_jvm
 ```
 
 It has no Spring, Redis, Server, Kernel, scheduling, or business-handler

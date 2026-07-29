@@ -1,4 +1,4 @@
-# XA Mass JVM Worker Delivery Adapter
+# XA Mass Netty Worker Delivery Adapter
 
 Status: Java 21 multi-endpoint Adapter runtime with Netty WebSocket and
 line-delimited Socket implementations.
@@ -20,7 +20,7 @@ Server, Kernel, Redis, score, or Pacer code.
 Runtime failures use the module's single
 `WorkerDeliveryAdapterException` with numeric
 `WorkerDeliveryAdapterErrorCode` values in `20000..29999`, through the narrow
-[`foundation_jvm`](../foundation_jvm/README.md) contract. Gateway
+[`foundation_jvm`](../../foundation_jvm/README.md) contract. Gateway
 unavailability, malformed Gateway responses, interrupted delivery, listener
 startup, and interrupted shutdown are code categories, not exception
 subclasses. Constructor precondition failures remain
@@ -224,5 +224,5 @@ Worker protocol.
 ## Verification
 
 ```text
-./gradlew :worker_delivery_adapter_jvm:test
+./gradlew :transport:netty-adapter:test
 ```

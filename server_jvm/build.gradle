@@ -26,13 +26,13 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
     implementation project(':foundation_jvm')
     implementation project(':kernel_jvm')
-    implementation project(':worker_delivery_adapter_jvm')
+    implementation project(':transport:netty-adapter')
     implementation project(':worker_delivery_contract_jvm')
 
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    testImplementation project(':worker:okhttp-worker')
+    testImplementation project(':transport:okhttp-worker')
 }
 
 tasks.named('test') {

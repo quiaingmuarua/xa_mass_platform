@@ -45,7 +45,7 @@ class ServerArchitectureBoundaryTest {
             "com/xa/mass/server/workerdelivery/adapter"
     );
     private static final Path ADAPTER_SOURCE = Path.of(
-            "../worker_delivery_adapter_jvm/src/main/java"
+            "../transport/netty-adapter/src/main/java"
     );
 
     @Test
@@ -54,13 +54,13 @@ class ServerArchitectureBoundaryTest {
         String build = Files.readString(Path.of("build.gradle"));
         assertThat(build)
                 .contains("implementation project(':kernel_jvm')")
-                .contains("implementation project(':worker_delivery_adapter_jvm')")
+                .contains("implementation project(':transport:netty-adapter')")
                 .doesNotContain("spring-boot-starter-websocket")
                 .doesNotContain(
-                        "implementation project(':worker:okhttp-worker')"
+                        "implementation project(':transport:okhttp-worker')"
                 )
                 .contains(
-                        "testImplementation project(':worker:okhttp-worker')"
+                        "testImplementation project(':transport:okhttp-worker')"
                 );
 
         String serverSources = readSources(SERVER_SOURCE);

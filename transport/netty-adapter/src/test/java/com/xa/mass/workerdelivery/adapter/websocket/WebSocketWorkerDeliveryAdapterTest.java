@@ -178,13 +178,19 @@ class WebSocketWorkerDeliveryAdapterTest {
     }
 
     @Test
-    void interruptedShutdownUsesTheOwnerErrorCode() {
+    void interruptedShutdownUsesTheOwnerErrorCode()
+            throws InterruptedException {
+        BlockingGateway gateway = new BlockingGateway();
         WebSocketWorkerDeliveryAdapter adapter = adapter(
                 "websocket-1",
                 availablePort(),
-                new FakeGateway()
+                gateway
         );
         adapter.start();
+        assertThat(gateway.consumeStarted.await(
+                2,
+                TimeUnit.SECONDS
+        )).isTrue();
 
         WorkerDeliveryAdapterException failure;
         Thread.currentThread().interrupt();
@@ -384,6 +390,34 @@ class WebSocketWorkerDeliveryAdapterTest {
             endpointManagerIds.add(endpointManagerId);
             appendedResults.add(List.copyOf(results));
             resultAppended.countDown();
+        }
+    }
+
+    private static final class BlockingGateway
+            implements WorkerDeliveryGatewayClient {
+
+        private final CountDownLatch consumeStarted =
+                new CountDownLatch(1);
+
+        @Override
+        public Map<String, WorkerCommandEnvelope> consumeWorkerCommands(
+                String endpointManagerId,
+                int limit
+        ) {
+            consumeStarted.countDown();
+            try {
+                new CountDownLatch(1).await();
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+            }
+            return Map.of();
+        }
+
+        @Override
+        public void appendResults(
+                String endpointManagerId,
+                List<SeedResult> results
+        ) {
         }
     }
 

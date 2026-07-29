@@ -12,9 +12,9 @@ Worker lease contract:
 Executable HTTP host:
 [JVM Runtime API Server](../../../server_jvm/README.md).
 Active Adapter:
-[JVM Worker Delivery Adapter](../../../worker_delivery_adapter_jvm/README.md).
+[JVM Worker Delivery Adapter](../../../transport/netty-adapter/README.md).
 Worker library:
-[OkHttp Worker](../../../worker/README.md).
+[OkHttp Worker](../../../transport/okhttp-worker/README.md).
 
 ## Purpose
 

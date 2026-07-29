@@ -3,7 +3,7 @@ plugins {
 }
 
 base {
-    archivesName.set('xa-mass-worker-delivery-adapter-jvm')
+    archivesName.set('xa-mass-netty-adapter')
 }
 
 java {

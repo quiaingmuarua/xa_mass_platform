@@ -21,12 +21,12 @@ Status: current repository handoff.
   Worker.
   It also owns the strict flat WorkerConnectionMessage union used only by
   long-lived transports.
-- `worker_delivery_adapter_jvm/` owns complete Adapter instances: local
+- `transport/netty-adapter/` owns complete Adapter instances: local
   registration, start/close lifecycle, scheduled Gateway consumption, active
   connections, bounded concurrent delivery, result buffering, and independent
   Netty WebSocket/Socket listeners. It has no Spring, Server, Kernel, or Redis
   dependency.
-- `worker/okhttp-worker/` is the Java 11 compatible Worker library. It owns
+- `transport/okhttp-worker/` is the Java 11 compatible Worker library. It owns
   serial command execution, the handler contract, OkHttp Polling/WebSocket,
   and line-oriented Socket transport. It is not a CLI, application, Android
   wrapper, or business handler collection.
@@ -82,7 +82,7 @@ tag.
   access and the Kernel delivery owner facade live in `server_jvm`. The
   Adapter Runtime may reach that facade only through the Adapter batch HTTP
   contract.
-- `worker_delivery_adapter_jvm` must not depend on `server_jvm`, `kernel_jvm`,
+- `transport/netty-adapter` must not depend on `server_jvm`, `kernel_jvm`,
   Spring, Redis, scores, Pacers, or Server HTTP DTOs. The Adapter module owns
   its complete instances, Netty listeners, scheduled dispatch loops, active
   connections, immutable message dispatcher, statically installed handlers,
@@ -90,7 +90,7 @@ tag.
   dynamic registration or discovery surface. Its private HTTP DTOs are proved
   against Server JSON with bilateral golden tests; do not add an in-process
   fast path.
-- `worker/okhttp-worker` may depend only on `foundation_jvm`, the shared
+- `transport/okhttp-worker` may depend only on `foundation_jvm`, the shared
   Worker Delivery contract, and Android-compatible transport libraries. It
   must compile with `--release 11`,
   expose no OkHttp types, and must not import Android, JNDI, Server, Kernel,
@@ -140,7 +140,7 @@ WorkerDeliveryConfiguration
   -> shared codec
   -> Server point/batch HTTP application service
 
-worker_delivery_adapter_jvm
+transport/netty-adapter
   -> Adapter batch HTTP client
   -> per-endpoint cursor, current connection registry, concurrent delivery
   -> flat long-connection message codec, immutable dispatcher, built-in result
@@ -152,7 +152,7 @@ The main Server owns the Worker Delivery HTTP and Redis boundaries. It only
 composes and starts configured Adapter instances. Every Adapter still reaches
 Worker Delivery through the same batch HTTP boundary.
 
-`worker_delivery_contract_jvm` and `worker/okhttp-worker` compile to Java 11
+`worker_delivery_contract_jvm` and `transport/okhttp-worker` compile to Java 11
 bytecode. They are repository-local libraries, not published SDKs. Neither may
 pull Server, Kernel, Redis, scheduling, or assembly implementations into the
 Worker boundary.

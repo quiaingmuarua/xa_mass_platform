@@ -3,7 +3,7 @@
 Status: clean-kernel mechanism workspace, incremental JVM owner parity, and
 Runtime API.
 
-The repository contains seven active areas:
+The repository contains six active areas:
 
 - [`foundation_jvm/`](foundation_jvm/): narrow Java 11 compatible error-code
   and coded-runtime-exception contract. Owners retain numeric ranges, one
@@ -20,13 +20,9 @@ The repository contains seven active areas:
 - [`worker_delivery_contract_jvm/`](worker_delivery_contract_jvm/): shared
   Java 11 compatible Worker Delivery DTO, validation, outcome classification,
   strict codec, and JDK-value JSON facade shared with Android.
-- [`worker_delivery_adapter_jvm/`](worker_delivery_adapter_jvm/):
-  Worker Delivery Adapter Runtime. It owns complete Adapter instances,
-  independent Netty WebSocket listeners, start/close lifecycle, bounded
-  mailbox dispatch, active connections, result buffering, and the Server
-  batch HTTP client without depending on Spring, Server, Kernel, or Redis.
-- [`worker/`](worker/): Java 11 compatible OkHttp Worker library with
-  Polling/WebSocket/Socket transports for JVM and Android source dependency.
+- [`transport/`](transport/): concrete Worker Delivery implementations. It
+  contains the Netty Adapter runtime and Java 11 compatible OkHttp Worker
+  library without changing their distinct delivery and execution boundaries.
 
 The Foundation, shared contract, and Worker jars are repository-local
 artifacts; they are not published SDKs.
