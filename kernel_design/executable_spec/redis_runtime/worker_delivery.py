@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Mapping as MappingABC
 from typing import Any, Mapping, Sequence
 
 from ..kernel.task_score_band import TimeMillis
 from ..kernel.worker_delivery import (
     WorkerCommandAppendStatus,
-    WorkerCommandConsumePage,
     WorkerCommandEnvelope,
     WorkerCommandRuntime,
     decode_worker_command_envelope,
@@ -25,7 +23,7 @@ redis.call('HDEL', KEYS[1], ARGV[1])
 return {ARGV[1], current}
 """
 
-_CONSUME_SCANNED_WORKER_COMMANDS_SCRIPT = """
+_CONSUME_OBSERVED_WORKER_COMMANDS_SCRIPT = """
 local results = {}
 for index = 1, #ARGV, 2 do
     local worker_id = ARGV[index]
@@ -133,38 +131,29 @@ class RedisWorkerCommandRuntime(WorkerCommandRuntime):
         self,
         *,
         endpoint_manager_id: EndpointManagerId,
-        cursor: str | None,
-        scan_count: int,
-    ) -> WorkerCommandConsumePage:
+        limit: int,
+    ) -> Mapping[WorkerId, WorkerCommandEnvelope]:
         self._validate_endpoint_manager_id(endpoint_manager_id)
         if (
-            isinstance(scan_count, bool)
-            or not isinstance(scan_count, int)
-            or scan_count <= 0
+            isinstance(limit, bool)
+            or not isinstance(limit, int)
+            or limit <= 0
         ):
-            raise ValueError("scan count must be positive")
-        if cursor is not None and (
-            not isinstance(cursor, str) or not cursor.isdecimal()
-        ):
-            raise ValueError("cursor must be a non-negative Redis cursor")
+            raise ValueError("consume limit must be positive")
 
         key = self._worker_command_key(endpoint_manager_id)
-        next_cursor, scanned = self.redis.hscan(
+        observed = self.redis.hrandfield(
             key,
-            cursor=0 if cursor is None else int(cursor),
-            count=scan_count,
+            count=limit,
+            withvalues=True,
         )
-        next_cursor_value = None if int(next_cursor) == 0 else str(next_cursor)
-        if not scanned:
-            return WorkerCommandConsumePage({}, next_cursor_value)
-        if not isinstance(scanned, MappingABC):
-            raise RuntimeError("Redis HSCAN returned an invalid response")
-
-        script_args: list[Any] = []
-        for worker_id, raw_command in scanned.items():
-            script_args.extend((worker_id, raw_command))
+        script_args = list(observed or ())
+        if not script_args:
+            return {}
+        if len(script_args) % 2 != 0:
+            raise RuntimeError("Redis HRANDFIELD returned an invalid response")
         raw_result = self.redis.eval(
-            _CONSUME_SCANNED_WORKER_COMMANDS_SCRIPT,
+            _CONSUME_OBSERVED_WORKER_COMMANDS_SCRIPT,
             1,
             key,
             *script_args,
@@ -180,7 +169,7 @@ class RedisWorkerCommandRuntime(WorkerCommandRuntime):
                 and command.execute_before_millis > now_millis
             ):
                 commands[worker_id] = command
-        return WorkerCommandConsumePage(commands, next_cursor_value)
+        return commands
 
     def _current_time_millis(self) -> TimeMillis:
         seconds, microseconds = self.redis.time()

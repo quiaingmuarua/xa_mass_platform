@@ -102,8 +102,9 @@ class ServerArchitectureBoundaryTest {
         assertThat(delivery)
                 .contains("HGET")
                 .contains("HDEL")
-                .contains("commands().hscan(")
+                .contains("commands().hrandfieldWithvalues(")
                 .contains("commands().rpush(")
+                .doesNotContain("commands().hscan(")
                 .doesNotContain("\"tc:")
                 .doesNotContain("\"tr:")
                 .doesNotContain("\"wr:");

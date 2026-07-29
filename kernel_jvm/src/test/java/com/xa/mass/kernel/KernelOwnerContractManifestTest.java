@@ -114,10 +114,6 @@ class KernelOwnerContractManifestTest {
                     TaskScoreBandCore.TaskScoreTransitionResult.class
             ),
             Map.entry(
-                    "WorkerCommandConsumePage",
-                    WorkerCommandRuntime.WorkerCommandConsumePage.class
-            ),
-            Map.entry(
                     "WorkerCommandEnvelope",
                     WorkerDeliveryProtocol.WorkerCommandEnvelope.class
             ),

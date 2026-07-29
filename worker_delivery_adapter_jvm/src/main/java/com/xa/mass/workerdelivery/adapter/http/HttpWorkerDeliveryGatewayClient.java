@@ -1,10 +1,10 @@
 package com.xa.mass.workerdelivery.adapter.http;
 
-import com.xa.mass.workerdelivery.adapter.application.WorkerCommandPage;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -14,6 +14,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 public final class HttpWorkerDeliveryGatewayClient
@@ -55,12 +56,11 @@ public final class HttpWorkerDeliveryGatewayClient
     }
 
     @Override
-    public WorkerCommandPage consumeWorkerCommands(
+    public Map<String, WorkerCommandEnvelope> consumeWorkerCommands(
             String endpointManagerId,
-            String cursor,
-            int scanCount
+            int limit
     ) {
-        String body = contract.encodeConsumeRequest(cursor, scanCount);
+        String body = contract.encodeConsumeRequest(limit);
         HttpResponse<String> response = send(
                 request(endpointManagerId, "commands:consume")
                         .POST(HttpRequest.BodyPublishers.ofString(

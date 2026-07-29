@@ -5,7 +5,6 @@ from abc import ABC, abstractmethod
 from collections.abc import Mapping as MappingABC
 from dataclasses import dataclass
 from enum import Enum
-from types import MappingProxyType
 from typing import Any, Mapping
 from uuid import UUID
 
@@ -69,38 +68,6 @@ class WorkerCommandAppendStatus(Enum):
     REPLACED = "REPLACED"
 
 
-@dataclass(frozen=True, slots=True)
-class WorkerCommandConsumePage:
-    """One sparse Adapter-mailbox scan page."""
-
-    worker_commands_by_worker_id: Mapping[WorkerId, WorkerCommandEnvelope]
-    next_cursor: str | None
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.worker_commands_by_worker_id, MappingABC):
-            raise TypeError("worker commands must be a mapping")
-        worker_commands = dict(self.worker_commands_by_worker_id)
-        if any(
-            not isinstance(worker_id, str)
-            or not worker_id
-            or not isinstance(command, WorkerCommandEnvelope)
-            for worker_id, command in worker_commands.items()
-        ):
-            raise ValueError(
-                "worker command keys and values must be valid"
-            )
-        if self.next_cursor is not None and (
-            not isinstance(self.next_cursor, str)
-            or not self.next_cursor.isdecimal()
-        ):
-            raise ValueError("next cursor must be a Redis cursor or None")
-        object.__setattr__(
-            self,
-            "worker_commands_by_worker_id",
-            MappingProxyType(worker_commands),
-        )
-
-
 class WorkerCommandRuntime(ABC):
     """Runtime owner for Adapter-partitioned Worker command mailboxes."""
 
@@ -132,10 +99,9 @@ class WorkerCommandRuntime(ABC):
         self,
         *,
         endpoint_manager_id: EndpointManagerId,
-        cursor: str | None,
-        scan_count: int,
-    ) -> WorkerCommandConsumePage:
-        """Scan and atomically consume one sparse Adapter-mailbox page."""
+        limit: int,
+    ) -> Mapping[WorkerId, WorkerCommandEnvelope]:
+        """Observe and atomically consume a bounded Worker-command batch."""
         pass
 
 

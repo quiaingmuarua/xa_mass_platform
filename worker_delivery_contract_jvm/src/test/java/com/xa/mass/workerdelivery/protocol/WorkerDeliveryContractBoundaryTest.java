@@ -45,7 +45,6 @@ class WorkerDeliveryContractBoundaryTest {
                 "jackson",
                 "com.xa.mass.server",
                 "kernel_design",
-                "WorkerCommandPage",
                 "redisKeySuffix",
                 " record ",
                 " sealed "

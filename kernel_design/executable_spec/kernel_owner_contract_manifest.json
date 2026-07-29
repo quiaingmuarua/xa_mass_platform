@@ -212,10 +212,6 @@
       "status",
       "score"
     ],
-    "WorkerCommandConsumePage": [
-      "worker_commands_by_worker_id",
-      "next_cursor"
-    ],
     "WorkerCommandEnvelope": [
       "command_id",
       "message_type",

@@ -28,14 +28,14 @@ Task Dispatch
 
 Server Worker Delivery API
   -> point-consume one target Worker for request-driven polling
-  -> expose cursor consume and result batch operations to Adapters
+  -> expose bounded batch consume and result batch operations to Adapters
   -> own WorkerCommand consume and SeedResult append
 
 Active Adapter
   -> call the Server batch HTTP API
   -> register complete Adapter instances by endpointManagerId
-  -> each instance owns a Netty listener, cursor, scheduler and result buffer
-  -> deliver one page to different Workers with bounded parallelism
+  -> each instance owns a Netty listener, scheduler and result buffer
+  -> deliver one bounded batch to different Workers with bounded parallelism
   -> Server binds config and forwards start/close lifecycle events
   -> push commands and batch Worker/trusted Adapter results
 
@@ -153,9 +153,8 @@ consume_worker_command(
 
 consume_worker_commands(
     endpoint_manager_id,
-    cursor,
-    scan_count,
-) -> WorkerCommandConsumePage
+    limit,
+) -> workerId -> WorkerCommandEnvelope
 ```
 
 The mailbox invariant is:
@@ -168,19 +167,12 @@ one (endpointManagerId, workerId) has at most one unconsumed command
 If one physical execution runtime supports multiple independent concurrent
 slots, it exposes multiple globally unique WorkerIds.
 
-Point consume atomically removes one Worker field. Cursor consume returns:
-
-```python
-WorkerCommandConsumePage(
-    worker_commands_by_worker_id={...},
-    next_cursor="..." | None,
-)
-```
-
-The Map preserves the Redis HASH field used for Worker demultiplexing, so a
-batch Adapter never parses `opaqueItem` to discover the target Worker.
-`cursor=None` starts at Redis cursor `0`; a returned cursor of `0` becomes
-`None`. `scanCount` is an HSCAN work hint, not an exact result count.
+Point consume atomically removes one Worker field. Batch consume accepts a
+positive `limit` and returns a WorkerId-keyed Map. The Map preserves the Redis
+HASH field used for Worker demultiplexing, so a batch Adapter never parses
+`opaqueItem` to discover the target Worker. A result may contain fewer than
+`limit` commands after competition, malformed-value filtering, or expiry
+filtering; the runtime does not acquire a replacement batch in the same call.
 
 ## Redis Shape
 
@@ -209,21 +201,30 @@ Item claim, Worker lease fence, and Result Routing keep stale evidence from
 changing current truth. `REPLACED` is lightweight residue evidence, not proof
 of Worker failure or lease recency.
 
-Point consume uses minimal single-key `HGET + HDEL` Lua. Cursor consume uses
-HSCAN followed by a minimal compare-and-delete Lua operation:
+Point consume uses minimal single-key `HGET + HDEL` Lua. Batch consume uses
+positive-count `HRANDFIELD ... WITHVALUES`, then a minimal
+compare-and-delete Lua operation:
 
 ```text
-delete field only when currentValue == scannedValue
+delete field only when currentValue == observedValue
 ```
 
-This prevents an old scan page from deleting a command appended after a
-concurrent consume. Cross-Adapter operations are not atomic and completed
-buckets are not rolled back.
+Positive count returns distinct fields within the observation. Exact deletion
+prevents an old observation from deleting a command appended after a
+concurrent consume. A batch reads Redis `TIME` once after deletion and uses
+that one value for all expiry checks. Cross-Adapter operations are not atomic
+and completed buckets are not rolled back.
 
 Expired or malformed outer commands are deleted during consume and not
 returned. The runtime intentionally does not decode the inner DeliverSeed.
 There is no field TTL, expiry index, cleanup scanner, pending/ack state, or FIFO
 backlog.
+
+Batch acquisition has no FIFO, priority, stable-order, or global-fairness
+semantics. With no concurrent writes, repeated calls delete distinct bounded
+batches and eventually empty the current HASH. With concurrent writes it is
+only bounded best-effort acquisition. Redis 7.4 is the current executable
+verification baseline; the runtime has no version fallback.
 
 ## Route Snapshot
 
@@ -279,26 +280,26 @@ POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/
   -> allow Worker-owned 200 or 1xxx evidence
 ```
 
-The polling API accepts no cursor, scan count, Worker list, or fallback source.
+The polling API accepts no batch limit, Worker list, or fallback source.
 It is request-driven and naturally applies Worker-side backpressure.
 
 A long-lived Adapter uses separate role-specific endpoints:
 
 ```text
 POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/commands:consume
-  -> cursor-consume a sparse mailbox page
+  -> consume at most limit commands from the sparse mailbox
 
 POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/results:append
   -> append one non-empty 200/1xxx/3xxx SeedResult batch
 ```
 
 The built-in `system-polling` identity is rejected from both Adapter batch
-operations. Cursor scanning is not a polling Worker capability.
+operations. Batch mailbox acquisition is not a polling Worker capability.
 
-The cursor request and response are:
+The batch request and response are:
 
 ```json
-{"cursor": null, "scanCount": 100}
+{"limit": 100}
 ```
 
 ```json
@@ -310,12 +311,11 @@ The cursor request and response are:
       "messageType": "TASK_ITEM",
       "opaqueItem": "..."
     }
-  },
-  "nextCursor": "7"
+  }
 }
 ```
 
-Point and cursor consumers mechanically compete for the same Worker field.
+Point and batch consumers mechanically compete for the same Worker field.
 There is no Server-side reservation for a configured active Adapter identity;
 deployment must give one endpoint-manager bucket to one active Adapter
 consumer. `system-polling` remains point-only.
@@ -392,10 +392,11 @@ One WorkerId has one current command-delivery connection. A newer connection
 replaces and best-effort closes the old connection; exact instance removal
 prevents the old close callback from removing the replacement.
 
-Each Adapter cursor-consumes one bounded page through the Server batch HTTP
+Each Adapter consumes one bounded command batch through the Server batch HTTP
 API, rechecks command deadlines, and dispatches different Worker commands
 through a fixed-size delivery executor. One round completes before the next
-HSCAN, so the cursor has one writer. Worker-originated `200/1xxx` results are
+consume, so an Adapter does not issue concurrent mailbox acquisitions.
+Worker-originated `200/1xxx` results are
 decoded as `TASK_ITEM_RESULT`, passed through an immutable message dispatcher
 and the statically installed Task Item result handler, then offered to a
 bounded process-memory buffer and submitted through the Server batch result
@@ -406,8 +407,8 @@ truth.
 
 The Adapter module owns its scheduled runtime, Netty listeners, transport
 translation, immutable message dispatcher, built-in message handlers,
-transport-private process-local Channel registries, cursor, delivery executor,
-and result buffer. Each concrete registry directly stores
+transport-private process-local Channel registries, command consume bound,
+delivery executor, and result buffer. Each concrete registry directly stores
 `workerId -> current Netty Channel`; it is not a generic session model or
 serializable DTO.
 
@@ -433,7 +434,7 @@ Different Adapter instances in one or more processes may own different
 endpoint-manager mailboxes. Every host must preserve that boundary. Multiple
 instances consuming the same endpoint manager are unsupported:
 the process-local current-connection registry does not provide distributed
-ownership, and destructive cursor consumption cannot be used as HA
+ownership, and destructive batch consumption cannot be used as HA
 coordination.
 
 ## At-Least-Once Boundary
@@ -459,11 +460,11 @@ external Worker side effects exactly-once.
 - Do not let Worker Delivery Dispatch choose or replace `seed.workerId`.
 - Do not put `endpointManagerId` into protocol envelopes or ResultContext.
 - Do not let an Adapter consume another Adapter's bucket.
-- Do not expose cursor scanning through the polling Worker API.
+- Do not expose batch mailbox acquisition through the polling Worker API.
 - Do not allow the `system-polling` identity to use Adapter batch operations.
 - Do not let an active Adapter access Redis or Kernel runtimes directly.
-- Do not put mailbox cursor, result buffering, `3001`, or `UNKNOWN` policy into
-  `server_jvm`.
+- Do not put mailbox consume cadence, result buffering, `3001`, or `UNKNOWN`
+  policy into `server_jvm`.
 - Do not make `server_jvm` an Adapter mechanism owner merely because
   it constructs configured instances, invokes Adapter lifecycle, and exposes
   the batch HTTP access boundary.
@@ -472,7 +473,7 @@ external Worker side effects exactly-once.
   path; host/port identifies the Adapter instance and Bind establishes the
   process-local Worker connection.
 - Do not duplicate one endpoint-manager Adapter to increase throughput; tune
-  the instance's scan bound, delivery parallelism, and cadence.
+  the instance's command consume bound, delivery parallelism, and cadence.
 - Do not add an embedded in-process shortcut around the Server batch HTTP API.
 - Do not let Adapters generate command identity or message types.
 - Do not wrap SeedResult in WorkerCommandEnvelope or in a generic opaque

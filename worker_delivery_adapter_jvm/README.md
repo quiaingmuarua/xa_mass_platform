@@ -24,8 +24,8 @@ One concrete Adapter instance owns:
 ```text
 adapterId = endpointManagerId
 listenHost + listenPort
-one WorkerCommand mailbox cursor
 one scheduled consume loop
+one bounded command consume per round
 one bounded delivery executor
 one current Netty Channel per WorkerId
 one bounded result buffer
@@ -48,7 +48,7 @@ then bind the declared WorkerId to the current Netty Channel. The old
 WorkerId-bearing WebSocket path is not accepted.
 
 Do not run two instances for the same `endpointManagerId`. Throughput for one
-endpoint is increased with `scanCount`, `deliveryParallelism`, and
+endpoint is increased with `commandConsumeLimit`, `deliveryParallelism`, and
 `dispatchInterval`, not by starting competing mailbox consumers.
 
 `system-polling` is a Server point-API binding and cannot be registered as an
@@ -64,7 +64,7 @@ WorkerDeliveryAdapterManager
   register complete instances, look them up, start in order, close in reverse
 
 WorkerDeliveryGatewayClient
-  consume one command page and append one result batch through Server HTTP
+  consume one bounded command Map and append one result batch through Server HTTP
 
 transport-private connection registry
   retain the current Netty Channel for each WorkerId
@@ -130,16 +130,20 @@ enters the Adapter's pending result path directly.
 
 ## Dispatch
 
-Each Adapter has one mailbox cursor and never runs concurrent HSCAN rounds:
+Each Adapter never runs concurrent mailbox-consume rounds:
 
 ```text
 flush pending results
 -> drain one bounded Worker result batch
--> consume one command page through Server batch HTTP
+-> consume at most commandConsumeLimit commands through Server batch HTTP
 -> filter expired commands
 -> deliver different Workers with bounded parallelism
 -> append trusted Adapter rejections
 ```
+
+The Server runtime acquires a random bounded set of distinct Worker fields
+from the sparse HASH. Adapter command acquisition is stateless between rounds
+and assumes no FIFO, priority, stable-order, or global-fairness semantics.
 
 Delivery evidence remains:
 

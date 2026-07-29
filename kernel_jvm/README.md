@@ -35,7 +35,7 @@ WorkerResourceCatalog
   WorkerGroup descriptor reads
 
 WorkerCommandRuntime
-  point and cursor consume
+  point and bounded random batch consume
 
 SeedResultRuntime
   append

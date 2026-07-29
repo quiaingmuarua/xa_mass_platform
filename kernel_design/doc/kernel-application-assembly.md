@@ -46,8 +46,8 @@ close_task
 WorkerCommandConsumerClient
 consume_worker_command(endpointManagerId, workerId)
   -> WorkerCommandEnvelope | None
-consume_worker_commands(endpointManagerId, cursor, scanCount)
-  -> WorkerCommandConsumePage
+consume_worker_commands(endpointManagerId, limit)
+  -> workerId -> WorkerCommandEnvelope
 
 SeedResultCommandClient
 append_seed_results(SeedResult...)
@@ -340,7 +340,7 @@ execution core.
 Polling is a base request-driven protocol, not an independently deployed
 Adapter. Each configured Java Adapter instance owns one non-`system-polling`
 endpoint-manager mailbox, one independent Netty listener, one scheduled
-cursor-consumption loop through the Server batch HTTP API, one current
+bounded-consumption loop through the Server batch HTTP API, one current
 connection per WorkerId, bounded concurrent delivery, and result-buffer
 policy. The Server only parses instance configuration, registers concrete
 instances, and invokes Adapter `start()`/`close()` at process boundaries.
@@ -371,11 +371,11 @@ API compatibility remain out of scope.
   SeedResult, or access score/Pacer state.
 - Do not let Java TaskData Redis code access Task score, Worker score,
   candidate cache, WorkerCommand mailbox, SeedResult queues, or Pacer state.
-- Do not expose cursor scanning through the polling Worker endpoint.
+- Do not expose batch mailbox acquisition through the polling Worker endpoint.
 - Do not let the WebSocket Adapter bypass Server batch HTTP through Redis or
   an in-process call.
-- Do not move Adapter cursor, current-connection selection, result-buffer,
-  `3001`, or `UNKNOWN` policy into the Server lifecycle host.
+- Do not move Adapter consume cadence, current-connection selection,
+  result-buffer, `3001`, or `UNKNOWN` policy into the Server lifecycle host.
 - Do not turn internal Pacer configuration into public JSON without a concrete
   operational requirement.
 - Keep result-routing and assignment-dispatch as separate internal application

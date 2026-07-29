@@ -6,8 +6,9 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultOutc
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import com.xa.mass.kernel.delivery.SeedResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
-import com.xa.mass.kernel.delivery.WorkerCommandRuntime.WorkerCommandConsumePage;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public final class WorkerDeliveryService {
 
@@ -42,33 +43,26 @@ public final class WorkerDeliveryService {
         }
     }
 
-    public WorkerCommandConsumePage consumeWorkerCommands(
+    public Map<String, WorkerCommandEnvelope> consumeWorkerCommands(
             String endpointManagerId,
-            String cursor,
-            int scanCount
+            int limit
     ) {
         requireAdapterBatchIdentity(endpointManagerId);
         try {
-            WorkerCommandConsumePage page =
+            Map<String, WorkerCommandEnvelope> commands =
                     commandRuntime.consumeWorkerCommands(
-                    endpointManagerId,
-                    cursor,
-                    scanCount
-            );
+                            endpointManagerId,
+                            limit
+                    );
             long nowMillis = System.currentTimeMillis();
-            var active = new java.util.LinkedHashMap<
-                    String,
-                    WorkerCommandEnvelope
-                    >();
-            page.workerCommandsByWorkerId().forEach((workerId, command) -> {
+            Map<String, WorkerCommandEnvelope> active =
+                    new LinkedHashMap<>();
+            commands.forEach((workerId, command) -> {
                 if (command.executeBeforeMillis() > nowMillis) {
                     active.put(workerId, command);
                 }
             });
-            return new WorkerCommandConsumePage(
-                    active,
-                    page.nextCursor()
-            );
+            return Map.copyOf(active);
         } catch (WorkerDeliveryException error) {
             throw error;
         } catch (RuntimeException error) {

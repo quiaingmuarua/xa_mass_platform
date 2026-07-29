@@ -52,8 +52,8 @@ worker/okhttp-worker -> worker_delivery_contract_jvm
 ```
 
 It has no Spring, Redis, Server, Kernel, scheduling, or business-handler
-dependency. `WorkerCommandPage` and Redis queue suffixes are intentionally not
-part of this contract because they belong to the Server runtime adapter.
+dependency. Server batch HTTP request/response DTOs and Redis queue suffixes
+are intentionally not part of this transport-neutral contract.
 
 The Java 11 compatible jar is not published as an SDK. It is the single
 in-repository protocol source for the Server, Adapter, and Worker library.

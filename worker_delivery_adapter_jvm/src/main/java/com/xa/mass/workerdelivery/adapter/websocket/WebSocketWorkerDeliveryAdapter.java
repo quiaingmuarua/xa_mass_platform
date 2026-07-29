@@ -65,7 +65,7 @@ public final class WebSocketWorkerDeliveryAdapter
             String listenHost,
             int listenPort,
             Duration dispatchInterval,
-            int scanCount,
+            int commandConsumeLimit,
             int deliveryParallelism,
             int resultBatchSize,
             int resultBufferCapacity,
@@ -87,7 +87,7 @@ public final class WebSocketWorkerDeliveryAdapter
         requirePositive(dispatchInterval, "dispatchInterval");
         requirePositive(sendTimeLimit, "sendTimeLimit");
         requirePositive(shutdownTimeout, "shutdownTimeout");
-        if (scanCount <= 0
+        if (commandConsumeLimit <= 0
                 || deliveryParallelism <= 0
                 || resultBatchSize <= 0
                 || resultBufferCapacity <= 0) {
@@ -114,7 +114,7 @@ public final class WebSocketWorkerDeliveryAdapter
                 codec,
                 connections,
                 adapterId,
-                scanCount,
+                commandConsumeLimit,
                 resultBatchSize,
                 resultBuffer
         );

@@ -11,7 +11,9 @@ import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.core.codec.StringCodec;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assumptions;
@@ -141,14 +143,70 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
         );
         redis.hset(key, "worker-corrupt", "{bad-json");
 
-        var page = commandRuntime.consumeWorkerCommands(
+        var commands = commandRuntime.consumeWorkerCommands(
                 "endpoint-1",
-                null,
                 100
         );
-        assertThat(page.workerCommandsByWorkerId())
-                .containsOnlyKeys("worker-active");
+        assertThat(commands).containsOnlyKeys("worker-active");
         assertThat(redis.hlen(key)).isZero();
+    }
+
+    @Test
+    void repeatedNoCursorBatchConsumeDrainsTheObservedHash() {
+        String key = commandKey("endpoint-1");
+        Set<String> expectedWorkerIds = new HashSet<>();
+        for (int index = 0; index < 41; index++) {
+            String workerId = "worker-" + index;
+            expectedWorkerIds.add(workerId);
+            redis.hset(
+                    key,
+                    workerId,
+                    commandJson(
+                            UUID.randomUUID().toString(),
+                            System.currentTimeMillis() + 30_000
+                    )
+            );
+        }
+
+        Set<String> consumedWorkerIds = new HashSet<>();
+        while (redis.hlen(key) > 0) {
+            var commands = commandRuntime.consumeWorkerCommands(
+                    "endpoint-1",
+                    7
+            );
+            assertThat(commands).hasSizeLessThanOrEqualTo(7);
+            assertThat(consumedWorkerIds)
+                    .doesNotContainAnyElementsOf(commands.keySet());
+            consumedWorkerIds.addAll(commands.keySet());
+        }
+
+        assertThat(consumedWorkerIds).isEqualTo(expectedWorkerIds);
+        assertThat(redis.hlen(key)).isZero();
+    }
+
+    @Test
+    void batchConsumeReadsRedisTimeOnce() {
+        String key = commandKey("endpoint-1");
+        for (int index = 0; index < 3; index++) {
+            redis.hset(
+                    key,
+                    "worker-" + index,
+                    commandJson(
+                            UUID.randomUUID().toString(),
+                            System.currentTimeMillis() + 30_000
+                    )
+            );
+        }
+
+        long callsBefore = commandCalls("time");
+        var commands = commandRuntime.consumeWorkerCommands(
+                "endpoint-1",
+                100
+        );
+        long callsAfter = commandCalls("time");
+
+        assertThat(commands).hasSize(3);
+        assertThat(callsAfter - callsBefore).isEqualTo(1);
     }
 
     private void deleteKeys(java.util.Collection<String> keys) {
@@ -164,6 +222,21 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
 
     private String resultKey(String outcomeClass) {
         return "rr:" + prefix + ":seed-results:" + outcomeClass;
+    }
+
+    private long commandCalls(String command) {
+        String prefix = "cmdstat_" + command + ":";
+        for (String line : redis.info("commandstats").split("\\R")) {
+            if (!line.startsWith(prefix)) {
+                continue;
+            }
+            for (String field : line.substring(prefix.length()).split(",")) {
+                if (field.startsWith("calls=")) {
+                    return Long.parseLong(field.substring("calls=".length()));
+                }
+            }
+        }
+        return 0;
     }
 
     private static String commandJson(

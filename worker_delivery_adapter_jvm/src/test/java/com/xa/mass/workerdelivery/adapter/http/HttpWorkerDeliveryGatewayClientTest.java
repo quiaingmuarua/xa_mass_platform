@@ -56,7 +56,7 @@ class HttpWorkerDeliveryGatewayClientTest {
     }
 
     @Test
-    void consumesTheExactEndpointBucketAndDecodesThePage() {
+    void consumesTheExactEndpointBucketAndDecodesTheBatch() {
         WorkerCommandEnvelope command = new WorkerCommandEnvelope(
                 COMMAND_ID,
                 WorkerMessageType.TASK_ITEM,
@@ -67,12 +67,11 @@ class HttpWorkerDeliveryGatewayClientTest {
                 200,
                 "{\"workerCommandsByWorkerId\":{\"worker-1\":"
                         + codec.encodeWorkerCommand(command)
-                        + "},\"nextCursor\":\"7\"}"
+                        + "}}"
         );
 
-        var page = client.consumeWorkerCommands(
+        var commands = client.consumeWorkerCommands(
                 "adapter/one",
-                null,
                 100
         );
 
@@ -81,10 +80,8 @@ class HttpWorkerDeliveryGatewayClientTest {
                         + "adapter%2Fone/commands:consume"
         );
         assertThat(requestBody)
-                .isEqualTo("{\"cursor\":null,\"scanCount\":100}");
-        assertThat(page.workerCommandsByWorkerId())
-                .containsEntry("worker-1", command);
-        assertThat(page.nextCursor()).isEqualTo("7");
+                .isEqualTo("{\"limit\":100}");
+        assertThat(commands).containsEntry("worker-1", command);
     }
 
     @Test
@@ -124,12 +121,15 @@ class HttpWorkerDeliveryGatewayClientTest {
     void rejectsUnexpectedStatusAndMalformedResponses() {
         respond(503, "{}");
         assertThatThrownBy(() ->
-                client.consumeWorkerCommands("adapter-1", null, 100)
+                client.consumeWorkerCommands("adapter-1", 100)
         ).isInstanceOf(WorkerDeliveryAdapterException.class);
 
-        respond(200, "{\"workerCommandsByWorkerId\":{}}");
+        respond(
+                200,
+                "{\"workerCommandsByWorkerId\":{},\"nextCursor\":null}"
+        );
         assertThatThrownBy(() ->
-                client.consumeWorkerCommands("adapter-1", null, 100)
+                client.consumeWorkerCommands("adapter-1", 100)
         ).isInstanceOf(WorkerDeliveryAdapterException.class);
 
         respond(202, "{\"acceptedCount\":\"one\"}");
@@ -146,6 +146,9 @@ class HttpWorkerDeliveryGatewayClientTest {
 
     @Test
     void rejectsInvalidGatewayConfiguration() {
+        assertThatThrownBy(() ->
+                client.consumeWorkerCommands("adapter-1", 0)
+        ).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new HttpWorkerDeliveryGatewayClient(
                 URI.create("/relative"),
                 Duration.ofSeconds(1),

@@ -14,7 +14,6 @@ import com.xa.mass.server.api.RequestIdFilter;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryException;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
-import com.xa.mass.kernel.delivery.WorkerCommandRuntime.WorkerCommandConsumePage;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
@@ -46,21 +45,17 @@ class AdapterBatchDeliveryControllerTest {
     }
 
     @Test
-    void adapterBatchPreservesWorkerDemuxAndCursor() throws Exception {
-        when(service.consumeWorkerCommands("endpoint-1", null, 100))
-                .thenReturn(new WorkerCommandConsumePage(
-                        Map.of("worker-1", command()),
-                        "7"
-                ));
+    void adapterBatchPreservesWorkerDemux() throws Exception {
+        when(service.consumeWorkerCommands("endpoint-1", 100))
+                .thenReturn(Map.of("worker-1", command()));
 
         mockMvc.perform(post(batchPath("commands:consume"))
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"cursor\":null,\"scanCount\":100}"))
+                        .content("{\"limit\":100}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath(
                         "$.workerCommandsByWorkerId.worker-1.commandId"
-                ).value(COMMAND_ID))
-                .andExpect(jsonPath("$.nextCursor").value("7"));
+                ).value(COMMAND_ID));
     }
 
     @Test
@@ -79,17 +74,17 @@ class AdapterBatchDeliveryControllerTest {
 
     @Test
     void systemPollingAndMalformedBatchesAreRejected() throws Exception {
-        when(service.consumeWorkerCommands("system-polling", null, 100))
+        when(service.consumeWorkerCommands("system-polling", 100))
                 .thenThrow(WorkerDeliveryException.invalid(
                         "system-polling supports only point Worker access"
                 ));
 
         mockMvc.perform(post(
                         "/api/v1/worker-delivery/endpoint-managers/"
-                                + "system-polling/commands:consume"
+                        + "system-polling/commands:consume"
                 )
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"cursor\":null,\"scanCount\":100}"))
+                        .content("{\"limit\":100}"))
                 .andExpect(status().isBadRequest());
 
         mockMvc.perform(post(batchPath("results:append"))
@@ -100,9 +95,13 @@ class AdapterBatchDeliveryControllerTest {
         mockMvc.perform(post(batchPath("commands:consume"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(
-                                "{\"cursor\":null,\"scanCount\":100,"
-                                        + "\"unexpected\":true}"
+                                "{\"limit\":100,\"unexpected\":true}"
                         ))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post(batchPath("commands:consume"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"cursor\":null,\"scanCount\":100}"))
                 .andExpect(status().isBadRequest());
     }
 

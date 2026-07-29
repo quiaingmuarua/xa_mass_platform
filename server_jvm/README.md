@@ -97,9 +97,9 @@ dependency.
 The Adapter runtime is implemented by
 [`worker_delivery_adapter_jvm`](../worker_delivery_adapter_jvm/README.md).
 This Server reads the configured Adapter instance map, creates complete
-WebSocket Adapter instances, registers them, and forwards
+WebSocket or Socket Adapter instances, registers them, and forwards
 process-ready/process-close events. Each Adapter owns its Netty listener,
-mailbox cursor, dispatch loop, connection registry, immutable message
+bounded mailbox consume loop, connection registry, immutable message
 dispatcher, built-in result-message handler, and bounded result buffer. It
 still consumes
 the existing batch HTTP API through loopback and has no in-process or Redis
@@ -151,8 +151,8 @@ POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/commands:cons
 POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/results:append
 ```
 
-`system-polling` may use only the point Worker operations. Cursor consume and
-batch result append are reserved for long-lived Adapter identities.
+`system-polling` may use only the point Worker operations. Bounded batch
+consume and batch result append are reserved for long-lived Adapter identities.
 
 Management endpoints:
 
@@ -196,7 +196,7 @@ xa.mass.worker-delivery.adapter:
       listen-host: 0.0.0.0
       listen-port: 18083
       dispatch-interval: 100ms
-      scan-count: 100
+      command-consume-limit: 100
       delivery-parallelism: 16
       result-batch-size: 100
       result-buffer-capacity: 1000
@@ -215,8 +215,9 @@ a Socket Worker connects to its TCP port. Both send `WORKER_BIND` before
 business messages. An empty `instances` map starts no active Adapter.
 
 Instances must use distinct IDs and listener ports. Do not duplicate an
-endpoint-manager ID for throughput. A single instance uses one mailbox cursor
-and bounded concurrent Worker delivery controlled by `scan-count`,
+endpoint-manager ID for throughput. A single instance issues one mailbox
+consume per round and uses bounded concurrent Worker delivery controlled by
+`command-consume-limit`,
 `delivery-parallelism`, and `dispatch-interval`.
 
 Defaults:

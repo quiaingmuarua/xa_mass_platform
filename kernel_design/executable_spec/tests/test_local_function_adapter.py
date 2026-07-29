@@ -11,7 +11,6 @@ from kernel_design.executable_spec.test_support import (
 )
 from kernel_design.executable_spec.assembly import (
     DeliverSeed,
-    WorkerCommandConsumePage,
     WorkerCommandConsumerClient,
     WorkerCommandEnvelope,
     WorkerMessageType,
@@ -67,16 +66,15 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
             return self.adapter.drain_once(limit=10)
 
     @staticmethod
-    def page(
+    def batch(
         *commands: WorkerCommandEnvelope,
-        next_cursor: str | None = None,
-    ) -> WorkerCommandConsumePage:
+    ) -> dict[str, WorkerCommandEnvelope]:
         worker_commands = {}
         for command in commands:
             seed = decode_deliver_seed(command.opaque_item)
             assert seed is not None
             worker_commands[seed.worker_id] = command
-        return WorkerCommandConsumePage(worker_commands, next_cursor)
+        return worker_commands
 
     def test_handler_success_appends_one_deterministic_result_batch(self) -> None:
         handler = Mock(
@@ -86,7 +84,9 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
             )
         )
         self.adapter.register_event_handler("event-1", handler)
-        self.consumer.consume_worker_commands.return_value = self.page(self.command())
+        self.consumer.consume_worker_commands.return_value = self.batch(
+            self.command()
+        )
 
         self.assertEqual(1, self.drain())
 
@@ -107,7 +107,9 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
             "event-1",
             lambda _payload, _worker: EventHandlerResult("1409"),
         )
-        self.consumer.consume_worker_commands.return_value = self.page(self.command())
+        self.consumer.consume_worker_commands.return_value = self.batch(
+            self.command()
+        )
 
         self.assertEqual(1, self.drain())
 
@@ -128,7 +130,7 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
                 self.result_commands.reset_mock()
                 self.result_commands.append_seed_results.return_value = 1
                 self.adapter.register_event_handler("event-1", handler)
-                self.consumer.consume_worker_commands.return_value = self.page(
+                self.consumer.consume_worker_commands.return_value = self.batch(
                     self.command()
                 )
 
@@ -143,7 +145,7 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
     def test_expired_corrupt_and_missing_handler_are_bounded(self) -> None:
         self.adapter.register_worker("worker-2", WorkerMeta({}))
         self.adapter.register_worker("worker-3", WorkerMeta({}))
-        self.consumer.consume_worker_commands.return_value = self.page(
+        self.consumer.consume_worker_commands.return_value = self.batch(
             self.command(execute_before_millis=self.NOW_MILLIS),
             self.command(
                 worker_id="worker-2",
@@ -168,7 +170,9 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
     def test_unregister_worker_is_idempotent_and_leaves_unknown_result(self) -> None:
         self.adapter.unregister_worker("worker-1")
         self.adapter.unregister_worker("worker-1")
-        self.consumer.consume_worker_commands.return_value = self.page(self.command())
+        self.consumer.consume_worker_commands.return_value = self.batch(
+            self.command()
+        )
 
         self.assertEqual(0, self.drain())
 
@@ -177,7 +181,7 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
     def test_worker_removed_after_consume_leaves_unknown_result(self) -> None:
         def consume(**_: object):
             self.adapter.unregister_worker("worker-1")
-            return self.page(self.command())
+            return self.batch(self.command())
 
         self.consumer.consume_worker_commands.side_effect = consume
 
@@ -191,7 +195,7 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
             lambda _payload, _worker: EventHandlerResult("200"),
         )
         self.adapter.register_worker("worker-2", WorkerMeta({}))
-        self.consumer.consume_worker_commands.return_value = self.page(
+        self.consumer.consume_worker_commands.return_value = self.batch(
             self.command(result_context="context-1"),
             self.command(
                 worker_id="worker-2",
@@ -204,8 +208,7 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
 
         self.consumer.consume_worker_commands.assert_called_once_with(
             endpoint_manager_id="endpoint-manager-1",
-            cursor=None,
-            scan_count=10,
+            limit=10,
         )
         self.result_commands.append_seed_results.assert_called_once()
         results = self.result_commands.append_seed_results.call_args.kwargs[
@@ -221,7 +224,9 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
             "event-1",
             lambda _payload, _worker: EventHandlerResult("200"),
         )
-        self.consumer.consume_worker_commands.return_value = self.page(self.command())
+        self.consumer.consume_worker_commands.return_value = self.batch(
+            self.command()
+        )
         self.result_commands.append_seed_results.side_effect = RuntimeError("down")
 
         with self.assertRaisesRegex(RuntimeError, "down"):
@@ -233,17 +238,19 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
         self.adapter.register_event_handler("event-1", first)
         self.adapter.register_event_handler("event-1", second)
         self.adapter.register_worker("worker-1", WorkerMeta({"version": 2}))
-        self.consumer.consume_worker_commands.return_value = self.page(self.command())
+        self.consumer.consume_worker_commands.return_value = self.batch(
+            self.command()
+        )
 
         self.drain()
 
         first.assert_not_called()
         self.assertEqual(2, second.call_args.args[1].attributes["version"])
 
-    def test_bucket_scan_continues_from_returned_cursor(self) -> None:
+    def test_each_drain_requests_one_independent_bounded_batch(self) -> None:
         self.consumer.consume_worker_commands.side_effect = (
-            self.page(next_cursor="17"),
-            self.page(next_cursor=None),
+            self.batch(),
+            self.batch(),
         )
 
         self.adapter.drain_once(limit=2)
@@ -253,13 +260,11 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
             [
                 call(
                     endpoint_manager_id="endpoint-manager-1",
-                    cursor=None,
-                    scan_count=2,
+                    limit=2,
                 ),
                 call(
                     endpoint_manager_id="endpoint-manager-1",
-                    cursor="17",
-                    scan_count=2,
+                    limit=2,
                 ),
             ],
             self.consumer.consume_worker_commands.call_args_list,

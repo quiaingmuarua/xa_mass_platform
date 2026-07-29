@@ -6,7 +6,6 @@ from unittest.mock import Mock, patch
 
 from kernel_design.executable_spec import (
     DeliverSeed,
-    WorkerCommandConsumePage,
     SeedResult,
     WorkerCommandEnvelope,
     WorkerMessageType,
@@ -90,7 +89,7 @@ class TransportClientsTest(unittest.TestCase):
             ),
         )
         self.assertEqual(
-            ["self", "endpoint_manager_id", "cursor", "scan_count"],
+            ["self", "endpoint_manager_id", "limit"],
             list(
                 inspect.signature(
                     WorkerCommandConsumerClient.consume_worker_commands
@@ -115,7 +114,7 @@ class TransportClientsTest(unittest.TestCase):
                 DeliverSeed("worker-1", "delivery", "context")
             ),
         )
-        page = WorkerCommandConsumePage({"worker-1": command}, "7")
+        commands = {"worker-1": command}
         seed_result = SeedResult(
             command.command_id,
             "context",
@@ -123,7 +122,7 @@ class TransportClientsTest(unittest.TestCase):
             "null",
         )
         self.deliver_runtime.consume_worker_command.return_value = command
-        self.deliver_runtime.consume_worker_commands.return_value = page
+        self.deliver_runtime.consume_worker_commands.return_value = commands
         self.result_runtime.append_seed_results.return_value = 1
 
         deliver_client = WorkerCommandConsumerClient(self.config)
@@ -137,11 +136,10 @@ class TransportClientsTest(unittest.TestCase):
             ),
         )
         self.assertEqual(
-            page,
+            commands,
             deliver_client.consume_worker_commands(
                 endpoint_manager_id="endpoint-manager-1",
-                cursor="3",
-                scan_count=10,
+                limit=10,
             ),
         )
         self.assertEqual(
@@ -154,8 +152,7 @@ class TransportClientsTest(unittest.TestCase):
         )
         self.deliver_runtime.consume_worker_commands.assert_called_once_with(
             endpoint_manager_id="endpoint-manager-1",
-            cursor="3",
-            scan_count=10,
+            limit=10,
         )
         self.result_runtime.append_seed_results.assert_called_once_with(
             results=(seed_result,),

@@ -28,7 +28,7 @@ public class ServerWorkerDeliveryAdapterConfiguration {
             "listen-host",
             "listen-port",
             "dispatch-interval",
-            "scan-count",
+            "command-consume-limit",
             "delivery-parallelism",
             "result-batch-size",
             "result-buffer-capacity",
@@ -111,9 +111,9 @@ public class ServerWorkerDeliveryAdapterConfiguration {
                 Duration.ofMillis(100),
                 adapterId
         );
-        int scanCount = optionalInt(
+        int commandConsumeLimit = optionalInt(
                 object,
-                "scan-count",
+                "command-consume-limit",
                 100,
                 adapterId
         );
@@ -149,7 +149,7 @@ public class ServerWorkerDeliveryAdapterConfiguration {
                     listenHost,
                     listenPort,
                     dispatchInterval,
-                    scanCount,
+                    commandConsumeLimit,
                     deliveryParallelism,
                     resultBatchSize,
                     resultBufferCapacity,
@@ -163,7 +163,7 @@ public class ServerWorkerDeliveryAdapterConfiguration {
                     listenHost,
                     listenPort,
                     dispatchInterval,
-                    scanCount,
+                    commandConsumeLimit,
                     deliveryParallelism,
                     resultBatchSize,
                     resultBufferCapacity,

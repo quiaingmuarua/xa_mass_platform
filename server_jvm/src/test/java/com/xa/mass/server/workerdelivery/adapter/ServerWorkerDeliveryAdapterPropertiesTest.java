@@ -96,6 +96,22 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
         );
         assertFailed(
                 "xa.mass.worker-delivery.adapter.instances"
+                        + ".adapter-1.type=WEBSOCKET",
+                "xa.mass.worker-delivery.adapter.instances"
+                        + ".adapter-1.listen-port=18083",
+                "xa.mass.worker-delivery.adapter.instances"
+                        + ".adapter-1.command-consume-limit=0"
+        );
+        assertFailed(
+                "xa.mass.worker-delivery.adapter.instances"
+                        + ".adapter-1.type=WEBSOCKET",
+                "xa.mass.worker-delivery.adapter.instances"
+                        + ".adapter-1.listen-port=18083",
+                "xa.mass.worker-delivery.adapter.instances"
+                        + ".adapter-1.scan-count=100"
+        );
+        assertFailed(
+                "xa.mass.worker-delivery.adapter.instances"
                         + ".system-polling.type=WEBSOCKET",
                 "xa.mass.worker-delivery.adapter.instances"
                         + ".system-polling.listen-port=18083"

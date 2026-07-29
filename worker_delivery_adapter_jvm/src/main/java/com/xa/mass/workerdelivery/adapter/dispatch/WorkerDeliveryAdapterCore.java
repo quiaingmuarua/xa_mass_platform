@@ -2,7 +2,6 @@ package com.xa.mass.workerdelivery.adapter.dispatch;
 
 import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.REJECTED_BEFORE_SEND;
 
-import com.xa.mass.workerdelivery.adapter.application.WorkerCommandPage;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.adapter.message.BoundedWorkerResultBuffer;
@@ -30,7 +29,7 @@ public final class WorkerDeliveryAdapterCore {
     private final WorkerDeliveryCodec codec;
     private final WorkerCommandDelivery commandDelivery;
     private final String adapterId;
-    private final int scanCount;
+    private final int commandConsumeLimit;
     private final int resultBatchSize;
     private final LongSupplier nowMillis;
     private final BoundedWorkerResultBuffer resultBuffer;
@@ -38,14 +37,13 @@ public final class WorkerDeliveryAdapterCore {
             new ArrayDeque<>();
     private final ReentrantLock roundLock = new ReentrantLock();
     private volatile boolean closed;
-    private String cursor;
 
     public WorkerDeliveryAdapterCore(
             WorkerDeliveryGatewayClient gateway,
             WorkerDeliveryCodec codec,
             WorkerCommandDelivery commandDelivery,
             String adapterId,
-            int scanCount,
+            int commandConsumeLimit,
             int resultBatchSize,
             BoundedWorkerResultBuffer resultBuffer
     ) {
@@ -54,7 +52,7 @@ public final class WorkerDeliveryAdapterCore {
                 codec,
                 commandDelivery,
                 adapterId,
-                scanCount,
+                commandConsumeLimit,
                 resultBatchSize,
                 resultBuffer,
                 System::currentTimeMillis
@@ -66,7 +64,7 @@ public final class WorkerDeliveryAdapterCore {
             WorkerDeliveryCodec codec,
             WorkerCommandDelivery commandDelivery,
             String adapterId,
-            int scanCount,
+            int commandConsumeLimit,
             int resultBatchSize,
             BoundedWorkerResultBuffer resultBuffer,
             LongSupplier nowMillis
@@ -82,14 +80,14 @@ public final class WorkerDeliveryAdapterCore {
                     "adapterId must be non-blank"
             );
         }
-        if (scanCount <= 0
+        if (commandConsumeLimit <= 0
                 || resultBatchSize <= 0) {
             throw new IllegalArgumentException(
                     "Adapter bounds must be positive"
             );
         }
         this.adapterId = adapterId;
-        this.scanCount = scanCount;
+        this.commandConsumeLimit = commandConsumeLimit;
         this.resultBatchSize = resultBatchSize;
         this.resultBuffer = Objects.requireNonNull(
                 resultBuffer,
@@ -106,14 +104,13 @@ public final class WorkerDeliveryAdapterCore {
             flushPendingResults();
             flushOneBufferedResultBatch();
 
-            WorkerCommandPage page = gateway.consumeWorkerCommands(
-                    adapterId,
-                    cursor,
-                    scanCount
-            );
-            cursor = page.nextCursor();
-            deliverPage(
-                    page.workerCommandsByWorkerId(),
+            Map<String, WorkerCommandEnvelope> commands =
+                    gateway.consumeWorkerCommands(
+                            adapterId,
+                            commandConsumeLimit
+                    );
+            deliverBatch(
+                    commands,
                     deliveryExecutor
             );
             flushPendingResults();
@@ -140,7 +137,7 @@ public final class WorkerDeliveryAdapterCore {
         }
     }
 
-    private void deliverPage(
+    private void deliverBatch(
             Map<String, WorkerCommandEnvelope> commands,
             ExecutorService deliveryExecutor
     ) {

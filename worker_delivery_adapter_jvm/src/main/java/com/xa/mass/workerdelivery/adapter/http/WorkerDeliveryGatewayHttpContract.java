@@ -1,6 +1,5 @@
 package com.xa.mass.workerdelivery.adapter.http;
 
-import com.xa.mass.workerdelivery.adapter.application.WorkerCommandPage;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
@@ -19,8 +18,7 @@ import tools.jackson.databind.node.ObjectNode;
 
 final class WorkerDeliveryGatewayHttpContract {
 
-    private static final Set<String> PAGE_FIELDS = Set.of(
-            "nextCursor",
+    private static final Set<String> COMMAND_BATCH_FIELDS = Set.of(
             "workerCommandsByWorkerId"
     );
     private static final Set<String> ACCEPTED_FIELDS = Set.of(
@@ -33,38 +31,26 @@ final class WorkerDeliveryGatewayHttpContract {
         this.codec = codec;
     }
 
-    String encodeConsumeRequest(String cursor, int scanCount) {
-        if (scanCount <= 0) {
+    String encodeConsumeRequest(int limit) {
+        if (limit <= 0) {
             throw new IllegalArgumentException(
-                    "scanCount must be positive"
-            );
-        }
-        if (cursor != null && !isDecimal(cursor)) {
-            throw new IllegalArgumentException(
-                    "cursor must be a non-negative decimal cursor"
+                    "consume limit must be positive"
             );
         }
         ObjectNode payload = mapper.createObjectNode();
-        if (cursor == null) {
-            payload.putNull("cursor");
-        } else {
-            payload.put("cursor", cursor);
-        }
-        payload.put("scanCount", scanCount);
+        payload.put("limit", limit);
         return write(payload, "Worker command consume request");
     }
 
-    WorkerCommandPage decodeConsumeResponse(String value) {
+    Map<String, WorkerCommandEnvelope> decodeConsumeResponse(String value) {
         try {
             JsonNode payload = mapper.readTree(value);
             if (!(payload instanceof ObjectNode object)
-                    || !fieldNames(object).equals(PAGE_FIELDS)) {
+                    || !fieldNames(object).equals(COMMAND_BATCH_FIELDS)) {
                 throw malformed("Worker command consume response");
             }
             JsonNode commands = object.get("workerCommandsByWorkerId");
-            JsonNode nextCursor = object.get("nextCursor");
-            if (!(commands instanceof ObjectNode commandObject)
-                    || !(nextCursor.isNull() || nextCursor.isTextual())) {
+            if (!(commands instanceof ObjectNode commandObject)) {
                 throw malformed("Worker command consume response");
             }
             Map<String, WorkerCommandEnvelope> decoded =
@@ -81,10 +67,7 @@ final class WorkerDeliveryGatewayHttpContract {
                 }
                 decoded.put(entry.getKey(), command);
             });
-            return new WorkerCommandPage(
-                    decoded,
-                    nextCursor.isNull() ? null : nextCursor.textValue()
-            );
+            return Map.copyOf(decoded);
         } catch (JacksonException | IllegalArgumentException error) {
             if (error instanceof WorkerDeliveryAdapterException adapter) {
                 throw adapter;
@@ -152,16 +135,4 @@ final class WorkerDeliveryGatewayHttpContract {
         return new HashSet<>(object.propertyNames());
     }
 
-    private static boolean isDecimal(String value) {
-        if (value.isEmpty()) {
-            return false;
-        }
-        for (int index = 0; index < value.length(); index++) {
-            char character = value.charAt(index);
-            if (character < '0' || character > '9') {
-                return false;
-            }
-        }
-        return true;
-    }
 }

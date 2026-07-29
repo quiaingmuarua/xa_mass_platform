@@ -8,7 +8,6 @@ import static com.xa.mass.workerdelivery.adapter.message.BoundedWorkerResultBuff
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-import com.xa.mass.workerdelivery.adapter.application.WorkerCommandPage;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.adapter.message.BoundedWorkerResultBuffer;
@@ -74,7 +73,7 @@ class WorkerDeliveryAdapterCoreTest {
                         2_000
                 )
         );
-        gateway.pages.add(new WorkerCommandPage(commands, "7"));
+        gateway.batches.add(commands);
 
         core.dispatchOnce(executor(3));
 
@@ -86,11 +85,11 @@ class WorkerDeliveryAdapterCoreTest {
                         null
                 )
         ));
-        assertThat(gateway.requestedCursors).containsExactly((String) null);
+        assertThat(gateway.requestedLimits).containsExactly(100);
     }
 
     @Test
-    void dispatchesOnePageConcurrentlyWithinTheConfiguredExecutorBound()
+    void dispatchesOneBatchConcurrentlyWithinTheConfiguredExecutorBound()
             throws Exception {
         FakeGateway gateway = new FakeGateway();
         FakeConnectionRegistry connections =
@@ -133,7 +132,7 @@ class WorkerDeliveryAdapterCoreTest {
                     )
             );
         }
-        gateway.pages.add(new WorkerCommandPage(commands, null));
+        gateway.batches.add(commands);
         ExecutorService delivery = executor(3);
         Thread round = Thread.ofPlatform().start(() ->
                 core.dispatchOnce(delivery)
@@ -149,7 +148,7 @@ class WorkerDeliveryAdapterCoreTest {
     }
 
     @Test
-    void serializesCursorConsumptionEvenWhenCallersRace()
+    void serializesBatchConsumptionEvenWhenCallersRace()
             throws Exception {
         BlockingGateway gateway = new BlockingGateway();
         WorkerDeliveryAdapterCore core = core(
@@ -177,8 +176,8 @@ class WorkerDeliveryAdapterCoreTest {
         second.join(2_000);
 
         assertThat(gateway.maxConcurrentConsumes.get()).isEqualTo(1);
-        assertThat(gateway.requestedCursors)
-                .containsExactly(null, "7");
+        assertThat(gateway.requestedLimits)
+                .containsExactly(100, 100);
     }
 
     @Test
@@ -197,7 +196,7 @@ class WorkerDeliveryAdapterCoreTest {
                     .isEqualTo(ACCEPTED);
         }
         gateway.appendFailures = 1;
-        gateway.pages.add(new WorkerCommandPage(Map.of(), null));
+        gateway.batches.add(Map.of());
 
         assertThatThrownBy(() -> core.dispatchOnce(executor(1)))
                 .isInstanceOf(WorkerDeliveryAdapterException.class);
@@ -309,9 +308,11 @@ class WorkerDeliveryAdapterCoreTest {
     private static class FakeGateway
             implements WorkerDeliveryGatewayClient {
 
-        final ConcurrentLinkedQueue<WorkerCommandPage> pages =
+        final ConcurrentLinkedQueue<
+                Map<String, WorkerCommandEnvelope>
+                > batches =
                 new ConcurrentLinkedQueue<>();
-        final List<String> requestedCursors =
+        final List<Integer> requestedLimits =
                 java.util.Collections.synchronizedList(new ArrayList<>());
         final List<List<SeedResult>> appendedResults =
                 java.util.Collections.synchronizedList(new ArrayList<>());
@@ -319,17 +320,14 @@ class WorkerDeliveryAdapterCoreTest {
         volatile int appendFailures;
 
         @Override
-        public WorkerCommandPage consumeWorkerCommands(
+        public Map<String, WorkerCommandEnvelope> consumeWorkerCommands(
                 String endpointManagerId,
-                String cursor,
-                int scanCount
+                int limit
         ) {
             consumeCount.incrementAndGet();
-            requestedCursors.add(cursor);
-            WorkerCommandPage page = pages.poll();
-            return page == null
-                    ? new WorkerCommandPage(Map.of(), null)
-                    : page;
+            requestedLimits.add(limit);
+            Map<String, WorkerCommandEnvelope> batch = batches.poll();
+            return batch == null ? Map.of() : batch;
         }
 
         @Override
@@ -359,10 +357,9 @@ class WorkerDeliveryAdapterCoreTest {
                 new AtomicInteger();
 
         @Override
-        public WorkerCommandPage consumeWorkerCommands(
+        public Map<String, WorkerCommandEnvelope> consumeWorkerCommands(
                 String endpointManagerId,
-                String cursor,
-                int scanCount
+                int limit
         ) {
             int current = concurrentConsumes.incrementAndGet();
             maxConcurrentConsumes.accumulateAndGet(current, Math::max);
@@ -370,11 +367,11 @@ class WorkerDeliveryAdapterCoreTest {
                 if (firstConsumeStarted.getCount() > 0) {
                     firstConsumeStarted.countDown();
                     releaseFirstConsume.await(2, TimeUnit.SECONDS);
-                    requestedCursors.add(cursor);
-                    return new WorkerCommandPage(Map.of(), "7");
+                    requestedLimits.add(limit);
+                    return Map.of();
                 }
-                requestedCursors.add(cursor);
-                return new WorkerCommandPage(Map.of(), null);
+                requestedLimits.add(limit);
+                return Map.of();
             } catch (InterruptedException error) {
                 Thread.currentThread().interrupt();
                 throw new WorkerDeliveryAdapterException(

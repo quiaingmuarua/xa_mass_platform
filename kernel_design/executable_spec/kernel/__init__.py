@@ -68,7 +68,6 @@ from .assignment_dispatch_runtime import (
 from .worker_delivery import (
     DeliverSeed,
     WorkerCommandAppendStatus,
-    WorkerCommandConsumePage,
     WorkerCommandEnvelope,
     WorkerCommandRuntime,
     WorkerMessageType,
@@ -143,7 +142,6 @@ __all__ = [
     "CandidateWarmupSchedule",
     "DeliverSeed",
     "WorkerCommandAppendStatus",
-    "WorkerCommandConsumePage",
     "WorkerCommandEnvelope",
     "WorkerCommandRuntime",
     "WorkerMessageType",

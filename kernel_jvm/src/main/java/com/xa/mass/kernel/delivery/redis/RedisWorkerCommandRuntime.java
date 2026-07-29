@@ -4,10 +4,8 @@ import com.xa.mass.kernel.KernelOperationNotImplementedException;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
-import io.lettuce.core.MapScanCursor;
+import io.lettuce.core.KeyValue;
 import io.lettuce.core.RedisClient;
-import io.lettuce.core.ScanArgs;
-import io.lettuce.core.ScanCursor;
 import io.lettuce.core.ScriptOutputType;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -29,7 +27,7 @@ public final class RedisWorkerCommandRuntime
             return {ARGV[1], current}
             """;
 
-    private static final String CONSUME_SCANNED = """
+    private static final String CONSUME_OBSERVED = """
             local results = {}
             for index = 1, #ARGV, 2 do
                 local worker_id = ARGV[index]
@@ -99,53 +97,49 @@ public final class RedisWorkerCommandRuntime
                     "Redis WorkerCommand script returned an invalid response"
             );
         }
-        return activeCommand(String.valueOf(values.get(1)));
+        return activeCommand(
+                String.valueOf(values.get(1)),
+                redisTimeMillis()
+        );
     }
 
     @Override
-    public WorkerCommandConsumePage consumeWorkerCommands(
+    public Map<String, WorkerCommandEnvelope> consumeWorkerCommands(
             String endpointManagerId,
-            String cursor,
-            int scanCount
+            int limit
     ) {
         requireNonBlank(endpointManagerId, "endpointManagerId");
-        if (scanCount <= 0) {
-            throw new IllegalArgumentException("scanCount must be positive");
-        }
-        if (cursor != null && !isDecimal(cursor)) {
+        if (limit <= 0) {
             throw new IllegalArgumentException(
-                    "cursor must be a non-negative Redis cursor"
+                    "consume limit must be positive"
             );
         }
 
         String key = commandKey(endpointManagerId);
-        MapScanCursor<String, String> scanned = commands().hscan(
-                key,
-                ScanCursor.of(cursor == null ? "0" : cursor),
-                new ScanArgs().limit(scanCount)
-        );
-        String nextCursor = scanned.isFinished()
-                ? null
-                : scanned.getCursor();
-        if (scanned.getMap().isEmpty()) {
-            return new WorkerCommandConsumePage(Map.of(), nextCursor);
+        List<KeyValue<String, String>> observed =
+                commands().hrandfieldWithvalues(
+                        key,
+                        limit
+                );
+        if (observed.isEmpty()) {
+            return Map.of();
         }
 
         List<String> arguments = new ArrayList<>(
-                scanned.getMap().size() * 2
+                observed.size() * 2
         );
-        scanned.getMap().forEach((workerId, value) -> {
-            arguments.add(workerId);
-            arguments.add(value);
+        observed.forEach(entry -> {
+            arguments.add(entry.getKey());
+            arguments.add(entry.getValue());
         });
         List<?> consumed = commands().eval(
-                CONSUME_SCANNED,
+                CONSUME_OBSERVED,
                 ScriptOutputType.MULTI,
                 new String[]{key},
                 arguments.toArray(String[]::new)
         );
         if (consumed == null || consumed.isEmpty()) {
-            return new WorkerCommandConsumePage(Map.of(), nextCursor);
+            return Map.of();
         }
         if (consumed.size() % 2 != 0) {
             throw new IllegalStateException(
@@ -154,22 +148,27 @@ public final class RedisWorkerCommandRuntime
         }
 
         Map<String, WorkerCommandEnvelope> active = new LinkedHashMap<>();
+        long nowMillis = redisTimeMillis();
         for (int index = 0; index < consumed.size(); index += 2) {
             String workerId = String.valueOf(consumed.get(index));
             WorkerCommandEnvelope command = activeCommand(
-                    String.valueOf(consumed.get(index + 1))
+                    String.valueOf(consumed.get(index + 1)),
+                    nowMillis
             );
             if (command != null) {
                 active.put(workerId, command);
             }
         }
-        return new WorkerCommandConsumePage(active, nextCursor);
+        return Map.copyOf(active);
     }
 
-    private WorkerCommandEnvelope activeCommand(String encoded) {
+    private WorkerCommandEnvelope activeCommand(
+            String encoded,
+            long nowMillis
+    ) {
         WorkerCommandEnvelope command = codec.decodeWorkerCommand(encoded);
         if (command == null
-                || command.executeBeforeMillis() <= redisTimeMillis()) {
+                || command.executeBeforeMillis() <= nowMillis) {
             return null;
         }
         return command;
@@ -221,18 +220,5 @@ public final class RedisWorkerCommandRuntime
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(name + " must be non-blank");
         }
-    }
-
-    private static boolean isDecimal(String value) {
-        if (value.isEmpty()) {
-            return false;
-        }
-        for (int index = 0; index < value.length(); index++) {
-            char character = value.charAt(index);
-            if (character < '0' || character > '9') {
-                return false;
-            }
-        }
-        return true;
     }
 }

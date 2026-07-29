@@ -19,17 +19,8 @@ public final class WorkerDeliveryHttpContract {
     }
 
     public record WorkerCommandConsumeRequest(
-            String cursor,
-            @Positive int scanCount
+            @Positive int limit
     ) {
-        public WorkerCommandConsumeRequest {
-            if (cursor != null && !isDecimal(cursor)) {
-                throw new IllegalArgumentException(
-                        "cursor must be a non-negative Redis cursor"
-                );
-            }
-        }
-
         @JsonAnySetter
         void rejectUnknownField(String name, Object value) {
             throw WorkerDeliveryException.invalid(
@@ -55,12 +46,10 @@ public final class WorkerDeliveryHttpContract {
     }
 
     public record WorkerCommandConsumeResponse(
-            Map<String, WorkerCommandResponse> workerCommandsByWorkerId,
-            String nextCursor
+            Map<String, WorkerCommandResponse> workerCommandsByWorkerId
     ) {
         static WorkerCommandConsumeResponse from(
-                Map<String, WorkerCommandEnvelope> commands,
-                String nextCursor
+                Map<String, WorkerCommandEnvelope> commands
         ) {
             Map<String, WorkerCommandResponse> response =
                     new LinkedHashMap<>();
@@ -69,8 +58,7 @@ public final class WorkerDeliveryHttpContract {
                     WorkerCommandResponse.from(command)
             ));
             return new WorkerCommandConsumeResponse(
-                    Collections.unmodifiableMap(response),
-                    nextCursor
+                    Collections.unmodifiableMap(response)
             );
         }
     }
@@ -117,18 +105,5 @@ public final class WorkerDeliveryHttpContract {
     }
 
     public record AcceptedCountResponse(int acceptedCount) {
-    }
-
-    private static boolean isDecimal(String value) {
-        if (value.isEmpty()) {
-            return false;
-        }
-        for (int index = 0; index < value.length(); index++) {
-            char character = value.charAt(index);
-            if (character < '0' || character > '9') {
-                return false;
-            }
-        }
-        return true;
     }
 }

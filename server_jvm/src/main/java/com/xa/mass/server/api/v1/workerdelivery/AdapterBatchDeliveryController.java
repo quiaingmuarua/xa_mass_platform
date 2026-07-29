@@ -36,15 +36,11 @@ public class AdapterBatchDeliveryController {
             @PathVariable @NotBlank String endpointManagerId,
             @Valid @RequestBody WorkerCommandConsumeRequest request
     ) {
-        var page = workerDelivery.consumeWorkerCommands(
+        var commands = workerDelivery.consumeWorkerCommands(
                 endpointManagerId,
-                request.cursor(),
-                request.scanCount()
+                request.limit()
         );
-        return WorkerCommandConsumeResponse.from(
-                page.workerCommandsByWorkerId(),
-                page.nextCursor()
-        );
+        return WorkerCommandConsumeResponse.from(commands);
     }
 
     @PostMapping("/results:append")

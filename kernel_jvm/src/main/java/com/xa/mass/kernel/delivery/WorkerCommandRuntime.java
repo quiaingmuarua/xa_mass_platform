@@ -1,10 +1,7 @@
 package com.xa.mass.kernel.delivery;
 
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
-import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.Objects;
 import org.jspecify.annotations.Nullable;
 
 public interface WorkerCommandRuntime {
@@ -19,29 +16,13 @@ public interface WorkerCommandRuntime {
             String workerId
     );
 
-    WorkerCommandConsumePage consumeWorkerCommands(
+    Map<String, WorkerCommandEnvelope> consumeWorkerCommands(
             String endpointManagerId,
-            @Nullable String cursor,
-            int scanCount
+            int limit
     );
 
     enum WorkerCommandAppendStatus {
         APPENDED,
         REPLACED
-    }
-
-    record WorkerCommandConsumePage(
-            Map<String, WorkerCommandEnvelope> workerCommandsByWorkerId,
-            @Nullable String nextCursor
-    ) {
-        public WorkerCommandConsumePage {
-            Objects.requireNonNull(
-                    workerCommandsByWorkerId,
-                    "workerCommandsByWorkerId"
-            );
-            workerCommandsByWorkerId = Collections.unmodifiableMap(
-                    new LinkedHashMap<>(workerCommandsByWorkerId)
-            );
-        }
     }
 }

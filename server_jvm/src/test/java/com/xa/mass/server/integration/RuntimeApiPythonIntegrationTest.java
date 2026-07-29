@@ -477,7 +477,7 @@ class RuntimeApiPythonIntegrationTest {
                 () -> Integer.toString(listenPort)
         );
         registry.add(prefix + ".dispatch-interval", () -> "20ms");
-        registry.add(prefix + ".scan-count", () -> "100");
+        registry.add(prefix + ".command-consume-limit", () -> "100");
         registry.add(prefix + ".delivery-parallelism", () -> "8");
     }
 
@@ -495,7 +495,7 @@ class RuntimeApiPythonIntegrationTest {
                 () -> Integer.toString(listenPort)
         );
         registry.add(prefix + ".dispatch-interval", () -> "20ms");
-        registry.add(prefix + ".scan-count", () -> "100");
+        registry.add(prefix + ".command-consume-limit", () -> "100");
         registry.add(prefix + ".delivery-parallelism", () -> "8");
     }
 

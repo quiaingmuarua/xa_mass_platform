@@ -76,7 +76,6 @@ class LocalFunctionTransportAdapter:
         self.seed_result_commands = seed_result_commands
         self.workers: dict[str, WorkerMeta] = {}
         self.handlers: dict[str, EventHandler] = {}
-        self._cursor: str | None = None
 
     def register_worker(self, worker_id: str, metadata: WorkerMeta) -> None:
         if not worker_id:
@@ -104,15 +103,13 @@ class LocalFunctionTransportAdapter:
     def drain_once(self, *, limit: int) -> int:
         if limit <= 0:
             raise ValueError("drain limit must be positive")
-        page = self.worker_command_consumer.consume_worker_commands(
+        worker_commands = self.worker_command_consumer.consume_worker_commands(
             endpoint_manager_id=self.endpoint_manager_id,
-            cursor=self._cursor,
-            scan_count=limit,
+            limit=limit,
         )
-        self._cursor = page.next_cursor
         results: list[SeedResult] = []
 
-        for worker_id, command in page.worker_commands_by_worker_id.items():
+        for worker_id, command in worker_commands.items():
             if self._current_time_millis() >= command.execute_before_millis:
                 continue
             seed = decode_deliver_seed(command.opaque_item)

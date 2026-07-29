@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 from ..kernel import (
     EndpointManagerId,
     SeedResult,
-    WorkerCommandConsumePage,
     WorkerCommandEnvelope,
     WorkerId,
 )
@@ -58,13 +57,11 @@ class WorkerCommandConsumerClient:
         self,
         *,
         endpoint_manager_id: EndpointManagerId,
-        cursor: str | None,
-        scan_count: int,
-    ) -> WorkerCommandConsumePage:
+        limit: int,
+    ) -> Mapping[WorkerId, WorkerCommandEnvelope]:
         return self._runtime.consume_worker_commands(
             endpoint_manager_id=endpoint_manager_id,
-            cursor=cursor,
-            scan_count=scan_count,
+            limit=limit,
         )
 
 

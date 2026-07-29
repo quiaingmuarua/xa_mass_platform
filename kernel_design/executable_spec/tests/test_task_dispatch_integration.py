@@ -230,7 +230,9 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             [result for result in results if result],
         )
 
-    def test_adapter_mailbox_cursor_consumes_sparse_worker_fields(self) -> None:
+    def test_adapter_mailbox_bounded_batches_consume_sparse_worker_fields(
+        self,
+    ) -> None:
         commands_by_worker_id = {
             f"mailbox-worker-{index}": self._worker_command(
                 worker_id=f"mailbox-worker-{index}",
@@ -240,31 +242,28 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             for index in range(3)
         }
         self.worker_command_runtime.append_worker_commands(
-            endpoint_manager_id="endpoint-manager-cursor",
+            endpoint_manager_id="endpoint-manager-batch",
             worker_commands_by_worker_id=commands_by_worker_id,
         )
 
         consumed: dict[str, WorkerCommandEnvelope] = {}
-        cursor = None
         for _ in range(10):
-            page = self.worker_command_runtime.consume_worker_commands(
-                endpoint_manager_id="endpoint-manager-cursor",
-                cursor=cursor,
-                scan_count=1,
+            commands = self.worker_command_runtime.consume_worker_commands(
+                endpoint_manager_id="endpoint-manager-batch",
+                limit=1,
             )
-            consumed.update(page.worker_commands_by_worker_id)
-            cursor = page.next_cursor
-            if cursor is None:
+            consumed.update(commands)
+            if not commands:
                 break
         else:
-            self.fail("Redis HSCAN cursor did not terminate")
+            self.fail("Worker command HASH did not drain")
 
         self.assertEqual(
             commands_by_worker_id,
             consumed,
         )
 
-    def test_point_poll_and_adapter_scan_compete_for_one_command(self) -> None:
+    def test_point_poll_and_adapter_batch_compete_for_one_command(self) -> None:
         command = self._worker_command(
             worker_id="worker-1",
             opaque_delivery_item='{"eventCode":"image.resize","payload":{}}',
@@ -285,20 +284,19 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
                 endpoint_manager_id="endpoint-manager-1",
                 worker_id="worker-1",
             )
-            scan_future = executor.submit(
+            batch_future = executor.submit(
                 competing_runtime.consume_worker_commands,
                 endpoint_manager_id="endpoint-manager-1",
-                cursor=None,
-                scan_count=10,
+                limit=10,
             )
             point_result = point_future.result()
-            scan_result = scan_future.result()
+            batch_result = batch_future.result()
 
         consumed_commands = [
             candidate
             for candidate in (
                 point_result,
-                scan_result.worker_commands_by_worker_id.get("worker-1"),
+                batch_result.get("worker-1"),
             )
             if candidate is not None
         ]

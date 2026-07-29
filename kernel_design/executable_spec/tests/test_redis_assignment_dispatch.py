@@ -9,7 +9,6 @@ from kernel_design.executable_spec import (
     DeliverSeed,
     WorkerCommandEnvelope,
     WorkerCommandAppendStatus,
-    WorkerCommandConsumePage,
     WorkerMessageType,
     RedisCandidateWorkerCache,
     RedisWorkerCommandRuntime,
@@ -29,7 +28,6 @@ class FakeRedis:
         self.hashes: dict[str, dict[str, str]] = {}
         self.lists: dict[str, list[str]] = {}
         self.before_exact_consume = None
-        self.hscan_snapshots: dict[str, tuple[str, ...]] = {}
 
     def time(self) -> tuple[int, int]:
         return self.now_millis // 1_000, (self.now_millis % 1_000) * 1_000
@@ -143,31 +141,22 @@ class FakeRedis:
                 removed += 1
         return removed
 
-    def hscan(
+    def hrandfield(
         self,
         key: str,
         *,
-        cursor: int,
         count: int,
-    ) -> tuple[int, dict[str, str]]:
-        start = int(cursor)
-        if start == 0:
-            self.hscan_snapshots[key] = tuple(
-                sorted(self.hashes.get(key, {}))
-            )
-        fields = self.hscan_snapshots.get(key, ())
-        selected_fields = fields[start : start + count]
-        next_cursor = (
-            0 if start + count >= len(fields) else start + count
-        )
-        selected = {
-            field: self.hashes[key][field]
+        withvalues: bool,
+    ) -> list[str]:
+        assert count > 0
+        assert withvalues
+        row = self.hashes.get(key, {})
+        selected_fields = sorted(row)[:count]
+        return [
+            value
             for field in selected_fields
-            if field in self.hashes.get(key, {})
-        }
-        if next_cursor == 0:
-            self.hscan_snapshots.pop(key, None)
-        return next_cursor, selected
+            for value in (field, row[field])
+        ]
 
     def eval(
         self,
@@ -485,7 +474,7 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
             ),
         )
 
-    def test_cursor_scan_consumes_sparse_pages(self) -> None:
+    def test_bounded_random_observation_consumes_sparse_batches(self) -> None:
         worker_commands_by_worker_id = {
             f"worker-{index}": self._worker_command(
                 f"message-{index}",
@@ -498,15 +487,13 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
             worker_commands_by_worker_id=worker_commands_by_worker_id,
         )
 
-        first_page = self.worker_command_runtime.consume_worker_commands(
+        first_batch = self.worker_command_runtime.consume_worker_commands(
             endpoint_manager_id="endpoint-manager-1",
-            cursor=None,
-            scan_count=2,
+            limit=2,
         )
-        second_page = self.worker_command_runtime.consume_worker_commands(
+        second_batch = self.worker_command_runtime.consume_worker_commands(
             endpoint_manager_id="endpoint-manager-1",
-            cursor=first_page.next_cursor,
-            scan_count=2,
+            limit=2,
         )
 
         self.assertEqual(
@@ -514,25 +501,20 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
                 worker_id: worker_commands_by_worker_id[worker_id]
                 for worker_id in ("worker-1", "worker-2")
             },
-            first_page.worker_commands_by_worker_id,
+            first_batch,
         )
-        self.assertEqual("2", first_page.next_cursor)
         self.assertEqual(
             {"worker-3": worker_commands_by_worker_id["worker-3"]},
-            second_page.worker_commands_by_worker_id,
+            second_batch,
         )
-        self.assertIsNone(second_page.next_cursor)
 
-    def test_empty_scan_page_preserves_cursor_progress(self) -> None:
-        self.redis.hscan = lambda *_args, **_kwargs: (9, {})
-
-        page = self.worker_command_runtime.consume_worker_commands(
+    def test_empty_hash_returns_empty_batch(self) -> None:
+        commands = self.worker_command_runtime.consume_worker_commands(
             endpoint_manager_id="endpoint-manager-1",
-            cursor="4",
-            scan_count=10,
+            limit=10,
         )
 
-        self.assertEqual(WorkerCommandConsumePage({}, "9"), page)
+        self.assertEqual({}, commands)
 
     def test_consume_drops_expired_and_corrupt_mailboxes(self) -> None:
         rows = {
@@ -546,11 +528,10 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
             self.redis.hset(key, worker_id, value)
 
         self.assertEqual(
-            WorkerCommandConsumePage({}, None),
+            {},
             self.worker_command_runtime.consume_worker_commands(
                 endpoint_manager_id="endpoint-manager-1",
-                cursor=None,
-                scan_count=10,
+                limit=10,
             ),
         )
         self.assertEqual({}, self.redis.hashes[key])
@@ -575,13 +556,12 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
             )
         )
 
-        page = self.worker_command_runtime.consume_worker_commands(
+        commands = self.worker_command_runtime.consume_worker_commands(
             endpoint_manager_id="endpoint-manager-1",
-            cursor=None,
-            scan_count=10,
+            limit=10,
         )
 
-        self.assertEqual(WorkerCommandConsumePage({}, None), page)
+        self.assertEqual({}, commands)
         self.assertEqual(replacement_value, self.redis.hget(key, "worker-1"))
 
     def test_only_one_consumer_obtains_one_worker_mailbox(self) -> None:
@@ -621,20 +601,12 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.worker_command_runtime.consume_worker_commands(
                 endpoint_manager_id="",
-                cursor=None,
-                scan_count=1,
+                limit=1,
             )
         with self.assertRaises(ValueError):
             self.worker_command_runtime.consume_worker_commands(
                 endpoint_manager_id="endpoint-manager-1",
-                cursor="invalid",
-                scan_count=1,
-            )
-        with self.assertRaises(ValueError):
-            self.worker_command_runtime.consume_worker_commands(
-                endpoint_manager_id="endpoint-manager-1",
-                cursor=None,
-                scan_count=0,
+                limit=0,
             )
 
     def test_append_stores_batch_expiry_as_zset_score(self) -> None:

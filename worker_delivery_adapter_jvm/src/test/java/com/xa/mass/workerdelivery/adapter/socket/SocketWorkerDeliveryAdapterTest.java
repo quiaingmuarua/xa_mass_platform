@@ -2,7 +2,6 @@ package com.xa.mass.workerdelivery.adapter.socket;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.xa.mass.workerdelivery.adapter.application.WorkerCommandPage;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
@@ -66,10 +65,7 @@ class SocketWorkerDeliveryAdapterTest {
             awaitBound(adapter);
 
             WorkerCommandEnvelope command = command();
-            gateway.pages.add(new WorkerCommandPage(
-                    Map.of("worker-1", command),
-                    null
-            ));
+            gateway.batches.add(Map.of("worker-1", command));
             String commandLine = reader.readLine();
             assertThat(codec.decodeWorkerConnectionMessage(commandLine))
                     .isEqualTo(new TaskItemCommandMessage(command));
@@ -229,7 +225,9 @@ class SocketWorkerDeliveryAdapterTest {
     private static final class FakeGateway
             implements WorkerDeliveryGatewayClient {
 
-        private final ConcurrentLinkedQueue<WorkerCommandPage> pages =
+        private final ConcurrentLinkedQueue<
+                Map<String, WorkerCommandEnvelope>
+                > batches =
                 new ConcurrentLinkedQueue<>();
         private final List<String> endpointManagerIds =
                 new CopyOnWriteArrayList<>();
@@ -239,16 +237,13 @@ class SocketWorkerDeliveryAdapterTest {
                 new CountDownLatch(1);
 
         @Override
-        public WorkerCommandPage consumeWorkerCommands(
+        public Map<String, WorkerCommandEnvelope> consumeWorkerCommands(
                 String endpointManagerId,
-                String cursor,
-                int scanCount
+                int limit
         ) {
             endpointManagerIds.add(endpointManagerId);
-            WorkerCommandPage page = pages.poll();
-            return page == null
-                    ? new WorkerCommandPage(Map.of(), null)
-                    : page;
+            Map<String, WorkerCommandEnvelope> batch = batches.poll();
+            return batch == null ? Map.of() : batch;
         }
 
         @Override
