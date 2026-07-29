@@ -7,10 +7,11 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterExcep
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterState;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
-import com.xa.mass.workerdelivery.adapter.dispatch.WorkerDeliveryAdapterCore;
-import com.xa.mass.workerdelivery.adapter.message.BoundedWorkerResultBuffer;
+import com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandLoop;
 import com.xa.mass.workerdelivery.adapter.message.TaskItemResultMessageHandler;
 import com.xa.mass.workerdelivery.adapter.message.WorkerConnectionMessageDispatcher;
+import com.xa.mass.workerdelivery.adapter.result.BoundedWorkerResultQueue;
+import com.xa.mass.workerdelivery.adapter.result.WorkerResultLoop;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import io.netty.bootstrap.ServerBootstrap;
 import io.netty.channel.Channel;
@@ -24,14 +25,15 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import io.netty.handler.codec.LineBasedFrameDecoder;
 import io.netty.handler.codec.string.StringDecoder;
 import io.netty.handler.codec.string.StringEncoder;
+import io.netty.handler.timeout.WriteTimeoutHandler;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -46,36 +48,38 @@ public final class SocketWorkerDeliveryAdapter
     private final String adapterId;
     private final String listenHost;
     private final int listenPort;
-    private final Duration dispatchInterval;
-    private final int deliveryParallelism;
+    private final Duration commandLoopInterval;
+    private final Duration resultSubmitInterval;
+    private final Duration sendTimeLimit;
     private final Duration shutdownTimeout;
     private final WorkerDeliveryCodec codec;
     private final NettySocketWorkerConnectionRegistry connections;
-    private final WorkerDeliveryAdapterCore core;
+    private final WorkerCommandLoop commandLoop;
+    private final WorkerResultLoop resultLoop;
     private final WorkerConnectionMessageDispatcher messageDispatcher;
     private volatile WorkerDeliveryAdapterState state =
             WorkerDeliveryAdapterState.REGISTERED;
     private EventLoopGroup eventLoopGroup;
     private Channel listener;
     private ScheduledExecutorService scheduler;
-    private ExecutorService deliveryExecutor;
+    private ScheduledFuture<?> commandTask;
+    private ScheduledFuture<?> resultTask;
 
     public SocketWorkerDeliveryAdapter(
             String adapterId,
             WorkerDeliveryGatewayClient gateway,
-            WorkerDeliveryCodec codec,
             String listenHost,
             int listenPort,
-            Duration dispatchInterval,
+            Duration commandLoopInterval,
             int commandConsumeLimit,
-            int deliveryParallelism,
-            int resultBatchSize,
-            int resultBufferCapacity,
+            int commandQueueCapacity,
+            Duration resultSubmitInterval,
+            int resultQueueCapacity,
             Duration sendTimeLimit,
             Duration shutdownTimeout
     ) {
         this.adapterId = requireAdapterId(adapterId);
-        this.codec = Objects.requireNonNull(codec, "codec");
+        codec = new WorkerDeliveryCodec();
         if (listenHost == null || listenHost.isBlank()) {
             throw new IllegalArgumentException(
                     "listenHost must be non-blank"
@@ -86,39 +90,47 @@ public final class SocketWorkerDeliveryAdapter
                     "listenPort must be between 1 and 65535"
             );
         }
-        requirePositive(dispatchInterval, "dispatchInterval");
+        requirePositive(commandLoopInterval, "commandLoopInterval");
+        requirePositive(resultSubmitInterval, "resultSubmitInterval");
         requirePositive(sendTimeLimit, "sendTimeLimit");
         requirePositive(shutdownTimeout, "shutdownTimeout");
-        if (commandConsumeLimit <= 0
-                || deliveryParallelism <= 0
-                || resultBatchSize <= 0
-                || resultBufferCapacity <= 0) {
+        if (commandConsumeLimit <= 0 || resultQueueCapacity <= 0) {
             throw new IllegalArgumentException(
                     "Adapter bounds must be positive"
             );
         }
+        if (commandQueueCapacity < commandConsumeLimit) {
+            throw new IllegalArgumentException(
+                    "commandQueueCapacity must be at least "
+                            + "commandConsumeLimit"
+            );
+        }
         this.listenHost = listenHost;
         this.listenPort = listenPort;
-        this.dispatchInterval = dispatchInterval;
-        this.deliveryParallelism = deliveryParallelism;
+        this.commandLoopInterval = commandLoopInterval;
+        this.resultSubmitInterval = resultSubmitInterval;
+        this.sendTimeLimit = sendTimeLimit;
         this.shutdownTimeout = shutdownTimeout;
-        connections = new NettySocketWorkerConnectionRegistry(
-                codec,
-                sendTimeLimit
-        );
-        BoundedWorkerResultBuffer resultBuffer =
-                new BoundedWorkerResultBuffer(resultBufferCapacity);
+        connections = new NettySocketWorkerConnectionRegistry(codec);
+        BoundedWorkerResultQueue resultQueue =
+                new BoundedWorkerResultQueue(resultQueueCapacity);
         messageDispatcher = new WorkerConnectionMessageDispatcher(
-                List.of(new TaskItemResultMessageHandler(resultBuffer))
+                List.of(new TaskItemResultMessageHandler(resultQueue))
         );
-        core = new WorkerDeliveryAdapterCore(
-                Objects.requireNonNull(gateway, "gateway"),
-                codec,
+        WorkerDeliveryGatewayClient requiredGateway =
+                Objects.requireNonNull(gateway, "gateway");
+        commandLoop = new WorkerCommandLoop(
+                requiredGateway,
                 connections,
+                resultQueue,
                 adapterId,
                 commandConsumeLimit,
-                resultBatchSize,
-                resultBuffer
+                commandQueueCapacity
+        );
+        resultLoop = new WorkerResultLoop(
+                requiredGateway,
+                adapterId,
+                resultQueue
         );
     }
 
@@ -151,13 +163,19 @@ public final class SocketWorkerDeliveryAdapter
             );
         }
         try {
-            initializeExecutors();
+            initializeScheduler();
             startListener();
             state = WorkerDeliveryAdapterState.RUNNING;
-            scheduler.scheduleWithFixedDelay(
-                    this::dispatchSafely,
+            commandTask = scheduler.scheduleWithFixedDelay(
+                    this::runCommandLoopSafely,
                     0,
-                    dispatchInterval.toMillis(),
+                    commandLoopInterval.toMillis(),
+                    TimeUnit.MILLISECONDS
+            );
+            resultTask = scheduler.scheduleWithFixedDelay(
+                    this::runResultLoopSafely,
+                    resultSubmitInterval.toMillis(),
+                    resultSubmitInterval.toMillis(),
                     TimeUnit.MILLISECONDS
             );
         } catch (RuntimeException error) {
@@ -179,7 +197,8 @@ public final class SocketWorkerDeliveryAdapter
     @Override
     public void close() {
         ScheduledExecutorService stoppingScheduler;
-        ExecutorService stoppingDeliveries;
+        ScheduledFuture<?> stoppingCommandTask;
+        ScheduledFuture<?> stoppingResultTask;
         Channel stoppingListener;
         EventLoopGroup stoppingEventLoopGroup;
         synchronized (this) {
@@ -188,26 +207,31 @@ public final class SocketWorkerDeliveryAdapter
             }
             state = WorkerDeliveryAdapterState.STOPPING;
             stoppingScheduler = scheduler;
-            stoppingDeliveries = deliveryExecutor;
+            stoppingCommandTask = commandTask;
+            stoppingResultTask = resultTask;
             stoppingListener = listener;
             stoppingEventLoopGroup = eventLoopGroup;
             scheduler = null;
-            deliveryExecutor = null;
+            commandTask = null;
+            resultTask = null;
             listener = null;
             eventLoopGroup = null;
         }
 
         RuntimeException failure = null;
-        failure = stopScheduler(stoppingScheduler, failure);
+        cancel(stoppingCommandTask);
+        commandLoop.close();
         failure = closeListener(stoppingListener, failure);
-        failure = stopExecutor(stoppingDeliveries, failure);
         try {
-            core.close();
+            connections.closeAll();
         } catch (RuntimeException error) {
             failure = accumulate(failure, error);
         }
+        cancel(stoppingResultTask);
+        failure = stopScheduler(stoppingScheduler, failure);
         try {
-            connections.closeAll();
+            resultLoop.stopAccepting();
+            resultLoop.closeAndFlush();
         } catch (RuntimeException error) {
             failure = accumulate(failure, error);
         }
@@ -230,13 +254,16 @@ public final class SocketWorkerDeliveryAdapter
         return connections.activeConnectionCount();
     }
 
-    private void initializeExecutors() {
-        scheduler = Executors.newSingleThreadScheduledExecutor(
-                daemonThreadFactory(adapterId + "-mailbox")
-        );
-        deliveryExecutor = Executors.newFixedThreadPool(
-                deliveryParallelism,
-                daemonThreadFactory(adapterId + "-delivery")
+    private static void cancel(ScheduledFuture<?> task) {
+        if (task != null) {
+            task.cancel(true);
+        }
+    }
+
+    private void initializeScheduler() {
+        scheduler = Executors.newScheduledThreadPool(
+                2,
+                daemonThreadFactory(adapterId + "-loop")
         );
     }
 
@@ -265,6 +292,10 @@ public final class SocketWorkerDeliveryAdapter
                                 ))
                                 .addLast(new StringEncoder(
                                         StandardCharsets.UTF_8
+                                ))
+                                .addLast(new WriteTimeoutHandler(
+                                        sendTimeLimit.toMillis(),
+                                        TimeUnit.MILLISECONDS
                                 ))
                                 .addLast(new SocketWorkerHandler(
                                         connections,
@@ -299,22 +330,42 @@ public final class SocketWorkerDeliveryAdapter
         }
     }
 
-    private void dispatchSafely() {
+    private void runCommandLoopSafely() {
         if (state != WorkerDeliveryAdapterState.RUNNING) {
             return;
         }
-        ExecutorService current = deliveryExecutor;
-        if (current == null) {
-            return;
-        }
         try {
-            core.dispatchOnce(current);
+            commandLoop.run();
         } catch (RuntimeException error) {
             WorkerDeliveryAdapterException failure = classify(
                     error,
                     WorkerDeliveryAdapterErrorCode.DELIVERY_INTERRUPTED,
-                    "socket.dispatchRound",
-                    "Socket Adapter dispatch round failed"
+                    "socket.commandLoop",
+                    "Socket Adapter command loop failed"
+            );
+            LOGGER.log(
+                    System.Logger.Level.WARNING,
+                    "errorCode={0} operation={1} adapterId={2} message={3}",
+                    failure.errorCode().code(),
+                    failure.operation(),
+                    adapterId,
+                    failure.getMessage()
+            );
+        }
+    }
+
+    private void runResultLoopSafely() {
+        if (state != WorkerDeliveryAdapterState.RUNNING) {
+            return;
+        }
+        try {
+            resultLoop.run();
+        } catch (RuntimeException error) {
+            WorkerDeliveryAdapterException failure = classify(
+                    error,
+                    WorkerDeliveryAdapterErrorCode.DELIVERY_INTERRUPTED,
+                    "socket.resultLoop",
+                    "Socket Adapter result loop failed"
             );
             LOGGER.log(
                     System.Logger.Level.WARNING,
@@ -375,42 +426,6 @@ public final class SocketWorkerDeliveryAdapter
             return failure;
         } catch (RuntimeException error) {
             return accumulate(failure, error);
-        }
-    }
-
-    private RuntimeException stopExecutor(
-            ExecutorService executor,
-            RuntimeException failure
-    ) {
-        if (executor == null) {
-            return failure;
-        }
-        executor.shutdown();
-        try {
-            if (!executor.awaitTermination(
-                    shutdownTimeout.toMillis(),
-                    TimeUnit.MILLISECONDS
-            )) {
-                executor.shutdownNow();
-                executor.awaitTermination(
-                        shutdownTimeout.toMillis(),
-                        TimeUnit.MILLISECONDS
-                );
-            }
-            return failure;
-        } catch (InterruptedException error) {
-            Thread.currentThread().interrupt();
-            executor.shutdownNow();
-            return accumulate(
-                    failure,
-                    new WorkerDeliveryAdapterException(
-                            WorkerDeliveryAdapterErrorCode
-                                    .SHUTDOWN_INTERRUPTED,
-                            "socket.stopDeliveryExecutor",
-                            "Delivery executor shutdown was interrupted",
-                            error
-                    )
-            );
         }
     }
 

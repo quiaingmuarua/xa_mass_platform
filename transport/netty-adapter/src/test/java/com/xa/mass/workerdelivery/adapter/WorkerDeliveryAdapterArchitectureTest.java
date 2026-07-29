@@ -22,6 +22,9 @@ class WorkerDeliveryAdapterArchitectureTest {
     private static final Path DISPATCH = SOURCE.resolve(
             "com/xa/mass/workerdelivery/adapter/dispatch"
     );
+    private static final Path RESULT = SOURCE.resolve(
+            "com/xa/mass/workerdelivery/adapter/result"
+    );
     private static final Path SOCKET = SOURCE.resolve(
             "com/xa/mass/workerdelivery/adapter/socket"
     );
@@ -101,9 +104,15 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .contains("class NettyWorkerConnectionRegistry")
                 .contains("ServerBootstrap")
                 .contains("NioServerSocketChannel")
-                .contains("newFixedThreadPool")
+                .contains("newScheduledThreadPool")
+                .contains("commandTask = scheduler.scheduleWithFixedDelay")
+                .contains("resultTask = scheduler.scheduleWithFixedDelay")
+                .contains("WriteTimeoutHandler")
                 .doesNotContain("WebSocketWorkerDeliveryAdapterFactory")
                 .doesNotContain("AdapterRoundResult")
+                .doesNotContain("newFixedThreadPool")
+                .doesNotContain("deliveryExecutor")
+                .doesNotContain("Future.get(")
                 .doesNotContain("interface WorkerConnection {")
                 .doesNotContain("ConnectionHandle")
                 .doesNotContain("NettyWebSocketWorkerConnection")
@@ -118,17 +127,38 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .contains("LineBasedFrameDecoder")
                 .contains("StringDecoder")
                 .contains("StringEncoder")
+                .contains("WriteTimeoutHandler")
+                .doesNotContain("newFixedThreadPool")
+                .doesNotContain("deliveryExecutor")
+                .doesNotContain("Future.get(")
                 .doesNotContain("ConnectionHandle")
                 .doesNotContain("WorkerSessionToken");
 
         String dispatch = readSources(DISPATCH);
         assertThat(dispatch)
                 .contains("interface WorkerCommandDelivery")
-                .contains("final class WorkerDeliveryAdapterCore")
-                .contains("void dispatchOnce")
+                .contains("final class WorkerCommandLoop")
+                .contains("ArrayDeque")
+                .contains("STARTED")
+                .contains("RETRY_LATER")
+                .contains("UNKNOWN")
+                .contains("public synchronized void run()")
+                .doesNotContain("WorkerDeliveryAdapterCore")
+                .doesNotContain("dispatchOnce")
+                .doesNotContain("ExecutorService")
+                .doesNotContain("Future")
                 .doesNotContain("io.netty")
                 .doesNotContain(".websocket")
                 .doesNotContain(".socket")
+                .doesNotContain("Channel");
+
+        String result = readSources(RESULT);
+        assertThat(result)
+                .contains("final class BoundedWorkerResultQueue")
+                .contains("final class WorkerResultLoop")
+                .contains("ArrayBlockingQueue")
+                .contains("public synchronized void run()")
+                .doesNotContain("io.netty")
                 .doesNotContain("Channel");
     }
 
@@ -140,7 +170,6 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .contains("interface WorkerConnectionMessageHandler")
                 .contains("class WorkerConnectionMessageDispatcher")
                 .contains("class TaskItemResultMessageHandler")
-                .contains("class BoundedWorkerResultBuffer")
                 .contains("Map.copyOf(indexed)")
                 .doesNotContain("register(")
                 .doesNotContain("unregister(")
@@ -150,6 +179,10 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("com.xa.mass.server")
                 .doesNotContain("com.xa.mass.kernel")
                 .doesNotContain("io.lettuce");
+
+        assertThat(readSources(RESULT))
+                .contains("class BoundedWorkerResultQueue")
+                .doesNotContain("WorkerConnectionMessageDispatcher");
 
         String transportSources =
                 readSources(WEBSOCKET) + readSources(SOCKET);

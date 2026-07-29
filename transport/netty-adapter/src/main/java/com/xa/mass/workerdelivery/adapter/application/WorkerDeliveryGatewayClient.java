@@ -5,6 +5,9 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandE
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Thread-safe Gateway boundary shared by independent command and result loops.
+ */
 public interface WorkerDeliveryGatewayClient {
 
     Map<String, WorkerCommandEnvelope> consumeWorkerCommands(

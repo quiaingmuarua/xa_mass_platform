@@ -176,13 +176,12 @@ class SocketWorkerDeliveryAdapterTest {
         return new SocketWorkerDeliveryAdapter(
                 "socket-1",
                 gateway,
-                codec,
                 "127.0.0.1",
                 port,
                 Duration.ofMillis(10),
                 100,
-                4,
-                100,
+                1000,
+                Duration.ofMillis(10),
                 1000,
                 Duration.ofSeconds(1),
                 Duration.ofSeconds(1)

@@ -211,11 +211,11 @@ xa.mass.worker-delivery.adapter:
       type: WEBSOCKET
       listen-host: 0.0.0.0
       listen-port: 18083
-      dispatch-interval: 100ms
+      command-loop-interval: 100ms
       command-consume-limit: 100
-      delivery-parallelism: 16
-      result-batch-size: 100
-      result-buffer-capacity: 1000
+      command-queue-capacity: 1000
+      result-submit-interval: 1s
+      result-queue-capacity: 1000
       send-time-limit: 5s
     socket-1:
       type: SOCKET
@@ -231,10 +231,10 @@ a Socket Worker connects to its TCP port. Both send `WORKER_BIND` before
 business messages. An empty `instances` map starts no active Adapter.
 
 Instances must use distinct IDs and listener ports. Do not duplicate an
-endpoint-manager ID for throughput. A single instance issues one mailbox
-consume per round and uses bounded concurrent Worker delivery controlled by
-`command-consume-limit`,
-`delivery-parallelism`, and `dispatch-interval`.
+endpoint-manager ID for throughput. Each instance runs independent Command and
+Result loops. The Command Loop refills a bounded local queue and initiates
+non-blocking Channel writes; the Result Loop aggregates Worker results and
+submits at most one batch per `result-submit-interval`.
 
 Defaults:
 

@@ -1,7 +1,7 @@
 package com.xa.mass.workerdelivery.adapter.socket;
 
-import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.DELIVERED;
-import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.REJECTED_BEFORE_SEND;
+import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.RETRY_LATER;
+import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.STARTED;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
@@ -9,7 +9,6 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemComman
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
 import io.netty.channel.embedded.EmbeddedChannel;
-import java.time.Duration;
 import org.junit.jupiter.api.Test;
 
 class NettySocketWorkerConnectionRegistryTest {
@@ -27,7 +26,7 @@ class NettySocketWorkerConnectionRegistryTest {
             registry.unbind("worker-1", first);
 
             assertThat(registry.deliver("worker-1", command()))
-                    .isEqualTo(DELIVERED);
+                    .isEqualTo(STARTED);
             assertThat(first.isOpen()).isFalse();
             assertThat(registry.activeConnectionCount()).isEqualTo(1);
 
@@ -47,23 +46,20 @@ class NettySocketWorkerConnectionRegistryTest {
         NettySocketWorkerConnectionRegistry registry = registry();
 
         assertThat(registry.deliver("worker-1", command()))
-                .isEqualTo(REJECTED_BEFORE_SEND);
+                .isEqualTo(RETRY_LATER);
 
         EmbeddedChannel inactive = new EmbeddedChannel();
         inactive.close();
         registry.bind("worker-1", inactive);
 
         assertThat(registry.deliver("worker-1", command()))
-                .isEqualTo(REJECTED_BEFORE_SEND);
+                .isEqualTo(RETRY_LATER);
         assertThat(registry.activeConnectionCount()).isZero();
         inactive.finishAndReleaseAll();
     }
 
     private NettySocketWorkerConnectionRegistry registry() {
-        return new NettySocketWorkerConnectionRegistry(
-                codec,
-                Duration.ofSeconds(1)
-        );
+        return new NettySocketWorkerConnectionRegistry(codec);
     }
 
     private static WorkerCommandEnvelope command() {

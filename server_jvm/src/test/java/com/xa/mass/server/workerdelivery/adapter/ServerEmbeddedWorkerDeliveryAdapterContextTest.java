@@ -45,7 +45,7 @@ class ServerEmbeddedWorkerDeliveryAdapterContextTest {
                 prefix + ".listen-port",
                 () -> Integer.toString(ADAPTER_PORT)
         );
-        registry.add(prefix + ".dispatch-interval", () -> "1h");
+        registry.add(prefix + ".command-loop-interval", () -> "1h");
     }
 
     @Test

@@ -6,7 +6,6 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClien
 import com.xa.mass.workerdelivery.adapter.http.HttpWorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.adapter.socket.SocketWorkerDeliveryAdapter;
 import com.xa.mass.workerdelivery.adapter.websocket.WebSocketWorkerDeliveryAdapter;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import java.time.Duration;
 import java.util.HashSet;
 import java.util.Set;
@@ -27,31 +26,28 @@ public class ServerWorkerDeliveryAdapterConfiguration {
             "type",
             "listen-host",
             "listen-port",
-            "dispatch-interval",
+            "command-loop-interval",
             "command-consume-limit",
-            "delivery-parallelism",
-            "result-batch-size",
-            "result-buffer-capacity",
+            "command-queue-capacity",
+            "result-submit-interval",
+            "result-queue-capacity",
             "send-time-limit"
     );
 
     @Bean
     WorkerDeliveryGatewayClient workerDeliveryGatewayClient(
-            ServerWorkerDeliveryAdapterProperties properties,
-            WorkerDeliveryCodec codec
+            ServerWorkerDeliveryAdapterProperties properties
     ) {
         return new HttpWorkerDeliveryGatewayClient(
                 properties.gateway().baseUrl(),
-                properties.gateway().requestTimeout(),
-                codec
+                properties.gateway().requestTimeout()
         );
     }
 
     @Bean
     WorkerDeliveryAdapterManager workerDeliveryAdapterManager(
             ServerWorkerDeliveryAdapterProperties properties,
-            WorkerDeliveryGatewayClient gateway,
-            WorkerDeliveryCodec codec
+            WorkerDeliveryGatewayClient gateway
     ) {
         WorkerDeliveryAdapterManager manager =
                 new WorkerDeliveryAdapterManager();
@@ -60,8 +56,7 @@ public class ServerWorkerDeliveryAdapterConfiguration {
                         adapterId,
                         config,
                         properties.gateway().requestTimeout(),
-                        gateway,
-                        codec
+                        gateway
                 ))
         );
         return manager;
@@ -79,8 +74,7 @@ public class ServerWorkerDeliveryAdapterConfiguration {
             String adapterId,
             JsonNode config,
             Duration shutdownTimeout,
-            WorkerDeliveryGatewayClient gateway,
-            WorkerDeliveryCodec codec
+            WorkerDeliveryGatewayClient gateway
     ) {
         if (!(config instanceof ObjectNode object)) {
             throw invalid(adapterId, "config must be an object");
@@ -105,9 +99,9 @@ public class ServerWorkerDeliveryAdapterConfiguration {
                 "0.0.0.0",
                 adapterId
         );
-        Duration dispatchInterval = optionalDuration(
+        Duration commandLoopInterval = optionalDuration(
                 object,
-                "dispatch-interval",
+                "command-loop-interval",
                 Duration.ofMillis(100),
                 adapterId
         );
@@ -117,21 +111,21 @@ public class ServerWorkerDeliveryAdapterConfiguration {
                 100,
                 adapterId
         );
-        int deliveryParallelism = optionalInt(
+        int commandQueueCapacity = optionalInt(
                 object,
-                "delivery-parallelism",
-                16,
+                "command-queue-capacity",
+                1000,
                 adapterId
         );
-        int resultBatchSize = optionalInt(
+        Duration resultSubmitInterval = optionalDuration(
                 object,
-                "result-batch-size",
-                100,
+                "result-submit-interval",
+                Duration.ofSeconds(1),
                 adapterId
         );
-        int resultBufferCapacity = optionalInt(
+        int resultQueueCapacity = optionalInt(
                 object,
-                "result-buffer-capacity",
+                "result-queue-capacity",
                 1000,
                 adapterId
         );
@@ -145,28 +139,26 @@ public class ServerWorkerDeliveryAdapterConfiguration {
             case "WEBSOCKET" -> new WebSocketWorkerDeliveryAdapter(
                     adapterId,
                     gateway,
-                    codec,
                     listenHost,
                     listenPort,
-                    dispatchInterval,
+                    commandLoopInterval,
                     commandConsumeLimit,
-                    deliveryParallelism,
-                    resultBatchSize,
-                    resultBufferCapacity,
+                    commandQueueCapacity,
+                    resultSubmitInterval,
+                    resultQueueCapacity,
                     sendTimeLimit,
                     shutdownTimeout
             );
             case "SOCKET" -> new SocketWorkerDeliveryAdapter(
                     adapterId,
                     gateway,
-                    codec,
                     listenHost,
                     listenPort,
-                    dispatchInterval,
+                    commandLoopInterval,
                     commandConsumeLimit,
-                    deliveryParallelism,
-                    resultBatchSize,
-                    resultBufferCapacity,
+                    commandQueueCapacity,
+                    resultSubmitInterval,
+                    resultQueueCapacity,
                     sendTimeLimit,
                     shutdownTimeout
             );

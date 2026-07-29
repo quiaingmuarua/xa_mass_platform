@@ -477,9 +477,11 @@ class RuntimeApiPythonIntegrationTest {
                 prefix + ".listen-port",
                 () -> Integer.toString(listenPort)
         );
-        registry.add(prefix + ".dispatch-interval", () -> "20ms");
+        registry.add(prefix + ".command-loop-interval", () -> "20ms");
         registry.add(prefix + ".command-consume-limit", () -> "100");
-        registry.add(prefix + ".delivery-parallelism", () -> "8");
+        registry.add(prefix + ".command-queue-capacity", () -> "1000");
+        registry.add(prefix + ".result-submit-interval", () -> "20ms");
+        registry.add(prefix + ".result-queue-capacity", () -> "1000");
     }
 
     private static void addSocketAdapter(
@@ -495,9 +497,11 @@ class RuntimeApiPythonIntegrationTest {
                 prefix + ".listen-port",
                 () -> Integer.toString(listenPort)
         );
-        registry.add(prefix + ".dispatch-interval", () -> "20ms");
+        registry.add(prefix + ".command-loop-interval", () -> "20ms");
         registry.add(prefix + ".command-consume-limit", () -> "100");
-        registry.add(prefix + ".delivery-parallelism", () -> "8");
+        registry.add(prefix + ".command-queue-capacity", () -> "1000");
+        registry.add(prefix + ".result-submit-interval", () -> "20ms");
+        registry.add(prefix + ".result-queue-capacity", () -> "1000");
     }
 
     private interface RunningWorker extends AutoCloseable {

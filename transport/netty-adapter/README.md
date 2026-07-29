@@ -10,7 +10,7 @@ Map<adapterId, config>
   -> create WebSocketWorkerDeliveryAdapter or SocketWorkerDeliveryAdapter
   -> WorkerDeliveryAdapterManager.register(instance)
   -> manager.start()
-  -> independent Netty listener + mailbox loop per instance
+  -> independent Netty listener + Command/Result loops per instance
   -> manager.close()
 ```
 
@@ -45,11 +45,11 @@ One concrete Adapter instance owns:
 ```text
 adapterId = endpointManagerId
 listenHost + listenPort
-one scheduled consume loop
-one bounded command consume per round
-one bounded delivery executor
+one scheduled Command Loop
+one bounded in-memory Command Queue
+one scheduled Result Loop
+one bounded in-memory Result Queue
 one current Netty Channel per WorkerId
-one bounded result buffer
 ```
 
 Multiple instances in one JVM are useful only when they expose different
@@ -69,8 +69,8 @@ then bind the declared WorkerId to the current Netty Channel. The old
 WorkerId-bearing WebSocket path is not accepted.
 
 Do not run two instances for the same `endpointManagerId`. Throughput for one
-endpoint is increased with `commandConsumeLimit`, `deliveryParallelism`, and
-`dispatchInterval`, not by starting competing mailbox consumers.
+endpoint is tuned with `commandConsumeLimit`, `commandQueueCapacity`, and
+`commandLoopInterval`, not by starting competing mailbox consumers.
 
 `system-polling` is a Server point-API binding and cannot be registered as an
 active Adapter.
@@ -91,13 +91,13 @@ transport-private connection registry
   retain the current Netty Channel for each WorkerId
 
 WorkerCommandDelivery
-  narrow shared core seam for deliver(workerId, command)
+  narrow Command Loop seam for deliver(workerId, command)
 
 WorkerConnectionMessageDispatcher
   immutable messageType -> handler dispatch
 
 TaskItemResultMessageHandler
-  validate Worker-owned outcomes and offer SeedResult to the bounded buffer
+  validate Worker-owned outcomes and offer SeedResult to the Result Queue
 ```
 
 The Manager does not deserialize configuration or construct Adapters. Server
@@ -135,7 +135,7 @@ inbound TASK_ITEM_RESULT message
   -> TaskItemResultMessage
   -> immutable dispatcher
   -> TaskItemResultMessageHandler
-  -> bounded SeedResult buffer
+  -> bounded Result Queue
 ```
 
 Bind is handled by each transport before the business dispatcher. The message
@@ -149,49 +149,67 @@ payload. The first implementation installs only the Task Item result handler.
 Trusted Adapter-generated `3001` evidence bypasses Worker message handling and
 enters the Adapter's pending result path directly.
 
-## Dispatch
+## Command And Result Loops
 
-Each Adapter never runs concurrent mailbox-consume rounds:
+Each Adapter owns two independent scheduled mechanisms:
 
 ```text
-flush pending results
--> drain one bounded Worker result batch
--> consume at most commandConsumeLimit commands through Server batch HTTP
--> filter expired commands
--> deliver different Workers with bounded parallelism
--> append trusted Adapter rejections
+Command Loop
+  -> refill only when one complete consume batch fits
+  -> consume at most commandConsumeLimit commands through Server batch HTTP
+  -> rotate the current Command Queue once
+  -> retain commands whose Worker has no active writable Channel
+  -> drop expired commands and best-effort enqueue 3001
+  -> remove a command as soon as writeAndFlush starts
+
+Result Loop
+  -> retry one pending result batch first
+  -> otherwise drain the current Result Queue
+  -> issue at most one Server append request per resultSubmitInterval
 ```
 
 The Server runtime acquires a random bounded set of distinct Worker fields
 from the sparse HASH. Adapter command acquisition is stateless between rounds
-and assumes no FIFO, priority, stable-order, or global-fairness semantics.
+and assumes no FIFO, priority, stable-order, or global-fairness semantics. Once
+consumed, the Adapter Command Queue is the temporary owner until send starts or
+the command expires. It has no WorkerId index; a round observes and rotates
+each command that was present at round start exactly once.
 
 Delivery evidence remains:
 
 ```text
-DELIVERED
-  command entered the selected transport send path
+STARTED
+  writeAndFlush accepted the command into the selected Channel send path
+  -> remove it from the Command Queue
 
-REJECTED_BEFORE_SEND
-  command was confirmed not to enter Worker delivery
-  -> generate 3001
+RETRY_LATER
+  no active writable Channel is currently available
+  -> retain the command at the queue tail
 
 UNKNOWN
-  send started but its outcome is ambiguous
-  -> generate no 3xxx evidence
+  write initiation failed or its asynchronous outcome became ambiguous
+  -> remove the command and generate no 3xxx evidence
 ```
 
-The result buffer and pending retry state are process-local and bounded.
-Shutdown stops new rounds, closes the listener and active connections, and
-drains all accepted result batches. Process failure can still lose in-memory
-evidence; Item claims and Worker lease fences remain the Kernel convergence
-boundary.
+Worker-originated results enter the Result Queue directly from Netty handlers.
+Command acquisition and forwarding continue while result submission is
+temporarily unavailable. The Result Loop retains one failed batch and retries
+it before draining new results; it never submits a second batch in the same
+tick.
+
+Both queues and pending retry state are process-local and bounded. Shutdown
+stops the Command Loop, closes the listener and Channels, stops the Result
+Loop, then performs a bounded final result flush. Remaining commands are
+dropped for claim/lease expiry recovery. Process failure can still lose local
+commands or results; Item claims and Worker lease fences remain the Kernel
+convergence boundary.
 
 ## Netty Transports
 
-Each instance owns an embedded Netty listener with one I/O event-loop thread.
-Command delivery concurrency is controlled separately by
-`deliveryParallelism`.
+Each instance owns an embedded Netty listener with one I/O event-loop thread
+and a two-thread scheduled executor: one thread can run the Command Loop while
+the other runs the Result Loop. There is no per-command executor and neither
+loop blocks on a `ChannelFuture`.
 
 The WebSocket handler accepts only text frames. Its first frame is Bind; after
 binding, it decodes connection business messages and invokes the static
@@ -210,12 +228,12 @@ The first line is Bind and each subsequent line is one connection business
 message. Commands are written as compact JSON followed by `\n`; reads accept
 both `\n` and `\r\n`. Netty owns TCP fragmentation and coalescing.
 
-Both connection registries store current Netty Channels directly. The shared
-dispatch core does not import Netty, WebSocket, Socket, bind/unbind, or
-transport close reasons; it only calls `WorkerCommandDelivery`. Cursor,
-Gateway calls, `3001`, pending result retry, and `UNKNOWN` semantics stay in
-that core. Outcome validation stays in the installed message handler, and
-queue mechanics stay in the bounded result buffer.
+Both connection registries store current Netty Channels directly. The
+transport-neutral `WorkerCommandLoop` only calls `WorkerCommandDelivery`; it
+does not import Netty, WebSocket, Socket, bind/unbind, or close reasons.
+`WorkerResultLoop` independently owns timed batch submission and pending retry.
+Outcome validation stays in the installed message handler, and queue mechanics
+stay in the bounded Result Queue.
 
 The JDK `HttpClient` Gateway implementation also lives in this module. Its
 private HTTP DTOs match the Server batch API but are not part of the shared

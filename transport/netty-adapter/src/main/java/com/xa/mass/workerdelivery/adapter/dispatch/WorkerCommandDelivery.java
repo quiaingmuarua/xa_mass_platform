@@ -10,8 +10,8 @@ public interface WorkerCommandDelivery {
     );
 
     enum CommandDeliveryAttempt {
-        DELIVERED,
-        REJECTED_BEFORE_SEND,
+        STARTED,
+        RETRY_LATER,
         UNKNOWN
     }
 }

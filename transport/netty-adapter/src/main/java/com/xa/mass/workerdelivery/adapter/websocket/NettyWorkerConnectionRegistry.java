@@ -10,11 +10,9 @@ import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.handler.codec.http.websocketx.CloseWebSocketFrame;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
-import java.time.Duration;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.TimeUnit;
 
 final class NettyWorkerConnectionRegistry
         implements WorkerConnectionRegistry {
@@ -22,22 +20,9 @@ final class NettyWorkerConnectionRegistry
     private final Map<String, Channel> channels =
             new ConcurrentHashMap<>();
     private final WorkerDeliveryCodec codec;
-    private final long sendTimeLimitMillis;
 
-    NettyWorkerConnectionRegistry(
-            WorkerDeliveryCodec codec,
-            Duration sendTimeLimit
-    ) {
+    NettyWorkerConnectionRegistry(WorkerDeliveryCodec codec) {
         this.codec = Objects.requireNonNull(codec, "codec");
-        Objects.requireNonNull(sendTimeLimit, "sendTimeLimit");
-        if (sendTimeLimit.isZero()
-                || sendTimeLimit.isNegative()
-                || sendTimeLimit.toMillis() <= 0) {
-            throw new IllegalArgumentException(
-                    "sendTimeLimit must be positive"
-            );
-        }
-        sendTimeLimitMillis = sendTimeLimit.toMillis();
     }
 
     @Override
@@ -74,17 +59,46 @@ final class NettyWorkerConnectionRegistry
         Objects.requireNonNull(command, "command");
         Channel current = channels.get(workerId);
         if (current == null) {
-            return CommandDeliveryAttempt.REJECTED_BEFORE_SEND;
+            return CommandDeliveryAttempt.RETRY_LATER;
         }
-        CommandDeliveryAttempt attempt = deliver(current, command);
-        if (attempt != CommandDeliveryAttempt.DELIVERED) {
+        if (!current.isActive()) {
             removeAndClose(
                     workerId,
                     current,
                     ConnectionCloseReason.TRANSPORT_ERROR
             );
+            return CommandDeliveryAttempt.RETRY_LATER;
         }
-        return attempt;
+        if (!current.isWritable()) {
+            return CommandDeliveryAttempt.RETRY_LATER;
+        }
+
+        String encoded = codec.encodeWorkerConnectionMessage(
+                new TaskItemCommandMessage(command)
+        );
+        ChannelFuture send;
+        try {
+            send = current.writeAndFlush(
+                    new TextWebSocketFrame(encoded)
+            );
+        } catch (RuntimeException error) {
+            removeAndClose(
+                    workerId,
+                    current,
+                    ConnectionCloseReason.TRANSPORT_ERROR
+            );
+            return CommandDeliveryAttempt.UNKNOWN;
+        }
+        send.addListener(future -> {
+            if (!future.isSuccess()) {
+                removeAndClose(
+                        workerId,
+                        current,
+                        ConnectionCloseReason.TRANSPORT_ERROR
+                );
+            }
+        });
+        return CommandDeliveryAttempt.STARTED;
     }
 
     @Override
@@ -110,40 +124,6 @@ final class NettyWorkerConnectionRegistry
 
     int activeConnectionCount() {
         return channels.size();
-    }
-
-    private CommandDeliveryAttempt deliver(
-            Channel channel,
-            WorkerCommandEnvelope command
-    ) {
-        if (!channel.isActive() || !channel.isWritable()) {
-            return CommandDeliveryAttempt.REJECTED_BEFORE_SEND;
-        }
-        String encoded = codec.encodeWorkerConnectionMessage(
-                new TaskItemCommandMessage(command)
-        );
-        ChannelFuture send;
-        try {
-            send = channel.writeAndFlush(
-                    new TextWebSocketFrame(encoded)
-            );
-        } catch (RuntimeException error) {
-            return CommandDeliveryAttempt.UNKNOWN;
-        }
-        try {
-            if (!send.await(
-                    sendTimeLimitMillis,
-                    TimeUnit.MILLISECONDS
-            )) {
-                return CommandDeliveryAttempt.UNKNOWN;
-            }
-            return send.isSuccess()
-                    ? CommandDeliveryAttempt.DELIVERED
-                    : CommandDeliveryAttempt.UNKNOWN;
-        } catch (InterruptedException error) {
-            Thread.currentThread().interrupt();
-            return CommandDeliveryAttempt.UNKNOWN;
-        }
     }
 
     private void removeAndClose(

@@ -6,22 +6,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
 import com.xa.mass.workerdelivery.adapter.socket.SocketWorkerDeliveryAdapter;
 import com.xa.mass.workerdelivery.adapter.websocket.WebSocketWorkerDeliveryAdapter;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
 
 class ServerWorkerDeliveryAdapterPropertiesTest {
 
     private final ApplicationContextRunner contextRunner =
             new ApplicationContextRunner()
                     .withUserConfiguration(
-                            CodecConfiguration.class,
                             ServerWorkerDeliveryAdapterConfiguration.class
                     );
 
@@ -41,7 +36,7 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
                 "xa.mass.worker-delivery.adapter.instances"
                         + ".socket-1.listen-port=18084",
                 "xa.mass.worker-delivery.adapter.instances"
-                        + ".socket-1.delivery-parallelism=8"
+                        + ".socket-1.command-queue-capacity=800"
         ).run(context -> {
             assertThat(context).hasNotFailed();
             WorkerDeliveryAdapterManager manager = context.getBean(
@@ -108,6 +103,16 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
                 "xa.mass.worker-delivery.adapter.instances"
                         + ".adapter-1.listen-port=18083",
                 "xa.mass.worker-delivery.adapter.instances"
+                        + ".adapter-1.command-consume-limit=101",
+                "xa.mass.worker-delivery.adapter.instances"
+                        + ".adapter-1.command-queue-capacity=100"
+        );
+        assertFailed(
+                "xa.mass.worker-delivery.adapter.instances"
+                        + ".adapter-1.type=WEBSOCKET",
+                "xa.mass.worker-delivery.adapter.instances"
+                        + ".adapter-1.listen-port=18083",
+                "xa.mass.worker-delivery.adapter.instances"
                         + ".adapter-1.scan-count=100"
         );
         assertFailed(
@@ -126,6 +131,25 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
                 "xa.mass.worker-delivery.adapter.runtime"
                         + ".endpoint-manager-id=adapter-1"
         );
+    }
+
+    @Test
+    void rejectsOldLoopAndBufferFields() {
+        for (String field : new String[]{
+                "dispatch-interval",
+                "delivery-parallelism",
+                "result-batch-size",
+                "result-buffer-capacity"
+        }) {
+            assertFailed(
+                    "xa.mass.worker-delivery.adapter.instances"
+                            + ".adapter-1.type=WEBSOCKET",
+                    "xa.mass.worker-delivery.adapter.instances"
+                            + ".adapter-1.listen-port=18083",
+                    "xa.mass.worker-delivery.adapter.instances"
+                            + ".adapter-1." + field + "=1"
+            );
+        }
     }
 
     @Test
@@ -157,14 +181,5 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
     private void assertFailed(String... properties) {
         contextRunner.withPropertyValues(properties)
                 .run(context -> assertThat(context).hasFailed());
-    }
-
-    @Configuration(proxyBeanMethods = false)
-    static class CodecConfiguration {
-
-        @Bean
-        WorkerDeliveryCodec workerDeliveryCodec() {
-            return new WorkerDeliveryCodec();
-        }
     }
 }

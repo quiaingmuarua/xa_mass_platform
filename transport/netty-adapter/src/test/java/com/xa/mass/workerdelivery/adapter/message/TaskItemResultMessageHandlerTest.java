@@ -6,6 +6,7 @@ import static com.xa.mass.workerdelivery.adapter.message.WorkerMessageHandlingRe
 import static com.xa.mass.workerdelivery.adapter.message.WorkerMessageHandlingResult.INVALID_OUTCOME;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.xa.mass.workerdelivery.adapter.result.BoundedWorkerResultQueue;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemResultMessage;
 import org.junit.jupiter.api.Test;
@@ -17,8 +18,8 @@ class TaskItemResultMessageHandlerTest {
 
     @Test
     void appliesWorkerOutcomePolicyBeforeBuffering() {
-        BoundedWorkerResultBuffer buffer =
-                new BoundedWorkerResultBuffer(1);
+        BoundedWorkerResultQueue buffer =
+                new BoundedWorkerResultQueue(1);
         TaskItemResultMessageHandler handler =
                 new TaskItemResultMessageHandler(buffer);
         SeedResult accepted = TestMessages.successResult(COMMAND_ID);
@@ -27,7 +28,7 @@ class TaskItemResultMessageHandlerTest {
                 "worker-1",
                 new TaskItemResultMessage(accepted)
         )).isEqualTo(ACCEPTED);
-        assertThat(buffer.drain(1)).containsExactly(accepted);
+        assertThat(buffer.drainAll()).containsExactly(accepted);
 
         SeedResult workerFailure = new SeedResult(
                 "b6e9e10d-f78b-469e-93ab-864b49c189c1",
@@ -54,13 +55,13 @@ class TaskItemResultMessageHandlerTest {
                         TestMessages.successResult(COMMAND_ID)
                 )
         )).isEqualTo(BUFFER_FULL);
-        assertThat(buffer.drain(1)).containsExactly(workerFailure);
+        assertThat(buffer.drainAll()).containsExactly(workerFailure);
     }
 
     @Test
     void closedBufferRejectsNewResults() {
-        BoundedWorkerResultBuffer buffer =
-                new BoundedWorkerResultBuffer(1);
+        BoundedWorkerResultQueue buffer =
+                new BoundedWorkerResultQueue(1);
         TaskItemResultMessageHandler handler =
                 new TaskItemResultMessageHandler(buffer);
         buffer.stopAccepting();

@@ -46,8 +46,7 @@ class HttpWorkerDeliveryGatewayClientTest {
                         "http://127.0.0.1:"
                                 + server.getAddress().getPort()
                 ),
-                Duration.ofSeconds(2),
-                codec
+                Duration.ofSeconds(2)
         );
     }
 
@@ -198,18 +197,15 @@ class HttpWorkerDeliveryGatewayClientTest {
         ).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new HttpWorkerDeliveryGatewayClient(
                 URI.create("/relative"),
-                Duration.ofSeconds(1),
-                codec
+                Duration.ofSeconds(1)
         )).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new HttpWorkerDeliveryGatewayClient(
                 URI.create("redis://127.0.0.1:6379"),
-                Duration.ofSeconds(1),
-                codec
+                Duration.ofSeconds(1)
         )).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> new HttpWorkerDeliveryGatewayClient(
                 URI.create("http://127.0.0.1:18082"),
-                Duration.ZERO,
-                codec
+                Duration.ZERO
         )).isInstanceOf(IllegalArgumentException.class);
     }
 

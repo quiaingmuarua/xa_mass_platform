@@ -34,8 +34,9 @@ Server Worker Delivery API
 Active Adapter
   -> call the Server batch HTTP API
   -> register complete Adapter instances by endpointManagerId
-  -> each instance owns a Netty listener, scheduler and result buffer
-  -> deliver one bounded batch to different Workers with bounded parallelism
+  -> each instance owns a Netty listener and independent Command/Result loops
+  -> buffer consumed commands until non-blocking Channel send can start
+  -> aggregate Worker results by time in a bounded process-memory queue
   -> Server binds config and forwards start/close lifecycle events
   -> push commands and batch Worker/trusted Adapter results
 
@@ -365,8 +366,8 @@ mailbox and one independent network listener. Its process-local lifecycle is:
 ```text
 WebSocketWorkerDeliveryAdapter | SocketWorkerDeliveryAdapter
   -> manager.register(instance)
-  -> start Netty listener and bounded dispatch loop
-  -> close listener, connections, loop and buffered results
+  -> start Netty listener and independent Command/Result loops
+  -> close loops, listener, connections and buffered results
 ```
 
 Registration is local composition, not Kernel or Server lifecycle truth. The
@@ -392,15 +393,21 @@ One WorkerId has one current command-delivery connection. A newer connection
 replaces and best-effort closes the old connection; exact instance removal
 prevents the old close callback from removing the replacement.
 
-Each Adapter consumes one bounded command batch through the Server batch HTTP
-API, rechecks command deadlines, and dispatches different Worker commands
-through a fixed-size delivery executor. One round completes before the next
-consume, so an Adapter does not issue concurrent mailbox acquisitions.
+The Command Loop owns a bounded `ArrayDeque`. It refills only when a complete
+`commandConsumeLimit` batch fits, then observes the current queue exactly once.
+A command without an active writable Worker Channel is moved to the queue tail.
+When `writeAndFlush` starts, the command leaves the queue immediately; an
+asynchronous send failure closes only that Channel and remains `UNKNOWN`.
+There is no per-command executor, blocking `ChannelFuture` wait, WorkerId queue
+index, or concurrent mailbox acquisition.
+
 Worker-originated `200/1xxx` results are
 decoded as `TASK_ITEM_RESULT`, passed through an immutable message dispatcher
 and the statically installed Task Item result handler, then offered to a
-bounded process-memory buffer and submitted through the Server batch result
-HTTP API. Result acceptance is not fenced by the current connection:
+bounded process-memory Result Queue. The independent Result Loop runs at
+`resultSubmitInterval`, submits at most one batch per tick, and retries a
+failed pending batch before draining current results. Result acceptance is not
+fenced by the current connection:
 evidence already produced through a replaced connection is still submitted,
 and Kernel ResultContext/Worker lease fences decide whether it affects current
 truth.
@@ -408,27 +415,30 @@ truth.
 The Adapter module owns its scheduled runtime, Netty listeners, transport
 translation, immutable message dispatcher, built-in message handlers,
 transport-private process-local Channel registries, command consume bound,
-delivery executor, and result buffer. Each concrete registry directly stores
+Command Queue, and Result Queue. Each concrete registry directly stores
 `workerId -> current Netty Channel`; it is not a generic session model or
 serializable DTO.
 
-The shared dispatch core does not import Netty, WebSocket, Socket, Bind, or
+The `WorkerCommandLoop` does not import Netty, WebSocket, Socket, Bind, or
 transport close semantics. It only invokes the narrow
-`deliver(workerId, command)` seam. Handler selection is static assembly, not
+`deliver(workerId, command)` seam. `WorkerResultLoop` independently owns timed
+result submission and pending retry. Handler selection is static assembly, not
 runtime registration or policy discovery. `server_jvm` only converts
 configured JSON trees into concrete instances, registers them, and maps
 process-ready/process-close events to Manager `start()`/`close()`. Server must
-not host Adapter endpoints or call `dispatchOnce`. The Adapter module has no
+not host Adapter endpoints or run either loop. The Adapter module has no
 Spring, Redis, Kernel runtime, score, or Pacer dependency.
 
 There is no process-local fast path and no command or result ACK. Server/Redis
-failure retains one pending batch for retry; Adapter process failure may lose
-buffered results.
+failure during command consume does not stop forwarding already buffered
+commands. Result append failure retains one pending batch for retry. Adapter
+process failure may lose buffered commands and results.
 
-No current connection, or another rejection confirmed before send starts, is
-direct evidence that the command did not enter the Worker and generates
-`3001`. Expiry, disconnect, missing result, or a failure after send was
-attempted remains unknown and cannot generate `3xxx`.
+A missing or temporarily unwritable connection retains the command until a
+later Command Loop round. If its `executeBeforeMillis` is reached before send
+starts, the Adapter drops it and best-effort enqueues trusted `3001`. Once
+`writeAndFlush` starts, any asynchronous failure is `UNKNOWN`: the command is
+not requeued and no `3xxx` is generated.
 
 Different Adapter instances in one or more processes may own different
 endpoint-manager mailboxes. Every host must preserve that boundary. Multiple
@@ -468,12 +478,12 @@ external Worker side effects exactly-once.
 - Do not make `server_jvm` an Adapter mechanism owner merely because
   it constructs configured instances, invokes Adapter lifecycle, and exposes
   the batch HTTP access boundary.
-- Do not let `server_jvm` call `dispatchOnce` or create the Adapter scheduler.
+- Do not let `server_jvm` run Adapter loops or create their scheduler.
 - Do not encode Adapter identity or Worker identity into the common WebSocket
   path; host/port identifies the Adapter instance and Bind establishes the
   process-local Worker connection.
 - Do not duplicate one endpoint-manager Adapter to increase throughput; tune
-  the instance's command consume bound, delivery parallelism, and cadence.
+  the instance's command consume bound, queue capacity, and cadence.
 - Do not add an embedded in-process shortcut around the Server batch HTTP API.
 - Do not let Adapters generate command identity or message types.
 - Do not wrap SeedResult in WorkerCommandEnvelope or in a generic opaque
@@ -482,7 +492,8 @@ external Worker side effects exactly-once.
 - Do not add runtime handler registration, discovery, or fallback. Connection
   message handlers are immutable Adapter assembly.
 - Do not parse or reconstruct Worker score fences in an Adapter.
-- Do not emit timeout evidence for a command discarded before Worker submit.
+- Do not turn an asynchronous send failure into `3xxx`; only an unsent command
+  retained through its execution deadline produces the current `3001`.
 - Do not move Worker release/recovery decisions into mailbox consumption.
 - Do not claim mailbox replacement is ordered by Worker lease recency.
 - Do not add cross-bucket rollback, cleanup scanners, or compatibility keys.

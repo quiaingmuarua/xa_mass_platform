@@ -28,8 +28,7 @@ public final class HttpWorkerDeliveryGatewayClient
 
     public HttpWorkerDeliveryGatewayClient(
             URI gatewayBaseUrl,
-            Duration requestTimeout,
-            WorkerDeliveryCodec codec
+            Duration requestTimeout
     ) {
         this(
                 HttpClient.newBuilder()
@@ -38,7 +37,7 @@ public final class HttpWorkerDeliveryGatewayClient
                         .build(),
                 gatewayBaseUrl,
                 requestTimeout,
-                codec
+                new WorkerDeliveryCodec()
         );
     }
 
