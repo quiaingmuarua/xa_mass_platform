@@ -8,6 +8,22 @@ create/approve/close bind to Python HTTP owner providers. TaskItem append,
 last-success reads, and Worker Delivery bind to Java Redis owner providers.
 Controllers and services depend only on contracts from `kernel_jvm`.
 
+Server failures use one module exception over the narrow
+[`foundation_jvm`](../foundation_jvm/README.md) contract:
+
+```text
+ServerException
+  -> ServerErrorCode 10000..19999
+  -> operation + message + cause
+```
+
+Kernel binding, Task Data, and Worker Delivery choose codes from the single
+module enum; they do not define exception subclasses. `ApiExceptionHandler`
+maps `ServerErrorCode` to HTTP status and emits its integer code in
+`ApiErrorResponse`. Foundation does not own that policy. Spring remains the
+process logging and tracing boundary, while exceptions do not carry request
+IDs or context maps.
+
 ```text
 Control client
   -> server_jvm /api/v1

@@ -1,7 +1,8 @@
 package com.xa.mass.worker.transport.polling;
 
 import com.xa.mass.worker.execution.WorkerCommandProcessor;
-import com.xa.mass.worker.transport.WorkerTransportException;
+import com.xa.mass.worker.error.WorkerErrorCode;
+import com.xa.mass.worker.error.WorkerException;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
@@ -10,8 +11,6 @@ import java.net.URI;
 import java.time.Duration;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import okhttp3.Call;
 import okhttp3.HttpUrl;
 import okhttp3.MediaType;
@@ -24,11 +23,12 @@ public final class PollingWorkerTransport implements AutoCloseable {
 
     private static final MediaType JSON =
             MediaType.get("application/json; charset=utf-8");
-    private static final Logger LOG = Logger.getLogger(
+    private static final System.Logger LOGGER = System.getLogger(
             PollingWorkerTransport.class.getName()
     );
 
     private final OkHttpClient http;
+    private final String workerId;
     private final HttpUrl pollUrl;
     private final HttpUrl resultUrl;
     private final WorkerDeliveryCodec codec;
@@ -50,6 +50,7 @@ public final class PollingWorkerTransport implements AutoCloseable {
         this.processor = requirePresent(processor, "processor");
         requireNonBlank(endpointManagerId, "endpointManagerId");
         requireNonBlank(workerId, "workerId");
+        this.workerId = workerId;
         HttpUrl base = httpUrl(serverUrl);
         HttpUrl workerBase = base.newBuilder()
                 .addPathSegment("api")
@@ -85,17 +86,23 @@ public final class PollingWorkerTransport implements AutoCloseable {
                 return false;
             }
             if (response.code() != 200 || response.body() == null) {
-                throw new WorkerTransportException(
+                throw new WorkerException(
+                        WorkerErrorCode.COMMAND_POLL_FAILED,
+                        "polling.pollCommand",
                         "Worker command poll failed with HTTP "
-                                + response.code()
+                                + response.code(),
+                        null
                 );
             }
             WorkerCommandEnvelope command = codec.decodeWorkerCommand(
                     response.body().string()
             );
             if (command == null) {
-                throw new WorkerTransportException(
-                        "Worker command response is malformed"
+                throw new WorkerException(
+                        WorkerErrorCode.COMMAND_RESPONSE_INVALID,
+                        "polling.pollCommand",
+                        "Worker command response is malformed",
+                        null
                 );
             }
             Optional<SeedResult> result = processor.process(command);
@@ -103,6 +110,13 @@ public final class PollingWorkerTransport implements AutoCloseable {
                 return false;
             }
             pendingResult = result.get();
+        } catch (IOException error) {
+            throw new WorkerException(
+                    WorkerErrorCode.COMMAND_POLL_FAILED,
+                    "polling.pollCommand",
+                    "Worker command poll request failed",
+                    error
+            );
         }
         submitPendingResult(pendingResult);
         return true;
@@ -117,11 +131,17 @@ public final class PollingWorkerTransport implements AutoCloseable {
                 if (!handled && !closed) {
                     Thread.sleep(pollInterval.toMillis());
                 }
-            } catch (IOException | WorkerTransportException error) {
+            } catch (IOException | WorkerException error) {
                 if (!closed) {
-                    LOG.log(
-                            Level.WARNING,
-                            error.getMessage()
+                    WorkerException failure = classifyRetry(error);
+                    LOGGER.log(
+                            System.Logger.Level.WARNING,
+                            "errorCode={0} operation={1} "
+                                    + "workerId={2} message={3}",
+                            failure.errorCode().code(),
+                            failure.operation(),
+                            workerId,
+                            failure.getMessage()
                     );
                     Thread.sleep(pollInterval.toMillis());
                 }
@@ -167,15 +187,37 @@ public final class PollingWorkerTransport implements AutoCloseable {
                 .build();
         try (Response response = execute(request)) {
             if (response.code() != 202) {
-                throw new WorkerTransportException(
+                throw new WorkerException(
+                        WorkerErrorCode.RESULT_SUBMIT_FAILED,
+                        "polling.submitResult",
                         "Worker result append failed with HTTP "
-                                + response.code()
+                                + response.code(),
+                        null
                 );
             }
             if (pendingResult == sending) {
                 pendingResult = null;
             }
+        } catch (IOException error) {
+            throw new WorkerException(
+                    WorkerErrorCode.RESULT_SUBMIT_FAILED,
+                    "polling.submitResult",
+                    "Worker result submit request failed",
+                    error
+            );
         }
+    }
+
+    private static WorkerException classifyRetry(Exception error) {
+        if (error instanceof WorkerException) {
+            return (WorkerException) error;
+        }
+        return new WorkerException(
+                WorkerErrorCode.COMMAND_POLL_FAILED,
+                "polling.pollCommand",
+                "Worker command poll request failed",
+                error
+        );
     }
 
     private Response execute(Request request) throws IOException {

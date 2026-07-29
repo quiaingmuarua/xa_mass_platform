@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterState;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
@@ -156,12 +157,53 @@ class WebSocketWorkerDeliveryAdapterTest {
         manager.register(second);
 
         assertThatThrownBy(manager::start)
-                .isInstanceOf(WorkerDeliveryAdapterException.class)
-                .hasMessageContaining("websocket-2");
+                .isInstanceOfSatisfying(
+                        WorkerDeliveryAdapterException.class,
+                        error -> {
+                            assertThat(error.errorCode()).isEqualTo(
+                                    WorkerDeliveryAdapterErrorCode
+                                            .LISTENER_START_FAILED
+                            );
+                            assertThat(error.operation())
+                                    .isEqualTo("websocket.startListener");
+                            assertThat(error.getMessage())
+                                    .contains("websocket-2");
+                        }
+                );
 
         assertThat(first.state())
                 .isEqualTo(WorkerDeliveryAdapterState.CLOSED);
         assertThat(second.state())
+                .isEqualTo(WorkerDeliveryAdapterState.CLOSED);
+    }
+
+    @Test
+    void interruptedShutdownUsesTheOwnerErrorCode() {
+        WebSocketWorkerDeliveryAdapter adapter = adapter(
+                "websocket-1",
+                availablePort(),
+                new FakeGateway()
+        );
+        adapter.start();
+
+        WorkerDeliveryAdapterException failure;
+        Thread.currentThread().interrupt();
+        try {
+            failure = org.junit.jupiter.api.Assertions.assertThrows(
+                    WorkerDeliveryAdapterException.class,
+                    adapter::close
+            );
+        } finally {
+            Thread.interrupted();
+        }
+
+        assertThat(failure).isNotNull();
+        assertThat(failure.errorCode()).isEqualTo(
+                WorkerDeliveryAdapterErrorCode.SHUTDOWN_INTERRUPTED
+        );
+        assertThat(failure.operation())
+                .isEqualTo("websocket.stopScheduler");
+        assertThat(adapter.state())
                 .isEqualTo(WorkerDeliveryAdapterState.CLOSED);
     }
 

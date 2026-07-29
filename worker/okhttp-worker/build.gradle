@@ -23,6 +23,7 @@ tasks.named('compileTestJava', JavaCompile) {
 }
 
 dependencies {
+    api project(':foundation_jvm')
     api project(':worker_delivery_contract_jvm')
     implementation 'com.squareup.okhttp3:okhttp:5.3.0'
 

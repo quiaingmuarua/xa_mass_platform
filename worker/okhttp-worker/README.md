@@ -37,6 +37,26 @@ processor:
 6. maps completion and exceptions to `200/1400/1404/1500`;
 7. preserves the opaque result context in `SeedResult`.
 
+All Worker failures use the module's single `WorkerException` and numeric
+`WorkerErrorCode` values in `30000..39999`, over the narrow
+[`foundation_jvm`](../../foundation_jvm/README.md) contract. Transport,
+protocol, and event categories are error-code ranges, not exception
+subclasses. The Processor converts `EVENT_INPUT_INVALID` and
+`EVENT_NOT_FOUND` to `1400` and `1404`; other Handler failures become `1500`.
+Protocol failures continue to escape to the Transport boundary.
+
+Retry logging uses JDK `System.Logger` directly:
+
+```text
+errorCode=31001 operation=polling.pollCommand workerId=<id> message=...
+```
+
+The library never logs nested delivery items, opaque result context, or full
+business payloads. The exception stores no context map; the host's log or
+trace call site adds Worker and execution context. Error codes classify
+failures but do not independently decide retry, Worker outcome, or transport
+acknowledgement.
+
 Definitions bind parameter conversion and execution:
 
 ```java

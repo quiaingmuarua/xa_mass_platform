@@ -1,15 +1,21 @@
 package com.xa.mass.server.kernelbinding;
 
+import com.xa.mass.server.error.ServerErrorCode;
+import com.xa.mass.server.error.ServerException;
 import java.net.SocketTimeoutException;
 import java.net.http.HttpTimeoutException;
 import java.util.Map;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 final class PythonKernelHttpTransport {
+
+    private static final String EXCHANGE_OPERATION =
+            "kernelBinding.exchange";
+    private static final String DECODE_OPERATION =
+            "kernelBinding.decodeResponse";
 
     private final RestClient restClient;
 
@@ -73,16 +79,21 @@ final class PythonKernelHttpTransport {
                             body
                     );
                 }
-                throw PythonKernelBindingException.invalidResponse(
-                        "Kernel response is missing status"
+                throw new ServerException(
+                        ServerErrorCode.INVALID_KERNEL_RESPONSE,
+                        EXCHANGE_OPERATION,
+                        "Kernel response is missing status",
+                        null
                 );
             });
-        } catch (PythonKernelBindingException error) {
+        } catch (ServerException error) {
             throw error;
         } catch (ResourceAccessException error) {
             throw transportFailure(error);
         } catch (RestClientException error) {
-            throw PythonKernelBindingException.invalidResponse(
+            throw new ServerException(
+                    ServerErrorCode.INVALID_KERNEL_RESPONSE,
+                    DECODE_OPERATION,
                     "Kernel response could not be decoded",
                     error
             );
@@ -96,51 +107,69 @@ final class PythonKernelHttpTransport {
         try {
             Map<String, Object> body = response.bodyTo(Map.class);
             if (body == null) {
-                throw PythonKernelBindingException.invalidResponse(
-                        "Kernel response body is empty"
+                throw new ServerException(
+                        ServerErrorCode.INVALID_KERNEL_RESPONSE,
+                        DECODE_OPERATION,
+                        "Kernel response body is empty",
+                        null
                 );
             }
             return body;
-        } catch (PythonKernelBindingException error) {
+        } catch (ServerException error) {
             throw error;
         } catch (RuntimeException error) {
-            throw PythonKernelBindingException.invalidResponse(
+            throw new ServerException(
+                    ServerErrorCode.INVALID_KERNEL_RESPONSE,
+                    DECODE_OPERATION,
                     "Kernel response body is not valid JSON",
                     error
             );
         }
     }
 
-    private static PythonKernelBindingException rejectedResponse(
+    private static ServerException rejectedResponse(
             int statusCode,
             Map<String, Object> body
     ) {
-        HttpStatus status = HttpStatus.resolve(statusCode);
-        if (status == null) {
-            throw PythonKernelBindingException.invalidResponse(
-                    "Kernel returned an unsupported HTTP status"
-            );
-        }
         Object detail = body.get("detail");
-        return PythonKernelBindingException.rejected(
-                status,
+        ServerErrorCode errorCode = switch (statusCode) {
+            case 404 -> ServerErrorCode.KERNEL_REJECTED_NOT_FOUND;
+            case 409 -> ServerErrorCode.KERNEL_REJECTED_CONFLICT;
+            case 422 -> ServerErrorCode.KERNEL_REJECTED_INVALID;
+            case 503 -> ServerErrorCode.KERNEL_REJECTED_RETRYABLE;
+            default -> ServerErrorCode.INVALID_KERNEL_RESPONSE;
+        };
+        return new ServerException(
+                errorCode,
+                EXCHANGE_OPERATION,
                 detail == null
-                        ? "Kernel rejected the operation"
-                        : String.valueOf(detail)
+                        ? errorCode.defaultMessage()
+                        : String.valueOf(detail),
+                null
         );
     }
 
-    private static PythonKernelBindingException transportFailure(
+    private static ServerException transportFailure(
             ResourceAccessException error
     ) {
         Throwable cause = error;
         while (cause != null) {
             if (cause instanceof SocketTimeoutException
                     || cause instanceof HttpTimeoutException) {
-                return PythonKernelBindingException.timeout(error);
+                return new ServerException(
+                        ServerErrorCode.KERNEL_TIMEOUT,
+                        EXCHANGE_OPERATION,
+                        null,
+                        error
+                );
             }
             cause = cause.getCause();
         }
-        return PythonKernelBindingException.unavailable(error);
+        return new ServerException(
+                ServerErrorCode.KERNEL_UNAVAILABLE,
+                EXCHANGE_OPERATION,
+                null,
+                error
+        );
     }
 }

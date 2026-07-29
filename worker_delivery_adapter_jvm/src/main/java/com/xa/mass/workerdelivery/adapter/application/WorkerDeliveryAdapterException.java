@@ -1,16 +1,21 @@
 package com.xa.mass.workerdelivery.adapter.application;
 
-public final class WorkerDeliveryAdapterException
-        extends RuntimeException {
+import com.xa.mass.foundation.error.CodedRuntimeException;
 
-    public WorkerDeliveryAdapterException(String message) {
-        super(message);
-    }
+public final class WorkerDeliveryAdapterException
+        extends CodedRuntimeException {
 
     public WorkerDeliveryAdapterException(
+            WorkerDeliveryAdapterErrorCode errorCode,
+            String operation,
             String message,
             Throwable cause
     ) {
-        super(message, cause);
+        super(errorCode, operation, message, cause);
+    }
+
+    @Override
+    public WorkerDeliveryAdapterErrorCode errorCode() {
+        return (WorkerDeliveryAdapterErrorCode) super.errorCode();
     }
 }

@@ -3,6 +3,8 @@ package com.xa.mass.worker.execution;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.xa.mass.worker.error.WorkerErrorCode;
+import com.xa.mass.worker.error.WorkerException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -92,10 +94,12 @@ class WorkerEventDefinitionManagerTest {
 
         WorkerEventDefinitionManager<Map<String, Object>> manager =
                 new WorkerEventDefinitionManager<>(Map.of());
-        assertThrows(
-                UnknownWorkerEventException.class,
+        WorkerException unknown = assertThrows(
+                WorkerException.class,
                 () -> manager.dispatch("unknown", Map.of())
         );
+        assertEquals(WorkerErrorCode.EVENT_NOT_FOUND, unknown.errorCode());
+        assertEquals("event.dispatch", unknown.operation());
     }
 
     private static final class Parameters {

@@ -40,3 +40,4 @@ doc/archive/**
 !doc/archive/testing/
 !doc/archive/testing/legacy-testing-assets.md
 /archive_readonly/
+local.properties

@@ -3,6 +3,7 @@ package com.xa.mass.workerdelivery.adapter.dispatch;
 import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.REJECTED_BEFORE_SEND;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.adapter.message.BoundedWorkerResultBuffer;
 import com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt;
@@ -168,6 +169,8 @@ public final class WorkerDeliveryAdapterCore {
             } catch (InterruptedException error) {
                 Thread.currentThread().interrupt();
                 throw new WorkerDeliveryAdapterException(
+                        WorkerDeliveryAdapterErrorCode.DELIVERY_INTERRUPTED,
+                        "adapter.dispatchCommands",
                         "Worker command delivery was interrupted",
                         error
                 );

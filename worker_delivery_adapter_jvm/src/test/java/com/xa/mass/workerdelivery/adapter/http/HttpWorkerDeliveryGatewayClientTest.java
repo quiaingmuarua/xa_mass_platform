@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
@@ -114,7 +115,18 @@ class HttpWorkerDeliveryGatewayClientTest {
         respond(202, "{\"acceptedCount\":1}");
         assertThatThrownBy(() ->
                 client.appendResults("adapter-1", results)
-        ).isInstanceOf(WorkerDeliveryAdapterException.class);
+        )
+                .isInstanceOfSatisfying(
+                        WorkerDeliveryAdapterException.class,
+                        error -> {
+                            assertThat(error.errorCode()).isEqualTo(
+                                    WorkerDeliveryAdapterErrorCode
+                                            .GATEWAY_PROTOCOL_ERROR
+                            );
+                            assertThat(error.operation())
+                                    .isEqualTo("gateway.appendResults");
+                        }
+                );
     }
 
     @Test
@@ -122,7 +134,18 @@ class HttpWorkerDeliveryGatewayClientTest {
         respond(503, "{}");
         assertThatThrownBy(() ->
                 client.consumeWorkerCommands("adapter-1", 100)
-        ).isInstanceOf(WorkerDeliveryAdapterException.class);
+        )
+                .isInstanceOfSatisfying(
+                        WorkerDeliveryAdapterException.class,
+                        error -> {
+                            assertThat(error.errorCode()).isEqualTo(
+                                    WorkerDeliveryAdapterErrorCode
+                                            .GATEWAY_UNAVAILABLE
+                            );
+                            assertThat(error.operation())
+                                    .isEqualTo("gateway.consumeCommands");
+                        }
+                );
 
         respond(
                 200,
@@ -130,7 +153,19 @@ class HttpWorkerDeliveryGatewayClientTest {
         );
         assertThatThrownBy(() ->
                 client.consumeWorkerCommands("adapter-1", 100)
-        ).isInstanceOf(WorkerDeliveryAdapterException.class);
+        )
+                .isInstanceOfSatisfying(
+                        WorkerDeliveryAdapterException.class,
+                        error -> {
+                            assertThat(error.errorCode()).isEqualTo(
+                                    WorkerDeliveryAdapterErrorCode
+                                            .GATEWAY_PROTOCOL_ERROR
+                            );
+                            assertThat(error.operation()).isEqualTo(
+                                    "gateway.decodeCommandResponse"
+                            );
+                        }
+                );
 
         respond(202, "{\"acceptedCount\":\"one\"}");
         assertThatThrownBy(() -> client.appendResults(
@@ -141,7 +176,19 @@ class HttpWorkerDeliveryGatewayClientTest {
                         "200",
                         "null"
                 ))
-        )).isInstanceOf(WorkerDeliveryAdapterException.class);
+        ))
+                .isInstanceOfSatisfying(
+                        WorkerDeliveryAdapterException.class,
+                        error -> {
+                            assertThat(error.errorCode()).isEqualTo(
+                                    WorkerDeliveryAdapterErrorCode
+                                            .GATEWAY_PROTOCOL_ERROR
+                            );
+                            assertThat(error.operation()).isEqualTo(
+                                    "gateway.decodeResultResponse"
+                            );
+                        }
+                );
     }
 
     @Test

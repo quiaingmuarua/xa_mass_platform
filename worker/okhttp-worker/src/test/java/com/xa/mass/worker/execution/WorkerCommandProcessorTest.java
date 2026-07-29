@@ -3,6 +3,8 @@ package com.xa.mass.worker.execution;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import com.xa.mass.worker.error.WorkerErrorCode;
+import com.xa.mass.worker.error.WorkerException;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliverSeed;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
@@ -126,7 +128,7 @@ class WorkerCommandProcessorTest {
         WorkerCommandProcessor processor = processor(Map.of(
                 "test.observe",
                 WorkerEventDefinition.map(payload -> {
-                    throw new WorkerInputException("invalid");
+                    throw eventInput("event.execute", "invalid");
                 })
         ));
 
@@ -145,7 +147,10 @@ class WorkerCommandProcessorTest {
                 "test.observe",
                 WorkerEventDefinition.of(
                         payload -> {
-                            throw new WorkerInputException("invalid");
+                            throw eventInput(
+                                    "event.resolveParameters",
+                                    "invalid"
+                            );
                         },
                         parameters -> Map.of()
                 )
@@ -206,18 +211,32 @@ class WorkerCommandProcessorTest {
         );
         assertEquals(Optional.empty(), processor.process(expired));
 
-        assertThrows(WorkerProtocolException.class, () ->
-                processor.process(command("worker-2", "{}"))
+        WorkerException mismatch = assertThrows(
+                WorkerException.class,
+                () -> processor.process(command("worker-2", "{}"))
         );
+        assertEquals(
+                WorkerErrorCode.WORKER_ID_MISMATCH,
+                mismatch.errorCode()
+        );
+        assertEquals("command.verifyWorker", mismatch.operation());
         WorkerCommandEnvelope corrupt = new WorkerCommandEnvelope(
                 COMMAND_ID,
                 WorkerMessageType.TASK_ITEM,
                 100_001,
                 "{bad-json"
         );
-        assertThrows(
-                WorkerProtocolException.class,
+        WorkerException invalidSeed = assertThrows(
+                WorkerException.class,
                 () -> processor.process(corrupt)
+        );
+        assertEquals(
+                WorkerErrorCode.DELIVER_SEED_INVALID,
+                invalidSeed.errorCode()
+        );
+        assertEquals(
+                "command.decodeDeliverSeed",
+                invalidSeed.operation()
         );
     }
 
@@ -241,12 +260,27 @@ class WorkerCommandProcessorTest {
     private static String requireString(
             Map<String, Object> parameters,
             String name
-    ) throws WorkerInputException {
+    ) {
         Object value = parameters.get(name);
         if (!(value instanceof String)) {
-            throw new WorkerInputException(name + " must be a string");
+            throw eventInput(
+                    "event.resolveParameters",
+                    name + " must be a string"
+            );
         }
         return (String) value;
+    }
+
+    private static WorkerException eventInput(
+            String operation,
+            String message
+    ) {
+        return new WorkerException(
+                WorkerErrorCode.EVENT_INPUT_INVALID,
+                operation,
+                message,
+                null
+        );
     }
 
     private WorkerCommandEnvelope command(

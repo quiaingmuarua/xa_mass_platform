@@ -1,6 +1,7 @@
 package com.xa.mass.workerdelivery.adapter.http;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
@@ -18,6 +19,10 @@ import tools.jackson.databind.node.ObjectNode;
 
 final class WorkerDeliveryGatewayHttpContract {
 
+    private static final String COMMAND_DECODE_OPERATION =
+            "gateway.decodeCommandResponse";
+    private static final String RESULT_DECODE_OPERATION =
+            "gateway.decodeResultResponse";
     private static final Set<String> COMMAND_BATCH_FIELDS = Set.of(
             "workerCommandsByWorkerId"
     );
@@ -47,32 +52,45 @@ final class WorkerDeliveryGatewayHttpContract {
             JsonNode payload = mapper.readTree(value);
             if (!(payload instanceof ObjectNode object)
                     || !fieldNames(object).equals(COMMAND_BATCH_FIELDS)) {
-                throw malformed("Worker command consume response");
+                throw malformed(
+                        COMMAND_DECODE_OPERATION,
+                        "Worker command consume response"
+                );
             }
             JsonNode commands = object.get("workerCommandsByWorkerId");
             if (!(commands instanceof ObjectNode commandObject)) {
-                throw malformed("Worker command consume response");
+                throw malformed(
+                        COMMAND_DECODE_OPERATION,
+                        "Worker command consume response"
+                );
             }
             Map<String, WorkerCommandEnvelope> decoded =
                     new LinkedHashMap<>();
             commandObject.properties().forEach(entry -> {
                 if (entry.getKey().isBlank()) {
-                    throw malformed("Worker command workerId");
+                    throw malformed(
+                            COMMAND_DECODE_OPERATION,
+                            "Worker command workerId"
+                    );
                 }
                 WorkerCommandEnvelope command = codec.decodeWorkerCommand(
                         entry.getValue().toString()
                 );
                 if (command == null) {
-                    throw malformed("Worker command envelope");
+                    throw malformed(
+                            COMMAND_DECODE_OPERATION,
+                            "Worker command envelope"
+                    );
                 }
                 decoded.put(entry.getKey(), command);
             });
             return Map.copyOf(decoded);
+        } catch (WorkerDeliveryAdapterException error) {
+            throw error;
         } catch (JacksonException | IllegalArgumentException error) {
-            if (error instanceof WorkerDeliveryAdapterException adapter) {
-                throw adapter;
-            }
             throw new WorkerDeliveryAdapterException(
+                    WorkerDeliveryAdapterErrorCode.GATEWAY_PROTOCOL_ERROR,
+                    COMMAND_DECODE_OPERATION,
                     "Worker command consume response is malformed",
                     error
             );
@@ -108,11 +126,16 @@ final class WorkerDeliveryGatewayHttpContract {
             if (!(payload instanceof ObjectNode object)
                     || !fieldNames(object).equals(ACCEPTED_FIELDS)
                     || !object.get("acceptedCount").isIntegralNumber()) {
-                throw malformed("SeedResult append response");
+                throw malformed(
+                        RESULT_DECODE_OPERATION,
+                        "SeedResult append response"
+                );
             }
             return object.get("acceptedCount").intValue();
         } catch (JacksonException error) {
             throw new WorkerDeliveryAdapterException(
+                    WorkerDeliveryAdapterErrorCode.GATEWAY_PROTOCOL_ERROR,
+                    RESULT_DECODE_OPERATION,
                     "SeedResult append response is malformed",
                     error
             );
@@ -127,8 +150,16 @@ final class WorkerDeliveryGatewayHttpContract {
         }
     }
 
-    private static WorkerDeliveryAdapterException malformed(String type) {
-        return new WorkerDeliveryAdapterException(type + " is malformed");
+    private static WorkerDeliveryAdapterException malformed(
+            String operation,
+            String type
+    ) {
+        return new WorkerDeliveryAdapterException(
+                WorkerDeliveryAdapterErrorCode.GATEWAY_PROTOCOL_ERROR,
+                operation,
+                type + " is malformed",
+                null
+        );
     }
 
     private static Set<String> fieldNames(ObjectNode object) {

@@ -1,7 +1,8 @@
 package com.xa.mass.server.api.v1.workerdelivery;
 
 import com.fasterxml.jackson.annotation.JsonAnySetter;
-import com.xa.mass.server.workerdelivery.application.WorkerDeliveryException;
+import com.xa.mass.server.error.ServerErrorCode;
+import com.xa.mass.server.error.ServerException;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import jakarta.validation.Valid;
@@ -23,7 +24,7 @@ public final class WorkerDeliveryHttpContract {
     ) {
         @JsonAnySetter
         void rejectUnknownField(String name, Object value) {
-            throw WorkerDeliveryException.invalid(
+            throw invalid(
                     "Unknown Worker command consume field: " + name
             );
         }
@@ -78,13 +79,13 @@ public final class WorkerDeliveryHttpContract {
                         opaqueResultPayload
                 );
             } catch (IllegalArgumentException error) {
-                throw WorkerDeliveryException.invalid(error.getMessage());
+                throw invalid(error.getMessage());
             }
         }
 
         @JsonAnySetter
         void rejectUnknownField(String name, Object value) {
-            throw WorkerDeliveryException.invalid(
+            throw invalid(
                     "Unknown SeedResult field: " + name
             );
         }
@@ -95,7 +96,7 @@ public final class WorkerDeliveryHttpContract {
     ) {
         @JsonAnySetter
         void rejectUnknownField(String name, Object value) {
-            throw WorkerDeliveryException.invalid(
+            throw invalid(
                     "Unknown SeedResult batch field: " + name
             );
         }
@@ -105,5 +106,14 @@ public final class WorkerDeliveryHttpContract {
     }
 
     public record AcceptedCountResponse(int acceptedCount) {
+    }
+
+    private static ServerException invalid(String message) {
+        return new ServerException(
+                ServerErrorCode.INVALID_WORKER_DELIVERY_REQUEST,
+                "workerDelivery.decodeHttpRequest",
+                message,
+                null
+        );
     }
 }

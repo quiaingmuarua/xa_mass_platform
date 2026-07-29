@@ -9,6 +9,8 @@ import static org.mockito.Mockito.when;
 
 import com.xa.mass.kernel.delivery.SeedResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
+import com.xa.mass.server.error.ServerErrorCode;
+import com.xa.mass.server.error.ServerException;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
@@ -63,9 +65,14 @@ class WorkerDeliveryServiceTest {
                 "worker-1",
                 result
         ))
-                .isInstanceOf(WorkerDeliveryException.class)
-                .extracting(error -> ((WorkerDeliveryException) error).kind())
-                .isEqualTo(WorkerDeliveryException.Kind.INVALID);
+                .isInstanceOf(ServerException.class)
+                .extracting(
+                        error -> ((ServerException) error)
+                                .errorCode()
+                )
+                .isEqualTo(
+                        ServerErrorCode.INVALID_WORKER_DELIVERY_REQUEST
+                );
         verify(resultRuntime, never()).appendSeedResults(List.of(result));
     }
 
@@ -104,6 +111,6 @@ class WorkerDeliveryServiceTest {
                         "200",
                         "null"
                 ))
-        )).isInstanceOf(WorkerDeliveryException.class);
+        )).isInstanceOf(ServerException.class);
     }
 }

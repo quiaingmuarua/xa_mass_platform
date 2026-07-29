@@ -1,5 +1,7 @@
 package com.xa.mass.worker.execution;
 
+import com.xa.mass.worker.error.WorkerErrorCode;
+import com.xa.mass.worker.error.WorkerException;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -49,7 +51,12 @@ public final class WorkerEventDefinitionManager<R> {
         WorkerEventDefinition<?, ? extends R> definition =
                 definitions.get(eventCode);
         if (definition == null) {
-            throw new UnknownWorkerEventException(eventCode);
+            throw new WorkerException(
+                    WorkerErrorCode.EVENT_NOT_FOUND,
+                    "event.dispatch",
+                    "Unknown Worker event: " + eventCode,
+                    null
+            );
         }
         return definition.invoke(
                 Objects.requireNonNull(parameters, "parameters")

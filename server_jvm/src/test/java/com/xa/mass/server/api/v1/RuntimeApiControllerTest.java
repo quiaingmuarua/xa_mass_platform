@@ -28,7 +28,8 @@ import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeResult;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeStatus;
 import com.xa.mass.server.api.ApiExceptionHandler;
 import com.xa.mass.server.api.RequestIdFilter;
-import com.xa.mass.server.kernelbinding.PythonKernelBindingException;
+import com.xa.mass.server.error.ServerErrorCode;
+import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.kernelbinding.TaskLifecycleCommands;
 import com.xa.mass.server.kernelbinding.TaskLifecycleCommands.TaskApprovalResult;
 import com.xa.mass.server.kernelbinding.TaskLifecycleCommands.TaskApprovalStatus;
@@ -237,14 +238,14 @@ class RuntimeApiControllerTest {
                         .header("X-Request-Id", "bad-request")
                         .content("{\"taskId\":\"\"}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("MALFORMED_REQUEST"))
+                .andExpect(jsonPath("$.code").value(19001))
                 .andExpect(jsonPath("$.requestId").value("bad-request"));
 
         mockMvc.perform(post("/api/v1/tasks/task-1/items")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"items\":[null]}"))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.code").value("MALFORMED_REQUEST"));
+                .andExpect(jsonPath("$.code").value(19001));
     }
 
     @Test
@@ -296,13 +297,16 @@ class RuntimeApiControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"messageIds\":[\"message-1\"]}"))
                 .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("TASK_NOT_FOUND"));
+                .andExpect(jsonPath("$.code").value(12002));
     }
 
     @Test
     void kernelTransportFailureUsesThePublicErrorContract() throws Exception {
         when(taskLifecycle.approveTask("task-1")).thenThrow(
-                PythonKernelBindingException.unavailable(
+                new ServerException(
+                        ServerErrorCode.KERNEL_UNAVAILABLE,
+                        "kernelBinding.exchange",
+                        null,
                         new IllegalStateException("offline")
                 )
         );
@@ -310,7 +314,7 @@ class RuntimeApiControllerTest {
         mockMvc.perform(post("/api/v1/tasks/task-1/approve")
                         .header("X-Request-Id", "unavailable-request"))
                 .andExpect(status().isServiceUnavailable())
-                .andExpect(jsonPath("$.code").value("KERNEL_UNAVAILABLE"))
+                .andExpect(jsonPath("$.code").value(11001))
                 .andExpect(jsonPath("$.requestId")
                         .value("unavailable-request"));
     }

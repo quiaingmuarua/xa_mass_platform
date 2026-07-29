@@ -1,5 +1,7 @@
 package com.xa.mass.worker.execution;
 
+import com.xa.mass.worker.error.WorkerErrorCode;
+import com.xa.mass.worker.error.WorkerException;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliverSeed;
@@ -68,13 +70,19 @@ public final class WorkerCommandProcessor {
         }
         DeliverSeed seed = codec.decodeDeliverSeed(command.opaqueItem());
         if (seed == null) {
-            throw new WorkerProtocolException(
-                    "Worker command contains a malformed DeliverSeed"
+            throw new WorkerException(
+                    WorkerErrorCode.DELIVER_SEED_INVALID,
+                    "command.decodeDeliverSeed",
+                    "Worker command contains a malformed DeliverSeed",
+                    null
             );
         }
         if (!workerId.equals(seed.workerId())) {
-            throw new WorkerProtocolException(
-                    "DeliverSeed belongs to a different Worker"
+            throw new WorkerException(
+                    WorkerErrorCode.WORKER_ID_MISMATCH,
+                    "command.verifyWorker",
+                    null,
+                    null
             );
         }
 
@@ -110,10 +118,15 @@ public final class WorkerCommandProcessor {
                     "200",
                     Jsons.toJson(result)
             );
-        } catch (UnknownWorkerEventException error) {
-            return ExecutionResult.failure("1404");
-        } catch (WorkerInputException error) {
-            return ExecutionResult.failure("1400");
+        } catch (WorkerException error) {
+            if (error.errorCode()
+                    == WorkerErrorCode.EVENT_INPUT_INVALID) {
+                return ExecutionResult.failure("1400");
+            }
+            if (error.errorCode() == WorkerErrorCode.EVENT_NOT_FOUND) {
+                return ExecutionResult.failure("1404");
+            }
+            return ExecutionResult.failure("1500");
         } catch (Exception error) {
             return ExecutionResult.failure("1500");
         }
@@ -121,12 +134,15 @@ public final class WorkerCommandProcessor {
 
     private static Map<String, Object> stringKeyedMap(
             Map<?, ?> value
-    ) throws WorkerInputException {
+    ) {
         Map<String, Object> converted = new LinkedHashMap<>();
         for (Map.Entry<?, ?> entry : value.entrySet()) {
             if (!(entry.getKey() instanceof String)) {
-                throw new WorkerInputException(
-                        "Worker event parameter keys must be strings"
+                throw new WorkerException(
+                        WorkerErrorCode.EVENT_INPUT_INVALID,
+                        "event.decodeParameters",
+                        "Worker event parameter keys must be strings",
+                        null
                 );
             }
             converted.put((String) entry.getKey(), entry.getValue());

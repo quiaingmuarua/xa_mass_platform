@@ -1,17 +1,16 @@
 package com.xa.mass.worker;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.xa.mass.worker.execution.UnknownWorkerEventException;
+import com.xa.mass.worker.error.WorkerErrorCode;
+import com.xa.mass.worker.error.WorkerException;
 import com.xa.mass.worker.execution.WorkerCommandProcessor;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventDefinitionManager;
 import com.xa.mass.worker.execution.WorkerEventHandler;
 import com.xa.mass.worker.execution.WorkerEventParameterResolver;
-import com.xa.mass.worker.execution.WorkerInputException;
-import com.xa.mass.worker.execution.WorkerProtocolException;
-import com.xa.mass.worker.transport.WorkerTransportException;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
 import com.xa.mass.worker.transport.socket.SocketWorkerTransport;
 import com.xa.mass.worker.transport.websocket.WebSocketWorkerTransport;
@@ -38,6 +37,9 @@ class WorkerArchitectureBoundaryTest {
         ));
         assertTrue(build.contains(
                 "api project(':worker_delivery_contract_jvm')"
+        ));
+        assertTrue(build.contains(
+                "api project(':foundation_jvm')"
         ));
         assertTrue(build.contains(
                 "implementation 'com.squareup.okhttp3:okhttp:5.3.0'"
@@ -88,6 +90,13 @@ class WorkerArchitectureBoundaryTest {
         }) {
             assertFalse(source.contains(forbidden), forbidden);
         }
+        assertFalse(source.contains("java.util.logging"));
+        assertFalse(source.contains("LogUtils"));
+        assertTrue(source.contains("class WorkerException"));
+        assertEquals(
+                1,
+                occurrences(source, "extends CodedRuntimeException")
+        );
     }
 
     @Test
@@ -98,10 +107,8 @@ class WorkerArchitectureBoundaryTest {
                 WorkerEventDefinitionManager.class,
                 WorkerEventHandler.class,
                 WorkerEventParameterResolver.class,
-                UnknownWorkerEventException.class,
-                WorkerInputException.class,
-                WorkerProtocolException.class,
-                WorkerTransportException.class,
+                WorkerException.class,
+                WorkerErrorCode.class,
                 PollingWorkerTransport.class,
                 WebSocketWorkerTransport.class,
                 SocketWorkerTransport.class
@@ -143,5 +150,15 @@ class WorkerArchitectureBoundaryTest {
                     error
             );
         }
+    }
+
+    private static int occurrences(String value, String token) {
+        int count = 0;
+        int offset = 0;
+        while ((offset = value.indexOf(token, offset)) >= 0) {
+            count++;
+            offset += token.length();
+        }
+        return count;
     }
 }

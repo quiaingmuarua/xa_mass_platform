@@ -4,6 +4,7 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SYSTEM_
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapter;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterState;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.adapter.dispatch.WorkerDeliveryAdapterCore;
@@ -160,12 +161,18 @@ public final class SocketWorkerDeliveryAdapter
                     TimeUnit.MILLISECONDS
             );
         } catch (RuntimeException error) {
+            RuntimeException failure = classify(
+                    error,
+                    WorkerDeliveryAdapterErrorCode.LISTENER_START_FAILED,
+                    "socket.start",
+                    "Socket Adapter could not start"
+            );
             try {
                 close();
             } catch (RuntimeException closeFailure) {
-                error.addSuppressed(closeFailure);
+                failure.addSuppressed(closeFailure);
             }
-            throw error;
+            throw failure;
         }
     }
 
@@ -210,7 +217,12 @@ public final class SocketWorkerDeliveryAdapter
             state = WorkerDeliveryAdapterState.CLOSED;
         }
         if (failure != null) {
-            throw failure;
+            throw classify(
+                    failure,
+                    WorkerDeliveryAdapterErrorCode.SHUTDOWN_INTERRUPTED,
+                    "socket.close",
+                    "Socket Adapter could not close cleanly"
+            );
         }
     }
 
@@ -272,11 +284,15 @@ public final class SocketWorkerDeliveryAdapter
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
             throw new WorkerDeliveryAdapterException(
+                    WorkerDeliveryAdapterErrorCode.LISTENER_START_FAILED,
+                    "socket.startListener",
                     "Socket listener start was interrupted",
                     error
             );
         } catch (Exception error) {
             throw new WorkerDeliveryAdapterException(
+                    WorkerDeliveryAdapterErrorCode.LISTENER_START_FAILED,
+                    "socket.startListener",
                     "Could not bind Socket Adapter " + adapterId,
                     error
             );
@@ -294,12 +310,19 @@ public final class SocketWorkerDeliveryAdapter
         try {
             core.dispatchOnce(current);
         } catch (RuntimeException error) {
+            WorkerDeliveryAdapterException failure = classify(
+                    error,
+                    WorkerDeliveryAdapterErrorCode.DELIVERY_INTERRUPTED,
+                    "socket.dispatchRound",
+                    "Socket Adapter dispatch round failed"
+            );
             LOGGER.log(
                     System.Logger.Level.WARNING,
-                    "Worker Delivery Adapter round failed: adapterId={0}, "
-                            + "exceptionType={1}",
+                    "errorCode={0} operation={1} adapterId={2} message={3}",
+                    failure.errorCode().code(),
+                    failure.operation(),
                     adapterId,
-                    error.getClass().getName()
+                    failure.getMessage()
             );
         }
     }
@@ -330,6 +353,9 @@ public final class SocketWorkerDeliveryAdapter
             return accumulate(
                     failure,
                     new WorkerDeliveryAdapterException(
+                            WorkerDeliveryAdapterErrorCode
+                                    .SHUTDOWN_INTERRUPTED,
+                            "socket.stopScheduler",
                             "Adapter scheduler shutdown was interrupted",
                             error
                     )
@@ -378,11 +404,31 @@ public final class SocketWorkerDeliveryAdapter
             return accumulate(
                     failure,
                     new WorkerDeliveryAdapterException(
+                            WorkerDeliveryAdapterErrorCode
+                                    .SHUTDOWN_INTERRUPTED,
+                            "socket.stopDeliveryExecutor",
                             "Delivery executor shutdown was interrupted",
                             error
                     )
             );
         }
+    }
+
+    private static WorkerDeliveryAdapterException classify(
+            RuntimeException error,
+            WorkerDeliveryAdapterErrorCode errorCode,
+            String operation,
+            String message
+    ) {
+        if (error instanceof WorkerDeliveryAdapterException classified) {
+            return classified;
+        }
+        return new WorkerDeliveryAdapterException(
+                errorCode,
+                operation,
+                message,
+                error
+        );
     }
 
     private RuntimeException stopEventLoop(

@@ -11,7 +11,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.xa.mass.server.api.ApiExceptionHandler;
 import com.xa.mass.server.api.RequestIdFilter;
-import com.xa.mass.server.workerdelivery.application.WorkerDeliveryException;
+import com.xa.mass.server.error.ServerErrorCode;
+import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
@@ -75,8 +76,11 @@ class AdapterBatchDeliveryControllerTest {
     @Test
     void systemPollingAndMalformedBatchesAreRejected() throws Exception {
         when(service.consumeWorkerCommands("system-polling", 100))
-                .thenThrow(WorkerDeliveryException.invalid(
-                        "system-polling supports only point Worker access"
+                .thenThrow(new ServerException(
+                        ServerErrorCode.INVALID_WORKER_DELIVERY_REQUEST,
+                        "workerDelivery.consumeCommands",
+                        "system-polling supports only point Worker access",
+                        null
                 ));
 
         mockMvc.perform(post(

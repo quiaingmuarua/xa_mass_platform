@@ -1,5 +1,7 @@
 package com.xa.mass.server.kernelbinding;
 
+import com.xa.mass.server.error.ServerErrorCode;
+import com.xa.mass.server.error.ServerException;
 import java.util.Map;
 import java.util.function.Function;
 
@@ -14,14 +16,19 @@ final class KernelHttpResultDecoder {
     ) {
         Object rawStatus = payload.get("status");
         if (!(rawStatus instanceof String value)) {
-            throw PythonKernelBindingException.invalidResponse(
-                    "Kernel status is missing or invalid"
+            throw new ServerException(
+                    ServerErrorCode.INVALID_KERNEL_RESPONSE,
+                    "kernelBinding.decodeResult",
+                    "Kernel status is missing or invalid",
+                    null
             );
         }
         try {
             return decoder.apply(value);
         } catch (IllegalArgumentException error) {
-            throw PythonKernelBindingException.invalidResponse(
+            throw new ServerException(
+                    ServerErrorCode.INVALID_KERNEL_RESPONSE,
+                    "kernelBinding.decodeResult",
                     "Kernel status is unknown",
                     error
             );
@@ -34,8 +41,11 @@ final class KernelHttpResultDecoder {
             return null;
         }
         if (!(rawReason instanceof String reason)) {
-            throw PythonKernelBindingException.invalidResponse(
-                    "Kernel reason is invalid"
+            throw new ServerException(
+                    ServerErrorCode.INVALID_KERNEL_RESPONSE,
+                    "kernelBinding.decodeResult",
+                    "Kernel reason is invalid",
+                    null
             );
         }
         return reason;

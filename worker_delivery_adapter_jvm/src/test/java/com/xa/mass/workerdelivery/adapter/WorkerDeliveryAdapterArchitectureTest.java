@@ -38,6 +38,7 @@ class WorkerDeliveryAdapterArchitectureTest {
                         "api project("
                                 + "':worker_delivery_contract_jvm')"
                 )
+                .contains("api project(':foundation_jvm')")
                 .contains("io.netty:netty-transport")
                 .contains("io.netty:netty-codec")
                 .contains("io.netty:netty-codec-http")
@@ -57,6 +58,12 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("\"rr:")
                 .doesNotContain("WorkerCommandRuntime")
                 .doesNotContain("SeedResultRuntime");
+        assertThat(sources)
+                .doesNotContain("java.util.logging")
+                .doesNotContain("LogUtils");
+        assertThat(sources)
+                .contains("class WorkerDeliveryAdapterException")
+                .containsOnlyOnce("extends CodedRuntimeException");
     }
 
     @Test

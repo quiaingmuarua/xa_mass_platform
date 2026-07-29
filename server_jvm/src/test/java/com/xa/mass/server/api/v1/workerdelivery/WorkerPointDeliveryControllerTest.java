@@ -11,7 +11,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.xa.mass.server.api.ApiExceptionHandler;
 import com.xa.mass.server.api.RequestIdFilter;
-import com.xa.mass.server.workerdelivery.application.WorkerDeliveryException;
+import com.xa.mass.server.error.ServerErrorCode;
+import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
@@ -83,7 +84,7 @@ class WorkerPointDeliveryControllerTest {
                         .content(successResult().replace(COMMAND_ID, "bad")))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code")
-                        .value("INVALID_WORKER_DELIVERY_REQUEST"))
+                        .value(13001))
                 .andExpect(jsonPath("$.requestId").value("invalid-result"));
 
         mockMvc.perform(post(pointPath("results"))
@@ -95,13 +96,16 @@ class WorkerPointDeliveryControllerTest {
                 .andExpect(status().isBadRequest());
 
         when(service.pollWorkerCommand("endpoint-1", "worker-1"))
-                .thenThrow(WorkerDeliveryException.unavailable(
+                .thenThrow(new ServerException(
+                        ServerErrorCode.WORKER_DELIVERY_UNAVAILABLE,
+                        "workerDelivery.pollCommand",
+                        null,
                         new IllegalStateException("offline")
                 ));
         mockMvc.perform(post(pointPath("commands:poll")))
                 .andExpect(status().isServiceUnavailable())
                 .andExpect(jsonPath("$.code")
-                        .value("WORKER_DELIVERY_UNAVAILABLE"));
+                        .value(13002));
     }
 
     private static WorkerCommandEnvelope command() {

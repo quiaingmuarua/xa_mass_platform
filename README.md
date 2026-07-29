@@ -3,8 +3,11 @@
 Status: clean-kernel mechanism workspace, incremental JVM owner parity, and
 Runtime API.
 
-The repository contains six active areas:
+The repository contains seven active areas:
 
+- [`foundation_jvm/`](foundation_jvm/): narrow Java 11 compatible error-code
+  and coded-runtime-exception contract. Owners retain numeric ranges, one
+  module exception, and their own policy mappings.
 - [`kernel_design/`](kernel_design/): Python executable specification,
   mechanism documentation, and Redis proofs. It is the
   current semantic oracle.
@@ -25,8 +28,8 @@ The repository contains six active areas:
 - [`worker/`](worker/): Java 11 compatible OkHttp Worker library with
   Polling/WebSocket/Socket transports for JVM and Android source dependency.
 
-The shared contract and Worker jars are repository-local artifacts; they are
-not published SDKs.
+The Foundation, shared contract, and Worker jars are repository-local
+artifacts; they are not published SDKs.
 
 The superseded Java platform, frontend, SDK, server, transport, infrastructure,
 and integration code are preserved by the annotated Git tag

@@ -9,6 +9,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.adapter.message.BoundedWorkerResultBuffer;
 import com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt;
@@ -27,6 +28,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 
@@ -145,6 +147,62 @@ class WorkerDeliveryAdapterCoreTest {
 
         assertThat(round.isAlive()).isFalse();
         assertThat(maximum.get()).isLessThanOrEqualTo(3);
+    }
+
+    @Test
+    void interruptedDeliveryWaitUsesTheOwnerErrorCode()
+            throws Exception {
+        FakeGateway gateway = new FakeGateway();
+        FakeConnectionRegistry connections =
+                new FakeConnectionRegistry();
+        WorkerDeliveryAdapterCore core = core(
+                gateway,
+                connections,
+                10,
+                100
+        );
+        CountDownLatch deliveryStarted = new CountDownLatch(1);
+        CountDownLatch releaseDelivery = new CountDownLatch(1);
+        connections.respond("worker-1", ignored -> {
+            deliveryStarted.countDown();
+            try {
+                releaseDelivery.await(2, TimeUnit.SECONDS);
+                return DELIVERED;
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+                return UNKNOWN;
+            }
+        });
+        gateway.batches.add(Map.of(
+                "worker-1",
+                command(COMMAND_ID, "worker-1", 2_000)
+        ));
+        AtomicReference<Throwable> failure = new AtomicReference<>();
+        Thread round = Thread.ofPlatform().start(() -> {
+            try {
+                core.dispatchOnce(executor(1));
+            } catch (Throwable error) {
+                failure.set(error);
+            }
+        });
+
+        assertThat(deliveryStarted.await(2, TimeUnit.SECONDS)).isTrue();
+        round.interrupt();
+        round.join(2_000);
+        releaseDelivery.countDown();
+
+        assertThat(failure.get())
+                .isInstanceOf(WorkerDeliveryAdapterException.class);
+        assertThat(
+                ((WorkerDeliveryAdapterException) failure.get())
+                        .errorCode()
+        ).isEqualTo(
+                WorkerDeliveryAdapterErrorCode.DELIVERY_INTERRUPTED
+        );
+        assertThat(
+                ((WorkerDeliveryAdapterException) failure.get())
+                        .operation()
+        ).isEqualTo("adapter.dispatchCommands");
     }
 
     @Test
@@ -338,7 +396,10 @@ class WorkerDeliveryAdapterCoreTest {
             if (appendFailures > 0) {
                 appendFailures--;
                 throw new WorkerDeliveryAdapterException(
-                        "gateway unavailable"
+                        WorkerDeliveryAdapterErrorCode.GATEWAY_UNAVAILABLE,
+                        "gateway.appendResults",
+                        "gateway unavailable",
+                        null
                 );
             }
             appendedResults.add(List.copyOf(results));
@@ -375,6 +436,8 @@ class WorkerDeliveryAdapterCoreTest {
             } catch (InterruptedException error) {
                 Thread.currentThread().interrupt();
                 throw new WorkerDeliveryAdapterException(
+                        WorkerDeliveryAdapterErrorCode.GATEWAY_UNAVAILABLE,
+                        "gateway.consumeCommands",
                         "interrupted",
                         error
                 );

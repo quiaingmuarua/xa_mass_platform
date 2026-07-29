@@ -72,6 +72,9 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("KernelCommandClient")
                 .doesNotContain("TaskDataRuntime")
                 .doesNotContain("WorkerDeliveryRuntime");
+        assertThat(serverSources)
+                .contains("class ServerException")
+                .containsOnlyOnce("extends CodedRuntimeException");
         assertThat(readSourcesExcluding(
                 SERVER_SOURCE,
                 SHARED_REDIS,

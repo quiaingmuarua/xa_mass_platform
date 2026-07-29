@@ -4,6 +4,10 @@ Status: current repository handoff.
 
 ## Mainline
 
+- `foundation_jvm/` contains only the cross-module `ErrorCode` and
+  `CodedRuntimeException` mechanism. Owner modules define numeric ranges, use
+  one coded exception per module, and retain HTTP, Worker outcome, retry, and
+  logging policy.
 - `kernel_design/` is the current mechanism oracle.
 - `kernel_jvm/` is the JVM parity surface for Kernel owner contracts and
   selected owner-specific Redis providers. It does not implement scheduling,
@@ -48,6 +52,12 @@ tag.
 - Scope mechanism searches, diffs, and Python tests to `kernel_design/`.
 - Preserve explicit owner boundaries across core contracts, scheduling,
   Redis implementations, assembly, and external protocol examples.
+- Keep `foundation_jvm` free of owner codes, HTTP status, log levels,
+  framework dependencies, context maps, and generic utility classes.
+- Keep coded exceptions to `errorCode + owner.method operation + message +
+  cause`. Complete execution context belongs at log and tracing call sites.
+- Use JDK `System.Logger` directly. Log numeric owner error codes, operation,
+  and safe identifiers, never opaque Worker payload or result context.
 - Do not add bridges, compatibility aliases, mirrored DTOs, or speculative
   modules.
 - Keep score values opaque outside their owner operations.
@@ -80,8 +90,9 @@ tag.
   dynamic registration or discovery surface. Its private HTTP DTOs are proved
   against Server JSON with bilateral golden tests; do not add an in-process
   fast path.
-- `worker/okhttp-worker` may depend only on the shared contract and
-  Android-compatible transport libraries. It must compile with `--release 11`,
+- `worker/okhttp-worker` may depend only on `foundation_jvm`, the shared
+  Worker Delivery contract, and Android-compatible transport libraries. It
+  must compile with `--release 11`,
   expose no OkHttp types, and must not import Android, JNDI, Server, Kernel,
   Redis, platform business handlers, score, Pacer, or TaskType. JVM and Android
   applications own threads, lifecycle, permissions, and static handler

@@ -1,7 +1,8 @@
 package com.xa.mass.worker.transport.socket;
 
 import com.xa.mass.worker.execution.WorkerCommandProcessor;
-import com.xa.mass.worker.execution.WorkerProtocolException;
+import com.xa.mass.worker.error.WorkerErrorCode;
+import com.xa.mass.worker.error.WorkerException;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemCommandMessage;
@@ -91,7 +92,7 @@ public final class SocketWorkerTransport implements AutoCloseable {
             while (running) {
                 try {
                     runConnection();
-                } catch (IOException | WorkerProtocolException ignored) {
+                } catch (IOException | WorkerException ignored) {
                     closeCurrentSocket();
                 }
                 if (running) {
@@ -152,8 +153,11 @@ public final class SocketWorkerTransport implements AutoCloseable {
                 WorkerConnectionMessage message =
                         codec.decodeWorkerConnectionMessage(line);
                 if (!(message instanceof TaskItemCommandMessage)) {
-                    throw new WorkerProtocolException(
-                            "Socket Worker received an invalid command"
+                    throw new WorkerException(
+                            WorkerErrorCode.COMMAND_MESSAGE_INVALID,
+                            "socket.decodeCommand",
+                            "Socket Worker received an invalid command",
+                            null
                     );
                 }
                 TaskItemCommandMessage command =

@@ -15,6 +15,8 @@ import com.xa.mass.server.api.v1.model.TaskItemRequest;
 import com.xa.mass.server.api.v1.model.TaskItemResultsLoadResponse;
 import com.xa.mass.server.api.v1.model.TaskItemsAppendRequest;
 import com.xa.mass.server.api.v1.model.TaskItemsAppendResponse;
+import com.xa.mass.server.error.ServerErrorCode;
+import com.xa.mass.server.error.ServerException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -92,10 +94,15 @@ public final class TaskDataService {
                 results.putAll(taskRuntime.appendItems(taskId, validItems));
             }
             return appendResponse(orderedResults(latest.keySet(), results));
-        } catch (TaskDataException error) {
+        } catch (ServerException error) {
             throw error;
         } catch (RuntimeException error) {
-            throw TaskDataException.unavailable(error);
+            throw new ServerException(
+                    ServerErrorCode.TASK_DATA_UNAVAILABLE,
+                    "taskData.appendItems",
+                    null,
+                    error
+            );
         }
     }
 
@@ -111,7 +118,12 @@ public final class TaskDataService {
                     .loadTaskAllocationDescriptors(List.of(taskId))
                     .get(taskId);
             if (descriptor == null) {
-                throw TaskDataException.notFound("Task was not found");
+                throw new ServerException(
+                        ServerErrorCode.TASK_NOT_FOUND,
+                        "taskData.loadSuccessResults",
+                        null,
+                        null
+                );
             }
             return new TaskItemResultsLoadResponse(
                     taskRuntime.loadTaskItemSuccessResults(
@@ -119,10 +131,15 @@ public final class TaskDataService {
                             uniqueIds
                     )
             );
-        } catch (TaskDataException error) {
+        } catch (ServerException error) {
             throw error;
         } catch (RuntimeException error) {
-            throw TaskDataException.unavailable(error);
+            throw new ServerException(
+                    ServerErrorCode.TASK_DATA_UNAVAILABLE,
+                    "taskData.loadSuccessResults",
+                    null,
+                    error
+            );
         }
     }
 
@@ -199,8 +216,11 @@ public final class TaskDataService {
         var latest = new LinkedHashMap<String, TaskItemRequest>();
         for (TaskItemRequest item : items) {
             if (item == null) {
-                throw TaskDataException.invalid(
-                        "TaskItem must be present"
+                throw new ServerException(
+                        ServerErrorCode.INVALID_TASK_DATA_REQUEST,
+                        "taskData.appendItems",
+                        "TaskItem must be present",
+                        null
                 );
             }
             latest.put(item.messageId(), item);

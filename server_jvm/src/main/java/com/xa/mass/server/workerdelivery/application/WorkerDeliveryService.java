@@ -6,6 +6,8 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultOutc
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
 import com.xa.mass.kernel.delivery.SeedResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
+import com.xa.mass.server.error.ServerErrorCode;
+import com.xa.mass.server.error.ServerException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,7 +41,7 @@ public final class WorkerDeliveryService {
             }
             return command;
         } catch (RuntimeException error) {
-            throw WorkerDeliveryException.unavailable(error);
+            throw unavailable("workerDelivery.pollCommand", error);
         }
     }
 
@@ -47,7 +49,8 @@ public final class WorkerDeliveryService {
             String endpointManagerId,
             int limit
     ) {
-        requireAdapterBatchIdentity(endpointManagerId);
+        String operation = "workerDelivery.consumeCommands";
+        requireAdapterBatchIdentity(endpointManagerId, operation);
         try {
             Map<String, WorkerCommandEnvelope> commands =
                     commandRuntime.consumeWorkerCommands(
@@ -63,10 +66,10 @@ public final class WorkerDeliveryService {
                 }
             });
             return Map.copyOf(active);
-        } catch (WorkerDeliveryException error) {
+        } catch (ServerException error) {
             throw error;
         } catch (RuntimeException error) {
-            throw WorkerDeliveryException.unavailable(error);
+            throw unavailable(operation, error);
         }
     }
 
@@ -75,69 +78,112 @@ public final class WorkerDeliveryService {
             String workerId,
             SeedResult result
     ) {
-        requireNonBlank(endpointManagerId, "endpointManagerId");
-        requireNonBlank(workerId, "workerId");
+        String operation = "workerDelivery.appendWorkerResult";
+        requireNonBlank(endpointManagerId, "endpointManagerId", operation);
+        requireNonBlank(workerId, "workerId", operation);
         SeedResultOutcomeClass outcomeClass =
                 WorkerDeliveryProtocol.classifyOutcomeCode(
                         result.outcomeCode()
-                );
+        );
         if (outcomeClass == SeedResultOutcomeClass.ADAPTER_REJECTION) {
-            throw WorkerDeliveryException.invalid(
+            throw invalid(
+                    operation,
                     "Worker result outcome code must be 200 or 1xxx"
             );
         }
-        appendResults(List.of(result));
+        appendResults(List.of(result), operation);
     }
 
     public int appendAdapterResults(
             String endpointManagerId,
             List<SeedResult> results
     ) {
-        requireAdapterBatchIdentity(endpointManagerId);
+        String operation = "workerDelivery.appendAdapterResults";
+        requireAdapterBatchIdentity(endpointManagerId, operation);
         if (results.isEmpty()) {
-            throw WorkerDeliveryException.invalid(
+            throw invalid(
+                    operation,
                     "Adapter result batch must not be empty"
             );
         }
-        appendResults(results);
+        appendResults(results, operation);
         return results.size();
     }
 
-    private void appendResults(List<SeedResult> results) {
+    private void appendResults(
+            List<SeedResult> results,
+            String operation
+    ) {
         try {
             int accepted = resultRuntime.appendSeedResults(results);
             if (accepted != results.size()) {
-                throw WorkerDeliveryException.unavailable(
+                throw unavailable(
+                        operation,
                         new IllegalStateException(
                                 "SeedResult batch was not fully accepted"
                         )
                 );
             }
-        } catch (WorkerDeliveryException error) {
+        } catch (ServerException error) {
             throw error;
         } catch (RuntimeException error) {
-            throw WorkerDeliveryException.unavailable(error);
+            throw unavailable(operation, error);
         }
     }
 
     private static void requireAdapterBatchIdentity(
-            String endpointManagerId
+            String endpointManagerId,
+            String operation
     ) {
-        requireNonBlank(endpointManagerId, "endpointManagerId");
+        requireNonBlank(
+                endpointManagerId,
+                "endpointManagerId",
+                operation
+        );
         if (WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID.equals(
                 endpointManagerId
         )) {
-            throw WorkerDeliveryException.invalid(
+            throw invalid(
+                    operation,
                     "system-polling supports only point Worker access"
             );
         }
     }
 
-    private static void requireNonBlank(String value, String name) {
+    private static void requireNonBlank(
+            String value,
+            String name,
+            String operation
+    ) {
         if (value == null || value.isBlank()) {
-            throw WorkerDeliveryException.invalid(
+            throw invalid(
+                    operation,
                     name + " must be non-blank"
             );
         }
+    }
+
+    private static ServerException invalid(
+            String operation,
+            String message
+    ) {
+        return new ServerException(
+                ServerErrorCode.INVALID_WORKER_DELIVERY_REQUEST,
+                operation,
+                message,
+                null
+        );
+    }
+
+    private static ServerException unavailable(
+            String operation,
+            Throwable cause
+    ) {
+        return new ServerException(
+                ServerErrorCode.WORKER_DELIVERY_UNAVAILABLE,
+                operation,
+                null,
+                cause
+        );
     }
 }

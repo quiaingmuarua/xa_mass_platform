@@ -1,6 +1,7 @@
 package com.xa.mass.workerdelivery.adapter.http;
 
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
@@ -60,6 +61,7 @@ public final class HttpWorkerDeliveryGatewayClient
             String endpointManagerId,
             int limit
     ) {
+        String operation = "gateway.consumeCommands";
         String body = contract.encodeConsumeRequest(limit);
         HttpResponse<String> response = send(
                 request(endpointManagerId, "commands:consume")
@@ -67,10 +69,12 @@ public final class HttpWorkerDeliveryGatewayClient
                                 body,
                                 StandardCharsets.UTF_8
                         ))
-                        .build()
+                        .build(),
+                operation
         );
         if (response.statusCode() != 200) {
             throw statusFailure(
+                    operation,
                     "Worker command consume",
                     response.statusCode()
             );
@@ -83,6 +87,7 @@ public final class HttpWorkerDeliveryGatewayClient
             String endpointManagerId,
             List<SeedResult> results
     ) {
+        String operation = "gateway.appendResults";
         String body = contract.encodeResultBatch(results);
         HttpResponse<String> response = send(
                 request(endpointManagerId, "results:append")
@@ -90,10 +95,12 @@ public final class HttpWorkerDeliveryGatewayClient
                                 body,
                                 StandardCharsets.UTF_8
                         ))
-                        .build()
+                        .build(),
+                operation
         );
         if (response.statusCode() != 202) {
             throw statusFailure(
+                    operation,
                     "SeedResult append",
                     response.statusCode()
             );
@@ -101,7 +108,10 @@ public final class HttpWorkerDeliveryGatewayClient
         int accepted = contract.decodeAcceptedCount(response.body());
         if (accepted != results.size()) {
             throw new WorkerDeliveryAdapterException(
-                    "SeedResult batch was not fully accepted"
+                    WorkerDeliveryAdapterErrorCode.GATEWAY_PROTOCOL_ERROR,
+                    operation,
+                    "SeedResult batch was not fully accepted",
+                    null
             );
         }
     }
@@ -128,7 +138,10 @@ public final class HttpWorkerDeliveryGatewayClient
                 .header("Content-Type", "application/json");
     }
 
-    private HttpResponse<String> send(HttpRequest request) {
+    private HttpResponse<String> send(
+            HttpRequest request,
+            String operation
+    ) {
         try {
             return http.send(
                     request,
@@ -138,12 +151,16 @@ public final class HttpWorkerDeliveryGatewayClient
             );
         } catch (IOException error) {
             throw new WorkerDeliveryAdapterException(
+                    WorkerDeliveryAdapterErrorCode.GATEWAY_UNAVAILABLE,
+                    operation,
                     "Worker Delivery Gateway request failed",
                     error
             );
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
             throw new WorkerDeliveryAdapterException(
+                    WorkerDeliveryAdapterErrorCode.GATEWAY_UNAVAILABLE,
+                    operation,
                     "Worker Delivery Gateway request was interrupted",
                     error
             );
@@ -152,10 +169,14 @@ public final class HttpWorkerDeliveryGatewayClient
 
     private static WorkerDeliveryAdapterException statusFailure(
             String operation,
+            String action,
             int statusCode
     ) {
         return new WorkerDeliveryAdapterException(
-                operation + " failed with HTTP " + statusCode
+                WorkerDeliveryAdapterErrorCode.GATEWAY_UNAVAILABLE,
+                operation,
+                action + " failed with HTTP " + statusCode,
+                null
         );
     }
 

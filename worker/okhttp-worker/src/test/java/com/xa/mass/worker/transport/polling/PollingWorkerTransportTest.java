@@ -6,9 +6,10 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.xa.mass.worker.error.WorkerErrorCode;
+import com.xa.mass.worker.error.WorkerException;
 import com.xa.mass.worker.execution.WorkerCommandProcessor;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
-import com.xa.mass.worker.transport.WorkerTransportException;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliverSeed;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
@@ -117,7 +118,15 @@ class PollingWorkerTransportTest {
         server.enqueue(response(200, command()));
         server.enqueue(response(503, ""));
 
-        assertThrows(WorkerTransportException.class, transport::runOnce);
+        WorkerException failure = assertThrows(
+                WorkerException.class,
+                transport::runOnce
+        );
+        assertEquals(
+                WorkerErrorCode.RESULT_SUBMIT_FAILED,
+                failure.errorCode()
+        );
+        assertEquals("polling.submitResult", failure.operation());
         assertTrue(transport.hasPendingResult());
         assertEquals(2, server.getRequestCount());
 
@@ -128,6 +137,33 @@ class PollingWorkerTransportTest {
         RecordedRequest retry =
                 server.takeRequest(1, TimeUnit.SECONDS);
         assertNotNull(retry);
+    }
+
+    @Test
+    void pollAndMalformedResponseExposeStableErrorCodes()
+            throws Exception {
+        server.enqueue(response(503, ""));
+
+        WorkerException pollFailure = assertThrows(
+                WorkerException.class,
+                transport::runOnce
+        );
+        assertEquals(
+                WorkerErrorCode.COMMAND_POLL_FAILED,
+                pollFailure.errorCode()
+        );
+        assertEquals("polling.pollCommand", pollFailure.operation());
+
+        server.enqueue(response(200, "{bad-json"));
+        WorkerException invalidResponse = assertThrows(
+                WorkerException.class,
+                transport::runOnce
+        );
+        assertEquals(
+                WorkerErrorCode.COMMAND_RESPONSE_INVALID,
+                invalidResponse.errorCode()
+        );
+        assertEquals("polling.pollCommand", invalidResponse.operation());
     }
 
     @Test

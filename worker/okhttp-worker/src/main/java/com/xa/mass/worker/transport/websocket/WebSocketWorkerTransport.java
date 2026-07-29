@@ -1,7 +1,7 @@
 package com.xa.mass.worker.transport.websocket;
 
 import com.xa.mass.worker.execution.WorkerCommandProcessor;
-import com.xa.mass.worker.execution.WorkerProtocolException;
+import com.xa.mass.worker.error.WorkerException;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemCommandMessage;
@@ -249,7 +249,7 @@ public final class WebSocketWorkerTransport
         Optional<SeedResult> result;
         try {
             result = processor.process(message.command());
-        } catch (WorkerProtocolException error) {
+        } catch (WorkerException error) {
             synchronized (this) {
                 processing = false;
                 WebSocket current = socket;

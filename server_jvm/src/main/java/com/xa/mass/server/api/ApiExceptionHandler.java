@@ -1,9 +1,8 @@
 package com.xa.mass.server.api;
 
 import com.xa.mass.server.api.v1.model.ApiErrorResponse;
-import com.xa.mass.server.kernelbinding.PythonKernelBindingException;
-import com.xa.mass.server.taskdata.TaskDataException;
-import com.xa.mass.server.workerdelivery.application.WorkerDeliveryException;
+import com.xa.mass.server.error.ServerErrorCode;
+import com.xa.mass.server.error.ServerException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.ConstraintViolationException;
 import org.springframework.http.HttpStatus;
@@ -16,14 +15,14 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public final class ApiExceptionHandler {
 
-    @ExceptionHandler(PythonKernelBindingException.class)
-    public ResponseEntity<ApiErrorResponse> kernelClientFailure(
-            PythonKernelBindingException error,
+    @ExceptionHandler(ServerException.class)
+    public ResponseEntity<ApiErrorResponse> serverFailure(
+            ServerException error,
             HttpServletRequest request
     ) {
-        return ResponseEntity.status(error.responseStatus()).body(
+        return ResponseEntity.status(statusFor(error.errorCode())).body(
                 new ApiErrorResponse(
-                        error.errorCode(),
+                        error.errorCode().code(),
                         error.getMessage(),
                         requestId(request)
                 )
@@ -41,57 +40,31 @@ public final class ApiExceptionHandler {
     ) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
                 new ApiErrorResponse(
-                        "MALFORMED_REQUEST",
-                        "Request body or parameters are invalid",
+                        ServerErrorCode.MALFORMED_REQUEST.code(),
+                        ServerErrorCode.MALFORMED_REQUEST.defaultMessage(),
                         requestId(request)
                 )
         );
     }
 
-    @ExceptionHandler(WorkerDeliveryException.class)
-    public ResponseEntity<ApiErrorResponse> workerDeliveryFailure(
-            WorkerDeliveryException error,
-            HttpServletRequest request
-    ) {
-        HttpStatus status = error.kind()
-                == WorkerDeliveryException.Kind.INVALID
-                ? HttpStatus.BAD_REQUEST
-                : HttpStatus.SERVICE_UNAVAILABLE;
-        String code = error.kind()
-                == WorkerDeliveryException.Kind.INVALID
-                ? "INVALID_WORKER_DELIVERY_REQUEST"
-                : "WORKER_DELIVERY_UNAVAILABLE";
-        return ResponseEntity.status(status).body(
-                new ApiErrorResponse(
-                        code,
-                        error.getMessage(),
-                        requestId(request)
-                )
-        );
-    }
-
-    @ExceptionHandler(TaskDataException.class)
-    public ResponseEntity<ApiErrorResponse> taskDataFailure(
-            TaskDataException error,
-            HttpServletRequest request
-    ) {
-        HttpStatus status = switch (error.kind()) {
-            case INVALID -> HttpStatus.BAD_REQUEST;
-            case NOT_FOUND -> HttpStatus.NOT_FOUND;
-            case UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE;
+    private static HttpStatus statusFor(ServerErrorCode errorCode) {
+        return switch (errorCode) {
+            case KERNEL_UNAVAILABLE,
+                    KERNEL_REJECTED_RETRYABLE,
+                    TASK_DATA_UNAVAILABLE,
+                    WORKER_DELIVERY_UNAVAILABLE ->
+                    HttpStatus.SERVICE_UNAVAILABLE;
+            case KERNEL_TIMEOUT -> HttpStatus.GATEWAY_TIMEOUT;
+            case INVALID_KERNEL_RESPONSE -> HttpStatus.BAD_GATEWAY;
+            case KERNEL_REJECTED_NOT_FOUND,
+                    TASK_NOT_FOUND -> HttpStatus.NOT_FOUND;
+            case KERNEL_REJECTED_CONFLICT -> HttpStatus.CONFLICT;
+            case KERNEL_REJECTED_INVALID ->
+                    HttpStatus.UNPROCESSABLE_ENTITY;
+            case INVALID_TASK_DATA_REQUEST,
+                    INVALID_WORKER_DELIVERY_REQUEST,
+                    MALFORMED_REQUEST -> HttpStatus.BAD_REQUEST;
         };
-        String code = switch (error.kind()) {
-            case INVALID -> "INVALID_TASK_DATA_REQUEST";
-            case NOT_FOUND -> "TASK_NOT_FOUND";
-            case UNAVAILABLE -> "TASK_DATA_UNAVAILABLE";
-        };
-        return ResponseEntity.status(status).body(
-                new ApiErrorResponse(
-                        code,
-                        error.getMessage(),
-                        requestId(request)
-                )
-        );
     }
 
     private static String requestId(HttpServletRequest request) {

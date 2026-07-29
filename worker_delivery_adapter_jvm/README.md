@@ -17,6 +17,27 @@ Map<adapterId, config>
 It is a plain `java-library`. It does not depend on Spring, Spring Boot,
 Server, Kernel, Redis, score, or Pacer code.
 
+Runtime failures use the module's single
+`WorkerDeliveryAdapterException` with numeric
+`WorkerDeliveryAdapterErrorCode` values in `20000..29999`, through the narrow
+[`foundation_jvm`](../foundation_jvm/README.md) contract. Gateway
+unavailability, malformed Gateway responses, interrupted delivery, listener
+startup, and interrupted shutdown are code categories, not exception
+subclasses. Constructor precondition failures remain
+`IllegalArgumentException`; they are programming errors rather than runtime
+Adapter evidence.
+
+Adapter logs use JDK `System.Logger` directly:
+
+```text
+errorCode=22001 operation=gateway.consumeCommands adapterId=<id> message=...
+```
+
+Logs and tracing call sites may add Adapter identifiers and complete execution
+context. The exception itself contains only code, operation, message, cause,
+and stack. Neither exceptions nor logs include `opaqueItem`,
+`opaqueResultContext`, secrets, or complete business payloads.
+
 ## Instance Boundary
 
 One concrete Adapter instance owns:
