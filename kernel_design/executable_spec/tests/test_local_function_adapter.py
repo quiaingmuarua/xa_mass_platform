@@ -10,13 +10,10 @@ from kernel_design.executable_spec.test_support import (
     WorkerMeta,
 )
 from kernel_design.executable_spec.assembly import (
-    DeliverSeed,
     WorkerCommandConsumerClient,
-    WorkerCommandEnvelope,
-    WorkerMessageType,
-    SeedResultCommandClient,
-    decode_deliver_seed,
-    encode_deliver_seed,
+    WorkerCommand,
+    WorkerMessageEndpoint,
+    WorkerResultCommandClient,
 )
 
 
@@ -25,12 +22,12 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
 
     def setUp(self) -> None:
         self.consumer = Mock(spec=WorkerCommandConsumerClient)
-        self.result_commands = Mock(spec=SeedResultCommandClient)
-        self.result_commands.append_seed_results.return_value = 1
+        self.result_commands = Mock(spec=WorkerResultCommandClient)
+        self.result_commands.append_worker_results.return_value = 1
         self.adapter = LocalFunctionTransportAdapter(
             endpoint_manager_id="endpoint-manager-1",
             worker_command_consumer=self.consumer,
-            seed_result_commands=self.result_commands,
+            worker_result_commands=self.result_commands,
         )
         self.adapter.register_worker(
             "worker-1",
@@ -41,21 +38,24 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
     def command(
         *,
         worker_id: str = "worker-1",
-        delivery_item: str | None = None,
+        event_code: str = "event-1",
+        payload: str = '{"value":1}',
         execute_before_millis: int = 105_000,
         result_context: str = "opaque-context",
-    ) -> WorkerCommandEnvelope:
-        seed = DeliverSeed(
-            worker_id,
-            delivery_item or '{"eventCode":"event-1","payload":{"value":1}}',
-            result_context,
-        )
-        return WorkerCommandEnvelope(
-            command_id=str(uuid5(NAMESPACE_DNS, worker_id + result_context)),
-            message_type=WorkerMessageType.TASK_ITEM,
-            execute_before_millis=execute_before_millis,
-            opaque_item=encode_deliver_seed(seed),
-        )
+    ) -> dict[str, WorkerCommand]:
+        return {
+            worker_id: WorkerCommand(
+                message_id=str(
+                    uuid5(NAMESPACE_DNS, worker_id + result_context)
+                ),
+                src=WorkerMessageEndpoint.TASK,
+                dst=WorkerMessageEndpoint.WORKER,
+                message_type=event_code,
+                execute_before_millis=execute_before_millis,
+                payload=payload,
+                forward=result_context,
+            )
+        }
 
     def drain(self) -> int:
         with patch.object(
@@ -67,13 +67,11 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
 
     @staticmethod
     def batch(
-        *commands: WorkerCommandEnvelope,
-    ) -> dict[str, WorkerCommandEnvelope]:
+        *commands: dict[str, WorkerCommand],
+    ) -> dict[str, WorkerCommand]:
         worker_commands = {}
-        for command in commands:
-            seed = decode_deliver_seed(command.opaque_item)
-            assert seed is not None
-            worker_commands[seed.worker_id] = command
+        for command_batch in commands:
+            worker_commands.update(command_batch)
         return worker_commands
 
     def test_handler_success_appends_one_deterministic_result_batch(self) -> None:
@@ -94,13 +92,16 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
         payload, worker_meta = handler.call_args.args
         self.assertEqual({"value": 1}, payload)
         self.assertEqual("value", worker_meta.attributes["local"])
-        result = self.result_commands.append_seed_results.call_args.kwargs[
+        result = self.result_commands.append_worker_results.call_args.kwargs[
             "results"
         ][0]
-        self.assertEqual("opaque-context", result.opaque_result_context)
-        self.assertEqual(self.command().command_id, result.command_id)
+        self.assertEqual("opaque-context", result.forward)
+        self.assertEqual(
+            self.command()["worker-1"].message_id,
+            result.message_id,
+        )
         self.assertEqual("200", result.outcome_code)
-        self.assertEqual('{"a":1,"z":2}', result.opaque_result_payload)
+        self.assertEqual('{"a":1,"z":2}', result.payload)
 
     def test_worker_failure_code_is_forwarded_without_subcode_parsing(self) -> None:
         self.adapter.register_event_handler(
@@ -113,7 +114,7 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
 
         self.assertEqual(1, self.drain())
 
-        result = self.result_commands.append_seed_results.call_args.kwargs[
+        result = self.result_commands.append_worker_results.call_args.kwargs[
             "results"
         ][0]
         self.assertEqual("1409", result.outcome_code)
@@ -128,7 +129,7 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
         ):
             with self.subTest(handler=handler):
                 self.result_commands.reset_mock()
-                self.result_commands.append_seed_results.return_value = 1
+                self.result_commands.append_worker_results.return_value = 1
                 self.adapter.register_event_handler("event-1", handler)
                 self.consumer.consume_worker_commands.return_value = self.batch(
                     self.command()
@@ -136,11 +137,11 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
 
                 self.assertEqual(1, self.drain())
 
-                result = self.result_commands.append_seed_results.call_args.kwargs[
+                result = self.result_commands.append_worker_results.call_args.kwargs[
                     "results"
                 ][0]
                 self.assertEqual("1500", result.outcome_code)
-                self.assertIsNone(result.opaque_result_payload)
+                self.assertEqual("null", result.payload)
 
     def test_expired_corrupt_and_missing_handler_are_bounded(self) -> None:
         self.adapter.register_worker("worker-2", WorkerMeta({}))
@@ -149,17 +150,18 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
             self.command(execute_before_millis=self.NOW_MILLIS),
             self.command(
                 worker_id="worker-2",
-                delivery_item='{"eventCode":"missing","payload":{}}',
+                event_code="missing",
+                payload="{}",
             ),
             self.command(
                 worker_id="worker-3",
-                delivery_item="{bad-json",
+                payload="{bad-json",
             ),
         )
 
         self.assertEqual(1, self.drain())
 
-        results = self.result_commands.append_seed_results.call_args.kwargs[
+        results = self.result_commands.append_worker_results.call_args.kwargs[
             "results"
         ]
         self.assertEqual(
@@ -176,7 +178,7 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
 
         self.assertEqual(0, self.drain())
 
-        self.result_commands.append_seed_results.assert_not_called()
+        self.result_commands.append_worker_results.assert_not_called()
 
     def test_worker_removed_after_consume_leaves_unknown_result(self) -> None:
         def consume(**_: object):
@@ -187,7 +189,7 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
 
         self.assertEqual(0, self.drain())
 
-        self.result_commands.append_seed_results.assert_not_called()
+        self.result_commands.append_worker_results.assert_not_called()
 
     def test_one_drain_uses_one_consume_and_one_append(self) -> None:
         self.adapter.register_event_handler(
@@ -202,7 +204,7 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
                 result_context="context-2",
             ),
         )
-        self.result_commands.append_seed_results.return_value = 2
+        self.result_commands.append_worker_results.return_value = 2
 
         self.assertEqual(2, self.drain())
 
@@ -210,13 +212,13 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
             endpoint_manager_id="endpoint-manager-1",
             limit=10,
         )
-        self.result_commands.append_seed_results.assert_called_once()
-        results = self.result_commands.append_seed_results.call_args.kwargs[
+        self.result_commands.append_worker_results.assert_called_once()
+        results = self.result_commands.append_worker_results.call_args.kwargs[
             "results"
         ]
         self.assertEqual(
             ("null", "null"),
-            tuple(result.opaque_result_payload for result in results),
+            tuple(result.payload for result in results),
         )
 
     def test_append_error_propagates_without_adapter_compensation(self) -> None:
@@ -227,7 +229,7 @@ class LocalFunctionTransportAdapterTest(unittest.TestCase):
         self.consumer.consume_worker_commands.return_value = self.batch(
             self.command()
         )
-        self.result_commands.append_seed_results.side_effect = RuntimeError("down")
+        self.result_commands.append_worker_results.side_effect = RuntimeError("down")
 
         with self.assertRaisesRegex(RuntimeError, "down"):
             self.drain()

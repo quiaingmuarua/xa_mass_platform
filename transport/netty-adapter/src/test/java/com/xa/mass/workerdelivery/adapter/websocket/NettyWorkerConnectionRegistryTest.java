@@ -3,12 +3,12 @@ package com.xa.mass.workerdelivery.adapter.websocket;
 import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.RETRY_LATER;
 import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.STARTED;
 import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.ConnectionCloseReason.TRANSPORT_ERROR;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessageType.TASK_ITEM_COMMAND;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.TASK;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.WORKER;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 import io.netty.channel.embedded.EmbeddedChannel;
 import io.netty.handler.codec.http.websocketx.CloseWebSocketFrame;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
@@ -37,12 +37,7 @@ class NettyWorkerConnectionRegistryTest {
             TextWebSocketFrame delivered = second.readOutbound();
             try {
                 assertThat(replacement.statusCode()).isEqualTo(1008);
-                var message = codec.decodeWorkerConnectionMessage(
-                        delivered.text()
-                );
-                assertThat(message.messageType())
-                        .isEqualTo(TASK_ITEM_COMMAND.name());
-                assertThat(codec.decodeWorkerCommand(message.payload()))
+                assertThat(codec.decodeWorkerCommand(delivered.text()))
                         .isEqualTo(command());
             } finally {
                 ReferenceCountUtil.release(replacement);
@@ -98,12 +93,15 @@ class NettyWorkerConnectionRegistryTest {
         return new NettyWorkerConnectionRegistry(codec);
     }
 
-    private static WorkerCommandEnvelope command() {
-        return new WorkerCommandEnvelope(
+    private static WorkerCommand command() {
+        return new WorkerCommand(
                 "a5e9e10d-f78b-469e-93ab-864b49c189c1",
-                WorkerMessageType.TASK_ITEM,
+                TASK,
+                WORKER,
+                "test.observe",
                 2_000,
-                "{}"
+                "{}",
+                "context"
         );
     }
 }

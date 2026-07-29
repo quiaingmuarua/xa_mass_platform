@@ -70,9 +70,9 @@
       "candidate_worker_counts",
       "consume_candidate_workers"
     ],
-    "SeedResultRuntime": [
-      "append_seed_results",
-      "consume_seed_results"
+    "WorkerResultRuntime": [
+      "append_worker_results",
+      "consume_worker_results"
     ],
     "TaskItemScoreBandCore": [
       "acquire_item_score_candidates",
@@ -149,22 +149,19 @@
       "endpoint_manager_id",
       "worker_lease_score"
     ],
-    "DeliverSeed": [
-      "worker_id",
-      "opaque_delivery_item",
-      "opaque_result_context"
-    ],
     "DynamicAttributeReadResult": [
       "status",
       "value",
       "observed_at_millis",
       "reason"
     ],
-    "SeedResult": [
-      "command_id",
-      "opaque_result_context",
+    "WorkerResult": [
+      "message_id",
+      "dst",
+      "message_type",
       "outcome_code",
-      "opaque_result_payload"
+      "payload",
+      "forward"
     ],
     "TaskCreationResult": [
       "status",
@@ -212,11 +209,17 @@
       "status",
       "score"
     ],
-    "WorkerCommandEnvelope": [
-      "command_id",
+    "WorkerCommand": [
+      "message_id",
+      "src",
+      "dst",
       "message_type",
       "execute_before_millis",
-      "opaque_item"
+      "payload",
+      "forward"
+    ],
+    "WorkerConnectionBind": [
+      "worker_id"
     ],
     "WorkerDeclaration": [
       "worker_id",
@@ -257,7 +260,7 @@
     ]
   },
   "enums": {
-    "SeedResultOutcomeClass": [
+    "WorkerResultOutcomeClass": [
       "SUCCESS",
       "WORKER_FAILURE",
       "ADAPTER_REJECTION"
@@ -307,8 +310,11 @@
       "APPENDED",
       "REPLACED"
     ],
-    "WorkerMessageType": [
-      "TASK_ITEM"
+    "WorkerMessageEndpoint": [
+      "TASK",
+      "SYSTEM",
+      "ADAPTER",
+      "WORKER"
     ],
     "WorkerRuntimeStatus": [
       "ok",

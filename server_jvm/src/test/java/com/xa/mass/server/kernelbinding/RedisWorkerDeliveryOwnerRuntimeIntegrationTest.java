@@ -2,11 +2,12 @@ package com.xa.mass.server.kernelbinding;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.xa.mass.kernel.delivery.redis.RedisSeedResultRuntime;
+import com.xa.mass.kernel.delivery.redis.RedisWorkerResultRuntime;
 import com.xa.mass.kernel.delivery.redis.RedisWorkerCommandRuntime;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -31,7 +32,7 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
     private StatefulRedisConnection<String, String> connection;
     private RedisCommands<String, String> redis;
     private RedisWorkerCommandRuntime commandRuntime;
-    private RedisSeedResultRuntime resultRuntime;
+    private RedisWorkerResultRuntime resultRuntime;
 
     @BeforeEach
     void setUp() {
@@ -49,7 +50,7 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
                 codec,
                 prefix
         );
-        resultRuntime = new RedisSeedResultRuntime(
+        resultRuntime = new RedisWorkerResultRuntime(
                 redisClient,
                 codec,
                 prefix
@@ -78,20 +79,20 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
 
     @Test
     void commandConsumeAndResultAppendRemainSeparateOwners() {
-        String commandId = UUID.randomUUID().toString();
+        String messageId = UUID.randomUUID().toString();
         String encoded = commandJson(
-                commandId,
+                messageId,
                 System.currentTimeMillis() + 30_000
         );
         redis.hset(commandKey("endpoint-1"), "worker-1", encoded);
         redis.hset(commandKey("endpoint-2"), "worker-1", encoded);
 
-        WorkerCommandEnvelope consumed =
+        WorkerCommand consumed =
                 commandRuntime.consumeWorkerCommand(
                         "endpoint-1",
                         "worker-1"
                 );
-        assertThat(consumed.commandId()).isEqualTo(commandId);
+        assertThat(consumed.messageId()).isEqualTo(messageId);
         assertThat(commandRuntime.consumeWorkerCommand(
                 "endpoint-1",
                 "worker-1"
@@ -101,22 +102,26 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
                 "worker-1"
         )).isNotNull();
 
-        List<SeedResult> results = List.of(
-                new SeedResult(commandId, "success", "200", "null"),
-                new SeedResult(
+        List<WorkerResult> results = List.of(
+                result(messageId, "success", "200"),
+                new WorkerResult(
                         UUID.randomUUID().toString(),
-                        "failure",
+                        WorkerMessageEndpoint.TASK,
+                        "test.event",
                         "1500",
-                        null
+                        "null",
+                        "failure"
                 ),
-                new SeedResult(
+                new WorkerResult(
                         UUID.randomUUID().toString(),
-                        "rejection",
+                        WorkerMessageEndpoint.TASK,
+                        "test.event",
                         "3001",
-                        null
+                        "null",
+                        "rejection"
                 )
         );
-        assertThat(resultRuntime.appendSeedResults(results)).isEqualTo(3);
+        assertThat(resultRuntime.appendWorkerResults(results)).isEqualTo(3);
         assertThat(redis.llen(resultKey("success"))).isEqualTo(1);
         assertThat(redis.llen(resultKey("worker-failure"))).isEqualTo(1);
         assertThat(redis.llen(resultKey("adapter-rejection"))).isEqualTo(1);
@@ -221,7 +226,7 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
     }
 
     private String resultKey(String outcomeClass) {
-        return "rr:" + prefix + ":seed-results:" + outcomeClass;
+        return "rr:" + prefix + ":worker-results:" + outcomeClass;
     }
 
     private long commandCalls(String command) {
@@ -240,12 +245,30 @@ class RedisWorkerDeliveryOwnerRuntimeIntegrationTest {
     }
 
     private static String commandJson(
-            String commandId,
+            String messageId,
             long executeBeforeMillis
     ) {
-        return "{\"commandId\":\"" + commandId + "\","
+        return "{\"dst\":\"WORKER\","
                 + "\"executeBeforeMillis\":" + executeBeforeMillis + ","
-                + "\"messageType\":\"TASK_ITEM\","
-                + "\"opaqueItem\":\"opaque-item\"}";
+                + "\"forward\":\"context\","
+                + "\"messageId\":\"" + messageId + "\","
+                + "\"messageType\":\"test.event\","
+                + "\"payload\":\"opaque-item\","
+                + "\"src\":\"TASK\"}";
+    }
+
+    private static WorkerResult result(
+            String messageId,
+            String forward,
+            String outcomeCode
+    ) {
+        return new WorkerResult(
+                messageId,
+                WorkerMessageEndpoint.TASK,
+                "test.event",
+                outcomeCode,
+                "null",
+                forward
+        );
     }
 }

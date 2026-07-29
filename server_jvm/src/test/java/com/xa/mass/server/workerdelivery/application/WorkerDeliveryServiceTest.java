@@ -1,7 +1,5 @@
 package com.xa.mass.server.workerdelivery.application;
 
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultSource.ADAPTER;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultSource.WORKER;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
@@ -9,15 +7,15 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.xa.mass.kernel.delivery.SeedResultRuntime;
+import com.xa.mass.kernel.delivery.WorkerResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -28,13 +26,13 @@ class WorkerDeliveryServiceTest {
             "a5e9e10d-f78b-469e-93ab-864b49c189c1";
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
     private WorkerCommandRuntime commandRuntime;
-    private SeedResultRuntime resultRuntime;
+    private WorkerResultRuntime resultRuntime;
     private WorkerDeliveryService service;
 
     @BeforeEach
     void setUp() {
         commandRuntime = mock(WorkerCommandRuntime.class);
-        resultRuntime = mock(SeedResultRuntime.class);
+        resultRuntime = mock(WorkerResultRuntime.class);
         service = new WorkerDeliveryService(
                 commandRuntime,
                 resultRuntime
@@ -44,11 +42,14 @@ class WorkerDeliveryServiceTest {
     @Test
     void pointPollDropsACommandThatExpiredAfterRedisConsumption() {
         when(commandRuntime.consumeWorkerCommand("endpoint-1", "worker-1"))
-                .thenReturn(new WorkerCommandEnvelope(
+                .thenReturn(new WorkerCommand(
                         COMMAND_ID,
-                        WorkerMessageType.TASK_ITEM,
+                        WorkerMessageEndpoint.TASK,
+                        WorkerMessageEndpoint.WORKER,
+                        "test.event",
                         System.currentTimeMillis() - 1,
-                        "item"
+                        "item",
+                        "context"
                 ));
 
         assertThat(service.pollWorkerCommand("endpoint-1", "worker-1"))
@@ -57,7 +58,7 @@ class WorkerDeliveryServiceTest {
 
     @Test
     void workerResultRejectsAdapterEvidence() {
-        SeedResult result = result(COMMAND_ID, "3001");
+        WorkerResult result = result(COMMAND_ID, "3001");
 
         assertThatThrownBy(() -> service.appendWorkerResult(
                 "endpoint-1",
@@ -71,93 +72,97 @@ class WorkerDeliveryServiceTest {
                 .isEqualTo(
                         ServerErrorCode.INVALID_WORKER_DELIVERY_REQUEST
                 );
-        verify(resultRuntime, never()).appendSeedResults(List.of(result));
+        verify(resultRuntime, never()).appendWorkerResults(List.of(result));
     }
 
     @Test
-    void workerSourceRejectsForgeryAndMalformedItemsButAppendsValidItems() {
-        SeedResult success = result(COMMAND_ID, "200");
-        SeedResult failure = result(
+    void adapterBatchAcceptsAllResultClassesAndRejectsMalformedItems() {
+        WorkerResult success = result(COMMAND_ID, "200");
+        WorkerResult failure = result(
                 "9f0d983c-8010-4d59-a6d2-e8fedb8d0059",
                 "1500"
         );
-        SeedResult forgedRejection = result(
+        WorkerResult forgedRejection = result(
                 "66f60ac8-e68f-4783-90e3-13b20a54ca13",
                 "3001"
         );
-        List<SeedResult> accepted = List.of(success, failure);
-        when(resultRuntime.appendSeedResults(accepted))
+        List<WorkerResult> accepted = List.of(
+                success,
+                failure,
+                forgedRejection
+        );
+        when(resultRuntime.appendWorkerResults(accepted))
                 .thenReturn(accepted.size());
 
         var counts = service.appendAdapterResults(
                 "endpoint-1",
-                WORKER,
                 java.util.Arrays.asList(
-                        codec.encodeSeedResult(success),
+                        codec.encodeWorkerResult(success),
                         "not-json",
                         null,
-                        codec.encodeSeedResult(failure),
-                        codec.encodeSeedResult(forgedRejection)
+                        codec.encodeWorkerResult(failure),
+                        codec.encodeWorkerResult(forgedRejection)
                 )
         );
 
-        assertThat(counts.acceptedCount()).isEqualTo(2);
-        assertThat(counts.rejectedCount()).isEqualTo(3);
-        verify(resultRuntime).appendSeedResults(accepted);
+        assertThat(counts.acceptedCount()).isEqualTo(3);
+        assertThat(counts.rejectedCount()).isEqualTo(2);
+        verify(resultRuntime).appendWorkerResults(accepted);
     }
 
     @Test
-    void adapterSourceAcceptsOnlyAdapterEvidence() {
-        SeedResult success = result(COMMAND_ID, "200");
-        SeedResult rejection = result(
+    void adapterBatchRejectsAResultForAnotherDestination() {
+        WorkerResult success = result(COMMAND_ID, "200");
+        WorkerResult wrongDestination = new WorkerResult(
                 "9f0d983c-8010-4d59-a6d2-e8fedb8d0059",
-                "3001"
+                WorkerMessageEndpoint.SYSTEM,
+                "test.event",
+                "3001",
+                "null",
+                "context"
         );
-        when(resultRuntime.appendSeedResults(List.of(rejection)))
+        when(resultRuntime.appendWorkerResults(List.of(success)))
                 .thenReturn(1);
 
         var counts = service.appendAdapterResults(
                 "endpoint-1",
-                ADAPTER,
                 List.of(
-                        codec.encodeSeedResult(success),
-                        codec.encodeSeedResult(rejection)
+                        codec.encodeWorkerResult(success),
+                        codec.encodeWorkerResult(wrongDestination)
                 )
         );
 
         assertThat(counts.acceptedCount()).isEqualTo(1);
         assertThat(counts.rejectedCount()).isEqualTo(1);
-        verify(resultRuntime).appendSeedResults(List.of(rejection));
+        verify(resultRuntime).appendWorkerResults(List.of(success));
     }
 
     @Test
     void allInvalidItemsDoNotCallTheRuntime() {
         var counts = service.appendAdapterResults(
                 "endpoint-1",
-                WORKER,
                 List.of(
                         "not-json",
-                        codec.encodeSeedResult(result(COMMAND_ID, "3001"))
+                        ""
                 )
         );
 
         assertThat(counts.acceptedCount()).isZero();
         assertThat(counts.rejectedCount()).isEqualTo(2);
-        verify(resultRuntime, never()).appendSeedResults(
+        verify(resultRuntime, never()).appendWorkerResults(
                 org.mockito.ArgumentMatchers.anyList()
         );
     }
 
     @Test
     void incompleteRuntimeAppendIsUnavailableForRetry() {
-        SeedResult success = result(COMMAND_ID, "200");
-        when(resultRuntime.appendSeedResults(List.of(success)))
+        WorkerResult success = result(COMMAND_ID, "200");
+        when(resultRuntime.appendWorkerResults(List.of(success)))
                 .thenReturn(0);
 
         assertThatThrownBy(() -> service.appendAdapterResults(
                 "endpoint-1",
-                WORKER,
-                List.of(codec.encodeSeedResult(success))
+                List.of(codec.encodeWorkerResult(success))
         ))
                 .isInstanceOf(ServerException.class)
                 .extracting(
@@ -173,22 +178,23 @@ class WorkerDeliveryServiceTest {
         assertThatThrownBy(() -> service.appendAdapterResults(
                 WorkerDeliveryProtocol
                         .SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
-                WORKER,
-                List.of(codec.encodeSeedResult(
+                List.of(codec.encodeWorkerResult(
                         result(COMMAND_ID, "200")
                 ))
         )).isInstanceOf(ServerException.class);
     }
 
-    private static SeedResult result(
-            String commandId,
+    private static WorkerResult result(
+            String messageId,
             String outcomeCode
     ) {
-        return new SeedResult(
-                commandId,
-                "context",
+        return new WorkerResult(
+                messageId,
+                WorkerMessageEndpoint.TASK,
+                "test.event",
                 outcomeCode,
-                "200".equals(outcomeCode) ? "null" : null
+                "null",
+                "context"
         );
     }
 }

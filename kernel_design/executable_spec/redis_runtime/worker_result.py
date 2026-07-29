@@ -2,17 +2,17 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
-from ..kernel.seed_result_runtime import (
-    SeedResult,
-    SeedResultOutcomeClass,
-    SeedResultRuntime,
-    classify_seed_result_outcome_code,
-    decode_seed_result,
-    encode_seed_result,
+from ..kernel.worker_delivery import (
+    WorkerResult,
+    WorkerResultOutcomeClass,
+    classify_worker_result_outcome_code,
+    decode_worker_result,
+    encode_worker_result,
 )
+from ..kernel.worker_result_runtime import WorkerResultRuntime
 
 
-class RedisSeedResultRuntime(SeedResultRuntime):
+class RedisWorkerResultRuntime(WorkerResultRuntime):
     """Redis LIST implementation partitioned by outcome class."""
 
     def __init__(
@@ -26,20 +26,20 @@ class RedisSeedResultRuntime(SeedResultRuntime):
         self.redis = redis_client
         self.prefix = prefix
 
-    def append_seed_results(
+    def append_worker_results(
         self,
         *,
-        results: Sequence[SeedResult],
+        results: Sequence[WorkerResult],
     ) -> int:
         if not results:
             return 0
-        grouped: dict[SeedResultOutcomeClass, list[str]] = {}
+        grouped: dict[WorkerResultOutcomeClass, list[str]] = {}
         for result in results:
-            outcome_class = classify_seed_result_outcome_code(result.outcome_code)
+            outcome_class = classify_worker_result_outcome_code(result.outcome_code)
             if outcome_class is None:
-                raise ValueError("SeedResult outcome code is invalid")
+                raise ValueError("WorkerResult outcome code is invalid")
             grouped.setdefault(outcome_class, []).append(
-                encode_seed_result(result)
+                encode_worker_result(result)
             )
 
         with self.redis.pipeline(transaction=False) as pipeline:
@@ -51,14 +51,14 @@ class RedisSeedResultRuntime(SeedResultRuntime):
             pipeline.execute()
         return len(results)
 
-    def consume_seed_results(
+    def consume_worker_results(
         self,
         *,
-        outcome_class: SeedResultOutcomeClass,
+        outcome_class: WorkerResultOutcomeClass,
         limit: int,
-    ) -> tuple[SeedResult, ...]:
-        if not isinstance(outcome_class, SeedResultOutcomeClass):
-            raise TypeError("outcome_class must be SeedResultOutcomeClass")
+    ) -> tuple[WorkerResult, ...]:
+        if not isinstance(outcome_class, WorkerResultOutcomeClass):
+            raise TypeError("outcome_class must be WorkerResultOutcomeClass")
         if limit <= 0:
             raise ValueError("consume limit must be positive")
 
@@ -68,17 +68,17 @@ class RedisSeedResultRuntime(SeedResultRuntime):
                 pipeline.lpop(queue_key)
             raw_results = pipeline.execute()
 
-        results: list[SeedResult] = []
+        results: list[WorkerResult] = []
         for raw_result in raw_results:
             if raw_result is None:
                 continue
-            result = decode_seed_result(raw_result)
+            result = decode_worker_result(raw_result)
             if result is not None:
                 results.append(result)
         return tuple(results)
 
-    def _queue_key(self, outcome_class: SeedResultOutcomeClass) -> str:
+    def _queue_key(self, outcome_class: WorkerResultOutcomeClass) -> str:
         return (
-            f"rr:{self.prefix}:seed-results:"
+            f"rr:{self.prefix}:worker-results:"
             f"{outcome_class.value.lower().replace('_', '-')}"
         )

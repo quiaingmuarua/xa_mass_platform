@@ -4,11 +4,11 @@ from collections.abc import Mapping, Sequence
 
 from ..kernel import (
     EndpointManagerId,
-    SeedResult,
-    WorkerCommandEnvelope,
+    WorkerResult,
+    WorkerCommand,
     WorkerId,
 )
-from ..redis_runtime import RedisSeedResultRuntime, RedisWorkerCommandRuntime
+from ..redis_runtime import RedisWorkerResultRuntime, RedisWorkerCommandRuntime
 from .application import KernelApplicationConfig
 
 
@@ -47,7 +47,7 @@ class WorkerCommandConsumerClient:
         *,
         endpoint_manager_id: EndpointManagerId,
         worker_id: WorkerId,
-    ) -> WorkerCommandEnvelope | None:
+    ) -> WorkerCommand | None:
         return self._runtime.consume_worker_command(
             endpoint_manager_id=endpoint_manager_id,
             worker_id=worker_id,
@@ -58,21 +58,21 @@ class WorkerCommandConsumerClient:
         *,
         endpoint_manager_id: EndpointManagerId,
         limit: int,
-    ) -> Mapping[WorkerId, WorkerCommandEnvelope]:
+    ) -> Mapping[WorkerId, WorkerCommand]:
         return self._runtime.consume_worker_commands(
             endpoint_manager_id=endpoint_manager_id,
             limit=limit,
         )
 
 
-class SeedResultCommandClient:
-    """External boundary for appending semantic SeedResult evidence."""
+class WorkerResultCommandClient:
+    """External boundary for appending semantic WorkerResult evidence."""
 
     def __init__(self, config: KernelApplicationConfig | None = None) -> None:
         if config is not None and not isinstance(config, KernelApplicationConfig):
             raise TypeError("config must be KernelApplicationConfig or None")
         resolved_config = config or KernelApplicationConfig.from_json()
-        self._runtime = RedisSeedResultRuntime(
+        self._runtime = RedisWorkerResultRuntime(
             _redis_client(resolved_config),
             prefix=resolved_config.redis_prefix,
         )
@@ -81,12 +81,12 @@ class SeedResultCommandClient:
     def from_json(
         cls,
         config_json: str | None = None,
-    ) -> SeedResultCommandClient:
+    ) -> WorkerResultCommandClient:
         return cls(KernelApplicationConfig.from_json(config_json))
 
-    def append_seed_results(
+    def append_worker_results(
         self,
         *,
-        results: Sequence[SeedResult],
+        results: Sequence[WorkerResult],
     ) -> int:
-        return self._runtime.append_seed_results(results=results)
+        return self._runtime.append_worker_results(results=results)

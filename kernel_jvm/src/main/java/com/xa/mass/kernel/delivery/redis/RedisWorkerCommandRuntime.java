@@ -3,7 +3,7 @@ package com.xa.mass.kernel.delivery.redis;
 import com.xa.mass.kernel.KernelOperationNotImplementedException;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 import io.lettuce.core.KeyValue;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.ScriptOutputType;
@@ -68,7 +68,7 @@ public final class RedisWorkerCommandRuntime
     @Override
     public Map<String, WorkerCommandAppendStatus> appendWorkerCommands(
             String endpointManagerId,
-            Map<String, WorkerCommandEnvelope> workerCommandsByWorkerId
+            Map<String, WorkerCommand> workerCommandsByWorkerId
     ) {
         throw new KernelOperationNotImplementedException(
                 "WorkerCommandRuntime",
@@ -77,7 +77,7 @@ public final class RedisWorkerCommandRuntime
     }
 
     @Override
-    public WorkerCommandEnvelope consumeWorkerCommand(
+    public WorkerCommand consumeWorkerCommand(
             String endpointManagerId,
             String workerId
     ) {
@@ -104,7 +104,7 @@ public final class RedisWorkerCommandRuntime
     }
 
     @Override
-    public Map<String, WorkerCommandEnvelope> consumeWorkerCommands(
+    public Map<String, WorkerCommand> consumeWorkerCommands(
             String endpointManagerId,
             int limit
     ) {
@@ -147,11 +147,11 @@ public final class RedisWorkerCommandRuntime
             );
         }
 
-        Map<String, WorkerCommandEnvelope> active = new LinkedHashMap<>();
+        Map<String, WorkerCommand> active = new LinkedHashMap<>();
         long nowMillis = redisTimeMillis();
         for (int index = 0; index < consumed.size(); index += 2) {
             String workerId = String.valueOf(consumed.get(index));
-            WorkerCommandEnvelope command = activeCommand(
+            WorkerCommand command = activeCommand(
                     String.valueOf(consumed.get(index + 1)),
                     nowMillis
             );
@@ -162,11 +162,11 @@ public final class RedisWorkerCommandRuntime
         return Map.copyOf(active);
     }
 
-    private WorkerCommandEnvelope activeCommand(
+    private WorkerCommand activeCommand(
             String encoded,
             long nowMillis
     ) {
-        WorkerCommandEnvelope command = codec.decodeWorkerCommand(encoded);
+        WorkerCommand command = codec.decodeWorkerCommand(encoded);
         if (command == null
                 || command.executeBeforeMillis() <= nowMillis) {
             return null;

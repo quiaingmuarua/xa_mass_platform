@@ -7,11 +7,9 @@ import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegis
 import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.ConnectionCloseReason.RESULT_BUFFER_FULL;
 import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegistry.ConnectionCloseReason.TRANSPORT_ERROR;
 
-import com.xa.mass.workerdelivery.adapter.message.AdapterMessageDefinitionManager;
+import com.xa.mass.workerdelivery.adapter.message.WorkerResultPayloadHandler;
 import com.xa.mass.workerdelivery.adapter.message.WorkerResultHandlingResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessage;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessageType;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -31,9 +29,7 @@ final class WorkerWebSocketHandler
 
     private final WorkerConnectionRegistry connections;
     private final WorkerDeliveryCodec codec;
-    private final AdapterMessageDefinitionManager<
-            WorkerResultHandlingResult
-            > messageDefinitions;
+    private final WorkerResultPayloadHandler resultHandler;
     private final BooleanSupplier acceptingConnections;
     private boolean handshakeComplete;
     private String workerId;
@@ -42,9 +38,7 @@ final class WorkerWebSocketHandler
     WorkerWebSocketHandler(
             WorkerConnectionRegistry connections,
             WorkerDeliveryCodec codec,
-            AdapterMessageDefinitionManager<
-                    WorkerResultHandlingResult
-                    > messageDefinitions,
+            WorkerResultPayloadHandler resultHandler,
             BooleanSupplier acceptingConnections
     ) {
         this.connections = Objects.requireNonNull(
@@ -52,9 +46,9 @@ final class WorkerWebSocketHandler
                 "connections"
         );
         this.codec = Objects.requireNonNull(codec, "codec");
-        this.messageDefinitions = Objects.requireNonNull(
-                messageDefinitions,
-                "messageDefinitions"
+        this.resultHandler = Objects.requireNonNull(
+                resultHandler,
+                "resultHandler"
         );
         this.acceptingConnections = Objects.requireNonNull(
                 acceptingConnections,
@@ -89,17 +83,10 @@ final class WorkerWebSocketHandler
             return;
         }
         if (frame instanceof TextWebSocketFrame text) {
-            WorkerConnectionMessage message =
-                    codec.decodeWorkerConnectionMessage(text.text());
-            if (message == null) {
-                disconnect();
-                close(context, 1007, "Invalid Worker message");
-                return;
-            }
             if (workerChannel == null) {
-                handleBind(context, message);
+                handleBind(context, text.text());
             } else {
-                handleResult(context, message);
+                handleResult(context, text.text());
             }
             return;
         }
@@ -136,23 +123,10 @@ final class WorkerWebSocketHandler
 
     private void handleResult(
             ChannelHandlerContext context,
-            WorkerConnectionMessage message
+            String encodedResult
     ) {
-        if (WorkerConnectionMessageType.WORKER_BIND.name().equals(
-                message.messageType()
-        )) {
-            disconnect();
-            close(context, 1008, "Worker is already bound");
-            return;
-        }
-        WorkerResultHandlingResult acceptance;
-        try {
-            acceptance = messageDefinitions.dispatch(workerId, message);
-        } catch (IllegalArgumentException error) {
-            disconnect();
-            close(context, 1007, "Invalid Worker result");
-            return;
-        }
+        WorkerResultHandlingResult acceptance =
+                resultHandler.handle(workerId, encodedResult);
         if (acceptance == ACCEPTED) {
             return;
         }
@@ -192,15 +166,9 @@ final class WorkerWebSocketHandler
 
     private void handleBind(
             ChannelHandlerContext context,
-            WorkerConnectionMessage message
+            String encodedBind
     ) {
-        if (!WorkerConnectionMessageType.WORKER_BIND.name().equals(
-                message.messageType()
-        )) {
-            close(context, 1008, "Worker binding is required");
-            return;
-        }
-        var bind = codec.decodeWorkerConnectionBind(message.payload());
+        var bind = codec.decodeWorkerConnectionBind(encodedBind);
         if (bind == null) {
             close(context, 1008, "Worker binding is required");
             return;

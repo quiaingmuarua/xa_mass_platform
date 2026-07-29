@@ -1,7 +1,7 @@
 package com.xa.mass.workerdelivery.adapter.websocket;
 
 import com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 import io.netty.channel.Channel;
 
 interface WorkerConnectionRegistry extends WorkerCommandDelivery {
@@ -19,7 +19,7 @@ interface WorkerConnectionRegistry extends WorkerCommandDelivery {
     @Override
     CommandDeliveryAttempt deliver(
             String workerId,
-            WorkerCommandEnvelope command
+            WorkerCommand command
     );
 
     void close(

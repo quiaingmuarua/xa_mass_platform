@@ -44,7 +44,7 @@ class ResultRoutingApplication:
                     "stop_event": stop_event,
                     "interval_millis": config.interval_millis,
                     "operation": partial(
-                        self.pacer.route_seed_results,
+                        self.pacer.route_worker_results,
                         config=config.routing,
                     ),
                 },

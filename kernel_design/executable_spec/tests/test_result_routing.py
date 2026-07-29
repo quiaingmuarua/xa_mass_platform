@@ -12,9 +12,10 @@ from kernel_design.executable_spec import (
     ResultRoutingConfig,
     ResultRoutingBuiltinPolicies,
     ResultRoutingPacer,
-    SeedResult,
-    SeedResultOutcomeClass,
-    SeedResultRuntime,
+    WorkerResult,
+    WorkerMessageEndpoint,
+    WorkerResultOutcomeClass,
+    WorkerResultRuntime,
     TaskResultEvidence,
     TaskResultHandler,
     TaskItemScoreBand,
@@ -83,12 +84,12 @@ class ResultRoutingPacerTest(unittest.TestCase):
     NOW_MILLIS = 100_000
 
     def setUp(self) -> None:
-        self.runtime = Mock(spec=SeedResultRuntime)
+        self.runtime = Mock(spec=WorkerResultRuntime)
         self.item_score = Mock(spec=TaskItemScoreBandCore)
         self.worker_score = Mock(spec=WorkerScoreCore)
         self.task_runtime = Mock(spec=TaskRuntime)
-        self.queues: dict[SeedResultOutcomeClass, tuple[SeedResult, ...]] = {}
-        self.runtime.consume_seed_results.side_effect = (
+        self.queues: dict[WorkerResultOutcomeClass, tuple[WorkerResult, ...]] = {}
+        self.runtime.consume_worker_results.side_effect = (
             lambda *, outcome_class, limit: self.queues.get(outcome_class, ())
         )
         self.builtin_policies = ResultRoutingBuiltinPolicies(
@@ -113,7 +114,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
             "_current_time_millis",
             return_value=self.NOW_MILLIS,
         ):
-            return self.pacer.route_seed_results(config=self.config)
+            return self.pacer.route_worker_results(config=self.config)
 
     @staticmethod
     def result(
@@ -125,15 +126,19 @@ class ResultRoutingPacerTest(unittest.TestCase):
         worker_lease_score: int = 201,
         outcome_code: str = "200",
         payload: str | None = '{"value":1}',
-    ) -> SeedResult:
-        return SeedResult(
-            command_id=str(
+    ) -> WorkerResult:
+        return WorkerResult(
+            message_id=str(
                 uuid5(
                     NAMESPACE_DNS,
                     f"{task_id}:{message_id}:{worker_id}:{outcome_code}",
                 )
             ),
-            opaque_result_context=encode_result_context(
+            dst=WorkerMessageEndpoint.TASK,
+            message_type="test.event",
+            outcome_code=outcome_code,
+            payload=payload if payload is not None else "null",
+            forward=encode_result_context(
                 ResultContext(
                     task_id=task_id,
                     message_id=message_id,
@@ -142,12 +147,10 @@ class ResultRoutingPacerTest(unittest.TestCase):
                     worker_lease_score=worker_lease_score,
                 )
             ),
-            outcome_code=outcome_code,
-            opaque_result_payload=(payload if outcome_code == "200" else None),
         )
 
     def test_public_contract(self) -> None:
-        self.assertIs(kernel.SeedResultRuntime, SeedResultRuntime)
+        self.assertIs(kernel.WorkerResultRuntime, WorkerResultRuntime)
         self.assertIs(scheduling.ResultRoutingPacer, ResultRoutingPacer)
         self.assertIs(scheduling.TaskResultEvidence, TaskResultEvidence)
         self.assertIs(scheduling.TaskResultHandler, TaskResultHandler)
@@ -161,7 +164,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
         self.assertEqual(
             [
                 "self",
-                "seed_result_runtime",
+                "worker_result_runtime",
                 "task_result_handlers",
                 "worker_result_handlers",
             ],
@@ -169,16 +172,18 @@ class ResultRoutingPacerTest(unittest.TestCase):
         )
         self.assertEqual(
             [
-                "command_id",
-                "opaque_result_context",
+                "message_id",
+                "dst",
+                "message_type",
                 "outcome_code",
-                "opaque_result_payload",
+                "payload",
+                "forward",
             ],
-            [field.name for field in fields(SeedResult)],
+            [field.name for field in fields(WorkerResult)],
         )
         self.assertEqual(
-            {"append_seed_results", "consume_seed_results"},
-            SeedResultRuntime.__abstractmethods__,
+            {"append_worker_results", "consume_worker_results"},
+            WorkerResultRuntime.__abstractmethods__,
         )
         self.assertEqual(
             ["task_id", "message_id", "opaque_result_payload"],
@@ -201,7 +206,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
         )
         self.assertEqual(
             ["self", "outcome_class", "limit"],
-            list(inspect.signature(SeedResultRuntime.consume_seed_results).parameters),
+            list(inspect.signature(WorkerResultRuntime.consume_worker_results).parameters),
         )
         with self.assertRaises(ValueError):
             ResultRoutingConfig(0)
@@ -210,23 +215,23 @@ class ResultRoutingPacerTest(unittest.TestCase):
         task_handler = Mock()
         worker_handlers = {
             outcome_class: Mock()
-            for outcome_class in SeedResultOutcomeClass
+            for outcome_class in WorkerResultOutcomeClass
         }
         pacer = ResultRoutingPacer(
             self.runtime,
             task_result_handlers={
-                SeedResultOutcomeClass.SUCCESS: task_handler,
+                WorkerResultOutcomeClass.SUCCESS: task_handler,
             },
             worker_result_handlers=worker_handlers,
         )
-        self.queues[SeedResultOutcomeClass.SUCCESS] = (self.result(),)
+        self.queues[WorkerResultOutcomeClass.SUCCESS] = (self.result(),)
 
         with patch.object(
             ResultRoutingPacer,
             "_current_time_millis",
             return_value=self.NOW_MILLIS,
         ):
-            self.assertEqual(1, pacer.route_seed_results(config=self.config))
+            self.assertEqual(1, pacer.route_worker_results(config=self.config))
 
         task_handler.assert_called_once_with(
             task_id="task-1",
@@ -239,7 +244,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
             ),
             result_time_millis=self.NOW_MILLIS,
         )
-        worker_handlers[SeedResultOutcomeClass.SUCCESS].assert_called_once_with(
+        worker_handlers[WorkerResultOutcomeClass.SUCCESS].assert_called_once_with(
             worker_group_id="image-workers",
             results=(
                 WorkerResultEvidence(
@@ -256,15 +261,15 @@ class ResultRoutingPacerTest(unittest.TestCase):
     def test_builtin_policy_mappings_expose_composable_named_methods(self) -> None:
         self.assertEqual(
             {
-                SeedResultOutcomeClass.SUCCESS: self.builtin_policies.store_task_success_results,
+                WorkerResultOutcomeClass.SUCCESS: self.builtin_policies.store_task_success_results,
             },
             self.builtin_policies.default_task_result_handlers(),
         )
         self.assertEqual(
             {
-                SeedResultOutcomeClass.SUCCESS: self.builtin_policies.release_worker_score_holds,
-                SeedResultOutcomeClass.WORKER_FAILURE: self.builtin_policies.release_worker_score_holds,
-                SeedResultOutcomeClass.ADAPTER_REJECTION: self.builtin_policies.demote_worker_score_holds_to_recovery,
+                WorkerResultOutcomeClass.SUCCESS: self.builtin_policies.release_worker_score_holds,
+                WorkerResultOutcomeClass.WORKER_FAILURE: self.builtin_policies.release_worker_score_holds,
+                WorkerResultOutcomeClass.ADAPTER_REJECTION: self.builtin_policies.demote_worker_score_holds_to_recovery,
             },
             self.builtin_policies.default_worker_result_handlers(),
         )
@@ -281,12 +286,12 @@ class ResultRoutingPacerTest(unittest.TestCase):
                 self.runtime,
                 task_result_handlers=self.builtin_policies.default_task_result_handlers(),
                 worker_result_handlers={
-                    SeedResultOutcomeClass.SUCCESS: Mock(),
+                    WorkerResultOutcomeClass.SUCCESS: Mock(),
                 },
             )
 
     def test_success_results_are_last_write_grouped_by_task_and_stored_first(self) -> None:
-        self.queues[SeedResultOutcomeClass.SUCCESS] = (
+        self.queues[WorkerResultOutcomeClass.SUCCESS] = (
             self.result(payload='{"version":1}'),
             self.result(payload='{"version":2}', worker_lease_score=202),
             self.result(
@@ -339,7 +344,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
 
     def test_worker_failure_only_releases_worker_lease(self) -> None:
         failure = self.result(outcome_code="1500", payload=None)
-        self.queues[SeedResultOutcomeClass.WORKER_FAILURE] = (failure,)
+        self.queues[WorkerResultOutcomeClass.WORKER_FAILURE] = (failure,)
 
         self.assertEqual(1, self.route())
 
@@ -353,7 +358,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
         self.item_score.rewrite_observed_item_scores.assert_not_called()
 
     def test_worker_release_uses_fresh_policy_time_after_round_time(self) -> None:
-        self.queues[SeedResultOutcomeClass.SUCCESS] = (self.result(),)
+        self.queues[WorkerResultOutcomeClass.SUCCESS] = (self.result(),)
         release_time_millis = self.NOW_MILLIS + WorkerScoreCore.SLOT_MILLIS
 
         with patch.object(
@@ -365,7 +370,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
             "_current_time_millis",
             return_value=release_time_millis,
         ):
-            self.assertEqual(1, self.pacer.route_seed_results(config=self.config))
+            self.assertEqual(1, self.pacer.route_worker_results(config=self.config))
 
         self.item_score.promote_item_outcomes.assert_called_once_with(
             task_id="task-1",
@@ -380,7 +385,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
         )
 
     def test_worker_failure_batches_each_worker_group_once(self) -> None:
-        self.queues[SeedResultOutcomeClass.WORKER_FAILURE] = (
+        self.queues[WorkerResultOutcomeClass.WORKER_FAILURE] = (
             self.result(outcome_code="1500", payload=None),
             self.result(
                 task_id="task-2",
@@ -413,7 +418,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
 
     def test_adapter_rejection_only_demotes_worker_lease(self) -> None:
         rejection = self.result(outcome_code="3001", payload=None)
-        self.queues[SeedResultOutcomeClass.ADAPTER_REJECTION] = (rejection,)
+        self.queues[WorkerResultOutcomeClass.ADAPTER_REJECTION] = (rejection,)
 
         self.assertEqual(1, self.route())
 
@@ -426,8 +431,8 @@ class ResultRoutingPacerTest(unittest.TestCase):
         self.item_score.promote_item_outcomes.assert_not_called()
 
     def test_same_lease_outcomes_are_submitted_independently_to_score_owner(self) -> None:
-        self.queues[SeedResultOutcomeClass.SUCCESS] = (self.result(),)
-        self.queues[SeedResultOutcomeClass.ADAPTER_REJECTION] = (
+        self.queues[WorkerResultOutcomeClass.SUCCESS] = (self.result(),)
+        self.queues[WorkerResultOutcomeClass.ADAPTER_REJECTION] = (
             self.result(outcome_code="3001", payload=None),
         )
 
@@ -437,7 +442,7 @@ class ResultRoutingPacerTest(unittest.TestCase):
         self.worker_score.demote_observed_worker_leases_to_recovery.assert_called_once()
 
     def test_result_context_supplies_worker_disposition_bucket(self) -> None:
-        self.queues[SeedResultOutcomeClass.SUCCESS] = (
+        self.queues[WorkerResultOutcomeClass.SUCCESS] = (
             self.result(worker_group_id="gpu-workers"),
         )
 
@@ -452,12 +457,14 @@ class ResultRoutingPacerTest(unittest.TestCase):
         )
 
     def test_corrupt_or_misrouted_results_are_consumed_without_owner_writes(self) -> None:
-        self.queues[SeedResultOutcomeClass.SUCCESS] = (
-            SeedResult(
+        self.queues[WorkerResultOutcomeClass.SUCCESS] = (
+            WorkerResult(
                 "a5e9e10d-f78b-469e-93ab-864b49c189c1",
-                "{bad-json",
+                WorkerMessageEndpoint.TASK,
+                "test.event",
                 "200",
                 "null",
+                "{bad-json",
             ),
             self.result(outcome_code="1000", payload=None),
         )
@@ -475,19 +482,19 @@ class ResultRoutingPacerTest(unittest.TestCase):
         self.assertEqual(
             [
                 call(
-                    outcome_class=SeedResultOutcomeClass.SUCCESS,
+                    outcome_class=WorkerResultOutcomeClass.SUCCESS,
                     limit=100,
                 ),
                 call(
-                    outcome_class=SeedResultOutcomeClass.WORKER_FAILURE,
+                    outcome_class=WorkerResultOutcomeClass.WORKER_FAILURE,
                     limit=100,
                 ),
                 call(
-                    outcome_class=SeedResultOutcomeClass.ADAPTER_REJECTION,
+                    outcome_class=WorkerResultOutcomeClass.ADAPTER_REJECTION,
                     limit=100,
                 ),
             ],
-            self.runtime.consume_seed_results.call_args_list,
+            self.runtime.consume_worker_results.call_args_list,
         )
 
 

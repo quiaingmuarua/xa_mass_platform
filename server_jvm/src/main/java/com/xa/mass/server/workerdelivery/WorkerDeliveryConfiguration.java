@@ -1,6 +1,6 @@
 package com.xa.mass.server.workerdelivery;
 
-import com.xa.mass.kernel.delivery.SeedResultRuntime;
+import com.xa.mass.kernel.delivery.WorkerResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
@@ -20,7 +20,7 @@ public class WorkerDeliveryConfiguration {
     @Bean
     WorkerDeliveryService workerDeliveryService(
             WorkerCommandRuntime commandRuntime,
-            SeedResultRuntime resultRuntime
+            WorkerResultRuntime resultRuntime
     ) {
         return new WorkerDeliveryService(
                 commandRuntime,

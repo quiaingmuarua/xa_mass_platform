@@ -3,10 +3,8 @@ package com.xa.mass.worker.execution;
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
 import com.xa.mass.workerdelivery.json.Jsons;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliverSeed;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
@@ -14,91 +12,59 @@ import java.util.function.LongSupplier;
 
 public final class WorkerCommandProcessor {
 
-    private final String workerId;
-    private final WorkerDeliveryCodec codec;
     private final WorkerEventDefinitionManager eventDefinitionManager;
     private final LongSupplier nowMillis;
 
     public WorkerCommandProcessor(
-            String workerId,
-            WorkerDeliveryCodec codec,
             Map<String, ? extends WorkerEventDefinition<?>> eventDefinitions
     ) {
         this(
-                workerId,
-                codec,
                 eventDefinitions,
                 System::currentTimeMillis
         );
     }
 
     WorkerCommandProcessor(
-            String workerId,
-            WorkerDeliveryCodec codec,
             Map<String, ? extends WorkerEventDefinition<?>> eventDefinitions,
             LongSupplier nowMillis
     ) {
-        if (workerId == null || workerId.isBlank()) {
-            throw new IllegalArgumentException(
-                    "workerId must be non-blank"
-            );
-        }
-        this.workerId = workerId;
-        this.codec = codec;
         this.eventDefinitionManager =
                 new WorkerEventDefinitionManager(eventDefinitions);
         this.nowMillis = nowMillis;
     }
 
-    public Optional<SeedResult> process(WorkerCommandEnvelope command) {
+    public Optional<WorkerResult> process(WorkerCommand command) {
         if (nowMillis.getAsLong() >= command.executeBeforeMillis()) {
             return Optional.empty();
         }
-        DeliverSeed seed = codec.decodeDeliverSeed(command.opaqueItem());
-        if (seed == null) {
-            throw new WorkerException(
-                    WorkerErrorCode.DELIVER_SEED_INVALID,
-                    "command.decodeDeliverSeed",
-                    "Worker command contains a malformed DeliverSeed",
-                    null
-            );
-        }
-        if (!workerId.equals(seed.workerId())) {
-            throw new WorkerException(
-                    WorkerErrorCode.WORKER_ID_MISMATCH,
-                    "command.verifyWorker",
-                    null,
-                    null
-            );
-        }
-
-        ExecutionResult execution = execute(seed.opaqueDeliveryItem());
-        return Optional.of(new SeedResult(
-                command.commandId(),
-                seed.opaqueResultContext(),
+        ExecutionResult execution = execute(
+                command.messageType(),
+                command.payload()
+        );
+        return Optional.of(new WorkerResult(
+                command.messageId(),
+                command.src(),
+                command.messageType(),
                 execution.outcomeCode(),
-                execution.opaqueResultPayload()
+                execution.payload(),
+                command.forward()
         ));
     }
 
-    private ExecutionResult execute(String value) {
-        Map<String, Object> deliveryItem;
+    private ExecutionResult execute(
+            String eventCode,
+            String encodedParameters
+    ) {
+        Map<String, Object> parameters;
         try {
-            deliveryItem = Jsons.parseObject(value);
+            parameters = Jsons.parseObject(encodedParameters);
         } catch (IllegalArgumentException error) {
-            return ExecutionResult.failure("1400");
-        }
-        Object eventCodeValue = deliveryItem.get("eventCode");
-        Object payloadValue = deliveryItem.get("payload");
-        if (!(eventCodeValue instanceof String)
-                || ((String) eventCodeValue).isBlank()
-                || !(payloadValue instanceof Map<?, ?>)) {
             return ExecutionResult.failure("1400");
         }
         try {
             String result = eventDefinitionManager.dispatch(
-                    (String) eventCodeValue,
-                    stringKeyedMap((Map<?, ?>) payloadValue)
+                    eventCode,
+                    parameters
             );
             if (result == null || result.isEmpty()) {
                 return ExecutionResult.failure("1500");
@@ -121,47 +87,29 @@ public final class WorkerCommandProcessor {
         }
     }
 
-    private static Map<String, Object> stringKeyedMap(
-            Map<?, ?> value
-    ) {
-        Map<String, Object> converted = new LinkedHashMap<>();
-        for (Map.Entry<?, ?> entry : value.entrySet()) {
-            if (!(entry.getKey() instanceof String)) {
-                throw new WorkerException(
-                        WorkerErrorCode.EVENT_INPUT_INVALID,
-                        "event.decodeParameters",
-                        "Worker event parameter keys must be strings",
-                        null
-                );
-            }
-            converted.put((String) entry.getKey(), entry.getValue());
-        }
-        return converted;
-    }
-
     private static final class ExecutionResult {
 
         private final String outcomeCode;
-        private final String opaqueResultPayload;
+        private final String payload;
 
         private ExecutionResult(
                 String outcomeCode,
-                String opaqueResultPayload
+                String payload
         ) {
             this.outcomeCode = outcomeCode;
-            this.opaqueResultPayload = opaqueResultPayload;
+            this.payload = payload;
         }
 
         private String outcomeCode() {
             return outcomeCode;
         }
 
-        private String opaqueResultPayload() {
-            return opaqueResultPayload;
+        private String payload() {
+            return payload;
         }
 
         private static ExecutionResult failure(String code) {
-            return new ExecutionResult(code, null);
+            return new ExecutionResult(code, "null");
         }
     }
 }

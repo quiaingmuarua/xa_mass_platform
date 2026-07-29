@@ -7,12 +7,12 @@ from time import time_ns
 from types import MappingProxyType
 
 from ..assembly import (
-    SeedResult,
-    SeedResultCommandClient,
-    SeedResultOutcomeClass,
+    WorkerMessageEndpoint,
+    WorkerResult,
+    WorkerResultCommandClient,
+    WorkerResultOutcomeClass,
     WorkerCommandConsumerClient,
-    classify_seed_result_outcome_code,
-    decode_deliver_seed,
+    classify_worker_result_outcome_code,
 )
 
 
@@ -42,18 +42,12 @@ class EventHandlerResult:
     payload: object | None = None
 
     def __post_init__(self) -> None:
-        outcome_class = classify_seed_result_outcome_code(self.outcome_code)
+        outcome_class = classify_worker_result_outcome_code(self.outcome_code)
         if outcome_class not in {
-            SeedResultOutcomeClass.SUCCESS,
-            SeedResultOutcomeClass.WORKER_FAILURE,
+            WorkerResultOutcomeClass.SUCCESS,
+            WorkerResultOutcomeClass.WORKER_FAILURE,
         }:
             raise ValueError("handler outcome code must be 200 or 1xxx")
-
-
-@dataclass(frozen=True, slots=True)
-class _DeliveryItem:
-    event_code: str
-    payload: Mapping[str, object]
 
 
 EventHandler = Callable[[Mapping[str, object], WorkerMeta], EventHandlerResult]
@@ -67,13 +61,13 @@ class LocalFunctionTransportAdapter:
         *,
         endpoint_manager_id: str,
         worker_command_consumer: WorkerCommandConsumerClient,
-        seed_result_commands: SeedResultCommandClient,
+        worker_result_commands: WorkerResultCommandClient,
     ) -> None:
         if not endpoint_manager_id:
             raise ValueError("endpoint manager id must be non-empty")
         self.endpoint_manager_id = endpoint_manager_id
         self.worker_command_consumer = worker_command_consumer
-        self.seed_result_commands = seed_result_commands
+        self.worker_result_commands = worker_result_commands
         self.workers: dict[str, WorkerMeta] = {}
         self.handlers: dict[str, EventHandler] = {}
 
@@ -107,70 +101,71 @@ class LocalFunctionTransportAdapter:
             endpoint_manager_id=self.endpoint_manager_id,
             limit=limit,
         )
-        results: list[SeedResult] = []
+        results: list[WorkerResult] = []
 
         for worker_id, command in worker_commands.items():
             if self._current_time_millis() >= command.execute_before_millis:
                 continue
-            seed = decode_deliver_seed(command.opaque_item)
-            if seed is None or seed.worker_id != worker_id:
-                continue
-            item = self._decode_delivery_item(seed.opaque_delivery_item)
-            if item is None:
+            item_payload = self._decode_event_payload(command.payload)
+            if item_payload is None:
                 continue
             worker = self.workers.get(worker_id)
             if worker is None:
                 continue
-            handler = self.handlers.get(item.event_code)
+            handler = self.handlers.get(command.message_type)
             if handler is None:
-                result = SeedResult(
-                    command_id=command.command_id,
-                    opaque_result_context=seed.opaque_result_context,
+                result = WorkerResult(
+                    message_id=command.message_id,
+                    dst=command.src,
+                    message_type=command.message_type,
                     outcome_code=WORKER_HANDLER_UNAVAILABLE_OUTCOME_CODE,
+                    payload="null",
+                    forward=command.forward,
                 )
                 results.append(result)
                 continue
 
             try:
-                handled = handler(item.payload, worker)
+                handled = handler(item_payload, worker)
                 if not isinstance(handled, EventHandlerResult):
                     raise TypeError("handler must return EventHandlerResult")
                 opaque_payload = self._encode_result_payload(handled.payload)
-                result = SeedResult(
-                    command_id=command.command_id,
-                    opaque_result_context=seed.opaque_result_context,
+                result = WorkerResult(
+                    message_id=command.message_id,
+                    dst=command.src,
+                    message_type=command.message_type,
                     outcome_code=handled.outcome_code,
-                    opaque_result_payload=opaque_payload,
+                    payload=opaque_payload,
+                    forward=command.forward,
                 )
             except Exception:
-                result = SeedResult(
-                    command_id=command.command_id,
-                    opaque_result_context=seed.opaque_result_context,
+                result = WorkerResult(
+                    message_id=command.message_id,
+                    dst=command.src,
+                    message_type=command.message_type,
                     outcome_code=WORKER_HANDLER_FAILURE_OUTCOME_CODE,
+                    payload="null",
+                    forward=command.forward,
                 )
             results.append(result)
 
         if not results:
             return 0
-        return self.seed_result_commands.append_seed_results(
+        return self.worker_result_commands.append_worker_results(
             results=tuple(results)
         )
 
     @staticmethod
-    def _decode_delivery_item(value: str) -> _DeliveryItem | None:
+    def _decode_event_payload(
+        value: str,
+    ) -> Mapping[str, object] | None:
         try:
             payload = json.loads(value)
             if not isinstance(payload, Mapping):
                 return None
-            event_code = payload["eventCode"]
-            item_payload = payload["payload"]
-        except (KeyError, TypeError, ValueError):
+        except (TypeError, ValueError):
             return None
-        if not isinstance(event_code, str) or not event_code:
-            return None
-        if not isinstance(item_payload, Mapping):
-            return None
-        return _DeliveryItem(event_code, MappingProxyType(dict(item_payload)))
+        return MappingProxyType(dict(payload))
 
     @staticmethod
     def _encode_result_payload(payload: object | None) -> str:

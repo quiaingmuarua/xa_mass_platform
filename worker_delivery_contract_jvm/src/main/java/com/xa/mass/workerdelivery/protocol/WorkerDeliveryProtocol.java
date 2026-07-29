@@ -12,74 +12,38 @@ public final class WorkerDeliveryProtocol {
     private WorkerDeliveryProtocol() {
     }
 
-    public enum WorkerMessageType {
-        TASK_ITEM
+    public enum WorkerMessageEndpoint {
+        TASK("TASK"),
+        SYSTEM("SYSTEM"),
+        ADAPTER("ADAPTER"),
+        WORKER("WORKER");
+
+        private final String wireValue;
+
+        WorkerMessageEndpoint(String wireValue) {
+            this.wireValue = wireValue;
+        }
+
+        public String wireValue() {
+            return wireValue;
+        }
+
+        public static WorkerMessageEndpoint fromWire(String value) {
+            for (WorkerMessageEndpoint endpoint : values()) {
+                if (endpoint.wireValue.equals(value)) {
+                    return endpoint;
+                }
+            }
+            throw new IllegalArgumentException(
+                    "Unknown Worker message endpoint: " + value
+            );
+        }
     }
 
-    public enum WorkerConnectionMessageType {
-        WORKER_BIND,
-        TASK_ITEM_COMMAND,
-        TASK_ITEM_RESULT
-    }
-
-    public enum SeedResultSource {
-        WORKER,
-        ADAPTER
-    }
-
-    public enum SeedResultOutcomeClass {
+    public enum WorkerResultOutcomeClass {
         SUCCESS,
         WORKER_FAILURE,
         ADAPTER_REJECTION
-    }
-
-    public static final class WorkerConnectionMessage {
-
-        private final String messageType;
-        private final String payload;
-
-        public WorkerConnectionMessage(
-                String messageType,
-                String payload
-        ) {
-            requireNonBlank(messageType, "messageType");
-            requireNonBlank(payload, "payload");
-            this.messageType = messageType;
-            this.payload = payload;
-        }
-
-        public String messageType() {
-            return messageType;
-        }
-
-        public String payload() {
-            return payload;
-        }
-
-        @Override
-        public boolean equals(Object value) {
-            if (this == value) {
-                return true;
-            }
-            if (!(value instanceof WorkerConnectionMessage)) {
-                return false;
-            }
-            WorkerConnectionMessage other =
-                    (WorkerConnectionMessage) value;
-            return messageType.equals(other.messageType)
-                    && payload.equals(other.payload);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(messageType, payload);
-        }
-
-        @Override
-        public String toString() {
-            return "WorkerConnectionMessage[messageType="
-                    + messageType + ", payload=<opaque>]";
-        }
     }
 
     public static final class WorkerConnectionBind {
@@ -118,104 +82,71 @@ public final class WorkerDeliveryProtocol {
         }
     }
 
-    public static final class DeliverSeed {
+    public static final class WorkerCommand {
 
-        private final String workerId;
-        private final String opaqueDeliveryItem;
-        private final String opaqueResultContext;
-
-        public DeliverSeed(
-                String workerId,
-                String opaqueDeliveryItem,
-                String opaqueResultContext
-        ) {
-            requireNonBlank(workerId, "workerId");
-            requireNonBlank(opaqueDeliveryItem, "opaqueDeliveryItem");
-            requireNonBlank(opaqueResultContext, "opaqueResultContext");
-            this.workerId = workerId;
-            this.opaqueDeliveryItem = opaqueDeliveryItem;
-            this.opaqueResultContext = opaqueResultContext;
-        }
-
-        public String workerId() {
-            return workerId;
-        }
-
-        public String opaqueDeliveryItem() {
-            return opaqueDeliveryItem;
-        }
-
-        public String opaqueResultContext() {
-            return opaqueResultContext;
-        }
-
-        @Override
-        public boolean equals(Object value) {
-            if (this == value) {
-                return true;
-            }
-            if (!(value instanceof DeliverSeed)) {
-                return false;
-            }
-            DeliverSeed other = (DeliverSeed) value;
-            return workerId.equals(other.workerId)
-                    && opaqueDeliveryItem.equals(other.opaqueDeliveryItem)
-                    && opaqueResultContext.equals(other.opaqueResultContext);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(
-                    workerId,
-                    opaqueDeliveryItem,
-                    opaqueResultContext
-            );
-        }
-
-        @Override
-        public String toString() {
-            return "DeliverSeed[workerId=" + workerId
-                    + ", opaqueDeliveryItem=" + opaqueDeliveryItem
-                    + ", opaqueResultContext=" + opaqueResultContext + "]";
-        }
-    }
-
-    public static final class WorkerCommandEnvelope {
-
-        private final String commandId;
-        private final WorkerMessageType messageType;
+        private final String messageId;
+        private final WorkerMessageEndpoint src;
+        private final WorkerMessageEndpoint dst;
+        private final String messageType;
         private final long executeBeforeMillis;
-        private final String opaqueItem;
+        private final String payload;
+        private final String forward;
 
-        public WorkerCommandEnvelope(
-                String commandId,
-                WorkerMessageType messageType,
+        public WorkerCommand(
+                String messageId,
+                WorkerMessageEndpoint src,
+                WorkerMessageEndpoint dst,
+                String messageType,
                 long executeBeforeMillis,
-                String opaqueItem
+                String payload,
+                String forward
         ) {
-            requireCanonicalUuid(commandId);
-            if (messageType == null) {
+            requireCanonicalUuid(messageId, "messageId");
+            if (src == null || src == WorkerMessageEndpoint.WORKER) {
                 throw new IllegalArgumentException(
-                        "messageType must be present"
+                        "Worker command src must be TASK, SYSTEM, or ADAPTER"
                 );
             }
+            if (dst != WorkerMessageEndpoint.WORKER) {
+                throw new IllegalArgumentException(
+                        "Worker command dst must be WORKER"
+                );
+            }
+            requireNonBlank(messageType, "messageType");
             if (executeBeforeMillis <= 0) {
                 throw new IllegalArgumentException(
                         "executeBeforeMillis must be positive"
                 );
             }
-            requireNonBlank(opaqueItem, "opaqueItem");
-            this.commandId = commandId;
+            Objects.requireNonNull(payload, "payload");
+            Objects.requireNonNull(forward, "forward");
+            if (src == WorkerMessageEndpoint.TASK && forward.isEmpty()) {
+                throw new IllegalArgumentException(
+                        "TASK command forward must be non-empty"
+                );
+            }
+            this.messageId = messageId;
+            this.src = src;
+            this.dst = dst;
             this.messageType = messageType;
             this.executeBeforeMillis = executeBeforeMillis;
-            this.opaqueItem = opaqueItem;
+            this.payload = payload;
+            this.forward = forward;
         }
 
-        public String commandId() {
-            return commandId;
+        public String messageId() {
+            return messageId;
         }
 
-        public WorkerMessageType messageType() {
+        public WorkerMessageEndpoint src() {
+            return src;
+        }
+
+        public WorkerMessageEndpoint dst() {
+            return dst;
+        }
+
+        public String messageType() {
             return messageType;
         }
 
@@ -223,8 +154,12 @@ public final class WorkerDeliveryProtocol {
             return executeBeforeMillis;
         }
 
-        public String opaqueItem() {
-            return opaqueItem;
+        public String payload() {
+            return payload;
+        }
+
+        public String forward() {
+            return forward;
         }
 
         @Override
@@ -232,87 +167,109 @@ public final class WorkerDeliveryProtocol {
             if (this == value) {
                 return true;
             }
-            if (!(value instanceof WorkerCommandEnvelope)) {
+            if (!(value instanceof WorkerCommand)) {
                 return false;
             }
-            WorkerCommandEnvelope other = (WorkerCommandEnvelope) value;
+            WorkerCommand other = (WorkerCommand) value;
             return executeBeforeMillis == other.executeBeforeMillis
-                    && commandId.equals(other.commandId)
-                    && messageType == other.messageType
-                    && opaqueItem.equals(other.opaqueItem);
+                    && messageId.equals(other.messageId)
+                    && src == other.src
+                    && dst == other.dst
+                    && messageType.equals(other.messageType)
+                    && payload.equals(other.payload)
+                    && forward.equals(other.forward);
         }
 
         @Override
         public int hashCode() {
             return Objects.hash(
-                    commandId,
+                    messageId,
+                    src,
+                    dst,
                     messageType,
                     executeBeforeMillis,
-                    opaqueItem
+                    payload,
+                    forward
             );
         }
 
         @Override
         public String toString() {
-            return "WorkerCommandEnvelope[commandId=" + commandId
+            return "WorkerCommand[messageId=" + messageId
+                    + ", src=" + src
+                    + ", dst=" + dst
                     + ", messageType=" + messageType
                     + ", executeBeforeMillis=" + executeBeforeMillis
-                    + ", opaqueItem=" + opaqueItem + "]";
+                    + ", payload=<opaque>, forward=<opaque>]";
         }
     }
 
-    public static final class SeedResult {
+    public static final class WorkerResult {
 
-        private final String commandId;
-        private final String opaqueResultContext;
+        private final String messageId;
+        private final WorkerMessageEndpoint dst;
+        private final String messageType;
         private final String outcomeCode;
-        private final String opaqueResultPayload;
+        private final String payload;
+        private final String forward;
 
-        public SeedResult(
-                String commandId,
-                String opaqueResultContext,
+        public WorkerResult(
+                String messageId,
+                WorkerMessageEndpoint dst,
+                String messageType,
                 String outcomeCode,
-                String opaqueResultPayload
+                String payload,
+                String forward
         ) {
-            requireCanonicalUuid(commandId);
-            requireNonBlank(opaqueResultContext, "opaqueResultContext");
-            if (classifyOutcomeCode(outcomeCode) == null) {
+            requireCanonicalUuid(messageId, "messageId");
+            if (dst == null || dst == WorkerMessageEndpoint.WORKER) {
+                throw new IllegalArgumentException(
+                        "Worker result dst must be TASK, SYSTEM, or ADAPTER"
+                );
+            }
+            requireNonBlank(messageType, "messageType");
+            if (classifyWorkerResultOutcomeCode(outcomeCode) == null) {
                 throw new IllegalArgumentException(
                         "outcomeCode must be 200, 1xxx, or 3xxx"
                 );
             }
-            if (SUCCESS_OUTCOME_CODE.equals(outcomeCode)
-                    && opaqueResultPayload == null) {
+            Objects.requireNonNull(payload, "payload");
+            Objects.requireNonNull(forward, "forward");
+            if (dst == WorkerMessageEndpoint.TASK && forward.isEmpty()) {
                 throw new IllegalArgumentException(
-                        "Successful result must carry an opaque payload"
+                        "TASK result forward must be non-empty"
                 );
             }
-            if (opaqueResultPayload != null
-                    && opaqueResultPayload.isEmpty()) {
-                throw new IllegalArgumentException(
-                        "opaqueResultPayload must be non-empty when present"
-                );
-            }
-            this.commandId = commandId;
-            this.opaqueResultContext = opaqueResultContext;
+            this.messageId = messageId;
+            this.dst = dst;
+            this.messageType = messageType;
             this.outcomeCode = outcomeCode;
-            this.opaqueResultPayload = opaqueResultPayload;
+            this.payload = payload;
+            this.forward = forward;
         }
 
-        public String commandId() {
-            return commandId;
+        public String messageId() {
+            return messageId;
         }
 
-        public String opaqueResultContext() {
-            return opaqueResultContext;
+        public WorkerMessageEndpoint dst() {
+            return dst;
+        }
+
+        public String messageType() {
+            return messageType;
         }
 
         public String outcomeCode() {
             return outcomeCode;
         }
 
-        public String opaqueResultPayload() {
-            return opaqueResultPayload;
+        public String payload() {
+            return payload;
+        }
+
+        public String forward() {
+            return forward;
         }
 
         @Override
@@ -320,43 +277,45 @@ public final class WorkerDeliveryProtocol {
             if (this == value) {
                 return true;
             }
-            if (!(value instanceof SeedResult)) {
+            if (!(value instanceof WorkerResult)) {
                 return false;
             }
-            SeedResult other = (SeedResult) value;
-            return commandId.equals(other.commandId)
-                    && opaqueResultContext.equals(other.opaqueResultContext)
+            WorkerResult other = (WorkerResult) value;
+            return messageId.equals(other.messageId)
+                    && dst == other.dst
+                    && messageType.equals(other.messageType)
                     && outcomeCode.equals(other.outcomeCode)
-                    && Objects.equals(
-                            opaqueResultPayload,
-                            other.opaqueResultPayload
-                    );
+                    && payload.equals(other.payload)
+                    && forward.equals(other.forward);
         }
 
         @Override
         public int hashCode() {
             return Objects.hash(
-                    commandId,
-                    opaqueResultContext,
+                    messageId,
+                    dst,
+                    messageType,
                     outcomeCode,
-                    opaqueResultPayload
+                    payload,
+                    forward
             );
         }
 
         @Override
         public String toString() {
-            return "SeedResult[commandId=" + commandId
-                    + ", opaqueResultContext=" + opaqueResultContext
+            return "WorkerResult[messageId=" + messageId
+                    + ", dst=" + dst
+                    + ", messageType=" + messageType
                     + ", outcomeCode=" + outcomeCode
-                    + ", opaqueResultPayload=" + opaqueResultPayload + "]";
+                    + ", payload=<opaque>, forward=<opaque>]";
         }
     }
 
-    public static SeedResultOutcomeClass classifyOutcomeCode(
+    public static WorkerResultOutcomeClass classifyWorkerResultOutcomeCode(
             String outcomeCode
     ) {
         if (SUCCESS_OUTCOME_CODE.equals(outcomeCode)) {
-            return SeedResultOutcomeClass.SUCCESS;
+            return WorkerResultOutcomeClass.SUCCESS;
         }
         if (outcomeCode == null
                 || outcomeCode.length() != 4
@@ -365,31 +324,37 @@ public final class WorkerDeliveryProtocol {
         }
         char outcomeClass = outcomeCode.charAt(0);
         if (outcomeClass == '1') {
-            return SeedResultOutcomeClass.WORKER_FAILURE;
+            return WorkerResultOutcomeClass.WORKER_FAILURE;
         }
         if (outcomeClass == '3') {
-            return SeedResultOutcomeClass.ADAPTER_REJECTION;
+            return WorkerResultOutcomeClass.ADAPTER_REJECTION;
         }
         return null;
     }
 
-    private static void requireCanonicalUuid(String value) {
-        requireNonBlank(value, "commandId");
-        try {
-            if (!UUID.fromString(value).toString().equals(value)) {
-                throw new IllegalArgumentException();
-            }
-        } catch (IllegalArgumentException error) {
+    private static void requireNonBlank(String value, String name) {
+        if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(
-                    "commandId must be a canonical UUID",
-                    error
+                    name + " must be non-blank"
             );
         }
     }
 
-    private static void requireNonBlank(String value, String name) {
-        if (value == null || value.trim().isEmpty()) {
-            throw new IllegalArgumentException(name + " must be non-blank");
+    private static void requireCanonicalUuid(
+            String value,
+            String name
+    ) {
+        requireNonBlank(value, name);
+        try {
+            UUID parsed = UUID.fromString(value);
+            if (!parsed.toString().equals(value)) {
+                throw new IllegalArgumentException();
+            }
+        } catch (IllegalArgumentException error) {
+            throw new IllegalArgumentException(
+                    name + " must be a canonical UUID",
+                    error
+            );
         }
     }
 

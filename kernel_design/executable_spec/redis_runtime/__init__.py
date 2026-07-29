@@ -6,7 +6,7 @@ from .assignment_dispatch import (
 from .worker_delivery import RedisWorkerCommandRuntime
 from .task_runtime import RedisTaskResourceCatalog, RedisTaskRuntime
 from .worker_score import RedisWorkerScoreCore
-from .result_routing import RedisSeedResultRuntime
+from .worker_result import RedisWorkerResultRuntime
 from .worker_runtime import (
     RedisWorkerDynamicAttributeRuntime,
     RedisWorkerResourceCatalog,
@@ -21,7 +21,7 @@ __all__ = [
     "RedisTaskResourceCatalog",
     "RedisTaskRuntime",
     "RedisWorkerScoreCore",
-    "RedisSeedResultRuntime",
+    "RedisWorkerResultRuntime",
     "RedisWorkerDynamicAttributeRuntime",
     "RedisWorkerResourceCatalog",
     "RedisWorkerRuntime",

@@ -45,12 +45,12 @@ close_task
 
 WorkerCommandConsumerClient
 consume_worker_command(endpointManagerId, workerId)
-  -> WorkerCommandEnvelope | None
+  -> WorkerCommand | None
 consume_worker_commands(endpointManagerId, limit)
-  -> workerId -> WorkerCommandEnvelope
+  -> workerId -> WorkerCommand
 
-SeedResultCommandClient
-append_seed_results(SeedResult...)
+WorkerResultCommandClient
+append_worker_results(WorkerResult...)
 
 JVM TaskRuntime provider
 appendItems(taskId, items)
@@ -77,7 +77,7 @@ Task approve / close            -> Python HTTP application commands
 Task / WorkerGroup reads        -> Java Redis catalog providers
 TaskItem append / result load   -> Java Redis TaskRuntime provider
 WorkerCommand consume           -> Java Redis WorkerCommandRuntime provider
-SeedResult append               -> Java Redis SeedResultRuntime provider
+WorkerResult append               -> Java Redis WorkerResultRuntime provider
 score / candidate / scheduling  -> no Server provider
 ```
 
@@ -106,7 +106,7 @@ returns `TaskApprovalResult` without exposing score evidence.
 `close_task` is the common explicit termination command for both Task types and
 all positive bands. It returns `TaskCloseResult`, chooses terminal score
 internally, is idempotent after terminal, and does not retract existing Item,
-DeliverSeed, or result evidence.
+WorkerCommand, or result evidence.
 The caller owns the close decision and its business evidence. For
 `ITEM_DRIVEN`, a server or other control-plane owner may call this command from
 deadline or completion evidence; `KernelApplication` does not infer completion
@@ -138,7 +138,7 @@ application = KernelApplication.from_json("{}")
 resources = ResourcesCommandClient()
 resources = ResourcesCommandClient.from_json("{}")
 worker_commands = WorkerCommandConsumerClient()
-worker_results = SeedResultCommandClient()
+worker_results = WorkerResultCommandClient()
 ```
 
 The optional JSON contract is:
@@ -195,7 +195,7 @@ private process root does not close the Redis client on stop, so a clean
 application instance may restart.
 
 `ResourcesCommandClient`, `WorkerCommandConsumerClient`, and
-`SeedResultCommandClient` have no `start` or `stop`. Each may use a separate
+`WorkerResultCommandClient` have no `start` or `stop`. Each may use a separate
 redis-py pool while sharing the same URL, prefix, and Redis owner truth. The
 latter two remain Python executable-spec/test-support clients; Java owns the
 public Worker Delivery HTTP operations.
@@ -211,12 +211,12 @@ AssignmentDispatchApplication
   -> Task-dispatch loop
 
 ResultRoutingApplication
-  -> SeedResult-routing loop
+  -> WorkerResult-routing loop
 ```
 
 The composition root creates one `ResultRoutingBuiltinPolicies`, obtains its
 default Task and Worker handler mappings, and injects them into
-`ResultRoutingPacer`. The Pacer itself depends only on `SeedResultRuntime` and
+`ResultRoutingPacer`. The Pacer itself depends only on `WorkerResultRuntime` and
 the stable handler contracts; Task runtime, TaskItem score, and Worker score
 dependencies belong to the selected policy object.
 
@@ -270,7 +270,7 @@ Java control API -> Python KernelApplication
   -> Java Server Worker Delivery HTTP command access
   -> Java polling Worker or Netty WebSocket Adapter instance + Worker
   -> Java phone tool execution
-  -> Java Server Worker Delivery HTTP SeedResult ingress
+  -> Java Server Worker Delivery HTTP WorkerResult ingress
   -> Result-Routing
   -> TaskItem FINAL_SUCCESS + result HASH + Worker lease release
   -> Java last-success result query
@@ -322,27 +322,26 @@ POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/results:appen
 
 The two Worker-specific operations are point Worker access. Pure polling
 Workers bind to the fixed logical `system-polling` endpoint manager. They
-cannot scan the mailbox. Cursor consume and batch result append are
+cannot scan the mailbox. Bounded no-cursor consume and batch result append are
 long-lived Adapter operations and reject the built-in polling identity.
 
-`WorkerCommandEnvelope` is the Kernel-defined transport-neutral outbound
-command DTO. Task Dispatch generates its canonical UUID `commandId`,
-`TASK_ITEM` message type, execute-before deadline, and opaque DeliverSeed.
-Worker results use `SeedResult` directly and copy only `commandId` for trace
-correlation. Result ingress does not carry command message type or deadline.
+`WorkerCommand` is the Kernel-defined transport-neutral outbound
+command DTO. Task Dispatch generates its canonical UUID `messageId`, uses the
+TaskItem eventCode as `messageType`, writes the Item payload directly, sets
+the execute-before deadline, and stores ResultContext in `forward`.
+Worker results use `WorkerResult` directly and copy `messageId`,
+`messageType`, and `forward`. Result ingress does not carry a deadline.
 
-The Java Worker is a separate process. It knows only its WorkerId, optional
-polling endpoint-manager binding, Java Runtime API URL, Worker Delivery
-envelopes, and the `telecom.phone.inspect` tool. It does not register resources
-or import Kernel owners. Polling and WebSocket share one serial command
-execution core.
+The Worker library knows only its WorkerId, optional polling endpoint-manager
+binding, Server or Adapter address, Worker Delivery contracts, and statically
+provided event definitions. It does not register resources or import Kernel
+owners. Polling, WebSocket, and Socket share one serial execution core.
 
 Polling is a base request-driven protocol, not an independently deployed
 Adapter. Each configured Java Adapter instance owns one non-`system-polling`
 endpoint-manager mailbox, one independent Netty listener, one scheduled
-bounded-consumption loop through the Server batch HTTP API, one current
-connection per WorkerId, bounded concurrent delivery, and result-buffer
-policy. The Server only parses instance configuration, registers concrete
+Command Loop, one timed Result Loop, one current connection per WorkerId, and
+bounded local queues. The Server only parses instance configuration, registers concrete
 instances, and invokes Adapter `start()`/`close()` at process boundaries.
 Workers upsert before connecting. KernelApplication does not own or expose
 connection facts.
@@ -368,9 +367,9 @@ API compatibility remain out of scope.
 - Do not restore Python Worker Delivery HTTP routes. Python transport clients
   remain executable-spec and test-support surfaces.
 - Do not let Java Worker Delivery Redis code append WorkerCommand, consume
-  SeedResult, or access score/Pacer state.
+  WorkerResult, or access score/Pacer state.
 - Do not let Java TaskData Redis code access Task score, Worker score,
-  candidate cache, WorkerCommand mailbox, SeedResult queues, or Pacer state.
+  candidate cache, WorkerCommand mailbox, WorkerResult queues, or Pacer state.
 - Do not expose batch mailbox acquisition through the polling Worker endpoint.
 - Do not let the WebSocket Adapter bypass Server batch HTTP through Redis or
   an in-process call.

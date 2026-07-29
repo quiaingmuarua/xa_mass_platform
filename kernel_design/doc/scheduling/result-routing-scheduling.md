@@ -6,7 +6,7 @@ implemented; policy coverage partial.
 Parent contracts:
 [Task Item Score-Band Scheduling](task-item-score-band-scheduling.md) and
 [Worker HOT_ACQUIRE Lease Protocol](worker-hot-acquire-lease-protocol.md).
-Redis shape: [Seed Result Runtime Redis Shape](../runtime-redis/seed-result-runtime-redis-shape.md).
+Redis shape: [Worker Result Runtime Redis Shape](../runtime-redis/worker-result-runtime-redis-shape.md).
 
 ## Purpose
 
@@ -33,11 +33,13 @@ truth.
 ## Protocol And Queues
 
 ```python
-SeedResult(
-    command_id: str,
-    opaque_result_context: str,
+WorkerResult(
+    message_id: str,
+    dst: WorkerMessageEndpoint,
+    message_type: str,
     outcome_code: str,
-    opaque_result_payload: str | None,
+    payload: str,
+    forward: str,
 )
 ```
 
@@ -50,9 +52,9 @@ Outcome classification is exact:
 ```
 
 `1xxx` and `3xxx` are exactly four ASCII digits. Result routing understands
-only the class. A `200` must carry a non-empty opaque payload; JSON `"null"`
-represents a successful handler with no business return value.
-`commandId` is canonical trace correlation copied from the outbound command.
+only the class. The Worker library uses JSON `"null"` for a successful handler
+with no business return value.
+`messageId` is canonical trace correlation copied from the outbound command.
 Result routing does not use it as an Item identity, deduplication key, outcome
 winner, or Worker lease fence.
 
@@ -65,18 +67,18 @@ routing policy. Authentication of that Adapter role remains deferred. Result
 routing does not distinguish producers and never derives `3xxx` from timeout,
 missing response, or mailbox age.
 
-Each class has an independent Redis LIST. The result context remains opaque to
-the queue runtime and carries `taskId`, `messageId`, `workerId`,
+Each class has an independent Redis LIST. `forward` remains opaque to the queue
+runtime and carries `taskId`, `messageId`, `workerId`,
 `workerGroupId`, and opaque `workerLeaseScore`. `workerGroupId` is the
 home-bucket coordinate of the opaque Worker lease fence; result routing does
 not reread Task metadata to recover it. Item claim score and claim-until time
 are not result-routing inputs. The claim-until time remains a top-level
-`WorkerCommandEnvelope.executeBeforeMillis` cutoff used before Worker submit.
+`WorkerCommand.executeBeforeMillis` cutoff used before Worker submit.
 
 ## Routing Round
 
 One round calls the three class lanes in a fixed implementation order. Normal
-protocol produces one logical outcome per DeliverSeed, although Worker Delivery
+protocol produces one logical outcome per WorkerCommand, although Worker Delivery
 Dispatch may duplicate the same evidence. Duplicate queue records converge through
 last-success storage and exact score fences; they do not create a second Item
 or Worker owner. If contradictory classes for one exact Worker lease do arrive,
@@ -92,7 +94,7 @@ indexes:
 taskId -> ordered TaskResultEvidence(
   taskId,
   messageId,
-  opaqueResultPayload
+  payload
 )
 
 workerGroupId -> ordered WorkerResultEvidence(
@@ -101,7 +103,7 @@ workerGroupId -> ordered WorkerResultEvidence(
 )
 ```
 
-`SeedResult` and `ResultContext` do not leave this decode cutpoint. Only the
+`WorkerResult` and `ResultContext` do not leave this decode cutpoint. Only the
 SUCCESS lane creates Task evidence; every valid outcome creates Worker
 evidence. After consuming one outcome queue, routing enters two owner-local
 paths: `_handle_task_results` receives only `resultsByTask`, while
@@ -127,7 +129,7 @@ policy reads a fresh clock value immediately before calling
 round time. `ResultRoutingPacer`
 accepts owner-local outcome-to-handler mappings, copies them during
 construction, and requires Task SUCCESS coverage plus Worker coverage for all
-three outcome classes. It depends only on `SeedResultRuntime` plus those two
+three outcome classes. It depends only on `WorkerResultRuntime` plus those two
 handler mappings; TaskItem score, Worker score, and Task runtime dependencies
 belong to policy construction. `ResultRoutingBuiltinPolicies` is the single
 container for built-in result-routing policies. It owns the default policy
@@ -203,7 +205,7 @@ malformed context or result in the wrong class queue
 Worker STALE / NOOP
   -> does not roll back Item or result truth
 
-Worker Delivery Dispatch or Worker produces no SeedResult
+Worker Delivery Dispatch or Worker produces no WorkerResult
   -> UNKNOWN; Item claim and Worker lease expiry recover
 
 process crash after queue pop
@@ -235,10 +237,10 @@ or any other `UNKNOWN` evidence must continue waiting for claim expiry.
 ## Guardrails
 
 - Do not let Adapter or Worker mutate score directly.
-- Do not interpret `SeedResult.commandId` as result truth or a fence.
-- Do not carry Worker command `messageType` or `executeBeforeMillis` into
-  result routing.
-- Do not add a generic result envelope ahead of SeedResult outcome
+- Do not interpret `WorkerResult.messageId` as result truth or a fence.
+- Do not interpret `WorkerResult.messageType` as routing truth.
+- Do not carry `executeBeforeMillis` into WorkerResult.
+- Do not add a generic result envelope ahead of WorkerResult outcome
   partitioning.
 - Do not parse exact `1xxx` or `3xxx` subcodes in result routing.
 - Do not partition queues by exact code, Task, WorkerGroup, or producer source.

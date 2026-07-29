@@ -1,7 +1,6 @@
 package com.xa.mass.workerdelivery.adapter.application;
 
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultSource;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 import java.util.List;
 import java.util.Map;
 
@@ -10,14 +9,13 @@ import java.util.Map;
  */
 public interface WorkerDeliveryGatewayClient {
 
-    Map<String, WorkerCommandEnvelope> consumeWorkerCommands(
+    Map<String, WorkerCommand> consumeWorkerCommands(
             String endpointManagerId,
             int limit
     );
 
     void appendResults(
             String endpointManagerId,
-            SeedResultSource source,
-            List<String> encodedSeedResults
+            List<String> encodedWorkerResults
     );
 }

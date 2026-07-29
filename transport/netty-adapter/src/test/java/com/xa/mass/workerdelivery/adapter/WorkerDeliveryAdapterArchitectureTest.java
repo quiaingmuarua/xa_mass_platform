@@ -63,7 +63,7 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("\"wd:")
                 .doesNotContain("\"rr:")
                 .doesNotContain("WorkerCommandRuntime")
-                .doesNotContain("SeedResultRuntime");
+                .doesNotContain("WorkerResultRuntime");
         assertThat(sources)
                 .doesNotContain("java.util.logging")
                 .doesNotContain("LogUtils");
@@ -157,31 +157,26 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .contains("final class BoundedWorkerResultQueue")
                 .contains("final class WorkerResultLoop")
                 .contains("ArrayDeque")
-                .contains("SeedResultSource")
-                .contains("String encodedSeedResult")
+                .contains("String encodedWorkerResult")
                 .contains("public synchronized void run()")
-                .doesNotContain("decodeSeedResult")
+                .doesNotContain("decodeWorkerResult")
+                .doesNotContain("encodeWorkerResult")
                 .doesNotContain("io.netty")
                 .doesNotContain("Channel");
     }
 
     @Test
-    void messageMechanismIsStaticAndTransportIndependent()
+    void resultIngressValidatesButForwardsTheOriginalPayload()
             throws IOException {
         String messageSources = readSources(MESSAGE);
         assertThat(messageSources)
-                .contains("class AdapterMessageDefinition")
-                .contains("class AdapterMessageDefinitionManager")
                 .contains("class WorkerResultPayloadHandler")
-                .contains("Collections.unmodifiableMap(copy)")
-                .contains("WorkerConnectionMessage")
-                .contains("String encodedSeedResult")
-                .doesNotContain("register(")
-                .doesNotContain("unregister(")
-                .doesNotContain("messageClass")
-                .doesNotContain("Class.cast")
-                .doesNotContain("decodeSeedResult")
-                .doesNotContain("SeedResult result")
+                .contains("String encodedWorkerResult")
+                .contains("decodeWorkerResult(encodedWorkerResult)")
+                .contains("resultQueue.offer(encodedWorkerResult)")
+                .doesNotContain("encodeWorkerResult")
+                .doesNotContain("AdapterMessageDefinition")
+                .doesNotContain("WorkerConnectionMessage")
                 .doesNotContain("ServiceLoader")
                 .doesNotContain("io.netty")
                 .doesNotContain("org.springframework")
@@ -191,16 +186,19 @@ class WorkerDeliveryAdapterArchitectureTest {
 
         assertThat(readSources(RESULT))
                 .contains("class BoundedWorkerResultQueue")
-                .doesNotContain("AdapterMessageDefinitionManager");
+                .doesNotContain("WorkerResultSource")
+                .doesNotContain("WorkerConnectionMessage");
 
         String transportSources =
                 readSources(WEBSOCKET) + readSources(SOCKET);
         assertThat(transportSources)
-                .contains("decodeWorkerConnectionMessage")
-                .contains("encodeWorkerConnectionMessage")
                 .contains("decodeWorkerConnectionBind")
-                .contains("AdapterMessageDefinitionManager")
-                .doesNotContain("decodeSeedResult")
+                .contains("resultHandler.handle(")
+                .doesNotContain("decodeWorkerConnectionMessage")
+                .doesNotContain("encodeWorkerConnectionMessage")
+                .doesNotContain("AdapterMessageDefinitionManager")
+                .doesNotContain("WorkerConnectionMessage")
+                .doesNotContain("encodeWorkerResult")
                 .doesNotContain(
                         "private final "
                                 + "WebSocketWorkerDeliveryAdapter adapter"

@@ -13,57 +13,110 @@ from .worker_runtime import EndpointManagerId
 from .worker_score import WorkerId
 
 
-class WorkerMessageType(Enum):
-    """Stable Worker protocol message family."""
+class WorkerMessageEndpoint(Enum):
+    TASK = "TASK"
+    SYSTEM = "SYSTEM"
+    ADAPTER = "ADAPTER"
+    WORKER = "WORKER"
 
-    TASK_ITEM = "TASK_ITEM"
+
+class WorkerResultOutcomeClass(Enum):
+    SUCCESS = "SUCCESS"
+    WORKER_FAILURE = "WORKER_FAILURE"
+    ADAPTER_REJECTION = "ADAPTER_REJECTION"
+
+
+SUCCESS_OUTCOME_CODE = "200"
+
+
+def classify_worker_result_outcome_code(
+    outcome_code: str,
+) -> WorkerResultOutcomeClass | None:
+    if outcome_code == SUCCESS_OUTCOME_CODE:
+        return WorkerResultOutcomeClass.SUCCESS
+    if (
+        isinstance(outcome_code, str)
+        and len(outcome_code) == 4
+        and outcome_code.isascii()
+        and outcome_code.isdecimal()
+    ):
+        if outcome_code[0] == "1":
+            return WorkerResultOutcomeClass.WORKER_FAILURE
+        if outcome_code[0] == "3":
+            return WorkerResultOutcomeClass.ADAPTER_REJECTION
+    return None
 
 
 @dataclass(frozen=True, slots=True)
-class DeliverSeed:
-    """Already-assigned TaskItem handoff encoded inside one Worker command."""
-
+class WorkerConnectionBind:
     worker_id: WorkerId
-    opaque_delivery_item: str
-    opaque_result_context: str
 
     def __post_init__(self) -> None:
         _require_non_empty_text(self.worker_id, "worker id")
-        _require_non_empty_text(
-            self.opaque_delivery_item,
-            "opaque delivery item",
-        )
-        _require_non_empty_text(
-            self.opaque_result_context,
-            "opaque result context",
-        )
 
 
 @dataclass(frozen=True, slots=True)
-class WorkerCommandEnvelope:
-    """Transport-neutral command passed unchanged through a Worker Adapter."""
-
-    command_id: str
-    message_type: WorkerMessageType
+class WorkerCommand:
+    message_id: str
+    src: WorkerMessageEndpoint
+    dst: WorkerMessageEndpoint
+    message_type: str
     execute_before_millis: TimeMillis
-    opaque_item: str
+    payload: str
+    forward: str
 
     def __post_init__(self) -> None:
-        _require_canonical_uuid(self.command_id)
-        if not isinstance(self.message_type, WorkerMessageType):
-            raise TypeError("message type must be WorkerMessageType")
+        _require_canonical_uuid(self.message_id, "message id")
+        if (
+            not isinstance(self.src, WorkerMessageEndpoint)
+            or self.src is WorkerMessageEndpoint.WORKER
+        ):
+            raise ValueError(
+                "Worker command src must be TASK, SYSTEM, or ADAPTER"
+            )
+        if self.dst is not WorkerMessageEndpoint.WORKER:
+            raise ValueError("Worker command dst must be WORKER")
+        _require_non_empty_text(self.message_type, "message type")
         if (
             isinstance(self.execute_before_millis, bool)
             or not isinstance(self.execute_before_millis, int)
             or self.execute_before_millis <= 0
         ):
             raise ValueError("execute-before deadline must be positive")
-        _require_non_empty_text(self.opaque_item, "opaque item")
+        _require_text(self.payload, "payload")
+        _require_text(self.forward, "forward")
+        if self.src is WorkerMessageEndpoint.TASK and not self.forward:
+            raise ValueError("TASK command forward must be non-empty")
+
+
+@dataclass(frozen=True, slots=True)
+class WorkerResult:
+    message_id: str
+    dst: WorkerMessageEndpoint
+    message_type: str
+    outcome_code: str
+    payload: str
+    forward: str
+
+    def __post_init__(self) -> None:
+        _require_canonical_uuid(self.message_id, "message id")
+        if (
+            not isinstance(self.dst, WorkerMessageEndpoint)
+            or self.dst is WorkerMessageEndpoint.WORKER
+        ):
+            raise ValueError(
+                "Worker result dst must be TASK, SYSTEM, or ADAPTER"
+            )
+        _require_non_empty_text(self.message_type, "message type")
+        if classify_worker_result_outcome_code(self.outcome_code) is None:
+            raise ValueError("outcome code must be 200, 1xxx, or 3xxx")
+        _require_text(self.payload, "payload")
+        _require_text(self.forward, "forward")
+        if self.dst is WorkerMessageEndpoint.TASK and not self.forward:
+            raise ValueError("TASK result forward must be non-empty")
 
 
 class WorkerCommandAppendStatus(Enum):
-    """Per-Worker outcome of one mailbox append."""
-
     APPENDED = "APPENDED"
     REPLACED = "REPLACED"
 
@@ -76,12 +129,8 @@ class WorkerCommandRuntime(ABC):
         self,
         *,
         endpoint_manager_id: EndpointManagerId,
-        worker_commands_by_worker_id: Mapping[
-            WorkerId,
-            WorkerCommandEnvelope,
-        ],
+        worker_commands_by_worker_id: Mapping[WorkerId, WorkerCommand],
     ) -> Mapping[WorkerId, WorkerCommandAppendStatus]:
-        """Publish each command to its Adapter-local Worker slot."""
         pass
 
     @abstractmethod
@@ -90,8 +139,7 @@ class WorkerCommandRuntime(ABC):
         *,
         endpoint_manager_id: EndpointManagerId,
         worker_id: WorkerId,
-    ) -> WorkerCommandEnvelope | None:
-        """Atomically consume one Worker slot from one Adapter mailbox."""
+    ) -> WorkerCommand | None:
         pass
 
     @abstractmethod
@@ -100,88 +148,123 @@ class WorkerCommandRuntime(ABC):
         *,
         endpoint_manager_id: EndpointManagerId,
         limit: int,
-    ) -> Mapping[WorkerId, WorkerCommandEnvelope]:
-        """Observe and atomically consume a bounded Worker-command batch."""
+    ) -> Mapping[WorkerId, WorkerCommand]:
         pass
 
 
-def encode_deliver_seed(seed: DeliverSeed) -> str:
-    return _encode_json(
-        {
-            "opaqueDeliveryItem": seed.opaque_delivery_item,
-            "opaqueResultContext": seed.opaque_result_context,
-            "workerId": seed.worker_id,
-        }
-    )
+def encode_worker_connection_bind(bind: WorkerConnectionBind) -> str:
+    return _encode_json({"workerId": bind.worker_id})
 
 
-def decode_deliver_seed(value: str | bytes) -> DeliverSeed | None:
-    payload = _decode_json_mapping(value)
-    if payload is None or set(payload) != {
-        "opaqueDeliveryItem",
-        "opaqueResultContext",
-        "workerId",
-    }:
-        return None
-    try:
-        return DeliverSeed(
-            worker_id=payload["workerId"],
-            opaque_delivery_item=payload["opaqueDeliveryItem"],
-            opaque_result_context=payload["opaqueResultContext"],
-        )
-    except (TypeError, ValueError):
-        return None
-
-
-def encode_worker_command_envelope(
-    command: WorkerCommandEnvelope,
-) -> str:
-    return _encode_json(
-        {
-            "commandId": command.command_id,
-            "executeBeforeMillis": command.execute_before_millis,
-            "messageType": command.message_type.value,
-            "opaqueItem": command.opaque_item,
-        }
-    )
-
-
-def decode_worker_command_envelope(
+def decode_worker_connection_bind(
     value: str | bytes,
-) -> WorkerCommandEnvelope | None:
+) -> WorkerConnectionBind | None:
+    payload = _decode_json_mapping(value)
+    if payload is None or set(payload) != {"workerId"}:
+        return None
+    try:
+        return WorkerConnectionBind(worker_id=payload["workerId"])
+    except (TypeError, ValueError):
+        return None
+
+
+def encode_worker_command(command: WorkerCommand) -> str:
+    return _encode_json(
+        {
+            "dst": command.dst.value,
+            "executeBeforeMillis": command.execute_before_millis,
+            "forward": command.forward,
+            "messageId": command.message_id,
+            "messageType": command.message_type,
+            "payload": command.payload,
+            "src": command.src.value,
+        }
+    )
+
+
+def decode_worker_command(value: str | bytes) -> WorkerCommand | None:
     payload = _decode_json_mapping(value)
     if payload is None or set(payload) != {
-        "commandId",
+        "dst",
         "executeBeforeMillis",
+        "forward",
+        "messageId",
         "messageType",
-        "opaqueItem",
+        "payload",
+        "src",
     }:
         return None
     try:
-        return WorkerCommandEnvelope(
-            command_id=payload["commandId"],
-            message_type=WorkerMessageType(payload["messageType"]),
+        return WorkerCommand(
+            message_id=payload["messageId"],
+            src=WorkerMessageEndpoint(payload["src"]),
+            dst=WorkerMessageEndpoint(payload["dst"]),
+            message_type=payload["messageType"],
             execute_before_millis=payload["executeBeforeMillis"],
-            opaque_item=payload["opaqueItem"],
+            payload=payload["payload"],
+            forward=payload["forward"],
         )
     except (TypeError, ValueError):
         return None
+
+
+def encode_worker_result(result: WorkerResult) -> str:
+    return _encode_json(
+        {
+            "dst": result.dst.value,
+            "forward": result.forward,
+            "messageId": result.message_id,
+            "messageType": result.message_type,
+            "outcomeCode": result.outcome_code,
+            "payload": result.payload,
+        }
+    )
+
+
+def decode_worker_result(value: str | bytes) -> WorkerResult | None:
+    payload = _decode_json_mapping(value)
+    if payload is None or set(payload) != {
+        "dst",
+        "forward",
+        "messageId",
+        "messageType",
+        "outcomeCode",
+        "payload",
+    }:
+        return None
+    try:
+        return WorkerResult(
+            message_id=payload["messageId"],
+            dst=WorkerMessageEndpoint(payload["dst"]),
+            message_type=payload["messageType"],
+            outcome_code=payload["outcomeCode"],
+            payload=payload["payload"],
+            forward=payload["forward"],
+        )
+    except (TypeError, ValueError):
+        return None
+
+
+def _require_text(value: object, name: str) -> None:
+    if not isinstance(value, str):
+        raise TypeError(f"{name} must be text")
 
 
 def _require_non_empty_text(value: object, name: str) -> None:
-    if not isinstance(value, str) or not value:
+    _require_text(value, name)
+    if not value:
         raise ValueError(f"{name} must be non-empty")
 
 
-def _require_canonical_uuid(value: object) -> None:
-    _require_non_empty_text(value, "command id")
+def _require_canonical_uuid(value: object, name: str) -> None:
+    _require_non_empty_text(value, name)
     assert isinstance(value, str)
     try:
         parsed = UUID(value)
     except ValueError as error:
-        raise ValueError("command id must be a canonical UUID") from error
+        raise ValueError(f"{name} must be a canonical UUID") from error
     if str(parsed) != value:
-        raise ValueError("command id must be a canonical UUID")
+        raise ValueError(f"{name} must be a canonical UUID")
 
 
 def _encode_json(payload: Mapping[str, object]) -> str:

@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.TASK;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.WORKER;
 
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
@@ -12,10 +14,8 @@ import com.xa.mass.worker.execution.WorkerCommandProcessor;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliverSeed;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
@@ -44,8 +44,6 @@ class PollingWorkerTransportTest {
         server = new MockWebServer();
         server.start();
         WorkerCommandProcessor processor = new WorkerCommandProcessor(
-                WORKER_ID,
-                codec,
                 Map.of(
                         "test.observe",
                         WorkerEventDefinition.map(payload -> {
@@ -102,15 +100,17 @@ class PollingWorkerTransportTest {
         RecordedRequest submitted =
                 server.takeRequest(1, TimeUnit.SECONDS);
         assertNotNull(submitted);
-        SeedResult result = codec.decodeSeedResult(
+        WorkerResult result = codec.decodeWorkerResult(
                 submitted.getBody().utf8()
         );
         assertNotNull(result);
         assertEquals("200", result.outcomeCode());
         assertEquals(
                 "{\"observed\":\"input\"}",
-                result.opaqueResultPayload()
+                result.payload()
         );
+        assertEquals("opaque-context", result.forward());
+        assertEquals(TASK, result.dst());
         assertFalse(transport.hasPendingResult());
     }
 
@@ -191,17 +191,14 @@ class PollingWorkerTransportTest {
     }
 
     private String command(long deadline) {
-        DeliverSeed seed = new DeliverSeed(
-                WORKER_ID,
-                "{\"eventCode\":\"test.observe\","
-                        + "\"payload\":{\"value\":\"input\"}}",
-                "opaque-context"
-        );
-        return codec.encodeWorkerCommand(new WorkerCommandEnvelope(
+        return codec.encodeWorkerCommand(new WorkerCommand(
                 COMMAND_ID,
-                WorkerMessageType.TASK_ITEM,
+                TASK,
+                WORKER,
+                "test.observe",
                 deadline,
-                codec.encodeDeliverSeed(seed)
+                "{\"value\":\"input\"}",
+                "opaque-context"
         ));
     }
 

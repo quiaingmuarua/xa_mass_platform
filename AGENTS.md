@@ -17,11 +17,9 @@ Status: current repository handoff.
   to Python HTTP providers and selected data/delivery operations to Java Redis
   providers; it does not define a second set of Kernel runtime ports.
 - `worker_delivery_contract_jvm/` is the Java 11 compatible transport-neutral
-  WorkerCommand/DeliverSeed/SeedResult contract shared by Server, Adapter, and
-  Worker.
-  It also owns the stable `messageType + payload` long-connection envelope;
-  Adapter and Worker resolve payloads through separate local Definition
-  Managers.
+  WorkerCommand/WorkerResult/WorkerConnectionBind contract shared by Server,
+  Adapter, and Worker. Long-lived transports exchange direct command/result
+  JSON after bind; there is no generic connection-message envelope.
 - `transport/netty-adapter/` owns complete Adapter instances: local
   registration, start/close lifecycle, scheduled Gateway consumption, active
   connections, bounded Command/Result queues, and independent Netty
@@ -86,11 +84,10 @@ tag.
 - `transport/netty-adapter` must not depend on `server_jvm`, `kernel_jvm`,
   Spring, Redis, scores, Pacers, or Server HTTP DTOs. The Adapter module owns
   its complete instances, Netty listeners, scheduled dispatch loops, active
-  connections, immutable message dispatcher, statically installed handlers,
-  bounded Command/Result queues, and source-specific pending result batches.
-  Handler assembly is not a dynamic registration or discovery surface.
-  Worker `SeedResult` payloads must not be decoded or rebuilt in Adapter; only
-  Adapter-owned `3xxx` construction is allowed. Its private HTTP DTOs are
+  connections, and bounded Command/Result queues. Worker results may be
+  decoded only to enforce the `200/1xxx` Worker ingress boundary; their
+  encoded JSON, payload, and forward context must not be rebuilt or interpreted.
+  Only Adapter-owned `3xxx` construction is allowed. Its private HTTP DTOs are
   proved against Server JSON with bilateral golden tests; do not add an
   in-process fast path.
 - `transport/okhttp-worker` may depend only on `foundation_jvm`, the shared
@@ -116,7 +113,7 @@ The module mirrors the public contracts exported by
 `kernel_design.executable_spec.kernel`. A shared non-production manifest proves
 interface, DTO, enum, and key-constant parity. Selected Redis providers
 currently implement TaskItem append/result reads, Task/WorkerGroup descriptor
-reads, WorkerCommand consume, and SeedResult append. All other translated
+reads, WorkerCommand consume, and WorkerResult append. All other translated
 operations remain explicit gaps.
 
 `server_jvm.kernelbinding` composes Task and Worker control/data providers:
@@ -137,7 +134,7 @@ Worker Delivery has a separate composition boundary:
 ```text
 WorkerDeliveryOwnerAssemblyConfiguration
   -> WorkerCommandRuntime Redis provider
-  -> SeedResultRuntime Redis provider
+  -> WorkerResultRuntime Redis provider
 
 WorkerDeliveryConfiguration
   -> shared codec
@@ -146,7 +143,7 @@ WorkerDeliveryConfiguration
 transport/netty-adapter
   -> Adapter batch HTTP client
   -> per-endpoint Command/Result loops and current connection registry
-  -> stable long-connection envelope, immutable Definitions, opaque Worker
+  -> direct WorkerCommand/WorkerResult transport, unchanged encoded Worker
      result forwarding, and Adapter-owned 3xxx generation
   -> independent Netty WebSocket and Socket listeners
 ```

@@ -9,11 +9,10 @@ from uuid import NAMESPACE_DNS, uuid5
 from kernel_design.executable_spec import (
     TaskType,
     CandidateWorkerEntry,
-    DeliverSeed,
     WorkerCommandAppendStatus,
-    WorkerCommandEnvelope,
+    WorkerCommand,
     WorkerCommandRuntime,
-    WorkerMessageType,
+    WorkerMessageEndpoint,
     TaskDispatchConfig,
     TaskDispatchPacer,
     TaskDescriptor,
@@ -29,8 +28,6 @@ from kernel_design.executable_spec import (
     TaskScoreState,
     TaskScoreTransitionResult,
     TaskScoreTransitionStatus,
-    decode_deliver_seed,
-    encode_deliver_seed,
 )
 from kernel_design.executable_spec.kernel.assignment_dispatch_runtime import (
     CandidateWarmupSchedule,
@@ -102,7 +99,7 @@ class TaskDispatchPacerTest(unittest.TestCase):
                 "task_runtime",
                 "candidate_acquirer",
                 "candidate_warmup_schedule",
-                "delivery_item_encoder",
+                "payload_encoder",
             },
             set(inspect.signature(TaskItemDispatcher).parameters),
         )
@@ -205,13 +202,12 @@ class TaskDispatchPacerTest(unittest.TestCase):
             "worker_commands_by_worker_id"
         ]["worker-1"]
         self.assertEqual(self.CLAIM_UNTIL_MILLIS, first_command.execute_before_millis)
-        seed = decode_deliver_seed(first_command.opaque_item)
-        self.assertIsNotNone(seed)
-        assert seed is not None
-        self.assertEqual("worker-1", seed.worker_id)
+        self.assertIs(first_command.src, WorkerMessageEndpoint.TASK)
+        self.assertIs(first_command.dst, WorkerMessageEndpoint.WORKER)
+        self.assertEqual("event-1", first_command.message_type)
         self.assertEqual(
-            {"eventCode": "event-1", "payload": {"value": "message-1"}},
-            json.loads(seed.opaque_delivery_item),
+            {"value": "message-1"},
+            json.loads(first_command.payload),
         )
 
     def test_partial_candidate_result_claims_only_matching_item_count(self) -> None:
@@ -312,7 +308,7 @@ class TaskDispatchPacerTest(unittest.TestCase):
         )
         self.assertEqual(
             2,
-            len({command.command_id for command in commands.values()}),
+            len({command.message_id for command in commands.values()}),
         )
 
     def test_publish_partitions_commands_by_endpoint_manager(self) -> None:
@@ -435,15 +431,12 @@ class TaskDispatchPacerTest(unittest.TestCase):
             targeted_request.allocation_rule,
         )
         published = {
-            json.loads(seed.opaque_delivery_item)[
-                "payload"
-            ]["value"]: seed.worker_id
-            for command in (
+            json.loads(command.payload)["value"]: worker_id
+            for worker_id, command in (
                 self.worker_command_runtime.append_worker_commands.call_args.kwargs[
                     "worker_commands_by_worker_id"
-                ].values()
+                ].items()
             )
-            if (seed := decode_deliver_seed(command.opaque_item)) is not None
         }
         self.assertEqual(
             {
@@ -917,14 +910,15 @@ class TaskDispatchPacerTest(unittest.TestCase):
         )
 
     @staticmethod
-    def _command(worker_id: str) -> WorkerCommandEnvelope:
-        return WorkerCommandEnvelope(
-            command_id=str(uuid5(NAMESPACE_DNS, worker_id)),
-            message_type=WorkerMessageType.TASK_ITEM,
+    def _command(worker_id: str) -> WorkerCommand:
+        return WorkerCommand(
+            message_id=str(uuid5(NAMESPACE_DNS, worker_id)),
+            src=WorkerMessageEndpoint.TASK,
+            dst=WorkerMessageEndpoint.WORKER,
+            message_type="test.event",
             execute_before_millis=20_000,
-            opaque_item=encode_deliver_seed(
-                DeliverSeed(worker_id, "delivery", "context")
-            ),
+            payload="delivery",
+            forward="context",
         )
 
 

@@ -19,7 +19,7 @@ The resource model is intentionally a short tree:
 ```text
 Task admission      -> exactly one selected WorkerGroup
 WorkerCandidateConstraint -> worker predicates inside selected WorkerGroup
-TaskItem / DeliverSeed -> worker-local EventHandler
+TaskItem / WorkerCommand -> worker-local EventHandler
 Transport           -> internal delivery resource
 ```
 
@@ -40,7 +40,7 @@ selected worker group. Its `allocation_rule` map narrows workers by `workerId`,
 placement, platform/worker attributes, or explicitly supported projected dynamic
 query attributes.
 
-`TaskItem / DeliverSeed -> EventHandler` is handler invocation inside the selected
+`TaskItem / WorkerCommand -> EventHandler` is handler invocation inside the selected
 worker. Kernel assignment passes the TaskItem's `eventCode` through without
 using it for admission or matching. The selected Worker resolves it to a local
 handler and reports an unsupported code as Worker failure evidence. EventCode
@@ -72,7 +72,7 @@ In v0, a `WorkerId` is one scheduler-visible execution slot. One WorkerId may
 have at most one active Worker lease continuation. The Worker score lease / hold
 protects that slot from allocation through result or bounded lease expiry.
 TaskItem dispatch validates or renews the exact fence; it does not release the
-slot after DeliverSeed creation.
+slot after WorkerCommand creation.
 
 If one physical runtime can execute `N` independent TaskItems concurrently, it
 must expose `N` logical WorkerIds. Those Workers may share one WorkerGroup and
@@ -88,8 +88,8 @@ physical runtime with concurrency 3
 
 One TaskItem remains one scheduling and result unit. If a Worker supports a
 business batch operation, the caller places the bounded input collection inside
-one TaskItem payload. The kernel still claims one Item, emits one DeliverSeed,
-and receives one SeedResult. It does not merge independently appended
+one TaskItem payload. The kernel still claims one Item, emits one WorkerCommand,
+and receives one WorkerResult. It does not merge independently appended
 TaskItems, fan out partial outcomes, or reuse the Worker slot across Tasks.
 
 This keeps score ownership, dirty handling, and release semantics single-group
@@ -565,7 +565,7 @@ The stable model has three resource/handler relationships:
 ```text
 Task admission      -> selected WorkerGroup
 WorkerCandidateConstraint -> worker predicates inside selected WorkerGroup
-TaskItem / DeliverSeed -> EventHandler
+TaskItem / WorkerCommand -> EventHandler
 ```
 
 `Task admission -> selected WorkerGroup` validates one registered group before
@@ -637,7 +637,7 @@ uses `WorkerScoreCore` score lease / hold primitives directly. If a later
 executable spec proves a persisted cross-round assignment continuation is
 required, add that owner then. Do not keep a placeholder surface now.
 
-`TaskItem / DeliverSeed -> EventHandler` is worker-local execution routing. The
+`TaskItem / WorkerCommand -> EventHandler` is worker-local execution routing. The
 item `eventCode` resolves the handler only after the task has a selected worker
 group and assignment-dispatch has selected a concrete worker.
 
@@ -678,7 +678,7 @@ surfaces before producing a selected worker:
 task descriptor workerGroupId -> worker score home bucket
 worker score -> hot/recovery acquisition coordinate
 WorkerScoreCore lease / hold -> current serviceability and slot-occupation decision
-assignment-dispatch -> selected worker + Item score claim + DeliverSeed
+assignment-dispatch -> selected worker + Item score claim + WorkerCommand
 ```
 
 Descriptor metadata can be used by worker-runtime validation, policy mapping,

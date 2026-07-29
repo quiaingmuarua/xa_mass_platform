@@ -1,12 +1,10 @@
 package com.xa.mass.workerdelivery.protocol;
 
 import com.xa.mass.workerdelivery.json.Jsons;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliverSeed;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessage;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -14,62 +12,26 @@ import java.util.Set;
 
 public final class WorkerDeliveryCodec {
 
-    private static final Set<String> CONNECTION_MESSAGE_FIELDS = Set.of(
-            "messageType",
-            "payload"
-    );
     private static final Set<String> CONNECTION_BIND_FIELDS = Set.of(
             "workerId"
     );
     private static final Set<String> COMMAND_FIELDS = Set.of(
-            "commandId",
+            "dst",
             "executeBeforeMillis",
+            "forward",
+            "messageId",
             "messageType",
-            "opaqueItem"
-    );
-    private static final Set<String> DELIVER_SEED_FIELDS = Set.of(
-            "opaqueDeliveryItem",
-            "opaqueResultContext",
-            "workerId"
+            "payload",
+            "src"
     );
     private static final Set<String> RESULT_FIELDS = Set.of(
-            "commandId",
-            "opaqueResultContext",
-            "opaqueResultPayload",
-            "outcomeCode"
+            "dst",
+            "forward",
+            "messageId",
+            "messageType",
+            "outcomeCode",
+            "payload"
     );
-    public WorkerConnectionMessage decodeWorkerConnectionMessage(
-            String value
-    ) {
-        try {
-            Map<String, Object> payload = Jsons.parseObject(value);
-            if (!payload.keySet().equals(CONNECTION_MESSAGE_FIELDS)
-                    || string(payload.get("messageType")) == null
-                    || string(payload.get("payload")) == null) {
-                return null;
-            }
-            return new WorkerConnectionMessage(
-                    string(payload.get("messageType")),
-                    string(payload.get("payload"))
-            );
-        } catch (IllegalArgumentException error) {
-            return null;
-        }
-    }
-
-    public String encodeWorkerConnectionMessage(
-            WorkerConnectionMessage message
-    ) {
-        if (message == null) {
-            throw new IllegalArgumentException(
-                    "WorkerConnectionMessage must be present"
-            );
-        }
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("messageType", message.messageType());
-        payload.put("payload", message.payload());
-        return Jsons.toJson(payload);
-    }
 
     public WorkerConnectionBind decodeWorkerConnectionBind(String value) {
         try {
@@ -97,110 +59,105 @@ public final class WorkerDeliveryCodec {
         return Jsons.toJson(payload);
     }
 
-    public WorkerCommandEnvelope decodeWorkerCommand(String value) {
+    public WorkerCommand decodeWorkerCommand(String value) {
         try {
             Map<String, Object> payload = Jsons.parseObject(value);
             Long executeBefore = integralLong(
                     payload.get("executeBeforeMillis")
             );
             if (!payload.keySet().equals(COMMAND_FIELDS)
-                    || string(payload.get("commandId")) == null
-                    || executeBefore == null
+                    || string(payload.get("messageId")) == null
+                    || string(payload.get("src")) == null
+                    || string(payload.get("dst")) == null
                     || string(payload.get("messageType")) == null
-                    || string(payload.get("opaqueItem")) == null) {
+                    || executeBefore == null
+                    || string(payload.get("payload")) == null
+                    || string(payload.get("forward")) == null) {
                 return null;
             }
-            return new WorkerCommandEnvelope(
-                    string(payload.get("commandId")),
-                    WorkerMessageType.valueOf(
-                            string(payload.get("messageType"))
+            return new WorkerCommand(
+                    string(payload.get("messageId")),
+                    WorkerMessageEndpoint.fromWire(
+                            string(payload.get("src"))
                     ),
+                    WorkerMessageEndpoint.fromWire(
+                            string(payload.get("dst"))
+                    ),
+                    string(payload.get("messageType")),
                     executeBefore,
-                    string(payload.get("opaqueItem"))
+                    string(payload.get("payload")),
+                    string(payload.get("forward"))
             );
         } catch (IllegalArgumentException error) {
             return null;
         }
     }
 
-    public String encodeWorkerCommand(WorkerCommandEnvelope command) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("commandId", command.commandId());
-        payload.put("executeBeforeMillis", command.executeBeforeMillis());
-        payload.put("messageType", command.messageType().name());
-        payload.put("opaqueItem", command.opaqueItem());
-        return Jsons.toJson(payload);
-    }
-
-    public DeliverSeed decodeDeliverSeed(String value) {
-        try {
-            Map<String, Object> payload = Jsons.parseObject(value);
-            if (!payload.keySet().equals(DELIVER_SEED_FIELDS)
-                    || string(payload.get("workerId")) == null
-                    || string(payload.get("opaqueDeliveryItem")) == null
-                    || string(payload.get("opaqueResultContext")) == null) {
-                return null;
-            }
-            return new DeliverSeed(
-                    string(payload.get("workerId")),
-                    string(payload.get("opaqueDeliveryItem")),
-                    string(payload.get("opaqueResultContext"))
+    public String encodeWorkerCommand(WorkerCommand command) {
+        if (command == null) {
+            throw new IllegalArgumentException(
+                    "WorkerCommand must be present"
             );
-        } catch (IllegalArgumentException error) {
-            return null;
         }
-    }
-
-    public String encodeDeliverSeed(DeliverSeed seed) {
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("opaqueDeliveryItem", seed.opaqueDeliveryItem());
-        payload.put("opaqueResultContext", seed.opaqueResultContext());
-        payload.put("workerId", seed.workerId());
+        payload.put("dst", command.dst().wireValue());
+        payload.put(
+                "executeBeforeMillis",
+                command.executeBeforeMillis()
+        );
+        payload.put("forward", command.forward());
+        payload.put("messageId", command.messageId());
+        payload.put("messageType", command.messageType());
+        payload.put("payload", command.payload());
+        payload.put("src", command.src().wireValue());
         return Jsons.toJson(payload);
     }
 
-    public SeedResult decodeSeedResult(String value) {
+    public WorkerResult decodeWorkerResult(String value) {
         try {
             Map<String, Object> payload = Jsons.parseObject(value);
             if (!payload.keySet().equals(RESULT_FIELDS)
-                    || string(payload.get("commandId")) == null
-                    || string(payload.get("opaqueResultContext")) == null
-                    || !isNullableString(
-                            payload.get("opaqueResultPayload")
-                    )
-                    || string(payload.get("outcomeCode")) == null) {
+                    || string(payload.get("messageId")) == null
+                    || string(payload.get("dst")) == null
+                    || string(payload.get("messageType")) == null
+                    || string(payload.get("outcomeCode")) == null
+                    || string(payload.get("payload")) == null
+                    || string(payload.get("forward")) == null) {
                 return null;
             }
-            return new SeedResult(
-                    string(payload.get("commandId")),
-                    string(payload.get("opaqueResultContext")),
+            return new WorkerResult(
+                    string(payload.get("messageId")),
+                    WorkerMessageEndpoint.fromWire(
+                            string(payload.get("dst"))
+                    ),
+                    string(payload.get("messageType")),
                     string(payload.get("outcomeCode")),
-                    nullableString(payload.get("opaqueResultPayload"))
+                    string(payload.get("payload")),
+                    string(payload.get("forward"))
             );
         } catch (IllegalArgumentException error) {
             return null;
         }
     }
 
-    public String encodeSeedResult(SeedResult result) {
+    public String encodeWorkerResult(WorkerResult result) {
+        if (result == null) {
+            throw new IllegalArgumentException(
+                    "WorkerResult must be present"
+            );
+        }
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("commandId", result.commandId());
-        payload.put("opaqueResultContext", result.opaqueResultContext());
-        payload.put("opaqueResultPayload", result.opaqueResultPayload());
+        payload.put("dst", result.dst().wireValue());
+        payload.put("forward", result.forward());
+        payload.put("messageId", result.messageId());
+        payload.put("messageType", result.messageType());
         payload.put("outcomeCode", result.outcomeCode());
+        payload.put("payload", result.payload());
         return Jsons.toJson(payload);
     }
 
     private static String string(Object value) {
         return value instanceof String ? (String) value : null;
-    }
-
-    private static boolean isNullableString(Object value) {
-        return value == null || value instanceof String;
-    }
-
-    private static String nullableString(Object value) {
-        return value == null ? null : (String) value;
     }
 
     private static Long integralLong(Object value) {

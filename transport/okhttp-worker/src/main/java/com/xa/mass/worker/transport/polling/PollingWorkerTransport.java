@@ -4,8 +4,8 @@ import com.xa.mass.worker.execution.WorkerCommandProcessor;
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
@@ -35,7 +35,7 @@ public final class PollingWorkerTransport implements AutoCloseable {
     private final WorkerCommandProcessor processor;
     private volatile boolean closed;
     private volatile Call activeCall;
-    private volatile SeedResult pendingResult;
+    private volatile WorkerResult pendingResult;
 
     public PollingWorkerTransport(
             URI serverUrl,
@@ -71,7 +71,7 @@ public final class PollingWorkerTransport implements AutoCloseable {
 
     public boolean runOnce() throws IOException, InterruptedException {
         requireOpen();
-        SeedResult pending = pendingResult;
+        WorkerResult pending = pendingResult;
         if (pending != null) {
             submitPendingResult(pending);
             return true;
@@ -94,7 +94,7 @@ public final class PollingWorkerTransport implements AutoCloseable {
                         null
                 );
             }
-            WorkerCommandEnvelope command = codec.decodeWorkerCommand(
+            WorkerCommand command = codec.decodeWorkerCommand(
                     response.body().string()
             );
             if (command == null) {
@@ -105,7 +105,7 @@ public final class PollingWorkerTransport implements AutoCloseable {
                         null
                 );
             }
-            Optional<SeedResult> result = processor.process(command);
+            Optional<WorkerResult> result = processor.process(command);
             if (!result.isPresent()) {
                 return false;
             }
@@ -176,12 +176,12 @@ public final class PollingWorkerTransport implements AutoCloseable {
         return resultUrl.uri();
     }
 
-    private void submitPendingResult(SeedResult sending)
+    private void submitPendingResult(WorkerResult sending)
             throws IOException {
         Request request = new Request.Builder()
                 .url(resultUrl)
                 .post(RequestBody.create(
-                        codec.encodeSeedResult(sending),
+                        codec.encodeWorkerResult(sending),
                         JSON
                 ))
                 .build();

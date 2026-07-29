@@ -1,299 +1,207 @@
 package com.xa.mass.worker.execution;
 
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.TASK;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.WORKER;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.xa.mass.worker.error.WorkerErrorCode;
-import com.xa.mass.worker.error.WorkerException;
-import com.xa.mass.workerdelivery.json.Jsons;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliverSeed;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
-import java.util.LinkedHashMap;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.junit.jupiter.api.Test;
 
 class WorkerCommandProcessorTest {
 
-    private static final String COMMAND_ID =
-            "a5e9e10d-f78b-469e-93ab-864b49c189c1";
-    private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
+    private static final long NOW = 1_000_000L;
+    private static final String MESSAGE_ID =
+            "91bc4b8c-29d8-4c18-950d-72c8f25e20e0";
 
     @Test
-    void temporaryHandlerProducesObservableSuccess() {
-        SeedResult result = processor(Map.of(
-                "test.observe",
-                WorkerEventDefinition.map(payload -> {
-                    Map<String, Object> observed =
-                            new LinkedHashMap<>();
-                    observed.put("observed", payload.get("value"));
-                    return Jsons.toJson(observed);
-                })
-        )).process(command(
-                "worker-1",
-                "{\"eventCode\":\"test.observe\","
-                        + "\"payload\":{\"value\":\"input\"}}"
-        )).orElseThrow();
-
-        assertEquals("200", result.outcomeCode());
-        assertEquals(
-                "{\"observed\":\"input\"}",
-                result.opaqueResultPayload()
-        );
-        assertEquals("context", result.opaqueResultContext());
-    }
-
-    @Test
-    void typedDefinitionResolvesParametersBeforeHandler() {
-        WorkerEventDefinition<ObserveParameters> definition =
-                WorkerEventDefinition.of(
-                payload -> new ObserveParameters(
-                        requireString(payload, "value")
-                ),
-                parameters -> Jsons.toJson(Map.of(
-                        "observed",
-                        parameters.value()
-                ))
-        );
-
-        Map<String, WorkerEventDefinition<ObserveParameters>> definitions =
-                Map.of(
-                "test.observe",
-                definition
-        );
-
-        SeedResult result = processor(definitions).process(command(
-                "worker-1",
-                "{\"eventCode\":\"test.observe\","
-                        + "\"payload\":{\"value\":\"typed\"}}"
-        )).orElseThrow();
-
-        assertEquals("200", result.outcomeCode());
-        assertEquals(
-                "{\"observed\":\"typed\"}",
-                result.opaqueResultPayload()
-        );
-    }
-
-    @Test
-    void inputUnknownEventAndHandlerFailureHaveStableCodes() {
+    void successfulEventProducesCorrelatedWorkerResult() {
         WorkerCommandProcessor processor = processor(Map.of(
                 "test.observe",
-                WorkerEventDefinition.map(payload -> {
+                WorkerEventDefinition.map(parameters ->
+                        "{\"observed\":\""
+                                + parameters.get("value")
+                                + "\"}"
+                )
+        ));
+
+        WorkerResult result = processor.process(command(
+                "test.observe",
+                "{\"value\":\"ready\"}",
+                NOW + 1
+        )).orElseThrow();
+
+        assertEquals(MESSAGE_ID, result.messageId());
+        assertEquals(TASK, result.dst());
+        assertEquals("test.observe", result.messageType());
+        assertEquals("200", result.outcomeCode());
+        assertEquals("{\"observed\":\"ready\"}", result.payload());
+        assertEquals("result-context", result.forward());
+    }
+
+    @Test
+    void malformedPayloadAndResolverInputMapTo1400() {
+        WorkerCommandProcessor malformed = processor(Map.of(
+                "test.observe",
+                WorkerEventDefinition.map(parameters -> "\"unused\"")
+        ));
+        WorkerCommandProcessor rejected = processor(Map.of(
+                "test.observe",
+                WorkerEventDefinition.of(
+                        parameters -> {
+                            throw new com.xa.mass.worker.error.WorkerException(
+                                    com.xa.mass.worker.error.WorkerErrorCode
+                                            .EVENT_INPUT_INVALID,
+                                    "event.resolve",
+                                    null,
+                                    null
+                            );
+                        },
+                        ignored -> "\"unused\""
+                )
+        ));
+
+        assertFailure(
+                malformed.process(command(
+                        "test.observe",
+                        "not-json",
+                        NOW + 1
+                )),
+                "1400"
+        );
+        assertFailure(
+                rejected.process(command(
+                        "test.observe",
+                        "{}",
+                        NOW + 1
+                )),
+                "1400"
+        );
+    }
+
+    @Test
+    void unknownEventMapsTo1404() {
+        assertFailure(
+                processor(Map.of()).process(command(
+                        "missing.event",
+                        "{}",
+                        NOW + 1
+                )),
+                "1404"
+        );
+    }
+
+    @Test
+    void handlerFailureOrEmptyPayloadMapsTo1500() {
+        WorkerCommandProcessor throwing = processor(Map.of(
+                "test.observe",
+                WorkerEventDefinition.map(parameters -> {
                     throw new IllegalStateException("failed");
                 })
         ));
+        WorkerCommandProcessor empty = processor(Map.of(
+                "test.observe",
+                WorkerEventDefinition.map(parameters -> "")
+        ));
 
-        assertEquals(
-                "1400",
-                processor.process(command(
-                        "worker-1",
-                        "{\"eventCode\":1,\"payload\":{}}"
-                )).orElseThrow().outcomeCode()
+        assertFailure(
+                throwing.process(command(
+                        "test.observe",
+                        "{}",
+                        NOW + 1
+                )),
+                "1500"
         );
-        assertEquals(
-                "1400",
-                processor.process(command(
-                        "worker-1",
-                        "{\"eventCode\":\"\",\"payload\":{}}"
-                )).orElseThrow().outcomeCode()
-        );
-        assertEquals(
-                "1404",
-                processor.process(command(
-                        "worker-1",
-                        "{\"eventCode\":\"unknown\",\"payload\":{}}"
-                )).orElseThrow().outcomeCode()
-        );
-        assertEquals(
-                "1500",
-                processor.process(command(
-                        "worker-1",
-                        "{\"eventCode\":\"test.observe\",\"payload\":{}}"
-                )).orElseThrow().outcomeCode()
+        assertFailure(
+                empty.process(command(
+                        "test.observe",
+                        "{}",
+                        NOW + 1
+                )),
+                "1500"
         );
     }
 
     @Test
-    void workerInputFailureMapsToInputOutcome() {
+    void expiredCommandIsDroppedBeforeHandlerStarts() {
+        AtomicBoolean executed = new AtomicBoolean();
         WorkerCommandProcessor processor = processor(Map.of(
                 "test.observe",
-                WorkerEventDefinition.map(payload -> {
-                    throw eventInput("event.execute", "invalid");
+                WorkerEventDefinition.map(parameters -> {
+                    executed.set(true);
+                    return "\"done\"";
                 })
         ));
 
-        assertEquals(
-                "1400",
-                processor.process(command(
-                        "worker-1",
-                        "{\"eventCode\":\"test.observe\",\"payload\":{}}"
-                )).orElseThrow().outcomeCode()
-        );
+        Optional<WorkerResult> result = processor.process(command(
+                "test.observe",
+                "{}",
+                NOW
+        ));
+
+        assertFalse(result.isPresent());
+        assertFalse(executed.get());
     }
 
     @Test
-    void resolverInputFailureAndResultEncodingFailureAreClassified() {
-        WorkerCommandProcessor invalidInput = processor(Map.of(
-                "test.observe",
-                WorkerEventDefinition.of(
-                        payload -> {
-                            throw eventInput(
-                                    "event.resolveParameters",
-                                    "invalid"
-                            );
-                        },
-                        parameters -> "null"
-                )
-        ));
-        assertEquals(
-                "1400",
-                invalidInput.process(command(
-                        "worker-1",
-                        "{\"eventCode\":\"test.observe\",\"payload\":{}}"
-                )).orElseThrow().outcomeCode()
+    void deadlineIsNotRecheckedAfterHandlerStarts() {
+        WorkerCommandProcessor processor = new WorkerCommandProcessor(
+                Map.of(
+                        "test.observe",
+                        WorkerEventDefinition.map(parameters -> "\"done\"")
+                ),
+                new java.util.function.LongSupplier() {
+                    private int calls;
+
+                    @Override
+                    public long getAsLong() {
+                        calls++;
+                        return calls == 1 ? NOW : NOW + 10_000;
+                    }
+                }
         );
 
-        WorkerCommandProcessor resolverFailure = processor(Map.of(
+        assertTrue(processor.process(command(
                 "test.observe",
-                WorkerEventDefinition.of(
-                        payload -> {
-                            throw new IllegalStateException("failed");
-                        },
-                        parameters -> "null"
-                )
-        ));
-        assertEquals(
-                "1500",
-                resolverFailure.process(command(
-                        "worker-1",
-                        "{\"eventCode\":\"test.observe\",\"payload\":{}}"
-                )).orElseThrow().outcomeCode()
-        );
-
-        WorkerCommandProcessor invalidResult = processor(Map.of(
-                "test.observe",
-                WorkerEventDefinition.map(payload -> "")
-        ));
-        assertEquals(
-                "1500",
-                invalidResult.process(command(
-                        "worker-1",
-                        "{\"eventCode\":\"test.observe\",\"payload\":{}}"
-                )).orElseThrow().outcomeCode()
-        );
+                "{}",
+                NOW + 1
+        )).isPresent());
     }
 
-    @Test
-    void expiredCommandIsDroppedAndInvalidSeedIsProtocolFailure() {
-        WorkerCommandProcessor processor = processor(Map.of());
-        WorkerCommandEnvelope expired = new WorkerCommandEnvelope(
-                COMMAND_ID,
-                WorkerMessageType.TASK_ITEM,
-                100_000,
-                codec.encodeDeliverSeed(new DeliverSeed(
-                        "worker-1",
-                        "{}",
-                        "context"
-                ))
-        );
-        assertEquals(Optional.empty(), processor.process(expired));
-
-        WorkerException mismatch = assertThrows(
-                WorkerException.class,
-                () -> processor.process(command("worker-2", "{}"))
-        );
-        assertEquals(
-                WorkerErrorCode.WORKER_ID_MISMATCH,
-                mismatch.errorCode()
-        );
-        assertEquals("command.verifyWorker", mismatch.operation());
-        WorkerCommandEnvelope corrupt = new WorkerCommandEnvelope(
-                COMMAND_ID,
-                WorkerMessageType.TASK_ITEM,
-                100_001,
-                "{bad-json"
-        );
-        WorkerException invalidSeed = assertThrows(
-                WorkerException.class,
-                () -> processor.process(corrupt)
-        );
-        assertEquals(
-                WorkerErrorCode.DELIVER_SEED_INVALID,
-                invalidSeed.errorCode()
-        );
-        assertEquals(
-                "command.decodeDeliverSeed",
-                invalidSeed.operation()
-        );
-    }
-
-    private WorkerCommandProcessor processor(
+    private static WorkerCommandProcessor processor(
             Map<String, ? extends WorkerEventDefinition<?>> definitions
     ) {
-        return new WorkerCommandProcessor(
-                "worker-1",
-                codec,
-                definitions,
-                () -> 100_000
+        return new WorkerCommandProcessor(definitions, () -> NOW);
+    }
+
+    private static WorkerCommand command(
+            String messageType,
+            String payload,
+            long executeBeforeMillis
+    ) {
+        return new WorkerCommand(
+                MESSAGE_ID,
+                TASK,
+                WORKER,
+                messageType,
+                executeBeforeMillis,
+                payload,
+                "result-context"
         );
     }
 
-    private static String requireString(
-            Map<String, Object> parameters,
-            String name
+    private static void assertFailure(
+            Optional<WorkerResult> result,
+            String outcomeCode
     ) {
-        Object value = parameters.get(name);
-        if (!(value instanceof String)) {
-            throw eventInput(
-                    "event.resolveParameters",
-                    name + " must be a string"
-            );
-        }
-        return (String) value;
-    }
-
-    private static WorkerException eventInput(
-            String operation,
-            String message
-    ) {
-        return new WorkerException(
-                WorkerErrorCode.EVENT_INPUT_INVALID,
-                operation,
-                message,
-                null
-        );
-    }
-
-    private WorkerCommandEnvelope command(
-            String workerId,
-            String deliveryItem
-    ) {
-        return new WorkerCommandEnvelope(
-                COMMAND_ID,
-                WorkerMessageType.TASK_ITEM,
-                100_001,
-                codec.encodeDeliverSeed(new DeliverSeed(
-                        workerId,
-                        deliveryItem,
-                        "context"
-                ))
-        );
-    }
-
-    private static final class ObserveParameters {
-
-        private final String value;
-
-        private ObserveParameters(String value) {
-            this.value = value;
-        }
-
-        private String value() {
-            return value;
-        }
+        WorkerResult failure = result.orElseThrow();
+        assertEquals(outcomeCode, failure.outcomeCode());
+        assertEquals("null", failure.payload());
+        assertEquals(TASK, failure.dst());
     }
 }

@@ -2,7 +2,7 @@ package com.xa.mass.server.workerdelivery;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.xa.mass.kernel.delivery.SeedResultRuntime;
+import com.xa.mass.kernel.delivery.WorkerResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
@@ -39,7 +39,7 @@ class WorkerDeliveryHttpCompositionTest {
     void assemblesWithoutTaskWorkerOrPythonKernelOwners() {
         contextRunner.run(context -> {
             assertThat(context).hasSingleBean(WorkerCommandRuntime.class);
-            assertThat(context).hasSingleBean(SeedResultRuntime.class);
+            assertThat(context).hasSingleBean(WorkerResultRuntime.class);
             assertThat(context).hasSingleBean(WorkerDeliveryService.class);
             assertThat(context)
                     .hasSingleBean(WorkerPointDeliveryController.class);

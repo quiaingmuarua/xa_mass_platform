@@ -4,7 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.xa.mass.kernel.assignment.CandidateWarmupSchedule;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
-import com.xa.mass.kernel.delivery.SeedResultRuntime;
+import com.xa.mass.kernel.delivery.WorkerResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
@@ -62,7 +62,7 @@ class KernelOwnerContractManifestTest {
                     "WorkerCommandRuntime",
                     WorkerCommandRuntime.class
             ),
-            Map.entry("SeedResultRuntime", SeedResultRuntime.class)
+            Map.entry("WorkerResultRuntime", WorkerResultRuntime.class)
     );
 
     private static final Map<String, Class<?>> DTOS = Map.ofEntries(
@@ -71,17 +71,13 @@ class KernelOwnerContractManifestTest {
                     CandidateWorkerCache.CandidateWorkerEntry.class
             ),
             Map.entry(
-                    "DeliverSeed",
-                    WorkerDeliveryProtocol.DeliverSeed.class
-            ),
-            Map.entry(
                     "DynamicAttributeReadResult",
                     WorkerDynamicAttributeRuntime
                             .DynamicAttributeReadResult.class
             ),
             Map.entry(
-                    "SeedResult",
-                    WorkerDeliveryProtocol.SeedResult.class
+                    "WorkerResult",
+                    WorkerDeliveryProtocol.WorkerResult.class
             ),
             Map.entry(
                     "TaskCreationResult",
@@ -114,8 +110,12 @@ class KernelOwnerContractManifestTest {
                     TaskScoreBandCore.TaskScoreTransitionResult.class
             ),
             Map.entry(
-                    "WorkerCommandEnvelope",
-                    WorkerDeliveryProtocol.WorkerCommandEnvelope.class
+                    "WorkerCommand",
+                    WorkerDeliveryProtocol.WorkerCommand.class
+            ),
+            Map.entry(
+                    "WorkerConnectionBind",
+                    WorkerDeliveryProtocol.WorkerConnectionBind.class
             ),
             Map.entry(
                     "WorkerDeclaration",
@@ -146,9 +146,9 @@ class KernelOwnerContractManifestTest {
     private static final Map<String, Class<? extends Enum<?>>> ENUMS =
             Map.ofEntries(
                     Map.entry(
-                            "SeedResultOutcomeClass",
+                            "WorkerResultOutcomeClass",
                             WorkerDeliveryProtocol
-                                    .SeedResultOutcomeClass.class
+                                    .WorkerResultOutcomeClass.class
                     ),
                     Map.entry(
                             "TaskCreationStatus",
@@ -183,8 +183,8 @@ class KernelOwnerContractManifestTest {
                                     .WorkerCommandAppendStatus.class
                     ),
                     Map.entry(
-                            "WorkerMessageType",
-                            WorkerDeliveryProtocol.WorkerMessageType.class
+                            "WorkerMessageEndpoint",
+                            WorkerDeliveryProtocol.WorkerMessageEndpoint.class
                     ),
                     Map.entry(
                             "WorkerRuntimeStatus",

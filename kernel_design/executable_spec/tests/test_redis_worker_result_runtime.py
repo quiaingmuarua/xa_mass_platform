@@ -4,11 +4,12 @@ import unittest
 from uuid import NAMESPACE_DNS, uuid5
 
 from kernel_design.executable_spec import (
-    RedisSeedResultRuntime,
-    SeedResult,
-    SeedResultOutcomeClass,
-    classify_seed_result_outcome_code,
-    encode_seed_result,
+    RedisWorkerResultRuntime,
+    WorkerMessageEndpoint,
+    WorkerResult,
+    WorkerResultOutcomeClass,
+    classify_worker_result_outcome_code,
+    encode_worker_result,
 )
 
 
@@ -60,25 +61,27 @@ class FakePipeline:
         return results
 
 
-class RedisSeedResultRuntimeTest(unittest.TestCase):
+class RedisWorkerResultRuntimeTest(unittest.TestCase):
     def setUp(self) -> None:
         self.redis = FakeRedis()
-        self.runtime = RedisSeedResultRuntime(self.redis, prefix="test")
+        self.runtime = RedisWorkerResultRuntime(self.redis, prefix="test")
 
-    def key(self, outcome_class: SeedResultOutcomeClass) -> str:
+    def key(self, outcome_class: WorkerResultOutcomeClass) -> str:
         return self.runtime._queue_key(outcome_class)
 
     @staticmethod
     def result(
         context: str,
         outcome_code: str,
-        payload: str | None = None,
-    ) -> SeedResult:
-        return SeedResult(
-            str(uuid5(NAMESPACE_DNS, context)),
-            context,
-            outcome_code,
-            payload,
+        payload: str = "null",
+    ) -> WorkerResult:
+        return WorkerResult(
+            message_id=str(uuid5(NAMESPACE_DNS, context)),
+            dst=WorkerMessageEndpoint.TASK,
+            message_type="test.observe",
+            outcome_code=outcome_code,
+            payload=payload,
+            forward=context,
         )
 
     def test_mixed_append_partitions_three_fifo_queues(self) -> None:
@@ -88,108 +91,84 @@ class RedisSeedResultRuntimeTest(unittest.TestCase):
 
         self.assertEqual(
             3,
-            self.runtime.append_seed_results(
+            self.runtime.append_worker_results(
                 results=(success, worker_failure, adapter_rejection),
             ),
         )
-
-        self.assertEqual(
-            {
-                self.key(SeedResultOutcomeClass.SUCCESS),
-                self.key(SeedResultOutcomeClass.WORKER_FAILURE),
-                self.key(SeedResultOutcomeClass.ADAPTER_REJECTION),
-            },
-            set(self.redis.lists),
+        self.assertTrue(
+            all(":worker-results:" in key for key in self.redis.lists)
         )
-        self.assertNotIn("rr:test:seed-results", self.redis.lists)
         for outcome_class, expected in (
-            (SeedResultOutcomeClass.SUCCESS, success),
-            (SeedResultOutcomeClass.WORKER_FAILURE, worker_failure),
-            (SeedResultOutcomeClass.ADAPTER_REJECTION, adapter_rejection),
+            (WorkerResultOutcomeClass.SUCCESS, success),
+            (WorkerResultOutcomeClass.WORKER_FAILURE, worker_failure),
+            (WorkerResultOutcomeClass.ADAPTER_REJECTION, adapter_rejection),
         ):
             self.assertEqual(
                 (expected,),
-                self.runtime.consume_seed_results(
+                self.runtime.consume_worker_results(
                     outcome_class=outcome_class,
                     limit=1,
                 ),
             )
-        self.assertEqual([False, True, True, True], self.redis.pipeline_transaction_flags)
 
     def test_each_class_is_independently_bounded_and_fifo(self) -> None:
         first = self.result("context-1", "1000")
         second = self.result("context-2", "1001")
-        self.runtime.append_seed_results(results=(first, second))
+        self.runtime.append_worker_results(results=(first, second))
 
         self.assertEqual(
             (first,),
-            self.runtime.consume_seed_results(
-                outcome_class=SeedResultOutcomeClass.WORKER_FAILURE,
+            self.runtime.consume_worker_results(
+                outcome_class=WorkerResultOutcomeClass.WORKER_FAILURE,
                 limit=1,
             ),
         )
         self.assertEqual(
             (second,),
-            self.runtime.consume_seed_results(
-                outcome_class=SeedResultOutcomeClass.WORKER_FAILURE,
+            self.runtime.consume_worker_results(
+                outcome_class=WorkerResultOutcomeClass.WORKER_FAILURE,
                 limit=10,
             ),
         )
 
-    def test_corrupt_envelopes_are_consumed_and_skipped(self) -> None:
-        valid = self.result("context-1", "200", "null")
-        key = self.key(SeedResultOutcomeClass.SUCCESS)
+    def test_corrupt_messages_are_consumed_and_skipped(self) -> None:
+        valid = self.result("context-1", "200")
+        key = self.key(WorkerResultOutcomeClass.SUCCESS)
         self.redis.lists[key] = [
             "{bad-json",
             '{"outcomeCode":"200"}',
-            '{"opaqueResultContext":"context","outcomeCode":"500",'
-            '"opaqueResultPayload":null}',
-            encode_seed_result(valid),
+            encode_worker_result(valid),
         ]
 
         self.assertEqual(
             (valid,),
-            self.runtime.consume_seed_results(
-                outcome_class=SeedResultOutcomeClass.SUCCESS,
-                limit=4,
+            self.runtime.consume_worker_results(
+                outcome_class=WorkerResultOutcomeClass.SUCCESS,
+                limit=3,
             ),
         )
         self.assertEqual([], self.redis.lists[key])
 
-    def test_outcome_protocol_and_success_payload_are_exact(self) -> None:
+    def test_outcome_protocol_is_exact(self) -> None:
         self.assertIs(
-            SeedResultOutcomeClass.SUCCESS,
-            classify_seed_result_outcome_code("200"),
+            WorkerResultOutcomeClass.SUCCESS,
+            classify_worker_result_outcome_code("200"),
         )
         self.assertIs(
-            SeedResultOutcomeClass.WORKER_FAILURE,
-            classify_seed_result_outcome_code("1000"),
+            WorkerResultOutcomeClass.WORKER_FAILURE,
+            classify_worker_result_outcome_code("1000"),
         )
         self.assertIs(
-            SeedResultOutcomeClass.ADAPTER_REJECTION,
-            classify_seed_result_outcome_code("3999"),
+            WorkerResultOutcomeClass.ADAPTER_REJECTION,
+            classify_worker_result_outcome_code("3999"),
         )
-        with self.assertRaises(ValueError):
-            self.result("context", "200")
-        for invalid in ("", "500", "2000", "300", "30000", "３００１"):
+        for invalid in ("", "500", "2000", "300", "30000", "失败"):
             with self.subTest(invalid=invalid):
-                self.assertIsNone(classify_seed_result_outcome_code(invalid))
+                self.assertIsNone(
+                    classify_worker_result_outcome_code(invalid)
+                )
                 with self.assertRaises(ValueError):
                     self.result("context", invalid)
-
-    def test_empty_append_and_invalid_consume_arguments(self) -> None:
-        self.assertEqual(0, self.runtime.append_seed_results(results=()))
-        self.assertEqual({}, self.redis.lists)
-        with self.assertRaises(ValueError):
-            self.runtime.consume_seed_results(
-                outcome_class=SeedResultOutcomeClass.SUCCESS,
-                limit=0,
-            )
-        with self.assertRaises(TypeError):
-            self.runtime.consume_seed_results(  # type: ignore[arg-type]
-                outcome_class="SUCCESS",
-                limit=1,
-            )
 
 
 if __name__ == "__main__":

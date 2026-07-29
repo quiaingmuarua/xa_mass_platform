@@ -1,6 +1,6 @@
 package com.xa.mass.kernel.delivery;
 
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 import java.util.Map;
 import org.jspecify.annotations.Nullable;
 
@@ -8,15 +8,15 @@ public interface WorkerCommandRuntime {
 
     Map<String, WorkerCommandAppendStatus> appendWorkerCommands(
             String endpointManagerId,
-            Map<String, WorkerCommandEnvelope> workerCommandsByWorkerId
+            Map<String, WorkerCommand> workerCommandsByWorkerId
     );
 
-    @Nullable WorkerCommandEnvelope consumeWorkerCommand(
+    @Nullable WorkerCommand consumeWorkerCommand(
             String endpointManagerId,
             String workerId
     );
 
-    Map<String, WorkerCommandEnvelope> consumeWorkerCommands(
+    Map<String, WorkerCommand> consumeWorkerCommands(
             String endpointManagerId,
             int limit
     );

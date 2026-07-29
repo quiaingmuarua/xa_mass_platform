@@ -2,6 +2,8 @@ package com.xa.mass.workerdelivery.adapter.http;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.TASK;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.WORKER;
 
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -9,10 +11,8 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterExcep
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultSource;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.URI;
@@ -59,11 +59,14 @@ class HttpWorkerDeliveryGatewayClientTest {
 
     @Test
     void consumesTheExactEndpointBucketAndDecodesTheBatch() {
-        WorkerCommandEnvelope command = new WorkerCommandEnvelope(
+        WorkerCommand command = new WorkerCommand(
                 COMMAND_ID,
-                WorkerMessageType.TASK_ITEM,
+                TASK,
+                WORKER,
+                "test.observe",
                 9_999_999_999_999L,
-                "opaque-item"
+                "{}",
+                "context"
         );
         respond(
                 200,
@@ -88,17 +91,26 @@ class HttpWorkerDeliveryGatewayClientTest {
 
     @Test
     void appendsOpaqueResultsWithOneBatchSourceAndRequiresFullAccounting() {
-        List<SeedResult> results = List.of(
-                new SeedResult(COMMAND_ID, "context-1", "200", "null"),
-                new SeedResult(
+        List<WorkerResult> results = List.of(
+                new WorkerResult(
+                        COMMAND_ID,
+                        TASK,
+                        "test.observe",
+                        "200",
+                        "null",
+                        "context-1"
+                ),
+                new WorkerResult(
                         "9f0d983c-8010-4d59-a6d2-e8fedb8d0059",
-                        "context-2",
+                        TASK,
+                        "test.observe",
                         "3001",
-                        null
+                        "null",
+                        "context-2"
                 )
         );
         List<String> encodedResults = results.stream()
-                .map(codec::encodeSeedResult)
+                .map(codec::encodeWorkerResult)
                 .toList();
         respond(
                 202,
@@ -107,7 +119,6 @@ class HttpWorkerDeliveryGatewayClientTest {
 
         client.appendResults(
                 "adapter-1",
-                SeedResultSource.WORKER,
                 encodedResults
         );
 
@@ -115,7 +126,6 @@ class HttpWorkerDeliveryGatewayClientTest {
                 "/adapter-1/results:append"
         );
         assertThat(Jsons.parseObject(requestBody))
-                .containsEntry("source", "WORKER")
                 .containsEntry("results", encodedResults);
 
         respond(
@@ -125,7 +135,6 @@ class HttpWorkerDeliveryGatewayClientTest {
         assertThatThrownBy(() ->
                 client.appendResults(
                         "adapter-1",
-                        SeedResultSource.WORKER,
                         encodedResults
                 )
         )
@@ -188,12 +197,13 @@ class HttpWorkerDeliveryGatewayClientTest {
         );
         assertThatThrownBy(() -> client.appendResults(
                 "adapter-1",
-                SeedResultSource.WORKER,
-                List.of(codec.encodeSeedResult(new SeedResult(
+                List.of(codec.encodeWorkerResult(new WorkerResult(
                             COMMAND_ID,
-                            "context",
+                            TASK,
+                            "test.observe",
                             "200",
-                            "null"
+                            "null",
+                            "context"
                     )))
         ))
                 .isInstanceOfSatisfying(
@@ -212,7 +222,6 @@ class HttpWorkerDeliveryGatewayClientTest {
         respond(400, "{}");
         assertThatThrownBy(() -> client.appendResults(
                 "adapter-1",
-                SeedResultSource.ADAPTER,
                 List.of("opaque")
         ))
                 .isInstanceOfSatisfying(

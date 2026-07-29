@@ -27,7 +27,7 @@ class ResultRoutingApplicationTest(unittest.TestCase):
 
     def test_start_runs_pacer_and_stop_allows_restart(self) -> None:
         routed = Event()
-        self.pacer.route_seed_results.side_effect = lambda **_kwargs: routed.set() or 0
+        self.pacer.route_worker_results.side_effect = lambda **_kwargs: routed.set() or 0
 
         self.application.start(config=self.config)
         self.assertTrue(routed.wait(timeout=1))
@@ -37,7 +37,7 @@ class ResultRoutingApplicationTest(unittest.TestCase):
 
         self.assertEqual(
             [call(config=self.config.routing)],
-            self.pacer.route_seed_results.call_args_list,
+            self.pacer.route_worker_results.call_args_list,
         )
         self.application.start(config=self.config)
         self.application.stop(timeout_millis=1_000)
@@ -54,7 +54,7 @@ class ResultRoutingApplicationTest(unittest.TestCase):
             recovered.set()
             return 0
 
-        self.pacer.route_seed_results.side_effect = route
+        self.pacer.route_worker_results.side_effect = route
         config = ResultRoutingApplicationConfig(
             routing=self.config.routing,
             interval_millis=5,

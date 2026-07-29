@@ -2,12 +2,12 @@ package com.xa.mass.workerdelivery.adapter.socket;
 
 import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.RETRY_LATER;
 import static com.xa.mass.workerdelivery.adapter.dispatch.WorkerCommandDelivery.CommandDeliveryAttempt.STARTED;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessageType.TASK_ITEM_COMMAND;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.TASK;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.WORKER;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 import io.netty.channel.embedded.EmbeddedChannel;
 import org.junit.jupiter.api.Test;
 
@@ -32,12 +32,9 @@ class NettySocketWorkerConnectionRegistryTest {
 
             String delivered = second.readOutbound();
             assertThat(delivered).endsWith("\n");
-            var message = codec.decodeWorkerConnectionMessage(
+            assertThat(codec.decodeWorkerCommand(
                     delivered.stripTrailing()
-            );
-            assertThat(message.messageType())
-                    .isEqualTo(TASK_ITEM_COMMAND.name());
-            assertThat(codec.decodeWorkerCommand(message.payload()))
+            ))
                     .isEqualTo(command());
         } finally {
             first.finishAndReleaseAll();
@@ -66,12 +63,15 @@ class NettySocketWorkerConnectionRegistryTest {
         return new NettySocketWorkerConnectionRegistry(codec);
     }
 
-    private static WorkerCommandEnvelope command() {
-        return new WorkerCommandEnvelope(
+    private static WorkerCommand command() {
+        return new WorkerCommand(
                 "a5e9e10d-f78b-469e-93ab-864b49c189c1",
-                WorkerMessageType.TASK_ITEM,
+                TASK,
+                WORKER,
+                "test.observe",
                 2_000,
-                "{}"
+                "{}",
+                "context"
         );
     }
 }

@@ -32,15 +32,15 @@ from kernel_design.executable_spec import (
 from kernel_design.executable_spec.assembly import (
     TaskType,
     SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
-    SeedResult,
+    WorkerMessageEndpoint,
+    WorkerResult,
     WorkerCommandConsumerClient,
     KernelApplication,
     KernelApplicationConfig,
     ResourcesCommandClient,
-    SeedResultCommandClient,
+    WorkerResultCommandClient,
     TaskItemAppendStatus,
     TaskItem,
-    decode_deliver_seed,
 )
 
 
@@ -85,7 +85,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         self.resources = ResourcesCommandClient(self.config)
         self.application = KernelApplication(self.config)
         self.command_consumer = WorkerCommandConsumerClient(self.config)
-        self.result_commands = SeedResultCommandClient(self.config)
+        self.result_commands = WorkerResultCommandClient(self.config)
         assert create_runtime_app is not None
         self.runtime_server_context = TestClient(
             create_runtime_app(
@@ -231,7 +231,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         )
         self.assertEqual(
             0,
-            self.redis.exists(f"rr:{self.prefix}:seed-results"),
+            self.redis.exists(f"rr:{self.prefix}:worker-results"),
         )
 
         self._close_runtime_server()
@@ -300,15 +300,15 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
             time.sleep(0.02)
         self.assertIsNotNone(command)
         assert command is not None
-        seed = decode_deliver_seed(command.opaque_item)
-        self.assertIsNotNone(seed)
-        assert seed is not None
-        accepted = self.result_commands.append_seed_results(
+        accepted = self.result_commands.append_worker_results(
             results=(
-                SeedResult(
-                    command_id=command.command_id,
-                    opaque_result_context=seed.opaque_result_context,
+                WorkerResult(
+                    message_id=command.message_id,
+                    dst=command.src,
+                    message_type=command.message_type,
                     outcome_code="3001",
+                    payload="null",
+                    forward=command.forward,
                 ),
             )
         )
@@ -366,27 +366,26 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         )
         if command is None:
             return False
-        seed = decode_deliver_seed(command.opaque_item)
-        self.assertIsNotNone(seed)
-        assert seed is not None
-        self.assertEqual(worker_id, seed.worker_id)
-        delivery_item = json.loads(seed.opaque_delivery_item)
+        self.assertIs(command.src, WorkerMessageEndpoint.TASK)
+        self.assertEqual(_PHONE_INSPECT_EVENT_CODE, command.message_type)
         self.assertEqual(
-            _PHONE_INSPECT_EVENT_CODE,
-            delivery_item["eventCode"],
+            {"phoneNumber": "+14155552671"},
+            json.loads(command.payload),
         )
-        accepted = self.result_commands.append_seed_results(
+        accepted = self.result_commands.append_worker_results(
             results=(
-                SeedResult(
-                    command_id=command.command_id,
-                    opaque_result_context=seed.opaque_result_context,
+                WorkerResult(
+                    message_id=command.message_id,
+                    dst=command.src,
+                    message_type=command.message_type,
                     outcome_code="200",
-                    opaque_result_payload=json.dumps(
+                    payload=json.dumps(
                         _FIXED_WORKER_RESULT,
                         allow_nan=False,
                         sort_keys=True,
                         separators=(",", ":"),
                     ),
+                    forward=command.forward,
                 ),
             )
         )

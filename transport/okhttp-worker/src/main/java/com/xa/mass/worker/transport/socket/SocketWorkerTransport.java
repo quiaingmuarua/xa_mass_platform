@@ -2,14 +2,10 @@ package com.xa.mass.worker.transport.socket;
 
 import com.xa.mass.worker.execution.WorkerCommandProcessor;
 import com.xa.mass.worker.error.WorkerException;
-import com.xa.mass.worker.transport.message.WorkerMessageDefinition;
-import com.xa.mass.worker.transport.message.WorkerMessageDefinitionManager;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessage;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessageType;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -20,7 +16,6 @@ import java.net.Socket;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -32,12 +27,10 @@ public final class SocketWorkerTransport implements AutoCloseable {
     private final Duration connectTimeout;
     private final Duration reconnectInterval;
     private final WorkerDeliveryCodec codec;
-    private final WorkerMessageDefinitionManager<
-            Optional<SeedResult>
-            > messageDefinitions;
+    private final WorkerCommandProcessor processor;
     private volatile boolean running;
     private volatile Socket socket;
-    private volatile SeedResult pendingResult;
+    private volatile WorkerResult pendingResult;
 
     public SocketWorkerTransport(
             URI socketUri,
@@ -84,15 +77,7 @@ public final class SocketWorkerTransport implements AutoCloseable {
                 "reconnectInterval"
         );
         this.codec = Objects.requireNonNull(codec, "codec");
-        WorkerCommandProcessor requiredProcessor =
-                Objects.requireNonNull(processor, "processor");
-        messageDefinitions = new WorkerMessageDefinitionManager<>(Map.of(
-                WorkerConnectionMessageType.TASK_ITEM_COMMAND.name(),
-                WorkerMessageDefinition.of(
-                        payload -> requireWorkerCommand(codec, payload),
-                        requiredProcessor::process
-                )
-        ));
+        this.processor = Objects.requireNonNull(processor, "processor");
     }
 
     public void runForever() throws InterruptedException {
@@ -155,19 +140,15 @@ public final class SocketWorkerTransport implements AutoCloseable {
         )) {
             writeLine(
                     writer,
-                    encodeConnectionMessage(
-                            WorkerConnectionMessageType.WORKER_BIND,
-                            codec.encodeWorkerConnectionBind(
-                                    new WorkerConnectionBind(workerId)
-                            )
+                    codec.encodeWorkerConnectionBind(
+                            new WorkerConnectionBind(workerId)
                     )
             );
             sendPending(writer);
             String line;
             while (running && (line = reader.readLine()) != null) {
-                WorkerConnectionMessage message =
-                        codec.decodeWorkerConnectionMessage(line);
-                if (message == null) {
+                WorkerCommand command = codec.decodeWorkerCommand(line);
+                if (command == null) {
                     throw new WorkerException(
                             com.xa.mass.worker.error.WorkerErrorCode
                                     .COMMAND_MESSAGE_INVALID,
@@ -176,8 +157,7 @@ public final class SocketWorkerTransport implements AutoCloseable {
                             null
                     );
                 }
-                Optional<SeedResult> result =
-                        messageDefinitions.dispatch(message);
+                Optional<WorkerResult> result = processor.process(command);
                 if (!result.isPresent()) {
                     continue;
                 }
@@ -192,16 +172,13 @@ public final class SocketWorkerTransport implements AutoCloseable {
     }
 
     private void sendPending(BufferedWriter writer) throws IOException {
-        SeedResult sending = pendingResult;
+        WorkerResult sending = pendingResult;
         if (sending == null) {
             return;
         }
         writeLine(
                 writer,
-                encodeConnectionMessage(
-                        WorkerConnectionMessageType.TASK_ITEM_RESULT,
-                        codec.encodeSeedResult(sending)
-                )
+                codec.encodeWorkerResult(sending)
         );
         if (pendingResult == sending) {
             pendingResult = null;
@@ -275,28 +252,6 @@ public final class SocketWorkerTransport implements AutoCloseable {
             );
         }
         return value;
-    }
-
-    private String encodeConnectionMessage(
-            WorkerConnectionMessageType messageType,
-            String payload
-    ) {
-        return codec.encodeWorkerConnectionMessage(
-                new WorkerConnectionMessage(messageType.name(), payload)
-        );
-    }
-
-    private static WorkerCommandEnvelope requireWorkerCommand(
-            WorkerDeliveryCodec codec,
-            String payload
-    ) {
-        WorkerCommandEnvelope command = codec.decodeWorkerCommand(payload);
-        if (command == null) {
-            throw new IllegalArgumentException(
-                    "Worker command payload is malformed"
-            );
-        }
-        return command;
     }
 
     @FunctionalInterface

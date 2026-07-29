@@ -2,11 +2,9 @@ package com.xa.mass.workerdelivery.adapter.socket;
 
 import static com.xa.mass.workerdelivery.adapter.message.WorkerResultHandlingResult.ACCEPTED;
 
-import com.xa.mass.workerdelivery.adapter.message.AdapterMessageDefinitionManager;
+import com.xa.mass.workerdelivery.adapter.message.WorkerResultPayloadHandler;
 import com.xa.mass.workerdelivery.adapter.message.WorkerResultHandlingResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessage;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessageType;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -18,9 +16,7 @@ final class SocketWorkerHandler
 
     private final NettySocketWorkerConnectionRegistry connections;
     private final WorkerDeliveryCodec codec;
-    private final AdapterMessageDefinitionManager<
-            WorkerResultHandlingResult
-            > messageDefinitions;
+    private final WorkerResultPayloadHandler resultHandler;
     private final BooleanSupplier acceptingConnections;
     private String workerId;
     private Channel workerChannel;
@@ -28,9 +24,7 @@ final class SocketWorkerHandler
     SocketWorkerHandler(
             NettySocketWorkerConnectionRegistry connections,
             WorkerDeliveryCodec codec,
-            AdapterMessageDefinitionManager<
-                    WorkerResultHandlingResult
-                    > messageDefinitions,
+            WorkerResultPayloadHandler resultHandler,
             BooleanSupplier acceptingConnections
     ) {
         this.connections = Objects.requireNonNull(
@@ -38,9 +32,9 @@ final class SocketWorkerHandler
                 "connections"
         );
         this.codec = Objects.requireNonNull(codec, "codec");
-        this.messageDefinitions = Objects.requireNonNull(
-                messageDefinitions,
-                "messageDefinitions"
+        this.resultHandler = Objects.requireNonNull(
+                resultHandler,
+                "resultHandler"
         );
         this.acceptingConnections = Objects.requireNonNull(
                 acceptingConnections,
@@ -62,17 +56,10 @@ final class SocketWorkerHandler
             ChannelHandlerContext context,
             String line
     ) {
-        WorkerConnectionMessage message =
-                codec.decodeWorkerConnectionMessage(line);
-        if (message == null) {
-            disconnect();
-            context.close();
-            return;
-        }
         if (workerChannel == null) {
-            handleBind(context, message);
+            handleBind(context, line);
         } else {
-            handleResult(context, message);
+            handleResult(context, line);
         }
     }
 
@@ -99,15 +86,9 @@ final class SocketWorkerHandler
 
     private void handleBind(
             ChannelHandlerContext context,
-            WorkerConnectionMessage message
+            String encodedBind
     ) {
-        if (!WorkerConnectionMessageType.WORKER_BIND.name().equals(
-                message.messageType()
-        )) {
-            context.close();
-            return;
-        }
-        var bind = codec.decodeWorkerConnectionBind(message.payload());
+        var bind = codec.decodeWorkerConnectionBind(encodedBind);
         if (bind == null || !acceptingConnections.getAsBoolean()) {
             context.close();
             return;
@@ -125,23 +106,10 @@ final class SocketWorkerHandler
 
     private void handleResult(
             ChannelHandlerContext context,
-            WorkerConnectionMessage message
+            String encodedResult
     ) {
-        if (WorkerConnectionMessageType.WORKER_BIND.name().equals(
-                message.messageType()
-        )) {
-            disconnect();
-            context.close();
-            return;
-        }
-        WorkerResultHandlingResult result;
-        try {
-            result = messageDefinitions.dispatch(workerId, message);
-        } catch (IllegalArgumentException error) {
-            disconnect();
-            context.close();
-            return;
-        }
+        WorkerResultHandlingResult result =
+                resultHandler.handle(workerId, encodedResult);
         if (result != ACCEPTED) {
             disconnect();
             context.close();

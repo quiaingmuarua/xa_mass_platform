@@ -15,14 +15,6 @@ public enum WorkerErrorCode implements ErrorCode {
             31003,
             "Worker result submission failed"
     ),
-    DELIVER_SEED_INVALID(
-            32001,
-            "Worker command contains an invalid DeliverSeed"
-    ),
-    WORKER_ID_MISMATCH(
-            32002,
-            "DeliverSeed belongs to a different Worker"
-    ),
     COMMAND_MESSAGE_INVALID(
             32003,
             "Worker received an invalid command message"

@@ -25,7 +25,7 @@ from ..redis_runtime import (
     RedisWorkerDynamicAttributeRuntime,
     RedisWorkerResourceCatalog,
     RedisWorkerScoreCore,
-    RedisSeedResultRuntime,
+    RedisWorkerResultRuntime,
 )
 from ..redis_runtime.assignment_dispatch import RedisCandidateWarmupSchedule
 from .assignment_dispatch_application import (
@@ -164,7 +164,7 @@ class _RedisKernelProcess:
             running_activation_pacer,
             task_dispatch_pacer,
         )
-        self._seed_result_runtime = RedisSeedResultRuntime(
+        self._worker_result_runtime = RedisWorkerResultRuntime(
             redis_client,
             prefix=config.prefix,
         )
@@ -175,7 +175,7 @@ class _RedisKernelProcess:
         )
         self._result_routing_application = ResultRoutingApplication(
             ResultRoutingPacer(
-                self._seed_result_runtime,
+                self._worker_result_runtime,
                 task_result_handlers=result_routing_policies.default_task_result_handlers(),
                 worker_result_handlers=result_routing_policies.default_worker_result_handlers(),
             )

@@ -1,18 +1,12 @@
 package com.xa.mass.worker.transport.websocket;
 
 import com.xa.mass.worker.execution.WorkerCommandProcessor;
-import com.xa.mass.worker.error.WorkerException;
-import com.xa.mass.worker.transport.message.WorkerMessageDefinition;
-import com.xa.mass.worker.transport.message.WorkerMessageDefinitionManager;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessage;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionMessageType;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 import java.net.URI;
 import java.time.Duration;
-import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -39,9 +33,7 @@ public final class WebSocketWorkerTransport
     private final String workerId;
     private final Duration reconnectInterval;
     private final WorkerDeliveryCodec codec;
-    private final WorkerMessageDefinitionManager<
-            Optional<SeedResult>
-            > messageDefinitions;
+    private final WorkerCommandProcessor processor;
     private final ScheduledExecutorService scheduler;
     private final ExecutorService execution;
     private final CountDownLatch stopped = new CountDownLatch(1);
@@ -53,7 +45,7 @@ public final class WebSocketWorkerTransport
     private boolean bound;
     private boolean processing;
     private WebSocket socket;
-    private SeedResult pendingResult;
+    private WorkerResult pendingResult;
 
     public WebSocketWorkerTransport(
             URI serverUrl,
@@ -100,13 +92,7 @@ public final class WebSocketWorkerTransport
             );
         }
         this.codec = codec;
-        messageDefinitions = new WorkerMessageDefinitionManager<>(Map.of(
-                WorkerConnectionMessageType.TASK_ITEM_COMMAND.name(),
-                WorkerMessageDefinition.of(
-                        payload -> requireWorkerCommand(codec, payload),
-                        processor::process
-                )
-        ));
+        this.processor = processor;
         scheduler = Executors.newSingleThreadScheduledExecutor(runnable -> {
             Thread thread = new Thread(
                     runnable,
@@ -249,25 +235,15 @@ public final class WebSocketWorkerTransport
     }
 
     private void executeCommand(String encodedFrame) {
-        Optional<SeedResult> result;
+        Optional<WorkerResult> result;
         try {
-            WorkerConnectionMessage message =
-                    codec.decodeWorkerConnectionMessage(encodedFrame);
-            if (message == null) {
+            WorkerCommand command = codec.decodeWorkerCommand(encodedFrame);
+            if (command == null) {
                 throw new IllegalArgumentException(
-                        "Worker connection message is malformed"
+                        "Worker command is malformed"
                 );
             }
-            result = messageDefinitions.dispatch(message);
-        } catch (WorkerException error) {
-            synchronized (this) {
-                processing = false;
-                WebSocket current = socket;
-                if (current != null) {
-                    closeProtocolError(current, BAD_DATA);
-                }
-            }
-            return;
+            result = processor.process(command);
         } catch (RuntimeException error) {
             synchronized (this) {
                 processing = false;
@@ -309,11 +285,8 @@ public final class WebSocketWorkerTransport
         boolean accepted;
         try {
             accepted = webSocket.send(
-                    encodeConnectionMessage(
-                            WorkerConnectionMessageType.WORKER_BIND,
-                            codec.encodeWorkerConnectionBind(
-                                    new WorkerConnectionBind(workerId)
-                            )
+                    codec.encodeWorkerConnectionBind(
+                            new WorkerConnectionBind(workerId)
                     )
             );
         } catch (RuntimeException error) {
@@ -330,18 +303,13 @@ public final class WebSocketWorkerTransport
     }
 
     private void sendPending(WebSocket webSocket) {
-        SeedResult sending = pendingResult;
+        WorkerResult sending = pendingResult;
         if (sending == null || !isCurrentBound(webSocket)) {
             return;
         }
         boolean accepted;
         try {
-            accepted = webSocket.send(
-                    encodeConnectionMessage(
-                            WorkerConnectionMessageType.TASK_ITEM_RESULT,
-                            codec.encodeSeedResult(sending)
-                    )
-            );
+            accepted = webSocket.send(codec.encodeWorkerResult(sending));
         } catch (RuntimeException error) {
             accepted = false;
         }
@@ -477,28 +445,6 @@ public final class WebSocketWorkerTransport
             );
         }
         return value;
-    }
-
-    private String encodeConnectionMessage(
-            WorkerConnectionMessageType messageType,
-            String payload
-    ) {
-        return codec.encodeWorkerConnectionMessage(
-                new WorkerConnectionMessage(messageType.name(), payload)
-        );
-    }
-
-    private static WorkerCommandEnvelope requireWorkerCommand(
-            WorkerDeliveryCodec codec,
-            String payload
-    ) {
-        WorkerCommandEnvelope command = codec.decodeWorkerCommand(payload);
-        if (command == null) {
-            throw new IllegalArgumentException(
-                    "Worker command payload is malformed"
-            );
-        }
-        return command;
     }
 
     @FunctionalInterface

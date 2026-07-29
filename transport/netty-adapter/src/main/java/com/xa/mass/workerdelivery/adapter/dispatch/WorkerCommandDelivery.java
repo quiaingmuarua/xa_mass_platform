@@ -1,12 +1,12 @@
 package com.xa.mass.workerdelivery.adapter.dispatch;
 
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 
 public interface WorkerCommandDelivery {
 
     CommandDeliveryAttempt deliver(
             String workerId,
-            WorkerCommandEnvelope command
+            WorkerCommand command
     );
 
     enum CommandDeliveryAttempt {

@@ -132,7 +132,7 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain(".delivery.redis")
                 .doesNotContain("io.lettuce")
                 .doesNotContain("WorkerCommandRuntime")
-                .doesNotContain("SeedResultRuntime");
+                .doesNotContain("WorkerResultRuntime");
         assertThat(readSources(DELIVERY))
                 .doesNotContain("@RestController")
                 .doesNotContain("WorkerDeliveryHttpContract");
@@ -154,7 +154,7 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("WebSocketSession")
                 .doesNotContain("WorkerWebSocketHandler")
                 .doesNotContain("TextMessage")
-                .doesNotContain("SeedResult")
+                .doesNotContain("WorkerResult")
                 .doesNotContain("\"3001\"")
                 .doesNotContain("ArrayBlockingQueue");
 
@@ -182,7 +182,7 @@ class ServerArchitectureBoundaryTest {
         String deliveryAssembly = Files.readString(DELIVERY_ASSEMBLY);
         assertThat(deliveryAssembly)
                 .contains("RedisWorkerCommandRuntime")
-                .contains("RedisSeedResultRuntime")
+                .contains("RedisWorkerResultRuntime")
                 .doesNotContain("TaskRuntime")
                 .doesNotContain("TaskResourceCatalog")
                 .doesNotContain("WorkerRuntime")
@@ -192,9 +192,9 @@ class ServerArchitectureBoundaryTest {
 
         assertThat(Files.readString(KERNEL_ASSEMBLY))
                 .doesNotContain("WorkerCommandRuntime")
-                .doesNotContain("SeedResultRuntime")
+                .doesNotContain("WorkerResultRuntime")
                 .doesNotContain("RedisWorkerCommandRuntime")
-                .doesNotContain("RedisSeedResultRuntime");
+                .doesNotContain("RedisWorkerResultRuntime");
     }
 
     private static String readSources(Path root) throws IOException {

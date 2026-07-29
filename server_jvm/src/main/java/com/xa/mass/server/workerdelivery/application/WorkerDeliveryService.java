@@ -2,11 +2,11 @@ package com.xa.mass.server.workerdelivery.application;
 
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultOutcomeClass;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultSource;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
-import com.xa.mass.kernel.delivery.SeedResultRuntime;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResultOutcomeClass;
+import com.xa.mass.kernel.delivery.WorkerResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
@@ -22,23 +22,23 @@ public final class WorkerDeliveryService {
     );
 
     private final WorkerCommandRuntime commandRuntime;
-    private final SeedResultRuntime resultRuntime;
+    private final WorkerResultRuntime resultRuntime;
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
 
     public WorkerDeliveryService(
             WorkerCommandRuntime commandRuntime,
-            SeedResultRuntime resultRuntime
+            WorkerResultRuntime resultRuntime
     ) {
         this.commandRuntime = commandRuntime;
         this.resultRuntime = resultRuntime;
     }
 
-    public WorkerCommandEnvelope pollWorkerCommand(
+    public WorkerCommand pollWorkerCommand(
             String endpointManagerId,
             String workerId
     ) {
         try {
-            WorkerCommandEnvelope command = commandRuntime.consumeWorkerCommand(
+            WorkerCommand command = commandRuntime.consumeWorkerCommand(
                     endpointManagerId,
                     workerId
             );
@@ -53,20 +53,20 @@ public final class WorkerDeliveryService {
         }
     }
 
-    public Map<String, WorkerCommandEnvelope> consumeWorkerCommands(
+    public Map<String, WorkerCommand> consumeWorkerCommands(
             String endpointManagerId,
             int limit
     ) {
         String operation = "workerDelivery.consumeCommands";
         requireAdapterBatchIdentity(endpointManagerId, operation);
         try {
-            Map<String, WorkerCommandEnvelope> commands =
+            Map<String, WorkerCommand> commands =
                     commandRuntime.consumeWorkerCommands(
                             endpointManagerId,
                             limit
                     );
             long nowMillis = System.currentTimeMillis();
-            Map<String, WorkerCommandEnvelope> active =
+            Map<String, WorkerCommand> active =
                     new LinkedHashMap<>();
             commands.forEach((workerId, command) -> {
                 if (command.executeBeforeMillis() > nowMillis) {
@@ -84,54 +84,53 @@ public final class WorkerDeliveryService {
     public void appendWorkerResult(
             String endpointManagerId,
             String workerId,
-            SeedResult result
+            WorkerResult result
     ) {
         String operation = "workerDelivery.appendWorkerResult";
         requireNonBlank(endpointManagerId, "endpointManagerId", operation);
         requireNonBlank(workerId, "workerId", operation);
-        SeedResultOutcomeClass outcomeClass =
-                WorkerDeliveryProtocol.classifyOutcomeCode(
+        WorkerResultOutcomeClass outcomeClass =
+                WorkerDeliveryProtocol.classifyWorkerResultOutcomeCode(
                         result.outcomeCode()
         );
-        if (outcomeClass == SeedResultOutcomeClass.ADAPTER_REJECTION) {
+        if (result.dst() != WorkerMessageEndpoint.TASK
+                || outcomeClass
+                == WorkerResultOutcomeClass.ADAPTER_REJECTION) {
             throw invalid(
                     operation,
-                    "Worker result outcome code must be 200 or 1xxx"
+                    "Worker result must target TASK with outcome 200 or 1xxx"
             );
         }
         appendResults(List.of(result), operation);
     }
 
-    public SeedResultAppendCounts appendAdapterResults(
+    public WorkerResultAppendCounts appendAdapterResults(
             String endpointManagerId,
-            SeedResultSource source,
-            List<String> encodedSeedResults
+            List<String> encodedWorkerResults
     ) {
         String operation = "workerDelivery.appendAdapterResults";
         requireAdapterBatchIdentity(endpointManagerId, operation);
-        if (source == null) {
-            throw invalid(operation, "SeedResult source must be present");
-        }
-        if (encodedSeedResults == null || encodedSeedResults.isEmpty()) {
+        if (encodedWorkerResults == null || encodedWorkerResults.isEmpty()) {
             throw invalid(
                     operation,
                     "Adapter result batch must not be empty"
             );
         }
 
-        List<SeedResult> acceptedResults = new ArrayList<>();
+        List<WorkerResult> acceptedResults = new ArrayList<>();
         int rejectedCount = 0;
-        for (String encodedSeedResult : encodedSeedResults) {
-            if (encodedSeedResult == null
-                    || encodedSeedResult.isBlank()) {
+        for (String encodedWorkerResult : encodedWorkerResults) {
+            if (encodedWorkerResult == null
+                    || encodedWorkerResult.isBlank()) {
                 rejectedCount++;
                 continue;
             }
             try {
-                SeedResult result = codec.decodeSeedResult(
-                        encodedSeedResult
+                WorkerResult result = codec.decodeWorkerResult(
+                        encodedWorkerResult
                 );
-                if (result == null || !sourceAllows(source, result)) {
+                if (result == null
+                        || result.dst() != WorkerMessageEndpoint.TASK) {
                     rejectedCount++;
                     continue;
                 }
@@ -147,47 +146,30 @@ public final class WorkerDeliveryService {
         if (rejectedCount > 0) {
             LOGGER.log(
                     System.Logger.Level.WARNING,
-                    "endpointManagerId={0} source={1} "
-                            + "acceptedCount={2} rejectedCount={3}",
+                    "endpointManagerId={0} acceptedCount={1} "
+                            + "rejectedCount={2}",
                     endpointManagerId,
-                    source,
                     acceptedResults.size(),
                     rejectedCount
             );
         }
-        return new SeedResultAppendCounts(
+        return new WorkerResultAppendCounts(
                 acceptedResults.size(),
                 rejectedCount
         );
     }
 
-    private static boolean sourceAllows(
-            SeedResultSource source,
-            SeedResult result
-    ) {
-        SeedResultOutcomeClass outcomeClass =
-                WorkerDeliveryProtocol.classifyOutcomeCode(
-                        result.outcomeCode()
-                );
-        return source == SeedResultSource.WORKER
-                ? outcomeClass == SeedResultOutcomeClass.SUCCESS
-                || outcomeClass
-                == SeedResultOutcomeClass.WORKER_FAILURE
-                : outcomeClass
-                == SeedResultOutcomeClass.ADAPTER_REJECTION;
-    }
-
     private void appendResults(
-            List<SeedResult> results,
+            List<WorkerResult> results,
             String operation
     ) {
         try {
-            int accepted = resultRuntime.appendSeedResults(results);
+            int accepted = resultRuntime.appendWorkerResults(results);
             if (accepted != results.size()) {
                 throw unavailable(
                         operation,
                         new IllegalStateException(
-                                "SeedResult batch was not fully accepted"
+                                "WorkerResult batch was not fully accepted"
                         )
                 );
             }
@@ -254,7 +236,7 @@ public final class WorkerDeliveryService {
         );
     }
 
-    public record SeedResultAppendCounts(
+    public record WorkerResultAppendCounts(
             int acceptedCount,
             int rejectedCount
     ) {

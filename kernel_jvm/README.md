@@ -18,7 +18,7 @@ Package responsibilities:
 | `worker` | Worker runtime, catalog, and dynamic-attribute contracts |
 | `score` | Task, TaskItem, and Worker score owner contracts |
 | `assignment` | Candidate cache and warmup schedule contracts |
-| `delivery` | WorkerCommand and SeedResult runtime contracts |
+| `delivery` | WorkerCommand and WorkerResult runtime contracts |
 | owner-local `redis` packages | Selected Redis implementations |
 
 The current implemented provider subset is:
@@ -37,7 +37,7 @@ WorkerResourceCatalog
 WorkerCommandRuntime
   point and bounded random batch consume
 
-SeedResultRuntime
+WorkerResultRuntime
   append
 ```
 

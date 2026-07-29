@@ -21,6 +21,6 @@ The document families are grouped by design concern:
   contracts.
 - Runtime Redis shapes:
   [Worker Runtime](runtime-redis/worker-runtime-redis-shape.md) and
-  [Seed Result Runtime](runtime-redis/seed-result-runtime-redis-shape.md).
+  [Worker Result Runtime](runtime-redis/worker-result-runtime-redis-shape.md).
 Python executable-spec code lives under `../executable_spec/`; these documents
 and proofs are the semantic input for scoped `kernel_jvm` parity work.

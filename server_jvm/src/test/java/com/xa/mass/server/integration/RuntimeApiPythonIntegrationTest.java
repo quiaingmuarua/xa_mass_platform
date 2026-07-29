@@ -282,8 +282,6 @@ class RuntimeApiPythonIntegrationTest {
     ) throws Exception {
         WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
         WorkerCommandProcessor processor = new WorkerCommandProcessor(
-                workerId,
-                codec,
                 Map.of(
                         TEST_EVENT_CODE,
                         WorkerEventDefinition.map(payload ->

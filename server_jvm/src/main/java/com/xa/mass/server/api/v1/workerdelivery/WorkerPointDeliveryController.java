@@ -1,10 +1,10 @@
 package com.xa.mass.server.api.v1.workerdelivery;
 
 import com.xa.mass.server.api.v1.workerdelivery.WorkerDeliveryHttpContract.AcceptedResponse;
-import com.xa.mass.server.api.v1.workerdelivery.WorkerDeliveryHttpContract.SeedResultRequest;
+import com.xa.mass.server.api.v1.workerdelivery.WorkerDeliveryHttpContract.WorkerResultRequest;
 import com.xa.mass.server.api.v1.workerdelivery.WorkerDeliveryHttpContract.WorkerCommandResponse;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.http.ResponseEntity;
@@ -35,7 +35,7 @@ public class WorkerPointDeliveryController {
             @PathVariable @NotBlank String endpointManagerId,
             @PathVariable @NotBlank String workerId
     ) {
-        WorkerCommandEnvelope command = workerDelivery.pollWorkerCommand(
+        WorkerCommand command = workerDelivery.pollWorkerCommand(
                 endpointManagerId,
                 workerId
         );
@@ -48,12 +48,12 @@ public class WorkerPointDeliveryController {
     public ResponseEntity<AcceptedResponse> appendWorkerResult(
             @PathVariable @NotBlank String endpointManagerId,
             @PathVariable @NotBlank String workerId,
-            @Valid @RequestBody SeedResultRequest request
+            @Valid @RequestBody WorkerResultRequest request
     ) {
         workerDelivery.appendWorkerResult(
                 endpointManagerId,
                 workerId,
-                request.toSeedResult()
+                request.toWorkerResult()
         );
         return ResponseEntity.accepted().body(new AcceptedResponse(true));
     }

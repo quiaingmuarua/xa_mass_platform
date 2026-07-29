@@ -34,7 +34,7 @@ trusted result disposition or lease expiry. A physical executor with parallel
 capacity exposes multiple logical WorkerIds; the kernel does not create several
 active assignments behind one Worker score.
 
-One Worker lease carries one TaskItem and one DeliverSeed. A Worker that exposes
+One Worker lease carries one TaskItem and one WorkerCommand. A Worker that exposes
 a business batch operation receives the batch as a bounded collection inside
 that TaskItem payload. The kernel does not merge multiple TaskItems, create
 multiple Item claim fences behind one Worker lease, or release the slot early.
@@ -112,7 +112,7 @@ lease needs extension        -> exact CAS + renewedScore
 Only a `TRANSITIONED` or exact `NOOP` result carrying a score is rematched
 against the current request. A successful rematch may proceed to Item claim.
 The returned fence, unchanged or renewed, is written into
-`opaqueResultContext`.
+`forward`.
 
 PRECOMPUTED miss or rejected evidence never falls back to TARGETED acquisition.
 `TaskItemDispatcher` never calls Worker score directly. It chooses one path
@@ -249,9 +249,9 @@ cross-owner transaction.
 | WorkerCandidateAcquirer TARGETED | explicit point/index source, exact lease and full match | no cache read/write or fallback |
 | WorkerCandidateAcquirer PRECOMPUTED | cache consume, exact active-fence validation/renewal and rematch | no HOT scan or fallback |
 | TaskWorkerAllocationPacer | retain Task-owned rule Tasks, acquire HOT-pool candidates and publish cache evidence | no direct Worker-score or result handling |
-| TaskItemDispatcher | resolve PRECOMPUTED/TARGETED from immutable TaskType, preserve binding, claim Item and build DeliverSeed | no Task-score, mailbox, cache or Worker-score access |
+| TaskItemDispatcher | resolve PRECOMPUTED/TARGETED from immutable TaskType, preserve binding, claim Item and build WorkerCommand | no Task-score, mailbox, cache or Worker-score access |
 | TaskDispatchPacer | bounded Task round, suffix routing, mailbox publication and Task-score pacing | no candidate acquisition, Item claim or Worker-score access |
-| Worker Delivery Dispatch | mailbox consume, deadline check, command forwarding and SeedResult append | no Worker selection or score parsing/mutation |
+| Worker Delivery Dispatch | mailbox consume, deadline check, command forwarding and WorkerResult append | no Worker selection or score parsing/mutation |
 | Future trusted Adapter | direct pre-execution rejection evidence | no inferred `3xxx` from timeout, missing response or mailbox age |
 | ResultRoutingPacer | bounded consume, context decode, owner-key grouping and handler delegation | no direct Task/Worker owner dependency, Worker selection or exact subcode policy |
 | Result-routing handlers | owner-local Task finality and Worker disposition policy | no queue ownership, score decoding or cross-owner truth |

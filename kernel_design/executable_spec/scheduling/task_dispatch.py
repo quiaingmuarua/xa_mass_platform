@@ -35,12 +35,10 @@ from ..kernel.task_score_band import (
 )
 from ..kernel.worker_runtime import EndpointManagerId
 from ..kernel.worker_delivery import (
-    DeliverSeed,
     WorkerCommandAppendStatus,
-    WorkerCommandEnvelope,
+    WorkerCommand,
     WorkerCommandRuntime,
-    WorkerMessageType,
-    encode_deliver_seed,
+    WorkerMessageEndpoint,
 )
 from .worker_candidate import (
     WorkerCandidateAcquirer,
@@ -53,13 +51,9 @@ from .task_scheduling_profile import (
 )
 
 
-def _encode_delivery_item(task_item: TaskItem) -> str:
-    """Encode the built-in event-handler envelope."""
+def _encode_event_payload(task_item: TaskItem) -> str:
     return json.dumps(
-        {
-            "eventCode": task_item.event_code,
-            "payload": dict(task_item.payload),
-        },
+        dict(task_item.payload),
         allow_nan=False,
         sort_keys=True,
         separators=(",", ":"),
@@ -100,13 +94,13 @@ class TaskItemDispatcher:
         task_runtime: TaskRuntime,
         candidate_acquirer: WorkerCandidateAcquirer,
         candidate_warmup_schedule: CandidateWarmupSchedule,
-        delivery_item_encoder: Callable[[TaskItem], str] = _encode_delivery_item,
+        payload_encoder: Callable[[TaskItem], str] = _encode_event_payload,
     ) -> None:
         self.item_score = item_score
         self.task_runtime = task_runtime
         self.candidate_acquirer = candidate_acquirer
         self.candidate_warmup_schedule = candidate_warmup_schedule
-        self._delivery_item_encoder = delivery_item_encoder
+        self._payload_encoder = payload_encoder
 
     def observe_claimable_task_items(
         self,
@@ -174,7 +168,7 @@ class TaskItemDispatcher:
         warmup_due_time_millis: TimeMillis,
     ) -> dict[
         EndpointManagerId,
-        dict[str, WorkerCommandEnvelope],
+        dict[str, WorkerCommand],
     ]:
         candidate_workers_by_message_id = self._acquire_candidate_workers(
             task_id=task_id,
@@ -197,13 +191,17 @@ class TaskItemDispatcher:
 
         worker_commands: dict[
             EndpointManagerId,
-            dict[str, WorkerCommandEnvelope],
+            dict[str, WorkerCommand],
         ] = {}
         for candidate_worker, task_item in dispatch_assignments:
-            seed = DeliverSeed(
-                worker_id=candidate_worker.worker_id,
-                opaque_delivery_item=self._delivery_item_encoder(task_item),
-                opaque_result_context=encode_result_context(
+            command = WorkerCommand(
+                message_id=str(uuid4()),
+                src=WorkerMessageEndpoint.TASK,
+                dst=WorkerMessageEndpoint.WORKER,
+                message_type=task_item.event_code,
+                execute_before_millis=claim_until_millis,
+                payload=self._payload_encoder(task_item),
+                forward=encode_result_context(
                     ResultContext(
                         task_id=task_id,
                         message_id=task_item.message_id,
@@ -212,12 +210,6 @@ class TaskItemDispatcher:
                         worker_lease_score=candidate_worker.worker_lease_score,
                     )
                 ),
-            )
-            command = WorkerCommandEnvelope(
-                command_id=str(uuid4()),
-                message_type=WorkerMessageType.TASK_ITEM,
-                execute_before_millis=claim_until_millis,
-                opaque_item=encode_deliver_seed(seed),
             )
             worker_commands.setdefault(
                 candidate_worker.endpoint_manager_id,
@@ -360,7 +352,7 @@ class TaskDispatchPacer:
 
         round_worker_commands: dict[
             EndpointManagerId,
-            dict[str, WorkerCommandEnvelope],
+            dict[str, WorkerCommand],
         ] = {}
         activity_recheck_tasks: dict[
             TaskId,
@@ -527,7 +519,7 @@ class TaskDispatchPacer:
         *,
         worker_commands_by_endpoint_manager: Mapping[
             EndpointManagerId,
-            Mapping[str, WorkerCommandEnvelope],
+            Mapping[str, WorkerCommand],
         ],
     ) -> int:
         if not worker_commands_by_endpoint_manager:

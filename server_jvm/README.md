@@ -40,7 +40,7 @@ Task data client
 Worker / long-lived Adapter
   -> server_jvm /api/v1/worker-delivery
   -> Java WorkerDeliveryService
-  -> WorkerCommandRuntime + SeedResultRuntime
+  -> WorkerCommandRuntime + WorkerResultRuntime
   -> Java owner Redis providers
   -> Python ResultRouting
 ```
@@ -48,11 +48,11 @@ Worker / long-lived Adapter
 The module is Java 21 and Spring Boot 4.1. It depends on `kernel_jvm` contracts
 but does not start the Python process. `kernelbinding` composes Task and Worker
 control/data providers. `WorkerDeliveryOwnerAssemblyConfiguration` separately
-composes only the WorkerCommand and SeedResult Redis providers. The shared
+composes only the WorkerCommand and WorkerResult Redis providers. The shared
 `kernelredis` package owns only connection and health. Redis key operations are
 implemented in owner-local `kernel_jvm` packages. Java does not read Task or
 Worker scheduling scores, invoke Pacers, append Worker commands, or consume
-SeedResult queues.
+WorkerResult queues.
 
 Current provider matrix:
 
@@ -65,7 +65,7 @@ Current provider matrix:
 | Task and WorkerGroup descriptor reads | Java Redis |
 | TaskItem append and last-success load | Java Redis |
 | WorkerCommand consume | Java Redis |
-| SeedResult append | Java Redis |
+| WorkerResult append | Java Redis |
 | Score, candidate, dynamic attribute, scheduling internals | no Server bean / explicit not implemented |
 
 Task Data boundaries:
@@ -89,8 +89,8 @@ Worker Delivery boundaries:
 
 ```text
 worker_delivery_contract_jvm
-  transport-neutral WorkerCommand/DeliverSeed/SeedResult contracts,
-  stable long-connection message envelope, and strict codecs
+  transport-neutral WorkerCommand/WorkerResult/WorkerConnectionBind contracts
+  and strict codecs
 api.v1.workerdelivery
   point Worker and Adapter batch HTTP access profiles
 workerdelivery.application
@@ -98,7 +98,7 @@ workerdelivery.application
 workerdelivery
   HTTP application and delivery-owner composition
 kernel_jvm delivery contracts/providers
-  WorkerCommand consume and SeedResult append owner operations
+  WorkerCommand consume and WorkerResult append owner operations
 
 transport/netty-adapter
   complete Adapter instances, independent Netty WebSocket listeners,
@@ -115,11 +115,10 @@ The Adapter runtime is implemented by
 This Server reads the configured Adapter instance map, creates complete
 WebSocket or Socket Adapter instances, registers them, and forwards
 process-ready/process-close events. Each Adapter owns its Netty listener,
-bounded Command/Result loops, connection registry, static message
-Definitions, and source-tagged opaque result buffer. It still consumes
-the existing batch HTTP API through loopback and has no in-process or Redis
-shortcut. Polling does not use the long-connection message union; it continues
-to exchange WorkerCommand and SeedResult through point HTTP.
+bounded Command/Result loops, current Channel registry, and encoded result
+buffer. It consumes the existing batch HTTP API through loopback and has no
+in-process or Redis shortcut. Polling continues to exchange WorkerCommand and
+WorkerResult through point HTTP.
 
 ## Runtime Commands
 
@@ -168,11 +167,11 @@ POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/results:appen
 
 `system-polling` may use only the point Worker operations. Bounded batch
 consume and batch result append are reserved for long-lived Adapter identities.
-The Adapter result request carries a batch-level `source=WORKER|ADAPTER` and
-an array of encoded `SeedResult` strings. Server decodes each item, permits
-`WORKER -> 200/1xxx` and `ADAPTER -> 3xxx`, appends the valid subset, and
-returns both `acceptedCount` and `rejectedCount`. Source is ingress metadata
-and is not written to Redis.
+The Adapter result request carries an array of encoded `WorkerResult` strings.
+The Adapter endpoint itself is the trusted ingress and accepts valid
+`200/1xxx/3xxx` results targeting `TASK`. Server appends the valid subset and
+returns both `acceptedCount` and `rejectedCount`. The point Worker result
+endpoint separately permits only `200/1xxx`.
 
 Management endpoints:
 

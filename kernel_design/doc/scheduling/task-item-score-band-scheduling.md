@@ -490,7 +490,7 @@ For each Item, the core decodes only the caller-returned observed score, validat
 `ACTIVE`, decrements remaining budget, mints a later same-band target score, and
 uses exact Redis score CAS. `TRANSITIONED + score` is the claim result; that
 opaque score is used only to accept the Item/Worker binding inside dispatch.
-The current DeliverSeed and ResultContext do not carry Item claim score.
+The current WorkerCommand and ResultContext do not carry Item claim score.
 
 The exhausted set uses cross-band promotion rather than same-band rewrite:
 

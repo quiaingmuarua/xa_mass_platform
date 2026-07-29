@@ -3,8 +3,7 @@ package com.xa.mass.workerdelivery.adapter.http;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultSource;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -48,7 +47,7 @@ final class WorkerDeliveryGatewayHttpContract {
         return write(payload, "Worker command consume request");
     }
 
-    Map<String, WorkerCommandEnvelope> decodeConsumeResponse(String value) {
+    Map<String, WorkerCommand> decodeConsumeResponse(String value) {
         try {
             JsonNode payload = mapper.readTree(value);
             if (!(payload instanceof ObjectNode object)
@@ -65,7 +64,7 @@ final class WorkerDeliveryGatewayHttpContract {
                         "Worker command consume response"
                 );
             }
-            Map<String, WorkerCommandEnvelope> decoded =
+            Map<String, WorkerCommand> decoded =
                     new LinkedHashMap<>();
             commandObject.properties().forEach(entry -> {
                 if (entry.getKey().isBlank()) {
@@ -74,7 +73,7 @@ final class WorkerDeliveryGatewayHttpContract {
                             "Worker command workerId"
                     );
                 }
-                WorkerCommandEnvelope command = codec.decodeWorkerCommand(
+                WorkerCommand command = codec.decodeWorkerCommand(
                         entry.getValue().toString()
                 );
                 if (command == null) {
@@ -98,32 +97,23 @@ final class WorkerDeliveryGatewayHttpContract {
         }
     }
 
-    String encodeResultBatch(
-            SeedResultSource source,
-            List<String> encodedSeedResults
-    ) {
-        if (source == null) {
-            throw new IllegalArgumentException(
-                    "source must be present"
-            );
-        }
-        if (encodedSeedResults == null || encodedSeedResults.isEmpty()) {
+    String encodeResultBatch(List<String> encodedWorkerResults) {
+        if (encodedWorkerResults == null || encodedWorkerResults.isEmpty()) {
             throw new IllegalArgumentException(
                     "results must not be empty"
             );
         }
         ObjectNode payload = mapper.createObjectNode();
-        payload.put("source", source.name());
         ArrayNode encodedResults = payload.putArray("results");
-        for (String encodedSeedResult : encodedSeedResults) {
-            if (encodedSeedResult == null || encodedSeedResult.isEmpty()) {
+        for (String encodedWorkerResult : encodedWorkerResults) {
+            if (encodedWorkerResult == null || encodedWorkerResult.isEmpty()) {
                 throw new IllegalArgumentException(
-                        "encoded SeedResult must be non-empty"
+                        "encoded WorkerResult must be non-empty"
                 );
             }
-            encodedResults.add(encodedSeedResult);
+            encodedResults.add(encodedWorkerResult);
         }
-        return write(payload, "SeedResult batch");
+        return write(payload, "WorkerResult batch");
     }
 
     void requireCompleteResultResponse(
@@ -138,7 +128,7 @@ final class WorkerDeliveryGatewayHttpContract {
                     || !object.get("rejectedCount").isIntegralNumber()) {
                 throw malformed(
                         RESULT_DECODE_OPERATION,
-                        "SeedResult append response"
+                        "WorkerResult append response"
                 );
             }
             int acceptedCount = object.get("acceptedCount").intValue();
@@ -149,7 +139,7 @@ final class WorkerDeliveryGatewayHttpContract {
                     != expectedCount) {
                 throw malformed(
                         RESULT_DECODE_OPERATION,
-                        "SeedResult append response"
+                        "WorkerResult append response"
                 );
             }
         } catch (WorkerDeliveryAdapterException error) {
@@ -158,7 +148,7 @@ final class WorkerDeliveryGatewayHttpContract {
             throw new WorkerDeliveryAdapterException(
                     WorkerDeliveryAdapterErrorCode.GATEWAY_PROTOCOL_ERROR,
                     RESULT_DECODE_OPERATION,
-                    "SeedResult append response is malformed",
+                    "WorkerResult append response is malformed",
                     error
             );
         }

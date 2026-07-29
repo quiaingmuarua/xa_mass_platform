@@ -14,8 +14,8 @@ import com.xa.mass.server.api.RequestIdFilter;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
@@ -53,11 +53,14 @@ class WorkerPointDeliveryControllerTest {
                 .thenReturn(command());
         mockMvc.perform(post(pointPath("commands:poll")))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.commandId").value(COMMAND_ID))
-                .andExpect(jsonPath("$.messageType").value("TASK_ITEM"))
+                .andExpect(jsonPath("$.messageId").value(COMMAND_ID))
+                .andExpect(jsonPath("$.src").value("TASK"))
+                .andExpect(jsonPath("$.dst").value("WORKER"))
+                .andExpect(jsonPath("$.messageType").value("test.event"))
                 .andExpect(jsonPath("$.executeBeforeMillis")
                         .value(9_999_999_999_999L))
-                .andExpect(jsonPath("$.opaqueItem").value("opaque-item"));
+                .andExpect(jsonPath("$.payload").value("opaque-item"))
+                .andExpect(jsonPath("$.forward").value("context"));
     }
 
     @Test
@@ -108,19 +111,22 @@ class WorkerPointDeliveryControllerTest {
                         .value(13002));
     }
 
-    private static WorkerCommandEnvelope command() {
-        return new WorkerCommandEnvelope(
+    private static WorkerCommand command() {
+        return new WorkerCommand(
                 COMMAND_ID,
-                WorkerMessageType.TASK_ITEM,
+                WorkerMessageEndpoint.TASK,
+                WorkerMessageEndpoint.WORKER,
+                "test.event",
                 9_999_999_999_999L,
-                "opaque-item"
+                "opaque-item",
+                "context"
         );
     }
 
     private static String successResult() {
         return """
-                {"commandId":"%s","opaqueResultContext":"context",\
-                "outcomeCode":"200","opaqueResultPayload":"null"}\
+                {"messageId":"%s","dst":"TASK","messageType":"test.event",\
+                "outcomeCode":"200","payload":"null","forward":"context"}\
                 """.formatted(COMMAND_ID);
     }
 

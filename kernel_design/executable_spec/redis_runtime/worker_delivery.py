@@ -5,10 +5,10 @@ from typing import Any, Mapping, Sequence
 from ..kernel.task_score_band import TimeMillis
 from ..kernel.worker_delivery import (
     WorkerCommandAppendStatus,
-    WorkerCommandEnvelope,
+    WorkerCommand,
     WorkerCommandRuntime,
-    decode_worker_command_envelope,
-    encode_worker_command_envelope,
+    decode_worker_command,
+    encode_worker_command,
 )
 from ..kernel.worker_runtime import EndpointManagerId
 from ..kernel.worker_score import WorkerId
@@ -59,7 +59,7 @@ class RedisWorkerCommandRuntime(WorkerCommandRuntime):
         endpoint_manager_id: EndpointManagerId,
         worker_commands_by_worker_id: Mapping[
             WorkerId,
-            WorkerCommandEnvelope,
+            WorkerCommand,
         ],
     ) -> Mapping[WorkerId, WorkerCommandAppendStatus]:
         self._validate_endpoint_manager_id(endpoint_manager_id)
@@ -77,7 +77,7 @@ class RedisWorkerCommandRuntime(WorkerCommandRuntime):
 
         key = self._worker_command_key(endpoint_manager_id)
         encoded_by_worker_id = {
-            worker_id: encode_worker_command_envelope(command)
+            worker_id: encode_worker_command(command)
             for worker_id, command in worker_commands_by_worker_id.items()
         }
         with self.redis.pipeline(transaction=False) as pipeline:
@@ -107,7 +107,7 @@ class RedisWorkerCommandRuntime(WorkerCommandRuntime):
         *,
         endpoint_manager_id: EndpointManagerId,
         worker_id: WorkerId,
-    ) -> WorkerCommandEnvelope | None:
+    ) -> WorkerCommand | None:
         self._validate_endpoint_manager_id(endpoint_manager_id)
         self._validate_worker_ids((worker_id,))
         raw_result = self.redis.eval(
@@ -119,7 +119,7 @@ class RedisWorkerCommandRuntime(WorkerCommandRuntime):
         values = self._decode_text_sequence(raw_result)
         if not values:
             return None
-        command = decode_worker_command_envelope(values[1])
+        command = decode_worker_command(values[1])
         if (
             command is None
             or command.execute_before_millis <= self._current_time_millis()
@@ -132,7 +132,7 @@ class RedisWorkerCommandRuntime(WorkerCommandRuntime):
         *,
         endpoint_manager_id: EndpointManagerId,
         limit: int,
-    ) -> Mapping[WorkerId, WorkerCommandEnvelope]:
+    ) -> Mapping[WorkerId, WorkerCommand]:
         self._validate_endpoint_manager_id(endpoint_manager_id)
         if (
             isinstance(limit, bool)
@@ -160,10 +160,10 @@ class RedisWorkerCommandRuntime(WorkerCommandRuntime):
         )
         values = self._decode_text_sequence(raw_result)
         now_millis = self._current_time_millis()
-        commands: dict[WorkerId, WorkerCommandEnvelope] = {}
+        commands: dict[WorkerId, WorkerCommand] = {}
         for index in range(0, len(values), 2):
             worker_id = values[index]
-            command = decode_worker_command_envelope(values[index + 1])
+            command = decode_worker_command(values[index + 1])
             if (
                 command is not None
                 and command.execute_before_millis > now_millis

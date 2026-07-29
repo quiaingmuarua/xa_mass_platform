@@ -16,10 +16,9 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
 
 from kernel_design.executable_spec import (
     TaskType,
-    DeliverSeed,
-    WorkerCommandEnvelope,
+    WorkerCommand,
     WorkerCommandAppendStatus,
-    WorkerMessageType,
+    WorkerMessageEndpoint,
     DueTaskItemAdmissionPolicy,
     RunningSoftLimitSystemAdmissionPolicy,
     RedisCandidateWorkerCache,
@@ -50,8 +49,6 @@ from kernel_design.executable_spec import (
     WorkerDeclaration,
     WorkerGroupDescriptor,
     WorkerRuntimeStatus,
-    decode_deliver_seed,
-    encode_deliver_seed,
 )
 from kernel_design.executable_spec.assembly.application import (
     TaskApprovalResult,
@@ -246,7 +243,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             worker_commands_by_worker_id=commands_by_worker_id,
         )
 
-        consumed: dict[str, WorkerCommandEnvelope] = {}
+        consumed: dict[str, WorkerCommand] = {}
         for _ in range(10):
             commands = self.worker_command_runtime.consume_worker_commands(
                 endpoint_manager_id="endpoint-manager-batch",
@@ -320,18 +317,30 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         worker_id: str,
         opaque_delivery_item: str,
         opaque_result_context: str,
-    ) -> WorkerCommandEnvelope:
-        return WorkerCommandEnvelope(
-            command_id=str(uuid.uuid4()),
-            message_type=WorkerMessageType.TASK_ITEM,
+    ) -> WorkerCommand:
+        decoded_delivery = json.loads(opaque_delivery_item)
+        if (
+            isinstance(decoded_delivery, dict)
+            and isinstance(decoded_delivery.get("eventCode"), str)
+            and "payload" in decoded_delivery
+        ):
+            message_type = decoded_delivery["eventCode"]
+            payload = json.dumps(
+                decoded_delivery["payload"],
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        else:
+            message_type = "test.event"
+            payload = opaque_delivery_item
+        return WorkerCommand(
+            message_id=str(uuid.uuid4()),
+            src=WorkerMessageEndpoint.TASK,
+            dst=WorkerMessageEndpoint.WORKER,
+            message_type=message_type,
             execute_before_millis=int(time.time() * 1_000) + 5_000,
-            opaque_item=encode_deliver_seed(
-                DeliverSeed(
-                    worker_id=worker_id,
-                    opaque_delivery_item=opaque_delivery_item,
-                    opaque_result_context=opaque_result_context,
-                )
-            ),
+            payload=payload,
+            forward=opaque_result_context,
         )
 
     def _create_approve_append_activate(
@@ -542,19 +551,12 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         )
         self.assertIsNotNone(command)
         assert command is not None
-        seed = decode_deliver_seed(command.opaque_item)
-        self.assertIsNotNone(seed)
-        assert seed is not None
-        delivery_item = json.loads(seed.opaque_delivery_item)
-        result_context = json.loads(seed.opaque_result_context)
-        self.assertEqual("worker-1", seed.worker_id)
-        self.assertEqual(
-            {
-                "eventCode": "image.resize",
-                "payload": {"source": "s3://input"},
-            },
-            delivery_item,
-        )
+        self.assertIs(command.src, WorkerMessageEndpoint.TASK)
+        self.assertIs(command.dst, WorkerMessageEndpoint.WORKER)
+        self.assertEqual("image.resize", command.message_type)
+        delivery_item = json.loads(command.payload)
+        result_context = json.loads(command.forward)
+        self.assertEqual({"source": "s3://input"}, delivery_item)
         self.assertEqual(
             {
                 "taskId": self.task_id,
@@ -785,17 +787,13 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             )
             self.assertIsNotNone(command)
             assert command is not None
-            seed = decode_deliver_seed(command.opaque_item)
-            self.assertIsNotNone(seed)
-            assert seed is not None
-            self.assertEqual(worker_id, seed.worker_id)
             self.assertEqual(
                 f"message-{index}",
-                json.loads(seed.opaque_result_context)["messageId"],
+                json.loads(command.forward)["messageId"],
             )
             self.assertEqual(
                 {"target": f"worker-{index}"},
-                json.loads(seed.opaque_delivery_item)["payload"],
+                json.loads(command.payload),
             )
 
     def test_expired_item_finalizes_before_worker_acquisition(self) -> None:
@@ -1054,12 +1052,9 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
         self.assertEqual(1, dispatched)
         self.assertIsNotNone(command)
         assert command is not None
-        seed = decode_deliver_seed(command.opaque_item)
-        self.assertIsNotNone(seed)
-        assert seed is not None
         self.assertEqual(
             "message-2",
-            json.loads(seed.opaque_result_context)["messageId"],
+            json.loads(command.forward)["messageId"],
         )
 
     def test_item_driven_empty_rechecks_close_after_explicit_threshold(self) -> None:

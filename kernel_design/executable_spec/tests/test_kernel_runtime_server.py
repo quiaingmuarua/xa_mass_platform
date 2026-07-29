@@ -43,7 +43,7 @@ class KernelRuntimeServerBoundaryGuardTest(unittest.TestCase):
             "TaskWorkerAllocationPacer",
             "_RedisKernelProcess",
             "WorkerCommandConsumerClient",
-            "SeedResultCommandClient",
+            "WorkerResultCommandClient",
             "worker_delivery",
         ):
             self.assertNotIn(forbidden, source)
@@ -201,8 +201,8 @@ class KernelRuntimeServerTest(unittest.TestCase):
         self.assertEqual(
             404,
             self.client.post(
-                "/seed-results",
-                json={"opaqueResultContext": "context", "outcomeCode": "200"},
+                "/worker-results",
+                json={"forward": "context", "outcomeCode": "200"},
             ).status_code,
         )
         self.assertEqual(

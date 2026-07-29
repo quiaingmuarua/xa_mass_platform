@@ -39,8 +39,8 @@ from kernel_design.executable_spec.assembly import (
     TaskItemAppendStatus,
     WorkerDeclaration,
     WorkerGroupDescriptor,
+    WorkerMessageEndpoint,
     WorkerRuntimeStatus,
-    decode_deliver_seed,
 )
 from kernel_design.executable_spec.assembly._redis_process import _RedisKernelProcess
 from kernel_design.executable_spec.kernel import (
@@ -697,20 +697,16 @@ class KernelApplicationIntegrationTest(unittest.TestCase):
         self.assertEqual(TaskItemAppendStatus.APPENDED, appended[message_id].status)
         self.assertIsNotNone(command)
         assert command is not None
-        seed = decode_deliver_seed(command.opaque_item)
-        self.assertIsNotNone(seed)
-        assert seed is not None
-        self.assertEqual("worker-1", seed.worker_id)
+        self.assertIs(command.src, WorkerMessageEndpoint.TASK)
+        self.assertIs(command.dst, WorkerMessageEndpoint.WORKER)
+        self.assertEqual("image.resize", command.message_type)
         self.assertEqual(
             message_id,
-            json.loads(seed.opaque_result_context)["messageId"],
+            json.loads(command.forward)["messageId"],
         )
         self.assertEqual(
-            {
-                "eventCode": "image.resize",
-                "payload": {"source": "input"},
-            },
-            json.loads(seed.opaque_delivery_item),
+            {"source": "input"},
+            json.loads(command.payload),
         )
 
     def test_public_close_is_terminal_and_background_rounds_cannot_reopen(self) -> None:

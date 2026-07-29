@@ -4,8 +4,7 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterExcep
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultSource;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -56,7 +55,7 @@ public final class HttpWorkerDeliveryGatewayClient
     }
 
     @Override
-    public Map<String, WorkerCommandEnvelope> consumeWorkerCommands(
+    public Map<String, WorkerCommand> consumeWorkerCommands(
             String endpointManagerId,
             int limit
     ) {
@@ -84,14 +83,10 @@ public final class HttpWorkerDeliveryGatewayClient
     @Override
     public void appendResults(
             String endpointManagerId,
-            SeedResultSource source,
-            List<String> encodedSeedResults
+            List<String> encodedWorkerResults
     ) {
         String operation = "gateway.appendResults";
-        String body = contract.encodeResultBatch(
-                source,
-                encodedSeedResults
-        );
+        String body = contract.encodeResultBatch(encodedWorkerResults);
         HttpResponse<String> response = send(
                 request(endpointManagerId, "results:append")
                         .POST(HttpRequest.BodyPublishers.ofString(
@@ -105,21 +100,21 @@ public final class HttpWorkerDeliveryGatewayClient
             throw response.statusCode() >= 500
                     ? statusFailure(
                             operation,
-                            "SeedResult append",
+                            "WorkerResult append",
                             response.statusCode()
                     )
                     : new WorkerDeliveryAdapterException(
                             WorkerDeliveryAdapterErrorCode
                                     .GATEWAY_PROTOCOL_ERROR,
                             operation,
-                            "SeedResult append was rejected with HTTP "
+                            "WorkerResult append was rejected with HTTP "
                                     + response.statusCode(),
                             null
                     );
         }
         contract.requireCompleteResultResponse(
                 response.body(),
-                encodedSeedResults.size()
+                encodedWorkerResults.size()
         );
     }
 

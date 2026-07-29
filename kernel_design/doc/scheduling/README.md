@@ -16,7 +16,7 @@ The kernel has four scheduling planes:
 | Task score-band | Which Tasks may enter a scheduling round now? | Task score coordinate and owner facts | Bounded Task ids or an owner-approved score transition | Task scheduling score only |
 | Worker score-band | Which Workers may enter admission or recovery now? | Worker score coordinate and worker-runtime facts | Bounded Worker observations, leases, holds, or polarity movement | Worker scheduling score only |
 | Assignment-dispatch | Which bounded Task/Worker/Item combination becomes delivery evidence? | Due Tasks, Task descriptors, policy-selected Worker acquisition, TaskItem records and Item scores | Optional CandidateWorker cache evidence and Adapter-partitioned WorkerCommand mailboxes | Candidate cache plus TaskItem score through declared owner primitives |
-| Result-routing | How does returned evidence affect Task success finality and Worker disposition? | SeedResults and opaque result context | Owner-local Task and Worker evidence delegated to policy handlers | No private truth; handlers invoke TaskItem and Worker score owners |
+| Result-routing | How does returned evidence affect Task success finality and Worker disposition? | WorkerResults and opaque result context | Owner-local Task and Worker evidence delegated to policy handlers | No private truth; handlers invoke TaskItem and Worker score owners |
 
 These are logical planes, not mandatory deployment modules. Package placement
 may change without changing owner authority.
@@ -55,13 +55,13 @@ Task score acquire
      -> TaskItem observation
      -> Task-scoped PRECOMPUTED or Item-scoped TARGETED candidate acquisition
      -> TaskItem exact claim
-     -> DeliverSeed encoded inside WorkerCommandEnvelope
+     -> direct WorkerCommand construction
      -> endpointManagerId-partitioned sparse WorkerCommand mailbox
   -> Worker Delivery Dispatch
      -> target Worker point poll through system-polling or another binding
      -> long-lived Adapter bounded batch consume for active push transports
      -> accept Worker point results or Adapter result batches
-     -> SeedResult queue
+     -> WorkerResult queue
   -> Result Routing
      -> 200: store last-success + FINAL_SUCCESS + Worker exact release
      -> 1xxx: keep Item claim coordinate + Worker exact release
@@ -128,13 +128,13 @@ CandidateWarmupSchedule
 
 TaskItemDispatcher
   owns one suffix-zero Task's bounded Item observation, Worker acquisition,
-  exact Item claim, DeliverSeed construction, and Worker command construction;
+  exact Item claim, and WorkerCommand construction;
   it owns no Task score, mailbox, or background lifecycle
 
 WorkerCommandRuntime
   owns sparse Adapter HASH mailboxes; the mailbox is not lifecycle truth
 
-SeedResultRuntime
+WorkerResultRuntime
   owns three bounded best-effort outcome-class queues, not Item or Worker truth
 
 ResultRoutingPacer
@@ -205,9 +205,9 @@ tr:{prefix}:task:{taskId}:results
   Task-local Item score and record/result HASHes
 
 wd:{prefix}:endpoint-manager:{endpointManagerId}:worker-commands
-  one sparse WorkerCommandEnvelope HASH per Adapter route
+  one sparse WorkerCommand HASH per Adapter route
 
-rr:{prefix}:seed-results:{outcomeClass}
+rr:{prefix}:worker-results:{outcomeClass}
   three global best-effort result LISTs
 ```
 
@@ -254,7 +254,7 @@ Read owner details only when changing that owner:
   [JVM Runtime API Server](../../../server_jvm/README.md).
 - Backend representation:
   [Worker Runtime Redis Shape](../runtime-redis/worker-runtime-redis-shape.md)
-  and [Seed Result Runtime Redis Shape](../runtime-redis/seed-result-runtime-redis-shape.md).
+  and [Worker Result Runtime Redis Shape](../runtime-redis/worker-result-runtime-redis-shape.md).
 
 The score documents own encoding and transition rules. The Worker lease
 protocol owns the one cross-pacer lease lifecycle without becoming a score or
@@ -274,7 +274,7 @@ kernel_design/executable_spec/
     worker_runtime.py
     assignment_dispatch_runtime.py
     result_context.py
-    seed_result_runtime.py
+    worker_result_runtime.py
     worker_delivery.py
   scheduling/
     worker_candidate/
@@ -307,7 +307,7 @@ kernel_design/executable_spec/
 - Do not let a pacer decode or mint another owner's opaque score evidence.
 - Do not let Worker Delivery Dispatch select Workers or Result Routing refresh
   Task score.
-- Do not make transient candidate or SeedResult queues durable lifecycle truth.
+- Do not make transient candidate or WorkerResult queues durable lifecycle truth.
 - Do not add a hot-path index, scanner, lock, queue, or transaction without a
   named owner invariant and bounded cost.
 - Do not preserve superseded mechanisms as historical alternatives in active

@@ -9,7 +9,7 @@ import com.xa.mass.server.api.v1.workerdelivery.AdapterBatchDeliveryController;
 import com.xa.mass.server.api.v1.workerdelivery.WorkerPointDeliveryController;
 import com.xa.mass.kernel.assignment.CandidateWarmupSchedule;
 import com.xa.mass.kernel.assignment.CandidateWorkerCache;
-import com.xa.mass.kernel.delivery.SeedResultRuntime;
+import com.xa.mass.kernel.delivery.WorkerResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
@@ -62,7 +62,7 @@ class ServerApplicationContextTest {
                 .isNotNull();
         assertThat(applicationContext.getBean(WorkerCommandRuntime.class))
                 .isNotNull();
-        assertThat(applicationContext.getBean(SeedResultRuntime.class))
+        assertThat(applicationContext.getBean(WorkerResultRuntime.class))
                 .isNotNull();
         assertThat(applicationContext.getBean(
                 KernelOwnerAssemblyConfiguration.class

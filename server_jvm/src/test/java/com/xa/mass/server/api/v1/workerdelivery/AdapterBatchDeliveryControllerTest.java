@@ -1,8 +1,6 @@
 package com.xa.mass.server.api.v1.workerdelivery;
 
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultSource.WORKER;
 import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -15,10 +13,10 @@ import com.xa.mass.server.api.RequestIdFilter;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
-import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService.SeedResultAppendCounts;
+import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService.WorkerResultAppendCounts;
 import com.xa.mass.workerdelivery.json.Jsons;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageType;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
 import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -58,7 +56,7 @@ class AdapterBatchDeliveryControllerTest {
                         .content("{\"limit\":100}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath(
-                        "$.workerCommandsByWorkerId.worker-1.commandId"
+                        "$.workerCommandsByWorkerId.worker-1.messageId"
                 ).value(COMMAND_ID));
     }
 
@@ -66,16 +64,13 @@ class AdapterBatchDeliveryControllerTest {
     void adapterResultBatchUsesTheStableResponse() throws Exception {
         String encodedResult = successResult();
         when(service.appendAdapterResults(
-                eq("endpoint-1"),
-                eq(WORKER),
+                org.mockito.ArgumentMatchers.eq("endpoint-1"),
                 anyList()
-        )).thenReturn(new SeedResultAppendCounts(1, 0));
+        )).thenReturn(new WorkerResultAppendCounts(1, 0));
 
         mockMvc.perform(post(batchPath("results:append"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(Jsons.toJson(Map.of(
-                                "source",
-                                "WORKER",
                                 "results",
                                 java.util.List.of(encodedResult)
                         ))))
@@ -85,7 +80,6 @@ class AdapterBatchDeliveryControllerTest {
 
         verify(service).appendAdapterResults(
                 "endpoint-1",
-                WORKER,
                 java.util.List.of(encodedResult)
         );
     }
@@ -111,22 +105,21 @@ class AdapterBatchDeliveryControllerTest {
         mockMvc.perform(post(batchPath("results:append"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(
-                                "{\"source\":\"WORKER\",\"results\":[]}"
+                                "{\"results\":[]}"
                         ))
-                .andExpect(status().isBadRequest());
-
-        mockMvc.perform(post(batchPath("results:append"))
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"results\":[\"opaque\"]}"))
                 .andExpect(status().isBadRequest());
 
         mockMvc.perform(post(batchPath("results:append"))
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(
-                                "{\"source\":\"WORKER\",\"results\":["
-                                        + successResult()
-                                        + "]}"
+                                "{\"source\":\"WORKER\","
+                                        + "\"results\":[\"opaque\"]}"
                         ))
+                .andExpect(status().isBadRequest());
+
+        mockMvc.perform(post(batchPath("results:append"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"results\":[null]}"))
                 .andExpect(status().isBadRequest());
 
         mockMvc.perform(post(batchPath("commands:consume"))
@@ -142,19 +135,23 @@ class AdapterBatchDeliveryControllerTest {
                 .andExpect(status().isBadRequest());
     }
 
-    private static WorkerCommandEnvelope command() {
-        return new WorkerCommandEnvelope(
+    private static WorkerCommand command() {
+        return new WorkerCommand(
                 COMMAND_ID,
-                WorkerMessageType.TASK_ITEM,
+                WorkerMessageEndpoint.TASK,
+                WorkerMessageEndpoint.WORKER,
+                "test.event",
                 9_999_999_999_999L,
-                "opaque-item"
+                "opaque-item",
+                "context"
         );
     }
 
     private static String successResult() {
         return """
-                {"commandId":"%s","opaqueResultContext":"context",\
-                "outcomeCode":"200","opaqueResultPayload":"null"}\
+                {"dst":"TASK","forward":"context","messageId":"%s",\
+                "messageType":"test.event","outcomeCode":"200",\
+                "payload":"null"}\
                 """.formatted(COMMAND_ID);
     }
 

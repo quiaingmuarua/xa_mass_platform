@@ -73,8 +73,8 @@ One round computes its dispatch time and Item claim deadline once:
    `expireAtMillis <= roundNowMillis` to `FINAL_FAILED`.
 6. If no dispatchable Item remains, add the Task to the activity-check batch.
 7. Otherwise `TaskItemDispatcher` acquires Workers, exact-claims only
-   Worker-backed Items, constructs one DeliverSeed and WorkerCommandEnvelope
-   per assignment, and groups commands by the CandidateWorker route snapshot.
+   Worker-backed Items, constructs one WorkerCommand per assignment, and
+   groups commands by the CandidateWorker route snapshot.
 8. The Pacer merges all returned groups and publishes once per endpoint manager
    sparse mailbox while preserving suffix zero and advancing ordinary dispatch
    time.
@@ -163,25 +163,25 @@ Neither path falls back to the other. CandidateId-to-messageId binding is
 preserved through exact Item claim; Workers and Items are not flattened and
 re-zipped.
 
-Each successful assignment first produces one `DeliverSeed` containing:
+Each successful assignment produces one `WorkerCommand`:
 
 ```text
-workerId
-opaqueDeliveryItem
-opaqueResultContext
+messageId             canonical UUID generated after exact Item claim
+src                   TASK
+dst                   WORKER
+messageType           TaskItem.eventCode
+executeBeforeMillis   the same Item claim deadline used by this round
+payload               deterministic TaskItem payload JSON
+forward               encoded ResultContext
 ```
 
-It is encoded as `WorkerCommandEnvelope.opaqueItem`. The outer envelope adds:
-
-```text
-commandId                  canonical UUID generated after exact Item claim
-messageType                TASK_ITEM
-executeBeforeMillis        the same Item claim deadline used by this round
-```
+`workerId` is the mailbox field and transport route; it is not duplicated in
+the command. `endpointManagerId` selects the mailbox bucket and is not part of
+the command.
 
 Task Dispatch ends when each Adapter mailbox append result is handled. It does
 not consume the mailbox, call a Worker, decode a Worker result, or append a
-`SeedResult`; those operations belong to Worker Delivery Dispatch.
+`WorkerResult`; those operations belong to Worker Delivery Dispatch.
 
 ## Failure And Concurrency
 
@@ -191,7 +191,7 @@ not consume the mailbox, call a Worker, decode a Worker result, or append a
   by the bounded round.
 - Unused or failed Worker leases expire naturally; this Pacer does not release
   or demote them.
-- The round sends one `workerId -> WorkerCommandEnvelope` Map per endpoint
+- The round sends one `workerId -> WorkerCommand` Map per endpoint
   manager to `WorkerCommandRuntime`. One WorkerId may appear only once in the
   entire round.
   `APPENDED` and `REPLACED` count as publication. Replacement is a best-effort

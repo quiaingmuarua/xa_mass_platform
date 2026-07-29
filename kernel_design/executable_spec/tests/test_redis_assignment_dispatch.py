@@ -6,15 +6,12 @@ from uuid import NAMESPACE_DNS, uuid5
 
 from kernel_design.executable_spec import (
     CandidateWorkerEntry,
-    DeliverSeed,
-    WorkerCommandEnvelope,
+    WorkerCommand,
     WorkerCommandAppendStatus,
-    WorkerMessageType,
+    WorkerMessageEndpoint,
     RedisCandidateWorkerCache,
     RedisWorkerCommandRuntime,
-    decode_deliver_seed,
-    encode_deliver_seed,
-    encode_worker_command_envelope,
+    encode_worker_command,
 )
 from kernel_design.executable_spec.redis_runtime.assignment_dispatch import (
     RedisCandidateWarmupSchedule,
@@ -308,16 +305,15 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
         payload = json.loads(self.redis.hashes[key]["worker-1"])
         self.assertEqual(
             {
-                "commandId": command.command_id,
+                "dst": "WORKER",
                 "executeBeforeMillis": 103_000,
-                "messageType": "TASK_ITEM",
-                "opaqueItem": command.opaque_item,
+                "forward": command.forward,
+                "messageId": command.message_id,
+                "messageType": "test.event",
+                "payload": command.payload,
+                "src": "TASK",
             },
             payload,
-        )
-        self.assertEqual(
-            "worker-1",
-            decode_deliver_seed(payload["opaqueItem"]).worker_id,
         )
 
     def test_adapter_buckets_are_isolated(self) -> None:
@@ -433,7 +429,7 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
             "wd:test:endpoint-manager:endpoint-manager-1:worker-commands"
         )
         expired = self._worker_command("message-1", "worker-1")
-        expired_value = encode_worker_command_envelope(expired)
+        expired_value = encode_worker_command(expired)
         self.redis.hashes[key] = {"worker-1": expired_value}
         self.redis.now_millis = expired.execute_before_millis
 
@@ -518,7 +514,7 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
 
     def test_consume_drops_expired_and_corrupt_mailboxes(self) -> None:
         rows = {
-            "worker-1": encode_worker_command_envelope(
+            "worker-1": encode_worker_command(
                 self._worker_command("expired", "worker-1", self.redis.now_millis)
             ),
             "worker-2": "{bad-json",
@@ -543,9 +539,9 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
         self.redis.hset(
             key,
             "worker-1",
-            encode_worker_command_envelope(old_seed),
+            encode_worker_command(old_seed),
         )
-        replacement_value = encode_worker_command_envelope(
+        replacement_value = encode_worker_command(
             replacement
         )
         self.redis.before_exact_consume = (
@@ -794,27 +790,24 @@ class RedisCandidateWorkerCacheTest(unittest.TestCase):
         message_id: str,
         worker_id: str,
         claim_until_millis: int = 103_000,
-    ) -> WorkerCommandEnvelope:
-        return WorkerCommandEnvelope(
-            command_id=str(
+    ) -> WorkerCommand:
+        return WorkerCommand(
+            message_id=str(
                 uuid5(NAMESPACE_DNS, f"{worker_id}:{message_id}")
             ),
-            message_type=WorkerMessageType.TASK_ITEM,
+            src=WorkerMessageEndpoint.TASK,
+            dst=WorkerMessageEndpoint.WORKER,
+            message_type="test.event",
             execute_before_millis=claim_until_millis,
-            opaque_item=encode_deliver_seed(
-                DeliverSeed(
-                    worker_id=worker_id,
-                    opaque_delivery_item=json.dumps(
-                        {"messageId": message_id},
-                        sort_keys=True,
-                        separators=(",", ":"),
-                    ),
-                    opaque_result_context=json.dumps(
-                        {"taskId": "task-1", "messageId": message_id},
-                        sort_keys=True,
-                        separators=(",", ":"),
-                    ),
-                )
+            payload=json.dumps(
+                {"messageId": message_id},
+                sort_keys=True,
+                separators=(",", ":"),
+            ),
+            forward=json.dumps(
+                {"taskId": "task-1", "messageId": message_id},
+                sort_keys=True,
+                separators=(",", ":"),
             ),
         )
 

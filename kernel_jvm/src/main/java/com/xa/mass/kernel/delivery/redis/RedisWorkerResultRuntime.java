@@ -1,12 +1,12 @@
 package com.xa.mass.kernel.delivery.redis;
 
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.classifyOutcomeCode;
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.classifyWorkerResultOutcomeCode;
 
 import com.xa.mass.kernel.KernelOperationNotImplementedException;
-import com.xa.mass.kernel.delivery.SeedResultRuntime;
+import com.xa.mass.kernel.delivery.WorkerResultRuntime;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultOutcomeClass;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResultOutcomeClass;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -16,15 +16,15 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 
-public final class RedisSeedResultRuntime
-        implements SeedResultRuntime, AutoCloseable {
+public final class RedisWorkerResultRuntime
+        implements WorkerResultRuntime, AutoCloseable {
 
     private final RedisClient redisClient;
     private final WorkerDeliveryCodec codec;
     private final String prefix;
     private volatile StatefulRedisConnection<String, String> connection;
 
-    public RedisSeedResultRuntime(
+    public RedisWorkerResultRuntime(
             RedisClient redisClient,
             WorkerDeliveryCodec codec,
             String prefix
@@ -43,27 +43,27 @@ public final class RedisSeedResultRuntime
     }
 
     @Override
-    public int appendSeedResults(List<SeedResult> results) {
+    public int appendWorkerResults(List<WorkerResult> results) {
         if (results == null) {
             throw new IllegalArgumentException("results must be present");
         }
         if (results.isEmpty()) {
             return 0;
         }
-        Map<SeedResultOutcomeClass, List<String>> grouped =
-                new EnumMap<>(SeedResultOutcomeClass.class);
-        for (SeedResult result : results) {
-            SeedResultOutcomeClass outcomeClass =
-                    classifyOutcomeCode(result.outcomeCode());
+        Map<WorkerResultOutcomeClass, List<String>> grouped =
+                new EnumMap<>(WorkerResultOutcomeClass.class);
+        for (WorkerResult result : results) {
+            WorkerResultOutcomeClass outcomeClass =
+                    classifyWorkerResultOutcomeCode(result.outcomeCode());
             if (outcomeClass == null) {
                 throw new IllegalArgumentException(
-                        "SeedResult outcome code is invalid"
+                        "WorkerResult outcome code is invalid"
                 );
             }
             grouped.computeIfAbsent(
                     outcomeClass,
                     ignored -> new ArrayList<>()
-            ).add(codec.encodeSeedResult(result));
+            ).add(codec.encodeWorkerResult(result));
         }
         grouped.forEach((outcomeClass, encodedResults) ->
                 commands().rpush(
@@ -75,13 +75,13 @@ public final class RedisSeedResultRuntime
     }
 
     @Override
-    public List<SeedResult> consumeSeedResults(
-            SeedResultOutcomeClass outcomeClass,
+    public List<WorkerResult> consumeWorkerResults(
+            WorkerResultOutcomeClass outcomeClass,
             int limit
     ) {
         throw new KernelOperationNotImplementedException(
-                "SeedResultRuntime",
-                "consume_seed_results"
+                "WorkerResultRuntime",
+                "consume_worker_results"
         );
     }
 
@@ -111,8 +111,8 @@ public final class RedisSeedResultRuntime
         }
     }
 
-    private String resultKey(SeedResultOutcomeClass outcomeClass) {
-        return "rr:" + prefix + ":seed-results:"
+    private String resultKey(WorkerResultOutcomeClass outcomeClass) {
+        return "rr:" + prefix + ":worker-results:"
                 + switch (outcomeClass) {
                     case SUCCESS -> "success";
                     case WORKER_FAILURE -> "worker-failure";

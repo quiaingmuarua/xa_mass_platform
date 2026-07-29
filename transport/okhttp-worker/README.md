@@ -1,107 +1,67 @@
 # XA Mass OkHttp Worker
 
-Status: Java 11 compatible Worker library with OkHttp Polling/WebSocket and
-line-oriented Socket transports.
+Status: Java 11 Worker library with OkHttp Polling/WebSocket and line-oriented
+Socket transports.
 
-`:transport:okhttp-worker` provides one serial Worker execution model and three
-transport implementations:
+`:transport:okhttp-worker` provides one serial Worker execution model:
 
 ```text
 PollingWorkerTransport
-  -> target Worker point poll
-  -> execute at most one command
-  -> point result submit
+  -> target Worker point poll/result HTTP
 
 WebSocketWorkerTransport
-  -> connect and send WorkerConnectionBind
-  -> receive one command message
-  -> execute serially
-  -> send one result message
+  -> bind, receive direct WorkerCommand, send direct WorkerResult
 
 SocketWorkerTransport
-  -> connect and write WorkerConnectionBind line
-  -> read one command per line
-  -> execute serially
-  -> write one result per line
+  -> bind line, read direct WorkerCommand lines, write WorkerResult lines
 ```
 
-All transports delegate command semantics to `WorkerCommandProcessor`. The
-processor:
+The module is a library, not a process. It has no CLI, default business
+handlers, Android lifecycle, Server, Kernel, Redis, score, Pacer, or TaskType
+dependency.
 
-1. rejects an expired command before execution;
-2. decodes the nested `DeliverSeed`;
-3. checks `DeliverSeed.workerId`;
-4. selects a statically supplied `WorkerEventDefinition` by its String
-   `eventCode`;
-5. resolves the payload Map into the Handler parameter type;
-6. maps completion and exceptions to `200/1400/1404/1500`;
-7. preserves the opaque result context in `SeedResult`.
+## Command Execution
 
-All Worker failures use the module's single `WorkerException` and numeric
-`WorkerErrorCode` values in `30000..39999`, over the narrow
-[`foundation_jvm`](../../foundation_jvm/README.md) contract. Transport,
-protocol, and event categories are error-code ranges, not exception
-subclasses. The Processor converts `EVENT_INPUT_INVALID` and
-`EVENT_NOT_FOUND` to `1400` and `1404`; other Handler failures become `1500`.
-Protocol failures continue to escape to the Transport boundary.
-
-Retry logging uses JDK `System.Logger` directly:
+All transports delegate to `WorkerCommandProcessor`:
 
 ```text
-errorCode=31001 operation=polling.pollCommand workerId=<id> message=...
+WorkerCommand
+-> check executeBeforeMillis before starting
+-> use messageType as eventCode
+-> parse payload as parameter Map
+-> WorkerEventDefinition parameter resolver
+-> typed WorkerEventHandler
+-> opaque String result payload
+-> WorkerResult
 ```
 
-The library never logs nested delivery items, opaque result context, or full
-business payloads. The exception stores no context map; the host's log or
-trace call site adds Worker and execution context. Error codes classify
-failures but do not independently decide retry, Worker outcome, or transport
-acknowledgement.
+The processor copies:
 
-Definitions bind parameter conversion and execution:
-
-```java
-WorkerEventDefinition<P> definition =
-        WorkerEventDefinition.of(resolver, handler);
+```text
+command.messageId  -> result.messageId
+command.src        -> result.dst
+command.messageType -> result.messageType
+command.forward    -> result.forward
 ```
 
-The registration key is always a String `eventCode`. A Handler returns the
-already serialized, non-empty `opaqueResultPayload` String; `"null"` expresses
-no business value. The framework does not require that String to contain JSON
-and does not decode it again. Definitions are copied into an immutable
-Manager; there is no runtime handler registration. The library does not
-install example or business handlers and does not require deterministic
-business results.
+`messageId` is correlation only. `forward` remains opaque to the Worker.
+The Worker does not receive workerId inside the command; workerId is already
+the polling path or bound connection route.
 
-## Library Use
+Error mapping remains:
 
-Create a processor and one transport:
-
-```java
-WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
-WorkerCommandProcessor processor = new WorkerCommandProcessor(
-        "worker-1",
-        codec,
-        Map.of(
-                "sample.observe",
-                WorkerEventDefinition.map(payload ->
-                        Jsons.toJson(Map.of(
-                                "observed",
-                                payload.get("value")
-                        )))
-        )
-);
-
-PollingWorkerTransport transport = new PollingWorkerTransport(
-        URI.create("http://127.0.0.1:18082"),
-        WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
-        "worker-1",
-        Duration.ofSeconds(5),
-        codec,
-        processor
-);
+```text
+invalid payload/resolver input -> 1400
+unknown event                  -> 1404
+other handler/encoding failure -> 1500
+success                        -> 200
 ```
 
-Typed Handler parameters use an explicit resolver without reflection:
+A Handler returns an already serialized, non-empty String. `"null"` represents
+no business value. The framework does not require JSON and does not decode the
+result payload again.
+
+Definitions bind resolver and handler statically:
 
 ```java
 WorkerEventDefinition<ObserveParameters> observe =
@@ -114,69 +74,61 @@ WorkerEventDefinition<ObserveParameters> observe =
                         parameters.value()
                 ))
         );
+
+WorkerCommandProcessor processor = new WorkerCommandProcessor(
+        Map.of("sample.observe", observe)
+);
 ```
 
-The host owns the thread and lifecycle. It may call `runOnce`, `runForever`,
-`start`, and `close` according to the selected transport contract. Polling
-retains one failed result and submits it before polling another command.
-WebSocket and Socket retain one failed result across reconnect and resend it
-after the next bind. These are in-memory best-effort guarantees, not durable
-exactly-once delivery.
+There is no dynamic handler registration or reflection-based DTO mapping.
 
-Long-lived transports first send:
+## Transport Semantics
+
+Polling calls only the point Worker API identified by endpointManagerId and
+workerId. It never scans an Adapter mailbox. A failed result submission is
+retained in memory and retried before polling another command.
+
+WebSocket and Socket first send:
 
 ```json
-{"messageType":"WORKER_BIND","payload":"{\"workerId\":\"worker-1\"}"}
+{"workerId":"worker-1"}
 ```
 
-They then exchange the same stable outer message with different encoded
-payload contracts:
+They then exchange direct protocol JSON:
 
 ```text
-TASK_ITEM_COMMAND.payload -> WorkerCommandEnvelope
-TASK_ITEM_RESULT.payload  <- encoded SeedResult
+Adapter -> Worker : WorkerCommand
+Worker  -> Adapter: WorkerResult
 ```
 
-The Worker Definition Manager is statically assembled and local to this
-module. The Transport decodes `WorkerConnectionMessage` once; the Definition
-receives only its payload String, decodes `WorkerCommandEnvelope`, and passes
-that command directly to `WorkerCommandProcessor`. The Processor constructs
-the complete `SeedResult`; WebSocket and Socket serialize it before placing it
-in the outbound `TASK_ITEM_RESULT` message.
+WebSocket uses OkHttp callbacks but executes commands on a Worker-dedicated
+serial executor. Socket uses a blocking `readLine` loop. Both retain one
+pending result across reconnect and send it after the next bind.
 
-Transport selection is independent of `TaskType`.
+An expired command is silently dropped before execution. Once execution has
+started, the deadline is not checked again. Successful transport send is the
+network handoff boundary; no application ACK is added.
+
+Pending results are in-memory best-effort state. A process crash can lose them;
+Kernel claim/lease expiry and result fences provide convergence.
 
 ## Android Consumption
 
-A repository Android application may consume the source module directly:
+A future Android application may consume the module directly:
 
 ```gradle
-dependencies {
-    implementation project(':transport:okhttp-worker')
-}
+implementation project(':transport:okhttp-worker')
 ```
 
-The library targets Java 11 bytecode and uses Android-compatible OkHttp for
-Polling and WebSocket. It does not declare Android permissions, components,
-services, foreground/background policy, or application lifecycle. A real
-Android host owns those decisions and any desugaring required by its selected
-toolchain and minimum SDK.
+The library targets Java 11 bytecode and exposes no OkHttp type in its public
+API. A real Android host owns permissions, components, process lifetime, and
+toolchain compatibility proof.
 
-Device compatibility is not claimed until a real Android application or
-integration module runs the library. This module deliberately does not keep an
-empty Android wrapper solely as compatibility evidence.
+Runtime failures use one `WorkerException` with numeric module-local error
+codes. Logs use `System.Logger` and must not include payload or forward
+contents.
 
-## Boundary
-
-This module:
-
-- is a `java-library`, not an application;
-- has no `mainClass`, CLI, or transport-mode policy;
-- has no default business handlers;
-- exposes no OkHttp types in public signatures;
-- has no Android, Server, Kernel, Redis, score, Pacer, or TaskType dependency.
-
-Verification:
+## Verification
 
 ```text
 ./gradlew :transport:okhttp-worker:test

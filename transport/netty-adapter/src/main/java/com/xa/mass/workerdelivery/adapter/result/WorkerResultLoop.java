@@ -3,8 +3,6 @@ package com.xa.mass.workerdelivery.adapter.result;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterException;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterErrorCode;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultSource;
-import java.util.EnumMap;
 import java.util.List;
 import java.util.Objects;
 
@@ -17,8 +15,7 @@ public final class WorkerResultLoop implements Runnable {
     private final WorkerDeliveryGatewayClient gateway;
     private final String adapterId;
     private final BoundedWorkerResultQueue resultQueue;
-    private final EnumMap<SeedResultSource, List<String>> pendingBatches =
-            new EnumMap<>(SeedResultSource.class);
+    private List<String> pendingBatch;
     private volatile boolean closed;
 
     public WorkerResultLoop(
@@ -44,9 +41,7 @@ public final class WorkerResultLoop implements Runnable {
         if (closed) {
             return;
         }
-        for (SeedResultSource source : SeedResultSource.values()) {
-            submitAtMostOneBatch(source);
-        }
+        submitAtMostOneBatch();
     }
 
     public void stopAccepting() {
@@ -59,53 +54,45 @@ public final class WorkerResultLoop implements Runnable {
         }
         resultQueue.stopAccepting();
 
-        for (SeedResultSource source : SeedResultSource.values()) {
-            List<String> pending = pendingBatches.get(source);
-            if (pending != null) {
-                SubmissionOutcome outcome = submit(source, pending);
-                if (outcome == SubmissionOutcome.RETRY) {
-                    continue;
-                }
-                pendingBatches.remove(source);
+        if (pendingBatch != null) {
+            SubmissionOutcome outcome = submit(pendingBatch);
+            if (outcome != SubmissionOutcome.RETRY) {
+                pendingBatch = null;
             }
-
-            List<String> remaining = resultQueue.drain(source);
-            if (remaining.isEmpty()) {
-                continue;
-            }
-            if (submit(source, remaining) == SubmissionOutcome.RETRY) {
-                pendingBatches.put(source, remaining);
+        }
+        if (pendingBatch == null) {
+            List<String> remaining = resultQueue.drain();
+            if (!remaining.isEmpty()
+                    && submit(remaining) == SubmissionOutcome.RETRY) {
+                pendingBatch = remaining;
             }
         }
         closed = true;
     }
 
-    List<String> pendingBatch(SeedResultSource source) {
-        return pendingBatches.get(source);
+    List<String> pendingBatch() {
+        return pendingBatch;
     }
 
-    private void submitAtMostOneBatch(SeedResultSource source) {
-        List<String> batch = pendingBatches.get(source);
+    private void submitAtMostOneBatch() {
+        List<String> batch = pendingBatch;
         if (batch == null) {
-            batch = resultQueue.drain(source);
+            batch = resultQueue.drain();
         }
         if (batch.isEmpty()) {
             return;
         }
-        SubmissionOutcome outcome = submit(source, batch);
+        SubmissionOutcome outcome = submit(batch);
         if (outcome == SubmissionOutcome.RETRY) {
-            pendingBatches.put(source, batch);
+            pendingBatch = batch;
         } else {
-            pendingBatches.remove(source);
+            pendingBatch = null;
         }
     }
 
-    private SubmissionOutcome submit(
-            SeedResultSource source,
-            List<String> batch
-    ) {
+    private SubmissionOutcome submit(List<String> batch) {
         try {
-            gateway.appendResults(adapterId, source, batch);
+            gateway.appendResults(adapterId, batch);
             return SubmissionOutcome.SUCCESS;
         } catch (RuntimeException error) {
             WorkerDeliveryAdapterException failure = classify(error);

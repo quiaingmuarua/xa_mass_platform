@@ -40,12 +40,12 @@ Task score admission and visibility
      -> ITEM_DRIVEN: TaskItem rule, no cache, TARGETED acquisition
   -> Task Dispatch
      -> ACTIVE Item: Worker score lease/validation -> TaskItem claim
-                     -> DeliverSeed -> WorkerCommand mailbox
+                     -> WorkerCommand mailbox append
      -> no ACTIVE Item: shared empty recheck and emptyCloseAtMillis policy
   -> Worker Delivery Dispatch
      -> outbound Worker command protocol
-     -> semantic SeedResult ingress
-     -> outcome-class SeedResult queues
+     -> semantic WorkerResult ingress
+     -> outcome-class WorkerResult queues
   -> Result Routing
      -> TaskItem and Worker truth convergence
 ```
@@ -147,11 +147,11 @@ For assignment dispatch:
 For result routing:
 
 1. [doc/scheduling/result-routing-scheduling.md](doc/scheduling/result-routing-scheduling.md)
-2. [doc/runtime-redis/seed-result-runtime-redis-shape.md](doc/runtime-redis/seed-result-runtime-redis-shape.md)
+2. [doc/runtime-redis/worker-result-runtime-redis-shape.md](doc/runtime-redis/worker-result-runtime-redis-shape.md)
 3. [executable_spec/kernel/result_context.py](executable_spec/kernel/result_context.py)
-4. [executable_spec/kernel/seed_result_runtime.py](executable_spec/kernel/seed_result_runtime.py)
+4. [executable_spec/kernel/worker_result_runtime.py](executable_spec/kernel/worker_result_runtime.py)
 5. [executable_spec/scheduling/result_routing.py](executable_spec/scheduling/result_routing.py)
-6. [executable_spec/redis_runtime/result_routing.py](executable_spec/redis_runtime/result_routing.py)
+6. [executable_spec/redis_runtime/worker_result.py](executable_spec/redis_runtime/worker_result.py)
 7. [executable_spec/tests/test_result_routing.py](executable_spec/tests/test_result_routing.py)
 
 For Worker Delivery Protocol changes:
@@ -372,14 +372,14 @@ candidate ranking after worker-runtime matching
 short assignment plan evidence
 Item score claim timing
 dispatch-time Worker lease disposition through WorkerScoreCore owner primitives
-queued DeliverSeed creation
+queued WorkerCommand creation
 ```
 
 Within Task Dispatch, `TaskDispatchPacer` owns the bounded RUNNING round,
 suffix routing, mailbox publication, and Task-score pacing.
 `TaskItemDispatcher` owns one suffix-zero Task's Item observation, candidate
-acquisition, exact Item claim, DeliverSeed construction, and Worker command
-construction. It is not another Pacer or lifecycle owner.
+acquisition, exact Item claim, and WorkerCommand construction. It is not
+another Pacer or lifecycle owner.
 
 It does not own Task lifecycle truth, Worker resource or score truth, Worker
 score encoding/storage, result finality, transport delivery, or transport
@@ -392,29 +392,29 @@ Worker Delivery Dispatch owns:
 ```text
 Server point WorkerId polling through an explicit endpointManagerId binding
 Server bounded no-cursor access for a long-lived Adapter's sparse mailbox
-point HTTP forwarding of WorkerCommandEnvelope to the selected Worker
-stable messageType/payload frames with side-local Definitions
-Server point Worker result and source-tagged Adapter batch validation/append
+point HTTP forwarding of WorkerCommand to the selected Worker
+direct WorkerCommand/WorkerResult long-connection transport
+Server point Worker result and Adapter batch validation/append
 complete Java Adapter instance registration/start/close and scheduled dispatch
 independent bounded Command/Result loops and active-connection mechanism
-Adapter-owned Netty listeners, static payload handlers, and opaque Worker
-result forwarding
+Adapter-owned Netty listeners and unchanged encoded WorkerResult forwarding
 ```
 
 Its boundary starts after Task Dispatch handles mailbox publication and ends
-after SeedResult append. It does not select Workers, claim Items, mutate Task
+after WorkerResult append. It does not select Workers, claim Items, mutate Task
 score, interpret Worker score, or renew/release Worker leases. The current
-polling HTTP slice accepts Worker-originated `200/1xxx`; long-lived Adapter
-batch ingress uses `source=WORKER|ADAPTER` to enforce `200/1xxx` versus `3xxx`.
-The source is not ResultRouting truth. Polling never scans a mailbox, and
-`system-polling` is only a logical route binding.
+polling HTTP slice accepts Worker-originated `200/1xxx`; the long-lived
+Adapter endpoint accepts valid `200/1xxx/3xxx`. The HTTP access boundary, not
+a caller-provided source field, expresses the trusted role. Polling never
+scans a mailbox, and `system-polling` is only a logical route binding.
 
 Each Java Adapter instance owns one configured non-system-polling mailbox,
 one independent Netty listener, separate scheduled Command/Result loops,
 bounded command/result queues, one current connection per WorkerId, statically
-installed connection-message Definitions, and `3001` versus `UNKNOWN`
-classification. Worker result payloads remain encoded Strings in Adapter;
-only Server ingress decodes and classifies them.
+bound direct WorkerCommand/WorkerResult transport, and `3001` versus `UNKNOWN`
+classification. Adapter validates Worker-originated outcomes, but queues and
+forwards the original encoded result String; Server ingress performs the
+authoritative batch validation.
 `server_jvm` may turn each configured JSON tree into a concrete instance,
 register it, and invoke lifecycle events, but must not host WebSocket
 endpoints, call `dispatchOnce`, or own Adapter semantics. Multiple instances
@@ -427,8 +427,8 @@ unsupported.
 Result-routing owns:
 
 ```text
-three outcome-class SeedResult queues through SeedResultRuntime
-bounded consume, opaqueResultContext decode, owner-key grouping, and handler
+three outcome-class WorkerResult queues through WorkerResultRuntime
+bounded consume, forward decode, owner-key grouping, and handler
 delegation through ResultRoutingPacer
 Task-scoped last-success result payload storage before FINAL_SUCCESS promotion
 through the selected Task result handler
@@ -440,13 +440,13 @@ the selected Worker result handler
 valid routed-evidence counting
 ```
 
-SeedResultRuntime may classify only the public outcome class needed to select
+WorkerResultRuntime may classify only the public outcome class needed to select
 its queue; it must not decode context. ResultRoutingPacer must not interpret
 current Item score, reproduce same-tag/cross-tag rules, select workers, parse
 transport connections as truth, depend directly on Task/Worker runtime owners, or
 refresh task or worker score as a generic side effect. Built-in owner-operation
 policy belongs to `ResultRoutingBuiltinPolicies`; replacement policy uses the
-same stable handler contracts. SeedResult queues are not partitioned by endpointManagerId,
+same stable handler contracts. WorkerResult queues are not partitioned by endpointManagerId,
 exact subcode, Task, WorkerGroup, or producer source. The current result
 projection is a bounded Java read of requested Task-scoped last-success
 payloads. It exposes neither failure history nor pending/final state. Exhausted

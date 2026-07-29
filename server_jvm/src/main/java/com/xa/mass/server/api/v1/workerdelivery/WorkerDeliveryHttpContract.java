@@ -3,9 +3,9 @@ package com.xa.mass.server.api.v1.workerdelivery;
 import com.fasterxml.jackson.annotation.JsonAnySetter;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResultSource;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
@@ -33,17 +33,23 @@ public final class WorkerDeliveryHttpContract {
     }
 
     public record WorkerCommandResponse(
-            String commandId,
+            String messageId,
+            String src,
+            String dst,
             String messageType,
             long executeBeforeMillis,
-            String opaqueItem
+            String payload,
+            String forward
     ) {
-        static WorkerCommandResponse from(WorkerCommandEnvelope command) {
+        static WorkerCommandResponse from(WorkerCommand command) {
             return new WorkerCommandResponse(
-                    command.commandId(),
-                    command.messageType().name(),
+                    command.messageId(),
+                    command.src().wireValue(),
+                    command.dst().wireValue(),
+                    command.messageType(),
                     command.executeBeforeMillis(),
-                    command.opaqueItem()
+                    command.payload(),
+                    command.forward()
             );
         }
     }
@@ -52,7 +58,7 @@ public final class WorkerDeliveryHttpContract {
             Map<String, WorkerCommandResponse> workerCommandsByWorkerId
     ) {
         static WorkerCommandConsumeResponse from(
-                Map<String, WorkerCommandEnvelope> commands
+                Map<String, WorkerCommand> commands
         ) {
             Map<String, WorkerCommandResponse> response =
                     new LinkedHashMap<>();
@@ -66,19 +72,23 @@ public final class WorkerDeliveryHttpContract {
         }
     }
 
-    public record SeedResultRequest(
-            @NotBlank String commandId,
-            @NotBlank String opaqueResultContext,
+    public record WorkerResultRequest(
+            @NotBlank String messageId,
+            @NotBlank String dst,
+            @NotBlank String messageType,
             @NotBlank String outcomeCode,
-            String opaqueResultPayload
+            @NotNull String payload,
+            @NotNull String forward
     ) {
-        SeedResult toSeedResult() {
+        WorkerResult toWorkerResult() {
             try {
-                return new SeedResult(
-                        commandId,
-                        opaqueResultContext,
+                return new WorkerResult(
+                        messageId,
+                        WorkerMessageEndpoint.fromWire(dst),
+                        messageType,
                         outcomeCode,
-                        opaqueResultPayload
+                        payload,
+                        forward
                 );
             } catch (IllegalArgumentException error) {
                 throw invalid(error.getMessage());
@@ -88,19 +98,18 @@ public final class WorkerDeliveryHttpContract {
         @JsonAnySetter
         void rejectUnknownField(String name, Object value) {
             throw invalid(
-                    "Unknown SeedResult field: " + name
+                    "Unknown WorkerResult field: " + name
             );
         }
     }
 
-    public record SeedResultBatchRequest(
-            @NotNull SeedResultSource source,
+    public record WorkerResultBatchRequest(
             @NotEmpty List<@NotBlank String> results
     ) {
         @JsonAnySetter
         void rejectUnknownField(String name, Object value) {
             throw invalid(
-                    "Unknown SeedResult batch field: " + name
+                    "Unknown WorkerResult batch field: " + name
             );
         }
     }
@@ -108,7 +117,7 @@ public final class WorkerDeliveryHttpContract {
     public record AcceptedResponse(boolean accepted) {
     }
 
-    public record SeedResultBatchResponse(
+    public record WorkerResultBatchResponse(
             int acceptedCount,
             int rejectedCount
     ) {
