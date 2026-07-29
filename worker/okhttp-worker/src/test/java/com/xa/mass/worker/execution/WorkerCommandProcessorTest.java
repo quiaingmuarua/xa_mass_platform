@@ -21,15 +21,14 @@ class WorkerCommandProcessorTest {
 
     @Test
     void temporaryHandlerProducesObservableSuccess() {
-        WorkerEventHandler handler = payload -> {
-            Map<String, Object> result = new LinkedHashMap<>();
-            result.put("observed", payload.get("value"));
-            return result;
-        };
-
         SeedResult result = processor(Map.of(
                 "test.observe",
-                handler
+                WorkerEventDefinition.map(payload -> {
+                    Map<String, Object> observed =
+                            new LinkedHashMap<>();
+                    observed.put("observed", payload.get("value"));
+                    return observed;
+                })
         )).process(command(
                 "worker-1",
                 "{\"eventCode\":\"test.observe\","
@@ -45,12 +44,51 @@ class WorkerCommandProcessorTest {
     }
 
     @Test
+    void typedDefinitionResolvesParametersBeforeHandler() {
+        WorkerEventDefinition<
+                ObserveParameters,
+                Map<String, Object>
+        > definition = WorkerEventDefinition.of(
+                payload -> new ObserveParameters(
+                        requireString(payload, "value")
+                ),
+                parameters -> Map.of(
+                        "observed",
+                        parameters.value()
+                )
+        );
+
+        Map<
+                String,
+                WorkerEventDefinition<
+                        ObserveParameters,
+                        Map<String, Object>
+                >
+        > definitions = Map.of(
+                "test.observe",
+                definition
+        );
+
+        SeedResult result = processor(definitions).process(command(
+                "worker-1",
+                "{\"eventCode\":\"test.observe\","
+                        + "\"payload\":{\"value\":\"typed\"}}"
+        )).orElseThrow();
+
+        assertEquals("200", result.outcomeCode());
+        assertEquals(
+                "{\"observed\":\"typed\"}",
+                result.opaqueResultPayload()
+        );
+    }
+
+    @Test
     void inputUnknownEventAndHandlerFailureHaveStableCodes() {
         WorkerCommandProcessor processor = processor(Map.of(
                 "test.observe",
-                payload -> {
+                WorkerEventDefinition.map(payload -> {
                     throw new IllegalStateException("failed");
-                }
+                })
         ));
 
         assertEquals(
@@ -58,6 +96,13 @@ class WorkerCommandProcessorTest {
                 processor.process(command(
                         "worker-1",
                         "{\"eventCode\":1,\"payload\":{}}"
+                )).orElseThrow().outcomeCode()
+        );
+        assertEquals(
+                "1400",
+                processor.process(command(
+                        "worker-1",
+                        "{\"eventCode\":\"\",\"payload\":{}}"
                 )).orElseThrow().outcomeCode()
         );
         assertEquals(
@@ -80,14 +125,66 @@ class WorkerCommandProcessorTest {
     void workerInputFailureMapsToInputOutcome() {
         WorkerCommandProcessor processor = processor(Map.of(
                 "test.observe",
-                payload -> {
+                WorkerEventDefinition.map(payload -> {
                     throw new WorkerInputException("invalid");
-                }
+                })
         ));
 
         assertEquals(
                 "1400",
                 processor.process(command(
+                        "worker-1",
+                        "{\"eventCode\":\"test.observe\",\"payload\":{}}"
+                )).orElseThrow().outcomeCode()
+        );
+    }
+
+    @Test
+    void resolverInputFailureAndResultEncodingFailureAreClassified() {
+        WorkerCommandProcessor invalidInput = processor(Map.of(
+                "test.observe",
+                WorkerEventDefinition.of(
+                        payload -> {
+                            throw new WorkerInputException("invalid");
+                        },
+                        parameters -> Map.of()
+                )
+        ));
+        assertEquals(
+                "1400",
+                invalidInput.process(command(
+                        "worker-1",
+                        "{\"eventCode\":\"test.observe\",\"payload\":{}}"
+                )).orElseThrow().outcomeCode()
+        );
+
+        WorkerCommandProcessor resolverFailure = processor(Map.of(
+                "test.observe",
+                WorkerEventDefinition.of(
+                        payload -> {
+                            throw new IllegalStateException("failed");
+                        },
+                        parameters -> Map.of()
+                )
+        ));
+        assertEquals(
+                "1500",
+                resolverFailure.process(command(
+                        "worker-1",
+                        "{\"eventCode\":\"test.observe\",\"payload\":{}}"
+                )).orElseThrow().outcomeCode()
+        );
+
+        WorkerCommandProcessor invalidResult = processor(Map.of(
+                "test.observe",
+                WorkerEventDefinition.map(payload -> Map.of(
+                        "unsupported",
+                        new Object()
+                ))
+        ));
+        assertEquals(
+                "1500",
+                invalidResult.process(command(
                         "worker-1",
                         "{\"eventCode\":\"test.observe\",\"payload\":{}}"
                 )).orElseThrow().outcomeCode()
@@ -125,14 +222,31 @@ class WorkerCommandProcessorTest {
     }
 
     private WorkerCommandProcessor processor(
-            Map<String, WorkerEventHandler> handlers
+            Map<
+                    String,
+                    ? extends WorkerEventDefinition<
+                            ?,
+                            ? extends Map<String, Object>
+                    >
+            > definitions
     ) {
         return new WorkerCommandProcessor(
                 "worker-1",
                 codec,
-                handlers,
+                definitions,
                 () -> 100_000
         );
+    }
+
+    private static String requireString(
+            Map<String, Object> parameters,
+            String name
+    ) throws WorkerInputException {
+        Object value = parameters.get(name);
+        if (!(value instanceof String)) {
+            throw new WorkerInputException(name + " must be a string");
+        }
+        return (String) value;
     }
 
     private WorkerCommandEnvelope command(
@@ -149,5 +263,18 @@ class WorkerCommandProcessorTest {
                         "context"
                 ))
         );
+    }
+
+    private static final class ObserveParameters {
+
+        private final String value;
+
+        private ObserveParameters(String value) {
+            this.value = value;
+        }
+
+        private String value() {
+            return value;
+        }
     }
 }

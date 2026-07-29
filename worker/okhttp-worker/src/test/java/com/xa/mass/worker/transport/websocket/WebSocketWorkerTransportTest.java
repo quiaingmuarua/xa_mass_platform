@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.xa.mass.worker.execution.WorkerCommandProcessor;
+import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliverSeed;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
@@ -43,12 +44,12 @@ class WebSocketWorkerTransportTest {
                 codec,
                 Map.of(
                         "test.observe",
-                        payload -> {
+                        WorkerEventDefinition.map(payload -> {
                             Map<String, Object> result =
                                     new LinkedHashMap<>();
                             result.put("observed", payload.get("value"));
                             return result;
-                        }
+                        })
                 )
         );
         transport = new WebSocketWorkerTransport(

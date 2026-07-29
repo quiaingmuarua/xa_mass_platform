@@ -31,18 +31,24 @@ processor:
 1. rejects an expired command before execution;
 2. decodes the nested `DeliverSeed`;
 3. checks `DeliverSeed.workerId`;
-4. selects a statically supplied `WorkerEventHandler` by `eventCode`;
-5. maps completion and exceptions to `200/1400/1404/1500`;
-6. preserves the opaque result context in `SeedResult`.
+4. selects a statically supplied `WorkerEventDefinition` by its String
+   `eventCode`;
+5. resolves the payload Map into the Handler parameter type;
+6. maps completion and exceptions to `200/1400/1404/1500`;
+7. preserves the opaque result context in `SeedResult`.
 
-Handlers use only JDK JSON values:
+Definitions bind parameter conversion and execution:
 
 ```java
-Map<String, Object> execute(Map<String, Object> payload) throws Exception;
+WorkerEventDefinition<P, R> definition =
+        WorkerEventDefinition.of(resolver, handler);
 ```
 
-The host supplies the handler map. The library does not install example or
-business handlers and does not require deterministic business results.
+The registration key is always a String `eventCode`. The current Processor
+requires each Definition to return `Map<String, Object>`, which it encodes as
+the opaque success payload. Definitions are copied into an immutable Manager;
+there is no runtime handler registration. The library does not install example
+or business handlers and does not require deterministic business results.
 
 ## Library Use
 
@@ -53,8 +59,11 @@ WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
 WorkerCommandProcessor processor = new WorkerCommandProcessor(
         "worker-1",
         codec,
-        Map.of("sample.observe", payload ->
-                Map.of("observed", payload.get("value")))
+        Map.of(
+                "sample.observe",
+                WorkerEventDefinition.map(payload ->
+                        Map.of("observed", payload.get("value")))
+        )
 );
 
 PollingWorkerTransport transport = new PollingWorkerTransport(
@@ -65,6 +74,21 @@ PollingWorkerTransport transport = new PollingWorkerTransport(
         codec,
         processor
 );
+```
+
+Typed Handler parameters use an explicit resolver without reflection:
+
+```java
+WorkerEventDefinition<ObserveParameters, Map<String, Object>> observe =
+        WorkerEventDefinition.of(
+                payload -> new ObserveParameters(
+                        (String) payload.get("value")
+                ),
+                parameters -> Map.of(
+                        "observed",
+                        parameters.value()
+                )
+        );
 ```
 
 The host owns the thread and lifecycle. It may call `runOnce`, `runForever`,

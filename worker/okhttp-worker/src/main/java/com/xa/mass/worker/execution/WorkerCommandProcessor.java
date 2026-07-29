@@ -5,8 +5,7 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliverSeed;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.SeedResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommandEnvelope;
-import java.util.Collections;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.LongSupplier;
@@ -15,18 +14,26 @@ public final class WorkerCommandProcessor {
 
     private final String workerId;
     private final WorkerDeliveryCodec codec;
-    private final Map<String, WorkerEventHandler> handlers;
+    private final WorkerEventDefinitionManager<
+            Map<String, Object>
+    > eventDefinitionManager;
     private final LongSupplier nowMillis;
 
     public WorkerCommandProcessor(
             String workerId,
             WorkerDeliveryCodec codec,
-            Map<String, WorkerEventHandler> handlers
+            Map<
+                    String,
+                    ? extends WorkerEventDefinition<
+                            ?,
+                            ? extends Map<String, Object>
+                    >
+            > eventDefinitions
     ) {
         this(
                 workerId,
                 codec,
-                handlers,
+                eventDefinitions,
                 System::currentTimeMillis
         );
     }
@@ -34,7 +41,13 @@ public final class WorkerCommandProcessor {
     WorkerCommandProcessor(
             String workerId,
             WorkerDeliveryCodec codec,
-            Map<String, WorkerEventHandler> handlers,
+            Map<
+                    String,
+                    ? extends WorkerEventDefinition<
+                            ?,
+                            ? extends Map<String, Object>
+                    >
+            > eventDefinitions,
             LongSupplier nowMillis
     ) {
         if (workerId == null || workerId.isBlank()) {
@@ -44,7 +57,8 @@ public final class WorkerCommandProcessor {
         }
         this.workerId = workerId;
         this.codec = codec;
-        this.handlers = Collections.unmodifiableMap(new HashMap<>(handlers));
+        this.eventDefinitionManager =
+                new WorkerEventDefinitionManager<>(eventDefinitions);
         this.nowMillis = nowMillis;
     }
 
@@ -83,27 +97,41 @@ public final class WorkerCommandProcessor {
         Object eventCodeValue = deliveryItem.get("eventCode");
         Object payloadValue = deliveryItem.get("payload");
         if (!(eventCodeValue instanceof String)
+                || ((String) eventCodeValue).isBlank()
                 || !(payloadValue instanceof Map<?, ?>)) {
             return ExecutionResult.failure("1400");
         }
-        WorkerEventHandler handler = handlers.get((String) eventCodeValue);
-        if (handler == null) {
-            return ExecutionResult.failure("1404");
-        }
         try {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> payload =
-                    (Map<String, Object>) payloadValue;
-            Map<String, Object> result = handler.execute(payload);
+            Map<String, Object> result = eventDefinitionManager.dispatch(
+                    (String) eventCodeValue,
+                    stringKeyedMap((Map<?, ?>) payloadValue)
+            );
             return new ExecutionResult(
                     "200",
                     Jsons.toJson(result)
             );
+        } catch (UnknownWorkerEventException error) {
+            return ExecutionResult.failure("1404");
         } catch (WorkerInputException error) {
             return ExecutionResult.failure("1400");
         } catch (Exception error) {
             return ExecutionResult.failure("1500");
         }
+    }
+
+    private static Map<String, Object> stringKeyedMap(
+            Map<?, ?> value
+    ) throws WorkerInputException {
+        Map<String, Object> converted = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : value.entrySet()) {
+            if (!(entry.getKey() instanceof String)) {
+                throw new WorkerInputException(
+                        "Worker event parameter keys must be strings"
+                );
+            }
+            converted.put((String) entry.getKey(), entry.getValue());
+        }
+        return converted;
     }
 
     private static final class ExecutionResult {

@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.xa.mass.worker.execution.WorkerCommandProcessor;
+import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.DeliverSeed;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.TaskItemCommandMessage;
@@ -60,10 +61,10 @@ class SocketWorkerTransportTest {
                 codec,
                 Map.of(
                         "test.observe",
-                        payload -> Map.of(
+                        WorkerEventDefinition.map(payload -> Map.of(
                                 "observed",
                                 payload.get("value")
-                        )
+                        ))
                 )
         );
         SocketWorkerTransport transport = new SocketWorkerTransport(

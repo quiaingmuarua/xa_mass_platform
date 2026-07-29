@@ -3,8 +3,12 @@ package com.xa.mass.worker;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.xa.mass.worker.execution.UnknownWorkerEventException;
 import com.xa.mass.worker.execution.WorkerCommandProcessor;
+import com.xa.mass.worker.execution.WorkerEventDefinition;
+import com.xa.mass.worker.execution.WorkerEventDefinitionManager;
 import com.xa.mass.worker.execution.WorkerEventHandler;
+import com.xa.mass.worker.execution.WorkerEventParameterResolver;
 import com.xa.mass.worker.execution.WorkerInputException;
 import com.xa.mass.worker.execution.WorkerProtocolException;
 import com.xa.mass.worker.transport.WorkerTransportException;
@@ -90,7 +94,11 @@ class WorkerArchitectureBoundaryTest {
     void publicWorkerApiDoesNotExposeOkHttp() {
         Class<?>[] publicTypes = {
                 WorkerCommandProcessor.class,
+                WorkerEventDefinition.class,
+                WorkerEventDefinitionManager.class,
                 WorkerEventHandler.class,
+                WorkerEventParameterResolver.class,
+                UnknownWorkerEventException.class,
                 WorkerInputException.class,
                 WorkerProtocolException.class,
                 WorkerTransportException.class,

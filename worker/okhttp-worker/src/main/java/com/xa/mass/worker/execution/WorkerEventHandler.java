@@ -1,11 +1,7 @@
 package com.xa.mass.worker.execution;
 
-import java.util.Map;
-
 @FunctionalInterface
-public interface WorkerEventHandler {
+public interface WorkerEventHandler<P, R> {
 
-    Map<String, Object> execute(
-            Map<String, Object> payload
-    ) throws Exception;
+    R execute(P parameters) throws Exception;
 }

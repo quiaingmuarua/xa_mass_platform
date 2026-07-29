@@ -3,6 +3,7 @@ package com.xa.mass.server.integration;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.worker.execution.WorkerCommandProcessor;
+import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
 import com.xa.mass.worker.transport.socket.SocketWorkerTransport;
 import com.xa.mass.worker.transport.websocket.WebSocketWorkerTransport;
@@ -285,10 +286,10 @@ class RuntimeApiPythonIntegrationTest {
                 codec,
                 Map.of(
                         TEST_EVENT_CODE,
-                        payload -> Map.of(
+                        WorkerEventDefinition.map(payload -> Map.of(
                                 "observed",
                                 payload.get("value")
-                        )
+                        ))
                 )
         );
         return switch (transportProfile) {
