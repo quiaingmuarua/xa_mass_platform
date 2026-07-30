@@ -1,8 +1,6 @@
 package com.xa.mass.workerdelivery.adapter.application;
 
-import com.xa.mass.foundation.error.ErrorCode;
-
-public enum WorkerDeliveryAdapterErrorCode implements ErrorCode {
+public enum WorkerDeliveryAdapterErrorCode {
     INVALID_CONFIGURATION(
             21001,
             "Worker Delivery Adapter configuration is invalid"
@@ -39,12 +37,10 @@ public enum WorkerDeliveryAdapterErrorCode implements ErrorCode {
         this.defaultMessage = defaultMessage;
     }
 
-    @Override
     public int code() {
         return code;
     }
 
-    @Override
     public String defaultMessage() {
         return defaultMessage;
     }

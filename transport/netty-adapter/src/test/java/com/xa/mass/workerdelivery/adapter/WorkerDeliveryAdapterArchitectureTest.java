@@ -44,10 +44,10 @@ class WorkerDeliveryAdapterArchitectureTest {
                         "api project("
                                 + "':worker_delivery_contract_jvm')"
                 )
-                .contains("api project(':foundation_jvm')")
                 .contains("io.netty:netty-transport")
                 .contains("io.netty:netty-codec")
                 .contains("io.netty:netty-codec-http")
+                .doesNotContain("foundation_jvm")
                 .doesNotContain("spring-boot")
                 .doesNotContain("spring-websocket")
                 .doesNotContain("project(':server_jvm')")
@@ -63,13 +63,14 @@ class WorkerDeliveryAdapterArchitectureTest {
                 .doesNotContain("\"wd:")
                 .doesNotContain("\"rr:")
                 .doesNotContain("WorkerCommandRuntime")
-                .doesNotContain("WorkerResultRuntime");
+                .doesNotContain("WorkerResultRuntime")
+                .doesNotContain("com.xa.mass.foundation");
         assertThat(sources)
                 .doesNotContain("java.util.logging")
                 .doesNotContain("LogUtils");
         assertThat(sources)
                 .contains("class WorkerDeliveryAdapterException")
-                .containsOnlyOnce("extends CodedRuntimeException");
+                .containsOnlyOnce("extends RuntimeException");
     }
 
     @Test

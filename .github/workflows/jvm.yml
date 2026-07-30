@@ -7,12 +7,12 @@ on:
       - "kernel_jvm/**"
       - "server_jvm/**"
       - "worker_delivery_contract_jvm/**"
-      - "worker_jvm/**"
+      - "transport/**"
       - "kernel_design/runtime_server/**"
-      - "kernel_design/executable_spec/assembly/**"
-      - "kernel_design/executable_spec/kernel/**"
+      - "kernel_design/executable_spec/**"
       - "build.gradle"
       - "settings.gradle"
+      - "gradle.properties"
       - "gradle/**"
       - "gradlew"
       - "gradlew.bat"
@@ -23,12 +23,12 @@ on:
       - "kernel_jvm/**"
       - "server_jvm/**"
       - "worker_delivery_contract_jvm/**"
-      - "worker_jvm/**"
+      - "transport/**"
       - "kernel_design/runtime_server/**"
-      - "kernel_design/executable_spec/assembly/**"
-      - "kernel_design/executable_spec/kernel/**"
+      - "kernel_design/executable_spec/**"
       - "build.gradle"
       - "settings.gradle"
+      - "gradle.properties"
       - "gradle/**"
       - "gradlew"
       - "gradlew.bat"
@@ -62,6 +62,8 @@ jobs:
           --health-retries 10
     env:
       KERNEL_COMMAND_INTEGRATION_URL: http://127.0.0.1:18080
+      KERNEL_DESIGN_REDIS_URL: redis://127.0.0.1:6379/15
+      KERNEL_DESIGN_REDIS_PREFIX: ci
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -90,6 +92,45 @@ jobs:
           exit 1
       - name: Verify Java to Python runtime boundary
         run: bash ./gradlew --no-daemon :server_jvm:integrationTest
+      - name: Verify integration proofs were not skipped
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          reports = list(
+              Path("server_jvm/build/test-results/integrationTest").glob(
+                  "TEST-*.xml"
+              )
+          )
+          if not reports:
+              raise SystemExit("No integration-test XML reports were produced")
+
+          totals = {
+              "tests": 0,
+              "skipped": 0,
+              "failures": 0,
+              "errors": 0,
+          }
+          for report in reports:
+              suite = ET.parse(report).getroot()
+              for name in totals:
+                  totals[name] += int(suite.attrib.get(name, "0"))
+
+          print(
+              "integration proof: "
+              + ", ".join(f"{name}={value}" for name, value in totals.items())
+          )
+          if (
+              totals["tests"] == 0
+              or totals["skipped"] != 0
+              or totals["failures"] != 0
+              or totals["errors"] != 0
+          ):
+              raise SystemExit(
+                  "Redis and cross-process integration proofs must all run"
+              )
+          PY
       - name: Print Kernel server log on failure
         if: failure()
         run: cat kernel-runtime-server.log

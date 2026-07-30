@@ -28,7 +28,7 @@ class ConcreteWorkerClientArchitectureTest {
                 "archivesName.set('xa-mass-okhttp-worker')"
         ));
         assertTrue(build.contains(
-                "api project(':transport:core')"
+                "api project(':transport:worker-core')"
         ));
         assertTrue(build.contains(
                 "implementation 'com.squareup.okhttp3:okhttp:5.3.0'"

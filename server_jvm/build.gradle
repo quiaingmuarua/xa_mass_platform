@@ -24,7 +24,6 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
-    implementation project(':foundation_jvm')
     implementation project(':kernel_jvm')
     implementation project(':transport:netty-adapter')
     implementation project(':worker_delivery_contract_jvm')

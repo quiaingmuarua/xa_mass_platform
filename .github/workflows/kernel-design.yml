@@ -41,3 +41,36 @@ jobs:
         run: python -m unittest discover -s kernel_design/executable_spec/tests
       - name: Compile Python sources
         run: python -m compileall -q kernel_design/executable_spec
+      - name: Guard current overview protocol vocabulary
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          overview = Path("kernel_design/overview.htm").read_text(
+              encoding="utf-8"
+          )
+          retired = (
+              "DeliverSeed",
+              "WorkerCommandEnvelope",
+              "SeedResult",
+              "rr:{prefix}:seed-results:",
+          )
+          found = tuple(term for term in retired if term in overview)
+          if found:
+              raise SystemExit(
+                  "overview.htm contains retired protocol terms: "
+                  + ", ".join(found)
+              )
+
+          required = (
+              "WorkerCommand",
+              "WorkerResult",
+              "rr:{prefix}:worker-results:",
+          )
+          missing = tuple(term for term in required if term not in overview)
+          if missing:
+              raise SystemExit(
+                  "overview.htm is missing current protocol terms: "
+                  + ", ".join(missing)
+              )
+          PY

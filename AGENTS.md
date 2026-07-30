@@ -4,10 +4,6 @@ Status: current repository handoff.
 
 ## Mainline
 
-- `foundation_jvm/` contains only the cross-module `ErrorCode` and
-  `CodedRuntimeException` mechanism. Owner modules define numeric ranges, use
-  one coded exception per module, and retain HTTP, Worker outcome, retry, and
-  logging policy.
 - `kernel_design/` is the current mechanism oracle.
 - `kernel_jvm/` is the JVM parity surface for Kernel owner contracts and
   selected owner-specific Redis providers. It does not implement scheduling,
@@ -25,10 +21,10 @@ Status: current repository handoff.
   connections, bounded Command/Result queues, and independent Netty
   WebSocket/Socket listeners. Worker result payloads remain opaque until
   Server ingress. It has no Spring, Server, Kernel, or Redis dependency.
-- `transport/core/` is the Java 11 local core containing Worker execution,
-  event definitions, error classification, Worker Polling/WebSocket/Socket
-  state machines, and string-only network Client contracts. It contains no
-  concrete network or platform implementation.
+- `transport/worker-core/` is the Java 11 local core containing Worker
+  execution, event definitions, error classification, Worker
+  Polling/WebSocket/Socket state machines, and string-only network Client
+  contracts. It contains no concrete network or platform implementation.
 - `transport/okhttp-worker/` owns only the default OkHttp point/WebSocket and
   JDK line-socket Client implementations. It is not a Worker state-machine
   owner, CLI, application, Android wrapper, or business handler collection.
@@ -58,10 +54,10 @@ tag.
 - Scope mechanism searches, diffs, and Python tests to `kernel_design/`.
 - Preserve explicit owner boundaries across core contracts, scheduling,
   Redis implementations, assembly, and external protocol examples.
-- Keep `foundation_jvm` free of owner codes, HTTP status, log levels,
-  framework dependencies, context maps, and generic utility classes.
-- Keep coded exceptions to `errorCode + owner.method operation + message +
-  cause`. Complete execution context belongs at log and tracing call sites.
+- Keep each JVM module's coded exception local to its owner. Do not create a
+  cross-module exception base or move runtime exceptions into a wire contract.
+  Keep exceptions to `errorCode + owner.method operation + message + cause`.
+  Complete execution context belongs at log and tracing call sites.
 - Use JDK `System.Logger` directly. Log numeric owner error codes, operation,
   and safe identifiers, never opaque Worker payload or result context.
 - Do not add bridges, compatibility aliases, mirrored DTOs, or speculative
@@ -97,20 +93,19 @@ tag.
   Only Adapter-owned `3xxx` construction is allowed. Its private HTTP DTOs are
   proved against Server JSON with bilateral golden tests; do not add an
   in-process fast path.
-- `transport/core` may depend only on `foundation_jvm` and the shared Worker
-  Delivery contract. It must compile with `--release 11` and must not import
-  OkHttp, Android, Netty, Spring, Redis, Server, or Kernel implementations.
-- `transport/okhttp-worker` may depend on `transport/core`, the shared Worker
-  Delivery contract, OkHttp, and JDK networking. It must compile with
+- `transport/worker-core` may depend only on the shared Worker Delivery
+  contract. It must compile with `--release 11` and must not import OkHttp,
+  Android, Netty, Spring, Redis, Server, or Kernel implementations.
+- `transport/okhttp-worker` may depend on `transport/worker-core`, the shared
+  Worker Delivery contract, OkHttp, and JDK networking. It must compile with
   `--release 11`, expose no OkHttp types, and must not import Android, JNDI,
-  Server, Kernel, Redis, platform business handlers, score, Pacer, or
-  TaskType.
-- `transport/android-client` may depend on `transport/core` and OkHttp, but
-  not on `transport/okhttp-worker`. Its network Client serializes connection
-  state, generation filtering, callbacks, and fixed reconnect scheduling on a
-  dedicated HandlerThread. It must not cache or interpret Worker business
-  messages. Android hosts own Worker Transport construction, process
-  lifecycle, permissions beyond INTERNET, and static handler assembly.
+  Server, Kernel, Redis, platform business handlers, score, Pacer, or TaskType.
+- `transport/android-client` may depend on `transport/worker-core` and OkHttp,
+  but not on `transport/okhttp-worker`. Its network Client serializes
+  connection state, generation filtering, callbacks, and fixed reconnect
+  scheduling on a dedicated HandlerThread. It must not cache or interpret
+  Worker business messages. Android hosts own Worker Transport construction,
+  process lifecycle, permissions beyond INTERNET, and static handler assembly.
 - `server_jvm` may bind a `Map<adapterId, JsonNode>`, construct concrete
   Adapter instances, register them, and invoke `manager.start()` /
   `manager.close()` at process boundaries. It must not host WebSocket
@@ -166,7 +161,7 @@ The main Server owns the Worker Delivery HTTP and Redis boundaries. It only
 composes and starts configured Adapter instances. Every Adapter still reaches
 Worker Delivery through the same batch HTTP boundary.
 
-`worker_delivery_contract_jvm`, `transport/core`, and
+`worker_delivery_contract_jvm`, `transport/worker-core`, and
 `transport/okhttp-worker` compile to Java 11 bytecode. The Android Client
 consumes only the Core contract through a repository-local Gradle project
 dependency; none is a published SDK. They may not pull Server, Kernel, Redis,

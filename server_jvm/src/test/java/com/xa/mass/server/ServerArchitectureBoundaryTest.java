@@ -55,6 +55,7 @@ class ServerArchitectureBoundaryTest {
         assertThat(build)
                 .contains("implementation project(':kernel_jvm')")
                 .contains("implementation project(':transport:netty-adapter')")
+                .doesNotContain("foundation_jvm")
                 .doesNotContain("spring-boot-starter-websocket")
                 .doesNotContain(
                         "implementation project(':transport:okhttp-worker')"
@@ -74,7 +75,8 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("WorkerDeliveryRuntime");
         assertThat(serverSources)
                 .contains("class ServerException")
-                .containsOnlyOnce("extends CodedRuntimeException");
+                .containsOnlyOnce("extends RuntimeException")
+                .doesNotContain("com.xa.mass.foundation");
         assertThat(readSourcesExcluding(
                 SERVER_SOURCE,
                 SHARED_REDIS,

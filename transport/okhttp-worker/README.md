@@ -2,7 +2,7 @@
 
 `transport:okhttp-worker` is a Java 11 library containing concrete JVM network
 Clients for the Worker mechanisms in
-[`transport:core`](../core/README.md):
+[`transport:worker-core`](../worker-core/README.md):
 
 ```text
 OkHttpWorkerPointClient

@@ -26,7 +26,9 @@ public class AndroidClientArchitectureBoundaryTest {
         );
 
         assertTrue(build.contains("id 'com.android.library'"));
-        assertTrue(build.contains("api project(':transport:core')"));
+        assertTrue(build.contains(
+                "api project(':transport:worker-core')"
+        ));
         assertFalse(build.contains(
                 "project(':transport:okhttp-worker')"
         ));

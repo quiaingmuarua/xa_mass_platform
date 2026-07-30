@@ -1,15 +1,14 @@
-package com.xa.mass.workerdelivery.adapter.application;
+package com.xa.mass.worker.error;
 
 import java.util.Objects;
 
-public final class WorkerDeliveryAdapterException
-        extends RuntimeException {
+public final class WorkerException extends RuntimeException {
 
-    private final WorkerDeliveryAdapterErrorCode errorCode;
+    private final WorkerErrorCode errorCode;
     private final String operation;
 
-    public WorkerDeliveryAdapterException(
-            WorkerDeliveryAdapterErrorCode errorCode,
+    public WorkerException(
+            WorkerErrorCode errorCode,
             String operation,
             String message,
             Throwable cause
@@ -24,7 +23,7 @@ public final class WorkerDeliveryAdapterException
         this.operation = requireOperation(operation);
     }
 
-    public WorkerDeliveryAdapterErrorCode errorCode() {
+    public WorkerErrorCode errorCode() {
         return errorCode;
     }
 
@@ -32,8 +31,8 @@ public final class WorkerDeliveryAdapterException
         return operation;
     }
 
-    private static WorkerDeliveryAdapterErrorCode requireErrorCode(
-            WorkerDeliveryAdapterErrorCode errorCode
+    private static WorkerErrorCode requireErrorCode(
+            WorkerErrorCode errorCode
     ) {
         return Objects.requireNonNull(errorCode, "errorCode");
     }

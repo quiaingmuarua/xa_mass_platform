@@ -1,8 +1,6 @@
 package com.xa.mass.server.error;
 
-import com.xa.mass.foundation.error.ErrorCode;
-
-public enum ServerErrorCode implements ErrorCode {
+public enum ServerErrorCode {
     KERNEL_UNAVAILABLE(
             11001,
             "Kernel control process is unavailable"
@@ -64,12 +62,10 @@ public enum ServerErrorCode implements ErrorCode {
         this.defaultMessage = defaultMessage;
     }
 
-    @Override
     public int code() {
         return code;
     }
 
-    @Override
     public String defaultMessage() {
         return defaultMessage;
     }

@@ -1,6 +1,7 @@
 package com.xa.mass.server.error;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.Arrays;
 import org.junit.jupiter.api.Test;
@@ -17,6 +18,9 @@ class ServerExceptionTest {
             assertThat(code).isBetween(10_000, 19_999);
         }
         assertThat(codes).doesNotHaveDuplicates();
+        assertThat(Arrays.stream(ServerErrorCode.values())
+                .map(ServerErrorCode::defaultMessage))
+                .allMatch(message -> !message.isBlank());
     }
 
     @Test
@@ -36,5 +40,29 @@ class ServerExceptionTest {
         assertThat(error.getMessage())
                 .isEqualTo("Task data Redis is unavailable");
         assertThat(error.getCause()).isSameAs(cause);
+    }
+
+    @Test
+    void exceptionRequiresItsOwnerCodeAndOwnerMethodOperation() {
+        assertThatThrownBy(() -> new ServerException(
+                null,
+                "taskData.appendItems",
+                null,
+                null
+        )).isInstanceOf(NullPointerException.class);
+
+        assertThatThrownBy(() -> new ServerException(
+                ServerErrorCode.TASK_DATA_UNAVAILABLE,
+                null,
+                null,
+                null
+        )).isInstanceOf(NullPointerException.class);
+
+        assertThatThrownBy(() -> new ServerException(
+                ServerErrorCode.TASK_DATA_UNAVAILABLE,
+                "appendItems",
+                null,
+                null
+        )).isInstanceOf(IllegalArgumentException.class);
     }
 }

@@ -1210,14 +1210,14 @@
         </div>
         <div class="principle">
           <b>Owner Truth + Evidence</b>
-          <span>Task、Worker、TaskItem 各写自己的 truth；Seed 只携带相关性证据。</span>
+          <span>Task、Worker、TaskItem 各写自己的 truth；WorkerCommand / WorkerResult 只携带执行与相关性证据。</span>
         </div>
       </div>
 
       <div class="architecture" role="img" aria-label="新内核三段调度主线">
         <div class="architecture-head">
           <b>当前完整主线</b>
-          <span>Python 提供 control；Java 提供 TaskItem ingress / result query</span>
+          <span>Python scheduling oracle + JVM Runtime API / selected Redis providers + external Adapter / Worker</span>
         </div>
         <div class="flow">
           <div class="flow-stage dispatch">
@@ -1248,12 +1248,12 @@
             </div>
             <div class="stage-steps two">
               <div class="stage-step">
-                <strong>Point / Cursor Access</strong>
-                Worker point / Adapter batch HTTP
+                <strong>Point / Bounded Batch</strong>
+                Worker point / Adapter stateless batch HTTP
               </div>
               <div class="stage-step">
                 <strong>Worker Protocol</strong>
-                polling + WebSocket Adapter
+                polling + WebSocket + Socket
               </div>
             </div>
           </div>
@@ -1278,13 +1278,11 @@
         <div class="contract-line">
           <code>TaskDescriptor</code>
           <span>→</span>
-          <code>CandidateWorkerEntry</code>
+          <code>TaskItem + policy-selected Worker acquisition</code>
           <span>→</span>
-          <code>DeliverSeed</code>
+          <code>WorkerCommand</code>
           <span>→</span>
-          <code>WorkerCommandEnvelope</code>
-          <span>→</span>
-          <code>SeedResult</code>
+          <code>WorkerResult</code>
           <span>→</span>
           <code>Task/Worker owner operations</code>
         </div>
@@ -1504,13 +1502,13 @@
       <div class="owner-band">
         <div class="owner-stage">
           <b>Task Dispatch</b>
-          <p>选择具体 Worker，claim 具体 Item，构造 DeliverSeed 与 transport-neutral Worker command，并写入 Adapter 分桶 mailbox。</p>
-          <code>output = WorkerCommandEnvelope</code>
+          <p>按 TaskType 选择 Worker 获取路径，exact claim 具体 Item，构造 direct transport-neutral WorkerCommand，并写入 Adapter 分桶 mailbox。</p>
+          <code>output = WorkerCommand</code>
         </div>
         <div class="owner-stage">
           <b>Worker Delivery Dispatch</b>
-          <p>Server 拥有 point/batch HTTP 与 delivery runtime；Adapter 模块拥有完整实例、独立 Netty 监听端口、单 cursor dispatch loop、bounded concurrent delivery 与 active connection，Server 只负责配置绑定和生命周期事件转发。</p>
-          <code>output = SeedResult</code>
+          <p>Server 拥有 point/batch HTTP 与 delivery runtime；纯 polling Worker 使用 point API，Adapter 实例通过无 cursor 的 bounded batch 获取命令，并维护独立 Netty listener、Command/Result loop 与当前连接。</p>
+          <code>output = WorkerResult</code>
         </div>
         <div class="owner-stage">
           <b>Result Routing</b>
@@ -1535,19 +1533,19 @@
         </div>
         <div class="evidence">
           <b>CandidateWorkerEntry</b>
-          <span>Worker、route snapshot 与 opaque Worker lease evidence。</span>
+          <span>PRECOMPUTED 路径的可丢弃 hint；携带 Worker、route snapshot 与 opaque Worker lease evidence。</span>
         </div>
         <div class="evidence">
-          <b>DeliverSeed</b>
-          <span>WorkerId、delivery item 与 result context；Adapter 不解析。</span>
+          <b>WorkerCommand</b>
+          <span>direct 出站命令；携带 correlation UUID、event code、deadline、TaskItem payload 与 opaque forward context。</span>
         </div>
         <div class="evidence">
-          <b>WorkerCommandEnvelope</b>
-          <span>只用于出站命令；携带 commandId、TASK_ITEM、executeBeforeMillis 与 opaque DeliverSeed。</span>
+          <b>WorkerConnectionBind</b>
+          <span>长连接首条身份消息；只建立 Adapter 进程内 workerId → current connection 路由，不创建 Kernel truth。</span>
         </div>
         <div class="evidence">
-          <b>SeedResult</b>
-          <span>opaque context、outcome class 和可选业务 payload。</span>
+          <b>WorkerResult</b>
+          <span>复制 message correlation 与 opaque forward，携带 200 / 1xxx 或 Adapter-owned 3xxx outcome 及 opaque payload。</span>
         </div>
         <div class="evidence">
           <b>ResultContext</b>
@@ -1658,11 +1656,11 @@
           <tr>
             <td><code>wd:{prefix}:endpoint-manager:{id}:worker-commands</code></td>
             <td>Adapter route</td>
-            <td>稀疏 HASH point / HSCAN</td>
-            <td>destructive prefetch 需要 bounded memory 与 UNKNOWN fallback</td>
+            <td>稀疏 HASH point / bounded HRANDFIELD observation</td>
+            <td>单 endpoint-manager 热键；replacement 与进程内 pending 都是 best-effort</td>
           </tr>
           <tr>
-            <td><code>rr:{prefix}:seed-results:{class}</code></td>
+            <td><code>rr:{prefix}:worker-results:{class}</code></td>
             <td>三类 outcome</td>
             <td>per-class bounded consume</td>
             <td>全局 class LIST，尚无 pending/ack</td>
@@ -1690,10 +1688,10 @@
             <li>TASK_DRIVEN PRECOMPUTED cache/warmup</li>
             <li>ITEM_DRIVEN TARGETED point/index acquisition</li>
             <li>TaskItem exact claim 与 shared empty-close</li>
-            <li>稳定 Worker command、语义化 SeedResult 与 Adapter-partitioned mailbox</li>
+            <li>direct WorkerCommand / WorkerResult 与 Adapter-partitioned mailbox</li>
             <li>Java Server delivery point/batch HTTP owner</li>
-            <li>完整 Adapter 实例注册、独立 Netty listener、start/close runtime、单 cursor bounded delivery、current active connection 与 bounded result retry</li>
-            <li>三类 SeedResult queue 与 owner-local Result Routing</li>
+            <li>完整 Adapter 实例注册、独立 Netty WebSocket/Socket listener、start/close runtime、无 cursor bounded acquisition、current active connection 与 bounded result retry</li>
+            <li>三类 WorkerResult outcome queue 与 owner-local Result Routing</li>
           </ul>
         </article>
         <article class="status-col deferred">
