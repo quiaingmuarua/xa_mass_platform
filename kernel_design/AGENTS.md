@@ -272,6 +272,30 @@ snapshots stay hidden. Conversely, a caller-selected bounded identity set such
 as `workerIds` must not become hidden callee discovery just to shorten the
 signature.
 
+Policy breadth does not justify owner-contract breadth. Prefer operations that
+are owner-local, accept explicit caller-bounded identities, and aggregate
+within one owner key. Same-key requested-id batching is an owner operation;
+cross-key grouping, fan-out, polling cadence, completion coordination, and
+retry timing remain caller or policy orchestration by default.
+
+Treat cross-key fan-out, global discovery, owner-spanning aggregation, new
+queues or background loops, and stronger consistency as high-cost interface
+changes. Before implementing one, require all of:
+
+```text
+a named production invariant
+evidence that existing owner-local operations cannot express it
+a worst-case cost and explicit bound
+owner, key, failure, and partial-success semantics
+rejection of the cheaper policy-layer alternative
+focused boundary and behavior proof
+```
+
+Do not promote a strategy's internal batching or grouping shape into a Kernel
+contract merely to reduce caller code or Redis round trips. For example,
+TaskRuntime may load bounded requested `messageIds` from one Task result key;
+cross-Task result observation remains application policy.
+
 Required proof for an intentional interface change:
 
 - update the owning design document before or with code;
@@ -578,8 +602,11 @@ python -m unittest \
   boundary or executable-spec seam.
 - Do not add scan-heavy observability or reconciliation loops to hot paths.
 - Do not make external events required for correctness or ordinary liveness.
-- Do not let append, heartbeat, transport ack, result notification, trace, or
-  read-model update become scheduling wakeups by default.
+- Do not let heartbeat, transport ack, result notification, trace, or
+  read-model update become scheduling wakeups by default. The one current
+  append exception is a bounded, taskId-coalesced, droppable Task Dispatch
+  hint that may exact-release an existing future empty-recheck hold; it is
+  never part of append acceptance or scheduling liveness.
 - Do not put transport identifiers into scheduling candidate truth.
 - Do not make score-band a read model, storage blob, or lifecycle facade.
 - Do not require a score read, lease, or rewrite before resource metadata,

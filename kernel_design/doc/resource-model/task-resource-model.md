@@ -102,8 +102,10 @@ contract once; claim and dispatch trust it rather than reclassifying every
 Item.
 
 Both types use periodic RUNNING scans, Task dispatch, shared empty recheck, and
-the explicit close command. Append-trigger acceleration and a separate hard
-deadline scanner remain deferred policies.
+the explicit close command. The current Server may emit one bounded,
+taskId-coalesced, droppable Task Dispatch wake hint after accepted append.
+This only accelerates an existing future empty-recheck hold. A separate hard
+deadline scanner remains deferred.
 
 ### TaskType Scenario Gate
 
@@ -298,9 +300,20 @@ TaskRuntime itself owns only canonical JSON and DSL syntax validation, not
 Worker catalog or candidate-index policy.
 
 The success-result HASH is last-success truth. It is separate from TaskItem
-score outcome and does not store failure history. Java exposes a bounded
-Task-scoped read of requested `messageId` values. It returns each opaque
+score outcome and does not store failure history. The owner exposes one
+bounded, Task-scoped read of requested `messageId` values. One call maps to
+one Task result HASH and one `HMGET`; cross-Task batching remains caller
+orchestration rather than a TaskRuntime contract. The read returns each opaque
 last-success payload or `null` and does not infer pending or failure state.
+
+The Server RPC wait path uses only this result truth. It does not read the
+TaskItem record, Item score, or Task score while waiting. A missing success
+payload means only "not observed in this wait window"; Worker failure,
+FINAL_FAILED, pending execution, and a delayed result intentionally remain
+indistinguishable to RPC v1. TaskItem records are not deleted by this path.
+RPC v1 observes exactly one TaskItem. Batch append does not create a
+multi-Item waiter or completion aggregate; callers use the existing
+Task-scoped result read for later polling.
 
 ## Scheduling Read Paths
 

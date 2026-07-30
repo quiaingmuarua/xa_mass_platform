@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
+import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
 import com.xa.mass.worker.transport.socket.SocketWorkerTransport;
 import com.xa.mass.worker.transport.websocket.WebSocketWorkerTransport;
@@ -21,6 +22,8 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import io.lettuce.core.RedisClient;
+import io.lettuce.core.codec.StringCodec;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -220,13 +223,12 @@ class RuntimeApiPythonIntegrationTest {
                     null
             ).statusCode()).isEqualTo(200);
 
-            appendItem(
+            callItem(
                     taskId,
                     firstMessageId,
                     workerId,
                     "ITEM_DRIVEN".equals(taskType)
             );
-            awaitStoredResult(taskId, firstMessageId);
 
             appendItem(
                     taskId,
@@ -243,6 +245,73 @@ class RuntimeApiPythonIntegrationTest {
             ).statusCode()).isEqualTo(200);
         } finally {
             worker.close();
+        }
+    }
+
+    private void callItem(
+            String taskId,
+            String messageId,
+            String workerId,
+            boolean itemDriven
+    ) throws Exception {
+        String allocationRule = itemDriven
+                ? ",\"allocationRule\":{\"workerId\":{\"$eq\":\""
+                + workerId + "\"}}"
+                : "";
+        HttpResponse<String> response = send(
+                "POST",
+                "/api/v1/tasks/" + taskId + "/items:call",
+                """
+                        {
+                          "item": {
+                            "messageId": "%s",
+                            "eventCode": "%s",
+                            "createdAtMillis": %d,
+                            "payload": {"value": "input"}%s
+                          },
+                          "waitTimeoutMillis": 8000
+                        }
+                        """.formatted(
+                        messageId,
+                        TEST_EVENT_CODE,
+                        System.currentTimeMillis() - 1_000,
+                        allocationRule
+                )
+        );
+        assertThat(response.statusCode()).isEqualTo(200);
+        assertThat(JSON.readTree(response.body()).get("status").stringValue())
+                .isEqualTo("succeeded");
+        assertThat(JSON.readTree(response.body())
+                .get("opaqueResultPayload")
+                .stringValue()).isEqualTo(TEST_RESULT);
+        assertStoredItemAndFinalSuccess(taskId, messageId);
+    }
+
+    private void assertStoredItemAndFinalSuccess(
+            String taskId,
+            String messageId
+    ) {
+        RedisClient client = RedisClient.create(REDIS_URL);
+        try (var connection = client.connect(StringCodec.UTF8)) {
+            var redis = connection.sync();
+            String prefix = System.getenv().getOrDefault(
+                    "KERNEL_DESIGN_REDIS_PREFIX",
+                    "default"
+            );
+            assertThat(redis.hexists(
+                    "tr:" + prefix + ":task:" + taskId + ":items",
+                    messageId
+            )).isTrue();
+            Double score = redis.zscore(
+                    "tr:" + prefix + ":task:" + taskId + ":item-score",
+                    messageId
+            );
+            assertThat(score).isNotNull();
+            assertThat(score.longValue()
+                    / TaskItemScoreBandCore.TAG_FACTOR)
+                    .isEqualTo(TaskItemScoreBandCore.FINAL_SUCCESS_TAG);
+        } finally {
+            client.shutdown();
         }
     }
 

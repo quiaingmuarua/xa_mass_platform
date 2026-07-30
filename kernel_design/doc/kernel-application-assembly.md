@@ -42,6 +42,7 @@ KernelApplication
 create_task
 approve_task
 close_task
+wake_task_dispatch(taskIds)
 
 WorkerCommandConsumerClient
 consume_worker_command(endpointManagerId, workerId)
@@ -61,8 +62,9 @@ loadTaskItemSuccessResults(taskId, messageIds)
 The two Worker Delivery clients remain stable Python executable-spec and test
 support surfaces; they are not mounted as Python HTTP routes. The Java Gateway
 implements the public Worker Delivery operations against the same Redis shape.
-`TaskRuntime.append_items` and `load_task_item_success_results` likewise remain
-the Python mechanism oracle. The public Task data HTTP operations are
+`TaskRuntime.append_items` and the Task-scoped
+`load_task_item_success_results` likewise remain the Python mechanism oracle.
+The public Task data HTTP operations are
 orchestrated by Java `TaskDataService` and delegated to the Java
 `RedisTaskRuntime` provider through the same owner contract; Python exposes no
 TaskItem append or result-query route.
@@ -76,6 +78,7 @@ Task create                     -> Python HTTP TaskRuntime provider
 Task approve / close            -> Python HTTP application commands
 Task / WorkerGroup reads        -> Java Redis catalog providers
 TaskItem append / result load   -> Java Redis TaskRuntime provider
+Task Dispatch wake hint         -> Python HTTP application command
 WorkerCommand consume           -> Java Redis WorkerCommandRuntime provider
 WorkerResult append               -> Java Redis WorkerResultRuntime provider
 score / candidate / scheduling  -> no Server provider
@@ -255,8 +258,10 @@ claim a blocked round stopped. A timeout is reported rather than hidden.
 
 The application lifecycle owns timers and process coordination only. It does
 not construct policy inside a pacer, combine rounds into one sequential loop,
-own score or runtime truth, consume WorkerCommand mailboxes, or turn
-append/result/heartbeat events into required wakeups.
+own score or runtime truth, or consume WorkerCommand mailboxes. Its bounded
+Task Dispatch wake inbox is optional acceleration: it coalesces taskIds and
+may ask Task Dispatch to exact-release an existing future empty-recheck hold.
+It does not make append acceptance or scheduling liveness depend on an event.
 
 ## Process-Boundary E2E Proof
 
@@ -266,6 +271,7 @@ the current external process boundaries:
 ```text
 Java control API -> Python KernelApplication
   -> Java TaskData append
+  -> optional HTTP Task Dispatch wake hint
   -> Redis scheduling truth
   -> Java Server Worker Delivery HTTP command access
   -> Java polling Worker or Netty WebSocket/Socket Adapter instance + Worker
@@ -273,7 +279,7 @@ Java control API -> Python KernelApplication
   -> Java Server Worker Delivery HTTP WorkerResult ingress
   -> Result-Routing
   -> TaskItem FINAL_SUCCESS + result HASH + Worker lease release
-  -> Java last-success result query
+  -> Java single-Item last-success result probe / result query
 ```
 
 The proof starts resource and Task-control commands at the Java API, crosses
@@ -281,7 +287,11 @@ the Python Kernel Control API, appends TaskItems through Java TaskData, then
 uses the Java Server's Worker Delivery owner providers. `TASK_DRIVEN` polling
 calls the point HTTP API directly. `ITEM_DRIVEN` uses configured WebSocket
 or Socket Adapter instances, each of which still calls the same batch HTTP
-contract through loopback. Java never parses Task or Worker score state.
+contract through loopback. The RPC acceptance path holds one asynchronous HTTP
+waiter while a shared Java virtual thread probes one Task-scoped messageId at
+a time. Duplicate waits for that same TaskItem may share the observation, but
+different TaskItems are not combined into a result batch. Java never parses
+Task or Worker score state.
 Separate Redis proofs cover TaskData Item-score
 initialization, TASK_DRIVEN default empty close with RUNNING soft-limit
 release, ITEM_DRIVEN future-threshold empty recheck followed by append and
@@ -311,6 +321,7 @@ The Java Runtime API Server exposes Task data and Worker Delivery at port
 
 ```text
 POST /api/v1/tasks/{taskId}/items
+POST /api/v1/tasks/{taskId}/items:call
 POST /api/v1/tasks/{taskId}/results:load
 POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/
      workers/{workerId}/commands:poll

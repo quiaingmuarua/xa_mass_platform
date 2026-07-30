@@ -164,6 +164,7 @@ class KernelApplicationTest(unittest.TestCase):
                 "create_task",
                 "start",
                 "stop",
+                "wake_task_dispatch",
             },
             public_methods,
         )
@@ -193,6 +194,7 @@ class KernelApplicationTest(unittest.TestCase):
         internal = call.kwargs["config"]
         self.assertEqual("default", internal.prefix)
         self.assertEqual(100, internal.assignment_dispatch.worker_allocation.task_batch_limit)
+
         self.assertEqual(100, internal.worker_candidate_scan_limit)
         self.assertEqual(
             5_000,
@@ -215,6 +217,20 @@ class KernelApplicationTest(unittest.TestCase):
             internal.result_routing.routing.per_outcome_batch_limit,
         )
         self.assertEqual(100, internal.result_routing.interval_millis)
+
+    def test_dispatch_wake_is_a_bounded_application_hint(self) -> None:
+        self.process._task_dispatch_wake_inbox.offer.return_value = 2
+        self.application.start()
+
+        self.assertEqual(
+            2,
+            self.application.wake_task_dispatch(
+                task_ids=("task-1", "task-2"),
+            ),
+        )
+        self.process._task_dispatch_wake_inbox.offer.assert_called_once_with(
+            task_ids=("task-1", "task-2"),
+        )
 
     def test_commands_require_successful_start_and_lifecycle_is_strict(self) -> None:
         with self.assertRaises(RuntimeError):
@@ -524,6 +540,7 @@ class KernelApplicationTest(unittest.TestCase):
         process._task_score = Mock(spec=TaskScoreBandCore)
         process._task_resource_catalog = Mock(spec=TaskResourceCatalog)
         process._task_runtime = Mock()
+        process._task_dispatch_wake_inbox = Mock()
         process._worker_resource_catalog = Mock()
         process._worker_dynamic_attribute_runtime = Mock()
         return process

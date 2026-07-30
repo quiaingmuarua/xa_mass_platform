@@ -55,6 +55,8 @@ public final class ApiExceptionHandler {
                     WORKER_DELIVERY_UNAVAILABLE ->
                     HttpStatus.SERVICE_UNAVAILABLE;
             case KERNEL_TIMEOUT -> HttpStatus.GATEWAY_TIMEOUT;
+            case TASK_RPC_CAPACITY_EXCEEDED ->
+                    HttpStatus.TOO_MANY_REQUESTS;
             case INVALID_KERNEL_RESPONSE -> HttpStatus.BAD_GATEWAY;
             case KERNEL_REJECTED_NOT_FOUND,
                     TASK_NOT_FOUND -> HttpStatus.NOT_FOUND;

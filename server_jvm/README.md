@@ -35,6 +35,13 @@ Task data client
   -> Java owner Redis providers
   -> Python scheduling and ResultRouting
 
+Task RPC client
+  -> append through the same TaskDataService validation
+  -> optional coalesced Task Dispatch wake command
+  -> Server DeferredResult waiter
+  -> one shared Java virtual-thread result probe
+  -> TaskRuntime single-Item last-success reads
+
 Worker / long-lived Adapter
   -> server_jvm /api/v1/worker-delivery
   -> Java WorkerDeliveryService
@@ -61,7 +68,8 @@ Current provider matrix:
 | Task create | Python HTTP |
 | Task approve/close | Python HTTP application command |
 | Task and WorkerGroup descriptor reads | Java Redis |
-| TaskItem append and last-success load | Java Redis |
+| TaskItem append and Task-scoped last-success load | Java Redis |
+| Task Dispatch wake hint | Python HTTP application command |
 | WorkerCommand consume | Java Redis |
 | WorkerResult append | Java Redis |
 | Score, candidate, dynamic attribute, scheduling internals | no Server bean / explicit not implemented |
@@ -82,6 +90,9 @@ replaces its Item record but `ZADD NX` preserves any existing Item score.
 Result reads return opaque last-success payload strings or `null`; they do not
 infer pending or failure state. The service validates TaskType and WorkerGroup
 policy across owners; `RedisTaskRuntime` does not read WorkerGroup truth.
+An accepted append offers one taskId-coalesced best-effort wake hint. Queue
+overflow, Kernel HTTP failure, or restart may drop it; Task score pacing remains
+the liveness mechanism and append success is never rolled back.
 
 Worker Delivery boundaries:
 
@@ -127,6 +138,7 @@ POST /api/v1/tasks
 POST /api/v1/tasks/{taskId}/approve
 POST /api/v1/tasks/{taskId}/close
 POST /api/v1/tasks/{taskId}/items
+POST /api/v1/tasks/{taskId}/items:call
 POST /api/v1/tasks/{taskId}/results:load
 ```
 
@@ -151,6 +163,45 @@ first-seen order, and returns:
 
 The payload is opaque. A missing Task returns `404`; `null` means only that no
 last-success payload exists for that Task-scoped messageId.
+
+TaskItem RPC v1 accepts one existing `TaskItemRequest` plus an optional
+`waitTimeoutMillis` (30 seconds by default, 60 seconds maximum):
+
+```json
+{
+  "item": {
+    "messageId": "call-1",
+    "eventCode": "device.rpc",
+    "createdAtMillis": 1,
+    "payload": {"method": "status"}
+  },
+  "waitTimeoutMillis": 30000
+}
+```
+
+The caller supplies the scheduling identity: a new logical call uses a new
+`messageId`, while retrying the same logical call reuses its original
+`messageId`.
+
+A last-success payload observed in the wait window returns `200` with
+`status=succeeded`, `taskId`, `messageId`, and `opaqueResultPayload`.
+Otherwise the request returns `202` with `status=pending`, `taskId`, and
+`messageId`. Pending does not distinguish executing, retrying, Worker failure,
+FINAL_FAILED, or a delayed success. Callers use `results:load` for later reads.
+The batch `items` API never creates RPC waiters or aggregate completion state;
+batch callers poll `results:load` with their own messageIds.
+
+The Server keeps at most 10,000 HTTP waiters. Duplicate waits for one
+Task-scoped messageId are allowed. Request timeout, disconnect, Server
+shutdown, and success completion remove the waiter; capacity exhaustion
+returns `429`. Requests do not create polling threads. One shared Java virtual
+thread consumes one due `(taskId, messageId)` observation at a time and invokes
+`TaskRuntime.loadTaskItemSuccessResults(taskId, List.of(messageId))`. Duplicate
+HTTP waits for the same TaskItem share that one observation; different
+TaskItems are never merged into a result batch. Redis read failure reschedules
+only that TaskItem observation and never changes append truth. RPC waiting
+does not read TaskItem records or Task/Item scores, and this version performs
+no TaskItem record cleanup.
 
 Worker Delivery:
 
@@ -253,6 +304,8 @@ connect timeout          1s
 read timeout             5s
 Kernel Redis              redis://localhost:6379/15
 Kernel Redis prefix        default
+Task RPC wait              30s default / 60s maximum
+Task RPC waiter limit      10000
 ```
 
 The Redis labels above use the shared `xa.mass.kernel-redis.redis-url` and

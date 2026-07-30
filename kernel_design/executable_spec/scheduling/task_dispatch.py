@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from threading import Lock
 from time import time_ns
 from typing import cast
 from uuid import uuid4
@@ -83,6 +84,44 @@ class TaskDispatchConfig:
             raise ValueError("max empty recheck times must be in 1..99")
         if self.empty_recheck_interval_millis <= 0:
             raise ValueError("empty recheck interval must be positive")
+
+
+class TaskDispatchWakeInbox:
+    """Bounded, coalesced acceleration hints for Task Dispatch.
+
+    The inbox is process-local policy state. Dropping a hint is safe because
+    Task score time coordinates remain the liveness mechanism.
+    """
+
+    def __init__(self, *, capacity: int = 10_000) -> None:
+        if capacity <= 0:
+            raise ValueError("wake inbox capacity must be positive")
+        self._capacity = capacity
+        self._task_ids: dict[TaskId, None] = {}
+        self._lock = Lock()
+
+    def offer(self, *, task_ids: tuple[TaskId, ...]) -> int:
+        accepted = 0
+        with self._lock:
+            for task_id in dict.fromkeys(task_ids):
+                if not task_id:
+                    raise ValueError("wake task ids must be non-empty")
+                if task_id in self._task_ids:
+                    continue
+                if len(self._task_ids) >= self._capacity:
+                    break
+                self._task_ids[task_id] = None
+                accepted += 1
+        return accepted
+
+    def consume(self, *, limit: int) -> tuple[TaskId, ...]:
+        if limit <= 0:
+            raise ValueError("wake consume limit must be positive")
+        with self._lock:
+            task_ids = tuple(self._task_ids)[:limit]
+            for task_id in task_ids:
+                del self._task_ids[task_id]
+        return task_ids
 
 
 class TaskItemDispatcher:
@@ -329,6 +368,7 @@ class TaskDispatchPacer:
         item_score: TaskItemScoreBandCore,
         candidate_warmup_schedule: CandidateWarmupSchedule,
         task_item_dispatcher: TaskItemDispatcher,
+        wake_inbox: TaskDispatchWakeInbox,
     ) -> None:
         self.task_score = task_score
         self.task_catalog = task_catalog
@@ -336,6 +376,7 @@ class TaskDispatchPacer:
         self.item_score = item_score
         self.candidate_warmup_schedule = candidate_warmup_schedule
         self.task_item_dispatcher = task_item_dispatcher
+        self.wake_inbox = wake_inbox
 
     def dispatch_tasks(
         self,
@@ -345,6 +386,10 @@ class TaskDispatchPacer:
         dispatch_time_millis = self._current_time_millis()
         claim_until_millis = (
             dispatch_time_millis + config.item_claim_lease_duration_millis
+        )
+        self._release_woken_empty_rechecks(
+            dispatch_time_millis=dispatch_time_millis,
+            limit=config.task_batch_limit,
         )
         active_tasks = self._acquire_dispatchable_tasks(
             limit=config.task_batch_limit,
@@ -420,6 +465,32 @@ class TaskDispatchPacer:
                     config=config,
                 )
         return published_command_count
+
+    def _release_woken_empty_rechecks(
+        self,
+        *,
+        dispatch_time_millis: TimeMillis,
+        limit: int,
+    ) -> None:
+        task_ids = self.wake_inbox.consume(limit=limit)
+        if not task_ids:
+            return
+        states = self.task_score.get_score_states(task_ids=task_ids)
+        for task_id in task_ids:
+            state = states.get(task_id)
+            if (
+                state is None
+                or state.band is not TaskScoreBand.RUNNING_VISIBLE
+                or state.suffix is None
+                or state.suffix <= TaskScoreBandCore.MIN_SUFFIX
+                or state.time_millis is None
+                or state.time_millis <= dispatch_time_millis
+            ):
+                continue
+            self.task_score.release_observed_score_hold(
+                task_id=task_id,
+                observed_hold_score=state.score,
+            )
 
     def _acquire_dispatchable_tasks(
         self,

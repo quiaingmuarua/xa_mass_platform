@@ -61,6 +61,14 @@ class TaskRequest(BaseModel):
     )
 
 
+class TaskDispatchWakeRequest(BaseModel):
+    task_ids: list[str] = Field(
+        alias="taskIds",
+        min_length=1,
+        max_length=100,
+    )
+
+
 def _result_payload(result: Any) -> dict[str, Any]:
     payload: dict[str, Any] = {"status": result.status.value}
     if result.reason is not None:
@@ -229,5 +237,12 @@ def create_app(
     @app.post("/tasks/{task_id}/close")
     def close_task(task_id: str) -> JSONResponse:
         return _close_response(kernel_application.close_task(task_id=task_id))
+
+    @app.post("/tasks:dispatch-wake")
+    def wake_task_dispatch(request: TaskDispatchWakeRequest) -> dict[str, Any]:
+        accepted = kernel_application.wake_task_dispatch(
+            task_ids=tuple(dict.fromkeys(request.task_ids)),
+        )
+        return {"status": "accepted", "acceptedTaskCount": accepted}
 
     return app

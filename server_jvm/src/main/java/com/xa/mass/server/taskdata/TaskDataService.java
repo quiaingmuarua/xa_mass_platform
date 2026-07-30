@@ -31,32 +31,53 @@ public final class TaskDataService {
     private final TaskRuntime taskRuntime;
     private final TaskResourceCatalog taskCatalog;
     private final WorkerResourceCatalog workerCatalog;
+    private final TaskDispatchWakeSink dispatchWake;
 
     public TaskDataService(
             TaskRuntime taskRuntime,
             TaskResourceCatalog taskCatalog,
-            WorkerResourceCatalog workerCatalog
+            WorkerResourceCatalog workerCatalog,
+            TaskDispatchWakeSink dispatchWake
     ) {
         this.taskRuntime = taskRuntime;
         this.taskCatalog = taskCatalog;
         this.workerCatalog = workerCatalog;
+        this.dispatchWake = dispatchWake;
     }
 
     public TaskItemsAppendResponse appendTaskItems(
             String taskId,
             TaskItemsAppendRequest request
     ) {
+        return appendResponse(appendTaskItems(
+                taskId,
+                request.items()
+        ));
+    }
+
+    public TaskItemAppendResult appendTaskItem(
+            String taskId,
+            TaskItemRequest request
+    ) {
+        return appendTaskItems(taskId, List.of(request))
+                .get(request.messageId());
+    }
+
+    private Map<String, TaskItemAppendResult> appendTaskItems(
+            String taskId,
+            List<TaskItemRequest> requestedItems
+    ) {
         try {
             LinkedHashMap<String, TaskItemRequest> latest =
-                    latestItems(request.items());
+                    latestItems(requestedItems);
             TaskDescriptor descriptor = taskCatalog
                     .loadTaskAllocationDescriptors(List.of(taskId))
                     .get(taskId);
             if (descriptor == null) {
-                return appendResponse(uniformResults(
+                return uniformResults(
                         latest.keySet(),
                         TaskItemAppendStatus.NOT_FOUND
-                ));
+                );
             }
 
             WorkerGroupDescriptor workerGroup = null;
@@ -93,7 +114,19 @@ public final class TaskDataService {
             if (!validItems.isEmpty()) {
                 results.putAll(taskRuntime.appendItems(taskId, validItems));
             }
-            return appendResponse(orderedResults(latest.keySet(), results));
+            Map<String, TaskItemAppendResult> ordered =
+                    orderedResults(latest.keySet(), results);
+            if (ordered.values().stream().anyMatch(
+                    result -> result.status()
+                            == TaskItemAppendStatus.APPENDED
+            )) {
+                try {
+                    dispatchWake.offer(taskId);
+                } catch (RuntimeException ignored) {
+                    // A wake hint is never part of append acceptance.
+                }
+            }
+            return ordered;
         } catch (ServerException error) {
             throw error;
         } catch (RuntimeException error) {

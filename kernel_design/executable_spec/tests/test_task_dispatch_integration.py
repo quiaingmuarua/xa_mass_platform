@@ -39,6 +39,7 @@ from kernel_design.executable_spec import (
     TaskItemAppendStatus,
     TaskDispatchConfig,
     TaskDispatchPacer,
+    TaskDispatchWakeInbox,
     TaskRunningActivationConfig,
     TaskRunningActivationPacer,
     TaskWorkerAllocationConfig,
@@ -171,6 +172,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             candidate_acquirer,
             self.warmup_schedule,
         )
+        self.wake_inbox = TaskDispatchWakeInbox()
         self.pacer = TaskDispatchPacer(
             self.task_score,
             self.task_catalog,
@@ -178,6 +180,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             self.item_score,
             self.warmup_schedule,
             task_item_dispatcher,
+            self.wake_inbox,
         )
 
     def test_adapter_mailbox_worker_field_has_one_atomic_consumer(self) -> None:
@@ -1033,7 +1036,9 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             allocation_rule={"workerId": {"$eq": "worker-1"}},
         )
         self.task_runtime.append_items(task_id=self.task_id, items=(resumed_item,))
-        time.sleep(0.32)
+        self.wake_inbox.offer(task_ids=(self.task_id,))
+        release_round = self.pacer.dispatch_tasks(config=config)
+        time.sleep(0.12)
         reset_round = self.pacer.dispatch_tasks(config=config)
         reset = self.task_score.get_score_states(task_ids=(self.task_id,))[
             self.task_id
@@ -1047,6 +1052,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
 
         self.assertEqual(TaskScoreBand.RUNNING_VISIBLE, held.band)
         self.assertEqual(2, held.suffix)
+        self.assertEqual(0, release_round)
         self.assertEqual(0, reset_round)
         self.assertEqual(0, reset.suffix)
         self.assertEqual(1, dispatched)

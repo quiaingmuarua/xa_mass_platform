@@ -398,6 +398,12 @@ more scheduling pressure than the scheduler itself can bound. Event delivery
 may be dropped, coalesced, sampled, or rate-limited without changing kernel
 correctness.
 
+The current append path uses the allowed bounded form: Server coalesces by
+taskId in a capacity-limited buffer, Python coalesces again in a private inbox,
+and Task Dispatch may exact-release only an existing future empty-recheck hold.
+The hint may be dropped and never participates in append acceptance or
+scheduling liveness.
+
 Routine observations and high-frequency writes must not emit by default:
 
 ```text
@@ -479,6 +485,45 @@ mechanism validates and performs only its declared mutation
 removing a helper or wrapper preserves the existing owner split
 test convenience does not justify a new interface or owner
 ```
+
+#### Conservative Owner Contracts
+
+A rich policy surface does not require a broad owner interface. System and
+Task policies may compose many scheduling decisions while Kernel owners expose
+only the narrow operations needed to preserve their truth.
+
+The default owner contract is:
+
+```text
+owner-local
+explicit caller-supplied identities
+bounded by the caller
+aggregated within one owner key when the storage shape supports it
+free of hidden discovery, fan-out, and background coordination
+```
+
+For example, a TaskRuntime result read may accept one `taskId` plus a bounded
+set of `messageIds` and read that Task's result HASH. Grouping requests across
+multiple Tasks, choosing when to retry them, and coordinating their completion
+belong to the calling policy or application. That orchestration does not become
+a Kernel contract merely because a pipeline could make it convenient.
+
+Cross-key fan-out, global discovery, owner-spanning aggregation, new queues or
+threads, and stronger consistency are high-cost contract choices. Before adding
+one, the design must name:
+
+```text
+the production invariant that requires it
+why existing owner-local operations cannot express it
+the worst-case work and the bound that contains it
+the owner, key, failure, and partial-success semantics
+the cheaper policy-layer alternative that was rejected
+the focused proof that locks the new boundary
+```
+
+Without that evidence, keep the operation in system/Task policy orchestration
+and retain the conservative owner contract. Mechanism extensibility and
+external interface conservatism are complementary constraints.
 
 Reducing argument count is not inherently an improvement. A stable value such
 as `workerIds`, selected and bounded by the caller, is a valid contract input.

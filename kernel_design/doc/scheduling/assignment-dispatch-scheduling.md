@@ -258,8 +258,12 @@ the dispatch round does not infer type or strategy from Item contents.
   none.
 - Multi-index intersection, cardinality optimization, quotas, and fairness are
   deferred policies.
-- Append-trigger acceleration remains deferred. Periodic RUNNING scans are the
-  correctness fallback.
+- TaskItem append may submit a bounded, process-local, taskId-coalesced wake
+  hint. Task Dispatch consumes hints before its ordinary RUNNING scan and may
+  exact-release only a future RUNNING empty-recheck hold whose suffix is
+  positive. READY, terminal, suffix-zero, already-due, and stale evidence are
+  no-ops. Queue overflow, HTTP failure, process restart, and a dropped hint are
+  allowed; periodic RUNNING scans remain the correctness and liveness path.
 - Both TaskTypes share the persisted empty-close threshold and System Policy
   recheck count/cadence. A separate hard-deadline scanner remains deferred;
   external owners may still submit stronger close evidence explicitly.

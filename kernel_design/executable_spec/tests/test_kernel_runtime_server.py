@@ -70,6 +70,7 @@ class KernelRuntimeServerTest(unittest.TestCase):
         self.application.close_task.return_value = TaskCloseResult(
             TaskCloseStatus.CLOSED
         )
+        self.application.wake_task_dispatch.return_value = 2
         self.client_context = TestClient(
             create_app(
                 application=self.application,
@@ -119,6 +120,10 @@ class KernelRuntimeServerTest(unittest.TestCase):
         )
         approval_response = self.client.post("/tasks/task-1/approve")
         close_response = self.client.post("/tasks/task-1/close")
+        wake_response = self.client.post(
+            "/tasks:dispatch-wake",
+            json={"taskIds": ["task-1", "task-1", "task-2"]},
+        )
         removed_append_response = self.client.post(
             "/tasks/task-1/items",
             json={
@@ -140,6 +145,11 @@ class KernelRuntimeServerTest(unittest.TestCase):
         self.assertEqual(201, task_response.status_code)
         self.assertEqual(200, approval_response.status_code)
         self.assertEqual(200, close_response.status_code)
+        self.assertEqual(200, wake_response.status_code)
+        self.assertEqual(
+            {"status": "accepted", "acceptedTaskCount": 2},
+            wake_response.json(),
+        )
         self.assertEqual({"status": "closed"}, close_response.json())
         self.assertEqual(404, removed_append_response.status_code)
         self.assertNotIn(
@@ -164,6 +174,9 @@ class KernelRuntimeServerTest(unittest.TestCase):
         self.assertIsNone(task_descriptor.allocation_rule)
         self.assertEqual(1234, task_descriptor.empty_close_at_millis)
         self.resources_client.upsert_worker.assert_called_once()
+        self.application.wake_task_dispatch.assert_called_once_with(
+            task_ids=("task-1", "task-2"),
+        )
         self.assertFalse(hasattr(self.application, "consume_worker_commands"))
         self.assertEqual(404, self.client.post("/worker-groups").status_code)
         self.assertEqual(404, self.client.post("/workers").status_code)

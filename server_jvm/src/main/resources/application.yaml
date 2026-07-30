@@ -10,6 +10,15 @@ xa:
     kernel-redis:
       redis-url: redis://localhost:6379/15
       redis-prefix: default
+    task-rpc:
+      default-wait-timeout-millis: 30000
+      max-wait-timeout-millis: 60000
+      max-waiters: 10000
+      initial-probe-interval-millis: 50
+      normal-probe-interval-millis: 100
+      long-probe-interval-millis: 250
+      wake-buffer-capacity: 10000
+      wake-batch-limit: 100
     worker-delivery:
       adapter:
         gateway:

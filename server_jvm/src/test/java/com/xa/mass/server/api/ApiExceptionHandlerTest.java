@@ -90,6 +90,10 @@ class ApiExceptionHandlerTest {
                         HttpStatus.SERVICE_UNAVAILABLE
                 ),
                 Arguments.of(
+                        ServerErrorCode.TASK_RPC_CAPACITY_EXCEEDED,
+                        HttpStatus.TOO_MANY_REQUESTS
+                ),
+                Arguments.of(
                         ServerErrorCode.INVALID_WORKER_DELIVERY_REQUEST,
                         HttpStatus.BAD_REQUEST
                 ),

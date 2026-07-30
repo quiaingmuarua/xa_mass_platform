@@ -442,6 +442,13 @@ class KernelApplication:
         self._require_started()
         return self._task_lifecycle.close_task(task_id=task_id)
 
+    def wake_task_dispatch(self, *, task_ids: tuple[TaskId, ...]) -> int:
+        """Offer droppable Task Dispatch acceleration hints."""
+        self._require_started()
+        return self._process._task_dispatch_wake_inbox.offer(
+            task_ids=task_ids,
+        )
+
     def _require_started(self) -> None:
         with self._lifecycle_lock:
             if not self._started:

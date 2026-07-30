@@ -54,6 +54,13 @@ tag.
 - Scope mechanism searches, diffs, and Python tests to `kernel_design/`.
 - Preserve explicit owner boundaries across core contracts, scheduling,
   Redis implementations, assembly, and external protocol examples.
+- Treat every new Kernel owner operation as a long-lived cost commitment.
+  Prefer owner-local operations with explicit caller-bounded identities and
+  same-key aggregation; policy richness does not justify a broad owner API.
+- Keep cross-key fan-out, global discovery, owner-spanning aggregation, and
+  background coordination in the caller or system policy by default. A
+  high-cost contract addition requires a named invariant, worst-case bound,
+  failure semantics, rejection of cheaper composition, and focused proof.
 - Keep each JVM module's coded exception local to its owner. Do not create a
   cross-module exception base or move runtime exceptions into a wire contract.
   Keep exceptions to `errorCode + owner.method operation + message + cause`.

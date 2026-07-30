@@ -9,6 +9,7 @@ from ..scheduling import (
     ResultRoutingBuiltinPolicies,
     ResultRoutingPacer,
     TaskDispatchPacer,
+    TaskDispatchWakeInbox,
     TaskItemDispatcher,
     TaskRunningActivationPacer,
     TaskWorkerAllocationPacer,
@@ -151,6 +152,7 @@ class _RedisKernelProcess:
             candidate_acquirer,
             candidate_warmup_schedule,
         )
+        self._task_dispatch_wake_inbox = TaskDispatchWakeInbox()
         task_dispatch_pacer = TaskDispatchPacer(
             self._task_score,
             self._task_resource_catalog,
@@ -158,6 +160,7 @@ class _RedisKernelProcess:
             task_item_score,
             candidate_warmup_schedule,
             task_item_dispatcher,
+            self._task_dispatch_wake_inbox,
         )
         self._assignment_dispatch_application = AssignmentDispatchApplication(
             worker_allocation_pacer,

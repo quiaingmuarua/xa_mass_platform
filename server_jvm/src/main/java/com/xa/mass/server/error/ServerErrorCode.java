@@ -41,6 +41,10 @@ public enum ServerErrorCode {
             12003,
             "Task data Redis is unavailable"
     ),
+    TASK_RPC_CAPACITY_EXCEEDED(
+            12004,
+            "Task RPC waiter capacity is exhausted"
+    ),
     INVALID_WORKER_DELIVERY_REQUEST(
             13001,
             "Worker Delivery request is invalid"

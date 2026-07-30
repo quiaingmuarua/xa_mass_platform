@@ -15,6 +15,7 @@ from kernel_design.executable_spec import (
     WorkerMessageEndpoint,
     TaskDispatchConfig,
     TaskDispatchPacer,
+    TaskDispatchWakeInbox,
     TaskDescriptor,
     TaskItem,
     TaskItemScoreBand,
@@ -63,6 +64,7 @@ class TaskDispatchPacerTest(unittest.TestCase):
             self.candidate_acquirer,
             self.warmup_schedule,
         )
+        self.wake_inbox = TaskDispatchWakeInbox(capacity=10)
         self.pacer = TaskDispatchPacer(
             self.task_score,
             self.task_catalog,
@@ -70,6 +72,7 @@ class TaskDispatchPacerTest(unittest.TestCase):
             self.item_score,
             self.warmup_schedule,
             self.task_item_dispatcher,
+            self.wake_inbox,
         )
         self.config = TaskDispatchConfig(
             task_batch_limit=10,
@@ -88,9 +91,76 @@ class TaskDispatchPacerTest(unittest.TestCase):
                 "item_score",
                 "candidate_warmup_schedule",
                 "task_item_dispatcher",
+                "wake_inbox",
             },
             set(inspect.signature(TaskDispatchPacer).parameters),
         )
+
+    def test_wake_releases_only_future_running_empty_recheck(self) -> None:
+        self.wake_inbox.offer(
+            task_ids=(
+                "future-empty",
+                "plain-running",
+                "already-due",
+                "ready",
+                "missing",
+            )
+        )
+        self.task_score.get_score_states.return_value = {
+            "future-empty": TaskScoreState(
+                task_id="future-empty",
+                score=101,
+                band=TaskScoreBand.RUNNING_VISIBLE,
+                time_millis=self.NOW_MILLIS + 1_000,
+                suffix=1,
+            ),
+            "plain-running": TaskScoreState(
+                task_id="plain-running",
+                score=100,
+                band=TaskScoreBand.RUNNING_VISIBLE,
+                time_millis=self.NOW_MILLIS + 1_000,
+                suffix=0,
+            ),
+            "already-due": TaskScoreState(
+                task_id="already-due",
+                score=102,
+                band=TaskScoreBand.RUNNING_VISIBLE,
+                time_millis=self.NOW_MILLIS,
+                suffix=2,
+            ),
+            "ready": TaskScoreState(
+                task_id="ready",
+                score=200,
+                band=TaskScoreBand.ADMISSION_VISIBLE,
+                time_millis=self.NOW_MILLIS + 1_000,
+                suffix=1,
+            ),
+            "missing": None,
+        }
+        self.task_score.acquire_dispatch_work_tasks.return_value = ()
+
+        with patch.object(
+            self.pacer,
+            "_current_time_millis",
+            return_value=self.NOW_MILLIS,
+        ):
+            self.pacer.dispatch_tasks(config=self.config)
+
+        self.task_score.release_observed_score_hold.assert_called_once_with(
+            task_id="future-empty",
+            observed_hold_score=101,
+        )
+
+    def test_wake_inbox_is_bounded_and_coalesces_task_ids(self) -> None:
+        inbox = TaskDispatchWakeInbox(capacity=2)
+
+        self.assertEqual(
+            2,
+            inbox.offer(task_ids=("task-1", "task-1", "task-2", "task-3")),
+        )
+        self.assertEqual(("task-1",), inbox.consume(limit=1))
+        self.assertEqual(1, inbox.offer(task_ids=("task-3",)))
+        self.assertEqual(("task-2", "task-3"), inbox.consume(limit=10))
 
     def test_item_dispatcher_owns_item_and_candidate_dependencies(self) -> None:
         self.assertEqual(

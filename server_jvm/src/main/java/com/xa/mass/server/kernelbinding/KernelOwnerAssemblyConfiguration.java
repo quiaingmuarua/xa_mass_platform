@@ -126,4 +126,11 @@ public class KernelOwnerAssemblyConfiguration {
         return new HttpTaskLifecycleCommands(transport);
     }
 
+    @Bean
+    TaskDispatchWakeCommands taskDispatchWakeCommands(
+            PythonKernelHttpTransport transport
+    ) {
+        return new HttpTaskDispatchWakeCommands(transport);
+    }
+
 }

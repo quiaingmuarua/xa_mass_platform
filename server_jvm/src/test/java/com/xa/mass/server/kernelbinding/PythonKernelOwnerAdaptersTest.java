@@ -137,6 +137,29 @@ class PythonKernelOwnerAdaptersTest {
     }
 
     @Test
+    void dispatchWakeIsABoundedBestEffortControlCommand() {
+        server.expect(requestTo(
+                        "http://kernel.test/tasks:dispatch-wake"
+                ))
+                .andExpect(method(HttpMethod.POST))
+                .andExpect(content().json("""
+                        {"taskIds":["task-1","task-2"]}
+                        """))
+                .andRespond(withSuccess(
+                        "{\"status\":\"accepted\","
+                                + "\"acceptedTaskCount\":2}",
+                        MediaType.APPLICATION_JSON
+                ));
+
+        new HttpTaskDispatchWakeCommands(transport)
+                .wakeTaskDispatch(java.util.List.of(
+                        "task-1",
+                        "task-2"
+                ));
+        server.verify();
+    }
+
+    @Test
     void rejectedHttpStatusesMapToStableServerErrorCodes() {
         expectRejected(HttpStatus.NOT_FOUND);
         expectRejected(HttpStatus.CONFLICT);

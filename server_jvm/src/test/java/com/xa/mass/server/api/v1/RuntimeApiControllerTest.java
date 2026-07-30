@@ -9,6 +9,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -36,6 +38,10 @@ import com.xa.mass.server.kernelbinding.TaskLifecycleCommands.TaskApprovalStatus
 import com.xa.mass.server.kernelbinding.TaskLifecycleCommands.TaskCloseResult;
 import com.xa.mass.server.kernelbinding.TaskLifecycleCommands.TaskCloseStatus;
 import com.xa.mass.server.taskdata.TaskDataService;
+import com.xa.mass.server.taskdata.TaskDispatchWakeSink;
+import com.xa.mass.server.taskdata.TaskRpcCallService;
+import com.xa.mass.server.taskdata.TaskRpcProperties;
+import com.xa.mass.server.taskdata.TaskRpcWaitRegistry;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -46,6 +52,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 
@@ -56,6 +63,7 @@ class RuntimeApiControllerTest {
     private TaskRuntime taskRuntime;
     private TaskResourceCatalog taskCatalog;
     private TaskLifecycleCommands taskLifecycle;
+    private TaskDispatchWakeSink dispatchWake;
     private MockMvc mockMvc;
 
     @BeforeEach
@@ -65,6 +73,7 @@ class RuntimeApiControllerTest {
         taskRuntime = mock(TaskRuntime.class);
         taskCatalog = mock(TaskResourceCatalog.class);
         taskLifecycle = mock(TaskLifecycleCommands.class);
+        dispatchWake = mock(TaskDispatchWakeSink.class);
 
         when(workerCatalog.upsertWorkerGroup(any()))
                 .thenReturn(new WorkerRuntimeResult(WorkerRuntimeStatus.OK));
@@ -128,16 +137,44 @@ class RuntimeApiControllerTest {
                                 taskRuntime,
                                 taskLifecycle
                         ),
-                        new TaskDataController(new TaskDataService(
-                                taskRuntime,
-                                taskCatalog,
-                                workerCatalog
-                        ))
+                        taskDataController()
                 )
                 .setControllerAdvice(new ApiExceptionHandler())
                 .setValidator(validator)
                 .addFilters(new RequestIdFilter())
                 .build();
+    }
+
+    private TaskDataController taskDataController() {
+        TaskDataService taskData = new TaskDataService(
+                taskRuntime,
+                taskCatalog,
+                workerCatalog,
+                dispatchWake
+        );
+        TaskRpcProperties properties = rpcProperties();
+        return new TaskDataController(
+                taskData,
+                new TaskRpcCallService(
+                        taskData,
+                        taskRuntime,
+                        new TaskRpcWaitRegistry(properties),
+                        properties
+                )
+        );
+    }
+
+    private static TaskRpcProperties rpcProperties() {
+        return new TaskRpcProperties(
+                30_000,
+                60_000,
+                10_000,
+                50,
+                100,
+                250,
+                10_000,
+                100
+        );
     }
 
     @Test
@@ -229,6 +266,44 @@ class RuntimeApiControllerTest {
                 .andExpect(jsonPath("$.results.message-1")
                         .value("{\"valid\":true}"))
                 .andExpect(jsonPath("$.results.message-2").isEmpty());
+        verify(dispatchWake).offer("task-1");
+    }
+
+    @Test
+    void rpcCallReturnsAnExistingSuccessWithoutReadingItemState()
+            throws Exception {
+        MvcResult async = mockMvc.perform(
+                        post("/api/v1/tasks/task-1/items:call")
+                                .contentType(MediaType.APPLICATION_JSON)
+                                .content("""
+                                        {
+                                          "item": {
+                                            "messageId": "message-1",
+                                            "eventCode": "telecom.phone.inspect",
+                                            "createdAtMillis": 1000,
+                                            "payload": {"phoneNumber": "+14155552671"}
+                                          },
+                                          "waitTimeoutMillis": 1000
+                                        }
+                                        """)
+                )
+                .andExpect(request().asyncStarted())
+                .andReturn();
+
+        mockMvc.perform(asyncDispatch(async))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("succeeded"))
+                .andExpect(jsonPath("$.taskId").value("task-1"))
+                .andExpect(jsonPath("$.messageId").value("message-1"))
+                .andExpect(jsonPath("$.opaqueResultPayload")
+                        .value("{\"valid\":true}"));
+
+        verify(taskRuntime).loadTaskItemSuccessResults(
+                "task-1",
+                List.of("message-1")
+        );
+        verify(taskRuntime, org.mockito.Mockito.never())
+                .loadTaskItems(any(), anyList());
     }
 
     @Test
