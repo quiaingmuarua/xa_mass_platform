@@ -1,5 +1,6 @@
 package com.xa.mass.worker.transport.polling.client;
 
+import com.xa.mass.transport.client.WorkerPointClient;
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
 import java.io.IOException;

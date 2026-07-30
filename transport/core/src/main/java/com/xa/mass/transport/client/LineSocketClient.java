@@ -1,5 +1,11 @@
-package com.xa.mass.worker.transport.socket.client;
+package com.xa.mass.transport.client;
 
+/**
+ * String-only line connection used by one Worker transport.
+ *
+ * <p>Implementations own connection and reconnect mechanics. They must not
+ * retain Worker business messages for later delivery.
+ */
 public interface LineSocketClient extends AutoCloseable {
 
     void start(Listener listener);

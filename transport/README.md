@@ -1,6 +1,6 @@
 # XA Mass Worker Delivery Transport Implementations
 
-Status: repository-local Netty Adapter and OkHttp Worker implementations.
+Status: repository-local transport contracts and implementations.
 
 ```text
 ../worker_delivery_contract_jvm
@@ -11,35 +11,48 @@ Status: repository-local Netty Adapter and OkHttp Worker implementations.
   -> Netty WebSocket and line-oriented Socket listeners
   -> bounded mailbox dispatch and result buffering
 
+:transport:core
+  -> Java 11 Worker execution mechanism
+  -> string-only network Client contracts
+  -> no concrete network or platform implementation
+
 :transport:okhttp-worker
-  -> serial Worker command execution
-  -> WorkerEventHandler contract
-  -> Polling, WebSocket, and line-oriented Socket transports
+  -> Worker Polling, WebSocket, and line-oriented Socket state machines
+  -> OkHttp point/WebSocket and JDK line-socket clients
+
+:transport:android-client
+  -> Android HandlerThread/Looper WebSocket client
+  -> AndroidWebSocketWorker production composition entry
 ```
 
-`transport/` is a repository grouping for concrete network implementations.
-It does not change Kernel ownership. The Adapter delivers already-assigned
-commands; the Worker executes statically supplied business handlers.
+`transport/` groups local transport mechanisms and implementations. It does
+not change Kernel ownership. The Adapter delivers already-assigned commands;
+the Worker executes statically supplied business handlers.
 
 The root
 [Worker Delivery Contract](../worker_delivery_contract_jvm/README.md) remains
 the protocol source shared by Kernel, Server, Adapter, and Worker. Do not move
 connection management, handler execution, lifecycle, or network-library code
-into that contract.
+into that wire contract.
 
-There is no `transport/common` module. Add one only after concrete shared
-implementation behavior exists; do not expand the protocol contract for
-speculative reuse.
+`transport:core` is not a generic transport framework. It contains the
+already-shared Worker execution mechanism and narrow string-only network
+Client contracts. Netty Adapter behavior remains independent until a concrete
+shared mechanism exists.
 
 See:
 
 - [Netty Adapter](netty-adapter/README.md)
+- [Transport Core](core/README.md)
 - [OkHttp Worker](okhttp-worker/README.md)
+- [Android Client](android-client/README.md)
 
 ## Verification
 
 ```text
 ./gradlew :worker_delivery_contract_jvm:test
+./gradlew :transport:core:test
 ./gradlew :transport:netty-adapter:test
 ./gradlew :transport:okhttp-worker:test
+./gradlew :transport:android-client:testDebugUnitTest
 ```

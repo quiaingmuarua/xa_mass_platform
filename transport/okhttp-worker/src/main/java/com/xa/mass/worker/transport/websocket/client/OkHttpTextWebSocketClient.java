@@ -1,5 +1,6 @@
 package com.xa.mass.worker.transport.websocket.client;
 
+import com.xa.mass.transport.client.TextWebSocketClient;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Objects;

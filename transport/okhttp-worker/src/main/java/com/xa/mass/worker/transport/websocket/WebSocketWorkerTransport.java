@@ -4,7 +4,7 @@ import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.transport.websocket.client.OkHttpTextWebSocketClient;
-import com.xa.mass.worker.transport.websocket.client.TextWebSocketClient;
+import com.xa.mass.transport.client.TextWebSocketClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;

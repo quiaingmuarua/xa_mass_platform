@@ -6,7 +6,7 @@ import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.transport.socket.client.JdkLineSocketClient;
-import com.xa.mass.worker.transport.socket.client.LineSocketClient;
+import com.xa.mass.transport.client.LineSocketClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;

@@ -15,13 +15,13 @@ import com.xa.mass.worker.execution.WorkerEventParameterResolver;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
 import com.xa.mass.worker.transport.polling.client.OkHttpWorkerPointClient;
-import com.xa.mass.worker.transport.polling.client.WorkerPointClient;
 import com.xa.mass.worker.transport.socket.SocketWorkerTransport;
 import com.xa.mass.worker.transport.socket.client.JdkLineSocketClient;
-import com.xa.mass.worker.transport.socket.client.LineSocketClient;
 import com.xa.mass.worker.transport.websocket.WebSocketWorkerTransport;
 import com.xa.mass.worker.transport.websocket.client.OkHttpTextWebSocketClient;
-import com.xa.mass.worker.transport.websocket.client.TextWebSocketClient;
+import com.xa.mass.transport.client.LineSocketClient;
+import com.xa.mass.transport.client.TextWebSocketClient;
+import com.xa.mass.transport.client.WorkerPointClient;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
@@ -44,10 +44,7 @@ class WorkerArchitectureBoundaryTest {
                 "archivesName.set('xa-mass-okhttp-worker')"
         ));
         assertTrue(build.contains(
-                "api project(':worker_delivery_contract_jvm')"
-        ));
-        assertTrue(build.contains(
-                "api project(':foundation_jvm')"
+                "api project(':transport:core')"
         ));
         assertTrue(build.contains(
                 "implementation 'com.squareup.okhttp3:okhttp:5.3.0'"
@@ -100,11 +97,6 @@ class WorkerArchitectureBoundaryTest {
         }
         assertFalse(source.contains("java.util.logging"));
         assertFalse(source.contains("LogUtils"));
-        assertTrue(source.contains("class WorkerException"));
-        assertEquals(
-                1,
-                occurrences(source, "extends CodedRuntimeException")
-        );
     }
 
     @Test
@@ -145,27 +137,6 @@ class WorkerArchitectureBoundaryTest {
                         method.toGenericString()
                 );
             }
-        }
-    }
-
-    @Test
-    void executionDoesNotDependOnTransportOrNetwork()
-            throws IOException {
-        Path project = Path.of("").toAbsolutePath();
-        String source = readTree(
-                project.resolve(
-                        "src/main/java/com/xa/mass/worker/execution"
-                )
-        );
-
-        assertTrue(source.contains("WorkerCommandExecutor"));
-        for (String forbidden : new String[]{
-                "com.xa.mass.worker.transport",
-                "okhttp3",
-                "WebSocketListener",
-                "java.net.Socket"
-        }) {
-            assertFalse(source.contains(forbidden), forbidden);
         }
     }
 
@@ -223,15 +194,9 @@ class WorkerArchitectureBoundaryTest {
         String clients = readFiles(
                 project,
                 "src/main/java/com/xa/mass/worker/transport/"
-                        + "polling/client/WorkerPointClient.java",
-                "src/main/java/com/xa/mass/worker/transport/"
                         + "polling/client/OkHttpWorkerPointClient.java",
                 "src/main/java/com/xa/mass/worker/transport/"
-                        + "websocket/client/TextWebSocketClient.java",
-                "src/main/java/com/xa/mass/worker/transport/"
                         + "websocket/client/OkHttpTextWebSocketClient.java",
-                "src/main/java/com/xa/mass/worker/transport/"
-                        + "socket/client/LineSocketClient.java",
                 "src/main/java/com/xa/mass/worker/transport/"
                         + "socket/client/JdkLineSocketClient.java"
         );

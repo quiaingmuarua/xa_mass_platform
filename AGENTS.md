@@ -25,10 +25,17 @@ Status: current repository handoff.
   connections, bounded Command/Result queues, and independent Netty
   WebSocket/Socket listeners. Worker result payloads remain opaque until
   Server ingress. It has no Spring, Server, Kernel, or Redis dependency.
-- `transport/okhttp-worker/` is the Java 11 compatible Worker library. It owns
-  serial command execution, the handler contract, OkHttp Polling/WebSocket,
-  and line-oriented Socket transport. It is not a CLI, application, Android
-  wrapper, or business handler collection.
+- `transport/core/` is the Java 11 local core containing Worker execution,
+  event definitions, error classification, and string-only network Client
+  contracts. It contains no concrete network or platform implementation.
+- `transport/okhttp-worker/` owns Worker Polling/WebSocket/Socket state
+  machines plus the default OkHttp and JDK clients. It is not a CLI,
+  application, Android wrapper, or business handler collection.
+- `transport/android-client/` is an internal Android Library containing the
+  HandlerThread/Looper OkHttp WebSocket client and the narrow
+  `AndroidWebSocketWorker` production composition entry. Bind, command
+  execution, and pending results remain owned by the reused
+  `WebSocketWorkerTransport`; business handlers remain caller supplied.
 - The legacy Java platform is available exclusively from
   `legacy-java-platform-final-2026-07-24`.
 - There is no compatibility obligation to legacy Java APIs, modules, Redis
@@ -90,13 +97,21 @@ tag.
   Only Adapter-owned `3xxx` construction is allowed. Its private HTTP DTOs are
   proved against Server JSON with bilateral golden tests; do not add an
   in-process fast path.
-- `transport/okhttp-worker` may depend only on `foundation_jvm`, the shared
-  Worker Delivery contract, and Android-compatible transport libraries. It
-  must compile with `--release 11`,
-  expose no OkHttp types, and must not import Android, JNDI, Server, Kernel,
-  Redis, platform business handlers, score, Pacer, or TaskType. JVM and Android
-  applications own threads, lifecycle, permissions, and static handler
-  assembly.
+- `transport/core` may depend only on `foundation_jvm` and the shared Worker
+  Delivery contract. It must compile with `--release 11` and must not import
+  OkHttp, Android, Netty, Spring, Redis, Server, or Kernel implementations.
+- `transport/okhttp-worker` may depend on `transport/core`, the shared Worker
+  Delivery contract, OkHttp, and JDK networking. It must compile with
+  `--release 11`, expose no OkHttp types, and must not import Android, JNDI,
+  Server, Kernel, Redis, platform business handlers, score, Pacer, or
+  TaskType.
+- `transport/android-client` may depend on `transport/core`,
+  `transport/okhttp-worker`, and OkHttp. Its network client serializes
+  connection state and callbacks on a dedicated HandlerThread, filters stale
+  connection callbacks, and must not cache or interpret Worker business
+  messages. `AndroidWebSocketWorker` may only compose that client with the
+  existing Worker transport and dispatcher. Android hosts own process
+  lifecycle, permissions beyond INTERNET, and static handler assembly.
 - `server_jvm` may bind a `Map<adapterId, JsonNode>`, construct concrete
   Adapter instances, register them, and invoke `manager.start()` /
   `manager.close()` at process boundaries. It must not host WebSocket
@@ -152,10 +167,11 @@ The main Server owns the Worker Delivery HTTP and Redis boundaries. It only
 composes and starts configured Adapter instances. Every Adapter still reaches
 Worker Delivery through the same batch HTTP boundary.
 
-`worker_delivery_contract_jvm` and `transport/okhttp-worker` compile to Java 11
-bytecode. They are repository-local libraries, not published SDKs. Neither may
-pull Server, Kernel, Redis, scheduling, or assembly implementations into the
-Worker boundary.
+`worker_delivery_contract_jvm`, `transport/core`, and
+`transport/okhttp-worker` compile to Java 11 bytecode. The Android Client
+consumes those repository-local libraries through Gradle project
+dependencies; none is a published SDK. They may not pull Server, Kernel,
+Redis, scheduling, or assembly implementations into the Worker boundary.
 
 ## Verification
 

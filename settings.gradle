@@ -1,5 +1,6 @@
 pluginManagement {
     repositories {
+        google()
         gradlePluginPortal()
         mavenCentral()
     }
@@ -8,6 +9,7 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
+        google()
         mavenCentral()
     }
 }
@@ -18,5 +20,7 @@ include ':foundation_jvm'
 include ':kernel_jvm'
 include ':server_jvm'
 include ':worker_delivery_contract_jvm'
+include ':transport:core'
 include ':transport:netty-adapter'
 include ':transport:okhttp-worker'
+include ':transport:android-client'

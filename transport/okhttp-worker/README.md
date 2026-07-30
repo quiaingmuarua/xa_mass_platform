@@ -3,10 +3,10 @@
 Status: Java 11 Worker library with OkHttp Polling/WebSocket and line-oriented
 Socket transports.
 
-`:transport:okhttp-worker` is organized into three explicit layers:
+The Worker path is organized into three explicit layers:
 
 ```text
-Common execution
+Transport Core
   WorkerCommandExecutor / WorkerCommandDispatcher / Event Definitions
 
 Worker transport profile
@@ -18,9 +18,11 @@ Network client
   JdkLineSocketClient
 ```
 
-The module is a library, not a process. It has no CLI, default business
-handlers, Android lifecycle, Server, Kernel, Redis, score, Pacer, or TaskType
-dependency.
+The execution layer and network Client interfaces live in
+[`transport:core`](../core/README.md). This module contains Worker transport
+state machines and their default JVM network clients. It is a library, not a
+process, and has no CLI, default business handlers, Android lifecycle, Server,
+Kernel, Redis, score, Pacer, or TaskType dependency.
 
 ## Command Execution
 
@@ -178,17 +180,27 @@ network handoff boundary; no application ACK is added.
 Pending results are in-memory best-effort state. A process crash can lose them;
 Kernel claim/lease expiry and result fences provide convergence.
 
-## Android Consumption
+## Android WebSocket Composition
 
-A future Android application may consume the module directly:
+An Android host uses the Android production composition, which combines this
+module's Worker state machine with the Android-specific network client:
 
 ```gradle
 implementation project(':transport:okhttp-worker')
+implementation project(':transport:android-client')
 ```
 
-The library targets Java 11 bytecode and exposes no OkHttp type in its public
-API. A real Android host owns permissions, components, process lifetime, and
-toolchain compatibility proof.
+```text
+AndroidOkHttpTextWebSocketClient
+-> WebSocketWorkerTransport
+-> WorkerCommandDispatcher
+-> static WorkerEventDefinitions
+```
+
+`AndroidWebSocketWorker` constructs that chain and exposes `start/close`.
+The Android network client still owns only HandlerThread/Looper connection
+mechanics. The Worker transport owns Bind, command execution, and pending
+result state. The host owns process lifetime and business-handler assembly.
 
 Runtime failures use one `WorkerException` with numeric module-local error
 codes. Logs use `System.Logger` and must not include payload or forward

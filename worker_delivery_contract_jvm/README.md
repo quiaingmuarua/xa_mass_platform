@@ -5,7 +5,8 @@ Status: repository-local Java 11 protocol boundary.
 This module contains the transport-neutral Worker Delivery DTOs, strict
 deterministic codec, outcome classification, and `Jsons` facade shared by
 `kernel_jvm`, `server_jvm`, `transport/netty-adapter`, and
-`transport/okhttp-worker`.
+`transport/core`. Concrete Worker and Android network modules consume it
+through that Core boundary.
 
 ## Protocol
 

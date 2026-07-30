@@ -1,4 +1,4 @@
-package com.xa.mass.worker.transport.polling.client;
+package com.xa.mass.transport.client;
 
 import java.io.IOException;
 import java.util.Optional;

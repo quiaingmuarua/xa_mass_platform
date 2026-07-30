@@ -1,5 +1,6 @@
 package com.xa.mass.worker.transport.socket.client;
 
+import com.xa.mass.transport.client.LineSocketClient;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
