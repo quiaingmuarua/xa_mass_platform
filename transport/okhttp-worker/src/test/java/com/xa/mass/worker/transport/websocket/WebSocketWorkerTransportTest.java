@@ -1,39 +1,35 @@
 package com.xa.mass.worker.transport.websocket;
 
+import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.TASK;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.TASK;
-import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.WORKER;
 
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
+import com.xa.mass.worker.transport.websocket.client.TextWebSocketClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
-import java.net.URI;
-import java.time.Duration;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import okhttp3.Request;
-import okhttp3.WebSocket;
-import okhttp3.WebSocketListener;
-import okio.ByteString;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 class WebSocketWorkerTransportTest {
 
+    private static final String COMMAND = "{\"command\":\"opaque\"}";
     private static final String COMMAND_ID =
             "a5e9e10d-f78b-469e-93ab-864b49c189c1";
+
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
-    private final FakeConnector connector = new FakeConnector();
+    private final FakeTextWebSocketClient client =
+            new FakeTextWebSocketClient();
     private final AtomicReference<String> executedCommand =
             new AtomicReference<>();
     private WebSocketWorkerTransport transport;
@@ -53,14 +49,8 @@ class WebSocketWorkerTransportTest {
             return Optional.of(result());
         };
         transport = new WebSocketWorkerTransport(
-                new WebSocketWorkerTransport.ConnectorResources(
-                        connector,
-                        () -> {
-                        }
-                ),
-                URI.create("http://127.0.0.1:18082"),
+                client,
                 "worker-1",
-                Duration.ofHours(1),
                 executor
         );
         transport.start();
@@ -72,113 +62,72 @@ class WebSocketWorkerTransportTest {
     }
 
     @Test
-    void bindCommandAndResultUseOneSerialConnection() throws Exception {
-        FakeWebSocket socket = connector.socket;
-        connector.open(socket);
+    void bindCommandAndResultRemainTransportProtocolWork()
+            throws Exception {
+        client.open();
 
         assertTrue(transport.isConnected());
         assertEquals(
                 new WorkerConnectionBind("worker-1"),
-                decodeBind(socket.sentTexts.get(0))
+                codec.decodeWorkerConnectionBind(client.sent.get(0))
         );
 
-        connector.text(socket, command());
-        await(() -> socket.sentTexts.size() == 2);
+        client.text(COMMAND);
+        await(() -> client.sent.size() == 2);
 
-        WorkerResult result = decodeResult(socket.sentTexts.get(1));
-        assertEquals("200", result.outcomeCode());
+        assertEquals(COMMAND, executedCommand.get());
         assertEquals(
-                "{\"observed\":\"input\"}",
-                result.payload()
+                result(),
+                codec.decodeWorkerResult(client.sent.get(1))
         );
-        assertEquals("context", result.forward());
-        assertEquals(TASK, result.dst());
-        assertEquals(command(), executedCommand.get());
         assertFalse(transport.hasPendingResult());
     }
 
     @Test
-    void failedResultSendIsRetainedAndSentAfterReconnect()
+    void rejectedNetworkSendRetainsResultAcrossReconnect()
             throws Exception {
-        FakeWebSocket first = connector.socket;
-        connector.open(first);
-        first.rejectNextSend = true;
+        client.open();
+        client.rejectNextSend = true;
 
-        connector.text(first, command());
+        client.text(COMMAND);
         await(transport::hasPendingResult);
-        assertTrue(first.cancelled);
+        assertFalse(transport.isConnected());
 
-        FakeWebSocket second = new FakeWebSocket();
-        connector.open(second);
+        client.open();
 
-        assertEquals(2, second.sentTexts.size());
+        assertEquals(3, client.sent.size());
         assertEquals(
                 new WorkerConnectionBind("worker-1"),
-                decodeBind(second.sentTexts.get(0))
+                codec.decodeWorkerConnectionBind(client.sent.get(1))
         );
         assertEquals(
-                "200",
-                decodeResult(second.sentTexts.get(1)).outcomeCode()
+                result(),
+                codec.decodeWorkerResult(client.sent.get(2))
         );
         assertFalse(transport.hasPendingResult());
     }
 
     @Test
-    void malformedAndBinaryMessagesCloseTheCurrentConnection()
+    void protocolAndBinaryFailuresCloseThroughClientBoundary()
             throws Exception {
-        FakeWebSocket malformed = connector.socket;
-        connector.open(malformed);
-        connector.text(malformed, "{bad-json");
-        await(() -> malformed.closeCode == 1007);
-        assertEquals(1007, malformed.closeCode);
+        client.open();
+        client.text("{bad-json");
+        await(() -> client.lastCloseCode == 1007);
 
-        FakeWebSocket binary = new FakeWebSocket();
-        connector.open(binary);
-        connector.binary(binary, ByteString.of((byte) 1));
-        assertEquals(1003, binary.closeCode);
+        client.open();
+        client.binary();
+        assertEquals(1003, client.lastCloseCode);
     }
 
     @Test
-    void websocketPathDoesNotCarryWorkerIdentity() {
-        assertEquals(
-                URI.create(
-                        "ws://127.0.0.1:18082/api/v1/"
-                                + "worker-delivery/websocket"
-                ),
-                transport.socketUri()
-        );
-    }
-
-    @Test
-    void closeIsIdempotentAndStopsTheConnection() {
-        connector.open(connector.socket);
+    void closeOwnsNetworkClientAndIsIdempotent() {
+        client.open();
 
         transport.close();
         transport.close();
 
+        assertTrue(client.closed);
         assertFalse(transport.isConnected());
-        assertTrue(connector.socket.cancelled);
-    }
-
-    private String command() {
-        WorkerCommand command = new WorkerCommand(
-                COMMAND_ID,
-                TASK,
-                WORKER,
-                "test.observe",
-                4_102_444_800_000L,
-                "{\"value\":\"input\"}",
-                "context"
-        );
-        return codec.encodeWorkerCommand(command);
-    }
-
-    private WorkerConnectionBind decodeBind(String encoded) {
-        return codec.decodeWorkerConnectionBind(encoded);
-    }
-
-    private WorkerResult decodeResult(String encoded) {
-        return codec.decodeWorkerResult(encoded);
     }
 
     private static WorkerResult result() {
@@ -207,77 +156,67 @@ class WebSocketWorkerTransportTest {
         boolean value();
     }
 
-    private static final class FakeConnector
-            implements WebSocketWorkerTransport.WebSocketConnector {
+    private static final class FakeTextWebSocketClient
+            implements TextWebSocketClient {
 
-        private final FakeWebSocket socket = new FakeWebSocket();
-        private WebSocketListener listener;
-
-        @Override
-        public WebSocket connect(
-                URI uri,
-                WebSocketListener listener
-        ) {
-            this.listener = listener;
-            return socket;
-        }
-
-        private void open(WebSocket webSocket) {
-            listener.onOpen(webSocket, null);
-        }
-
-        private void text(WebSocket webSocket, String value) {
-            listener.onMessage(webSocket, value);
-        }
-
-        private void binary(WebSocket webSocket, ByteString value) {
-            listener.onMessage(webSocket, value);
-        }
-    }
-
-    private static final class FakeWebSocket implements WebSocket {
-
-        private final List<String> sentTexts = new ArrayList<>();
+        private final List<String> sent = new ArrayList<>();
+        private Listener listener;
+        private boolean connected;
         private boolean rejectNextSend;
-        private boolean cancelled;
-        private int closeCode = -1;
+        private boolean closed;
+        private int lastCloseCode = -1;
 
         @Override
-        public Request request() {
-            return new Request.Builder()
-                    .url("http://127.0.0.1/")
-                    .build();
+        public void start(Listener listener) {
+            this.listener = listener;
         }
 
         @Override
-        public long queueSize() {
-            return 0;
-        }
-
-        @Override
-        public boolean send(String text) {
-            if (rejectNextSend) {
-                rejectNextSend = false;
+        public boolean send(String message) {
+            if (!connected) {
                 return false;
             }
-            sentTexts.add(text);
+            if (rejectNextSend) {
+                rejectNextSend = false;
+                connected = false;
+                listener.onDisconnected();
+                return false;
+            }
+            sent.add(message);
             return true;
         }
 
         @Override
-        public boolean send(ByteString bytes) {
-            return false;
+        public void closeCurrent(int code, String reason) {
+            lastCloseCode = code;
+            if (connected) {
+                connected = false;
+                listener.onDisconnected();
+            }
         }
 
         @Override
-        public boolean close(int code, String reason) {
-            closeCode = code;
-            return true;
+        public boolean isConnected() {
+            return connected;
         }
 
         @Override
-        public void cancel() {
-            cancelled = true;
+        public void close() {
+            closed = true;
+            connected = false;
+        }
+
+        private void open() {
+            connected = true;
+            listener.onOpen();
+        }
+
+        private void text(String message) {
+            listener.onText(message);
+        }
+
+        private void binary() {
+            listener.onBinary();
         }
     }
 }

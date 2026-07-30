@@ -1,35 +1,32 @@
 package com.xa.mass.worker.transport.socket;
 
-import com.xa.mass.worker.execution.WorkerCommandExecutor;
+import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
+import com.xa.mass.worker.execution.WorkerCommandExecutor;
+import com.xa.mass.worker.transport.socket.client.JdkLineSocketClient;
+import com.xa.mass.worker.transport.socket.client.LineSocketClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
-import java.net.InetSocketAddress;
-import java.net.Socket;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
 
-public final class SocketWorkerTransport implements AutoCloseable {
+public final class SocketWorkerTransport
+        implements AutoCloseable, LineSocketClient.Listener {
 
-    private final SocketConnector connector;
-    private final URI socketUri;
+    private final LineSocketClient client;
     private final String workerId;
-    private final Duration connectTimeout;
-    private final Duration reconnectInterval;
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
     private final WorkerCommandExecutor commandExecutor;
-    private volatile boolean running;
-    private volatile Socket socket;
-    private volatile WorkerResult pendingResult;
+    private final CountDownLatch stopped = new CountDownLatch(1);
+
+    private boolean running;
+    private boolean closed;
+    private boolean bound;
+    private boolean processing;
+    private WorkerResult pendingResult;
 
     public SocketWorkerTransport(
             URI socketUri,
@@ -39,213 +36,173 @@ public final class SocketWorkerTransport implements AutoCloseable {
             WorkerCommandExecutor commandExecutor
     ) {
         this(
-                SocketWorkerTransport::connectSocket,
-                socketUri,
+                new JdkLineSocketClient(
+                        socketUri,
+                        connectTimeout,
+                        reconnectInterval
+                ),
                 workerId,
-                connectTimeout,
-                reconnectInterval,
                 commandExecutor
         );
     }
 
-    SocketWorkerTransport(
-            SocketConnector connector,
-            URI socketUri,
+    public SocketWorkerTransport(
+            LineSocketClient client,
             String workerId,
-            Duration connectTimeout,
-            Duration reconnectInterval,
             WorkerCommandExecutor commandExecutor
     ) {
-        this.connector = Objects.requireNonNull(connector, "connector");
-        this.socketUri = requireSocketUri(socketUri);
-        if (workerId == null || workerId.isBlank()) {
+        if (client == null) {
+            throw new IllegalArgumentException(
+                    "client must be present"
+            );
+        }
+        if (workerId == null || workerId.trim().isEmpty()) {
             throw new IllegalArgumentException(
                     "workerId must be non-blank"
             );
         }
+        if (commandExecutor == null) {
+            throw new IllegalArgumentException(
+                    "commandExecutor must be present"
+            );
+        }
+        this.client = client;
         this.workerId = workerId;
-        this.connectTimeout = requirePositive(
-                connectTimeout,
-                "connectTimeout"
-        );
-        this.reconnectInterval = requirePositive(
-                reconnectInterval,
-                "reconnectInterval"
-        );
-        this.commandExecutor = Objects.requireNonNull(
-                commandExecutor,
-                "commandExecutor"
-        );
+        this.commandExecutor = commandExecutor;
+    }
+
+    public void start() {
+        synchronized (this) {
+            if (closed) {
+                throw new IllegalStateException(
+                        "SocketWorkerTransport is closed"
+                );
+            }
+            if (running) {
+                return;
+            }
+            running = true;
+        }
+        try {
+            client.start(this);
+        } catch (RuntimeException error) {
+            synchronized (this) {
+                running = false;
+            }
+            throw error;
+        }
     }
 
     public void runForever() throws InterruptedException {
-        if (running) {
+        start();
+        stopped.await();
+    }
+
+    @Override
+    public synchronized void onOpen() {
+        if (!running || closed) {
             return;
         }
-        running = true;
-        try {
-            while (running) {
-                try {
-                    runConnection();
-                } catch (IOException | WorkerException ignored) {
-                    closeCurrentSocket();
-                }
-                if (running) {
-                    Thread.sleep(reconnectInterval.toMillis());
-                }
+        bound = false;
+        if (!client.sendLine(
+                codec.encodeWorkerConnectionBind(
+                        new WorkerConnectionBind(workerId)
+                )
+        )) {
+            return;
+        }
+        bound = true;
+        sendPending();
+    }
+
+    @Override
+    public void onLine(String message) {
+        synchronized (this) {
+            if (!running
+                    || closed
+                    || !bound
+                    || processing
+                    || pendingResult != null) {
+                throw protocolFailure();
             }
-        } finally {
-            running = false;
-            closeCurrentSocket();
+            processing = true;
+        }
+
+        Optional<WorkerResult> result;
+        try {
+            result = commandExecutor.execute(message);
+        } catch (RuntimeException error) {
+            synchronized (this) {
+                processing = false;
+                bound = false;
+            }
+            throw error;
+        }
+
+        synchronized (this) {
+            processing = false;
+            if (!running || closed) {
+                return;
+            }
+            if (result.isPresent()) {
+                pendingResult = result.get();
+                sendPending();
+            }
         }
     }
 
     @Override
+    public synchronized void onDisconnected() {
+        bound = false;
+    }
+
+    @Override
+    public synchronized void onFailure(Throwable error) {
+        bound = false;
+    }
+
+    @Override
     public void close() {
-        running = false;
-        closeCurrentSocket();
+        synchronized (this) {
+            if (closed) {
+                return;
+            }
+            closed = true;
+            running = false;
+            bound = false;
+        }
+        client.close();
+        stopped.countDown();
     }
 
-    public boolean isConnected() {
-        Socket current = socket;
-        return running
-                && current != null
-                && current.isConnected()
-                && !current.isClosed();
+    public synchronized boolean isConnected() {
+        return running && bound && client.isConnected();
     }
 
-    public boolean hasPendingResult() {
+    public synchronized boolean hasPendingResult() {
         return pendingResult != null;
     }
 
-    public URI socketUri() {
-        return socketUri;
-    }
-
-    private void runConnection() throws IOException {
-        Socket connected = connector.connect(socketUri, connectTimeout);
-        socket = connected;
-        try (BufferedReader reader = new BufferedReader(
-                new InputStreamReader(
-                        connected.getInputStream(),
-                        StandardCharsets.UTF_8
-                )
-        ); BufferedWriter writer = new BufferedWriter(
-                new OutputStreamWriter(
-                        connected.getOutputStream(),
-                        StandardCharsets.UTF_8
-                )
-        )) {
-            writeLine(
-                    writer,
-                    codec.encodeWorkerConnectionBind(
-                            new WorkerConnectionBind(workerId)
-                    )
-            );
-            sendPending(writer);
-            String line;
-            while (running && (line = reader.readLine()) != null) {
-                Optional<WorkerResult> result =
-                        commandExecutor.execute(line);
-                if (!result.isPresent()) {
-                    continue;
-                }
-                pendingResult = result.get();
-                sendPending(writer);
-            }
-        } finally {
-            if (socket == connected) {
-                socket = null;
-            }
-        }
-    }
-
-    private void sendPending(BufferedWriter writer) throws IOException {
+    private void sendPending() {
         WorkerResult sending = pendingResult;
-        if (sending == null) {
+        if (sending == null || !bound) {
             return;
         }
-        writeLine(
-                writer,
-                codec.encodeWorkerResult(sending)
-        );
+        if (!client.sendLine(codec.encodeWorkerResult(sending))) {
+            bound = false;
+            return;
+        }
         if (pendingResult == sending) {
             pendingResult = null;
         }
     }
 
-    private static void writeLine(
-            BufferedWriter writer,
-            String value
-    ) throws IOException {
-        writer.write(value);
-        writer.write('\n');
-        writer.flush();
-    }
-
-    private synchronized void closeCurrentSocket() {
-        Socket current = socket;
-        socket = null;
-        if (current == null) {
-            return;
-        }
-        try {
-            current.close();
-        } catch (IOException ignored) {
-            // Socket teardown is best effort.
-        }
-    }
-
-    private static Socket connectSocket(
-            URI socketUri,
-            Duration timeout
-    ) throws IOException {
-        Socket socket = new Socket();
-        socket.connect(
-                new InetSocketAddress(
-                        socketUri.getHost(),
-                        socketUri.getPort()
-                ),
-                Math.toIntExact(timeout.toMillis())
+    private static WorkerException protocolFailure() {
+        return new WorkerException(
+                WorkerErrorCode.COMMAND_MESSAGE_INVALID,
+                "socket.receiveCommand",
+                "Invalid Worker Delivery command sequence",
+                null
         );
-        socket.setTcpNoDelay(true);
-        socket.setKeepAlive(true);
-        return socket;
-    }
-
-    private static URI requireSocketUri(URI value) {
-        if (value == null
-                || !"tcp".equalsIgnoreCase(value.getScheme())
-                || value.getHost() == null
-                || value.getPort() < 1
-                || value.getPort() > 65_535
-                || (value.getPath() != null
-                && !value.getPath().isEmpty())) {
-            throw new IllegalArgumentException(
-                    "socketUri must be an absolute tcp://host:port URI"
-            );
-        }
-        return value;
-    }
-
-    private static Duration requirePositive(
-            Duration value,
-            String name
-    ) {
-        if (value == null
-                || value.isZero()
-                || value.isNegative()
-                || value.toMillis() <= 0) {
-            throw new IllegalArgumentException(
-                    name + " must be positive"
-            );
-        }
-        return value;
-    }
-
-    @FunctionalInterface
-    interface SocketConnector {
-
-        Socket connect(URI socketUri, Duration timeout) throws IOException;
     }
 }

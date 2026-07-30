@@ -3,17 +3,19 @@
 Status: Java 11 Worker library with OkHttp Polling/WebSocket and line-oriented
 Socket transports.
 
-`:transport:okhttp-worker` provides one serial Worker execution model:
+`:transport:okhttp-worker` is organized into three explicit layers:
 
 ```text
-PollingWorkerTransport
-  -> target Worker point poll/result HTTP
+Common execution
+  WorkerCommandExecutor / WorkerCommandDispatcher / Event Definitions
 
-WebSocketWorkerTransport
-  -> bind, receive direct WorkerCommand, send direct WorkerResult
+Worker transport profile
+  PollingWorkerTransport / WebSocketWorkerTransport / SocketWorkerTransport
 
-SocketWorkerTransport
-  -> bind line, read direct WorkerCommand lines, write WorkerResult lines
+Network client
+  OkHttpWorkerPointClient
+  OkHttpTextWebSocketClient
+  JdkLineSocketClient
 ```
 
 The module is a library, not a process. It has no CLI, default business
@@ -95,11 +97,38 @@ eventCode may be registered independently for TASK, SYSTEM, and ADAPTER.
 There is no dynamic handler registration, public composite-key type, or
 reflection-based DTO mapping.
 
+## Network Boundary
+
+The network clients expose only strings and connection events:
+
+```text
+WorkerPointClient
+  pollCommand / submitResult
+
+TextWebSocketClient
+  open / text / binary / disconnect / failure
+
+LineSocketClient
+  open / line / disconnect / failure
+```
+
+They own URL construction, HTTP status handling, active calls, sockets,
+connection replacement, stale callback suppression, fixed-interval reconnect,
+and underlying network resources. They do not know WorkerCommand,
+WorkerResult, WorkerConnectionBind, event definitions, or business payloads.
+They do not retain offline business messages.
+
+Each Worker transport owns one client and closes it. Public injection
+constructors accept the client interface for host composition and focused
+testing; URI-based convenience constructors create the default implementation.
+No OkHttp or JDK Socket type appears in the public Worker API.
+
 ## Transport Semantics
 
 Polling calls only the point Worker API identified by endpointManagerId and
 workerId. It never scans an Adapter mailbox. A failed result submission is
-retained in memory and retried before polling another command.
+retained by `PollingWorkerTransport` and retried before polling another
+command. `OkHttpWorkerPointClient` only performs the individual HTTP calls.
 
 WebSocket and Socket first send:
 
@@ -114,14 +143,17 @@ Adapter -> Worker : WorkerCommand
 Worker  -> Adapter: WorkerResult
 ```
 
-WebSocket uses OkHttp callbacks but executes commands on a Worker-dedicated
-serial executor. Socket uses a blocking `readLine` loop. Both retain one
-pending result across reconnect and send it after the next bind.
+WebSocket executes commands on a Worker-dedicated serial executor.
+`OkHttpTextWebSocketClient` owns OkHttp callbacks and reconnect. Socket command
+callbacks remain serial because `JdkLineSocketClient` owns one blocking
+`readLine` connection loop. Both transport profiles retain one pending result
+across reconnect and send it after the next bind.
 
-Polling, WebSocket, and Socket own only network receipt, pending-result
-retention, result sending, and reconnect behavior. They do not decode command
-semantics, parse business payloads, select definitions, map outcomes, or
-construct WorkerResult.
+Polling, WebSocket, and Socket profiles own Bind, encoded command delegation,
+pending-result retention, WorkerResult encoding, and protocol-error handling.
+They do not decode command semantics, parse business payloads, select
+definitions, map outcomes, or construct WorkerResult. Their clients own
+network receipt, sends, reconnect, and resource teardown.
 
 An expired command is silently dropped before execution. Once execution has
 started, the deadline is not checked again. Successful transport send is the

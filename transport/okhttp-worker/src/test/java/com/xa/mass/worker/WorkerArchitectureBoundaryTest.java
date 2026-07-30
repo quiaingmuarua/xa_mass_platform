@@ -13,8 +13,14 @@ import com.xa.mass.worker.execution.WorkerEventDefinitionManager;
 import com.xa.mass.worker.execution.WorkerEventHandler;
 import com.xa.mass.worker.execution.WorkerEventParameterResolver;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
+import com.xa.mass.worker.transport.polling.client.OkHttpWorkerPointClient;
+import com.xa.mass.worker.transport.polling.client.WorkerPointClient;
 import com.xa.mass.worker.transport.socket.SocketWorkerTransport;
+import com.xa.mass.worker.transport.socket.client.JdkLineSocketClient;
+import com.xa.mass.worker.transport.socket.client.LineSocketClient;
 import com.xa.mass.worker.transport.websocket.WebSocketWorkerTransport;
+import com.xa.mass.worker.transport.websocket.client.OkHttpTextWebSocketClient;
+import com.xa.mass.worker.transport.websocket.client.TextWebSocketClient;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
@@ -112,8 +118,14 @@ class WorkerArchitectureBoundaryTest {
                 WorkerException.class,
                 WorkerErrorCode.class,
                 PollingWorkerTransport.class,
+                WorkerPointClient.class,
+                OkHttpWorkerPointClient.class,
                 WebSocketWorkerTransport.class,
-                SocketWorkerTransport.class
+                TextWebSocketClient.class,
+                OkHttpTextWebSocketClient.class,
+                SocketWorkerTransport.class,
+                LineSocketClient.class,
+                JdkLineSocketClient.class
         };
         for (Class<?> type : publicTypes) {
             for (Constructor<?> constructor : type.getConstructors()) {
@@ -135,11 +147,38 @@ class WorkerArchitectureBoundaryTest {
     }
 
     @Test
-    void transportsDependOnlyOnTheCommandExecutorSeam()
+    void executionDoesNotDependOnTransportOrNetwork()
             throws IOException {
         Path project = Path.of("").toAbsolutePath();
         String source = readTree(
-                project.resolve("src/main/java/com/xa/mass/worker/transport")
+                project.resolve(
+                        "src/main/java/com/xa/mass/worker/execution"
+                )
+        );
+
+        assertTrue(source.contains("WorkerCommandExecutor"));
+        for (String forbidden : new String[]{
+                "com.xa.mass.worker.transport",
+                "okhttp3",
+                "WebSocketListener",
+                "java.net.Socket"
+        }) {
+            assertFalse(source.contains(forbidden), forbidden);
+        }
+    }
+
+    @Test
+    void transportsOwnProtocolWithoutOwningNetworkMechanics()
+            throws IOException {
+        Path project = Path.of("").toAbsolutePath();
+        String source = readFiles(
+                project,
+                "src/main/java/com/xa/mass/worker/transport/"
+                        + "polling/PollingWorkerTransport.java",
+                "src/main/java/com/xa/mass/worker/transport/"
+                        + "websocket/WebSocketWorkerTransport.java",
+                "src/main/java/com/xa/mass/worker/transport/"
+                        + "socket/SocketWorkerTransport.java"
         );
 
         assertTrue(source.contains("WorkerCommandExecutor"));
@@ -148,9 +187,45 @@ class WorkerArchitectureBoundaryTest {
                 "WorkerEventDefinitionManager",
                 "Jsons.parseObject",
                 "decodeWorkerCommand",
-                "new WorkerResult("
+                "new WorkerResult(",
+                "import okhttp3.",
+                "WebSocketListener",
+                "java.net.Socket",
+                "BufferedReader",
+                "BufferedWriter"
         }) {
             assertFalse(source.contains(forbidden), forbidden);
+        }
+    }
+
+    @Test
+    void networkClientsOnlyMoveStringsAndConnections()
+            throws IOException {
+        Path project = Path.of("").toAbsolutePath();
+        String clients = readFiles(
+                project,
+                "src/main/java/com/xa/mass/worker/transport/"
+                        + "polling/client/WorkerPointClient.java",
+                "src/main/java/com/xa/mass/worker/transport/"
+                        + "polling/client/OkHttpWorkerPointClient.java",
+                "src/main/java/com/xa/mass/worker/transport/"
+                        + "websocket/client/TextWebSocketClient.java",
+                "src/main/java/com/xa/mass/worker/transport/"
+                        + "websocket/client/OkHttpTextWebSocketClient.java",
+                "src/main/java/com/xa/mass/worker/transport/"
+                        + "socket/client/LineSocketClient.java",
+                "src/main/java/com/xa/mass/worker/transport/"
+                        + "socket/client/JdkLineSocketClient.java"
+        );
+
+        for (String forbidden : new String[]{
+                "WorkerCommand",
+                "WorkerResult",
+                "WorkerConnectionBind",
+                "WorkerCommandExecutor",
+                "WorkerEventDefinition"
+        }) {
+            assertFalse(clients.contains(forbidden), forbidden);
         }
     }
 
@@ -159,6 +234,19 @@ class WorkerArchitectureBoundaryTest {
         try (Stream<Path> paths = Files.walk(root)) {
             paths.filter(Files::isRegularFile)
                     .forEach(path -> append(source, path));
+        }
+        return source.toString();
+    }
+
+    private static String readFiles(
+            Path project,
+            String... relativePaths
+    ) throws IOException {
+        StringBuilder source = new StringBuilder();
+        for (String relativePath : relativePaths) {
+            source.append(
+                    Files.readString(project.resolve(relativePath))
+            );
         }
         return source.toString();
     }
