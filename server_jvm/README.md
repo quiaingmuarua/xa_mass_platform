@@ -99,8 +99,8 @@ kernel_jvm delivery contracts/providers
   WorkerCommand consume and WorkerResult append owner operations
 
 transport/netty-adapter
-  complete Adapter instances, independent Netty WebSocket listeners,
-  mailbox loops, active connections, and bounded delivery
+  complete Adapter instances, independent Netty WebSocket/Socket listeners,
+  mailbox loops, active connections, and bounded non-blocking delivery
 ```
 
 The Server is the only Worker Delivery HTTP and Redis owner. Point and batch
@@ -195,9 +195,10 @@ Then start the external Runtime API Server:
 ./gradlew :server_jvm:bootRun
 ```
 
-Host the [OkHttp Worker](../transport/okhttp-worker/README.md) in a JVM
-application. An Android WebSocket host composes the same Worker transport with
-the [Android Client](../transport/android-client/README.md), then calls
+Compose a [Worker Core](../transport/worker-core/README.md) transport with the
+[JVM Worker Clients](../transport/okhttp-worker/README.md) in a JVM
+application. An Android WebSocket host composes the same Worker Core transport
+with the [Android Client](../transport/android-client/README.md), then calls
 `WebSocketWorkerTransport.start()`. A polling host calls the Server point API
 directly. A WebSocket or Socket host connects to the selected Adapter listener.
 These libraries do not provide a CLI or own application lifecycle.
@@ -230,15 +231,18 @@ The instance map key is both `adapterId` and `endpointManagerId`; the Worker
 declaration must use the matching value. Each instance starts an independent
 Netty listener after the Server is ready and calls the shared Gateway
 `base-url`. A WebSocket Worker connects to the instance's fixed WebSocket path;
-a Socket Worker connects to its TCP port. Both send `WORKER_BIND` before
-business messages. An empty `instances` map starts no active Adapter.
+a Socket Worker connects to its TCP port. Both send a direct
+`WorkerConnectionBind` JSON value before any `WorkerCommand`; there is no
+generic connection-message envelope. An empty `instances` map starts no active
+Adapter.
 
 Instances must use distinct IDs and listener ports. Do not duplicate an
 endpoint-manager ID for throughput. Each instance runs independent Command and
 Result loops. The Command Loop refills a bounded local queue and initiates
-non-blocking Channel writes; the Result Loop aggregates Worker results and
-Adapter rejections separately and submits at most one batch per source per
-`result-submit-interval`.
+non-blocking Channel writes. The Result Loop drains one shared bounded queue
+containing validated Worker-originated results and Adapter-owned rejections,
+and submits at most one pending or buffered batch per
+`result-submit-interval`. There is no producer-source split.
 
 Defaults:
 

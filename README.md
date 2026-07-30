@@ -18,10 +18,11 @@ The repository contains five active areas:
   Java 11 compatible Worker Delivery DTO, validation, outcome classification,
   strict codec, and JDK-value JSON facade shared with Android.
 - [`transport/`](transport/): concrete Worker Delivery implementations. It
-  contains Worker Core, the Netty Adapter runtime, the Java 11 compatible
-  OkHttp Worker, and the Android HandlerThread WebSocket client and Worker
-  composition without changing their distinct delivery and execution
-  boundaries.
+  contains the Java 11 Worker Core execution/state-machine mechanism, the
+  Netty Adapter runtime, concrete JVM network clients, and the Android
+  HandlerThread WebSocket client. JVM and Android hosts explicitly compose
+  Worker Core with a concrete client without changing the distinct delivery,
+  execution, and network boundaries.
 
 The shared contract and Transport modules are repository-local artifacts;
 they are not published SDKs.

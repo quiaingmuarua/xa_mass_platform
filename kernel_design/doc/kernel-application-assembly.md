@@ -268,7 +268,7 @@ Java control API -> Python KernelApplication
   -> Java TaskData append
   -> Redis scheduling truth
   -> Java Server Worker Delivery HTTP command access
-  -> Java polling Worker or Netty WebSocket Adapter instance + Worker
+  -> Java polling Worker or Netty WebSocket/Socket Adapter instance + Worker
   -> Java phone tool execution
   -> Java Server Worker Delivery HTTP WorkerResult ingress
   -> Result-Routing
@@ -280,9 +280,9 @@ The proof starts resource and Task-control commands at the Java API, crosses
 the Python Kernel Control API, appends TaskItems through Java TaskData, then
 uses the Java Server's Worker Delivery owner providers. `TASK_DRIVEN` polling
 calls the point HTTP API directly. `ITEM_DRIVEN` uses configured WebSocket
-Adapter instances, each of which still calls the same batch HTTP contract
-through loopback. Java never parses Task or Worker score state. Separate
-Redis proofs cover TaskData Item-score
+or Socket Adapter instances, each of which still calls the same batch HTTP
+contract through loopback. Java never parses Task or Worker score state.
+Separate Redis proofs cover TaskData Item-score
 initialization, TASK_DRIVEN default empty close with RUNNING soft-limit
 release, ITEM_DRIVEN future-threshold empty recheck followed by append and
 dispatch, shared explicit threshold close, and public close remaining

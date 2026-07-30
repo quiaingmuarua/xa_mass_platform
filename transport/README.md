@@ -44,7 +44,7 @@ See:
 
 - [Netty Adapter](netty-adapter/README.md)
 - [Worker Core](worker-core/README.md)
-- [OkHttp Worker](okhttp-worker/README.md)
+- [JVM Worker Clients](okhttp-worker/README.md)
 - [Android Client](android-client/README.md)
 
 ## Verification

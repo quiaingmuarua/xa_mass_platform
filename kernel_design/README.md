@@ -579,9 +579,16 @@ no hidden compatibility path or second mainline remains
   - complete Adapter instance registration, independent Netty WebSocket
     and Socket listeners, start/close lifecycle, bounded mailbox dispatch,
     active connections, and Server batch HTTP client.
-- [OkHttp Worker](../transport/okhttp-worker/README.md)
-  - Java 11 compatible serial execution and Polling/WebSocket/Socket
-    transports for JVM or Android hosts.
+- [Worker Core](../transport/worker-core/README.md)
+  - Java 11 compatible Worker execution, event dispatch, and
+    Polling/WebSocket/Socket protocol state machines shared by JVM and Android
+    hosts.
+- [JVM Worker Clients](../transport/okhttp-worker/README.md)
+  - concrete OkHttp point/WebSocket and JDK line-socket clients for Worker
+    Core.
+- [Android Worker Client](../transport/android-client/README.md)
+  - Android HandlerThread/Looper OkHttp WebSocket client for explicit host
+    composition with Worker Core.
 - [JVM Worker Delivery Contract](../worker_delivery_contract_jvm/README.md)
   - transport-neutral Java command/result/bind DTOs, strict validation,
     outcome classification, and codec.
@@ -599,9 +606,10 @@ before changing either one.
 
 The Python executable spec lives under `kernel_design/executable_spec/`.
 `kernel_design/runtime_server/` is its Kernel Control FastAPI host.
-`transport/okhttp-worker/` contains the external Worker implementation
-library; it is not a Kernel owner. The Kotlin production scaffold lives under
-`kernel_jvm/` and may
+`transport/worker-core/` contains the external Worker execution and protocol
+state machines. `transport/okhttp-worker/` and `transport/android-client/`
+supply concrete network clients; none is a Kernel owner. The Kotlin production
+scaffold lives under `kernel_jvm/` and may
 implement behavior only through scoped parity slices against this workspace.
 Historical tag material must not constrain current interfaces, Redis shapes,
 or package boundaries.

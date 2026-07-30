@@ -205,8 +205,9 @@ create/approve/close, and `KernelApplication` lifecycle. Java `server_jvm`
 hosts TaskItem append, last-success reads, and Worker Delivery. The Python
 TaskRuntime and Worker Delivery runtime/clients remain executable-spec oracles
 and test support. External Worker implementations live under `transport/` and
-share one Java 11 compatible execution core and protocol module. Complete Adapter instances and
-their Netty WebSocket listeners live in `transport/netty-adapter`;
+share one Java 11 compatible execution core and protocol module. Complete
+Adapter instances and their Netty WebSocket/Socket listeners live in
+`transport/netty-adapter`;
 `server_jvm` supplies only instance configuration and process lifecycle
 events. Each Adapter consumes Server batch HTTP and has no Spring, Kernel, or
 Redis dependency.
