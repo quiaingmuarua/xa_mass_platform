@@ -12,6 +12,7 @@ import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventDefinitionManager;
 import com.xa.mass.worker.execution.WorkerEventHandler;
 import com.xa.mass.worker.execution.WorkerEventParameterResolver;
+import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
 import com.xa.mass.worker.transport.polling.client.OkHttpWorkerPointClient;
 import com.xa.mass.worker.transport.polling.client.WorkerPointClient;
@@ -115,6 +116,7 @@ class WorkerArchitectureBoundaryTest {
                 WorkerEventDefinitionManager.class,
                 WorkerEventHandler.class,
                 WorkerEventParameterResolver.class,
+                WorkerEventParameterResolvers.class,
                 WorkerException.class,
                 WorkerErrorCode.class,
                 PollingWorkerTransport.class,
@@ -182,8 +184,24 @@ class WorkerArchitectureBoundaryTest {
         );
 
         assertTrue(source.contains("WorkerCommandExecutor"));
+        assertTrue(source.contains("WorkerCommandDispatcher"));
+        assertTrue(source.contains("WorkerEventDefinition"));
+        assertEquals(
+                3,
+                occurrences(
+                        source,
+                        "new WorkerCommandDispatcher(definitions)"
+                )
+        );
+        assertEquals(
+                3,
+                occurrences(
+                        source,
+                        "List<? extends WorkerEventDefinition<?>> "
+                                + "definitions"
+                )
+        );
         for (String forbidden : new String[]{
-                "WorkerEventDefinition",
                 "WorkerEventDefinitionManager",
                 "Jsons.parseObject",
                 "decodeWorkerCommand",

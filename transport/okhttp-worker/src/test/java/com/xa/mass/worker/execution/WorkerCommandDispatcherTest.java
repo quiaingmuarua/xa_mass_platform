@@ -33,7 +33,7 @@ class WorkerCommandDispatcherTest {
     @Test
     void successfulEventProducesCorrelatedWorkerResult() {
         WorkerCommandDispatcher dispatcher = dispatcher(List.of(
-                WorkerEventDefinition.map(
+                mapDefinition(
                         "TASK",
                         "test.observe",
                         parameters -> "{\"observed\":\""
@@ -82,7 +82,7 @@ class WorkerCommandDispatcherTest {
     @Test
     void malformedPayloadAndResolverInputMapTo1400() {
         WorkerCommandDispatcher malformed = dispatcher(List.of(
-                WorkerEventDefinition.map(
+                mapDefinition(
                         "TASK",
                         "test.observe",
                         parameters -> "\"unused\""
@@ -144,7 +144,7 @@ class WorkerCommandDispatcherTest {
     @Test
     void handlerFailureOrEmptyPayloadMapsTo1500() {
         WorkerCommandDispatcher throwing = dispatcher(List.of(
-                WorkerEventDefinition.map(
+                mapDefinition(
                         "TASK",
                         "test.observe",
                         parameters -> {
@@ -153,7 +153,7 @@ class WorkerCommandDispatcherTest {
                 )
         ));
         WorkerCommandDispatcher empty = dispatcher(List.of(
-                WorkerEventDefinition.map(
+                mapDefinition(
                         "TASK",
                         "test.observe",
                         parameters -> ""
@@ -195,10 +195,32 @@ class WorkerCommandDispatcherTest {
     }
 
     @Test
+    void customResolverReceivesTheOriginalPayloadString() {
+        WorkerCommandDispatcher dispatcher = dispatcher(List.of(
+                WorkerEventDefinition.of(
+                        "TASK",
+                        "test.raw",
+                        WorkerEventParameterResolvers.string(),
+                        payload -> "\"" + payload + "\""
+                )
+        ));
+
+        WorkerResult result = dispatcher.execute(encodedCommand(
+                TASK,
+                "test.raw",
+                "not-json",
+                NOW + 1
+        )).orElseThrow();
+
+        assertEquals("\"not-json\"", result.payload());
+        assertEquals("200", result.outcomeCode());
+    }
+
+    @Test
     void expiredCommandIsDroppedBeforeHandlerStarts() {
         AtomicBoolean executed = new AtomicBoolean();
         WorkerCommandDispatcher dispatcher = dispatcher(List.of(
-                WorkerEventDefinition.map(
+                mapDefinition(
                         "TASK",
                         "test.observe",
                         parameters -> {
@@ -252,10 +274,24 @@ class WorkerCommandDispatcherTest {
             String eventCode,
             String result
     ) {
-        return WorkerEventDefinition.map(
+        return mapDefinition(
                 src,
                 eventCode,
                 parameters -> result
+        );
+    }
+
+    private static WorkerEventDefinition<Map<String, Object>>
+    mapDefinition(
+            String src,
+            String eventCode,
+            WorkerEventHandler<Map<String, Object>> handler
+    ) {
+        return WorkerEventDefinition.of(
+                src,
+                eventCode,
+                WorkerEventParameterResolvers.jsonMap(),
+                handler
         );
     }
 

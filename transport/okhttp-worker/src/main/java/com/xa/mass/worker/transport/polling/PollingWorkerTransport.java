@@ -2,7 +2,9 @@ package com.xa.mass.worker.transport.polling;
 
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
+import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
+import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.transport.polling.client.OkHttpWorkerPointClient;
 import com.xa.mass.worker.transport.polling.client.WorkerPointClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
@@ -10,6 +12,7 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
+import java.util.List;
 import java.util.Optional;
 
 public final class PollingWorkerTransport implements AutoCloseable {
@@ -29,7 +32,23 @@ public final class PollingWorkerTransport implements AutoCloseable {
             String endpointManagerId,
             String workerId,
             Duration requestTimeout,
-            WorkerCommandExecutor commandExecutor
+            List<? extends WorkerEventDefinition<?>> definitions
+    ) {
+        this(
+                new WorkerCommandDispatcher(definitions),
+                serverUrl,
+                endpointManagerId,
+                workerId,
+                requestTimeout
+        );
+    }
+
+    private PollingWorkerTransport(
+            WorkerCommandExecutor commandExecutor,
+            URI serverUrl,
+            String endpointManagerId,
+            String workerId,
+            Duration requestTimeout
     ) {
         this(
                 new OkHttpWorkerPointClient(

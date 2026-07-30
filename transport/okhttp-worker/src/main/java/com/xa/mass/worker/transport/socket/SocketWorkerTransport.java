@@ -2,7 +2,9 @@ package com.xa.mass.worker.transport.socket;
 
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
+import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
+import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.transport.socket.client.JdkLineSocketClient;
 import com.xa.mass.worker.transport.socket.client.LineSocketClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
@@ -10,6 +12,7 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnecti
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 import java.net.URI;
 import java.time.Duration;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 
@@ -33,7 +36,23 @@ public final class SocketWorkerTransport
             String workerId,
             Duration connectTimeout,
             Duration reconnectInterval,
-            WorkerCommandExecutor commandExecutor
+            List<? extends WorkerEventDefinition<?>> definitions
+    ) {
+        this(
+                new WorkerCommandDispatcher(definitions),
+                socketUri,
+                workerId,
+                connectTimeout,
+                reconnectInterval
+        );
+    }
+
+    private SocketWorkerTransport(
+            WorkerCommandExecutor commandExecutor,
+            URI socketUri,
+            String workerId,
+            Duration connectTimeout,
+            Duration reconnectInterval
     ) {
         this(
                 new JdkLineSocketClient(

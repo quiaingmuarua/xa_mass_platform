@@ -33,9 +33,8 @@ encoded WorkerCommand
 -> WorkerCommandDispatcher
 -> strict WorkerCommand decode
 -> check executeBeforeMillis before starting
--> parse payload as parameter Map
 -> lookup WorkerEventDefinition by src + messageType
--> parameter resolver
+-> resolve payload String into handler parameter type
 -> typed WorkerEventHandler
 -> opaque String result payload
 -> WorkerResult
@@ -67,32 +66,48 @@ A Handler returns an already serialized, non-empty String. `"null"` represents
 no business value. The framework does not require JSON and does not decode the
 result payload again.
 
-Definitions bind their source, event identity, resolver, and handler
-statically:
+Definitions are immutable structures that only bind source, event identity,
+resolver, and handler. They do not execute or dispatch messages:
 
 ```java
 WorkerEventDefinition<ObserveParameters> observe =
         WorkerEventDefinition.of(
                 "TASK",
                 "sample.observe",
-                payload -> new ObserveParameters(
-                        (String) payload.get("value")
-                ),
+                payload -> {
+                    Map<String, Object> values =
+                            Jsons.parseObject(payload);
+                    return new ObserveParameters(
+                            (String) values.get("value")
+                    );
+                },
                 parameters -> Jsons.toJson(Map.of(
                         "observed",
                         parameters.value()
                 ))
         );
 
-WorkerCommandDispatcher dispatcher = new WorkerCommandDispatcher(
-        List.of(observe)
-);
+WebSocketWorkerTransport worker =
+        new WebSocketWorkerTransport(
+                serverUrl,
+                workerId,
+                requestTimeout,
+                reconnectInterval,
+                List.of(observe)
+        );
 ```
+
+Common String and JSON-object parameters can use
+`WorkerEventParameterResolvers.string()` and
+`WorkerEventParameterResolvers.jsonMap()`. A caller with custom execution
+policy can still construct `WorkerCommandDispatcher` and pass it through the
+network-client constructor.
 
 `WorkerEventDefinitionManager` internally indexes definitions by a private
 minted `src:eventCode` key. Registration and lookup both receive the two
-original strings; the minted key is not a wire or public contract. The same
-eventCode may be registered independently for TASK, SYSTEM, and ADAPTER.
+original strings; it does not receive payloads or execute handlers. The minted
+key is not a wire or public contract. The same eventCode may be registered
+independently for TASK, SYSTEM, and ADAPTER.
 
 There is no dynamic handler registration, public composite-key type, or
 reflection-based DTO mapping.
@@ -118,10 +133,11 @@ and underlying network resources. They do not know WorkerCommand,
 WorkerResult, WorkerConnectionBind, event definitions, or business payloads.
 They do not retain offline business messages.
 
-Each Worker transport owns one client and closes it. Public injection
-constructors accept the client interface for host composition and focused
-testing; URI-based convenience constructors create the default implementation.
-No OkHttp or JDK Socket type appears in the public Worker API.
+Each Worker transport owns one client and closes it. Public client-injection
+constructors accept a `WorkerCommandExecutor` for custom composition and
+focused testing. URI-based standard constructors accept Definitions, construct
+the dispatcher, and create the default network implementation. No OkHttp or
+JDK Socket type appears in the public Worker API.
 
 ## Transport Semantics
 

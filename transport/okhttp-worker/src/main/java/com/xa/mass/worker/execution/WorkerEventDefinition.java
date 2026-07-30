@@ -1,6 +1,5 @@
 package com.xa.mass.worker.execution;
 
-import java.util.Map;
 import java.util.Objects;
 
 public final class WorkerEventDefinition<P> {
@@ -36,29 +35,20 @@ public final class WorkerEventDefinition<P> {
         );
     }
 
-    public static WorkerEventDefinition<Map<String, Object>> map(
-            String src,
-            String eventCode,
-            WorkerEventHandler<Map<String, Object>> handler
-    ) {
-        return of(
-                src,
-                eventCode,
-                parameters -> parameters,
-                handler
-        );
-    }
-
-    String src() {
+    public String src() {
         return src;
     }
 
-    String eventCode() {
+    public String eventCode() {
         return eventCode;
     }
 
-    String invoke(Map<String, Object> parameters) throws Exception {
-        return handler.execute(resolver.resolve(parameters));
+    public WorkerEventParameterResolver<P> parameterResolver() {
+        return resolver;
+    }
+
+    public WorkerEventHandler<P> handler() {
+        return handler;
     }
 
     private static String requireNonBlank(String value, String name) {

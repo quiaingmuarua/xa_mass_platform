@@ -2,12 +2,10 @@ package com.xa.mass.worker.execution;
 
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
-import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 import java.util.Collection;
-import java.util.Map;
 import java.util.Optional;
 import java.util.function.LongSupplier;
 
@@ -58,17 +56,15 @@ public final class WorkerCommandDispatcher
     }
 
     private WorkerResult executeEvent(WorkerCommand command) {
-        Map<String, Object> parameters;
         try {
-            parameters = Jsons.parseObject(command.payload());
-        } catch (IllegalArgumentException error) {
-            return result(command, "1400", "null");
-        }
-        try {
-            String payload = eventDefinitionManager.dispatch(
-                    command.src().wireValue(),
-                    command.messageType(),
-                    parameters
+            WorkerEventDefinition<?> definition =
+                    eventDefinitionManager.require(
+                            command.src().wireValue(),
+                            command.messageType()
+                    );
+            String payload = invokeDefinition(
+                    definition,
+                    command.payload()
             );
             if (payload == null || payload.isEmpty()) {
                 return result(command, "1500", "null");
@@ -86,6 +82,28 @@ public final class WorkerCommandDispatcher
         } catch (Exception error) {
             return result(command, "1500", "null");
         }
+    }
+
+    private static <P> String invokeDefinition(
+            WorkerEventDefinition<P> definition,
+            String payload
+    ) throws Exception {
+        P parameters;
+        try {
+            parameters = definition
+                    .parameterResolver()
+                    .resolve(payload);
+        } catch (WorkerException error) {
+            throw error;
+        } catch (IllegalArgumentException error) {
+            throw new WorkerException(
+                    WorkerErrorCode.EVENT_INPUT_INVALID,
+                    "event.resolve",
+                    null,
+                    error
+            );
+        }
+        return definition.handler().execute(parameters);
     }
 
     private static WorkerResult result(

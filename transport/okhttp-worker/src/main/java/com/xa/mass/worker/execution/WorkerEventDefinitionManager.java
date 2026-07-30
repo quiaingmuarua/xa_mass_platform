@@ -35,17 +35,16 @@ public final class WorkerEventDefinitionManager {
         this.definitions = Collections.unmodifiableMap(copy);
     }
 
-    public String dispatch(
+    public WorkerEventDefinition<?> require(
             String src,
-            String eventCode,
-            Map<String, Object> parameters
-    ) throws Exception {
+            String eventCode
+    ) {
         WorkerEventDefinition<?> definition =
                 definitions.get(mint(src, eventCode));
         if (definition == null) {
             throw new WorkerException(
                     WorkerErrorCode.EVENT_NOT_FOUND,
-                    "event.dispatch",
+                    "event.require",
                     "Unknown Worker event: "
                             + src
                             + "/"
@@ -53,9 +52,7 @@ public final class WorkerEventDefinitionManager {
                     null
             );
         }
-        return definition.invoke(
-                Objects.requireNonNull(parameters, "parameters")
-        );
+        return definition;
     }
 
     private static String mint(String src, String eventCode) {

@@ -2,8 +2,8 @@ package com.xa.mass.server.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
+import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
 import com.xa.mass.worker.transport.socket.SocketWorkerTransport;
 import com.xa.mass.worker.transport.websocket.WebSocketWorkerTransport;
@@ -280,11 +280,12 @@ class RuntimeApiPythonIntegrationTest {
             URI serverUrl,
             TransportProfile transportProfile
     ) throws Exception {
-        WorkerCommandDispatcher dispatcher =
-                new WorkerCommandDispatcher(List.of(
-                        WorkerEventDefinition.map(
+        List<WorkerEventDefinition<?>> definitions =
+                List.of(
+                        WorkerEventDefinition.of(
                                 "TASK",
                                 TEST_EVENT_CODE,
+                                WorkerEventParameterResolvers.jsonMap(),
                                 payload ->
                                 com.xa.mass.workerdelivery.json.Jsons.toJson(
                                         Map.of(
@@ -293,7 +294,7 @@ class RuntimeApiPythonIntegrationTest {
                                         )
                                 )
                         )
-                ));
+                );
         return switch (transportProfile) {
             case WEBSOCKET -> new WebSocketWorkerHandle(
                     new WebSocketWorkerTransport(
@@ -301,7 +302,7 @@ class RuntimeApiPythonIntegrationTest {
                             workerId,
                             Duration.ofSeconds(2),
                             Duration.ofMillis(20),
-                            dispatcher
+                            definitions
                     )
             );
             case SOCKET -> new SocketWorkerHandle(
@@ -310,7 +311,7 @@ class RuntimeApiPythonIntegrationTest {
                             workerId,
                             Duration.ofSeconds(2),
                             Duration.ofMillis(20),
-                            dispatcher
+                            definitions
                     )
             );
             case POLLING -> new PollingWorkerHandle(
@@ -320,7 +321,7 @@ class RuntimeApiPythonIntegrationTest {
                                     .SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
                             workerId,
                             Duration.ofSeconds(2),
-                            dispatcher
+                            definitions
                     )
             );
         };

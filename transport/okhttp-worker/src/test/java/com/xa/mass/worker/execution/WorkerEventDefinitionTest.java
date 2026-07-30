@@ -1,0 +1,62 @@
+package com.xa.mass.worker.execution;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertSame;
+
+import com.xa.mass.workerdelivery.json.Jsons;
+import java.lang.reflect.Method;
+import java.util.Arrays;
+import java.util.Map;
+import org.junit.jupiter.api.Test;
+
+class WorkerEventDefinitionTest {
+
+    @Test
+    void definitionOnlyCarriesIdentityResolverAndHandler()
+            throws Exception {
+        WorkerEventParameterResolver<Parameters> resolver =
+                payload -> {
+                    Map<String, Object> values =
+                            Jsons.parseObject(payload);
+                    return new Parameters(
+                            (String) values.get("value")
+                    );
+                };
+        WorkerEventHandler<Parameters> handler =
+                parameters -> parameters.value();
+        WorkerEventDefinition<Parameters> definition =
+                WorkerEventDefinition.of(
+                        "TASK",
+                        "test.observe",
+                        resolver,
+                        handler
+                );
+
+        assertEquals("TASK", definition.src());
+        assertEquals("test.observe", definition.eventCode());
+        assertSame(resolver, definition.parameterResolver());
+        assertSame(handler, definition.handler());
+        assertFalse(Arrays.stream(
+                        WorkerEventDefinition.class
+                                .getDeclaredMethods()
+                )
+                .map(Method::getName)
+                .anyMatch(name -> name.equals("invoke")
+                        || name.equals("execute")
+                        || name.equals("dispatch")));
+    }
+
+    private static final class Parameters {
+
+        private final String value;
+
+        private Parameters(String value) {
+            this.value = value;
+        }
+
+        private String value() {
+            return value;
+        }
+    }
+}
