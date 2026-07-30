@@ -13,16 +13,15 @@ Status: repository-local transport contracts and implementations.
 
 :transport:core
   -> Java 11 Worker execution mechanism
+  -> Polling, WebSocket, and line Socket Worker state machines
   -> string-only network Client contracts
   -> no concrete network or platform implementation
 
 :transport:okhttp-worker
-  -> Worker Polling, WebSocket, and line-oriented Socket state machines
-  -> OkHttp point/WebSocket and JDK line-socket clients
+  -> OkHttp point/WebSocket and JDK line-socket Client implementations
 
 :transport:android-client
   -> Android HandlerThread/Looper WebSocket client
-  -> AndroidWebSocketWorker production composition entry
 ```
 
 `transport/` groups local transport mechanisms and implementations. It does
@@ -36,9 +35,10 @@ connection management, handler execution, lifecycle, or network-library code
 into that wire contract.
 
 `transport:core` is not a generic transport framework. It contains the
-already-shared Worker execution mechanism and narrow string-only network
-Client contracts. Netty Adapter behavior remains independent until a concrete
-shared mechanism exists.
+already-shared Worker execution and protocol state machines plus narrow
+string-only network Client contracts. JVM and Android hosts select a concrete
+Client and explicitly construct the same Worker Transport. Netty Adapter
+behavior remains independent until a concrete shared mechanism exists.
 
 See:
 
@@ -55,4 +55,5 @@ See:
 ./gradlew :transport:netty-adapter:test
 ./gradlew :transport:okhttp-worker:test
 ./gradlew :transport:android-client:testDebugUnitTest
+./gradlew :transport:android-client:assembleDebug
 ```

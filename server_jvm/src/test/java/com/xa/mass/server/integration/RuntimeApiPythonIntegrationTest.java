@@ -7,6 +7,9 @@ import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
 import com.xa.mass.worker.transport.socket.SocketWorkerTransport;
 import com.xa.mass.worker.transport.websocket.WebSocketWorkerTransport;
+import com.xa.mass.transport.client.jdk.JdkLineSocketClient;
+import com.xa.mass.transport.client.okhttp.OkHttpTextWebSocketClient;
+import com.xa.mass.transport.client.okhttp.OkHttpWorkerPointClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
 import java.net.URI;
 import java.net.ServerSocket;
@@ -115,8 +118,9 @@ class RuntimeApiPythonIntegrationTest {
                 "ITEM_DRIVEN",
                 WEBSOCKET_ENDPOINT_MANAGER_ID,
                 URI.create(
-                        "http://127.0.0.1:"
+                        "ws://127.0.0.1:"
                                 + ACTIVE_ADAPTER_PORTS[0]
+                                + "/api/v1/worker-delivery/websocket"
                 ),
                 TransportProfile.WEBSOCKET
         );
@@ -298,29 +302,35 @@ class RuntimeApiPythonIntegrationTest {
         return switch (transportProfile) {
             case WEBSOCKET -> new WebSocketWorkerHandle(
                     new WebSocketWorkerTransport(
-                            serverUrl,
+                            new OkHttpTextWebSocketClient(
+                                    serverUrl,
+                                    Duration.ofSeconds(2),
+                                    Duration.ofMillis(20)
+                            ),
                             workerId,
-                            Duration.ofSeconds(2),
-                            Duration.ofMillis(20),
                             definitions
                     )
             );
             case SOCKET -> new SocketWorkerHandle(
                     new SocketWorkerTransport(
-                            serverUrl,
+                            new JdkLineSocketClient(
+                                    serverUrl,
+                                    Duration.ofSeconds(2),
+                                    Duration.ofMillis(20)
+                            ),
                             workerId,
-                            Duration.ofSeconds(2),
-                            Duration.ofMillis(20),
                             definitions
                     )
             );
             case POLLING -> new PollingWorkerHandle(
                     new PollingWorkerTransport(
-                            serverUrl,
-                            WorkerDeliveryProtocol
-                                    .SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
-                            workerId,
-                            Duration.ofSeconds(2),
+                            new OkHttpWorkerPointClient(
+                                    serverUrl,
+                                    WorkerDeliveryProtocol
+                                            .SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
+                                    workerId,
+                                    Duration.ofSeconds(2)
+                            ),
                             definitions
                     )
             );

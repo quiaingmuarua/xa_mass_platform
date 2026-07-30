@@ -27,8 +27,8 @@ public class AndroidClientArchitectureBoundaryTest {
 
         assertTrue(build.contains("id 'com.android.library'"));
         assertTrue(build.contains("api project(':transport:core')"));
-        assertTrue(build.contains(
-                "implementation project(':transport:okhttp-worker')"
+        assertFalse(build.contains(
+                "project(':transport:okhttp-worker')"
         ));
         assertTrue(build.contains(
                 "implementation 'com.squareup.okhttp3:okhttp:5.3.0'"
@@ -41,14 +41,20 @@ public class AndroidClientArchitectureBoundaryTest {
                 "src/main/java/com/xa/mass/transport/android/"
                         + "websocket/AndroidOkHttpTextWebSocketClient.java"
         ));
+        assertTrue(networkClient.contains("private enum State"));
+        assertTrue(networkClient.contains("RECONNECT_SCHEDULED"));
+        assertTrue(networkClient.contains("HandlerThread"));
         for (String forbidden : new String[]{
                 "WorkerCommand",
                 "WorkerResult",
                 "WorkerConnectionBind",
                 "WorkerEventDefinition",
-                "WebSocketWorkerTransport"
+                "WebSocketWorkerTransport",
+                "AndroidWebSocketWorker",
+                "pendingMessages",
+                "MessageInterceptor"
         }) {
-            assertFalse(forbidden, networkClient.contains(forbidden));
+            assertFalse(forbidden, source.contains(forbidden));
         }
 
         for (String forbidden : new String[]{

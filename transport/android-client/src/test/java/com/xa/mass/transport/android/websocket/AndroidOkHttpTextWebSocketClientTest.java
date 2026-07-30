@@ -130,6 +130,26 @@ public class AndroidOkHttpTextWebSocketClientTest {
     }
 
     @Test
+    public void failureTransitionsOnceAndReconnects()
+            throws Exception {
+        client.start(listener);
+        FakeConnection first = awaitConnection(0);
+        first.open();
+        await(client::isConnected);
+
+        first.failure(new IllegalStateException("scripted"));
+        first.closed();
+
+        await(() -> listener.failures.get() == 1);
+        await(() -> listener.disconnects.get() == 1);
+        advanceReconnectClock();
+        awaitConnection(1);
+
+        assertEquals(1, listener.failures.get());
+        assertEquals(1, listener.disconnects.get());
+    }
+
+    @Test
     public void closeIsIdempotentAndSuppressesLaterCallbacks()
             throws Exception {
         client.start(listener);
@@ -180,6 +200,7 @@ public class AndroidOkHttpTextWebSocketClientTest {
 
         private final AtomicInteger opens = new AtomicInteger();
         private final AtomicInteger disconnects = new AtomicInteger();
+        private final AtomicInteger failures = new AtomicInteger();
         private final List<String> events =
                 new CopyOnWriteArrayList<>();
         private final List<String> callbackThreads =
@@ -209,6 +230,7 @@ public class AndroidOkHttpTextWebSocketClientTest {
 
         @Override
         public void onFailure(Throwable error) {
+            failures.incrementAndGet();
             record("failure");
         }
 
@@ -261,6 +283,14 @@ public class AndroidOkHttpTextWebSocketClientTest {
 
         private void binary() {
             listener.onMessage(socket, ByteString.of((byte) 1));
+        }
+
+        private void failure(Throwable error) {
+            listener.onFailure(socket, error, null);
+        }
+
+        private void closed() {
+            listener.onClosed(socket, 1006, "closed");
         }
     }
 

@@ -199,10 +199,10 @@ Then start the external Runtime API Server:
 
 Host the [OkHttp Worker](../transport/okhttp-worker/README.md) in a JVM
 application. An Android WebSocket host composes the same Worker transport with
-the [Android Client](../transport/android-client/README.md) through
-`AndroidWebSocketWorker.start()`. A polling host calls the Server point API
-directly. A WebSocket or Socket host connects to the selected Adapter
-listener. These libraries do not provide a CLI or own application lifecycle.
+the [Android Client](../transport/android-client/README.md), then calls
+`WebSocketWorkerTransport.start()`. A polling host calls the Server point API
+directly. A WebSocket or Socket host connects to the selected Adapter listener.
+These libraries do not provide a CLI or own application lifecycle.
 
 One WebSocket and one Socket Adapter instance:
 

@@ -6,11 +6,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.xa.mass.transport.client.LineSocketClient;
 import com.xa.mass.transport.client.TextWebSocketClient;
 import com.xa.mass.transport.client.WorkerPointClient;
+import com.xa.mass.worker.execution.WorkerCommandExecutor;
+import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
+import com.xa.mass.worker.transport.socket.SocketWorkerTransport;
+import com.xa.mass.worker.transport.websocket.WebSocketWorkerTransport;
 import java.io.IOException;
+import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 
@@ -93,6 +99,68 @@ class TransportCoreArchitectureBoundaryTest {
         ));
     }
 
+    @Test
+    void workerTransportStateMachinesOnlyAcceptCoreSeams()
+            throws Exception {
+        assertConstructor(
+                PollingWorkerTransport.class,
+                WorkerPointClient.class,
+                Collection.class
+        );
+        assertConstructor(
+                PollingWorkerTransport.class,
+                WorkerPointClient.class,
+                WorkerCommandExecutor.class
+        );
+        assertConstructor(
+                WebSocketWorkerTransport.class,
+                TextWebSocketClient.class,
+                String.class,
+                Collection.class
+        );
+        assertConstructor(
+                WebSocketWorkerTransport.class,
+                TextWebSocketClient.class,
+                String.class,
+                WorkerCommandExecutor.class
+        );
+        assertConstructor(
+                SocketWorkerTransport.class,
+                LineSocketClient.class,
+                String.class,
+                Collection.class
+        );
+        assertConstructor(
+                SocketWorkerTransport.class,
+                LineSocketClient.class,
+                String.class,
+                WorkerCommandExecutor.class
+        );
+
+        for (Class<?> transport : new Class<?>[]{
+                PollingWorkerTransport.class,
+                WebSocketWorkerTransport.class,
+                SocketWorkerTransport.class
+        }) {
+            for (Constructor<?> constructor
+                    : transport.getConstructors()) {
+                String signature = constructor.toGenericString();
+                for (String forbidden : new String[]{
+                        "java.net.URI",
+                        "okhttp",
+                        "JdkLineSocketClient",
+                        "OkHttpTextWebSocketClient",
+                        "OkHttpWorkerPointClient"
+                }) {
+                    assertFalse(
+                            signature.contains(forbidden),
+                            signature
+                    );
+                }
+            }
+        }
+    }
+
     private static boolean hasMethod(
             Class<?> type,
             String name,
@@ -104,6 +172,13 @@ class TransportCoreArchitectureBoundaryTest {
                         method.getParameterTypes(),
                         parameters
                 ));
+    }
+
+    private static void assertConstructor(
+            Class<?> type,
+            Class<?>... parameters
+    ) throws NoSuchMethodException {
+        type.getConstructor(parameters);
     }
 
     private static String readTree(Path root) throws IOException {

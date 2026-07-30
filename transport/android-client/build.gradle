@@ -12,8 +12,6 @@ android {
 
     defaultConfig {
         minSdk = 24
-        testInstrumentationRunner =
-                'androidx.test.runner.AndroidJUnitRunner'
     }
 
     compileOptions {
@@ -31,14 +29,10 @@ android {
 
 dependencies {
     api project(':transport:core')
-    implementation project(':transport:okhttp-worker')
     implementation 'com.squareup.okhttp3:okhttp:5.3.0'
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
 
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'org.robolectric:robolectric:4.16.1'
     testImplementation 'com.squareup.okhttp3:mockwebserver3:5.3.0'
-
-    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
-    androidTestImplementation 'androidx.test:runner:1.6.2'
 }

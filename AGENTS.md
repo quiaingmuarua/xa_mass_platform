@@ -26,16 +26,16 @@ Status: current repository handoff.
   WebSocket/Socket listeners. Worker result payloads remain opaque until
   Server ingress. It has no Spring, Server, Kernel, or Redis dependency.
 - `transport/core/` is the Java 11 local core containing Worker execution,
-  event definitions, error classification, and string-only network Client
-  contracts. It contains no concrete network or platform implementation.
-- `transport/okhttp-worker/` owns Worker Polling/WebSocket/Socket state
-  machines plus the default OkHttp and JDK clients. It is not a CLI,
-  application, Android wrapper, or business handler collection.
-- `transport/android-client/` is an internal Android Library containing the
-  HandlerThread/Looper OkHttp WebSocket client and the narrow
-  `AndroidWebSocketWorker` production composition entry. Bind, command
-  execution, and pending results remain owned by the reused
-  `WebSocketWorkerTransport`; business handlers remain caller supplied.
+  event definitions, error classification, Worker Polling/WebSocket/Socket
+  state machines, and string-only network Client contracts. It contains no
+  concrete network or platform implementation.
+- `transport/okhttp-worker/` owns only the default OkHttp point/WebSocket and
+  JDK line-socket Client implementations. It is not a Worker state-machine
+  owner, CLI, application, Android wrapper, or business handler collection.
+- `transport/android-client/` is an internal Android Library containing only
+  the HandlerThread/Looper OkHttp WebSocket Client. Android hosts explicitly
+  compose that Client with Core's `WebSocketWorkerTransport` and caller-owned
+  business definitions.
 - The legacy Java platform is available exclusively from
   `legacy-java-platform-final-2026-07-24`.
 - There is no compatibility obligation to legacy Java APIs, modules, Redis
@@ -105,12 +105,11 @@ tag.
   `--release 11`, expose no OkHttp types, and must not import Android, JNDI,
   Server, Kernel, Redis, platform business handlers, score, Pacer, or
   TaskType.
-- `transport/android-client` may depend on `transport/core`,
-  `transport/okhttp-worker`, and OkHttp. Its network client serializes
-  connection state and callbacks on a dedicated HandlerThread, filters stale
-  connection callbacks, and must not cache or interpret Worker business
-  messages. `AndroidWebSocketWorker` may only compose that client with the
-  existing Worker transport and dispatcher. Android hosts own process
+- `transport/android-client` may depend on `transport/core` and OkHttp, but
+  not on `transport/okhttp-worker`. Its network Client serializes connection
+  state, generation filtering, callbacks, and fixed reconnect scheduling on a
+  dedicated HandlerThread. It must not cache or interpret Worker business
+  messages. Android hosts own Worker Transport construction, process
   lifecycle, permissions beyond INTERNET, and static handler assembly.
 - `server_jvm` may bind a `Map<adapterId, JsonNode>`, construct concrete
   Adapter instances, register them, and invoke `manager.start()` /
@@ -169,9 +168,9 @@ Worker Delivery through the same batch HTTP boundary.
 
 `worker_delivery_contract_jvm`, `transport/core`, and
 `transport/okhttp-worker` compile to Java 11 bytecode. The Android Client
-consumes those repository-local libraries through Gradle project
-dependencies; none is a published SDK. They may not pull Server, Kernel,
-Redis, scheduling, or assembly implementations into the Worker boundary.
+consumes only the Core contract through a repository-local Gradle project
+dependency; none is a published SDK. They may not pull Server, Kernel, Redis,
+scheduling, or assembly implementations into the Worker boundary.
 
 ## Verification
 
