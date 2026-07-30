@@ -1,10 +1,9 @@
 package com.xa.mass.worker.transport.socket;
 
-import com.xa.mass.worker.execution.WorkerCommandProcessor;
+import com.xa.mass.worker.execution.WorkerCommandExecutor;
 import com.xa.mass.worker.error.WorkerException;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
@@ -26,8 +25,8 @@ public final class SocketWorkerTransport implements AutoCloseable {
     private final String workerId;
     private final Duration connectTimeout;
     private final Duration reconnectInterval;
-    private final WorkerDeliveryCodec codec;
-    private final WorkerCommandProcessor processor;
+    private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
+    private final WorkerCommandExecutor commandExecutor;
     private volatile boolean running;
     private volatile Socket socket;
     private volatile WorkerResult pendingResult;
@@ -37,8 +36,7 @@ public final class SocketWorkerTransport implements AutoCloseable {
             String workerId,
             Duration connectTimeout,
             Duration reconnectInterval,
-            WorkerDeliveryCodec codec,
-            WorkerCommandProcessor processor
+            WorkerCommandExecutor commandExecutor
     ) {
         this(
                 SocketWorkerTransport::connectSocket,
@@ -46,8 +44,7 @@ public final class SocketWorkerTransport implements AutoCloseable {
                 workerId,
                 connectTimeout,
                 reconnectInterval,
-                codec,
-                processor
+                commandExecutor
         );
     }
 
@@ -57,8 +54,7 @@ public final class SocketWorkerTransport implements AutoCloseable {
             String workerId,
             Duration connectTimeout,
             Duration reconnectInterval,
-            WorkerDeliveryCodec codec,
-            WorkerCommandProcessor processor
+            WorkerCommandExecutor commandExecutor
     ) {
         this.connector = Objects.requireNonNull(connector, "connector");
         this.socketUri = requireSocketUri(socketUri);
@@ -76,8 +72,10 @@ public final class SocketWorkerTransport implements AutoCloseable {
                 reconnectInterval,
                 "reconnectInterval"
         );
-        this.codec = Objects.requireNonNull(codec, "codec");
-        this.processor = Objects.requireNonNull(processor, "processor");
+        this.commandExecutor = Objects.requireNonNull(
+                commandExecutor,
+                "commandExecutor"
+        );
     }
 
     public void runForever() throws InterruptedException {
@@ -147,17 +145,8 @@ public final class SocketWorkerTransport implements AutoCloseable {
             sendPending(writer);
             String line;
             while (running && (line = reader.readLine()) != null) {
-                WorkerCommand command = codec.decodeWorkerCommand(line);
-                if (command == null) {
-                    throw new WorkerException(
-                            com.xa.mass.worker.error.WorkerErrorCode
-                                    .COMMAND_MESSAGE_INVALID,
-                            "connectionMessage.decode",
-                            null,
-                            null
-                    );
-                }
-                Optional<WorkerResult> result = processor.process(command);
+                Optional<WorkerResult> result =
+                        commandExecutor.execute(line);
                 if (!result.isPresent()) {
                     continue;
                 }

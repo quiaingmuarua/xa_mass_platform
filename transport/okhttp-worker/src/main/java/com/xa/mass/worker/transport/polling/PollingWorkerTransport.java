@@ -1,11 +1,10 @@
 package com.xa.mass.worker.transport.polling;
 
-import com.xa.mass.worker.execution.WorkerCommandProcessor;
+import com.xa.mass.worker.execution.WorkerCommandExecutor;
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
@@ -31,8 +30,8 @@ public final class PollingWorkerTransport implements AutoCloseable {
     private final String workerId;
     private final HttpUrl pollUrl;
     private final HttpUrl resultUrl;
-    private final WorkerDeliveryCodec codec;
-    private final WorkerCommandProcessor processor;
+    private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
+    private final WorkerCommandExecutor commandExecutor;
     private volatile boolean closed;
     private volatile Call activeCall;
     private volatile WorkerResult pendingResult;
@@ -42,12 +41,13 @@ public final class PollingWorkerTransport implements AutoCloseable {
             String endpointManagerId,
             String workerId,
             Duration requestTimeout,
-            WorkerDeliveryCodec codec,
-            WorkerCommandProcessor processor
+            WorkerCommandExecutor commandExecutor
     ) {
         this.http = client(requestTimeout);
-        this.codec = requirePresent(codec, "codec");
-        this.processor = requirePresent(processor, "processor");
+        this.commandExecutor = requirePresent(
+                commandExecutor,
+                "commandExecutor"
+        );
         requireNonBlank(endpointManagerId, "endpointManagerId");
         requireNonBlank(workerId, "workerId");
         this.workerId = workerId;
@@ -94,18 +94,9 @@ public final class PollingWorkerTransport implements AutoCloseable {
                         null
                 );
             }
-            WorkerCommand command = codec.decodeWorkerCommand(
+            Optional<WorkerResult> result = commandExecutor.execute(
                     response.body().string()
             );
-            if (command == null) {
-                throw new WorkerException(
-                        WorkerErrorCode.COMMAND_RESPONSE_INVALID,
-                        "polling.pollCommand",
-                        "Worker command response is malformed",
-                        null
-                );
-            }
-            Optional<WorkerResult> result = processor.process(command);
             if (!result.isPresent()) {
                 return false;
             }

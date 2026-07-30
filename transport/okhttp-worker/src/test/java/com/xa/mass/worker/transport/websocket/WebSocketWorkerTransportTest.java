@@ -6,9 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.WORKER;
 
-import com.xa.mass.worker.execution.WorkerCommandProcessor;
-import com.xa.mass.worker.execution.WorkerEventDefinition;
-import com.xa.mass.workerdelivery.json.Jsons;
+import com.xa.mass.worker.error.WorkerErrorCode;
+import com.xa.mass.worker.error.WorkerException;
+import com.xa.mass.worker.execution.WorkerCommandExecutor;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
@@ -16,10 +16,10 @@ import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnecti
 import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 import okhttp3.Request;
 import okhttp3.WebSocket;
 import okhttp3.WebSocketListener;
@@ -34,21 +34,24 @@ class WebSocketWorkerTransportTest {
             "a5e9e10d-f78b-469e-93ab-864b49c189c1";
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
     private final FakeConnector connector = new FakeConnector();
+    private final AtomicReference<String> executedCommand =
+            new AtomicReference<>();
     private WebSocketWorkerTransport transport;
 
     @BeforeEach
     void setUp() {
-        WorkerCommandProcessor processor = new WorkerCommandProcessor(
-                Map.of(
-                        "test.observe",
-                        WorkerEventDefinition.map(payload -> {
-                            Map<String, Object> result =
-                                    new LinkedHashMap<>();
-                            result.put("observed", payload.get("value"));
-                            return Jsons.toJson(result);
-                        })
-                )
-        );
+        WorkerCommandExecutor executor = encoded -> {
+            if ("{bad-json".equals(encoded)) {
+                throw new WorkerException(
+                        WorkerErrorCode.COMMAND_MESSAGE_INVALID,
+                        "command.decode",
+                        null,
+                        null
+                );
+            }
+            executedCommand.set(encoded);
+            return Optional.of(result());
+        };
         transport = new WebSocketWorkerTransport(
                 new WebSocketWorkerTransport.ConnectorResources(
                         connector,
@@ -58,8 +61,7 @@ class WebSocketWorkerTransportTest {
                 URI.create("http://127.0.0.1:18082"),
                 "worker-1",
                 Duration.ofHours(1),
-                codec,
-                processor
+                executor
         );
         transport.start();
     }
@@ -91,6 +93,7 @@ class WebSocketWorkerTransportTest {
         );
         assertEquals("context", result.forward());
         assertEquals(TASK, result.dst());
+        assertEquals(command(), executedCommand.get());
         assertFalse(transport.hasPendingResult());
     }
 
@@ -163,7 +166,7 @@ class WebSocketWorkerTransportTest {
                 TASK,
                 WORKER,
                 "test.observe",
-                System.currentTimeMillis() + 60_000,
+                4_102_444_800_000L,
                 "{\"value\":\"input\"}",
                 "context"
         );
@@ -176,6 +179,17 @@ class WebSocketWorkerTransportTest {
 
     private WorkerResult decodeResult(String encoded) {
         return codec.decodeWorkerResult(encoded);
+    }
+
+    private static WorkerResult result() {
+        return new WorkerResult(
+                COMMAND_ID,
+                TASK,
+                "test.observe",
+                "200",
+                "{\"observed\":\"input\"}",
+                "context"
+        );
     }
 
     private static void await(Check check) throws Exception {

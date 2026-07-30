@@ -6,24 +6,26 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
 import com.xa.mass.workerdelivery.json.Jsons;
-import java.util.LinkedHashMap;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
 class WorkerEventDefinitionManagerTest {
 
     @Test
-    void managerCopiesDefinitionsAndDispatchesByStringKey()
+    void managerCopiesDefinitionsAndDispatchesBySourceAndEvent()
             throws Exception {
-        Map<String, WorkerEventDefinition<?>> definitions =
-                new LinkedHashMap<>();
-        definitions.put(
+        List<WorkerEventDefinition<?>> definitions =
+                new ArrayList<>();
+        definitions.add(WorkerEventDefinition.map(
+                "TASK",
                 "test.observe",
-                WorkerEventDefinition.map(parameters -> Jsons.toJson(Map.of(
+                parameters -> Jsons.toJson(Map.of(
                         "observed",
                         parameters.get("value")
-                )))
-        );
+                ))
+        ));
         WorkerEventDefinitionManager manager =
                 new WorkerEventDefinitionManager(definitions);
         definitions.clear();
@@ -31,6 +33,7 @@ class WorkerEventDefinitionManagerTest {
         assertEquals(
                 "{\"observed\":\"input\"}",
                 manager.dispatch(
+                        "TASK",
                         "test.observe",
                         Map.of("value", "input")
                 )
@@ -42,23 +45,23 @@ class WorkerEventDefinitionManagerTest {
             throws Exception {
         WorkerEventDefinition<Parameters> definition =
                 WorkerEventDefinition.of(
-                parameters -> new Parameters(
-                        (String) parameters.get("value")
-                ),
-                parameters -> Jsons.toJson(Map.of(
-                        "observed",
-                        parameters.value()
-                ))
-        );
-        WorkerEventDefinitionManager manager =
-                new WorkerEventDefinitionManager(Map.of(
+                        "TASK",
                         "test.observe",
-                        definition
-                ));
+                        parameters -> new Parameters(
+                                (String) parameters.get("value")
+                        ),
+                        parameters -> Jsons.toJson(Map.of(
+                                "observed",
+                                parameters.value()
+                        ))
+                );
+        WorkerEventDefinitionManager manager =
+                new WorkerEventDefinitionManager(List.of(definition));
 
         assertEquals(
                 "{\"observed\":\"typed\"}",
                 manager.dispatch(
+                        "TASK",
                         "test.observe",
                         Map.of("value", "typed")
                 )
@@ -66,30 +69,65 @@ class WorkerEventDefinitionManagerTest {
     }
 
     @Test
-    void managerRejectsInvalidRegistrationAndUnknownEvents() {
+    void managerRejectsInvalidAndDuplicateIdentities() {
         assertThrows(
                 IllegalArgumentException.class,
-                () -> new WorkerEventDefinitionManager(
-                        Map.of("", WorkerEventDefinition.map(
+                () -> new WorkerEventDefinitionManager(List.of(
+                        WorkerEventDefinition.map(
+                                "UNKNOWN",
+                                "test.observe",
                                 parameters -> "null"
-                        ))
+                        )
+                ))
+        );
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new WorkerEventDefinitionManager(List.of(
+                        WorkerEventDefinition.map(
+                                "WORKER",
+                                "test.observe",
+                                parameters -> "null"
+                        )
+                ))
+        );
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> WorkerEventDefinition.map(
+                        "TASK",
+                        "",
+                        parameters -> "null"
+                )
+        );
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new WorkerEventDefinitionManager(List.of(
+                        WorkerEventDefinition.map(
+                                "TASK",
+                                "test.observe",
+                                parameters -> "\"first\""
+                        ),
+                        WorkerEventDefinition.map(
+                                "TASK",
+                                "test.observe",
+                                parameters -> "\"second\""
+                        )
+                ))
+        );
+    }
+
+    @Test
+    void unknownSourceEventPairUsesStableWorkerError() {
+        WorkerEventDefinitionManager manager =
+                new WorkerEventDefinitionManager(List.of());
+        WorkerException unknown = assertThrows(
+                WorkerException.class,
+                () -> manager.dispatch(
+                        "TASK",
+                        "unknown",
+                        Map.of()
                 )
         );
 
-        Map<String, WorkerEventDefinition<?>> definitions =
-                new LinkedHashMap<>();
-        definitions.put("test.observe", null);
-        assertThrows(
-                NullPointerException.class,
-                () -> new WorkerEventDefinitionManager(definitions)
-        );
-
-        WorkerEventDefinitionManager manager =
-                new WorkerEventDefinitionManager(Map.of());
-        WorkerException unknown = assertThrows(
-                WorkerException.class,
-                () -> manager.dispatch("unknown", Map.of())
-        );
         assertEquals(WorkerErrorCode.EVENT_NOT_FOUND, unknown.errorCode());
         assertEquals("event.dispatch", unknown.operation());
     }

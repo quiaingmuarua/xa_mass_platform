@@ -6,9 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.TASK;
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.WORKER;
 
-import com.xa.mass.worker.execution.WorkerCommandProcessor;
-import com.xa.mass.worker.execution.WorkerEventDefinition;
-import com.xa.mass.workerdelivery.json.Jsons;
+import com.xa.mass.worker.execution.WorkerCommandExecutor;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
@@ -23,8 +21,9 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayDeque;
-import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 
 class SocketWorkerTransportTest {
@@ -55,16 +54,12 @@ class SocketWorkerTransportTest {
         sockets.add(first);
         sockets.add(second);
         AtomicInteger connects = new AtomicInteger();
-        WorkerCommandProcessor processor = new WorkerCommandProcessor(
-                Map.of(
-                        "test.observe",
-                        WorkerEventDefinition.map(payload -> Jsons.toJson(
-                                Map.of(
-                                "observed",
-                                payload.get("value")
-                        )))
-                )
-        );
+        AtomicReference<String> executedCommand =
+                new AtomicReference<>();
+        WorkerCommandExecutor executor = encoded -> {
+            executedCommand.set(encoded);
+            return Optional.of(result());
+        };
         SocketWorkerTransport transport = new SocketWorkerTransport(
                 (uri, timeout) -> {
                     connects.incrementAndGet();
@@ -78,8 +73,7 @@ class SocketWorkerTransportTest {
                 "worker-1",
                 Duration.ofSeconds(1),
                 Duration.ofMillis(1),
-                codec,
-                processor
+                executor
         );
         Thread worker = new Thread(() -> {
             try {
@@ -109,6 +103,7 @@ class SocketWorkerTransportTest {
                 decodeResult(secondLines[1]).outcomeCode()
         );
         assertTrue(connects.get() >= 2);
+        assertEquals(command(), executedCommand.get());
         assertFalse(transport.hasPendingResult());
 
         transport.close();
@@ -123,7 +118,7 @@ class SocketWorkerTransportTest {
                 TASK,
                 WORKER,
                 "test.observe",
-                System.currentTimeMillis() + 10_000,
+                4_102_444_800_000L,
                 "{\"value\":\"input\"}",
                 "context"
         );
@@ -136,6 +131,17 @@ class SocketWorkerTransportTest {
 
     private WorkerResult decodeResult(String encoded) {
         return codec.decodeWorkerResult(encoded);
+    }
+
+    private static WorkerResult result() {
+        return new WorkerResult(
+                COMMAND_ID,
+                TASK,
+                "test.observe",
+                "200",
+                "{\"observed\":\"input\"}",
+                "context"
+        );
     }
 
     private static void await(Condition condition) throws Exception {

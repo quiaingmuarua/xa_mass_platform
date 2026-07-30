@@ -7,10 +7,6 @@ public enum WorkerErrorCode implements ErrorCode {
             31001,
             "Worker command poll failed"
     ),
-    COMMAND_RESPONSE_INVALID(
-            31002,
-            "Worker command response is invalid"
-    ),
     RESULT_SUBMIT_FAILED(
             31003,
             "Worker result submission failed"

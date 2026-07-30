@@ -2,12 +2,11 @@ package com.xa.mass.server.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.xa.mass.worker.execution.WorkerCommandProcessor;
+import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
 import com.xa.mass.worker.transport.socket.SocketWorkerTransport;
 import com.xa.mass.worker.transport.websocket.WebSocketWorkerTransport;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
 import java.net.URI;
 import java.net.ServerSocket;
@@ -16,6 +15,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Assumptions;
@@ -280,11 +280,12 @@ class RuntimeApiPythonIntegrationTest {
             URI serverUrl,
             TransportProfile transportProfile
     ) throws Exception {
-        WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
-        WorkerCommandProcessor processor = new WorkerCommandProcessor(
-                Map.of(
-                        TEST_EVENT_CODE,
-                        WorkerEventDefinition.map(payload ->
+        WorkerCommandDispatcher dispatcher =
+                new WorkerCommandDispatcher(List.of(
+                        WorkerEventDefinition.map(
+                                "TASK",
+                                TEST_EVENT_CODE,
+                                payload ->
                                 com.xa.mass.workerdelivery.json.Jsons.toJson(
                                         Map.of(
                                                 "observed",
@@ -292,8 +293,7 @@ class RuntimeApiPythonIntegrationTest {
                                         )
                                 )
                         )
-                )
-        );
+                ));
         return switch (transportProfile) {
             case WEBSOCKET -> new WebSocketWorkerHandle(
                     new WebSocketWorkerTransport(
@@ -301,8 +301,7 @@ class RuntimeApiPythonIntegrationTest {
                             workerId,
                             Duration.ofSeconds(2),
                             Duration.ofMillis(20),
-                            codec,
-                            processor
+                            dispatcher
                     )
             );
             case SOCKET -> new SocketWorkerHandle(
@@ -311,8 +310,7 @@ class RuntimeApiPythonIntegrationTest {
                             workerId,
                             Duration.ofSeconds(2),
                             Duration.ofMillis(20),
-                            codec,
-                            processor
+                            dispatcher
                     )
             );
             case POLLING -> new PollingWorkerHandle(
@@ -322,8 +320,7 @@ class RuntimeApiPythonIntegrationTest {
                                     .SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
                             workerId,
                             Duration.ofSeconds(2),
-                            codec,
-                            processor
+                            dispatcher
                     )
             );
         };

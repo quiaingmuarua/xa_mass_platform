@@ -6,7 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
-import com.xa.mass.worker.execution.WorkerCommandProcessor;
+import com.xa.mass.worker.execution.WorkerCommandDispatcher;
+import com.xa.mass.worker.execution.WorkerCommandExecutor;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventDefinitionManager;
 import com.xa.mass.worker.execution.WorkerEventHandler;
@@ -102,7 +103,8 @@ class WorkerArchitectureBoundaryTest {
     @Test
     void publicWorkerApiDoesNotExposeOkHttp() {
         Class<?>[] publicTypes = {
-                WorkerCommandProcessor.class,
+                WorkerCommandExecutor.class,
+                WorkerCommandDispatcher.class,
                 WorkerEventDefinition.class,
                 WorkerEventDefinitionManager.class,
                 WorkerEventHandler.class,
@@ -129,6 +131,26 @@ class WorkerArchitectureBoundaryTest {
                         method.toGenericString()
                 );
             }
+        }
+    }
+
+    @Test
+    void transportsDependOnlyOnTheCommandExecutorSeam()
+            throws IOException {
+        Path project = Path.of("").toAbsolutePath();
+        String source = readTree(
+                project.resolve("src/main/java/com/xa/mass/worker/transport")
+        );
+
+        assertTrue(source.contains("WorkerCommandExecutor"));
+        for (String forbidden : new String[]{
+                "WorkerEventDefinition",
+                "WorkerEventDefinitionManager",
+                "Jsons.parseObject",
+                "decodeWorkerCommand",
+                "new WorkerResult("
+        }) {
+            assertFalse(source.contains(forbidden), forbidden);
         }
     }
 

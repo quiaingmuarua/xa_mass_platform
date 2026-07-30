@@ -1,9 +1,8 @@
 package com.xa.mass.worker.transport.websocket;
 
-import com.xa.mass.worker.execution.WorkerCommandProcessor;
+import com.xa.mass.worker.execution.WorkerCommandExecutor;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 import java.net.URI;
 import java.time.Duration;
@@ -32,8 +31,8 @@ public final class WebSocketWorkerTransport
     private final URI socketUri;
     private final String workerId;
     private final Duration reconnectInterval;
-    private final WorkerDeliveryCodec codec;
-    private final WorkerCommandProcessor processor;
+    private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
+    private final WorkerCommandExecutor commandExecutor;
     private final ScheduledExecutorService scheduler;
     private final ExecutorService execution;
     private final CountDownLatch stopped = new CountDownLatch(1);
@@ -52,16 +51,14 @@ public final class WebSocketWorkerTransport
             String workerId,
             Duration requestTimeout,
             Duration reconnectInterval,
-            WorkerDeliveryCodec codec,
-            WorkerCommandProcessor processor
+            WorkerCommandExecutor commandExecutor
     ) {
         this(
                 clientConnector(requestTimeout),
                 serverUrl,
                 workerId,
                 reconnectInterval,
-                codec,
-                processor
+                commandExecutor
         );
     }
 
@@ -70,8 +67,7 @@ public final class WebSocketWorkerTransport
             URI serverUrl,
             String workerId,
             Duration reconnectInterval,
-            WorkerDeliveryCodec codec,
-            WorkerCommandProcessor processor
+            WorkerCommandExecutor commandExecutor
     ) {
         if (workerId == null || workerId.trim().isEmpty()) {
             throw new IllegalArgumentException(
@@ -86,13 +82,12 @@ public final class WebSocketWorkerTransport
                 reconnectInterval,
                 "reconnectInterval"
         );
-        if (codec == null || processor == null) {
+        if (commandExecutor == null) {
             throw new IllegalArgumentException(
-                    "codec and processor must be present"
+                    "commandExecutor must be present"
             );
         }
-        this.codec = codec;
-        this.processor = processor;
+        this.commandExecutor = commandExecutor;
         scheduler = Executors.newSingleThreadScheduledExecutor(runnable -> {
             Thread thread = new Thread(
                     runnable,
@@ -237,13 +232,7 @@ public final class WebSocketWorkerTransport
     private void executeCommand(String encodedFrame) {
         Optional<WorkerResult> result;
         try {
-            WorkerCommand command = codec.decodeWorkerCommand(encodedFrame);
-            if (command == null) {
-                throw new IllegalArgumentException(
-                        "Worker command is malformed"
-                );
-            }
-            result = processor.process(command);
+            result = commandExecutor.execute(encodedFrame);
         } catch (RuntimeException error) {
             synchronized (this) {
                 processing = false;

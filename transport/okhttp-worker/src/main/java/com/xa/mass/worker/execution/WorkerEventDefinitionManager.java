@@ -2,6 +2,8 @@ package com.xa.mass.worker.execution;
 
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -12,48 +14,68 @@ public final class WorkerEventDefinitionManager {
     private final Map<String, WorkerEventDefinition<?>> definitions;
 
     public WorkerEventDefinitionManager(
-            Map<String, ? extends WorkerEventDefinition<?>> definitions
+            Collection<? extends WorkerEventDefinition<?>> definitions
     ) {
         Objects.requireNonNull(definitions, "definitions");
         Map<String, WorkerEventDefinition<?>> copy =
                 new LinkedHashMap<>();
-        for (Map.Entry<
-                String,
-                ? extends WorkerEventDefinition<?>
-        > entry : definitions.entrySet()) {
-            String eventCode = entry.getKey();
-            if (eventCode == null || eventCode.isBlank()) {
+        for (WorkerEventDefinition<?> definition : definitions) {
+            WorkerEventDefinition<?> present =
+                    Objects.requireNonNull(definition, "definition");
+            String key = mint(present.src(), present.eventCode());
+            if (copy.putIfAbsent(key, present) != null) {
                 throw new IllegalArgumentException(
-                        "eventCode must be non-blank"
+                        "Duplicate Worker event: "
+                                + present.src()
+                                + "/"
+                                + present.eventCode()
                 );
             }
-            copy.put(
-                    eventCode,
-                    Objects.requireNonNull(
-                            entry.getValue(),
-                            "definition"
-                    )
-            );
         }
         this.definitions = Collections.unmodifiableMap(copy);
     }
 
     public String dispatch(
+            String src,
             String eventCode,
             Map<String, Object> parameters
     ) throws Exception {
         WorkerEventDefinition<?> definition =
-                definitions.get(eventCode);
+                definitions.get(mint(src, eventCode));
         if (definition == null) {
             throw new WorkerException(
                     WorkerErrorCode.EVENT_NOT_FOUND,
                     "event.dispatch",
-                    "Unknown Worker event: " + eventCode,
+                    "Unknown Worker event: "
+                            + src
+                            + "/"
+                            + eventCode,
                     null
             );
         }
         return definition.invoke(
                 Objects.requireNonNull(parameters, "parameters")
         );
+    }
+
+    private static String mint(String src, String eventCode) {
+        if (src == null || src.trim().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "src must be non-blank"
+            );
+        }
+        WorkerMessageEndpoint endpoint =
+                WorkerMessageEndpoint.fromWire(src);
+        if (endpoint == WorkerMessageEndpoint.WORKER) {
+            throw new IllegalArgumentException(
+                    "Worker event src cannot be WORKER"
+            );
+        }
+        if (eventCode == null || eventCode.trim().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "eventCode must be non-blank"
+            );
+        }
+        return endpoint.wireValue() + ":" + eventCode;
     }
 }

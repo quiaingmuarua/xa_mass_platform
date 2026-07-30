@@ -10,18 +10,17 @@ import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerM
 
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
-import com.xa.mass.worker.execution.WorkerCommandProcessor;
-import com.xa.mass.worker.execution.WorkerEventDefinition;
-import com.xa.mass.workerdelivery.json.Jsons;
+import com.xa.mass.worker.execution.WorkerCommandExecutor;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import mockwebserver3.MockResponse;
 import mockwebserver3.MockWebServer;
 import mockwebserver3.RecordedRequest;
@@ -36,6 +35,9 @@ class PollingWorkerTransportTest {
             "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1";
 
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
+    private final AtomicReference<String> executedCommand =
+            new AtomicReference<>();
+    private final AtomicBoolean dropCommand = new AtomicBoolean();
     private MockWebServer server;
     private PollingWorkerTransport transport;
 
@@ -43,24 +45,27 @@ class PollingWorkerTransportTest {
     void setUp() throws IOException {
         server = new MockWebServer();
         server.start();
-        WorkerCommandProcessor processor = new WorkerCommandProcessor(
-                Map.of(
-                        "test.observe",
-                        WorkerEventDefinition.map(payload -> {
-                            Map<String, Object> result =
-                                    new LinkedHashMap<>();
-                            result.put("observed", payload.get("value"));
-                            return Jsons.toJson(result);
-                        })
-                )
-        );
+        WorkerCommandExecutor executor = encoded -> {
+            if ("{bad-json".equals(encoded)) {
+                throw new WorkerException(
+                        WorkerErrorCode.COMMAND_MESSAGE_INVALID,
+                        "command.decode",
+                        null,
+                        null
+                );
+            }
+            executedCommand.set(encoded);
+            if (dropCommand.get()) {
+                return Optional.empty();
+            }
+            return Optional.of(result());
+        };
         transport = new PollingWorkerTransport(
                 URI.create(server.url("/").toString()),
                 "system polling",
                 WORKER_ID,
                 Duration.ofSeconds(2),
-                codec,
-                processor
+                executor
         );
     }
 
@@ -111,6 +116,7 @@ class PollingWorkerTransportTest {
         );
         assertEquals("opaque-context", result.forward());
         assertEquals(TASK, result.dst());
+        assertEquals(command(), executedCommand.get());
         assertFalse(transport.hasPendingResult());
     }
 
@@ -161,17 +167,16 @@ class PollingWorkerTransportTest {
                 transport::runOnce
         );
         assertEquals(
-                WorkerErrorCode.COMMAND_RESPONSE_INVALID,
+                WorkerErrorCode.COMMAND_MESSAGE_INVALID,
                 invalidResponse.errorCode()
         );
-        assertEquals("polling.pollCommand", invalidResponse.operation());
+        assertEquals("command.decode", invalidResponse.operation());
     }
 
     @Test
-    void expiredCommandIsDroppedWithoutResult() throws Exception {
-        server.enqueue(response(200, command(
-                System.currentTimeMillis() - 1
-        )));
+    void emptyExecutionIsDroppedWithoutResult() throws Exception {
+        dropCommand.set(true);
+        server.enqueue(response(200, command()));
 
         assertFalse(transport.runOnce());
         assertFalse(transport.hasPendingResult());
@@ -187,7 +192,7 @@ class PollingWorkerTransportTest {
     }
 
     private String command() {
-        return command(System.currentTimeMillis() + 60_000);
+        return command(4_102_444_800_000L);
     }
 
     private String command(long deadline) {
@@ -200,6 +205,17 @@ class PollingWorkerTransportTest {
                 "{\"value\":\"input\"}",
                 "opaque-context"
         ));
+    }
+
+    private static WorkerResult result() {
+        return new WorkerResult(
+                COMMAND_ID,
+                TASK,
+                "test.observe",
+                "200",
+                "{\"observed\":\"input\"}",
+                "opaque-context"
+        );
     }
 
     private static MockResponse response(int code, String body) {
