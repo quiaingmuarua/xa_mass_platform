@@ -11,7 +11,10 @@ Status: current repository handoff.
 - `server_jvm/` is the external Runtime API process. Controllers and services
   depend on `kernel_jvm` owner contracts. Its assembly binds control operations
   to Python HTTP providers and selected data/delivery operations to Java Redis
-  providers; it does not define a second set of Kernel runtime ports.
+  providers; it does not define a second set of Kernel runtime ports. It may
+  also host explicitly configured, built-in Worker bundles. Those bundles use
+  existing Worker owner contracts and the real Worker transport path; they do
+  not become Kernel owners.
 - `worker_delivery_contract_jvm/` is the Java 11 compatible transport-neutral
   WorkerCommand/WorkerResult/WorkerConnectionBind contract shared by Server,
   Adapter, and Worker. Long-lived transports exchange direct command/result
@@ -115,9 +118,17 @@ tag.
   process lifecycle, permissions beyond INTERNET, and static handler assembly.
 - `server_jvm` may bind a `Map<adapterId, JsonNode>`, construct concrete
   Adapter instances, register them, and invoke `manager.start()` /
-  `manager.close()` at process boundaries. It must not host WebSocket
-  endpoints, call `dispatchOnce()`, or own Adapter scheduling, connection
-  selection, queue handling, result buffering, or trusted rejection policy.
+  `manager.close()` at process boundaries. Its `workerassembly` package may
+  compose a finite set of explicitly coded built-in Worker bundles, upsert
+  their WorkerGroup/Worker declarations through `kernel_jvm` owner contracts,
+  and start Worker Core over a configured Adapter. It must not turn this into
+  a generic class-name plugin system, use Server HTTP loopback for owner
+  operations, bypass to Redis, host WebSocket endpoints, call `dispatchOnce()`,
+  or own Adapter scheduling, connection selection, queue handling, result
+  buffering, or trusted rejection policy.
+- The default Server profile must not declare Adapter instances or built-in
+  Worker bundles. Both are opt-in deployment assembly supplied by a profile,
+  external configuration, or environment variables.
 
 ## JVM Incremental Assembly
 
@@ -156,6 +167,11 @@ WorkerDeliveryConfiguration
   -> shared codec
   -> Server point/batch HTTP application service
 
+ServerWorkerAssemblyConfiguration
+  -> strict opt-in built-in bundle configuration
+  -> WorkerResourceCatalog / WorkerRuntime owner upserts
+  -> Worker Core + concrete network Client
+
 transport/netty-adapter
   -> Adapter batch HTTP client
   -> per-endpoint Command/Result loops and current connection registry
@@ -164,9 +180,11 @@ transport/netty-adapter
   -> independent Netty WebSocket and Socket listeners
 ```
 
-The main Server owns the Worker Delivery HTTP and Redis boundaries. It only
-composes and starts configured Adapter instances. Every Adapter still reaches
-Worker Delivery through the same batch HTTP boundary.
+The main Server owns the Worker Delivery HTTP and Redis boundaries. It
+composes and starts configured Adapter instances and may host explicitly
+configured built-in Worker bundles. Every Adapter still reaches Worker
+Delivery through the same batch HTTP boundary, and every built-in Worker
+still connects through an Adapter rather than an in-process fast path.
 
 `worker_delivery_contract_jvm`, `transport/worker-core`, and
 `transport/okhttp-worker` compile to Java 11 bytecode. The Android Client

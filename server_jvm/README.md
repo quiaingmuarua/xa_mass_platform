@@ -1,6 +1,7 @@
 # XA Mass JVM Runtime API Server
 
-Status: active external Runtime API with Kernel owner-contract assembly.
+Status: active external Runtime API with Kernel owner-contract assembly and
+opt-in built-in Worker assembly.
 
 `server_jvm` owns the versioned HTTP contract, request validation, error
 mapping, timeouts, and process health. WorkerGroup/Worker upsert and Task
@@ -8,7 +9,7 @@ create/approve/close bind to Python HTTP owner providers. TaskItem append,
 last-success reads, and Worker Delivery bind to Java Redis owner providers.
 Controllers and services depend only on contracts from `kernel_jvm`.
 
-Server failures use one module-local exception:
+Runtime API failures use the module-local HTTP exception:
 
 ```text
 ServerException
@@ -21,6 +22,10 @@ module enum; they do not define exception subclasses. `ApiExceptionHandler`
 maps `ServerErrorCode` to HTTP status and emits its integer code in
 `ApiErrorResponse`. Spring remains the process logging and tracing boundary,
 while exceptions do not carry request IDs or context maps.
+
+Server startup assembly failures use the owner-local
+`WorkerAssemblyException` with numeric code, `owner.method` operation,
+message, and cause. It is not an HTTP or cross-module exception contract.
 
 ```text
 Control client
@@ -48,6 +53,12 @@ Worker / long-lived Adapter
   -> WorkerCommandRuntime + WorkerResultRuntime
   -> Java owner Redis providers
   -> Python ResultRouting
+
+Configured built-in Worker bundle
+  -> WorkerResourceCatalog / WorkerRuntime owner upserts
+  -> Worker Core + concrete network Client
+  -> real configured Adapter listener
+  -> the same Worker Delivery HTTP/Redis path
 ```
 
 The module is Java 21 and Spring Boot 4.1. It depends on `kernel_jvm` contracts
@@ -122,8 +133,8 @@ dependency.
 The Adapter runtime is implemented by
 [`transport/netty-adapter`](../transport/netty-adapter/README.md).
 This Server reads the configured Adapter instance map, creates complete
-WebSocket or Socket Adapter instances, registers them, and forwards
-process-ready/process-close events. Each Adapter owns its Netty listener,
+WebSocket or Socket Adapter instances, registers them, and starts/closes the
+manager at process boundaries. Each Adapter owns its Netty listener,
 bounded Command/Result loops, current Channel registry, and encoded result
 buffer. It consumes the existing batch HTTP API through loopback and has no
 in-process or Redis shortcut. Polling continues to exchange WorkerCommand and
@@ -254,38 +265,27 @@ with the [Android Client](../transport/android-client/README.md), then calls
 directly. A WebSocket or Socket host connects to the selected Adapter listener.
 These libraries do not provide a CLI or own application lifecycle.
 
-One WebSocket and one Socket Adapter instance:
+The default Server configuration defines only the Adapter-to-Server Gateway.
+It does not create or start any Adapter instance:
 
 ```yaml
 xa.mass.worker-delivery.adapter:
   gateway:
     base-url: http://127.0.0.1:18082
     request-timeout: 5s
-  instances:
-    websocket-1:
-      type: WEBSOCKET
-      listen-host: 0.0.0.0
-      listen-port: 18083
-      command-loop-interval: 100ms
-      command-consume-limit: 100
-      command-queue-capacity: 1000
-      result-submit-interval: 1s
-      result-queue-capacity: 1000
-      send-time-limit: 5s
-    socket-1:
-      type: SOCKET
-      listen-host: 0.0.0.0
-      listen-port: 18084
 ```
 
-The instance map key is both `adapterId` and `endpointManagerId`; the Worker
-declaration must use the matching value. Each instance starts an independent
-Netty listener after the Server is ready and calls the shared Gateway
-`base-url`. A WebSocket Worker connects to the instance's fixed WebSocket path;
-a Socket Worker connects to its TCP port. Both send a direct
+An Adapter is an explicit deployment choice supplied by a profile, external
+configuration, or environment variables. The instance map key is both
+`adapterId` and `endpointManagerId`; the Worker declaration must use the
+matching value. Each configured instance starts an independent Netty listener
+during Server startup, after the HTTP server is bound and before the process
+reports ready, and calls the shared Gateway `base-url`. A WebSocket Worker
+connects to the instance's fixed WebSocket path; a Socket Worker connects to
+its TCP port. Both send a direct
 `WorkerConnectionBind` JSON value before any `WorkerCommand`; there is no
-generic connection-message envelope. An empty `instances` map starts no active
-Adapter.
+generic connection-message envelope. An empty or absent `instances` map starts
+no active Adapter.
 
 Instances must use distinct IDs and listener ports. Do not duplicate an
 endpoint-manager ID for throughput. Each instance runs independent Command and
@@ -294,6 +294,57 @@ non-blocking Channel writes. The Result Loop drains one shared bounded queue
 containing validated Worker-originated results and Adapter-owned rejections,
 and submits at most one pending or buffered batch per
 `result-submit-interval`. There is no producer-source split.
+
+### Built-in Worker Assembly
+
+Built-in business Workers are opt-in. Configuration selects only an explicitly
+coded bundle; it cannot provide an arbitrary class name or handler:
+
+```yaml
+xa:
+  mass:
+    worker-delivery:
+      adapter:
+        instances:
+          websocket-1:
+            type: WEBSOCKET
+            listen-host: 127.0.0.1
+            listen-port: 18083
+    worker-assembly:
+      bundles:
+        phone-number:
+          type: PHONE_NUMBER
+          adapter-id: websocket-1
+          worker-group-id: phonenumber-workers
+          worker-id-prefix: phonenumber-worker-
+```
+
+An absent `bundles` map starts no built-in business Worker. The checked-in
+`phone-number-rpc` profile is a deliberately small local example: it declares
+only the required WebSocket Adapter topology and the stable Worker resource
+identities. The fixed bundle supplies bounded defaults of 10 Workers, a 10
+second request timeout, a 250 millisecond reconnect interval, and a 15 second
+initial-connect timeout. Its internal Workers derive their loopback WebSocket
+URI from the referenced configured Adapter, so the port is not duplicated in
+two settings.
+
+```text
+./gradlew :server_jvm:bootRun --args="--spring.profiles.active=phone-number-rpc"
+```
+
+During startup the Server starts all configured Adapters, upserts the
+phone-number WorkerGroup and each Worker through `WorkerResourceCatalog` and
+`WorkerRuntime`, starts the real WebSocket Worker transports, and waits for
+every initial connection. Only `OK` and `NOOP` owner results are accepted.
+Invalid configuration, a rejected owner operation, transport startup failure,
+or connection timeout aborts Server startup. Already accepted owner upserts
+are not rolled back across owners; the deterministic declarations converge
+idempotently on the next startup.
+
+The built-in bundle does not expose a new Kernel operation, access Redis,
+start a second scheduler, or bypass the Adapter through an in-process path.
+Shutdown closes Workers before Adapters. External Worker applications remain
+supported and own their own resource registration and process lifecycle.
 
 Defaults:
 
@@ -304,6 +355,7 @@ connect timeout          1s
 read timeout             5s
 Kernel Redis              redis://localhost:6379/15
 Kernel Redis prefix        default
+Adapter instances           none by default
 Task RPC wait              30s default / 60s maximum
 Task RPC waiter limit      10000
 ```

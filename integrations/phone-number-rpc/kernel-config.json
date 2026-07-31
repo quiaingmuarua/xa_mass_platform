@@ -1,0 +1,17 @@
+{
+  "redis": {
+    "url": "redis://localhost:6379/15",
+    "prefix": "default"
+  },
+  "assignmentDispatch": {
+    "workerAllocationIntervalMillis": 20,
+    "runningActivationIntervalMillis": 20,
+    "taskDispatchIntervalMillis": 20
+  },
+  "systemPolicy": {
+    "runningTaskSoftLimit": 100
+  },
+  "resultRouting": {
+    "intervalMillis": 20
+  }
+}

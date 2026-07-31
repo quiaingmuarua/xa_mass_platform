@@ -22,7 +22,10 @@ import com.xa.mass.kernel.worker.WorkerRuntime;
 import com.xa.mass.server.kernelbinding.KernelOwnerAssemblyConfiguration;
 import com.xa.mass.server.workerdelivery.WorkerDeliveryOwnerAssemblyConfiguration;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
-import com.xa.mass.server.workerdelivery.adapter.WorkerDeliveryAdapterLifecycleHost;
+import com.xa.mass.server.workerassembly
+        .ServerWorkerBundleManager;
+import com.xa.mass.server.workerassembly
+        .ServerWorkerAssemblyLifecycleHost;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -33,7 +36,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.ApplicationContext;
+import org.springframework.test.context.ActiveProfiles;
 
+@ActiveProfiles("test")
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = {
@@ -106,8 +111,11 @@ class ServerApplicationContextTest {
                 WorkerDeliveryAdapterManager.class
         ).adapters()).isEmpty();
         assertThat(applicationContext.getBean(
-                WorkerDeliveryAdapterLifecycleHost.class
+                ServerWorkerAssemblyLifecycleHost.class
         )).isNotNull();
+        assertThat(applicationContext.getBean(
+                ServerWorkerBundleManager.class
+        ).bundleIds()).isEmpty();
 
         HttpClient client = HttpClient.newHttpClient();
         HttpResponse<String> liveness = client.send(

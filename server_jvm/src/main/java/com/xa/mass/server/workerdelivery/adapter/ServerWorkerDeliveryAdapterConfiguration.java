@@ -62,14 +62,6 @@ public class ServerWorkerDeliveryAdapterConfiguration {
         return manager;
     }
 
-    @Bean
-    WorkerDeliveryAdapterLifecycleHost
-    workerDeliveryAdapterLifecycleHost(
-            WorkerDeliveryAdapterManager manager
-    ) {
-        return new WorkerDeliveryAdapterLifecycleHost(manager);
-    }
-
     private static WorkerDeliveryAdapter createAdapter(
             String adapterId,
             JsonNode config,

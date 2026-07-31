@@ -3,7 +3,7 @@
 Status: clean-kernel mechanism workspace, incremental JVM owner parity, and
 Runtime API.
 
-The repository contains five active areas:
+The repository contains six active areas:
 
 - [`kernel_design/`](kernel_design/): Python executable specification,
   mechanism documentation, and Redis proofs. It is the
@@ -13,7 +13,9 @@ The repository contains five active areas:
   scheduling or application lifecycle implementation.
 - [`server_jvm/`](server_jvm/): Java/Spring Boot Runtime API Server. It exposes
   the stable `/api/v1` surface and assembles owner operations from Python HTTP
-  and Java Redis providers without redefining Kernel runtime contracts.
+  and Java Redis providers without redefining Kernel runtime contracts. Its
+  optional, configuration-driven Worker Assembly can host explicitly known
+  built-in Worker bundles through the same public Worker transport path.
 - [`worker_delivery_contract_jvm/`](worker_delivery_contract_jvm/): shared
   Java 11 compatible Worker Delivery DTO, validation, outcome classification,
   strict codec, and JDK-value JSON facade shared with Android.
@@ -23,6 +25,11 @@ The repository contains five active areas:
   HandlerThread WebSocket client. JVM and Android hosts explicitly compose
   Worker Core with a concrete client without changing the distinct delivery,
   execution, and network boundaries.
+- [`integrations/`](integrations/): externally assembled, runnable proof
+  applications. The
+  [`phone-number-rpc`](integrations/phone-number-rpc/) module owns only Task
+  creation and single-Item RPC invocation; the matching phone-number Worker
+  bundle is explicitly enabled in Server configuration.
 
 The shared contract and Transport modules are repository-local artifacts;
 they are not published SDKs.

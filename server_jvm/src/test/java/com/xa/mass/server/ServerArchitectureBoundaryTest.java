@@ -44,6 +44,9 @@ class ServerArchitectureBoundaryTest {
     private static final Path DELIVERY_ADAPTER_HOST = SERVER_SOURCE.resolve(
             "com/xa/mass/server/workerdelivery/adapter"
     );
+    private static final Path WORKER_ASSEMBLY = SERVER_SOURCE.resolve(
+            "com/xa/mass/server/workerassembly"
+    );
     private static final Path ADAPTER_SOURCE = Path.of(
             "../transport/netty-adapter/src/main/java"
     );
@@ -55,12 +58,18 @@ class ServerArchitectureBoundaryTest {
         assertThat(build)
                 .contains("implementation project(':kernel_jvm')")
                 .contains("implementation project(':transport:netty-adapter')")
-                .doesNotContain("foundation_jvm")
-                .doesNotContain("spring-boot-starter-websocket")
-                .doesNotContain(
+                .contains(
                         "implementation project(':transport:okhttp-worker')"
                 )
                 .contains(
+                        "com.googlecode.libphonenumber:libphonenumber"
+                )
+                .contains(
+                        "com.googlecode.libphonenumber:carrier"
+                )
+                .doesNotContain("foundation_jvm")
+                .doesNotContain("spring-boot-starter-websocket")
+                .doesNotContain(
                         "testImplementation project(':transport:okhttp-worker')"
                 );
 
@@ -75,7 +84,7 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("WorkerDeliveryRuntime");
         assertThat(serverSources)
                 .contains("class ServerException")
-                .containsOnlyOnce("extends RuntimeException")
+                .contains("class WorkerAssemblyException")
                 .doesNotContain("com.xa.mass.foundation");
         assertThat(readSourcesExcluding(
                 SERVER_SOURCE,
@@ -145,12 +154,11 @@ class ServerArchitectureBoundaryTest {
     }
 
     @Test
-    void serverOnlyHostsTheAdapterMechanism() throws IOException {
+    void serverOnlyComposesAdapterAndBuiltInWorkerMechanisms()
+            throws IOException {
         String host = readSources(DELIVERY_ADAPTER_HOST);
         assertThat(host)
                 .contains("WorkerDeliveryAdapterManager")
-                .contains("manager.start()")
-                .contains("manager.close()")
                 .doesNotContain("dispatchOnce")
                 .doesNotContain("ScheduledExecutorService")
                 .doesNotContain("WebSocketSession")
@@ -159,6 +167,19 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("WorkerResult")
                 .doesNotContain("\"3001\"")
                 .doesNotContain("ArrayBlockingQueue");
+
+        String assembly = readSources(WORKER_ASSEMBLY);
+        assertThat(assembly)
+                .contains("adapterManager.start()")
+                .contains("adapterManager.close()")
+                .contains("WorkerResourceCatalog")
+                .contains("WorkerRuntime")
+                .contains("WebSocketWorkerTransport")
+                .doesNotContain("dispatchOnce")
+                .doesNotContain("io.lettuce")
+                .doesNotContain("org.springframework.data.redis")
+                .doesNotContain("ScoreBand")
+                .doesNotContain("Pacer");
 
         String adapter = readSources(ADAPTER_SOURCE);
         assertThat(adapter)

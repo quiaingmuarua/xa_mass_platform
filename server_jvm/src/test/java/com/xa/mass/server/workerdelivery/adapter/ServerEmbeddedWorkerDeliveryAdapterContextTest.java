@@ -5,15 +5,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterState;
 import com.xa.mass.workerdelivery.adapter.websocket.WebSocketWorkerDeliveryAdapter;
+import com.xa.mass.server.workerassembly
+        .ServerWorkerAssemblyLifecycleHost;
 import java.io.IOException;
 import java.net.ServerSocket;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.ApplicationContext;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 
+@ActiveProfiles("test")
 @SpringBootTest(
         properties = {
                 "xa.mass.kernel.base-url=http://127.0.0.1:1",
@@ -63,7 +67,7 @@ class ServerEmbeddedWorkerDeliveryAdapterContextTest {
         assertThat(adapter.state())
                 .isEqualTo(WorkerDeliveryAdapterState.RUNNING);
         assertThat(applicationContext.getBean(
-                WorkerDeliveryAdapterLifecycleHost.class
+                ServerWorkerAssemblyLifecycleHost.class
         )).isNotNull();
     }
 
