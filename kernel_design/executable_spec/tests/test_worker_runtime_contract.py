@@ -78,6 +78,7 @@ class WorkerRuntimeContractTest(unittest.TestCase):
             {
                 "get_worker_descriptors",
                 "get_worker_group_descriptors",
+                "sample_worker_descriptors",
                 "upsert_worker_group",
                 "update_worker_platform_attributes",
             },
@@ -203,6 +204,20 @@ class WorkerRuntimeContractTest(unittest.TestCase):
         self.assertEqual(
             platform_params,
             {"self", "worker_group_id", "worker_id", "attributes"},
+        )
+
+        sample_params = set(
+            inspect.signature(
+                WorkerResourceCatalog.sample_worker_descriptors
+            ).parameters
+        )
+        self.assertEqual(
+            sample_params,
+            {"self", "worker_group_id", "sample_limit"},
+        )
+        self.assertEqual(
+            WorkerResourceCatalog.MAX_WORKER_DESCRIPTOR_SAMPLE_LIMIT,
+            100,
         )
 
     def test_dynamic_attribute_runtime_exposes_bounded_owner_operations(self) -> None:

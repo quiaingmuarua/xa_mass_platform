@@ -9,6 +9,8 @@ import org.jspecify.annotations.Nullable;
 
 public interface WorkerResourceCatalog {
 
+    int MAX_WORKER_DESCRIPTOR_SAMPLE_LIMIT = 100;
+
     WorkerRuntimeResult upsertWorkerGroup(WorkerGroupDescriptor descriptor);
 
     Map<String, @Nullable WorkerGroupDescriptor> getWorkerGroupDescriptors(
@@ -18,6 +20,11 @@ public interface WorkerResourceCatalog {
     Map<String, @Nullable WorkerDescriptor> getWorkerDescriptors(
             String workerGroupId,
             List<String> workerIds
+    );
+
+    Map<String, @Nullable WorkerDescriptor> sampleWorkerDescriptors(
+            String workerGroupId,
+            int sampleLimit
     );
 
     WorkerRuntimeResult updateWorkerPlatformAttributes(

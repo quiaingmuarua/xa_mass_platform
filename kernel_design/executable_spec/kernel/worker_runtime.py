@@ -183,6 +183,8 @@ class WorkerResourceCatalog(ABC):
     This catalog does not expose dynamic attribute values or score mutation.
     """
 
+    MAX_WORKER_DESCRIPTOR_SAMPLE_LIMIT = 100
+
     @abstractmethod
     def upsert_worker_group(
         self,
@@ -207,6 +209,23 @@ class WorkerResourceCatalog(ABC):
         worker_ids: Sequence[WorkerId],
     ) -> Mapping[WorkerId, WorkerDescriptor | None]:
         """Read one bounded worker batch inside one explicit worker group."""
+        pass
+
+    @abstractmethod
+    def sample_worker_descriptors(
+        self,
+        *,
+        worker_group_id: WorkerGroupId,
+        sample_limit: int,
+    ) -> Mapping[WorkerId, WorkerDescriptor | None]:
+        """Read one unordered, incomplete descriptor sample from one group.
+
+        The owner performs one same-key random HASH sample. The caller owns the
+        positive bound, up to MAX_WORKER_DESCRIPTOR_SAMPLE_LIMIT. Results have
+        no ordering, stability, pagination, total-count, or completeness
+        guarantee. An unreadable or identity-mismatched row is represented by
+        the sampled Worker id mapped to None.
+        """
         pass
 
     @abstractmethod

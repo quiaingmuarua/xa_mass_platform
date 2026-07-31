@@ -38,6 +38,9 @@
       "TIME_SCALE": 10,
       "TIME_SLOT_FACTOR": 100000000000
     },
+    "WorkerResourceCatalog": {
+      "MAX_WORKER_DESCRIPTOR_SAMPLE_LIMIT": 100
+    },
     "WorkerScoreCore": {
       "DIRTY_FACTOR": 2,
       "HOT_ACQUIRE_POLARITY": 1,
@@ -119,6 +122,7 @@
     "WorkerResourceCatalog": [
       "get_worker_descriptors",
       "get_worker_group_descriptors",
+      "sample_worker_descriptors",
       "update_worker_platform_attributes",
       "upsert_worker_group"
     ],

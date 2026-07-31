@@ -37,6 +37,8 @@ class FakeRedis:
         self.hashes: dict[str, dict[str, str]] = {}
         self.zsets: dict[str, dict[str, int]] = {}
         self.hmget_calls: list[tuple[str, tuple[str, ...]]] = []
+        self.hrandfield_calls: list[tuple[str, int, bool]] = []
+        self.hrandfield_offset = 0
         self.now_millis = 100_000
 
     def pipeline(self, transaction: bool = True) -> FakePipeline:
@@ -86,6 +88,28 @@ class FakeRedis:
         self.hmget_calls.append((name, tuple(keys)))
         hash_row = self.hashes.get(name, {})
         return [hash_row.get(key) for key in keys]
+
+    def hrandfield(
+        self,
+        name: str,
+        *,
+        count: int,
+        withvalues: bool = False,
+    ) -> list[str]:
+        self.hrandfield_calls.append((name, count, withvalues))
+        rows = list(self.hashes.get(name, {}).items())
+        if not rows:
+            return []
+        offset = self.hrandfield_offset % len(rows)
+        self.hrandfield_offset += 1
+        selected = (rows[offset:] + rows[:offset])[:count]
+        if withvalues:
+            return [
+                value
+                for field, raw in selected
+                for value in (field, raw)
+            ]
+        return [field for field, _ in selected]
 
     def hdel(
         self,

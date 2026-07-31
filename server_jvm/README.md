@@ -160,6 +160,8 @@ POST /api/v1/tasks/{taskId}/close
 POST /api/v1/tasks/{taskId}/items
 POST /api/v1/tasks/{taskId}/items:call
 POST /api/v1/tasks/{taskId}/results:load
+POST /api/v1/runtime-view/worker-groups:batch-get
+POST /api/v1/runtime-view/worker-groups/{workerGroupId}/workers:preview
 ```
 
 WorkerGroup and Worker upsert use Java Redis owner providers. Task
@@ -183,6 +185,58 @@ first-seen order, and returns:
 
 The payload is opaque. A missing Task returns `404`; `null` means only that no
 last-success payload exists for that Task-scoped messageId.
+
+## Worker Runtime View
+
+Runtime View is a read-only operator preview over the
+`WorkerResourceCatalog`. It does not expose Redis, Worker score, lease,
+transport session, payload, lifecycle status, history, global discovery, or
+stable pagination.
+
+Batch WorkerGroup load accepts 1 to 20 unique, nonblank configured IDs:
+
+```http
+POST /api/v1/runtime-view/worker-groups:batch-get
+```
+
+```json
+{
+  "workerGroupIds": [
+    "scenario-phone-number-workers",
+    "scenario-string-utils-workers"
+  ]
+}
+```
+
+Existing `workerGroups` and `missingWorkerGroupIds` preserve request order.
+The response group projection contains only `workerGroupId`, `attributes`,
+`eventCodes`, and `itemAllocationFields`.
+
+One WorkerGroup preview accepts `sampleLimit` from 1 through 100:
+
+```http
+POST /api/v1/runtime-view/worker-groups/{workerGroupId}/workers:preview
+```
+
+```json
+{"sampleLimit":100,"filter":null}
+```
+
+The owner first validates the WorkerGroup, then executes one positive-count
+Redis `HRANDFIELD ... WITHVALUES` against that group's Worker descriptor HASH.
+The response reports `sampledCount`, `returnedCount`, `unreadableCount`, and
+`generatedAt`; each readable Worker contains only `workerId`,
+`workerGroupId`, `endpointManagerId`, `attributes`, `platformAttributes`, and
+`dynamicAttributeNames`. Worker order, sample stability, completeness, totals,
+and pagination are deliberately not contracts. The provider does not refill
+unreadable rows. A non-null `filter` returns `422` until the separate bounded
+Filter DSL slice is implemented.
+
+Runtime View errors use `15001` for a missing WorkerGroup, `15002` for an
+unavailable owner/provider (`503`), and `15003` for a filter that is not yet
+available (`422`). `X-Request-Id` is retained in error responses. The default
+Server bind address is `127.0.0.1`; set `SERVER_ADDRESS` explicitly only when
+the deployment supplies its own access boundary.
 
 TaskItem RPC v1 accepts one existing `TaskItemRequest` plus an optional
 `waitTimeoutMillis` (30 seconds by default, 60 seconds maximum):

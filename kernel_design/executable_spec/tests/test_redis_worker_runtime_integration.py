@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import time
 import unittest
@@ -101,6 +102,127 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
                 worker_ids=("shared-worker",),
             )["shared-worker"]
         )
+
+    def test_worker_descriptor_sampling_is_bounded_group_local_and_lossy(
+        self,
+    ) -> None:
+        worker_key = f"wr:{self.prefix}:workers:{self.worker_group_id}"
+        valid_rows = {
+            f"worker-{index:03d}": json.dumps(
+                {
+                    "workerId": f"worker-{index:03d}",
+                    "workerGroupId": self.worker_group_id,
+                    "endpointManagerId": "endpoint-manager-1",
+                    "attributes": {"index": index},
+                    "platformAttributes": {},
+                    "dynamicAttributeNames": [],
+                },
+                separators=(",", ":"),
+            )
+            for index in range(120)
+        }
+        self.redis.hset(worker_key, mapping=valid_rows)
+        self.redis.hset(
+            f"wr:{self.prefix}:workers:other-workers",
+            "other-worker",
+            json.dumps(
+                {
+                    "workerId": "other-worker",
+                    "workerGroupId": "other-workers",
+                    "endpointManagerId": "endpoint-manager-2",
+                    "attributes": {},
+                    "platformAttributes": {},
+                    "dynamicAttributeNames": [],
+                },
+                separators=(",", ":"),
+            ),
+        )
+
+        one = self.catalog.sample_worker_descriptors(
+            worker_group_id=self.worker_group_id,
+            sample_limit=1,
+        )
+        hundred = self.catalog.sample_worker_descriptors(
+            worker_group_id=self.worker_group_id,
+            sample_limit=100,
+        )
+        repeated = {
+            tuple(sorted(
+                self.catalog.sample_worker_descriptors(
+                    worker_group_id=self.worker_group_id,
+                    sample_limit=5,
+                )
+            ))
+            for _ in range(10)
+        }
+
+        self.assertEqual(len(one), 1)
+        self.assertEqual(len(hundred), 100)
+        self.assertEqual(len(set(hundred)), 100)
+        self.assertTrue(
+            all(
+                descriptor is not None
+                and descriptor.worker_group_id == self.worker_group_id
+                for descriptor in hundred.values()
+            )
+        )
+        self.assertNotIn("other-worker", hundred)
+        self.assertGreater(len(repeated), 1)
+        self.assertEqual(
+            self.catalog.sample_worker_descriptors(
+                worker_group_id="empty-workers",
+                sample_limit=100,
+            ),
+            {},
+        )
+
+        invalid_key = f"wr:{self.prefix}:workers:invalid-workers"
+        self.redis.hset(
+            invalid_key,
+            mapping={
+                "broken": "{not-json",
+                "wrong-id": json.dumps(
+                    {
+                        "workerId": "another-worker",
+                        "workerGroupId": "invalid-workers",
+                        "endpointManagerId": "endpoint-manager-1",
+                        "attributes": {},
+                        "platformAttributes": {},
+                        "dynamicAttributeNames": [],
+                    },
+                    separators=(",", ":"),
+                ),
+                "wrong-group": json.dumps(
+                    {
+                        "workerId": "wrong-group",
+                        "workerGroupId": "other-workers",
+                        "endpointManagerId": "endpoint-manager-1",
+                        "attributes": {},
+                        "platformAttributes": {},
+                        "dynamicAttributeNames": [],
+                    },
+                    separators=(",", ":"),
+                ),
+            },
+        )
+        self.assertEqual(
+            self.catalog.sample_worker_descriptors(
+                worker_group_id="invalid-workers",
+                sample_limit=100,
+            ),
+            {
+                "broken": None,
+                "wrong-id": None,
+                "wrong-group": None,
+            },
+        )
+
+        for invalid_limit in (0, 101):
+            with self.assertRaises(ValueError):
+                self.catalog.sample_worker_descriptors(
+                    worker_group_id=self.worker_group_id,
+                    sample_limit=invalid_limit,
+                )
 
     def test_upserted_worker_becomes_hot_acquire_candidate(self) -> None:
         group = WorkerGroupDescriptor(

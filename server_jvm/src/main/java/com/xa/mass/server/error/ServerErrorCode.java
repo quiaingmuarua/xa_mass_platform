@@ -53,6 +53,18 @@ public enum ServerErrorCode {
             13002,
             "Worker Delivery Redis is unavailable"
     ),
+    WORKER_GROUP_NOT_FOUND(
+            15001,
+            "WorkerGroup was not found"
+    ),
+    RUNTIME_VIEW_UNAVAILABLE(
+            15002,
+            "Runtime View is unavailable"
+    ),
+    RUNTIME_VIEW_FILTER_NOT_AVAILABLE(
+            15003,
+            "Runtime View filter is not available"
+    ),
     MALFORMED_REQUEST(
             19001,
             "Request body or parameters are invalid"

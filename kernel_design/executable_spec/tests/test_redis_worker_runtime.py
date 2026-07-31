@@ -404,6 +404,136 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
             self.expected_descriptor(audio_worker),
         )
 
+    def test_sample_workers_uses_one_bounded_group_hash_random_read(self) -> None:
+        self.upsert_group()
+        declarations = [
+            self.worker_declaration(f"worker-{index:03d}")
+            for index in range(120)
+        ]
+        for declaration in declarations:
+            self.upsert_worker(declaration)
+
+        sampled = self.catalog.sample_worker_descriptors(
+            worker_group_id="image-workers",
+            sample_limit=100,
+        )
+
+        self.assertEqual(
+            self.redis.hrandfield_calls,
+            [("wr:test:workers:image-workers", 100, True)],
+        )
+        self.assertEqual(len(sampled), 100)
+        self.assertEqual(len(set(sampled)), 100)
+        self.assertTrue(all(value is not None for value in sampled.values()))
+        self.assertEqual(self.redis.hmget_calls, [])
+
+    def test_sample_workers_is_group_scoped_and_empty_hash_is_success(self) -> None:
+        self.upsert_group()
+        self.catalog.upsert_worker_group(
+            descriptor=WorkerGroupDescriptor(
+                worker_group_id="audio-workers",
+                attributes={},
+                event_codes=frozenset({"transcribe"}),
+            )
+        )
+        self.upsert_worker(self.worker_declaration("image-worker"))
+        self.upsert_worker(
+            self.worker_declaration(
+                "audio-worker",
+                worker_group_id="audio-workers",
+            )
+        )
+
+        image_sample = self.catalog.sample_worker_descriptors(
+            worker_group_id="image-workers",
+            sample_limit=1,
+        )
+        empty_sample = self.catalog.sample_worker_descriptors(
+            worker_group_id="empty-workers",
+            sample_limit=100,
+        )
+
+        self.assertEqual(tuple(image_sample), ("image-worker",))
+        self.assertEqual(empty_sample, {})
+        self.assertEqual(
+            self.redis.hrandfield_calls,
+            [
+                ("wr:test:workers:image-workers", 1, True),
+                ("wr:test:workers:empty-workers", 100, True),
+            ],
+        )
+
+    def test_sample_workers_maps_unreadable_and_mismatched_rows_to_none(
+        self,
+    ) -> None:
+        self.redis.hset(
+            "wr:test:workers:image-workers",
+            mapping={
+                "broken": "{not-json",
+                "wrong-id": (
+                    '{"attributes":{},"dynamicAttributeNames":[],"endpointManagerId":'
+                    '"endpoint","platformAttributes":{},"workerGroupId":'
+                    '"image-workers","workerId":"other-id"}'
+                ),
+                "wrong-group": (
+                    '{"attributes":{},"dynamicAttributeNames":[],"endpointManagerId":'
+                    '"endpoint","platformAttributes":{},"workerGroupId":'
+                    '"audio-workers","workerId":"wrong-group"}'
+                ),
+            },
+        )
+
+        sampled = self.catalog.sample_worker_descriptors(
+            worker_group_id="image-workers",
+            sample_limit=100,
+        )
+
+        self.assertEqual(
+            sampled,
+            {
+                "broken": None,
+                "wrong-id": None,
+                "wrong-group": None,
+            },
+        )
+
+    def test_sample_workers_rejects_invalid_group_or_limit_before_redis(
+        self,
+    ) -> None:
+        for worker_group_id, sample_limit in (
+            ("", 1),
+            ("image-workers", 0),
+            ("image-workers", 101),
+            ("image-workers", True),
+        ):
+            with self.subTest(
+                worker_group_id=worker_group_id,
+                sample_limit=sample_limit,
+            ):
+                with self.assertRaises(ValueError):
+                    self.catalog.sample_worker_descriptors(
+                        worker_group_id=worker_group_id,
+                        sample_limit=sample_limit,
+                    )
+
+        self.assertEqual(self.redis.hrandfield_calls, [])
+
+    def test_repeated_worker_samples_have_no_stability_contract(self) -> None:
+        self.upsert_group()
+        self.upsert_worker(self.worker_declaration("worker-1"))
+        self.upsert_worker(self.worker_declaration("worker-2"))
+
+        first = self.catalog.sample_worker_descriptors(
+            worker_group_id="image-workers",
+            sample_limit=1,
+        )
+        second = self.catalog.sample_worker_descriptors(
+            worker_group_id="image-workers",
+            sample_limit=1,
+        )
+
+        self.assertNotEqual(tuple(first), tuple(second))
+
     def test_platform_attributes_update_merges_without_touching_other_fields(self) -> None:
         self.upsert_group()
         self.upsert_worker(

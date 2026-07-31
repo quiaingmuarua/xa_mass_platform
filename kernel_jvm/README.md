@@ -33,6 +33,7 @@ TaskResourceCatalog
 
 WorkerResourceCatalog
   WorkerGroup descriptor reads
+  bounded random Worker descriptor samples
 
 WorkerCommandRuntime
   point and bounded random batch consume

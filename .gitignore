@@ -25,10 +25,20 @@ __pycache__/
 *.sqlite
 
 data/
-frontend/
 integrations/**/result.txt
 logs/
 tmp/
+
+# Standalone frontend generated files
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+frontend/.vite/
+frontend/.eslintcache
+frontend/*.tsbuildinfo
+!frontend/.env.mock
+frontend/.env.local
+frontend/.env.*.local
 .vercel/
 .DS_Store
 **/.DS_Store

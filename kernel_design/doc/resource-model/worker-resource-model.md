@@ -211,6 +211,14 @@ membership. `workerGroupId` is the logical resource locator. Group hashes,
 worker-id hash buckets, or other physical partitions remain implementation
 choices behind the catalog.
 
+The catalog also exposes one explicitly bounded, group-local runtime preview:
+`sample_worker_descriptors(workerGroupId, sampleLimit)`, where
+`1 <= sampleLimit <= 100`. This is an unordered, unstable, incomplete operator
+sample from one group key. It is not a scheduling candidate source, traversal,
+pagination, count, point lookup, or completeness API. Unreadable sampled rows
+remain visible only as `workerId -> null`; the catalog does not loop to fill
+their places or consult Worker score and transport truth.
+
 First-layer descriptor fields intentionally stop at resource identity, group
 identity, endpoint-owner identity, and attribute buckets. Specific runtime,
 package, handler, or compatibility versions belong in `attributes`.

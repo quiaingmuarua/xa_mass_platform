@@ -174,6 +174,50 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
                 result[worker_id] = descriptor
         return result
 
+    def sample_worker_descriptors(
+        self,
+        *,
+        worker_group_id: WorkerGroupId,
+        sample_limit: int,
+    ) -> Mapping[WorkerId, WorkerDescriptor | None]:
+        if not self._valid_id(worker_group_id):
+            raise ValueError("workerGroupId must be non-empty")
+        if (
+            isinstance(sample_limit, bool)
+            or not isinstance(sample_limit, int)
+            or sample_limit < 1
+            or sample_limit > self.MAX_WORKER_DESCRIPTOR_SAMPLE_LIMIT
+        ):
+            raise ValueError(
+                "sampleLimit must be between 1 and "
+                f"{self.MAX_WORKER_DESCRIPTOR_SAMPLE_LIMIT}"
+            )
+
+        observed = self.redis.hrandfield(
+            self._workers_key(worker_group_id),
+            count=sample_limit,
+            withvalues=True,
+        )
+        raw_values = list(observed or ())
+        if len(raw_values) % 2 != 0:
+            raise RuntimeError("Redis HRANDFIELD returned an invalid response")
+
+        result: dict[WorkerId, WorkerDescriptor | None] = {}
+        for index in range(0, len(raw_values), 2):
+            worker_id = self._decode_optional_text(raw_values[index])
+            if worker_id is None:
+                raise RuntimeError("Redis HRANDFIELD returned an invalid field")
+            descriptor = self._decode_worker_descriptor(raw_values[index + 1])
+            if (
+                descriptor is None
+                or descriptor.worker_id != worker_id
+                or descriptor.worker_group_id != worker_group_id
+            ):
+                result[worker_id] = None
+            else:
+                result[worker_id] = descriptor
+        return result
+
     def update_worker_platform_attributes(
         self,
         *,
@@ -344,7 +388,10 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
         if raw is None:
             return None
         if isinstance(raw, bytes):
-            return raw.decode("utf-8")
+            try:
+                return raw.decode("utf-8")
+            except UnicodeDecodeError:
+                return None
         return str(raw)
 
     @staticmethod

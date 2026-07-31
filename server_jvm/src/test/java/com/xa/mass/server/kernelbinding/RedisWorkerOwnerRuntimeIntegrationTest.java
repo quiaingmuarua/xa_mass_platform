@@ -1,10 +1,12 @@
 package com.xa.mass.server.kernelbinding;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
 import com.xa.mass.kernel.score.redis.RedisWorkerScoreCore;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDeclaration;
+import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeStatus;
 import com.xa.mass.kernel.worker.redis.RedisWorkerResourceCatalog;
@@ -13,6 +15,8 @@ import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.core.codec.StringCodec;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -221,6 +225,82 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     }
 
     @Test
+    void samplesOneWorkerHashWithoutCompletenessOrStabilityPromise() {
+        Map<String, String> rows = new LinkedHashMap<>();
+        for (int index = 0; index < 120; index++) {
+            String workerId = "worker-%03d".formatted(index);
+            rows.put(
+                    workerId,
+                    workerJson(workerId, "group-1", index)
+            );
+        }
+        redis.hset(workersKey("group-1"), rows);
+        redis.hset(
+                workersKey("group-2"),
+                "other-worker",
+                workerJson("other-worker", "group-2", 999)
+        );
+
+        Map<String, WorkerDescriptor> one =
+                catalog.sampleWorkerDescriptors("group-1", 1);
+        Map<String, WorkerDescriptor> hundred =
+                catalog.sampleWorkerDescriptors("group-1", 100);
+        var repeatedSamples = new java.util.HashSet<Set<String>>();
+        for (int iteration = 0; iteration < 10; iteration++) {
+            repeatedSamples.add(Set.copyOf(
+                    catalog.sampleWorkerDescriptors(
+                            "group-1",
+                            5
+                    ).keySet()
+            ));
+        }
+
+        assertThat(one).hasSize(1);
+        assertThat(hundred).hasSize(100);
+        assertThat(hundred.keySet()).doesNotHaveDuplicates();
+        assertThat(hundred).doesNotContainKey("other-worker");
+        assertThat(hundred.values()).allSatisfy(descriptor -> {
+            assertThat(descriptor).isNotNull();
+            assertThat(descriptor.workerGroupId()).isEqualTo("group-1");
+        });
+        assertThat(repeatedSamples).hasSizeGreaterThan(1);
+        assertThat(catalog.sampleWorkerDescriptors(
+                "empty-group",
+                100
+        )).isEmpty();
+
+        redis.hset(
+                workersKey("invalid-group"),
+                Map.of(
+                        "broken",
+                        "{not-json",
+                        "wrong-id",
+                        workerJson("another-id", "invalid-group", 1),
+                        "wrong-group",
+                        workerJson("wrong-group", "group-2", 2)
+                )
+        );
+        Map<String, WorkerDescriptor> unreadable =
+                catalog.sampleWorkerDescriptors(
+                "invalid-group",
+                100
+        );
+        assertThat(unreadable)
+                .containsOnlyKeys("broken", "wrong-group", "wrong-id");
+        assertThat(unreadable.values()).containsOnlyNulls();
+
+        assertThatThrownBy(() ->
+                catalog.sampleWorkerDescriptors("", 1))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() ->
+                catalog.sampleWorkerDescriptors("group-1", 0))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() ->
+                catalog.sampleWorkerDescriptors("group-1", 101))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
     void reconnectReconcilesRecoveryScoreToHotAcquire() {
         catalog.upsertWorkerGroup(group(
                 "group-1",
@@ -278,6 +358,19 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 attributes,
                 Set.of()
         );
+    }
+
+    private static String workerJson(
+            String workerId,
+            String workerGroupId,
+            int index
+    ) {
+        return "{\"attributes\":{\"index\":" + index + "},"
+                + "\"dynamicAttributeNames\":[],"
+                + "\"endpointManagerId\":\"endpoint-1\","
+                + "\"platformAttributes\":{},"
+                + "\"workerGroupId\":\"" + workerGroupId + "\","
+                + "\"workerId\":\"" + workerId + "\"}";
     }
 
     private String groupsKey() {

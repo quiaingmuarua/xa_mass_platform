@@ -302,6 +302,7 @@ class KernelOwnerContractManifestTest {
         var classes = Map.of(
                 "TaskScoreBandCore", TaskScoreBandCore.class,
                 "TaskItemScoreBandCore", TaskItemScoreBandCore.class,
+                "WorkerResourceCatalog", WorkerResourceCatalog.class,
                 "WorkerScoreCore", WorkerScoreCore.class
         );
         var expected = new TreeMap<String, Map<String, Long>>();

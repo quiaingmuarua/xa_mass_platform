@@ -128,6 +128,48 @@ public final class RedisWorkerResourceCatalog
     }
 
     @Override
+    public Map<String, WorkerDescriptor> sampleWorkerDescriptors(
+            String workerGroupId,
+            int sampleLimit
+    ) {
+        requireNonBlank(workerGroupId, "workerGroupId");
+        if (sampleLimit < 1
+                || sampleLimit > MAX_WORKER_DESCRIPTOR_SAMPLE_LIMIT) {
+            throw new IllegalArgumentException(
+                    "sampleLimit must be between 1 and "
+                            + MAX_WORKER_DESCRIPTOR_SAMPLE_LIMIT
+            );
+        }
+
+        List<KeyValue<String, String>> sampled =
+                commands().hrandfieldWithvalues(
+                        WorkerRedisSupport.workersKey(
+                                prefix,
+                                workerGroupId
+                        ),
+                        sampleLimit
+                );
+        var descriptors =
+                new LinkedHashMap<String, WorkerDescriptor>();
+        for (KeyValue<String, String> row : sampled) {
+            String workerId = row.getKey();
+            WorkerDescriptor descriptor = row.hasValue()
+                    ? WorkerRedisSupport.decodeWorker(row.getValue())
+                    : null;
+            if (descriptor == null
+                    || !workerId.equals(descriptor.workerId())
+                    || !workerGroupId.equals(
+                            descriptor.workerGroupId()
+                    )) {
+                descriptors.put(workerId, null);
+                continue;
+            }
+            descriptors.put(workerId, descriptor);
+        }
+        return descriptors;
+    }
+
+    @Override
     public WorkerRuntimeResult updateWorkerPlatformAttributes(
             String workerGroupId,
             String workerId,

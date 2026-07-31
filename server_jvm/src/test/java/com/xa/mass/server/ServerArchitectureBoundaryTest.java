@@ -32,6 +32,9 @@ class ServerArchitectureBoundaryTest {
     private static final Path WORKER_REDIS = KERNEL_SOURCE.resolve(
             "com/xa/mass/kernel/worker/redis"
     );
+    private static final Path WORKER_CATALOG_REDIS = WORKER_REDIS.resolve(
+            "RedisWorkerResourceCatalog.java"
+    );
     private static final Path WORKER_SCORE_REDIS = KERNEL_SOURCE.resolve(
             "com/xa/mass/kernel/score/redis"
     );
@@ -52,6 +55,12 @@ class ServerArchitectureBoundaryTest {
     );
     private static final Path WORKER_ASSEMBLY = SERVER_SOURCE.resolve(
             "com/xa/mass/server/workerassembly"
+    );
+    private static final Path RUNTIME_VIEW = SERVER_SOURCE.resolve(
+            "com/xa/mass/server/runtimeview"
+    );
+    private static final Path RUNTIME_VIEW_HTTP = SERVER_SOURCE.resolve(
+            "com/xa/mass/server/api/v1/runtimeview"
     );
     private static final Path ADAPTER_SOURCE = Path.of(
             "../transport/netty-adapter/src/main/java"
@@ -144,6 +153,37 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain(".zadd(")
                 .doesNotContain(".rpush(")
                 .doesNotContain(".eval(");
+    }
+
+    @Test
+    void runtimeViewUsesOnlyTheWorkerCatalogBoundedSample()
+            throws IOException {
+        String runtimeView = readSources(RUNTIME_VIEW)
+                + readSources(RUNTIME_VIEW_HTTP);
+        assertThat(runtimeView)
+                .contains("WorkerResourceCatalog")
+                .doesNotContain(".worker.redis")
+                .doesNotContain("RedisWorkerResourceCatalog")
+                .doesNotContain("io.lettuce")
+                .doesNotContain("org.springframework.data.redis")
+                .doesNotContain("WorkerScore")
+                .doesNotContain("WorkerCommand")
+                .doesNotContain("WorkerResult")
+                .doesNotContain("TaskRuntime")
+                .doesNotContain("Transport");
+
+        String catalog = Files.readString(WORKER_CATALOG_REDIS);
+        assertThat(occurrences(
+                catalog,
+                "hrandfieldWithvalues"
+        )).isEqualTo(1);
+        assertThat(catalog)
+                .doesNotContain(".hscan(")
+                .doesNotContain(".scan(")
+                .doesNotContain(".keys(")
+                .doesNotContain(".hlen(")
+                .doesNotContain("WorkerScore")
+                .doesNotContain("transport");
     }
 
     @Test
@@ -286,5 +326,12 @@ class ServerArchitectureBoundaryTest {
         } catch (IOException error) {
             throw new IllegalStateException("Could not read " + path, error);
         }
+    }
+
+    private static int occurrences(String value, String fragment) {
+        return value.split(
+                java.util.regex.Pattern.quote(fragment),
+                -1
+        ).length - 1;
     }
 }

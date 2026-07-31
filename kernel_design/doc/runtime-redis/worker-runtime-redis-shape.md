@@ -143,11 +143,12 @@ is copied through matched CandidateWorker evidence to select a WorkerCommand
 HASH. It is not read by the allocation DSL and is not live endpoint, session,
 or reachability evidence.
 
-`workerGroupId` is a required logical locator on worker descriptor read and
-update operations. The current Redis executable spec uses it directly in the
-hash key, but that is only a first-slice storage layout. A later implementation
-may resolve `(workerGroupId, workerId)` to a group bucket, worker-id hash bucket,
-or another physical partition without changing the catalog interface.
+`workerGroupId` is a required logical locator on worker descriptor read,
+preview, and update operations. The current Redis executable spec uses it
+directly in the hash key, but that is only a first-slice storage layout. A
+later implementation may resolve `(workerGroupId, workerId)` to a group bucket,
+worker-id hash bucket, or another physical partition without changing the
+catalog interface.
 
 ### Global WorkerId Owners
 
@@ -433,8 +434,29 @@ WorkerRuntime.upsert_worker(declaration)
 upsert_worker_group(descriptor)
 get_worker_group_descriptors(workerGroupIds)
 get_worker_descriptors(workerGroupId, workerIds)
+sample_worker_descriptors(workerGroupId, sampleLimit)
 update_worker_platform_attributes(workerGroupId, workerId, attributes)
 ```
+
+Descriptor preview is the one intentional bounded-discovery operation on this
+catalog. It exists for an operator-facing runtime preview, not scheduling or
+global Worker traversal:
+
+```text
+require non-empty workerGroupId
+require 1 <= sampleLimit <= 100
+HRANDFIELD wr:{prefix}:workers:{workerGroupId} sampleLimit WITHVALUES
+decode each sampled field/value pair
+unreadable JSON, field/descriptor WorkerId mismatch, or WorkerGroup mismatch
+  -> sampled WorkerId maps to null
+```
+
+The provider executes exactly one positive-count `HRANDFIELD` command. Positive
+count makes sampled fields unique and bounds the result to `sampleLimit`.
+The result has no order, stability, pagination, total-count, or completeness
+contract. The provider does not loop to replace unreadable rows and does not
+use `HSCAN`, `HLEN`, `SCAN`, Worker score, transport state, or another
+WorkerGroup key. An empty HASH returns an empty successful sample.
 
 Upsert WorkerGroup:
 
