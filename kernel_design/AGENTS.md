@@ -200,11 +200,12 @@ executable_spec/              stable mechanism package, never example/demo
 runtime_server/               Python Kernel control command host
 ```
 
-`kernel_design/runtime_server/` composes only WorkerGroup/Worker upsert, Task
-create/approve/close, and `KernelApplication` lifecycle. Java `server_jvm`
-hosts TaskItem append, last-success reads, and Worker Delivery. The Python
-TaskRuntime and Worker Delivery runtime/clients remain executable-spec oracles
-and test support. External Worker implementations live under `transport/` and
+`kernel_design/runtime_server/` composes only Task create/approve/close,
+dispatch wake, and `KernelApplication` lifecycle. Java `server_jvm` hosts
+WorkerGroup/Worker upsert, TaskItem append, last-success reads, and Worker
+Delivery. Python resource, TaskRuntime, and Worker Delivery runtime/clients
+remain executable-spec oracles and test support. External Worker
+implementations live under `transport/` and
 share one Java 11 compatible execution core and protocol module. Complete
 Adapter instances and their Netty WebSocket/Socket listeners live in
 `transport/netty-adapter`;

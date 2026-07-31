@@ -4,10 +4,10 @@ Status: active external Runtime API with Kernel owner-contract assembly and
 opt-in Scenario Worker composition.
 
 `server_jvm` owns the versioned HTTP contract, request validation, error
-mapping, timeouts, and process health. WorkerGroup/Worker upsert and Task
-create/approve/close bind to Python HTTP owner providers. TaskItem append,
-last-success reads, and Worker Delivery bind to Java Redis owner providers.
-Controllers and services depend only on contracts from `kernel_jvm`.
+mapping, timeouts, and process health. Task create/approve/close bind to Python
+HTTP owner providers. WorkerGroup/Worker upsert, TaskItem append, last-success
+reads, and Worker Delivery bind to Java Redis owner providers. Controllers and
+services depend only on contracts from `kernel_jvm`.
 
 Runtime API failures use the module-local HTTP exception:
 
@@ -29,11 +29,17 @@ use the separate module-local `ScenarioWorkerAssemblyException`. Neither is an
 HTTP or cross-module exception base.
 
 ```text
-Control client
+Task control client
   -> server_jvm /api/v1
-  -> TaskRuntime / WorkerRuntime / WorkerResourceCatalog
+  -> TaskRuntime / TaskLifecycleCommands
   -> Python HTTP owner providers
   -> KernelApplication / scheduling truth
+
+Worker resource client
+  -> server_jvm /api/v1
+  -> WorkerRuntime / WorkerResourceCatalog
+  -> Java owner Redis providers
+  -> shared Worker descriptor and HOT_ACQUIRE truth
 
 Task data client
   -> Java TaskDataService
@@ -68,16 +74,17 @@ but does not start the Python process. `kernelbinding` composes Task and Worker
 control/data providers. `WorkerDeliveryOwnerAssemblyConfiguration` separately
 composes only the WorkerCommand and WorkerResult Redis providers. The shared
 `kernelredis` package owns only connection and health. Redis key operations are
-implemented in owner-local `kernel_jvm` packages. Java does not read Task or
-Worker scheduling scores, invoke Pacers, append Worker commands, or consume
-WorkerResult queues.
+implemented in owner-local `kernel_jvm` packages. Java does not read Task
+scores, invoke Pacers, append Worker commands, or consume WorkerResult queues.
+Its Worker score provider implements only get/initialize/reconcile for
+`WorkerRuntime.upsertWorker`; scheduling score operations remain unavailable.
 
 Current provider matrix:
 
 | Operation | Provider |
 | --- | --- |
-| WorkerGroup upsert | Python HTTP |
-| Worker upsert | Python HTTP |
+| WorkerGroup upsert | Java Redis |
+| Worker upsert and HOT_ACQUIRE initialize/reconcile | Java Redis |
 | Task create | Python HTTP |
 | Task approve/close | Python HTTP application command |
 | Task and WorkerGroup descriptor reads | Java Redis |
@@ -85,7 +92,7 @@ Current provider matrix:
 | Task Dispatch wake hint | Python HTTP application command |
 | WorkerCommand consume | Java Redis |
 | WorkerResult append | Java Redis |
-| Score, candidate, dynamic attribute, scheduling internals | no Server bean / explicit not implemented |
+| Other score, candidate, dynamic attribute, scheduling internals | explicit not implemented |
 
 Task Data boundaries:
 
@@ -155,9 +162,9 @@ POST /api/v1/tasks/{taskId}/items:call
 POST /api/v1/tasks/{taskId}/results:load
 ```
 
-The first five operations use Kernel owner/application contracts backed by
-Python HTTP providers. Item append and result load use the same owner contracts
-backed by Java Redis providers. Append returns per-message
+WorkerGroup and Worker upsert use Java Redis owner providers. Task
+create/approve/close use Python HTTP owner/application providers. Item append
+and result load use Java Redis owner providers. Append returns per-message
 `appended / not_found / invalid / retryable` status. `TASK_DRIVEN` forbids an
 Item rule; `ITEM_DRIVEN` currently accepts only a WorkerGroup-allowed
 `workerId $eq/$in` rule.
@@ -243,7 +250,7 @@ GET /actuator/health/readiness
 ```
 
 Liveness describes this JVM process. Readiness requires both the configured
-Python Kernel Control API and the shared Kernel Redis connection.
+Python Kernel Task Control API and the shared Kernel Redis connection.
 
 ## Run
 

@@ -11,13 +11,9 @@ import static org.springframework.test.web.client.response.MockRestResponseCreat
 import com.xa.mass.kernel.task.TaskRuntime.TaskCreationStatus;
 import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskType;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDeclaration;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeStatus;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import java.util.Map;
-import java.util.Set;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpMethod;
@@ -40,30 +36,7 @@ class PythonKernelOwnerAdaptersTest {
     }
 
     @Test
-    void ownerAdaptersMapKernelDtosWithoutExternalApiModels() {
-        server.expect(requestTo(
-                        "http://kernel.test/worker-groups/phone-tools"
-                ))
-                .andExpect(method(HttpMethod.PUT))
-                .andExpect(content().json("""
-                        {
-                          "attributes": {},
-                          "eventCodes": ["telecom.phone.inspect"],
-                          "itemAllocationFields": ["workerId"]
-                        }
-                        """))
-                .andRespond(withSuccess(
-                        "{\"status\":\"ok\"}",
-                        MediaType.APPLICATION_JSON
-                ));
-        server.expect(requestTo(
-                        "http://kernel.test/worker-groups/phone-tools/workers/worker-1"
-                ))
-                .andExpect(method(HttpMethod.PUT))
-                .andRespond(withSuccess(
-                        "{\"status\":\"ok\"}",
-                        MediaType.APPLICATION_JSON
-                ));
+    void taskOwnerAdapterMapsKernelDtosWithoutExternalApiModels() {
         server.expect(requestTo("http://kernel.test/tasks"))
                 .andExpect(method(HttpMethod.POST))
                 .andRespond(withSuccess(
@@ -71,22 +44,6 @@ class PythonKernelOwnerAdaptersTest {
                         MediaType.APPLICATION_JSON
                 ));
 
-        var group = new HttpWorkerResourceCatalog(transport)
-                .upsertWorkerGroup(new WorkerGroupDescriptor(
-                        "phone-tools",
-                        Map.of(),
-                        Set.of("telecom.phone.inspect"),
-                        Set.of("workerId")
-                ));
-        var worker = new HttpWorkerRuntime(transport).upsertWorker(
-                new WorkerDeclaration(
-                        "worker-1",
-                        "phone-tools",
-                        "system-polling",
-                        Map.of(),
-                        Set.of()
-                )
-        );
         var task = new HttpTaskRuntime(transport).createTask(
                 new TaskDescriptor(
                         "task-1",
@@ -103,8 +60,6 @@ class PythonKernelOwnerAdaptersTest {
                 0
         );
 
-        assertThat(group.status()).isEqualTo(WorkerRuntimeStatus.OK);
-        assertThat(worker.status()).isEqualTo(WorkerRuntimeStatus.OK);
         assertThat(task.status()).isEqualTo(TaskCreationStatus.CREATED);
         server.verify();
     }

@@ -11,7 +11,6 @@ from kernel_design.executable_spec.assembly import (
     TaskType,
     KernelApplication,
     KernelApplicationConfig,
-    ResourcesCommandClient,
     TaskApprovalResult,
     TaskApprovalStatus,
     TaskCloseResult,
@@ -19,29 +18,7 @@ from kernel_design.executable_spec.assembly import (
     TaskCreationResult,
     TaskCreationStatus,
     TaskDescriptor,
-    WorkerDeclaration,
-    WorkerGroupDescriptor,
-    WorkerRuntimeResult,
-    WorkerRuntimeStatus,
 )
-
-
-class WorkerGroupRequest(BaseModel):
-    attributes: dict[str, Any] = Field(default_factory=dict)
-    event_codes: list[str] = Field(alias="eventCodes")
-    item_allocation_fields: list[str] = Field(
-        default_factory=list,
-        alias="itemAllocationFields",
-    )
-
-
-class WorkerRequest(BaseModel):
-    endpoint_manager_id: str = Field(alias="endpointManagerId")
-    attributes: dict[str, Any] = Field(default_factory=dict)
-    dynamic_attribute_names: list[str] = Field(
-        default_factory=list,
-        alias="dynamicAttributeNames",
-    )
 
 
 class TaskRequest(BaseModel):
@@ -74,19 +51,6 @@ def _result_payload(result: Any) -> dict[str, Any]:
     if result.reason is not None:
         payload["reason"] = result.reason
     return payload
-
-
-def _worker_result_response(result: WorkerRuntimeResult) -> JSONResponse:
-    status_code = {
-        WorkerRuntimeStatus.OK: 200,
-        WorkerRuntimeStatus.NOOP: 200,
-        WorkerRuntimeStatus.NOT_FOUND: 404,
-        WorkerRuntimeStatus.INVALID: 422,
-        WorkerRuntimeStatus.REJECTED: 409,
-        WorkerRuntimeStatus.STALE: 409,
-        WorkerRuntimeStatus.CONFLICT: 409,
-    }[result.status]
-    return JSONResponse(_result_payload(result), status_code=status_code)
 
 
 def _creation_response(result: TaskCreationResult) -> JSONResponse:
@@ -126,33 +90,16 @@ def create_app(
     *,
     config_json: str | None = None,
     application: KernelApplication | None = None,
-    resources_client: ResourcesCommandClient | None = None,
 ) -> FastAPI:
-    if config_json is not None and (
-        application is not None
-        or resources_client is not None
-    ):
+    if config_json is not None and application is not None:
         raise ValueError(
-            "config_json and injected application boundaries are mutually exclusive"
-        )
-    injected = (
-        application,
-        resources_client,
-    )
-    if any(boundary is not None for boundary in injected) and not all(
-        boundary is not None for boundary in injected
-    ):
-        raise ValueError(
-            "application and resource boundaries must be injected together"
+            "config_json and injected application are mutually exclusive"
         )
     if application is None:
         config = KernelApplicationConfig.from_json(config_json)
         kernel_application = KernelApplication(config)
-        resource_commands = ResourcesCommandClient(config)
     else:
-        assert resources_client is not None
         kernel_application = application
-        resource_commands = resources_client
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
@@ -162,9 +109,8 @@ def create_app(
         finally:
             kernel_application.stop()
 
-    app = FastAPI(title="Python Kernel Control API", lifespan=lifespan)
+    app = FastAPI(title="Python Kernel Task Control API", lifespan=lifespan)
     app.state.kernel_application = kernel_application
-    app.state.resources_command_client = resource_commands
 
     @app.exception_handler(ValueError)
     async def invalid_contract_value(
@@ -176,44 +122,6 @@ def create_app(
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
-
-    @app.put("/worker-groups/{worker_group_id}")
-    def upsert_worker_group(
-        worker_group_id: str,
-        request: WorkerGroupRequest,
-    ) -> JSONResponse:
-        return _worker_result_response(
-            resource_commands.upsert_worker_group(
-                descriptor=WorkerGroupDescriptor(
-                    worker_group_id=worker_group_id,
-                    attributes=request.attributes,
-                    event_codes=frozenset(request.event_codes),
-                    item_allocation_fields=frozenset(
-                        request.item_allocation_fields
-                    ),
-                )
-            )
-        )
-
-    @app.put("/worker-groups/{worker_group_id}/workers/{worker_id}")
-    def upsert_worker(
-        worker_group_id: str,
-        worker_id: str,
-        request: WorkerRequest,
-    ) -> JSONResponse:
-        return _worker_result_response(
-            resource_commands.upsert_worker(
-                declaration=WorkerDeclaration(
-                    worker_id=worker_id,
-                    worker_group_id=worker_group_id,
-                    endpoint_manager_id=request.endpoint_manager_id,
-                    attributes=request.attributes,
-                    dynamic_attribute_names=frozenset(
-                        request.dynamic_attribute_names
-                    ),
-                )
-            )
-        )
 
     @app.post("/tasks")
     def create_task(request: TaskRequest) -> JSONResponse:

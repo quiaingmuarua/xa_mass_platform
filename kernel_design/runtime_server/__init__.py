@@ -1,4 +1,4 @@
-"""Executable-spec Python Kernel Control API."""
+"""Executable-spec Python Kernel Task Control API."""
 
 from .app import create_app
 

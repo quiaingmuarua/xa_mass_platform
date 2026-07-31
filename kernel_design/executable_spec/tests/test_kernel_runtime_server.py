@@ -8,15 +8,12 @@ from unittest.mock import Mock
 from kernel_design.executable_spec.assembly import (
     TaskType,
     KernelApplication,
-    ResourcesCommandClient,
     TaskApprovalResult,
     TaskApprovalStatus,
     TaskCloseResult,
     TaskCloseStatus,
     TaskCreationResult,
     TaskCreationStatus,
-    WorkerRuntimeResult,
-    WorkerRuntimeStatus,
 )
 
 try:
@@ -38,6 +35,9 @@ class KernelRuntimeServerBoundaryGuardTest(unittest.TestCase):
         self.assertIn("from kernel_design.executable_spec.assembly import", source)
         for forbidden in (
             "executable_spec.redis_runtime",
+            "ResourcesCommandClient",
+            "WorkerGroupRequest",
+            "WorkerRequest",
             "TaskScoreBandCore",
             "WorkerScoreCore",
             "TaskWorkerAllocationPacer",
@@ -54,13 +54,6 @@ class KernelRuntimeServerTest(unittest.TestCase):
     def setUp(self) -> None:
         assert create_app is not None
         self.application = Mock(spec=KernelApplication)
-        self.resources_client = Mock(spec=ResourcesCommandClient)
-        self.resources_client.upsert_worker_group.return_value = WorkerRuntimeResult(
-            WorkerRuntimeStatus.OK
-        )
-        self.resources_client.upsert_worker.return_value = WorkerRuntimeResult(
-            WorkerRuntimeStatus.OK
-        )
         self.application.create_task.return_value = TaskCreationResult(
             TaskCreationStatus.CREATED
         )
@@ -72,10 +65,7 @@ class KernelRuntimeServerTest(unittest.TestCase):
         )
         self.application.wake_task_dispatch.return_value = 2
         self.client_context = TestClient(
-            create_app(
-                application=self.application,
-                resources_client=self.resources_client,
-            )
+            create_app(application=self.application)
         )
         self.client = self.client_context.__enter__()
 
@@ -85,25 +75,14 @@ class KernelRuntimeServerTest(unittest.TestCase):
     def test_lifespan_and_health_use_one_kernel_application(self) -> None:
         self.assertEqual({"status": "ok"}, self.client.get("/health").json())
         self.application.start.assert_called_once_with()
-        self.assertFalse(hasattr(self.resources_client, "start"))
+        self.assertFalse(
+            hasattr(
+                self.client.app.state,
+                "resources_command_client",
+            )
+        )
 
-    def test_routes_translate_http_values_to_assembly_contracts(self) -> None:
-        group_response = self.client.put(
-            "/worker-groups/image-workers",
-            json={
-                "attributes": {"kind": "image"},
-                "eventCodes": ["image.resize"],
-                "itemAllocationFields": ["workerId"],
-            },
-        )
-        worker_response = self.client.put(
-            "/worker-groups/image-workers/workers/worker-1",
-            json={
-                "endpointManagerId": "endpoint-1",
-                "attributes": {"runtime": "python"},
-                "dynamicAttributeNames": [],
-            },
-        )
+    def test_task_routes_translate_http_values_to_application(self) -> None:
         task_response = self.client.post(
             "/tasks",
             json={
@@ -140,8 +119,6 @@ class KernelRuntimeServerTest(unittest.TestCase):
                 ]
             },
         )
-        self.assertEqual(200, group_response.status_code)
-        self.assertEqual(200, worker_response.status_code)
         self.assertEqual(201, task_response.status_code)
         self.assertEqual(200, approval_response.status_code)
         self.assertEqual(200, close_response.status_code)
@@ -156,16 +133,6 @@ class KernelRuntimeServerTest(unittest.TestCase):
             "suffix",
             inspect.signature(self.application.create_task).parameters,
         )
-        self.resources_client.upsert_worker_group.assert_called_once()
-        group_descriptor = (
-            self.resources_client.upsert_worker_group.call_args.kwargs[
-                "descriptor"
-            ]
-        )
-        self.assertEqual(
-            frozenset({"workerId"}),
-            group_descriptor.item_allocation_fields,
-        )
         task_descriptor = self.application.create_task.call_args.kwargs["descriptor"]
         self.assertIs(
             TaskType.ITEM_DRIVEN,
@@ -173,11 +140,24 @@ class KernelRuntimeServerTest(unittest.TestCase):
         )
         self.assertIsNone(task_descriptor.allocation_rule)
         self.assertEqual(1234, task_descriptor.empty_close_at_millis)
-        self.resources_client.upsert_worker.assert_called_once()
         self.application.wake_task_dispatch.assert_called_once_with(
             task_ids=("task-1", "task-2"),
         )
         self.assertFalse(hasattr(self.application, "consume_worker_commands"))
+        self.assertEqual(
+            404,
+            self.client.put(
+                "/worker-groups/image-workers",
+                json={},
+            ).status_code,
+        )
+        self.assertEqual(
+            404,
+            self.client.put(
+                "/worker-groups/image-workers/workers/worker-1",
+                json={},
+            ).status_code,
+        )
         self.assertEqual(404, self.client.post("/worker-groups").status_code)
         self.assertEqual(404, self.client.post("/workers").status_code)
 
@@ -226,12 +206,13 @@ class KernelRuntimeServerTest(unittest.TestCase):
             ).status_code,
         )
 
-    def test_injected_boundaries_must_be_supplied_together(self) -> None:
+    def test_config_and_injected_application_are_mutually_exclusive(self) -> None:
         assert create_app is not None
-        with self.assertRaisesRegex(ValueError, "injected together"):
-            create_app(application=self.application)
-        with self.assertRaisesRegex(ValueError, "injected together"):
-            create_app(resources_client=self.resources_client)
+        with self.assertRaisesRegex(ValueError, "mutually exclusive"):
+            create_app(
+                config_json="{}",
+                application=self.application,
+            )
 
     def test_stop_runs_when_lifespan_closes(self) -> None:
         self.client_context.__exit__(None, None, None)

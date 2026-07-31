@@ -5,27 +5,20 @@ import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeResult;
+import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeStatus;
 import io.lettuce.core.KeyValue;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
 import io.lettuce.core.codec.StringCodec;
 import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import tools.jackson.core.JacksonException;
-import tools.jackson.core.type.TypeReference;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
-import tools.jackson.databind.json.JsonMapper;
 
 public final class RedisWorkerResourceCatalog
         implements WorkerResourceCatalog, AutoCloseable {
 
     private final RedisClient redisClient;
-    private final ObjectMapper mapper = JsonMapper.builder().build();
     private final String prefix;
     private volatile StatefulRedisConnection<String, String> connection;
 
@@ -47,7 +40,56 @@ public final class RedisWorkerResourceCatalog
     public WorkerRuntimeResult upsertWorkerGroup(
             WorkerGroupDescriptor descriptor
     ) {
-        throw notImplemented("upsert_worker_group");
+        if (descriptor == null) {
+            return new WorkerRuntimeResult(
+                    WorkerRuntimeStatus.INVALID,
+                    "invalid workerGroup descriptor"
+            );
+        }
+        String encoded = WorkerRedisSupport.encodeWorkerGroup(descriptor);
+        if (encoded == null) {
+            return new WorkerRuntimeResult(
+                    WorkerRuntimeStatus.INVALID,
+                    "invalid descriptor json"
+            );
+        }
+        if (commands().hsetnx(
+                groupsKey(),
+                descriptor.workerGroupId(),
+                encoded
+        )) {
+            return new WorkerRuntimeResult(WorkerRuntimeStatus.OK);
+        }
+
+        WorkerGroupDescriptor current =
+                WorkerRedisSupport.decodeWorkerGroup(commands().hget(
+                        groupsKey(),
+                        descriptor.workerGroupId()
+                ));
+        if (current == null) {
+            return new WorkerRuntimeResult(
+                    WorkerRuntimeStatus.INVALID,
+                    "stored worker group descriptor is invalid"
+            );
+        }
+        if (!current.workerGroupId().equals(descriptor.workerGroupId())
+                || !current.eventCodes().equals(descriptor.eventCodes())
+                || !current.itemAllocationFields().equals(
+                        descriptor.itemAllocationFields()
+                )) {
+            return new WorkerRuntimeResult(
+                    WorkerRuntimeStatus.CONFLICT,
+                    "worker group eventCodes and itemAllocationFields "
+                            + "are immutable"
+            );
+        }
+
+        commands().hset(
+                groupsKey(),
+                descriptor.workerGroupId(),
+                encoded
+        );
+        return new WorkerRuntimeResult(WorkerRuntimeStatus.OK);
     }
 
     @Override
@@ -68,7 +110,9 @@ public final class RedisWorkerResourceCatalog
             descriptors.put(
                     workerGroupIds.get(index),
                     value.hasValue()
-                            ? decodeWorkerGroup(value.getValue())
+                            ? WorkerRedisSupport.decodeWorkerGroup(
+                                    value.getValue()
+                            )
                             : null
             );
         }
@@ -90,68 +134,6 @@ public final class RedisWorkerResourceCatalog
             Map<String, Object> attributes
     ) {
         throw notImplemented("update_worker_platform_attributes");
-    }
-
-    private WorkerGroupDescriptor decodeWorkerGroup(String raw) {
-        try {
-            JsonNode payload = requireObject(raw);
-            return new WorkerGroupDescriptor(
-                    requireText(payload, "workerGroupId"),
-                    objectMap(payload.path("attributes")),
-                    stringSet(payload.path("eventCodes")),
-                    stringSet(payload.path("itemAllocationFields"))
-            );
-        } catch (RuntimeException error) {
-            throw new IllegalStateException(
-                    "WorkerGroup descriptor is corrupt",
-                    error
-            );
-        }
-    }
-
-    private JsonNode requireObject(String raw) throws JacksonException {
-        JsonNode payload = mapper.readTree(raw);
-        if (payload == null || !payload.isObject()) {
-            throw new IllegalArgumentException(
-                    "descriptor must be a JSON object"
-            );
-        }
-        return payload;
-    }
-
-    private static String requireText(JsonNode payload, String field) {
-        JsonNode value = payload.get(field);
-        if (value == null || !value.isTextual() || value.textValue().isEmpty()) {
-            throw new IllegalArgumentException(field + " must be non-empty");
-        }
-        return value.textValue();
-    }
-
-    private Map<String, Object> objectMap(JsonNode value) {
-        if (value == null || !value.isObject()) {
-            throw new IllegalArgumentException("field must be an object");
-        }
-        return mapper.convertValue(
-                value,
-                new TypeReference<LinkedHashMap<String, Object>>() {
-                }
-        );
-    }
-
-    private static Set<String> stringSet(JsonNode value) {
-        if (value == null || !value.isArray()) {
-            throw new IllegalArgumentException("field must be an array");
-        }
-        var values = new LinkedHashSet<String>();
-        value.forEach(item -> {
-            if (!item.isTextual() || item.textValue().isEmpty()) {
-                throw new IllegalArgumentException(
-                        "array values must be non-empty strings"
-                );
-            }
-            values.add(item.textValue());
-        });
-        return values;
     }
 
     private RedisCommands<String, String> commands() {
@@ -181,7 +163,7 @@ public final class RedisWorkerResourceCatalog
     }
 
     private String groupsKey() {
-        return "wr:" + prefix + ":groups";
+        return WorkerRedisSupport.groupsKey(prefix);
     }
 
     private static KernelOperationNotImplementedException notImplemented(

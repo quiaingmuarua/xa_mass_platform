@@ -23,17 +23,6 @@ final class PythonKernelHttpTransport {
         this.restClient = restClient;
     }
 
-    Map<String, Object> put(
-            String path,
-            Object body,
-            Object... uriVariables
-    ) {
-        return exchange(restClient.put()
-                .uri(path, uriVariables)
-                .contentType(MediaType.APPLICATION_JSON)
-                .body(body));
-    }
-
     Map<String, Object> postBody(
             String path,
             Object body,

@@ -7,11 +7,14 @@ Status: current repository handoff.
 - `kernel_design/` is the current mechanism oracle.
 - `kernel_jvm/` is the JVM parity surface for Kernel owner contracts and
   selected owner-specific Redis providers. It does not implement scheduling,
-  Pacers, score providers, or the Kernel application lifecycle.
+  Pacers, or the Kernel application lifecycle. Its Worker score provider is
+  deliberately limited to the get/initialize/reconcile operations required by
+  `WorkerRuntime.upsertWorker`; all scheduling score operations remain gaps.
 - `server_jvm/` is the external Runtime API process. Controllers and services
-  depend on `kernel_jvm` owner contracts. Its assembly binds control operations
-  to Python HTTP providers and selected data/delivery operations to Java Redis
-  providers; it does not define a second set of Kernel runtime ports. It may
+  depend on `kernel_jvm` owner contracts. Its assembly binds Task control
+  operations to Python HTTP providers and Worker resource, Task data, and
+  delivery operations to Java Redis providers; it does not define a second set
+  of Kernel runtime ports. It may
   compose explicitly configured Scenario Worker bundles after starting their
   referenced Adapters, but it does not own their capabilities or Worker
   lifecycle.
@@ -91,8 +94,9 @@ tag.
   must not provide fallback for an unimplemented operation.
 - Java Redis owner operations belong in the matching `kernel_jvm` owner
   package. `server_jvm.kernelredis` owns only connection and health. Java must
-  not read or mutate Task score, Worker score, candidate cache, Pacers, or
-  ResultRouting consumption until a separate parity slice migrates that owner.
+  not read or mutate Task score, candidate cache, Pacers, or ResultRouting
+  consumption. The only Java Worker score operations currently allowed are
+  the parity-proved get/initialize/reconcile calls internal to Worker upsert.
 - Missing JVM owner operations must fail with
   `KernelOperationNotImplementedException`; do not hide gaps with default
   methods, compatibility clients, or remote fallback.
@@ -158,16 +162,16 @@ The module mirrors the public contracts exported by
 `kernel_design.executable_spec.kernel`. A shared non-production manifest proves
 interface, DTO, enum, and key-constant parity. Selected Redis providers
 currently implement TaskItem append/result reads, Task/WorkerGroup descriptor
-reads, WorkerCommand consume, and WorkerResult append. All other translated
+reads, WorkerGroup/Worker upsert, the three Worker score operations required
+by upsert, WorkerCommand consume, and WorkerResult append. All other translated
 operations remain explicit gaps.
 
 `server_jvm.kernelbinding` composes Task and Worker control/data providers:
 
 ```text
-Kernel owner operation
-  -> Python HTTP provider
-  -> Java Redis provider
-  -> explicit NOT_IMPLEMENTED
+Task control operation -> Python HTTP provider
+Worker resource/data operation -> Java Redis provider
+Unmigrated operation -> explicit NOT_IMPLEMENTED
 ```
 
 This provider matrix is incremental implementation evidence. It does not make

@@ -19,6 +19,9 @@ class ServerArchitectureBoundaryTest {
     private static final Path KERNEL_ASSEMBLY = SERVER_SOURCE.resolve(
             "com/xa/mass/server/kernelbinding/KernelOwnerAssemblyConfiguration.java"
     );
+    private static final Path KERNEL_BINDING = SERVER_SOURCE.resolve(
+            "com/xa/mass/server/kernelbinding"
+    );
     private static final Path DELIVERY_ASSEMBLY = SERVER_SOURCE.resolve(
             "com/xa/mass/server/workerdelivery/"
                     + "WorkerDeliveryOwnerAssemblyConfiguration.java"
@@ -28,6 +31,9 @@ class ServerArchitectureBoundaryTest {
     );
     private static final Path WORKER_REDIS = KERNEL_SOURCE.resolve(
             "com/xa/mass/kernel/worker/redis"
+    );
+    private static final Path WORKER_SCORE_REDIS = KERNEL_SOURCE.resolve(
+            "com/xa/mass/kernel/score/redis"
     );
     private static final Path DELIVERY_REDIS = KERNEL_SOURCE.resolve(
             "com/xa/mass/kernel/delivery/redis"
@@ -107,6 +113,11 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("seed-results")
                 .doesNotContain("\"wr:");
         assertThat(readSources(WORKER_REDIS))
+                .contains("\"wr:")
+                .doesNotContain("\"tr:")
+                .doesNotContain("\"wd:")
+                .doesNotContain("\"rr:");
+        assertThat(readSources(WORKER_SCORE_REDIS))
                 .contains("\"wr:")
                 .doesNotContain("\"tr:")
                 .doesNotContain("\"wd:")
@@ -218,10 +229,29 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("ScoreBandCore");
 
         assertThat(Files.readString(KERNEL_ASSEMBLY))
+                .contains("RedisWorkerRuntime")
+                .contains("RedisWorkerResourceCatalog")
+                .doesNotContain("HttpWorkerRuntime")
+                .doesNotContain("HttpWorkerResourceCatalog")
+                .doesNotContain("AssembledWorkerResourceCatalog")
                 .doesNotContain("WorkerCommandRuntime")
                 .doesNotContain("WorkerResultRuntime")
                 .doesNotContain("RedisWorkerCommandRuntime")
                 .doesNotContain("RedisWorkerResultRuntime");
+    }
+
+    @Test
+    void pythonKernelBindingContainsOnlyTaskControlAdapters()
+            throws IOException {
+        assertThat(readSources(KERNEL_BINDING))
+                .contains("HttpTaskRuntime")
+                .contains("HttpTaskLifecycleCommands")
+                .contains("HttpTaskDispatchWakeCommands")
+                .doesNotContain("HttpWorkerRuntime")
+                .doesNotContain("HttpWorkerResourceCatalog")
+                .doesNotContain("AssembledWorkerResourceCatalog")
+                .doesNotContain("\"/worker-groups")
+                .doesNotContain("\"/workers");
     }
 
     private static String readSources(Path root) throws IOException {

@@ -14,8 +14,9 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskDescriptor;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.TaskType;
 import com.xa.mass.kernel.task.redis.RedisTaskRuntime;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
+import com.xa.mass.kernel.score.redis.RedisWorkerScoreCore;
 import com.xa.mass.kernel.worker.redis.RedisWorkerResourceCatalog;
+import io.lettuce.core.RedisClient;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -54,14 +55,11 @@ class KernelOwnerAssemblyTest {
 
     @Test
     void unavailableWorkerCatalogOperationsDoNotFallback() {
-        HttpWorkerResourceCatalog control =
-                mock(HttpWorkerResourceCatalog.class);
-        RedisWorkerResourceCatalog reads =
-                mock(RedisWorkerResourceCatalog.class);
-        AssembledWorkerResourceCatalog assembled =
-                new AssembledWorkerResourceCatalog(control, reads);
+        RedisClient redisClient = mock(RedisClient.class);
+        RedisWorkerResourceCatalog catalog =
+                new RedisWorkerResourceCatalog(redisClient, "test");
 
-        assertThatThrownBy(() -> assembled.getWorkerDescriptors(
+        assertThatThrownBy(() -> catalog.getWorkerDescriptors(
                 "group-1",
                 List.of("worker-1")
         ))
@@ -74,7 +72,7 @@ class KernelOwnerAssemblyTest {
                     assertThat(notImplemented.operationName())
                             .isEqualTo("get_worker_descriptors");
                 });
-        verifyNoInteractions(control, reads);
+        verifyNoInteractions(redisClient);
     }
 
     @Test
@@ -98,6 +96,28 @@ class KernelOwnerAssemblyTest {
                             .isEqualTo("load_task_items");
                 });
         verifyNoInteractions(control, data);
+    }
+
+    @Test
+    void schedulingWorkerScoreOperationsRemainExplicitGaps() {
+        RedisClient redisClient = mock(RedisClient.class);
+        RedisWorkerScoreCore scoreCore =
+                new RedisWorkerScoreCore(redisClient, "test");
+
+        assertThatThrownBy(() ->
+                scoreCore.acquireHotAcquireCandidates("group-1", 1))
+                .isInstanceOf(KernelOperationNotImplementedException.class)
+                .satisfies(error -> {
+                    var notImplemented =
+                            (KernelOperationNotImplementedException) error;
+                    assertThat(notImplemented.contractName())
+                            .isEqualTo("WorkerScoreCore");
+                    assertThat(notImplemented.operationName())
+                            .isEqualTo(
+                                    "acquire_hot_acquire_candidates"
+                            );
+                });
+        verifyNoInteractions(redisClient);
     }
 
     private static TaskDescriptor descriptor() {

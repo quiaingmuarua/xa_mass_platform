@@ -12,10 +12,11 @@ The repository contains seven active areas:
   plus selected owner-specific Redis providers. It intentionally has no
   scheduling or application lifecycle implementation.
 - [`server_jvm/`](server_jvm/): Java/Spring Boot Runtime API Server. It exposes
-  the stable `/api/v1` surface and assembles owner operations from Python HTTP
-  and Java Redis providers without redefining Kernel runtime contracts. Its
-  optional Worker Assembly composes explicitly configured Scenario Workers
-  through the same public Worker transport path.
+  the stable `/api/v1` surface. Task control operations use Python HTTP;
+  Worker resource upsert, Task data, and Worker Delivery use Java Redis
+  providers without redefining Kernel runtime contracts. Its optional Worker
+  Assembly composes explicitly configured Scenario Workers through the same
+  public Worker transport path.
 - [`scenario_workers_jvm/`](scenario_workers_jvm/): Java 21 finite Scenario
   Worker capability assembly. It owns the checked-in phone-number and
   string-utility event definitions, WorkerGroup/Worker declarations, and real

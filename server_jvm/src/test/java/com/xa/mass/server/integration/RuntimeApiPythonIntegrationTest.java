@@ -141,28 +141,23 @@ class RuntimeApiPythonIntegrationTest {
     }
 
     @Test
-    void pythonControlApiDoesNotExposeTaskItemAppend() throws Exception {
+    void pythonControlApiExposesOnlyTaskCommands() throws Exception {
         requireExternalRuntime();
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(KERNEL_URL + "/tasks/missing/items"))
-                .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(
-                        "{\"items\":[]}",
-                        StandardCharsets.UTF_8
-                ))
-                .build();
-
-        HttpResponse<String> response = HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_1_1)
-                .build()
-                .send(
-                        request,
-                        HttpResponse.BodyHandlers.ofString(
-                                StandardCharsets.UTF_8
-                        )
-                );
-
-        assertThat(response.statusCode()).isEqualTo(404);
+        assertThat(sendKernel(
+                "POST",
+                "/tasks/missing/items",
+                "{\"items\":[]}"
+        ).statusCode()).isEqualTo(404);
+        assertThat(sendKernel(
+                "PUT",
+                "/worker-groups/missing",
+                "{\"eventCodes\":[]}"
+        ).statusCode()).isEqualTo(404);
+        assertThat(sendKernel(
+                "PUT",
+                "/worker-groups/missing/workers/worker-1",
+                "{\"endpointManagerId\":\"system-polling\"}"
+        ).statusCode()).isEqualTo(404);
     }
 
     private void runWorkerDeliveryClosure(
@@ -486,6 +481,33 @@ class RuntimeApiPythonIntegrationTest {
                 .build()
                 .send(
                         request.build(),
+                        HttpResponse.BodyHandlers.ofString(
+                                StandardCharsets.UTF_8
+                        )
+                );
+    }
+
+    private static HttpResponse<String> sendKernel(
+            String method,
+            String path,
+            String body
+    ) throws Exception {
+        HttpRequest request = HttpRequest.newBuilder()
+                .uri(URI.create(KERNEL_URL + path))
+                .header("Content-Type", "application/json")
+                .method(
+                        method,
+                        HttpRequest.BodyPublishers.ofString(
+                                body,
+                                StandardCharsets.UTF_8
+                        )
+                )
+                .build();
+        return HttpClient.newBuilder()
+                .version(HttpClient.Version.HTTP_1_1)
+                .build()
+                .send(
+                        request,
                         HttpResponse.BodyHandlers.ofString(
                                 StandardCharsets.UTF_8
                         )

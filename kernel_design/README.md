@@ -613,13 +613,12 @@ no hidden compatibility path or second mainline remains
     WorkerResult transport, bounded queues, and trusted pre-execution rejection
     without Adapter-owned score mutation.
 - [Kernel Runtime Server](runtime_server/app.py)
-  - executable-spec FastAPI control host for WorkerGroup/Worker upsert and
-    Task create/approve/close; only
+  - executable-spec FastAPI control host for Task create/approve/close and
+    dispatch wake; only
     `KernelApplication` owns background lifecycle.
 - [JVM Runtime API Server](../server_jvm/README.md)
-  - external control proxy, Java TaskItem append/last-success query, point
-    polling and Adapter batch HTTP API; its owner-scoped Redis access is
-    limited to TaskData and Worker Delivery operations.
+  - external Task control proxy plus Java WorkerGroup/Worker upsert, TaskItem
+    append/last-success query, point polling, and Adapter batch HTTP API.
 - [JVM Worker Delivery Adapter](../transport/netty-adapter/README.md)
   - complete Adapter instance registration, independent Netty WebSocket
     and Socket listeners, start/close lifecycle, bounded mailbox dispatch,

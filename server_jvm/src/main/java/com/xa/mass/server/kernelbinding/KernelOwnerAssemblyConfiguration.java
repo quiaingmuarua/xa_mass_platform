@@ -4,9 +4,9 @@ import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.task.redis.RedisTaskResourceCatalog;
 import com.xa.mass.kernel.task.redis.RedisTaskRuntime;
-import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.kernel.worker.WorkerRuntime;
+import com.xa.mass.kernel.score.redis.RedisWorkerScoreCore;
 import com.xa.mass.kernel.worker.redis.RedisWorkerResourceCatalog;
+import com.xa.mass.kernel.worker.redis.RedisWorkerRuntime;
 import com.xa.mass.server.kernelredis.KernelRedisProperties;
 import io.lettuce.core.RedisClient;
 import java.net.http.HttpClient;
@@ -82,40 +82,38 @@ public class KernelOwnerAssemblyConfiguration {
         );
     }
 
-    @Bean
-    HttpWorkerRuntime workerRuntime(
-            PythonKernelHttpTransport transport
+    @Bean(destroyMethod = "close")
+    RedisWorkerScoreCore redisWorkerScoreCore(
+            RedisClient redisClient,
+            KernelRedisProperties properties
     ) {
-        return new HttpWorkerRuntime(transport);
-    }
-
-    @Bean
-    HttpWorkerResourceCatalog httpWorkerResourceCatalog(
-            PythonKernelHttpTransport transport
-    ) {
-        return new HttpWorkerResourceCatalog(transport);
+        return new RedisWorkerScoreCore(
+                redisClient,
+                properties.redisPrefix()
+        );
     }
 
     @Bean(destroyMethod = "close")
-    RedisWorkerResourceCatalog redisWorkerResourceCatalog(
+    RedisWorkerRuntime workerRuntime(
+            RedisClient redisClient,
+            RedisWorkerScoreCore scoreCore,
+            KernelRedisProperties properties
+    ) {
+        return new RedisWorkerRuntime(
+                redisClient,
+                scoreCore,
+                properties.redisPrefix()
+        );
+    }
+
+    @Bean(destroyMethod = "close")
+    RedisWorkerResourceCatalog workerResourceCatalog(
             RedisClient redisClient,
             KernelRedisProperties properties
     ) {
         return new RedisWorkerResourceCatalog(
                 redisClient,
                 properties.redisPrefix()
-        );
-    }
-
-    @Bean
-    @Primary
-    WorkerResourceCatalog workerResourceCatalog(
-            HttpWorkerResourceCatalog controlProvider,
-            RedisWorkerResourceCatalog readProvider
-    ) {
-        return new AssembledWorkerResourceCatalog(
-                controlProvider,
-                readProvider
         );
     }
 

@@ -14,11 +14,14 @@ import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.score.WorkerScoreCore;
+import com.xa.mass.kernel.score.redis.RedisWorkerScoreCore;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.worker.WorkerDynamicAttributeRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime;
+import com.xa.mass.kernel.worker.redis.RedisWorkerResourceCatalog;
+import com.xa.mass.kernel.worker.redis.RedisWorkerRuntime;
 import com.xa.mass.server.kernelbinding.KernelOwnerAssemblyConfiguration;
 import com.xa.mass.server.workerdelivery.WorkerDeliveryOwnerAssemblyConfiguration;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
@@ -62,9 +65,9 @@ class ServerApplicationContextTest {
         assertThat(applicationContext.getBean(TaskResourceCatalog.class))
                 .isNotNull();
         assertThat(applicationContext.getBean(WorkerRuntime.class))
-                .isNotNull();
+                .isInstanceOf(RedisWorkerRuntime.class);
         assertThat(applicationContext.getBean(WorkerResourceCatalog.class))
-                .isNotNull();
+                .isInstanceOf(RedisWorkerResourceCatalog.class);
         assertThat(applicationContext.getBean(WorkerCommandRuntime.class))
                 .isNotNull();
         assertThat(applicationContext.getBean(WorkerResultRuntime.class))
@@ -95,9 +98,8 @@ class ServerApplicationContextTest {
         assertThat(applicationContext.getBeansOfType(
                 TaskItemScoreBandCore.class
         )).isEmpty();
-        assertThat(applicationContext.getBeansOfType(
-                WorkerScoreCore.class
-        )).isEmpty();
+        assertThat(applicationContext.getBean(WorkerScoreCore.class))
+                .isInstanceOf(RedisWorkerScoreCore.class);
         assertThat(applicationContext.getBeansOfType(
                 WorkerDynamicAttributeRuntime.class
         )).isEmpty();
