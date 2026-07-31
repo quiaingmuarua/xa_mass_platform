@@ -44,7 +44,7 @@ class ServerWorkerAssemblyPropertiesTest {
     }
 
     @Test
-    void defaultConfigIsInertAndPhoneProfileIsExplicit() {
+    void defaultConfigIsInertAndScenarioProfileIsExplicit() {
         ApplicationContextRunner configDataRunner = contextRunner
                 .withInitializer(
                         new ConfigDataApplicationContextInitializer()
@@ -60,15 +60,18 @@ class ServerWorkerAssemblyPropertiesTest {
         });
 
         configDataRunner.withPropertyValues(
-                "spring.profiles.active=phone-number-rpc"
+                "spring.profiles.active=scenario-workers"
         ).run(context -> {
             assertThat(context).hasNotFailed();
             assertThat(context.getBean(
                     WorkerDeliveryAdapterManager.class
-            ).adapters()).containsOnlyKeys("websocket-1");
+            ).adapters()).containsOnlyKeys("scenario-websocket");
             assertThat(context.getBean(
                     ServerWorkerBundleManager.class
-            ).bundleIds()).containsExactly("phone-number");
+            ).bundleIds()).containsExactly(
+                    "phone-number",
+                    "string-utils"
+            );
             ServerWorkerAssemblyProperties properties =
                     context.getBean(
                             ServerWorkerAssemblyProperties.class
@@ -87,6 +90,18 @@ class ServerWorkerAssemblyPropertiesTest {
             ).hasToString(
                     "ws://127.0.0.1:18083"
                             + "/api/v1/worker-delivery/websocket"
+            );
+            assertThat(properties.bundles())
+                    .containsOnlyKeys("phone-number", "string-utils");
+            assertThat(properties.bundles().get(
+                    "phone-number"
+            ).workerGroupId()).isEqualTo(
+                    "scenario-phone-number-workers"
+            );
+            assertThat(properties.bundles().get(
+                    "string-utils"
+            ).workerGroupId()).isEqualTo(
+                    "scenario-string-utils-workers"
             );
         });
     }
@@ -131,6 +146,23 @@ class ServerWorkerAssemblyPropertiesTest {
     }
 
     @Test
+    void rejectsDuplicateGroupAndGeneratedWorkerIdentities() {
+        assertFailed(append(
+                validTwoBundleConfiguration(),
+                        "xa.mass.worker-assembly.bundles"
+                                + ".string-utils.worker-group-id="
+                        + "scenario-phone-number-workers"
+        ));
+        assertFailed(replace(
+                validTwoBundleConfiguration(),
+                ".string-utils.worker-id-prefix="
+                        + "string-utils-worker-",
+                ".string-utils.worker-id-prefix="
+                        + "scenario-phone-number-worker-"
+        ));
+    }
+
+    @Test
     void rejectsMissingOrNonWebSocketAdapterReferences() {
         String[] missing = validConfiguration();
         missing = withoutAdapter(missing);
@@ -160,13 +192,37 @@ class ServerWorkerAssemblyPropertiesTest {
                         + ".phone-number.adapter-id=websocket-1",
                 "xa.mass.worker-assembly.bundles"
                         + ".phone-number.worker-group-id="
-                        + "phonenumber-workers",
+                        + "scenario-phone-number-workers",
                 "xa.mass.worker-assembly.bundles"
                         + ".phone-number.worker-id-prefix="
-                        + "phonenumber-worker-",
+                        + "scenario-phone-number-worker-",
                 "xa.mass.worker-assembly.bundles"
                         + ".phone-number.worker-count=10"
         };
+    }
+
+    private static String[] validTwoBundleConfiguration() {
+        return append(
+                append(
+                        append(
+                                append(
+                                        validConfiguration(),
+                                        "xa.mass.worker-assembly.bundles"
+                                                + ".string-utils.type="
+                                                + "STRING_UTILS"
+                                ),
+                                "xa.mass.worker-assembly.bundles"
+                                        + ".string-utils.adapter-id="
+                                        + "websocket-1"
+                        ),
+                        "xa.mass.worker-assembly.bundles"
+                                + ".string-utils.worker-group-id="
+                                + "string-utils-workers"
+                ),
+                "xa.mass.worker-assembly.bundles"
+                        + ".string-utils.worker-id-prefix="
+                        + "string-utils-worker-"
+        );
     }
 
     private static String[] append(

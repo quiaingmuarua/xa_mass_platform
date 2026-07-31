@@ -25,15 +25,14 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'org.springframework.boot:spring-boot-starter-data-redis'
     implementation project(':kernel_jvm')
+    implementation project(':scenario_workers_jvm')
     implementation project(':transport:netty-adapter')
-    implementation project(':transport:okhttp-worker')
     implementation project(':worker_delivery_contract_jvm')
-    implementation 'com.googlecode.libphonenumber:libphonenumber:9.0.31'
-    implementation 'com.googlecode.libphonenumber:carrier:2.31'
 
     annotationProcessor 'org.springframework.boot:spring-boot-configuration-processor'
 
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation project(':transport:okhttp-worker')
 }
 
 tasks.named('test') {

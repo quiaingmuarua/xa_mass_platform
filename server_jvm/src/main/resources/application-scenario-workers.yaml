@@ -1,0 +1,23 @@
+xa:
+  mass:
+    worker-delivery:
+      adapter:
+        instances:
+          scenario-websocket:
+            type: WEBSOCKET
+            listen-host: 127.0.0.1
+            listen-port: 18083
+    worker-assembly:
+      bundles:
+        phone-number:
+          type: PHONE_NUMBER
+          adapter-id: scenario-websocket
+          worker-group-id: scenario-phone-number-workers
+          worker-id-prefix: scenario-phone-number-worker-
+          worker-count: 10
+        string-utils:
+          type: STRING_UTILS
+          adapter-id: scenario-websocket
+          worker-group-id: scenario-string-utils-workers
+          worker-id-prefix: scenario-string-utils-worker-
+          worker-count: 10

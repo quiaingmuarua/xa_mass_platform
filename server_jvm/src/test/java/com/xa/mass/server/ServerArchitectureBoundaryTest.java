@@ -57,21 +57,21 @@ class ServerArchitectureBoundaryTest {
         String build = Files.readString(Path.of("build.gradle"));
         assertThat(build)
                 .contains("implementation project(':kernel_jvm')")
+                .contains(
+                        "implementation project(':scenario_workers_jvm')"
+                )
                 .contains("implementation project(':transport:netty-adapter')")
                 .contains(
-                        "implementation project(':transport:okhttp-worker')"
+                        "testImplementation "
+                                + "project(':transport:okhttp-worker')"
                 )
-                .contains(
-                        "com.googlecode.libphonenumber:libphonenumber"
-                )
-                .contains(
-                        "com.googlecode.libphonenumber:carrier"
-                )
-                .doesNotContain("foundation_jvm")
-                .doesNotContain("spring-boot-starter-websocket")
                 .doesNotContain(
-                        "testImplementation project(':transport:okhttp-worker')"
-                );
+                        "implementation "
+                                + "project(':transport:okhttp-worker')"
+                )
+                .doesNotContain("com.googlecode.libphonenumber")
+                .doesNotContain("foundation_jvm")
+                .doesNotContain("spring-boot-starter-websocket");
 
         String serverSources = readSources(SERVER_SOURCE);
         assertThat(serverSources)
@@ -174,7 +174,11 @@ class ServerArchitectureBoundaryTest {
                 .contains("adapterManager.close()")
                 .contains("WorkerResourceCatalog")
                 .contains("WorkerRuntime")
-                .contains("WebSocketWorkerTransport")
+                .contains("ScenarioWorkerBundles")
+                .doesNotContain("WebSocketWorkerTransport")
+                .doesNotContain("OkHttpTextWebSocketClient")
+                .doesNotContain("PhoneNumberCapability")
+                .doesNotContain("StringUtilityCapability")
                 .doesNotContain("dispatchOnce")
                 .doesNotContain("io.lettuce")
                 .doesNotContain("org.springframework.data.redis")

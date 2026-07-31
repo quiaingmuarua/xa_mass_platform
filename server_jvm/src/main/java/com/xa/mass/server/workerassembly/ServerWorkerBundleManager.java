@@ -1,7 +1,6 @@
 package com.xa.mass.server.workerassembly;
 
-import com.xa.mass.server.workerassembly.phonenumber
-        .PhoneNumberWorkerBundle;
+import com.xa.mass.scenarioworkers.ScenarioWorkerBundle;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -9,12 +8,12 @@ import java.util.Objects;
 
 public final class ServerWorkerBundleManager implements AutoCloseable {
 
-    private final List<PhoneNumberWorkerBundle> bundles;
+    private final List<ScenarioWorkerBundle> bundles;
     private boolean started;
     private boolean closed;
 
-    public ServerWorkerBundleManager(
-            List<PhoneNumberWorkerBundle> bundles
+    ServerWorkerBundleManager(
+            List<ScenarioWorkerBundle> bundles
     ) {
         Objects.requireNonNull(bundles, "bundles");
         this.bundles = List.copyOf(bundles);
@@ -30,11 +29,11 @@ public final class ServerWorkerBundleManager implements AutoCloseable {
             return;
         }
 
-        List<PhoneNumberWorkerBundle> startedBundles =
+        List<ScenarioWorkerBundle> startedBundles =
                 new ArrayList<>();
-        PhoneNumberWorkerBundle starting = null;
+        ScenarioWorkerBundle starting = null;
         try {
-            for (PhoneNumberWorkerBundle bundle : bundles) {
+            for (ScenarioWorkerBundle bundle : bundles) {
                 starting = bundle;
                 bundle.start();
                 startedBundles.add(bundle);
@@ -47,7 +46,7 @@ public final class ServerWorkerBundleManager implements AutoCloseable {
                 closeAndSuppress(starting, failure);
             }
             Collections.reverse(startedBundles);
-            for (PhoneNumberWorkerBundle bundle : startedBundles) {
+            for (ScenarioWorkerBundle bundle : startedBundles) {
                 closeAndSuppress(bundle, failure);
             }
             throw failure;
@@ -56,7 +55,7 @@ public final class ServerWorkerBundleManager implements AutoCloseable {
 
     public List<String> bundleIds() {
         return bundles.stream()
-                .map(PhoneNumberWorkerBundle::bundleId)
+                .map(ScenarioWorkerBundle::bundleId)
                 .toList();
     }
 
@@ -66,11 +65,11 @@ public final class ServerWorkerBundleManager implements AutoCloseable {
             return;
         }
         closed = true;
-        List<PhoneNumberWorkerBundle> closing =
+        List<ScenarioWorkerBundle> closing =
                 new ArrayList<>(bundles);
         Collections.reverse(closing);
         RuntimeException failure = null;
-        for (PhoneNumberWorkerBundle bundle : closing) {
+        for (ScenarioWorkerBundle bundle : closing) {
             try {
                 bundle.close();
             } catch (RuntimeException error) {
@@ -87,7 +86,7 @@ public final class ServerWorkerBundleManager implements AutoCloseable {
     }
 
     private static void closeAndSuppress(
-            PhoneNumberWorkerBundle bundle,
+            ScenarioWorkerBundle bundle,
             RuntimeException failure
     ) {
         try {

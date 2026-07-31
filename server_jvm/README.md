@@ -1,7 +1,7 @@
 # XA Mass JVM Runtime API Server
 
 Status: active external Runtime API with Kernel owner-contract assembly and
-opt-in built-in Worker assembly.
+opt-in Scenario Worker composition.
 
 `server_jvm` owns the versioned HTTP contract, request validation, error
 mapping, timeouts, and process health. WorkerGroup/Worker upsert and Task
@@ -23,9 +23,10 @@ maps `ServerErrorCode` to HTTP status and emits its integer code in
 `ApiErrorResponse`. Spring remains the process logging and tracing boundary,
 while exceptions do not carry request IDs or context maps.
 
-Server startup assembly failures use the owner-local
-`WorkerAssemblyException` with numeric code, `owner.method` operation,
-message, and cause. It is not an HTTP or cross-module exception contract.
+Server-side Adapter validation failures use the owner-local
+`WorkerAssemblyException`. Scenario capability/resource/Worker startup failures
+use the separate module-local `ScenarioWorkerAssemblyException`. Neither is an
+HTTP or cross-module exception base.
 
 ```text
 Control client
@@ -55,8 +56,9 @@ Worker / long-lived Adapter
   -> Python ResultRouting
 
 Configured built-in Worker bundle
-  -> WorkerResourceCatalog / WorkerRuntime owner upserts
-  -> Worker Core + concrete network Client
+  -> Server validates and starts the configured Adapter
+  -> scenario_workers_jvm performs owner upserts
+  -> scenario_workers_jvm starts Worker Core + concrete network Client
   -> real configured Adapter listener
   -> the same Worker Delivery HTTP/Redis path
 ```
@@ -306,7 +308,7 @@ xa:
     worker-delivery:
       adapter:
         instances:
-          websocket-1:
+          scenario-websocket:
             type: WEBSOCKET
             listen-host: 127.0.0.1
             listen-port: 18083
@@ -314,37 +316,59 @@ xa:
       bundles:
         phone-number:
           type: PHONE_NUMBER
-          adapter-id: websocket-1
-          worker-group-id: phonenumber-workers
-          worker-id-prefix: phonenumber-worker-
+          adapter-id: scenario-websocket
+          worker-group-id: scenario-phone-number-workers
+          worker-id-prefix: scenario-phone-number-worker-
+          worker-count: 10
+        string-utils:
+          type: STRING_UTILS
+          adapter-id: scenario-websocket
+          worker-group-id: scenario-string-utils-workers
+          worker-id-prefix: scenario-string-utils-worker-
+          worker-count: 10
 ```
 
 An absent `bundles` map starts no built-in business Worker. The checked-in
-`phone-number-rpc` profile is a deliberately small local example: it declares
-only the required WebSocket Adapter topology and the stable Worker resource
-identities. The fixed bundle supplies bounded defaults of 10 Workers, a 10
-second request timeout, a 250 millisecond reconnect interval, and a 15 second
-initial-connect timeout. Its internal Workers derive their loopback WebSocket
-URI from the referenced configured Adapter, so the port is not duplicated in
-two settings.
+`scenario-workers` profile declares one WebSocket Adapter and two independent
+Worker capability groups. It creates no Task and has no dependency on RPC,
+ITEM_DRIVEN, TASK_DRIVEN, TARGETED, or PRECOMPUTED scheduling policy. Both
+bundles supply bounded defaults of 10 Workers, a 10 second request timeout, a
+250 millisecond reconnect interval, and a 15 second initial-connect timeout.
+Their internal Workers derive the loopback WebSocket URI from the referenced
+Adapter, so the port is not duplicated in bundle settings.
 
 ```text
-./gradlew :server_jvm:bootRun --args="--spring.profiles.active=phone-number-rpc"
+./gradlew :server_jvm:bootRun --args="--spring.profiles.active=scenario-workers"
 ```
 
-During startup the Server starts all configured Adapters, upserts the
-phone-number WorkerGroup and each Worker through `WorkerResourceCatalog` and
-`WorkerRuntime`, starts the real WebSocket Worker transports, and waits for
-every initial connection. Only `OK` and `NOOP` owner results are accepted.
-Invalid configuration, a rejected owner operation, transport startup failure,
-or connection timeout aborts Server startup. Already accepted owner upserts
-are not rolled back across owners; the deterministic declarations converge
-idempotently on the next startup.
+During startup the Server starts all configured Adapters and then invokes the
+explicit `scenario_workers_jvm` bundle handles in declaration order. Each
+bundle upserts its WorkerGroup and Workers through `WorkerResourceCatalog` and
+`WorkerRuntime`, starts real WebSocket Worker transports, and waits for every
+initial connection. Shutdown and partial-start recovery close bundles in
+reverse order before closing the Adapter. Only `OK` and `NOOP` owner results
+are accepted. Invalid configuration, duplicate generated Worker identity,
+rejected owner operation, transport startup failure, or connection timeout
+aborts Server startup. Already accepted owner upserts are not rolled back
+across owners; deterministic declarations converge idempotently on the next
+startup.
 
-The built-in bundle does not expose a new Kernel operation, access Redis,
-start a second scheduler, or bypass the Adapter through an in-process path.
-Shutdown closes Workers before Adapters. External Worker applications remain
-supported and own their own resource registration and process lifecycle.
+`PHONE_NUMBER` Workers all register `phonenumber.e164`,
+`phonenumber.country`, and `phonenumber.original-carrier`.
+`STRING_UTILS` Workers all register `string.md5`, `string.sha1`, and
+`string.base64.encode`. A WorkerGroup's immutable `eventCodes` exactly match
+the complete definition set registered by every Worker in that group. The new
+`scenario-*` identities deliberately avoid mutating older declarations that
+may remain in Redis.
+
+Worker Assembly does not expose a new Kernel operation, access Redis, start a
+second scheduler, or bypass the Adapter through an in-process path.
+`ScenarioWorkerBundle` is a final lifecycle handle created only by the
+explicit phone-number and string-utils factories; it is not an implementation
+SPI or plugin system. The profile and Adapter remain Server-owned, while
+capabilities and concrete Worker lifecycle belong to `scenario_workers_jvm`.
+External Worker applications remain supported and own their own resource
+registration and process lifecycle.
 
 Defaults:
 

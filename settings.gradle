@@ -17,10 +17,11 @@ dependencyResolutionManagement {
 rootProject.name = 'xa-mass-platform'
 
 include ':kernel_jvm'
+include ':scenario_workers_jvm'
 include ':server_jvm'
 include ':worker_delivery_contract_jvm'
 include ':transport:worker-core'
 include ':transport:netty-adapter'
 include ':transport:okhttp-worker'
 include ':transport:android-client'
-include ':integrations:phone-number-rpc'
+include ':integrations:worker-capability-rpc'

@@ -2,10 +2,11 @@ package com.xa.mass.server.workerassembly;
 
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime;
+import com.xa.mass.scenarioworkers.ScenarioWorkerBundle;
+import com.xa.mass.scenarioworkers.ScenarioWorkerBundleConfig;
+import com.xa.mass.scenarioworkers.ScenarioWorkerBundles;
 import com.xa.mass.server.workerassembly.ServerWorkerAssemblyProperties
         .BundleProperties;
-import com.xa.mass.server.workerassembly.phonenumber
-        .PhoneNumberWorkerBundle;
 import com.xa.mass.workerdelivery.adapter.application
         .WorkerDeliveryAdapter;
 import com.xa.mass.workerdelivery.adapter.application
@@ -35,19 +36,30 @@ public class ServerWorkerAssemblyConfiguration {
             WorkerResourceCatalog workerCatalog,
             WorkerRuntime workerRuntime
     ) {
-        List<PhoneNumberWorkerBundle> bundles = new ArrayList<>();
+        List<ScenarioWorkerBundle> bundles = new ArrayList<>();
         properties.bundles().forEach((bundleId, bundle) -> {
             URI websocketUri = requireWebSocketAdapter(
                     bundleId,
                     bundle,
                     adapterManager
             );
+            ScenarioWorkerBundleConfig config =
+                    scenarioWorkerBundleConfig(
+                            bundleId,
+                            bundle,
+                            websocketUri
+                    );
             switch (bundle.type()) {
                 case PHONE_NUMBER -> bundles.add(
-                        new PhoneNumberWorkerBundle(
-                                bundleId,
-                                bundle,
-                                websocketUri,
+                        ScenarioWorkerBundles.phoneNumber(
+                                config,
+                                workerCatalog,
+                                workerRuntime
+                        )
+                );
+                case STRING_UTILS -> bundles.add(
+                        ScenarioWorkerBundles.stringUtils(
+                                config,
                                 workerCatalog,
                                 workerRuntime
                         )
@@ -66,6 +78,25 @@ public class ServerWorkerAssemblyConfiguration {
         return new ServerWorkerAssemblyLifecycleHost(
                 adapterManager,
                 bundleManager
+        );
+    }
+
+    private static ScenarioWorkerBundleConfig
+    scenarioWorkerBundleConfig(
+            String bundleId,
+            BundleProperties bundle,
+            URI websocketUri
+    ) {
+        return new ScenarioWorkerBundleConfig(
+                bundleId,
+                bundle.adapterId(),
+                websocketUri,
+                bundle.workerGroupId(),
+                bundle.workerIdPrefix(),
+                bundle.workerCount(),
+                bundle.requestTimeout(),
+                bundle.reconnectInterval(),
+                bundle.connectTimeout()
         );
     }
 

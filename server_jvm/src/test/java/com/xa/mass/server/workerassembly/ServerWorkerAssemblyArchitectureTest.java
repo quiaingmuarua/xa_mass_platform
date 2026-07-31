@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test;
 class ServerWorkerAssemblyArchitectureTest {
 
     @Test
-    void assemblyUsesOwnerContractsAndRealWorkerTransportOnly()
+    void serverAssemblyOnlyComposesScenarioWorkerModule()
             throws Exception {
         Path root = Path.of(
                 "src/main/java/com/xa/mass/server/workerassembly"
@@ -31,16 +31,27 @@ class ServerWorkerAssemblyArchitectureTest {
         }
 
         assertThat(sources)
+                .contains("ScenarioWorkerBundle")
+                .contains("ScenarioWorkerBundleConfig")
+                .contains("ScenarioWorkerBundles")
                 .contains("WorkerResourceCatalog")
                 .contains("WorkerRuntime")
-                .contains("WebSocketWorkerTransport")
-                .contains("OkHttpTextWebSocketClient");
+                .contains("adapterManager.start()")
+                .contains("adapterManager.close()");
         assertThat(sources)
+                .doesNotContain("PhoneNumberCapability")
+                .doesNotContain("StringUtilityCapability")
+                .doesNotContain("OkHttpTextWebSocketClient")
+                .doesNotContain("WebSocketWorkerTransport")
+                .doesNotContain("com.google.i18n.phonenumbers")
                 .doesNotContain("io.lettuce")
                 .doesNotContain("kernelredis")
                 .doesNotContain("ScoreBand")
                 .doesNotContain("Pacer")
                 .doesNotContain("ResourceCommandController")
-                .doesNotContain("RuntimeApiHttpClient");
+                .doesNotContain("RuntimeApiHttpClient")
+                .doesNotContain("Class.forName")
+                .doesNotContain("java.lang.reflect")
+                .doesNotContain("ServiceLoader");
     }
 }

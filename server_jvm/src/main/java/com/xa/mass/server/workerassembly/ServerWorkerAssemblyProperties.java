@@ -4,6 +4,7 @@ import java.time.Duration;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -25,6 +26,7 @@ public record ServerWorkerAssemblyProperties(
             LinkedHashMap<String, BundleProperties> copy =
                     new LinkedHashMap<>();
             Set<String> workerGroupIds = new HashSet<>();
+            Set<String> workerIds = new HashSet<>();
             bundles.forEach((bundleId, bundle) -> {
                 requireNonBlank(bundleId, "bundleId");
                 Objects.requireNonNull(bundle, "bundle");
@@ -35,6 +37,23 @@ public record ServerWorkerAssemblyProperties(
                                     + bundle.workerGroupId()
                     );
                 }
+                for (int index = 1;
+                        index <= bundle.workerCount();
+                        index++) {
+                    String workerId = bundle.workerIdPrefix()
+                            + String.format(
+                                    Locale.ROOT,
+                                    "%03d",
+                                    index
+                            );
+                    if (!workerIds.add(workerId)) {
+                        throw new IllegalArgumentException(
+                                "Worker bundles must use distinct "
+                                        + "worker IDs: "
+                                        + workerId
+                        );
+                    }
+                }
                 copy.put(bundleId, bundle);
             });
             bundles = Collections.unmodifiableMap(copy);
@@ -42,7 +61,8 @@ public record ServerWorkerAssemblyProperties(
     }
 
     public enum BundleType {
-        PHONE_NUMBER
+        PHONE_NUMBER,
+        STRING_UTILS
     }
 
     public record BundleProperties(
