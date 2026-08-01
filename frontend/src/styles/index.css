@@ -1,6 +1,6 @@
 :root {
   color-scheme: light;
-  font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   --rv-primary: #596de9;
@@ -27,7 +27,7 @@
   --rv-topbar-height: 64px;
   --el-color-primary: var(--rv-primary);
   --el-border-radius-base: 8px;
-  --el-font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --el-font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
 }
 
 html.dark {

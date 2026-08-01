@@ -2,6 +2,11 @@ server:
   address: ${SERVER_ADDRESS:127.0.0.1}
   port: 18082
 
+spring:
+  web:
+    resources:
+      static-locations: file:../frontend/dist/
+
 xa:
   mass:
     kernel:

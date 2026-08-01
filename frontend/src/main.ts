@@ -1,19 +1,35 @@
 import { createApp } from "vue";
 import { createPinia } from "pinia";
-import ElementPlus from "element-plus";
-import zhCn from "element-plus/es/locale/lang/zh-cn";
-import "@fontsource/inter/400.css";
-import "@fontsource/inter/500.css";
-import "@fontsource/inter/600.css";
-import "@fontsource/inter/700.css";
-
+import {
+  ElAlert,
+  ElBreadcrumb,
+  ElBreadcrumbItem,
+  ElButton,
+  ElConfigProvider,
+  ElDrawer,
+  ElIcon,
+  ElInput,
+  ElTable,
+  ElTableColumn,
+  ElTag
+} from "element-plus";
 import App from "./App.vue";
 import { router } from "./router";
 import { runtimeViewerConfigKey, runtimeViewerStoreKey } from "./runtime-context";
 import { parseRuntimeViewerConfig } from "./runtime-viewer/config";
 import { createRuntimeViewerDataSource } from "./runtime-viewer/data-source";
 import { createRuntimeViewerStore } from "./stores/runtime-viewer";
-import "element-plus/dist/index.css";
+import "element-plus/es/components/alert/style/css";
+import "element-plus/es/components/breadcrumb/style/css";
+import "element-plus/es/components/breadcrumb-item/style/css";
+import "element-plus/es/components/button/style/css";
+import "element-plus/es/components/config-provider/style/css";
+import "element-plus/es/components/drawer/style/css";
+import "element-plus/es/components/icon/style/css";
+import "element-plus/es/components/input/style/css";
+import "element-plus/es/components/table/style/css";
+import "element-plus/es/components/table-column/style/css";
+import "element-plus/es/components/tag/style/css";
 import "element-plus/theme-chalk/dark/css-vars.css";
 import "./styles/index.css";
 
@@ -23,7 +39,19 @@ const pinia = createPinia();
 
 app.use(pinia);
 app.use(router);
-app.use(ElementPlus, { locale: zhCn });
+[
+  ElAlert,
+  ElBreadcrumb,
+  ElBreadcrumbItem,
+  ElButton,
+  ElConfigProvider,
+  ElDrawer,
+  ElIcon,
+  ElInput,
+  ElTable,
+  ElTableColumn,
+  ElTag
+].forEach((component) => app.use(component));
 
 if (configResult.ok) {
   const dataSource = createRuntimeViewerDataSource(configResult.value);
@@ -32,5 +60,4 @@ if (configResult.ok) {
   app.provide(runtimeViewerStoreKey, runtimeViewerStore);
 }
 
-await router.isReady();
 app.mount("#app");
