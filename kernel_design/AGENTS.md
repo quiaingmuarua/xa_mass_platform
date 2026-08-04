@@ -202,7 +202,8 @@ runtime_server/               Python Kernel control command host
 
 `kernel_design/runtime_server/` composes only Task create/approve/close,
 dispatch wake, and `KernelApplication` lifecycle. Java `server_jvm` hosts
-WorkerGroup/Worker upsert, TaskItem append, last-success reads, and Worker
+WorkerGroup upsert, Worker registration/property update, TaskItem append,
+last-success reads, and Worker
 Delivery. Python resource, TaskRuntime, and Worker Delivery runtime/clients
 remain executable-spec oracles and test support. External Worker
 implementations live under `transport/` and
@@ -447,7 +448,7 @@ authoritative batch validation.
 register it, and invoke lifecycle events, but must not host WebSocket
 endpoints, call `dispatchOnce`, or own Adapter semantics. Multiple instances
 in one JVM must use different endpoint-manager IDs and listener ports.
-Workers upsert before connecting. Missing connection evidence may produce
+Workers register and update their resource snapshot before connecting. Missing connection evidence may produce
 `3001`; expiry, disconnect, missing result, and any failure after send was
 attempted remain UNKNOWN. Same-endpoint distributed ownership remains
 unsupported.
@@ -523,10 +524,14 @@ dispatch disposition
   result-routing Worker handlers exact-release `200/1xxx` fences and move
   `3xxx` fences to negative polarity
 
-Worker resource upsert
+Worker registration
   missing score initializes positive, dirty=0
   every existing score is preserved exactly
   does not express connect, reconnect, or activation evidence
+
+Worker property update
+  fully replaces workerProperties
+  preserves platformProperties and never accesses score
 
 RECOVERY_RECHECK
   must not pass either hot lease primitive

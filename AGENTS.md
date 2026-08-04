@@ -8,7 +8,7 @@ Status: current repository handoff.
 - `kernel_jvm/` is the JVM parity surface for Kernel owner contracts and
   selected owner-specific Redis providers. It does not implement scheduling,
   Pacers, or the Kernel application lifecycle. Its Worker score provider is
-  deliberately limited to get/initialize used by `WorkerRuntime.upsertWorker`
+  deliberately limited to get/initialize used by `WorkerRuntime.registerWorker`
   plus a parity-proved reconcile mechanism with no production caller; all
   scheduling score operations remain gaps.
 - `server_jvm/` is the external Runtime API process. Controllers and services
@@ -97,7 +97,8 @@ tag.
   package. `server_jvm.kernelredis` owns only connection and health. Java must
   not read or mutate Task score, candidate cache, Pacers, or ResultRouting
   consumption. The only Java Worker score operations currently allowed inside
-  Worker upsert are get/initialize. Reconcile is parity-proved but has no
+  Worker registration are get/initialize. Property update does not access
+  score. Reconcile is parity-proved but has no
   production caller and must not be treated as resource-upsert behavior.
 - Missing JVM owner operations must fail with
   `KernelOperationNotImplementedException`; do not hide gaps with default
@@ -164,7 +165,7 @@ The module mirrors the public contracts exported by
 `kernel_design.executable_spec.kernel`. A shared non-production manifest proves
 interface, DTO, enum, and key-constant parity. Selected Redis providers
 currently implement TaskItem append/result reads, Task/WorkerGroup descriptor
-reads, WorkerGroup/Worker upsert, Platform Properties patch, Worker/Platform
+reads, WorkerGroup upsert, Worker registration/property update, Platform Properties patch, Worker/Platform
 explicit indexed-property update/load, Worker score get/initialize plus an
 unused parity reconcile mechanism, WorkerCommand consume, and WorkerResult
 append. All other translated operations remain explicit gaps.
@@ -198,7 +199,7 @@ ServerWorkerAssemblyConfiguration
   -> ScenarioWorkerBundles explicit factory
 
 scenario_workers_jvm
-  -> WorkerResourceCatalog / WorkerRuntime owner upserts
+  -> WorkerResourceCatalog / WorkerRuntime owner registration and updates
   -> fixed capability definitions
   -> Worker Core + concrete network Client
 

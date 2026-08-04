@@ -27,7 +27,7 @@ import org.mockito.InOrder;
 class StringUtilityWorkerBundleTest {
 
     @Test
-    void upsertsCompleteCapabilityGroupAndDeterministicWorkers() {
+    void registersCompleteCapabilityGroupAndDeterministicWorkers() {
         WorkerResourceCatalog catalog = acceptedCatalog();
         WorkerRuntime runtime = acceptedRuntime();
         WebSocketWorkerTransport first = connectedWorker();
@@ -58,7 +58,10 @@ class StringUtilityWorkerBundleTest {
                 );
         ArgumentCaptor<WorkerDeclaration> workers =
                 ArgumentCaptor.forClass(WorkerDeclaration.class);
-        verify(runtime, times(2)).upsertWorker(workers.capture());
+        verify(runtime, times(2)).registerWorker(workers.capture());
+        verify(runtime, times(2)).updateWorkerProperties(
+                any(), any(), any()
+        );
         assertThat(workers.getAllValues())
                 .extracting(WorkerDeclaration::workerId)
                 .containsExactly(
@@ -80,10 +83,10 @@ class StringUtilityWorkerBundleTest {
     }
 
     @Test
-    void rejectedWorkerUpsertStopsBeforeTransportCreation() {
+    void rejectedWorkerRegistrationStopsBeforeTransportCreation() {
         WorkerResourceCatalog catalog = acceptedCatalog();
         WorkerRuntime runtime = mock(WorkerRuntime.class);
-        when(runtime.upsertWorker(any())).thenReturn(
+        when(runtime.registerWorker(any())).thenReturn(
                 new WorkerRuntimeResult(
                         WorkerRuntimeStatus.CONFLICT,
                         "conflict"
@@ -121,8 +124,11 @@ class StringUtilityWorkerBundleTest {
 
     private static WorkerRuntime acceptedRuntime() {
         WorkerRuntime runtime = mock(WorkerRuntime.class);
-        when(runtime.upsertWorker(any())).thenReturn(
+        when(runtime.registerWorker(any())).thenReturn(
                 new WorkerRuntimeResult(WorkerRuntimeStatus.NOOP)
+        );
+        when(runtime.updateWorkerProperties(any(), any(), any())).thenReturn(
+                new WorkerRuntimeResult(WorkerRuntimeStatus.OK)
         );
         return runtime;
     }

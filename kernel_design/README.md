@@ -290,7 +290,7 @@ Score write authority is deliberately narrow:
 
 ```text
 initialization owner
-  establishes the first score during task creation or first Worker upsert
+  establishes the first score during task creation or Worker registration
 
 scheduling plane
   is the only routine writer while a score is in an acquirable scheduling lane
@@ -618,7 +618,8 @@ no hidden compatibility path or second mainline remains
     dispatch wake; only
     `KernelApplication` owns background lifecycle.
 - [JVM Runtime API Server](../server_jvm/README.md)
-  - external Task control proxy plus Java WorkerGroup/Worker upsert, TaskItem
+  - external Task control proxy plus Java WorkerGroup upsert, Worker
+    registration/property update, TaskItem
     append/last-success query, point polling, and Adapter batch HTTP API.
 - [JVM Worker Delivery Adapter](../transport/netty-adapter/README.md)
   - complete Adapter instance registration, independent Netty WebSocket

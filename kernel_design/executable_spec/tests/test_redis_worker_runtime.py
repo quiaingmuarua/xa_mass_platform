@@ -80,13 +80,13 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
             )["image-workers"]
         )
 
-    def test_worker_refresh_replaces_worker_properties_only(self) -> None:
+    def test_register_does_not_replace_properties_and_update_does(self) -> None:
         self.upsert_group()
         first = self.worker_declaration(
             "worker-1",
             worker_properties={"arch": "arm64", "removed": True},
         )
-        self.upsert_worker(first)
+        self.register_worker(first)
         patched = self.catalog.patch_worker_platform_properties(
             worker_group_id="image-workers",
             worker_id="worker-1",
@@ -94,24 +94,40 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
         )
         self.assertEqual(patched.status, WorkerRuntimeStatus.OK)
 
-        self.upsert_worker(
-            self.worker_declaration(
-                "worker-1",
-                worker_properties={"arch": "x86_64"},
+        repeated = self.runtime.register_worker(
+            declaration=self.worker_declaration(
+                "worker-1", worker_properties={"arch": "ignored"}
             )
+        )
+        self.assertEqual(repeated.status, WorkerRuntimeStatus.NOOP)
+        registered = self.catalog.get_worker_descriptors(
+            worker_group_id="image-workers",
+            worker_ids=["worker-1"],
+        )["worker-1"]
+        self.assertEqual(
+            registered.worker_properties,
+            {"arch": "arm64", "removed": True},
+        )
+        self.assertEqual(registered.platform_properties, {"pool": "batch"})
+
+        updated = self.runtime.update_worker_properties(
+            worker_group_id="image-workers",
+            worker_id="worker-1",
+            worker_properties={"arch": "x86_64"},
         )
         descriptor = self.catalog.get_worker_descriptors(
             worker_group_id="image-workers",
             worker_ids=["worker-1"],
         )["worker-1"]
 
+        self.assertEqual(updated.status, WorkerRuntimeStatus.OK)
         self.assertEqual(descriptor.worker_properties, {"arch": "x86_64"})
         self.assertEqual(descriptor.platform_properties, {"pool": "batch"})
 
-    def test_repeated_upsert_preserves_every_existing_score_state(self) -> None:
+    def test_repeated_register_preserves_every_existing_score_state(self) -> None:
         self.upsert_group()
         declaration = self.worker_declaration("worker-1")
-        self.upsert_worker(declaration)
+        self.register_worker(declaration)
         score_key = "wr:test:score:image-workers"
         initial_score = self.redis.zscore(score_key, "worker-1")
         assert initial_score is not None
@@ -125,17 +141,84 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
         for existing_score in existing_scores:
             with self.subTest(existing_score=existing_score):
                 self.redis.zadd(score_key, {"worker-1": existing_score})
-                result = self.runtime.upsert_worker(declaration=declaration)
+                result = self.runtime.register_worker(declaration=declaration)
+                update = self.runtime.update_worker_properties(
+                    worker_group_id="image-workers",
+                    worker_id="worker-1",
+                    worker_properties={"score-proof": existing_score},
+                )
 
-                self.assertEqual(result.status, WorkerRuntimeStatus.OK)
+                self.assertEqual(result.status, WorkerRuntimeStatus.NOOP)
+                self.assertIn(
+                    update.status,
+                    (WorkerRuntimeStatus.OK, WorkerRuntimeStatus.NOOP),
+                )
                 self.assertEqual(
                     self.redis.zscore(score_key, "worker-1"),
                     existing_score,
                 )
 
+    def test_register_repairs_partial_resource_stages(self) -> None:
+        self.upsert_group()
+        declaration = self.worker_declaration(
+            "worker-1",
+            worker_properties={"runtime": "initial"},
+        )
+        self.register_worker(declaration)
+
+        self.redis.hdel("wr:test:worker-id-owners", "worker-1")
+        owner_repair = self.runtime.register_worker(declaration=declaration)
+        self.assertEqual(owner_repair.status, WorkerRuntimeStatus.OK)
+
+        self.redis.hdel("wr:test:workers:image-workers", "worker-1")
+        descriptor_repair = self.runtime.register_worker(
+            declaration=declaration
+        )
+        self.assertEqual(descriptor_repair.status, WorkerRuntimeStatus.OK)
+
+        self.redis.zrem("wr:test:score:image-workers", "worker-1")
+        score_repair = self.runtime.register_worker(declaration=declaration)
+        self.assertEqual(score_repair.status, WorkerRuntimeStatus.OK)
+        self.assertIsNotNone(
+            self.redis.zscore("wr:test:score:image-workers", "worker-1")
+        )
+        self.assertEqual(
+            self.runtime.register_worker(declaration=declaration).status,
+            WorkerRuntimeStatus.NOOP,
+        )
+
+    def test_property_update_does_not_repair_score(self) -> None:
+        self.upsert_group()
+        declaration = self.worker_declaration(
+            "worker-1",
+            worker_properties={"runtime": "initial"},
+        )
+        self.register_worker(declaration)
+        score_key = "wr:test:score:image-workers"
+        self.redis.zrem(score_key, "worker-1")
+
+        updated = self.runtime.update_worker_properties(
+            worker_group_id="image-workers",
+            worker_id="worker-1",
+            worker_properties={"runtime": "updated"},
+        )
+
+        self.assertEqual(updated.status, WorkerRuntimeStatus.OK)
+        self.assertIsNone(self.redis.zscore(score_key, "worker-1"))
+        repaired = self.runtime.register_worker(declaration=declaration)
+        self.assertEqual(repaired.status, WorkerRuntimeStatus.OK)
+        descriptor = self.catalog.get_worker_descriptors(
+            worker_group_id="image-workers",
+            worker_ids=["worker-1"],
+        )["worker-1"]
+        self.assertEqual(
+            descriptor.worker_properties,
+            {"runtime": "updated"},
+        )
+
     def test_platform_properties_patch_and_null_delete(self) -> None:
         self.upsert_group()
-        self.upsert_worker(
+        self.register_worker(
             self.worker_declaration(
                 "worker-1",
                 worker_properties={"arch": "arm64"},
@@ -162,7 +245,7 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
 
     def test_platform_patch_preserves_a_concurrent_worker_refresh(self) -> None:
         self.upsert_group()
-        self.upsert_worker(
+        self.register_worker(
             self.worker_declaration(
                 "worker-1",
                 worker_properties={"arch": "arm64"},
@@ -189,9 +272,9 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
         self.assertEqual(descriptor.worker_properties, {"arch": "x86_64"})
         self.assertEqual(descriptor.platform_properties, {"pool": "batch"})
 
-    def test_worker_refresh_preserves_a_concurrent_platform_patch(self) -> None:
+    def test_worker_update_preserves_a_concurrent_platform_patch(self) -> None:
         self.upsert_group()
-        self.upsert_worker(
+        self.register_worker(
             self.worker_declaration(
                 "worker-1",
                 worker_properties={"arch": "arm64"},
@@ -204,11 +287,10 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
             self.redis.hset(key, field, json.dumps(payload, sort_keys=True))
 
         self.redis.before_hash_cas = patch_during_first_cas
-        result = self.runtime.upsert_worker(
-            declaration=self.worker_declaration(
-                "worker-1",
-                worker_properties={"arch": "x86_64"},
-            )
+        result = self.runtime.update_worker_properties(
+            worker_group_id="image-workers",
+            worker_id="worker-1",
+            worker_properties={"arch": "x86_64"},
         )
         descriptor = self.catalog.get_worker_descriptors(
             worker_group_id="image-workers",
@@ -225,7 +307,7 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
             "worker-1",
             worker_properties={"arch": "arm64"},
         )
-        self.upsert_worker(declaration)
+        self.register_worker(declaration)
         raw = self.redis.hget("wr:test:workers:image-workers", "worker-1")
         self.assertEqual(
             json.loads(raw),
@@ -318,7 +400,7 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
 
     def test_index_updates_are_independent_from_properties(self) -> None:
         self.upsert_group()
-        self.upsert_worker(
+        self.register_worker(
             self.worker_declaration(
                 "worker-1",
                 worker_properties={"region": "snapshot-region"},
@@ -372,7 +454,7 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
 
     def test_index_replacement_and_delete_remove_old_membership(self) -> None:
         self.upsert_group()
-        self.upsert_worker(self.worker_declaration("worker-1"))
+        self.register_worker(self.worker_declaration("worker-1"))
         self.index.update_indexed_properties(
             worker_group_id="image-workers",
             worker_id="worker-1",
@@ -408,7 +490,7 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
 
     def test_index_returns_field_local_rejections(self) -> None:
         self.upsert_group()
-        self.upsert_worker(self.worker_declaration("worker-1"))
+        self.register_worker(self.worker_declaration("worker-1"))
         results = self.index.update_indexed_properties(
             worker_group_id="image-workers",
             worker_id="worker-1",
@@ -457,7 +539,7 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
             ("worker-2", "cn-east", "interactive"),
             ("worker-3", "cn-west", "batch"),
         ):
-            self.upsert_worker(self.worker_declaration(worker_id))
+            self.register_worker(self.worker_declaration(worker_id))
             self.index.update_indexed_properties(
                 worker_group_id="image-workers",
                 worker_id=worker_id,
@@ -486,7 +568,7 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
 
     def test_index_load_never_returns_outside_requested_workers(self) -> None:
         self.upsert_group()
-        self.upsert_worker(self.worker_declaration("worker-1"))
+        self.register_worker(self.worker_declaration("worker-1"))
         self.index.update_indexed_properties(
             worker_group_id="image-workers",
             worker_id="worker-1",

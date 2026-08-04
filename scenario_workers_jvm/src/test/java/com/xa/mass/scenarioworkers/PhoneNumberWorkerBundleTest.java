@@ -28,7 +28,7 @@ import org.mockito.InOrder;
 class PhoneNumberWorkerBundleTest {
 
     @Test
-    void upsertsOwnerResourcesThenStartsDeterministicWorkers() {
+    void registersOwnerResourcesThenStartsDeterministicWorkers() {
         WorkerResourceCatalog catalog = mock(
                 WorkerResourceCatalog.class
         );
@@ -37,8 +37,11 @@ class PhoneNumberWorkerBundleTest {
         when(catalog.upsertWorkerGroup(any())).thenReturn(
                 accepted(WorkerRuntimeStatus.OK)
         );
-        when(runtime.upsertWorker(any())).thenReturn(
+        when(runtime.registerWorker(any())).thenReturn(
                 accepted(WorkerRuntimeStatus.NOOP)
+        );
+        when(runtime.updateWorkerProperties(any(), any(), any())).thenReturn(
+                accepted(WorkerRuntimeStatus.OK)
         );
         WebSocketWorkerTransport first = connectedWorker();
         WebSocketWorkerTransport second = connectedWorker();
@@ -66,7 +69,10 @@ class PhoneNumberWorkerBundleTest {
                 );
         ArgumentCaptor<WorkerDeclaration> workers =
                 ArgumentCaptor.forClass(WorkerDeclaration.class);
-        verify(runtime, times(2)).upsertWorker(workers.capture());
+        verify(runtime, times(2)).registerWorker(workers.capture());
+        verify(runtime, times(2)).updateWorkerProperties(
+                any(), any(), any()
+        );
         assertThat(workers.getAllValues())
                 .extracting(WorkerDeclaration::workerId)
                 .containsExactly(
@@ -210,7 +216,10 @@ class PhoneNumberWorkerBundleTest {
 
     private static WorkerRuntime acceptedRuntime() {
         WorkerRuntime runtime = mock(WorkerRuntime.class);
-        when(runtime.upsertWorker(any())).thenReturn(
+        when(runtime.registerWorker(any())).thenReturn(
+                accepted(WorkerRuntimeStatus.OK)
+        );
+        when(runtime.updateWorkerProperties(any(), any(), any())).thenReturn(
                 accepted(WorkerRuntimeStatus.OK)
         );
         return runtime;

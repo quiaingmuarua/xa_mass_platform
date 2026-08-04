@@ -446,7 +446,7 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
 
 
 class RedisWorkerRuntime(WorkerRuntime):
-    """Redis Worker declaration and snapshot-refresh owner."""
+    """Redis Worker registration and worker-property snapshot owner."""
 
     def __init__(
         self,
@@ -470,7 +470,7 @@ class RedisWorkerRuntime(WorkerRuntime):
         self.prefix = prefix
         self.initial_lane_rank = initial_lane_rank
 
-    def upsert_worker(
+    def register_worker(
         self,
         *,
         declaration: WorkerDeclaration,
@@ -500,10 +500,12 @@ class RedisWorkerRuntime(WorkerRuntime):
             )
 
         owner_key = _worker_id_owners_key(self.prefix)
-        self.redis.hsetnx(
-            owner_key,
-            declaration.worker_id,
-            declaration.worker_group_id,
+        owner_created = bool(
+            self.redis.hsetnx(
+                owner_key,
+                declaration.worker_id,
+                declaration.worker_group_id,
+            )
         )
         worker_group_owner = RedisWorkerResourceCatalog._decode_optional_text(
             self.redis.hget(owner_key, declaration.worker_id)
@@ -532,61 +534,34 @@ class RedisWorkerRuntime(WorkerRuntime):
             self.prefix,
             declaration.worker_group_id,
         )
-        if not self.redis.hsetnx(workers_key, declaration.worker_id, encoded):
-            replaced = False
-            for _ in range(_MAX_DESCRIPTOR_CAS_ATTEMPTS):
-                observed = self.redis.hget(workers_key, declaration.worker_id)
-                current = RedisWorkerResourceCatalog._decode_worker_descriptor(
-                    observed
-                )
-                if current is None:
-                    return WorkerRuntimeResult(
-                        WorkerRuntimeStatus.INVALID,
-                        "stored worker descriptor is invalid",
-                    )
-                if (
-                    current.worker_id != declaration.worker_id
-                    or current.worker_group_id != declaration.worker_group_id
-                    or current.endpoint_manager_id
-                    != declaration.endpoint_manager_id
-                ):
-                    return WorkerRuntimeResult(
-                        WorkerRuntimeStatus.CONFLICT,
-                        "worker identity declaration is immutable",
-                    )
-                descriptor = WorkerDescriptor(
-                    worker_id=current.worker_id,
-                    worker_group_id=current.worker_group_id,
-                    endpoint_manager_id=current.endpoint_manager_id,
-                    worker_properties=dict(declaration.worker_properties),
-                    platform_properties=current.platform_properties,
-                )
-                encoded = _encode_worker_descriptor(descriptor)
-                if encoded is None:
-                    return WorkerRuntimeResult(
-                        WorkerRuntimeStatus.INVALID,
-                        "invalid descriptor json",
-                    )
-                if self.redis.eval(
-                    _COMPARE_AND_SET_HASH_FIELD_SCRIPT,
-                    1,
-                    workers_key,
-                    declaration.worker_id,
-                    observed,
-                    encoded,
-                ) == 1:
-                    replaced = True
-                    break
-            if not replaced:
+        descriptor_created = bool(
+            self.redis.hsetnx(workers_key, declaration.worker_id, encoded)
+        )
+        if not descriptor_created:
+            current = RedisWorkerResourceCatalog._decode_worker_descriptor(
+                self.redis.hget(workers_key, declaration.worker_id)
+            )
+            if current is None:
                 return WorkerRuntimeResult(
-                    WorkerRuntimeStatus.STALE,
-                    "worker descriptor changed during snapshot refresh",
+                    WorkerRuntimeStatus.INVALID,
+                    "stored worker descriptor is invalid",
+                )
+            if (
+                current.worker_id != declaration.worker_id
+                or current.worker_group_id != declaration.worker_group_id
+                or current.endpoint_manager_id
+                != declaration.endpoint_manager_id
+            ):
+                return WorkerRuntimeResult(
+                    WorkerRuntimeStatus.CONFLICT,
+                    "worker identity declaration is immutable",
                 )
 
         score_state = self.score_band.get_score_states(
             home_bucket_id=declaration.worker_group_id,
             worker_ids=[declaration.worker_id],
         ).get(declaration.worker_id)
+        score_created = False
         if score_state is None:
             initialization = self.score_band.initialize_hot_acquire_score(
                 home_bucket_id=declaration.worker_group_id,
@@ -594,28 +569,123 @@ class RedisWorkerRuntime(WorkerRuntime):
                 lane_rank=self.initial_lane_rank,
             )
             if initialization.status == WorkerScoreTransitionStatus.TRANSITIONED:
-                return WorkerRuntimeResult(WorkerRuntimeStatus.OK)
-            if initialization.status == WorkerScoreTransitionStatus.INVALID:
+                score_created = True
+            elif initialization.status == WorkerScoreTransitionStatus.INVALID:
                 return WorkerRuntimeResult(
                     WorkerRuntimeStatus.INVALID,
                     "worker score initialization was rejected",
                 )
-            if initialization.status != WorkerScoreTransitionStatus.NOOP:
+            elif initialization.status != WorkerScoreTransitionStatus.NOOP:
                 return WorkerRuntimeResult(
                     WorkerRuntimeStatus.STALE,
                     "worker score initialization could not be confirmed",
                 )
-            score_state = self.score_band.get_score_states(
-                home_bucket_id=declaration.worker_group_id,
-                worker_ids=[declaration.worker_id],
-            ).get(declaration.worker_id)
-            if score_state is None:
-                return WorkerRuntimeResult(
-                    WorkerRuntimeStatus.STALE,
-                    "worker score initialization could not be observed",
-                )
+            if not score_created:
+                score_state = self.score_band.get_score_states(
+                    home_bucket_id=declaration.worker_group_id,
+                    worker_ids=[declaration.worker_id],
+                ).get(declaration.worker_id)
+                if score_state is None:
+                    return WorkerRuntimeResult(
+                        WorkerRuntimeStatus.STALE,
+                        "worker score initialization could not be observed",
+                    )
 
-        return WorkerRuntimeResult(WorkerRuntimeStatus.OK)
+        if owner_created or descriptor_created or score_created:
+            return WorkerRuntimeResult(WorkerRuntimeStatus.OK)
+        return WorkerRuntimeResult(WorkerRuntimeStatus.NOOP)
+
+    def update_worker_properties(
+        self,
+        *,
+        worker_group_id: WorkerGroupId,
+        worker_id: WorkerId,
+        worker_properties: Mapping[str, AttributeValue],
+    ) -> WorkerRuntimeResult:
+        if not _valid_id(worker_group_id):
+            return WorkerRuntimeResult(
+                WorkerRuntimeStatus.INVALID,
+                "invalid workerGroupId",
+            )
+        if not _valid_id(worker_id):
+            return WorkerRuntimeResult(
+                WorkerRuntimeStatus.INVALID,
+                "invalid workerId",
+            )
+        if not isinstance(worker_properties, MappingABC):
+            return WorkerRuntimeResult(
+                WorkerRuntimeStatus.INVALID,
+                "invalid workerProperties",
+            )
+
+        worker_group_owner = RedisWorkerResourceCatalog._decode_optional_text(
+            self.redis.hget(_worker_id_owners_key(self.prefix), worker_id)
+        )
+        if worker_group_owner is None:
+            return WorkerRuntimeResult(
+                WorkerRuntimeStatus.NOT_FOUND,
+                "worker not found",
+            )
+        if worker_group_owner != worker_group_id:
+            return WorkerRuntimeResult(
+                WorkerRuntimeStatus.CONFLICT,
+                "workerId is owned by another workerGroupId",
+            )
+
+        workers_key = _worker_descriptors_key(self.prefix, worker_group_id)
+        for _ in range(_MAX_DESCRIPTOR_CAS_ATTEMPTS):
+            observed = self.redis.hget(workers_key, worker_id)
+            if observed is None:
+                return WorkerRuntimeResult(
+                    WorkerRuntimeStatus.NOT_FOUND,
+                    "worker descriptor not found",
+                )
+            current = RedisWorkerResourceCatalog._decode_worker_descriptor(
+                observed
+            )
+            if current is None:
+                return WorkerRuntimeResult(
+                    WorkerRuntimeStatus.INVALID,
+                    "stored worker descriptor is invalid",
+                )
+            if (
+                current.worker_id != worker_id
+                or current.worker_group_id != worker_group_id
+            ):
+                return WorkerRuntimeResult(
+                    WorkerRuntimeStatus.CONFLICT,
+                    "stored worker identity does not match",
+                )
+            if current.worker_properties == worker_properties:
+                return WorkerRuntimeResult(WorkerRuntimeStatus.NOOP)
+
+            updated = WorkerDescriptor(
+                worker_id=current.worker_id,
+                worker_group_id=current.worker_group_id,
+                endpoint_manager_id=current.endpoint_manager_id,
+                worker_properties=dict(worker_properties),
+                platform_properties=current.platform_properties,
+            )
+            encoded = _encode_worker_descriptor(updated)
+            if encoded is None:
+                return WorkerRuntimeResult(
+                    WorkerRuntimeStatus.INVALID,
+                    "invalid descriptor json",
+                )
+            if self.redis.eval(
+                _COMPARE_AND_SET_HASH_FIELD_SCRIPT,
+                1,
+                workers_key,
+                worker_id,
+                observed,
+                encoded,
+            ) == 1:
+                return WorkerRuntimeResult(WorkerRuntimeStatus.OK)
+
+        return WorkerRuntimeResult(
+            WorkerRuntimeStatus.STALE,
+            "worker descriptor changed during snapshot refresh",
+        )
 
 
 class RedisHashWorkerPropertyIndexProvider:

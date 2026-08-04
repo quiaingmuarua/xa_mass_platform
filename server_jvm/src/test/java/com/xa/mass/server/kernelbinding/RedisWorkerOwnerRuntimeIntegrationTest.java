@@ -137,7 +137,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 "endpoint-1",
                 Map.of("runtime", "first")
         );
-        assertThat(runtime.upsertWorker(declaration).status())
+        assertThat(runtime.registerWorker(declaration).status())
                 .isEqualTo(WorkerRuntimeStatus.OK);
         assertThat(redis.hget(workersKey("group-1"), "worker-1"))
                 .isEqualTo(
@@ -169,12 +169,17 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                         + "\"workerProperties\":"
                         + "{\"runtime\":\"first\"}}"
         );
-        assertThat(runtime.upsertWorker(worker(
+        assertThat(runtime.registerWorker(worker(
                 "worker-1",
                 "group-1",
                 "endpoint-1",
                 Map.of("runtime", "second")
-        )).status()).isEqualTo(WorkerRuntimeStatus.OK);
+        )).status()).isEqualTo(WorkerRuntimeStatus.NOOP);
+        assertThat(runtime.updateWorkerProperties(
+                "group-1",
+                "worker-1",
+                Map.of("runtime", "second")
+        ).status()).isEqualTo(WorkerRuntimeStatus.OK);
         assertThat(redis.hget(workersKey("group-1"), "worker-1"))
                 .isEqualTo(
                         "{\"endpointManagerId\":\"endpoint-1\","
@@ -224,19 +229,19 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 "endpoint-1",
                 Map.of()
         );
-        assertThat(runtime.upsertWorker(declaration).status())
+        assertThat(runtime.registerWorker(declaration).status())
                 .isEqualTo(WorkerRuntimeStatus.OK);
         double scoreBeforeConflict = redis.zscore(
                 scoreKey("group-1"),
                 "worker-1"
         );
-        assertThat(runtime.upsertWorker(worker(
+        assertThat(runtime.registerWorker(worker(
                 "worker-1",
                 "group-2",
                 "endpoint-1",
                 Map.of()
         )).status()).isEqualTo(WorkerRuntimeStatus.CONFLICT);
-        assertThat(runtime.upsertWorker(worker(
+        assertThat(runtime.registerWorker(worker(
                 "worker-1",
                 "group-1",
                 "endpoint-other",
@@ -246,16 +251,22 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 .isEqualTo(scoreBeforeConflict);
 
         redis.zrem(scoreKey("group-1"), "worker-1");
-        assertThat(runtime.upsertWorker(declaration).status())
+        assertThat(runtime.registerWorker(declaration).status())
                 .isEqualTo(WorkerRuntimeStatus.OK);
         assertThat(redis.zscore(scoreKey("group-1"), "worker-1"))
                 .isNotNull();
 
         redis.hdel(workersKey("group-1"), "worker-1");
-        assertThat(runtime.upsertWorker(declaration).status())
+        assertThat(runtime.registerWorker(declaration).status())
                 .isEqualTo(WorkerRuntimeStatus.OK);
         assertThat(redis.hget(workersKey("group-1"), "worker-1"))
                 .isNotNull();
+
+        redis.hdel(workerIdOwnersKey(), "worker-1");
+        assertThat(runtime.registerWorker(declaration).status())
+                .isEqualTo(WorkerRuntimeStatus.OK);
+        assertThat(redis.hget(workerIdOwnersKey(), "worker-1"))
+                .isEqualTo("group-1");
 
         redis.hset(
                 workersKey("group-1"),
@@ -346,7 +357,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     }
 
     @Test
-    void repeatedUpsertPreservesExistingScoreStates() {
+    void repeatedRegisterAndPropertyUpdatePreserveExistingScoreStates() {
         catalog.upsertWorkerGroup(group(
                 "group-1",
                 Map.of(),
@@ -358,7 +369,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 "endpoint-1",
                 Map.of()
         );
-        runtime.upsertWorker(declaration);
+        runtime.registerWorker(declaration);
         long initialScore = redis.zscore(
                 scoreKey("group-1"),
                 "worker-1"
@@ -372,11 +383,52 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         for (long existingScore : existingScores) {
             redis.zadd(scoreKey("group-1"), existingScore, "worker-1");
 
-            assertThat(runtime.upsertWorker(declaration).status())
-                    .isEqualTo(WorkerRuntimeStatus.OK);
+            assertThat(runtime.registerWorker(declaration).status())
+                    .isEqualTo(WorkerRuntimeStatus.NOOP);
+            assertThat(runtime.updateWorkerProperties(
+                    "group-1",
+                    "worker-1",
+                    Map.of("score-proof", existingScore)
+            ).status()).isIn(
+                    WorkerRuntimeStatus.OK,
+                    WorkerRuntimeStatus.NOOP
+            );
             assertThat(redis.zscore(scoreKey("group-1"), "worker-1"))
                     .isEqualTo((double) existingScore);
         }
+    }
+
+    @Test
+    void propertyUpdateDoesNotInitializeMissingScore() {
+        catalog.upsertWorkerGroup(group(
+                "group-1",
+                Map.of(),
+                Set.of("event")
+        ));
+        WorkerDeclaration declaration = worker(
+                "worker-1",
+                "group-1",
+                "endpoint-1",
+                Map.of("runtime", "initial")
+        );
+        runtime.registerWorker(declaration);
+        redis.zrem(scoreKey("group-1"), "worker-1");
+
+        assertThat(runtime.updateWorkerProperties(
+                "group-1",
+                "worker-1",
+                Map.of("runtime", "updated")
+        ).status()).isEqualTo(WorkerRuntimeStatus.OK);
+        assertThat(redis.zscore(scoreKey("group-1"), "worker-1"))
+                .isNull();
+
+        assertThat(runtime.registerWorker(declaration).status())
+                .isEqualTo(WorkerRuntimeStatus.OK);
+        assertThat(catalog.getWorkerDescriptors(
+                "group-1",
+                List.of("worker-1")
+        ).get("worker-1").workerProperties())
+                .containsExactlyEntriesOf(Map.of("runtime", "updated"));
     }
 
     @Test
@@ -386,7 +438,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 Map.of(),
                 Set.of("event")
         ));
-        runtime.upsertWorker(worker(
+        runtime.registerWorker(worker(
                 "worker-1",
                 "group-1",
                 "endpoint-1",
@@ -507,6 +559,10 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
 
     private String workersKey(String workerGroupId) {
         return "wr:" + prefix + ":workers:" + workerGroupId;
+    }
+
+    private String workerIdOwnersKey() {
+        return "wr:" + prefix + ":worker-id-owners";
     }
 
     private String scoreKey(String workerGroupId) {

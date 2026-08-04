@@ -66,10 +66,12 @@ WorkerDeclaration(
 )
 ```
 
-Worker upsert supplies the complete `workerProperties` snapshot. A compatible
-repeat upsert replaces the prior Worker snapshot. This is resource
-registration and snapshot refresh, not connectivity or activation evidence.
-The Platform cannot patch this snapshot.
+Worker registration supplies the initial `workerProperties` snapshot. A
+compatible repeated registration is a no-op and cannot overwrite either
+property snapshot. `WorkerRuntime.update_worker_properties` is the separate
+complete-replacement operation for the Worker-owned snapshot. Registration and
+property update are resource operations, not connectivity or activation
+evidence. The Platform cannot patch the Worker-owned snapshot.
 
 Worker identity coordinates are immutable:
 
@@ -97,10 +99,10 @@ WorkerDescriptor(
 ```
 
 `platformProperties` is patched by field. A `null` patch value deletes the
-field. Worker reconnect preserves the current Platform snapshot. Both source
-writers compare the observed descriptor value before replacement and retry a
-bounded number of times, so a concurrent Platform patch cannot restore stale
-Worker properties and a concurrent reconnect cannot discard a Platform patch.
+field. Worker property update preserves the current Platform snapshot. Both
+source writers compare the observed descriptor value before replacement and
+retry a bounded number of times, so concurrent updates cannot discard the
+other source's accepted snapshot.
 
 Properties are intended for bounded views, diagnostics, and low-frequency
 matching facts. They are not transport reachability, score, lease, assignment,
@@ -237,10 +239,10 @@ Connectivity    Adapter-local active connection evidence
 Execution       TaskItem claim and Worker result evidence
 ```
 
-Worker upsert initializes a missing HOT score, including retry recovery after a
-partial first registration. If a score already exists, upsert preserves its
-polarity, coordinate, dirty bit, and lease exactly. Property and index updates
-do not mutate score or release a lease. Attribute changes do not revoke an
+Worker registration initializes a missing HOT score, including retry recovery
+after a partial first registration. If a score already exists, registration
+preserves its polarity, coordinate, dirty bit, and lease exactly. Property and
+index updates do not read or mutate score or release a lease. Attribute changes do not revoke an
 already claimed Item or a command already delivered to a Worker.
 
 Physical Worker removal, disable/drain, index residue cleanup, ordered update
@@ -253,7 +255,7 @@ milestones.
 - Do not auto-project Properties into indexes.
 - Do not expose index-only values through Runtime View.
 - Do not use Properties or indexes as connectivity evidence.
-- Do not make index update failure roll back Worker upsert, Dispatch, or
+- Do not make index update failure roll back Worker registration, Dispatch, or
   ResultRouting.
 - Do not scan descriptors to satisfy TARGETED rules.
 - Do not infer physical truth from the latest accepted scheduling projection.

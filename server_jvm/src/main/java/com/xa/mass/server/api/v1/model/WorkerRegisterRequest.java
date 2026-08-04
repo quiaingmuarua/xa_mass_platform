@@ -6,11 +6,11 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-public record WorkerUpsertRequest(
+public record WorkerRegisterRequest(
         @NotBlank String endpointManagerId,
         @NotNull Map<String, Object> workerProperties
 ) {
-    public WorkerUpsertRequest {
+    public WorkerRegisterRequest {
         if (workerProperties != null) {
             workerProperties = Collections.unmodifiableMap(
                     new LinkedHashMap<>(workerProperties)

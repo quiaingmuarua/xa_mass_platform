@@ -48,12 +48,12 @@ class WorkerGroupDescriptor:
 
 @dataclass(frozen=True)
 class WorkerDeclaration:
-    """Worker-owned resource declaration used by resource upsert.
+    """Worker-owned resource declaration used by registration.
 
     Supplying worker_group_id asserts that this logical execution slot conforms
     to the selected group's capability contract. The kernel protects the group
     identity and scheduling coordinates but does not re-prove handler coverage
-    during each upsert or dispatch.
+    during each registration or dispatch.
 
     endpoint_manager_id locates the physical endpoint owner after this Worker
     has been selected. It is not a matching field or live transport evidence.
@@ -88,12 +88,23 @@ class WorkerRuntime(ABC):
     """Worker runtime owner surface."""
 
     @abstractmethod
-    def upsert_worker(
+    def register_worker(
         self,
         *,
         declaration: WorkerDeclaration,
     ) -> WorkerRuntimeResult:
-        """Create or refresh one Worker resource snapshot."""
+        """Register one Worker identity and initialize missing score truth."""
+        pass
+
+    @abstractmethod
+    def update_worker_properties(
+        self,
+        *,
+        worker_group_id: WorkerGroupId,
+        worker_id: WorkerId,
+        worker_properties: Mapping[str, AttributeValue],
+    ) -> WorkerRuntimeResult:
+        """Replace one registered Worker's worker-owned property snapshot."""
         pass
 
 
@@ -162,7 +173,7 @@ class WorkerResourceCatalog(ABC):
     """Worker-runtime resource declaration surface.
 
     It owns worker-group declarations, bounded descriptor reads, and
-    low-frequency platform property patches. Worker upsert belongs to
+    low-frequency platform property patches. Worker registration belongs to
     WorkerRuntime because first appearance must also establish the worker score.
     This catalog does not expose indexed property values or score mutation.
     """

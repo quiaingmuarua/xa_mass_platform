@@ -190,7 +190,7 @@ rounds may observe the same due Worker, but only one can win the
 compare-and-write. Unmatched leases remain held until bounded expiry; allocation
 does not release them.
 
-Worker score is not a Worker resource mutation lease. First Worker upsert
+Worker score is not a Worker resource mutation lease. Worker registration
 establishes the initial HOT_ACQUIRE score using runtime-owned lane config, but
 later Platform/Worker property or index writes,
 handler-owned projections, heartbeat evidence, and diagnostics update their own
@@ -489,9 +489,10 @@ policy may invoke them only for an active continuation that will later
 revalidate or renew. Raw external observation never writes dirty.
 
 Raw connect, heartbeat, keepalive, session, latency observation, and
-`WorkerRuntime.upsert_worker` cannot move RECOVERY_RECHECK to HOT_ACQUIRE.
-Upsert is a resource snapshot operation: it initializes only a missing score
-and preserves every existing score exactly. `reconcile_worker_hot_acquire`
+`WorkerRuntime.register_worker` cannot move RECOVERY_RECHECK to HOT_ACQUIRE.
+Registration initializes only a missing score and preserves every existing
+score exactly. `update_worker_properties` never accesses score.
+`reconcile_worker_hot_acquire`
 remains a score-owner mechanism, but has no production caller in this slice. A
 future explicit lifecycle operation must validate recovery evidence before
 invoking any RECOVERY_RECHECK-to-HOT_ACQUIRE transition.
@@ -950,7 +951,8 @@ assignment-dispatch worker selection path.
 | manual enable / release | yes | exact observed-score same-polarity release |
 | platform scheduling metadata signature changed while persisted task-worker assignment plan / hot score lease continuation exists | yes | `mark_current_lease_dirty` may only set dirty = 1 |
 | platform scheduling metadata signature changed while no persisted assignment plan / hot score lease continuation exists | no score write required | metadata/evidence only; next candidate validation reads current metadata |
-| Worker resource upsert / snapshot refresh | only when score is missing | initialize HOT_ACQUIRE dirty=0; preserve every existing score exactly |
+| Worker registration | only when score is missing | initialize HOT_ACQUIRE dirty=0; preserve every existing score exactly |
+| Worker property update | no | descriptor snapshot only; never access score |
 | assignment owner leases due HOT_ACQUIRE observations | yes | `acquire_observed_hot_score_leases` pipelines independent exact-CAS writes, future leases, and dirty clear before matching |
 | assignment owner extends active clean HOT_ACQUIRE leases | yes | `renew_active_hot_score_leases`; dirty entries return STALE and force rematch |
 | trusted Adapter evidence that execution was not entered | yes | exact `demote_observed_worker_leases_to_recovery` preserving the time coordinate |

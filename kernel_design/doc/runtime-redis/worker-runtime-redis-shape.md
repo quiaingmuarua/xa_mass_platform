@@ -77,13 +77,13 @@ Example descriptor:
 
 `worker-id-owners` is an identity fence, not a global query catalog.
 
-Worker upsert order intentionally remains multi-stage:
+Worker registration intentionally remains multi-stage:
 
 ```text
 require WorkerGroup descriptor
 -> HSETNX workerId owner
 -> establish or validate immutable Worker descriptor coordinates
--> replace workerProperties and preserve platformProperties
+-> preserve both property snapshots when the descriptor already exists
 -> initialize HOT_ACQUIRE only when Worker score is missing
 -> preserve every existing Worker score byte-for-byte
 ```
@@ -91,13 +91,16 @@ require WorkerGroup descriptor
 Interrupted stages converge on retry. The operation is not wrapped in a
 cross-key transaction.
 
-Platform property patch performs a bounded descriptor read, applies field
+Worker property update performs an observed-value compare-and-set that fully
+replaces `workerProperties`, preserves `platformProperties`, and never accesses
+score. Platform property patch performs a bounded descriptor read, applies field
 updates, removes `null` values, and writes one canonical descriptor. Reconnect
-and Platform patch both use observed-value compare-and-set on the descriptor
-HASH field, then reread and recompute after a conflict. This prevents either
-source writer from restoring a stale snapshot owned by the other source. The
-bounded retry may return `STALE` under sustained contention. Platform patch
-never changes `workerProperties`, score, or property indexes.
+is not a resource operation. Both property writers use observed-value
+compare-and-set on the descriptor HASH field, then reread and recompute after a
+conflict. This prevents either source writer from restoring a stale snapshot
+owned by the other source. The bounded retry may return `STALE` under sustained
+contention. Platform patch never changes `workerProperties`, score, or property
+indexes.
 
 ## Redis HASH Property Projection
 

@@ -5,7 +5,8 @@ opt-in Scenario Worker composition.
 
 `server_jvm` owns the versioned HTTP contract, request validation, error
 mapping, timeouts, and process health. Task create/approve/close bind to Python
-HTTP owner providers. WorkerGroup/Worker upsert, TaskItem append, last-success
+HTTP owner providers. WorkerGroup upsert, Worker registration/property update,
+TaskItem append, last-success
 reads, and Worker Delivery bind to Java Redis owner providers. Controllers and
 services depend only on contracts from `kernel_jvm`.
 
@@ -77,7 +78,7 @@ composes only the WorkerCommand and WorkerResult Redis providers. The shared
 implemented in owner-local `kernel_jvm` packages. Java does not read Task
 scores, invoke Pacers, append Worker commands, or consume WorkerResult queues.
 Its Worker score provider implements get/initialize for
-`WorkerRuntime.upsertWorker` plus a parity reconcile mechanism with no current
+`WorkerRuntime.registerWorker` plus a parity reconcile mechanism with no current
 production caller; scheduling score operations remain unavailable.
 
 Current provider matrix:
@@ -85,7 +86,8 @@ Current provider matrix:
 | Operation | Provider |
 | --- | --- |
 | WorkerGroup upsert | Java Redis |
-| Worker upsert and missing HOT_ACQUIRE initialization | Java Redis |
+| Worker registration and missing HOT_ACQUIRE initialization | Java Redis |
+| Worker Properties complete replacement | Java Redis |
 | Platform Properties patch | Java Redis |
 | Explicit indexed-property update/point load | Java Redis |
 | Task create | Python HTTP |
@@ -157,6 +159,7 @@ WorkerResult through point HTTP.
 ```text
 PUT  /api/v1/worker-groups/{workerGroupId}
 PUT  /api/v1/worker-groups/{workerGroupId}/workers/{workerId}
+PUT  /api/v1/worker-groups/{workerGroupId}/workers/{workerId}/worker-properties
 PATCH /api/v1/worker-groups/{workerGroupId}/workers/{workerId}/platform-properties
 PATCH /api/v1/worker-groups/{workerGroupId}/workers/{workerId}/indexed-properties
 POST /api/v1/tasks
@@ -169,7 +172,12 @@ POST /api/v1/runtime-view/worker-groups:batch-get
 POST /api/v1/runtime-view/worker-groups/{workerGroupId}/workers:preview
 ```
 
-WorkerGroup and Worker upsert use Java Redis owner providers. Task
+The Worker path is registration: compatible repeats are no-ops and cannot
+refresh either property snapshot. The `worker-properties` PUT is the explicit
+complete replacement of `workerProperties`; it preserves Platform Properties,
+the endpoint coordinate, and every existing score state.
+
+WorkerGroup upsert and Worker registration/property update use Java Redis owner providers. Task
 create/approve/close use Python HTTP owner/application providers. Item append
 and result load use Java Redis owner providers. Append returns per-message
 `appended / not_found / invalid / retryable` status. `TASK_DRIVEN` forbids an

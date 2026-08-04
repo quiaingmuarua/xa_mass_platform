@@ -10,7 +10,13 @@ import org.jspecify.annotations.Nullable;
 
 public interface WorkerRuntime {
 
-    WorkerRuntimeResult upsertWorker(WorkerDeclaration declaration);
+    WorkerRuntimeResult registerWorker(WorkerDeclaration declaration);
+
+    WorkerRuntimeResult updateWorkerProperties(
+            String workerGroupId,
+            String workerId,
+            Map<String, Object> workerProperties
+    );
 
     enum WorkerRuntimeStatus {
         OK("ok"),

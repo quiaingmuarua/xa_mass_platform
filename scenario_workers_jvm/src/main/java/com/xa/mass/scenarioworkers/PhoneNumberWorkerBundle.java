@@ -24,7 +24,7 @@ final class PhoneNumberWorkerBundle
     );
 
     private static final int GROUP_UPSERT_FAILED = 14002;
-    private static final int WORKER_UPSERT_FAILED = 14003;
+    private static final int WORKER_RESOURCE_FAILED = 14003;
     private static final int WORKER_START_FAILED = 14004;
     private static final int WORKER_CONNECT_TIMEOUT = 14005;
     private static final int WORKER_INDEX_FAILED = 14010;
@@ -103,7 +103,8 @@ final class PhoneNumberWorkerBundle
         try {
             upsertWorkerGroup();
             for (String workerId : workerIds()) {
-                upsertWorker(workerId);
+                registerWorker(workerId);
+                updateWorkerProperties(workerId);
                 updateWorkerIndex(workerId);
             }
             for (String workerId : workerIds()) {
@@ -189,27 +190,42 @@ final class PhoneNumberWorkerBundle
         );
     }
 
-    private void upsertWorker(String workerId) {
-        WorkerRuntimeResult result = workerRuntime.upsertWorker(
+    private void registerWorker(String workerId) {
+        WorkerRuntimeResult result = workerRuntime.registerWorker(
                 new WorkerDeclaration(
                         workerId,
                         config.workerGroupId(),
                         config.endpointManagerId(),
-                        Map.of(
-                                "runtime",
-                                "java",
-                                "capability",
-                                "libphonenumber",
-                                "region",
-                                "local"
-                        )
+                        workerProperties()
                 )
         );
         requireAccepted(
                 result,
-                WORKER_UPSERT_FAILED,
-                "workerRuntime.upsertWorker",
+                WORKER_RESOURCE_FAILED,
+                "workerRuntime.registerWorker",
                 config.workerGroupId() + "/" + workerId
+        );
+    }
+
+    private void updateWorkerProperties(String workerId) {
+        WorkerRuntimeResult result = workerRuntime.updateWorkerProperties(
+                config.workerGroupId(),
+                workerId,
+                workerProperties()
+        );
+        requireAccepted(
+                result,
+                WORKER_RESOURCE_FAILED,
+                "workerRuntime.updateWorkerProperties",
+                config.workerGroupId() + "/" + workerId
+        );
+    }
+
+    private static Map<String, Object> workerProperties() {
+        return Map.of(
+                "runtime", "java",
+                "capability", "libphonenumber",
+                "region", "local"
         );
     }
 

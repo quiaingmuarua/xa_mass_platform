@@ -93,7 +93,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
                     event_codes=frozenset(),
                 )
             )
-            self.runtime.upsert_worker(
+            self.runtime.register_worker(
                 declaration=WorkerDeclaration(
                     worker_id=f"{worker_group_id}-worker",
                     worker_group_id=worker_group_id,
@@ -181,7 +181,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
                 )
             )
 
-        first = self.runtime.upsert_worker(
+        first = self.runtime.register_worker(
             declaration=WorkerDeclaration(
                 worker_id="shared-worker",
                 worker_group_id=self.worker_group_id,
@@ -189,7 +189,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
                 worker_properties={},
             )
         )
-        conflict = self.runtime.upsert_worker(
+        conflict = self.runtime.register_worker(
             declaration=WorkerDeclaration(
                 worker_id="shared-worker",
                 worker_group_id="audio-workers",
@@ -324,7 +324,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
                     sample_limit=invalid_limit,
                 )
 
-    def test_upserted_worker_becomes_hot_acquire_candidate(self) -> None:
+    def test_registered_worker_becomes_hot_acquire_candidate(self) -> None:
         group = WorkerGroupDescriptor(
             worker_group_id=self.worker_group_id,
             attributes={"kind": "image"},
@@ -338,7 +338,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
         )
         self.catalog.upsert_worker_group(descriptor=group)
 
-        upserted = self.runtime.upsert_worker(
+        registered = self.runtime.register_worker(
             declaration=worker,
         )
         time.sleep((self.score_band.SLOT_MILLIS + 20) / 1_000)
@@ -366,7 +366,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
             worker_ids=[worker.worker_id],
         )
 
-        self.assertEqual(upserted.status, WorkerRuntimeStatus.OK)
+        self.assertEqual(registered.status, WorkerRuntimeStatus.OK)
         self.assertEqual(set(candidates), {worker.worker_id})
         self.assertEqual(repeated_candidates, candidates)
         self.assertEqual(
@@ -382,7 +382,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
         )
         self.assertEqual(descriptor.platform_properties, {})
 
-    def test_snapshot_refresh_preserves_recovery_and_identity_conflict_fails_closed(
+    def test_property_update_preserves_recovery_and_identity_conflict_fails_closed(
         self,
     ) -> None:
         self.catalog.upsert_worker_group(
@@ -398,7 +398,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
             endpoint_manager_id="endpoint-manager-1",
             worker_properties={"runtime": "python"},
         )
-        self.runtime.upsert_worker(declaration=declaration)
+        self.runtime.register_worker(declaration=declaration)
         rewritten = self.score_band.rewrite_current_scores(
             home_bucket_id=self.worker_group_id,
             worker_ids=[declaration.worker_id],
@@ -430,7 +430,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
             WorkerScoreTransitionStatus.TRANSITIONED,
         )
 
-        refresh_result = self.runtime.upsert_worker(
+        repeated = self.runtime.register_worker(
             declaration=WorkerDeclaration(
                 worker_id=declaration.worker_id,
                 worker_group_id=declaration.worker_group_id,
@@ -438,7 +438,12 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
                 worker_properties={"runtime": "java"},
             )
         )
-        conflict = self.runtime.upsert_worker(
+        update_result = self.runtime.update_worker_properties(
+            worker_group_id=declaration.worker_group_id,
+            worker_id=declaration.worker_id,
+            worker_properties={"runtime": "java"},
+        )
+        conflict = self.runtime.register_worker(
             declaration=WorkerDeclaration(
                 worker_id=declaration.worker_id,
                 worker_group_id=declaration.worker_group_id,
@@ -455,7 +460,8 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
             worker_ids=[declaration.worker_id],
         )[declaration.worker_id]
 
-        self.assertEqual(refresh_result.status, WorkerRuntimeStatus.OK)
+        self.assertEqual(repeated.status, WorkerRuntimeStatus.NOOP)
+        self.assertEqual(update_result.status, WorkerRuntimeStatus.OK)
         self.assertEqual(conflict.status, WorkerRuntimeStatus.CONFLICT)
         assert current is not None
         self.assertEqual(current.polarity, WorkerScorePolarity.RECOVERY_RECHECK)
@@ -467,7 +473,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
         self.assertEqual(descriptor.endpoint_manager_id, "endpoint-manager-1")
         self.assertEqual(descriptor.worker_properties, {"runtime": "java"})
 
-    def test_snapshot_refresh_preserves_active_lease_fence(
+    def test_property_update_preserves_active_lease_fence(
         self,
     ) -> None:
         self.catalog.upsert_worker_group(
@@ -483,7 +489,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
             endpoint_manager_id="endpoint-manager-1",
             worker_properties={"runtime": "python"},
         )
-        self.runtime.upsert_worker(declaration=declaration)
+        self.runtime.register_worker(declaration=declaration)
         time.sleep((self.score_band.SLOT_MILLIS + 20) / 1_000)
         observed = self.score_band.acquire_hot_acquire_candidates(
             home_bucket_id=self.worker_group_id,
@@ -501,7 +507,11 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
             home_bucket_id=self.worker_group_id,
             worker_ids=[declaration.worker_id],
         )[declaration.worker_id]
-        refresh = self.runtime.upsert_worker(declaration=declaration)
+        refresh = self.runtime.update_worker_properties(
+            worker_group_id=declaration.worker_group_id,
+            worker_id=declaration.worker_id,
+            worker_properties={"runtime": "java"},
+        )
         after_refresh = self.score_band.get_score_states(
             home_bucket_id=self.worker_group_id,
             worker_ids=[declaration.worker_id],

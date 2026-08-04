@@ -9,7 +9,7 @@ The current system exposes narrow control, data, and delivery boundaries:
 ```text
 Direct Python SDK / executable-spec support
   -> ResourcesCommandClient
-     -> WorkerGroup and Worker upsert
+     -> WorkerGroup upsert, Worker registration and Worker property update
 
 CLI / task-only FastAPI
   -> KernelApplication
@@ -29,9 +29,9 @@ controllers and services depend on owner contracts rather than route-shaped
 clients or Redis implementations. Callers cannot obtain Task/Worker score
 cores, candidate runtime, matcher, pacers, Redis keys, suffixes, or lane ranks.
 Only `KernelApplication` starts background scheduling. Java's direct Redis
-providers implement WorkerGroup/Worker upsert, Task Item append/result read,
-and Worker Delivery consume/result-ingress operations. Java Worker upsert uses
-only score get/initialize. Java also implements a parity reconcile mechanism,
+providers implement WorkerGroup upsert, Worker registration/property update,
+Task Item append/result read, and Worker Delivery consume/result-ingress
+operations. Java Worker registration uses only score get/initialize. Java also implements a parity reconcile mechanism,
 but no production caller currently invokes it.
 
 ## Application And Executable-Spec Commands
@@ -39,7 +39,8 @@ but no production caller currently invokes it.
 ```text
 ResourcesCommandClient
 upsert_worker_group
-upsert_worker
+register_worker
+update_worker_properties
 
 KernelApplication
 create_task
@@ -77,10 +78,10 @@ The JVM incremental assembly is explicit per operation:
 
 ```text
 WorkerGroup upsert              -> Java Redis WorkerResourceCatalog provider
-Worker upsert                   -> Java Redis WorkerRuntime provider
+Worker register / properties update -> Java Redis WorkerRuntime provider
 Platform Properties patch       -> Java Redis WorkerResourceCatalog provider
 Explicit index update/load      -> Java Redis WorkerPropertyIndexRuntime provider
-Worker upsert score operations  -> Java Redis WorkerScoreCore provider
+Worker registration score operations -> Java Redis WorkerScoreCore provider
 Task create                     -> Python HTTP TaskRuntime provider
 Task approve / close            -> Python HTTP application commands
 Task / WorkerGroup reads        -> Java Redis catalog providers
@@ -94,18 +95,19 @@ other score/candidate/scheduling -> no Server provider
 Unimplemented JVM owner operations fail explicitly. They are not forwarded to
 Python and do not silently select another provider.
 
-WorkerGroup upsert reuses `WorkerGroupDescriptor`. Worker upsert accepts the
-caller-owned `WorkerDeclaration`; the complete `WorkerDescriptor` remains a
-query projection containing Worker and Platform property snapshots. The Kernel Runtime
-Server owns its HTTP request models because they are protocol-edge translations.
+WorkerGroup upsert reuses `WorkerGroupDescriptor`. Worker registration accepts
+the caller-owned `WorkerDeclaration`; the complete `WorkerDescriptor` remains
+a query projection containing Worker and Platform property snapshots. The
+Kernel Runtime Server owns its HTTP request models because they are
+protocol-edge translations.
 
-First Worker upsert selects the default lane rank internally and initializes
-the Worker HOT score without requiring the scheduling process to be running.
-Later upserts replace `workerProperties` and preserve `platformProperties`.
-They are resource snapshot refreshes, not connect, reconnect, activation, or
-serviceability evidence. An existing score is preserved exactly; only a
-missing score is initialized so an interrupted first registration can
-converge.
+First Worker registration selects the default lane rank internally and
+initializes the Worker HOT score without requiring the scheduling process to be
+running. Compatible repeat registration is a no-op except for repairing a
+missing owner, descriptor, or score. `update_worker_properties` separately
+replaces `workerProperties` while preserving `platformProperties` and never
+accessing score. Neither operation is connect, reconnect, activation, or
+serviceability evidence.
 `create_task` selects the initial PRE_REVIEW owner code internally. It is a
 create-only command: an existing descriptor conflicts and is never overwritten.
 It may complete a score-only interrupted creation only while the score remains
@@ -386,7 +388,8 @@ endpoint-manager mailbox, one independent Netty listener, one scheduled
 Command Loop, one timed Result Loop, one current connection per WorkerId, and
 bounded local queues. The Server only parses instance configuration, registers concrete
 instances, and invokes Adapter `start()`/`close()` at process boundaries.
-Workers upsert before connecting. KernelApplication does not own or expose
+Workers register and explicitly update their property snapshot before
+connecting. KernelApplication does not own or expose
 connection facts.
 
 The Python Runtime Server remains the Task scheduling command host and

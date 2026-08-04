@@ -429,7 +429,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
                 event_codes=frozenset({"image.resize"}),
             )
         )
-        matched_worker = self.worker_runtime.upsert_worker(
+        matched_worker = self.worker_runtime.register_worker(
             declaration=WorkerDeclaration(
                 worker_id="worker-1",
                 worker_group_id="image-workers",
@@ -437,7 +437,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
                 worker_properties={"runtime": "python"},
             )
         )
-        unmatched_worker = self.worker_runtime.upsert_worker(
+        unmatched_worker = self.worker_runtime.register_worker(
             declaration=WorkerDeclaration(
                 worker_id="worker-2",
                 worker_group_id="image-workers",
@@ -675,7 +675,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             )
         )
         worker_results = tuple(
-            self.worker_runtime.upsert_worker(
+            self.worker_runtime.register_worker(
                 declaration=WorkerDeclaration(
                     worker_id=f"worker-{index}",
                     worker_group_id="image-workers",
@@ -871,7 +871,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
                 event_codes=frozenset({"image.resize"}),
             )
         )
-        self.worker_runtime.upsert_worker(
+        self.worker_runtime.register_worker(
             declaration=WorkerDeclaration(
                 worker_id="worker-1",
                 worker_group_id="image-workers",
@@ -965,7 +965,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
                 event_codes=frozenset({"image.resize"}),
             )
         )
-        self.worker_runtime.upsert_worker(
+        self.worker_runtime.register_worker(
             declaration=WorkerDeclaration(
                 worker_id="worker-1",
                 worker_group_id="image-workers",

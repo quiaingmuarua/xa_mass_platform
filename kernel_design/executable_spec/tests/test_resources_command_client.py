@@ -61,7 +61,7 @@ class ResourcesCommandClientTest(unittest.TestCase):
         )
         self.client = ResourcesCommandClient(self.config)
 
-    def test_public_surface_contains_only_resource_upsert_commands(self) -> None:
+    def test_public_surface_contains_only_resource_commands(self) -> None:
         public_instance_methods = {
             name
             for name, method in inspect.getmembers(
@@ -71,7 +71,11 @@ class ResourcesCommandClientTest(unittest.TestCase):
             if not name.startswith("_")
         }
         self.assertEqual(
-            {"upsert_worker", "upsert_worker_group"},
+            {
+                "register_worker",
+                "update_worker_properties",
+                "upsert_worker_group",
+            },
             public_instance_methods,
         )
         for forbidden in (
@@ -83,10 +87,10 @@ class ResourcesCommandClientTest(unittest.TestCase):
             self.assertFalse(hasattr(self.client, forbidden))
         self.assertNotIn(
             "lane_rank",
-            inspect.signature(ResourcesCommandClient.upsert_worker).parameters,
+            inspect.signature(ResourcesCommandClient.register_worker).parameters,
         )
 
-    def test_composes_only_worker_upsert_owners_from_shared_config(self) -> None:
+    def test_composes_only_worker_resource_owners_from_shared_config(self) -> None:
         import redis
 
         redis.Redis.from_url.assert_called_once_with(  # type: ignore[attr-defined]
@@ -110,7 +114,7 @@ class ResourcesCommandClientTest(unittest.TestCase):
             initial_lane_rank=50,
         )
 
-    def test_upsert_delegates_without_application_lifecycle(self) -> None:
+    def test_resource_commands_delegate_without_application_lifecycle(self) -> None:
         group = WorkerGroupDescriptor(
             worker_group_id="image-workers",
             attributes={},
@@ -125,7 +129,8 @@ class ResourcesCommandClientTest(unittest.TestCase):
         group_result = WorkerRuntimeResult(WorkerRuntimeStatus.OK)
         worker_result = WorkerRuntimeResult(WorkerRuntimeStatus.OK)
         self.catalog.upsert_worker_group.return_value = group_result
-        self.runtime.upsert_worker.return_value = worker_result
+        self.runtime.register_worker.return_value = worker_result
+        self.runtime.update_worker_properties.return_value = worker_result
 
         self.assertIs(
             group_result,
@@ -133,10 +138,23 @@ class ResourcesCommandClientTest(unittest.TestCase):
         )
         self.assertIs(
             worker_result,
-            self.client.upsert_worker(declaration=worker),
+            self.client.register_worker(declaration=worker),
         )
-        self.runtime.upsert_worker.assert_called_once_with(
+        self.runtime.register_worker.assert_called_once_with(
             declaration=worker,
+        )
+        self.assertIs(
+            worker_result,
+            self.client.update_worker_properties(
+                worker_group_id=group.worker_group_id,
+                worker_id=worker.worker_id,
+                worker_properties={"runtime": "python-v2"},
+            ),
+        )
+        self.runtime.update_worker_properties.assert_called_once_with(
+            worker_group_id=group.worker_group_id,
+            worker_id=worker.worker_id,
+            worker_properties={"runtime": "python-v2"},
         )
 
     def test_from_json_uses_the_shared_application_config_contract(self) -> None:
@@ -184,7 +202,7 @@ class ResourcesCommandClientIntegrationTest(unittest.TestCase):
         if keys:
             self.redis.delete(*keys)
 
-    def test_upsert_initializes_hot_worker_without_start(self) -> None:
+    def test_register_initializes_hot_worker_without_start(self) -> None:
         group_id = "image-workers"
         group_result = self.client.upsert_worker_group(
             descriptor=WorkerGroupDescriptor(
@@ -193,7 +211,7 @@ class ResourcesCommandClientIntegrationTest(unittest.TestCase):
                 event_codes=frozenset({"image.resize"}),
             )
         )
-        worker_result = self.client.upsert_worker(
+        worker_result = self.client.register_worker(
             declaration=WorkerDeclaration(
                 worker_id="worker-1",
                 worker_group_id=group_id,

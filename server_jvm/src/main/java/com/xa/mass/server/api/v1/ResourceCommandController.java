@@ -13,7 +13,7 @@ import com.xa.mass.server.api.v1.model.WorkerGroupUpsertRequest;
 import com.xa.mass.server.api.v1.model.WorkerIndexedPropertiesPatchRequest;
 import com.xa.mass.server.api.v1.model.WorkerIndexedPropertiesPatchResponse;
 import com.xa.mass.server.api.v1.model.WorkerPropertiesPatchRequest;
-import com.xa.mass.server.api.v1.model.WorkerUpsertRequest;
+import com.xa.mass.server.api.v1.model.WorkerRegisterRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import java.util.LinkedHashSet;
@@ -62,18 +62,33 @@ public class ResourceCommandController {
     }
 
     @PutMapping("/{workerGroupId}/workers/{workerId}")
-    public ResponseEntity<CommandResultResponse> upsertWorker(
+    public ResponseEntity<CommandResultResponse> registerWorker(
             @PathVariable @NotBlank String workerGroupId,
             @PathVariable @NotBlank String workerId,
-            @Valid @RequestBody WorkerUpsertRequest request
+            @Valid @RequestBody WorkerRegisterRequest request
     ) {
-        return response(workerRuntime.upsertWorker(
+        return response(workerRuntime.registerWorker(
                 new WorkerDeclaration(
                         workerId,
                         workerGroupId,
                         request.endpointManagerId(),
                         request.workerProperties()
                 )
+        ));
+    }
+
+    @PutMapping(
+            "/{workerGroupId}/workers/{workerId}/worker-properties"
+    )
+    public ResponseEntity<CommandResultResponse> updateWorkerProperties(
+            @PathVariable @NotBlank String workerGroupId,
+            @PathVariable @NotBlank String workerId,
+            @Valid @RequestBody WorkerPropertiesPatchRequest request
+    ) {
+        return response(workerRuntime.updateWorkerProperties(
+                workerGroupId,
+                workerId,
+                request.properties()
         ));
     }
 

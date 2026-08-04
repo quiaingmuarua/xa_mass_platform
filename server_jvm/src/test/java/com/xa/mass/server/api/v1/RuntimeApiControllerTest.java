@@ -82,7 +82,9 @@ class RuntimeApiControllerTest {
 
         when(workerCatalog.upsertWorkerGroup(any()))
                 .thenReturn(new WorkerRuntimeResult(WorkerRuntimeStatus.OK));
-        when(workerRuntime.upsertWorker(any()))
+        when(workerRuntime.registerWorker(any()))
+                .thenReturn(new WorkerRuntimeResult(WorkerRuntimeStatus.OK));
+        when(workerRuntime.updateWorkerProperties(any(), any(), any()))
                 .thenReturn(new WorkerRuntimeResult(WorkerRuntimeStatus.OK));
         when(workerCatalog.patchWorkerPlatformProperties(
                 any(),
@@ -224,6 +226,27 @@ class RuntimeApiControllerTest {
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("ok"));
+
+        mockMvc.perform(put(
+                                "/api/v1/worker-groups/phone-tools/workers/"
+                                        + "worker-1/worker-properties"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"properties\":{\"runtime\":\"java-21\"}}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ok"));
+        verify(workerRuntime).updateWorkerProperties(
+                "phone-tools",
+                "worker-1",
+                Map.of("runtime", "java-21")
+        );
+        mockMvc.perform(put(
+                                "/api/v1/worker-groups/phone-tools/workers/"
+                                        + "worker-1/worker-properties"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest());
 
         mockMvc.perform(patch(
                                 "/api/v1/worker-groups/phone-tools/workers/"

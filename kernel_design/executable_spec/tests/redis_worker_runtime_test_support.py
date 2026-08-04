@@ -172,6 +172,15 @@ class FakeRedis:
     def zscore(self, name: str, member: str) -> int | None:
         return self.zsets.get(name, {}).get(member)
 
+    def zrem(self, name: str, *members: str) -> int:
+        zset = self.zsets.get(name, {})
+        removed = 0
+        for member in members:
+            if member in zset:
+                del zset[member]
+                removed += 1
+        return removed
+
     def eval(self, script: str, numkeys: int, *args: object) -> object:
         if numkeys != 1:
             raise ValueError("unsupported fake redis script")
@@ -289,11 +298,11 @@ class RedisWorkerRuntimeFixture(unittest.TestCase):
             worker_properties=worker_properties or {},
         )
 
-    def upsert_worker(
+    def register_worker(
         self,
         declaration: WorkerDeclaration,
     ) -> None:
-        result = self.runtime.upsert_worker(
+        result = self.runtime.register_worker(
             declaration=declaration,
         )
         self.assertEqual(result.status, WorkerRuntimeStatus.OK)

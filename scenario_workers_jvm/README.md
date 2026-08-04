@@ -20,7 +20,8 @@ STRING_UTILS
 
 explicit factory
   -> WorkerGroup upsert
-  -> deterministic Worker upserts
+  -> deterministic Worker registration
+  -> explicit Worker Properties replacement
   -> explicit index.worker.region projection updates
   -> real WebSocket Worker startup
   -> bounded initial connection wait
@@ -47,8 +48,8 @@ sequencing Adapter startup before bundle startup. This module does not depend
 on Spring, Server, the Netty Adapter, Redis, scores, Pacers, or HTTP
 controllers. Kernel truth remains owned by `WorkerResourceCatalog`,
 `WorkerRuntime`, and `WorkerPropertyIndexRuntime`; Scenario Workers only call
-those existing owner operations. Worker upsert does not auto-project the
-region snapshot into `index.worker.region`. A rejected or unavailable index
+those existing owner operations. Worker registration or Properties update does
+not auto-project the region snapshot into `index.worker.region`. A rejected or unavailable index
 projection is logged and does not roll back Worker resource creation or
 transport startup.
 
