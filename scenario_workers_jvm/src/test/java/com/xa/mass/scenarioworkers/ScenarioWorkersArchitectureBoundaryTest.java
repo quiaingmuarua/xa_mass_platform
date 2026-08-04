@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 class ScenarioWorkersArchitectureBoundaryTest {
 
     @Test
-    void publicSurfaceIsFiniteAndDoesNotExposeImplementations() {
+    void publicSurfaceExposesOnlyLifecycleAndBuiltInDefinitions() {
         assertThat(Modifier.isFinal(
                 ScenarioWorkers.class.getModifiers()
         )).isTrue();
@@ -28,20 +28,17 @@ class ScenarioWorkersArchitectureBoundaryTest {
         assertThat(ScenarioWorkers.class.getConstructors())
                 .isEmpty();
         assertThat(Modifier.isPublic(
-                ScenarioWorkerBundleConfig.class.getModifiers()
+                ScenarioWorkerGroupConfig.class.getModifiers()
         )).isFalse();
         assertThat(Modifier.isPublic(
-                PhoneNumberWorkerBundle.class.getModifiers()
+                ScenarioWorkerGroup.class.getModifiers()
         )).isFalse();
         assertThat(Modifier.isPublic(
-                StringUtilityWorkerBundle.class.getModifiers()
-        )).isFalse();
+                PhoneNumberWorkerEvents.class.getModifiers()
+        )).isTrue();
         assertThat(Modifier.isPublic(
-                PhoneNumberCapability.class.getModifiers()
-        )).isFalse();
-        assertThat(Modifier.isPublic(
-                StringUtilityCapability.class.getModifiers()
-        )).isFalse();
+                StringUtilityWorkerEvents.class.getModifiers()
+        )).isTrue();
     }
 
     @Test
@@ -53,6 +50,8 @@ class ScenarioWorkersArchitectureBoundaryTest {
         assertThat(sources)
                 .contains("WorkerResourceCatalog")
                 .contains("WorkerRuntime")
+                .contains("definitionsByEventCode")
+                .contains("eventCodesByWorkerGroupId")
                 .contains("WebSocketWorkerTransport")
                 .contains("OkHttpTextWebSocketClient")
                 .contains("ScenarioWorkersJsonParser");
@@ -68,6 +67,7 @@ class ScenarioWorkersArchitectureBoundaryTest {
                 .doesNotContain("ServiceLoader");
         assertThat(build)
                 .contains("api project(':kernel_jvm')")
+                .contains("api project(':transport:worker-core')")
                 .contains(
                         "implementation "
                                 + "project(':worker_delivery_contract_jvm')"

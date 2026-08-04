@@ -398,9 +398,11 @@ and submits at most one pending or buffered batch per
 
 ### Built-in Worker Assembly
 
-Built-in business Workers are opt-in. Server binds one opaque JSON string;
-`scenario_workers_jvm` validates it and selects only explicitly coded bundle
-types. Configuration cannot provide an arbitrary class name or handler:
+Built-in business Workers are opt-in. Server statically flattens the finite
+Definition lists exported by `scenario_workers_jvm` into an immutable
+`eventCode -> WorkerEventDefinition` map and passes one opaque JSON string.
+The Scenario module validates the JSON and resolves each WorkerGroup's ordered
+event codes. Configuration cannot provide a class name or Handler:
 
 ```yaml
 xa:
@@ -415,11 +417,15 @@ xa:
     worker-assembly:
       config-json: |
         {
-          "phone-number": {
-            "type": "PHONE_NUMBER",
+          "scenario-phone-number-workers": {
+            "attributes": {"capability":"libphonenumber"},
+            "eventCodes": [
+              "phonenumber.e164",
+              "phonenumber.country",
+              "phonenumber.original-carrier"
+            ],
             "endpointManagerId": "scenario-websocket",
             "websocketUri": "ws://127.0.0.1:18083/api/v1/worker-delivery/websocket",
-            "workerGroupId": "scenario-phone-number-workers",
             "workers": [{
               "workerId": "scenario-phone-number-worker-001",
               "workerProperties": {"runtime":"java","region":"local"},
@@ -433,7 +439,7 @@ The default `config-json` is `{}` and starts no built-in business Worker. The ch
 `scenario-workers` profile declares one WebSocket Adapter and two independent
 Worker capability groups. It creates no Task and has no dependency on RPC,
 ITEM_DRIVEN, TASK_DRIVEN, TARGETED, or PRECOMPUTED scheduling policy. Both
-bundles explicitly list 10 Workers. Omitted timeout fields use a 10 second
+groups explicitly list 10 Workers. Omitted timeout fields use a 10 second
 request timeout, a 250 millisecond reconnect interval, and a 15 second
 initial-connect timeout. The final WebSocket URI and endpoint manager are
 deployment configuration; Server does not derive one from the other.
@@ -443,8 +449,9 @@ deployment configuration; Server does not derive one from the other.
 ```
 
 During startup the Server starts all configured Adapters and then invokes one
-aggregate `ScenarioWorkers` handle. The Scenario module parses bundles in JSON
-order, registers WorkerGroups and explicit Workers through owner contracts,
+aggregate `ScenarioWorkers` handle. The Scenario module parses WorkerGroups in
+JSON order, resolves their Definitions, registers WorkerGroups and explicit
+Workers through owner contracts,
 replaces Worker Properties, applies configured Index updates, starts real
 WebSocket Worker transports, and waits for every initial connection. Shutdown
 and partial-start recovery close local transports in reverse order before the
@@ -455,19 +462,20 @@ aborts Server startup. Already accepted owner upserts are not rolled back
 across owners; deterministic declarations converge idempotently on the next
 startup.
 
-`PHONE_NUMBER` Workers all register `phonenumber.e164`,
-`phonenumber.country`, and `phonenumber.original-carrier`.
-`STRING_UTILS` Workers all register `string.md5`, `string.sha1`, and
-`string.base64.encode`. A WorkerGroup's immutable `eventCodes` exactly match
-the complete definition set registered by every Worker in that group. The new
-`scenario-*` identities deliberately avoid mutating older declarations that
-may remain in Redis.
+The phone-number group references `phonenumber.e164`,
+`phonenumber.country`, and `phonenumber.original-carrier`. The string-utils
+group references `string.md5`, `string.sha1`, and `string.base64.encode`.
+Every Worker in a group receives the same immutable Definition list and shared
+Handler instances. Worker identity remains outside Event Definitions and
+business result payloads. The `scenario-*` identities deliberately avoid
+mutating older declarations that may remain in Redis.
 
 Worker Assembly does not expose a new Kernel operation, access Redis, start a
 second scheduler, or bypass the Adapter through an in-process path.
 `ScenarioWorkers` is the only public local lifecycle handle; it is not an
-implementation SPI or plugin system. The Server does not parse capability,
-WorkerGroup, Worker identity, Properties, or Index fields. Closing the handle
+implementation SPI or plugin system. Server only composes the finite Definition
+map; it does not implement Handlers or parse WorkerGroup, Worker identity,
+Properties, or Index fields. Closing the handle
 only releases local network resources and does not change Kernel Worker truth.
 The profile and Adapter remain Server-owned, while capabilities and concrete
 Worker resource lifecycle belong to `scenario_workers_jvm`.

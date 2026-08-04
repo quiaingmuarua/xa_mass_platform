@@ -277,12 +277,6 @@ public final class WorkerCapabilityRpcMain {
                 input,
                 waitTimeoutMillis
         );
-        if (!workerId.equals(result.get("workerId"))) {
-            throw new IllegalStateException(
-                    "RPC routed to unexpected Worker for "
-                            + messageId
-            );
-        }
         if (!Boolean.TRUE.equals(result.get("valid"))) {
             throw new IllegalStateException(
                     "RPC returned invalid domain output for "

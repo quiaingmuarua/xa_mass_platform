@@ -1,66 +1,86 @@
 # XA Mass Scenario Workers JVM
 
 `scenario_workers_jvm` is the finite Java 21 capability assembly used by the
-checked-in `scenario-workers` Server profile. It is a root module rather than a
-`transport/` module because its event definitions and resource declarations are
-business scenario choices, not Worker Delivery mechanisms.
+checked-in `scenario-workers` Server profile. It is a root module because its
+event definitions and Worker resource declarations are business scenario
+choices, not Worker Delivery mechanisms.
 
-The module owns:
+The assembly is driven by two startup-time immutable maps:
 
 ```text
-PHONE_NUMBER
-  -> phonenumber.e164
-  -> phonenumber.country
-  -> phonenumber.original-carrier
-
-STRING_UTILS
-  -> string.md5
-  -> string.sha1
-  -> string.base64.encode
-
-explicit factory
-  -> WorkerGroup upsert
-  -> explicit Worker registration
-  -> explicit Worker Properties replacement
-  -> configured Property Index updates
-  -> real WebSocket Worker startup
-  -> bounded initial connection wait
-  -> reverse-order close
+eventCode -> WorkerEventDefinition
+workerGroupId -> ordered eventCodes
 ```
 
-Its complete public surface is:
+The first map is supplied to `ScenarioWorkers.fromJson(...)` by the host. The
+second is parsed from the ordered JSON deployment manifest. A WorkerGroup
+resolves its event codes once and every Worker in that group receives the same
+immutable Definition list and Handler instances. Handlers therefore must be
+stateless or thread-safe. Worker identity is resource and transport context;
+it is not an Event Definition parameter or business-result field.
+
+The module exposes:
 
 ```text
 ScenarioWorkers.fromJson(...)
 ScenarioWorkers.start()
 ScenarioWorkers.close()
+PhoneNumberWorkerEvents.definitions()
+StringUtilityWorkerEvents.definitions()
 ```
 
-The JSON object is an ordered deployment manifest keyed by bundle ID. Each
-bundle declares its finite built-in type, endpoint manager, final WebSocket
-URI, WorkerGroup ID, and an explicit Worker list. Each Worker supplies its
-complete `workerProperties` snapshot and optional `indexedPropertyUpdates`.
-The module validates and parses that manifest; the Server treats it as opaque.
+The capability providers own the checked-in business Definitions. The Server
+may flatten those lists into the event-code map, but it does not implement or
+execute their Handlers. Definitions that are not referenced by a configured
+WorkerGroup have no resource or runtime side effect.
 
-Concrete parsed configuration, bundle classes, capability definitions, Worker
-factories, and the coded assembly exception remain module-local. This is not a
-plugin SPI: configuration cannot supply a class name, handler, registry entry,
-or reflected implementation. Event codes and handlers remain code-owned by
-the selected finite bundle type.
+The JSON object is keyed directly by WorkerGroup ID:
 
-The Server remains responsible for Spring configuration, Adapter construction,
-and sequencing Adapter startup before the aggregate `ScenarioWorkers` handle.
-It does not inspect bundle or Worker settings. This module does not depend on
-Spring, Server, the Netty Adapter, Redis, scores, Pacers, or HTTP controllers.
-Kernel truth remains owned by `WorkerResourceCatalog`,
-`WorkerRuntime`, and `WorkerPropertyIndexRuntime`; Scenario Workers only call
-those existing owner operations. Registration and Properties replacement do
-not auto-project any Index value. Rejected or unavailable configured Index
-updates are logged and do not roll back Worker resource creation or transport
-startup.
+```json
+{
+  "scenario-phone-number-workers": {
+    "attributes": {"capability":"libphonenumber"},
+    "eventCodes": [
+      "phonenumber.e164",
+      "phonenumber.country",
+      "phonenumber.original-carrier"
+    ],
+    "endpointManagerId": "scenario-websocket",
+    "websocketUri": "ws://127.0.0.1:18083/api/v1/worker-delivery/websocket",
+    "workers": [{
+      "workerId": "scenario-phone-number-worker-001",
+      "workerProperties": {"runtime":"java","region":"local"},
+      "indexedPropertyUpdates": {"index.worker.region":"local"}
+    }]
+  }
+}
+```
 
-`close()` releases only local network and thread resources. It does not disable,
-remove, or otherwise change Kernel Worker lifecycle truth.
+There is no bundle ID, capability `type`, reflected class name, dynamic
+registry, or per-Worker Definition factory. `eventCodes` must be non-empty,
+unique, and present in the host-supplied Definition map. `{}` starts no
+WorkerGroup or Worker.
+
+Each generic WorkerGroup lifecycle performs:
+
+```text
+resolve ordered Definitions
+-> upsert WorkerGroup
+-> register each Worker
+-> replace workerProperties
+-> best-effort Property Index updates
+-> start real WebSocket Worker transports
+-> bounded initial connection wait
+```
+
+Groups start in manifest order and close in reverse order. Partial startup
+failure closes local Worker transports but does not roll back Kernel resources.
+`close()` releases only local network and thread resources; it does not change
+Worker descriptors, scores, or Property Index truth.
+
+The module depends on Kernel owner contracts and the concrete Worker network
+client. It does not depend on Spring, Server, the Netty Adapter, Redis, scores,
+Pacers, or HTTP controllers.
 
 ```text
 ./gradlew :scenario_workers_jvm:test

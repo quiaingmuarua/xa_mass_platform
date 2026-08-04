@@ -10,11 +10,15 @@ xa:
     worker-assembly:
       config-json: |
         {
-          "phone-number": {
-            "type": "PHONE_NUMBER",
+          "scenario-phone-number-workers": {
+            "attributes": {"capability":"libphonenumber"},
+            "eventCodes": [
+              "phonenumber.e164",
+              "phonenumber.country",
+              "phonenumber.original-carrier"
+            ],
             "endpointManagerId": "scenario-websocket",
             "websocketUri": "ws://127.0.0.1:18083/api/v1/worker-delivery/websocket",
-            "workerGroupId": "scenario-phone-number-workers",
             "workers": [
               {"workerId":"scenario-phone-number-worker-001","workerProperties":{"runtime":"java","capability":"libphonenumber","region":"local"},"indexedPropertyUpdates":{"index.worker.region":"local"}},
               {"workerId":"scenario-phone-number-worker-002","workerProperties":{"runtime":"java","capability":"libphonenumber","region":"local"},"indexedPropertyUpdates":{"index.worker.region":"local"}},
@@ -28,11 +32,15 @@ xa:
               {"workerId":"scenario-phone-number-worker-010","workerProperties":{"runtime":"java","capability":"libphonenumber","region":"local"},"indexedPropertyUpdates":{"index.worker.region":"local"}}
             ]
           },
-          "string-utils": {
-            "type": "STRING_UTILS",
+          "scenario-string-utils-workers": {
+            "attributes": {"capability":"string-utils"},
+            "eventCodes": [
+              "string.md5",
+              "string.sha1",
+              "string.base64.encode"
+            ],
             "endpointManagerId": "scenario-websocket",
             "websocketUri": "ws://127.0.0.1:18083/api/v1/worker-delivery/websocket",
-            "workerGroupId": "scenario-string-utils-workers",
             "workers": [
               {"workerId":"scenario-string-utils-worker-001","workerProperties":{"runtime":"java","capability":"string-utils","region":"local"},"indexedPropertyUpdates":{"index.worker.region":"local"}},
               {"workerId":"scenario-string-utils-worker-002","workerProperties":{"runtime":"java","capability":"string-utils","region":"local"},"indexedPropertyUpdates":{"index.worker.region":"local"}},

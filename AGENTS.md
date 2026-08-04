@@ -16,14 +16,15 @@ Status: current repository handoff.
   operations to Python HTTP providers and Worker resource, Task data, and
   delivery operations to Java Redis providers; it does not define a second set
   of Kernel runtime ports. It may
-  pass an opaque JSON deployment manifest to the Scenario Worker module after
-  starting configured Adapters, but it does not own Scenario capabilities or
+  pass an opaque JSON deployment manifest and a statically assembled
+  event-code Definition map to the Scenario Worker module after starting
+  configured Adapters. It does not implement Scenario handlers or own
   individual Worker resource lifecycle.
 - `scenario_workers_jvm/` is the Java 21 finite Scenario Worker assembly. It
   owns the checked-in phone-number and string-utility event definitions,
-  strict JSON deployment manifest parsing, WorkerGroup/Worker declaration
-  recipes, real WebSocket Worker construction, initial connection wait, and
-  aggregate failure cleanup. It invokes only existing Kernel owner contracts
+  strict JSON deployment manifest parsing, generic WorkerGroup/Worker
+  declaration lifecycle, real WebSocket Worker construction, initial
+  connection wait, and aggregate failure cleanup. It invokes only existing Kernel owner contracts
   and is not a Kernel owner, Server profile, Adapter, plugin SPI, or
   independently deployed application.
 - `worker_delivery_contract_jvm/` is the Java 11 compatible transport-neutral
@@ -133,29 +134,33 @@ tag.
 - `server_jvm` may bind a `Map<adapterId, JsonNode>`, construct concrete
   Adapter instances, register them, and invoke `manager.start()` /
   `manager.close()` at process boundaries. Its `workerassembly` package may
-  bind one opaque Scenario Workers JSON string and sequence Adapter startup
-  before the aggregate `ScenarioWorkers` handle. It must not parse Scenario
-  bundle types, derive Worker IDs or Adapter URIs, or own Scenario capability
-  definitions, concrete Worker construction, owner registration/update
+  bind one opaque Scenario Workers JSON string, statically flatten the finite
+  capability Definition lists exported by `scenario_workers_jvm`, and sequence
+  Adapter startup before the aggregate `ScenarioWorkers` handle. It must not
+  implement Handlers, parse WorkerGroup configuration, derive Worker IDs or
+  Adapter URIs, or own concrete Worker construction, owner registration/update
   behavior, connection waiting, generic class-name plugins, Server HTTP
   loopback, Redis bypass, Adapter scheduling, connection selection, queue
   handling, result buffering, or trusted rejection policy.
-- `scenario_workers_jvm` may expose only the final `ScenarioWorkers`
-  aggregate lifecycle handle and its `fromJson` composition entry. Parsed
-  configuration, concrete bundles, capability definitions, and Worker
-  factories stay module-internal. The module may
+- `scenario_workers_jvm` may expose the final `ScenarioWorkers` aggregate
+  lifecycle handle, its `fromJson` composition entry, and finite capability
+  providers returning `WorkerEventDefinition` lists. Parsed configuration,
+  generic WorkerGroup lifecycle, and Worker factories stay module-internal.
+  Definitions and Handler instances are shared by all Workers that reference
+  their event code and therefore must be stateless or thread-safe. The module may
   depend on `kernel_jvm` owner contracts and `transport:okhttp-worker`; it must
   not depend on Spring, `server_jvm`, `transport:netty-adapter`, Redis, scores,
   Pacers, HTTP controllers, reflection, `ServiceLoader`, or configurable class
   names.
-- The default Server profile must not declare Adapter instances or built-in
-  Worker bundles. Both are opt-in deployment assembly supplied by a profile,
+- The default Server profile must not declare Adapter instances or Scenario
+  WorkerGroups. Both are opt-in deployment assembly supplied by a profile,
   external configuration, or environment variables.
 - The checked-in `scenario-workers` profile is capability assembly only. It
-  may declare the finite `PHONE_NUMBER` and `STRING_UTILS` bundles, but it must
+  may declare WorkerGroups referencing the finite phone-number and string
+  utility event codes, but it must
   not create Tasks or bind those Workers to RPC, Task type, or scheduling
   policy. Each WorkerGroup's immutable `eventCodes` must exactly match every
-  Worker definition set in that bundle.
+  Definition set resolved for that group.
 
 ## JVM Incremental Assembly
 
@@ -197,10 +202,11 @@ WorkerDeliveryConfiguration
 
 ServerWorkerAssemblyConfiguration
   -> opaque opt-in Scenario Workers JSON
+  -> static eventCode-to-Definition map
   -> ScenarioWorkers.fromJson
 
 scenario_workers_jvm
-  -> strict JSON parsing and finite capability selection
+  -> strict WorkerGroup JSON parsing and Definition resolution
   -> WorkerResourceCatalog / WorkerRuntime owner registration and updates
   -> fixed capability definitions
   -> Worker Core + concrete network Client

@@ -5,28 +5,47 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
-record ScenarioWorkerBundleConfig(
-        String bundleId,
-        ScenarioWorkerBundleType type,
+record ScenarioWorkerGroupConfig(
+        String workerGroupId,
+        Map<String, Object> attributes,
+        List<String> eventCodes,
         String endpointManagerId,
         URI workerWebSocketUri,
-        String workerGroupId,
         List<ScenarioWorkerConfig> workers,
         Duration requestTimeout,
         Duration reconnectInterval,
         Duration connectTimeout
 ) {
 
-    ScenarioWorkerBundleConfig {
-        requireNonBlank(bundleId, "bundleId");
-        Objects.requireNonNull(type, "type");
+    ScenarioWorkerGroupConfig {
+        requireNonBlank(workerGroupId, "workerGroupId");
+        attributes = immutableJsonMap(attributes, "attributes");
+        Objects.requireNonNull(eventCodes, "eventCodes");
+        if (eventCodes.isEmpty()) {
+            throw new IllegalArgumentException(
+                    "eventCodes must contain at least one eventCode"
+            );
+        }
+        List<String> copiedEventCodes = new ArrayList<>(eventCodes.size());
+        LinkedHashSet<String> uniqueEventCodes = new LinkedHashSet<>();
+        for (String eventCode : eventCodes) {
+            requireNonBlank(eventCode, "eventCode");
+            if (!uniqueEventCodes.add(eventCode)) {
+                throw new IllegalArgumentException(
+                        "eventCodes must not contain duplicates: "
+                                + eventCode
+                );
+            }
+            copiedEventCodes.add(eventCode);
+        }
+        eventCodes = List.copyOf(copiedEventCodes);
         requireNonBlank(endpointManagerId, "endpointManagerId");
         requireWebSocketUri(workerWebSocketUri);
-        requireNonBlank(workerGroupId, "workerGroupId");
         Objects.requireNonNull(workers, "workers");
         if (workers.isEmpty() || workers.size() > 100) {
             throw new IllegalArgumentException(
@@ -67,11 +86,16 @@ record ScenarioWorkerBundleConfig(
             );
         }
     }
-}
 
-enum ScenarioWorkerBundleType {
-    PHONE_NUMBER,
-    STRING_UTILS
+    private static Map<String, Object> immutableJsonMap(
+            Map<String, Object> value,
+            String name
+    ) {
+        Objects.requireNonNull(value, name);
+        return Collections.unmodifiableMap(
+                new LinkedHashMap<>(value)
+        );
+    }
 }
 
 record ScenarioWorkerConfig(
@@ -81,7 +105,7 @@ record ScenarioWorkerConfig(
 ) {
 
     ScenarioWorkerConfig {
-        ScenarioWorkerBundleConfig.requireNonBlank(
+        ScenarioWorkerGroupConfig.requireNonBlank(
                 workerId,
                 "workerId"
         );

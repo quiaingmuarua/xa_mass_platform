@@ -3,25 +3,30 @@ package com.xa.mass.scenarioworkers;
 import com.xa.mass.kernel.worker.WorkerPropertyIndexRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime;
+import com.xa.mass.worker.execution.WorkerEventDefinition;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
 public final class ScenarioWorkers implements AutoCloseable {
 
-    private final List<ScenarioWorkerBundleLifecycle> bundles;
+    private final List<ScenarioWorkerGroup> groups;
     private boolean started;
     private boolean closed;
 
     ScenarioWorkers(
-            List<ScenarioWorkerBundleLifecycle> bundles
+            List<ScenarioWorkerGroup> groups
     ) {
-        this.bundles = List.copyOf(bundles);
+        this.groups = List.copyOf(groups);
     }
 
     public static ScenarioWorkers fromJson(
             String configJson,
+            Map<String, WorkerEventDefinition<?>> definitionsByEventCode,
             WorkerResourceCatalog workerCatalog,
             WorkerRuntime workerRuntime,
             WorkerPropertyIndexRuntime propertyIndexRuntime
@@ -33,9 +38,15 @@ public final class ScenarioWorkers implements AutoCloseable {
                 "propertyIndexRuntime"
         );
 
-        List<ScenarioWorkerBundleConfig> configs;
+        List<ScenarioWorkerGroupConfig> configs;
+        Map<String, WorkerEventDefinition<?>> definitions;
+        Map<String, List<String>> eventCodesByWorkerGroupId;
         try {
+            definitions = immutableDefinitions(definitionsByEventCode);
             configs = ScenarioWorkersJsonParser.parse(configJson);
+            eventCodesByWorkerGroupId = immutableEventCodesByWorkerGroupId(
+                    configs
+            );
         } catch (IllegalArgumentException error) {
             throw new ScenarioWorkerAssemblyException(
                     14012,
@@ -46,29 +57,32 @@ public final class ScenarioWorkers implements AutoCloseable {
             );
         }
 
-        List<ScenarioWorkerBundleLifecycle> bundles =
+        List<ScenarioWorkerGroup> groups =
                 new ArrayList<>(configs.size());
-        for (ScenarioWorkerBundleConfig config : configs) {
-            switch (config.type()) {
-                case PHONE_NUMBER -> bundles.add(
-                        new PhoneNumberWorkerBundle(
-                                config,
-                                workerCatalog,
-                                workerRuntime,
-                                propertyIndexRuntime
-                        )
-                );
-                case STRING_UTILS -> bundles.add(
-                        new StringUtilityWorkerBundle(
-                                config,
-                                workerCatalog,
-                                workerRuntime,
-                                propertyIndexRuntime
-                        )
-                );
+        try {
+            for (ScenarioWorkerGroupConfig config : configs) {
+                groups.add(new ScenarioWorkerGroup(
+                        config,
+                        resolveDefinitions(
+                                config.workerGroupId(),
+                                eventCodesByWorkerGroupId,
+                                definitions
+                        ),
+                        workerCatalog,
+                        workerRuntime,
+                        propertyIndexRuntime
+                ));
             }
+        } catch (IllegalArgumentException error) {
+            throw new ScenarioWorkerAssemblyException(
+                    14012,
+                    "scenarioWorkers.resolveDefinitions",
+                    "Scenario Worker configuration is invalid: "
+                            + error.getMessage(),
+                    error
+            );
         }
-        return new ScenarioWorkers(bundles);
+        return new ScenarioWorkers(groups);
     }
 
     @Override
@@ -78,13 +92,13 @@ public final class ScenarioWorkers implements AutoCloseable {
         }
         closed = true;
 
-        List<ScenarioWorkerBundleLifecycle> closing =
-                new ArrayList<>(bundles);
+        List<ScenarioWorkerGroup> closing =
+                new ArrayList<>(groups);
         Collections.reverse(closing);
         RuntimeException failure = null;
-        for (ScenarioWorkerBundleLifecycle bundle : closing) {
+        for (ScenarioWorkerGroup group : closing) {
             try {
-                bundle.close();
+                group.close();
             } catch (RuntimeException error) {
                 if (failure == null) {
                     failure = error;
@@ -108,38 +122,129 @@ public final class ScenarioWorkers implements AutoCloseable {
             return;
         }
 
-        List<ScenarioWorkerBundleLifecycle> startedBundles =
+        List<ScenarioWorkerGroup> startedGroups =
                 new ArrayList<>();
-        ScenarioWorkerBundleLifecycle starting = null;
+        ScenarioWorkerGroup starting = null;
         try {
-            for (ScenarioWorkerBundleLifecycle bundle : bundles) {
-                starting = bundle;
-                bundle.start();
-                startedBundles.add(bundle);
+            for (ScenarioWorkerGroup group : groups) {
+                starting = group;
+                group.start();
+                startedGroups.add(group);
             }
             started = true;
         } catch (RuntimeException failure) {
             closed = true;
             if (starting != null
-                    && !startedBundles.contains(starting)) {
+                    && !startedGroups.contains(starting)) {
                 closeAndSuppress(starting, failure);
             }
-            Collections.reverse(startedBundles);
-            for (ScenarioWorkerBundleLifecycle bundle : startedBundles) {
-                closeAndSuppress(bundle, failure);
+            Collections.reverse(startedGroups);
+            for (ScenarioWorkerGroup group : startedGroups) {
+                closeAndSuppress(group, failure);
             }
             throw failure;
         }
     }
 
     private static void closeAndSuppress(
-            ScenarioWorkerBundleLifecycle bundle,
+            ScenarioWorkerGroup group,
             RuntimeException failure
     ) {
         try {
-            bundle.close();
+            group.close();
         } catch (RuntimeException closeFailure) {
             failure.addSuppressed(closeFailure);
         }
+    }
+
+    private static Map<String, WorkerEventDefinition<?>>
+    immutableDefinitions(
+            Map<String, WorkerEventDefinition<?>> definitionsByEventCode
+    ) {
+        if (definitionsByEventCode == null) {
+            throw new IllegalArgumentException(
+                    "definitionsByEventCode must be present"
+            );
+        }
+        Map<String, WorkerEventDefinition<?>> copy = new LinkedHashMap<>();
+        definitionsByEventCode.forEach((eventCode, definition) -> {
+            if (eventCode == null || eventCode.isBlank()) {
+                throw new IllegalArgumentException(
+                        "Definition eventCode key must be non-blank"
+                );
+            }
+            if (definition == null) {
+                throw new IllegalArgumentException(
+                        "Definition must be present for " + eventCode
+                );
+            }
+            if (!eventCode.equals(definition.eventCode())) {
+                throw new IllegalArgumentException(
+                        "Definition key does not match eventCode: "
+                                + eventCode
+                );
+            }
+            if (!WorkerMessageEndpoint.TASK.wireValue()
+                    .equals(definition.src())) {
+                throw new IllegalArgumentException(
+                        "Scenario Definition src must be TASK: "
+                                + eventCode
+                );
+            }
+            copy.put(eventCode, definition);
+        });
+        return Collections.unmodifiableMap(copy);
+    }
+
+    private static List<WorkerEventDefinition<?>> resolveDefinitions(
+            String workerGroupId,
+            Map<String, List<String>> eventCodesByWorkerGroupId,
+            Map<String, WorkerEventDefinition<?>> definitionsByEventCode
+    ) {
+        List<String> eventCodes = eventCodesByWorkerGroupId.get(
+                workerGroupId
+        );
+        if (eventCodes == null) {
+            throw new IllegalArgumentException(
+                    "WorkerGroup capability mapping is missing: "
+                            + workerGroupId
+            );
+        }
+        List<WorkerEventDefinition<?>> resolved =
+                new ArrayList<>(eventCodes.size());
+        for (String eventCode : eventCodes) {
+            WorkerEventDefinition<?> definition =
+                    definitionsByEventCode.get(eventCode);
+            if (definition == null) {
+                throw new IllegalArgumentException(
+                        "WorkerGroup "
+                                + workerGroupId
+                                + " references unknown eventCode "
+                                + eventCode
+                );
+            }
+            resolved.add(definition);
+        }
+        return List.copyOf(resolved);
+    }
+
+    private static Map<String, List<String>>
+    immutableEventCodesByWorkerGroupId(
+            List<ScenarioWorkerGroupConfig> configs
+    ) {
+        Map<String, List<String>> eventCodesByWorkerGroupId =
+                new LinkedHashMap<>();
+        for (ScenarioWorkerGroupConfig config : configs) {
+            List<String> existing = eventCodesByWorkerGroupId.putIfAbsent(
+                    config.workerGroupId(),
+                    List.copyOf(config.eventCodes())
+            );
+            if (existing != null) {
+                throw new IllegalArgumentException(
+                        "Duplicate WorkerGroup: " + config.workerGroupId()
+                );
+            }
+        }
+        return Collections.unmodifiableMap(eventCodesByWorkerGroupId);
     }
 }

@@ -14,6 +14,7 @@ java {
 
 dependencies {
     api project(':kernel_jvm')
+    api project(':transport:worker-core')
 
     implementation project(':worker_delivery_contract_jvm')
     implementation project(':transport:okhttp-worker')

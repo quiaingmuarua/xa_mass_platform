@@ -6,133 +6,105 @@ import com.google.i18n.phonenumbers.PhoneNumberUtil;
 import com.google.i18n.phonenumbers.PhoneNumberUtil.PhoneNumberFormat;
 import com.google.i18n.phonenumbers.Phonenumber.PhoneNumber;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
+import com.xa.mass.worker.execution.WorkerEventHandler;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 
-final class PhoneNumberCapability {
+public final class PhoneNumberWorkerEvents {
 
     public static final String E164_EVENT_CODE = "phonenumber.e164";
     public static final String COUNTRY_EVENT_CODE =
             "phonenumber.country";
     public static final String ORIGINAL_CARRIER_EVENT_CODE =
             "phonenumber.original-carrier";
-    public static final Set<String> EVENT_CODES = Set.of(
-            E164_EVENT_CODE,
-            COUNTRY_EVENT_CODE,
-            ORIGINAL_CARRIER_EVENT_CODE
-    );
 
     private static final PhoneNumberUtil PHONE_NUMBERS =
             PhoneNumberUtil.getInstance();
     private static final PhoneNumberToCarrierMapper CARRIERS =
             PhoneNumberToCarrierMapper.getInstance();
 
-    private PhoneNumberCapability() {
+    private PhoneNumberWorkerEvents() {
     }
 
-    public static List<WorkerEventDefinition<Map<String, Object>>>
-    definitions(
-            String workerId
-    ) {
+    public static List<WorkerEventDefinition<?>> definitions() {
         return List.of(
-                definition(
-                        E164_EVENT_CODE,
-                        workerId,
-                        evaluation -> {
-                            evaluation.result().put(
-                                    "e164",
-                                    PHONE_NUMBERS.format(
-                                            evaluation.number(),
-                                            PhoneNumberFormat.E164
-                                    )
-                            );
-                        }
-                ),
+                definition(E164_EVENT_CODE, PhoneNumberWorkerEvents::e164),
                 definition(
                         COUNTRY_EVENT_CODE,
-                        workerId,
-                        evaluation -> {
-                            PhoneNumber number = evaluation.number();
-                            String regionCode =
-                                    PHONE_NUMBERS
-                                            .getRegionCodeForNumber(
-                                                    number
-                                            );
-                            evaluation.result().put(
-                                    "countryCallingCode",
-                                    number.getCountryCode()
-                            );
-                            evaluation.result().put(
-                                    "regionCode",
-                                    regionCode
-                            );
-                            evaluation.result().put(
-                                    "country",
-                                    countryName(regionCode)
-                            );
-                        }
+                        PhoneNumberWorkerEvents::country
                 ),
                 definition(
                         ORIGINAL_CARRIER_EVENT_CODE,
-                        workerId,
-                        evaluation -> evaluation.result().put(
-                                "originalCarrier",
-                                CARRIERS.getNameForNumber(
-                                        evaluation.number(),
-                                        Locale.ENGLISH
-                                )
-                        )
+                        PhoneNumberWorkerEvents::originalCarrier
                 )
         );
     }
 
-    private static WorkerEventDefinition<Map<String, Object>>
-    definition(
+    private static WorkerEventDefinition<Map<String, Object>> definition(
             String eventCode,
-            String workerId,
-            ValidResultDecorator decorator
+            WorkerEventHandler<Map<String, Object>> handler
     ) {
         return WorkerEventDefinition.of(
                 "TASK",
                 eventCode,
                 WorkerEventParameterResolvers.jsonMap(),
-                payload -> Jsons.toJson(
-                        execute(workerId, payload, decorator)
-                )
+                handler
         );
     }
 
-    private static Map<String, Object> execute(
-            String workerId,
-            Map<String, Object> payload,
-            ValidResultDecorator decorator
-    ) {
-        Evaluation evaluation = evaluate(workerId, payload);
+    private static String e164(Map<String, Object> payload) {
+        Evaluation evaluation = evaluate(payload);
         if (evaluation.valid()) {
-            decorator.decorate(evaluation);
+            evaluation.result().put(
+                    "e164",
+                    PHONE_NUMBERS.format(
+                            evaluation.number(),
+                            PhoneNumberFormat.E164
+                    )
+            );
         }
-        return evaluation.result();
+        return Jsons.toJson(evaluation.result());
     }
 
-    private static Evaluation evaluate(
-            String workerId,
-            Map<String, Object> payload
-    ) {
+    private static String country(Map<String, Object> payload) {
+        Evaluation evaluation = evaluate(payload);
+        if (evaluation.valid()) {
+            PhoneNumber number = evaluation.number();
+            String regionCode = PHONE_NUMBERS.getRegionCodeForNumber(number);
+            evaluation.result().put(
+                    "countryCallingCode",
+                    number.getCountryCode()
+            );
+            evaluation.result().put("regionCode", regionCode);
+            evaluation.result().put("country", countryName(regionCode));
+        }
+        return Jsons.toJson(evaluation.result());
+    }
+
+    private static String originalCarrier(Map<String, Object> payload) {
+        Evaluation evaluation = evaluate(payload);
+        if (evaluation.valid()) {
+            evaluation.result().put(
+                    "originalCarrier",
+                    CARRIERS.getNameForNumber(
+                            evaluation.number(),
+                            Locale.ENGLISH
+                    )
+            );
+        }
+        return Jsons.toJson(evaluation.result());
+    }
+
+    private static Evaluation evaluate(Map<String, Object> payload) {
         Object rawValue = payload.get("rawNumber");
         if (!(rawValue instanceof String)
                 || ((String) rawValue).trim().isEmpty()) {
             return Evaluation.invalid(
-                    invalid(
-                            workerId,
-                            rawValue,
-                            false,
-                            "RAW_NUMBER_REQUIRED"
-                    )
+                    invalid(rawValue, false, "RAW_NUMBER_REQUIRED")
             );
         }
 
@@ -141,7 +113,6 @@ final class PhoneNumberCapability {
         if (regionValue != null && !(regionValue instanceof String)) {
             return Evaluation.invalid(
                     invalid(
-                            workerId,
                             rawNumber,
                             false,
                             "DEFAULT_REGION_INVALID"
@@ -162,7 +133,7 @@ final class PhoneNumberCapability {
             boolean possible = PHONE_NUMBERS.isPossibleNumber(number);
             boolean valid = PHONE_NUMBERS.isValidNumber(number);
 
-            Map<String, Object> result = base(workerId, rawNumber);
+            Map<String, Object> result = base(rawNumber);
             result.put("possible", possible);
             result.put("valid", valid);
             if (!valid) {
@@ -173,7 +144,6 @@ final class PhoneNumberCapability {
         } catch (NumberParseException error) {
             return Evaluation.invalid(
                     invalid(
-                            workerId,
                             rawNumber,
                             false,
                             "PARSE_" + error.getErrorType().name()
@@ -183,25 +153,20 @@ final class PhoneNumberCapability {
     }
 
     private static Map<String, Object> invalid(
-            String workerId,
             Object input,
             boolean possible,
             String error
     ) {
-        Map<String, Object> result = base(workerId, input);
+        Map<String, Object> result = base(input);
         result.put("possible", possible);
         result.put("valid", false);
         result.put("error", error);
         return result;
     }
 
-    private static Map<String, Object> base(
-            String workerId,
-            Object input
-    ) {
+    private static Map<String, Object> base(Object input) {
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("input", input);
-        result.put("workerId", workerId);
         return result;
     }
 
@@ -218,21 +183,13 @@ final class PhoneNumberCapability {
                 .getDisplayCountry(Locale.ENGLISH);
     }
 
-    @FunctionalInterface
-    private interface ValidResultDecorator {
-
-        void decorate(Evaluation evaluation);
-    }
-
     private record Evaluation(
             PhoneNumber number,
             Map<String, Object> result,
             boolean valid
     ) {
 
-        private static Evaluation invalid(
-                Map<String, Object> result
-        ) {
+        private static Evaluation invalid(Map<String, Object> result) {
             return new Evaluation(null, result, false);
         }
     }

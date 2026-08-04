@@ -64,8 +64,14 @@ class ServerWorkerAssemblyPropertiesTest {
                     ServerWorkerAssemblyProperties.class
             ).configJson();
             assertThat(configJson)
-                    .contains("\"type\": \"PHONE_NUMBER\"")
-                    .contains("\"type\": \"STRING_UTILS\"")
+                    .contains("\"scenario-phone-number-workers\"")
+                    .contains("\"scenario-string-utils-workers\"")
+                    .contains("\"phonenumber.e164\"")
+                    .contains("\"phonenumber.country\"")
+                    .contains("\"string.md5\"")
+                    .contains("\"string.base64.encode\"")
+                    .doesNotContain("\"type\"")
+                    .doesNotContain("\"workerGroupId\"")
                     .contains("scenario-phone-number-worker-001")
                     .contains("scenario-phone-number-worker-010")
                     .contains("scenario-string-utils-worker-001")
@@ -83,7 +89,7 @@ class ServerWorkerAssemblyPropertiesTest {
     @Test
     void unknownServerConfigurationFieldIsRejected() {
         contextRunner.withPropertyValues(
-                "xa.mass.worker-assembly.bundles.legacy=true"
+                "xa.mass.worker-assembly.legacy=true"
         ).run(context -> assertThat(context).hasFailed());
     }
 }

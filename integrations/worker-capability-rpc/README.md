@@ -20,7 +20,7 @@ WorkerCapabilityRpcMain
 The integration depends only on the shared JSON facade and the external
 Runtime API. The Server profile owns deployment composition, while
 `scenario_workers_jvm` owns Worker resource declarations, business handlers,
-transport construction, and bundle lifecycle. The caller does not depend on
+transport construction, and WorkerGroup lifecycle. The caller does not depend on
 `server_jvm`, `scenario_workers_jvm`, `kernel_jvm`, the Adapter Runtime, Worker
 Core, a network client, or Redis.
 
@@ -40,7 +40,7 @@ All three accept:
 {"rawNumber":"+41798765432","defaultRegion":"CH"}
 ```
 
-Every result contains `input`, `workerId`, `possible`, and `valid`. A valid
+Every result contains `input`, `possible`, and `valid`. A valid
 result adds the event-specific field:
 
 - `e164`;
@@ -60,7 +60,7 @@ string.sha1
 string.base64.encode
 ```
 
-All three accept `{"value":"hello"}` and return `input`, `workerId`, `valid`,
+All three accept `{"value":"hello"}` and return `input`, `valid`,
 plus `md5`, `sha1`, or `base64`. Operations use UTF-8; digests are lowercase
 hex and Base64 is standard padded encoding. Empty strings are valid. Missing
 or non-string values return a successful domain error.
@@ -103,8 +103,10 @@ The runner creates `<scenarioId>-phone` and `<scenarioId>-string`, performs
 each of the six events against all 10 Workers in its group, and writes exactly
 60 JSON lines to `result.txt`. Every line includes `taskId`,
 `workerGroupId`, `workerId`, `eventCode`, the original input, and the parsed
-result. A `202 pending`, wrong Worker, invalid domain result, missing
-event-specific field, or failed call fails the scenario.
+result. A `202 pending`, invalid domain result, missing event-specific field,
+or failed call fails the scenario. The outer report
+records the explicitly targeted Worker ID; business result payloads do not
+repeat Worker identity.
 
 Options:
 

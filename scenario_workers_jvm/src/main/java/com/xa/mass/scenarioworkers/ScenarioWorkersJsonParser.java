@@ -13,11 +13,11 @@ import java.util.Set;
 
 final class ScenarioWorkersJsonParser {
 
-    private static final Set<String> BUNDLE_FIELDS = Set.of(
-            "type",
+    private static final Set<String> GROUP_FIELDS = Set.of(
+            "attributes",
+            "eventCodes",
             "endpointManagerId",
             "websocketUri",
-            "workerGroupId",
             "requestTimeoutMillis",
             "reconnectIntervalMillis",
             "connectTimeoutMillis",
@@ -32,51 +32,49 @@ final class ScenarioWorkersJsonParser {
     private ScenarioWorkersJsonParser() {
     }
 
-    static List<ScenarioWorkerBundleConfig> parse(String configJson) {
+    static List<ScenarioWorkerGroupConfig> parse(String configJson) {
         Map<String, Object> root = Jsons.parseObject(configJson);
-        List<ScenarioWorkerBundleConfig> configs =
+        List<ScenarioWorkerGroupConfig> configs =
                 new ArrayList<>(root.size());
-        Set<String> workerGroupIds = new HashSet<>();
         Set<String> workerIds = new HashSet<>();
-        root.forEach((bundleId, rawBundle) -> {
-            Map<String, Object> bundle = requireObject(
-                    rawBundle,
-                    "bundle " + bundleId
-            );
-            requireExactFields(bundle, BUNDLE_FIELDS, "bundle " + bundleId);
-            String workerGroupId = requireString(
-                    bundle,
+        root.forEach((workerGroupId, rawGroup) -> {
+            ScenarioWorkerGroupConfig.requireNonBlank(
+                    workerGroupId,
                     "workerGroupId"
             );
-            if (!workerGroupIds.add(workerGroupId)) {
-                throw new IllegalArgumentException(
-                        "workerGroupId must be unique: " + workerGroupId
-                );
-            }
+            Map<String, Object> group = requireObject(
+                    rawGroup,
+                    "workerGroup " + workerGroupId
+            );
+            requireExactFields(
+                    group,
+                    GROUP_FIELDS,
+                    "workerGroup " + workerGroupId
+            );
             List<ScenarioWorkerConfig> workers = parseWorkers(
-                    bundleId,
-                    requireList(bundle, "workers"),
+                    workerGroupId,
+                    requireList(group, "workers"),
                     workerIds
             );
-            configs.add(new ScenarioWorkerBundleConfig(
-                    bundleId,
-                    requireType(bundle),
-                    requireString(bundle, "endpointManagerId"),
-                    URI.create(requireString(bundle, "websocketUri")),
+            configs.add(new ScenarioWorkerGroupConfig(
                     workerGroupId,
+                    optionalObject(group, "attributes"),
+                    requireStringList(group, "eventCodes"),
+                    requireString(group, "endpointManagerId"),
+                    URI.create(requireString(group, "websocketUri")),
                     workers,
                     Duration.ofMillis(optionalPositiveLong(
-                            bundle,
+                            group,
                             "requestTimeoutMillis",
                             10_000L
                     )),
                     Duration.ofMillis(optionalPositiveLong(
-                            bundle,
+                            group,
                             "reconnectIntervalMillis",
                             250L
                     )),
                     Duration.ofMillis(optionalPositiveLong(
-                            bundle,
+                            group,
                             "connectTimeoutMillis",
                             15_000L
                     ))
@@ -86,14 +84,17 @@ final class ScenarioWorkersJsonParser {
     }
 
     private static List<ScenarioWorkerConfig> parseWorkers(
-            String bundleId,
+            String workerGroupId,
             List<?> rawWorkers,
             Set<String> workerIds
     ) {
         List<ScenarioWorkerConfig> workers =
                 new ArrayList<>(rawWorkers.size());
         for (int index = 0; index < rawWorkers.size(); index++) {
-            String owner = "bundle " + bundleId + " worker " + index;
+            String owner = "workerGroup "
+                    + workerGroupId
+                    + " worker "
+                    + index;
             Map<String, Object> worker = requireObject(
                     rawWorkers.get(index),
                     owner
@@ -112,20 +113,6 @@ final class ScenarioWorkersJsonParser {
             ));
         }
         return List.copyOf(workers);
-    }
-
-    private static ScenarioWorkerBundleType requireType(
-            Map<String, Object> bundle
-    ) {
-        String value = requireString(bundle, "type");
-        try {
-            return ScenarioWorkerBundleType.valueOf(value);
-        } catch (IllegalArgumentException error) {
-            throw new IllegalArgumentException(
-                    "Unsupported Scenario Worker type: " + value,
-                    error
-            );
-        }
     }
 
     private static long optionalPositiveLong(
@@ -186,6 +173,23 @@ final class ScenarioWorkersJsonParser {
             );
         }
         return (List<?>) raw;
+    }
+
+    private static List<String> requireStringList(
+            Map<String, Object> value,
+            String field
+    ) {
+        List<?> raw = requireList(value, field);
+        List<String> result = new ArrayList<>(raw.size());
+        for (Object item : raw) {
+            if (!(item instanceof String) || ((String) item).isBlank()) {
+                throw new IllegalArgumentException(
+                        field + " must contain non-blank strings"
+                );
+            }
+            result.add((String) item);
+        }
+        return List.copyOf(result);
     }
 
     private static Map<String, Object> optionalObject(

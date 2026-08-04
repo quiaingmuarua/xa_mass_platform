@@ -10,13 +10,14 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerPropertyIndexRuntime;
+import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDeclaration;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeResult;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeStatus;
+import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.transport.websocket.WebSocketWorkerTransport;
 import java.net.URI;
 import java.time.Duration;
@@ -27,13 +28,11 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 
-class PhoneNumberWorkerBundleTest {
+class ScenarioWorkerGroupTest {
 
     @Test
-    void registersOwnerResourcesThenStartsDeterministicWorkers() {
-        WorkerResourceCatalog catalog = mock(
-                WorkerResourceCatalog.class
-        );
+    void registersGroupThenStartsWorkersWithSharedDefinitions() {
+        WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
         WorkerRuntime runtime = mock(WorkerRuntime.class);
         WorkerPropertyIndexRuntime propertyIndex = acceptedIndex();
         when(catalog.upsertWorkerGroup(any())).thenReturn(
@@ -47,28 +46,34 @@ class PhoneNumberWorkerBundleTest {
         );
         WebSocketWorkerTransport first = connectedWorker();
         WebSocketWorkerTransport second = connectedWorker();
-        PhoneNumberWorkerBundle bundle = new PhoneNumberWorkerBundle(
+        List<WorkerEventDefinition<?>> definitions =
+                PhoneNumberWorkerEvents.definitions();
+        List<List<WorkerEventDefinition<?>>> receivedDefinitions =
+                new ArrayList<>();
+        ScenarioWorkerGroup group = new ScenarioWorkerGroup(
                 config(2, Duration.ofSeconds(1)),
+                definitions,
                 catalog,
                 runtime,
                 propertyIndex,
-                (workerId, ignored) -> workerId.endsWith("001")
-                        ? first
-                        : second
+                (workerId, ignored, workerDefinitions) -> {
+                    receivedDefinitions.add(workerDefinitions);
+                    return workerId.endsWith("001") ? first : second;
+                }
         );
 
-        bundle.start();
-        bundle.start();
+        group.start();
+        group.start();
 
-        ArgumentCaptor<WorkerGroupDescriptor> group =
+        ArgumentCaptor<WorkerGroupDescriptor> groupDescriptor =
                 ArgumentCaptor.forClass(WorkerGroupDescriptor.class);
-        verify(catalog).upsertWorkerGroup(group.capture());
-        assertThat(group.getValue().workerGroupId())
+        verify(catalog).upsertWorkerGroup(groupDescriptor.capture());
+        assertThat(groupDescriptor.getValue().workerGroupId())
                 .isEqualTo("scenario-phone-number-workers");
-        assertThat(group.getValue().eventCodes())
-                .containsExactlyInAnyOrderElementsOf(
-                        PhoneNumberCapability.EVENT_CODES
-                );
+        assertThat(groupDescriptor.getValue().attributes())
+                .containsEntry("capability", "libphonenumber");
+        assertThat(groupDescriptor.getValue().eventCodes())
+                .containsExactlyInAnyOrderElementsOf(eventCodes());
         ArgumentCaptor<WorkerDeclaration> workers =
                 ArgumentCaptor.forClass(WorkerDeclaration.class);
         verify(runtime, times(2)).registerWorker(workers.capture());
@@ -81,16 +86,9 @@ class PhoneNumberWorkerBundleTest {
                         "scenario-phone-number-worker-001",
                         "scenario-phone-number-worker-002"
                 );
-        assertThat(workers.getAllValues())
-                .allSatisfy(declaration ->
-                        assertThat(declaration.endpointManagerId())
-                                .isEqualTo("scenario-websocket")
-                );
-        assertThat(workers.getAllValues())
-                .allSatisfy(declaration ->
-                        assertThat(declaration.workerProperties())
-                                .containsEntry("region", "configured")
-                );
+        assertThat(receivedDefinitions).hasSize(2);
+        assertThat(receivedDefinitions.get(0))
+                .isSameAs(receivedDefinitions.get(1));
         InOrder startup = inOrder(
                 catalog,
                 runtime,
@@ -112,8 +110,8 @@ class PhoneNumberWorkerBundleTest {
         );
         startup.verify(second).start();
 
-        bundle.close();
-        bundle.close();
+        group.close();
+        group.close();
 
         InOrder closeOrder = inOrder(first, second);
         closeOrder.verify(second).close();
@@ -121,34 +119,32 @@ class PhoneNumberWorkerBundleTest {
     }
 
     @Test
-    void rejectedOwnerResultStopsBeforeWorkerCreation() {
-        WorkerResourceCatalog catalog = mock(
-                WorkerResourceCatalog.class
-        );
-        WorkerRuntime runtime = mock(WorkerRuntime.class);
+    void rejectedGroupStopsBeforeWorkerCreation() {
+        WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
         when(catalog.upsertWorkerGroup(any())).thenReturn(
                 new WorkerRuntimeResult(
                         WorkerRuntimeStatus.INVALID,
                         "invalid group"
                 )
         );
-        PhoneNumberWorkerBundle.WorkerFactory factory = mock(
-                PhoneNumberWorkerBundle.WorkerFactory.class
+        ScenarioWorkerGroup.WorkerFactory factory = mock(
+                ScenarioWorkerGroup.WorkerFactory.class
         );
-        PhoneNumberWorkerBundle bundle = new PhoneNumberWorkerBundle(
+        ScenarioWorkerGroup group = new ScenarioWorkerGroup(
                 config(1, Duration.ofSeconds(1)),
+                PhoneNumberWorkerEvents.definitions(),
                 catalog,
-                runtime,
+                mock(WorkerRuntime.class),
                 acceptedIndex(),
                 factory
         );
 
-        assertThatThrownBy(bundle::start)
+        assertThatThrownBy(group::start)
                 .isInstanceOf(ScenarioWorkerAssemblyException.class)
                 .extracting("errorCode")
                 .isEqualTo(14002);
 
-        verify(factory, times(0)).create(any(), any());
+        verify(factory, times(0)).create(any(), any(), any());
     }
 
     @Test
@@ -165,40 +161,39 @@ class PhoneNumberWorkerBundleTest {
                         )
                 ));
         WebSocketWorkerTransport worker = connectedWorker();
-        PhoneNumberWorkerBundle bundle = new PhoneNumberWorkerBundle(
+        ScenarioWorkerGroup group = new ScenarioWorkerGroup(
                 config(1, Duration.ofSeconds(1)),
+                PhoneNumberWorkerEvents.definitions(),
                 acceptedCatalog(),
                 acceptedRuntime(),
                 index,
-                (workerId, ignored) -> worker
+                (workerId, ignored, definitions) -> worker
         );
 
-        bundle.start();
+        group.start();
 
         verify(worker).start();
-        bundle.close();
+        group.close();
     }
 
     @Test
-    void partialTransportStartFailureClosesAllCreatedWorkers() {
-        WorkerResourceCatalog catalog = acceptedCatalog();
-        WorkerRuntime runtime = acceptedRuntime();
+    void partialTransportFailureClosesAllCreatedWorkers() {
         WebSocketWorkerTransport first = connectedWorker();
         WebSocketWorkerTransport second = connectedWorker();
         doThrow(new IllegalStateException("start failed"))
                 .when(second)
                 .start();
-        PhoneNumberWorkerBundle bundle = new PhoneNumberWorkerBundle(
+        ScenarioWorkerGroup group = new ScenarioWorkerGroup(
                 config(2, Duration.ofSeconds(1)),
-                catalog,
-                runtime,
+                PhoneNumberWorkerEvents.definitions(),
+                acceptedCatalog(),
+                acceptedRuntime(),
                 acceptedIndex(),
-                (workerId, ignored) -> workerId.endsWith("001")
-                        ? first
-                        : second
+                (workerId, ignored, definitions) ->
+                        workerId.endsWith("001") ? first : second
         );
 
-        assertThatThrownBy(bundle::start)
+        assertThatThrownBy(group::start)
                 .isInstanceOf(ScenarioWorkerAssemblyException.class)
                 .extracting("errorCode")
                 .isEqualTo(14004);
@@ -213,15 +208,16 @@ class PhoneNumberWorkerBundleTest {
         WebSocketWorkerTransport worker = mock(
                 WebSocketWorkerTransport.class
         );
-        PhoneNumberWorkerBundle bundle = new PhoneNumberWorkerBundle(
+        ScenarioWorkerGroup group = new ScenarioWorkerGroup(
                 config(1, Duration.ofMillis(1)),
+                PhoneNumberWorkerEvents.definitions(),
                 acceptedCatalog(),
                 acceptedRuntime(),
                 acceptedIndex(),
-                (workerId, ignored) -> worker
+                (workerId, ignored, definitions) -> worker
         );
 
-        assertThatThrownBy(bundle::start)
+        assertThatThrownBy(group::start)
                 .isInstanceOf(ScenarioWorkerAssemblyException.class)
                 .extracting("errorCode")
                 .isEqualTo(14005);
@@ -230,9 +226,7 @@ class PhoneNumberWorkerBundleTest {
     }
 
     private static WorkerResourceCatalog acceptedCatalog() {
-        WorkerResourceCatalog catalog = mock(
-                WorkerResourceCatalog.class
-        );
+        WorkerResourceCatalog catalog = mock(WorkerResourceCatalog.class);
         when(catalog.upsertWorkerGroup(any())).thenReturn(
                 accepted(WorkerRuntimeStatus.OK)
         );
@@ -276,34 +270,35 @@ class PhoneNumberWorkerBundleTest {
         return new WorkerRuntimeResult(status);
     }
 
-    private static ScenarioWorkerBundleConfig config(
+    private static ScenarioWorkerGroupConfig config(
             int workerCount,
             Duration connectTimeout
     ) {
-        return new ScenarioWorkerBundleConfig(
-                "phone-number",
-                ScenarioWorkerBundleType.PHONE_NUMBER,
+        return new ScenarioWorkerGroupConfig(
+                "scenario-phone-number-workers",
+                Map.of("capability", "libphonenumber"),
+                eventCodes(),
                 "scenario-websocket",
                 workerUri(),
-                "scenario-phone-number-workers",
-                workers(
-                        "scenario-phone-number-worker-",
-                        workerCount
-                ),
+                workers(workerCount),
                 Duration.ofSeconds(10),
                 Duration.ofMillis(250),
                 connectTimeout
         );
     }
 
-    private static List<ScenarioWorkerConfig> workers(
-            String prefix,
-            int count
-    ) {
+    private static List<String> eventCodes() {
+        return PhoneNumberWorkerEvents.definitions().stream()
+                .map(WorkerEventDefinition::eventCode)
+                .toList();
+    }
+
+    private static List<ScenarioWorkerConfig> workers(int count) {
         List<ScenarioWorkerConfig> workers = new ArrayList<>();
         for (int index = 1; index <= count; index++) {
             workers.add(new ScenarioWorkerConfig(
-                    prefix + String.format("%03d", index),
+                    "scenario-phone-number-worker-"
+                            + String.format("%03d", index),
                     Map.of("region", "configured"),
                     Map.of("index.worker.region", "configured")
             ));
