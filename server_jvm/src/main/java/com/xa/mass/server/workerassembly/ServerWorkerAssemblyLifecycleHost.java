@@ -1,5 +1,6 @@
 package com.xa.mass.server.workerassembly;
 
+import com.xa.mass.scenarioworkers.ScenarioWorkers;
 import com.xa.mass.workerdelivery.adapter.application
         .WorkerDeliveryAdapterManager;
 import java.util.Objects;
@@ -11,21 +12,21 @@ public final class ServerWorkerAssemblyLifecycleHost
         implements ApplicationRunner, DisposableBean {
 
     private final WorkerDeliveryAdapterManager adapterManager;
-    private final ServerWorkerBundleManager bundleManager;
+    private final ScenarioWorkers scenarioWorkers;
     private boolean started;
     private boolean closed;
 
     public ServerWorkerAssemblyLifecycleHost(
             WorkerDeliveryAdapterManager adapterManager,
-            ServerWorkerBundleManager bundleManager
+            ScenarioWorkers scenarioWorkers
     ) {
         this.adapterManager = Objects.requireNonNull(
                 adapterManager,
                 "adapterManager"
         );
-        this.bundleManager = Objects.requireNonNull(
-                bundleManager,
-                "bundleManager"
+        this.scenarioWorkers = Objects.requireNonNull(
+                scenarioWorkers,
+                "scenarioWorkers"
         );
     }
 
@@ -46,10 +47,10 @@ public final class ServerWorkerAssemblyLifecycleHost
 
         try {
             adapterManager.start();
-            bundleManager.start();
+            scenarioWorkers.start();
             started = true;
         } catch (RuntimeException failure) {
-            closeAndSuppress(bundleManager, failure);
+            closeAndSuppress(scenarioWorkers, failure);
             closeAndSuppress(adapterManager, failure);
             closed = true;
             throw failure;
@@ -64,7 +65,7 @@ public final class ServerWorkerAssemblyLifecycleHost
         closed = true;
         RuntimeException failure = null;
         try {
-            bundleManager.close();
+            scenarioWorkers.close();
         } catch (RuntimeException error) {
             failure = error;
         }

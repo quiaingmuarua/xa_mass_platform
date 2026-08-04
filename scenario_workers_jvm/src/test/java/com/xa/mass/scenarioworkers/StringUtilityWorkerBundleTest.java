@@ -19,6 +19,8 @@ import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeStatus;
 import com.xa.mass.worker.transport.websocket.WebSocketWorkerTransport;
 import java.net.URI;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -159,15 +161,33 @@ class StringUtilityWorkerBundleTest {
     ) {
         return new ScenarioWorkerBundleConfig(
                 "string-utils",
+                ScenarioWorkerBundleType.STRING_UTILS,
                 "scenario-websocket",
                 workerUri(),
                 "scenario-string-utils-workers",
-                "scenario-string-utils-worker-",
-                workerCount,
+                workers(
+                        "scenario-string-utils-worker-",
+                        workerCount
+                ),
                 Duration.ofSeconds(10),
                 Duration.ofMillis(250),
                 connectTimeout
         );
+    }
+
+    private static List<ScenarioWorkerConfig> workers(
+            String prefix,
+            int count
+    ) {
+        List<ScenarioWorkerConfig> workers = new ArrayList<>();
+        for (int index = 1; index <= count; index++) {
+            workers.add(new ScenarioWorkerConfig(
+                    prefix + String.format("%03d", index),
+                    Map.of("region", "configured"),
+                    Map.of("index.worker.region", "configured")
+            ));
+        }
+        return workers;
     }
 
     private static URI workerUri() {

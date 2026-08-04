@@ -20,6 +20,8 @@ import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeStatus;
 import com.xa.mass.worker.transport.websocket.WebSocketWorkerTransport;
 import java.net.URI;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -84,8 +86,31 @@ class PhoneNumberWorkerBundleTest {
                         assertThat(declaration.endpointManagerId())
                                 .isEqualTo("scenario-websocket")
                 );
-        verify(first).start();
-        verify(second).start();
+        assertThat(workers.getAllValues())
+                .allSatisfy(declaration ->
+                        assertThat(declaration.workerProperties())
+                                .containsEntry("region", "configured")
+                );
+        InOrder startup = inOrder(
+                catalog,
+                runtime,
+                propertyIndex,
+                first,
+                second
+        );
+        startup.verify(catalog).upsertWorkerGroup(any());
+        startup.verify(runtime).registerWorker(any());
+        startup.verify(runtime).updateWorkerProperties(any(), any(), any());
+        startup.verify(propertyIndex).updateIndexedProperties(
+                any(), any(), any()
+        );
+        startup.verify(first).start();
+        startup.verify(runtime).registerWorker(any());
+        startup.verify(runtime).updateWorkerProperties(any(), any(), any());
+        startup.verify(propertyIndex).updateIndexedProperties(
+                any(), any(), any()
+        );
+        startup.verify(second).start();
 
         bundle.close();
         bundle.close();
@@ -257,15 +282,33 @@ class PhoneNumberWorkerBundleTest {
     ) {
         return new ScenarioWorkerBundleConfig(
                 "phone-number",
+                ScenarioWorkerBundleType.PHONE_NUMBER,
                 "scenario-websocket",
                 workerUri(),
                 "scenario-phone-number-workers",
-                "scenario-phone-number-worker-",
-                workerCount,
+                workers(
+                        "scenario-phone-number-worker-",
+                        workerCount
+                ),
                 Duration.ofSeconds(10),
                 Duration.ofMillis(250),
                 connectTimeout
         );
+    }
+
+    private static List<ScenarioWorkerConfig> workers(
+            String prefix,
+            int count
+    ) {
+        List<ScenarioWorkerConfig> workers = new ArrayList<>();
+        for (int index = 1; index <= count; index++) {
+            workers.add(new ScenarioWorkerConfig(
+                    prefix + String.format("%03d", index),
+                    Map.of("region", "configured"),
+                    Map.of("index.worker.region", "configured")
+            ));
+        }
+        return workers;
     }
 
     private static URI workerUri() {

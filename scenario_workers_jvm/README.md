@@ -20,9 +20,9 @@ STRING_UTILS
 
 explicit factory
   -> WorkerGroup upsert
-  -> deterministic Worker registration
+  -> explicit Worker registration
   -> explicit Worker Properties replacement
-  -> explicit index.worker.region projection updates
+  -> configured Property Index updates
   -> real WebSocket Worker startup
   -> bounded initial connection wait
   -> reverse-order close
@@ -31,27 +31,36 @@ explicit factory
 Its complete public surface is:
 
 ```text
-ScenarioWorkerBundleConfig
-ScenarioWorkerBundle
-ScenarioWorkerBundles.phoneNumber(...)
-ScenarioWorkerBundles.stringUtils(...)
+ScenarioWorkers.fromJson(...)
+ScenarioWorkers.start()
+ScenarioWorkers.close()
 ```
 
-Concrete bundle classes, capability definitions, Worker factories, and the
-coded assembly exception remain module-local. This is not a plugin SPI:
-configuration cannot supply a class name, handler, registry entry, or reflected
-implementation.
+The JSON object is an ordered deployment manifest keyed by bundle ID. Each
+bundle declares its finite built-in type, endpoint manager, final WebSocket
+URI, WorkerGroup ID, and an explicit Worker list. Each Worker supplies its
+complete `workerProperties` snapshot and optional `indexedPropertyUpdates`.
+The module validates and parses that manifest; the Server treats it as opaque.
+
+Concrete parsed configuration, bundle classes, capability definitions, Worker
+factories, and the coded assembly exception remain module-local. This is not a
+plugin SPI: configuration cannot supply a class name, handler, registry entry,
+or reflected implementation. Event codes and handlers remain code-owned by
+the selected finite bundle type.
 
 The Server remains responsible for Spring configuration, Adapter construction,
-validating the referenced Adapter, deriving the Worker WebSocket URI, and
-sequencing Adapter startup before bundle startup. This module does not depend
-on Spring, Server, the Netty Adapter, Redis, scores, Pacers, or HTTP
-controllers. Kernel truth remains owned by `WorkerResourceCatalog`,
+and sequencing Adapter startup before the aggregate `ScenarioWorkers` handle.
+It does not inspect bundle or Worker settings. This module does not depend on
+Spring, Server, the Netty Adapter, Redis, scores, Pacers, or HTTP controllers.
+Kernel truth remains owned by `WorkerResourceCatalog`,
 `WorkerRuntime`, and `WorkerPropertyIndexRuntime`; Scenario Workers only call
-those existing owner operations. Worker registration or Properties update does
-not auto-project the region snapshot into `index.worker.region`. A rejected or unavailable index
-projection is logged and does not roll back Worker resource creation or
-transport startup.
+those existing owner operations. Registration and Properties replacement do
+not auto-project any Index value. Rejected or unavailable configured Index
+updates are logged and do not roll back Worker resource creation or transport
+startup.
+
+`close()` releases only local network and thread resources. It does not disable,
+remove, or otherwise change Kernel Worker lifecycle truth.
 
 ```text
 ./gradlew :scenario_workers_jvm:test

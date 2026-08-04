@@ -12,7 +12,6 @@ import com.xa.mass.worker.transport.websocket.WebSocketWorkerTransport;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 
@@ -102,19 +101,17 @@ final class StringUtilityWorkerBundle
 
         try {
             upsertWorkerGroup();
-            for (String workerId : workerIds()) {
-                registerWorker(workerId);
-                updateWorkerProperties(workerId);
-                updateWorkerIndex(workerId);
-            }
-            for (String workerId : workerIds()) {
-                WebSocketWorkerTransport worker =
+            for (ScenarioWorkerConfig worker : config.workers()) {
+                registerWorker(worker);
+                updateWorkerProperties(worker);
+                updateWorkerIndex(worker);
+                WebSocketWorkerTransport transport =
                         workerFactory.create(
-                                workerId,
+                                worker.workerId(),
                                 config
                         );
-                workers.add(worker);
-                worker.start();
+                workers.add(transport);
+                transport.start();
             }
             awaitConnections();
         } catch (RuntimeException error) {
@@ -133,16 +130,9 @@ final class StringUtilityWorkerBundle
     }
 
     List<String> workerIds() {
-        List<String> ids = new ArrayList<>(config.workerCount());
-        for (int index = 1;
-                index <= config.workerCount();
-                index++) {
-            ids.add(workerId(
-                    config.workerIdPrefix(),
-                    index
-            ));
-        }
-        return List.copyOf(ids);
+        return config.workers().stream()
+                .map(ScenarioWorkerConfig::workerId)
+                .toList();
     }
 
     @Override
@@ -190,77 +180,87 @@ final class StringUtilityWorkerBundle
         );
     }
 
-    private void registerWorker(String workerId) {
+    private void registerWorker(ScenarioWorkerConfig worker) {
         WorkerRuntimeResult result = workerRuntime.registerWorker(
                 new WorkerDeclaration(
-                        workerId,
+                        worker.workerId(),
                         config.workerGroupId(),
                         config.endpointManagerId(),
-                        workerProperties()
+                        worker.workerProperties()
                 )
         );
         requireAccepted(
                 result,
                 WORKER_RESOURCE_FAILED,
                 "workerRuntime.registerWorker",
-                config.workerGroupId() + "/" + workerId
+                config.workerGroupId() + "/" + worker.workerId()
         );
     }
 
-    private void updateWorkerProperties(String workerId) {
+    private void updateWorkerProperties(ScenarioWorkerConfig worker) {
         WorkerRuntimeResult result = workerRuntime.updateWorkerProperties(
                 config.workerGroupId(),
-                workerId,
-                workerProperties()
+                worker.workerId(),
+                worker.workerProperties()
         );
         requireAccepted(
                 result,
                 WORKER_RESOURCE_FAILED,
                 "workerRuntime.updateWorkerProperties",
-                config.workerGroupId() + "/" + workerId
+                config.workerGroupId() + "/" + worker.workerId()
         );
     }
 
-    private static Map<String, Object> workerProperties() {
-        return Map.of(
-                "runtime", "java",
-                "capability", "string-utils",
-                "region", "local"
-        );
-    }
-
-    private void updateWorkerIndex(String workerId) {
+    private void updateWorkerIndex(ScenarioWorkerConfig worker) {
+        if (worker.indexedPropertyUpdates().isEmpty()) {
+            return;
+        }
         try {
-            WorkerRuntimeResult result = propertyIndex
+            Map<String, WorkerRuntimeResult> results = propertyIndex
                     .updateIndexedProperties(
                             config.workerGroupId(),
-                            workerId,
-                            Map.of("index.worker.region", "local")
+                            worker.workerId(),
+                            worker.indexedPropertyUpdates()
+                    );
+            worker.indexedPropertyUpdates().keySet().forEach(field ->
+                    logRejectedIndexResult(
+                            worker.workerId(),
+                            field,
+                            results.get(field)
                     )
-                    .get("index.worker.region");
-            if (result == null || (result.status() != WorkerRuntimeStatus.OK
-                    && result.status() != WorkerRuntimeStatus.NOOP)) {
-                LOGGER.log(
-                        System.Logger.Level.WARNING,
-                        "errorCode=" + WORKER_INDEX_FAILED
-                                + " operation=workerPropertyIndex.update"
-                                + " workerGroupId=" + config.workerGroupId()
-                                + " workerId=" + workerId
-                                + " status=" + (result == null
-                                ? "missing"
-                                : result.status().wireValue())
-                );
-            }
+            );
         } catch (RuntimeException error) {
             LOGGER.log(
                     System.Logger.Level.WARNING,
                     "errorCode=" + WORKER_INDEX_FAILED
                             + " operation=workerPropertyIndex.update"
                             + " workerGroupId=" + config.workerGroupId()
-                            + " workerId=" + workerId,
+                            + " workerId=" + worker.workerId(),
                     error
             );
         }
+    }
+
+    private void logRejectedIndexResult(
+            String workerId,
+            String field,
+            WorkerRuntimeResult result
+    ) {
+        if (result != null && (result.status() == WorkerRuntimeStatus.OK
+                || result.status() == WorkerRuntimeStatus.NOOP)) {
+            return;
+        }
+        LOGGER.log(
+                System.Logger.Level.WARNING,
+                "errorCode=" + WORKER_INDEX_FAILED
+                        + " operation=workerPropertyIndex.update"
+                        + " workerGroupId=" + config.workerGroupId()
+                        + " workerId=" + workerId
+                        + " field=" + field
+                        + " status=" + (result == null
+                        ? "missing"
+                        : result.status().wireValue())
+        );
     }
 
     private void awaitConnections() {
@@ -294,7 +294,7 @@ final class StringUtilityWorkerBundle
                 "Only "
                         + connected
                         + " of "
-                        + config.workerCount()
+                        + config.workers().size()
                         + " Workers connected for bundle "
                         + config.bundleId()
         );
@@ -345,17 +345,6 @@ final class StringUtilityWorkerBundle
                         + " returned "
                         + result.status().wireValue()
                         + reason
-        );
-    }
-
-    private static String workerId(
-            String prefix,
-            int oneBasedIndex
-    ) {
-        return prefix + String.format(
-                Locale.ROOT,
-                "%03d",
-                oneBasedIndex
         );
     }
 

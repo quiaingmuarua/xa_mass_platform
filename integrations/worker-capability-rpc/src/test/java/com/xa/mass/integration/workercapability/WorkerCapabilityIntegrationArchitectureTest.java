@@ -48,7 +48,7 @@ class WorkerCapabilityIntegrationArchitectureTest {
                 "WorkerResourceCatalog",
                 "WorkerRuntime",
                 "ServerWorkerBundle",
-                "ScenarioWorkerBundle",
+                "ScenarioWorkers",
                 "Redis"
         }) {
             assertFalse(main.contains(forbidden), forbidden);

@@ -14,37 +14,22 @@ class ScenarioWorkersArchitectureBoundaryTest {
     @Test
     void publicSurfaceIsFiniteAndDoesNotExposeImplementations() {
         assertThat(Modifier.isFinal(
-                ScenarioWorkerBundle.class.getModifiers()
+                ScenarioWorkers.class.getModifiers()
         )).isTrue();
-        assertThat(ScenarioWorkerBundle.class.getDeclaredMethods())
+        assertThat(java.util.Arrays.stream(
+                ScenarioWorkers.class.getDeclaredMethods()
+        ).filter(method -> Modifier.isPublic(method.getModifiers())))
                 .extracting(Method::getName)
                 .containsExactlyInAnyOrder(
-                        "bundleId",
+                        "fromJson",
                         "start",
                         "close"
                 );
-        assertThat(ScenarioWorkerBundle.class.getConstructors())
+        assertThat(ScenarioWorkers.class.getConstructors())
                 .isEmpty();
-        assertThat(ScenarioWorkerBundles.class.getDeclaredMethods())
-                .extracting(Method::getName)
-                .containsExactlyInAnyOrder(
-                        "phoneNumber",
-                        "stringUtils"
-                );
-        assertThat(ScenarioWorkerBundleConfig.class
-                .getRecordComponents())
-                .extracting(component -> component.getName())
-                .containsExactly(
-                        "bundleId",
-                        "endpointManagerId",
-                        "workerWebSocketUri",
-                        "workerGroupId",
-                        "workerIdPrefix",
-                        "workerCount",
-                        "requestTimeout",
-                        "reconnectInterval",
-                        "connectTimeout"
-                );
+        assertThat(Modifier.isPublic(
+                ScenarioWorkerBundleConfig.class.getModifiers()
+        )).isFalse();
         assertThat(Modifier.isPublic(
                 PhoneNumberWorkerBundle.class.getModifiers()
         )).isFalse();
@@ -69,7 +54,8 @@ class ScenarioWorkersArchitectureBoundaryTest {
                 .contains("WorkerResourceCatalog")
                 .contains("WorkerRuntime")
                 .contains("WebSocketWorkerTransport")
-                .contains("OkHttpTextWebSocketClient");
+                .contains("OkHttpTextWebSocketClient")
+                .contains("ScenarioWorkersJsonParser");
         assertThat(sources)
                 .doesNotContain("org.springframework")
                 .doesNotContain("com.xa.mass.server")
@@ -79,10 +65,13 @@ class ScenarioWorkersArchitectureBoundaryTest {
                 .doesNotContain("@RestController")
                 .doesNotContain("Class.forName")
                 .doesNotContain("java.lang.reflect")
-                .doesNotContain("ServiceLoader")
-                .doesNotContain("BundleType");
+                .doesNotContain("ServiceLoader");
         assertThat(build)
                 .contains("api project(':kernel_jvm')")
+                .contains(
+                        "implementation "
+                                + "project(':worker_delivery_contract_jvm')"
+                )
                 .contains(
                         "implementation "
                                 + "project(':transport:okhttp-worker')"

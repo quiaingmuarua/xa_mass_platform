@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
+import com.xa.mass.scenarioworkers.ScenarioWorkers;
 import com.xa.mass.workerdelivery.adapter.application
         .WorkerDeliveryAdapterManager;
 import org.junit.jupiter.api.Test;
@@ -20,13 +21,13 @@ class ServerWorkerAssemblyLifecycleHostTest {
         WorkerDeliveryAdapterManager adapterManager = mock(
                 WorkerDeliveryAdapterManager.class
         );
-        ServerWorkerBundleManager bundleManager = mock(
-                ServerWorkerBundleManager.class
+        ScenarioWorkers scenarioWorkers = mock(
+                ScenarioWorkers.class
         );
         ServerWorkerAssemblyLifecycleHost host =
                 new ServerWorkerAssemblyLifecycleHost(
                         adapterManager,
-                        bundleManager
+                        scenarioWorkers
                 );
 
         host.start();
@@ -34,13 +35,13 @@ class ServerWorkerAssemblyLifecycleHostTest {
         host.destroy();
         host.destroy();
 
-        InOrder order = inOrder(adapterManager, bundleManager);
+        InOrder order = inOrder(adapterManager, scenarioWorkers);
         order.verify(adapterManager).start();
-        order.verify(bundleManager).start();
-        order.verify(bundleManager).close();
+        order.verify(scenarioWorkers).start();
+        order.verify(scenarioWorkers).close();
         order.verify(adapterManager).close();
         verify(adapterManager, times(1)).start();
-        verify(bundleManager, times(1)).start();
+        verify(scenarioWorkers, times(1)).start();
     }
 
     @Test
@@ -48,23 +49,23 @@ class ServerWorkerAssemblyLifecycleHostTest {
         WorkerDeliveryAdapterManager adapterManager = mock(
                 WorkerDeliveryAdapterManager.class
         );
-        ServerWorkerBundleManager bundleManager = mock(
-                ServerWorkerBundleManager.class
+        ScenarioWorkers scenarioWorkers = mock(
+                ScenarioWorkers.class
         );
         RuntimeException failure = new RuntimeException("bundle failed");
-        doThrow(failure).when(bundleManager).start();
+        doThrow(failure).when(scenarioWorkers).start();
         ServerWorkerAssemblyLifecycleHost host =
                 new ServerWorkerAssemblyLifecycleHost(
                         adapterManager,
-                        bundleManager
+                        scenarioWorkers
                 );
 
         assertThatThrownBy(host::start).isSameAs(failure);
 
-        InOrder order = inOrder(adapterManager, bundleManager);
+        InOrder order = inOrder(adapterManager, scenarioWorkers);
         order.verify(adapterManager).start();
-        order.verify(bundleManager).start();
-        order.verify(bundleManager).close();
+        order.verify(scenarioWorkers).start();
+        order.verify(scenarioWorkers).close();
         order.verify(adapterManager).close();
     }
 }

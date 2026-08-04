@@ -19,8 +19,9 @@ The repository contains seven active areas:
   public Worker transport path.
 - [`scenario_workers_jvm/`](scenario_workers_jvm/): Java 21 finite Scenario
   Worker capability assembly. It owns the checked-in phone-number and
-  string-utility event definitions, WorkerGroup/Worker declarations, and real
-  WebSocket Worker lifecycle without owning Server profiles or Adapters.
+  string-utility event definitions, strict JSON deployment manifest,
+  WorkerGroup/Worker declarations, and aggregate WebSocket Worker resource
+  lifecycle without owning Server profiles or Adapters.
 - [`worker_delivery_contract_jvm/`](worker_delivery_contract_jvm/): shared
   Java 11 compatible Worker Delivery DTO, validation, outcome classification,
   strict codec, and JDK-value JSON facade shared with Android.

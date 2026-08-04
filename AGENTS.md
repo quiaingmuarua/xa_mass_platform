@@ -16,15 +16,16 @@ Status: current repository handoff.
   operations to Python HTTP providers and Worker resource, Task data, and
   delivery operations to Java Redis providers; it does not define a second set
   of Kernel runtime ports. It may
-  compose explicitly configured Scenario Worker bundles after starting their
-  referenced Adapters, but it does not own their capabilities or Worker
-  lifecycle.
+  pass an opaque JSON deployment manifest to the Scenario Worker module after
+  starting configured Adapters, but it does not own Scenario capabilities or
+  individual Worker resource lifecycle.
 - `scenario_workers_jvm/` is the Java 21 finite Scenario Worker assembly. It
   owns the checked-in phone-number and string-utility event definitions,
-  WorkerGroup/Worker declaration recipes, real WebSocket Worker construction,
-  initial connection wait, and bundle-local failure cleanup. It invokes only
-  existing Kernel owner contracts and is not a Kernel owner, Server profile,
-  Adapter, plugin SPI, or independently deployed application.
+  strict JSON deployment manifest parsing, WorkerGroup/Worker declaration
+  recipes, real WebSocket Worker construction, initial connection wait, and
+  aggregate failure cleanup. It invokes only existing Kernel owner contracts
+  and is not a Kernel owner, Server profile, Adapter, plugin SPI, or
+  independently deployed application.
 - `worker_delivery_contract_jvm/` is the Java 11 compatible transport-neutral
   WorkerCommand/WorkerResult/WorkerConnectionBind contract shared by Server,
   Adapter, and Worker. Long-lived transports exchange direct command/result
@@ -132,16 +133,17 @@ tag.
 - `server_jvm` may bind a `Map<adapterId, JsonNode>`, construct concrete
   Adapter instances, register them, and invoke `manager.start()` /
   `manager.close()` at process boundaries. Its `workerassembly` package may
-  validate a finite bundle type, resolve a configured WebSocket Adapter,
-  construct `ScenarioWorkerBundleConfig`, and sequence Adapter before bundle
-  startup. It must not own Scenario capability definitions, concrete Worker
-  construction, owner upsert behavior, connection waiting, generic class-name
-  plugins, Server HTTP loopback, Redis bypass, Adapter scheduling, connection
-  selection, queue handling, result buffering, or trusted rejection policy.
-- `scenario_workers_jvm` may expose only the final `ScenarioWorkerBundle`
-  lifecycle handle, its bounded caller-owned config, and explicit
-  `phoneNumber` / `stringUtils` factories. Concrete bundles, capability
-  definitions, and Worker factories stay module-internal. The module may
+  bind one opaque Scenario Workers JSON string and sequence Adapter startup
+  before the aggregate `ScenarioWorkers` handle. It must not parse Scenario
+  bundle types, derive Worker IDs or Adapter URIs, or own Scenario capability
+  definitions, concrete Worker construction, owner registration/update
+  behavior, connection waiting, generic class-name plugins, Server HTTP
+  loopback, Redis bypass, Adapter scheduling, connection selection, queue
+  handling, result buffering, or trusted rejection policy.
+- `scenario_workers_jvm` may expose only the final `ScenarioWorkers`
+  aggregate lifecycle handle and its `fromJson` composition entry. Parsed
+  configuration, concrete bundles, capability definitions, and Worker
+  factories stay module-internal. The module may
   depend on `kernel_jvm` owner contracts and `transport:okhttp-worker`; it must
   not depend on Spring, `server_jvm`, `transport:netty-adapter`, Redis, scores,
   Pacers, HTTP controllers, reflection, `ServiceLoader`, or configurable class
@@ -194,11 +196,11 @@ WorkerDeliveryConfiguration
   -> Server point/batch HTTP application service
 
 ServerWorkerAssemblyConfiguration
-  -> strict opt-in built-in bundle configuration
-  -> configured WebSocket Adapter validation
-  -> ScenarioWorkerBundles explicit factory
+  -> opaque opt-in Scenario Workers JSON
+  -> ScenarioWorkers.fromJson
 
 scenario_workers_jvm
+  -> strict JSON parsing and finite capability selection
   -> WorkerResourceCatalog / WorkerRuntime owner registration and updates
   -> fixed capability definitions
   -> Worker Core + concrete network Client
@@ -212,8 +214,8 @@ transport/netty-adapter
 ```
 
 The main Server owns the Worker Delivery HTTP and Redis boundaries. It
-composes and starts configured Adapter instances, then starts explicitly
-configured `ScenarioWorkerBundle` handles. Every Adapter still reaches Worker
+composes and starts configured Adapter instances, then starts one configured
+`ScenarioWorkers` aggregate handle. Every Adapter still reaches Worker
 Delivery through the same batch HTTP boundary, and every Scenario Worker still
 connects through an Adapter rather than an in-process fast path.
 

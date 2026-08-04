@@ -99,7 +99,6 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("WorkerDeliveryRuntime");
         assertThat(serverSources)
                 .contains("class ServerException")
-                .contains("class WorkerAssemblyException")
                 .doesNotContain("com.xa.mass.foundation");
         assertThat(readSourcesExcluding(
                 SERVER_SOURCE,
@@ -225,7 +224,15 @@ class ServerArchitectureBoundaryTest {
                 .contains("adapterManager.close()")
                 .contains("WorkerResourceCatalog")
                 .contains("WorkerRuntime")
-                .contains("ScenarioWorkerBundles")
+                .contains("ScenarioWorkers")
+                .contains("properties.configJson()")
+                .doesNotContain("ScenarioWorkerBundles")
+                .doesNotContain("ScenarioWorkerBundleConfig")
+                .doesNotContain("WebSocketWorkerDeliveryAdapter")
+                .doesNotContain("PHONE_NUMBER")
+                .doesNotContain("STRING_UTILS")
+                .doesNotContain("workerIdPrefix")
+                .doesNotContain("workerCount")
                 .doesNotContain("WebSocketWorkerTransport")
                 .doesNotContain("OkHttpTextWebSocketClient")
                 .doesNotContain("PhoneNumberCapability")

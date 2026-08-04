@@ -2,40 +2,44 @@ package com.xa.mass.scenarioworkers;
 
 import java.net.URI;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 
-public record ScenarioWorkerBundleConfig(
+record ScenarioWorkerBundleConfig(
         String bundleId,
+        ScenarioWorkerBundleType type,
         String endpointManagerId,
         URI workerWebSocketUri,
         String workerGroupId,
-        String workerIdPrefix,
-        int workerCount,
+        List<ScenarioWorkerConfig> workers,
         Duration requestTimeout,
         Duration reconnectInterval,
         Duration connectTimeout
 ) {
 
-    public ScenarioWorkerBundleConfig {
+    ScenarioWorkerBundleConfig {
         requireNonBlank(bundleId, "bundleId");
+        Objects.requireNonNull(type, "type");
         requireNonBlank(endpointManagerId, "endpointManagerId");
         requireWebSocketUri(workerWebSocketUri);
         requireNonBlank(workerGroupId, "workerGroupId");
-        requireNonBlank(workerIdPrefix, "workerIdPrefix");
-        if (workerCount < 1 || workerCount > 100) {
+        Objects.requireNonNull(workers, "workers");
+        if (workers.isEmpty() || workers.size() > 100) {
             throw new IllegalArgumentException(
-                    "workerCount must be between 1 and 100"
+                    "workers must contain between 1 and 100 entries"
             );
         }
+        workers = List.copyOf(new ArrayList<>(workers));
         requirePositive(requestTimeout, "requestTimeout");
         requirePositive(reconnectInterval, "reconnectInterval");
         requirePositive(connectTimeout, "connectTimeout");
     }
 
-    private static void requireNonBlank(
-            String value,
-            String name
-    ) {
+    static void requireNonBlank(String value, String name) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(
                     name + " must be non-blank"
@@ -43,13 +47,8 @@ public record ScenarioWorkerBundleConfig(
         }
     }
 
-    private static void requirePositive(
-            Duration value,
-            String name
-    ) {
-        if (value == null
-                || value.isZero()
-                || value.isNegative()) {
+    private static void requirePositive(Duration value, String name) {
+        if (value == null || value.isZero() || value.isNegative()) {
             throw new IllegalArgumentException(
                     name + " must be positive"
             );
@@ -67,5 +66,50 @@ public record ScenarioWorkerBundleConfig(
                     "workerWebSocketUri must be an absolute ws/wss URI"
             );
         }
+    }
+}
+
+enum ScenarioWorkerBundleType {
+    PHONE_NUMBER,
+    STRING_UTILS
+}
+
+record ScenarioWorkerConfig(
+        String workerId,
+        Map<String, Object> workerProperties,
+        Map<String, Object> indexedPropertyUpdates
+) {
+
+    ScenarioWorkerConfig {
+        ScenarioWorkerBundleConfig.requireNonBlank(
+                workerId,
+                "workerId"
+        );
+        workerProperties = immutableJsonMap(
+                workerProperties,
+                "workerProperties"
+        );
+        indexedPropertyUpdates = immutableJsonMap(
+                indexedPropertyUpdates,
+                "indexedPropertyUpdates"
+        );
+        indexedPropertyUpdates.keySet().forEach(field -> {
+            if (!field.startsWith("index.")
+                    || field.length() == "index.".length()) {
+                throw new IllegalArgumentException(
+                        "indexedPropertyUpdates fields must use index.*"
+                );
+            }
+        });
+    }
+
+    private static Map<String, Object> immutableJsonMap(
+            Map<String, Object> value,
+            String name
+    ) {
+        Objects.requireNonNull(value, name);
+        return Collections.unmodifiableMap(
+                new LinkedHashMap<>(value)
+        );
     }
 }

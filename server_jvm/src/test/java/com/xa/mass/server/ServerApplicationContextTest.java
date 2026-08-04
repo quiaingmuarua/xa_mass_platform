@@ -29,8 +29,7 @@ import com.xa.mass.server.kernelbinding.WorkerPropertyIndexProperties;
 import com.xa.mass.server.runtimeview.RuntimeViewService;
 import com.xa.mass.server.workerdelivery.WorkerDeliveryOwnerAssemblyConfiguration;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
-import com.xa.mass.server.workerassembly
-        .ServerWorkerBundleManager;
+import com.xa.mass.scenarioworkers.ScenarioWorkers;
 import com.xa.mass.server.workerassembly
         .ServerWorkerAssemblyLifecycleHost;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
@@ -127,9 +126,8 @@ class ServerApplicationContextTest {
         assertThat(applicationContext.getBean(
                 ServerWorkerAssemblyLifecycleHost.class
         )).isNotNull();
-        assertThat(applicationContext.getBean(
-                ServerWorkerBundleManager.class
-        ).bundleIds()).isEmpty();
+        assertThat(applicationContext.getBean(ScenarioWorkers.class))
+                .isNotNull();
 
         HttpClient client = HttpClient.newHttpClient();
         HttpResponse<String> liveness = client.send(

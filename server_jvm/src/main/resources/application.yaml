@@ -48,3 +48,16 @@ management:
       group:
         readiness:
           include: readinessState,kernel,kernelRedis
+
+springdoc:
+  paths-to-match: /api/v1/**
+
+scalar:
+  enabled: true
+  path: /scalar
+  url: /v3/api-docs
+  page-title: XA Mass Runtime API
+  with-default-fonts: false
+  telemetry: false
+  agent:
+    disabled: true

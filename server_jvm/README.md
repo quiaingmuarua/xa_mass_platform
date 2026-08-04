@@ -62,10 +62,11 @@ Worker / long-lived Adapter
   -> Java owner Redis providers
   -> Python ResultRouting
 
-Configured built-in Worker bundle
-  -> Server validates and starts the configured Adapter
-  -> scenario_workers_jvm performs owner upserts
-  -> scenario_workers_jvm starts Worker Core + concrete network Client
+Configured Scenario Workers JSON
+  -> Server starts the configured Adapter Manager
+  -> scenario_workers_jvm parses the opaque manifest
+  -> scenario_workers_jvm performs owner registration and updates
+  -> scenario_workers_jvm starts Worker Core + concrete network Clients
   -> real configured Adapter listener
   -> the same Worker Delivery HTTP/Redis path
 ```
@@ -346,6 +347,17 @@ Then start the external Runtime API Server:
 ./gradlew :server_jvm:bootRun
 ```
 
+The Server publishes the generated OpenAPI document and a local Scalar API
+reference on the same port:
+
+```text
+Scalar API Reference  http://127.0.0.1:18082/scalar
+OpenAPI JSON          http://127.0.0.1:18082/v3/api-docs
+```
+
+Only `/api/v1/**` routes are included. Scalar's JavaScript is served by the
+Server; telemetry, Agent Scalar, and external web fonts are disabled.
+
 Compose a [Worker Core](../transport/worker-core/README.md) transport with the
 [JVM Worker Clients](../transport/okhttp-worker/README.md) in a JVM
 application. An Android WebSocket host composes the same Worker Core transport
@@ -386,8 +398,9 @@ and submits at most one pending or buffered batch per
 
 ### Built-in Worker Assembly
 
-Built-in business Workers are opt-in. Configuration selects only an explicitly
-coded bundle; it cannot provide an arbitrary class name or handler:
+Built-in business Workers are opt-in. Server binds one opaque JSON string;
+`scenario_workers_jvm` validates it and selects only explicitly coded bundle
+types. Configuration cannot provide an arbitrary class name or handler:
 
 ```yaml
 xa:
@@ -400,41 +413,43 @@ xa:
             listen-host: 127.0.0.1
             listen-port: 18083
     worker-assembly:
-      bundles:
-        phone-number:
-          type: PHONE_NUMBER
-          adapter-id: scenario-websocket
-          worker-group-id: scenario-phone-number-workers
-          worker-id-prefix: scenario-phone-number-worker-
-          worker-count: 10
-        string-utils:
-          type: STRING_UTILS
-          adapter-id: scenario-websocket
-          worker-group-id: scenario-string-utils-workers
-          worker-id-prefix: scenario-string-utils-worker-
-          worker-count: 10
+      config-json: |
+        {
+          "phone-number": {
+            "type": "PHONE_NUMBER",
+            "endpointManagerId": "scenario-websocket",
+            "websocketUri": "ws://127.0.0.1:18083/api/v1/worker-delivery/websocket",
+            "workerGroupId": "scenario-phone-number-workers",
+            "workers": [{
+              "workerId": "scenario-phone-number-worker-001",
+              "workerProperties": {"runtime":"java","region":"local"},
+              "indexedPropertyUpdates": {"index.worker.region":"local"}
+            }]
+          }
+        }
 ```
 
-An absent `bundles` map starts no built-in business Worker. The checked-in
+The default `config-json` is `{}` and starts no built-in business Worker. The checked-in
 `scenario-workers` profile declares one WebSocket Adapter and two independent
 Worker capability groups. It creates no Task and has no dependency on RPC,
 ITEM_DRIVEN, TASK_DRIVEN, TARGETED, or PRECOMPUTED scheduling policy. Both
-bundles supply bounded defaults of 10 Workers, a 10 second request timeout, a
-250 millisecond reconnect interval, and a 15 second initial-connect timeout.
-Their internal Workers derive the loopback WebSocket URI from the referenced
-Adapter, so the port is not duplicated in bundle settings.
+bundles explicitly list 10 Workers. Omitted timeout fields use a 10 second
+request timeout, a 250 millisecond reconnect interval, and a 15 second
+initial-connect timeout. The final WebSocket URI and endpoint manager are
+deployment configuration; Server does not derive one from the other.
 
 ```text
 ./gradlew :server_jvm:bootRun --args="--spring.profiles.active=scenario-workers"
 ```
 
-During startup the Server starts all configured Adapters and then invokes the
-explicit `scenario_workers_jvm` bundle handles in declaration order. Each
-bundle upserts its WorkerGroup and Workers through `WorkerResourceCatalog` and
-`WorkerRuntime`, starts real WebSocket Worker transports, and waits for every
-initial connection. Shutdown and partial-start recovery close bundles in
-reverse order before closing the Adapter. Only `OK` and `NOOP` owner results
-are accepted. Invalid configuration, duplicate generated Worker identity,
+During startup the Server starts all configured Adapters and then invokes one
+aggregate `ScenarioWorkers` handle. The Scenario module parses bundles in JSON
+order, registers WorkerGroups and explicit Workers through owner contracts,
+replaces Worker Properties, applies configured Index updates, starts real
+WebSocket Worker transports, and waits for every initial connection. Shutdown
+and partial-start recovery close local transports in reverse order before the
+Adapter. Only `OK` and `NOOP` owner results are accepted. Invalid configuration,
+duplicate Worker identity,
 rejected owner operation, transport startup failure, or connection timeout
 aborts Server startup. Already accepted owner upserts are not rolled back
 across owners; deterministic declarations converge idempotently on the next
@@ -450,10 +465,12 @@ may remain in Redis.
 
 Worker Assembly does not expose a new Kernel operation, access Redis, start a
 second scheduler, or bypass the Adapter through an in-process path.
-`ScenarioWorkerBundle` is a final lifecycle handle created only by the
-explicit phone-number and string-utils factories; it is not an implementation
-SPI or plugin system. The profile and Adapter remain Server-owned, while
-capabilities and concrete Worker lifecycle belong to `scenario_workers_jvm`.
+`ScenarioWorkers` is the only public local lifecycle handle; it is not an
+implementation SPI or plugin system. The Server does not parse capability,
+WorkerGroup, Worker identity, Properties, or Index fields. Closing the handle
+only releases local network resources and does not change Kernel Worker truth.
+The profile and Adapter remain Server-owned, while capabilities and concrete
+Worker resource lifecycle belong to `scenario_workers_jvm`.
 External Worker applications remain supported and own their own resource
 registration and process lifecycle.
 
@@ -503,5 +520,5 @@ endpoints. All paths use the Server HTTP
 boundary, Python scheduling/ResultRouting, Java last-success query, and exact
 Worker release.
 Authentication, same-endpoint multi-instance ownership, pending/ack,
-failure-result projection, historical storage, tenant model, quota, and an
-OpenAPI generator remain out of scope.
+failure-result projection, historical storage, tenant model, and quota remain
+out of scope.
