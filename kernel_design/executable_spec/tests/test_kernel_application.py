@@ -81,7 +81,10 @@ class KernelApplicationConfigTest(unittest.TestCase):
                     "resultRouting": {"intervalMillis": 300},
                     "stopTimeoutMillis": 2_000,
                 }
-            )
+            ),
+            worker_property_index_registry_json=(
+                '{"index.worker.region":"redis-hash"}'
+            ),
         )
 
         self.assertEqual("redis://redis:6379/1", config.redis_url)
@@ -92,6 +95,10 @@ class KernelApplicationConfigTest(unittest.TestCase):
         self.assertEqual(300, config.result_routing_interval_millis)
         self.assertEqual(50, config.running_task_soft_limit)
         self.assertEqual(2_000, config.stop_timeout_millis)
+        self.assertEqual(
+            {"index.worker.region": "redis-hash"},
+            config.worker_property_indexes,
+        )
 
     def test_unknown_malformed_and_non_positive_values_are_rejected(self) -> None:
         invalid_configs = (
@@ -111,10 +118,52 @@ class KernelApplicationConfigTest(unittest.TestCase):
             '{"systemPolicy": {"runningTaskSoftLimit": 0}}',
             '{"systemPolicy": {"runningTaskSoftLimit": true}}',
             '{"systemPolicy": {"fairness": "weighted"}}',
+            '{"workerPropertyIndexes": {}}',
         )
         for config_json in invalid_configs:
             with self.subTest(config_json=config_json), self.assertRaises(ValueError):
                 KernelApplicationConfig.from_json(config_json)
+
+    def test_property_index_registry_json_is_strict_and_fingerprinted(self) -> None:
+        registry_json = (
+            '{"index.worker.region":"redis-hash",'
+            '"index.platform.pool":"redis-hash"}'
+        )
+        config = KernelApplicationConfig.from_json(
+            "{}",
+            worker_property_index_registry_json=registry_json,
+        )
+
+        self.assertEqual(
+            {
+                "index.worker.region": "redis-hash",
+                "index.platform.pool": "redis-hash",
+            },
+            config.worker_property_indexes,
+        )
+        self.assertEqual(
+            "07c44a117d4fceb5da778ea7dac08522"
+            "b7fbc93fccdcf1f996d232f1893adb7d",
+            config.worker_property_index_registry_fingerprint(),
+        )
+
+        invalid_registries = (
+            "",
+            "[]",
+            "{bad-json",
+            '{"worker.region":"redis-hash"}',
+            '{"index.worker.region":"unknown"}',
+            '{"index.worker.region":1}',
+        )
+        for invalid_registry in invalid_registries:
+            with (
+                self.subTest(registry=invalid_registry),
+                self.assertRaises(ValueError),
+            ):
+                KernelApplicationConfig.from_json(
+                    "{}",
+                    worker_property_index_registry_json=invalid_registry,
+                )
 
     def test_public_config_exposes_only_process_and_system_policy_fields(self) -> None:
         self.assertEqual(
@@ -127,6 +176,7 @@ class KernelApplicationConfigTest(unittest.TestCase):
                 "result_routing_interval_millis",
                 "running_task_soft_limit",
                 "stop_timeout_millis",
+                "worker_property_indexes",
             ],
             [field.name for field in fields(KernelApplicationConfig)],
         )
@@ -179,9 +229,6 @@ class KernelApplicationTest(unittest.TestCase):
         )
         self.assertFalse(hasattr(self.application, "register_worker"))
         self.assertFalse(hasattr(self.application, "register_worker_group"))
-        self.assertFalse(
-            hasattr(self.application, "update_worker_dynamic_attributes")
-        )
         for package in (assembly_package, executable_spec_package):
             self.assertFalse(hasattr(package, "RedisKernelProcess"))
             self.assertFalse(hasattr(package, "RedisKernelProcessConfig"))
@@ -196,6 +243,7 @@ class KernelApplicationTest(unittest.TestCase):
         self.assertEqual(100, internal.assignment_dispatch.worker_allocation.task_batch_limit)
 
         self.assertEqual(100, internal.worker_candidate_scan_limit)
+        self.assertEqual({}, internal.worker_property_indexes)
         self.assertEqual(
             5_000,
             internal.assignment_dispatch.worker_allocation.worker_lease_duration_millis,
@@ -523,7 +571,7 @@ class KernelApplicationTest(unittest.TestCase):
             worker_group_id="image-workers",
             task_type=task_type,
             allocation_rule=(
-                {"attributes.runtime": {"$eq": "python"}}
+                {"worker.runtime": {"$eq": "python"}}
                 if task_type is TaskType.TASK_DRIVEN
                 else None
             ),
@@ -542,7 +590,7 @@ class KernelApplicationTest(unittest.TestCase):
         process._task_runtime = Mock()
         process._task_dispatch_wake_inbox = Mock()
         process._worker_resource_catalog = Mock()
-        process._worker_dynamic_attribute_runtime = Mock()
+        process._worker_property_index_runtime = Mock()
         return process
 
 
@@ -675,8 +723,7 @@ class KernelApplicationIntegrationTest(unittest.TestCase):
                 worker_id="worker-1",
                 worker_group_id=worker_group_id,
                 endpoint_manager_id=endpoint_manager_id,
-                attributes={"runtime": "python"},
-                dynamic_attribute_names=frozenset(),
+                worker_properties={"runtime": "python"},
             )
         )
         self.application.start()

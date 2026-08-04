@@ -117,7 +117,7 @@ TaskItemScoreBandCore
 
 WorkerScoreCore and worker-runtime
   own Worker acquisition/recovery coordinates, exact leases, dirty fence,
-  resource metadata, dynamic attributes, and candidate validation
+  resource Properties, indexed scheduling projections, and candidate validation
 
 CandidateWorkerCache
   owns transient CandidateId-local candidate evidence only
@@ -161,7 +161,7 @@ Worker Delivery Dispatch
 | --- | --- | --- |
 | Task score-band | Implemented with Redis proof | Cadence, scan horizons, and no-work budget values |
 | Worker score-band | Implemented with Redis proof, including dirty lease fence | Dirty marking policy when a persisted assignment continuation exists; recovery cadence and ranking |
-| Worker HOT_ACQUIRE lease protocol | HOT-pool precomputation, TARGETED point lease-match, PRECOMPUTED exact recheck-rematch, result disposition, reconnect dirty fence, and one-WorkerId/one-slot invariant implemented | Recovery probe cadence and ranking |
+| Worker HOT_ACQUIRE lease protocol | HOT-pool precomputation, TARGETED point lease-match, PRECOMPUTED exact recheck-rematch, result disposition, explicit reconciliation primitive, and one-WorkerId/one-slot invariant implemented | Recovery lifecycle evidence, probe cadence, and ranking |
 | TaskItem score-band | Implemented with Python oracle plus JVM `TaskRuntime` append/last-success Redis-provider proof | Initial retry budget and claim-duration values |
 | Task running activation | Implemented with due-Item Task policy and priority soft-limit System policy | Scenario-backed quota, tenant, business start condition, and resource-estimate decisions |
 | Worker allocation | Implemented as hint-driven TASK-scope candidate cache warming through HOT-pool acquisition; Task score is read only for RUNNING/non-hard-pause suffix-zero validation; TASK_DRIVEN has deterministic Redis proof through cache consumption | Warmup prioritization beyond bounded due order and matcher priority |

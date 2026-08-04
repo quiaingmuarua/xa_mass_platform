@@ -141,6 +141,92 @@ class RuntimeApiPythonIntegrationTest {
     }
 
     @Test
+    void targetedSchedulingUsesWorkerIdThenMatchesPropertyProjections()
+            throws Exception {
+        requireExternalRuntime();
+        String suffix = UUID.randomUUID().toString();
+        String workerGroupId = "indexed-tools-" + suffix;
+        String workerId = "indexed-worker-" + suffix;
+        String taskId = "indexed-task-" + suffix;
+
+        assertThat(send(
+                "PUT",
+                "/api/v1/worker-groups/" + workerGroupId,
+                """
+                        {
+                          "eventCodes": ["%s"]
+                        }
+                        """.formatted(TEST_EVENT_CODE)
+        ).statusCode()).isEqualTo(200);
+        assertThat(send(
+                "PUT",
+                "/api/v1/worker-groups/" + workerGroupId
+                        + "/workers/" + workerId,
+                """
+                        {
+                          "endpointManagerId": "%s",
+                          "workerProperties": {"region": "snapshot-only"}
+                        }
+                        """.formatted(WEBSOCKET_ENDPOINT_MANAGER_ID)
+        ).statusCode()).isEqualTo(200);
+        assertThat(send(
+                "PATCH",
+                "/api/v1/worker-groups/" + workerGroupId
+                        + "/workers/" + workerId
+                        + "/indexed-properties",
+                "{\"updates\":{"
+                        + "\"index.worker.region\":\"cn-east\","
+                        + "\"index.platform.pool\":\"batch\"}}"
+        ).statusCode()).isEqualTo(200);
+
+        RunningWorker worker = startWorker(
+                workerId,
+                URI.create(
+                        "ws://127.0.0.1:"
+                                + ACTIVE_ADAPTER_PORTS[0]
+                                + "/api/v1/worker-delivery/websocket"
+                ),
+                TransportProfile.WEBSOCKET
+        );
+        try {
+            assertThat(send(
+                    "POST",
+                    "/api/v1/tasks",
+                    taskRequest(taskId, workerGroupId, "ITEM_DRIVEN")
+            ).statusCode()).isEqualTo(201);
+            assertThat(send(
+                    "POST",
+                    "/api/v1/tasks/" + taskId + "/approve",
+                    null
+            ).statusCode()).isEqualTo(200);
+
+            String indexedRule = "{"
+                    + "\"workerId\":{\"$eq\":\"" + workerId + "\"},"
+                    + "\"index.worker.region\":{\"$eq\":\"cn-east\"},"
+                    + "\"index.platform.pool\":{\"$in\":[\"batch\"]}"
+                    + "}";
+            callItemWithAllocationRule(
+                    taskId,
+                    "indexed-message-1-" + suffix,
+                    indexedRule
+            );
+            callItemWithAllocationRule(
+                    taskId,
+                    "indexed-message-2-" + suffix,
+                    indexedRule
+            );
+
+            assertThat(send(
+                    "POST",
+                    "/api/v1/tasks/" + taskId + "/close",
+                    null
+            ).statusCode()).isEqualTo(200);
+        } finally {
+            worker.close();
+        }
+    }
+
+    @Test
     void pythonControlApiExposesOnlyTaskCommands() throws Exception {
         requireExternalRuntime();
         assertThat(sendKernel(
@@ -179,15 +265,9 @@ class RuntimeApiPythonIntegrationTest {
                 "/api/v1/worker-groups/" + workerGroupId,
                 """
                         {
-                          "eventCodes": ["%s"],
-                          "itemAllocationFields": %s
+                          "eventCodes": ["%s"]
                         }
-                        """.formatted(
-                        TEST_EVENT_CODE,
-                        "ITEM_DRIVEN".equals(taskType)
-                                ? "[\"workerId\"]"
-                                : "[]"
-                )
+                        """.formatted(TEST_EVENT_CODE)
         ).statusCode()).isEqualTo(200);
 
         assertThat(send(
@@ -197,8 +277,7 @@ class RuntimeApiPythonIntegrationTest {
                 """
                         {
                           "endpointManagerId": "%s",
-                          "attributes": {"runtime": "java"},
-                          "dynamicAttributeNames": []
+                          "workerProperties": {"runtime": "java"}
                         }
                         """.formatted(endpointManagerId)
         ).statusCode()).isEqualTo(200);
@@ -252,9 +331,19 @@ class RuntimeApiPythonIntegrationTest {
             boolean itemDriven
     ) throws Exception {
         String allocationRule = itemDriven
-                ? ",\"allocationRule\":{\"workerId\":{\"$eq\":\""
-                + workerId + "\"}}"
-                : "";
+                ? "{\"workerId\":{\"$eq\":\"" + workerId + "\"}}"
+                : null;
+        callItemWithAllocationRule(taskId, messageId, allocationRule);
+    }
+
+    private void callItemWithAllocationRule(
+            String taskId,
+            String messageId,
+            String allocationRule
+    ) throws Exception {
+        String encodedAllocationRule = allocationRule == null
+                ? ""
+                : ",\"allocationRule\":" + allocationRule;
         HttpResponse<String> response = send(
                 "POST",
                 "/api/v1/tasks/" + taskId + "/items:call",
@@ -272,7 +361,7 @@ class RuntimeApiPythonIntegrationTest {
                         messageId,
                         TEST_EVENT_CODE,
                         System.currentTimeMillis() - 1_000,
-                        allocationRule
+                        encodedAllocationRule
                 )
         );
         assertThat(response.statusCode()).isEqualTo(200);

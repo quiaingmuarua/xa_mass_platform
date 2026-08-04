@@ -16,7 +16,7 @@ describe("filterCurrentSample", () => {
 
   it("filters only the current in-memory sample across safe text fields", () => {
     const first = worker("group-a", "worker-a");
-    first.attributes = { region: "Shanghai" };
+    first.workerProperties = { region: "Shanghai" };
     const second = worker("group-a", "worker-b");
 
     expect(filterCurrentSample([first, second], "shanghai")).toEqual([first]);

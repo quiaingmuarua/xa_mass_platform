@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.xa.mass.kernel.KernelOperationNotImplementedException;
@@ -15,7 +14,6 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.TaskType;
 import com.xa.mass.kernel.task.redis.RedisTaskRuntime;
 import com.xa.mass.kernel.score.redis.RedisWorkerScoreCore;
-import com.xa.mass.kernel.worker.redis.RedisWorkerResourceCatalog;
 import io.lettuce.core.RedisClient;
 import java.util.List;
 import java.util.Map;
@@ -54,28 +52,6 @@ class KernelOwnerAssemblyTest {
     }
 
     @Test
-    void unavailableWorkerCatalogOperationsDoNotFallback() {
-        RedisClient redisClient = mock(RedisClient.class);
-        RedisWorkerResourceCatalog catalog =
-                new RedisWorkerResourceCatalog(redisClient, "test");
-
-        assertThatThrownBy(() -> catalog.getWorkerDescriptors(
-                "group-1",
-                List.of("worker-1")
-        ))
-                .isInstanceOf(KernelOperationNotImplementedException.class)
-                .satisfies(error -> {
-                    var notImplemented =
-                            (KernelOperationNotImplementedException) error;
-                    assertThat(notImplemented.contractName())
-                            .isEqualTo("WorkerResourceCatalog");
-                    assertThat(notImplemented.operationName())
-                            .isEqualTo("get_worker_descriptors");
-                });
-        verifyNoInteractions(redisClient);
-    }
-
-    @Test
     void unavailableTaskOperationsDoNotFallback() {
         HttpTaskRuntime control = mock(HttpTaskRuntime.class);
         RedisTaskRuntime data = mock(RedisTaskRuntime.class);
@@ -95,7 +71,7 @@ class KernelOwnerAssemblyTest {
                     assertThat(notImplemented.operationName())
                             .isEqualTo("load_task_items");
                 });
-        verifyNoInteractions(control, data);
+        org.mockito.Mockito.verifyNoInteractions(control, data);
     }
 
     @Test
@@ -117,7 +93,29 @@ class KernelOwnerAssemblyTest {
                                     "acquire_hot_acquire_candidates"
                             );
                 });
-        verifyNoInteractions(redisClient);
+        org.mockito.Mockito.verifyNoInteractions(redisClient);
+    }
+
+    @Test
+    void workerPropertyIndexConfigurationIsExplicitAndStrict() {
+        assertThat(new WorkerPropertyIndexProperties(null).registry())
+                .isEmpty();
+        WorkerPropertyIndexProperties configured =
+                new WorkerPropertyIndexProperties(
+                        "{\"index.worker.region\":\"redis-hash\","
+                                + "\"index.platform.pool\":"
+                                + "\"redis-hash\"}"
+                );
+        assertThat(configured.registry()).containsOnlyKeys(
+                "index.worker.region",
+                "index.platform.pool"
+        );
+        assertThatThrownBy(() -> new WorkerPropertyIndexProperties(
+                "{\"region\":\"redis-hash\"}"
+        )).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> new WorkerPropertyIndexProperties(
+                "{\"index.worker.region\":\"unknown\"}"
+        )).isInstanceOf(IllegalArgumentException.class);
     }
 
     private static TaskDescriptor descriptor() {

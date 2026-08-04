@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Mapping
+
+from ..kernel.worker_runtime import MappedWorkerPropertyIndexRuntime
 
 from ..scheduling import (
     DueTaskItemAdmissionPolicy,
@@ -23,7 +25,7 @@ from ..redis_runtime import (
     RedisTaskResourceCatalog,
     RedisTaskRuntime,
     RedisTaskScoreBandCore,
-    RedisWorkerDynamicAttributeRuntime,
+    RedisHashWorkerPropertyIndexProvider,
     RedisWorkerResourceCatalog,
     RedisWorkerScoreCore,
     RedisWorkerResultRuntime,
@@ -44,6 +46,7 @@ class _RedisKernelProcessConfig:
     prefix: str
     running_task_soft_limit: int
     worker_candidate_scan_limit: int
+    worker_property_indexes: Mapping[str, str]
     assignment_dispatch: AssignmentDispatchApplicationConfig
     result_routing: ResultRoutingApplicationConfig
     stop_timeout_millis: int
@@ -55,6 +58,11 @@ class _RedisKernelProcessConfig:
             raise ValueError("running Task soft limit must be positive")
         if self.worker_candidate_scan_limit <= 0:
             raise ValueError("Worker candidate scan limit must be positive")
+        if any(
+            implementation != "redis-hash"
+            for implementation in self.worker_property_indexes.values()
+        ):
+            raise ValueError("unsupported Worker property index implementation")
         if self.stop_timeout_millis <= 0:
             raise ValueError("process stop timeout must be positive")
 
@@ -98,10 +106,23 @@ class _RedisKernelProcess:
             redis_client,
             prefix=config.prefix,
         )
-        self._worker_dynamic_attribute_runtime = (
-            RedisWorkerDynamicAttributeRuntime(
+        self._worker_property_index_provider = (
+            RedisHashWorkerPropertyIndexProvider(
+                redis_client,
+                prefix=config.prefix,
+            )
+        )
+        self._worker_property_index_runtime = (
+            MappedWorkerPropertyIndexRuntime(
                 self._worker_resource_catalog,
-                update_handlers={},
+                {
+                    property_field: self._worker_property_index_provider.create(
+                        property_field
+                    )
+                    for property_field, implementation
+                    in config.worker_property_indexes.items()
+                    if implementation == "redis-hash"
+                },
             )
         )
 
@@ -119,13 +140,12 @@ class _RedisKernelProcess:
         )
         worker_candidate_matcher = WorkerCandidateMatcher(
             self._worker_resource_catalog,
-            self._worker_dynamic_attribute_runtime,
+            self._worker_property_index_runtime,
         )
         candidate_acquirer = WorkerCandidateAcquirer(
             candidate_cache,
             self._worker_score,
             worker_candidate_matcher,
-            self._worker_dynamic_attribute_runtime,
             worker_scan_limit=config.worker_candidate_scan_limit,
         )
 

@@ -195,7 +195,7 @@ class RedisTaskRuntimeTest(unittest.TestCase):
             worker_group_id=worker_group_id,
             task_type=task_type,
             allocation_rule=(
-                {"dynamic.battery": {"$gte": 20}}
+                {"worker.battery": {"$gte": 20}}
                 if allocation_rule is None
                 and task_type is TaskType.TASK_DRIVEN
                 else allocation_rule
@@ -477,7 +477,7 @@ class RedisTaskRuntimeTest(unittest.TestCase):
         result = self.runtime.create_task(
             descriptor=self.descriptor(
                 "task-1",
-                allocation_rule={"dynamic.battery": {"$eq": object()}},
+                allocation_rule={"worker.battery": {"$eq": object()}},
             ),
             suffix=self.SUFFIX,
         )
@@ -491,7 +491,7 @@ class RedisTaskRuntimeTest(unittest.TestCase):
             descriptor=self.descriptor(
                 "task-1",
                 allocation_rule={
-                    "dynamic.battery": {"$unknown": 20},
+                    "worker.battery": {"$unknown": 20},
                 },
             ),
             suffix=self.SUFFIX,

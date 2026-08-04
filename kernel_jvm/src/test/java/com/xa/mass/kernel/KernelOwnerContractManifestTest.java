@@ -11,7 +11,8 @@ import com.xa.mass.kernel.score.TaskScoreBandCore;
 import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
-import com.xa.mass.kernel.worker.WorkerDynamicAttributeRuntime;
+import com.xa.mass.kernel.worker.WorkerPropertyIndex;
+import com.xa.mass.kernel.worker.WorkerPropertyIndexRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
@@ -37,8 +38,12 @@ class KernelOwnerContractManifestTest {
             Map.entry("TaskResourceCatalog", TaskResourceCatalog.class),
             Map.entry("WorkerRuntime", WorkerRuntime.class),
             Map.entry(
-                    "WorkerDynamicAttributeRuntime",
-                    WorkerDynamicAttributeRuntime.class
+                    "WorkerPropertyIndex",
+                    WorkerPropertyIndex.class
+            ),
+            Map.entry(
+                    "WorkerPropertyIndexRuntime",
+                    WorkerPropertyIndexRuntime.class
             ),
             Map.entry(
                     "WorkerResourceCatalog",
@@ -69,11 +74,6 @@ class KernelOwnerContractManifestTest {
             Map.entry(
                     "CandidateWorkerEntry",
                     CandidateWorkerCache.CandidateWorkerEntry.class
-            ),
-            Map.entry(
-                    "DynamicAttributeReadResult",
-                    WorkerDynamicAttributeRuntime
-                            .DynamicAttributeReadResult.class
             ),
             Map.entry(
                     "WorkerResult",

@@ -293,7 +293,7 @@ class TaskWorkerAllocationPacerTest(unittest.TestCase):
             worker_group_id=worker_group_id,
             task_type=task_type,
             allocation_rule=(
-                {"attributes.runtime": {"$eq": "python"}}
+                {"worker.runtime": {"$eq": "python"}}
                 if task_type is TaskType.TASK_DRIVEN
                 else None
             ),

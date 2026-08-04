@@ -151,8 +151,7 @@ public final class RuntimeViewService {
         return new WorkerGroupView(
                 descriptor.workerGroupId(),
                 immutableMap(descriptor.attributes()),
-                sorted(descriptor.eventCodes()),
-                sorted(descriptor.itemAllocationFields())
+                sorted(descriptor.eventCodes())
         );
     }
 
@@ -161,9 +160,8 @@ public final class RuntimeViewService {
                 descriptor.workerId(),
                 descriptor.workerGroupId(),
                 descriptor.endpointManagerId(),
-                immutableMap(descriptor.attributes()),
-                immutableMap(descriptor.platformAttributes()),
-                sorted(descriptor.dynamicAttributeNames())
+                immutableMap(descriptor.workerProperties()),
+                immutableMap(descriptor.platformProperties())
         );
     }
 

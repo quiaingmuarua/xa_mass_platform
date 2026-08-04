@@ -13,7 +13,7 @@ The repository contains seven active areas:
   scheduling or application lifecycle implementation.
 - [`server_jvm/`](server_jvm/): Java/Spring Boot Runtime API Server. It exposes
   the stable `/api/v1` surface. Task control operations use Python HTTP;
-  Worker resource upsert, Task data, and Worker Delivery use Java Redis
+  Worker resource/Properties/index operations, Task data, and Worker Delivery use Java Redis
   providers without redefining Kernel runtime contracts. Its optional Worker
   Assembly composes explicitly configured Scenario Workers through the same
   public Worker transport path.

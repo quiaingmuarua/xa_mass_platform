@@ -249,8 +249,6 @@ class RedisTaskRuntime(TaskRuntime):
         append_time_millis = self._current_time_millis()
         for message_id, item in ordered_items.items():
             try:
-                if item.allocation_rule is not None:
-                    ConstraintEvaluator.compile_match_rules(item.allocation_rule)
                 normalized = self._materialize_item_defaults(item)
                 if (
                     normalized.expire_at_millis is None

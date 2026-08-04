@@ -19,9 +19,8 @@ function searchableText(worker: WorkerView): string {
     worker.workerId,
     worker.workerGroupId,
     worker.endpointManagerId,
-    JSON.stringify(worker.attributes),
-    JSON.stringify(worker.platformAttributes),
-    worker.dynamicAttributeNames.join(" ")
+    JSON.stringify(worker.workerProperties),
+    JSON.stringify(worker.platformProperties)
   ]
     .join(" ")
     .toLocaleLowerCase();

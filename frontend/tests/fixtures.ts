@@ -10,8 +10,7 @@ export function workerGroup(workerGroupId: string): WorkerGroupView {
     attributes: {
       runtime: "test"
     },
-    eventCodes: [`${workerGroupId}.event`],
-    itemAllocationFields: []
+    eventCodes: [`${workerGroupId}.event`]
   };
 }
 
@@ -20,13 +19,12 @@ export function worker(workerGroupId: string, workerId: string): WorkerView {
     workerId,
     workerGroupId,
     endpointManagerId: "endpoint-test",
-    attributes: {
+    workerProperties: {
       slot: 1
     },
-    platformAttributes: {
+    platformProperties: {
       runtime: "test"
-    },
-    dynamicAttributeNames: []
+    }
   };
 }
 

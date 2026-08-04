@@ -1,797 +1,261 @@
 # Worker Resource Model
 
-Status: active new-kernel resource contract; Python executable spec
-implemented; policy coverage partial.
+Status: active Kernel owner contract; Python executable spec is the mechanism
+oracle and selected JVM Redis providers implement the production write path.
 
-This note fixes the first-cut metadata model for workers and worker groups in
-the clean kernel design workspace. It intentionally keeps the model small:
-metadata is a query projection and upsert declaration shape, not score truth.
-
-## Core Decision
+## Core Identity
 
 ```text
-WorkerGroup = one declared base capability contract plus one scheduling namespace
-Worker = one logical execution-slot resource inside exactly one worker group
+WorkerGroup = one built Worker package/capability contract
+            + one scheduling namespace
+
+Worker      = one logical execution slot in exactly one WorkerGroup
 ```
 
-The resource model is intentionally a short tree:
+A WorkerGroup is close to a deployable module or package identity. Its
+`eventCodes` declare the common capabilities expected from every Worker in the
+group. It is not an operator-created pool, Adapter identity, tenant, transport
+connection, or display-only grouping.
 
-```text
-Task admission      -> exactly one selected WorkerGroup
-WorkerCandidateConstraint -> worker predicates inside selected WorkerGroup
-TaskItem / WorkerCommand -> worker-local EventHandler
-Transport           -> internal delivery resource
-```
+Task admission fixes one `workerGroupId`. Candidate rules only narrow Workers
+inside that group. `eventCode` is delivered to the chosen Worker and resolved
+there; Kernel dispatch does not revalidate event capability for every Item.
 
-`WorkerGroup` is not a generic operator, tenant, Adapter, or display grouping
-label. Its `eventCodes` define the common base execution-capability declaration
-for group members. Its `itemAllocationFields` define the bounded candidate
-sources available inside that scheduling namespace. Mutable group attributes
-may describe the group but do not redefine membership or capability identity.
-
-`Task admission -> selected WorkerGroup` is fixed at task create/admission time.
-In v0, admission accepts exactly one registered `workerGroupId`.
-The selected `workerGroupId` is immutable while the task is running. If work
-must use a different worker group, create a different task or stop/cancel and
-recreate the task; do not hot-swap worker groups during dispatch.
-
-`WorkerCandidateConstraint -> worker predicates` is matching inside the
-selected worker group. Its `allocation_rule` map narrows workers by `workerId`,
-placement, platform/worker attributes, or explicitly supported projected dynamic
-query attributes.
-
-`TaskItem / WorkerCommand -> EventHandler` is handler invocation inside the selected
-worker. Kernel assignment passes the TaskItem's `eventCode` through without
-using it for admission or matching. The selected Worker resolves it to a local
-handler and reports an unsupported code as Worker failure evidence. EventCode
-does not choose worker groups, become a dispatch gate, or prove Worker
-scheduling serviceability. A Server or control-plane may validate compatibility
-before calling Kernel commands without moving that check into the scheduling
-hot path.
-
-`Transport` is an internal delivery resource. It resolves how to deliver already
-assigned work to the selected WorkerId; it does not select workers. Assignment
-snapshots the Worker's immutable `endpointManagerId` and uses it only to select
-the sparse delivery bucket. Session, connection, and live reachability
-observations remain outside the scheduling model.
-
-In v0, a worker has exactly one `workerGroupId`. Do not add membership rows,
-multi-group joins, dynamic group selectors, or group-local event binding rows
-until a concrete executable-spec need proves the extra model is required.
-
-If one physical process must serve multiple worker groups, model it as multiple
-logical workers instead of one worker with many groups:
-
-```text
-physical runtime process
-  -> logical worker A in workerGroupA
-  -> logical worker B in workerGroupB
-```
-
-In v0, a `WorkerId` is one scheduler-visible execution slot. One WorkerId may
-have at most one active Worker lease continuation. The Worker score lease / hold
-protects that slot from allocation through result or bounded lease expiry.
-TaskItem dispatch validates or renews the exact fence; it does not release the
-slot after WorkerCommand creation.
-
-If one physical runtime can execute `N` independent TaskItems concurrently, it
-must expose `N` logical WorkerIds. Those Workers may share one WorkerGroup and
-one transport process, but each owns an independent score, lease, and
-Adapter-mailbox field:
-
-```text
-physical runtime with concurrency 3
-  -> worker-slot-1
-  -> worker-slot-2
-  -> worker-slot-3
-```
-
-One TaskItem remains one scheduling and result unit. If a Worker supports a
-business batch operation, the caller places the bounded input collection inside
-one TaskItem payload. The kernel still claims one Item, emits one WorkerCommand,
-and receives one WorkerResult. It does not merge independently appended
-TaskItems, fan out partial outcomes, or reuse the Worker slot across Tasks.
-
-This keeps score ownership, dirty handling, and release semantics single-group
-and admission-fence oriented from the scheduler's point of view.
-
-The complete allocation, dispatch exact recheck, result disposition, and timeout
-sequence is defined once in
-[Worker HOT_ACQUIRE Lease Protocol](../scheduling/worker-hot-acquire-lease-protocol.md).
-This resource model does not own a second lease or capacity lifecycle.
+One `workerId` is one scheduler-visible serial slot. A process that executes
+multiple Items concurrently exposes multiple WorkerIds. Connection state is a
+delivery concern and does not change this identity.
 
 ## WorkerGroupDescriptor
 
-```text
-WorkerGroupDescriptor
-  workerGroupId: string
-  attributes: map<string, value>
-  eventCodes: set<string>
-  itemAllocationFields: set<string>
+```python
+WorkerGroupDescriptor(
+    worker_group_id: str,
+    attributes: Mapping[str, JsonValue],
+    event_codes: frozenset[str],
+)
 ```
 
-`workerGroupId` names one declared capability group and its steady scheduling
-namespace. Task admission fixes the worker group before task scheduling starts.
-The task does not select or query worker groups during dispatch.
+`eventCodes` is immutable after first creation. Changing the built capability
+contract requires a different WorkerGroup identity.
 
-`attributes` are metadata/query fields. They may describe display,
-classification, policy hints, or operator-facing facts. They do not redefine
-the group's capability contract, create a second grouping dimension, or carry
-live Worker score lease truth.
+`attributes` is a complete replacement value on a successful repeat upsert.
+WorkerGroup does not declare indexes, index providers, or supported
+operators. Property indexes are process-level scheduling projections and can
+be added or removed from startup configuration without changing the package
+identity.
 
-`eventCodes` is the declared base execution-capability set shared by Worker
-members of this group. Worker membership asserts compatibility with the complete
-set. Kernel stores this declaration and keeps it immutable, but Item append,
-Worker matching, and dispatch do not compare each TaskItem against it. Server
-and control-plane validation may prove handler coverage before resource or Task
-commands reach the Kernel. The declaration is not proof that a specific Worker
-is currently reachable, score-leased, or able to receive work.
+## Two Property Sources
 
-`itemAllocationFields` declares which bounded candidate-source fields a
-`ITEM_DRIVEN` Task may use in Item rules. `workerId` is built in;
-`dynamic.<name>` also requires a registered handler-owned candidate index.
-This is an acquisition capability of the group, not an EventHandler capability.
-The declaration does not expose handler functions or Redis keys.
-
-Normal WorkerGroup upsert may replace only `attributes`. `eventCodes` and
-`itemAllocationFields` are immutable declarations; changing either requires a
-separate owner command rather than reconnect-style upsert.
-
-WorkerGroupDescriptor does not own:
+Worker metadata has exactly two source domains:
 
 ```text
-worker hot/recovery score
-worker score lease / hold
-per-Worker parallel capacity truth
-transport session truth
-adapter mailbox truth
-task assignment truth
-dynamic attribute current values
+worker.*    Worker-reported facts
+platform.*  Platform-owned facts
 ```
 
-## Worker Declaration And Descriptor
+They are ownership domains, not freshness claims.
 
-```text
-WorkerDeclaration
-  workerId: string
-  workerGroupId: string
-  endpointManagerId: string
-  attributes: map<string, value>
-  dynamicAttributeNames: set<string>
-
-WorkerDescriptor
-  WorkerDeclaration fields
-  platformAttributes: map<string, value>
-```
-
-`workerId` is the globally unique logical execution-slot identity used by Worker
-score, assignment, and the field inside an Adapter delivery bucket.
-Caller-provided IDs are
-guarded globally in this first slice; kernel-generated identity is deferred.
-
-`workerGroupId` is the only group relationship in v0.
-
-`endpointManagerId` remains immutable declaration metadata in this first slice.
-It is copied into CandidateWorker assignment evidence and selects the
-WorkerCommand HASH at publication. It does not prove live reachability or
-participate in matching, score ordering, or candidate selection. Removing or
-changing it requires a separate controlled Worker-route command.
-
-`WorkerDeclaration` is caller-owned connect/reconnect input. It cannot carry
-platform attributes, score fields, polarity, laneRank, dirty, or time
-coordinates. Supplying `workerGroupId` asserts that the Worker conforms to the
-group's capability contract; Kernel upsert protects that immutable membership
-but does not perform expensive handler-bundle inspection.
-`WorkerDescriptor` is the complete runtime query projection.
-
-`WorkerRuntime.upsert_worker` establishes or refreshes the Worker. First
-appearance writes the immutable declaration identity and initializes the first
-HOT_ACQUIRE score using runtime-owned lane configuration. Reconnect completely
-replaces `attributes` and preserves `platformAttributes`. Every existing score
-is reconciled to positive polarity with dirty=1 while preserving timeSlot and
-laneRank. This invalidates pre-reconnect candidate evidence without releasing a
-future hold. First score initialization remains positive with dirty=0 because
-no older lease evidence exists.
-
-`WorkerResourceCatalog.upsert_worker_group` creates a group or completely
-replaces its `attributes`. Existing `eventCodes` are immutable; a mismatch is a
-conflict. Worker `endpointManagerId` and `dynamicAttributeNames` are also
-immutable after first appearance. Future mutation requires a separate owner
-command rather than expanding upsert.
-
-`workerGroupId` and `workerId` are globally unique in their own namespaces.
-Worker upsert claims `workerId -> workerGroupId` once; reuse in another group is
-a conflict. This uniqueness index is only a write guard, not a global query or
-Worker-home discovery API.
-
-Worker catalog reads and updates require `workerGroupId + workerId`. A bounded
-batch contains one `workerGroupId` and many `workerIds`; callers must not submit
-an unscoped worker-id batch and ask the catalog to rediscover or regroup worker
-membership. `workerGroupId` is the logical resource locator. Group hashes,
-worker-id hash buckets, or other physical partitions remain implementation
-choices behind the catalog.
-
-The catalog also exposes one explicitly bounded, group-local runtime preview:
-`sample_worker_descriptors(workerGroupId, sampleLimit)`, where
-`1 <= sampleLimit <= 100`. This is an unordered, unstable, incomplete operator
-sample from one group key. It is not a scheduling candidate source, traversal,
-pagination, count, point lookup, or completeness API. Unreadable sampled rows
-remain visible only as `workerId -> null`; the catalog does not loop to fill
-their places or consult Worker score and transport truth.
-
-First-layer descriptor fields intentionally stop at resource identity, group
-identity, endpoint-owner identity, and attribute buckets. Specific runtime,
-package, handler, or compatibility versions belong in `attributes`.
-
-`platformAttributes` is platform-written metadata. Worker upsert cannot supply
-or replace it. The dedicated platform update merges attributes and should be
-low-frequency. Examples:
-
-```text
-registeredAt
-platformRegion
-workerClass
-trustLevel
-ownerScope
-```
-
-`attributes` are Worker-reported metadata at connect/reconnect time, after
-platform validation. Each upsert is a complete replacement snapshot. Examples:
-
-```text
-cpuClass
-gpuClass
-runtime
-runtimeVersion
-os
-arch
-region
-customTraits
-```
-
-Version and handler-bundle compatibility fields belong in `attributes`
-when they are needed. They are ordinary low-frequency metadata, not first-layer
-descriptor fields, not metadata revisions, not stale fences, and not
-score lease tokens.
-
-`dynamicAttributeNames` is an allowlist of dynamic attribute names that this
-worker is allowed to update. It is not the current value of those attributes.
-
-Examples:
-
-```text
-dynamicAttributeNames = {
-  "heartbeat",
-  "battery",
-  "network",
-  "load"
-}
-```
-
-## EventCode Declaration
-
-`WorkerGroupDescriptor.eventCodes` declares the base event-handler capability
-contract for a WorkerGroup:
-
-```text
-every accepted worker in the group must be compatible with the group's eventCodes
-```
-
-This is a Kernel-defined resource declaration, not a Kernel scheduling gate.
-Kernel owns the stored shape, immutable update rule, and Worker membership
-coordinate. It deliberately does not perform handler discovery or compare every
-TaskItem `eventCode` during append, matching, or dispatch.
-
-A Server, Worker bootstrap, or control-plane validator may enforce the semantic
-contract before invoking Kernel commands:
-
-```text
-workerGroupId exists
-attributes satisfy group policy / attributes
-Worker declaration evidence or platform handler catalog covers eventCodes
-Task / TaskItem eventCode is compatible with the selected WorkerGroup
-```
-
-Validation depth is a Server policy decision. Skipping an expensive semantic
-check must not make Kernel scheduling unsafe: after assignment, unsupported
-EventCode resolution becomes Worker execution failure, not Adapter rejection
-and not Worker matching failure. Do not solve ordinary handler differences by
-adding per-Worker event binding rows or by adding EventCode reads to the hot
-dispatch path.
-
-Version compatibility is metadata validation through `attributes`.
-Assignment-dispatch must not interpret version fields directly as runtime
-serviceability. Current scheduling admission still belongs to Worker score
-polarity, lease, and hold.
-
-## WorkerCandidateConstraint
-
-`WorkerCandidateConstraint` is the matcher input owned by
-assignment-dispatch. It combines candidate consumption priority, explicit
-per-call worker limit, and one DSL rule map. It is
-not a task policy owner, worker-group selector, score lease contract, or handler
-routing contract.
-
-One matcher call receives a candidate map. `allocation_rule` is already a
-structured map; callers do not pass a JSON string and the worker matcher does
-not own JSON parsing:
+### Worker Properties
 
 ```python
-candidate_constraints = {
-  "task-1": WorkerCandidateConstraint(
-    priority=0,
-    limit=2,
-    allocation_rule={
-      "workerId": {"$in": ["worker-1", "worker-2"]},
-      "platform.tier": {"$eq": "premium"},
-      "attributes.runtime": {"$in": ["python", "java"]},
-      "dynamic.battery": {"$gte": 20},
-    },
-  ),
-}
+WorkerDeclaration(
+    worker_id: str,
+    worker_group_id: str,
+    endpoint_manager_id: str,
+    worker_properties: Mapping[str, JsonValue],
+)
 ```
 
-The current worker matcher context exposes these fields:
+Worker upsert supplies the complete `workerProperties` snapshot. A compatible
+repeat upsert replaces the prior Worker snapshot. This is resource
+registration and snapshot refresh, not connectivity or activation evidence.
+The Platform cannot patch this snapshot.
+
+Worker identity coordinates are immutable:
 
 ```text
 workerId
-platform.*
-attributes.*
-dynamic.*
+workerGroupId
+endpointManagerId
 ```
 
-`endpointManagerId` is deliberately absent from the matcher context. It is
-delivery-route metadata, not a WorkerConstraintQuery field.
+The first accepted WorkerId also fixes its WorkerGroup owner. Conflicting
+identity declarations do not alter the descriptor or score.
 
-These are worker-runtime owner fields, not DSL-reserved fields. `workerId` is a
-normal context value that may participate in the same DSL operators as any
-other value. It is not a descriptor attribute.
+### Platform Properties
 
-That evaluator capability is broader than Item-directed candidate discovery.
-A TaskItem using `workerId` as its TARGETED source is restricted to bounded
-`$eq/$in`; the matcher still evaluates the complete rule after exact lease.
-
-The matcher derives dynamic read dependencies from the compiled `dynamic.*`
-rule keys. `workerId`, `platform.*`, and `attributes.*` are already supplied by the
-descriptor batch and require no handler read. The derived dependency union is
-internal matcher state, not a caller-provided constraint field.
-
-`priority` controls worker consumption across candidate constraints. Smaller
-values run first; equal values are ordered by `candidateId` ascending. Map
-insertion order is not scheduling policy.
-
-`limit` is the maximum number of workers that candidate may consume in this
-matcher call. It must be positive. It is not a worker discovery limit and does
-not persist across calls. When one candidate reaches its limit, later workers
-continue against the remaining candidates in resolved priority order.
-
-`allocation_rule` is the only rule map. The independent DSL compiles and evaluates
-domain-qualified fields against a two-level context map:
+The query projection is:
 
 ```python
-ConstraintEvaluator.evaluate_match_rules(
-  {
-    "workerId": worker_id,
-    "platform": descriptor.platform_attributes,
-    "attributes": descriptor.attributes,
-    "dynamic": resolved_dynamic_values,
-  },
-  allocation_rule,
+WorkerDescriptor(
+    worker_id: str,
+    worker_group_id: str,
+    endpoint_manager_id: str,
+    worker_properties: Mapping[str, JsonValue],
+    platform_properties: Mapping[str, JsonValue],
 )
 ```
 
-It splits only the first `.`. For example, `dynamic.battery.level` resolves
-domain `dynamic` and exact field name `battery.level`; it does not recursively
-walk `battery -> level`. An unqualified field such as `workerId` is read from
-the top-level context. `workerId`, `platform`, `attributes`, and `dynamic` are not
-DSL-reserved names. The current worker matcher may choose those context domains,
-but that is a worker-runtime owner decision. The evaluator does not know
-descriptors, handlers, Redis, worker fields, or scheduling state.
+`platformProperties` is patched by field. A `null` patch value deletes the
+field. Worker reconnect preserves the current Platform snapshot. Both source
+writers compare the observed descriptor value before replacement and retry a
+bounded number of times, so a concurrent Platform patch cannot restore stale
+Worker properties and a concurrent reconnect cannot discard a Platform patch.
 
-At the start of one bounded matcher call, the matcher compiles every
-`allocation_rule` map once, orders candidates by priority, derives the ordered
-dynamic-field union, and batch-reads each field once. The compiled rules are
-evaluated against one temporary context for the current worker.
+Properties are intended for bounded views, diagnostics, and low-frequency
+matching facts. They are not transport reachability, score, lease, assignment,
+or execution truth.
 
-The matcher then consumes worker ids in caller-supplied order:
+## Property Index
 
-```text
-descriptor batch
-  -> dynamic.* rule-key union
-  -> one bounded handler call per required field
-  -> for each workerId
-       build one temporary context
-       evaluate candidate constraints in priority order
-       skip candidates already at limit
-       first remaining match consumes the worker and stops candidate evaluation
-```
-
-Before dynamic IO, the matcher uses its already loaded descriptor batch to
-derive the bounded workers that declare support for each dynamic field. It then
-asks `WorkerDynamicAttributeRuntime` for that field. The runtime hides the
-registered query handler and validates handler availability even when the
-supported worker batch is empty. A missing handler is therefore a deterministic
-worker-runtime configuration error. A missing, unsupported, or unresolved
-handler result is written into the temporary worker context as unresolved and
-fails closed for candidate rules that read it.
+The property index is independent from both snapshots:
 
 ```text
-get_worker_dynamic_attribute_values(workerGroupId, attributeName, boundedWorkerIds)
-  -> workerId -> DynamicAttributeReadResult
+Properties       = current owner snapshots for bounded reads and views
+Property Index   = last projection accepted by Kernel for scheduling lookup
 ```
 
-The handler may implement this with `HMGET`, `ZMSCORE`, bitmap operations, or
-another owner-specific bounded batch read. It must not discover workers outside
-the supplied ids. Each declared field is called at most once per matcher call,
-and its worker batch contains only ordered, unique workers that declared support
-for that field.
+An indexed value may also appear in a snapshot, but no operation writes both
+automatically. Callers explicitly choose whether to update a snapshot, an
+index, or both. An index-only Platform calculation therefore need not pollute
+`platformProperties`.
 
-`workerGroupId` is not a query field. It remains an outer parameter because it
-chooses the worker universe, score bucket, and runtime namespace.
-
-`eventCode` is not a query field or a kernel admission field. It passes through
-assignment and later routes work to a worker-local handler; it does not match
-individual workers.
-
-Supported v0 operators:
-
-```text
-$eq / $equal
-$ne
-$gt / $gte
-$lt / $lte
-$in
-$exists
-```
-
-Do not add these in v0:
-
-```text
-$or
-$and as explicit node
-$not
-$regex
-$where / function expression
-implicit type conversion
-deep object traversal
-```
-
-## Dynamic Attribute Boundary
-
-Dynamic attributes are separated from `WorkerDescriptor` because each dynamic
-attribute may need a different storage/index shape and update function.
-
-```text
-heartbeat -> zset(workerId -> lastSeenTime)
-battery   -> zset(workerId -> batteryLevel)
-network   -> hash(workerId -> networkType)
-load      -> hash / zset / bitmap, depending on policy
-```
-
-`WorkerDescriptor.dynamicAttributeNames` only decides whether an update is allowed:
-
-```text
-dynamicAttributeNames can accept or reject an update
-dynamicAttributeNames cannot represent current attribute value
-dynamicAttributeNames cannot replace worker score
-dynamicAttributeNames cannot be used as direct scheduling truth
-dynamicAttributeNames cannot prove Worker scheduling serviceability
-```
-
-Dynamic attribute values are owned by built-in attribute functions hidden behind
-worker-runtime surfaces:
-
-```text
-WorkerDynamicAttributeRuntime instance
-  _updateHandlers: attrName -> update function
-  _queryHandlers: attrName -> bounded batch query function
-```
-
-These private handler tables belong to the concrete runtime implementation.
-Their callable and mapping types are not kernel contracts.
-
-`WorkerCandidateMatcher` must not receive or store the query function table
-directly. It validates descriptor support through `dynamic_attribute_names`,
-then asks `WorkerDynamicAttributeRuntime` for one bounded dynamic attribute
-read. The runtime invokes the owner-local handler internally.
-
-The function owns:
-
-```text
-payload validation
-normalization
-query storage/index shape
-fast point-write behavior
-bounded batch-read behavior
-```
-
-## Dynamic Attribute Internal Flow
-
-```text
-worker-runtime receives or evaluates an attribute update
-  -> read WorkerDescriptor
-  -> require attrName in WorkerDescriptor.dynamicAttributeNames
-  -> route by attrName or owner-defined attribute prefix
-  -> resolve concrete runtime _updateHandlers[attrName]
-  -> function validate / normalize payload
-  -> function writes its own query storage/index
-```
-
-Dynamic attribute update is an internal worker-runtime function route, not an
-external public API and not a global event bus. It must be bounded, point-write
-oriented, fast-fail, and idempotent where possible. Routine high-frequency
-updates such as heartbeat, load, or network observations must not emit global
-scheduling events by default.
-
-The first Python kernel surface exposes bounded update and read operations
-through `WorkerDynamicAttributeRuntime`. Update requires
-`workerGroupId + workerId`, validates the worker descriptor and the
-`dynamicAttributeNames` allowlist, then dispatches accepted attributes to
-owner-local handlers. Read accepts one declared attribute and one bounded,
-descriptor-supported worker batch from the matcher. Neither operation writes
-worker score leases directly.
-
-`WorkerDynamicAttributeRuntime` is separate from `WorkerResourceCatalog`.
-`WorkerRuntime` owns Worker upsert and score initialization/reconnect polarity.
-Catalog owns worker-group
-declarations, bounded descriptor reads, and low-frequency descriptor metadata.
-Dynamic attribute runtime owns bounded update/read routing and handler
-dispatch for projected, policy-readable facts. It must not become a second
-worker descriptor store, worker lifecycle owner, score owner, or policy engine.
-
-Dynamic attributes are query/projection facts. A `heartbeat` dynamic attribute
-does not require a second heartbeat owner. If adapter/session runtime already
-has heartbeat or reachability information, the dynamic attribute function may
-batch-read or project that existing fact for query use. It must not become the
-Worker scheduling-serviceability truth.
-
-If a dynamic attribute is relevant to scheduling policy, the worker-runtime
-matching path may batch-read the attribute owner's current values for a bounded
-leased Worker batch. Only bounded candidate matching should receive candidate
-constraints; worker score lease / hold writes should not receive raw rule maps.
-Assignment-dispatch and worker score primitives must not interpret dynamic
-attribute payloads directly, and dynamic attribute updates must not drive
-Worker serviceability classification by themselves.
-
-Dynamic attribute changes do not automatically mark worker score dirty. A
-handler should consider dirty only when the changed attribute participates in
-the candidate constraint / matcher validation dependency set of an existing
-assignment plan or hot score lease continuation, and the new value invalidates
-or may invalidate the recorded match evidence. If there is no such continuation,
-the next matcher read observes the new value directly.
-
-Load or local queue-depth dynamic attributes may narrow or rank existing Worker
-slots. They cannot make one WorkerId represent multiple independently leased
-execution slots. Physical executor concurrency is projected by provisioning or
-draining logical WorkerIds, not by minting parallel assignments from an
-attribute value.
-
-## Scheduling Boundary
-
-The stable model has three resource/handler relationships:
-
-```text
-Task admission      -> selected WorkerGroup
-WorkerCandidateConstraint -> worker predicates inside selected WorkerGroup
-TaskItem / WorkerCommand -> EventHandler
-```
-
-`Task admission -> selected WorkerGroup` validates one registered group before
-task scheduling. It is exactly one group in v0 and immutable while the task is
-running. Assignment-dispatch does not query or choose groups on each round.
-
-`WorkerCandidateConstraint -> worker predicates` is worker matching inside the
-selected worker group. Its `allocation_rule` may constrain `workerId`, placement,
-Worker attributes, platform attributes, or explicitly supported projected
-dynamic attributes. These constraints narrow the Worker ids returned by the
-lease-first allocation step; matcher does not attempt or renew Worker-score
-leases.
-
-`workerId` inside `allocation_rule` is only a hard filter inside the task's selected
-`workerGroupId`. The Worker must come from bounded due HOT score observation and
-win an exact-score lease CAS before matcher validation. It is not a worker
-group selector and not a transport target.
-
-Dynamic attribute matching is deliberately narrow in v0. Assignment-dispatch
-does not perform arbitrary dynamic-attribute multi-index queries. Each
-`WorkerCandidateConstraint.allocation_rule` map declares the predicates; the
-matcher derives its `dynamic.*` dependencies and batch-reads each field for
-bounded workers whose descriptors declare support. The acquired
-values are read only while evaluating the current worker context. Item-directed
-candidate discovery such as `battery > 20` is allowed only when the dynamic
-attribute runtime installs an explicit bounded candidate-query handler.
-
-The first worker-runtime matching surface may expose a bounded batch matcher:
-
-```text
-match_worker_candidates(
-  workerGroupId,
-  workerLeaseScores={workerId: opaqueLeaseScore, ...},
-  {candidateId: WorkerCandidateConstraint, ...},
-)
-  -> WorkerCandidateAcquisition={
-       candidateId: CandidateWorkerEntry[],
-       ...,
-     }
-```
-
-The candidate-constraint map makes candidate identity unique. Each constraint
-carries explicit `priority`, `limit`, and map-shaped `allocation_rule`. The matcher
-sorts by priority ascending (`0` highest) and `candidateId` ascending, then each worker is
-considered by the first matching candidate with remaining match limit. Every
-matched Worker appears in exactly one candidate result. Each returned
-`CandidateWorkerEntry` contains the Worker id, WorkerGroup id, immutable
-`endpointManagerId` route snapshot, and opaque lease score. The route snapshot
-selects only the WorkerCommand mailbox bucket and is not part of matching. The
-matcher copies but never parses or modifies the lease score.
-Unmatched Worker ids are not returned; their already-acquired leases remain
-held until natural expiry.
-A matcher call handles exactly one selected `workerGroupId`; assignment-dispatch
-must partition candidates by Worker group and acquire bounded Worker lease
-evidence before calling it. The selected candidate acquirer unions and
-deduplicates source Worker ids, batch-leases or validates them by exact CAS, and
-passes only lease successes as one opaque `workerId -> score` map. The matcher
-owns descriptor reads, dynamic reads, and matching for only those supplied
-Worker ids. It evaluates complete rules in priority order, assigns each Worker
-at most once, and leaves unmatched leases to expire naturally. The matcher
-directly materializes the final acquisition result.
-The matcher returns every input candidate in resolved priority order. An empty
-entry means no match. It must not acquire or discover additional Workers and
-must not become
-`find_all_matching_workers(query)` or a global worker query service.
-
-There is no separate assignment-continuation surface in v0. Worker occupation
-uses `WorkerScoreCore` score lease / hold primitives directly. If a later
-executable spec proves a persisted cross-round assignment continuation is
-required, add that owner then. Do not keep a placeholder surface now.
-
-`TaskItem / WorkerCommand -> EventHandler` is worker-local execution routing. The
-item `eventCode` resolves the handler only after the task has a selected worker
-group and assignment-dispatch has selected a concrete worker.
-
-Live adapter / transport facts are not part of the public worker resource model.
-`endpointManagerId` remains required immutable declaration metadata in the
-current executable-spec shape. Assignment snapshots it to select an Adapter
-mailbox bucket, but it is not session identity or reachability evidence. Adapter
-implementation identity, session, route, connection, and polling-channel facts
-remain transport-local. The Adapter mailbox is kernel handoff state, not live
-transport state. If a policy needs a network category, expose it as a Worker
-attribute such as `networkType`; do not expose transport identifiers as
-worker-selection facts.
-
-Pure polling Workers use the fixed `system-polling` endpoint-manager binding.
-This is only a mailbox route convention. It does not add a Polling Adapter
-process or make polling/session facts part of Worker resource truth.
-
-Descriptor metadata is the low-frequency matching surface used inside a
-pre-bound worker group. Candidate sources propose a small bounded Worker
-universe; descriptor and dynamic point reads validate it after exact score
-lease. Metadata does not decide which WorkerGroup a Task may use:
-
-```text
-task admission
-  -> validates and fixes workerGroupId
-task eventCode
-  -> passes through to selected Worker's local handler dispatch
-pre-bound workerGroupId
-  -> candidate source proposes bounded Worker ids
-  -> WorkerScoreCore exact lease validates serviceability and slot hold
-  -> WorkerCandidateConstraint.allocation_rule validates current attributes
-```
-
-Scheduling must not stop at descriptor matches. It reads worker-runtime owner
-surfaces before producing a selected worker:
-
-```text
-task descriptor workerGroupId -> worker score home bucket
-worker score -> hot/recovery acquisition coordinate
-WorkerScoreCore lease / hold -> current serviceability and slot-occupation decision
-assignment-dispatch -> selected worker + Item score claim + WorkerCommand
-```
-
-Descriptor metadata can be used by worker-runtime validation, policy mapping,
-query views, and diagnostics. It is a candidate discovery / matching input; it
-must not become a second score lease owner.
-
-In v0, Worker occupation is a bounded score lease / hold of exactly one
-scheduler-visible execution slot. Allocation creates the exact fence, TaskItem
-dispatch validates or renews it before claiming an Item, and result routing
-either exact-releases it after Worker execution evidence or exact-demotes it to
-RECOVERY_RECHECK after Adapter rejection evidence. With no valid result, natural
-lease expiry restores visibility. Do not model a capacity pool inside one
-`WorkerDescriptor`, and do not release the fence early to simulate concurrency.
-
-The worker score model remains separate:
-
-```text
-WorkerDescriptor
-  resource identity, endpoint owner locator, metadata, and dynamic attribute allowlist
-
-WorkerDynamicAttributeRuntime
-  bounded dynamic attribute update/read route and owner-local handler dispatch
-
-WorkerScore
-  HOT_ACQUIRE / RECOVERY_RECHECK acquisition coordinate
-
-WorkerScoreLease
-  validates metadata, optional dynamic query attributes, serviceability
-  evidence and score lease / hold
-```
-
-## Deliberate Non-Goals
-
-Do not add these to v0:
-
-```text
-WorkerGroupMembership
-multi-workerGroup worker
-dynamic group selector
-group-local worker rank / quota / lane
-metadataRevision as public descriptor field
-metadataSignature as public descriptor field
-dynamic attribute function refs carried by WorkerDescriptor
-dynamic attribute current values inside WorkerDescriptor
-eventCode inside WorkerCandidateConstraint.allocation_rule
-workerGroupId inside WorkerCandidateConstraint.allocation_rule
-adapter session / mailbox / connection state inside WorkerDescriptor
-runtime score / dirty / score lease fields inside WorkerDescriptor
-parallel execution capacity inside one WorkerId
-```
-
-If the executable spec needs stale metadata fencing, worker-runtime may compute
-an internal scheduling signature from selected metadata and evidence. That
-signature should remain worker-runtime evidence, not a public descriptor field,
-until a concrete invariant requires public exposure.
-
-## Expansion Triggers
-
-Add `WorkerGroupMembership` only when one of these becomes unavoidable:
-
-```text
-the same worker must have different weight per group
-the same worker must be enabled in one group and disabled in another
-the same physical executor needs independently managed logical slots per group
-the same worker needs different score lease lane per group
-```
-
-Add public metadata revision/signature only when an executable spec proves a
-stale-fence invariant that cannot be handled by score fence / score lease.
-
-Add event binding rows only when `WorkerGroupDescriptor.eventCodes` is too weak
-to express group-level event ownership. Do not add them to handle ordinary
-worker version differences; use `attributes` plus platform validation for
-that. Do not add event binding rows preemptively.
-
-## Minimal Python Shape
+Each configured field has one `WorkerPropertyIndex` implementation:
 
 ```python
-@dataclass(frozen=True)
-class WorkerGroupDescriptor:
-    worker_group_id: str
-    attributes: Mapping[str, JsonValue]
-    event_codes: frozenset[str]
-    item_allocation_fields: frozenset[str]
-
-
-@dataclass(frozen=True)
-class WorkerDeclaration:
-    worker_id: str
-    worker_group_id: str
-    endpoint_manager_id: str
-    attributes: Mapping[str, JsonValue]
-    dynamic_attribute_names: frozenset[str]
-
-
-@dataclass(frozen=True)
-class WorkerDescriptor:
-    worker_id: str
-    worker_group_id: str
-    endpoint_manager_id: str
-    attributes: Mapping[str, JsonValue]
-    platform_attributes: Mapping[str, JsonValue]
-    dynamic_attribute_names: frozenset[str]
+update(workerGroupId, workerId, value)
+load(workerGroupId, boundedWorkerIds) -> workerId/value map
 ```
 
-The Python executable spec may start with this shape directly. Runtime score,
-score lease, dynamic attribute indexes, and transport session facts should remain
-separate owner structures.
+`WorkerPropertyIndexRuntime` is only the Kernel owner Router:
+
+```python
+update_indexed_properties(workerGroupId, workerId, updates)
+load_indexed_property_values(
+    workerGroupId,
+    indexField,
+    boundedWorkerIds,
+)
+```
+
+Startup composition supplies one immutable map such as:
+
+```text
+index.worker.region -> Redis HASH point projection
+index.platform.pool -> Redis HASH point projection
+```
+
+The key is the complete index identity. Its suffix is opaque: the
+`index.worker.region` projection is not authorized by, copied from, or kept in
+sync with `worker.region`. Update requests use these qualified keys directly;
+`null` removes one projection. The Router validates Worker ownership, then
+routes each field independently. Reads accept only an explicit bounded
+Worker-id set and return a sparse value map. They do not discover candidates
+or interpret allocation operators. Missing implementations and provider
+failures remain distinguishable from a missing value.
+
+The current Redis HASH provider supports JSON-compatible point values. It is a
+projection store, not a candidate query engine.
+
+Index values have last-applied semantics. They do not carry a revision,
+observation timestamp, or claim of physical real-time truth. If a future use
+case requires execution-time certainty, the Worker may recheck it; scheduling
+does not do that in this slice.
+
+## Rule Matching
+
+Matcher context is fixed:
+
+```json
+{
+  "workerId": "worker-1",
+  "worker": {"arch": "arm64", "region": "cn-east"},
+  "platform": {"pool": "batch", "load": "42"},
+  "index": {"worker.region": "cn-east"}
+}
+```
+
+Only the first dot separates domain from property name. An indexed field named
+`index.worker.location.region` addresses index key `worker.location.region`.
+`worker.region` and `index.worker.region` are independent conditions and never
+fall back to one another.
+
+### TARGETED
+
+TARGETED currently requires `workerId $eq/$equal/$in`. This identity condition
+produces the bounded, request-local Worker-id set. Other `worker.*` and
+`platform.*` conditions do not generate or filter candidates through indexes;
+they are evaluated by the complete matcher before score observation and again
+after an exact lease.
+
+TARGETED does not use `CandidateWorkerCache`, scan Worker descriptors, compose
+multiple indexes, or fall back to PRECOMPUTED acquisition. A future low-cost
+candidate source is a separate mechanism addition, not an expansion of the
+Property Index contract.
+
+One TARGETED acquisition round admits at most 100 unique WorkerIds across all
+Item candidates in `(priority, candidateId)` order. A WorkerId already admitted
+may be reused by a later Item without consuming the budget again. New ids after
+the budget is exhausted wait for a later round; they do not trigger a scan or
+fallback.
+
+### PRECOMPUTED
+
+PRECOMPUTED consumes bounded WorkerIds from `CandidateWorkerCache`, validates
+the exact score fences, and rematches the complete Task rule.
+
+For each rule field:
+
+```text
+index.*      -> point-load through Property Index.load
+worker.*     -> read workerProperties
+platform.*   -> read platformProperties
+workerId     -> built-in identity
+```
+
+The matcher builds one context for each existing candidate and evaluates the
+complete rule in memory. If an explicit index field has no current value, it
+never falls back to a same-named snapshot value. A missing implementation or
+provider failure makes that bounded matching round fail closed. Invalid stored
+rules and index read failures produce one safe aggregate diagnostic per matcher
+call; the log does not contain rule or property values.
+
+Rules currently contain only required conditions. Priority or preference
+terms are a future rule-model change and must not be simulated by unindexed
+TARGETED predicates.
+
+## Lifecycle Boundaries
+
+Resource metadata, scheduling serviceability, binding, connectivity, and
+execution remain separate axes:
+
+```text
+Resource        WorkerGroup and Worker descriptors
+Scheduling      Worker score polarity, lease, recovery, dirty fence
+Binding         immutable endpointManagerId route declaration
+Connectivity    Adapter-local active connection evidence
+Execution       TaskItem claim and Worker result evidence
+```
+
+Worker upsert initializes a missing HOT score, including retry recovery after a
+partial first registration. If a score already exists, upsert preserves its
+polarity, coordinate, dirty bit, and lease exactly. Property and index updates
+do not mutate score or release a lease. Attribute changes do not revoke an
+already claimed Item or a command already delivered to a Worker.
+
+Physical Worker removal, disable/drain, index residue cleanup, ordered update
+versions, numeric/range providers, and preference ranking remain separate
+milestones.
+
+## Owner Guardrails
+
+- Do not let Platform writes modify `workerProperties`.
+- Do not auto-project Properties into indexes.
+- Do not expose index-only values through Runtime View.
+- Do not use Properties or indexes as connectivity evidence.
+- Do not make index update failure roll back Worker upsert, Dispatch, or
+  ResultRouting.
+- Do not scan descriptors to satisfy TARGETED rules.
+- Do not infer physical truth from the latest accepted scheduling projection.
+- Do not put score, lease, connection, or Task assignment state in a Worker
+  descriptor.

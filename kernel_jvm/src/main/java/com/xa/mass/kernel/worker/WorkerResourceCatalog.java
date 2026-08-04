@@ -27,9 +27,9 @@ public interface WorkerResourceCatalog {
             int sampleLimit
     );
 
-    WorkerRuntimeResult updateWorkerPlatformAttributes(
+    WorkerRuntimeResult patchWorkerPlatformProperties(
             String workerGroupId,
             String workerId,
-            Map<String, Object> attributes
+            Map<String, @Nullable Object> properties
     );
 }

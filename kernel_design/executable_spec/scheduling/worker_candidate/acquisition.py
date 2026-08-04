@@ -1,20 +1,18 @@
 from __future__ import annotations
 
-from collections.abc import Mapping as MappingABC
 from dataclasses import dataclass
 from enum import Enum
+from collections.abc import Mapping as MappingABC, Sequence as SequenceABC
 from typing import Mapping
 
+from ...constraint_dsl import ConstraintEvaluator
 from ...kernel.assignment_dispatch_runtime import (
     CandidateId,
     CandidateWorkerCache,
     CandidateWorkerEntry,
 )
 from ...kernel.task_score_band import TimeMillis
-from ...kernel.worker_runtime import (
-    WorkerDynamicAttributeRuntime,
-    WorkerGroupId,
-)
+from ...kernel.worker_runtime import WorkerGroupId
 from ...kernel.worker_score import (
     Score,
     WorkerId,
@@ -27,7 +25,10 @@ from .matching import (
     WorkerCandidateConstraint,
     WorkerCandidateMatcher,
 )
-from .rules import worker_ids_from_target_rule
+
+
+MAX_TARGETED_UNIQUE_WORKERS_PER_ROUND = 100
+_MAX_TARGETED_EXPLICIT_WORKER_IDS = 100
 
 
 @dataclass(frozen=True)
@@ -37,7 +38,6 @@ class WorkerCandidateRequest:
     priority: int
     requested_count: int
     allocation_rule: Mapping[str, object]
-    target_field: str | None = None
 
     def __post_init__(self) -> None:
         if (
@@ -54,10 +54,6 @@ class WorkerCandidateRequest:
             raise ValueError("requested candidate count must be positive")
         if not isinstance(self.allocation_rule, MappingABC):
             raise ValueError("candidate allocation rule must be a mapping")
-        if self.target_field is not None and (
-            not isinstance(self.target_field, str) or not self.target_field
-        ):
-            raise ValueError("candidate target field must be non-empty")
 
 
 class WorkerCandidateAcquisitionStrategy(Enum):
@@ -73,7 +69,6 @@ class WorkerCandidateAcquirer:
         candidate_cache: CandidateWorkerCache,
         worker_score: WorkerScoreCore,
         worker_matcher: WorkerCandidateMatcher,
-        dynamic_attributes: WorkerDynamicAttributeRuntime,
         *,
         worker_scan_limit: int,
     ) -> None:
@@ -82,7 +77,6 @@ class WorkerCandidateAcquirer:
         self.candidate_cache = candidate_cache
         self.worker_score = worker_score
         self.worker_matcher = worker_matcher
-        self.dynamic_attributes = dynamic_attributes
         self.worker_scan_limit = worker_scan_limit
 
     def acquire_worker_candidates(
@@ -122,8 +116,6 @@ class WorkerCandidateAcquirer:
 
         _validate_worker_group_id(worker_group_id)
         requests = _validate_candidate_requests(candidate_requests)
-        if any(request.target_field is not None for request in requests.values()):
-            raise ValueError("HOT pool requests cannot declare a target field")
         empty = _empty_acquisition(requests)
         if not requests:
             return empty
@@ -148,8 +140,6 @@ class WorkerCandidateAcquirer:
         requests: Mapping[CandidateId, WorkerCandidateRequest],
         lease_until_millis: TimeMillis,
     ) -> WorkerCandidateAcquisition:
-        if any(request.target_field is not None for request in requests.values()):
-            raise ValueError("PRECOMPUTED requests cannot declare a target field")
         empty = _empty_acquisition(requests)
         if not requests:
             return empty
@@ -205,20 +195,48 @@ class WorkerCandidateAcquirer:
             return empty
 
         ordered_requests = _ordered_requests(requests)
-        point_worker_ids: list[WorkerId] = []
-        for _, request in ordered_requests:
-            if request.target_field is None:
-                raise ValueError("TARGETED requests require a target field")
-            worker_ids = self._query_target_worker_ids(
-                worker_group_id=worker_group_id,
-                request=request,
+        point_worker_ids_by_candidate: dict[CandidateId, tuple[WorkerId, ...]] = {}
+        admitted_worker_ids: set[WorkerId] = set()
+        for candidate_id, request in ordered_requests:
+            admitted_for_candidate: list[WorkerId] = []
+            for worker_id in self._worker_id_candidates(
+                allocation_rule=request.allocation_rule,
+            ):
+                if worker_id in admitted_worker_ids:
+                    admitted_for_candidate.append(worker_id)
+                    continue
+                if (
+                    len(admitted_worker_ids)
+                    >= MAX_TARGETED_UNIQUE_WORKERS_PER_ROUND
+                ):
+                    continue
+                admitted_worker_ids.add(worker_id)
+                admitted_for_candidate.append(worker_id)
+            point_worker_ids_by_candidate[candidate_id] = tuple(
+                admitted_for_candidate
             )
-            point_worker_ids.extend(worker_ids)
+
+        constraints = {
+            candidate_id: _matcher_constraint(request)
+            for candidate_id, request in requests.items()
+        }
+        matched_worker_ids = self.worker_matcher.filter_candidate_worker_ids(
+            worker_group_id=worker_group_id,
+            candidate_worker_ids=point_worker_ids_by_candidate,
+            candidate_constraints=constraints,
+        )
+        point_worker_ids = tuple(
+            dict.fromkeys(
+                worker_id
+                for candidate_id, _ in ordered_requests
+                for worker_id in matched_worker_ids.get(candidate_id, ())
+            )
+        )
 
         observed_scores = (
             self.worker_score.observe_due_hot_scores(
                 home_bucket_id=worker_group_id,
-                worker_ids=tuple(dict.fromkeys(point_worker_ids)),
+                worker_ids=point_worker_ids,
             )
             if point_worker_ids
             else {}
@@ -226,12 +244,59 @@ class WorkerCandidateAcquirer:
         if not observed_scores:
             return empty
 
-        return self._lease_and_match(
-            worker_group_id=worker_group_id,
-            requests=requests,
-            observed_scores=observed_scores,
-            lease_until_millis=lease_until_millis,
+        selected_worker_ids: dict[CandidateId, tuple[WorkerId, ...]] = {}
+        reserved_worker_ids: set[WorkerId] = set()
+        for candidate_id, request in ordered_requests:
+            selected = tuple(
+                worker_id
+                for worker_id in matched_worker_ids.get(candidate_id, ())
+                if worker_id in observed_scores
+                and worker_id not in reserved_worker_ids
+            )[: request.requested_count]
+            selected_worker_ids[candidate_id] = selected
+            reserved_worker_ids.update(selected)
+
+        selected_scores = {
+            worker_id: observed_scores[worker_id]
+            for worker_ids in selected_worker_ids.values()
+            for worker_id in worker_ids
+        }
+        if not selected_scores:
+            return empty
+        lease_results = self.worker_score.acquire_observed_hot_score_leases(
+            home_bucket_id=worker_group_id,
+            observed_scores=selected_scores,
+            target_time_millis=lease_until_millis,
         )
+        leased_scores = _successful_lease_scores(
+            lease_results,
+            allow_noop=False,
+        )
+        if not leased_scores:
+            return empty
+        return self.worker_matcher.match_explicit_worker_candidates(
+            worker_group_id=worker_group_id,
+            worker_lease_scores=leased_scores,
+            candidate_worker_ids=selected_worker_ids,
+            candidate_constraints=constraints,
+        )
+
+    def _worker_id_candidates(
+        self,
+        *,
+        allocation_rule: Mapping[str, object],
+    ) -> tuple[WorkerId, ...]:
+        try:
+            compiled_rule = ConstraintEvaluator.compile_match_rules(
+                allocation_rule
+            )
+            worker_id_rule = compiled_rule.get("workerId")
+            if worker_id_rule is None:
+                return ()
+            return _worker_ids_from_operator_rule(worker_id_rule)
+        except Exception:
+            # ITEM_DRIVEN has no scan, index discovery, or cache fallback.
+            return ()
 
     def _lease_and_match(
         self,
@@ -263,42 +328,33 @@ class WorkerCandidateAcquirer:
             },
         )
 
-    def _query_target_worker_ids(
-        self,
-        *,
-        worker_group_id: WorkerGroupId,
-        request: WorkerCandidateRequest,
-    ) -> tuple[WorkerId, ...]:
-        target_field = request.target_field
-        if target_field is None or target_field not in request.allocation_rule:
-            raise ValueError("TARGETED request target field is not in allocation rule")
-        operator_rule = request.allocation_rule[target_field]
-        if not isinstance(operator_rule, MappingABC):
-            raise ValueError("target field operator rule must be a mapping")
-        if target_field == "workerId":
-            return worker_ids_from_target_rule(
-                operator_rule,
-                limit=self.worker_scan_limit,
-            )
-        domain, separator, attribute_name = target_field.partition(".")
-        if not separator or domain != "dynamic" or not attribute_name:
-            raise ValueError("TARGETED field has no bounded candidate source")
-        if not self.dynamic_attributes.supports_candidate_query(
-            attribute_name=attribute_name,
-            operator_rule=operator_rule,
-        ):
-            raise ValueError("dynamic target field has no candidate query handler")
-        return self.dynamic_attributes.query_candidate_worker_ids(
-            worker_group_id=worker_group_id,
-            attribute_name=attribute_name,
-            operator_rule=operator_rule,
-            limit=self.worker_scan_limit,
-        )
-
-
 def _validate_worker_group_id(worker_group_id: WorkerGroupId) -> None:
     if not isinstance(worker_group_id, str) or not worker_group_id:
         raise ValueError("worker group id must be non-empty")
+
+
+def _worker_ids_from_operator_rule(
+    operator_rule: Mapping[str, object],
+) -> tuple[WorkerId, ...]:
+    if not isinstance(operator_rule, MappingABC) or len(operator_rule) != 1:
+        raise ValueError("workerId requires one operator")
+    operator, operand = next(iter(operator_rule.items()))
+    if operator in {"$eq", "$equal"}:
+        values = (operand,)
+    elif (
+        operator == "$in"
+        and not isinstance(operand, (str, bytes))
+        and isinstance(operand, SequenceABC)
+        and 0
+        < len(operand)
+        <= _MAX_TARGETED_EXPLICIT_WORKER_IDS
+    ):
+        values = tuple(operand)
+    else:
+        raise ValueError("workerId supports only $eq/$equal/$in")
+    if any(not isinstance(value, str) or not value for value in values):
+        raise ValueError("workerId values must be non-empty strings")
+    return tuple(dict.fromkeys(values))
 
 
 def _validate_candidate_requests(

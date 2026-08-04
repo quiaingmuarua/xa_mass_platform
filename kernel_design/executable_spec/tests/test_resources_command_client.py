@@ -77,7 +77,6 @@ class ResourcesCommandClientTest(unittest.TestCase):
         for forbidden in (
             "start",
             "stop",
-            "update_worker_dynamic_attributes",
             "worker_score",
             "worker_runtime",
         ):
@@ -121,8 +120,7 @@ class ResourcesCommandClientTest(unittest.TestCase):
             worker_id="worker-1",
             worker_group_id=group.worker_group_id,
             endpoint_manager_id="endpoint-1",
-            attributes={"runtime": "python"},
-            dynamic_attribute_names=frozenset(),
+            worker_properties={"runtime": "python"},
         )
         group_result = WorkerRuntimeResult(WorkerRuntimeStatus.OK)
         worker_result = WorkerRuntimeResult(WorkerRuntimeStatus.OK)
@@ -200,8 +198,7 @@ class ResourcesCommandClientIntegrationTest(unittest.TestCase):
                 worker_id="worker-1",
                 worker_group_id=group_id,
                 endpoint_manager_id="endpoint-1",
-                attributes={"runtime": "python"},
-                dynamic_attribute_names=frozenset(),
+                worker_properties={"runtime": "python"},
             )
         )
         score = RedisWorkerScoreCore(

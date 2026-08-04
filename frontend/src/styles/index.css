@@ -899,14 +899,6 @@ pre {
   overflow-wrap: anywhere;
 }
 
-.dynamic-name-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  color: var(--rv-text-muted);
-  font-size: 11px;
-}
-
 .standalone-state {
   display: grid;
   min-height: 100vh;

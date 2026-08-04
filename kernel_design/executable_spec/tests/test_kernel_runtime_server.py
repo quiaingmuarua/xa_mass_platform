@@ -8,6 +8,7 @@ from unittest.mock import Mock
 from kernel_design.executable_spec.assembly import (
     TaskType,
     KernelApplication,
+    KernelApplicationConfig,
     TaskApprovalResult,
     TaskApprovalStatus,
     TaskCloseResult,
@@ -184,10 +185,10 @@ class KernelRuntimeServerTest(unittest.TestCase):
 
         self.application.create_task.assert_not_called()
 
-    def test_dynamic_attribute_route_is_not_public(self) -> None:
+    def test_worker_resource_routes_are_not_public(self) -> None:
         response = self.client.post(
-            "/workers/image-workers/worker-1/dynamic-attributes",
-            json={"updates": {"battery": 80}, "observedAtMillis": 1},
+            "/worker-groups/image-workers/workers/worker-1",
+            json={"workerProperties": {"runtime": "python"}},
         )
 
         self.assertEqual(404, response.status_code)
@@ -210,7 +211,7 @@ class KernelRuntimeServerTest(unittest.TestCase):
         assert create_app is not None
         with self.assertRaisesRegex(ValueError, "mutually exclusive"):
             create_app(
-                config_json="{}",
+                config=KernelApplicationConfig(),
                 application=self.application,
             )
 

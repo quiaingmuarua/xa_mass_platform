@@ -3,6 +3,8 @@ package com.xa.mass.kernel.worker.redis;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
 import com.xa.mass.workerdelivery.json.Jsons;
+import io.lettuce.core.ScriptOutputType;
+import io.lettuce.core.api.sync.RedisCommands;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -14,7 +16,22 @@ import java.util.TreeMap;
 
 final class WorkerRedisSupport {
 
+    private static final String COMPARE_AND_SET_HASH_FIELD_SCRIPT = """
+            local current = redis.call('HGET', KEYS[1], ARGV[1])
+            if not current or current ~= ARGV[2] then
+                return 0
+            end
+            redis.call('HSET', KEYS[1], ARGV[1], ARGV[3])
+            return 1
+            """;
+
     private WorkerRedisSupport() {
+    }
+
+    static boolean validIndexField(String field) {
+        return field != null
+                && field.startsWith("index.")
+                && field.length() > "index.".length();
     }
 
     static String groupsKey(String prefix) {
@@ -29,16 +46,60 @@ final class WorkerRedisSupport {
         return "wr:" + prefix + ":worker-id-owners";
     }
 
+    static boolean compareAndSetHashField(
+            RedisCommands<String, String> commands,
+            String key,
+            String field,
+            String observed,
+            String replacement
+    ) {
+        Number result = commands.eval(
+                COMPARE_AND_SET_HASH_FIELD_SCRIPT,
+                ScriptOutputType.INTEGER,
+                new String[]{key},
+                field,
+                observed,
+                replacement
+        );
+        return result != null && result.longValue() == 1;
+    }
+
+    static String propertyValuesKey(
+            String prefix,
+            String workerGroupId,
+            String propertyField
+    ) {
+        return "wr:" + prefix + ":property-index:"
+                + workerGroupId + ":" + propertyField + ":values";
+    }
+
+    static String encodeIndexedPropertyValue(Object value) {
+        if (value == null) {
+            throw new IllegalArgumentException(
+                    "indexed property value must be present"
+            );
+        }
+        return encodeCanonical(Map.of("value", value));
+    }
+
+    static Object decodeIndexedPropertyValue(String raw) {
+        Map<String, Object> payload = Jsons.parseObject(raw);
+        requireExactFields(payload, Set.of("value"));
+        Object value = payload.get("value");
+        if (value == null) {
+            throw new IllegalArgumentException(
+                    "indexed property value must be present"
+            );
+        }
+        return value;
+    }
+
     static String encodeWorkerGroup(WorkerGroupDescriptor descriptor) {
         try {
             Map<String, Object> payload = new TreeMap<>();
             payload.put("workerGroupId", descriptor.workerGroupId());
             payload.put("attributes", descriptor.attributes());
             payload.put("eventCodes", sortedList(descriptor.eventCodes()));
-            payload.put(
-                    "itemAllocationFields",
-                    sortedList(descriptor.itemAllocationFields())
-            );
             return encodeCanonical(payload);
         } catch (IllegalArgumentException error) {
             return null;
@@ -54,14 +115,10 @@ final class WorkerRedisSupport {
                     "endpointManagerId",
                     descriptor.endpointManagerId()
             );
-            payload.put("attributes", descriptor.attributes());
+            payload.put("workerProperties", descriptor.workerProperties());
             payload.put(
-                    "platformAttributes",
-                    descriptor.platformAttributes()
-            );
-            payload.put(
-                    "dynamicAttributeNames",
-                    sortedList(descriptor.dynamicAttributeNames())
+                    "platformProperties",
+                    descriptor.platformProperties()
             );
             return encodeCanonical(payload);
         } catch (IllegalArgumentException error) {
@@ -75,14 +132,18 @@ final class WorkerRedisSupport {
         }
         try {
             Map<String, Object> payload = Jsons.parseObject(raw);
+            requireExactFields(
+                    payload,
+                    Set.of(
+                            "workerGroupId",
+                            "attributes",
+                            "eventCodes"
+                    )
+            );
             return new WorkerGroupDescriptor(
                     requireString(payload.get("workerGroupId")),
-                    objectMap(payload.getOrDefault("attributes", Map.of())),
-                    stringSet(payload.getOrDefault("eventCodes", List.of())),
-                    stringSet(payload.getOrDefault(
-                            "itemAllocationFields",
-                            List.of()
-                    ))
+                    objectMap(payload.get("attributes")),
+                    stringSet(payload.get("eventCodes"))
             );
         } catch (IllegalArgumentException | ClassCastException error) {
             return null;
@@ -95,19 +156,36 @@ final class WorkerRedisSupport {
         }
         try {
             Map<String, Object> payload = Jsons.parseObject(raw);
+            requireExactFields(
+                    payload,
+                    Set.of(
+                            "workerId",
+                            "workerGroupId",
+                            "endpointManagerId",
+                            "workerProperties",
+                            "platformProperties"
+                    )
+            );
             return new WorkerDescriptor(
                     requireString(payload.get("workerId")),
                     requireString(payload.get("workerGroupId")),
                     requireString(payload.get("endpointManagerId")),
-                    objectMap(payload.get("attributes")),
-                    objectMap(payload.get("platformAttributes")),
-                    stringSet(payload.getOrDefault(
-                            "dynamicAttributeNames",
-                            List.of()
-                    ))
+                    objectMap(payload.get("workerProperties")),
+                    objectMap(payload.get("platformProperties"))
             );
         } catch (IllegalArgumentException | ClassCastException error) {
             return null;
+        }
+    }
+
+    private static void requireExactFields(
+            Map<String, Object> payload,
+            Set<String> expectedFields
+    ) {
+        if (!payload.keySet().equals(expectedFields)) {
+            throw new IllegalArgumentException(
+                    "JSON object fields do not match the Worker Redis ABI"
+            );
         }
     }
 

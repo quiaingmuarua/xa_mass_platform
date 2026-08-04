@@ -192,7 +192,7 @@ does not release them.
 
 Worker score is not a Worker resource mutation lease. First Worker upsert
 establishes the initial HOT_ACQUIRE score using runtime-owned lane config, but
-later platform/Worker/dynamic attribute writes,
+later Platform/Worker property or index writes,
 handler-owned projections, heartbeat evidence, and diagnostics update their own
 truth without acquiring or renewing worker score. HOT admission scheduling is
 the only routine writer of acquired HOT scores; recovery scheduling is the only
@@ -352,7 +352,7 @@ MIN_BASE <= score <= base(dueTimeSlot, MAX_LANE_RANK, MAX_DIRTY)
 
 Only positive due scores are returned and neither query modifies them. The
 point form preserves the bounded caller-supplied Worker universe and is used
-after a `workerId` or dynamic candidate index lookup.
+after ITEM_DRIVEN extracts request-local WorkerIds from its allocation rule.
 Assignment-dispatch may pass a Worker into bounded matching only after an exact
 observed-score lease succeeds.
 
@@ -488,13 +488,13 @@ Polarity move preserves the dirty bit. Dirty score primitives are implemented;
 policy may invoke them only for an active continuation that will later
 revalidate or renew. Raw external observation never writes dirty.
 
-Raw connect, heartbeat, keepalive, session, or latency observation cannot move
-RECOVERY_RECHECK to HOT_ACQUIRE by itself. `WorkerRuntime.upsert_worker` is the
-trusted connect/reconnect evidence boundary. After declaration validation and
-attribute refresh it calls `reconcile_worker_hot_acquire`: existing scores
-converge to HOT_ACQUIRE, preserve timeSlot/laneRank, and set dirty=1. This does
-not release a future hold. Other evidence remains non-authoritative until a
-kernel owner validates it.
+Raw connect, heartbeat, keepalive, session, latency observation, and
+`WorkerRuntime.upsert_worker` cannot move RECOVERY_RECHECK to HOT_ACQUIRE.
+Upsert is a resource snapshot operation: it initializes only a missing score
+and preserves every existing score exactly. `reconcile_worker_hot_acquire`
+remains a score-owner mechanism, but has no production caller in this slice. A
+future explicit lifecycle operation must validate recovery evidence before
+invoking any RECOVERY_RECHECK-to-HOT_ACQUIRE transition.
 
 ## Interface Rule
 
@@ -880,7 +880,7 @@ lease remains active, dirty should not interrupt execution; result, timeout,
 lease expiry, and the next scheduling round handle the new facts.
 
 `validationDependencySet` is conceptual first-slice evidence, not a public DTO
-and not a new interface. It records which worker metadata / dynamic attributes /
+and not a new interface. It records which Worker Properties / indexed projections /
 policy facts were used to validate the match so an attribute update handler can
 decide whether dirty is necessary. If an implementation cannot cheaply prove a
 changed dependency still satisfies the recorded query, it may conservatively
@@ -911,7 +911,7 @@ Worker score-band participates in assignment-dispatch like this:
 ```text
 task score acquires due task candidate
 assignment-dispatch builds WorkerCandidateRequests from the TaskType-owned rule location
-cache warming scans HOT; TARGETED point-observes indexed Worker ids
+cache warming scans HOT; TARGETED point-observes rule-supplied Worker ids
 candidate acquirer exact-CAS leases unchanged due Workers and fully rematches
 allocation pacer may publish Task-rule results into CandidateWorkerCache
 PRECOMPUTED acquisition exact-validates/renews and rematches Task rules
@@ -950,14 +950,14 @@ assignment-dispatch worker selection path.
 | manual enable / release | yes | exact observed-score same-polarity release |
 | platform scheduling metadata signature changed while persisted task-worker assignment plan / hot score lease continuation exists | yes | `mark_current_lease_dirty` may only set dirty = 1 |
 | platform scheduling metadata signature changed while no persisted assignment plan / hot score lease continuation exists | no score write required | metadata/evidence only; next candidate validation reads current metadata |
-| trusted Worker connect/reconnect evidence after declaration validation | yes for every existing score | `reconcile_worker_hot_acquire` preserves timeSlot/laneRank, writes HOT_ACQUIRE and dirty=1; score absence still initializes HOT_ACQUIRE dirty=0 |
+| Worker resource upsert / snapshot refresh | only when score is missing | initialize HOT_ACQUIRE dirty=0; preserve every existing score exactly |
 | assignment owner leases due HOT_ACQUIRE observations | yes | `acquire_observed_hot_score_leases` pipelines independent exact-CAS writes, future leases, and dirty clear before matching |
 | assignment owner extends active clean HOT_ACQUIRE leases | yes | `renew_active_hot_score_leases`; dirty entries return STALE and force rematch |
 | trusted Adapter evidence that execution was not entered | yes | exact `demote_observed_worker_leases_to_recovery` preserving the time coordinate |
-| validated reconnect or recovery evidence | yes | owner-validated RECOVERY_RECHECK -> HOT_ACQUIRE polarity move preserving the time coordinate |
+| future validated recovery lifecycle evidence | yes | an explicit lifecycle owner may invoke RECOVERY_RECHECK -> HOT_ACQUIRE after validation; no production caller exists yet |
 | recovery exhausted / cold parked | yes | RECOVERY_RECHECK too-old cold coordinate + owner evidence |
 | transport heartbeat / keepalive | no | evidence only |
-| raw connected / session refresh outside Worker upsert | no | local observation only |
+| raw connected / reconnect / session refresh | no | local observation only |
 | trusted Worker execution result (`200/1xxx`) | yes | exact release of the correlated Worker lease fence |
 | trusted Adapter pre-execution rejection (`3xxx`) | yes | exact positive-to-negative movement of the correlated Worker lease fence |
 | task finality without a correlated Worker result | no | Task/Item owner movement only |

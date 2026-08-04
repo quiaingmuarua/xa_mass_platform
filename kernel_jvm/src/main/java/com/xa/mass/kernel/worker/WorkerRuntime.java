@@ -36,15 +36,13 @@ public interface WorkerRuntime {
             String workerId,
             String workerGroupId,
             String endpointManagerId,
-            Map<String, Object> attributes,
-            Set<String> dynamicAttributeNames
+            Map<String, Object> workerProperties
     ) {
         public WorkerDeclaration {
             requireNonBlank(workerId, "workerId");
             requireNonBlank(workerGroupId, "workerGroupId");
             requireNonBlank(endpointManagerId, "endpointManagerId");
-            attributes = immutableMap(attributes);
-            dynamicAttributeNames = immutableSet(dynamicAttributeNames);
+            workerProperties = immutableMap(workerProperties);
         }
     }
 
@@ -52,31 +50,27 @@ public interface WorkerRuntime {
             String workerId,
             String workerGroupId,
             String endpointManagerId,
-            Map<String, Object> attributes,
-            Map<String, Object> platformAttributes,
-            Set<String> dynamicAttributeNames
+            Map<String, Object> workerProperties,
+            Map<String, Object> platformProperties
     ) {
         public WorkerDescriptor {
             requireNonBlank(workerId, "workerId");
             requireNonBlank(workerGroupId, "workerGroupId");
             requireNonBlank(endpointManagerId, "endpointManagerId");
-            attributes = immutableMap(attributes);
-            platformAttributes = immutableMap(platformAttributes);
-            dynamicAttributeNames = immutableSet(dynamicAttributeNames);
+            workerProperties = immutableMap(workerProperties);
+            platformProperties = immutableMap(platformProperties);
         }
     }
 
     record WorkerGroupDescriptor(
             String workerGroupId,
             Map<String, Object> attributes,
-            Set<String> eventCodes,
-            Set<String> itemAllocationFields
+            Set<String> eventCodes
     ) {
         public WorkerGroupDescriptor {
             requireNonBlank(workerGroupId, "workerGroupId");
             attributes = immutableMap(attributes);
             eventCodes = immutableSet(eventCodes);
-            itemAllocationFields = immutableSet(itemAllocationFields);
         }
     }
 

@@ -57,9 +57,8 @@ acquire_observed_hot_score_leases(
 ```
 
 Only due positive HOT scores may be leased. Successful acquisition preserves
-laneRank, writes a future time coordinate, and clears dirty before the current
-matcher reads Worker metadata. Concurrent rounds may scan the same Worker, but
-only one exact observed-score CAS succeeds.
+laneRank, writes a future time coordinate, and clears dirty. Concurrent rounds
+may observe the same Worker, but only one exact observed-score CAS succeeds.
 
 `WorkerCandidateAcquirer` exposes separate source semantics:
 
@@ -67,19 +66,23 @@ only one exact observed-score CAS succeeds.
 acquire_hot_pool_candidates
   bounded HOT scan for Task-level cache warming
 
-TARGETED with target_field=workerId or dynamic.<name>
-  bounded point/index Worker ids
-  observe only their due HOT scores
+TARGETED with a complete Item-owned rule
+  bounded Worker ids from workerId $eq/$equal/$in
+  complete pre-match over snapshots and explicit index.* projections
+  observe only the pre-matched Workers' due HOT scores
+  exact lease at most requestedCount Workers per request
+  complete post-lease rematch
 ```
 
 Neither HOT-pool nor TARGETED acquisition reads or writes candidate cache; the
 allocation Pacer owns publication. Each call is scoped to one explicit
-WorkerGroup and one score ZSET. Index output is only a proposal; every accepted
-Worker still passes exact lease and full allocation-rule matching.
+WorkerGroup and one score ZSET. Every accepted Worker still passes exact lease
+and full allocation-rule matching; explicit index fields are point-loaded only
+for that bounded Worker-id set.
 
-Unmatched Workers, matcher failures, and candidate publication failures are
-not actively released. Their short leases expire naturally, preventing
-immediate hot-loop rematching from the same evidence.
+Pre-match failures do not receive a lease. Post-lease mismatches and candidate
+publication failures are not actively released; their short leases expire
+naturally, preventing immediate hot-loop rematching from the same evidence.
 
 ## PRECOMPUTED Acquisition Validation
 
@@ -136,7 +139,7 @@ Allocation may clear dirty only while acquiring a due Worker before fresh
 matching. Active dispatch validation rejects dirty and forces a later fresh
 allocation/match.
 
-Connect/reconnect uses the same fence deliberately:
+The score owner exposes a reconciliation primitive:
 
 ```text
 existing score
@@ -145,8 +148,10 @@ existing score
   -> set dirty=1
 ```
 
-This invalidates candidate evidence created before reconnect without releasing
-future holds or introducing a session epoch.
+The primitive can invalidate old candidate evidence without releasing future
+holds or introducing a session epoch. It is not called by Worker resource
+upsert and has no production caller in this slice. A future explicit lifecycle
+operation must validate recovery evidence before using it.
 
 ## Result Disposition
 
@@ -190,6 +195,10 @@ reconcile_worker_hot_acquire(workerGroupId, workerId)
 - Positive dirty is `NOOP`.
 - timeSlot and laneRank are preserved; future holds remain future.
 
+This mechanism does not make resource upsert a reconnect or activation API.
+Current production upsert initializes a missing score and otherwise preserves
+the existing score exactly.
+
 ```text
 demote_observed_worker_leases_to_recovery(workerGroupId, observedScores)
 ```
@@ -213,10 +222,10 @@ RECOVERY_RECHECK
 ```
 
 This is not a physical connection or socket state. Adapter, Worker, and endpoint
-manager observations are evidence. Reconnect upsert, execution evidence,
-pre-execution rejection, and future recovery probes make the kernel
-classification converge when scheduling or recovery work requires it. With no
-demand, bounded classification lag is allowed.
+manager observations are evidence. Execution evidence, pre-execution rejection,
+and future explicit recovery probes make the kernel classification converge
+when scheduling or recovery work requires it. With no demand, bounded
+classification lag is allowed.
 
 ## Failure Matrix
 
@@ -246,7 +255,7 @@ cross-owner transaction.
 | WorkerScoreCore | score encoding, scans, exact lease, dirty fence, release and polarity mechanics | no Task policy, transport or result subcode parsing |
 | WorkerRuntime | declaration validation, first score initialization and trusted reconnect reconciliation | no heartbeat or dispatch ownership |
 | WorkerCandidateAcquirer HOT pool | bounded due-HOT scan, exact lease and full match for precomputation | no cache read/write |
-| WorkerCandidateAcquirer TARGETED | explicit point/index source, exact lease and full match | no cache read/write or fallback |
+| WorkerCandidateAcquirer TARGETED | request-local WorkerId source, pre-match, bounded exact lease and post-lease rematch | no index discovery, cache read/write or fallback |
 | WorkerCandidateAcquirer PRECOMPUTED | cache consume, exact active-fence validation/renewal and rematch | no HOT scan or fallback |
 | TaskWorkerAllocationPacer | retain Task-owned rule Tasks, acquire HOT-pool candidates and publish cache evidence | no direct Worker-score or result handling |
 | TaskItemDispatcher | resolve PRECOMPUTED/TARGETED from immutable TaskType, preserve binding, claim Item and build WorkerCommand | no Task-score, mailbox, cache or Worker-score access |

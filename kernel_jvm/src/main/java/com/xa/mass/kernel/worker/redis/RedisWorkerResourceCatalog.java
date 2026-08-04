@@ -1,6 +1,5 @@
 package com.xa.mass.kernel.worker.redis;
 
-import com.xa.mass.kernel.KernelOperationNotImplementedException;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
@@ -14,9 +13,12 @@ import io.lettuce.core.codec.StringCodec;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.jspecify.annotations.Nullable;
 
 public final class RedisWorkerResourceCatalog
         implements WorkerResourceCatalog, AutoCloseable {
+
+    private static final int MAX_DESCRIPTOR_CAS_ATTEMPTS = 8;
 
     private final RedisClient redisClient;
     private final String prefix;
@@ -73,14 +75,10 @@ public final class RedisWorkerResourceCatalog
             );
         }
         if (!current.workerGroupId().equals(descriptor.workerGroupId())
-                || !current.eventCodes().equals(descriptor.eventCodes())
-                || !current.itemAllocationFields().equals(
-                        descriptor.itemAllocationFields()
-                )) {
+                || !current.eventCodes().equals(descriptor.eventCodes())) {
             return new WorkerRuntimeResult(
                     WorkerRuntimeStatus.CONFLICT,
-                    "worker group eventCodes and itemAllocationFields "
-                            + "are immutable"
+                    "worker group eventCodes are immutable"
             );
         }
 
@@ -107,12 +105,17 @@ public final class RedisWorkerResourceCatalog
         var descriptors = new LinkedHashMap<String, WorkerGroupDescriptor>();
         for (int index = 0; index < workerGroupIds.size(); index++) {
             KeyValue<String, String> value = loaded.get(index);
+            String workerGroupId = workerGroupIds.get(index);
+            WorkerGroupDescriptor descriptor = value.hasValue()
+                    ? WorkerRedisSupport.decodeWorkerGroup(value.getValue())
+                    : null;
             descriptors.put(
-                    workerGroupIds.get(index),
-                    value.hasValue()
-                            ? WorkerRedisSupport.decodeWorkerGroup(
-                                    value.getValue()
+                    workerGroupId,
+                    descriptor != null
+                            && workerGroupId.equals(
+                                    descriptor.workerGroupId()
                             )
+                            ? descriptor
                             : null
             );
         }
@@ -124,7 +127,31 @@ public final class RedisWorkerResourceCatalog
             String workerGroupId,
             List<String> workerIds
     ) {
-        throw notImplemented("get_worker_descriptors");
+        requireNonBlank(workerGroupId, "workerGroupId");
+        requireIds(workerIds, "workerIds");
+        if (workerIds.isEmpty()) {
+            return Map.of();
+        }
+        List<KeyValue<String, String>> loaded = commands().hmget(
+                WorkerRedisSupport.workersKey(prefix, workerGroupId),
+                workerIds.toArray(String[]::new)
+        );
+        var descriptors = new LinkedHashMap<String, WorkerDescriptor>();
+        for (int index = 0; index < workerIds.size(); index++) {
+            String workerId = workerIds.get(index);
+            KeyValue<String, String> value = loaded.get(index);
+            WorkerDescriptor descriptor = value.hasValue()
+                    ? WorkerRedisSupport.decodeWorker(value.getValue())
+                    : null;
+            if (descriptor == null
+                    || !workerId.equals(descriptor.workerId())
+                    || !workerGroupId.equals(descriptor.workerGroupId())) {
+                descriptors.put(workerId, null);
+            } else {
+                descriptors.put(workerId, descriptor);
+            }
+        }
+        return descriptors;
     }
 
     @Override
@@ -170,12 +197,99 @@ public final class RedisWorkerResourceCatalog
     }
 
     @Override
-    public WorkerRuntimeResult updateWorkerPlatformAttributes(
+    public WorkerRuntimeResult patchWorkerPlatformProperties(
             String workerGroupId,
             String workerId,
-            Map<String, Object> attributes
+            Map<String, @Nullable Object> properties
     ) {
-        throw notImplemented("update_worker_platform_attributes");
+        requireNonBlank(workerGroupId, "workerGroupId");
+        requireNonBlank(workerId, "workerId");
+        if (properties == null) {
+            return new WorkerRuntimeResult(
+                    WorkerRuntimeStatus.INVALID,
+                    "platform properties must be present"
+            );
+        }
+        for (Map.Entry<String, @Nullable Object> entry
+                : properties.entrySet()) {
+            if (entry.getKey() == null || entry.getKey().isEmpty()) {
+                return new WorkerRuntimeResult(
+                        WorkerRuntimeStatus.INVALID,
+                        "platform property names must be non-empty"
+                );
+            }
+        }
+        String workersKey = WorkerRedisSupport.workersKey(
+                prefix,
+                workerGroupId
+        );
+        for (int attempt = 0;
+                attempt < MAX_DESCRIPTOR_CAS_ATTEMPTS;
+                attempt++) {
+            String observed = commands().hget(workersKey, workerId);
+            WorkerDescriptor current = WorkerRedisSupport.decodeWorker(
+                    observed
+            );
+            if (current == null) {
+                return new WorkerRuntimeResult(
+                        WorkerRuntimeStatus.NOT_FOUND,
+                        "worker descriptor not found"
+                );
+            }
+            if (!workerId.equals(current.workerId())) {
+                return new WorkerRuntimeResult(
+                        WorkerRuntimeStatus.CONFLICT,
+                        "worker id mismatch"
+                );
+            }
+            if (!workerGroupId.equals(current.workerGroupId())) {
+                return new WorkerRuntimeResult(
+                        WorkerRuntimeStatus.CONFLICT,
+                        "worker group mismatch"
+                );
+            }
+            var nextPlatformProperties = new LinkedHashMap<>(
+                    current.platformProperties()
+            );
+            for (Map.Entry<String, @Nullable Object> entry
+                    : properties.entrySet()) {
+                if (entry.getValue() == null) {
+                    nextPlatformProperties.remove(entry.getKey());
+                } else {
+                    nextPlatformProperties.put(
+                            entry.getKey(),
+                            entry.getValue()
+                    );
+                }
+            }
+            WorkerDescriptor next = new WorkerDescriptor(
+                    current.workerId(),
+                    current.workerGroupId(),
+                    current.endpointManagerId(),
+                    current.workerProperties(),
+                    nextPlatformProperties
+            );
+            String encoded = WorkerRedisSupport.encodeWorker(next);
+            if (encoded == null) {
+                return new WorkerRuntimeResult(
+                        WorkerRuntimeStatus.INVALID,
+                        "invalid descriptor json"
+                );
+            }
+            if (WorkerRedisSupport.compareAndSetHashField(
+                    commands(),
+                    workersKey,
+                    workerId,
+                    observed,
+                    encoded
+            )) {
+                return new WorkerRuntimeResult(WorkerRuntimeStatus.OK);
+            }
+        }
+        return new WorkerRuntimeResult(
+                WorkerRuntimeStatus.STALE,
+                "worker descriptor changed during platform property patch"
+        );
     }
 
     private RedisCommands<String, String> commands() {
@@ -206,15 +320,6 @@ public final class RedisWorkerResourceCatalog
 
     private String groupsKey() {
         return WorkerRedisSupport.groupsKey(prefix);
-    }
-
-    private static KernelOperationNotImplementedException notImplemented(
-            String operation
-    ) {
-        return new KernelOperationNotImplementedException(
-                "WorkerResourceCatalog",
-                operation
-        );
     }
 
     private static void requireIds(List<String> values, String name) {

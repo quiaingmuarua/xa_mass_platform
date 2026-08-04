@@ -1,6 +1,7 @@
 package com.xa.mass.server.workerassembly;
 
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
+import com.xa.mass.kernel.worker.WorkerPropertyIndexRuntime;
 import com.xa.mass.kernel.worker.WorkerRuntime;
 import com.xa.mass.scenarioworkers.ScenarioWorkerBundle;
 import com.xa.mass.scenarioworkers.ScenarioWorkerBundleConfig;
@@ -34,7 +35,8 @@ public class ServerWorkerAssemblyConfiguration {
             ServerWorkerAssemblyProperties properties,
             WorkerDeliveryAdapterManager adapterManager,
             WorkerResourceCatalog workerCatalog,
-            WorkerRuntime workerRuntime
+            WorkerRuntime workerRuntime,
+            WorkerPropertyIndexRuntime propertyIndex
     ) {
         List<ScenarioWorkerBundle> bundles = new ArrayList<>();
         properties.bundles().forEach((bundleId, bundle) -> {
@@ -54,14 +56,16 @@ public class ServerWorkerAssemblyConfiguration {
                         ScenarioWorkerBundles.phoneNumber(
                                 config,
                                 workerCatalog,
-                                workerRuntime
+                                workerRuntime,
+                                propertyIndex
                         )
                 );
                 case STRING_UTILS -> bundles.add(
                         ScenarioWorkerBundles.stringUtils(
                                 config,
                                 workerCatalog,
-                                workerRuntime
+                                workerRuntime,
+                                propertyIndex
                         )
                 );
             }

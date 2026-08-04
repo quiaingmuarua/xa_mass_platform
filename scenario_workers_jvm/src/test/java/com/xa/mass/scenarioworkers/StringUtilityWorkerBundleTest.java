@@ -10,6 +10,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
+import com.xa.mass.kernel.worker.WorkerPropertyIndexRuntime;
 import com.xa.mass.kernel.worker.WorkerRuntime;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDeclaration;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
@@ -18,6 +19,7 @@ import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeStatus;
 import com.xa.mass.worker.transport.websocket.WebSocketWorkerTransport;
 import java.net.URI;
 import java.time.Duration;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
@@ -35,6 +37,7 @@ class StringUtilityWorkerBundleTest {
                         config(2, Duration.ofSeconds(1)),
                         catalog,
                         runtime,
+                        acceptedIndex(),
                         (workerId, ignored) ->
                                 workerId.endsWith("001")
                                         ? first
@@ -53,9 +56,6 @@ class StringUtilityWorkerBundleTest {
                 .containsExactlyInAnyOrderElementsOf(
                         StringUtilityCapability.EVENT_CODES
                 );
-        assertThat(group.getValue().itemAllocationFields())
-                .containsExactly("workerId");
-
         ArgumentCaptor<WorkerDeclaration> workers =
                 ArgumentCaptor.forClass(WorkerDeclaration.class);
         verify(runtime, times(2)).upsertWorker(workers.capture());
@@ -97,6 +97,7 @@ class StringUtilityWorkerBundleTest {
                         config(1, Duration.ofSeconds(1)),
                         catalog,
                         runtime,
+                        acceptedIndex(),
                         factory
                 );
 
@@ -124,6 +125,18 @@ class StringUtilityWorkerBundleTest {
                 new WorkerRuntimeResult(WorkerRuntimeStatus.NOOP)
         );
         return runtime;
+    }
+
+    private static WorkerPropertyIndexRuntime acceptedIndex() {
+        WorkerPropertyIndexRuntime index = mock(
+                WorkerPropertyIndexRuntime.class
+        );
+        when(index.updateIndexedProperties(any(), any(), any()))
+                .thenReturn(Map.of(
+                        "index.worker.region",
+                        new WorkerRuntimeResult(WorkerRuntimeStatus.OK)
+                ));
+        return index;
     }
 
     private static WebSocketWorkerTransport connectedWorker() {

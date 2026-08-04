@@ -384,16 +384,18 @@ function formattedTime(value?: string): string {
                   label="ENDPOINT MANAGER"
                   min-width="170"
                 />
-                <el-table-column label="ATTRIBUTES" min-width="210">
+                <el-table-column label="WORKER PROPERTIES" min-width="210">
                   <template #default="{ row }">
                     <span class="attribute-preview">
-                      {{ compactJson(row.attributes) }}
+                      {{ compactJson(row.workerProperties) }}
                     </span>
                   </template>
                 </el-table-column>
-                <el-table-column label="DYNAMIC ATTR." width="126" align="center">
+                <el-table-column label="PLATFORM PROPERTIES" min-width="210">
                   <template #default="{ row }">
-                    {{ row.dynamicAttributeNames.length }}
+                    <span class="attribute-preview">
+                      {{ compactJson(row.platformProperties) }}
+                    </span>
                   </template>
                 </el-table-column>
                 <el-table-column width="96" align="right">
@@ -434,12 +436,12 @@ function formattedTime(value?: string): string {
                     <dd>{{ worker.endpointManagerId }}</dd>
                   </div>
                   <div>
-                    <dt>Attributes</dt>
-                    <dd>{{ compactJson(worker.attributes) }}</dd>
+                    <dt>Worker properties</dt>
+                    <dd>{{ compactJson(worker.workerProperties) }}</dd>
                   </div>
                   <div>
-                    <dt>Dynamic</dt>
-                    <dd>{{ worker.dynamicAttributeNames.length }}</dd>
+                    <dt>Platform properties</dt>
+                    <dd>{{ compactJson(worker.platformProperties) }}</dd>
                   </div>
                 </dl>
               </article>
@@ -486,25 +488,12 @@ function formattedTime(value?: string): string {
           </dl>
         </section>
         <section>
-          <h2>Worker attributes</h2>
-          <JsonBlock :value="selectedWorker.attributes" />
+          <h2>Worker properties</h2>
+          <JsonBlock :value="selectedWorker.workerProperties" />
         </section>
         <section>
-          <h2>Platform attributes</h2>
-          <JsonBlock :value="selectedWorker.platformAttributes" />
-        </section>
-        <section>
-          <h2>Dynamic attribute names</h2>
-          <div class="dynamic-name-list">
-            <el-tag
-              v-for="name in selectedWorker.dynamicAttributeNames"
-              :key="name"
-              effect="plain"
-            >
-              {{ name }}
-            </el-tag>
-            <span v-if="selectedWorker.dynamicAttributeNames.length === 0"> 无 </span>
-          </div>
+          <h2>Platform properties</h2>
+          <JsonBlock :value="selectedWorker.platformProperties" />
         </section>
         <el-alert type="info" :closable="false" show-icon>
           <template #title>

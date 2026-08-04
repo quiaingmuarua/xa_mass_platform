@@ -8,7 +8,8 @@ from .task_runtime import RedisTaskResourceCatalog, RedisTaskRuntime
 from .worker_score import RedisWorkerScoreCore
 from .worker_result import RedisWorkerResultRuntime
 from .worker_runtime import (
-    RedisWorkerDynamicAttributeRuntime,
+    RedisHashWorkerPropertyIndex,
+    RedisHashWorkerPropertyIndexProvider,
     RedisWorkerResourceCatalog,
     RedisWorkerRuntime,
 )
@@ -22,7 +23,8 @@ __all__ = [
     "RedisTaskRuntime",
     "RedisWorkerScoreCore",
     "RedisWorkerResultRuntime",
-    "RedisWorkerDynamicAttributeRuntime",
+    "RedisHashWorkerPropertyIndex",
+    "RedisHashWorkerPropertyIndexProvider",
     "RedisWorkerResourceCatalog",
     "RedisWorkerRuntime",
 ]

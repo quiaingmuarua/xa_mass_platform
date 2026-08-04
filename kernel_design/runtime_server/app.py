@@ -88,15 +88,14 @@ def _close_response(result: TaskCloseResult) -> JSONResponse:
 
 def create_app(
     *,
-    config_json: str | None = None,
+    config: KernelApplicationConfig | None = None,
     application: KernelApplication | None = None,
 ) -> FastAPI:
-    if config_json is not None and application is not None:
+    if config is not None and application is not None:
         raise ValueError(
-            "config_json and injected application are mutually exclusive"
+            "config and injected application are mutually exclusive"
         )
     if application is None:
-        config = KernelApplicationConfig.from_json(config_json)
         kernel_application = KernelApplication(config)
     else:
         kernel_application = application

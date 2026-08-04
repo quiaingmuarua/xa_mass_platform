@@ -15,6 +15,7 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
     redis_module = None  # type: ignore[assignment]
 
 from kernel_design.executable_spec import (
+    MappedWorkerPropertyIndexRuntime,
     TaskType,
     WorkerCommand,
     WorkerCommandAppendStatus,
@@ -28,7 +29,6 @@ from kernel_design.executable_spec import (
     RedisTaskItemScoreBandCore,
     RedisTaskScoreBandCore,
     RedisWorkerScoreCore,
-    RedisWorkerDynamicAttributeRuntime,
     RedisWorkerResourceCatalog,
     RedisWorkerRuntime,
     TaskCreationStatus,
@@ -131,18 +131,17 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             prefix=self.prefix,
             initial_lane_rank=50,
         )
-        dynamic_runtime = RedisWorkerDynamicAttributeRuntime(
+        property_index = MappedWorkerPropertyIndexRuntime(
             self.worker_catalog,
-            update_handlers={},
+            {},
         )
         candidate_acquirer = WorkerCandidateAcquirer(
             self.candidate_cache,
             self.worker_score,
             WorkerCandidateMatcher(
                 self.worker_catalog,
-                dynamic_runtime,
+                property_index,
             ),
-            dynamic_runtime,
             worker_scan_limit=10,
         )
         self.allocation_pacer = TaskWorkerAllocationPacer(
@@ -377,7 +376,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
             task_id=self.task_id,
             worker_group_id="image-workers",
             task_type=TaskType.TASK_DRIVEN,
-            allocation_rule={"attributes.runtime": {"$eq": "python"}},
+            allocation_rule={"worker.runtime": {"$eq": "python"}},
             config={
                 "priority": "0",
                 "maximumCandidateWorkers": "1",
@@ -435,8 +434,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
                 worker_id="worker-1",
                 worker_group_id="image-workers",
                 endpoint_manager_id="endpoint-manager-1",
-                attributes={"runtime": "python"},
-                dynamic_attribute_names=frozenset(),
+                worker_properties={"runtime": "python"},
             )
         )
         unmatched_worker = self.worker_runtime.upsert_worker(
@@ -444,8 +442,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
                 worker_id="worker-2",
                 worker_group_id="image-workers",
                 endpoint_manager_id="endpoint-manager-2",
-                attributes={"runtime": "java"},
-                dynamic_attribute_names=frozenset(),
+                worker_properties={"runtime": "java"},
             )
         )
         time.sleep((self.worker_score.SLOT_MILLIS + 20) / 1_000)
@@ -675,7 +672,6 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
                 worker_group_id="image-workers",
                 attributes={},
                 event_codes=frozenset({"image.resize"}),
-                item_allocation_fields=frozenset({"workerId"}),
             )
         )
         worker_results = tuple(
@@ -684,8 +680,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
                     worker_id=f"worker-{index}",
                     worker_group_id="image-workers",
                     endpoint_manager_id=f"endpoint-manager-{index}",
-                    attributes={"runtime": "python"},
-                    dynamic_attribute_names=frozenset(),
+                    worker_properties={"runtime": "python"},
                 )
             )
             for index in (1, 2)
@@ -874,7 +869,6 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
                 worker_group_id="image-workers",
                 attributes={},
                 event_codes=frozenset({"image.resize"}),
-                item_allocation_fields=frozenset(),
             )
         )
         self.worker_runtime.upsert_worker(
@@ -882,8 +876,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
                 worker_id="worker-1",
                 worker_group_id="image-workers",
                 endpoint_manager_id="endpoint-manager-1",
-                attributes={},
-                dynamic_attribute_names=frozenset(),
+                worker_properties={},
             )
         )
         item = TaskItem(
@@ -970,7 +963,6 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
                 worker_group_id="image-workers",
                 attributes={},
                 event_codes=frozenset({"image.resize"}),
-                item_allocation_fields=frozenset({"workerId"}),
             )
         )
         self.worker_runtime.upsert_worker(
@@ -978,8 +970,7 @@ class TaskDispatchIntegrationTest(unittest.TestCase):
                 worker_id="worker-1",
                 worker_group_id="image-workers",
                 endpoint_manager_id="endpoint-manager-1",
-                attributes={},
-                dynamic_attribute_names=frozenset(),
+                worker_properties={},
             )
         )
         original = TaskItem(

@@ -99,7 +99,6 @@ WorkerCandidateRequest
   priority = int(config["priority"])
   requestedCount = positive deficit
   allocationRule = descriptor.allocationRule
-  targetField = None
 ```
 
 Tasks with no descriptor, the wrong TaskType, or no deficit do not produce a

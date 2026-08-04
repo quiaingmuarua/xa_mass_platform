@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
+import com.xa.mass.kernel.worker.WorkerPropertyIndexRuntime;
 import com.xa.mass.kernel.worker.WorkerRuntime;
 import com.xa.mass.server.workerdelivery.adapter
         .ServerWorkerDeliveryAdapterConfiguration;
@@ -31,6 +32,10 @@ class ServerWorkerAssemblyPropertiesTest {
                     .withBean(
                             WorkerRuntime.class,
                             () -> mock(WorkerRuntime.class)
+                    )
+                    .withBean(
+                            WorkerPropertyIndexRuntime.class,
+                            () -> mock(WorkerPropertyIndexRuntime.class)
                     );
 
     @Test

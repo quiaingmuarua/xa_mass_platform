@@ -7,8 +7,6 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskItem;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendStatus;
 import com.xa.mass.kernel.task.TaskRuntime.TaskType;
-import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
 import com.xa.mass.server.api.v1.model.CommandResultResponse;
 import com.xa.mass.server.api.v1.model.RuntimeCommandStatus;
 import com.xa.mass.server.api.v1.model.TaskItemRequest;
@@ -30,18 +28,15 @@ public final class TaskDataService {
 
     private final TaskRuntime taskRuntime;
     private final TaskResourceCatalog taskCatalog;
-    private final WorkerResourceCatalog workerCatalog;
     private final TaskDispatchWakeSink dispatchWake;
 
     public TaskDataService(
             TaskRuntime taskRuntime,
             TaskResourceCatalog taskCatalog,
-            WorkerResourceCatalog workerCatalog,
             TaskDispatchWakeSink dispatchWake
     ) {
         this.taskRuntime = taskRuntime;
         this.taskCatalog = taskCatalog;
-        this.workerCatalog = workerCatalog;
         this.dispatchWake = dispatchWake;
     }
 
@@ -80,13 +75,6 @@ public final class TaskDataService {
                 );
             }
 
-            WorkerGroupDescriptor workerGroup = null;
-            if (descriptor.taskType() == TaskType.ITEM_DRIVEN) {
-                workerGroup = workerCatalog.getWorkerGroupDescriptors(
-                        List.of(descriptor.workerGroupId())
-                ).get(descriptor.workerGroupId());
-            }
-
             var validItems = new ArrayList<TaskItem>();
             var results = new LinkedHashMap<
                     String,
@@ -95,9 +83,8 @@ public final class TaskDataService {
             for (Map.Entry<String, TaskItemRequest> entry
                     : latest.entrySet()) {
                 try {
-                    validateAllocation(
+                    validateRuleLocation(
                             descriptor,
-                            workerGroup,
                             entry.getValue().allocationRule()
                     );
                     validItems.add(toItem(entry.getValue()));
@@ -176,9 +163,8 @@ public final class TaskDataService {
         }
     }
 
-    private static void validateAllocation(
+    private static void validateRuleLocation(
             TaskDescriptor descriptor,
-            WorkerGroupDescriptor workerGroup,
             Map<String, Object> rule
     ) {
         if (descriptor.taskType() == TaskType.TASK_DRIVEN) {
@@ -189,46 +175,12 @@ public final class TaskDataService {
             }
             return;
         }
-        if (workerGroup == null
-                || !workerGroup.itemAllocationFields().contains("workerId")) {
+        if (rule == null || rule.isEmpty()) {
             throw new IllegalArgumentException(
-                    "WorkerGroup does not allow workerId targeting"
+                    "ITEM_DRIVEN requires a non-empty "
+                            + "TaskItem allocationRule"
             );
         }
-        validateWorkerIdRule(rule);
-    }
-
-    private static void validateWorkerIdRule(Map<String, Object> rule) {
-        if (rule == null || rule.size() != 1 || !rule.containsKey("workerId")) {
-            throw new IllegalArgumentException(
-                    "ITEM_DRIVEN requires a workerId allocationRule"
-            );
-        }
-        Object rawOperatorRule = rule.get("workerId");
-        if (!(rawOperatorRule instanceof Map<?, ?> operatorRule)
-                || operatorRule.size() != 1) {
-            throw new IllegalArgumentException(
-                    "workerId target requires exactly one operator"
-            );
-        }
-        Map.Entry<?, ?> operator = operatorRule.entrySet().iterator().next();
-        if ("$eq".equals(operator.getKey())
-                && operator.getValue() instanceof String workerId
-                && !workerId.isBlank()) {
-            return;
-        }
-        if ("$in".equals(operator.getKey())
-                && operator.getValue() instanceof List<?> workerIds
-                && !workerIds.isEmpty()
-                && workerIds.stream().allMatch(
-                        value -> value instanceof String workerId
-                                && !workerId.isBlank()
-                )) {
-            return;
-        }
-        throw new IllegalArgumentException(
-                "workerId target only supports $eq or $in"
-        );
     }
 
     private static TaskItem toItem(TaskItemRequest item) {

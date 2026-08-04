@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from collections.abc import Callable
 
 from kernel_design.executable_spec import (
     RedisWorkerResourceCatalog,
@@ -35,11 +36,13 @@ class FakePipeline:
 class FakeRedis:
     def __init__(self) -> None:
         self.hashes: dict[str, dict[str, str]] = {}
+        self.sets: dict[str, set[str]] = {}
         self.zsets: dict[str, dict[str, int]] = {}
         self.hmget_calls: list[tuple[str, tuple[str, ...]]] = []
         self.hrandfield_calls: list[tuple[str, int, bool]] = []
         self.hrandfield_offset = 0
         self.now_millis = 100_000
+        self.before_hash_cas: Callable[[str, str], None] | None = None
 
     def pipeline(self, transaction: bool = True) -> FakePipeline:
         return FakePipeline(self)
@@ -124,6 +127,31 @@ class FakeRedis:
                 del hash_row[key]
         return removed
 
+    def sadd(self, name: str, *values: object) -> int:
+        members = self.sets.setdefault(name, set())
+        before = len(members)
+        members.update(self._stringify(value) for value in values)
+        return len(members) - before
+
+    def srem(self, name: str, *values: object) -> int:
+        members = self.sets.get(name, set())
+        removed = 0
+        for value in values:
+            member = self._stringify(value)
+            if member in members:
+                members.remove(member)
+                removed += 1
+        return removed
+
+    def scard(self, name: str) -> int:
+        return len(self.sets.get(name, set()))
+
+    def srandmember(self, name: str, number: int) -> list[str]:
+        return sorted(self.sets.get(name, set()))[:number]
+
+    def sismember(self, name: str, value: object) -> bool:
+        return self._stringify(value) in self.sets.get(name, set())
+
     def zadd(
         self,
         name: str,
@@ -144,10 +172,22 @@ class FakeRedis:
     def zscore(self, name: str, member: str) -> int | None:
         return self.zsets.get(name, {}).get(member)
 
-    def eval(self, script: str, numkeys: int, *args: object) -> list[object]:
+    def eval(self, script: str, numkeys: int, *args: object) -> object:
         if numkeys != 1:
             raise ValueError("unsupported fake redis script")
         key = str(args[0])
+        if "current ~= ARGV[2]" in script:
+            field = str(args[1])
+            observed = self._stringify(args[2])
+            replacement = self._stringify(args[3])
+            callback = self.before_hash_cas
+            self.before_hash_cas = None
+            if callback is not None:
+                callback(key, field)
+            if self.hget(key, field) != observed:
+                return 0
+            self.hset(key, field, replacement)
+            return 1
         if "target_score = abs_score + (1 - stored_dirty)" in script:
             worker_id = str(args[1])
             dirty_factor = int(args[2])
@@ -240,15 +280,13 @@ class RedisWorkerRuntimeFixture(unittest.TestCase):
         *,
         worker_group_id: str = "image-workers",
         endpoint_manager_id: str = "endpoint-manager-1",
-        attributes: dict[str, object] | None = None,
-        dynamic_attribute_names: frozenset[str] = frozenset({"battery"}),
+        worker_properties: dict[str, object] | None = None,
     ) -> WorkerDeclaration:
         return WorkerDeclaration(
             worker_id=worker_id,
             worker_group_id=worker_group_id,
             endpoint_manager_id=endpoint_manager_id,
-            attributes=attributes or {},
-            dynamic_attribute_names=dynamic_attribute_names,
+            worker_properties=worker_properties or {},
         )
 
     def upsert_worker(
@@ -264,13 +302,12 @@ class RedisWorkerRuntimeFixture(unittest.TestCase):
     def expected_descriptor(
         declaration: WorkerDeclaration,
         *,
-        platform_attributes: dict[str, object] | None = None,
+        platform_properties: dict[str, object] | None = None,
     ) -> WorkerDescriptor:
         return WorkerDescriptor(
             worker_id=declaration.worker_id,
             worker_group_id=declaration.worker_group_id,
             endpoint_manager_id=declaration.endpoint_manager_id,
-            attributes=declaration.attributes,
-            platform_attributes=platform_attributes or {},
-            dynamic_attribute_names=declaration.dynamic_attribute_names,
+            worker_properties=declaration.worker_properties,
+            platform_properties=platform_properties or {},
         )

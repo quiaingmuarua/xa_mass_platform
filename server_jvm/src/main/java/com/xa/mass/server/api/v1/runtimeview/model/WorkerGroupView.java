@@ -6,7 +6,6 @@ import java.util.Map;
 public record WorkerGroupView(
         String workerGroupId,
         Map<String, Object> attributes,
-        List<String> eventCodes,
-        List<String> itemAllocationFields
+        List<String> eventCodes
 ) {
 }

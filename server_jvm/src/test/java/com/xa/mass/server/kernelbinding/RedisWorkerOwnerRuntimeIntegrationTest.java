@@ -3,14 +3,17 @@ package com.xa.mass.server.kernelbinding;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScorePolarity;
 import com.xa.mass.kernel.score.redis.RedisWorkerScoreCore;
+import com.xa.mass.kernel.worker.MappedWorkerPropertyIndexRuntime;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDeclaration;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeStatus;
 import com.xa.mass.kernel.worker.redis.RedisWorkerResourceCatalog;
 import com.xa.mass.kernel.worker.redis.RedisWorkerRuntime;
+import com.xa.mass.kernel.worker.redis.RedisHashWorkerPropertyIndexProvider;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -38,6 +41,8 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     private RedisWorkerScoreCore scoreCore;
     private RedisWorkerRuntime runtime;
     private RedisWorkerResourceCatalog catalog;
+    private RedisHashWorkerPropertyIndexProvider indexProvider;
+    private MappedWorkerPropertyIndexRuntime propertyIndex;
 
     @BeforeEach
     void setUp() {
@@ -56,6 +61,19 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 prefix
         );
         catalog = new RedisWorkerResourceCatalog(redisClient, prefix);
+        indexProvider = new RedisHashWorkerPropertyIndexProvider(
+                redisClient,
+                prefix
+        );
+        propertyIndex = new MappedWorkerPropertyIndexRuntime(
+                catalog,
+                Map.of(
+                        "index.worker.region",
+                        indexProvider.create("index.worker.region"),
+                        "index.platform.pool",
+                        indexProvider.create("index.platform.pool")
+                )
+        );
     }
 
     @AfterEach
@@ -71,6 +89,9 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         }
         if (catalog != null) {
             catalog.close();
+        }
+        if (indexProvider != null) {
+            indexProvider.close();
         }
         if (scoreCore != null) {
             scoreCore.close();
@@ -107,7 +128,6 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         assertThat(redis.hget(groupsKey(), "group-1")).isEqualTo(
                 "{\"attributes\":{\"kind\":\"\\u66f4\\u65b0\"},"
                         + "\"eventCodes\":[\"event.a\",\"event.b\"],"
-                        + "\"itemAllocationFields\":[\"workerId\"],"
                         + "\"workerGroupId\":\"group-1\"}"
         );
 
@@ -121,12 +141,12 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 .isEqualTo(WorkerRuntimeStatus.OK);
         assertThat(redis.hget(workersKey("group-1"), "worker-1"))
                 .isEqualTo(
-                        "{\"attributes\":{\"runtime\":\"first\"},"
-                                + "\"dynamicAttributeNames\":[],"
-                                + "\"endpointManagerId\":\"endpoint-1\","
-                                + "\"platformAttributes\":{},"
+                        "{\"endpointManagerId\":\"endpoint-1\","
+                                + "\"platformProperties\":{},"
                                 + "\"workerGroupId\":\"group-1\","
-                                + "\"workerId\":\"worker-1\"}"
+                                + "\"workerId\":\"worker-1\","
+                                + "\"workerProperties\":"
+                                + "{\"runtime\":\"first\"}}"
                 );
         var initialScore = scoreCore.getScoreStates(
                 "group-1",
@@ -142,12 +162,12 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         redis.hset(
                 workersKey("group-1"),
                 "worker-1",
-                "{\"attributes\":{\"runtime\":\"first\"},"
-                        + "\"dynamicAttributeNames\":[],"
-                        + "\"endpointManagerId\":\"endpoint-1\","
-                        + "\"platformAttributes\":{\"tier\":\"premium\"},"
+                "{\"endpointManagerId\":\"endpoint-1\","
+                        + "\"platformProperties\":{\"tier\":\"premium\"},"
                         + "\"workerGroupId\":\"group-1\","
-                        + "\"workerId\":\"worker-1\"}"
+                        + "\"workerId\":\"worker-1\","
+                        + "\"workerProperties\":"
+                        + "{\"runtime\":\"first\"}}"
         );
         assertThat(runtime.upsertWorker(worker(
                 "worker-1",
@@ -157,18 +177,32 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         )).status()).isEqualTo(WorkerRuntimeStatus.OK);
         assertThat(redis.hget(workersKey("group-1"), "worker-1"))
                 .isEqualTo(
-                        "{\"attributes\":{\"runtime\":\"second\"},"
-                                + "\"dynamicAttributeNames\":[],"
-                                + "\"endpointManagerId\":\"endpoint-1\","
-                                + "\"platformAttributes\":"
+                        "{\"endpointManagerId\":\"endpoint-1\","
+                                + "\"platformProperties\":"
                                 + "{\"tier\":\"premium\"},"
                                 + "\"workerGroupId\":\"group-1\","
-                                + "\"workerId\":\"worker-1\"}"
+                                + "\"workerId\":\"worker-1\","
+                                + "\"workerProperties\":"
+                                + "{\"runtime\":\"second\"}}"
                 );
         assertThat(scoreCore.getScoreStates(
                 "group-1",
                 java.util.List.of("worker-1")
-        ).get("worker-1").dirty()).isEqualTo(1);
+        ).get("worker-1").score()).isEqualTo(initialScore.score());
+    }
+
+    @Test
+    void rejectsWorkerGroupFieldIdentityMismatchOnRead() {
+        redis.hset(
+                groupsKey(),
+                "group-1",
+                "{\"attributes\":{},"
+                        + "\"eventCodes\":[\"event\"],"
+                        + "\"workerGroupId\":\"group-2\"}"
+        );
+
+        assertThat(catalog.getWorkerGroupDescriptors(List.of("group-1")))
+                .containsEntry("group-1", null);
     }
 
     @Test
@@ -222,6 +256,17 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 .isEqualTo(WorkerRuntimeStatus.OK);
         assertThat(redis.hget(workersKey("group-1"), "worker-1"))
                 .isNotNull();
+
+        redis.hset(
+                workersKey("group-1"),
+                "corrupt-field",
+                workerJson("another-worker", "group-1", 1)
+        );
+        assertThat(catalog.patchWorkerPlatformProperties(
+                "group-1",
+                "corrupt-field",
+                Map.of("pool", "batch")
+        ).status()).isEqualTo(WorkerRuntimeStatus.CONFLICT);
     }
 
     @Test
@@ -301,7 +346,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
     }
 
     @Test
-    void reconnectReconcilesRecoveryScoreToHotAcquire() {
+    void repeatedUpsertPreservesExistingScoreStates() {
         catalog.upsertWorkerGroup(group(
                 "group-1",
                 Map.of(),
@@ -314,22 +359,108 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 Map.of()
         );
         runtime.upsertWorker(declaration);
-        long currentScore = redis.zscore(
+        long initialScore = redis.zscore(
                 scoreKey("group-1"),
                 "worker-1"
         ).longValue();
-        redis.zadd(scoreKey("group-1"), -currentScore, "worker-1");
+        long[] existingScores = {
+                initialScore,
+                initialScore + 1,
+                -initialScore,
+                initialScore + WorkerScoreCore.SLOT_FACTOR
+        };
+        for (long existingScore : existingScores) {
+            redis.zadd(scoreKey("group-1"), existingScore, "worker-1");
 
-        assertThat(runtime.upsertWorker(declaration).status())
-                .isEqualTo(WorkerRuntimeStatus.OK);
-        var reconciled = scoreCore.getScoreStates(
+            assertThat(runtime.upsertWorker(declaration).status())
+                    .isEqualTo(WorkerRuntimeStatus.OK);
+            assertThat(redis.zscore(scoreKey("group-1"), "worker-1"))
+                    .isEqualTo((double) existingScore);
+        }
+    }
+
+    @Test
+    void snapshotsAndExplicitIndexProjectionsRemainIndependent() {
+        catalog.upsertWorkerGroup(group(
                 "group-1",
-                java.util.List.of("worker-1")
+                Map.of(),
+                Set.of("event")
+        ));
+        runtime.upsertWorker(worker(
+                "worker-1",
+                "group-1",
+                "endpoint-1",
+                Map.of("region", "snapshot")
+        ));
+        assertThat(catalog.patchWorkerPlatformProperties(
+                "group-1",
+                "worker-1",
+                Map.of("viewOnly", "shown")
+        ).status()).isEqualTo(WorkerRuntimeStatus.OK);
+        assertThat(propertyIndex.updateIndexedProperties(
+                "group-1",
+                "worker-1",
+                Map.of(
+                        "index.worker.region", "cn-east",
+                        "index.platform.pool", "batch"
+                )
+        )).allSatisfy((field, result) ->
+                assertThat(result.status()).isEqualTo(WorkerRuntimeStatus.OK));
+
+        assertThat(propertyIndex.loadIndexedPropertyValues(
+                "group-1",
+                "index.worker.region",
+                List.of("worker-1")
+        )).containsExactlyEntriesOf(Map.of("worker-1", "cn-east"));
+        assertThat(propertyIndex.loadIndexedPropertyValues(
+                "group-1",
+                "index.platform.pool",
+                List.of("worker-1")
+        )).containsExactlyEntriesOf(Map.of("worker-1", "batch"));
+        WorkerDescriptor descriptor = catalog.getWorkerDescriptors(
+                "group-1",
+                List.of("worker-1")
         ).get("worker-1");
-        assertThat(reconciled.polarity())
-                .isEqualTo(WorkerScorePolarity.HOT_ACQUIRE);
-        assertThat(reconciled.score()).isEqualTo(currentScore + 1);
-        assertThat(reconciled.dirty()).isEqualTo(1);
+        assertThat(descriptor.workerProperties())
+                .containsExactlyEntriesOf(Map.of("region", "snapshot"));
+        assertThat(descriptor.platformProperties())
+                .containsExactlyEntriesOf(Map.of("viewOnly", "shown"));
+
+        var disabled = new MappedWorkerPropertyIndexRuntime(
+                catalog,
+                Map.of()
+        );
+        assertThatThrownBy(() -> disabled.loadIndexedPropertyValues(
+                "group-1",
+                "index.worker.region",
+                List.of("worker-1")
+        )).isInstanceOf(IllegalStateException.class);
+        var reenabled = new MappedWorkerPropertyIndexRuntime(
+                catalog,
+                Map.of(
+                        "index.worker.region",
+                        indexProvider.create("index.worker.region")
+                )
+        );
+        assertThat(reenabled.loadIndexedPropertyValues(
+                "group-1",
+                "index.worker.region",
+                List.of("worker-1")
+        )).containsExactlyEntriesOf(Map.of("worker-1", "cn-east"));
+
+        var deletes = new LinkedHashMap<String, Object>();
+        deletes.put("index.worker.region", null);
+        assertThat(reenabled.updateIndexedProperties(
+                "group-1",
+                "worker-1",
+                deletes
+        ).get("index.worker.region").status())
+                .isEqualTo(WorkerRuntimeStatus.OK);
+        assertThat(reenabled.loadIndexedPropertyValues(
+                "group-1",
+                "index.worker.region",
+                List.of("worker-1")
+        )).isEmpty();
     }
 
     private static WorkerGroupDescriptor group(
@@ -340,8 +471,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         return new WorkerGroupDescriptor(
                 workerGroupId,
                 attributes,
-                eventCodes,
-                Set.of("workerId")
+                eventCodes
         );
     }
 
@@ -355,8 +485,7 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
                 workerId,
                 workerGroupId,
                 endpointManagerId,
-                attributes,
-                Set.of()
+                attributes
         );
     }
 
@@ -365,12 +494,11 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
             String workerGroupId,
             int index
     ) {
-        return "{\"attributes\":{\"index\":" + index + "},"
-                + "\"dynamicAttributeNames\":[],"
-                + "\"endpointManagerId\":\"endpoint-1\","
-                + "\"platformAttributes\":{},"
+        return "{\"endpointManagerId\":\"endpoint-1\","
+                + "\"platformProperties\":{},"
                 + "\"workerGroupId\":\"" + workerGroupId + "\","
-                + "\"workerId\":\"" + workerId + "\"}";
+                + "\"workerId\":\"" + workerId + "\","
+                + "\"workerProperties\":{\"index\":" + index + "}}";
     }
 
     private String groupsKey() {

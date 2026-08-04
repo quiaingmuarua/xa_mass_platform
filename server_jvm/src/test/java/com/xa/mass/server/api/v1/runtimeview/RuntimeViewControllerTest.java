@@ -211,14 +211,13 @@ class RuntimeViewControllerTest {
                 .andExpect(jsonPath(
                         "$.workers[0].endpointManagerId"
                 ).value("endpoint-1"))
-                .andExpect(jsonPath("$.workers[0].attributes.runtime")
+                .andExpect(jsonPath("$.workers[0].workerProperties.runtime")
                         .value("java"))
                 .andExpect(jsonPath(
-                        "$.workers[0].platformAttributes.region"
+                        "$.workers[0].platformProperties.region"
                 ).value("local"))
-                .andExpect(jsonPath(
-                        "$.workers[0].dynamicAttributeNames[0]"
-                ).value("battery"))
+                .andExpect(jsonPath("$.workers[0].indexedProperties")
+                        .doesNotExist())
                 .andExpect(jsonPath("$.workers[0].score")
                         .doesNotExist())
                 .andExpect(jsonPath("$.workers[0].lease")
@@ -394,8 +393,7 @@ class RuntimeViewControllerTest {
         return new WorkerGroupDescriptor(
                 workerGroupId,
                 attributes,
-                eventCodes,
-                Set.of("workerId")
+                eventCodes
         );
     }
 
@@ -408,8 +406,7 @@ class RuntimeViewControllerTest {
                 workerGroupId,
                 "endpoint-1",
                 Map.of("runtime", "java"),
-                Map.of("region", "local"),
-                Set.of("battery")
+                Map.of("region", "local")
         );
     }
 }

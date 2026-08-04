@@ -1,689 +1,202 @@
 # Worker Runtime Redis Shape
 
-Status: active new-kernel Redis shape; Python executable spec implemented;
-policy coverage partial.
+Status: active Kernel Redis ABI; Python executable spec is the mechanism
+oracle and JVM providers must read and write the same bytes.
 
-This document records the current executable Redis shape. Worker lifecycle
-tags, owner-mirrored assignment holds, revision fields, and a generic worker
-scheduling metadata hash are outside this owner model.
-
-## Purpose
-
-Define the Worker resource, score, and dynamic-attribute structures used by the
-current executable spec.
-
-Worker-runtime Redis has four first-slice responsibilities:
-
-```text
-resource catalog lookup
-worker score acquisition index
-dynamic attribute handler-owned query storage
-bounded owner-local stale fences
-```
-
-It does not own:
-
-```text
-transport session truth
-task assignment truth
-task item claim truth
-task result truth
-trace / audit truth
-worker lifecycle tags
-global worker state blob
-per-Worker capacity pool or parallel assignment model
-generic cross-round assignment hold records
-```
-
-## Owner Decisions
-
-```text
-workerGroupId == homeBucketId
-one worker belongs to exactly one workerGroupId in v0
-score ZSET is kernel-owned TaskItem scheduling-serviceability polarity plus
-acquisition/recovery timing truth
-descriptor hashes are resource declaration truth
-dynamic attribute keys are handler-owned projections / indexes
-workerId is globally unique and identifies one field in an Adapter delivery bucket
-endpointManagerId is immutable declaration metadata and an assignment-time delivery route snapshot
-live transport evidence is not stored in worker catalog or score keys
-Worker upsert establishes immutable declaration identity before ensuring score presence
-reconnect supplies trusted serviceability evidence, replaces Worker attributes,
-preserves timeSlot/laneRank, converges to HOT_ACQUIRE, and writes dirty=1
-without releasing a hold
-platform and dynamic attribute updates do not require a worker score lease
-```
-
-`homeBucketId` is a worker-runtime partition key. It is not a placement tag,
-not a transport mailbox, and not a task-created candidate bucket.
-
-## Namespace
-
-Use a single runtime namespace prefix:
+## Namespace And Owners
 
 ```text
 wr:{prefix}:...
 ```
 
-`prefix` is a deployment/runtime namespace. It is not a worker group, adapter,
-project, or policy id.
+`prefix` is a deployment namespace. `workerGroupId` is the Worker home bucket
+and score partition. Redis structures are owned separately:
 
-## First-Slice Keys
+```text
+WorkerResourceCatalog      descriptor HASH values
+WorkerRuntime              Worker declaration and snapshot refresh
+WorkerPropertyIndexRuntime property projection HASH values
+WorkerScoreCore            Worker scheduling score ZSET
+```
 
-### Worker Groups
+Delivery mailboxes and Worker results use their own `wd:` and `rr:`
+namespaces. Task assignment, connection state, and execution truth never enter
+the Worker resource keys.
+
+## WorkerGroup Descriptors
 
 ```text
 wr:{prefix}:groups
   HASH field = workerGroupId
-  value = WorkerGroupDescriptor json
+  value       = canonical WorkerGroupDescriptor JSON
 ```
 
-Role:
-
-```text
-resource declaration truth for worker group metadata and event-code promise
-```
-
-Value shape:
+Example:
 
 ```json
 {
-  "workerGroupId": "image-workers",
-  "attributes": {},
-  "eventCodes": ["image.generate"],
-  "itemAllocationFields": ["workerId", "dynamic.battery"]
+  "attributes": {"runtime": "java"},
+  "eventCodes": ["telecom.phone.inspect"],
+  "workerGroupId": "phone-workers"
 }
 ```
 
-`eventCodes` is the group's declared base execution-capability contract.
-Worker membership asserts compatibility with the complete set. Redis stores the
-declaration and upsert keeps it immutable; Kernel append, matching, and dispatch
-do not compare each TaskItem against it. Server/control-plane validation may
-check handler coverage before invoking Kernel commands. The field is not a
-Worker selector or runtime scheduling-serviceability proof.
+Keys are emitted in stable order, sets are sorted, and JSON is compact.
 
-`itemAllocationFields` is the immutable WorkerGroup allowlist for TaskItem
-TARGETED rules. It is a bounded candidate-source contract, separate from the
-EventHandler capability set, and names fields rather than Redis keys or handler
-functions.
+Upsert behavior:
 
-### Worker Descriptors
+```text
+HSETNX establishes WorkerGroup
+existing workerGroupId/eventCodes mismatch -> CONFLICT
+compatible repeat -> replace attributes
+```
+
+## Worker Descriptors
 
 ```text
 wr:{prefix}:workers:{workerGroupId}
   HASH field = workerId
-  value = WorkerDescriptor json
+  value       = canonical WorkerDescriptor JSON
+
+wr:{prefix}:worker-id-owners
+  HASH field = workerId
+  value       = workerGroupId
 ```
 
-Role:
-
-```text
-resource declaration truth for worker identity, group membership, and
-low-frequency metadata
-```
-
-Value shape:
+Example descriptor:
 
 ```json
 {
-  "workerId": "worker-1",
-  "workerGroupId": "image-workers",
-  "endpointManagerId": "endpoint-manager-a",
-  "platformAttributes": {},
-  "attributes": {},
-  "dynamicAttributeNames": ["battery", "load"]
+  "endpointManagerId": "system-polling",
+  "platformProperties": {"poolLabel": "default"},
+  "workerGroupId": "phone-workers",
+  "workerId": "phone-worker-1",
+  "workerProperties": {"arch": "arm64", "region": "cn-east"}
 }
 ```
 
-`dynamicAttributeNames` is an allowlist of updateable dynamic attribute names.
-It is not the current value of those attributes.
+`worker-id-owners` is an identity fence, not a global query catalog.
 
-`endpointManagerId` is required declaration metadata in the current shape. It
-is copied through matched CandidateWorker evidence to select a WorkerCommand
-HASH. It is not read by the allocation DSL and is not live endpoint, session,
-or reachability evidence.
-
-`workerGroupId` is a required logical locator on worker descriptor read,
-preview, and update operations. The current Redis executable spec uses it
-directly in the hash key, but that is only a first-slice storage layout. A
-later implementation may resolve `(workerGroupId, workerId)` to a group bucket,
-worker-id hash bucket, or another physical partition without changing the
-catalog interface.
-
-### Global WorkerId Owners
+Worker upsert order intentionally remains multi-stage:
 
 ```text
-wr:{prefix}:worker-id-owners
+require WorkerGroup descriptor
+-> HSETNX workerId owner
+-> establish or validate immutable Worker descriptor coordinates
+-> replace workerProperties and preserve platformProperties
+-> initialize HOT_ACQUIRE only when Worker score is missing
+-> preserve every existing Worker score byte-for-byte
+```
+
+Interrupted stages converge on retry. The operation is not wrapped in a
+cross-key transaction.
+
+Platform property patch performs a bounded descriptor read, applies field
+updates, removes `null` values, and writes one canonical descriptor. Reconnect
+and Platform patch both use observed-value compare-and-set on the descriptor
+HASH field, then reread and recompute after a conflict. This prevents either
+source writer from restoring a stale snapshot owned by the other source. The
+bounded retry may return `STALE` under sustained contention. Platform patch
+never changes `workerProperties`, score, or property indexes.
+
+## Redis HASH Property Projection
+
+This is the private Redis ABI of the first concrete
+`WorkerPropertyIndex` provider. The Kernel owner contract does not prescribe
+these keys or value encoding. One shared provider creates one projection
+instance per explicitly configured `index.*` identity.
+
+Point values:
+
+```text
+wr:{prefix}:property-index:{workerGroupId}:{propertyField}:values
   HASH field = workerId
-  value = workerGroupId
+  value       = canonical {"value": <JSON value>}
 ```
 
-Role:
+`propertyField` is the explicit index identity, for example
+`index.worker.region` or `index.platform.pool`. Java and Python use the same
+wrapper and compact JSON shape.
+
+One accepted field update performs:
 
 ```text
-write-time global WorkerId uniqueness guard
+null  -> HDEL point value
+value -> HSET canonical point value
 ```
 
-This HASH is not a catalog projection, global Worker query, or movement index.
-Descriptor reads remain scoped by `workerGroupId`. The owner field is established
-with `HSETNX`; retry in the same group may continue, while reuse in another
-group returns `CONFLICT` before descriptor or score mutation.
+Writes are last-applied and intentionally not revisioned. Failure does not roll
+back Worker resource, Dispatch, or ResultRouting truth.
 
-There is no worker-to-group reverse lookup key in the runtime mainline. Global
-worker lookup, cross-group diagnostics, or global-id uniqueness would require a
-separate named read/index invariant; they must not make ordinary catalog reads
-rediscover information already supplied by the caller.
+Update requests use the complete `index.*` identity. The owner Router verifies
+the Worker belongs to the requested WorkerGroup and invokes the matching
+startup-configured index. Results are returned per field. Bounded reads use
+one `HMGET` for explicit WorkerIds and return only present values. They do not
+evaluate operators, scan the HASH, discover candidates, or maintain reverse
+membership. Scheduling uses these values only for complete in-memory rule
+matching after a separate candidate source has supplied bounded WorkerIds.
 
-### Worker Score
+Removing an entry from process configuration does not delete this HASH. While
+the field is disabled it cannot be read or updated through the owner Router;
+re-enabling the same field resumes access to its last successfully written
+projection.
+
+## Worker Score
 
 ```text
 wr:{prefix}:score:{workerGroupId}
   ZSET member = workerId
-  score = signed worker score
+  score       = opaque Worker score encoding
 ```
 
-Role:
+Only `WorkerScoreCore` interprets or mutates score values. Positive values are
+HOT_ACQUIRE scheduling-serviceability; negative values are RECOVERY_RECHECK.
+Time, lane rank, dirty fence, exact compare-and-set, lease, hold, recovery, and
+release semantics are defined in
+[Worker Score Band Scheduling](../scheduling/worker-score-band-scheduling.md).
+
+Java currently implements score get/initialize/reconcile operations. Worker
+upsert calls only get/initialize; reconcile has no production caller in this
+slice. Python remains owner of scheduling score operations, Pacers, recovery,
+and ResultRouting disposition.
+
+Resource or property-index writes do not require a Worker lease and do not
+mutate an existing score. A future explicit lifecycle operation must own any
+RECOVERY_RECHECK-to-HOT_ACQUIRE transition.
+
+## Bounded Reads
+
+Catalog reads are caller-bounded:
 
 ```text
-kernel-owned TaskItem scheduling-serviceability polarity
-runtime acquisition / recovery timing truth
+get_worker_group_descriptors(explicit WorkerGroupIds)
+get_worker_descriptors(one WorkerGroupId, explicit WorkerIds)
+sample_worker_descriptors(one WorkerGroupId, sampleLimit <= 100)
 ```
 
-Only `WorkerScoreCore` writes this key. Resource catalog, dynamic attribute
-handlers, transport, trace, result routing, and query projections must not write
-score directly.
-
-These resource/evidence owners also do not acquire a worker score lease before
-writing their own keys. HOT admission scheduling is the only routine writer of
-acquired positive scores, and recovery scheduling is the only routine writer of
-acquired negative scores. Registration initializes the first score; explicit
-hold/release or verified polarity commands are narrow control transitions, not
-generic metadata-update hooks.
-
-Score absence is not a RECOVERY_RECHECK classification. It means the score has not been
-initialized, the worker was removed, or the index is orphaned and needs
-owner-local repair.
-
-### Dynamic Attributes
-
-There is no universal dynamic attribute key.
-
-Each dynamic attribute handler owns its own Redis shape:
-
-```text
-wr:{prefix}:dyn:{attributeName}:...
-```
-
-Examples:
-
-```text
-wr:{prefix}:dyn:battery:{workerGroupId}
-  ZSET member = workerId
-  score = battery level or policy-owned normalized coordinate
-
-wr:{prefix}:dyn:network:{workerGroupId}
-  HASH field = workerId
-  value = normalized network type
-
-wr:{prefix}:dyn:load:{workerGroupId}
-  HASH / ZSET / bitmap, depending on handler policy
-```
-
-Dynamic attribute handlers own:
-
-```text
-payload validation
-normalization
-point-write behavior
-query/index storage shape
-optional read timestamp
-```
-
-They do not own worker score, worker lifecycle, transport truth, or task
-assignment truth.
-
-## Score Encoding
-
-Worker score uses the current worker-score model:
-
-```text
-timeSlot = floor(timeMillis / SLOT_MILLIS)
-score = polarity * base
-base = timeSlot * SLOT_FACTOR + laneRank * DIRTY_FACTOR + dirty
-```
-
-Polarity:
-
-```text
-score > 0
-  HOT_ACQUIRE
-  scheduling-available for ordinary allocation
-  only source for worker hot acquisition
-
-score < 0
-  RECOVERY_RECHECK
-  scheduling-unavailable for ordinary allocation
-  only source for worker recovery validation
-
-score == 0
-  invalid / reserved
-```
-
-The sign is kernel scheduling-serviceability truth after owner validation; it
-is not physical connection or transport-session truth. `timeSlot` is
-independent: a HOT_ACQUIRE Worker may still be non-due because it is leased,
-held, disabled, draining, or cooling down. Polarity movement preserves
-`timeSlot`, so reconnect or recovery evidence cannot escape an existing hold.
-
-Constants:
-
-```text
-TIME_SCALE = 10
-SLOT_MILLIS = 100
-DIRTY_FACTOR = 2
-LANE_RANK_FACTOR = 100
-SLOT_FACTOR = LANE_RANK_FACTOR * DIRTY_FACTOR
-MAX_LANE_RANK = 99
-MAX_DIRTY = 1
-MAX_TIME_SLOT = 99_999_999_999
-PAUSE_TIME_SLOT = MAX_TIME_SLOT
-PAUSE_TIME_MILLIS = PAUSE_TIME_SLOT * SLOT_MILLIS
-MIN_BASE = 1
-```
-
-Decode:
-
-```text
-absScore = abs(score)
-timeSlot = floor(absScore / SLOT_FACTOR)
-slotRemainder = absScore % SLOT_FACTOR
-laneRank = floor(slotRemainder / DIRTY_FACTOR)
-dirty = slotRemainder % DIRTY_FACTOR
-```
-
-The public interface uses `timeMillis`. Redis implementation converts to
-`timeSlot` internally. Do not expose score ranges, polarity signs, base values,
-dirty bit values, or `SLOT_FACTOR` to callers.
-
-## Acquire Ranges
-
-Hot acquire:
-
-```text
-dueTimeSlot = nowTimeSlot - 1
-ZRANGEBYSCORE wr:{prefix}:score:{workerGroupId}
-  MIN_BASE
-  base(dueTimeSlot, MAX_LANE_RANK, MAX_DIRTY)
-  WITHSCORES
-  LIMIT 0 limit
-```
-
-Return:
-
-```text
-map[workerId, observedScore]
-```
-
-The query is read-only. The returned score is an opaque observation retained
-only by the allocation pacer for a later batched exact-score lease. The pacer
-passes only independent lease-CAS successes to matcher. Redis scan order may remain
-visible through the concrete dict insertion order, but it is not part of the
-public contract. Concurrent scans may return the same Worker; the later
-compare-and-write decides the single lease winner before matching.
-
-Recovery recheck:
-
-```text
-recoveryLookbackSlots = ceil(recoveryLookbackMillis / SLOT_MILLIS)
-windowStartTimeSlot = nowTimeSlot - recoveryLookbackSlots
-dueTimeSlot = nowTimeSlot - 1
-
-ZREVRANGEBYSCORE wr:{prefix}:score:{workerGroupId}
-  -base(windowStartTimeSlot, MIN_LANE_RANK, MIN_DIRTY)
-  -base(dueTimeSlot, MAX_LANE_RANK, MAX_DIRTY)
-  WITHSCORES
-  LIMIT 0 limit
-```
-
-RECOVERY_RECHECK is not a worker selection lane. It may only feed
-worker-runtime recovery validation. Assignment-dispatch must not use negative
-score candidates as selected workers.
-
-Scores older than the recovery lookback window are cold parked by coordinate.
-There is no PARKED band or PARKED key.
-
-## Score Write Primitives
-
-Redis scripts should stay score-axis only. They may validate score shape,
-polarity, due/future bounds, and exact observed-score CAS. They must not parse
-worker descriptors, task demand, dynamic attribute payloads, transport session
-data, or business event names.
-
-Required first-slice primitives:
-
-```text
-initialize_hot_acquire_score(workerGroupId, workerId, laneRank)
-reconcile_worker_hot_acquire(workerGroupId, workerId)
-rewrite_current_scores(workerGroupId, workerIds, targetTimeMillis, targetLaneRank?)
-acquire_hot_acquire_candidates(workerGroupId, limit)
-acquire_observed_hot_score_leases(
-  workerGroupId, observedScores, targetTimeMillis
-)
-renew_active_hot_score_leases(workerGroupId, observedScores, targetTimeMillis)
-demote_observed_worker_leases_to_recovery(workerGroupId, observedScores)
-mark_current_lease_dirty(workerGroupId, workerId)
-toggle_current_polarity(workerGroupId, workerId, observedScore, targetLaneRank)
-exhaust_recovery_recheck(workerGroupId, workerId, observedScore)
-release_score_holds(workerGroupId, observedScores, releaseTimeMillis)
-```
-
-`release_score_holds` is not an allocation or dispatch compensation primitive.
-Result routing uses the published opaque lease after `200/1xxx` evidence.
-Allocation unmatched, matcher failure, candidate publication failure, dispatch
-rejection, and queue ambiguity leave the score untouched and recover through
-lease expiry unless trusted `3xxx` evidence requests exact RECOVERY_RECHECK
-demotion.
-The full cross-pacer owner sequence is defined by
-[Worker HOT_ACQUIRE Lease Protocol](../scheduling/worker-hot-acquire-lease-protocol.md);
-this Redis note owns only storage and atomic primitive behavior.
-
-Rules:
-
-```text
-same-polarity rewrite never lowers timeSlot
-release requires currentSlotStartMillis <= releaseTimeMillis and
-abs(releaseSlotBase) < abs(observedScore)
-release preserves polarity, laneRank, and dirty low bits and writes only through
-exact observedScore CAS
-polarity move preserves timeSlot and dirty
-polarity move uses exact observedScore CAS
-RECOVERY_RECHECK cannot be hot leased
-active hot lease renewal returns STALE on dirty; a covered future target returns
-NOOP only after exact observedScore validation
-bounded hot acquire is a read-only positive due-score query
-observed hot lease batch validates due/future shape outside Lua, then pipelines
-one generic exact-score CAS per Worker while preserving laneRank and clearing dirty
-dirty mark only sets dirty = 1
-HOT_ACQUIRE reconciliation preserves timeSlot/laneRank, writes positive polarity,
-and sets dirty = 1
-observed recovery demotion accepts only clean positive lease scores and writes
--abs(observedScore) through exact CAS
-```
-
-`rewrite_current_scores` is monotonic and does not need `observedScore`.
-Lowering operations and polarity moves do need exact `observedScore`.
-
-Batch score writes accept one WorkerGroup/ZSET key and shared target parameters.
-Redis uses `pipeline(transaction=false)` around the existing single-Worker Lua
-primitives. The batch reduces network round trips but is not transactional;
-each Worker returns an independent transition result.
-
-## Worker Upsert And Catalog Operations
-
-Worker upsert belongs to `WorkerRuntime` because first appearance must ensure a
-score and reconnect evidence may restore HOT_ACQUIRE polarity. The caller supplies
-`WorkerDeclaration`; the runtime owns `platformAttributes`, initial laneRank,
-score initialization, and polarity handling. `WorkerResourceCatalog` remains
-the WorkerGroup upsert, descriptor-read, and platform-attribute surface.
-
-Required first-slice operations:
-
-```text
-WorkerRuntime.upsert_worker(declaration)
-
-upsert_worker_group(descriptor)
-get_worker_group_descriptors(workerGroupIds)
-get_worker_descriptors(workerGroupId, workerIds)
-sample_worker_descriptors(workerGroupId, sampleLimit)
-update_worker_platform_attributes(workerGroupId, workerId, attributes)
-```
-
-Descriptor preview is the one intentional bounded-discovery operation on this
-catalog. It exists for an operator-facing runtime preview, not scheduling or
-global Worker traversal:
-
-```text
-require non-empty workerGroupId
-require 1 <= sampleLimit <= 100
-HRANDFIELD wr:{prefix}:workers:{workerGroupId} sampleLimit WITHVALUES
-decode each sampled field/value pair
-unreadable JSON, field/descriptor WorkerId mismatch, or WorkerGroup mismatch
-  -> sampled WorkerId maps to null
-```
-
-The provider executes exactly one positive-count `HRANDFIELD` command. Positive
-count makes sampled fields unique and bounds the result to `sampleLimit`.
-The result has no order, stability, pagination, total-count, or completeness
-contract. The provider does not loop to replace unreadable rows and does not
-use `HSCAN`, `HLEN`, `SCAN`, Worker score, transport state, or another
-WorkerGroup key. An empty HASH returns an empty successful sample.
-
-Upsert WorkerGroup:
-
-```text
-HSETNX establishes workerGroupId + eventCodes + itemAllocationFields
-existing eventCodes or itemAllocationFields mismatch -> CONFLICT
-compatible repeat -> HSET complete replacement attributes
-```
-
-Upsert Worker:
-
-```text
-require workerGroupId exists
-require endpointManagerId is non-empty
-HSETNX workerId owner; different workerGroupId owner -> CONFLICT
-HSETNX establishes workerId + workerGroupId + endpointManagerId + dynamicAttributeNames
-existing immutable declaration mismatch -> CONFLICT
-compatible repeat -> replace attributes, preserve platformAttributes
-
-score absent
-  -> initialize HOT_ACQUIRE using runtime-owned initialLaneRank
-score exists
-  -> reconcile to positive polarity
-  -> preserve timeSlot and laneRank
-  -> set dirty=1 so pre-reconnect candidate evidence becomes stale
-```
-
-The score remains the scheduling truth. A descriptor row without a score is
-not schedulable and a later idempotent upsert initializes the missing score. A
-score without a descriptor fails closed during matcher descriptor validation;
-a later upsert recreates the descriptor without resetting the existing score.
-
-The score is not a metadata-update lease. `update_worker_platform_attributes`
-and dynamic attribute handlers update their owner data directly. Dirty marking, when a
-validated assignment continuation actually depends on a changed field, is a
-separate score-fence concern; it is not a prerequisite for resource updates.
-
-Upsert uses no cross-key Lua script or Redis transaction. Independent `HSETNX`
-operations establish the WorkerId owner and descriptor identity; score
-operations continue through `WorkerScoreCore`. Partial completion is bounded
-and a same-group retry converges it.
-
-`workerId` is globally unique because it addresses one logical execution slot
-and one field in an Adapter delivery bucket. The owner HASH enforces that
-invariant without adding
-global descriptor discovery or cross-group movement.
-
-## Dynamic Attribute Operations
-
-Dynamic attribute update flow:
-
-```text
-receive workerGroupId + workerId
-read the implementation-owned descriptor bucket
-require descriptor.workerGroupId == requested workerGroupId
-require attrName in descriptor.dynamicAttributeNames
-resolve concrete runtime _updateHandlers[attrName]
-handler validates payload
-handler writes its own dyn key
-```
-
-Dynamic attribute query flow for matching:
-
-```text
-WorkerCandidateMatcher receives workerGroupId, one flat workerId-to-opaque-lease-score map, and a candidate constraint map
-each WorkerCandidateConstraint carries priority, limit, and allocation_rule
-allocation_rule is a structured map compiled by the independent constraint DSL
-worker matcher preparation derives dynamic fields from allocation_rule
-missing declared dynamic handler is a configuration error
-candidate acquisition unions and deduplicates bounded HOT or point-source Worker ids before matcher
-descriptors read workers:{workerGroupId} once
-candidate order is priority ascending (0 highest), then candidateId ascending
-dynamic fields derived from allocation_rule are deduplicated in resolved candidate order
-each dynamic handler batch-reads descriptor-supported bounded workerIds once
-for each workerId, build one temporary context
-skip candidates whose per-call limit is full
-evaluate remaining constraints in resolved priority order; first match consumes that worker
-missing / unsupported / unresolved handler rows fail closed when read
-matcher returns each workerId in at most one candidate result
-result shape is insertion-ordered candidateId -> CandidateWorkerEntry values
-each entry carries workerId, workerGroupId, and the unchanged opaque lease score
-pacer leaves unmatched leases untouched; lease expiry restores hot visibility
-```
-
-`WorkerCandidateMatcher` is a storage-independent scheduling mechanism over
-worker-runtime owner surfaces. It consumes `WorkerResourceCatalog` for one descriptor batch and
-`WorkerDynamicAttributeRuntime` for bounded dynamic reads. The matcher filters
-descriptor-supported worker ids from its supplied batch; the dynamic runtime
-hides query handlers and does not reread descriptors. Redis-specific code owns
-descriptor persistence and handler storage only. Do not introduce
-storage-specific matcher subclasses.
-
-Dynamic attribute updates do not automatically write worker score. They may
-invoke the implemented dirty marker only when platform policy identifies a
-changed match dependency and a real persisted assignment plan or active hot
-score lease continuation will consume that fence. The current assembly does not
-yet wire that end-to-end invocation/revalidation policy.
-
-There is no generic dynamic-attribute query service. A dynamic handler may
-optionally expose a bounded candidate-query function for declared Item
-allocation fields. TARGETED acquisition uses that function only to propose
-Worker IDs, then point-observes due HOT scores and runs complete matcher point
-reads. Zero-config assembly installs no such indexes.
-
-## Dirty Boundary
-
-`dirty` is not a global worker state.
-
-It is a one-bit stale hint for a real persisted assignment continuation:
-
-```text
-dirty = 0
-  clean relative to current hot score lease / assignment continuation
-
-dirty = 1
-  a validation dependency used by that continuation may have changed enough to
-  invalidate cached match facts
-```
-
-If there is no persisted assignment plan or hot score lease continuation, dirty
-has no first-slice consumer. Do not invent a cross-round assignment hold store
-just to justify dirty.
-
-Allowed dirty write:
-
-```text
-mark_current_lease_dirty
-  set dirty = 1
-  preserve polarity
-  preserve timeSlot
-  preserve laneRank
-```
-
-Allowed dirty clear:
-
-```text
-acquire_observed_hot_score_leases after bounded score candidate scan and before
-bounded descriptor / dynamic metadata matching
-```
-
-Forbidden:
-
-```text
-standalone clear_dirty
-metadata-owner clears dirty
-trace/read model clears dirty
-dynamic attribute handler clears dirty directly
-active hot lease renewal clears dirty
-```
-
-`validationDependencySet` remains conceptual until an explicit persisted
-continuation owner consumes it. It is not a Redis key in the current
-executable spec.
-
-## Deferred Structures
-
-Do not create these in the first worker-runtime Redis slice:
-
-```text
-wr:{prefix}:hold:{workerGroupId}
-wr:{prefix}:session:{workerGroupId}
-wr:{prefix}:heartbeat:{workerGroupId}
-wr:{prefix}:transition
-wr:{prefix}:capacity:{workerGroupId}
-wr:{prefix}:assignment-continuation:{workerGroupId}
-wr:{prefix}:task:{taskId}:candidate-workers
-worker:{workerId}:score
-attribute:{name}:{value}:workers
-```
-
-Reasons:
-
-```text
-hold is represented by future timeSlot inside current polarity
-session / heartbeat belongs to transport or dynamic attribute handlers
-transition evidence belongs to trace or deterministic tests until repair needs it
-one WorkerId is one execution slot; physical concurrency is represented by
-multiple logical WorkerIds, not a capacity key behind one score
-assignment continuation is not first-slice truth
-worker-runtime-owned per-candidate evidence creates a second
-assignment-dispatch mainline. The separate `CandidateWorkerCache` may own
-transient `ad:{prefix}:candidate:{candidateId}:workers` ZSETs;
-worker-runtime and worker-score must not read, write, or reinterpret that
-protocol.
-per-worker score keys break home-bucket acquisition
-generic attribute fanout remains deferred; only explicit handler-owned bounded
-candidate indexes are supported
-```
-
-## Consistency Rules
-
-Use atomic operations only where stale state can produce wrong admission:
-
-```text
-score exact-CAS for release, polarity move, cold park, hot lease acquire/renew
-```
-
-Accept bounded eventual consistency for:
-
-```text
-dynamic attribute indexes
-read projections
-diagnostic parked inventory
-trace evidence
-```
-
-Do not add a broad Redis lock, global worker scanner, background repair loop,
-or transaction wrapper before an executable spec names the invariant it
-protects.
-
-## Guardrails
-
-- Do not store score inside worker descriptors.
-- Do not store decoded polarity, timeSlot, laneRank, or dirty in descriptor
-  hashes.
-- Do not store dynamic attribute current values inside `WorkerDescriptor`.
-- Do not let transport write worker score keys directly.
-- Do not let heartbeat or raw session evidence move RECOVERY_RECHECK to
-  HOT_ACQUIRE. Only validated Worker upsert may invoke HOT_ACQUIRE
-  reconciliation.
-- Do not add worker lifecycle tags.
-- Do not add PARKED, FUTURE, or MANUAL_DISABLED bands.
-- Do not use score absence as Worker scheduling-unavailability.
-- Do not use RECOVERY_RECHECK scores as assignment leases.
-- Do not create per-task worker candidate keys.
-- Do not fan out score across placement-tag buckets in v0.
-- Do not make dirty a metadata hash, counter, audit sequence, priority, or
-  lifecycle reason.
-- Do not expose Redis score encoding details as public API parameters.
-- Do not use `worker-id-owners` as a global descriptor read or routing surface.
+Worker preview uses one positive-count `HRANDFIELD ... WITHVALUES`. It is an
+unordered incomplete sample with no cursor, total, stability, or completeness
+claim. Unreadable sampled rows are returned as `workerId -> None`.
+
+Runtime View exposes only WorkerGroup descriptors and Worker descriptor
+Properties. It does not join property indexes, score, mailbox, connection, or
+Task assignment data.
+
+## Consistency And Guardrails
+
+Strong stale-state protection is reserved for score compare-and-set and
+identity ownership. Descriptor replacement and property projections use
+bounded eventual convergence.
+
+- Do not add legacy JSON readers or dual writes; deployments use a clean
+  prefix for this ABI change.
+- Do not store score or decoded score coordinates in descriptor HASH values.
+- Do not put property-index values inside Worker descriptors.
+- Do not auto-copy Properties to index keys.
+- Do not scan Worker descriptors for TARGETED matching.
+- Do not use `worker-id-owners` for global enumeration.
+- Do not interpret index absence as transport unavailability.
+- Do not let Adapter, Worker, or Server controller code write Worker score
+  directly.
+- Do not add broad locks, global repair scans, or transactions without a named
+  invariant and bounded proof.

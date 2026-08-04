@@ -13,8 +13,7 @@ export const MOCK_WORKER_GROUPS: WorkerGroupView[] = [
       "phonenumber.country",
       "phonenumber.e164",
       "phonenumber.original-carrier"
-    ],
-    itemAllocationFields: []
+    ]
   },
   {
     workerGroupId: "scenario-string-utils-workers",
@@ -22,8 +21,7 @@ export const MOCK_WORKER_GROUPS: WorkerGroupView[] = [
       runtime: "java",
       capability: "string-utils"
     },
-    eventCodes: ["string.base64.encode", "string.md5", "string.sha1"],
-    itemAllocationFields: []
+    eventCodes: ["string.base64.encode", "string.md5", "string.sha1"]
   }
 ];
 
@@ -63,17 +61,16 @@ function createWorkers(
     workerId: `${workerIdPrefix}${index + 1}`,
     workerGroupId,
     endpointManagerId: "scenario-websocket",
-    attributes: {
+    workerProperties: {
       runtime: "java",
       capability,
       runtimeVersion: "21",
       slot: index + 1
     },
-    platformAttributes: {
+    platformProperties: {
       assembly: "scenario-workers",
       region: "local-demo"
-    },
-    dynamicAttributeNames: []
+    }
   }));
 }
 

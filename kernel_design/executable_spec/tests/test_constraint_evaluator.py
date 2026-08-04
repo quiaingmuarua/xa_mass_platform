@@ -46,7 +46,7 @@ class ConstraintEvaluatorTest(unittest.TestCase):
                 "traits.region": "east",
                 "traits.capacity": 4,
             },
-            "dynamic": {"battery.level": 87},
+            "worker": {"battery.level": 87},
         }
         rules = ConstraintEvaluator.compile_match_rules(
             {
@@ -54,7 +54,7 @@ class ConstraintEvaluatorTest(unittest.TestCase):
                 "resource.traits.region": {"$in": ["east", "west"]},
                 "resource.traits.capacity": {"$gte": 2},
                 "resource.traits.retired": {"$exists": False},
-                "dynamic.battery.level": {"$eq": 87},
+                "worker.battery.level": {"$eq": 87},
             }
         )
 

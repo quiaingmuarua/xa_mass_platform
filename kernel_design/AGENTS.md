@@ -357,8 +357,8 @@ TaskItemScoreBandCore. The Java `RedisTaskRuntime` provider reproduces only this
 initial record-plus-score operation behind the same owner contract. Tag,
 timeSlot, suffix, score bounds, and initial score never cross the HTTP API.
 
-Score is not a resource mutation lock. Task/worker metadata writes, dynamic
-attribute writes, item append, result/evidence writes, projections, and trace
+Score is not a resource mutation lock. Task/worker metadata writes, property
+snapshot/index writes, item append, result/evidence writes, projections, and trace
 must not acquire or refresh score. Initialization establishes the first score;
 the active scheduling plane is the only routine writer for acquirable scores;
 explicit lifecycle commands may invoke only declared approve/reject/pause/
@@ -368,7 +368,7 @@ Worker-runtime owns:
 
 ```text
 worker group descriptor and worker descriptor truth
-dynamic attribute update ingress
+explicit indexed-property update and bounded point-load ingress
 bounded worker candidate matching
 worker score acquire / recovery / hot lease / dirty / release semantics
 ```
@@ -379,8 +379,10 @@ Worker-runtime surfaces in the current Python spec:
 WorkerResourceCatalog
   group descriptors, worker descriptors, low-frequency metadata
 
-WorkerDynamicAttributeRuntime
-  bounded dynamic attribute updates and owner reads; handler tables stay internal
+WorkerPropertyIndexRuntime
+  explicit index.* updates and per-field bounded WorkerId point loads routed
+  to an immutable index map; candidate discovery, operator execution, and
+  provider storage stay outside the owner contract
 
 WorkerCandidateMatcher
   one worker group, caller-supplied bounded worker id batch, ordered candidate
@@ -521,9 +523,10 @@ dispatch disposition
   result-routing Worker handlers exact-release `200/1xxx` fences and move
   `3xxx` fences to negative polarity
 
-connect/reconnect
-  existing score preserves timeSlot/laneRank, converges positive, dirty=1
-  first score initializes positive, dirty=0
+Worker resource upsert
+  missing score initializes positive, dirty=0
+  every existing score is preserved exactly
+  does not express connect, reconnect, or activation evidence
 
 RECOVERY_RECHECK
   must not pass either hot lease primitive
@@ -611,7 +614,7 @@ python -m unittest \
 - Do not put transport identifiers into scheduling candidate truth.
 - Do not make score-band a read model, storage blob, or lifecycle facade.
 - Do not require a score read, lease, or rewrite before resource metadata,
-  dynamic attribute, Item append, result/evidence, projection, or trace
+  property snapshot/index, Item append, result/evidence, projection, or trace
   mutation.
 - The default server/SDK ingress calls `TaskRuntime.append_items` directly;
   do not require a server backlog, outbox, broker, or periodic materializer.

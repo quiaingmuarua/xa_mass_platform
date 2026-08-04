@@ -1,6 +1,7 @@
 package com.xa.mass.scenarioworkers;
 
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
+import com.xa.mass.kernel.worker.WorkerPropertyIndexRuntime;
 import com.xa.mass.kernel.worker.WorkerRuntime;
 import java.util.Objects;
 
@@ -12,7 +13,8 @@ public final class ScenarioWorkerBundles {
     public static ScenarioWorkerBundle phoneNumber(
             ScenarioWorkerBundleConfig config,
             WorkerResourceCatalog workerCatalog,
-            WorkerRuntime workerRuntime
+            WorkerRuntime workerRuntime,
+            WorkerPropertyIndexRuntime propertyIndex
     ) {
         return new ScenarioWorkerBundle(
                 new PhoneNumberWorkerBundle(
@@ -24,6 +26,10 @@ public final class ScenarioWorkerBundles {
                         Objects.requireNonNull(
                                 workerRuntime,
                                 "workerRuntime"
+                        ),
+                        Objects.requireNonNull(
+                                propertyIndex,
+                                "propertyIndex"
                         )
                 )
         );
@@ -32,7 +38,8 @@ public final class ScenarioWorkerBundles {
     public static ScenarioWorkerBundle stringUtils(
             ScenarioWorkerBundleConfig config,
             WorkerResourceCatalog workerCatalog,
-            WorkerRuntime workerRuntime
+            WorkerRuntime workerRuntime,
+            WorkerPropertyIndexRuntime propertyIndex
     ) {
         return new ScenarioWorkerBundle(
                 new StringUtilityWorkerBundle(
@@ -44,6 +51,10 @@ public final class ScenarioWorkerBundles {
                         Objects.requireNonNull(
                                 workerRuntime,
                                 "workerRuntime"
+                        ),
+                        Objects.requireNonNull(
+                                propertyIndex,
+                                "propertyIndex"
                         )
                 )
         );

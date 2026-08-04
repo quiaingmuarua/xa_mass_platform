@@ -24,7 +24,7 @@ class TaskRuntimeContractTest(unittest.TestCase):
             task_id="task-1",
             worker_group_id="workers-a",
             task_type=TaskType.TASK_DRIVEN,
-            allocation_rule={"dynamic.battery": {"$gte": 20}},
+            allocation_rule={"worker.battery": {"$gte": 20}},
             config={
                 "priority": "80",
                 "maximumCandidateWorkers": "20",
@@ -191,7 +191,7 @@ class TaskRuntimeContractTest(unittest.TestCase):
                     task_id="task-1",
                     worker_group_id="workers-a",
                     task_type=TaskType.TASK_DRIVEN,
-                    allocation_rule={"attributes.runtime": {"$eq": "python"}},
+                    allocation_rule={"worker.runtime": {"$eq": "python"}},
                     config=config,
                 )
 

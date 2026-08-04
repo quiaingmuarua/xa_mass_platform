@@ -8,8 +8,9 @@ Status: current repository handoff.
 - `kernel_jvm/` is the JVM parity surface for Kernel owner contracts and
   selected owner-specific Redis providers. It does not implement scheduling,
   Pacers, or the Kernel application lifecycle. Its Worker score provider is
-  deliberately limited to the get/initialize/reconcile operations required by
-  `WorkerRuntime.upsertWorker`; all scheduling score operations remain gaps.
+  deliberately limited to get/initialize used by `WorkerRuntime.upsertWorker`
+  plus a parity-proved reconcile mechanism with no production caller; all
+  scheduling score operations remain gaps.
 - `server_jvm/` is the external Runtime API process. Controllers and services
   depend on `kernel_jvm` owner contracts. Its assembly binds Task control
   operations to Python HTTP providers and Worker resource, Task data, and
@@ -95,8 +96,9 @@ tag.
 - Java Redis owner operations belong in the matching `kernel_jvm` owner
   package. `server_jvm.kernelredis` owns only connection and health. Java must
   not read or mutate Task score, candidate cache, Pacers, or ResultRouting
-  consumption. The only Java Worker score operations currently allowed are
-  the parity-proved get/initialize/reconcile calls internal to Worker upsert.
+  consumption. The only Java Worker score operations currently allowed inside
+  Worker upsert are get/initialize. Reconcile is parity-proved but has no
+  production caller and must not be treated as resource-upsert behavior.
 - Missing JVM owner operations must fail with
   `KernelOperationNotImplementedException`; do not hide gaps with default
   methods, compatibility clients, or remote fallback.
@@ -162,9 +164,10 @@ The module mirrors the public contracts exported by
 `kernel_design.executable_spec.kernel`. A shared non-production manifest proves
 interface, DTO, enum, and key-constant parity. Selected Redis providers
 currently implement TaskItem append/result reads, Task/WorkerGroup descriptor
-reads, WorkerGroup/Worker upsert, the three Worker score operations required
-by upsert, WorkerCommand consume, and WorkerResult append. All other translated
-operations remain explicit gaps.
+reads, WorkerGroup/Worker upsert, Platform Properties patch, Worker/Platform
+explicit indexed-property update/load, Worker score get/initialize plus an
+unused parity reconcile mechanism, WorkerCommand consume, and WorkerResult
+append. All other translated operations remain explicit gaps.
 
 `server_jvm.kernelbinding` composes Task and Worker control/data providers:
 

@@ -7,14 +7,10 @@ import java.util.Map;
 
 public record WorkerGroupUpsertRequest(
         Map<String, Object> attributes,
-        @NotNull List<@NotBlank String> eventCodes,
-        List<@NotBlank String> itemAllocationFields
+        @NotNull List<@NotBlank String> eventCodes
 ) {
     public WorkerGroupUpsertRequest {
         attributes = attributes == null ? Map.of() : attributes;
-        itemAllocationFields = itemAllocationFields == null
-                ? List.of()
-                : List.copyOf(itemAllocationFields);
         if (eventCodes != null) {
             eventCodes = List.copyOf(eventCodes);
         }

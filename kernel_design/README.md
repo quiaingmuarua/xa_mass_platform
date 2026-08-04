@@ -230,7 +230,7 @@ task or worker score:
 
 ```text
 task descriptor / allocation metadata update
-Worker platform / declared / dynamic attribute update
+Worker/Platform Properties and property-index update
 task item append
 Item result / transport evidence write
 read projection / trace materialization
@@ -578,11 +578,12 @@ no hidden compatibility path or second mainline remains
   - four scheduling planes for the new kernel core: task score-band, worker
     score-band, assignment-dispatch, and result-routing.
 - [Worker Resource Model](doc/resource-model/worker-resource-model.md)
-  - v0 metadata/query projection for worker groups, workers, and dynamic
-    attribute allowlists.
+  - WorkerGroup capability identity, two-source Properties, and independently
+    registered scheduling projections.
 - [Worker HOT_ACQUIRE Lease Protocol](doc/scheduling/worker-hot-acquire-lease-protocol.md)
   - canonical allocation lease, dispatch exact recheck, result-driven
-    release/recovery classification, reconnect dirty fence, and natural expiry.
+    release/recovery classification, explicit reconciliation mechanism, and
+    natural expiry.
 - [Task Resource Model](doc/resource-model/task-resource-model.md)
   - v0 Task allocation metadata, Task scheduling priority, allocation-rule
     routing, Item retry policy, and bounded descriptor reads.

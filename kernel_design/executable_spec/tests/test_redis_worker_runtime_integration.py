@@ -12,9 +12,11 @@ except ImportError:  # pragma: no cover - exercised only without redis-py
     redis_module = None  # type: ignore[assignment]
 
 from kernel_design.executable_spec import (
+    MappedWorkerPropertyIndexRuntime,
     RedisWorkerResourceCatalog,
     RedisWorkerRuntime,
     RedisWorkerScoreCore,
+    RedisHashWorkerPropertyIndexProvider,
     WorkerDeclaration,
     WorkerGroupDescriptor,
     WorkerRuntimeStatus,
@@ -59,11 +61,115 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
             self.redis,
             prefix=self.prefix,
         )
+        self.property_index_provider = (
+            RedisHashWorkerPropertyIndexProvider(
+                self.redis,
+                prefix=self.prefix,
+            )
+        )
+        self.property_index = MappedWorkerPropertyIndexRuntime(
+            self.catalog,
+            {
+                "index.worker.region": self.property_index_provider.create(
+                    "index.worker.region"
+                ),
+                "index.platform.pool": self.property_index_provider.create(
+                    "index.platform.pool"
+                ),
+            },
+        )
 
     def tearDown(self) -> None:
         keys = tuple(self.redis.scan_iter(match=f"*{self.prefix}*"))
         if keys:
             self.redis.delete(*keys)
+
+    def test_property_indexes_replace_load_and_isolate_groups(self) -> None:
+        for worker_group_id in (self.worker_group_id, "other-workers"):
+            self.catalog.upsert_worker_group(
+                descriptor=WorkerGroupDescriptor(
+                    worker_group_id=worker_group_id,
+                    attributes={},
+                    event_codes=frozenset(),
+                )
+            )
+            self.runtime.upsert_worker(
+                declaration=WorkerDeclaration(
+                    worker_id=f"{worker_group_id}-worker",
+                    worker_group_id=worker_group_id,
+                    endpoint_manager_id="endpoint-manager-1",
+                    worker_properties={},
+                )
+            )
+
+        worker_id = f"{self.worker_group_id}-worker"
+        self.property_index.update_indexed_properties(
+            worker_group_id=self.worker_group_id,
+            worker_id=worker_id,
+            updates={
+                "index.worker.region": "cn-east",
+                "index.platform.pool": "batch",
+            },
+        )
+        other_worker_id = "other-workers-worker"
+        self.property_index.update_indexed_properties(
+            worker_group_id="other-workers",
+            worker_id=other_worker_id,
+            updates={"index.worker.region": "cn-east"},
+        )
+
+        worker_values = self.property_index.load_indexed_property_values(
+            worker_group_id=self.worker_group_id,
+            index_field="index.worker.region",
+            worker_ids=[worker_id, other_worker_id],
+        )
+        self.assertEqual(worker_values, {worker_id: "cn-east"})
+        self.assertEqual(
+            self.property_index.load_indexed_property_values(
+                worker_group_id=self.worker_group_id,
+                index_field="index.platform.pool",
+                worker_ids=[worker_id, other_worker_id],
+            ),
+            {worker_id: "batch"},
+        )
+
+        self.property_index.update_indexed_properties(
+            worker_group_id=self.worker_group_id,
+            worker_id=worker_id,
+            updates={"index.worker.region": "cn-west"},
+        )
+        self.assertEqual(
+            self.property_index.load_indexed_property_values(
+                worker_group_id=self.worker_group_id,
+                index_field="index.worker.region",
+                worker_ids=[worker_id],
+            ),
+            {worker_id: "cn-west"},
+        )
+
+        disabled = MappedWorkerPropertyIndexRuntime(self.catalog, {})
+        with self.assertRaises(LookupError):
+            disabled.load_indexed_property_values(
+                worker_group_id=self.worker_group_id,
+                index_field="index.worker.region",
+                worker_ids=[worker_id],
+            )
+        reenabled = MappedWorkerPropertyIndexRuntime(
+            self.catalog,
+            {
+                "index.worker.region": self.property_index_provider.create(
+                    "index.worker.region"
+                )
+            },
+        )
+        self.assertEqual(
+            reenabled.load_indexed_property_values(
+                worker_group_id=self.worker_group_id,
+                index_field="index.worker.region",
+                worker_ids=[worker_id],
+            ),
+            {worker_id: "cn-west"},
+        )
 
     def test_worker_id_is_globally_unique_across_groups(self) -> None:
         for worker_group_id in (self.worker_group_id, "audio-workers"):
@@ -80,8 +186,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
                 worker_id="shared-worker",
                 worker_group_id=self.worker_group_id,
                 endpoint_manager_id="endpoint-manager-1",
-                attributes={},
-                dynamic_attribute_names=frozenset(),
+                worker_properties={},
             )
         )
         conflict = self.runtime.upsert_worker(
@@ -89,8 +194,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
                 worker_id="shared-worker",
                 worker_group_id="audio-workers",
                 endpoint_manager_id="endpoint-manager-2",
-                attributes={},
-                dynamic_attribute_names=frozenset(),
+                worker_properties={},
             )
         )
 
@@ -113,9 +217,8 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
                     "workerId": f"worker-{index:03d}",
                     "workerGroupId": self.worker_group_id,
                     "endpointManagerId": "endpoint-manager-1",
-                    "attributes": {"index": index},
-                    "platformAttributes": {},
-                    "dynamicAttributeNames": [],
+                    "workerProperties": {"index": index},
+                    "platformProperties": {},
                 },
                 separators=(",", ":"),
             )
@@ -130,9 +233,8 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
                     "workerId": "other-worker",
                     "workerGroupId": "other-workers",
                     "endpointManagerId": "endpoint-manager-2",
-                    "attributes": {},
-                    "platformAttributes": {},
-                    "dynamicAttributeNames": [],
+                    "workerProperties": {},
+                    "platformProperties": {},
                 },
                 separators=(",", ":"),
             ),
@@ -186,9 +288,8 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
                         "workerId": "another-worker",
                         "workerGroupId": "invalid-workers",
                         "endpointManagerId": "endpoint-manager-1",
-                        "attributes": {},
-                        "platformAttributes": {},
-                        "dynamicAttributeNames": [],
+                        "workerProperties": {},
+                        "platformProperties": {},
                     },
                     separators=(",", ":"),
                 ),
@@ -197,9 +298,8 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
                         "workerId": "wrong-group",
                         "workerGroupId": "other-workers",
                         "endpointManagerId": "endpoint-manager-1",
-                        "attributes": {},
-                        "platformAttributes": {},
-                        "dynamicAttributeNames": [],
+                        "workerProperties": {},
+                        "platformProperties": {},
                     },
                     separators=(",", ":"),
                 ),
@@ -234,8 +334,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
             worker_id="worker-1",
             worker_group_id=self.worker_group_id,
             endpoint_manager_id="endpoint-manager-1",
-            attributes={"runtime": "python"},
-            dynamic_attribute_names=frozenset({"battery"}),
+            worker_properties={"runtime": "python"},
         )
         self.catalog.upsert_worker_group(descriptor=group)
 
@@ -277,10 +376,13 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
         self.assertEqual(second_lease.status, WorkerScoreTransitionStatus.STALE)
         descriptor = descriptors[worker.worker_id]
         assert descriptor is not None
-        self.assertEqual(descriptor.attributes, worker.attributes)
-        self.assertEqual(descriptor.platform_attributes, {})
+        self.assertEqual(
+            descriptor.worker_properties,
+            worker.worker_properties,
+        )
+        self.assertEqual(descriptor.platform_properties, {})
 
-    def test_reconnect_restores_polarity_and_identity_conflict_fails_closed(
+    def test_snapshot_refresh_preserves_recovery_and_identity_conflict_fails_closed(
         self,
     ) -> None:
         self.catalog.upsert_worker_group(
@@ -294,8 +396,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
             worker_id="worker-1",
             worker_group_id=self.worker_group_id,
             endpoint_manager_id="endpoint-manager-1",
-            attributes={"runtime": "python"},
-            dynamic_attribute_names=frozenset({"battery"}),
+            worker_properties={"runtime": "python"},
         )
         self.runtime.upsert_worker(declaration=declaration)
         rewritten = self.score_band.rewrite_current_scores(
@@ -329,13 +430,12 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
             WorkerScoreTransitionStatus.TRANSITIONED,
         )
 
-        reconnect_result = self.runtime.upsert_worker(
+        refresh_result = self.runtime.upsert_worker(
             declaration=WorkerDeclaration(
                 worker_id=declaration.worker_id,
                 worker_group_id=declaration.worker_group_id,
                 endpoint_manager_id=declaration.endpoint_manager_id,
-                attributes={"runtime": "java"},
-                dynamic_attribute_names=declaration.dynamic_attribute_names,
+                worker_properties={"runtime": "java"},
             )
         )
         conflict = self.runtime.upsert_worker(
@@ -343,8 +443,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
                 worker_id=declaration.worker_id,
                 worker_group_id=declaration.worker_group_id,
                 endpoint_manager_id="other-endpoint",
-                attributes={"runtime": "other"},
-                dynamic_attribute_names=declaration.dynamic_attribute_names,
+                worker_properties={"runtime": "other"},
             )
         )
         current = self.score_band.get_score_states(
@@ -356,19 +455,19 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
             worker_ids=[declaration.worker_id],
         )[declaration.worker_id]
 
-        self.assertEqual(reconnect_result.status, WorkerRuntimeStatus.OK)
+        self.assertEqual(refresh_result.status, WorkerRuntimeStatus.OK)
         self.assertEqual(conflict.status, WorkerRuntimeStatus.CONFLICT)
         assert current is not None
-        self.assertEqual(current.polarity, WorkerScorePolarity.HOT_ACQUIRE)
-        self.assertEqual(current.score, abs(recovery_transition.score or 0))
+        self.assertEqual(current.polarity, WorkerScorePolarity.RECOVERY_RECHECK)
+        self.assertEqual(current.score, recovery_transition.score)
         self.assertEqual(current.time_millis, held.time_millis)
         self.assertEqual(current.lane_rank, 7)
         self.assertTrue(current.dirty)
         assert descriptor is not None
         self.assertEqual(descriptor.endpoint_manager_id, "endpoint-manager-1")
-        self.assertEqual(descriptor.attributes, {"runtime": "java"})
+        self.assertEqual(descriptor.worker_properties, {"runtime": "java"})
 
-    def test_reconnect_dirties_active_lease_and_rejects_old_candidate_fence(
+    def test_snapshot_refresh_preserves_active_lease_fence(
         self,
     ) -> None:
         self.catalog.upsert_worker_group(
@@ -382,8 +481,7 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
             worker_id="worker-1",
             worker_group_id=self.worker_group_id,
             endpoint_manager_id="endpoint-manager-1",
-            attributes={"runtime": "python"},
-            dynamic_attribute_names=frozenset(),
+            worker_properties={"runtime": "python"},
         )
         self.runtime.upsert_worker(declaration=declaration)
         time.sleep((self.score_band.SLOT_MILLIS + 20) / 1_000)
@@ -399,8 +497,16 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
         self.assertEqual(WorkerScoreTransitionStatus.TRANSITIONED, lease.status)
         assert lease.score is not None
 
-        reconnect = self.runtime.upsert_worker(declaration=declaration)
-        stale = self.score_band.renew_active_hot_score_leases(
+        before_refresh = self.score_band.get_score_states(
+            home_bucket_id=self.worker_group_id,
+            worker_ids=[declaration.worker_id],
+        )[declaration.worker_id]
+        refresh = self.runtime.upsert_worker(declaration=declaration)
+        after_refresh = self.score_band.get_score_states(
+            home_bucket_id=self.worker_group_id,
+            worker_ids=[declaration.worker_id],
+        )[declaration.worker_id]
+        renewed = self.score_band.renew_active_hot_score_leases(
             home_bucket_id=self.worker_group_id,
             observed_scores={declaration.worker_id: lease.score},
             target_time_millis=time.time_ns() // 1_000_000 + 6_000,
@@ -410,11 +516,12 @@ class RedisWorkerRuntimeIntegrationTest(unittest.TestCase):
             worker_ids=[declaration.worker_id],
         )[declaration.worker_id]
 
-        self.assertEqual(WorkerRuntimeStatus.OK, reconnect.status)
-        self.assertEqual(WorkerScoreTransitionStatus.STALE, stale.status)
+        self.assertEqual(WorkerRuntimeStatus.OK, refresh.status)
+        self.assertEqual(before_refresh, after_refresh)
+        self.assertEqual(WorkerScoreTransitionStatus.TRANSITIONED, renewed.status)
         assert current is not None
         self.assertEqual(WorkerScorePolarity.HOT_ACQUIRE, current.polarity)
-        self.assertEqual(1, current.dirty)
+        self.assertEqual(0, current.dirty)
         self.assertNotEqual(lease.score, current.score)
 
 

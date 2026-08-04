@@ -21,6 +21,7 @@ STRING_UTILS
 explicit factory
   -> WorkerGroup upsert
   -> deterministic Worker upserts
+  -> explicit index.worker.region projection updates
   -> real WebSocket Worker startup
   -> bounded initial connection wait
   -> reverse-order close
@@ -44,8 +45,12 @@ The Server remains responsible for Spring configuration, Adapter construction,
 validating the referenced Adapter, deriving the Worker WebSocket URI, and
 sequencing Adapter startup before bundle startup. This module does not depend
 on Spring, Server, the Netty Adapter, Redis, scores, Pacers, or HTTP
-controllers. Kernel truth remains owned by `WorkerResourceCatalog` and
-`WorkerRuntime`; Scenario Workers only call those existing owner operations.
+controllers. Kernel truth remains owned by `WorkerResourceCatalog`,
+`WorkerRuntime`, and `WorkerPropertyIndexRuntime`; Scenario Workers only call
+those existing owner operations. Worker upsert does not auto-project the
+region snapshot into `index.worker.region`. A rejected or unavailable index
+projection is logged and does not roll back Worker resource creation or
+transport startup.
 
 ```text
 ./gradlew :scenario_workers_jvm:test

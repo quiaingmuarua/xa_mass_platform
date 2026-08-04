@@ -76,15 +76,18 @@ composes only the WorkerCommand and WorkerResult Redis providers. The shared
 `kernelredis` package owns only connection and health. Redis key operations are
 implemented in owner-local `kernel_jvm` packages. Java does not read Task
 scores, invoke Pacers, append Worker commands, or consume WorkerResult queues.
-Its Worker score provider implements only get/initialize/reconcile for
-`WorkerRuntime.upsertWorker`; scheduling score operations remain unavailable.
+Its Worker score provider implements get/initialize for
+`WorkerRuntime.upsertWorker` plus a parity reconcile mechanism with no current
+production caller; scheduling score operations remain unavailable.
 
 Current provider matrix:
 
 | Operation | Provider |
 | --- | --- |
 | WorkerGroup upsert | Java Redis |
-| Worker upsert and HOT_ACQUIRE initialize/reconcile | Java Redis |
+| Worker upsert and missing HOT_ACQUIRE initialization | Java Redis |
+| Platform Properties patch | Java Redis |
+| Explicit indexed-property update/point load | Java Redis |
 | Task create | Python HTTP |
 | Task approve/close | Python HTTP application command |
 | Task and WorkerGroup descriptor reads | Java Redis |
@@ -92,7 +95,7 @@ Current provider matrix:
 | Task Dispatch wake hint | Python HTTP application command |
 | WorkerCommand consume | Java Redis |
 | WorkerResult append | Java Redis |
-| Other score, candidate, dynamic attribute, scheduling internals | explicit not implemented |
+| Other score, candidate, and scheduling internals | explicit not implemented |
 
 Task Data boundaries:
 
@@ -154,6 +157,8 @@ WorkerResult through point HTTP.
 ```text
 PUT  /api/v1/worker-groups/{workerGroupId}
 PUT  /api/v1/worker-groups/{workerGroupId}/workers/{workerId}
+PATCH /api/v1/worker-groups/{workerGroupId}/workers/{workerId}/platform-properties
+PATCH /api/v1/worker-groups/{workerGroupId}/workers/{workerId}/indexed-properties
 POST /api/v1/tasks
 POST /api/v1/tasks/{taskId}/approve
 POST /api/v1/tasks/{taskId}/close
@@ -168,8 +173,20 @@ WorkerGroup and Worker upsert use Java Redis owner providers. Task
 create/approve/close use Python HTTP owner/application providers. Item append
 and result load use Java Redis owner providers. Append returns per-message
 `appended / not_found / invalid / retryable` status. `TASK_DRIVEN` forbids an
-Item rule; `ITEM_DRIVEN` currently accepts only a WorkerGroup-allowed
-`workerId $eq/$in` rule.
+Item rule. For `ITEM_DRIVEN`, Java requires only a non-empty JSON-compatible
+rule and persists it opaquely. The Python matcher owns the evolving rule DSL.
+Its current TARGETED path derives a bounded request-local candidate set from
+`workerId $eq/$equal/$in`; additional `worker.*`, `platform.*`, and explicit
+`index.*` conditions are evaluated there. Each `index.*` field is loaded from
+its configured point projection only for those known Worker IDs. It is not a
+candidate-discovery or multi-index intersection contract.
+
+Worker PUT completely replaces `workerProperties` and preserves
+`platformProperties`. Platform Properties are patched separately with
+`{"properties": {...}}`; a `null` value deletes one field. Index updates use
+qualified keys in `{"updates": {"index.worker.region": "cn-east"}}` on the
+single indexed-properties route and return a status per field.
+Properties and indexes are never written together implicitly.
 
 Result load accepts 1 to 1000 nonblank `messageIds`, removes duplicates in
 first-seen order, and returns:
@@ -210,7 +227,7 @@ POST /api/v1/runtime-view/worker-groups:batch-get
 
 Existing `workerGroups` and `missingWorkerGroupIds` preserve request order.
 The response group projection contains only `workerGroupId`, `attributes`,
-`eventCodes`, and `itemAllocationFields`.
+and `eventCodes`.
 
 One WorkerGroup preview accepts `sampleLimit` from 1 through 100:
 
@@ -226,8 +243,9 @@ The owner first validates the WorkerGroup, then executes one positive-count
 Redis `HRANDFIELD ... WITHVALUES` against that group's Worker descriptor HASH.
 The response reports `sampledCount`, `returnedCount`, `unreadableCount`, and
 `generatedAt`; each readable Worker contains only `workerId`,
-`workerGroupId`, `endpointManagerId`, `attributes`, `platformAttributes`, and
-`dynamicAttributeNames`. Worker order, sample stability, completeness, totals,
+`workerGroupId`, `endpointManagerId`, `workerProperties`, and
+`platformProperties`. Index-only values are not joined into Runtime View.
+Worker order, sample stability, completeness, totals,
 and pagination are deliberately not contracts. The provider does not refill
 unreadable rows. A non-null `filter` returns `422` until the separate bounded
 Filter DSL slice is implemented.
@@ -448,6 +466,19 @@ Task RPC waiter limit      10000
 The Redis labels above use the shared `xa.mass.kernel-redis.redis-url` and
 `xa.mass.kernel-redis.redis-prefix` properties. Override the Python control
 address under `xa.mass.kernel`.
+
+Property-index implementations are opt-in. Java and Python read the same
+process environment value with explicit `index.*` keys:
+
+```powershell
+$env:XA_MASS_WORKER_PROPERTY_INDEX_REGISTRY_JSON = `
+  '{"index.worker.region":"redis-hash","index.platform.pool":"redis-hash"}'
+```
+
+The default map is empty. Malformed JSON, invalid fields, or unknown
+implementations fail startup. WorkerGroup does not declare indexes. Updates and
+point reads for an unconfigured field fail explicitly. Both processes log the
+same canonical registry fingerprint; no registry is stored in Redis.
 
 ## Verification
 

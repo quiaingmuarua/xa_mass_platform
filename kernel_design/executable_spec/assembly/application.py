@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import logging
 from collections.abc import Mapping
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from threading import Lock
 from time import time_ns
+from types import MappingProxyType
 from typing import Any
 
 from ..scheduling import (
@@ -36,6 +39,7 @@ _DEFAULT_PACER_INTERVAL_MILLIS = 100
 _DEFAULT_RESULT_ROUTING_INTERVAL_MILLIS = 100
 _DEFAULT_STOP_TIMEOUT_MILLIS = 5_000
 _DEFAULT_RUNNING_TASK_SOFT_LIMIT = 100
+_REDIS_HASH_INDEX = "redis-hash"
 
 _INITIAL_PRE_REVIEW_SUFFIX = 1
 
@@ -49,6 +53,7 @@ _EMPTY_RECHECK_INTERVAL_MILLIS = 1_000
 _ADMISSION_PRIORITY_RECHECK_STEP_MILLIS = 1_000
 _ITEM_DRIVEN_DEFAULT_EMPTY_CLOSE_DELAY_MILLIS = 3 * 24 * 60 * 60 * 1_000
 _RESULT_ROUTING_PER_OUTCOME_BATCH_LIMIT = 100
+_LOGGER = logging.getLogger(__name__)
 
 
 def _positive_integer(value: object, *, name: str) -> int:
@@ -69,6 +74,49 @@ def _mapping(value: object, *, name: str) -> Mapping[str, object]:
     if any(not isinstance(key, str) for key in value):
         raise ValueError(f"{name} keys must be strings")
     return value
+
+
+def _valid_index_field(value: object) -> bool:
+    return isinstance(value, str) and value.startswith("index.") and len(value) > 6
+
+
+def _parse_worker_property_index_registry(
+    registry_json: str | None,
+) -> Mapping[str, str]:
+    encoded = "{}" if registry_json is None else registry_json
+    if not isinstance(encoded, str) or not encoded:
+        raise ValueError(
+            "Worker property index registry must be non-empty JSON text"
+        )
+    try:
+        raw_registry = json.loads(encoded)
+    except json.JSONDecodeError as error:
+        raise ValueError(
+            "Worker property index registry is not valid JSON"
+        ) from error
+    registry = _mapping(
+        raw_registry,
+        name="Worker property index registry",
+    )
+    return {
+        property_field: _non_empty_string(
+            implementation,
+            name=f"Worker property index {property_field} implementation",
+        )
+        for property_field, implementation in registry.items()
+    }
+
+
+def _worker_property_index_registry_fingerprint(
+    registry: Mapping[str, str],
+) -> str:
+    canonical_json = json.dumps(
+        dict(registry),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    )
+    return hashlib.sha256(canonical_json.encode("utf-8")).hexdigest()
 
 
 def _reject_unknown(
@@ -92,6 +140,9 @@ class KernelApplicationConfig:
     result_routing_interval_millis: int = _DEFAULT_RESULT_ROUTING_INTERVAL_MILLIS
     running_task_soft_limit: int = _DEFAULT_RUNNING_TASK_SOFT_LIMIT
     stop_timeout_millis: int = _DEFAULT_STOP_TIMEOUT_MILLIS
+    worker_property_indexes: Mapping[str, str] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
 
     def __post_init__(self) -> None:
         _non_empty_string(self.redis_url, name="Redis URL")
@@ -117,11 +168,30 @@ class KernelApplicationConfig:
             name="running Task soft limit",
         )
         _positive_integer(self.stop_timeout_millis, name="stop timeout")
+        indexes = dict(self.worker_property_indexes)
+        for property_field, implementation in indexes.items():
+            if not _valid_index_field(property_field):
+                raise ValueError("Worker property index fields must use index.*")
+            if implementation != _REDIS_HASH_INDEX:
+                raise ValueError(
+                    "unknown Worker property index implementation: "
+                    f"{implementation}"
+                )
+        object.__setattr__(
+            self,
+            "worker_property_indexes",
+            MappingProxyType(indexes),
+        )
 
     @classmethod
-    def from_json(cls, config_json: str | None = None) -> KernelApplicationConfig:
+    def from_json(
+        cls,
+        config_json: str | None = None,
+        *,
+        worker_property_index_registry_json: str | None = None,
+    ) -> KernelApplicationConfig:
         if config_json is None:
-            return _DEFAULT_KERNEL_APPLICATION_CONFIG
+            config_json = "{}"
         if not isinstance(config_json, str) or not config_json:
             raise ValueError("kernel application config must be non-empty JSON text")
         try:
@@ -232,6 +302,14 @@ class KernelApplicationConfig:
                 config.get("stopTimeoutMillis", defaults.stop_timeout_millis),
                 name="stop timeout",
             ),
+            worker_property_indexes=_parse_worker_property_index_registry(
+                worker_property_index_registry_json
+            ),
+        )
+
+    def worker_property_index_registry_fingerprint(self) -> str:
+        return _worker_property_index_registry_fingerprint(
+            self.worker_property_indexes
         )
 
 
@@ -395,13 +473,25 @@ class KernelApplication:
     def from_json(
         cls,
         config_json: str | None = None,
+        *,
+        worker_property_index_registry_json: str | None = None,
     ) -> KernelApplication:
-        return cls(KernelApplicationConfig.from_json(config_json))
+        return cls(KernelApplicationConfig.from_json(
+            config_json,
+            worker_property_index_registry_json=(
+                worker_property_index_registry_json
+            ),
+        ))
 
     def start(self) -> None:
         with self._lifecycle_lock:
             if self._started:
                 raise RuntimeError("kernel application is already started")
+            _LOGGER.info(
+                "Worker Property Index registry fields=%d fingerprint=%s",
+                len(self._config.worker_property_indexes),
+                self._config.worker_property_index_registry_fingerprint(),
+            )
             self._process.start()
             self._started = True
 
@@ -462,6 +552,7 @@ class KernelApplication:
             prefix=config.redis_prefix,
             running_task_soft_limit=config.running_task_soft_limit,
             worker_candidate_scan_limit=_WORKER_SCAN_LIMIT,
+            worker_property_indexes=config.worker_property_indexes,
             assignment_dispatch=AssignmentDispatchApplicationConfig(
                 worker_allocation=TaskWorkerAllocationConfig(
                     task_batch_limit=_TASK_BATCH_LIMIT,

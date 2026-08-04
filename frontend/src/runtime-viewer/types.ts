@@ -33,7 +33,6 @@ export interface WorkerGroupView {
   workerGroupId: string;
   attributes: Record<string, JsonValue>;
   eventCodes: string[];
-  itemAllocationFields: string[];
 }
 
 export interface WorkerGroupBatchGetResponse {
@@ -45,9 +44,8 @@ export interface WorkerView {
   workerId: string;
   workerGroupId: string;
   endpointManagerId: string;
-  attributes: Record<string, JsonValue>;
-  platformAttributes: Record<string, JsonValue>;
-  dynamicAttributeNames: string[];
+  workerProperties: Record<string, JsonValue>;
+  platformProperties: Record<string, JsonValue>;
 }
 
 export interface WorkerPreviewResponse {

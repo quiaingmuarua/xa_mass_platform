@@ -39,6 +39,9 @@ from kernel_design.executable_spec.assembly import (
     KernelApplicationConfig,
     ResourcesCommandClient,
     WorkerResultCommandClient,
+    WorkerDeclaration,
+    WorkerGroupDescriptor,
+    WorkerRuntimeStatus,
     TaskItemAppendStatus,
     TaskItem,
 )
@@ -90,7 +93,6 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         self.runtime_server_context = TestClient(
             create_runtime_app(
                 application=self.application,
-                resources_client=self.resources,
             )
         )
         self.runtime_server = self.runtime_server_context.__enter__()
@@ -140,25 +142,20 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
         )
 
     def _run_success_e2e(self, task_type: TaskType) -> None:
-        group_response = self.runtime_server.put(
-            "/worker-groups/phone-tools",
-            json={
-                "attributes": {},
-                "eventCodes": [_PHONE_INSPECT_EVENT_CODE],
-                "itemAllocationFields": (
-                    ["workerId"]
-                    if task_type is TaskType.ITEM_DRIVEN
-                    else []
-                ),
-            },
+        group_result = self.resources.upsert_worker_group(
+            descriptor=WorkerGroupDescriptor(
+                worker_group_id="phone-tools",
+                attributes={},
+                event_codes=frozenset({_PHONE_INSPECT_EVENT_CODE}),
+            )
         )
-        worker_response = self.runtime_server.put(
-            "/worker-groups/phone-tools/workers/worker-1",
-            json={
-                "endpointManagerId": SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
-                "attributes": {"runtime": "python"},
-                "dynamicAttributeNames": [],
-            },
+        worker_result = self.resources.upsert_worker(
+            declaration=WorkerDeclaration(
+                worker_id="worker-1",
+                worker_group_id="phone-tools",
+                endpoint_manager_id=SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
+                worker_properties={"runtime": "python"},
+            )
         )
         creation_response = self.runtime_server.post(
             "/tasks",
@@ -185,8 +182,8 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
             ),
         )
 
-        self.assertEqual(200, group_response.status_code)
-        self.assertEqual(200, worker_response.status_code)
+        self.assertEqual(WorkerRuntimeStatus.OK, group_result.status)
+        self.assertEqual(WorkerRuntimeStatus.OK, worker_result.status)
         self.assertEqual(201, creation_response.status_code)
         self.assertEqual(200, approval_response.status_code)
         self.assertEqual(
@@ -246,25 +243,24 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
                 time.sleep(self.worker_score.SLOT_MILLIS / 1_000)
         self.assertIn("worker-1", worker_candidates)
 
-    def test_adapter_rejection_evidence_demotes_then_reconnect_restores_worker(
+    def test_adapter_rejection_demotes_and_resource_refresh_preserves_recovery(
         self,
     ) -> None:
-        self.runtime_server.put(
-            "/worker-groups/image-workers",
-            json={
-                "attributes": {},
-                "eventCodes": ["image.resize"],
-                "itemAllocationFields": ["workerId"],
-            },
+        self.resources.upsert_worker_group(
+            descriptor=WorkerGroupDescriptor(
+                worker_group_id="image-workers",
+                attributes={},
+                event_codes=frozenset({"image.resize"}),
+            )
         )
-        worker_request = {
-            "endpointManagerId": "endpoint-1",
-            "attributes": {"runtime": "python"},
-            "dynamicAttributeNames": [],
-        }
-        self.runtime_server.put(
-            "/worker-groups/image-workers/workers/worker-1",
-            json=worker_request,
+        worker_declaration = WorkerDeclaration(
+            worker_id="worker-1",
+            worker_group_id="image-workers",
+            endpoint_manager_id="endpoint-1",
+            worker_properties={"runtime": "python"},
+        )
+        self.resources.upsert_worker(
+            declaration=worker_declaration,
         )
         self.runtime_server.post(
             "/tasks",
@@ -335,18 +331,14 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
             recovery_state.polarity,
         )
 
-        self.runtime_server.put(
-            "/worker-groups/image-workers/workers/worker-1",
-            json=worker_request,
+        self.resources.upsert_worker(
+            declaration=worker_declaration,
         )
-        hot_state = self.worker_score.get_score_states(
+        refreshed_state = self.worker_score.get_score_states(
             home_bucket_id="image-workers",
             worker_ids=["worker-1"],
         )["worker-1"]
-        self.assertIsNotNone(hot_state)
-        assert hot_state is not None
-        self.assertIs(WorkerScorePolarity.HOT_ACQUIRE, hot_state.polarity)
-        self.assertEqual(1, hot_state.dirty)
+        self.assertEqual(recovery_state, refreshed_state)
         self.assertEqual(
             0,
             self.redis.exists(
@@ -408,7 +400,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
             "workerGroupId": worker_group_id,
             "taskType": task_type.value,
             "allocationRule": (
-                {"attributes.runtime": {"$eq": "python"}}
+                {"worker.runtime": {"$eq": "python"}}
                 if task_type is TaskType.TASK_DRIVEN
                 else None
             ),

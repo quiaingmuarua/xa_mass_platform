@@ -97,9 +97,9 @@ Callers do not choose rule owner, cache participation, warmer participation, or
 acquisition strategy independently. Scheduling derives only those
 Worker-acquisition fields in `ResolvedTaskSchedulingProfile` from `TaskType`.
 Empty close is a shared Task lifecycle policy and is not part of that profile.
-The two rule forms cannot be mixed inside one Task. Append validates this
-contract once; claim and dispatch trust it rather than reclassifying every
-Item.
+The two rule forms cannot be mixed inside one Task. Append validates only this
+rule-owner location contract. Scheduling still compiles and evaluates the
+opaque rule through the current Python matcher.
 
 Both types use periodic RUNNING scans, Task dispatch, shared empty recheck, and
 the explicit close command. The current Server may emit one bounded,
@@ -158,13 +158,13 @@ bounded Worker matcher. Example:
 
 ```json
 {
-  "attributes.runtime": {"$eq": "python"},
-  "dynamic.battery": {"$gte": 20}
+  "worker.runtime": {"$eq": "python"},
+  "platform.pool": {"$eq": "batch"}
 }
 ```
 
 The descriptor stores the rule snapshot. It does not store compiled matcher
-state, current dynamic values, candidate Workers, or a policy handler object.
+state, current property-index values, candidate Workers, or a policy handler object.
 Constraint compilation/validation belongs to `constraint_dsl`; Worker field
 resolution belongs to Worker runtime/matcher.
 
@@ -291,13 +291,16 @@ would be a separate gang-reservation mechanism with a bundle identity,
 multi-lease commit, and bundle failure semantics. No such requirement is
 assumed by the current kernel.
 
-At the public Java TaskData ingress, the selected WorkerGroup must allow the
-Item rule field through `itemAllocationFields`. The first Java cutover supports
-only bounded `workerId $eq/$in`; dynamic fields return `INVALID`. The Python
-mechanism oracle retains injectable bounded dynamic candidate-query coverage,
-but that capability is not advertised by the current external append API.
-TaskRuntime itself owns only canonical JSON and DSL syntax validation, not
-Worker catalog or candidate-index policy.
+The public Java TaskData ingress treats an `ITEM_DRIVEN` allocation rule as an
+opaque, non-empty JSON-compatible map. It does not compile operators or require
+a particular candidate-source shape. The Python TARGETED acquirer currently
+derives request-local candidates from bounded `workerId $eq/$equal/$in`; rules
+that cannot provide that source fail closed during scheduling. The remaining
+`worker.*`, `platform.*`, and explicit `index.*` conditions form the complete
+rule. Each `index.*` condition point-loads its configured projection only for
+known Worker IDs. Indexes do not discover candidates or execute operators.
+TaskRuntime owns canonical persistence, while the matcher owns DSL syntax and
+evaluation.
 
 The success-result HASH is last-success truth. It is separate from TaskItem
 score outcome and does not store failure history. The owner exposes one
@@ -414,7 +417,8 @@ Example:
 taskType = "TASK_DRIVEN"
 
 allocationRuleJson = {
-  "dynamic.battery": {"$gte": 20}
+  "worker.region": {"$eq": "cn-east"},
+  "platform.pool": {"$in": ["batch", "burst"]}
 }
 
 configJson = {

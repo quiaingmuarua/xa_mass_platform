@@ -23,8 +23,7 @@ export const workerGroupViewSchema = z
   .object({
     workerGroupId: z.string().min(1),
     attributes: attributesSchema,
-    eventCodes: z.array(z.string().min(1)),
-    itemAllocationFields: z.array(z.string().min(1))
+    eventCodes: z.array(z.string().min(1))
   })
   .strict();
 
@@ -53,9 +52,8 @@ export const workerViewSchema = z
     workerId: z.string().min(1),
     workerGroupId: z.string().min(1),
     endpointManagerId: z.string().min(1),
-    attributes: attributesSchema,
-    platformAttributes: attributesSchema,
-    dynamicAttributeNames: z.array(z.string().min(1))
+    workerProperties: attributesSchema,
+    platformProperties: attributesSchema
   })
   .strict();
 

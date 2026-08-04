@@ -53,7 +53,6 @@ WorkerCandidateRequest(
     priority,
     requested_count,
     allocation_rule,
-    target_field,
 )
 
 acquire_worker_candidates(
@@ -68,29 +67,17 @@ One call is scoped to one WorkerGroup and one Worker score queue. There is no
 Task id, cross-group batch, global requested count, fallback flag, score
 coordinate, or cache key in the contract.
 
-Each request owns its count, priority, rule, and candidate source. `CandidateId`
+Each request owns its count, priority, and complete rule. `CandidateId`
 is an opaque call-local correlation key except when the cache warmer explicitly
 uses globally unique `taskId`. One Worker may satisfy at most one CandidateId
 in one call.
 
 `allocation_rule` is the same constraint DSL used by Task and TaskItem
-metadata. `target_field` is an internal candidate-source coordinate:
-
-```text
-None
-  only valid for PRECOMPUTED consumption requests and the dedicated
-  acquire_hot_pool_candidates cache-warmer operation
-
-workerId
-  bounded $eq / $in point source
-
-dynamic.<name>
-  bounded handler-owned candidate index
-```
-
-The target source only proposes Worker IDs. Descriptor reads, dynamic point
-reads, full rule matching, and exact Worker score leases remain the scheduling
-truth checks.
+metadata. TARGETED derives its bounded Worker universe only from the rule's
+`workerId` condition. Property indexes do not propose or filter Worker IDs;
+explicit `index.*` fields point-load projections while the complete rule is
+matched. Exact score lease and complete rematch remain the scheduling truth
+checks.
 
 ## Acquisition Strategies
 
@@ -104,10 +91,14 @@ PRECOMPUTED
   return partial or empty on miss/stale/mismatch
 
 TARGETED
-  require a non-null target_field and obtain Worker IDs from that source
-  observe only due HOT scores for point sources
-  exact lease the observed scores
-  rematch the complete allocation rule
+  require bounded workerId $eq/$equal/$in candidates
+  admit at most 100 unique WorkerIds across the round in priority order
+  pre-match the complete rule for those explicit WorkerIds
+  observe due HOT scores only for pre-matched WorkerIds
+  choose at most requestedCount due Workers
+  exact lease only the chosen Workers
+  rematch the complete allocation rule after lease
+  point-load explicit index.* fields only for those WorkerIds
   never read or write CandidateWorkerCache
 ```
 
@@ -125,11 +116,31 @@ Matcher input is one flat Worker lease map for one WorkerGroup:
 workerId -> opaqueLeaseScore
 ```
 
-The selected acquirer unions and deduplicates its bounded Worker sources before
-the matcher call. The matcher batches descriptor and dynamic point reads,
-evaluates each complete candidate rule in priority order, and assigns each
-Worker to at most one CandidateId. CandidateId remains a constraint and output
-correlation key; source topology is not part of the matcher contract.
+The selected acquirer deduplicates its bounded Worker source before the matcher
+call. PRECOMPUTED consumes Task-local cache entries. TARGETED currently derives
+request-local candidates only from the Item rule's `workerId` condition and
+never touches the cache. Across one TARGETED call, `(priority, candidateId)`
+ordering admits at most 100 unique WorkerIds. Later candidates may reuse an
+already admitted id, but cannot add new ids after the budget is exhausted. The
+matcher therefore reads at most 100 descriptors for that TARGETED round,
+batches projection reads only for candidates that reference each `index.*`
+field, evaluates the complete rule in priority order, and assigns each Worker
+to at most one CandidateId.
+
+Matcher context has four roots:
+
+```text
+workerId
+worker.*
+platform.*
+index.*
+```
+
+For explicit `index.*` fields, the matcher point-loads values for only its
+current bounded WorkerIds. Missing or unavailable projections fail that
+matching round closed and do not fall back to descriptor Properties.
+`worker.*` and `platform.*` fields always read their corresponding descriptor
+snapshots. Property projections never discover or intersect candidate sets.
 
 ## Candidate Cache
 
@@ -244,6 +255,9 @@ the dispatch round does not infer type or strategy from Item contents.
   bound to that Item.
 - Cache miss, missing index rows, stale Worker evidence, missing records, and
   empty match are bounded no-ops.
+- Invalid stored rules and unavailable or corrupt Property Index reads fail
+  closed. One matcher call emits at most one safe aggregate rule diagnostic
+  and one safe aggregate index diagnostic without rule, property, or Item data.
 - Unused, stale, claim-failed, or publication-failed Worker leases are not
   actively released; lease expiry restores visibility.
 - Candidate cache and WorkerCommand mailboxes are handoff evidence, not
@@ -254,10 +268,10 @@ the dispatch round does not infer type or strategy from Item contents.
 
 ## Deferred Policy
 
-- Dynamic candidate indexes remain handler-owned; zero-config assembly installs
-  none.
-- Multi-index intersection, cardinality optimization, quotas, and fairness are
-  deferred policies.
+- Alternative bounded candidate sources, numeric/range projection stores,
+  preference ranking, stronger cardinality planning, quotas, and fairness are
+  deferred policies. Point Property Indexes do not discover or intersect
+  candidate sets.
 - TaskItem append may submit a bounded, process-local, taskId-coalesced wake
   hint. Task Dispatch consumes hints before its ordinary RUNNING scan and may
   exact-release only a future RUNNING empty-recheck hold whose suffix is

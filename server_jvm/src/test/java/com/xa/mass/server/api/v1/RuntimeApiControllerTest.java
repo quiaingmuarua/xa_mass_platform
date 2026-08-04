@@ -5,10 +5,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
@@ -25,6 +27,7 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendResult;
 import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendStatus;
 import com.xa.mass.kernel.task.TaskRuntime.TaskType;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
+import com.xa.mass.kernel.worker.WorkerPropertyIndexRuntime;
 import com.xa.mass.kernel.worker.WorkerRuntime;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeResult;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeStatus;
@@ -60,6 +63,7 @@ class RuntimeApiControllerTest {
 
     private WorkerRuntime workerRuntime;
     private WorkerResourceCatalog workerCatalog;
+    private WorkerPropertyIndexRuntime propertyIndex;
     private TaskRuntime taskRuntime;
     private TaskResourceCatalog taskCatalog;
     private TaskLifecycleCommands taskLifecycle;
@@ -70,6 +74,7 @@ class RuntimeApiControllerTest {
     void setUp() {
         workerRuntime = mock(WorkerRuntime.class);
         workerCatalog = mock(WorkerResourceCatalog.class);
+        propertyIndex = mock(WorkerPropertyIndexRuntime.class);
         taskRuntime = mock(TaskRuntime.class);
         taskCatalog = mock(TaskResourceCatalog.class);
         taskLifecycle = mock(TaskLifecycleCommands.class);
@@ -79,6 +84,22 @@ class RuntimeApiControllerTest {
                 .thenReturn(new WorkerRuntimeResult(WorkerRuntimeStatus.OK));
         when(workerRuntime.upsertWorker(any()))
                 .thenReturn(new WorkerRuntimeResult(WorkerRuntimeStatus.OK));
+        when(workerCatalog.patchWorkerPlatformProperties(
+                any(),
+                any(),
+                any()
+        )).thenReturn(new WorkerRuntimeResult(WorkerRuntimeStatus.OK));
+        when(propertyIndex.updateIndexedProperties(
+                any(),
+                any(),
+                any()
+        )).thenReturn(Map.of(
+                "index.worker.region",
+                new WorkerRuntimeResult(WorkerRuntimeStatus.OK),
+                "index.platform.pool",
+                new WorkerRuntimeResult(WorkerRuntimeStatus.NOT_FOUND,
+                        "property index is not configured")
+        ));
         when(taskRuntime.createTask(any(), eq(0)))
                 .thenReturn(new TaskCreationResult(
                         TaskCreationStatus.CREATED
@@ -131,7 +152,8 @@ class RuntimeApiControllerTest {
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new ResourceCommandController(
                                 workerRuntime,
-                                workerCatalog
+                                workerCatalog,
+                                propertyIndex
                         ),
                         new TaskControlController(
                                 taskRuntime,
@@ -149,7 +171,6 @@ class RuntimeApiControllerTest {
         TaskDataService taskData = new TaskDataService(
                 taskRuntime,
                 taskCatalog,
-                workerCatalog,
                 dispatchWake
         );
         TaskRpcProperties properties = rpcProperties();
@@ -184,8 +205,7 @@ class RuntimeApiControllerTest {
                         .header("X-Request-Id", "request-1")
                         .content("""
                                 {
-                                  "eventCodes": ["telecom.phone.inspect"],
-                                  "itemAllocationFields": ["workerId"]
+                                  "eventCodes": ["telecom.phone.inspect"]
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -199,11 +219,73 @@ class RuntimeApiControllerTest {
                         .content("""
                                 {
                                   "endpointManagerId": "endpoint-manager-1",
-                                  "attributes": {"runtime": "java"}
+                                  "workerProperties": {"runtime": "java"}
                                 }
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("ok"));
+
+        mockMvc.perform(patch(
+                                "/api/v1/worker-groups/phone-tools/workers/"
+                                        + "worker-1/platform-properties"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"properties\":{\"pool\":\"batch\","
+                                + "\"removed\":null}}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("ok"));
+
+        mockMvc.perform(patch(
+                                "/api/v1/worker-groups/phone-tools/workers/"
+                                        + "worker-1/worker-indexed-properties"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"updates\":{"
+                                + "\"index.worker.region\":\"cn-east\"}}"))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(patch(
+                                "/api/v1/worker-groups/phone-tools/workers/"
+                                        + "worker-1/platform-indexed-properties"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"updates\":{"
+                                + "\"index.platform.pool\":\"batch\"}}"))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(patch(
+                                "/api/v1/worker-groups/phone-tools/workers/"
+                                        + "worker-1/indexed-properties"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"updates\":{"
+                                + "\"index.worker.region\":\"cn-east\","
+                                + "\"index.platform.pool\":\"batch\"}}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath(
+                        "$.results['index.worker.region'].status"
+                ).value("ok"))
+                .andExpect(jsonPath(
+                        "$.results['index.platform.pool'].status"
+                ).value("not_found"));
+
+        verify(propertyIndex).updateIndexedProperties(
+                "phone-tools",
+                "worker-1",
+                Map.of(
+                        "index.worker.region", "cn-east",
+                        "index.platform.pool", "batch"
+                )
+        );
+
+        mockMvc.perform(put(
+                                "/api/v1/worker-groups/phone-tools/workers/"
+                                        + "missing-properties"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"endpointManagerId\":\"endpoint-1\"}"))
+                .andExpect(status().isBadRequest());
+
     }
 
     @Test
@@ -267,6 +349,136 @@ class RuntimeApiControllerTest {
                         .value("{\"valid\":true}"))
                 .andExpect(jsonPath("$.results.message-2").isEmpty());
         verify(dispatchWake).offer("task-1");
+    }
+
+    @Test
+    void itemDrivenAppendPassesOpaqueNonEmptyRulesToTheKernelMatcher()
+            throws Exception {
+        when(taskCatalog.loadTaskAllocationDescriptors(List.of("item-task")))
+                .thenReturn(Map.of(
+                        "item-task",
+                        new TaskDescriptor(
+                                "item-task",
+                                "phone-tools",
+                                TaskType.ITEM_DRIVEN,
+                                null,
+                                Map.of(
+                                        "priority", "0",
+                                        "maximumCandidateWorkers", "1",
+                                        "maxRetryTimes", "3"
+                                ),
+                                0L
+                        )
+                ));
+        when(taskRuntime.appendItems(eq("item-task"), anyList()))
+                .thenAnswer(invocation -> {
+                    List<TaskItem> items = invocation.getArgument(1);
+                    var results = new LinkedHashMap<
+                            String,
+                            TaskItemAppendResult
+                            >();
+                    items.forEach(item -> results.put(
+                            item.messageId(),
+                            new TaskItemAppendResult(
+                                    TaskItemAppendStatus.APPENDED
+                            )
+                    ));
+                    return results;
+                });
+
+        mockMvc.perform(post("/api/v1/tasks/item-task/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"items":[{
+                                  "messageId":"message-1",
+                                  "eventCode":"observe",
+                                  "createdAtMillis":1000,
+                                  "payload":{},
+                                  "allocationRule":{
+                                    "workerId":{"$eq":"worker-1"},
+                                    "worker.region":{"$eq":"cn-east"},
+                                    "platform.pool":{"$eq":"batch"},
+                                    "index.worker.region":{"$eq":"projected"}
+                                  }
+                                }]}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.results.message-1.status")
+                        .value("appended"));
+
+        mockMvc.perform(post("/api/v1/tasks/item-task/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"items":[{
+                                  "messageId":"message-2",
+                                  "eventCode":"observe",
+                                  "createdAtMillis":1000,
+                                  "payload":{},
+                                  "allocationRule":{
+                                    "worker.region":{"$eq":"cn-east"}
+                                  }
+                                }]}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.results.message-2.status")
+                        .value("appended"));
+
+        String tooManyWorkerIds = IntStream.range(0, 101)
+                .mapToObj(index -> "\"worker-" + index + "\"")
+                .collect(Collectors.joining(","));
+        mockMvc.perform(post("/api/v1/tasks/item-task/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"items":[{
+                                  "messageId":"message-3",
+                                  "eventCode":"observe",
+                                  "createdAtMillis":1000,
+                                  "payload":{},
+                                  "allocationRule":{
+                                    "workerId":{"$in":[%s]}
+                                  }
+                                }]}
+                                """.formatted(tooManyWorkerIds)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.results.message-3.status")
+                        .value("appended"));
+
+        mockMvc.perform(post("/api/v1/tasks/item-task/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"items":[{
+                                  "messageId":"message-4",
+                                  "eventCode":"observe",
+                                  "createdAtMillis":1000,
+                                  "payload":{},
+                                  "allocationRule":{
+                                    "workerId":{"$eq":"worker-1"},
+                                    "worker.region":{"$like":"cn-*"}
+                                  }
+                                }]}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.results.message-4.status")
+                        .value("appended"));
+
+        mockMvc.perform(post("/api/v1/tasks/item-task/items")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"items":[{
+                                  "messageId":"message-5",
+                                  "eventCode":"observe",
+                                  "createdAtMillis":1000,
+                                  "payload":{}
+                                }]}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.results.message-5.status")
+                        .value("invalid"));
+
+        verify(taskRuntime, times(4))
+                .appendItems(eq("item-task"), anyList());
+        verify(workerCatalog, times(0))
+                .getWorkerGroupDescriptors(anyList());
     }
 
     @Test

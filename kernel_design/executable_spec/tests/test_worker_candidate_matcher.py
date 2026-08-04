@@ -3,71 +3,42 @@ from __future__ import annotations
 import inspect
 import unittest
 from dataclasses import fields
-from typing import Callable, Sequence
 
 import kernel_design.executable_spec as executable_spec
 import kernel_design.executable_spec.kernel as kernel
+
 from kernel_design.executable_spec import (
-    RedisWorkerDynamicAttributeRuntime,
-    WorkerCandidateAcquisition,
-    WorkerCandidateConstraint,
-    WorkerCandidateMatcher,
+    MappedWorkerPropertyIndexRuntime,
+    RedisHashWorkerPropertyIndexProvider,
     WorkerGroupDescriptor,
     WorkerRuntimeStatus,
 )
-from kernel_design.executable_spec.kernel.worker_runtime import DynamicAttributeReadResult
+from kernel_design.executable_spec.scheduling.worker_candidate import (
+    WorkerCandidateConstraint,
+    WorkerCandidateMatcher,
+)
 
 from kernel_design.executable_spec.tests.redis_worker_runtime_test_support import (
     RedisWorkerRuntimeFixture,
 )
 
 
-_DynamicAttributeQueryHandler = Callable[
-    [str, Sequence[str]],
-    dict[str, DynamicAttributeReadResult],
-]
-
-
-def candidate_constraint(
-    allocation_rule: dict[str, object] | None = None,
-    *,
-    priority: int = 0,
-    limit: int = 1,
-) -> WorkerCandidateConstraint:
-    return WorkerCandidateConstraint(
-        priority=priority,
-        limit=limit,
-        allocation_rule={} if allocation_rule is None else allocation_rule,
-    )
-
-
 class WorkerCandidateMatcherContractTest(unittest.TestCase):
-    def test_worker_candidate_constraint_is_bounded_priority_dto(self) -> None:
-        constraint = WorkerCandidateConstraint(
-            priority=99,
-            limit=2,
-            allocation_rule={"dynamic.battery": {"$gte": 20}},
-        )
-
+    def test_contract_remains_bounded_and_outside_kernel_owner_exports(self) -> None:
         self.assertEqual(
             {field.name for field in fields(WorkerCandidateConstraint)},
             {"priority", "limit", "allocation_rule"},
         )
-        self.assertEqual(constraint.priority, 99)
-        self.assertEqual(constraint.limit, 2)
-
-    def test_worker_candidate_matcher_batches_constraint_queries(self) -> None:
-        match_params = set(
-            inspect.signature(WorkerCandidateMatcher.match_worker_candidates).parameters
-        )
-        init_params = set(inspect.signature(WorkerCandidateMatcher.__init__).parameters)
-
         self.assertEqual(
-            init_params,
-            {"self", "catalog", "dynamic_attribute_runtime"},
+            set(inspect.signature(WorkerCandidateMatcher.__init__).parameters),
+            {"self", "catalog", "property_index"},
         )
         self.assertEqual(
-            match_params,
+            set(
+                inspect.signature(
+                    WorkerCandidateMatcher.match_worker_candidates
+                ).parameters
+            ),
             {
                 "self",
                 "worker_group_id",
@@ -75,708 +46,347 @@ class WorkerCandidateMatcherContractTest(unittest.TestCase):
                 "candidate_constraints",
             },
         )
-        self.assertFalse(hasattr(executable_spec, "WorkerCandidateMatchResult"))
-        self.assertFalse(hasattr(executable_spec, "WorkerCandidateMatches"))
-
-    def test_assignment_symbols_are_root_exports_not_kernel_exports(self) -> None:
-        self.assertIs(executable_spec.WorkerCandidateMatcher, WorkerCandidateMatcher)
+        self.assertIs(
+            executable_spec.WorkerCandidateMatcher,
+            WorkerCandidateMatcher,
+        )
         self.assertFalse(hasattr(kernel, "WorkerCandidateMatcher"))
-        self.assertFalse(hasattr(kernel, "WorkerCandidateConstraint"))
 
 
 class WorkerCandidateMatcherTest(RedisWorkerRuntimeFixture):
-    def matcher(
-        self,
-        query_handlers: dict[str, _DynamicAttributeQueryHandler] | None = None,
-    ) -> WorkerCandidateMatcher:
-        dynamic_attribute_runtime = RedisWorkerDynamicAttributeRuntime(
+    def setUp(self) -> None:
+        super().setUp()
+        self.group = WorkerGroupDescriptor(
+            worker_group_id="image-workers",
+            attributes={"kind": "image"},
+            event_codes=frozenset({"resize"}),
+        )
+        self.index_provider = RedisHashWorkerPropertyIndexProvider(
+            self.redis,
+            prefix="test",
+        )
+        self.index = MappedWorkerPropertyIndexRuntime(
             self.catalog,
-            {},
-            query_handlers,
-        )
-        return WorkerCandidateMatcher(
-            self.catalog,
-            dynamic_attribute_runtime,
-        )
-
-    def test_matcher_rejects_priority_outside_lane_range(self) -> None:
-        matcher = self.matcher()
-        for priority in (-1, 100, True):
-            with self.subTest(priority=priority), self.assertRaises(ValueError):
-                matcher.match_worker_candidates(
-                    worker_group_id="image-workers",
-                    worker_lease_scores={},
-                    candidate_constraints={
-                        "candidate": candidate_constraint(priority=priority),
-                    },
-                )
-
-    def match_candidates(
-        self,
-        matcher: WorkerCandidateMatcher,
-        *,
-        worker_group_id: str = "image-workers",
-        worker_ids: Sequence[str],
-        candidate_constraints: dict[str, WorkerCandidateConstraint],
-    ) -> WorkerCandidateAcquisition:
-        worker_lease_scores = {
-            worker_id: 1_000 + index
-            for index, worker_id in enumerate(dict.fromkeys(worker_ids))
-        }
-        return matcher.match_worker_candidates(
-            worker_group_id=worker_group_id,
-            worker_lease_scores=worker_lease_scores,
-            candidate_constraints=candidate_constraints,
-        )
-
-    @staticmethod
-    def reservation_ids(rows):
-        return {
-            candidate_id: [entry.worker_id for entry in entries]
-            for candidate_id, entries in rows.items()
-        }
-
-    def test_candidate_matcher_matches_bounded_workers_and_preserves_order(self) -> None:
-        self.upsert_group()
-        other_group = WorkerGroupDescriptor(
-            worker_group_id="audio-workers",
-            attributes={},
-            event_codes=frozenset({"transcribe"}),
-        )
-        self.catalog.upsert_worker_group(descriptor=other_group)
-        self.upsert_worker(
-            self.worker_declaration(
-                "worker-1",
-                attributes={"runtime": "python"},
-            )
-        )
-        self.upsert_worker(
-            self.worker_declaration(
-                "worker-2",
-                endpoint_manager_id="endpoint-manager-2",
-                attributes={"runtime": "java"},
-            )
-        )
-        self.upsert_worker(
-            self.worker_declaration(
-                "outside",
-                worker_group_id="audio-workers",
-                attributes={"runtime": "python"},
-            )
-        )
-        self.catalog.update_worker_platform_attributes(
-            worker_group_id="image-workers",
-            worker_id="worker-1",
-            attributes={"tier": "premium"},
-        )
-        self.catalog.update_worker_platform_attributes(
-            worker_group_id="image-workers",
-            worker_id="worker-2",
-            attributes={"tier": "standard"},
-        )
-        self.catalog.update_worker_platform_attributes(
-            worker_group_id="audio-workers",
-            worker_id="outside",
-            attributes={"tier": "premium"},
-        )
-
-        def query_battery(
-            worker_group_id: str,
-            worker_ids: tuple[str, ...],
-        ) -> dict[str, DynamicAttributeReadResult]:
-            self.assertEqual(worker_group_id, "image-workers")
-            values = {"worker-1": 90, "worker-2": 10}
-            return {
-                worker_id: DynamicAttributeReadResult(
-                    WorkerRuntimeStatus.OK,
-                    value=values[worker_id],
-                )
-                for worker_id in worker_ids
-                if worker_id in values
-            }
-
-        matcher = self.matcher({"battery": query_battery})
-        rows = self.match_candidates(
-            matcher,
-            worker_group_id="image-workers",
-            worker_ids=["worker-2", "outside", "worker-1"],
-            candidate_constraints={
-                "all": candidate_constraint(priority=99),
-                "premium-python-battery": candidate_constraint(
-                    {
-                        "workerId": {"$in": ["worker-1", "outside"]},
-                        "platform.tier": {"$eq": "premium"},
-                        "attributes.runtime": {"$eq": "python"},
-                        "dynamic.battery": {"$gte": 20},
-                    },
-                    priority=0,
+            {
+                "index.worker.region": self.index_provider.create(
+                    "index.worker.region"
+                ),
+                "index.platform.pool": self.index_provider.create(
+                    "index.platform.pool"
                 ),
             },
         )
-
-        self.assertEqual(
-            self.reservation_ids(rows),
-            {
-                "premium-python-battery": ["worker-1"],
-                "all": ["worker-2"],
-            },
-        )
-        self.assertEqual(tuple(rows), ("premium-python-battery", "all"))
-        self.assertEqual(
-            {
-                "worker-1": "endpoint-manager-1",
-                "worker-2": "endpoint-manager-2",
-            },
-            {
-                entry.worker_id: entry.endpoint_manager_id
-                for entries in rows.values()
-                for entry in entries
-            },
-        )
-        self.assertEqual(
-            {
-                "worker-1": 1_002,
-                "worker-2": 1_000,
-            },
-            {
-                entry.worker_id: entry.worker_lease_score
-                for entries in rows.values()
-                for entry in entries
-            },
-        )
-
-    def test_endpoint_manager_id_is_route_evidence_not_match_context(self) -> None:
+        self.matcher = WorkerCandidateMatcher(self.catalog, self.index)
         self.upsert_group()
-        self.upsert_worker(self.worker_declaration("worker-1"))
 
-        rows = self.match_candidates(
-            self.matcher(),
-            worker_ids=["worker-1"],
-            candidate_constraints={
-                "transport-placement": candidate_constraint(
-                    {"endpointManagerId": {"$eq": "endpoint-manager-1"}},
-                )
-            },
-        )
-
-        self.assertEqual(rows["transport-placement"], ())
-
-    def test_candidate_matcher_rejects_missing_dynamic_handler(self) -> None:
-        self.upsert_group()
+    def add_worker(
+        self,
+        worker_id: str,
+        *,
+        worker_properties: dict[str, object],
+        platform_properties: dict[str, object] | None = None,
+        indexed_properties: dict[str, object] | None = None,
+    ) -> None:
         self.upsert_worker(
             self.worker_declaration(
-                "worker-1",
-                dynamic_attribute_names=frozenset(),
+                worker_id,
+                worker_properties=worker_properties,
             )
         )
-        matcher_without_handler = self.matcher()
-        constraints = {
-            "needs-battery": candidate_constraint(
-                {"dynamic.battery": {"$gte": 20}},
-            )
-        }
-
-        with self.assertRaisesRegex(
-            ValueError,
-            "missing dynamic attribute query handler: battery",
-        ):
-            self.match_candidates(
-                matcher_without_handler,
+        if platform_properties:
+            result = self.catalog.patch_worker_platform_properties(
                 worker_group_id="image-workers",
-                worker_ids=["worker-1"],
-                candidate_constraints=constraints,
+                worker_id=worker_id,
+                properties=platform_properties,
+            )
+            self.assertEqual(result.status, WorkerRuntimeStatus.OK)
+        if indexed_properties:
+            self.index.update_indexed_properties(
+                worker_group_id="image-workers",
+                worker_id=worker_id,
+                updates=indexed_properties,
             )
 
-    def test_candidate_matcher_derives_dynamic_fields_from_match_rules(self) -> None:
-        self.upsert_group()
-        self.upsert_worker(self.worker_declaration("worker-1"))
-        queried_worker_ids: list[str] = []
-
-        def query_battery(
-            worker_group_id: str,
-            worker_ids: Sequence[str],
-        ) -> dict[str, DynamicAttributeReadResult]:
-            queried_worker_ids.extend(worker_ids)
-            return {
-                worker_id: DynamicAttributeReadResult(
-                    WorkerRuntimeStatus.OK,
-                    value=90,
-                )
-                for worker_id in worker_ids
-            }
-
-        matcher = self.matcher({"battery": query_battery})
-        rows = self.match_candidates(
-            matcher,
+    def match(self, rules: dict[str, object], worker_ids: list[str]) -> list[str]:
+        rows = self.matcher.match_worker_candidates(
             worker_group_id="image-workers",
-            worker_ids=["worker-1"],
+            worker_lease_scores={
+                worker_id: 1000 + index
+                for index, worker_id in enumerate(worker_ids)
+            },
             candidate_constraints={
-                "needs-battery": candidate_constraint(
-                    {"dynamic.battery": {"$gte": 20}}
+                "candidate": WorkerCandidateConstraint(
+                    priority=0,
+                    limit=len(worker_ids) or 1,
+                    allocation_rule=rules,
                 )
+            },
+        )
+        return [entry.worker_id for entry in rows["candidate"]]
+
+    def test_precomputed_rematch_combines_snapshots_and_explicit_indexes(self) -> None:
+        self.add_worker(
+            "worker-1",
+            worker_properties={"arch": "arm64", "region": "stale"},
+            platform_properties={"poolView": "batch"},
+            indexed_properties={
+                "index.worker.region": "cn-east",
+                "index.platform.pool": "batch",
+            },
+        )
+        self.add_worker(
+            "worker-2",
+            worker_properties={"arch": "x86_64"},
+            indexed_properties={
+                "index.worker.region": "cn-east",
+                "index.platform.pool": "batch",
             },
         )
 
         self.assertEqual(
-            self.reservation_ids(rows),
-            {"needs-battery": ["worker-1"]},
+            self.match(
+                {
+                    "worker.arch": {"$eq": "arm64"},
+                    "worker.region": {"$eq": "stale"},
+                    "index.worker.region": {"$eq": "cn-east"},
+                    "index.platform.pool": {"$eq": "batch"},
+                },
+                ["worker-1", "worker-2"],
+            ),
+            ["worker-1"],
         )
-        self.assertEqual(queried_worker_ids, ["worker-1"])
 
-    def test_candidate_matcher_validates_candidate_limit(self) -> None:
-        matcher = self.matcher()
+    def test_explicit_index_missing_never_falls_back_to_snapshot(self) -> None:
+        self.add_worker(
+            "worker-1",
+            worker_properties={"region": "cn-east"},
+        )
 
-        with self.assertRaisesRegex(ValueError, "candidate limit must be positive"):
-            self.match_candidates(
-                matcher,
+        self.assertEqual(
+            self.match(
+                {"index.worker.region": {"$eq": "cn-east"}},
+                ["worker-1"],
+            ),
+            [],
+        )
+
+    def test_nonindexed_property_reads_worker_and_platform_snapshots(self) -> None:
+        self.add_worker(
+            "worker-1",
+            worker_properties={"arch": "arm64"},
+            platform_properties={"tier": "premium"},
+        )
+
+        self.assertEqual(
+            self.match(
+                {
+                    "worker.arch": {"$eq": "arm64"},
+                    "platform.tier": {"$eq": "premium"},
+                },
+                ["worker-1"],
+            ),
+            ["worker-1"],
+        )
+
+    def test_projection_read_failure_fails_closed(self) -> None:
+        self.add_worker(
+            "worker-1",
+            worker_properties={},
+            indexed_properties={"index.worker.region": "cn-east"},
+        )
+
+        class FailingIndex:
+            def load_indexed_property_values(self, **_: object) -> object:
+                raise RuntimeError("index unavailable")
+
+        matcher = WorkerCandidateMatcher(self.catalog, FailingIndex())
+        with self.assertLogs(
+            "kernel_design.executable_spec.scheduling.worker_candidate.matching",
+            level="WARNING",
+        ) as logs:
+            rows = matcher.match_worker_candidates(
                 worker_group_id="image-workers",
-                worker_ids=[],
+                worker_lease_scores={"worker-1": 1000},
                 candidate_constraints={
-                    "candidate-1": candidate_constraint(limit=0)
+                    "candidate": WorkerCandidateConstraint(
+                        priority=0,
+                        limit=1,
+                        allocation_rule={
+                            "index.worker.region": {"$eq": "cn-east"}
+                        },
+                    )
                 },
             )
+        self.assertEqual(rows["candidate"], ())
+        self.assertEqual(1, len(logs.output))
+        self.assertIn("PROVIDER_FAILURE", logs.output[0])
 
-    def test_candidate_matcher_isolates_one_corrupt_rule(self) -> None:
-        self.upsert_group()
-        self.upsert_worker(self.worker_declaration("worker-1"))
-        matcher = self.matcher()
+    def test_each_index_reads_only_workers_from_referencing_candidates(self) -> None:
+        self.add_worker(
+            "worker-1",
+            worker_properties={},
+            indexed_properties={"index.worker.region": "cn-east"},
+        )
+        self.add_worker(
+            "worker-2",
+            worker_properties={},
+            indexed_properties={"index.worker.region": "cn-east"},
+        )
+        self.add_worker(
+            "worker-3",
+            worker_properties={},
+            indexed_properties={"index.platform.pool": "batch"},
+        )
+        self.redis.hmget_calls.clear()
 
-        rows = self.match_candidates(
-            matcher,
+        self.matcher.filter_candidate_worker_ids(
             worker_group_id="image-workers",
-            worker_ids=["worker-1"],
+            candidate_worker_ids={
+                "region": ("worker-1", "worker-2"),
+                "pool": ("worker-3",),
+            },
             candidate_constraints={
-                "corrupt": candidate_constraint(
-                    {"attributes.runtime": {"$unknown": "python"}},
-                    priority=0,
+                "region": WorkerCandidateConstraint(
+                    0,
+                    2,
+                    {"index.worker.region": {"$eq": "cn-east"}},
                 ),
-                "valid": candidate_constraint(priority=99),
+                "pool": WorkerCandidateConstraint(
+                    1,
+                    1,
+                    {"index.platform.pool": {"$eq": "batch"}},
+                ),
             },
         )
 
-        self.assertEqual(
-            self.reservation_ids(rows),
-            {"corrupt": [], "valid": ["worker-1"]},
-        )
-
-    def test_candidate_matcher_fails_closed_for_unresolved_dynamic_value(self) -> None:
-        self.upsert_group()
-        self.upsert_worker(self.worker_declaration("worker-1"))
-        matcher_without_value = self.matcher(
-            {
-                "battery": lambda _, worker_ids: {
-                    worker_id: DynamicAttributeReadResult(
-                        WorkerRuntimeStatus.NOT_FOUND
-                    )
-                    for worker_id in worker_ids
-                }
-            },
-        )
-        constraints = {
-            "needs-battery": candidate_constraint(
-                {"dynamic.battery": {"$gte": 20}},
-            )
-        }
-
-        self.assertEqual(
-            {"needs-battery": ()},
-            self.match_candidates(
-                matcher_without_value,
-                worker_group_id="image-workers",
-                worker_ids=["worker-1"],
-                candidate_constraints=constraints,
+        self.assertIn(
+            (
+                "wr:test:property-index:image-workers:"
+                "index.worker.region:values",
+                ("worker-1", "worker-2"),
             ),
+            self.redis.hmget_calls,
+        )
+        self.assertIn(
+            (
+                "wr:test:property-index:image-workers:"
+                "index.platform.pool:values",
+                ("worker-3",),
+            ),
+            self.redis.hmget_calls,
         )
 
-    def test_candidate_matcher_never_discovers_workers_outside_input(self) -> None:
-        self.upsert_group()
-        self.upsert_worker(self.worker_declaration("worker-1"))
-        self.upsert_worker(self.worker_declaration("worker-2"))
-        matcher = self.matcher()
-
-        rows = self.match_candidates(
-            matcher,
-            worker_group_id="image-workers",
-            worker_ids=["worker-1"],
-            candidate_constraints={"all": candidate_constraint()},
-        )
-
-        self.assertEqual(self.reservation_ids(rows), {"all": ["worker-1"]})
-
-    def test_candidate_matcher_requires_declared_dynamic_attribute(self) -> None:
-        self.upsert_group()
-        self.upsert_worker(
-            self.worker_declaration(
-                "worker-1",
-                dynamic_attribute_names=frozenset(),
-            )
-        )
-        queried_worker_ids: list[str] = []
-
-        def query_battery(
-            worker_group_id: str,
-            worker_ids: tuple[str, ...],
-        ) -> dict[str, DynamicAttributeReadResult]:
-            queried_worker_ids.extend(worker_ids)
-            return {
-                worker_id: DynamicAttributeReadResult(
-                    WorkerRuntimeStatus.OK,
-                    value=90,
-                )
-                for worker_id in worker_ids
-            }
-
-        matcher = self.matcher({"battery": query_battery})
-        rows = self.match_candidates(
-            matcher,
-            worker_group_id="image-workers",
-            worker_ids=["worker-1"],
-            candidate_constraints={
-                "needs-battery": candidate_constraint(
-                    {"dynamic.battery": {"$gte": 20}},
-                )
-            },
-        )
-
-        self.assertEqual(self.reservation_ids(rows), {"needs-battery": []})
-        self.assertEqual(queried_worker_ids, [])
-
-    def test_candidate_matcher_reads_dynamic_attribute_once_per_batch(self) -> None:
-        self.upsert_group()
-        self.upsert_worker(self.worker_declaration("worker-1"))
-        self.upsert_worker(self.worker_declaration("worker-2"))
-        query_batches: list[tuple[str, tuple[str, ...]]] = []
-
-        def query_battery(
-            worker_group_id: str,
-            worker_ids: tuple[str, ...],
-        ) -> dict[str, DynamicAttributeReadResult]:
-            query_batches.append((worker_group_id, worker_ids))
-            return {
-                worker_id: DynamicAttributeReadResult(
-                    WorkerRuntimeStatus.OK,
-                    value=90,
-                )
-                for worker_id in worker_ids
-            }
-
-        matcher = self.matcher({"battery": query_battery})
-        rows = self.match_candidates(
-            matcher,
-            worker_group_id="image-workers",
-            worker_ids=["worker-1", "worker-2"],
-            candidate_constraints={
-                "candidate-2": candidate_constraint(
-                    {"dynamic.battery": {"$lte": 100}},
-                ),
-                "candidate-1": candidate_constraint(
-                    {"dynamic.battery": {"$gte": 20}},
-                    limit=2,
-                ),
-            },
-        )
+    def test_worker_id_remains_a_builtin_match_coordinate(self) -> None:
+        self.add_worker("worker-1", worker_properties={})
+        self.add_worker("worker-2", worker_properties={})
 
         self.assertEqual(
-            self.reservation_ids(rows),
-            {
-                "candidate-1": ["worker-1", "worker-2"],
-                "candidate-2": [],
-            },
-        )
-        self.assertEqual(
-            query_batches,
-            [("image-workers", ("worker-1", "worker-2"))],
+            self.match(
+                {"workerId": {"$eq": "worker-2"}},
+                ["worker-1", "worker-2"],
+            ),
+            ["worker-2"],
         )
 
-    def test_candidate_matcher_splits_only_the_dynamic_domain_dot(self) -> None:
-        self.upsert_group()
-        self.upsert_worker(
-            self.worker_declaration(
-                "worker-1",
-                dynamic_attribute_names=frozenset({"battery.level"}),
-            )
-        )
-        queried_worker_ids: list[str] = []
-
-        def query_battery_level(
-            worker_group_id: str,
-            worker_ids: Sequence[str],
-        ) -> dict[str, DynamicAttributeReadResult]:
-            queried_worker_ids.extend(worker_ids)
-            return {
-                worker_id: DynamicAttributeReadResult(
-                    WorkerRuntimeStatus.OK,
-                    value=87,
-                )
-                for worker_id in worker_ids
-            }
-
-        matcher = self.matcher({"battery.level": query_battery_level})
-        rows = self.match_candidates(
-            matcher,
-            worker_group_id="image-workers",
-            worker_ids=["worker-1"],
-            candidate_constraints={
-                "candidate-1": candidate_constraint(
-                    {"dynamic.battery.level": {"$gte": 80}},
-                )
-            },
-        )
-
-        self.assertEqual(
-            self.reservation_ids(rows),
-            {"candidate-1": ["worker-1"]},
-        )
-        self.assertEqual(queried_worker_ids, ["worker-1"])
-
-    def test_candidate_matcher_enforces_per_candidate_worker_limit(self) -> None:
-        self.upsert_group()
+    def test_priority_and_per_candidate_limits_assign_each_worker_once(self) -> None:
         for worker_id in ("worker-1", "worker-2", "worker-3", "worker-4"):
-            self.upsert_worker(self.worker_declaration(worker_id))
+            self.add_worker(worker_id, worker_properties={})
 
-        matcher = self.matcher()
-        rows = self.match_candidates(
-            matcher,
+        rows = self.matcher.match_worker_candidates(
             worker_group_id="image-workers",
-            worker_ids=["worker-1", "worker-2", "worker-3", "worker-4"],
+            worker_lease_scores={
+                worker_id: 1000 + index
+                for index, worker_id in enumerate(
+                    ("worker-1", "worker-2", "worker-3", "worker-4")
+                )
+            },
             candidate_constraints={
-                "fallback": candidate_constraint(priority=99, limit=2),
-                "preferred": candidate_constraint(priority=0, limit=1),
+                "fallback": WorkerCandidateConstraint(99, 2, {}),
+                "preferred": WorkerCandidateConstraint(0, 1, {}),
             },
         )
 
         self.assertEqual(
-            self.reservation_ids(rows),
+            {
+                candidate_id: [entry.worker_id for entry in entries]
+                for candidate_id, entries in rows.items()
+            },
             {
                 "preferred": ["worker-1"],
                 "fallback": ["worker-2", "worker-3"],
             },
         )
 
-    def test_candidate_matcher_batches_declared_fields_and_consumes_by_priority(self) -> None:
-        self.upsert_group()
-        dynamic_names = frozenset({"battery", "network"})
-        self.upsert_worker(
-            self.worker_declaration(
-                "worker-1",
-                attributes={"runtime": "python"},
-                dynamic_attribute_names=dynamic_names,
+    def test_invalid_constraint_is_isolated_from_valid_candidate(self) -> None:
+        self.add_worker("worker-1", worker_properties={})
+        with self.assertLogs(
+            "kernel_design.executable_spec.scheduling.worker_candidate.matching",
+            level="WARNING",
+        ) as logs:
+            rows = self.matcher.match_worker_candidates(
+                worker_group_id="image-workers",
+                worker_lease_scores={"worker-1": 1000},
+                candidate_constraints={
+                    "invalid": WorkerCandidateConstraint(
+                        0,
+                        1,
+                        {"worker.region": {"$unknown": "cn-east"}},
+                    ),
+                    "valid": WorkerCandidateConstraint(99, 1, {}),
+                },
             )
-        )
-        self.upsert_worker(
-            self.worker_declaration(
-                "worker-2",
-                attributes={"runtime": "java"},
-                dynamic_attribute_names=dynamic_names,
-            )
-        )
-        query_batches: list[tuple[str, tuple[str, ...]]] = []
 
-        def query_attribute(
-            attribute_name: str,
-        ) -> _DynamicAttributeQueryHandler:
-            def query(
-                worker_group_id: str,
-                worker_ids: Sequence[str],
-            ) -> dict[str, DynamicAttributeReadResult]:
-                query_batches.append((attribute_name, tuple(worker_ids)))
-                return {
-                    worker_id: DynamicAttributeReadResult(
-                        WorkerRuntimeStatus.OK,
-                        value=90 if attribute_name == "battery" else "wifi",
-                    )
-                    for worker_id in worker_ids
-                }
+        self.assertEqual(rows["invalid"], ())
+        self.assertEqual(rows["valid"][0].worker_id, "worker-1")
+        self.assertEqual(1, len(logs.output))
+        self.assertIn("candidateCount=1", logs.output[0])
 
-            return query
-
-        matcher = self.matcher(
-            {
-                "battery": query_attribute("battery"),
-                "network": query_attribute("network"),
-            },
-        )
-        rows = self.match_candidates(
-            matcher,
-            worker_group_id="image-workers",
-            worker_ids=["worker-2", "worker-1"],
-            candidate_constraints={
-                "battery": candidate_constraint(
-                    {"dynamic.battery": {"$gte": 20}},
-                    priority=99,
-                ),
-                "python-network": candidate_constraint(
-                    {
-                        "attributes.runtime": {"$eq": "python"},
-                        "dynamic.network": {"$eq": "wifi"},
-                    },
-                    priority=0,
-                ),
-            },
-        )
-
-        self.assertEqual(
-            self.reservation_ids(rows),
-            {
-                "python-network": ["worker-1"],
-                "battery": ["worker-2"],
-            },
-        )
-        self.assertEqual(
-            query_batches,
-            [
-                ("network", ("worker-2", "worker-1")),
-                ("battery", ("worker-2", "worker-1")),
-            ],
-        )
-        self.assertEqual(
-            self.redis.hmget_calls,
-            [("wr:test:workers:image-workers", ("worker-2", "worker-1"))],
-        )
-
-    def test_candidate_matcher_fails_closed_for_missing_batch_rows(self) -> None:
-        self.upsert_group()
-        self.upsert_worker(self.worker_declaration("worker-1"))
-        self.upsert_worker(self.worker_declaration("worker-2"))
-
-        def query_battery(
-            worker_group_id: str,
-            worker_ids: tuple[str, ...],
-        ) -> dict[str, DynamicAttributeReadResult]:
-            self.assertEqual(worker_ids, ("worker-1", "worker-2"))
-            return {
-                "worker-1": DynamicAttributeReadResult(
-                    WorkerRuntimeStatus.OK,
-                    value=90,
-                )
-            }
-
-        matcher = self.matcher({"battery": query_battery})
-        rows = self.match_candidates(
-            matcher,
-            worker_group_id="image-workers",
-            worker_ids=["worker-1", "worker-2"],
-            candidate_constraints={
-                "needs-battery": candidate_constraint(
-                    {"dynamic.battery": {"$gte": 20}},
-                )
-            },
-        )
-
-        self.assertEqual(
-            self.reservation_ids(rows),
-            {"needs-battery": ["worker-1"]},
-        )
-
-    def test_candidate_matcher_batches_acquire_before_worker_id_rule(self) -> None:
-        self.upsert_group()
-        self.upsert_worker(self.worker_declaration("worker-1"))
-        self.upsert_worker(self.worker_declaration("worker-2"))
-        queried_worker_ids: list[str] = []
-
-        def query_battery(
-            worker_group_id: str,
-            worker_ids: tuple[str, ...],
-        ) -> dict[str, DynamicAttributeReadResult]:
-            queried_worker_ids.extend(worker_ids)
-            return {
-                worker_id: DynamicAttributeReadResult(
-                    WorkerRuntimeStatus.OK,
-                    value=90,
-                )
-                for worker_id in worker_ids
-            }
-
-        matcher = self.matcher({"battery": query_battery})
-        rows = self.match_candidates(
-            matcher,
-            worker_group_id="image-workers",
-            worker_ids=["worker-1", "worker-2"],
-            candidate_constraints={
-                "worker-1-only": candidate_constraint(
-                    {
-                        "workerId": {"$eq": "worker-1"},
-                        "dynamic.battery": {"$gte": 20},
+    def test_matcher_validates_priority_and_limit(self) -> None:
+        for priority in (-1, 100, True):
+            with self.subTest(priority=priority), self.assertRaises(ValueError):
+                self.matcher.match_worker_candidates(
+                    worker_group_id="image-workers",
+                    worker_lease_scores={},
+                    candidate_constraints={
+                        "candidate": WorkerCandidateConstraint(
+                            priority,
+                            1,
+                            {},
+                        )
                     },
                 )
-            },
-        )
-
-        self.assertEqual(
-            self.reservation_ids(rows),
-            {"worker-1-only": ["worker-1"]},
-        )
-        self.assertEqual(queried_worker_ids, ["worker-1", "worker-2"])
-
-    def test_candidate_matcher_batches_acquire_before_static_rule(self) -> None:
-        self.upsert_group()
-        self.upsert_worker(
-            self.worker_declaration(
-                "worker-1",
-                attributes={"runtime": "java"},
+        with self.assertRaises(ValueError):
+            self.matcher.match_worker_candidates(
+                worker_group_id="image-workers",
+                worker_lease_scores={},
+                candidate_constraints={
+                    "candidate": WorkerCandidateConstraint(0, 0, {})
+                },
             )
-        )
-        queried_worker_ids: list[str] = []
 
-        def query_battery(
-            worker_group_id: str,
-            worker_ids: tuple[str, ...],
-        ) -> dict[str, DynamicAttributeReadResult]:
-            queried_worker_ids.extend(worker_ids)
-            return {
-                worker_id: DynamicAttributeReadResult(
-                    WorkerRuntimeStatus.OK,
-                    value=90,
-                )
-                for worker_id in worker_ids
-            }
-
-        matcher = self.matcher({"battery": query_battery})
-        rows = self.match_candidates(
-            matcher,
-            worker_group_id="image-workers",
-            worker_ids=["worker-1"],
-            candidate_constraints={
-                "python-with-battery": candidate_constraint(
-                    {
-                        "attributes.runtime": {"$eq": "python"},
-                        "dynamic.battery": {"$gte": 20},
-                    },
-                )
-            },
-        )
-
+    def test_route_evidence_is_not_match_context(self) -> None:
+        self.add_worker("worker-1", worker_properties={})
         self.assertEqual(
-            self.reservation_ids(rows),
-            {"python-with-battery": []},
-        )
-        self.assertEqual(queried_worker_ids, ["worker-1"])
-
-    def test_candidate_matcher_deduplicates_input_before_matching(self) -> None:
-        self.upsert_group()
-        self.upsert_worker(self.worker_declaration("worker-1"))
-        matcher = self.matcher()
-
-        result = self.match_candidates(
-            matcher,
-            worker_ids=["worker-1", "missing", "worker-1"],
-            candidate_constraints={
-                "candidate-1": candidate_constraint(limit=2)
-            },
+            self.match(
+                {"endpointManagerId": {"$eq": "endpoint-manager-1"}},
+                ["worker-1"],
+            ),
+            [],
         )
 
-        self.assertEqual(self.reservation_ids(result), {"candidate-1": ["worker-1"]})
+    def test_matcher_never_discovers_workers_outside_input(self) -> None:
+        self.add_worker("worker-1", worker_properties={})
+        self.add_worker("worker-2", worker_properties={})
 
-    def test_candidate_matcher_returns_no_rows_without_constraints(self) -> None:
-        matcher = self.matcher()
-
-        result = self.match_candidates(
-            matcher,
-            worker_ids=["worker-2", "worker-1", "worker-2"],
-            candidate_constraints={},
+        self.assertEqual(self.match({}, ["worker-1"]), ["worker-1"])
+        self.assertEqual(
+            self.matcher.match_worker_candidates(
+                worker_group_id="image-workers",
+                worker_lease_scores={"worker-1": 1000},
+                candidate_constraints={},
+            ),
+            {},
         )
-
-        self.assertEqual(result, {})
 
 
 if __name__ == "__main__":

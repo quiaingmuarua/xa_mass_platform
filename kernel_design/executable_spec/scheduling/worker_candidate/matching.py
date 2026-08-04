@@ -1,22 +1,28 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Mapping, Sequence
 
-from ...constraint_dsl import ConstraintEvaluator, ConstraintMap, UNRESOLVED_VALUE
+from ...constraint_dsl import (
+    ConstraintEvaluator,
+    ConstraintMap,
+    UNRESOLVED_VALUE,
+)
 from ...kernel.assignment_dispatch_runtime import (
     CandidateId,
     CandidateWorkerEntry,
 )
-from ...kernel.worker_score import Score, WorkerId
 from ...kernel.worker_runtime import (
-    DynamicAttributeReadResult,
     WorkerDescriptor,
-    WorkerDynamicAttributeRuntime,
     WorkerGroupId,
+    WorkerPropertyIndexRuntime,
     WorkerResourceCatalog,
-    WorkerRuntimeStatus,
 )
+from ...kernel.worker_score import Score, WorkerId
+
+
+_LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -35,15 +41,15 @@ WorkerCandidateAcquisition = Mapping[
 
 
 class WorkerCandidateMatcher:
-    """Match each bounded Worker to its first non-full candidate."""
+    """Match bounded Worker ids through snapshots and explicit index reads."""
 
     def __init__(
         self,
         catalog: WorkerResourceCatalog,
-        dynamic_attribute_runtime: WorkerDynamicAttributeRuntime,
+        property_index: WorkerPropertyIndexRuntime,
     ) -> None:
         self.catalog = catalog
-        self.dynamic_attribute_runtime = dynamic_attribute_runtime
+        self.property_index = property_index
 
     def match_worker_candidates(
         self,
@@ -52,90 +58,241 @@ class WorkerCandidateMatcher:
         worker_lease_scores: Mapping[WorkerId, Score],
         candidate_constraints: Mapping[CandidateId, WorkerCandidateConstraint],
     ) -> WorkerCandidateAcquisition:
-        if not candidate_constraints:
-            return {}
-
-        candidates, required_dynamic_attributes = self._prepare_candidates(
-            candidate_constraints
-        )
-        mutable_matches: dict[CandidateId, list[CandidateWorkerEntry]] = {
-            candidate_id: [] for candidate_id, _, _ in candidates
-        }
-        for candidate_id in candidate_constraints:
-            mutable_matches.setdefault(candidate_id, [])
-        if not candidates:
-            return self._freeze_acquisitions(mutable_matches)
-        worker_ids = tuple(worker_lease_scores)
-        if not worker_ids:
-            return self._freeze_acquisitions(mutable_matches)
-        remaining_capacity = sum(
-            constraints.limit for _, constraints, _ in candidates
-        )
-
-        descriptors = self.catalog.get_worker_descriptors(
+        return self.match_explicit_worker_candidates(
             worker_group_id=worker_group_id,
-            worker_ids=worker_ids,
+            worker_lease_scores=worker_lease_scores,
+            candidate_worker_ids={
+                candidate_id: tuple(worker_lease_scores)
+                for candidate_id in candidate_constraints
+            },
+            candidate_constraints=candidate_constraints,
         )
-        dynamic_rows = self._acquire_dynamic_rows(
-            worker_group_id,
-            worker_ids,
-            descriptors,
-            required_dynamic_attributes,
-        )
-        for worker_id in worker_ids:
-            if remaining_capacity == 0:
-                break
-            descriptor = descriptors.get(worker_id)
-            if descriptor is None or descriptor.worker_group_id != worker_group_id:
-                continue
-            context = self._build_context(
-                worker_id,
-                descriptor,
-                required_dynamic_attributes,
-                dynamic_rows,
-            )
-            for candidate_id, constraints, match_rules in candidates:
-                if len(mutable_matches[candidate_id]) >= constraints.limit:
-                    continue
-                if ConstraintEvaluator.evaluate_match_rules(context, match_rules):
-                    mutable_matches[candidate_id].append(
-                        CandidateWorkerEntry(
-                            worker_id=worker_id,
-                            worker_group_id=worker_group_id,
-                            endpoint_manager_id=descriptor.endpoint_manager_id,
-                            worker_lease_score=worker_lease_scores[worker_id],
-                        )
-                    )
-                    remaining_capacity -= 1
-                    break
 
+    def filter_candidate_worker_ids(
+        self,
+        *,
+        worker_group_id: WorkerGroupId,
+        candidate_worker_ids: Mapping[CandidateId, Sequence[WorkerId]],
+        candidate_constraints: Mapping[CandidateId, WorkerCandidateConstraint],
+    ) -> Mapping[CandidateId, tuple[WorkerId, ...]]:
+        """Apply complete rules before score observation or lease mutation."""
+
+        candidates = self._prepare_candidates(
+            worker_group_id,
+            candidate_constraints,
+        )
+        matches, _ = self._match_bounded_worker_ids(
+            worker_group_id=worker_group_id,
+            candidate_worker_ids=candidate_worker_ids,
+            candidate_constraints=candidate_constraints,
+            candidates=candidates,
+            limit_matches=False,
+            unique_matches=False,
+        )
+        return self._freeze_worker_ids(matches)
+
+    def match_explicit_worker_candidates(
+        self,
+        *,
+        worker_group_id: WorkerGroupId,
+        worker_lease_scores: Mapping[WorkerId, Score],
+        candidate_worker_ids: Mapping[CandidateId, Sequence[WorkerId]],
+        candidate_constraints: Mapping[CandidateId, WorkerCandidateConstraint],
+    ) -> WorkerCandidateAcquisition:
+        mutable_matches: dict[CandidateId, list[CandidateWorkerEntry]] = {
+            candidate_id: [] for candidate_id in candidate_constraints
+        }
+        candidates = self._prepare_candidates(
+            worker_group_id,
+            candidate_constraints,
+        )
+        if not candidate_constraints or not worker_lease_scores:
+            return self._freeze_acquisitions(mutable_matches)
+
+        leased_ids = set(worker_lease_scores)
+        bounded_ids = {
+            candidate_id: tuple(
+                worker_id
+                for worker_id in dict.fromkeys(
+                    candidate_worker_ids.get(candidate_id, ())
+                )
+                if worker_id in leased_ids
+            )
+            for candidate_id in candidate_constraints
+        }
+        matched_worker_ids, descriptors = self._match_bounded_worker_ids(
+            worker_group_id=worker_group_id,
+            candidate_worker_ids=bounded_ids,
+            candidate_constraints=candidate_constraints,
+            candidates=candidates,
+            limit_matches=True,
+            unique_matches=True,
+        )
+        for candidate_id, worker_ids in matched_worker_ids.items():
+            for worker_id in worker_ids:
+                descriptor = descriptors[worker_id]
+                mutable_matches[candidate_id].append(
+                    CandidateWorkerEntry(
+                        worker_id=worker_id,
+                        worker_group_id=worker_group_id,
+                        endpoint_manager_id=descriptor.endpoint_manager_id,
+                        worker_lease_score=worker_lease_scores[worker_id],
+                    )
+                )
         return self._freeze_acquisitions(mutable_matches)
 
-    @staticmethod
-    def _freeze_acquisitions(
-        matches: Mapping[CandidateId, Sequence[CandidateWorkerEntry]],
-    ) -> WorkerCandidateAcquisition:
-        return {
-            candidate_id: tuple(entries)
-            for candidate_id, entries in matches.items()
+    def _match_bounded_worker_ids(
+        self,
+        *,
+        worker_group_id: WorkerGroupId,
+        candidate_worker_ids: Mapping[CandidateId, Sequence[WorkerId]],
+        candidate_constraints: Mapping[CandidateId, WorkerCandidateConstraint],
+        candidates: tuple[
+            tuple[CandidateId, WorkerCandidateConstraint, ConstraintMap],
+            ...,
+        ],
+        limit_matches: bool,
+        unique_matches: bool,
+    ) -> tuple[
+        dict[CandidateId, list[WorkerId]],
+        Mapping[WorkerId, WorkerDescriptor],
+    ]:
+        mutable_matches: dict[CandidateId, list[WorkerId]] = {
+            candidate_id: [] for candidate_id in candidate_constraints
         }
+        if not candidates:
+            return mutable_matches, {}
+
+        all_worker_ids = tuple(
+            dict.fromkeys(
+                worker_id
+                for candidate_id, _, _ in candidates
+                for worker_id in candidate_worker_ids.get(candidate_id, ())
+            )
+        )
+        if not all_worker_ids:
+            return mutable_matches, {}
+        raw_descriptors = self.catalog.get_worker_descriptors(
+            worker_group_id=worker_group_id,
+            worker_ids=all_worker_ids,
+        )
+        descriptors = {
+            worker_id: descriptor
+            for worker_id, descriptor in raw_descriptors.items()
+            if descriptor is not None
+            and descriptor.worker_group_id == worker_group_id
+        }
+        worker_ids_by_index_field: dict[str, list[WorkerId]] = {}
+        for candidate_id, _, compiled_rule in candidates:
+            for field_name in compiled_rule:
+                if not _is_index_field(field_name):
+                    continue
+                worker_ids_by_index_field.setdefault(field_name, []).extend(
+                    candidate_worker_ids.get(candidate_id, ())
+                )
+        indexed_values: dict[str, Mapping[WorkerId, object]] = {}
+        failed_index_fields: set[str] = set()
+        index_failures: list[tuple[str, str]] = []
+        for index_field in sorted(worker_ids_by_index_field):
+            referenced_worker_ids = tuple(dict.fromkeys(
+                worker_ids_by_index_field[index_field]
+            ))
+            if not referenced_worker_ids:
+                indexed_values[index_field] = {}
+                continue
+            try:
+                indexed_values[index_field] = self._load_indexed_property_values(
+                    worker_group_id=worker_group_id,
+                    index_field=index_field,
+                    worker_ids=referenced_worker_ids,
+                )
+            except Exception as error:
+                failed_index_fields.add(index_field)
+                index_failures.append(
+                    (index_field, _index_error_type(error))
+                )
+        if index_failures:
+            _LOGGER.warning(
+                "Worker index read failed workerGroupId=%s indexField=%s "
+                "errorType=%s count=%d",
+                worker_group_id,
+                ",".join(field for field, _ in index_failures),
+                ",".join(sorted({kind for _, kind in index_failures})),
+                len(index_failures),
+            )
+
+        used_worker_ids: set[WorkerId] = set()
+        for candidate_id, constraints, compiled_rule in candidates:
+            candidate_index_fields = frozenset(
+                field_name
+                for field_name in compiled_rule
+                if _is_index_field(field_name)
+            )
+            if candidate_index_fields.intersection(failed_index_fields):
+                continue
+            for worker_id in dict.fromkeys(
+                candidate_worker_ids.get(candidate_id, ())
+            ):
+                if unique_matches and worker_id in used_worker_ids:
+                    continue
+                descriptor = descriptors.get(worker_id)
+                if descriptor is None:
+                    continue
+                if not ConstraintEvaluator.evaluate_match_rules(
+                    self._match_context(
+                        worker_id,
+                        descriptor,
+                        candidate_index_fields,
+                        indexed_values,
+                    ),
+                    compiled_rule,
+                ):
+                    continue
+                mutable_matches[candidate_id].append(worker_id)
+                if unique_matches:
+                    used_worker_ids.add(worker_id)
+                if (
+                    limit_matches
+                    and len(mutable_matches[candidate_id]) >= constraints.limit
+                ):
+                    break
+        return mutable_matches, descriptors
+
+    def _load_indexed_property_values(
+        self,
+        *,
+        worker_group_id: WorkerGroupId,
+        index_field: str,
+        worker_ids: Sequence[WorkerId],
+    ) -> Mapping[WorkerId, object]:
+        loaded: dict[WorkerId, object] = {}
+        read_limit = WorkerPropertyIndexRuntime.MAX_INDEXED_PROPERTY_READ_LIMIT
+        for offset in range(0, len(worker_ids), read_limit):
+            loaded.update(
+                self.property_index.load_indexed_property_values(
+                    worker_group_id=worker_group_id,
+                    index_field=index_field,
+                    worker_ids=worker_ids[offset : offset + read_limit],
+                )
+            )
+        return loaded
 
     def _prepare_candidates(
         self,
+        worker_group_id: WorkerGroupId,
         candidate_constraints: Mapping[CandidateId, WorkerCandidateConstraint],
     ) -> tuple[
-        list[tuple[CandidateId, WorkerCandidateConstraint, ConstraintMap]],
-        tuple[str, ...],
+        tuple[CandidateId, WorkerCandidateConstraint, ConstraintMap],
+        ...,
     ]:
         candidates: list[
             tuple[CandidateId, WorkerCandidateConstraint, ConstraintMap]
         ] = []
-        required_attributes: dict[str, None] = {}
-        ordered_constraints = sorted(
+        invalid_count = 0
+        for candidate_id, constraints in sorted(
             candidate_constraints.items(),
             key=lambda item: (item[1].priority, item[0]),
-        )
-        for candidate_id, constraints in ordered_constraints:
+        ):
             if not candidate_id:
                 raise ValueError("candidate id must be non-empty")
             if (
@@ -151,66 +308,70 @@ class WorkerCandidateMatcher:
                     constraints.allocation_rule
                 )
             except ValueError:
+                invalid_count += 1
                 continue
-            for field_name in compiled_rule:
-                domain, separator, attribute_name = field_name.partition(".")
-                if separator and domain == "dynamic":
-                    required_attributes.setdefault(attribute_name, None)
             candidates.append((candidate_id, constraints, compiled_rule))
-
-        return candidates, tuple(required_attributes)
-
-    def _acquire_dynamic_rows(
-        self,
-        worker_group_id: WorkerGroupId,
-        worker_ids: Sequence[WorkerId],
-        descriptors: Mapping[WorkerId, WorkerDescriptor | None],
-        required_dynamic_attributes: Sequence[str],
-    ) -> dict[str, Mapping[WorkerId, DynamicAttributeReadResult]]:
-        rows_by_attribute: dict[
-            str,
-            Mapping[WorkerId, DynamicAttributeReadResult],
-        ] = {}
-        for attribute_name in required_dynamic_attributes:
-            supported_worker_ids = tuple(
-                worker_id
-                for worker_id in worker_ids
-                if (
-                    (descriptor := descriptors.get(worker_id)) is not None
-                    and descriptor.worker_group_id == worker_group_id
-                    and attribute_name in descriptor.dynamic_attribute_names
-                )
+        if invalid_count:
+            _LOGGER.warning(
+                "Worker allocation rule rejected workerGroupId=%s "
+                "errorType=INVALID_RULE candidateCount=%d",
+                worker_group_id,
+                invalid_count,
             )
-            rows_by_attribute[attribute_name] = (
-                self.dynamic_attribute_runtime.get_worker_dynamic_attribute_values(
-                    worker_group_id=worker_group_id,
-                    attribute_name=attribute_name,
-                    worker_ids=supported_worker_ids,
-                )
-            )
-        return rows_by_attribute
+        return tuple(candidates)
 
     @staticmethod
-    def _build_context(
+    def _match_context(
         worker_id: WorkerId,
         descriptor: WorkerDescriptor,
-        required_dynamic_attributes: Sequence[str],
-        dynamic_rows: Mapping[
-            str,
-            Mapping[WorkerId, DynamicAttributeReadResult],
-        ],
+        indexed_fields: frozenset[str],
+        indexed_values: Mapping[str, Mapping[WorkerId, object]],
     ) -> dict[str, object]:
-        dynamic_values: dict[str, object] = {}
-        for attribute_name in required_dynamic_attributes:
-            result = dynamic_rows[attribute_name].get(worker_id)
-            dynamic_values[attribute_name] = (
-                result.value
-                if result is not None and result.status is WorkerRuntimeStatus.OK
-                else UNRESOLVED_VALUE
-            )
-        return {
+        index_context: dict[str, object] = {}
+        context: dict[str, object] = {
             "workerId": worker_id,
-            "platform": descriptor.platform_attributes,
-            "attributes": descriptor.attributes,
-            "dynamic": dynamic_values,
+            "worker": dict(descriptor.worker_properties),
+            "platform": dict(descriptor.platform_properties),
+            "index": index_context,
         }
+        for index_field in indexed_fields:
+            index_name = index_field.removeprefix("index.")
+            index_context[index_name] = indexed_values[index_field].get(
+                worker_id,
+                UNRESOLVED_VALUE,
+            )
+        return context
+
+    @staticmethod
+    def _freeze_acquisitions(
+        matches: Mapping[CandidateId, Sequence[CandidateWorkerEntry]],
+    ) -> WorkerCandidateAcquisition:
+        return {
+            candidate_id: tuple(entries)
+            for candidate_id, entries in matches.items()
+        }
+
+    @staticmethod
+    def _freeze_worker_ids(
+        matches: Mapping[CandidateId, Sequence[WorkerId]],
+    ) -> Mapping[CandidateId, tuple[WorkerId, ...]]:
+        return {
+            candidate_id: tuple(worker_ids)
+            for candidate_id, worker_ids in matches.items()
+        }
+
+
+def _is_index_field(field_name: object) -> bool:
+    return (
+        isinstance(field_name, str)
+        and field_name.startswith("index.")
+        and len(field_name) > 6
+    )
+
+
+def _index_error_type(error: Exception) -> str:
+    if isinstance(error, LookupError):
+        return "INDEX_NOT_CONFIGURED"
+    if isinstance(error, (TypeError, ValueError)):
+        return "PROJECTION_INVALID"
+    return "PROVIDER_FAILURE"

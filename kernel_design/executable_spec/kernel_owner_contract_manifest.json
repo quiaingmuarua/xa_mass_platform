@@ -113,18 +113,20 @@
       "consume_worker_command",
       "consume_worker_commands"
     ],
-    "WorkerDynamicAttributeRuntime": [
-      "get_worker_dynamic_attribute_values",
-      "query_candidate_worker_ids",
-      "supports_candidate_query",
-      "update_worker_dynamic_attributes"
+    "WorkerPropertyIndex": [
+      "load",
+      "update"
+    ],
+    "WorkerPropertyIndexRuntime": [
+      "load_indexed_property_values",
+      "update_indexed_properties"
     ],
     "WorkerResourceCatalog": [
-      "get_worker_descriptors",
-      "get_worker_group_descriptors",
-      "sample_worker_descriptors",
-      "update_worker_platform_attributes",
-      "upsert_worker_group"
+        "get_worker_descriptors",
+        "get_worker_group_descriptors",
+        "patch_worker_platform_properties",
+        "sample_worker_descriptors",
+        "upsert_worker_group"
     ],
     "WorkerRuntime": [
       "upsert_worker"
@@ -152,12 +154,6 @@
       "worker_group_id",
       "endpoint_manager_id",
       "worker_lease_score"
-    ],
-    "DynamicAttributeReadResult": [
-      "status",
-      "value",
-      "observed_at_millis",
-      "reason"
     ],
     "WorkerResult": [
       "message_id",
@@ -229,22 +225,19 @@
       "worker_id",
       "worker_group_id",
       "endpoint_manager_id",
-      "attributes",
-      "dynamic_attribute_names"
+      "worker_properties"
     ],
     "WorkerDescriptor": [
       "worker_id",
       "worker_group_id",
       "endpoint_manager_id",
-      "attributes",
-      "platform_attributes",
-      "dynamic_attribute_names"
+      "worker_properties",
+      "platform_properties"
     ],
     "WorkerGroupDescriptor": [
       "worker_group_id",
       "attributes",
-      "event_codes",
-      "item_allocation_fields"
+      "event_codes"
     ],
     "WorkerRuntimeResult": [
       "status",

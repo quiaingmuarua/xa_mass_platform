@@ -1,6 +1,7 @@
 package com.xa.mass.scenarioworkers;
 
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
+import com.xa.mass.kernel.worker.WorkerPropertyIndexRuntime;
 import com.xa.mass.kernel.worker.WorkerRuntime;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDeclaration;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
@@ -14,19 +15,24 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 
 final class PhoneNumberWorkerBundle
         implements ScenarioWorkerBundleLifecycle {
+
+    private static final System.Logger LOGGER = System.getLogger(
+            PhoneNumberWorkerBundle.class.getName()
+    );
 
     private static final int GROUP_UPSERT_FAILED = 14002;
     private static final int WORKER_UPSERT_FAILED = 14003;
     private static final int WORKER_START_FAILED = 14004;
     private static final int WORKER_CONNECT_TIMEOUT = 14005;
+    private static final int WORKER_INDEX_FAILED = 14010;
 
     private final ScenarioWorkerBundleConfig config;
     private final WorkerResourceCatalog workerCatalog;
     private final WorkerRuntime workerRuntime;
+    private final WorkerPropertyIndexRuntime propertyIndex;
     private final WorkerFactory workerFactory;
     private final List<WebSocketWorkerTransport> workers =
             new ArrayList<>();
@@ -37,12 +43,14 @@ final class PhoneNumberWorkerBundle
     PhoneNumberWorkerBundle(
             ScenarioWorkerBundleConfig config,
             WorkerResourceCatalog workerCatalog,
-            WorkerRuntime workerRuntime
+            WorkerRuntime workerRuntime,
+            WorkerPropertyIndexRuntime propertyIndex
     ) {
         this(
                 config,
                 workerCatalog,
                 workerRuntime,
+                propertyIndex,
                 PhoneNumberWorkerBundle::createWorker
         );
     }
@@ -51,6 +59,7 @@ final class PhoneNumberWorkerBundle
             ScenarioWorkerBundleConfig config,
             WorkerResourceCatalog workerCatalog,
             WorkerRuntime workerRuntime,
+            WorkerPropertyIndexRuntime propertyIndex,
             WorkerFactory workerFactory
     ) {
         this.config = Objects.requireNonNull(config, "config");
@@ -61,6 +70,10 @@ final class PhoneNumberWorkerBundle
         this.workerRuntime = Objects.requireNonNull(
                 workerRuntime,
                 "workerRuntime"
+        );
+        this.propertyIndex = Objects.requireNonNull(
+                propertyIndex,
+                "propertyIndex"
         );
         this.workerFactory = Objects.requireNonNull(
                 workerFactory,
@@ -91,6 +104,7 @@ final class PhoneNumberWorkerBundle
             upsertWorkerGroup();
             for (String workerId : workerIds()) {
                 upsertWorker(workerId);
+                updateWorkerIndex(workerId);
             }
             for (String workerId : workerIds()) {
                 WebSocketWorkerTransport worker =
@@ -164,8 +178,7 @@ final class PhoneNumberWorkerBundle
                 new WorkerGroupDescriptor(
                         config.workerGroupId(),
                         Map.of("capability", "libphonenumber"),
-                        PhoneNumberCapability.EVENT_CODES,
-                        Set.of("workerId")
+                        PhoneNumberCapability.EVENT_CODES
                 )
         );
         requireAccepted(
@@ -186,9 +199,10 @@ final class PhoneNumberWorkerBundle
                                 "runtime",
                                 "java",
                                 "capability",
-                                "libphonenumber"
-                        ),
-                        Set.of()
+                                "libphonenumber",
+                                "region",
+                                "local"
+                        )
                 )
         );
         requireAccepted(
@@ -197,6 +211,40 @@ final class PhoneNumberWorkerBundle
                 "workerRuntime.upsertWorker",
                 config.workerGroupId() + "/" + workerId
         );
+    }
+
+    private void updateWorkerIndex(String workerId) {
+        try {
+            WorkerRuntimeResult result = propertyIndex
+                    .updateIndexedProperties(
+                            config.workerGroupId(),
+                            workerId,
+                            Map.of("index.worker.region", "local")
+                    )
+                    .get("index.worker.region");
+            if (result == null || (result.status() != WorkerRuntimeStatus.OK
+                    && result.status() != WorkerRuntimeStatus.NOOP)) {
+                LOGGER.log(
+                        System.Logger.Level.WARNING,
+                        "errorCode=" + WORKER_INDEX_FAILED
+                                + " operation=workerPropertyIndex.update"
+                                + " workerGroupId=" + config.workerGroupId()
+                                + " workerId=" + workerId
+                                + " status=" + (result == null
+                                ? "missing"
+                                : result.status().wireValue())
+                );
+            }
+        } catch (RuntimeException error) {
+            LOGGER.log(
+                    System.Logger.Level.WARNING,
+                    "errorCode=" + WORKER_INDEX_FAILED
+                            + " operation=workerPropertyIndex.update"
+                            + " workerGroupId=" + config.workerGroupId()
+                            + " workerId=" + workerId,
+                    error
+            );
+        }
     }
 
     private void awaitConnections() {

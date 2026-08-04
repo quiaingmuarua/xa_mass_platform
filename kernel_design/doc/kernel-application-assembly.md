@@ -30,9 +30,9 @@ clients or Redis implementations. Callers cannot obtain Task/Worker score
 cores, candidate runtime, matcher, pacers, Redis keys, suffixes, or lane ranks.
 Only `KernelApplication` starts background scheduling. Java's direct Redis
 providers implement WorkerGroup/Worker upsert, Task Item append/result read,
-and Worker Delivery consume/result-ingress operations. Java Worker score access
-is limited to the get/initialize/reconcile operations required by Worker
-upsert.
+and Worker Delivery consume/result-ingress operations. Java Worker upsert uses
+only score get/initialize. Java also implements a parity reconcile mechanism,
+but no production caller currently invokes it.
 
 ## Application And Executable-Spec Commands
 
@@ -78,6 +78,8 @@ The JVM incremental assembly is explicit per operation:
 ```text
 WorkerGroup upsert              -> Java Redis WorkerResourceCatalog provider
 Worker upsert                   -> Java Redis WorkerRuntime provider
+Platform Properties patch       -> Java Redis WorkerResourceCatalog provider
+Explicit index update/load      -> Java Redis WorkerPropertyIndexRuntime provider
 Worker upsert score operations  -> Java Redis WorkerScoreCore provider
 Task create                     -> Python HTTP TaskRuntime provider
 Task approve / close            -> Python HTTP application commands
@@ -94,14 +96,16 @@ Python and do not silently select another provider.
 
 WorkerGroup upsert reuses `WorkerGroupDescriptor`. Worker upsert accepts the
 caller-owned `WorkerDeclaration`; the complete `WorkerDescriptor` remains a
-query projection containing platform-owned attributes. The Kernel Runtime
+query projection containing Worker and Platform property snapshots. The Kernel Runtime
 Server owns its HTTP request models because they are protocol-edge translations.
 
 First Worker upsert selects the default lane rank internally and initializes
 the Worker HOT score without requiring the scheduling process to be running.
-Reconnect replaces Worker attributes and supplies trusted serviceability
-evidence. Existing scores converge to HOT_ACQUIRE, preserve timeSlot/laneRank,
-and set dirty=1 without releasing a hold.
+Later upserts replace `workerProperties` and preserve `platformProperties`.
+They are resource snapshot refreshes, not connect, reconnect, activation, or
+serviceability evidence. An existing score is preserved exactly; only a
+missing score is initialized so an interrupted first registration can
+converge.
 `create_task` selects the initial PRE_REVIEW owner code internally. It is a
 create-only command: an existing descriptor conflicts and is never overwritten.
 It may complete a score-only interrupted creation only while the score remains
@@ -119,22 +123,21 @@ The caller owns the close decision and its business evidence. For
 `ITEM_DRIVEN`, a server or other control-plane owner may call this command from
 deadline or completion evidence; `KernelApplication` does not infer completion
 from an empty Item set.
-Java TaskData append enforces the Task's immutable `taskType`.
-`TASK_DRIVEN` forbids Item rules. `ITEM_DRIVEN` requires a complete rule and
-the first Java cutover supports only bounded `workerId $eq/$in`, declared by
-the selected WorkerGroup `itemAllocationFields`. Dynamic candidate sources
-remain supported by the Python mechanism oracle and tests but are not exposed
-through the first Java TaskData ingress. Item rules cannot change WorkerGroup.
+Java TaskData append enforces only the stable TaskType location contract:
+`TASK_DRIVEN` forbids Item rules and `ITEM_DRIVEN` requires a non-empty Item
+rule. It preserves that JSON-compatible rule as opaque scheduling input. The
+Python matcher owns the evolving rule DSL, including candidate derivation,
+operators, and fail-closed behavior. Item rules cannot change WorkerGroup.
 
 The assembly does not accept acquisition strategy, cache participation, or
 rule-owner configuration. Scheduling derives those decisions from the two
 fixed Task types through the internal task scheduling profile resolver.
 
-Dynamic attribute mutation is not a public assembly command. The executable
-spec has no installed external handler registry, so exposing that command would
-advertise a route that cannot perform a real owner update.
-Zero-config assembly also installs no dynamic candidate index; declared
-`workerId` `$eq/$in` remains the built-in TARGETED Item source.
+The Server exposes one explicit indexed-property update command.
+Properties and index projections are independent and no assembly operation
+automatically writes both. Each configured field owns one property-index
+instance. The Redis HASH implementation stores JSON-compatible point values;
+`workerId` remains the only built-in TARGETED candidate coordinate.
 
 ## Zero Configuration
 
@@ -179,6 +182,22 @@ empty-recheck count, and empty-recheck interval remain internal constants.
 `systemPolicy.runningTaskSoftLimit` is the one public policy setting in this
 slice; it defaults to `100` and must be a positive integer. It is a soft
 admission bound, not an atomic permit or hard capacity promise.
+
+Property Index registration is not part of Kernel application JSON. Python and
+Java read the same process environment value:
+
+```text
+XA_MASS_WORKER_PROPERTY_INDEX_REGISTRY_JSON=
+  {"index.worker.region":"redis-hash","index.platform.pool":"redis-hash"}
+```
+
+The missing value defaults to `{}`. The value must be a JSON object whose keys
+are explicit `index.*` projection identities; the current implementation value
+is `redis-hash`. Malformed JSON, invalid fields, and unknown implementations
+fail process startup. Both processes canonicalize the map, log its field count
+and SHA-256 fingerprint, and do not publish a registry through Redis.
+WorkerGroup declarations do not create or migrate indexes; an unconfigured
+field remains an explicit update/read failure.
 
 ## Lifecycle
 
@@ -301,7 +320,9 @@ a time. Duplicate waits for that same TaskItem may share the observation, but
 different TaskItems are not combined into a result batch. Java TaskData and
 transport code never parse Task or Worker score state. The Java
 `RedisWorkerRuntime` alone invokes the bounded Worker score operations needed
-for declaration and reconnect.
+for resource declaration: score read and missing-score initialization. The
+reconcile operation remains an owner mechanism with no production caller in
+this slice.
 Separate Redis proofs cover TaskData Item-score
 initialization, TASK_DRIVEN default empty close with RUNNING soft-limit
 release, ITEM_DRIVEN future-threshold empty recheck followed by append and
@@ -381,8 +402,8 @@ API compatibility remain out of scope.
 - Do not re-export the private Redis composition root.
 - Do not expose owner runtime instances as application properties.
 - Do not add scheduler lifecycle methods to `ResourcesCommandClient`.
-- Do not restore dynamic attribute mutation until a real handler owner and
-  assembly contract exist.
+- Do not make Properties and indexed-property updates an implicit dual write.
+- Do not expose index provider storage or operator selection through assembly.
 - Do not add a second environment-variable or CLI configuration path.
 - Do not let HTTP handlers perform score reads or transitions.
 - Do not restore Python TaskItem append or result-query HTTP routes.

@@ -495,7 +495,6 @@ class TaskDispatchPacerTest(unittest.TestCase):
             acquisition_call.kwargs["strategy"],
         )
         targeted_request = acquisition_call.kwargs["candidate_requests"]["message-2"]
-        self.assertEqual("workerId", targeted_request.target_field)
         self.assertEqual(
             {"workerId": {"$eq": "worker-2"}},
             targeted_request.allocation_rule,
@@ -938,7 +937,7 @@ class TaskDispatchPacerTest(unittest.TestCase):
             worker_group_id="group-1",
             task_type=task_type,
             allocation_rule=(
-                {"attributes.runtime": {"$eq": "python"}}
+                {"worker.runtime": {"$eq": "python"}}
                 if task_type is TaskType.TASK_DRIVEN
                 else None
             ),

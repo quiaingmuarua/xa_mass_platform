@@ -18,12 +18,14 @@ import com.xa.mass.kernel.score.WorkerScoreCore;
 import com.xa.mass.kernel.score.redis.RedisWorkerScoreCore;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
-import com.xa.mass.kernel.worker.WorkerDynamicAttributeRuntime;
+import com.xa.mass.kernel.worker.MappedWorkerPropertyIndexRuntime;
+import com.xa.mass.kernel.worker.WorkerPropertyIndexRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerRuntime;
 import com.xa.mass.kernel.worker.redis.RedisWorkerResourceCatalog;
 import com.xa.mass.kernel.worker.redis.RedisWorkerRuntime;
 import com.xa.mass.server.kernelbinding.KernelOwnerAssemblyConfiguration;
+import com.xa.mass.server.kernelbinding.WorkerPropertyIndexProperties;
 import com.xa.mass.server.runtimeview.RuntimeViewService;
 import com.xa.mass.server.workerdelivery.WorkerDeliveryOwnerAssemblyConfiguration;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
@@ -36,6 +38,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -106,9 +109,12 @@ class ServerApplicationContextTest {
         )).isEmpty();
         assertThat(applicationContext.getBean(WorkerScoreCore.class))
                 .isInstanceOf(RedisWorkerScoreCore.class);
-        assertThat(applicationContext.getBeansOfType(
-                WorkerDynamicAttributeRuntime.class
-        )).isEmpty();
+        assertThat(applicationContext.getBean(
+                WorkerPropertyIndexRuntime.class
+        )).isInstanceOf(MappedWorkerPropertyIndexRuntime.class);
+        assertThat(applicationContext.getBean(
+                WorkerPropertyIndexProperties.class
+        ).registry()).isEmpty();
         assertThat(applicationContext.getBeansOfType(
                 CandidateWorkerCache.class
         )).isEmpty();
@@ -142,6 +148,60 @@ class ServerApplicationContextTest {
         assertThat(liveness.body()).contains("\"status\":\"UP\"");
         assertThat(readiness.statusCode()).isEqualTo(503);
         assertThat(readiness.body()).contains("\"status\":\"DOWN\"");
+    }
+
+    @Test
+    void rejectsRemovedWorkerResourceFields() throws Exception {
+        HttpClient client = HttpClient.newHttpClient();
+        HttpResponse<String> groupResponse = client.send(
+                HttpRequest.newBuilder(endpoint(
+                                "/api/v1/worker-groups/legacy-group"
+                        ))
+                        .header("Content-Type", "application/json")
+                        .PUT(HttpRequest.BodyPublishers.ofString(
+                                "{\"eventCodes\":[\"event\"],"
+                                        + "\"itemAllocation"
+                                        + "Fields\":[]}",
+                                StandardCharsets.UTF_8
+                        ))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
+        );
+        HttpResponse<String> indexedGroupResponse = client.send(
+                HttpRequest.newBuilder(endpoint(
+                                "/api/v1/worker-groups/indexed-legacy-group"
+                        ))
+                        .header("Content-Type", "application/json")
+                        .PUT(HttpRequest.BodyPublishers.ofString(
+                                "{\"eventCodes\":[\"event\"],"
+                                        + "\"indexedPropertyFields\":["
+                                        + "\"worker.region\"]}",
+                                StandardCharsets.UTF_8
+                        ))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
+        );
+        HttpResponse<String> workerResponse = client.send(
+                HttpRequest.newBuilder(endpoint(
+                                "/api/v1/worker-groups/legacy-group/"
+                                        + "workers/legacy-worker"
+                        ))
+                        .header("Content-Type", "application/json")
+                        .PUT(HttpRequest.BodyPublishers.ofString(
+                                "{\"endpointManagerId\":\"endpoint\","
+                                        + "\"attributes\":{}}",
+                                StandardCharsets.UTF_8
+                        ))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
+        );
+
+        assertThat(groupResponse.statusCode()).isEqualTo(400);
+        assertThat(groupResponse.body()).contains("\"code\":19001");
+        assertThat(indexedGroupResponse.statusCode()).isEqualTo(400);
+        assertThat(indexedGroupResponse.body()).contains("\"code\":19001");
+        assertThat(workerResponse.statusCode()).isEqualTo(400);
+        assertThat(workerResponse.body()).contains("\"code\":19001");
     }
 
     private URI endpoint(String path) {

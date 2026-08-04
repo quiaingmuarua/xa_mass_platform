@@ -45,7 +45,6 @@ from .worker_candidate import (
     WorkerCandidateAcquirer,
     WorkerCandidateRequest,
 )
-from .worker_candidate.rules import select_target_field
 from .task_scheduling_profile import (
     TaskAllocationRuleOwner,
     resolve_task_scheduling_profile,
@@ -298,7 +297,6 @@ class TaskItemDispatcher:
                 priority=priority,
                 requested_count=1,
                 allocation_rule=item_rule,
-                target_field=select_target_field(item_rule),
             )
         targeted = self.candidate_acquirer.acquire_worker_candidates(
             strategy=profile.dispatch_acquisition_strategy,

@@ -151,6 +151,36 @@ class RedisTaskOwnerRuntimeIntegrationTest {
         );
     }
 
+    @Test
+    void allocationRuleIsPersistedWithoutJvmDslInterpretation() {
+        long createdAt = redisTimeMillis();
+        storeTask("task-1", "ITEM_DRIVEN");
+        TaskItem item = new TaskItem(
+                "message-invalid",
+                "event",
+                createdAt,
+                Map.of(),
+                5,
+                createdAt + 60_000,
+                Map.of("workerId", Map.of("$like", "worker-*"))
+        );
+
+        assertThat(runtime.appendItems(
+                "task-1",
+                List.of(item)
+        ).get("message-invalid").status()).isEqualTo(
+                TaskItemAppendStatus.APPENDED
+        );
+        assertThat(redis.hget(
+                "tr:" + prefix + ":task:task-1:items",
+                "message-invalid"
+        )).contains("\"$like\":\"worker-*\"");
+        assertThat(redis.zscore(
+                "tr:" + prefix + ":task:task-1:item-score",
+                "message-invalid"
+        )).isNotNull();
+    }
+
     private void storeTask(String taskId, String taskType) {
         redis.hset(
                 "tc:" + prefix + ":task:" + taskId,

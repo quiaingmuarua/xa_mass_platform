@@ -15,6 +15,7 @@ public final class RedisWorkerRuntime
         implements WorkerRuntime, AutoCloseable {
 
     public static final int DEFAULT_INITIAL_LANE_RANK = 50;
+    private static final int MAX_DESCRIPTOR_CAS_ATTEMPTS = 8;
 
     private final RedisClient redisClient;
     private final WorkerScoreCore scoreCore;
@@ -103,9 +104,8 @@ public final class RedisWorkerRuntime
                 declaration.workerId(),
                 declaration.workerGroupId(),
                 declaration.endpointManagerId(),
-                declaration.attributes(),
-                Map.of(),
-                declaration.dynamicAttributeNames()
+                declaration.workerProperties(),
+                Map.of()
         );
         String encoded = WorkerRedisSupport.encodeWorker(descriptor);
         if (encoded == null) {
@@ -124,44 +124,60 @@ public final class RedisWorkerRuntime
                 declaration.workerId(),
                 encoded
         )) {
-            WorkerDescriptor current = WorkerRedisSupport.decodeWorker(
-                    commands().hget(
-                            workersKey,
-                            declaration.workerId()
-                    )
-            );
-            if (current == null) {
+            boolean replaced = false;
+            for (int attempt = 0;
+                    attempt < MAX_DESCRIPTOR_CAS_ATTEMPTS;
+                    attempt++) {
+                String observed = commands().hget(
+                        workersKey,
+                        declaration.workerId()
+                );
+                WorkerDescriptor current = WorkerRedisSupport.decodeWorker(
+                        observed
+                );
+                if (current == null) {
+                    return result(
+                            WorkerRuntimeStatus.INVALID,
+                            "stored worker descriptor is invalid"
+                    );
+                }
+                if (!sameIdentity(current, declaration)) {
+                    return result(
+                            WorkerRuntimeStatus.CONFLICT,
+                            "worker identity declaration is immutable"
+                    );
+                }
+                descriptor = new WorkerDescriptor(
+                        current.workerId(),
+                        current.workerGroupId(),
+                        current.endpointManagerId(),
+                        declaration.workerProperties(),
+                        current.platformProperties()
+                );
+                encoded = WorkerRedisSupport.encodeWorker(descriptor);
+                if (encoded == null) {
+                    return result(
+                            WorkerRuntimeStatus.INVALID,
+                            "invalid descriptor json"
+                    );
+                }
+                if (WorkerRedisSupport.compareAndSetHashField(
+                        commands(),
+                        workersKey,
+                        declaration.workerId(),
+                        observed,
+                        encoded
+                )) {
+                    replaced = true;
+                    break;
+                }
+            }
+            if (!replaced) {
                 return result(
-                        WorkerRuntimeStatus.INVALID,
-                        "stored worker descriptor is invalid"
+                        WorkerRuntimeStatus.STALE,
+                        "worker descriptor changed during snapshot refresh"
                 );
             }
-            if (!sameIdentity(current, declaration)) {
-                return result(
-                        WorkerRuntimeStatus.CONFLICT,
-                        "worker identity declaration is immutable"
-                );
-            }
-            descriptor = new WorkerDescriptor(
-                    current.workerId(),
-                    current.workerGroupId(),
-                    current.endpointManagerId(),
-                    declaration.attributes(),
-                    current.platformAttributes(),
-                    current.dynamicAttributeNames()
-            );
-            encoded = WorkerRedisSupport.encodeWorker(descriptor);
-            if (encoded == null) {
-                return result(
-                        WorkerRuntimeStatus.INVALID,
-                        "invalid descriptor json"
-                );
-            }
-            commands().hset(
-                    workersKey,
-                    declaration.workerId(),
-                    encoded
-            );
         }
 
         WorkerScoreState scoreState = scoreCore.getScoreStates(
@@ -205,28 +221,7 @@ public final class RedisWorkerRuntime
             }
         }
 
-        WorkerScoreTransitionResult reconciliation =
-                scoreCore.reconcileWorkerHotAcquire(
-                        declaration.workerGroupId(),
-                        declaration.workerId()
-                );
-        if (reconciliation.status()
-                == WorkerScoreTransitionStatus.TRANSITIONED
-                || reconciliation.status()
-                == WorkerScoreTransitionStatus.NOOP) {
-            return new WorkerRuntimeResult(WorkerRuntimeStatus.OK);
-        }
-        if (reconciliation.status()
-                == WorkerScoreTransitionStatus.INVALID) {
-            return result(
-                    WorkerRuntimeStatus.INVALID,
-                    "worker HOT_ACQUIRE reconciliation was rejected"
-            );
-        }
-        return result(
-                WorkerRuntimeStatus.STALE,
-                "worker HOT_ACQUIRE reconciliation could not observe score"
-        );
+        return new WorkerRuntimeResult(WorkerRuntimeStatus.OK);
     }
 
     private static boolean sameIdentity(
@@ -239,9 +234,6 @@ public final class RedisWorkerRuntime
                 )
                 && current.endpointManagerId().equals(
                         declaration.endpointManagerId()
-                )
-                && current.dynamicAttributeNames().equals(
-                        declaration.dynamicAttributeNames()
                 );
     }
 
