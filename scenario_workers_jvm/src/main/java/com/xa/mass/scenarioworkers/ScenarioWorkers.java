@@ -30,6 +30,8 @@ public final class ScenarioWorkers implements AutoCloseable {
     private final ScenarioWorkerIndexClient indexClient;
     private final WorkerFactory workerFactory;
     private final List<WorkerHandle> workers = new ArrayList<>();
+    private final List<ScenarioWorkerSandbox> sandboxes =
+            new ArrayList<>();
     private boolean started;
     private boolean closed;
 
@@ -92,7 +94,8 @@ public final class ScenarioWorkers implements AutoCloseable {
         }
 
         try {
-            registerBindAndStartTransports();
+            List<PreparedWorker> preparedWorkers = prepareWorkers();
+            registerBindAndStartTransports(preparedWorkers);
             awaitConnections();
             updateIndexes();
             started = true;
@@ -123,40 +126,80 @@ public final class ScenarioWorkers implements AutoCloseable {
         } catch (RuntimeException error) {
             failure = accumulate(failure, error);
         }
+        failure = closeSandboxes(failure);
         if (failure != null) {
             throw failure;
         }
     }
 
-    private void registerBindAndStartTransports() {
+    private List<PreparedWorker> prepareWorkers() {
+        List<PreparedWorker> prepared = new ArrayList<>();
         for (GroupAssembly group : groups) {
             for (ScenarioWorkerConfig worker : group.config().workers()) {
-                String workerId = workerControl.register(
-                        group.config().workerGroupId(),
-                        worker.clientWorkerKey(),
-                        group.config().requestTimeout()
-                );
-                URI endpointUri = workerControl.bind(
-                        group.config().workerGroupId(),
-                        worker.clientWorkerKey(),
-                        workerId,
-                        worker.workerProperties(),
-                        group.config().requestTimeout()
-                );
-                WebSocketWorkerTransport transport = workerFactory.create(
-                        workerId,
-                        endpointUri,
-                        group.config(),
-                        group.definitions()
-                );
-                workers.add(new WorkerHandle(
-                        group.config(),
+                ScenarioWorkerSandbox sandbox = null;
+                Map<String, Object> workerProperties =
+                        worker.workerProperties();
+                String workerId = null;
+                if (worker.sandboxDirectory() != null) {
+                    sandbox = ScenarioWorkerSandbox.open(
+                            worker.sandboxDirectory(),
+                            group.config().workerGroupId(),
+                            worker.clientWorkerKey(),
+                            worker.workerProperties()
+                    );
+                    sandboxes.add(sandbox);
+                    workerProperties = sandbox.workerProperties();
+                    workerId = sandbox.workerId().orElse(null);
+                }
+                prepared.add(new PreparedWorker(
+                        group,
                         worker,
-                        workerId,
-                        transport
+                        sandbox,
+                        workerProperties,
+                        workerId
                 ));
-                transport.start();
             }
+        }
+        return List.copyOf(prepared);
+    }
+
+    private void registerBindAndStartTransports(
+            List<PreparedWorker> preparedWorkers
+    ) {
+        for (PreparedWorker prepared : preparedWorkers) {
+            GroupAssembly group = prepared.group();
+            ScenarioWorkerConfig worker = prepared.workerConfig();
+            String workerId = prepared.workerId();
+            if (workerId == null) {
+                workerId = workerControl.register(
+                        group.config().workerGroupId(),
+                        worker.clientWorkerKey(),
+                        group.config().requestTimeout()
+                );
+                if (prepared.sandbox() != null) {
+                    prepared.sandbox().storeWorkerId(workerId);
+                }
+            }
+            URI endpointUri = workerControl.bind(
+                    group.config().workerGroupId(),
+                    worker.clientWorkerKey(),
+                    workerId,
+                    prepared.workerProperties(),
+                    group.config().requestTimeout()
+            );
+            WebSocketWorkerTransport transport = workerFactory.create(
+                    workerId,
+                    endpointUri,
+                    group.config(),
+                    group.definitions()
+            );
+            workers.add(new WorkerHandle(
+                    group.config(),
+                    worker,
+                    workerId,
+                    transport
+            ));
+            transport.start();
         }
     }
 
@@ -311,9 +354,25 @@ public final class ScenarioWorkers implements AutoCloseable {
         } catch (RuntimeException error) {
             closeFailure = accumulate(closeFailure, error);
         }
+        closeFailure = closeSandboxes(closeFailure);
         if (closeFailure != null) {
             failure.addSuppressed(closeFailure);
         }
+    }
+
+    private RuntimeException closeSandboxes(RuntimeException failure) {
+        List<ScenarioWorkerSandbox> closing =
+                new ArrayList<>(sandboxes);
+        sandboxes.clear();
+        Collections.reverse(closing);
+        for (ScenarioWorkerSandbox sandbox : closing) {
+            try {
+                sandbox.close();
+            } catch (RuntimeException error) {
+                failure = accumulate(failure, error);
+            }
+        }
+        return failure;
     }
 
     private static RuntimeException accumulate(
@@ -537,6 +596,15 @@ public final class ScenarioWorkers implements AutoCloseable {
             ScenarioWorkerConfig workerConfig,
             String workerId,
             WebSocketWorkerTransport transport
+    ) {
+    }
+
+    private record PreparedWorker(
+            GroupAssembly group,
+            ScenarioWorkerConfig workerConfig,
+            ScenarioWorkerSandbox sandbox,
+            Map<String, Object> workerProperties,
+            String workerId
     ) {
     }
 }

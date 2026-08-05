@@ -500,6 +500,8 @@ xa:
             ],
             "workers": [{
               "clientWorkerKey": "scenario-phone-number-worker-001",
+              "sandboxDirectory":
+                "data/scenario-workers/scenario-phone-number-worker-001",
               "workerProperties": {"runtime":"java","region":"local"},
               "indexedPropertyUpdates": {"index.worker.region":"local"}
             }]
@@ -511,11 +513,16 @@ Both JSON values default to `{}`. The checked-in
 `scenario-workers` profile declares one WebSocket Adapter and two independent
 Worker capability groups. It creates no Task and has no dependency on RPC,
 ITEM_DRIVEN, TASK_DRIVEN, TARGETED, or PRECOMPUTED scheduling policy. Both
-groups explicitly list 10 Workers. Omitted timeout fields use a 10 second
+groups explicitly list 10 Workers. The `worker-001` entry in each group owns a
+local sandbox under `data/scenario-workers`; the other 18 Workers remain
+ephemeral. Omitted timeout fields use a 10 second
 request timeout, a 250 millisecond reconnect interval, and a 15 second
-initial-connect timeout. Scenario registers and binds each Worker, then builds
-its WebSocket Client from the public URI returned by Bind; the Worker manifest
-does not contain an endpoint-manager ID or Adapter URI.
+initial-connect timeout. A sandbox Worker registers only when its local
+`identity.json` is absent. Later starts reuse the persisted Worker ID, load the
+complete snapshot from `worker-properties.json`, and Bind again. An ephemeral
+Worker continues to register on each start. Scenario then builds each
+WebSocket Client from the public URI returned by Bind; the Worker manifest does
+not contain an endpoint-manager ID or Adapter URI.
 
 ```text
 ./gradlew :server_jvm:bootRun --args="--spring.profiles.active=scenario-workers"
@@ -523,8 +530,8 @@ does not contain an endpoint-manager ID or Adapter URI.
 
 During startup the Server initializes WorkerGroup directory entries through the
 WorkerGroup owner, then starts configured Adapters, then invokes one aggregate
-`ScenarioWorkers` handle. Scenario registers each client key through the
-Identity API, binds the returned Worker ID with complete Worker Properties,
+`ScenarioWorkers` handle. Scenario resolves each Worker ID from its sandbox or
+the Identity API, binds it with complete Worker Properties,
 starts every real WebSocket transport against the returned URI, waits for
 initial network connections, and applies best-effort Index updates through the
 public Runtime Resource HTTP API. Adapter route verification only compares the
@@ -532,6 +539,13 @@ persisted Endpoint Binding; successful verification is followed by process-local
 connection activation.
 Shutdown closes Scenario transports before Adapters;
 WorkerGroup directory entries are not rolled back or removed.
+
+The sandbox is a writable local state directory, not a security boundary.
+Profile Properties only initialize a missing `worker-properties.json`; later
+file edits are submitted on the next process start. Property Index updates
+remain separate and are never derived from that file. If the Server Identity
+registry is reset, remove the affected sandbox explicitly before allowing a
+new long-lived Worker ID to be issued.
 
 The phone-number group references `phonenumber.e164`,
 `phonenumber.country`, and `phonenumber.original-carrier`. The string-utils

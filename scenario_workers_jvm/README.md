@@ -35,6 +35,8 @@ The worker JSON is keyed by WorkerGroup ID:
     ],
     "workers": [{
       "clientWorkerKey": "scenario-phone-number-worker-001",
+      "sandboxDirectory":
+        "data/scenario-workers/scenario-phone-number-worker-001",
       "workerProperties": {"runtime":"java","region":"local"},
       "indexedPropertyUpdates": {"index.worker.region":"local"}
     }]
@@ -42,12 +44,19 @@ The worker JSON is keyed by WorkerGroup ID:
 }
 ```
 
-`fromJson` only parses and assembles local state. `start()` performs for each
-configured Worker:
+`sandboxDirectory` is optional. Without it, the Worker remains ephemeral and
+performs Identity registration on every process start. With it, the directory
+is a local Worker state home containing `identity.json`,
+`worker-properties.json`, and an exclusive `worker.lock`. The configured
+`workerProperties` initialize the file once; after that the file is the sole
+source of the complete Worker Properties snapshot. Scenario does not persist
+Endpoint URI, Binding, Index values, Channels, or pending Results.
+
+`fromJson` only parses and assembles local state. `start()` first opens and
+validates every configured sandbox before network activity, then performs:
 
 ```text
-register workerGroupId + clientWorkerKey through the Identity API
--> recover or obtain the same platform-issued workerId
+load the persisted workerId, or register once when identity.json is absent
 -> Bind workerId as WEBSOCKET and replace the Kernel workerProperties snapshot
 -> receive the configured Adapter public URI
 -> create and start every WebSocket Worker transport
@@ -55,14 +64,19 @@ register workerGroupId + clientWorkerKey through the Identity API
 -> submit explicit Property Index updates as best effort
 ```
 
-Register or Bind failure closes all local transports and fails startup. Each
+Identity mismatch, malformed Properties, duplicate sandbox use, Register, or
+Bind failure closes all local transports, releases sandbox locks, and fails
+startup. A persisted identity is never silently replaced; an operator must
+clear the sandbox explicitly when the Server Identity registry has been reset.
+Editing `worker-properties.json` takes effect on the next Scenario start; there
+is no file watcher. Each
 long-lived Worker sends only `WorkerConnectionBind(workerId)` to its returned
 Adapter URI; the Adapter verifies the persisted endpoint route before exposing
 the Channel. Index update may briefly observe `NOT_FOUND`, so Scenario retries
 it within the connection timeout; remaining Index failure is diagnostic only.
-`close()` releases local network and thread resources in reverse order; it does
-not mutate WorkerGroup, Worker metadata, score, identity, Binding, or Property
-Index truth.
+`close()` releases local network, thread, and lock resources in reverse order;
+it preserves sandbox files and does not mutate WorkerGroup, Worker metadata,
+score, identity, Binding, or Property Index truth.
 
 WorkerGroup directory metadata is initialized separately by the Server profile.
 The profile's catalog `eventCodes` may intentionally lag this module's local

@@ -93,7 +93,11 @@ class ServerWorkerAssemblyPropertiesTest {
                     .contains("scenario-phone-number-worker-001")
                     .contains("scenario-phone-number-worker-010")
                     .contains("scenario-string-utils-worker-001")
-                    .contains("scenario-string-utils-worker-010");
+                    .contains("scenario-string-utils-worker-010")
+                    .contains("data/scenario-workers/"
+                            + "scenario-phone-number-worker-001")
+                    .contains("data/scenario-workers/"
+                            + "scenario-string-utils-worker-001");
         });
     }
 

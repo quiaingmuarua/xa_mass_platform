@@ -1,5 +1,6 @@
 package com.xa.mass.scenarioworkers;
 
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -81,7 +82,8 @@ record ScenarioWorkerGroupConfig(
 record ScenarioWorkerConfig(
         String clientWorkerKey,
         Map<String, Object> workerProperties,
-        Map<String, Object> indexedPropertyUpdates
+        Map<String, Object> indexedPropertyUpdates,
+        Path sandboxDirectory
 ) {
 
     ScenarioWorkerConfig {
@@ -105,6 +107,11 @@ record ScenarioWorkerConfig(
                 );
             }
         });
+        if (sandboxDirectory != null) {
+            sandboxDirectory = sandboxDirectory
+                    .toAbsolutePath()
+                    .normalize();
+        }
     }
 
     private static Map<String, Object> immutableJsonMap(

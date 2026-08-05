@@ -15,12 +15,17 @@ import static org.mockito.Mockito.when;
 
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.transport.websocket.WebSocketWorkerTransport;
+import com.xa.mass.workerdelivery.json.Jsons;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.mockito.InOrder;
 
 class ScenarioWorkersTest {
@@ -235,6 +240,162 @@ class ScenarioWorkersTest {
         verify(control).close();
     }
 
+    @Test
+    void persistsIdentityAndUsesFilePropertiesOnLaterStartup(
+            @TempDir Path temporaryDirectory
+    ) throws Exception {
+        Path sandbox = temporaryDirectory.resolve("worker");
+        ScenarioWorkers.WorkerControl firstControl = workerControl();
+        ScenarioWorkers first = workers(
+                sandboxConfig(sandbox, "initial"),
+                firstControl,
+                acceptedIndexes(),
+                (workerId, endpointUri, ignored, definitions) ->
+                        connectedTransport()
+        );
+
+        first.start();
+        first.close();
+
+        verify(firstControl).register(
+                "scenario-group",
+                "client-1",
+                Duration.ofSeconds(10)
+        );
+        verify(firstControl).bind(
+                "scenario-group",
+                "client-1",
+                WORKER_ID_1,
+                Map.of("region", "initial"),
+                Duration.ofSeconds(10)
+        );
+        Files.writeString(
+                sandbox.resolve("worker-properties.json"),
+                Jsons.toJson(Map.of("region", "edited")),
+                StandardCharsets.UTF_8
+        );
+
+        ScenarioWorkers.WorkerControl secondControl = workerControl();
+        ScenarioWorkers second = workers(
+                sandboxConfig(sandbox, "profile-change"),
+                secondControl,
+                acceptedIndexes(),
+                (workerId, endpointUri, ignored, definitions) ->
+                        connectedTransport()
+        );
+        second.start();
+        second.close();
+
+        verify(secondControl, never()).register(
+                anyString(),
+                anyString(),
+                any()
+        );
+        verify(secondControl).bind(
+                "scenario-group",
+                "client-1",
+                WORKER_ID_1,
+                Map.of("region", "edited"),
+                Duration.ofSeconds(10)
+        );
+    }
+
+    @Test
+    void sandboxPreflightFailureAvoidsNetworkAndReleasesLock(
+            @TempDir Path temporaryDirectory
+    ) throws Exception {
+        Path sandbox = temporaryDirectory.resolve("worker");
+        Files.createDirectories(sandbox);
+        Files.writeString(
+                sandbox.resolve("worker-properties.json"),
+                "[]",
+                StandardCharsets.UTF_8
+        );
+        ScenarioWorkers.WorkerControl control = workerControl();
+        ScenarioWorkers workers = workers(
+                sandboxConfig(sandbox, "initial"),
+                control,
+                acceptedIndexes(),
+                (workerId, endpointUri, ignored, definitions) ->
+                        connectedTransport()
+        );
+
+        assertThatThrownBy(workers::start)
+                .isInstanceOf(ScenarioWorkerAssemblyException.class)
+                .extracting("errorCode")
+                .isEqualTo(14013);
+
+        verify(control, never()).register(anyString(), anyString(), any());
+        verify(control, never()).bind(
+                anyString(),
+                anyString(),
+                anyString(),
+                any(),
+                any()
+        );
+        Files.writeString(
+                sandbox.resolve("worker-properties.json"),
+                "{}",
+                StandardCharsets.UTF_8
+        );
+        ScenarioWorkerSandbox reopened = ScenarioWorkerSandbox.open(
+                sandbox,
+                "scenario-group",
+                "client-1",
+                Map.of()
+        );
+        reopened.close();
+    }
+
+    @Test
+    void persistedIdentityDoesNotFallBackToRegisterWhenBindFails(
+            @TempDir Path temporaryDirectory
+    ) {
+        Path sandbox = temporaryDirectory.resolve("worker");
+        ScenarioWorkerSandbox initialized = ScenarioWorkerSandbox.open(
+                sandbox,
+                "scenario-group",
+                "client-1",
+                Map.of("region", "local")
+        );
+        initialized.storeWorkerId(WORKER_ID_1);
+        initialized.close();
+
+        ScenarioWorkers.WorkerControl control = workerControl();
+        doThrow(new ScenarioWorkerAssemblyException(
+                14004,
+                "workerControl.bind",
+                "identity mismatch"
+        )).when(control).bind(
+                "scenario-group",
+                "client-1",
+                WORKER_ID_1,
+                Map.of("region", "local"),
+                Duration.ofSeconds(10)
+        );
+        ScenarioWorkers workers = workers(
+                sandboxConfig(sandbox, "profile-change"),
+                control,
+                acceptedIndexes(),
+                (workerId, endpointUri, ignored, definitions) ->
+                        connectedTransport()
+        );
+
+        assertThatThrownBy(workers::start)
+                .isInstanceOf(ScenarioWorkerAssemblyException.class)
+                .hasMessageContaining("identity mismatch");
+
+        verify(control, never()).register(anyString(), anyString(), any());
+        ScenarioWorkerSandbox reopened = ScenarioWorkerSandbox.open(
+                sandbox,
+                "scenario-group",
+                "client-1",
+                Map.of()
+        );
+        assertThat(reopened.workerId()).contains(WORKER_ID_1);
+        reopened.close();
+    }
+
     private static ScenarioWorkers workers(
             String json,
             ScenarioWorkers.WorkerControl control,
@@ -321,6 +482,25 @@ class ScenarioWorkersTest {
                   }
                 }
                 """.formatted(eventCode, workerJson);
+    }
+
+    private static String sandboxConfig(Path sandbox, String region) {
+        return Jsons.toJson(Map.of(
+                "scenario-group",
+                Map.of(
+                        "eventCodes",
+                        List.of(StringUtilityWorkerEvents.MD5_EVENT_CODE),
+                        "workers",
+                        List.of(Map.of(
+                                "clientWorkerKey",
+                                "client-1",
+                                "workerProperties",
+                                Map.of("region", region),
+                                "sandboxDirectory",
+                                sandbox.toString()
+                        ))
+                )
+        ));
     }
 
     private static ScenarioWorkerGroupConfig groupConfig(

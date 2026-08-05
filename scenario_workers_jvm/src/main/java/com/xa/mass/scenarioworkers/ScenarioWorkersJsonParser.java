@@ -2,6 +2,8 @@ package com.xa.mass.scenarioworkers;
 
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.math.BigDecimal;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -22,7 +24,8 @@ final class ScenarioWorkersJsonParser {
     private static final Set<String> WORKER_FIELDS = Set.of(
             "clientWorkerKey",
             "workerProperties",
-            "indexedPropertyUpdates"
+            "indexedPropertyUpdates",
+            "sandboxDirectory"
     );
 
     private ScenarioWorkersJsonParser() {
@@ -32,6 +35,7 @@ final class ScenarioWorkersJsonParser {
         Map<String, Object> root = Jsons.parseObject(configJson);
         List<ScenarioWorkerGroupConfig> configs =
                 new ArrayList<>(root.size());
+        Set<Path> sandboxDirectories = new HashSet<>();
         root.forEach((workerGroupId, rawGroup) -> {
             ScenarioWorkerGroupConfig.requireNonBlank(
                     workerGroupId,
@@ -48,7 +52,8 @@ final class ScenarioWorkersJsonParser {
             );
             List<ScenarioWorkerConfig> workers = parseWorkers(
                     workerGroupId,
-                    requireList(group, "workers")
+                    requireList(group, "workers"),
+                    sandboxDirectories
             );
             configs.add(new ScenarioWorkerGroupConfig(
                     workerGroupId,
@@ -76,7 +81,8 @@ final class ScenarioWorkersJsonParser {
 
     private static List<ScenarioWorkerConfig> parseWorkers(
             String workerGroupId,
-            List<?> rawWorkers
+            List<?> rawWorkers,
+            Set<Path> sandboxDirectories
     ) {
         List<ScenarioWorkerConfig> workers =
                 new ArrayList<>(rawWorkers.size());
@@ -101,11 +107,21 @@ final class ScenarioWorkersJsonParser {
                                 + clientWorkerKey
                 );
             }
-            workers.add(new ScenarioWorkerConfig(
+            ScenarioWorkerConfig config = new ScenarioWorkerConfig(
                     clientWorkerKey,
                     optionalObject(worker, "workerProperties"),
-                    optionalObject(worker, "indexedPropertyUpdates")
-            ));
+                    optionalObject(worker, "indexedPropertyUpdates"),
+                    optionalPath(worker, "sandboxDirectory")
+            );
+            if (config.sandboxDirectory() != null
+                    && !sandboxDirectories.add(
+                    config.sandboxDirectory())) {
+                throw new IllegalArgumentException(
+                        "sandboxDirectory must be unique: "
+                                + config.sandboxDirectory()
+                );
+            }
+            workers.add(config);
         }
         return List.copyOf(workers);
     }
@@ -195,6 +211,31 @@ final class ScenarioWorkersJsonParser {
             return Map.of();
         }
         return requireObject(value.get(field), field);
+    }
+
+    private static Path optionalPath(
+            Map<String, Object> value,
+            String field
+    ) {
+        if (!value.containsKey(field)) {
+            return null;
+        }
+        Object raw = value.get(field);
+        if (!(raw instanceof String) || ((String) raw).isBlank()) {
+            throw new IllegalArgumentException(
+                    field + " must be a non-blank string"
+            );
+        }
+        try {
+            return Path.of((String) raw)
+                    .toAbsolutePath()
+                    .normalize();
+        } catch (InvalidPathException error) {
+            throw new IllegalArgumentException(
+                    field + " must be a valid path",
+                    error
+            );
+        }
     }
 
     @SuppressWarnings("unchecked")

@@ -61,6 +61,8 @@ class ServerWorkerAssemblyArchitectureTest {
                 .doesNotContain("Pacer")
                 .doesNotContain("ResourceCommandController")
                 .doesNotContain("RuntimeApiHttpClient")
+                .doesNotContain("sandboxDirectory")
+                .doesNotContain("java.nio.file")
                 .doesNotContain("Class.forName")
                 .doesNotContain("java.lang.reflect")
                 .doesNotContain("ServiceLoader");

@@ -3,6 +3,7 @@ package com.xa.mass.scenarioworkers;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -48,6 +49,7 @@ class ScenarioWorkersJsonParserTest {
                 .containsEntry("region", "local");
         assertThat(phone.workers().get(0).indexedPropertyUpdates())
                 .containsEntry("index.worker.region", "local");
+        assertThat(phone.workers().get(0).sandboxDirectory()).isNull();
 
         ScenarioWorkerGroupConfig strings = configs.get(1);
         assertThat(strings.requestTimeout()).isEqualTo(Duration.ofSeconds(2));
@@ -137,5 +139,64 @@ class ScenarioWorkersJsonParserTest {
                 """))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("must use index.*");
+    }
+
+    @Test
+    void parsesUniqueSandboxDirectoriesAndRejectsDuplicates() {
+        Path sandbox = Path.of("data/scenario-workers/worker-1")
+                .toAbsolutePath()
+                .normalize();
+        List<ScenarioWorkerGroupConfig> configs =
+                ScenarioWorkersJsonParser.parse("""
+                        {
+                          "group": {
+                            "eventCodes":["event.one"],
+                            "workers":[{
+                              "clientWorkerKey":"worker-1",
+                              "sandboxDirectory":
+                                "data/scenario-workers/worker-1"
+                            }]
+                          }
+                        }
+                        """);
+
+        assertThat(configs.get(0).workers().get(0).sandboxDirectory())
+                .isEqualTo(sandbox);
+
+        assertThatThrownBy(() -> ScenarioWorkersJsonParser.parse("""
+                {
+                  "group-1": {
+                    "eventCodes":["event.one"],
+                    "workers":[{
+                      "clientWorkerKey":"worker-1",
+                      "sandboxDirectory":"data/scenario-workers/shared"
+                    }]
+                  },
+                  "group-2": {
+                    "eventCodes":["event.two"],
+                    "workers":[{
+                      "clientWorkerKey":"worker-2",
+                      "sandboxDirectory":"data/scenario-workers/shared/../shared"
+                    }]
+                  }
+                }
+                """)).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("sandboxDirectory must be unique");
+    }
+
+    @Test
+    void rejectsBlankSandboxDirectory() {
+        assertThatThrownBy(() -> ScenarioWorkersJsonParser.parse("""
+                {
+                  "group": {
+                    "eventCodes":["event.one"],
+                    "workers":[{
+                      "clientWorkerKey":"worker-1",
+                      "sandboxDirectory":" "
+                    }]
+                  }
+                }
+                """)).isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must be a non-blank string");
     }
 }
