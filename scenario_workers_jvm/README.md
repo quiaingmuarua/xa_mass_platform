@@ -33,10 +33,8 @@ The worker JSON is keyed by WorkerGroup ID:
       "phonenumber.country",
       "phonenumber.original-carrier"
     ],
-    "endpointManagerId": "scenario-websocket",
-    "websocketUri": "ws://127.0.0.1:18083/api/v1/worker-delivery/websocket",
     "workers": [{
-      "workerId": "scenario-phone-number-worker-001",
+      "clientWorkerKey": "scenario-phone-number-worker-001",
       "workerProperties": {"runtime":"java","region":"local"},
       "indexedPropertyUpdates": {"index.worker.region":"local"}
     }]
@@ -44,30 +42,38 @@ The worker JSON is keyed by WorkerGroup ID:
 }
 ```
 
-`fromJson` only parses and assembles local state. `start()` performs:
+`fromJson` only parses and assembles local state. `start()` performs for each
+configured Worker:
 
 ```text
-create and start every WebSocket Worker transport
+register workerGroupId + clientWorkerKey through the Identity API
+-> recover or obtain the same platform-issued workerId
+-> Bind workerId as WEBSOCKET and replace the Kernel workerProperties snapshot
+-> receive the configured Adapter public URI
+-> create and start every WebSocket Worker transport
 -> wait for every configured group to connect
--> register each Worker through the public Runtime Resource HTTP API
--> replace workerProperties through the same API
 -> submit explicit Property Index updates as best effort
 ```
 
-Required registration or property-update failure closes all local transports
-and fails startup. Index failure is diagnostic only. `close()` releases local
-network and thread resources in reverse order; it does not mutate WorkerGroup,
-Worker descriptor, score, or Property Index truth.
+Register or Bind failure closes all local transports and fails startup. Each
+long-lived Worker sends only `WorkerConnectionBind(workerId)` to its returned
+Adapter URI; the Adapter verifies the persisted endpoint route before exposing
+the Channel. Index update may briefly observe `NOT_FOUND`, so Scenario retries
+it within the connection timeout; remaining Index failure is diagnostic only.
+`close()` releases local network and thread resources in reverse order; it does
+not mutate WorkerGroup, Worker metadata, score, identity, Binding, or Property
+Index truth.
 
 WorkerGroup directory metadata is initialized separately by the Server profile.
 The profile's catalog `eventCodes` may intentionally lag this module's local
 Definition selection; Scenario Workers never compare or update the two values.
 
-The module depends internally on Worker Core, the concrete OkHttp network
-client, and the transport wire contract. Worker registration uses a private JDK
-HTTP client and Server's public API JSON. It has no dependency on `kernel_jvm`,
-Spring, Server implementation classes, the Netty Adapter, Redis, scores, or
-Pacers.
+The module depends internally on Worker Core, concrete OkHttp clients, and the
+transport wire contract. Register and Bind use the shared narrow OkHttp Worker
+control client; Index update uses a private HTTP client. It has no dependency
+on `kernel_jvm`, Spring, Server implementation classes, the Netty Adapter,
+Redis, scores, or Pacers. The Worker does not configure or know an
+`endpointManagerId`; Bind returns the selected public WebSocket URI.
 
 ```text
 ./gradlew :scenario_workers_jvm:test

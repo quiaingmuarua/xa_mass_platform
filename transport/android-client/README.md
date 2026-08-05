@@ -12,7 +12,7 @@ second Worker implementation.
 - Serialized listener callbacks and generation filtering for stale sockets.
 - A thread-safe current-connection snapshot used by non-blocking `send`.
 
-It does not know Worker IDs, Bind, commands, results, event definitions, or
+It does not know Worker IDs, connection Bind frames, commands, results, event definitions, or
 pending business results. It has no offline message queue.
 
 ## Start A Worker
@@ -45,12 +45,18 @@ TextWebSocketClient client =
 WebSocketWorkerTransport worker =
         new WebSocketWorkerTransport(
                 client,
-                "worker-android-1",
+                workerId,
                 definitions
         );
 
 worker.start();
 ```
+
+The host obtains a long-lived platform Worker ID through Register, then calls
+Bind with its WorkerGroup, persisted client key, requested transport, and
+complete Worker Properties snapshot. It constructs this Client from the
+returned endpoint URI and supplies only `workerId` to the shared Transport.
+Register and Bind are outside this network Client module.
 
 The host retains the `WebSocketWorkerTransport` and calls `worker.close()` when
 its own lifetime ends. The Transport closes the Android Client. This module

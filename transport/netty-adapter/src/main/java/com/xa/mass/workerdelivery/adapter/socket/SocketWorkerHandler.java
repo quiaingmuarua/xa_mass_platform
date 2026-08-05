@@ -4,7 +4,9 @@ import static com.xa.mass.workerdelivery.adapter.message.WorkerResultHandlingRes
 
 import com.xa.mass.workerdelivery.adapter.message.WorkerResultPayloadHandler;
 import com.xa.mass.workerdelivery.adapter.message.WorkerResultHandlingResult;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -17,14 +19,20 @@ final class SocketWorkerHandler
     private final NettySocketWorkerConnectionRegistry connections;
     private final WorkerDeliveryCodec codec;
     private final WorkerResultPayloadHandler resultHandler;
+    private final WorkerDeliveryGatewayClient gateway;
+    private final String endpointManagerId;
     private final BooleanSupplier acceptingConnections;
     private String workerId;
     private Channel workerChannel;
+    private boolean verifying;
+    private String deferredResult;
 
     SocketWorkerHandler(
             NettySocketWorkerConnectionRegistry connections,
             WorkerDeliveryCodec codec,
             WorkerResultPayloadHandler resultHandler,
+            WorkerDeliveryGatewayClient gateway,
+            String endpointManagerId,
             BooleanSupplier acceptingConnections
     ) {
         this.connections = Objects.requireNonNull(
@@ -36,6 +44,13 @@ final class SocketWorkerHandler
                 resultHandler,
                 "resultHandler"
         );
+        this.gateway = Objects.requireNonNull(gateway, "gateway");
+        if (endpointManagerId == null || endpointManagerId.isBlank()) {
+            throw new IllegalArgumentException(
+                    "endpointManagerId must be non-blank"
+            );
+        }
+        this.endpointManagerId = endpointManagerId;
         this.acceptingConnections = Objects.requireNonNull(
                 acceptingConnections,
                 "acceptingConnections"
@@ -57,7 +72,11 @@ final class SocketWorkerHandler
             String line
     ) {
         if (workerChannel == null) {
-            handleBind(context, line);
+            if (verifying) {
+                deferResult(context, line);
+            } else {
+                handleBind(context, line);
+            }
         } else {
             handleResult(context, line);
         }
@@ -65,6 +84,8 @@ final class SocketWorkerHandler
 
     @Override
     public void channelInactive(ChannelHandlerContext context) {
+        verifying = false;
+        deferredResult = null;
         disconnect();
         context.fireChannelInactive();
     }
@@ -74,6 +95,8 @@ final class SocketWorkerHandler
             ChannelHandlerContext context,
             Throwable cause
     ) {
+        verifying = false;
+        deferredResult = null;
         Channel current = workerChannel;
         String currentWorkerId = workerId;
         clearConnection();
@@ -88,20 +111,80 @@ final class SocketWorkerHandler
             ChannelHandlerContext context,
             String encodedBind
     ) {
-        var bind = codec.decodeWorkerConnectionBind(encodedBind);
-        if (bind == null || !acceptingConnections.getAsBoolean()) {
+        if (verifying || !acceptingConnections.getAsBoolean()) {
             context.close();
             return;
         }
-        Channel opened = context.channel();
-        workerId = bind.workerId();
-        workerChannel = opened;
-        connections.bind(workerId, opened);
-        if (!acceptingConnections.getAsBoolean()) {
-            String boundWorkerId = workerId;
-            clearConnection();
-            connections.close(boundWorkerId, opened);
+        WorkerConnectionBind bind;
+        try {
+            bind = codec.decodeWorkerConnectionBind(encodedBind);
+        } catch (IllegalArgumentException error) {
+            context.close();
+            return;
         }
+        verifying = true;
+        Channel opened = context.channel();
+        opened.config().setAutoRead(false);
+        gateway.verifyWorkerRoute(
+                endpointManagerId,
+                bind.workerId()
+        ).whenComplete(
+                (ignored, error) -> context.executor().execute(() -> {
+                    if (!verifying || !opened.isActive()) {
+                        return;
+                    }
+                    verifying = false;
+                    if (error != null
+                            || !activate(context, bind.workerId())) {
+                        deferredResult = null;
+                        context.close();
+                        return;
+                    }
+                    String deferred = deferredResult;
+                    deferredResult = null;
+                    if (deferred != null) {
+                        handleResult(context, deferred);
+                    }
+                    if (workerChannel != opened) {
+                        return;
+                    }
+                    opened.config().setAutoRead(true);
+                    context.read();
+                })
+        );
+    }
+
+    private void deferResult(
+            ChannelHandlerContext context,
+            String encodedResult
+    ) {
+        if (deferredResult != null) {
+            deferredResult = null;
+            context.close();
+            return;
+        }
+        deferredResult = encodedResult;
+    }
+
+    private boolean activate(
+            ChannelHandlerContext context,
+            String boundWorkerId
+    ) {
+        if (!acceptingConnections.getAsBoolean()
+                || !context.channel().isActive()) {
+            return false;
+        }
+        Channel opened = context.channel();
+        workerId = boundWorkerId;
+        workerChannel = opened;
+        connections.activate(workerId, opened);
+        if (!acceptingConnections.getAsBoolean()) {
+            String stoppingWorkerId = workerId;
+            clearConnection();
+            connections.close(stoppingWorkerId, opened);
+            return false;
+        }
+        return true;
     }
 
     private void handleResult(
@@ -121,7 +204,7 @@ final class SocketWorkerHandler
         String currentWorkerId = workerId;
         clearConnection();
         if (current != null && currentWorkerId != null) {
-            connections.unbind(currentWorkerId, current);
+            connections.deactivate(currentWorkerId, current);
         }
     }
 

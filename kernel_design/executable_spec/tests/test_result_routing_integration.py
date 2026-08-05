@@ -149,7 +149,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
                 event_codes=frozenset({_PHONE_INSPECT_EVENT_CODE}),
             )
         )
-        worker_result = self.resources.register_worker(
+        worker_result = self.resources.upsert_worker(
             declaration=WorkerDeclaration(
                 worker_id="worker-1",
                 worker_group_id="phone-tools",
@@ -259,7 +259,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
             endpoint_manager_id="endpoint-1",
             worker_properties={"runtime": "python"},
         )
-        self.resources.register_worker(
+        self.resources.upsert_worker(
             declaration=worker_declaration,
         )
         self.runtime_server.post(
@@ -331,7 +331,7 @@ class ResultRoutingIntegrationTest(unittest.TestCase):
             recovery_state.polarity,
         )
 
-        self.resources.register_worker(
+        self.resources.upsert_worker(
             declaration=worker_declaration,
         )
         refreshed_state = self.worker_score.get_score_states(

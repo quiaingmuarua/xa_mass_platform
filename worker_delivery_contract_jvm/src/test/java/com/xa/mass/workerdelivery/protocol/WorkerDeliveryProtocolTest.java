@@ -55,12 +55,21 @@ final class WorkerDeliveryProtocolTest {
     }
 
     @Test
-    void bindIsTheOnlyConnectionControlDto() {
-        WorkerConnectionBind bind = new WorkerConnectionBind("worker-1");
+    void bindHasStableWireAndRoundTrips() {
+        WorkerConnectionBind bind = new WorkerConnectionBind(MESSAGE_ID);
         String encoded = codec.encodeWorkerConnectionBind(bind);
 
-        assertEquals("{\"workerId\":\"worker-1\"}", encoded);
+        assertEquals(
+                "{\"workerId\":\"" + MESSAGE_ID + "\"}",
+                encoded
+        );
         assertEquals(bind, codec.decodeWorkerConnectionBind(encoded));
+        assertNull(codec.decodeWorkerConnectionBind(
+                "{\"workerId\":\"" + MESSAGE_ID + "\",\"extra\":true}"
+        ));
+        assertNull(codec.decodeWorkerConnectionBind(
+                "{\"workerId\":\"not-a-uuid\"}"
+        ));
     }
 
     @Test

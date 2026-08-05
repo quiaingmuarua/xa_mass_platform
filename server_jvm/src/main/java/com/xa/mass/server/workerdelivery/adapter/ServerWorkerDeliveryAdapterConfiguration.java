@@ -6,6 +6,8 @@ import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClien
 import com.xa.mass.workerdelivery.adapter.http.HttpWorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.adapter.socket.SocketWorkerDeliveryAdapter;
 import com.xa.mass.workerdelivery.adapter.websocket.WebSocketWorkerDeliveryAdapter;
+import com.xa.mass.server.workerbinding.WorkerEndpointDirectory;
+import com.xa.mass.server.workerbinding.WorkerTransportType;
 import java.time.Duration;
 import java.util.HashSet;
 import java.util.Set;
@@ -47,7 +49,8 @@ public class ServerWorkerDeliveryAdapterConfiguration {
     @Bean
     WorkerDeliveryAdapterManager workerDeliveryAdapterManager(
             ServerWorkerDeliveryAdapterProperties properties,
-            WorkerDeliveryGatewayClient gateway
+            WorkerDeliveryGatewayClient gateway,
+            WorkerEndpointDirectory endpointDirectory
     ) {
         WorkerDeliveryAdapterManager manager =
                 new WorkerDeliveryAdapterManager();
@@ -56,7 +59,8 @@ public class ServerWorkerDeliveryAdapterConfiguration {
                         adapterId,
                         config,
                         properties.gateway().requestTimeout(),
-                        gateway
+                        gateway,
+                        endpointDirectory
                 ))
         );
         return manager;
@@ -66,7 +70,8 @@ public class ServerWorkerDeliveryAdapterConfiguration {
             String adapterId,
             JsonNode config,
             Duration shutdownTimeout,
-            WorkerDeliveryGatewayClient gateway
+            WorkerDeliveryGatewayClient gateway,
+            WorkerEndpointDirectory endpointDirectory
     ) {
         if (!(config instanceof ObjectNode object)) {
             throw invalid(adapterId, "config must be an object");
@@ -80,6 +85,18 @@ public class ServerWorkerDeliveryAdapterConfiguration {
             );
         }
         String type = requiredText(object, "type", adapterId);
+        WorkerTransportType transportType;
+        try {
+            transportType = WorkerTransportType.valueOf(type);
+        } catch (IllegalArgumentException error) {
+            throw invalid(adapterId, "type must be WEBSOCKET or SOCKET");
+        }
+        if (!endpointDirectory.contains(adapterId, transportType)) {
+            throw invalid(
+                    adapterId,
+                    "a matching worker-binding endpoint must be configured"
+            );
+        }
         int listenPort = requiredInt(
                 object,
                 "listen-port",
@@ -154,10 +171,7 @@ public class ServerWorkerDeliveryAdapterConfiguration {
                     sendTimeLimit,
                     shutdownTimeout
             );
-            default -> throw invalid(
-                    adapterId,
-                    "type must be WEBSOCKET or SOCKET"
-            );
+            default -> throw invalid(adapterId, "unsupported adapter type");
         };
     }
 

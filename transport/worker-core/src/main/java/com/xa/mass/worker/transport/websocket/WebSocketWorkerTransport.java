@@ -22,7 +22,7 @@ public final class WebSocketWorkerTransport
     private static final int SEND_FAILED = 1011;
 
     private final TextWebSocketClient client;
-    private final String workerId;
+    private final WorkerConnectionBind bind;
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
     private final WorkerCommandExecutor commandExecutor;
     private final ExecutorService execution;
@@ -30,7 +30,7 @@ public final class WebSocketWorkerTransport
 
     private boolean running;
     private boolean closed;
-    private boolean bound;
+    private boolean bindSent;
     private boolean processing;
     private WorkerResult pendingResult;
 
@@ -56,18 +56,13 @@ public final class WebSocketWorkerTransport
                     "client must be present"
             );
         }
-        if (workerId == null || workerId.trim().isEmpty()) {
-            throw new IllegalArgumentException(
-                    "workerId must be non-blank"
-            );
-        }
         if (commandExecutor == null) {
             throw new IllegalArgumentException(
                     "commandExecutor must be present"
             );
         }
         this.client = client;
-        this.workerId = workerId;
+        this.bind = new WorkerConnectionBind(workerId);
         this.commandExecutor = commandExecutor;
         execution = Executors.newSingleThreadExecutor(runnable -> {
             Thread thread = new Thread(
@@ -113,7 +108,7 @@ public final class WebSocketWorkerTransport
                 client.closeCurrent(1000, "Worker stopped");
                 return;
             }
-            bound = false;
+            bindSent = false;
             sendBind();
         }
     }
@@ -123,7 +118,7 @@ public final class WebSocketWorkerTransport
         synchronized (this) {
             if (!running
                     || closed
-                    || !bound
+                    || !bindSent
                     || processing
                     || pendingResult != null) {
                 closeProtocolError(BAD_DATA);
@@ -151,12 +146,12 @@ public final class WebSocketWorkerTransport
 
     @Override
     public synchronized void onDisconnected() {
-        bound = false;
+        bindSent = false;
     }
 
     @Override
     public synchronized void onFailure(Throwable error) {
-        bound = false;
+        bindSent = false;
     }
 
     @Override
@@ -167,7 +162,7 @@ public final class WebSocketWorkerTransport
             }
             closed = true;
             running = false;
-            bound = false;
+            bindSent = false;
         }
         client.close();
         execution.shutdownNow();
@@ -179,7 +174,7 @@ public final class WebSocketWorkerTransport
     }
 
     public synchronized boolean isConnected() {
-        return running && bound && client.isConnected();
+        return running && bindSent && client.isConnected();
     }
 
     private void executeCommand(String encodedCommand) {
@@ -203,7 +198,7 @@ public final class WebSocketWorkerTransport
             }
             if (result.isPresent()) {
                 pendingResult = result.get();
-                if (bound && client.isConnected()) {
+                if (bindSent && client.isConnected()) {
                     sendPending();
                 }
             }
@@ -212,19 +207,17 @@ public final class WebSocketWorkerTransport
 
     private void sendBind() {
         boolean accepted = client.send(
-                codec.encodeWorkerConnectionBind(
-                        new WorkerConnectionBind(workerId)
-                )
+                codec.encodeWorkerConnectionBind(bind)
         );
         if (!accepted) {
-            bound = false;
+            bindSent = false;
             client.closeCurrent(
                     SEND_FAILED,
                     "Worker Delivery send failed"
             );
             return;
         }
-        bound = true;
+        bindSent = true;
         if (pendingResult != null) {
             sendPending();
         }
@@ -232,11 +225,11 @@ public final class WebSocketWorkerTransport
 
     private void sendPending() {
         WorkerResult sending = pendingResult;
-        if (sending == null || !bound) {
+        if (sending == null || !bindSent) {
             return;
         }
         if (!client.send(codec.encodeWorkerResult(sending))) {
-            bound = false;
+            bindSent = false;
             client.closeCurrent(
                     SEND_FAILED,
                     "Worker Delivery send failed"
@@ -249,7 +242,7 @@ public final class WebSocketWorkerTransport
     }
 
     private void closeProtocolError(int code) {
-        bound = false;
+        bindSent = false;
         client.closeCurrent(
                 code,
                 "Invalid Worker Delivery message"

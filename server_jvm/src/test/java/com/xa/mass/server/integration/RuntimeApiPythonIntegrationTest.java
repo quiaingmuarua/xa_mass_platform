@@ -10,8 +10,9 @@ import com.xa.mass.worker.transport.socket.SocketWorkerTransport;
 import com.xa.mass.worker.transport.websocket.WebSocketWorkerTransport;
 import com.xa.mass.transport.client.jdk.JdkLineSocketClient;
 import com.xa.mass.transport.client.okhttp.OkHttpTextWebSocketClient;
+import com.xa.mass.transport.client.okhttp.OkHttpWorkerControlClient;
+import com.xa.mass.transport.client.okhttp.OkHttpWorkerControlClient.TransportType;
 import com.xa.mass.transport.client.okhttp.OkHttpWorkerPointClient;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
 import java.net.URI;
 import java.net.ServerSocket;
 import java.net.http.HttpClient;
@@ -93,6 +94,15 @@ class RuntimeApiPythonIntegrationTest {
                 "xa.mass.worker-delivery.adapter.gateway.request-timeout",
                 () -> "2s"
         );
+        registry.add(
+                "xa.mass.worker-binding.endpoints.system-polling."
+                        + "transport-type",
+                () -> "POLLING"
+        );
+        registry.add(
+                "xa.mass.worker-binding.endpoints.system-polling.public-uri",
+                () -> "http://127.0.0.1:" + SERVER_PORT
+        );
         addWebSocketAdapter(
                 registry,
                 WEBSOCKET_ENDPOINT_MANAGER_ID,
@@ -110,8 +120,6 @@ class RuntimeApiPythonIntegrationTest {
             throws Exception {
         runWorkerDeliveryClosure(
                 "TASK_DRIVEN",
-                WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
-                URI.create("http://127.0.0.1:" + port),
                 TransportProfile.POLLING
         );
     }
@@ -121,21 +129,10 @@ class RuntimeApiPythonIntegrationTest {
             throws Exception {
         runWorkerDeliveryClosure(
                 "ITEM_DRIVEN",
-                WEBSOCKET_ENDPOINT_MANAGER_ID,
-                URI.create(
-                        "ws://127.0.0.1:"
-                                + ACTIVE_ADAPTER_PORTS[0]
-                                + "/api/v1/worker-delivery/websocket"
-                ),
                 TransportProfile.WEBSOCKET
         );
         runWorkerDeliveryClosure(
                 "ITEM_DRIVEN",
-                SOCKET_ENDPOINT_MANAGER_ID,
-                URI.create(
-                        "tcp://127.0.0.1:"
-                                + ACTIVE_ADAPTER_PORTS[1]
-                ),
                 TransportProfile.SOCKET
         );
     }
@@ -146,7 +143,7 @@ class RuntimeApiPythonIntegrationTest {
         requireExternalRuntime();
         String suffix = UUID.randomUUID().toString();
         String workerGroupId = "indexed-tools-" + suffix;
-        String workerId = "indexed-worker-" + suffix;
+        String clientWorkerKey = "indexed-worker-" + suffix;
         String taskId = "indexed-task-" + suffix;
 
         assertThat(send(
@@ -158,37 +155,28 @@ class RuntimeApiPythonIntegrationTest {
                         }
                         """.formatted(TEST_EVENT_CODE)
         ).statusCode()).isEqualTo(200);
-        assertThat(send(
-                "PUT",
-                "/api/v1/worker-groups/" + workerGroupId
-                        + "/workers/" + workerId,
-                """
-                        {
-                          "endpointManagerId": "%s",
-                          "workerProperties": {"region": "snapshot-only"}
-                        }
-                        """.formatted(WEBSOCKET_ENDPOINT_MANAGER_ID)
-        ).statusCode()).isEqualTo(200);
-        assertThat(send(
-                "PATCH",
-                "/api/v1/worker-groups/" + workerGroupId
-                        + "/workers/" + workerId
-                        + "/indexed-properties",
-                "{\"updates\":{"
-                        + "\"index.worker.region\":\"cn-east\","
-                        + "\"index.platform.pool\":\"batch\"}}"
-        ).statusCode()).isEqualTo(200);
+        BoundWorker boundWorker = registerAndBindWorker(
+                workerGroupId,
+                clientWorkerKey,
+                TransportProfile.WEBSOCKET,
+                Map.of("region", "snapshot-only")
+        );
+        String workerId = boundWorker.workerId();
 
         RunningWorker worker = startWorker(
                 workerId,
-                URI.create(
-                        "ws://127.0.0.1:"
-                                + ACTIVE_ADAPTER_PORTS[0]
-                                + "/api/v1/worker-delivery/websocket"
-                ),
+                boundWorker.endpointUri(),
                 TransportProfile.WEBSOCKET
         );
         try {
+            awaitWorkerRegistered(workerGroupId, workerId);
+            awaitIndexedPropertiesUpdate(
+                    workerGroupId,
+                    workerId,
+                    "{\"updates\":{"
+                            + "\"index.worker.region\":\"cn-east\","
+                            + "\"index.platform.pool\":\"batch\"}}"
+            );
             assertThat(send(
                     "POST",
                     "/api/v1/tasks",
@@ -248,14 +236,12 @@ class RuntimeApiPythonIntegrationTest {
 
     private void runWorkerDeliveryClosure(
             String taskType,
-            String endpointManagerId,
-            URI workerServerUrl,
             TransportProfile transportProfile
     ) throws Exception {
         requireExternalRuntime();
         String suffix = UUID.randomUUID().toString();
         String workerGroupId = "integration-tools-" + suffix;
-        String workerId = "worker-" + suffix;
+        String clientWorkerKey = "worker-" + suffix;
         String taskId = "task-" + suffix;
         String firstMessageId = "message-1-" + suffix;
         String secondMessageId = "message-2-" + suffix;
@@ -270,24 +256,21 @@ class RuntimeApiPythonIntegrationTest {
                         """.formatted(TEST_EVENT_CODE)
         ).statusCode()).isEqualTo(200);
 
-        assertThat(send(
-                "PUT",
-                "/api/v1/worker-groups/" + workerGroupId
-                        + "/workers/" + workerId,
-                """
-                        {
-                          "endpointManagerId": "%s",
-                          "workerProperties": {"runtime": "java"}
-                        }
-                        """.formatted(endpointManagerId)
-        ).statusCode()).isEqualTo(200);
+        BoundWorker boundWorker = registerAndBindWorker(
+                workerGroupId,
+                clientWorkerKey,
+                transportProfile,
+                Map.of("runtime", "java")
+        );
+        String workerId = boundWorker.workerId();
 
         RunningWorker worker = startWorker(
                 workerId,
-                workerServerUrl,
+                boundWorker.endpointUri(),
                 transportProfile
         );
         try {
+            awaitWorkerRegistered(workerGroupId, workerId);
             assertThat(send(
                     "POST",
                     "/api/v1/tasks",
@@ -481,15 +464,106 @@ class RuntimeApiPythonIntegrationTest {
                     new PollingWorkerTransport(
                             new OkHttpWorkerPointClient(
                                     serverUrl,
-                                    WorkerDeliveryProtocol
-                                            .SYSTEM_POLLING_ENDPOINT_MANAGER_ID,
-                                    workerId,
                                     Duration.ofSeconds(2)
                             ),
+                            workerId,
                             definitions
                     )
             );
         };
+    }
+
+    private BoundWorker registerAndBindWorker(
+            String workerGroupId,
+            String clientWorkerKey,
+            TransportProfile profile,
+            Map<String, Object> workerProperties
+    ) throws Exception {
+        try (var client = new OkHttpWorkerControlClient(
+                URI.create("http://127.0.0.1:" + port)
+        )) {
+            String workerId = client.register(
+                    workerGroupId,
+                    clientWorkerKey,
+                    Duration.ofSeconds(2)
+            );
+            URI endpointUri = client.bind(
+                    workerGroupId,
+                    clientWorkerKey,
+                    workerId,
+                    switch (profile) {
+                        case POLLING -> TransportType.POLLING;
+                        case WEBSOCKET -> TransportType.WEBSOCKET;
+                        case SOCKET -> TransportType.SOCKET;
+                    },
+                    workerProperties,
+                    Duration.ofSeconds(2)
+            );
+            return new BoundWorker(workerId, endpointUri);
+        }
+    }
+
+    private void awaitWorkerRegistered(
+            String workerGroupId,
+            String workerId
+    ) throws Exception {
+        long deadline = System.nanoTime()
+                + Duration.ofSeconds(3).toNanos();
+        while (System.nanoTime() < deadline) {
+            HttpResponse<String> response = send(
+                    "PATCH",
+                    "/api/v1/worker-groups/" + workerGroupId
+                            + "/workers/" + workerId
+                            + "/platform-properties",
+                    "{\"properties\":{}}"
+            );
+            if (response.statusCode() == 200) {
+                return;
+            }
+            Thread.sleep(20);
+        }
+        throw new AssertionError("Worker Bind was not applied to Kernel");
+    }
+
+    private void awaitIndexedPropertiesUpdate(
+            String workerGroupId,
+            String workerId,
+            String body
+    ) throws Exception {
+        long deadline = System.nanoTime()
+                + Duration.ofSeconds(3).toNanos();
+        while (System.nanoTime() < deadline) {
+            HttpResponse<String> response = send(
+                    "PATCH",
+                    "/api/v1/worker-groups/" + workerGroupId
+                            + "/workers/" + workerId
+                            + "/indexed-properties",
+                    body
+            );
+            if (response.statusCode() == 200
+                    && allIndexUpdatesAccepted(response.body())) {
+                return;
+            }
+            Thread.sleep(20);
+        }
+        throw new AssertionError("Worker indexes were not updated");
+    }
+
+    private static boolean allIndexUpdatesAccepted(String responseBody)
+            throws Exception {
+        var results = JSON.readTree(responseBody).get("results");
+        if (results == null || !results.isObject() || results.isEmpty()) {
+            return false;
+        }
+        for (var result : results) {
+            var status = result.get("status");
+            if (status == null
+                    || !(status.stringValue().equals("ok")
+                    || status.stringValue().equals("noop"))) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private void awaitStoredResult(
@@ -674,6 +748,17 @@ class RuntimeApiPythonIntegrationTest {
         registry.add(prefix + ".command-queue-capacity", () -> "1000");
         registry.add(prefix + ".result-submit-interval", () -> "20ms");
         registry.add(prefix + ".result-queue-capacity", () -> "1000");
+        String endpointPrefix = "xa.mass.worker-binding.endpoints."
+                + adapterId;
+        registry.add(
+                endpointPrefix + ".transport-type",
+                () -> "WEBSOCKET"
+        );
+        registry.add(
+                endpointPrefix + ".public-uri",
+                () -> "ws://127.0.0.1:" + listenPort
+                        + "/api/v1/worker-delivery/websocket"
+        );
     }
 
     private static void addSocketAdapter(
@@ -694,12 +779,25 @@ class RuntimeApiPythonIntegrationTest {
         registry.add(prefix + ".command-queue-capacity", () -> "1000");
         registry.add(prefix + ".result-submit-interval", () -> "20ms");
         registry.add(prefix + ".result-queue-capacity", () -> "1000");
+        String endpointPrefix = "xa.mass.worker-binding.endpoints."
+                + adapterId;
+        registry.add(
+                endpointPrefix + ".transport-type",
+                () -> "SOCKET"
+        );
+        registry.add(
+                endpointPrefix + ".public-uri",
+                () -> "tcp://127.0.0.1:" + listenPort
+        );
     }
 
     private interface RunningWorker extends AutoCloseable {
 
         @Override
         void close();
+    }
+
+    private record BoundWorker(String workerId, URI endpointUri) {
     }
 
     private enum TransportProfile {
@@ -711,9 +809,11 @@ class RuntimeApiPythonIntegrationTest {
     private static final class PollingWorkerHandle
             implements RunningWorker {
 
+        private final PollingWorkerTransport transport;
         private final Thread thread;
 
         private PollingWorkerHandle(PollingWorkerTransport transport) {
+            this.transport = transport;
             thread = Thread.ofPlatform()
                     .name("integration-polling-worker")
                     .daemon(true)
@@ -738,6 +838,7 @@ class RuntimeApiPythonIntegrationTest {
 
         @Override
         public void close() {
+            transport.close();
             thread.interrupt();
             try {
                 thread.join(1_000);

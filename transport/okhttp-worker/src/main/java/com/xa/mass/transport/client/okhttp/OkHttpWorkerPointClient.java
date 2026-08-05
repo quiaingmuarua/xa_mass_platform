@@ -3,6 +3,7 @@ package com.xa.mass.transport.client.okhttp;
 import com.xa.mass.transport.client.WorkerPointClient;
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol;
 import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
@@ -23,40 +24,24 @@ public final class OkHttpWorkerPointClient
             MediaType.get("application/json; charset=utf-8");
 
     private final OkHttpClient http;
-    private final HttpUrl pollUrl;
-    private final HttpUrl resultUrl;
+    private final HttpUrl serverUrl;
     private volatile boolean closed;
     private volatile Call activeCall;
 
     public OkHttpWorkerPointClient(
             URI serverUrl,
-            String endpointManagerId,
-            String workerId,
             Duration requestTimeout
     ) {
-        requireNonBlank(endpointManagerId, "endpointManagerId");
-        requireNonBlank(workerId, "workerId");
         http = client(requestTimeout);
-        HttpUrl workerBase = httpUrl(serverUrl)
-                .newBuilder()
-                .addPathSegment("api")
-                .addPathSegment("v1")
-                .addPathSegment("worker-delivery")
-                .addPathSegment("endpoint-managers")
-                .addPathSegment(endpointManagerId)
-                .addPathSegment("workers")
-                .addPathSegment(workerId)
-                .build();
-        pollUrl = workerBase.newBuilder()
-                .addPathSegment("commands:poll")
-                .build();
-        resultUrl = workerBase.newBuilder()
-                .addPathSegment("results")
-                .build();
+        this.serverUrl = httpUrl(serverUrl);
     }
 
     @Override
-    public Optional<String> pollCommand() throws IOException {
+    public Optional<String> pollCommand(String workerId)
+            throws IOException {
+        HttpUrl pollUrl = workerBase(workerId).newBuilder()
+                .addPathSegment("commands:poll")
+                .build();
         Request request = new Request.Builder()
                 .url(pollUrl)
                 .post(RequestBody.create(new byte[0]))
@@ -79,12 +64,18 @@ public final class OkHttpWorkerPointClient
     }
 
     @Override
-    public void submitResult(String encodedResult) throws IOException {
+    public void submitResult(
+            String workerId,
+            String encodedResult
+    ) throws IOException {
         if (encodedResult == null) {
             throw new IllegalArgumentException(
                     "encodedResult must be present"
             );
         }
+        HttpUrl resultUrl = workerBase(workerId).newBuilder()
+                .addPathSegment("results")
+                .build();
         Request request = new Request.Builder()
                 .url(resultUrl)
                 .post(RequestBody.create(encodedResult, JSON))
@@ -100,6 +91,27 @@ public final class OkHttpWorkerPointClient
                 );
             }
         }
+    }
+
+    private HttpUrl workerDeliveryBase() {
+        return serverUrl.newBuilder()
+                .addPathSegment("api")
+                .addPathSegment("v1")
+                .addPathSegment("worker-delivery")
+                .addPathSegment("endpoint-managers")
+                .addPathSegment(
+                        WorkerDeliveryProtocol
+                                .SYSTEM_POLLING_ENDPOINT_MANAGER_ID
+                )
+                .build();
+    }
+
+    private HttpUrl workerBase(String workerId) {
+        requireNonBlank(workerId, "workerId");
+        return workerDeliveryBase().newBuilder()
+                .addPathSegment("workers")
+                .addPathSegment(workerId)
+                .build();
     }
 
     @Override

@@ -9,7 +9,9 @@ import static com.xa.mass.workerdelivery.adapter.websocket.WorkerConnectionRegis
 
 import com.xa.mass.workerdelivery.adapter.message.WorkerResultPayloadHandler;
 import com.xa.mass.workerdelivery.adapter.message.WorkerResultHandlingResult;
+import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryGatewayClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
@@ -30,15 +32,21 @@ final class WorkerWebSocketHandler
     private final WorkerConnectionRegistry connections;
     private final WorkerDeliveryCodec codec;
     private final WorkerResultPayloadHandler resultHandler;
+    private final WorkerDeliveryGatewayClient gateway;
+    private final String endpointManagerId;
     private final BooleanSupplier acceptingConnections;
     private boolean handshakeComplete;
     private String workerId;
     private Channel workerChannel;
+    private boolean verifying;
+    private String deferredResult;
 
     WorkerWebSocketHandler(
             WorkerConnectionRegistry connections,
             WorkerDeliveryCodec codec,
             WorkerResultPayloadHandler resultHandler,
+            WorkerDeliveryGatewayClient gateway,
+            String endpointManagerId,
             BooleanSupplier acceptingConnections
     ) {
         this.connections = Objects.requireNonNull(
@@ -50,6 +58,13 @@ final class WorkerWebSocketHandler
                 resultHandler,
                 "resultHandler"
         );
+        this.gateway = Objects.requireNonNull(gateway, "gateway");
+        if (endpointManagerId == null || endpointManagerId.isBlank()) {
+            throw new IllegalArgumentException(
+                    "endpointManagerId must be non-blank"
+            );
+        }
+        this.endpointManagerId = endpointManagerId;
         this.acceptingConnections = Objects.requireNonNull(
                 acceptingConnections,
                 "acceptingConnections"
@@ -84,7 +99,11 @@ final class WorkerWebSocketHandler
         }
         if (frame instanceof TextWebSocketFrame text) {
             if (workerChannel == null) {
-                handleBind(context, text.text());
+                if (verifying) {
+                    deferResult(context, text.text());
+                } else {
+                    handleBind(context, text.text());
+                }
             } else {
                 handleResult(context, text.text());
             }
@@ -98,6 +117,8 @@ final class WorkerWebSocketHandler
 
     @Override
     public void channelInactive(ChannelHandlerContext context) {
+        verifying = false;
+        deferredResult = null;
         disconnect();
         context.fireChannelInactive();
     }
@@ -107,6 +128,8 @@ final class WorkerWebSocketHandler
             ChannelHandlerContext context,
             Throwable cause
     ) {
+        verifying = false;
+        deferredResult = null;
         Channel current = workerChannel;
         String currentWorkerId = workerId;
         clearConnection();
@@ -149,7 +172,7 @@ final class WorkerWebSocketHandler
             );
         } else {
             if (current != null && currentWorkerId != null) {
-                connections.unbind(currentWorkerId, current);
+                connections.deactivate(currentWorkerId, current);
             }
             close(context, 1007, "Invalid Worker result");
         }
@@ -160,7 +183,7 @@ final class WorkerWebSocketHandler
         String currentWorkerId = workerId;
         clearConnection();
         if (current != null && currentWorkerId != null) {
-            connections.unbind(currentWorkerId, current);
+            connections.deactivate(currentWorkerId, current);
         }
     }
 
@@ -168,28 +191,92 @@ final class WorkerWebSocketHandler
             ChannelHandlerContext context,
             String encodedBind
     ) {
-        var bind = codec.decodeWorkerConnectionBind(encodedBind);
-        if (bind == null) {
-            close(context, 1008, "Worker binding is required");
+        if (verifying) {
+            close(context, 1008, "Worker route verification is in progress");
+            return;
+        }
+        WorkerConnectionBind bind;
+        try {
+            bind = codec.decodeWorkerConnectionBind(encodedBind);
+        } catch (IllegalArgumentException error) {
+            close(context, 1008, "Worker Bind is invalid");
             return;
         }
         if (!acceptingConnections.getAsBoolean()) {
             close(context, 1001, "Adapter is stopping");
             return;
         }
+        verifying = true;
         Channel opened = context.channel();
-        workerId = bind.workerId();
+        opened.config().setAutoRead(false);
+        gateway.verifyWorkerRoute(
+                endpointManagerId,
+                bind.workerId()
+        ).whenComplete(
+                (ignored, error) -> context.executor().execute(() -> {
+                    if (!verifying || !opened.isActive()) {
+                        return;
+                    }
+                    verifying = false;
+                    if (error != null
+                            || !activate(context, bind.workerId())) {
+                        deferredResult = null;
+                        close(context, 1008, "Worker route verification failed");
+                        return;
+                    }
+                    String deferred = deferredResult;
+                    deferredResult = null;
+                    if (deferred != null) {
+                        handleResult(context, deferred);
+                    }
+                    if (workerChannel != opened) {
+                        return;
+                    }
+                    opened.config().setAutoRead(true);
+                    context.read();
+                })
+        );
+    }
+
+    private void deferResult(
+            ChannelHandlerContext context,
+            String encodedResult
+    ) {
+        if (deferredResult != null) {
+            deferredResult = null;
+            close(
+                    context,
+                    1008,
+                    "Only one pending Worker result is allowed"
+            );
+            return;
+        }
+        deferredResult = encodedResult;
+    }
+
+    private boolean activate(
+            ChannelHandlerContext context,
+            String boundWorkerId
+    ) {
+        if (!acceptingConnections.getAsBoolean()
+                || !context.channel().isActive()) {
+            return false;
+        }
+        Channel opened = context.channel();
+        workerId = boundWorkerId;
         workerChannel = opened;
-        connections.bind(workerId, opened);
+        connections.activate(workerId, opened);
         if (!acceptingConnections.getAsBoolean()) {
-            String boundWorkerId = workerId;
+            String stoppingWorkerId = workerId;
             clearConnection();
             connections.close(
-                    boundWorkerId,
+                    stoppingWorkerId,
                     opened,
                     ADAPTER_STOPPING
             );
+            return false;
         }
+        return true;
     }
 
     private void clearConnection() {

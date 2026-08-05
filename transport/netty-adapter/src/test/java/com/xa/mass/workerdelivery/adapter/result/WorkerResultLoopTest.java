@@ -146,5 +146,13 @@ class WorkerResultLoopTest {
                 );
             }
         }
+
+        @Override
+        public java.util.concurrent.CompletionStage<Void>
+        verifyWorkerRoute(String endpointManagerId, String workerId) {
+            return java.util.concurrent.CompletableFuture.completedFuture(
+                    null
+            );
+        }
     }
 }

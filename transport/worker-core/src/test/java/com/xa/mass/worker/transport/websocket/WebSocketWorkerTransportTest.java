@@ -50,7 +50,7 @@ class WebSocketWorkerTransportTest {
         };
         transport = new WebSocketWorkerTransport(
                 client,
-                "worker-1",
+                COMMAND_ID,
                 executor
         );
         transport.start();
@@ -68,7 +68,7 @@ class WebSocketWorkerTransportTest {
 
         assertTrue(transport.isConnected());
         assertEquals(
-                new WorkerConnectionBind("worker-1"),
+                bind(),
                 codec.decodeWorkerConnectionBind(client.sent.get(0))
         );
 
@@ -97,7 +97,7 @@ class WebSocketWorkerTransportTest {
 
         assertEquals(3, client.sent.size());
         assertEquals(
-                new WorkerConnectionBind("worker-1"),
+                bind(),
                 codec.decodeWorkerConnectionBind(client.sent.get(1))
         );
         assertEquals(
@@ -139,6 +139,10 @@ class WebSocketWorkerTransportTest {
                 "{\"observed\":\"input\"}",
                 "context"
         );
+    }
+
+    private static WorkerConnectionBind bind() {
+        return new WorkerConnectionBind(COMMAND_ID);
     }
 
     private static void await(Check check) throws Exception {

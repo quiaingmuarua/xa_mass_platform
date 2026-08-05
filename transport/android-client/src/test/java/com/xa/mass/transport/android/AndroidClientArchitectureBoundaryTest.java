@@ -49,7 +49,7 @@ public class AndroidClientArchitectureBoundaryTest {
         for (String forbidden : new String[]{
                 "WorkerCommand",
                 "WorkerResult",
-                "WorkerConnectionBind",
+                "WorkerConnectionHello",
                 "WorkerEventDefinition",
                 "WebSocketWorkerTransport",
                 "AndroidWebSocketWorker",

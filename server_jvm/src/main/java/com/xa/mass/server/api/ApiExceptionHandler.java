@@ -53,6 +53,9 @@ public final class ApiExceptionHandler {
                     KERNEL_REJECTED_RETRYABLE,
                     TASK_DATA_UNAVAILABLE,
                     WORKER_DELIVERY_UNAVAILABLE,
+                    WORKER_IDENTITY_UNAVAILABLE,
+                    WORKER_BINDING_UNAVAILABLE,
+                    WORKER_ENDPOINT_UNAVAILABLE,
                     RUNTIME_VIEW_UNAVAILABLE ->
                     HttpStatus.SERVICE_UNAVAILABLE;
             case KERNEL_TIMEOUT -> HttpStatus.GATEWAY_TIMEOUT;
@@ -61,13 +64,19 @@ public final class ApiExceptionHandler {
             case INVALID_KERNEL_RESPONSE -> HttpStatus.BAD_GATEWAY;
             case KERNEL_REJECTED_NOT_FOUND,
                     TASK_NOT_FOUND,
+                    WORKER_IDENTITY_NOT_FOUND,
+                    WORKER_BINDING_NOT_FOUND,
                     WORKER_GROUP_NOT_FOUND -> HttpStatus.NOT_FOUND;
-            case KERNEL_REJECTED_CONFLICT -> HttpStatus.CONFLICT;
+            case KERNEL_REJECTED_CONFLICT,
+                    WORKER_IDENTITY_CONFLICT,
+                    WORKER_BINDING_CONFLICT -> HttpStatus.CONFLICT;
             case KERNEL_REJECTED_INVALID,
                     RUNTIME_VIEW_FILTER_NOT_AVAILABLE ->
                     HttpStatus.UNPROCESSABLE_ENTITY;
             case INVALID_TASK_DATA_REQUEST,
                     INVALID_WORKER_DELIVERY_REQUEST,
+                    INVALID_WORKER_IDENTITY_REQUEST,
+                    INVALID_WORKER_BINDING_REQUEST,
                     MALFORMED_REQUEST -> HttpStatus.BAD_REQUEST;
         };
     }

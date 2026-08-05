@@ -298,11 +298,11 @@ class RedisWorkerRuntimeFixture(unittest.TestCase):
             worker_properties=worker_properties or {},
         )
 
-    def register_worker(
+    def upsert_worker(
         self,
         declaration: WorkerDeclaration,
     ) -> None:
-        result = self.runtime.register_worker(
+        result = self.runtime.upsert_worker(
             declaration=declaration,
         )
         self.assertEqual(result.status, WorkerRuntimeStatus.OK)

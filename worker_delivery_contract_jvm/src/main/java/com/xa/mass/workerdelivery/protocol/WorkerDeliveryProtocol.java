@@ -51,7 +51,7 @@ public final class WorkerDeliveryProtocol {
         private final String workerId;
 
         public WorkerConnectionBind(String workerId) {
-            requireNonBlank(workerId, "workerId");
+            requireCanonicalUuid(workerId, "workerId");
             this.workerId = workerId;
         }
 
@@ -73,7 +73,7 @@ public final class WorkerDeliveryProtocol {
 
         @Override
         public int hashCode() {
-            return workerId.hashCode();
+            return Objects.hash(workerId);
         }
 
         @Override

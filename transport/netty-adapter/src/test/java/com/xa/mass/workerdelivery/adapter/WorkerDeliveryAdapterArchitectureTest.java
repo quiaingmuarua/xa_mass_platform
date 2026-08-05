@@ -194,11 +194,16 @@ class WorkerDeliveryAdapterArchitectureTest {
                 readSources(WEBSOCKET) + readSources(SOCKET);
         assertThat(transportSources)
                 .contains("decodeWorkerConnectionBind")
+                .contains("verifyWorkerRoute")
                 .contains("resultHandler.handle(")
+                .doesNotContain("verifyWorkerBinding")
+                .doesNotContain("connections.bind(")
+                .doesNotContain("connections.unbind(")
                 .doesNotContain("decodeWorkerConnectionMessage")
                 .doesNotContain("encodeWorkerConnectionMessage")
                 .doesNotContain("AdapterMessageDefinitionManager")
                 .doesNotContain("WorkerConnectionMessage")
+                .doesNotContain("WorkerHelloAdmission")
                 .doesNotContain("encodeWorkerResult")
                 .doesNotContain(
                         "private final "

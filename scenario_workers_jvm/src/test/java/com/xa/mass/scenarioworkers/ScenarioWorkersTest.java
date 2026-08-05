@@ -25,6 +25,13 @@ import org.mockito.InOrder;
 
 class ScenarioWorkersTest {
 
+    private static final String WORKER_ID_1 =
+            "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1";
+    private static final String WORKER_ID_2 =
+            "a5e9e10d-f78b-469e-93ab-864b49c189c1";
+    private static final URI ENDPOINT_URI =
+            URI.create("ws://127.0.0.1:18083/connect");
+
     @Test
     void publicAssemblyIsInertAndRejectsUnknownLocalEvent() {
         ScenarioWorkers empty = ScenarioWorkers.fromJson(
@@ -42,149 +49,153 @@ class ScenarioWorkersTest {
     }
 
     @Test
-    void startsAllTransportsBeforeRegisteringResourcesAndClosesInReverse() {
-        ScenarioWorkerResourceClient resources = mock(
-                ScenarioWorkerResourceClient.class
-        );
+    void registersAndBindsBeforeTransportAndClosesInReverse() {
+        ScenarioWorkers.WorkerControl control = workerControl();
+        ScenarioWorkerIndexClient indexes = acceptedIndexes();
         WebSocketWorkerTransport first = connectedTransport();
         WebSocketWorkerTransport second = connectedTransport();
-        List<List<WorkerEventDefinition<?>>> receivedDefinitions =
-                new ArrayList<>();
+        List<String> receivedWorkerIds = new ArrayList<>();
+        List<URI> receivedEndpoints = new ArrayList<>();
         ScenarioWorkers workers = workers(
                 config(StringUtilityWorkerEvents.MD5_EVENT_CODE, 2),
-                resources,
-                (workerId, ignored, definitions) -> {
-                    receivedDefinitions.add(definitions);
-                    return workerId.endsWith("1") ? first : second;
+                control,
+                indexes,
+                (workerId, endpointUri, ignored, definitions) -> {
+                    receivedWorkerIds.add(workerId);
+                    receivedEndpoints.add(endpointUri);
+                    return WORKER_ID_1.equals(workerId)
+                            ? first
+                            : second;
                 }
         );
 
         workers.start();
         workers.start();
 
-        assertThat(receivedDefinitions).hasSize(2);
-        assertThat(receivedDefinitions.get(0))
-                .isSameAs(receivedDefinitions.get(1));
-        InOrder startup = inOrder(first, second, resources);
+        assertThat(receivedWorkerIds)
+                .containsExactly(WORKER_ID_1, WORKER_ID_2);
+        assertThat(receivedEndpoints)
+                .containsExactly(ENDPOINT_URI, ENDPOINT_URI);
+        InOrder startup = inOrder(control, first, second, indexes);
+        startup.verify(control).register(
+                "scenario-group",
+                "client-1",
+                Duration.ofSeconds(10)
+        );
+        startup.verify(control).bind(
+                "scenario-group",
+                "client-1",
+                WORKER_ID_1,
+                Map.of("region", "local"),
+                Duration.ofSeconds(10)
+        );
         startup.verify(first).start();
+        startup.verify(control).register(
+                "scenario-group",
+                "client-2",
+                Duration.ofSeconds(10)
+        );
+        startup.verify(control).bind(
+                "scenario-group",
+                "client-2",
+                WORKER_ID_2,
+                Map.of("region", "local"),
+                Duration.ofSeconds(10)
+        );
         startup.verify(second).start();
-        startup.verify(resources).registerWorker(
+        startup.verify(indexes).updateIndexedProperties(
                 "scenario-group",
-                "worker-1",
-                "adapter-1",
-                Map.of("region", "local"),
-                Duration.ofSeconds(10)
-        );
-        startup.verify(resources).updateWorkerProperties(
-                "scenario-group",
-                "worker-1",
-                Map.of("region", "local"),
-                Duration.ofSeconds(10)
-        );
-        startup.verify(resources).updateIndexedProperties(
-                "scenario-group",
-                "worker-1",
+                WORKER_ID_1,
                 Map.of("index.worker.region", "local"),
                 Duration.ofSeconds(10)
         );
-        startup.verify(resources).registerWorker(
-                "scenario-group",
-                "worker-2",
-                "adapter-1",
-                Map.of("region", "local"),
-                Duration.ofSeconds(10)
-        );
 
         workers.close();
         workers.close();
 
-        InOrder closing = inOrder(first, second);
+        InOrder closing = inOrder(first, second, control);
         closing.verify(second).close();
         closing.verify(first).close();
+        closing.verify(control).close();
         verify(first, times(1)).start();
         verify(second, times(1)).start();
     }
 
     @Test
-    void requiredResourceFailureClosesEveryStartedTransport() {
-        ScenarioWorkerResourceClient resources = mock(
-                ScenarioWorkerResourceClient.class
-        );
+    void controlFailureClosesAlreadyStartedTransport() {
+        ScenarioWorkers.WorkerControl control = workerControl();
         doThrow(new ScenarioWorkerAssemblyException(
-                14003,
-                "resourceApi.registerWorker",
+                14004,
+                "workerIdentity.register",
                 "rejected"
-        )).when(resources).registerWorker(
-                anyString(),
-                anyString(),
-                anyString(),
-                any(),
-                any()
+        )).when(control).register(
+                "scenario-group",
+                "client-2",
+                Duration.ofSeconds(10)
         );
         WebSocketWorkerTransport first = connectedTransport();
-        WebSocketWorkerTransport second = connectedTransport();
         ScenarioWorkers workers = workers(
                 config(StringUtilityWorkerEvents.MD5_EVENT_CODE, 2),
-                resources,
-                (workerId, ignored, definitions) ->
-                        workerId.endsWith("1") ? first : second
+                control,
+                acceptedIndexes(),
+                (workerId, endpointUri, ignored, definitions) -> first
         );
 
         assertThatThrownBy(workers::start)
                 .isInstanceOf(ScenarioWorkerAssemblyException.class)
                 .extracting("errorCode")
-                .isEqualTo(14003);
+                .isEqualTo(14004);
 
-        InOrder closing = inOrder(first, second);
-        closing.verify(second).close();
-        closing.verify(first).close();
+        verify(first).close();
+        verify(control).close();
         assertThatThrownBy(workers::start)
                 .isInstanceOf(IllegalStateException.class);
     }
 
     @Test
     void indexFailureIsBestEffort() {
-        ScenarioWorkerResourceClient resources = mock(
-                ScenarioWorkerResourceClient.class
+        ScenarioWorkerIndexClient indexes = mock(
+                ScenarioWorkerIndexClient.class
         );
         doThrow(new IllegalStateException("index unavailable"))
-                .when(resources)
+                .when(indexes)
                 .updateIndexedProperties(
                         anyString(), anyString(), any(), any()
                 );
-        WebSocketWorkerTransport transport = connectedTransport();
         ScenarioWorkers workers = workers(
                 config(StringUtilityWorkerEvents.MD5_EVENT_CODE, 1),
-                resources,
-                (workerId, ignored, definitions) -> transport
+                workerControl(),
+                indexes,
+                (workerId, endpointUri, ignored, definitions) ->
+                        connectedTransport()
         );
 
         workers.start();
 
-        verify(resources).updateIndexedProperties(
+        verify(indexes).updateIndexedProperties(
                 anyString(), anyString(), any(), any()
         );
         workers.close();
     }
 
     @Test
-    void connectionTimeoutPreventsResourceRegistration() {
-        ScenarioWorkerResourceClient resources = mock(
-                ScenarioWorkerResourceClient.class
-        );
+    void connectionTimeoutPreventsIndexUpdate() {
+        ScenarioWorkers.WorkerControl control = workerControl();
+        ScenarioWorkerIndexClient indexes = acceptedIndexes();
         WebSocketWorkerTransport transport = mock(
                 WebSocketWorkerTransport.class
         );
-        ScenarioWorkerGroupConfig config = groupConfig(
+        ScenarioWorkerGroupConfig group = groupConfig(
                 StringUtilityWorkerEvents.MD5_EVENT_CODE,
                 1,
                 Duration.ofMillis(1)
         );
         ScenarioWorkers workers = new ScenarioWorkers(
-                List.of(config),
+                List.of(group),
                 definitions(),
-                resources,
-                (workerId, ignored, definitions) -> transport
+                control,
+                indexes,
+                (workerId, endpointUri, ignored, definitions) -> transport
         );
 
         assertThatThrownBy(workers::start)
@@ -192,16 +203,19 @@ class ScenarioWorkersTest {
                 .extracting("errorCode")
                 .isEqualTo(14005);
 
-        verify(resources, never()).registerWorker(
-                anyString(), anyString(), anyString(), any(), any()
+        verify(indexes, never()).updateIndexedProperties(
+                anyString(), anyString(), any(), any()
         );
         verify(transport).close();
     }
 
     @Test
-    void emptyConfigurationDoesNotTouchResourcesOrFactory() {
-        ScenarioWorkerResourceClient resources = mock(
-                ScenarioWorkerResourceClient.class
+    void emptyConfigurationDoesNotCreateWorkers() {
+        ScenarioWorkers.WorkerControl control = mock(
+                ScenarioWorkers.WorkerControl.class
+        );
+        ScenarioWorkerIndexClient indexes = mock(
+                ScenarioWorkerIndexClient.class
         );
         ScenarioWorkers.WorkerFactory factory = mock(
                 ScenarioWorkers.WorkerFactory.class
@@ -209,27 +223,68 @@ class ScenarioWorkersTest {
         ScenarioWorkers workers = new ScenarioWorkers(
                 List.of(),
                 definitions(),
-                resources,
+                control,
+                indexes,
                 factory
         );
 
         workers.start();
         workers.close();
 
-        verifyNoInteractions(resources, factory);
+        verifyNoInteractions(indexes, factory);
+        verify(control).close();
     }
 
     private static ScenarioWorkers workers(
             String json,
-            ScenarioWorkerResourceClient resources,
+            ScenarioWorkers.WorkerControl control,
+            ScenarioWorkerIndexClient indexes,
             ScenarioWorkers.WorkerFactory factory
     ) {
         return new ScenarioWorkers(
                 ScenarioWorkersJsonParser.parse(json),
                 definitions(),
-                resources,
+                control,
+                indexes,
                 factory
         );
+    }
+
+    private static ScenarioWorkers.WorkerControl workerControl() {
+        ScenarioWorkers.WorkerControl control = mock(
+                ScenarioWorkers.WorkerControl.class
+        );
+        when(control.register(
+                "scenario-group",
+                "client-1",
+                Duration.ofSeconds(10)
+        )).thenReturn(WORKER_ID_1);
+        when(control.register(
+                "scenario-group",
+                "client-2",
+                Duration.ofSeconds(10)
+        )).thenReturn(WORKER_ID_2);
+        when(control.bind(
+                anyString(),
+                anyString(),
+                anyString(),
+                any(),
+                any()
+        )).thenReturn(ENDPOINT_URI);
+        return control;
+    }
+
+    private static ScenarioWorkerIndexClient acceptedIndexes() {
+        ScenarioWorkerIndexClient indexes = mock(
+                ScenarioWorkerIndexClient.class
+        );
+        when(indexes.updateIndexedProperties(
+                anyString(), anyString(), any(), any()
+        )).thenReturn(Map.of(
+                "index.worker.region",
+                new ScenarioWorkerIndexResult("ok", null)
+        ));
+        return indexes;
     }
 
     private static Map<String, WorkerEventDefinition<?>> definitions() {
@@ -253,7 +308,7 @@ class ScenarioWorkersTest {
                 workerJson.append(',');
             }
             workerJson.append("""
-                    {"workerId":"worker-%d",
+                    {"clientWorkerKey":"client-%d",
                      "workerProperties":{"region":"local"},
                      "indexedPropertyUpdates":{"index.worker.region":"local"}}
                     """.formatted(index));
@@ -262,8 +317,6 @@ class ScenarioWorkersTest {
                 {
                   "scenario-group": {
                     "eventCodes":["%s"],
-                    "endpointManagerId":"adapter-1",
-                    "websocketUri":"ws://127.0.0.1:18083/connect",
                     "workers":[%s]
                   }
                 }
@@ -278,8 +331,6 @@ class ScenarioWorkersTest {
         return new ScenarioWorkerGroupConfig(
                 "scenario-group",
                 List.of(eventCode),
-                "adapter-1",
-                URI.create("ws://127.0.0.1:18083/connect"),
                 ScenarioWorkersJsonParser.parse(
                         config(eventCode, count)
                 ).get(0).workers(),

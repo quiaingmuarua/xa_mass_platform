@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping as MappingABC, Sequence as SequenceABC
+from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
 from ..kernel.worker_score import (
@@ -39,8 +40,12 @@ def _worker_groups_key(prefix: str) -> str:
     return f"wr:{prefix}:groups"
 
 
-def _worker_descriptors_key(prefix: str, worker_group_id: WorkerGroupId) -> str:
-    return f"wr:{prefix}:workers:{worker_group_id}"
+def _worker_metadata_key(prefix: str, worker_group_id: WorkerGroupId) -> str:
+    return f"wr:{prefix}:worker-metadata:{worker_group_id}"
+
+
+def _worker_properties_key(prefix: str, worker_group_id: WorkerGroupId) -> str:
+    return f"wr:{prefix}:worker-properties:{worker_group_id}"
 
 
 def _worker_id_owners_key(prefix: str) -> str:
@@ -63,16 +68,36 @@ def _valid_index_field(value: object) -> bool:
     return isinstance(value, str) and value.startswith("index.") and len(value) > 6
 
 
-def _encode_worker_descriptor(descriptor: WorkerDescriptor) -> str | None:
+@dataclass(frozen=True)
+class _WorkerMetadata:
+    worker_id: WorkerId
+    worker_group_id: WorkerGroupId
+    endpoint_manager_id: str
+    platform_properties: Mapping[str, AttributeValue]
+
+
+def _encode_worker_metadata(metadata: _WorkerMetadata) -> str | None:
     try:
         return json.dumps(
             {
-                "workerId": descriptor.worker_id,
-                "workerGroupId": descriptor.worker_group_id,
-                "endpointManagerId": descriptor.endpoint_manager_id,
-                "workerProperties": dict(descriptor.worker_properties),
-                "platformProperties": dict(descriptor.platform_properties),
+                "workerId": metadata.worker_id,
+                "workerGroupId": metadata.worker_group_id,
+                "endpointManagerId": metadata.endpoint_manager_id,
+                "platformProperties": dict(metadata.platform_properties),
             },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    except (TypeError, ValueError):
+        return None
+
+
+def _encode_worker_properties(
+    worker_properties: Mapping[str, AttributeValue],
+) -> str | None:
+    try:
+        return json.dumps(
+            dict(worker_properties),
             sort_keys=True,
             separators=(",", ":"),
         )
@@ -181,21 +206,27 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
         if not self._valid_id(worker_group_id):
             return {worker_id: None for worker_id in worker_ids}
 
-        raw_rows = self.redis.hmget(
-            self._workers_key(worker_group_id),
+        metadata_rows = self.redis.hmget(
+            self._metadata_key(worker_group_id),
+            list(worker_ids),
+        )
+        property_rows = self.redis.hmget(
+            self._properties_key(worker_group_id),
             list(worker_ids),
         )
         result: dict[WorkerId, WorkerDescriptor | None] = {}
-        for worker_id, raw_descriptor in zip(worker_ids, raw_rows, strict=True):
-            descriptor = self._decode_worker_descriptor(raw_descriptor)
-            if (
-                descriptor is None
-                or descriptor.worker_id != worker_id
-                or descriptor.worker_group_id != worker_group_id
-            ):
-                result[worker_id] = None
-            else:
-                result[worker_id] = descriptor
+        for worker_id, raw_metadata, raw_properties in zip(
+            worker_ids,
+            metadata_rows,
+            property_rows,
+            strict=True,
+        ):
+            result[worker_id] = self._compose_worker_descriptor(
+                worker_group_id,
+                worker_id,
+                raw_metadata,
+                raw_properties,
+            )
         return result
 
     def sample_worker_descriptors(
@@ -218,7 +249,7 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
             )
 
         observed = self.redis.hrandfield(
-            self._workers_key(worker_group_id),
+            self._metadata_key(worker_group_id),
             count=sample_limit,
             withvalues=True,
         )
@@ -226,20 +257,32 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
         if len(raw_values) % 2 != 0:
             raise RuntimeError("Redis HRANDFIELD returned an invalid response")
 
-        result: dict[WorkerId, WorkerDescriptor | None] = {}
+        sampled_worker_ids: list[WorkerId] = []
+        metadata_by_worker_id: dict[WorkerId, Any] = {}
         for index in range(0, len(raw_values), 2):
             worker_id = self._decode_optional_text(raw_values[index])
             if worker_id is None:
                 raise RuntimeError("Redis HRANDFIELD returned an invalid field")
-            descriptor = self._decode_worker_descriptor(raw_values[index + 1])
-            if (
-                descriptor is None
-                or descriptor.worker_id != worker_id
-                or descriptor.worker_group_id != worker_group_id
-            ):
-                result[worker_id] = None
-            else:
-                result[worker_id] = descriptor
+            sampled_worker_ids.append(worker_id)
+            metadata_by_worker_id[worker_id] = raw_values[index + 1]
+        if not sampled_worker_ids:
+            return {}
+        property_rows = self.redis.hmget(
+            self._properties_key(worker_group_id),
+            sampled_worker_ids,
+        )
+        result: dict[WorkerId, WorkerDescriptor | None] = {}
+        for worker_id, raw_properties in zip(
+            sampled_worker_ids,
+            property_rows,
+            strict=True,
+        ):
+            result[worker_id] = self._compose_worker_descriptor(
+                worker_group_id,
+                worker_id,
+                metadata_by_worker_id[worker_id],
+                raw_properties,
+            )
         return result
 
     def patch_worker_platform_properties(
@@ -266,40 +309,39 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
                 "invalid workerId",
             )
 
-        workers_key = self._workers_key(worker_group_id)
+        metadata_key = self._metadata_key(worker_group_id)
         for _ in range(_MAX_DESCRIPTOR_CAS_ATTEMPTS):
-            observed = self.redis.hget(workers_key, worker_id)
-            descriptor = self._decode_worker_descriptor(observed)
-            if descriptor is None:
+            observed = self.redis.hget(metadata_key, worker_id)
+            metadata = self._decode_worker_metadata(observed)
+            if metadata is None:
                 return WorkerRuntimeResult(
                     WorkerRuntimeStatus.NOT_FOUND,
-                    "worker descriptor not found",
+                    "worker metadata not found",
                 )
-            if descriptor.worker_id != worker_id:
+            if metadata.worker_id != worker_id:
                 return WorkerRuntimeResult(
                     WorkerRuntimeStatus.CONFLICT,
                     "worker id mismatch",
                 )
-            if descriptor.worker_group_id != worker_group_id:
+            if metadata.worker_group_id != worker_group_id:
                 return WorkerRuntimeResult(
                     WorkerRuntimeStatus.CONFLICT,
                     "worker group mismatch",
                 )
 
-            next_platform_properties = dict(descriptor.platform_properties)
+            next_platform_properties = dict(metadata.platform_properties)
             for property_name, value in properties.items():
                 if value is None:
                     next_platform_properties.pop(property_name, None)
                 else:
                     next_platform_properties[property_name] = value
-            next_descriptor = WorkerDescriptor(
-                worker_id=descriptor.worker_id,
-                worker_group_id=descriptor.worker_group_id,
-                endpoint_manager_id=descriptor.endpoint_manager_id,
-                worker_properties=descriptor.worker_properties,
+            next_metadata = _WorkerMetadata(
+                worker_id=metadata.worker_id,
+                worker_group_id=metadata.worker_group_id,
+                endpoint_manager_id=metadata.endpoint_manager_id,
                 platform_properties=next_platform_properties,
             )
-            encoded = self._encode_worker_descriptor(next_descriptor)
+            encoded = self._encode_worker_metadata(next_metadata)
             if encoded is None:
                 return WorkerRuntimeResult(
                     WorkerRuntimeStatus.INVALID,
@@ -308,7 +350,7 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
             if self.redis.eval(
                 _COMPARE_AND_SET_HASH_FIELD_SCRIPT,
                 1,
-                workers_key,
+                metadata_key,
                 worker_id,
                 observed,
                 encoded,
@@ -316,14 +358,17 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
                 return WorkerRuntimeResult(WorkerRuntimeStatus.OK)
         return WorkerRuntimeResult(
             WorkerRuntimeStatus.STALE,
-            "worker descriptor changed during platform property patch",
+            "worker metadata changed during platform property patch",
         )
 
     def _groups_key(self) -> str:
         return _worker_groups_key(self.prefix)
 
-    def _workers_key(self, worker_group_id: WorkerGroupId) -> str:
-        return _worker_descriptors_key(self.prefix, worker_group_id)
+    def _metadata_key(self, worker_group_id: WorkerGroupId) -> str:
+        return _worker_metadata_key(self.prefix, worker_group_id)
+
+    def _properties_key(self, worker_group_id: WorkerGroupId) -> str:
+        return _worker_properties_key(self.prefix, worker_group_id)
 
     @staticmethod
     def _valid_id(value: str) -> bool:
@@ -343,11 +388,11 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
         )
 
     @classmethod
-    def _encode_worker_descriptor(
+    def _encode_worker_metadata(
         cls,
-        descriptor: WorkerDescriptor,
+        metadata: _WorkerMetadata,
     ) -> str | None:
-        return _encode_worker_descriptor(descriptor)
+        return _encode_worker_metadata(metadata)
 
     @staticmethod
     def _encode_json(payload: Mapping[str, Any]) -> str | None:
@@ -383,10 +428,10 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
             return None
 
     @classmethod
-    def _decode_worker_descriptor(
+    def _decode_worker_metadata(
         cls,
         raw: Any,
-    ) -> WorkerDescriptor | None:
+    ) -> _WorkerMetadata | None:
         payload = cls._decode_json_object(raw)
         if payload is None:
             return None
@@ -394,19 +439,15 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
             "workerId",
             "workerGroupId",
             "endpointManagerId",
-            "workerProperties",
             "platformProperties",
         }:
             return None
         try:
-            return WorkerDescriptor(
+            return _WorkerMetadata(
                 worker_id=cls._require_string(payload["workerId"]),
                 worker_group_id=cls._require_string(payload["workerGroupId"]),
                 endpoint_manager_id=cls._require_string(
                     payload["endpointManagerId"]
-                ),
-                worker_properties=cls._require_mapping(
-                    payload["workerProperties"]
                 ),
                 platform_properties=cls._require_mapping(
                     payload["platformProperties"]
@@ -414,6 +455,39 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
             )
         except (KeyError, TypeError, ValueError):
             return None
+
+    @classmethod
+    def _decode_worker_properties(
+        cls,
+        raw: Any,
+    ) -> Mapping[str, AttributeValue] | None:
+        payload = cls._decode_json_object(raw)
+        return dict(payload) if payload is not None else None
+
+    @classmethod
+    def _compose_worker_descriptor(
+        cls,
+        worker_group_id: WorkerGroupId,
+        worker_id: WorkerId,
+        raw_metadata: Any,
+        raw_properties: Any,
+    ) -> WorkerDescriptor | None:
+        metadata = cls._decode_worker_metadata(raw_metadata)
+        worker_properties = cls._decode_worker_properties(raw_properties)
+        if (
+            metadata is None
+            or worker_properties is None
+            or metadata.worker_id != worker_id
+            or metadata.worker_group_id != worker_group_id
+        ):
+            return None
+        return WorkerDescriptor(
+            worker_id=metadata.worker_id,
+            worker_group_id=metadata.worker_group_id,
+            endpoint_manager_id=metadata.endpoint_manager_id,
+            worker_properties=worker_properties,
+            platform_properties=metadata.platform_properties,
+        )
 
     @staticmethod
     def _decode_json_object(raw: Any) -> Mapping[str, Any] | None:
@@ -459,7 +533,7 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
 
 
 class RedisWorkerRuntime(WorkerRuntime):
-    """Redis Worker registration and worker-property snapshot owner."""
+    """Redis Worker runtime coordinates and property-snapshot owner."""
 
     def __init__(
         self,
@@ -483,7 +557,7 @@ class RedisWorkerRuntime(WorkerRuntime):
         self.prefix = prefix
         self.initial_lane_rank = initial_lane_rank
 
-    def register_worker(
+    def upsert_worker(
         self,
         *,
         declaration: WorkerDeclaration,
@@ -499,6 +573,19 @@ class RedisWorkerRuntime(WorkerRuntime):
             return WorkerRuntimeResult(
                 WorkerRuntimeStatus.INVALID,
                 "invalid endpointManagerId",
+            )
+        if not isinstance(declaration.worker_properties, MappingABC):
+            return WorkerRuntimeResult(
+                WorkerRuntimeStatus.INVALID,
+                "invalid workerProperties",
+            )
+        encoded_properties = _encode_worker_properties(
+            declaration.worker_properties
+        )
+        if encoded_properties is None:
+            return WorkerRuntimeResult(
+                WorkerRuntimeStatus.INVALID,
+                "invalid workerProperties json",
             )
         if (
             self.redis.hget(
@@ -529,35 +616,38 @@ class RedisWorkerRuntime(WorkerRuntime):
                 "workerId is already owned by another workerGroupId",
             )
 
-        descriptor = WorkerDescriptor(
+        metadata = _WorkerMetadata(
             worker_id=declaration.worker_id,
             worker_group_id=declaration.worker_group_id,
             endpoint_manager_id=declaration.endpoint_manager_id,
-            worker_properties=dict(declaration.worker_properties),
             platform_properties={},
         )
-        encoded = _encode_worker_descriptor(descriptor)
-        if encoded is None:
+        encoded_metadata = _encode_worker_metadata(metadata)
+        if encoded_metadata is None:
             return WorkerRuntimeResult(
                 WorkerRuntimeStatus.INVALID,
-                "invalid descriptor json",
+                "invalid worker metadata json",
             )
 
-        workers_key = _worker_descriptors_key(
+        metadata_key = _worker_metadata_key(
             self.prefix,
             declaration.worker_group_id,
         )
-        descriptor_created = bool(
-            self.redis.hsetnx(workers_key, declaration.worker_id, encoded)
+        metadata_created = bool(
+            self.redis.hsetnx(
+                metadata_key,
+                declaration.worker_id,
+                encoded_metadata,
+            )
         )
-        if not descriptor_created:
-            current = RedisWorkerResourceCatalog._decode_worker_descriptor(
-                self.redis.hget(workers_key, declaration.worker_id)
+        if not metadata_created:
+            current = RedisWorkerResourceCatalog._decode_worker_metadata(
+                self.redis.hget(metadata_key, declaration.worker_id)
             )
             if current is None:
                 return WorkerRuntimeResult(
                     WorkerRuntimeStatus.INVALID,
-                    "stored worker descriptor is invalid",
+                    "stored worker metadata is invalid",
                 )
             if (
                 current.worker_id != declaration.worker_id
@@ -569,6 +659,21 @@ class RedisWorkerRuntime(WorkerRuntime):
                     WorkerRuntimeStatus.CONFLICT,
                     "worker identity declaration is immutable",
                 )
+
+        properties_key = _worker_properties_key(
+            self.prefix,
+            declaration.worker_group_id,
+        )
+        observed_properties = RedisWorkerResourceCatalog._decode_optional_text(
+            self.redis.hget(properties_key, declaration.worker_id)
+        )
+        properties_changed = observed_properties != encoded_properties
+        if properties_changed:
+            self.redis.hset(
+                properties_key,
+                declaration.worker_id,
+                encoded_properties,
+            )
 
         score_state = self.score_band.get_score_states(
             home_bucket_id=declaration.worker_group_id,
@@ -604,101 +709,14 @@ class RedisWorkerRuntime(WorkerRuntime):
                         "worker score initialization could not be observed",
                     )
 
-        if owner_created or descriptor_created or score_created:
+        if (
+            owner_created
+            or metadata_created
+            or properties_changed
+            or score_created
+        ):
             return WorkerRuntimeResult(WorkerRuntimeStatus.OK)
         return WorkerRuntimeResult(WorkerRuntimeStatus.NOOP)
-
-    def update_worker_properties(
-        self,
-        *,
-        worker_group_id: WorkerGroupId,
-        worker_id: WorkerId,
-        worker_properties: Mapping[str, AttributeValue],
-    ) -> WorkerRuntimeResult:
-        if not _valid_id(worker_group_id):
-            return WorkerRuntimeResult(
-                WorkerRuntimeStatus.INVALID,
-                "invalid workerGroupId",
-            )
-        if not _valid_id(worker_id):
-            return WorkerRuntimeResult(
-                WorkerRuntimeStatus.INVALID,
-                "invalid workerId",
-            )
-        if not isinstance(worker_properties, MappingABC):
-            return WorkerRuntimeResult(
-                WorkerRuntimeStatus.INVALID,
-                "invalid workerProperties",
-            )
-
-        worker_group_owner = RedisWorkerResourceCatalog._decode_optional_text(
-            self.redis.hget(_worker_id_owners_key(self.prefix), worker_id)
-        )
-        if worker_group_owner is None:
-            return WorkerRuntimeResult(
-                WorkerRuntimeStatus.NOT_FOUND,
-                "worker not found",
-            )
-        if worker_group_owner != worker_group_id:
-            return WorkerRuntimeResult(
-                WorkerRuntimeStatus.CONFLICT,
-                "workerId is owned by another workerGroupId",
-            )
-
-        workers_key = _worker_descriptors_key(self.prefix, worker_group_id)
-        for _ in range(_MAX_DESCRIPTOR_CAS_ATTEMPTS):
-            observed = self.redis.hget(workers_key, worker_id)
-            if observed is None:
-                return WorkerRuntimeResult(
-                    WorkerRuntimeStatus.NOT_FOUND,
-                    "worker descriptor not found",
-                )
-            current = RedisWorkerResourceCatalog._decode_worker_descriptor(
-                observed
-            )
-            if current is None:
-                return WorkerRuntimeResult(
-                    WorkerRuntimeStatus.INVALID,
-                    "stored worker descriptor is invalid",
-                )
-            if (
-                current.worker_id != worker_id
-                or current.worker_group_id != worker_group_id
-            ):
-                return WorkerRuntimeResult(
-                    WorkerRuntimeStatus.CONFLICT,
-                    "stored worker identity does not match",
-                )
-            if current.worker_properties == worker_properties:
-                return WorkerRuntimeResult(WorkerRuntimeStatus.NOOP)
-
-            updated = WorkerDescriptor(
-                worker_id=current.worker_id,
-                worker_group_id=current.worker_group_id,
-                endpoint_manager_id=current.endpoint_manager_id,
-                worker_properties=dict(worker_properties),
-                platform_properties=current.platform_properties,
-            )
-            encoded = _encode_worker_descriptor(updated)
-            if encoded is None:
-                return WorkerRuntimeResult(
-                    WorkerRuntimeStatus.INVALID,
-                    "invalid descriptor json",
-                )
-            if self.redis.eval(
-                _COMPARE_AND_SET_HASH_FIELD_SCRIPT,
-                1,
-                workers_key,
-                worker_id,
-                observed,
-                encoded,
-            ) == 1:
-                return WorkerRuntimeResult(WorkerRuntimeStatus.OK)
-
-        return WorkerRuntimeResult(
-            WorkerRuntimeStatus.STALE,
-            "worker descriptor changed during snapshot refresh",
-        )
 
 
 class RedisHashWorkerPropertyIndexProvider:

@@ -1,6 +1,5 @@
 package com.xa.mass.kernel.worker.redis;
 
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
 import com.xa.mass.workerdelivery.json.Jsons;
 import io.lettuce.core.ScriptOutputType;
@@ -38,8 +37,12 @@ final class WorkerRedisSupport {
         return "wr:" + prefix + ":groups";
     }
 
-    static String workersKey(String prefix, String workerGroupId) {
-        return "wr:" + prefix + ":workers:" + workerGroupId;
+    static String workerMetadataKey(String prefix, String workerGroupId) {
+        return "wr:" + prefix + ":worker-metadata:" + workerGroupId;
+    }
+
+    static String workerPropertiesKey(String prefix, String workerGroupId) {
+        return "wr:" + prefix + ":worker-properties:" + workerGroupId;
     }
 
     static String workerIdOwnersKey(String prefix) {
@@ -106,21 +109,28 @@ final class WorkerRedisSupport {
         }
     }
 
-    static String encodeWorker(WorkerDescriptor descriptor) {
+    static String encodeWorkerMetadata(WorkerMetadata metadata) {
         try {
             Map<String, Object> payload = new TreeMap<>();
-            payload.put("workerId", descriptor.workerId());
-            payload.put("workerGroupId", descriptor.workerGroupId());
+            payload.put("workerId", metadata.workerId());
+            payload.put("workerGroupId", metadata.workerGroupId());
             payload.put(
                     "endpointManagerId",
-                    descriptor.endpointManagerId()
+                    metadata.endpointManagerId()
             );
-            payload.put("workerProperties", descriptor.workerProperties());
             payload.put(
                     "platformProperties",
-                    descriptor.platformProperties()
+                    metadata.platformProperties()
             );
             return encodeCanonical(payload);
+        } catch (IllegalArgumentException error) {
+            return null;
+        }
+    }
+
+    static String encodeWorkerProperties(Map<String, Object> properties) {
+        try {
+            return encodeCanonical(properties);
         } catch (IllegalArgumentException error) {
             return null;
         }
@@ -150,7 +160,7 @@ final class WorkerRedisSupport {
         }
     }
 
-    static WorkerDescriptor decodeWorker(String raw) {
+    static WorkerMetadata decodeWorkerMetadata(String raw) {
         if (raw == null) {
             return null;
         }
@@ -162,19 +172,42 @@ final class WorkerRedisSupport {
                             "workerId",
                             "workerGroupId",
                             "endpointManagerId",
-                            "workerProperties",
                             "platformProperties"
                     )
             );
-            return new WorkerDescriptor(
+            return new WorkerMetadata(
                     requireString(payload.get("workerId")),
                     requireString(payload.get("workerGroupId")),
                     requireString(payload.get("endpointManagerId")),
-                    objectMap(payload.get("workerProperties")),
                     objectMap(payload.get("platformProperties"))
             );
         } catch (IllegalArgumentException | ClassCastException error) {
             return null;
+        }
+    }
+
+    static Map<String, Object> decodeWorkerProperties(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        try {
+            return objectMap(Jsons.parseObject(raw));
+        } catch (IllegalArgumentException | ClassCastException error) {
+            return null;
+        }
+    }
+
+    record WorkerMetadata(
+            String workerId,
+            String workerGroupId,
+            String endpointManagerId,
+            Map<String, Object> platformProperties
+    ) {
+        WorkerMetadata {
+            requireString(workerId);
+            requireString(workerGroupId);
+            requireString(endpointManagerId);
+            platformProperties = Map.copyOf(platformProperties);
         }
     }
 

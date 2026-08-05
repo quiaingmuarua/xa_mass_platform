@@ -115,7 +115,7 @@ class PollingWorkerTransportTest {
             WorkerPointClient client,
             WorkerCommandExecutor executor
     ) {
-        return new PollingWorkerTransport(client, executor);
+        return new PollingWorkerTransport(client, COMMAND_ID, executor);
     }
 
     private static WorkerResult result() {
@@ -141,15 +141,17 @@ class PollingWorkerTransportTest {
         private boolean closed;
 
         @Override
-        public Optional<String> pollCommand() {
+        public Optional<String> pollCommand(String workerId) {
+            assertEquals(COMMAND_ID, workerId);
             pollCount++;
             Optional<String> command = commands.poll();
             return command == null ? Optional.empty() : command;
         }
 
         @Override
-        public void submitResult(String encodedResult)
+        public void submitResult(String workerId, String encodedResult)
                 throws IOException {
+            assertEquals(COMMAND_ID, workerId);
             if (submitFailures > 0) {
                 submitFailures--;
                 throw new IOException("scripted result failure");

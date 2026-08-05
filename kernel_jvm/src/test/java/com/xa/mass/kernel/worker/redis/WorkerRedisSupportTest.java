@@ -64,6 +64,6 @@ class WorkerRedisSupportTest {
                 + "\"platform" + "Attributes\":{}"
                 + "}";
 
-        assertNull(WorkerRedisSupport.decodeWorker(legacyJson));
+        assertNull(WorkerRedisSupport.decodeWorkerMetadata(legacyJson));
     }
 }

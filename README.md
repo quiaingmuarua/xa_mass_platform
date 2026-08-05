@@ -14,14 +14,17 @@ The repository contains seven active areas:
 - [`server_jvm/`](server_jvm/): Java/Spring Boot Runtime API Server. It exposes
   the stable `/api/v1` surface. Task control operations use Python HTTP;
   Worker resource/Properties/index operations, Task data, and Worker Delivery use Java Redis
-  providers without redefining Kernel runtime contracts. Its optional Worker
-  Assembly initializes advisory WorkerGroup catalog metadata, starts configured
-  Adapters, and then composes Scenario Workers through public Resource HTTP and
-  Worker transport paths.
+  providers without redefining Kernel runtime contracts. It separately owns
+  long-lived Worker identity registration, persistent Endpoint Binding, and
+  Adapter route verification. Its
+  optional Worker Assembly initializes advisory WorkerGroup catalog metadata,
+  starts configured Adapters, and then composes Scenario Workers through the
+  public Identity and Worker transport paths.
 - [`scenario_workers_jvm/`](scenario_workers_jvm/): Java 21 finite Scenario
   Worker capability assembly. It owns the checked-in phone-number and
   string-utility event definitions, strict JSON deployment manifest,
-  public-HTTP Worker registration, and aggregate WebSocket Worker lifecycle
+  public-HTTP Register/Bind control, connection Bind frame construction, and aggregate
+  WebSocket Worker lifecycle
   without owning WorkerGroup catalog initialization, Server profiles, or
   Adapters.
 - [`worker_delivery_contract_jvm/`](worker_delivery_contract_jvm/): shared

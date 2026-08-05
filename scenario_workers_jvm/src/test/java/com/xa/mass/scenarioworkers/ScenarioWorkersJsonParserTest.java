@@ -16,10 +16,8 @@ class ScenarioWorkersJsonParserTest {
                         {
                           "phone-group": {
                             "eventCodes":["phone.first","phone.second"],
-                            "endpointManagerId":"adapter-1",
-                            "websocketUri":"ws://127.0.0.1:18083/connect",
                             "workers":[{
-                              "workerId":"worker-1",
+                              "clientWorkerKey":"worker-1",
                               "workerProperties":{"region":"local"},
                               "indexedPropertyUpdates":{
                                 "index.worker.region":"local"
@@ -28,12 +26,10 @@ class ScenarioWorkersJsonParserTest {
                           },
                           "string-group": {
                             "eventCodes":["string.first"],
-                            "endpointManagerId":"adapter-2",
-                            "websocketUri":"wss://example.com/connect",
                             "requestTimeoutMillis":2000,
                             "reconnectIntervalMillis":300,
                             "connectTimeoutMillis":4000,
-                            "workers":[{"workerId":"worker-2"}]
+                            "workers":[{"clientWorkerKey":"worker-2"}]
                           }
                         }
                         """);
@@ -76,7 +72,6 @@ class ScenarioWorkersJsonParserTest {
                     "attributes":{},
                     "eventCodes":["phone.first"],
                     "endpointManagerId":"adapter",
-                    "websocketUri":"ws://127.0.0.1:18083/connect",
                     "workers":[{"workerId":"worker-1"}]
                   }
                 }
@@ -91,9 +86,7 @@ class ScenarioWorkersJsonParserTest {
                 {
                   "group": {
                     "eventCodes":["event.one","event.one"],
-                    "endpointManagerId":"adapter",
-                    "websocketUri":"ws://127.0.0.1:18083/connect",
-                    "workers":[{"workerId":"worker-1"}]
+                    "workers":[{"clientWorkerKey":"worker-1"}]
                   }
                 }
                 """))
@@ -102,50 +95,41 @@ class ScenarioWorkersJsonParserTest {
     }
 
     @Test
-    void rejectsDuplicateWorkerIdsAcrossGroups() {
-        assertThatThrownBy(() -> ScenarioWorkersJsonParser.parse("""
+    void allowsTheSameClientWorkerKeyInDifferentGroups() {
+        assertThat(ScenarioWorkersJsonParser.parse("""
                 {
                   "group-1": {
                     "eventCodes":["event.one"],
-                    "endpointManagerId":"adapter",
-                    "websocketUri":"ws://127.0.0.1:18083/connect",
-                    "workers":[{"workerId":"worker-1"}]
+                    "workers":[{"clientWorkerKey":"worker-1"}]
                   },
                   "group-2": {
                     "eventCodes":["event.two"],
-                    "endpointManagerId":"adapter",
-                    "websocketUri":"ws://127.0.0.1:18083/connect",
-                    "workers":[{"workerId":"worker-1"}]
+                    "workers":[{"clientWorkerKey":"worker-1"}]
                   }
                 }
-                """))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("workerId must be unique");
+                """)).hasSize(2);
     }
 
     @Test
-    void rejectsInvalidUriAndIndexField() {
+    void rejectsLegacyUriAndInvalidIndexField() {
         assertThatThrownBy(() -> ScenarioWorkersJsonParser.parse("""
                 {
                   "group": {
                     "eventCodes":["event.one"],
-                    "endpointManagerId":"adapter",
-                    "websocketUri":"http://127.0.0.1/connect",
-                    "workers":[{"workerId":"worker-1"}]
+                    "websocketUri":"ws://127.0.0.1/connect",
+                    "workers":[{"clientWorkerKey":"worker-1"}]
                   }
                 }
                 """))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("absolute ws/wss URI");
+                .hasMessageContaining("unknown field websocketUri");
 
         assertThatThrownBy(() -> ScenarioWorkersJsonParser.parse("""
                 {
                   "group": {
                     "eventCodes":["event.one"],
-                    "endpointManagerId":"adapter",
-                    "websocketUri":"ws://127.0.0.1/connect",
                     "workers":[{
-                      "workerId":"worker-1",
+                      "clientWorkerKey":"worker-1",
                       "indexedPropertyUpdates":{"worker.region":"local"}
                     }]
                   }

@@ -16,6 +16,7 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.CompletionStage;
 
 public final class HttpWorkerDeliveryGatewayClient
         implements WorkerDeliveryGatewayClient {
@@ -116,6 +117,56 @@ public final class HttpWorkerDeliveryGatewayClient
                 response.body(),
                 encodedWorkerResults.size()
         );
+    }
+
+    @Override
+    public CompletionStage<Void> verifyWorkerRoute(
+            String endpointManagerId,
+            String workerId
+    ) {
+        String operation = "gateway.verifyWorkerRoute";
+        if (workerId == null || workerId.isBlank()) {
+            throw new IllegalArgumentException(
+                    "workerId must be non-blank"
+            );
+        }
+        HttpRequest bindingRequest = request(
+                endpointManagerId,
+                "workers/"
+                        + encodePathSegment(workerId)
+                        + ":verify-binding"
+        ).POST(HttpRequest.BodyPublishers.noBody()).build();
+        return http.sendAsync(
+                bindingRequest,
+                HttpResponse.BodyHandlers.discarding()
+        ).handle((response, failure) -> {
+            if (failure != null) {
+                throw new WorkerDeliveryAdapterException(
+                        WorkerDeliveryAdapterErrorCode
+                                .GATEWAY_UNAVAILABLE,
+                        operation,
+                        "Worker route verification failed",
+                        failure
+                );
+            }
+            if (response.statusCode() != 204) {
+                throw response.statusCode() >= 500
+                        ? statusFailure(
+                                operation,
+                                "Worker route verification",
+                                response.statusCode()
+                        )
+                        : new WorkerDeliveryAdapterException(
+                                WorkerDeliveryAdapterErrorCode
+                                        .GATEWAY_PROTOCOL_ERROR,
+                                operation,
+                                "Worker route verification failed with HTTP "
+                                        + response.statusCode(),
+                                null
+                        );
+            }
+            return null;
+        });
     }
 
     private HttpRequest.Builder request(

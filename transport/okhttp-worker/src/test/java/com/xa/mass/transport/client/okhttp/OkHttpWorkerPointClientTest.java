@@ -31,8 +31,6 @@ class OkHttpWorkerPointClientTest {
         server.start();
         client = new OkHttpWorkerPointClient(
                 URI.create(server.url("/").toString()),
-                "system polling",
-                "worker 1",
                 Duration.ofSeconds(2)
         );
     }
@@ -51,10 +49,10 @@ class OkHttpWorkerPointClientTest {
         server.enqueue(response(204, null));
         server.enqueue(response(200, "encoded-command"));
 
-        assertFalse(client.pollCommand().isPresent());
+        assertFalse(client.pollCommand("worker 1").isPresent());
         assertEquals(
                 Optional.of("encoded-command"),
-                client.pollCommand()
+                client.pollCommand("worker 1")
         );
 
         RecordedRequest first = server.takeRequest(
@@ -65,7 +63,7 @@ class OkHttpWorkerPointClientTest {
         assertEquals("POST", first.getMethod());
         assertEquals(
                 "/api/v1/worker-delivery/endpoint-managers/"
-                        + "system%20polling/workers/worker%201/commands:poll",
+                        + "system-polling/workers/worker%201/commands:poll",
                 first.getTarget()
         );
     }
@@ -75,7 +73,7 @@ class OkHttpWorkerPointClientTest {
             throws Exception {
         server.enqueue(response(202, ""));
 
-        client.submitResult("encoded-result");
+        client.submitResult("worker 1", "encoded-result");
 
         RecordedRequest request = server.takeRequest(
                 1,
@@ -84,7 +82,7 @@ class OkHttpWorkerPointClientTest {
         assertNotNull(request);
         assertEquals(
                 "/api/v1/worker-delivery/endpoint-managers/"
-                        + "system%20polling/workers/worker%201/results",
+                        + "system-polling/workers/worker%201/results",
                 request.getTarget()
         );
         assertEquals("encoded-result", request.getBody().utf8());
@@ -92,7 +90,7 @@ class OkHttpWorkerPointClientTest {
         server.enqueue(response(503, ""));
         WorkerException failure = assertThrows(
                 WorkerException.class,
-                () -> client.submitResult("encoded-result")
+                () -> client.submitResult("worker 1", "encoded-result")
         );
         assertEquals(
                 WorkerErrorCode.RESULT_SUBMIT_FAILED,
@@ -106,7 +104,7 @@ class OkHttpWorkerPointClientTest {
 
         WorkerException failure = assertThrows(
                 WorkerException.class,
-                client::pollCommand
+                () -> client.pollCommand("worker 1")
         );
 
         assertEquals(
@@ -121,7 +119,10 @@ class OkHttpWorkerPointClientTest {
         client.close();
         client.close();
 
-        assertThrows(IllegalStateException.class, client::pollCommand);
+        assertThrows(
+                IllegalStateException.class,
+                () -> client.pollCommand("worker 1")
+        );
     }
 
     private static MockResponse response(int code, String body) {

@@ -42,7 +42,7 @@ class ConcreteWorkerClientArchitectureTest {
                 "class SocketWorkerTransport",
                 "WorkerCommand",
                 "WorkerResult",
-                "WorkerConnectionBind",
+                "WorkerConnectionHello",
                 "WorkerCommandExecutor",
                 "WorkerEventDefinition",
                 "android.",

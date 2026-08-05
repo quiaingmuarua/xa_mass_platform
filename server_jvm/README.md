@@ -5,10 +5,15 @@ opt-in Scenario Worker composition.
 
 `server_jvm` owns the versioned HTTP contract, request validation, error
 mapping, timeouts, and process health. Task create/approve/close bind to Python
-HTTP owner providers. WorkerGroup upsert, Worker registration/property update,
-TaskItem append, last-success
+HTTP owner providers. WorkerGroup upsert, Kernel Worker upsert, TaskItem append,
+last-success
 reads, and Worker Delivery bind to Java Redis owner providers. Controllers and
 services depend only on contracts from `kernel_jvm`.
+
+Worker identity is a separate Server-owned control-plane boundary. It maps a
+stable `workerGroupId + clientWorkerKey` to a long-lived canonical UUID in the
+`wi:{prefix}:...` namespace. It is not a Kernel owner contract and does not
+create a scheduler-visible Worker by itself.
 
 Runtime API failures use the module-local HTTP exception:
 
@@ -36,11 +41,21 @@ Task control client
   -> Python HTTP owner providers
   -> KernelApplication / scheduling truth
 
-Worker resource client
-  -> server_jvm /api/v1
-  -> WorkerRuntime / WorkerResourceCatalog
+Worker identity client
+  -> Server Register API with workerGroupId + clientWorkerKey
+  -> long-lived platform-issued workerId
+
+Worker Bind control
+  -> Server verifies workerGroupId + clientWorkerKey + workerId
+  -> persist or reuse one Endpoint Manager
+  -> WorkerRuntime.upsertWorker with endpointManagerId + workerProperties
+  -> return the public endpoint URI
+
+Worker Connect through Polling or Adapter
+  -> point request or Adapter verifies current Endpoint Binding
+  -> WorkerResourceCatalog
   -> Java owner Redis providers
-  -> shared Worker descriptor and HOT_ACQUIRE truth
+  -> split Worker metadata/properties and HOT_ACQUIRE truth
 
 Task data client
   -> Java TaskDataService
@@ -63,9 +78,10 @@ Worker / long-lived Adapter
   -> Python ResultRouting
 
 Configured Scenario Workers JSON
-  -> Server starts the configured Adapter Manager
+  -> Server initializes WorkerGroup catalog and starts Adapter Manager
   -> scenario_workers_jvm parses the opaque manifest
-  -> scenario_workers_jvm performs owner registration and updates
+  -> scenario_workers_jvm registers and binds each Worker
+  -> long-lived Worker sends workerId-only connection Bind
   -> scenario_workers_jvm starts Worker Core + concrete network Clients
   -> real configured Adapter listener
   -> the same Worker Delivery HTTP/Redis path
@@ -79,7 +95,7 @@ composes only the WorkerCommand and WorkerResult Redis providers. The shared
 implemented in owner-local `kernel_jvm` packages. Java does not read Task
 scores, invoke Pacers, append Worker commands, or consume WorkerResult queues.
 Its Worker score provider implements get/initialize for
-`WorkerRuntime.registerWorker` plus a parity reconcile mechanism with no current
+`WorkerRuntime.upsertWorker` plus a parity reconcile mechanism with no current
 production caller; scheduling score operations remain unavailable.
 
 Current provider matrix:
@@ -87,8 +103,9 @@ Current provider matrix:
 | Operation | Provider |
 | --- | --- |
 | WorkerGroup upsert | Java Redis |
-| Worker registration and missing HOT_ACQUIRE initialization | Java Redis |
-| Worker Properties complete replacement | Java Redis |
+| Worker identity registration coordinate | Server-owned Java Redis |
+| Persistent Worker Endpoint Binding | Server-owned Java Redis |
+| Worker Bind upsert, Properties replacement, and missing HOT_ACQUIRE initialization | Java Redis |
 | Platform Properties patch | Java Redis |
 | Explicit indexed-property update/point load | Java Redis |
 | Task create | Python HTTP |
@@ -124,7 +141,7 @@ Worker Delivery boundaries:
 
 ```text
 worker_delivery_contract_jvm
-  transport-neutral WorkerCommand/WorkerResult/WorkerConnectionBind contracts
+  transport-neutral WorkerConnectionBind/WorkerCommand/WorkerResult contracts
   and strict codecs
 api.v1.workerdelivery
   point Worker and Adapter batch HTTP access profiles
@@ -159,8 +176,8 @@ WorkerResult through point HTTP.
 
 ```text
 PUT  /api/v1/worker-groups/{workerGroupId}
-PUT  /api/v1/worker-groups/{workerGroupId}/workers/{workerId}
-PUT  /api/v1/worker-groups/{workerGroupId}/workers/{workerId}/worker-properties
+POST /api/v1/worker-groups/{workerGroupId}/workers:register
+POST /api/v1/worker-groups/{workerGroupId}/workers/{workerId}:bind
 PATCH /api/v1/worker-groups/{workerGroupId}/workers/{workerId}/platform-properties
 PATCH /api/v1/worker-groups/{workerGroupId}/workers/{workerId}/indexed-properties
 POST /api/v1/tasks
@@ -173,10 +190,30 @@ POST /api/v1/runtime-view/worker-groups:batch-get
 POST /api/v1/runtime-view/worker-groups/{workerGroupId}/workers:preview
 ```
 
-The Worker path is registration: compatible repeats are no-ops and cannot
-refresh either property snapshot. The `worker-properties` PUT is the explicit
-complete replacement of `workerProperties`; it preserves Platform Properties,
-the endpoint coordinate, and every existing score state.
+Identity registration accepts `workerGroupId + clientWorkerKey`. Repeating the
+same key in the same WorkerGroup returns the same canonical UUID; no Kernel
+Worker, score, or endpoint Binding is created. This is long-lived identity
+allocation in the current trusted deployment, not an authentication system.
+
+Authentication, authorization, and transport protection are separate ingress
+policies. A future deployment may apply HTTP sessions or tokens, mTLS, Gateway
+service identity, and permission checks before these operations. Neither a
+registered Worker ID nor Endpoint Binding is a credential.
+
+Bind validates the registration coordinate, persists one Endpoint Manager for
+the global `workerId`, and calls Kernel Worker upsert with that endpoint and the
+complete `workerProperties` snapshot. Repeated Bind reuses the same endpoint
+and refreshes Properties. A different requested transport conflicts; endpoint
+migration is not implicit. `POLLING` is reserved to the single
+`system-polling` directory identity because point Client paths intentionally do
+not carry a selected endpoint-manager ID. WebSocket and Socket may each have
+multiple independently addressed directory entries.
+
+The Endpoint Directory is address and selection configuration, not endpoint
+liveness or a revocation mechanism. Removing an entry prevents Bind from
+returning that endpoint, but it does not delete an existing persistent Binding,
+deactivate an Adapter Channel, or migrate the Worker. Those require explicit
+future owner operations.
 
 WorkerGroup PUT atomically replaces `attributes` and `eventCodes`; identical
 content returns `NOOP`. `workerGroupId` is the stable catalog identity and
@@ -184,7 +221,7 @@ Kernel scheduling partition. `eventCodes` is an advisory Server directory
 projection for display and future Task recommendation. It is not used by Task
 admission, Matcher, Dispatch, or as proof of installed Worker Handlers.
 
-WorkerGroup upsert and Worker registration/property update use Java Redis owner providers. Task
+WorkerGroup upsert and Worker Bind upsert use Java Redis owner providers. Task
 create/approve/close use Python HTTP owner/application providers. Item append
 and result load use Java Redis owner providers. Append returns per-message
 `appended / not_found / invalid / retryable` status. `TASK_DRIVEN` forbids an
@@ -196,8 +233,10 @@ Its current TARGETED path derives a bounded request-local candidate set from
 its configured point projection only for those known Worker IDs. It is not a
 candidate-discovery or multi-index intersection contract.
 
-Worker PUT completely replaces `workerProperties` and preserves
-`platformProperties`. Platform Properties are patched separately with
+Every accepted Bind completely replaces `workerProperties`, preserves
+`platformProperties`, and leaves an existing score unchanged. The Server
+Endpoint Directory selects and persists the immutable `endpointManagerId`;
+Workers receive only its public URI. Platform Properties are patched separately with
 `{"properties": {...}}`; a `null` value deletes one field. Index updates use
 qualified keys in `{"updates": {"index.worker.region": "cn-east"}}` on the
 single indexed-properties route and return a status per field.
@@ -255,7 +294,8 @@ POST /api/v1/runtime-view/worker-groups/{workerGroupId}/workers:preview
 ```
 
 The owner first validates the WorkerGroup, then executes one positive-count
-Redis `HRANDFIELD ... WITHVALUES` against that group's Worker descriptor HASH.
+Redis `HRANDFIELD ... WITHVALUES` against that group's Worker metadata HASH,
+then loads the matching Worker Properties rows.
 The response reports `sampledCount`, `returnedCount`, `unreadableCount`, and
 `generatedAt`; each readable Worker contains only `workerId`,
 `workerGroupId`, `endpointManagerId`, `workerProperties`, and
@@ -317,12 +357,18 @@ POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/
      workers/{workerId}/commands:poll
 POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/
      workers/{workerId}/results
+POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/
+     workers/{workerId}:verify-binding
 POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/commands:consume
 POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/results:append
 ```
 
 `system-polling` may use only the point Worker operations. Bounded batch
 consume and batch result append are reserved for long-lived Adapter identities.
+Each point poll/result request verifies that the Worker is persistently bound to
+`system-polling`. A long-lived Adapter calls `verify-binding` for every new
+Channel and exposes it to command delivery only when the persisted Binding
+matches the Adapter's endpoint-manager identity.
 The Adapter result request carries an array of encoded `WorkerResult` strings.
 The Adapter endpoint itself is the trusted ingress and accepts valid
 `200/1xxx/3xxx` results targeting `TASK`. Server appends the valid subset and
@@ -380,19 +426,26 @@ xa.mass.worker-delivery.adapter:
   gateway:
     base-url: http://127.0.0.1:18082
     request-timeout: 5s
+
+xa.mass.worker-binding:
+  endpoints:
+    scenario-websocket:
+      transport-type: WEBSOCKET
+      public-uri: ws://127.0.0.1:18083/api/v1/worker-delivery/websocket
 ```
 
 An Adapter is an explicit deployment choice supplied by a profile, external
 configuration, or environment variables. The instance map key is both
-`adapterId` and `endpointManagerId`; the Worker declaration must use the
-matching value. Each configured instance starts an independent Netty listener
+`adapterId` and `endpointManagerId`; Workers only target the instance listener
+and do not declare that identity. Each configured instance starts an independent Netty listener
 during Server startup, after the HTTP server is bound and before the process
 reports ready, and calls the shared Gateway `base-url`. A WebSocket Worker
 connects to the instance's fixed WebSocket path; a Socket Worker connects to
-its TCP port. Both send a direct
-`WorkerConnectionBind` JSON value before any `WorkerCommand`; there is no
-generic connection-message envelope. An empty or absent `instances` map starts
-no active Adapter.
+its TCP port. Both send direct `WorkerConnectionBind(workerId)` JSON before any
+`WorkerCommand`; there is no generic connection-message envelope. Reads remain
+paused until Server route verification succeeds. Adapter keeps no identity or
+Binding cache; each new connection is checked. An empty or absent `instances`
+map starts no active Adapter.
 
 Instances must use distinct IDs and listener ports. Do not duplicate an
 endpoint-manager ID for throughput. Each instance runs independent Command and
@@ -419,6 +472,11 @@ xa:
             type: WEBSOCKET
             listen-host: 127.0.0.1
             listen-port: 18083
+    worker-binding:
+      endpoints:
+        scenario-websocket:
+          transport-type: WEBSOCKET
+          public-uri: ws://127.0.0.1:18083/api/v1/worker-delivery/websocket
     worker-assembly:
       runtime-api-base-url: http://127.0.0.1:18082
       group-config-json: |
@@ -440,10 +498,8 @@ xa:
               "phonenumber.country",
               "phonenumber.original-carrier"
             ],
-            "endpointManagerId": "scenario-websocket",
-            "websocketUri": "ws://127.0.0.1:18083/api/v1/worker-delivery/websocket",
             "workers": [{
-              "workerId": "scenario-phone-number-worker-001",
+              "clientWorkerKey": "scenario-phone-number-worker-001",
               "workerProperties": {"runtime":"java","region":"local"},
               "indexedPropertyUpdates": {"index.worker.region":"local"}
             }]
@@ -457,8 +513,9 @@ Worker capability groups. It creates no Task and has no dependency on RPC,
 ITEM_DRIVEN, TASK_DRIVEN, TARGETED, or PRECOMPUTED scheduling policy. Both
 groups explicitly list 10 Workers. Omitted timeout fields use a 10 second
 request timeout, a 250 millisecond reconnect interval, and a 15 second
-initial-connect timeout. The final WebSocket URI and endpoint manager are
-deployment configuration; Server does not derive one from the other.
+initial-connect timeout. Scenario registers and binds each Worker, then builds
+its WebSocket Client from the public URI returned by Bind; the Worker manifest
+does not contain an endpoint-manager ID or Adapter URI.
 
 ```text
 ./gradlew :server_jvm:bootRun --args="--spring.profiles.active=scenario-workers"
@@ -466,10 +523,14 @@ deployment configuration; Server does not derive one from the other.
 
 During startup the Server initializes WorkerGroup directory entries through the
 WorkerGroup owner, then starts configured Adapters, then invokes one aggregate
-`ScenarioWorkers` handle. Scenario starts every real WebSocket transport and
-waits for all initial connections before registering Workers, replacing Worker
-Properties, and applying best-effort Index updates through the public Runtime
-Resource HTTP API. Shutdown closes Scenario transports before Adapters;
+`ScenarioWorkers` handle. Scenario registers each client key through the
+Identity API, binds the returned Worker ID with complete Worker Properties,
+starts every real WebSocket transport against the returned URI, waits for
+initial network connections, and applies best-effort Index updates through the
+public Runtime Resource HTTP API. Adapter route verification only compares the
+persisted Endpoint Binding; successful verification is followed by process-local
+connection activation.
+Shutdown closes Scenario transports before Adapters;
 WorkerGroup directory entries are not rolled back or removed.
 
 The phone-number group references `phonenumber.e164`,
@@ -490,8 +551,10 @@ implementation types. Closing the handle
 only releases local network resources and does not change Kernel Worker truth.
 The profile and Adapter remain Server-owned, while capabilities and concrete
 Worker resource lifecycle belong to `scenario_workers_jvm`.
-External Worker applications remain supported and own their own resource
-registration and process lifecycle.
+External Worker applications remain supported. They persist a client key,
+recover their platform-issued Worker ID through Identity registration, build
+one Bind control request, connect with `WorkerConnectionBind(workerId)`, and own
+their own process lifecycle.
 
 Defaults:
 
@@ -502,7 +565,7 @@ connect timeout          1s
 read timeout             5s
 Kernel Redis              redis://localhost:6379/15
 Kernel Redis prefix        default
-Adapter instances           none by default
+Adapter instances          none by default
 Task RPC wait              30s default / 60s maximum
 Task RPC waiter limit      10000
 ```

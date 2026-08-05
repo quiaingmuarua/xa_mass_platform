@@ -6,17 +6,38 @@ from uuid import NAMESPACE_DNS, uuid5
 
 from kernel_design.executable_spec import (
     WorkerCommand,
+    WorkerConnectionBind,
     WorkerMessageEndpoint,
     WorkerResult,
+    decode_worker_connection_bind,
     decode_worker_command,
     decode_worker_result,
     encode_worker_command,
+    encode_worker_connection_bind,
     encode_worker_result,
 )
 
 
 class WorkerDeliveryProtocolTest(unittest.TestCase):
     MESSAGE_ID = str(uuid5(NAMESPACE_DNS, "worker-delivery-message"))
+
+    def test_connection_bind_is_minimal_and_strict(self) -> None:
+        bind = WorkerConnectionBind(worker_id=self.MESSAGE_ID)
+        encoded = encode_worker_connection_bind(bind)
+
+        self.assertEqual(
+            '{"workerId":"' + self.MESSAGE_ID + '"}',
+            encoded,
+        )
+        self.assertEqual(bind, decode_worker_connection_bind(encoded))
+        self.assertIsNone(
+            decode_worker_connection_bind(
+                '{"workerId":"' + self.MESSAGE_ID + '","extra":true}'
+            )
+        )
+        self.assertIsNone(
+            decode_worker_connection_bind('{"workerId":"not-a-uuid"}')
+        )
 
     def test_public_dto_shapes_are_direction_specific(self) -> None:
         self.assertEqual(

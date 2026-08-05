@@ -5,6 +5,7 @@ import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDescriptor;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeResult;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeStatus;
+import com.xa.mass.kernel.worker.redis.WorkerRedisSupport.WorkerMetadata;
 import io.lettuce.core.KeyValue;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
@@ -147,24 +148,26 @@ public final class RedisWorkerResourceCatalog
         if (workerIds.isEmpty()) {
             return Map.of();
         }
-        List<KeyValue<String, String>> loaded = commands().hmget(
-                WorkerRedisSupport.workersKey(prefix, workerGroupId),
+        List<KeyValue<String, String>> metadataRows = commands().hmget(
+                WorkerRedisSupport.workerMetadataKey(prefix, workerGroupId),
+                workerIds.toArray(String[]::new)
+        );
+        List<KeyValue<String, String>> propertyRows = commands().hmget(
+                WorkerRedisSupport.workerPropertiesKey(prefix, workerGroupId),
                 workerIds.toArray(String[]::new)
         );
         var descriptors = new LinkedHashMap<String, WorkerDescriptor>();
         for (int index = 0; index < workerIds.size(); index++) {
             String workerId = workerIds.get(index);
-            KeyValue<String, String> value = loaded.get(index);
-            WorkerDescriptor descriptor = value.hasValue()
-                    ? WorkerRedisSupport.decodeWorker(value.getValue())
-                    : null;
-            if (descriptor == null
-                    || !workerId.equals(descriptor.workerId())
-                    || !workerGroupId.equals(descriptor.workerGroupId())) {
-                descriptors.put(workerId, null);
-            } else {
-                descriptors.put(workerId, descriptor);
-            }
+            descriptors.put(
+                    workerId,
+                    composeWorkerDescriptor(
+                            workerGroupId,
+                            workerId,
+                            metadataRows.get(index),
+                            propertyRows.get(index)
+                    )
+            );
         }
         return descriptors;
     }
@@ -185,7 +188,7 @@ public final class RedisWorkerResourceCatalog
 
         List<KeyValue<String, String>> sampled =
                 commands().hrandfieldWithvalues(
-                        WorkerRedisSupport.workersKey(
+                        WorkerRedisSupport.workerMetadataKey(
                                 prefix,
                                 workerGroupId
                         ),
@@ -193,20 +196,28 @@ public final class RedisWorkerResourceCatalog
                 );
         var descriptors =
                 new LinkedHashMap<String, WorkerDescriptor>();
-        for (KeyValue<String, String> row : sampled) {
+        if (sampled.isEmpty()) {
+            return descriptors;
+        }
+        String[] sampledWorkerIds = sampled.stream()
+                .map(KeyValue::getKey)
+                .toArray(String[]::new);
+        List<KeyValue<String, String>> propertyRows = commands().hmget(
+                WorkerRedisSupport.workerPropertiesKey(prefix, workerGroupId),
+                sampledWorkerIds
+        );
+        for (int index = 0; index < sampled.size(); index++) {
+            KeyValue<String, String> row = sampled.get(index);
             String workerId = row.getKey();
-            WorkerDescriptor descriptor = row.hasValue()
-                    ? WorkerRedisSupport.decodeWorker(row.getValue())
-                    : null;
-            if (descriptor == null
-                    || !workerId.equals(descriptor.workerId())
-                    || !workerGroupId.equals(
-                            descriptor.workerGroupId()
-                    )) {
-                descriptors.put(workerId, null);
-                continue;
-            }
-            descriptors.put(workerId, descriptor);
+            descriptors.put(
+                    workerId,
+                    composeWorkerDescriptor(
+                            workerGroupId,
+                            workerId,
+                            row,
+                            propertyRows.get(index)
+                    )
+            );
         }
         return descriptors;
     }
@@ -234,15 +245,15 @@ public final class RedisWorkerResourceCatalog
                 );
             }
         }
-        String workersKey = WorkerRedisSupport.workersKey(
+        String metadataKey = WorkerRedisSupport.workerMetadataKey(
                 prefix,
                 workerGroupId
         );
         for (int attempt = 0;
                 attempt < MAX_DESCRIPTOR_CAS_ATTEMPTS;
                 attempt++) {
-            String observed = commands().hget(workersKey, workerId);
-            WorkerDescriptor current = WorkerRedisSupport.decodeWorker(
+            String observed = commands().hget(metadataKey, workerId);
+            WorkerMetadata current = WorkerRedisSupport.decodeWorkerMetadata(
                     observed
             );
             if (current == null) {
@@ -277,14 +288,13 @@ public final class RedisWorkerResourceCatalog
                     );
                 }
             }
-            WorkerDescriptor next = new WorkerDescriptor(
+            WorkerMetadata next = new WorkerMetadata(
                     current.workerId(),
                     current.workerGroupId(),
                     current.endpointManagerId(),
-                    current.workerProperties(),
                     nextPlatformProperties
             );
-            String encoded = WorkerRedisSupport.encodeWorker(next);
+            String encoded = WorkerRedisSupport.encodeWorkerMetadata(next);
             if (encoded == null) {
                 return new WorkerRuntimeResult(
                         WorkerRuntimeStatus.INVALID,
@@ -293,7 +303,7 @@ public final class RedisWorkerResourceCatalog
             }
             if (WorkerRedisSupport.compareAndSetHashField(
                     commands(),
-                    workersKey,
+                    metadataKey,
                     workerId,
                     observed,
                     encoded
@@ -303,7 +313,38 @@ public final class RedisWorkerResourceCatalog
         }
         return new WorkerRuntimeResult(
                 WorkerRuntimeStatus.STALE,
-                "worker descriptor changed during platform property patch"
+                "worker metadata changed during platform property patch"
+        );
+    }
+
+    private static WorkerDescriptor composeWorkerDescriptor(
+            String workerGroupId,
+            String workerId,
+            KeyValue<String, String> metadataRow,
+            KeyValue<String, String> propertyRow
+    ) {
+        WorkerMetadata metadata = metadataRow.hasValue()
+                ? WorkerRedisSupport.decodeWorkerMetadata(
+                        metadataRow.getValue()
+                )
+                : null;
+        Map<String, Object> workerProperties = propertyRow.hasValue()
+                ? WorkerRedisSupport.decodeWorkerProperties(
+                        propertyRow.getValue()
+                )
+                : null;
+        if (metadata == null
+                || workerProperties == null
+                || !workerId.equals(metadata.workerId())
+                || !workerGroupId.equals(metadata.workerGroupId())) {
+            return null;
+        }
+        return new WorkerDescriptor(
+                metadata.workerId(),
+                metadata.workerGroupId(),
+                metadata.endpointManagerId(),
+                workerProperties,
+                metadata.platformProperties()
         );
     }
 

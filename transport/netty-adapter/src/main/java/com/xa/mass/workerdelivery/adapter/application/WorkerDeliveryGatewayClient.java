@@ -3,6 +3,7 @@ package com.xa.mass.workerdelivery.adapter.application;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletionStage;
 
 /**
  * Thread-safe Gateway boundary shared by independent command and result loops.
@@ -17,5 +18,10 @@ public interface WorkerDeliveryGatewayClient {
     void appendResults(
             String endpointManagerId,
             List<String> encodedWorkerResults
+    );
+
+    CompletionStage<Void> verifyWorkerRoute(
+            String endpointManagerId,
+            String workerId
     );
 }

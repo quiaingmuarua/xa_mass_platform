@@ -1,6 +1,5 @@
 package com.xa.mass.scenarioworkers;
 
-import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -13,8 +12,6 @@ import java.util.Objects;
 record ScenarioWorkerGroupConfig(
         String workerGroupId,
         List<String> eventCodes,
-        String endpointManagerId,
-        URI workerWebSocketUri,
         List<ScenarioWorkerConfig> workers,
         Duration requestTimeout,
         Duration reconnectInterval,
@@ -42,8 +39,6 @@ record ScenarioWorkerGroupConfig(
             copiedEventCodes.add(eventCode);
         }
         eventCodes = List.copyOf(copiedEventCodes);
-        requireNonBlank(endpointManagerId, "endpointManagerId");
-        requireWebSocketUri(workerWebSocketUri);
         Objects.requireNonNull(workers, "workers");
         if (workers.isEmpty() || workers.size() > 100) {
             throw new IllegalArgumentException(
@@ -72,19 +67,6 @@ record ScenarioWorkerGroupConfig(
         }
     }
 
-    private static void requireWebSocketUri(URI value) {
-        Objects.requireNonNull(value, "workerWebSocketUri");
-        String scheme = value.getScheme();
-        if (!value.isAbsolute()
-                || value.getHost() == null
-                || (!"ws".equalsIgnoreCase(scheme)
-                && !"wss".equalsIgnoreCase(scheme))) {
-            throw new IllegalArgumentException(
-                    "workerWebSocketUri must be an absolute ws/wss URI"
-            );
-        }
-    }
-
     private static Map<String, Object> immutableJsonMap(
             Map<String, Object> value,
             String name
@@ -97,15 +79,15 @@ record ScenarioWorkerGroupConfig(
 }
 
 record ScenarioWorkerConfig(
-        String workerId,
+        String clientWorkerKey,
         Map<String, Object> workerProperties,
         Map<String, Object> indexedPropertyUpdates
 ) {
 
     ScenarioWorkerConfig {
         ScenarioWorkerGroupConfig.requireNonBlank(
-                workerId,
-                "workerId"
+                clientWorkerKey,
+                "clientWorkerKey"
         );
         workerProperties = immutableJsonMap(
                 workerProperties,

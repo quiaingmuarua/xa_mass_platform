@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.xa.mass.workerdelivery.adapter.application.WorkerDeliveryAdapterManager;
 import com.xa.mass.workerdelivery.adapter.socket.SocketWorkerDeliveryAdapter;
 import com.xa.mass.workerdelivery.adapter.websocket.WebSocketWorkerDeliveryAdapter;
+import com.xa.mass.server.workerbinding.WorkerEndpointDirectory;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Map;
@@ -18,7 +19,18 @@ class ServerWorkerDeliveryAdapterPropertiesTest {
             new ApplicationContextRunner()
                     .withUserConfiguration(
                             ServerWorkerDeliveryAdapterConfiguration.class
-                    );
+                    )
+                    .withBean(WorkerEndpointDirectory.class, () -> {
+                        WorkerEndpointDirectory directory =
+                                org.mockito.Mockito.mock(
+                                        WorkerEndpointDirectory.class
+                                );
+                        org.mockito.Mockito.when(directory.contains(
+                                org.mockito.ArgumentMatchers.anyString(),
+                                org.mockito.ArgumentMatchers.any()
+                        )).thenReturn(true);
+                        return directory;
+                    });
 
     @Test
     void bindsOrderedWebSocketAndSocketInstancesAndAppliesDefaults() {

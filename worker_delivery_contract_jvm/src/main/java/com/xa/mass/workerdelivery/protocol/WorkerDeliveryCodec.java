@@ -12,9 +12,8 @@ import java.util.Set;
 
 public final class WorkerDeliveryCodec {
 
-    private static final Set<String> CONNECTION_BIND_FIELDS = Set.of(
-            "workerId"
-    );
+    private static final Set<String> CONNECTION_BIND_FIELDS =
+            Set.of("workerId");
     private static final Set<String> COMMAND_FIELDS = Set.of(
             "dst",
             "executeBeforeMillis",
@@ -40,9 +39,7 @@ public final class WorkerDeliveryCodec {
                     || string(payload.get("workerId")) == null) {
                 return null;
             }
-            return new WorkerConnectionBind(
-                    string(payload.get("workerId"))
-            );
+            return new WorkerConnectionBind(string(payload.get("workerId")));
         } catch (IllegalArgumentException error) {
             return null;
         }
@@ -158,6 +155,20 @@ public final class WorkerDeliveryCodec {
 
     private static String string(Object value) {
         return value instanceof String ? (String) value : null;
+    }
+
+    private static Map<String, Object> objectMap(Object value) {
+        if (!(value instanceof Map<?, ?>)) {
+            return null;
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : ((Map<?, ?>) value).entrySet()) {
+            if (!(entry.getKey() instanceof String)) {
+                return null;
+            }
+            result.put((String) entry.getKey(), entry.getValue());
+        }
+        return result;
     }
 
     private static Long integralLong(Object value) {

@@ -87,7 +87,7 @@ class WorkerCandidateMatcherTest(RedisWorkerRuntimeFixture):
         platform_properties: dict[str, object] | None = None,
         indexed_properties: dict[str, object] | None = None,
     ) -> None:
-        self.register_worker(
+        self.upsert_worker(
             self.worker_declaration(
                 worker_id,
                 worker_properties=worker_properties,

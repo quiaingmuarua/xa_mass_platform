@@ -39,17 +39,30 @@ WebSocket uses:
 /api/v1/worker-delivery/websocket
 ```
 
-Socket uses one compact JSON value per UTF-8 line. Both transports start
-unbound. The first inbound value must be:
+Socket uses one compact JSON value per UTF-8 line. Both transports start without
+an active Worker route. The first inbound value must be a strict Worker
+connection Bind frame:
 
 ```json
-{"workerId":"worker-1"}
+{
+  "workerId":"3d813cbb-47fb-4ea8-a5be-6bf4c4a99089"
+}
 ```
 
-Bind only creates the process-local `workerId -> current Channel` route. It
-does not register a Worker or create Kernel connectivity truth.
+A new Channel pauses reads while the Adapter asks Server whether the persisted
+Endpoint Binding for `workerId` points to this Adapter's `endpointManagerId`.
+Successful route verification activates `workerId -> current Channel` and
+resumes reads; missing, conflicting, or unavailable Binding closes the Channel.
+Verification happens for every new connection. The Adapter has no identity or
+Binding cache and does not refresh Worker Properties.
 
-After bind:
+An unverified Channel is never visible to the Command Loop. During verification,
+the transport boundary may retain one pending Result that immediately follows
+Bind; it is processed in order only after verification succeeds. A second
+pre-verification value is a protocol violation. This is not a second Adapter
+result queue.
+
+After connection activation:
 
 ```text
 Adapter -> Worker : direct WorkerCommand JSON
@@ -59,9 +72,10 @@ Worker  -> Adapter: direct WorkerResult JSON
 There is no outer frame DTO. Adapter identity comes from its listener and
 mailbox configuration, not from a URL path or message field.
 
-Each registry stores the actual Netty `Channel`. A new connection replaces the
-current Channel for that workerId. Unbind compares workerId and Channel
-identity, so a delayed close from an old Channel cannot remove its replacement.
+Each registry stores the actual Netty `Channel`. A newly activated connection
+replaces the current Channel for that workerId. Deactivation compares workerId
+and Channel identity, so a delayed close from an old Channel cannot remove its
+replacement.
 Results already sent by an old connection are still eligible evidence; Kernel
 Result Routing decides whether their `forward` context remains valid.
 

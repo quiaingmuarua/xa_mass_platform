@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-from typing import Mapping
-
 from ..kernel import (
-    AttributeValue,
     WorkerDeclaration,
     WorkerGroupDescriptor,
     WorkerRuntimeResult,
@@ -71,24 +68,11 @@ class ResourcesCommandClient:
             descriptor=descriptor,
         )
 
-    def register_worker(
+    def upsert_worker(
         self,
         *,
         declaration: WorkerDeclaration,
     ) -> WorkerRuntimeResult:
-        return self._worker_runtime.register_worker(
+        return self._worker_runtime.upsert_worker(
             declaration=declaration,
-        )
-
-    def update_worker_properties(
-        self,
-        *,
-        worker_group_id: str,
-        worker_id: str,
-        worker_properties: Mapping[str, AttributeValue],
-    ) -> WorkerRuntimeResult:
-        return self._worker_runtime.update_worker_properties(
-            worker_group_id=worker_group_id,
-            worker_id=worker_id,
-            worker_properties=worker_properties,
         )

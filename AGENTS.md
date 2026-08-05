@@ -8,7 +8,7 @@ Status: current repository handoff.
 - `kernel_jvm/` is the JVM parity surface for Kernel owner contracts and
   selected owner-specific Redis providers. It does not implement scheduling,
   Pacers, or the Kernel application lifecycle. Its Worker score provider is
-  deliberately limited to get/initialize used by `WorkerRuntime.registerWorker`
+  deliberately limited to get/initialize used by `WorkerRuntime.upsertWorker`
   plus a parity-proved reconcile mechanism with no production caller; all
   scheduling score operations remain gaps.
 - `server_jvm/` is the external Runtime API process. Controllers and services
@@ -23,13 +23,14 @@ Status: current repository handoff.
 - `scenario_workers_jvm/` is the Java 21 finite Scenario Worker assembly. It
   owns the checked-in phone-number and string-utility event definitions,
   strict Worker JSON parsing, real WebSocket Worker construction, initial
-  connection wait, public-HTTP Worker registration/property update, and
-  aggregate failure cleanup. It is not a Kernel owner, Server profile,
+  connection wait, public-HTTP identity registration, explicit Property Index
+  updates, and aggregate failure cleanup. It is not a Kernel owner, Server profile,
   Adapter, plugin SPI, or independently deployed application.
 - `worker_delivery_contract_jvm/` is the Java 11 compatible transport-neutral
-  WorkerCommand/WorkerResult/WorkerConnectionBind contract shared by Server,
-  Adapter, and Worker. Long-lived transports exchange direct command/result
-  JSON after bind; there is no generic connection-message envelope.
+  WorkerConnectionBind/WorkerCommand/WorkerResult contract shared by Server,
+  Adapter, and Worker. Long-lived transports send workerId-only Bind first and
+  then exchange direct command/result JSON; there is no generic
+  connection-message envelope.
 - `transport/netty-adapter/` owns complete Adapter instances: local
   registration, start/close lifecycle, scheduled Gateway consumption, active
   connections, bounded Command/Result queues, and independent Netty
@@ -98,8 +99,8 @@ tag.
   package. `server_jvm.kernelredis` owns only connection and health. Java must
   not read or mutate Task score, candidate cache, Pacers, or ResultRouting
   consumption. The only Java Worker score operations currently allowed inside
-  Worker registration are get/initialize. Property update does not access
-  score. Reconcile is parity-proved but has no
+  Worker upsert are get/initialize. Properties are replaced by the same upsert
+  without changing an existing score. Reconcile is parity-proved but has no
   production caller and must not be treated as resource-upsert behavior.
 - Missing JVM owner operations must fail with
   `KernelOperationNotImplementedException`; do not hide gaps with default
@@ -135,14 +136,19 @@ tag.
   `manager.close()` at process boundaries. Its `workerassembly` package may
   initialize explicitly configured WorkerGroup catalog metadata, bind one
   opaque Scenario Worker JSON string plus a Runtime API base URL, and sequence
-  WorkerGroup initialization before Adapter and Scenario startup. It must not
-  implement Handlers, parse Scenario Worker definitions, derive Worker IDs or
-  Adapter URIs, or own concrete Worker construction, Worker registration/update
-  behavior, connection waiting, generic class-name plugins, Redis bypass,
+  WorkerGroup initialization before Adapter and Scenario startup. It also owns
+  the Worker Identity registry, persistent Endpoint Binding, and Adapter route
+  verification, which are separate from Kernel Worker Runtime. It must not
+  implement Handlers, parse
+  Scenario Worker definitions, derive Worker IDs inside workerassembly, or
+  derive Adapter URIs, or own concrete Worker construction, connection Bind frame
+  emission,
+  connection waiting, generic class-name plugins, Redis bypass,
   Adapter scheduling, connection selection, queue
   handling, result buffering, or trusted rejection policy.
 - `scenario_workers_jvm` may expose the final `ScenarioWorkers` aggregate
-  lifecycle handle and its `fromJson(workerConfigJson, runtimeApiBaseUrl)`
+  lifecycle handle and its
+  `fromJson(workerConfigJson, runtimeApiBaseUrl)`
   composition entry. Finite capability providers, parsed configuration, and
   Worker factories stay module-internal.
   Definitions and Handler instances are shared by all Workers that reference
@@ -171,7 +177,7 @@ The module mirrors the public contracts exported by
 `kernel_design.executable_spec.kernel`. A shared non-production manifest proves
 interface, DTO, enum, and key-constant parity. Selected Redis providers
 currently implement TaskItem append/result reads, Task/WorkerGroup descriptor
-reads, WorkerGroup upsert, Worker registration/property update, Platform Properties patch, Worker/Platform
+reads, WorkerGroup upsert, Worker upsert, Platform Properties patch, Worker/Platform
 explicit indexed-property update/load, Worker score get/initialize plus an
 unused parity reconcile mechanism, WorkerCommand consume, and WorkerResult
 append. All other translated operations remain explicit gaps.
@@ -206,19 +212,24 @@ ServerWorkerAssemblyConfiguration
 
 scenario_workers_jvm
   -> strict Worker JSON parsing and internal Definition resolution
-  -> public Runtime Resource HTTP registration and updates
+  -> public Worker Register and Bind plus platform-issued WorkerId recovery
+  -> WorkerConnectionBind(workerId) frame through the returned Adapter URI
+  -> best-effort explicit Property Index updates
   -> package-private fixed capability definitions
   -> Worker Core + concrete network Client
 
 transport/netty-adapter
   -> Adapter batch HTTP client
+  -> per-connection route verification through Server HTTP
   -> per-endpoint Command/Result loops and current connection registry
   -> direct WorkerCommand/WorkerResult transport, unchanged encoded Worker
      result forwarding, and Adapter-owned 3xxx generation
   -> independent Netty WebSocket and Socket listeners
 ```
 
-The main Server owns the Worker Delivery HTTP and Redis boundaries. It
+The main Server owns Worker Identity, persistent Endpoint Binding, Worker
+Delivery HTTP, and their Redis boundaries. Identity and Binding use the
+separate `wi:{prefix}:...` namespace and are not Kernel owners. It
 composes and starts configured Adapter instances, then starts one configured
 `ScenarioWorkers` aggregate handle. Every Adapter still reaches Worker
 Delivery through the same batch HTTP boundary, and every Scenario Worker still

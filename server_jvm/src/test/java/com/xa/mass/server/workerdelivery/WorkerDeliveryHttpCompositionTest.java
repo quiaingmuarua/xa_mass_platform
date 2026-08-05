@@ -7,7 +7,6 @@ import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.kernel.task.TaskResourceCatalog;
 import com.xa.mass.kernel.task.TaskRuntime;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.kernel.worker.WorkerRuntime;
 import com.xa.mass.server.api.ApiExceptionHandler;
 import com.xa.mass.server.api.RequestIdFilter;
 import com.xa.mass.server.api.v1.workerdelivery.AdapterBatchDeliveryController;
@@ -15,6 +14,7 @@ import com.xa.mass.server.api.v1.workerdelivery.WorkerPointDeliveryController;
 import com.xa.mass.server.kernelbinding.TaskLifecycleCommands;
 import com.xa.mass.server.kernelredis.KernelRedisConfiguration;
 import com.xa.mass.server.kernelredis.KernelRedisHealthIndicator;
+import com.xa.mass.server.workerbinding.WorkerBindingService;
 import com.xa.mass.server.workerdelivery.application.WorkerDeliveryService;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -33,10 +33,16 @@ class WorkerDeliveryHttpCompositionTest {
                                     + "redis://127.0.0.1:6379/15",
                             "xa.mass.kernel-redis.redis-prefix="
                                     + "isolated-worker-delivery"
+                    )
+                    .withBean(
+                            WorkerBindingService.class,
+                            () -> org.mockito.Mockito.mock(
+                                    WorkerBindingService.class
+                            )
                     );
 
     @Test
-    void assemblesWithoutTaskWorkerOrPythonKernelOwners() {
+    void assemblesWithoutTaskResourceOrPythonKernelOwners() {
         contextRunner.run(context -> {
             assertThat(context).hasSingleBean(WorkerCommandRuntime.class);
             assertThat(context).hasSingleBean(WorkerResultRuntime.class);
@@ -52,7 +58,9 @@ class WorkerDeliveryHttpCompositionTest {
 
             assertThat(context).doesNotHaveBean(TaskRuntime.class);
             assertThat(context).doesNotHaveBean(TaskResourceCatalog.class);
-            assertThat(context).doesNotHaveBean(WorkerRuntime.class);
+            assertThat(context).doesNotHaveBean(
+                    com.xa.mass.kernel.worker.WorkerRuntime.class
+            );
             assertThat(context).doesNotHaveBean(
                     WorkerResourceCatalog.class
             );

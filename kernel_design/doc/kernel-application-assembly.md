@@ -9,7 +9,7 @@ The current system exposes narrow control, data, and delivery boundaries:
 ```text
 Direct Python SDK / executable-spec support
   -> ResourcesCommandClient
-     -> WorkerGroup upsert, Worker registration and Worker property update
+     -> WorkerGroup upsert and Worker upsert
 
 CLI / task-only FastAPI
   -> KernelApplication
@@ -29,9 +29,9 @@ controllers and services depend on owner contracts rather than route-shaped
 clients or Redis implementations. Callers cannot obtain Task/Worker score
 cores, candidate runtime, matcher, pacers, Redis keys, suffixes, or lane ranks.
 Only `KernelApplication` starts background scheduling. Java's direct Redis
-providers implement WorkerGroup upsert, Worker registration/property update,
+providers implement WorkerGroup upsert, Worker upsert,
 Task Item append/result read, and Worker Delivery consume/result-ingress
-operations. Java Worker registration uses only score get/initialize. Java also implements a parity reconcile mechanism,
+operations. Java Worker upsert uses only score get/initialize. Java also implements a parity reconcile mechanism,
 but no production caller currently invokes it.
 
 ## Application And Executable-Spec Commands
@@ -39,8 +39,7 @@ but no production caller currently invokes it.
 ```text
 ResourcesCommandClient
 upsert_worker_group
-register_worker
-update_worker_properties
+upsert_worker
 
 KernelApplication
 create_task
@@ -78,10 +77,10 @@ The JVM incremental assembly is explicit per operation:
 
 ```text
 WorkerGroup upsert              -> Java Redis WorkerResourceCatalog provider
-Worker register / properties update -> Java Redis WorkerRuntime provider
+Worker upsert                     -> Java Redis WorkerRuntime provider
 Platform Properties patch       -> Java Redis WorkerResourceCatalog provider
 Explicit index update/load      -> Java Redis WorkerPropertyIndexRuntime provider
-Worker registration score operations -> Java Redis WorkerScoreCore provider
+Worker upsert score operations      -> Java Redis WorkerScoreCore provider
 Task create                     -> Python HTTP TaskRuntime provider
 Task approve / close            -> Python HTTP application commands
 Task / WorkerGroup reads        -> Java Redis catalog providers
@@ -95,7 +94,7 @@ other score/candidate/scheduling -> no Server provider
 Unimplemented JVM owner operations fail explicitly. They are not forwarded to
 Python and do not silently select another provider.
 
-WorkerGroup upsert reuses `WorkerGroupDescriptor`. Worker registration accepts
+WorkerGroup upsert reuses `WorkerGroupDescriptor`. Worker upsert accepts
 the caller-owned `WorkerDeclaration`; the complete `WorkerDescriptor` remains
 a query projection containing Worker and Platform property snapshots. The
 Kernel Runtime Server owns its HTTP request models because they are
@@ -106,13 +105,13 @@ An explicit WorkerGroup upsert atomically replaces its `attributes` and
 scheduling partition identity. The replaced fields are control-plane catalog
 metadata and are not consulted by Matcher or Dispatch.
 
-First Worker registration selects the default lane rank internally and
-initializes the Worker HOT score without requiring the scheduling process to be
-running. Compatible repeat registration is a no-op except for repairing a
-missing owner, descriptor, or score. `update_worker_properties` separately
-replaces `workerProperties` while preserving `platformProperties` and never
-accessing score. Neither operation is connect, reconnect, activation, or
-serviceability evidence.
+First Worker upsert selects the default lane rank internally and initializes
+the Worker HOT score without requiring the scheduling process to be running.
+Compatible repeat upsert repairs a missing owner, metadata, properties row, or
+score and replaces the complete `workerProperties` snapshot while preserving
+`platformProperties` and every existing score. The external Server invokes it
+while processing Worker Bind; the operation itself is not durable connectivity,
+activation, or serviceability evidence.
 `create_task` selects the initial PRE_REVIEW owner code internally. It is a
 create-only command: an existing descriptor conflicts and is never overwritten.
 It may complete a score-only interrupted creation only while the score remains
@@ -358,7 +357,8 @@ Delivery at port `18082`:
 
 ```text
 PUT  /api/v1/worker-groups/{workerGroupId}
-PUT  /api/v1/worker-groups/{workerGroupId}/workers/{workerId}
+POST /api/v1/worker-groups/{workerGroupId}/workers:register
+POST /api/v1/worker-groups/{workerGroupId}/workers/{workerId}:bind
 POST /api/v1/tasks/{taskId}/items
 POST /api/v1/tasks/{taskId}/items:call
 POST /api/v1/tasks/{taskId}/results:load
@@ -366,14 +366,21 @@ POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/
      workers/{workerId}/commands:poll
 POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/
      workers/{workerId}/results
+POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/
+     workers/{workerId}:verify-binding
 POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/commands:consume
 POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/results:append
 ```
 
-The two Worker-specific operations are point Worker access. Pure polling
-Workers bind to the fixed logical `system-polling` endpoint manager. They
-cannot scan the mailbox. Bounded no-cursor consume and batch result append are
-long-lived Adapter operations and reject the built-in polling identity.
+Identity registration maps `workerGroupId + clientWorkerKey` to a long-lived
+platform-issued Worker UUID in a Server-owned namespace; it does not call a
+Kernel owner. Bind verifies those coordinates, persists an Endpoint Manager,
+and invokes Kernel Worker upsert with the complete Worker Properties snapshot.
+Pure polling Workers bind to the fixed logical `system-polling` endpoint
+manager and cannot scan the mailbox. Point calls and Adapter connections verify
+the persisted route; this is routing consistency, not authentication.
+Bounded no-cursor consume and batch result append are long-lived Adapter
+operations and reject the built-in polling identity.
 
 `WorkerCommand` is the Kernel-defined transport-neutral outbound
 command DTO. Task Dispatch generates its canonical UUID `messageId`, uses the
@@ -382,10 +389,13 @@ the execute-before deadline, and stores ResultContext in `forward`.
 Worker results use `WorkerResult` directly and copy `messageId`,
 `messageType`, and `forward`. Result ingress does not carry a deadline.
 
-The Worker library knows only its WorkerId, optional polling endpoint-manager
-binding, Server or Adapter address, Worker Delivery contracts, and statically
-provided event definitions. It does not register resources or import Kernel
-owners. Polling, WebSocket, and Socket share one serial execution core.
+The Worker host knows its WorkerGroup/client key for Register and Bind, then
+receives the platform-issued WorkerId and public endpoint URI. The Worker
+Transport knows only that WorkerId, endpoint URI, Worker Delivery contracts,
+and statically provided event definitions. It does not know an endpoint-manager
+ID or import Kernel owners. Polling, WebSocket, and Socket share one serial
+execution core; long-lived transports send a workerId-only connection Bind frame before
+command exchange.
 
 Polling is a base request-driven protocol, not an independently deployed
 Adapter. Each configured Java Adapter instance owns one non-`system-polling`
@@ -393,9 +403,11 @@ endpoint-manager mailbox, one independent Netty listener, one scheduled
 Command Loop, one timed Result Loop, one current connection per WorkerId, and
 bounded local queues. The Server only parses instance configuration, registers concrete
 instances, and invokes Adapter `start()`/`close()` at process boundaries.
-Workers register and explicitly update their property snapshot before
-connecting. KernelApplication does not own or expose
-connection facts.
+Workers Register and establish Endpoint Binding before connecting; the Bind
+control call carries the complete Worker Properties snapshot. The connection
+Bind frame carries only workerId, and the Adapter asks Server to verify that the
+persisted route points to itself before activating the Channel.
+KernelApplication does not own or expose connection facts.
 
 The Python Runtime Server remains the Task scheduling command host and
 mechanism oracle. Java Worker resource ingress, TaskData, and Worker Delivery

@@ -19,6 +19,7 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.CompletionException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -154,6 +155,38 @@ class HttpWorkerDeliveryGatewayClientTest {
     }
 
     @Test
+    void verifiesTheExactWorkerBindingRouteWithoutARequestBody() {
+        respond(204, "");
+
+        client.verifyWorkerRoute(
+                "adapter/one",
+                COMMAND_ID
+        ).toCompletableFuture().join();
+
+        assertThat(requestPath).isEqualTo(
+                "/api/v1/worker-delivery/endpoint-managers/"
+                        + "adapter%2Fone/workers/"
+                        + COMMAND_ID
+                        + ":verify-binding"
+        );
+        assertThat(requestBody).isEmpty();
+
+        respond(409, "{}");
+        assertThatThrownBy(() -> client.verifyWorkerRoute(
+                "adapter-1",
+                COMMAND_ID
+        ).toCompletableFuture().join())
+                .isInstanceOf(CompletionException.class)
+                .hasCauseInstanceOf(WorkerDeliveryAdapterException.class)
+                .satisfies(error -> assertThat(
+                        ((WorkerDeliveryAdapterException) error.getCause())
+                                .errorCode()
+                ).isEqualTo(
+                        WorkerDeliveryAdapterErrorCode.GATEWAY_PROTOCOL_ERROR
+                ));
+    }
+
+    @Test
     void rejectsUnexpectedStatusAndMalformedResponses() {
         respond(503, "{}");
         assertThatThrownBy(() ->
@@ -268,8 +301,13 @@ class HttpWorkerDeliveryGatewayClientTest {
                 "Content-Type",
                 "application/json"
         );
-        exchange.sendResponseHeaders(responseStatus, body.length);
-        exchange.getResponseBody().write(body);
+        exchange.sendResponseHeaders(
+                responseStatus,
+                responseStatus == 204 ? -1 : body.length
+        );
+        if (responseStatus != 204) {
+            exchange.getResponseBody().write(body);
+        }
         exchange.close();
     }
 }

@@ -51,7 +51,7 @@ class WorkerRuntimeContractTest(unittest.TestCase):
     def test_owner_surfaces_keep_properties_and_index_independent(self) -> None:
         self.assertEqual(
             WorkerRuntime.__abstractmethods__,
-            {"register_worker", "update_worker_properties"},
+            {"upsert_worker"},
         )
         self.assertEqual(
             WorkerResourceCatalog.__abstractmethods__,
@@ -66,21 +66,8 @@ class WorkerRuntimeContractTest(unittest.TestCase):
 
     def test_worker_upsert_hides_score_ordering_input(self) -> None:
         self.assertEqual(
-            set(inspect.signature(WorkerRuntime.register_worker).parameters),
+            set(inspect.signature(WorkerRuntime.upsert_worker).parameters),
             {"self", "declaration"},
-        )
-        self.assertEqual(
-            set(
-                inspect.signature(
-                    WorkerRuntime.update_worker_properties
-                ).parameters
-            ),
-            {
-                "self",
-                "worker_group_id",
-                "worker_id",
-                "worker_properties",
-            },
         )
         self.assertFalse(hasattr(WorkerResourceCatalog, "register_worker"))
 

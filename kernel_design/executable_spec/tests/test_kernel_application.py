@@ -718,7 +718,7 @@ class KernelApplicationIntegrationTest(unittest.TestCase):
                 event_codes=frozenset({"image.resize"}),
             )
         )
-        worker_result = self.resources_client.register_worker(
+        worker_result = self.resources_client.upsert_worker(
             declaration=WorkerDeclaration(
                 worker_id="worker-1",
                 worker_group_id=worker_group_id,

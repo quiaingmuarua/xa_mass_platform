@@ -17,7 +17,7 @@ JdkLineSocketClient
 
 This module does not own `PollingWorkerTransport`,
 `WebSocketWorkerTransport`, or `SocketWorkerTransport`. It does not decode
-Worker commands, create Bind or Result messages, run event handlers, or retain
+Worker commands, create connection Bind frames or Result messages, run event handlers, or retain
 pending Worker results.
 
 ## Explicit Composition
@@ -44,9 +44,12 @@ worker.start();
 ```
 
 `OkHttpTextWebSocketClient` accepts the final `ws/wss` URI and does not append
-a Worker route. Polling composition uses `OkHttpWorkerPointClient` with the
-Server base URL, endpoint manager ID, and Worker ID. Socket composition uses
-`JdkLineSocketClient` with a final `tcp://host:port` URI.
+a Worker route. `OkHttpWorkerControlClient` first registers the long-lived
+Worker identity and then binds it to a requested transport, returning the final
+endpoint URI. Polling composition creates `OkHttpWorkerPointClient` from the
+returned HTTP URI and `workerId`; WebSocket and Socket clients use the returned
+`ws/wss` or `tcp` URI. Registration and Bind remain control-plane calls outside
+the network Client state machines.
 
 The Worker Transport owns the supplied Client and closes it. A Client instance
 must not be shared by multiple Worker Transports.

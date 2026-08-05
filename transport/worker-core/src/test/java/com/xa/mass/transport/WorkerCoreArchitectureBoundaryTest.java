@@ -73,6 +73,7 @@ class WorkerCoreArchitectureBoundaryTest {
                         "WorkerCommand",
                         "WorkerResult",
                         "WorkerConnectionBind",
+                        "WorkerConnectionHello",
                         "okhttp3",
                         "android.",
                         "java.net.Socket"
@@ -104,11 +105,13 @@ class WorkerCoreArchitectureBoundaryTest {
         assertConstructor(
                 PollingWorkerTransport.class,
                 WorkerPointClient.class,
+                String.class,
                 Collection.class
         );
         assertConstructor(
                 PollingWorkerTransport.class,
                 WorkerPointClient.class,
+                String.class,
                 WorkerCommandExecutor.class
         );
         assertConstructor(

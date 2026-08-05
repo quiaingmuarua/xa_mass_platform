@@ -37,7 +37,8 @@ into that wire contract.
 `transport:worker-core` is not a generic transport framework. It contains the
 already-shared Worker execution and protocol state machines plus narrow
 string-only network Client contracts. JVM and Android hosts select a concrete
-Client and explicitly construct the same Worker Transport. Netty Adapter
+Client and explicitly construct the same Worker Transport with a
+platform-issued `workerId`. Netty Adapter
 behavior remains independent until a concrete shared mechanism exists.
 
 See:

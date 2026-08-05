@@ -2,7 +2,6 @@ package com.xa.mass.scenarioworkers;
 
 import com.xa.mass.workerdelivery.json.Jsons;
 import java.math.BigDecimal;
-import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -15,15 +14,13 @@ final class ScenarioWorkersJsonParser {
 
     private static final Set<String> GROUP_FIELDS = Set.of(
             "eventCodes",
-            "endpointManagerId",
-            "websocketUri",
             "requestTimeoutMillis",
             "reconnectIntervalMillis",
             "connectTimeoutMillis",
             "workers"
     );
     private static final Set<String> WORKER_FIELDS = Set.of(
-            "workerId",
+            "clientWorkerKey",
             "workerProperties",
             "indexedPropertyUpdates"
     );
@@ -35,7 +32,6 @@ final class ScenarioWorkersJsonParser {
         Map<String, Object> root = Jsons.parseObject(configJson);
         List<ScenarioWorkerGroupConfig> configs =
                 new ArrayList<>(root.size());
-        Set<String> workerIds = new HashSet<>();
         root.forEach((workerGroupId, rawGroup) -> {
             ScenarioWorkerGroupConfig.requireNonBlank(
                     workerGroupId,
@@ -52,14 +48,11 @@ final class ScenarioWorkersJsonParser {
             );
             List<ScenarioWorkerConfig> workers = parseWorkers(
                     workerGroupId,
-                    requireList(group, "workers"),
-                    workerIds
+                    requireList(group, "workers")
             );
             configs.add(new ScenarioWorkerGroupConfig(
                     workerGroupId,
                     requireStringList(group, "eventCodes"),
-                    requireString(group, "endpointManagerId"),
-                    URI.create(requireString(group, "websocketUri")),
                     workers,
                     Duration.ofMillis(optionalPositiveLong(
                             group,
@@ -83,11 +76,11 @@ final class ScenarioWorkersJsonParser {
 
     private static List<ScenarioWorkerConfig> parseWorkers(
             String workerGroupId,
-            List<?> rawWorkers,
-            Set<String> workerIds
+            List<?> rawWorkers
     ) {
         List<ScenarioWorkerConfig> workers =
                 new ArrayList<>(rawWorkers.size());
+        Set<String> clientWorkerKeys = new HashSet<>();
         for (int index = 0; index < rawWorkers.size(); index++) {
             String owner = "workerGroup "
                     + workerGroupId
@@ -98,14 +91,18 @@ final class ScenarioWorkersJsonParser {
                     owner
             );
             requireExactFields(worker, WORKER_FIELDS, owner);
-            String workerId = requireString(worker, "workerId");
-            if (!workerIds.add(workerId)) {
+            String clientWorkerKey = requireString(
+                    worker,
+                    "clientWorkerKey"
+            );
+            if (!clientWorkerKeys.add(clientWorkerKey)) {
                 throw new IllegalArgumentException(
-                        "workerId must be unique: " + workerId
+                        "clientWorkerKey must be unique within WorkerGroup: "
+                                + clientWorkerKey
                 );
             }
             workers.add(new ScenarioWorkerConfig(
-                    workerId,
+                    clientWorkerKey,
                     optionalObject(worker, "workerProperties"),
                     optionalObject(worker, "indexedPropertyUpdates")
             ));

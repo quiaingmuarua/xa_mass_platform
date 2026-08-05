@@ -10,8 +10,8 @@ through that Core boundary.
 
 ## Protocol
 
-Worker routing uses `workerId` outside the message. The two asymmetric message
-contracts are:
+Worker routing uses `workerId` outside command and result messages. The two
+asymmetric message contracts are:
 
 ```text
 WorkerCommand(
@@ -58,15 +58,30 @@ For a Task command:
 The Worker copies `messageId`, `messageType`, and `forward` into its result,
 sets `dst=TASK`, and supplies `outcomeCode` plus its opaque payload.
 
-Long-lived connections first send the separate bind DTO:
+Before opening a Worker transport, the Worker obtains a long-lived
+platform-issued `workerId` from the Server Identity API using its
+`workerGroupId + clientWorkerKey`. It then calls the Server Bind API with its
+requested transport and complete Worker Properties snapshot. Bind persists the
+delivery endpoint and returns its public URI.
+
+WebSocket and line Socket send this strict connection Bind as their first
+value:
 
 ```json
-{"workerId":"worker-1"}
+{
+  "workerId":"3d813cbb-47fb-4ea8-a5be-6bf4c4a99089"
+}
 ```
 
-After bind, WebSocket and line Socket transports exchange direct
-`WorkerCommand` and `WorkerResult` JSON. There is no outer connection-message
-envelope and no transport-specific command/result DTO.
+The connection Bind frame only asks the receiving Adapter to start route
+verification. The Adapter asks Server whether `workerId` is persistently bound
+to its endpoint, then activates the Channel on success. Polling sends no
+connection Bind frame; Server verifies its persisted `system-polling` route on
+each point request. The frame does not create or update Endpoint Binding and is
+not identity authentication, heartbeat, ACK, property-index update, or endpoint
+migration. After route verification and connection activation, long-lived
+transports exchange direct `WorkerCommand` and `WorkerResult` JSON with no
+transport-specific wrapper.
 
 ## JSON Boundary
 

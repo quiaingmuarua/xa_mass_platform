@@ -50,6 +50,14 @@ class ServerEmbeddedWorkerDeliveryAdapterContextTest {
                 () -> Integer.toString(ADAPTER_PORT)
         );
         registry.add(prefix + ".command-loop-interval", () -> "1h");
+        String endpoint = "xa.mass.worker-binding.endpoints"
+                + ".embedded-websocket";
+        registry.add(endpoint + ".transport-type", () -> "WEBSOCKET");
+        registry.add(
+                endpoint + ".public-uri",
+                () -> "ws://127.0.0.1:" + ADAPTER_PORT
+                        + "/api/v1/worker-delivery/websocket"
+        );
     }
 
     @Test

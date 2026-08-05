@@ -6,12 +6,12 @@ import io.netty.channel.Channel;
 
 interface WorkerConnectionRegistry extends WorkerCommandDelivery {
 
-    void bind(
+    void activate(
             String workerId,
             Channel channel
     );
 
-    void unbind(
+    void deactivate(
             String workerId,
             Channel channel
     );

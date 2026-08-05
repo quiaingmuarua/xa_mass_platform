@@ -57,4 +57,13 @@ public class WorkerPointDeliveryController {
         );
         return ResponseEntity.accepted().body(new AcceptedResponse(true));
     }
+
+    @PostMapping("/workers/{workerId}:verify-binding")
+    public ResponseEntity<Void> verifyWorkerRoute(
+            @PathVariable @NotBlank String endpointManagerId,
+            @PathVariable @NotBlank String workerId
+    ) {
+        workerDelivery.verifyWorkerRoute(endpointManagerId, workerId);
+        return ResponseEntity.noContent().build();
+    }
 }

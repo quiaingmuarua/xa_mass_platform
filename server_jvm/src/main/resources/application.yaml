@@ -21,6 +21,11 @@ xa:
       redis-prefix: default
     worker-property-index:
       registry-json: '${XA_MASS_WORKER_PROPERTY_INDEX_REGISTRY_JSON:{}}'
+    worker-binding:
+      endpoints:
+        system-polling:
+          transport-type: POLLING
+          public-uri: http://127.0.0.1:${server.port:18082}
     task-rpc:
       default-wait-timeout-millis: 30000
       max-wait-timeout-millis: 60000

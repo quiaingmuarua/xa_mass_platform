@@ -56,6 +56,12 @@ class ServerArchitectureBoundaryTest {
     private static final Path WORKER_ASSEMBLY = SERVER_SOURCE.resolve(
             "com/xa/mass/server/workerassembly"
     );
+    private static final Path WORKER_IDENTITY = SERVER_SOURCE.resolve(
+            "com/xa/mass/server/workeridentity"
+    );
+    private static final Path WORKER_BINDING = SERVER_SOURCE.resolve(
+            "com/xa/mass/server/workerbinding"
+    );
     private static final Path RUNTIME_VIEW = SERVER_SOURCE.resolve(
             "com/xa/mass/server/runtimeview"
     );
@@ -104,10 +110,17 @@ class ServerArchitectureBoundaryTest {
                 SERVER_SOURCE,
                 SHARED_REDIS,
                 KERNEL_ASSEMBLY,
-                DELIVERY_ASSEMBLY
+                DELIVERY_ASSEMBLY,
+                WORKER_IDENTITY,
+                WORKER_BINDING
         ))
                 .doesNotContain("io.lettuce")
                 .doesNotContain("org.springframework.data.redis");
+        assertThat(readSourcesExcluding(
+                SERVER_SOURCE,
+                WORKER_IDENTITY,
+                WORKER_BINDING
+        )).doesNotContain("\"wi:");
     }
 
     @Test

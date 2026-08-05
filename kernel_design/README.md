@@ -290,7 +290,7 @@ Score write authority is deliberately narrow:
 
 ```text
 initialization owner
-  establishes the first score during task creation or Worker registration
+  establishes the first score during task creation or Worker upsert
 
 scheduling plane
   is the only routine writer while a score is in an acquirable scheduling lane
@@ -620,7 +620,7 @@ no hidden compatibility path or second mainline remains
     `KernelApplication` owns background lifecycle.
 - [JVM Runtime API Server](../server_jvm/README.md)
   - external Task control proxy plus Java WorkerGroup upsert, Worker
-    registration/property update, TaskItem
+    identity Register, persistent Endpoint Bind and Worker upsert, TaskItem
     append/last-success query, point polling, and Adapter batch HTTP API.
 - [JVM Worker Delivery Adapter](../transport/netty-adapter/README.md)
   - complete Adapter instance registration, independent Netty WebSocket
@@ -637,7 +637,7 @@ no hidden compatibility path or second mainline remains
   - Android HandlerThread/Looper OkHttp WebSocket client for explicit host
     composition with Worker Core.
 - [JVM Worker Delivery Contract](../worker_delivery_contract_jvm/README.md)
-  - transport-neutral Java command/result/bind DTOs, strict validation,
+  - transport-neutral Java connection Bind/command/result DTOs, strict validation,
     outcome classification, and codec.
 - [Result-Routing Scheduling](doc/scheduling/result-routing-scheduling.md)
   - outcome-class WorkerResult consumption, last-success result storage, TaskItem

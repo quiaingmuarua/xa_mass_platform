@@ -33,6 +33,9 @@ import org.junit.jupiter.api.Test;
 
 class WebSocketWorkerDeliveryAdapterTest {
 
+    private static final String WORKER_ID =
+            "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1";
+
     @Test
     void twoAdaptersOwnDistinctPortsAndIsolateTheSameWorkerId()
             throws Exception {
@@ -59,8 +62,8 @@ class WebSocketWorkerDeliveryAdapterTest {
         manager.register(second);
         manager.start();
 
-        Probe firstProbe = new Probe("worker-1");
-        Probe secondProbe = new Probe("worker-1");
+        Probe firstProbe = new Probe(WORKER_ID);
+        Probe secondProbe = new Probe(WORKER_ID);
         WebSocket firstSocket = connect(firstPort, firstProbe);
         WebSocket secondSocket = connect(
                 secondPort,
@@ -84,8 +87,8 @@ class WebSocketWorkerDeliveryAdapterTest {
             WorkerCommand secondCommand = command(
                     "9f0d983c-8010-4d59-a6d2-e8fedb8d0059"
             );
-            firstGateway.batches.add(Map.of("worker-1", firstCommand));
-            secondGateway.batches.add(Map.of("worker-1", secondCommand));
+            firstGateway.batches.add(Map.of(WORKER_ID, firstCommand));
+            secondGateway.batches.add(Map.of(WORKER_ID, secondCommand));
 
             assertThat(firstProbe.message.await(
                     3,
@@ -249,7 +252,7 @@ class WebSocketWorkerDeliveryAdapterTest {
                     TimeUnit.SECONDS
             )).isTrue();
 
-            Probe bound = new Probe("worker-1");
+            Probe bound = new Probe(WORKER_ID);
             WebSocket boundSocket = connect(port, bound);
             assertThat(bound.opened.await(
                     2,
@@ -257,7 +260,7 @@ class WebSocketWorkerDeliveryAdapterTest {
             )).isTrue();
             awaitBound(adapter);
             boundSocket.sendText(
-                    encodeBind(codec, "worker-1"),
+                    encodeBind(codec, WORKER_ID),
                     true
             ).get(2, TimeUnit.SECONDS);
             assertThat(bound.closed.await(
@@ -274,7 +277,7 @@ class WebSocketWorkerDeliveryAdapterTest {
                                     "ws://127.0.0.1:" + port
                                             + WorkerWebSocketHandler
                                             .WORKER_PATH
-                                            + "/workers/worker-1"
+                                            + "/workers/" + WORKER_ID
                             ),
                             oldPath
                     )
@@ -283,6 +286,57 @@ class WebSocketWorkerDeliveryAdapterTest {
                             java.net.http.WebSocketHandshakeException.class
                     );
         } finally {
+            adapter.close();
+        }
+    }
+
+    @Test
+    void retainsOnePendingResultUntilBindingVerificationCompletes()
+            throws Exception {
+        int port = availablePort();
+        CompletableFuture<Void> bindingResponse = new CompletableFuture<>();
+        FakeGateway gateway = new FakeGateway(bindingResponse);
+        WebSocketWorkerDeliveryAdapter adapter = adapter(
+                "websocket-1",
+                port,
+                gateway
+        );
+        adapter.start();
+        WorkerResult result = new WorkerResult(
+                "a5e9e10d-f78b-469e-93ab-864b49c189c1",
+                TASK,
+                "test.observe",
+                "200",
+                "null",
+                "context"
+        );
+        String encodedResult = new WorkerDeliveryCodec()
+                .encodeWorkerResult(result);
+        Probe probe = new Probe(WORKER_ID, encodedResult);
+        WebSocket socket = connect(port, probe);
+        try {
+            assertThat(probe.opened.await(2, TimeUnit.SECONDS)).isTrue();
+            assertThat(gateway.bindingVerified.await(
+                    2,
+                    TimeUnit.SECONDS
+            )).isTrue();
+            assertThat(adapter.activeConnectionCount()).isZero();
+            assertThat(gateway.resultAppended.await(
+                    100,
+                    TimeUnit.MILLISECONDS
+            )).isFalse();
+
+            bindingResponse.complete(null);
+
+            awaitBound(adapter);
+            assertThat(gateway.resultAppended.await(
+                    2,
+                    TimeUnit.SECONDS
+            )).isTrue();
+            assertThat(gateway.appendedResults)
+                    .containsExactly(List.of(encodedResult));
+        } finally {
+            socket.abort();
             adapter.close();
         }
     }
@@ -373,6 +427,17 @@ class WebSocketWorkerDeliveryAdapterTest {
                 new CopyOnWriteArrayList<>();
         private final CountDownLatch resultAppended =
                 new CountDownLatch(1);
+        private final CountDownLatch bindingVerified =
+                new CountDownLatch(1);
+        private final CompletableFuture<Void> bindingResponse;
+
+        private FakeGateway() {
+            this(CompletableFuture.completedFuture(null));
+        }
+
+        private FakeGateway(CompletableFuture<Void> bindingResponse) {
+            this.bindingResponse = bindingResponse;
+        }
 
         @Override
         public Map<String, WorkerCommand> consumeWorkerCommands(
@@ -392,6 +457,13 @@ class WebSocketWorkerDeliveryAdapterTest {
             endpointManagerIds.add(endpointManagerId);
             appendedResults.add(List.copyOf(results));
             resultAppended.countDown();
+        }
+
+        @Override
+        public java.util.concurrent.CompletionStage<Void>
+        verifyWorkerRoute(String endpointManagerId, String workerId) {
+            bindingVerified.countDown();
+            return bindingResponse;
         }
     }
 
@@ -421,11 +493,20 @@ class WebSocketWorkerDeliveryAdapterTest {
                 List<String> results
         ) {
         }
+
+        @Override
+        public java.util.concurrent.CompletionStage<Void>
+        verifyWorkerRoute(String endpointManagerId, String workerId) {
+            return java.util.concurrent.CompletableFuture.completedFuture(
+                    null
+            );
+        }
     }
 
     private static final class Probe implements WebSocket.Listener {
 
         private final String workerId;
+        private final String pendingResult;
         private final WorkerDeliveryCodec codec =
                 new WorkerDeliveryCodec();
         private final CountDownLatch opened = new CountDownLatch(1);
@@ -435,11 +516,17 @@ class WebSocketWorkerDeliveryAdapterTest {
         private final StringBuilder fragments = new StringBuilder();
 
         private Probe(String workerId) {
+            this(workerId, null);
+        }
+
+        private Probe(String workerId, String pendingResult) {
             this.workerId = workerId;
+            this.pendingResult = pendingResult;
         }
 
         private Probe() {
             this.workerId = null;
+            this.pendingResult = null;
         }
 
         @Override
@@ -449,10 +536,17 @@ class WebSocketWorkerDeliveryAdapterTest {
                 webSocket.request(1);
                 return;
             }
-            webSocket.sendText(
+            CompletionStage<WebSocket> sent = webSocket.sendText(
                     encodeBind(codec, workerId),
                     true
-            ).whenComplete((ignored, error) -> {
+            );
+            if (pendingResult != null) {
+                sent = sent.thenCompose(ignored -> webSocket.sendText(
+                        pendingResult,
+                        true
+                ));
+            }
+            sent.whenComplete((ignored, error) -> {
                 if (error == null) {
                     opened.countDown();
                     webSocket.request(1);

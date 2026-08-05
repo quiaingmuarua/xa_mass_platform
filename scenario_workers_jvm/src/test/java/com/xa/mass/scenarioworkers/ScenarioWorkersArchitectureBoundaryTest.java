@@ -42,7 +42,10 @@ class ScenarioWorkersArchitectureBoundaryTest {
                 .findFirst()
                 .orElseThrow();
         assertThat(fromJson.getParameterTypes())
-                .containsExactly(String.class, java.net.URI.class);
+                .containsExactly(
+                        String.class,
+                        java.net.URI.class
+                );
     }
 
     @Test

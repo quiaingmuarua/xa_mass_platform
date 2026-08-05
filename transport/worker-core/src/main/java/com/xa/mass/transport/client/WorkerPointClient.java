@@ -5,9 +5,10 @@ import java.util.Optional;
 
 public interface WorkerPointClient extends AutoCloseable {
 
-    Optional<String> pollCommand() throws IOException;
+    Optional<String> pollCommand(String workerId) throws IOException;
 
-    void submitResult(String encodedResult) throws IOException;
+    void submitResult(String workerId, String encodedResult)
+            throws IOException;
 
     @Override
     void close();

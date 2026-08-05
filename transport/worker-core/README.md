@@ -60,19 +60,22 @@ Their stable behavior is:
 
 | Transport | Host operation | Protocol behavior |
 | --- | --- | --- |
-| `PollingWorkerTransport` | `runOnce()` or `runForever(interval)` | Submits a pending result before polling another command |
-| `WebSocketWorkerTransport` | `start()` or `runForever()` | Sends bind first, serializes command execution, and replays a pending result after reconnect |
-| `SocketWorkerTransport` | `start()` or `runForever()` | Sends bind first on the line connection and replays a pending result after reconnect |
+| `PollingWorkerTransport` | `runOnce()` or `runForever(interval)` | Submits a pending result before polling another command; its point Client targets the URI returned by Bind |
+| `WebSocketWorkerTransport` | `start()` or `runForever()` | Sends `WorkerConnectionBind(workerId)` first, serializes command execution, and replays a pending result after reconnect |
+| `SocketWorkerTransport` | `start()` or `runForever()` | Sends `WorkerConnectionBind(workerId)` first on the line connection and replays a pending result after reconnect |
 
-WebSocket and Socket exchange direct `WorkerConnectionBind`, `WorkerCommand`,
-and `WorkerResult` JSON values. There is no generic connection-message
-envelope. A long-lived Transport accepts a command only after bind and while
-no command is processing and no result is pending.
+All three transports receive only the platform-issued `workerId`. Registration,
+Endpoint Binding, and Worker Properties refresh happen before Transport
+construction. WebSocket and Socket exchange a direct connection Bind frame,
+`WorkerCommand`, and `WorkerResult` JSON values. There is no generic
+connection-message envelope. A long-lived Transport accepts a command only
+after the connection Bind frame has been handed to the network Client and while no
+command is processing and no result is pending.
 
 Each Transport retains at most one pending result. Polling retains it until the
 point result submission succeeds. WebSocket and Socket retain it until the
-active Client accepts the encoded result; after reconnect they bind first and
-then resend it. Client acceptance is not an application ACK, and Worker Core
+active Client accepts the encoded result; after reconnect they send the Bind
+frame first and then resend it. Client acceptance is not an application ACK, and Worker Core
 does not add a pending/ack ledger.
 
 The Transport owns and closes its Client. Polling `close()`, and long-lived

@@ -28,7 +28,6 @@ import com.xa.mass.kernel.task.TaskRuntime.TaskItemAppendStatus;
 import com.xa.mass.kernel.task.TaskRuntime.TaskType;
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.kernel.worker.WorkerPropertyIndexRuntime;
-import com.xa.mass.kernel.worker.WorkerRuntime;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeResult;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeStatus;
 import com.xa.mass.server.api.ApiExceptionHandler;
@@ -45,6 +44,11 @@ import com.xa.mass.server.taskdata.TaskDispatchWakeSink;
 import com.xa.mass.server.taskdata.TaskRpcCallService;
 import com.xa.mass.server.taskdata.TaskRpcProperties;
 import com.xa.mass.server.taskdata.TaskRpcWaitRegistry;
+import com.xa.mass.server.workerbinding.WorkerBindingService;
+import com.xa.mass.server.workerbinding.WorkerEndpointBinding;
+import com.xa.mass.server.workerbinding.WorkerTransportType;
+import com.xa.mass.server.workeridentity.WorkerIdentityService;
+import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -61,7 +65,8 @@ import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 
 class RuntimeApiControllerTest {
 
-    private WorkerRuntime workerRuntime;
+    private WorkerIdentityService workerIdentity;
+    private WorkerBindingService workerBinding;
     private WorkerResourceCatalog workerCatalog;
     private WorkerPropertyIndexRuntime propertyIndex;
     private TaskRuntime taskRuntime;
@@ -72,7 +77,8 @@ class RuntimeApiControllerTest {
 
     @BeforeEach
     void setUp() {
-        workerRuntime = mock(WorkerRuntime.class);
+        workerIdentity = mock(WorkerIdentityService.class);
+        workerBinding = mock(WorkerBindingService.class);
         workerCatalog = mock(WorkerResourceCatalog.class);
         propertyIndex = mock(WorkerPropertyIndexRuntime.class);
         taskRuntime = mock(TaskRuntime.class);
@@ -82,10 +88,14 @@ class RuntimeApiControllerTest {
 
         when(workerCatalog.upsertWorkerGroup(any()))
                 .thenReturn(new WorkerRuntimeResult(WorkerRuntimeStatus.OK));
-        when(workerRuntime.registerWorker(any()))
-                .thenReturn(new WorkerRuntimeResult(WorkerRuntimeStatus.OK));
-        when(workerRuntime.updateWorkerProperties(any(), any(), any()))
-                .thenReturn(new WorkerRuntimeResult(WorkerRuntimeStatus.OK));
+        when(workerIdentity.register(any(), any()))
+                .thenReturn("32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1");
+        when(workerBinding.bind(any(), any(), any(), any(), any()))
+                .thenReturn(new WorkerEndpointBinding(
+                        "scenario-websocket",
+                        WorkerTransportType.WEBSOCKET,
+                        URI.create("ws://127.0.0.1:18083/connect")
+                ));
         when(workerCatalog.patchWorkerPlatformProperties(
                 any(),
                 any(),
@@ -153,10 +163,11 @@ class RuntimeApiControllerTest {
         validator.afterPropertiesSet();
         mockMvc = MockMvcBuilders.standaloneSetup(
                         new ResourceCommandController(
-                                workerRuntime,
                                 workerCatalog,
                                 propertyIndex
                         ),
+                        new WorkerIdentityController(workerIdentity),
+                        new WorkerBindingController(workerBinding),
                         new TaskControlController(
                                 taskRuntime,
                                 taskLifecycle
@@ -214,39 +225,50 @@ class RuntimeApiControllerTest {
                 .andExpect(header().string("X-Request-Id", "request-1"))
                 .andExpect(jsonPath("$.status").value("ok"));
 
-        mockMvc.perform(put(
-                                "/api/v1/worker-groups/phone-tools/workers/worker-1"
+        mockMvc.perform(post(
+                                "/api/v1/worker-groups/phone-tools/"
+                                        + "workers:register"
                         )
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "endpointManagerId": "endpoint-manager-1",
-                                  "workerProperties": {"runtime": "java"}
+                                  "clientWorkerKey": "installation-1"
                                 }
                                 """))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("ok"));
-
-        mockMvc.perform(put(
-                                "/api/v1/worker-groups/phone-tools/workers/"
-                                        + "worker-1/worker-properties"
-                        )
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"properties\":{\"runtime\":\"java-21\"}}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("ok"));
-        verify(workerRuntime).updateWorkerProperties(
+                .andExpect(jsonPath("$.workerId").value(
+                        "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1"
+                ));
+        verify(workerIdentity).register(
                 "phone-tools",
-                "worker-1",
-                Map.of("runtime", "java-21")
+                "installation-1"
         );
-        mockMvc.perform(put(
+
+        mockMvc.perform(post(
                                 "/api/v1/worker-groups/phone-tools/workers/"
-                                        + "worker-1/worker-properties"
+                                        + "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1"
+                                        + ":bind"
                         )
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{}"))
-                .andExpect(status().isBadRequest());
+                        .content("""
+                                {
+                                  "clientWorkerKey":"installation-1",
+                                  "transportType":"WEBSOCKET",
+                                  "workerProperties":{"region":"local"}
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.transportType")
+                        .value("WEBSOCKET"))
+                .andExpect(jsonPath("$.endpointUri")
+                        .value("ws://127.0.0.1:18083/connect"));
+        verify(workerBinding).bind(
+                "phone-tools",
+                "installation-1",
+                "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1",
+                WorkerTransportType.WEBSOCKET,
+                Map.of("region", "local")
+        );
 
         mockMvc.perform(patch(
                                 "/api/v1/worker-groups/phone-tools/workers/"
@@ -301,12 +323,12 @@ class RuntimeApiControllerTest {
                 )
         );
 
-        mockMvc.perform(put(
-                                "/api/v1/worker-groups/phone-tools/workers/"
-                                        + "missing-properties"
+        mockMvc.perform(post(
+                                "/api/v1/worker-groups/phone-tools/"
+                                        + "workers:register"
                         )
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"endpointManagerId\":\"endpoint-1\"}"))
+                        .content("{}"))
                 .andExpect(status().isBadRequest());
 
     }

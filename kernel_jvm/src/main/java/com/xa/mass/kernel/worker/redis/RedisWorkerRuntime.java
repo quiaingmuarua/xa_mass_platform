@@ -5,6 +5,7 @@ import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreState;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionResult;
 import com.xa.mass.kernel.score.WorkerScoreCore.WorkerScoreTransitionStatus;
 import com.xa.mass.kernel.worker.WorkerRuntime;
+import com.xa.mass.kernel.worker.redis.WorkerRedisSupport.WorkerMetadata;
 import io.lettuce.core.RedisClient;
 import io.lettuce.core.api.StatefulRedisConnection;
 import io.lettuce.core.api.sync.RedisCommands;
@@ -15,8 +16,6 @@ public final class RedisWorkerRuntime
         implements WorkerRuntime, AutoCloseable {
 
     public static final int DEFAULT_INITIAL_LANE_RANK = 50;
-    private static final int MAX_DESCRIPTOR_CAS_ATTEMPTS = 8;
-
     private final RedisClient redisClient;
     private final WorkerScoreCore scoreCore;
     private final String prefix;
@@ -64,13 +63,22 @@ public final class RedisWorkerRuntime
     }
 
     @Override
-    public WorkerRuntimeResult registerWorker(
+    public WorkerRuntimeResult upsertWorker(
             WorkerDeclaration declaration
     ) {
         if (declaration == null) {
             return result(
                     WorkerRuntimeStatus.INVALID,
                     "invalid worker declaration"
+            );
+        }
+        String encodedProperties = WorkerRedisSupport.encodeWorkerProperties(
+                declaration.workerProperties()
+        );
+        if (encodedProperties == null) {
+            return result(
+                    WorkerRuntimeStatus.INVALID,
+                    "invalid workerProperties json"
             );
         }
         if (commands().hget(
@@ -100,38 +108,39 @@ public final class RedisWorkerRuntime
             );
         }
 
-        WorkerDescriptor descriptor = new WorkerDescriptor(
+        WorkerMetadata metadata = new WorkerMetadata(
                 declaration.workerId(),
                 declaration.workerGroupId(),
                 declaration.endpointManagerId(),
-                declaration.workerProperties(),
                 Map.of()
         );
-        String encoded = WorkerRedisSupport.encodeWorker(descriptor);
-        if (encoded == null) {
+        String encodedMetadata = WorkerRedisSupport.encodeWorkerMetadata(
+                metadata
+        );
+        if (encodedMetadata == null) {
             return result(
                     WorkerRuntimeStatus.INVALID,
-                    "invalid descriptor json"
+                    "invalid worker metadata json"
             );
         }
 
-        String workersKey = WorkerRedisSupport.workersKey(
+        String metadataKey = WorkerRedisSupport.workerMetadataKey(
                 prefix,
                 declaration.workerGroupId()
         );
-        boolean descriptorCreated = commands().hsetnx(
-                workersKey,
+        boolean metadataCreated = commands().hsetnx(
+                metadataKey,
                 declaration.workerId(),
-                encoded
+                encodedMetadata
         );
-        if (!descriptorCreated) {
-            WorkerDescriptor current = WorkerRedisSupport.decodeWorker(
-                    commands().hget(workersKey, declaration.workerId())
+        if (!metadataCreated) {
+            WorkerMetadata current = WorkerRedisSupport.decodeWorkerMetadata(
+                    commands().hget(metadataKey, declaration.workerId())
             );
             if (current == null) {
                 return result(
                         WorkerRuntimeStatus.INVALID,
-                        "stored worker descriptor is invalid"
+                        "stored worker metadata is invalid"
                 );
             }
             if (!sameIdentity(current, declaration)) {
@@ -140,6 +149,25 @@ public final class RedisWorkerRuntime
                         "worker identity declaration is immutable"
                 );
             }
+        }
+
+        String propertiesKey = WorkerRedisSupport.workerPropertiesKey(
+                prefix,
+                declaration.workerGroupId()
+        );
+        String currentProperties = commands().hget(
+                propertiesKey,
+                declaration.workerId()
+        );
+        boolean propertiesChanged = !encodedProperties.equals(
+                currentProperties
+        );
+        if (propertiesChanged) {
+            commands().hset(
+                    propertiesKey,
+                    declaration.workerId(),
+                    encodedProperties
+            );
         }
 
         WorkerScoreState scoreState = scoreCore.getScoreStates(
@@ -184,128 +212,17 @@ public final class RedisWorkerRuntime
             }
         }
 
-        if (ownerCreated || descriptorCreated || scoreCreated) {
+        if (ownerCreated
+                || metadataCreated
+                || propertiesChanged
+                || scoreCreated) {
             return new WorkerRuntimeResult(WorkerRuntimeStatus.OK);
         }
         return new WorkerRuntimeResult(WorkerRuntimeStatus.NOOP);
     }
 
-    @Override
-    public WorkerRuntimeResult updateWorkerProperties(
-            String workerGroupId,
-            String workerId,
-            Map<String, Object> workerProperties
-    ) {
-        if (isBlank(workerGroupId)) {
-            return result(
-                    WorkerRuntimeStatus.INVALID,
-                    "invalid workerGroupId"
-            );
-        }
-        if (isBlank(workerId)) {
-            return result(
-                    WorkerRuntimeStatus.INVALID,
-                    "invalid workerId"
-            );
-        }
-        if (workerProperties == null) {
-            return result(
-                    WorkerRuntimeStatus.INVALID,
-                    "invalid workerProperties"
-            );
-        }
-
-        String workerGroupOwner = commands().hget(
-                WorkerRedisSupport.workerIdOwnersKey(prefix),
-                workerId
-        );
-        if (workerGroupOwner == null) {
-            return result(
-                    WorkerRuntimeStatus.NOT_FOUND,
-                    "worker not found"
-            );
-        }
-        if (!workerGroupId.equals(workerGroupOwner)) {
-            return result(
-                    WorkerRuntimeStatus.CONFLICT,
-                    "workerId is owned by another workerGroupId"
-            );
-        }
-
-        String workersKey = WorkerRedisSupport.workersKey(
-                prefix,
-                workerGroupId
-        );
-        for (int attempt = 0;
-                attempt < MAX_DESCRIPTOR_CAS_ATTEMPTS;
-                attempt++) {
-            String observed = commands().hget(workersKey, workerId);
-            if (observed == null) {
-                return result(
-                        WorkerRuntimeStatus.NOT_FOUND,
-                        "worker descriptor not found"
-                );
-            }
-            WorkerDescriptor current = WorkerRedisSupport.decodeWorker(
-                    observed
-            );
-            if (current == null) {
-                return result(
-                        WorkerRuntimeStatus.INVALID,
-                        "stored worker descriptor is invalid"
-                );
-            }
-            if (!workerId.equals(current.workerId())
-                    || !workerGroupId.equals(current.workerGroupId())) {
-                return result(
-                        WorkerRuntimeStatus.CONFLICT,
-                        "stored worker identity does not match"
-                );
-            }
-            if (current.workerProperties().equals(workerProperties)) {
-                return new WorkerRuntimeResult(WorkerRuntimeStatus.NOOP);
-            }
-
-            WorkerDescriptor updated;
-            try {
-                updated = new WorkerDescriptor(
-                        current.workerId(),
-                        current.workerGroupId(),
-                        current.endpointManagerId(),
-                        workerProperties,
-                        current.platformProperties()
-                );
-            } catch (RuntimeException error) {
-                return result(
-                        WorkerRuntimeStatus.INVALID,
-                        "invalid workerProperties"
-                );
-            }
-            String encoded = WorkerRedisSupport.encodeWorker(updated);
-            if (encoded == null) {
-                return result(
-                        WorkerRuntimeStatus.INVALID,
-                        "invalid descriptor json"
-                );
-            }
-            if (WorkerRedisSupport.compareAndSetHashField(
-                    commands(),
-                    workersKey,
-                    workerId,
-                    observed,
-                    encoded
-            )) {
-                return new WorkerRuntimeResult(WorkerRuntimeStatus.OK);
-            }
-        }
-        return result(
-                WorkerRuntimeStatus.STALE,
-                "worker descriptor changed during snapshot refresh"
-        );
-    }
-
     private static boolean sameIdentity(
-            WorkerDescriptor current,
+            WorkerMetadata current,
             WorkerDeclaration declaration
     ) {
         return current.workerId().equals(declaration.workerId())
@@ -322,10 +239,6 @@ public final class RedisWorkerRuntime
             String reason
     ) {
         return new WorkerRuntimeResult(status, reason);
-    }
-
-    private static boolean isBlank(String value) {
-        return value == null || value.isBlank();
     }
 
     private RedisCommands<String, String> commands() {

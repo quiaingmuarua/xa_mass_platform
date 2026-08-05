@@ -70,12 +70,20 @@ WorkerDeclaration(
 )
 ```
 
-Worker registration supplies the initial `workerProperties` snapshot. A
-compatible repeated registration is a no-op and cannot overwrite either
-property snapshot. `WorkerRuntime.update_worker_properties` is the separate
-complete-replacement operation for the Worker-owned snapshot. Registration and
-property update are resource operations, not connectivity or activation
-evidence. The Platform cannot patch the Worker-owned snapshot.
+`WorkerRuntime.upsert_worker` receives this declaration from the Server Bind
+control path after registration coordinates are validated and an endpoint is
+persisted. First upsert creates the
+Worker metadata, stores the complete `workerProperties` snapshot, and
+initializes a missing score. A compatible repeated Bind replaces the complete
+Worker-owned snapshot. Upsert is a resource refresh operation, not durable
+connectivity or activation evidence. The Platform cannot patch the
+Worker-owned snapshot.
+
+The external Worker identity registry is not part of this Kernel contract. It
+maps `workerGroupId + clientWorkerKey` to a long-lived Worker ID. A separate
+Server Binding registry maps that Worker ID to an Endpoint Manager. Kernel
+receives only the resulting declaration and does not interpret the client key,
+public endpoint URI, or connection check.
 
 Worker identity coordinates are immutable:
 
@@ -103,10 +111,10 @@ WorkerDescriptor(
 ```
 
 `platformProperties` is patched by field. A `null` patch value deletes the
-field. Worker property update preserves the current Platform snapshot. Both
-source writers compare the observed descriptor value before replacement and
-retry a bounded number of times, so concurrent updates cannot discard the
-other source's accepted snapshot.
+field. Worker upsert preserves the current Platform snapshot because metadata
+and Worker Properties are stored independently. Platform patch uses a bounded
+compare-and-set on metadata; Worker snapshot replacement writes only the
+Worker Properties row, so the two source writers cannot overwrite each other.
 
 Properties are intended for bounded views, diagnostics, and low-frequency
 matching facts. They are not transport reachability, score, lease, assignment,
@@ -236,17 +244,19 @@ Resource metadata, scheduling serviceability, binding, connectivity, and
 execution remain separate axes:
 
 ```text
-Resource        WorkerGroup and Worker descriptors
+Resource        WorkerGroup plus Worker metadata/properties
 Scheduling      Worker score polarity, lease, recovery, dirty fence
 Binding         immutable endpointManagerId route declaration
+Registration    external client coordinate to long-lived workerId
+Bind            persisted endpoint route plus Kernel Worker upsert
 Connectivity    Adapter-local active connection evidence
 Execution       TaskItem claim and Worker result evidence
 ```
 
-Worker registration initializes a missing HOT score, including retry recovery
-after a partial first registration. If a score already exists, registration
-preserves its polarity, coordinate, dirty bit, and lease exactly. Property and
-index updates do not read or mutate score or release a lease. Attribute changes do not revoke an
+Worker upsert initializes a missing HOT score, including retry recovery after a
+partial first Bind. If a score already exists, upsert preserves its polarity,
+coordinate, dirty bit, and lease exactly. Property and index updates do not
+read or mutate score or release a lease. Attribute changes do not revoke an
 already claimed Item or a command already delivered to a Worker.
 
 Physical Worker removal, disable/drain, index residue cleanup, ordered update
@@ -259,7 +269,7 @@ milestones.
 - Do not auto-project Properties into indexes.
 - Do not expose index-only values through Runtime View.
 - Do not use Properties or indexes as connectivity evidence.
-- Do not make index update failure roll back Worker registration, Dispatch, or
+- Do not make index update failure roll back Worker upsert, Dispatch, or
   ResultRouting.
 - Do not scan descriptors to satisfy TARGETED rules.
 - Do not infer physical truth from the latest accepted scheduling projection.

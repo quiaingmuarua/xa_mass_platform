@@ -72,8 +72,7 @@ class ResourcesCommandClientTest(unittest.TestCase):
         }
         self.assertEqual(
             {
-                "register_worker",
-                "update_worker_properties",
+                "upsert_worker",
                 "upsert_worker_group",
             },
             public_instance_methods,
@@ -87,7 +86,7 @@ class ResourcesCommandClientTest(unittest.TestCase):
             self.assertFalse(hasattr(self.client, forbidden))
         self.assertNotIn(
             "lane_rank",
-            inspect.signature(ResourcesCommandClient.register_worker).parameters,
+            inspect.signature(ResourcesCommandClient.upsert_worker).parameters,
         )
 
     def test_composes_only_worker_resource_owners_from_shared_config(self) -> None:
@@ -129,8 +128,7 @@ class ResourcesCommandClientTest(unittest.TestCase):
         group_result = WorkerRuntimeResult(WorkerRuntimeStatus.OK)
         worker_result = WorkerRuntimeResult(WorkerRuntimeStatus.OK)
         self.catalog.upsert_worker_group.return_value = group_result
-        self.runtime.register_worker.return_value = worker_result
-        self.runtime.update_worker_properties.return_value = worker_result
+        self.runtime.upsert_worker.return_value = worker_result
 
         self.assertIs(
             group_result,
@@ -138,23 +136,10 @@ class ResourcesCommandClientTest(unittest.TestCase):
         )
         self.assertIs(
             worker_result,
-            self.client.register_worker(declaration=worker),
+            self.client.upsert_worker(declaration=worker),
         )
-        self.runtime.register_worker.assert_called_once_with(
+        self.runtime.upsert_worker.assert_called_once_with(
             declaration=worker,
-        )
-        self.assertIs(
-            worker_result,
-            self.client.update_worker_properties(
-                worker_group_id=group.worker_group_id,
-                worker_id=worker.worker_id,
-                worker_properties={"runtime": "python-v2"},
-            ),
-        )
-        self.runtime.update_worker_properties.assert_called_once_with(
-            worker_group_id=group.worker_group_id,
-            worker_id=worker.worker_id,
-            worker_properties={"runtime": "python-v2"},
         )
 
     def test_from_json_uses_the_shared_application_config_contract(self) -> None:
@@ -202,7 +187,7 @@ class ResourcesCommandClientIntegrationTest(unittest.TestCase):
         if keys:
             self.redis.delete(*keys)
 
-    def test_register_initializes_hot_worker_without_start(self) -> None:
+    def test_upsert_initializes_hot_worker_without_start(self) -> None:
         group_id = "image-workers"
         group_result = self.client.upsert_worker_group(
             descriptor=WorkerGroupDescriptor(
@@ -211,7 +196,7 @@ class ResourcesCommandClientIntegrationTest(unittest.TestCase):
                 event_codes=frozenset({"image.resize"}),
             )
         )
-        worker_result = self.client.register_worker(
+        worker_result = self.client.upsert_worker(
             declaration=WorkerDeclaration(
                 worker_id="worker-1",
                 worker_group_id=group_id,

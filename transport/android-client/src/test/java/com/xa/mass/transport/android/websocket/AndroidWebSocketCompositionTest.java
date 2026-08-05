@@ -100,7 +100,7 @@ public class AndroidWebSocketCompositionTest {
             WebSocketWorkerTransport worker =
                     new WebSocketWorkerTransport(
                             client,
-                            "worker-android",
+                            MESSAGE_ID,
                             List.of(WorkerEventDefinition.of(
                                     "TASK",
                                     "test.observe",
@@ -123,7 +123,7 @@ public class AndroidWebSocketCompositionTest {
         }
 
         assertNotNull(bind.get());
-        assertEquals("worker-android", bind.get().workerId());
+        assertEquals(MESSAGE_ID, bind.get().workerId());
         assertEquals(expectedResult, result.get());
     }
 }

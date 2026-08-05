@@ -9,6 +9,7 @@ import static org.mockito.Mockito.when;
 
 import com.xa.mass.kernel.delivery.WorkerResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
+import com.xa.mass.server.workerbinding.WorkerBindingService;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
@@ -24,24 +25,29 @@ class WorkerDeliveryServiceTest {
 
     private static final String COMMAND_ID =
             "a5e9e10d-f78b-469e-93ab-864b49c189c1";
+    private static final String POLLING =
+            WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID;
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
     private WorkerCommandRuntime commandRuntime;
     private WorkerResultRuntime resultRuntime;
+    private WorkerBindingService bindings;
     private WorkerDeliveryService service;
 
     @BeforeEach
     void setUp() {
         commandRuntime = mock(WorkerCommandRuntime.class);
         resultRuntime = mock(WorkerResultRuntime.class);
+        bindings = mock(WorkerBindingService.class);
         service = new WorkerDeliveryService(
                 commandRuntime,
-                resultRuntime
+                resultRuntime,
+                bindings
         );
     }
 
     @Test
     void pointPollDropsACommandThatExpiredAfterRedisConsumption() {
-        when(commandRuntime.consumeWorkerCommand("endpoint-1", "worker-1"))
+        when(commandRuntime.consumeWorkerCommand(POLLING, "worker-1"))
                 .thenReturn(new WorkerCommand(
                         COMMAND_ID,
                         WorkerMessageEndpoint.TASK,
@@ -52,8 +58,9 @@ class WorkerDeliveryServiceTest {
                         "context"
                 ));
 
-        assertThat(service.pollWorkerCommand("endpoint-1", "worker-1"))
+        assertThat(service.pollWorkerCommand(POLLING, "worker-1"))
                 .isNull();
+        verify(bindings).requireCurrentEndpoint(POLLING, "worker-1");
     }
 
     @Test
@@ -61,7 +68,7 @@ class WorkerDeliveryServiceTest {
         WorkerResult result = result(COMMAND_ID, "3001");
 
         assertThatThrownBy(() -> service.appendWorkerResult(
-                "endpoint-1",
+                POLLING,
                 "worker-1",
                 result
         ))
@@ -73,6 +80,7 @@ class WorkerDeliveryServiceTest {
                         ServerErrorCode.INVALID_WORKER_DELIVERY_REQUEST
                 );
         verify(resultRuntime, never()).appendWorkerResults(List.of(result));
+        verify(bindings).requireCurrentEndpoint(POLLING, "worker-1");
     }
 
     @Test

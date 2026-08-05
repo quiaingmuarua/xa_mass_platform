@@ -5,6 +5,8 @@ import static org.mockito.Mockito.mock;
 
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.scenarioworkers.ScenarioWorkers;
+import com.xa.mass.server.workerbinding.WorkerEndpointDirectory;
+import com.xa.mass.server.workerbinding.WorkerTransportType;
 import com.xa.mass.server.workerdelivery.adapter
         .ServerWorkerDeliveryAdapterConfiguration;
 import com.xa.mass.workerdelivery.adapter.application
@@ -26,7 +28,18 @@ class ServerWorkerAssemblyPropertiesTest {
                     .withBean(
                             WorkerResourceCatalog.class,
                             () -> mock(WorkerResourceCatalog.class)
-                    );
+                    )
+                    .withBean(WorkerEndpointDirectory.class, () -> {
+                        WorkerEndpointDirectory directory = mock(
+                                WorkerEndpointDirectory.class
+                        );
+                        org.mockito.Mockito.when(directory.contains(
+                                org.mockito.ArgumentMatchers.anyString(),
+                                org.mockito.ArgumentMatchers
+                                        .any(WorkerTransportType.class)
+                        )).thenReturn(true);
+                        return directory;
+                    });
 
     @Test
     void absentConfigurationCreatesAnInertAggregate() {
@@ -108,9 +121,8 @@ class ServerWorkerAssemblyPropertiesTest {
                         + "{\"group\":{\"eventCodes\":[\"catalog.old\"]}}",
                 "xa.mass.worker-assembly.worker-config-json="
                         + "{\"group\":{\"eventCodes\":[\"string.md5\"],"
-                        + "\"endpointManagerId\":\"adapter\","
-                        + "\"websocketUri\":\"ws://127.0.0.1:18083/connect\","
-                        + "\"workers\":[{\"workerId\":\"worker-1\"}]}}"
+                        + "\"workers\":[{\"clientWorkerKey\":"
+                        + "\"worker-1\"}]}}"
         ).run(context -> assertThat(context).hasNotFailed());
     }
 

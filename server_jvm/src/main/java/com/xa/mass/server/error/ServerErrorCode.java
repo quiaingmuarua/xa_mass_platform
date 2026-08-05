@@ -53,6 +53,42 @@ public enum ServerErrorCode {
             13002,
             "Worker Delivery Redis is unavailable"
     ),
+    INVALID_WORKER_IDENTITY_REQUEST(
+            14001,
+            "Worker identity request is invalid"
+    ),
+    WORKER_IDENTITY_NOT_FOUND(
+            14003,
+            "Worker identity was not found"
+    ),
+    WORKER_IDENTITY_CONFLICT(
+            14004,
+            "Worker identity conflicts with current state"
+    ),
+    WORKER_IDENTITY_UNAVAILABLE(
+            14005,
+            "Worker identity service is unavailable"
+    ),
+    INVALID_WORKER_BINDING_REQUEST(
+            14101,
+            "Worker binding request is invalid"
+    ),
+    WORKER_BINDING_NOT_FOUND(
+            14102,
+            "Worker binding was not found"
+    ),
+    WORKER_BINDING_CONFLICT(
+            14103,
+            "Worker binding conflicts with current endpoint"
+    ),
+    WORKER_BINDING_UNAVAILABLE(
+            14104,
+            "Worker binding service is unavailable"
+    ),
+    WORKER_ENDPOINT_UNAVAILABLE(
+            14105,
+            "Worker endpoint is unavailable"
+    ),
     WORKER_GROUP_NOT_FOUND(
             15001,
             "WorkerGroup was not found"

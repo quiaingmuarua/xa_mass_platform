@@ -21,7 +21,7 @@ final class NettySocketWorkerConnectionRegistry
         this.codec = Objects.requireNonNull(codec, "codec");
     }
 
-    void bind(String workerId, Channel channel) {
+    void activate(String workerId, Channel channel) {
         requireWorkerId(workerId);
         Objects.requireNonNull(channel, "channel");
         Channel previous = channels.put(workerId, channel);
@@ -30,7 +30,7 @@ final class NettySocketWorkerConnectionRegistry
         }
     }
 
-    void unbind(String workerId, Channel channel) {
+    void deactivate(String workerId, Channel channel) {
         requireWorkerId(workerId);
         Objects.requireNonNull(channel, "channel");
         channels.computeIfPresent(workerId, (ignored, current) ->

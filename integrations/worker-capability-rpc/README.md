@@ -20,7 +20,7 @@ WorkerCapabilityRpcMain
 The integration depends only on the shared JSON facade and the external
 Runtime API. The Server profile owns deployment composition, while
 `scenario_workers_jvm` owns business handlers, transport construction, and
-public-HTTP Worker registration. Server initializes the advisory WorkerGroup
+public-HTTP Register/Bind plus connection Bind construction. Server initializes the advisory WorkerGroup
 directory before starting Adapters and Scenario Workers. The caller does not depend on
 `server_jvm`, `scenario_workers_jvm`, `kernel_jvm`, the Adapter Runtime, Worker
 Core, a network client, or Redis.

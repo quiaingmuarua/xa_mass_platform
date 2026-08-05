@@ -13,8 +13,8 @@ wr:{prefix}:...
 and score partition. Redis structures are owned separately:
 
 ```text
-WorkerResourceCatalog      descriptor HASH values
-WorkerRuntime              Worker declaration and snapshot refresh
+WorkerResourceCatalog      WorkerGroup descriptors plus Worker metadata/properties
+WorkerRuntime              Worker metadata establishment and snapshot refresh
 WorkerPropertyIndexRuntime property projection HASH values
 WorkerScoreCore            Worker scheduling score ZSET
 ```
@@ -59,39 +59,48 @@ repeated CAS contention -> STALE
 Matcher or Dispatch and does not assert the Handler set currently installed on
 every Worker.
 
-## Worker Descriptors
+## Worker Metadata And Properties
 
 ```text
-wr:{prefix}:workers:{workerGroupId}
+wr:{prefix}:worker-metadata:{workerGroupId}
   HASH field = workerId
-  value       = canonical WorkerDescriptor JSON
+  value       = canonical WorkerMetadata JSON
+
+wr:{prefix}:worker-properties:{workerGroupId}
+  HASH field = workerId
+  value       = canonical workerProperties JSON object
 
 wr:{prefix}:worker-id-owners
   HASH field = workerId
   value       = workerGroupId
 ```
 
-Example descriptor:
+Example metadata:
 
 ```json
 {
   "endpointManagerId": "system-polling",
   "platformProperties": {"poolLabel": "default"},
   "workerGroupId": "phone-workers",
-  "workerId": "phone-worker-1",
-  "workerProperties": {"arch": "arm64", "region": "cn-east"}
+  "workerId": "phone-worker-1"
 }
+```
+
+Example Worker Properties row:
+
+```json
+{"arch":"arm64","region":"cn-east"}
 ```
 
 `worker-id-owners` is an identity fence, not a global query catalog.
 
-Worker registration intentionally remains multi-stage:
+Worker upsert intentionally remains multi-stage:
 
 ```text
 require WorkerGroup descriptor
 -> HSETNX workerId owner
--> establish or validate immutable Worker descriptor coordinates
--> preserve both property snapshots when the descriptor already exists
+-> establish or validate immutable Worker metadata coordinates
+-> replace the complete workerProperties row
 -> initialize HOT_ACQUIRE only when Worker score is missing
 -> preserve every existing Worker score byte-for-byte
 ```
@@ -99,16 +108,34 @@ require WorkerGroup descriptor
 Interrupted stages converge on retry. The operation is not wrapped in a
 cross-key transaction.
 
-Worker property update performs an observed-value compare-and-set that fully
-replaces `workerProperties`, preserves `platformProperties`, and never accesses
-score. Platform property patch performs a bounded descriptor read, applies field
-updates, removes `null` values, and writes one canonical descriptor. Reconnect
-is not a resource operation. Both property writers use observed-value
-compare-and-set on the descriptor HASH field, then reread and recompute after a
-conflict. This prevents either source writer from restoring a stale snapshot
-owned by the other source. The bounded retry may return `STALE` under sustained
-contention. Platform patch never changes `workerProperties`, score, or property
-indexes.
+Repeated compatible upsert writes the latest complete `workerProperties` row
+and never accesses an existing score. Platform property patch performs a
+bounded metadata read, applies field updates, removes `null` values, and CAS
+writes one canonical metadata row. Because the two property sources use
+different HASHes, Worker snapshot replacement and Platform patch cannot
+restore a stale value owned by the other source. Platform patch may return
+`STALE` under sustained metadata contention and never changes
+`workerProperties`, score, or property indexes.
+
+The Server-owned identity and endpoint Binding registries use a separate
+namespace:
+
+```text
+wi:{prefix}:worker-registrations:{workerGroupId}
+  HASH field = clientWorkerKey
+  value       = canonical UUID workerId
+
+wi:{prefix}:worker-bindings:{00..ff}
+  HASH field = canonical UUID workerId
+  value       = endpointManagerId
+```
+
+Registration establishes long-lived external identity. Binding establishes the
+persistent delivery route used to project `endpointManagerId` into Kernel
+Worker metadata. The 256 bucket suffix is the first SHA-256 byte of the
+canonical workerId and only limits HASH size; the existing `{prefix}` hash tag
+remains unchanged. Neither registry is a Kernel owner key, candidate catalog,
+authentication record, or connectivity truth.
 
 ## Redis HASH Property Projection
 
@@ -185,9 +212,11 @@ get_worker_descriptors(one WorkerGroupId, explicit WorkerIds)
 sample_worker_descriptors(one WorkerGroupId, sampleLimit <= 100)
 ```
 
-Worker preview uses one positive-count `HRANDFIELD ... WITHVALUES`. It is an
-unordered incomplete sample with no cursor, total, stability, or completeness
-claim. Unreadable sampled rows are returned as `workerId -> None`.
+Worker preview samples metadata with one positive-count
+`HRANDFIELD ... WITHVALUES`, then loads the corresponding properties rows. It
+is an unordered incomplete sample with no cursor, total, stability, or
+completeness claim. A missing or unreadable row on either side is returned as
+`workerId -> None`.
 
 Runtime View exposes only WorkerGroup descriptors and Worker descriptor
 Properties. It does not join property indexes, score, mailbox, connection, or
@@ -201,8 +230,9 @@ bounded eventual convergence.
 
 - Do not add legacy JSON readers or dual writes; deployments use a clean
   prefix for this ABI change.
-- Do not store score or decoded score coordinates in descriptor HASH values.
-- Do not put property-index values inside Worker descriptors.
+- Do not store score or decoded score coordinates in Worker metadata or
+  Properties HASH values.
+- Do not put property-index values inside Worker metadata or Properties.
 - Do not auto-copy Properties to index keys.
 - Do not scan Worker descriptors for TARGETED matching.
 - Do not use `worker-id-owners` for global enumeration.

@@ -55,6 +55,7 @@ public final class SocketWorkerDeliveryAdapter
     private final WorkerCommandLoop commandLoop;
     private final WorkerResultLoop resultLoop;
     private final WorkerResultPayloadHandler resultHandler;
+    private final WorkerDeliveryGatewayClient gateway;
     private volatile WorkerDeliveryAdapterState state =
             WorkerDeliveryAdapterState.REGISTERED;
     private EventLoopGroup eventLoopGroup;
@@ -115,6 +116,7 @@ public final class SocketWorkerDeliveryAdapter
         resultHandler = new WorkerResultPayloadHandler(resultQueue);
         WorkerDeliveryGatewayClient requiredGateway =
                 Objects.requireNonNull(gateway, "gateway");
+        this.gateway = requiredGateway;
         commandLoop = new WorkerCommandLoop(
                 requiredGateway,
                 connections,
@@ -309,6 +311,8 @@ public final class SocketWorkerDeliveryAdapter
                                         connections,
                                         codec,
                                         resultHandler,
+                                        gateway,
+                                        adapterId,
                                         () -> state
                                                 == WorkerDeliveryAdapterState
                                                 .RUNNING

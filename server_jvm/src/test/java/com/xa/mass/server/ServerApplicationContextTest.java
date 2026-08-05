@@ -182,11 +182,15 @@ class ServerApplicationContextTest {
         HttpResponse<String> workerResponse = client.send(
                 HttpRequest.newBuilder(endpoint(
                                 "/api/v1/worker-groups/legacy-group/"
-                                        + "workers/legacy-worker"
+                                        + "workers:register"
                         ))
                         .header("Content-Type", "application/json")
-                        .PUT(HttpRequest.BodyPublishers.ofString(
-                                "{\"endpointManagerId\":\"endpoint\","
+                        .header(
+                                "X-XA-Mass-Platform-Key",
+                                "local-development"
+                        )
+                        .POST(HttpRequest.BodyPublishers.ofString(
+                                "{\"clientWorkerKey\":\"legacy-worker\","
                                         + "\"attributes\":{}}",
                                 StandardCharsets.UTF_8
                         ))

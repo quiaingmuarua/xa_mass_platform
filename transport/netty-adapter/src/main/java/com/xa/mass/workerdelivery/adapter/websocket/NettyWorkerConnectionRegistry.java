@@ -25,7 +25,7 @@ final class NettyWorkerConnectionRegistry
     }
 
     @Override
-    public void bind(
+    public void activate(
             String workerId,
             Channel channel
     ) {
@@ -38,7 +38,7 @@ final class NettyWorkerConnectionRegistry
     }
 
     @Override
-    public void unbind(
+    public void deactivate(
             String workerId,
             Channel channel
     ) {
@@ -107,7 +107,7 @@ final class NettyWorkerConnectionRegistry
         requireWorkerId(workerId);
         Objects.requireNonNull(channel, "channel");
         Objects.requireNonNull(reason, "reason");
-        unbind(workerId, channel);
+        deactivate(workerId, channel);
         closeChannel(channel, reason);
     }
 

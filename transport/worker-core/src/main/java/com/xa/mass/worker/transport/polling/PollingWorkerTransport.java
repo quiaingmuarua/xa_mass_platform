@@ -7,6 +7,7 @@ import com.xa.mass.worker.execution.WorkerCommandExecutor;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.transport.client.WorkerPointClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 import java.io.IOException;
 import java.time.Duration;
@@ -20,6 +21,7 @@ public final class PollingWorkerTransport implements AutoCloseable {
     );
 
     private final WorkerPointClient client;
+    private final String workerId;
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
     private final WorkerCommandExecutor commandExecutor;
     private volatile boolean closed;
@@ -27,19 +29,23 @@ public final class PollingWorkerTransport implements AutoCloseable {
 
     public PollingWorkerTransport(
             WorkerPointClient client,
+            String workerId,
             Collection<? extends WorkerEventDefinition<?>> definitions
     ) {
         this(
                 client,
+                workerId,
                 new WorkerCommandDispatcher(definitions)
         );
     }
 
     public PollingWorkerTransport(
             WorkerPointClient client,
+            String workerId,
             WorkerCommandExecutor commandExecutor
     ) {
         this.client = requirePresent(client, "client");
+        this.workerId = new WorkerConnectionBind(workerId).workerId();
         this.commandExecutor = requirePresent(
                 commandExecutor,
                 "commandExecutor"
@@ -54,7 +60,9 @@ public final class PollingWorkerTransport implements AutoCloseable {
             return true;
         }
 
-        Optional<String> encodedCommand = client.pollCommand();
+        Optional<String> encodedCommand = client.pollCommand(
+                workerId
+        );
         if (!encodedCommand.isPresent()) {
             return false;
         }
@@ -109,7 +117,10 @@ public final class PollingWorkerTransport implements AutoCloseable {
 
     private void submitPendingResult(WorkerResult sending)
             throws IOException {
-        client.submitResult(codec.encodeWorkerResult(sending));
+        client.submitResult(
+                workerId,
+                codec.encodeWorkerResult(sending)
+        );
         if (pendingResult == sending) {
             pendingResult = null;
         }

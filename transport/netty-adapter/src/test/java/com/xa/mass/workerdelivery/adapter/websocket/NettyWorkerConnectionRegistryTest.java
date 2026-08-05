@@ -20,14 +20,14 @@ class NettyWorkerConnectionRegistryTest {
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
 
     @Test
-    void replacementAndOldUnbindPreserveCurrentChannel() {
+    void replacementAndOldDeactivationPreserveCurrentChannel() {
         NettyWorkerConnectionRegistry registry = registry();
         EmbeddedChannel first = new EmbeddedChannel();
         EmbeddedChannel second = new EmbeddedChannel();
         try {
-            registry.bind("worker-1", first);
-            registry.bind("worker-1", second);
-            registry.unbind("worker-1", first);
+            registry.activate("worker-1", first);
+            registry.activate("worker-1", second);
+            registry.deactivate("worker-1", first);
 
             assertThat(registry.deliver("worker-1", command()))
                     .isEqualTo(STARTED);
@@ -58,7 +58,7 @@ class NettyWorkerConnectionRegistryTest {
 
         EmbeddedChannel inactive = new EmbeddedChannel();
         inactive.close();
-        registry.bind("worker-1", inactive);
+        registry.activate("worker-1", inactive);
 
         assertThat(registry.deliver("worker-1", command()))
                 .isEqualTo(RETRY_LATER);
@@ -72,8 +72,8 @@ class NettyWorkerConnectionRegistryTest {
         EmbeddedChannel first = new EmbeddedChannel();
         EmbeddedChannel second = new EmbeddedChannel();
         try {
-            registry.bind("worker-1", first);
-            registry.bind("worker-1", second);
+            registry.activate("worker-1", first);
+            registry.activate("worker-1", second);
             registry.close(
                     "worker-1",
                     first,

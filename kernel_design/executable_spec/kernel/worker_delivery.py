@@ -52,7 +52,7 @@ class WorkerConnectionBind:
     worker_id: WorkerId
 
     def __post_init__(self) -> None:
-        _require_non_empty_text(self.worker_id, "worker id")
+        _require_canonical_uuid(self.worker_id, "worker id")
 
 
 @dataclass(frozen=True, slots=True)

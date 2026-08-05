@@ -129,8 +129,7 @@
         "upsert_worker_group"
     ],
     "WorkerRuntime": [
-      "register_worker",
-      "update_worker_properties"
+      "upsert_worker"
     ],
     "WorkerScoreCore": [
       "acquire_hot_acquire_candidates",

@@ -1,0 +1,218 @@
+package com.xa.mass.server.workerbinding;
+
+import com.xa.mass.kernel.worker.WorkerRuntime;
+import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDeclaration;
+import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeResult;
+import com.xa.mass.server.error.ServerErrorCode;
+import com.xa.mass.server.error.ServerException;
+import com.xa.mass.server.workeridentity.WorkerIdentityService;
+import java.util.Map;
+import java.util.Objects;
+
+public final class WorkerBindingService {
+
+    private final WorkerBindingRegistry registry;
+    private final WorkerEndpointDirectory endpoints;
+    private final WorkerIdentityService identities;
+    private final WorkerRuntime workerRuntime;
+
+    WorkerBindingService(
+            WorkerBindingRegistry registry,
+            WorkerEndpointDirectory endpoints,
+            WorkerIdentityService identities,
+            WorkerRuntime workerRuntime
+    ) {
+        this.registry = Objects.requireNonNull(registry, "registry");
+        this.endpoints = Objects.requireNonNull(endpoints, "endpoints");
+        this.identities = Objects.requireNonNull(identities, "identities");
+        this.workerRuntime = Objects.requireNonNull(
+                workerRuntime,
+                "workerRuntime"
+        );
+    }
+
+    public WorkerEndpointBinding bind(
+            String workerGroupId,
+            String clientWorkerKey,
+            String workerId,
+            WorkerTransportType transportType,
+            Map<String, Object> workerProperties
+    ) {
+        String operation = "workerBinding.bind";
+        requireNonBlank(workerGroupId, "workerGroupId", operation);
+        requireNonBlank(clientWorkerKey, "clientWorkerKey", operation);
+        requireNonBlank(workerId, "workerId", operation);
+        Objects.requireNonNull(transportType, "transportType");
+        Objects.requireNonNull(workerProperties, "workerProperties");
+        identities.requireRegistration(
+                workerGroupId,
+                clientWorkerKey,
+                workerId
+        );
+
+        String endpointManagerId;
+        try {
+            endpointManagerId = registry.getEndpointManagerId(workerId);
+            if (endpointManagerId == null) {
+                WorkerEndpointBinding selected = endpoints.select(
+                        workerId,
+                        transportType
+                );
+                if (selected == null) {
+                    throw failure(
+                            ServerErrorCode.WORKER_ENDPOINT_UNAVAILABLE,
+                            operation,
+                            "No endpoint is configured for "
+                                    + transportType,
+                            null
+                    );
+                }
+                endpointManagerId = registry.bindIfAbsent(
+                        workerId,
+                        selected.endpointManagerId()
+                );
+            }
+        } catch (ServerException error) {
+            throw error;
+        } catch (RuntimeException error) {
+            throw failure(
+                    ServerErrorCode.WORKER_BINDING_UNAVAILABLE,
+                    operation,
+                    null,
+                    error
+            );
+        }
+        WorkerEndpointBinding binding = endpoints.find(endpointManagerId);
+        if (binding == null) {
+            throw failure(
+                    ServerErrorCode.WORKER_ENDPOINT_UNAVAILABLE,
+                    operation,
+                    "Bound endpoint is not present in the endpoint directory",
+                    null
+            );
+        }
+        if (binding.transportType() != transportType) {
+            throw failure(
+                    ServerErrorCode.WORKER_BINDING_CONFLICT,
+                    operation,
+                    "Worker is already bound to a different transport",
+                    null
+            );
+        }
+
+        WorkerRuntimeResult result;
+        try {
+            result = workerRuntime.upsertWorker(new WorkerDeclaration(
+                    workerId,
+                    workerGroupId,
+                    endpointManagerId,
+                    workerProperties
+            ));
+        } catch (RuntimeException error) {
+            throw failure(
+                    ServerErrorCode.WORKER_BINDING_UNAVAILABLE,
+                    operation,
+                    null,
+                    error
+            );
+        }
+        requireUpsertAccepted(result, operation);
+        return binding;
+    }
+
+    public void requireCurrentEndpoint(
+            String endpointManagerId,
+            String workerId
+    ) {
+        String operation = "workerBinding.requireCurrentEndpoint";
+        requireNonBlank(endpointManagerId, "endpointManagerId", operation);
+        requireNonBlank(workerId, "workerId", operation);
+        String current;
+        try {
+            current = registry.getEndpointManagerId(workerId);
+        } catch (RuntimeException error) {
+            throw failure(
+                    ServerErrorCode.WORKER_BINDING_UNAVAILABLE,
+                    operation,
+                    null,
+                    error
+            );
+        }
+        if (current == null) {
+            throw failure(
+                    ServerErrorCode.WORKER_BINDING_NOT_FOUND,
+                    operation,
+                    "Worker has not been bound to an endpoint",
+                    null
+            );
+        }
+        if (!current.equals(endpointManagerId)) {
+            throw failure(
+                    ServerErrorCode.WORKER_BINDING_CONFLICT,
+                    operation,
+                    "Worker is bound to a different endpoint",
+                    null
+            );
+        }
+    }
+
+    private static void requireUpsertAccepted(
+            WorkerRuntimeResult result,
+            String operation
+    ) {
+        switch (result.status()) {
+            case OK, NOOP -> {
+                return;
+            }
+            case NOT_FOUND -> throw failure(
+                    ServerErrorCode.WORKER_IDENTITY_NOT_FOUND,
+                    operation,
+                    result.reason(),
+                    null
+            );
+            case CONFLICT -> throw failure(
+                    ServerErrorCode.WORKER_BINDING_CONFLICT,
+                    operation,
+                    result.reason(),
+                    null
+            );
+            case INVALID -> throw failure(
+                    ServerErrorCode.INVALID_WORKER_BINDING_REQUEST,
+                    operation,
+                    result.reason(),
+                    null
+            );
+            case REJECTED, STALE -> throw failure(
+                    ServerErrorCode.WORKER_BINDING_UNAVAILABLE,
+                    operation,
+                    result.reason(),
+                    null
+            );
+        }
+    }
+
+    private static String requireNonBlank(
+            String value,
+            String field,
+            String operation
+    ) {
+        if (value == null || value.isBlank()) {
+            throw failure(
+                    ServerErrorCode.INVALID_WORKER_BINDING_REQUEST,
+                    operation,
+                    field + " must be non-blank",
+                    null
+            );
+        }
+        return value;
+    }
+
+    private static ServerException failure(
+            ServerErrorCode code,
+            String operation,
+            String message,
+            Throwable cause
+    ) {
+        return new ServerException(code, operation, message, cause);
+    }
+}

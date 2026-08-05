@@ -39,7 +39,7 @@ class SocketWorkerTransportTest {
         };
         transport = new SocketWorkerTransport(
                 client,
-                "worker-1",
+                COMMAND_ID,
                 executor
         );
         transport.start();
@@ -57,7 +57,7 @@ class SocketWorkerTransportTest {
 
         assertEquals(COMMAND, executedCommand.get());
         assertEquals(
-                new WorkerConnectionBind("worker-1"),
+                bind(),
                 codec.decodeWorkerConnectionBind(client.sent.get(0))
         );
         assertEquals(
@@ -82,7 +82,7 @@ class SocketWorkerTransportTest {
 
         assertEquals(3, client.sent.size());
         assertEquals(
-                new WorkerConnectionBind("worker-1"),
+                bind(),
                 codec.decodeWorkerConnectionBind(client.sent.get(1))
         );
         assertEquals(
@@ -112,6 +112,10 @@ class SocketWorkerTransportTest {
                 "{\"observed\":\"input\"}",
                 "context"
         );
+    }
+
+    private static WorkerConnectionBind bind() {
+        return new WorkerConnectionBind(COMMAND_ID);
     }
 
     private static final class FakeLineSocketClient

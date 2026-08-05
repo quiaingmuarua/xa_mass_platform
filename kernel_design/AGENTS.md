@@ -202,7 +202,7 @@ runtime_server/               Python Kernel control command host
 
 `kernel_design/runtime_server/` composes only Task create/approve/close,
 dispatch wake, and `KernelApplication` lifecycle. Java `server_jvm` hosts
-WorkerGroup upsert, Worker registration/property update, TaskItem append,
+WorkerGroup upsert, external Worker Register/Bind and Worker upsert, TaskItem append,
 last-success reads, and Worker
 Delivery. Python resource, TaskRuntime, and Worker Delivery runtime/clients
 remain executable-spec oracles and test support. External Worker
@@ -419,7 +419,7 @@ defined by
 Worker Delivery Dispatch owns:
 
 ```text
-Server point WorkerId polling through an explicit endpointManagerId binding
+Server point WorkerId polling through the fixed system-polling route
 Server bounded no-cursor access for a long-lived Adapter's sparse mailbox
 point HTTP forwarding of WorkerCommand to the selected Worker
 direct WorkerCommand/WorkerResult long-connection transport
@@ -448,7 +448,7 @@ authoritative batch validation.
 register it, and invoke lifecycle events, but must not host WebSocket
 endpoints, call `dispatchOnce`, or own Adapter semantics. Multiple instances
 in one JVM must use different endpoint-manager IDs and listener ports.
-Workers register and update their resource snapshot before connecting. Missing connection evidence may produce
+Workers Register and Bind their endpoint/resource snapshot before connecting. Missing connection evidence may produce
 `3001`; expiry, disconnect, missing result, and any failure after send was
 attempted remain UNKNOWN. Same-endpoint distributed ownership remains
 unsupported.
@@ -524,14 +524,11 @@ dispatch disposition
   result-routing Worker handlers exact-release `200/1xxx` fences and move
   `3xxx` fences to negative polarity
 
-Worker registration
+Worker upsert during Server Bind
   missing score initializes positive, dirty=0
   every existing score is preserved exactly
+  fully replaces workerProperties while preserving platformProperties
   does not express connect, reconnect, or activation evidence
-
-Worker property update
-  fully replaces workerProperties
-  preserves platformProperties and never accesses score
 
 RECOVERY_RECHECK
   must not pass either hot lease primitive

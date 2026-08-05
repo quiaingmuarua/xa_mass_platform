@@ -1,9 +1,7 @@
 package com.xa.mass.server.api.v1;
 
 import com.xa.mass.kernel.worker.WorkerResourceCatalog;
-import com.xa.mass.kernel.worker.WorkerRuntime;
 import com.xa.mass.kernel.worker.WorkerPropertyIndexRuntime;
-import com.xa.mass.kernel.worker.WorkerRuntime.WorkerDeclaration;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerGroupDescriptor;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeResult;
 import com.xa.mass.kernel.worker.WorkerRuntime.WorkerRuntimeStatus;
@@ -13,7 +11,6 @@ import com.xa.mass.server.api.v1.model.WorkerGroupUpsertRequest;
 import com.xa.mass.server.api.v1.model.WorkerIndexedPropertiesPatchRequest;
 import com.xa.mass.server.api.v1.model.WorkerIndexedPropertiesPatchResponse;
 import com.xa.mass.server.api.v1.model.WorkerPropertiesPatchRequest;
-import com.xa.mass.server.api.v1.model.WorkerRegisterRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import java.util.LinkedHashSet;
@@ -33,16 +30,13 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/v1/worker-groups")
 public class ResourceCommandController {
 
-    private final WorkerRuntime workerRuntime;
     private final WorkerResourceCatalog workerCatalog;
     private final WorkerPropertyIndexRuntime propertyIndex;
 
     public ResourceCommandController(
-            WorkerRuntime workerRuntime,
             WorkerResourceCatalog workerCatalog,
             WorkerPropertyIndexRuntime propertyIndex
     ) {
-        this.workerRuntime = workerRuntime;
         this.workerCatalog = workerCatalog;
         this.propertyIndex = propertyIndex;
     }
@@ -58,37 +52,6 @@ public class ResourceCommandController {
                         request.attributes(),
                         new LinkedHashSet<>(request.eventCodes())
                 )
-        ));
-    }
-
-    @PutMapping("/{workerGroupId}/workers/{workerId}")
-    public ResponseEntity<CommandResultResponse> registerWorker(
-            @PathVariable @NotBlank String workerGroupId,
-            @PathVariable @NotBlank String workerId,
-            @Valid @RequestBody WorkerRegisterRequest request
-    ) {
-        return response(workerRuntime.registerWorker(
-                new WorkerDeclaration(
-                        workerId,
-                        workerGroupId,
-                        request.endpointManagerId(),
-                        request.workerProperties()
-                )
-        ));
-    }
-
-    @PutMapping(
-            "/{workerGroupId}/workers/{workerId}/worker-properties"
-    )
-    public ResponseEntity<CommandResultResponse> updateWorkerProperties(
-            @PathVariable @NotBlank String workerGroupId,
-            @PathVariable @NotBlank String workerId,
-            @Valid @RequestBody WorkerPropertiesPatchRequest request
-    ) {
-        return response(workerRuntime.updateWorkerProperties(
-                workerGroupId,
-                workerId,
-                request.properties()
         ));
     }
 

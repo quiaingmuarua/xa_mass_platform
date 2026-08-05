@@ -9,6 +9,10 @@ public enum WorkerErrorCode {
             31003,
             "Worker result submission failed"
     ),
+    WORKER_CONTROL_FAILED(
+            31004,
+            "Worker control request failed"
+    ),
     COMMAND_MESSAGE_INVALID(
             32003,
             "Worker received an invalid command message"

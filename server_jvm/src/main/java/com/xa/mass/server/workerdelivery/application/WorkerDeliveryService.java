@@ -10,6 +10,7 @@ import com.xa.mass.kernel.delivery.WorkerResultRuntime;
 import com.xa.mass.kernel.delivery.WorkerCommandRuntime;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
+import com.xa.mass.server.workerbinding.WorkerBindingService;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -23,20 +24,31 @@ public final class WorkerDeliveryService {
 
     private final WorkerCommandRuntime commandRuntime;
     private final WorkerResultRuntime resultRuntime;
+    private final WorkerBindingService bindings;
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
 
     public WorkerDeliveryService(
             WorkerCommandRuntime commandRuntime,
-            WorkerResultRuntime resultRuntime
+            WorkerResultRuntime resultRuntime,
+            WorkerBindingService bindings
     ) {
         this.commandRuntime = commandRuntime;
         this.resultRuntime = resultRuntime;
+        this.bindings = bindings;
+    }
+
+    public void verifyWorkerRoute(
+            String endpointManagerId,
+            String workerId
+    ) {
+        bindings.requireCurrentEndpoint(endpointManagerId, workerId);
     }
 
     public WorkerCommand pollWorkerCommand(
             String endpointManagerId,
             String workerId
     ) {
+        requirePointBinding(endpointManagerId, workerId);
         try {
             WorkerCommand command = commandRuntime.consumeWorkerCommand(
                     endpointManagerId,
@@ -87,8 +99,7 @@ public final class WorkerDeliveryService {
             WorkerResult result
     ) {
         String operation = "workerDelivery.appendWorkerResult";
-        requireNonBlank(endpointManagerId, "endpointManagerId", operation);
-        requireNonBlank(workerId, "workerId", operation);
+        requirePointBinding(endpointManagerId, workerId);
         WorkerResultOutcomeClass outcomeClass =
                 WorkerDeliveryProtocol.classifyWorkerResultOutcomeCode(
                         result.outcomeCode()
@@ -197,6 +208,24 @@ public final class WorkerDeliveryService {
                     "system-polling supports only point Worker access"
             );
         }
+    }
+
+    private void requirePointBinding(
+            String endpointManagerId,
+            String workerId
+    ) {
+        String operation = "workerDelivery.requirePointBinding";
+        requireNonBlank(endpointManagerId, "endpointManagerId", operation);
+        requireNonBlank(workerId, "workerId", operation);
+        if (!WorkerDeliveryProtocol.SYSTEM_POLLING_ENDPOINT_MANAGER_ID.equals(
+                endpointManagerId
+        )) {
+            throw invalid(
+                    operation,
+                    "Point Worker access requires system-polling"
+            );
+        }
+        bindings.requireCurrentEndpoint(endpointManagerId, workerId);
     }
 
     private static void requireNonBlank(

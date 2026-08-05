@@ -5,6 +5,17 @@ Status: active mechanism contract.
 Worker Delivery carries already-assigned work. It does not select Workers,
 claim TaskItems, mutate scores, or decide result truth.
 
+The control and connection vocabulary is deliberately split by Owner:
+
+| Mechanism | Owner and effect | Not truth for |
+| --- | --- | --- |
+| Identity Register | Server maps `workerGroupId + clientWorkerKey` to a long-lived `workerId` | authentication or Worker scheduling state |
+| Endpoint Binding | Server persists `workerId -> endpointManagerId` and projects it through Kernel Worker upsert | connection liveness or credentials |
+| Connection Bind frame | Worker sends only `workerId` to initiate route verification | persistent Endpoint Binding |
+| Route Verification | Server read-only compares the persisted route with the receiving endpoint | authentication or Channel state |
+| Connection Activation | Adapter installs its process-local current Channel | Worker resource, online, or attribute truth |
+| Assignment / Result Fence | Kernel validates lease and opaque Result Routing evidence | connection state |
+
 ```text
 Task Dispatch
   -> WorkerCommand in endpoint-manager mailbox
@@ -129,6 +140,9 @@ POST /api/v1/worker-delivery/endpoint-managers/{id}/workers/{workerId}/commands:
 POST /api/v1/worker-delivery/endpoint-managers/{id}/workers/{workerId}/results
 ```
 
+The Worker first completes Server Register and Bind control calls outside this
+delivery API. Each point request verifies that the persisted Worker Binding is
+`system-polling`; this is a route-consistency check rather than authentication.
 Point poll returns `204` or the direct `WorkerCommand` fields. Point result
 accepts a direct `WorkerResult` and permits only `200/1xxx` targeting `TASK`.
 This is the pure polling Worker path.
@@ -179,13 +193,22 @@ transport routes:
 workerId -> current connection
 ```
 
-WebSocket and line Socket first receive:
+WebSocket and line Socket first receive a strict connection Bind:
 
 ```json
-{"workerId":"worker-1"}
+{
+  "workerId":"3d813cbb-47fb-4ea8-a5be-6bf4c4a99089"
+}
 ```
 
-After bind they exchange direct protocol JSON:
+For every new connection, Adapter pauses reads and asks Server whether the
+persisted Worker Binding points to this Adapter's endpoint-manager ID. Only a
+successful route verification installs the active Channel. Adapter maintains
+no identity or Binding cache and does not invoke Kernel Worker upsert. Missing,
+conflicting, or unavailable Binding closes the connection.
+
+After route verification and connection activation they exchange direct
+protocol JSON:
 
 ```text
 Adapter -> Worker : WorkerCommand

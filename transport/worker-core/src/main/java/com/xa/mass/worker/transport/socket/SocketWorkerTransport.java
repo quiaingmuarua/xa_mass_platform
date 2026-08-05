@@ -17,14 +17,14 @@ public final class SocketWorkerTransport
         implements AutoCloseable, LineSocketClient.Listener {
 
     private final LineSocketClient client;
-    private final String workerId;
+    private final WorkerConnectionBind bind;
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
     private final WorkerCommandExecutor commandExecutor;
     private final CountDownLatch stopped = new CountDownLatch(1);
 
     private boolean running;
     private boolean closed;
-    private boolean bound;
+    private boolean bindSent;
     private boolean processing;
     private WorkerResult pendingResult;
 
@@ -50,18 +50,13 @@ public final class SocketWorkerTransport
                     "client must be present"
             );
         }
-        if (workerId == null || workerId.trim().isEmpty()) {
-            throw new IllegalArgumentException(
-                    "workerId must be non-blank"
-            );
-        }
         if (commandExecutor == null) {
             throw new IllegalArgumentException(
                     "commandExecutor must be present"
             );
         }
         this.client = client;
-        this.workerId = workerId;
+        this.bind = new WorkerConnectionBind(workerId);
         this.commandExecutor = commandExecutor;
     }
 
@@ -97,15 +92,13 @@ public final class SocketWorkerTransport
         if (!running || closed) {
             return;
         }
-        bound = false;
+        bindSent = false;
         if (!client.sendLine(
-                codec.encodeWorkerConnectionBind(
-                        new WorkerConnectionBind(workerId)
-                )
+                codec.encodeWorkerConnectionBind(bind)
         )) {
             return;
         }
-        bound = true;
+        bindSent = true;
         sendPending();
     }
 
@@ -114,7 +107,7 @@ public final class SocketWorkerTransport
         synchronized (this) {
             if (!running
                     || closed
-                    || !bound
+                    || !bindSent
                     || processing
                     || pendingResult != null) {
                 throw protocolFailure();
@@ -128,7 +121,7 @@ public final class SocketWorkerTransport
         } catch (RuntimeException error) {
             synchronized (this) {
                 processing = false;
-                bound = false;
+                bindSent = false;
             }
             throw error;
         }
@@ -147,12 +140,12 @@ public final class SocketWorkerTransport
 
     @Override
     public synchronized void onDisconnected() {
-        bound = false;
+        bindSent = false;
     }
 
     @Override
     public synchronized void onFailure(Throwable error) {
-        bound = false;
+        bindSent = false;
     }
 
     @Override
@@ -163,14 +156,14 @@ public final class SocketWorkerTransport
             }
             closed = true;
             running = false;
-            bound = false;
+            bindSent = false;
         }
         client.close();
         stopped.countDown();
     }
 
     public synchronized boolean isConnected() {
-        return running && bound && client.isConnected();
+        return running && bindSent && client.isConnected();
     }
 
     public synchronized boolean hasPendingResult() {
@@ -179,11 +172,11 @@ public final class SocketWorkerTransport
 
     private void sendPending() {
         WorkerResult sending = pendingResult;
-        if (sending == null || !bound) {
+        if (sending == null || !bindSent) {
             return;
         }
         if (!client.sendLine(codec.encodeWorkerResult(sending))) {
-            bound = false;
+            bindSent = false;
             return;
         }
         if (pendingResult == sending) {

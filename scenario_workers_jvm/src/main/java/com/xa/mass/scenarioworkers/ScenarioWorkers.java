@@ -1,10 +1,14 @@
 package com.xa.mass.scenarioworkers;
 
 import com.xa.mass.transport.client.okhttp.OkHttpTextWebSocketClient;
+import com.xa.mass.transport.client.okhttp.OkHttpWorkerControlClient;
+import com.xa.mass.transport.client.okhttp.OkHttpWorkerControlClient.TransportType;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
 import com.xa.mass.worker.transport.websocket.WebSocketWorkerTransport;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
+import java.io.IOException;
 import java.net.URI;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -22,7 +26,8 @@ public final class ScenarioWorkers implements AutoCloseable {
     private static final int WORKER_INDEX_FAILED = 14010;
 
     private final List<GroupAssembly> groups;
-    private final ScenarioWorkerResourceClient resourceClient;
+    private final WorkerControl workerControl;
+    private final ScenarioWorkerIndexClient indexClient;
     private final WorkerFactory workerFactory;
     private final List<WorkerHandle> workers = new ArrayList<>();
     private boolean started;
@@ -31,16 +36,21 @@ public final class ScenarioWorkers implements AutoCloseable {
     ScenarioWorkers(
             List<ScenarioWorkerGroupConfig> configs,
             Map<String, WorkerEventDefinition<?>> definitionsByEventCode,
-            ScenarioWorkerResourceClient resourceClient,
+            WorkerControl workerControl,
+            ScenarioWorkerIndexClient indexClient,
             WorkerFactory workerFactory
     ) {
-        this.groups = resolveGroups(
+        groups = resolveGroups(
                 configs,
                 immutableDefinitions(definitionsByEventCode)
         );
-        this.resourceClient = Objects.requireNonNull(
-                resourceClient,
-                "resourceClient"
+        this.workerControl = Objects.requireNonNull(
+                workerControl,
+                "workerControl"
+        );
+        this.indexClient = Objects.requireNonNull(
+                indexClient,
+                "indexClient"
         );
         this.workerFactory = Objects.requireNonNull(
                 workerFactory,
@@ -53,12 +63,13 @@ public final class ScenarioWorkers implements AutoCloseable {
             URI runtimeApiBaseUrl
     ) {
         try {
+            OkHttpWorkerControlClient controlClient =
+                    new OkHttpWorkerControlClient(runtimeApiBaseUrl);
             return new ScenarioWorkers(
                     ScenarioWorkersJsonParser.parse(workerConfigJson),
                     builtInDefinitions(),
-                    new HttpScenarioWorkerResourceClient(
-                            runtimeApiBaseUrl
-                    ),
+                    new HttpWorkerControl(controlClient),
+                    new HttpScenarioWorkerIndexClient(runtimeApiBaseUrl),
                     ScenarioWorkers::createWorker
             );
         } catch (IllegalArgumentException error) {
@@ -81,13 +92,13 @@ public final class ScenarioWorkers implements AutoCloseable {
         }
 
         try {
-            startTransports();
+            registerBindAndStartTransports();
             awaitConnections();
-            registerResources();
+            updateIndexes();
             started = true;
         } catch (RuntimeException failure) {
             closed = true;
-            closeWorkersAndSuppress(failure);
+            closeResourcesAndSuppress(failure);
             if (failure instanceof ScenarioWorkerAssemblyException) {
                 throw failure;
             }
@@ -107,22 +118,41 @@ public final class ScenarioWorkers implements AutoCloseable {
         }
         closed = true;
         RuntimeException failure = closeWorkers();
+        try {
+            workerControl.close();
+        } catch (RuntimeException error) {
+            failure = accumulate(failure, error);
+        }
         if (failure != null) {
             throw failure;
         }
     }
 
-    private void startTransports() {
+    private void registerBindAndStartTransports() {
         for (GroupAssembly group : groups) {
             for (ScenarioWorkerConfig worker : group.config().workers()) {
+                String workerId = workerControl.register(
+                        group.config().workerGroupId(),
+                        worker.clientWorkerKey(),
+                        group.config().requestTimeout()
+                );
+                URI endpointUri = workerControl.bind(
+                        group.config().workerGroupId(),
+                        worker.clientWorkerKey(),
+                        workerId,
+                        worker.workerProperties(),
+                        group.config().requestTimeout()
+                );
                 WebSocketWorkerTransport transport = workerFactory.create(
-                        worker.workerId(),
+                        workerId,
+                        endpointUri,
                         group.config(),
                         group.definitions()
                 );
                 workers.add(new WorkerHandle(
                         group.config(),
                         worker,
+                        workerId,
                         transport
                 ));
                 transport.start();
@@ -143,7 +173,11 @@ public final class ScenarioWorkers implements AutoCloseable {
                 )) {
                     break;
                 }
-                sleepForConnection(group.config().workerGroupId());
+                sleep(
+                        Duration.ofMillis(50),
+                        "scenarioWorkers.awaitConnections",
+                        group.config().workerGroupId()
+                );
             }
             long connected = groupWorkers.stream()
                     .filter(worker -> worker.transport().isConnected())
@@ -163,80 +197,91 @@ public final class ScenarioWorkers implements AutoCloseable {
         }
     }
 
-    private void registerResources() {
+    private void updateIndexes() {
         for (WorkerHandle handle : workers) {
-            ScenarioWorkerGroupConfig group = handle.groupConfig();
-            ScenarioWorkerConfig worker = handle.workerConfig();
-            resourceClient.registerWorker(
-                    group.workerGroupId(),
-                    worker.workerId(),
-                    group.endpointManagerId(),
-                    worker.workerProperties(),
-                    group.requestTimeout()
-            );
-            resourceClient.updateWorkerProperties(
-                    group.workerGroupId(),
-                    worker.workerId(),
-                    worker.workerProperties(),
-                    group.requestTimeout()
-            );
-            updateIndexes(group, worker);
+            updateIndexes(handle);
         }
     }
 
-    private void updateIndexes(
-            ScenarioWorkerGroupConfig group,
-            ScenarioWorkerConfig worker
-    ) {
+    private void updateIndexes(WorkerHandle handle) {
+        ScenarioWorkerConfig worker = handle.workerConfig();
         if (worker.indexedPropertyUpdates().isEmpty()) {
             return;
         }
-        try {
-            Map<String, ScenarioWorkerResourceResult> results =
-                    resourceClient.updateIndexedProperties(
-                            group.workerGroupId(),
-                            worker.workerId(),
-                            worker.indexedPropertyUpdates(),
-                            group.requestTimeout()
-                    );
+        ScenarioWorkerGroupConfig group = handle.groupConfig();
+        long deadline = System.nanoTime()
+                + group.connectTimeout().toNanos();
+        while (true) {
+            Map<String, ScenarioWorkerIndexResult> results;
+            try {
+                results = indexClient.updateIndexedProperties(
+                        group.workerGroupId(),
+                        handle.workerId(),
+                        worker.indexedPropertyUpdates(),
+                        group.requestTimeout()
+                );
+            } catch (RuntimeException error) {
+                logIndexFailure(group, handle.workerId(), null, error);
+                return;
+            }
+            boolean retry = results.values().stream()
+                    .anyMatch(ScenarioWorkerIndexResult::notFound)
+                    && System.nanoTime() < deadline;
+            if (retry) {
+                sleep(
+                        group.reconnectInterval(),
+                        "scenarioWorkers.retryIndex",
+                        group.workerGroupId()
+                );
+                continue;
+            }
             worker.indexedPropertyUpdates().keySet().forEach(field -> {
-                ScenarioWorkerResourceResult result = results.get(field);
+                ScenarioWorkerIndexResult result = results.get(field);
                 if (result == null || !result.accepted()) {
-                    LOGGER.log(
-                            System.Logger.Level.WARNING,
-                            "errorCode=" + WORKER_INDEX_FAILED
-                                    + " operation=workerPropertyIndex.update"
-                                    + " workerGroupId="
-                                    + group.workerGroupId()
-                                    + " workerId=" + worker.workerId()
-                                    + " field=" + field
-                                    + " status=" + (result == null
-                                    ? "missing"
-                                    : result.status())
+                    logIndexFailure(
+                            group,
+                            handle.workerId(),
+                            field,
+                            null
                     );
                 }
             });
-        } catch (RuntimeException error) {
-            LOGGER.log(
-                    System.Logger.Level.WARNING,
-                    "errorCode=" + WORKER_INDEX_FAILED
-                            + " operation=workerPropertyIndex.update"
-                            + " workerGroupId=" + group.workerGroupId()
-                            + " workerId=" + worker.workerId()
-                            + " errorType="
-                            + error.getClass().getSimpleName()
-            );
+            return;
         }
     }
 
-    private static void sleepForConnection(String workerGroupId) {
+    private static void logIndexFailure(
+            ScenarioWorkerGroupConfig group,
+            String workerId,
+            String field,
+            RuntimeException error
+    ) {
+        LOGGER.log(
+                System.Logger.Level.WARNING,
+                "errorCode=" + WORKER_INDEX_FAILED
+                        + " operation=workerPropertyIndex.update"
+                        + " workerGroupId=" + group.workerGroupId()
+                        + " workerId=" + workerId
+                        + (field == null ? "" : " field=" + field)
+                        + (error == null
+                        ? ""
+                        : " errorType="
+                                + error.getClass().getSimpleName())
+        );
+    }
+
+    private static void sleep(
+            Duration duration,
+            String operation,
+            String workerGroupId
+    ) {
         try {
-            Thread.sleep(50L);
+            Thread.sleep(Math.max(1L, duration.toMillis()));
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
             throw new ScenarioWorkerAssemblyException(
                     WORKER_START_FAILED,
-                    "scenarioWorkers.awaitConnections",
+                    operation,
                     "Interrupted while waiting for WorkerGroup "
                             + workerGroupId,
                     error
@@ -253,31 +298,44 @@ public final class ScenarioWorkers implements AutoCloseable {
             try {
                 worker.transport().close();
             } catch (RuntimeException error) {
-                if (failure == null) {
-                    failure = error;
-                } else {
-                    failure.addSuppressed(error);
-                }
+                failure = accumulate(failure, error);
             }
         }
         return failure;
     }
 
-    private void closeWorkersAndSuppress(RuntimeException failure) {
+    private void closeResourcesAndSuppress(RuntimeException failure) {
         RuntimeException closeFailure = closeWorkers();
+        try {
+            workerControl.close();
+        } catch (RuntimeException error) {
+            closeFailure = accumulate(closeFailure, error);
+        }
         if (closeFailure != null) {
             failure.addSuppressed(closeFailure);
         }
     }
 
+    private static RuntimeException accumulate(
+            RuntimeException current,
+            RuntimeException addition
+    ) {
+        if (current == null) {
+            return addition;
+        }
+        current.addSuppressed(addition);
+        return current;
+    }
+
     private static WebSocketWorkerTransport createWorker(
             String workerId,
+            URI endpointUri,
             ScenarioWorkerGroupConfig config,
             List<WorkerEventDefinition<?>> definitions
     ) {
         return new WebSocketWorkerTransport(
                 new OkHttpTextWebSocketClient(
-                        config.workerWebSocketUri(),
+                        endpointUri,
                         config.requestTimeout(),
                         config.reconnectInterval()
                 ),
@@ -352,7 +410,7 @@ public final class ScenarioWorkers implements AutoCloseable {
             Map<String, WorkerEventDefinition<?>> definitionsByEventCode
     ) {
         Objects.requireNonNull(configs, "configs");
-        List<GroupAssembly> groups = new ArrayList<>(configs.size());
+        List<GroupAssembly> resolved = new ArrayList<>(configs.size());
         for (ScenarioWorkerGroupConfig config : configs) {
             List<WorkerEventDefinition<?>> definitions = new ArrayList<>();
             for (String eventCode : config.eventCodes()) {
@@ -368,18 +426,104 @@ public final class ScenarioWorkers implements AutoCloseable {
                 }
                 definitions.add(definition);
             }
-            groups.add(new GroupAssembly(config, List.copyOf(definitions)));
+            resolved.add(new GroupAssembly(
+                    config,
+                    List.copyOf(definitions)
+            ));
         }
-        return List.copyOf(groups);
+        return List.copyOf(resolved);
     }
 
     @FunctionalInterface
     interface WorkerFactory {
         WebSocketWorkerTransport create(
                 String workerId,
+                URI endpointUri,
                 ScenarioWorkerGroupConfig config,
                 List<WorkerEventDefinition<?>> definitions
         );
+    }
+
+    interface WorkerControl extends AutoCloseable {
+        String register(
+                String workerGroupId,
+                String clientWorkerKey,
+                Duration timeout
+        );
+
+        URI bind(
+                String workerGroupId,
+                String clientWorkerKey,
+                String workerId,
+                Map<String, Object> workerProperties,
+                Duration timeout
+        );
+
+        @Override
+        void close();
+    }
+
+    private static final class HttpWorkerControl
+            implements WorkerControl {
+        private final OkHttpWorkerControlClient client;
+
+        private HttpWorkerControl(OkHttpWorkerControlClient client) {
+            this.client = client;
+        }
+
+        @Override
+        public String register(
+                String workerGroupId,
+                String clientWorkerKey,
+                Duration timeout
+        ) {
+            try {
+                return client.register(
+                        workerGroupId,
+                        clientWorkerKey,
+                        timeout
+                );
+            } catch (IOException error) {
+                throw new ScenarioWorkerAssemblyException(
+                        WORKER_START_FAILED,
+                        "workerControl.register",
+                        "Worker identity registration failed",
+                        error
+                );
+            }
+        }
+
+        @Override
+        public URI bind(
+                String workerGroupId,
+                String clientWorkerKey,
+                String workerId,
+                Map<String, Object> workerProperties,
+                Duration timeout
+        ) {
+            try {
+                return client.bind(
+                        workerGroupId,
+                        clientWorkerKey,
+                        workerId,
+                        TransportType.WEBSOCKET,
+                        workerProperties,
+                        timeout
+                );
+            } catch (IOException error) {
+                throw new ScenarioWorkerAssemblyException(
+                        WORKER_START_FAILED,
+                        "workerControl.bind",
+                        "Worker binding failed",
+                        error
+                );
+            }
+        }
+
+        @Override
+        public void close() {
+            client.close();
+        }
     }
 
     private record GroupAssembly(
@@ -391,6 +535,7 @@ public final class ScenarioWorkers implements AutoCloseable {
     private record WorkerHandle(
             ScenarioWorkerGroupConfig groupConfig,
             ScenarioWorkerConfig workerConfig,
+            String workerId,
             WebSocketWorkerTransport transport
     ) {
     }

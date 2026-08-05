@@ -22,12 +22,16 @@ import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 
 class SocketWorkerDeliveryAdapterTest {
+
+    private static final String WORKER_ID =
+            "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1";
 
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
 
@@ -56,13 +60,13 @@ class SocketWorkerDeliveryAdapterTest {
                         )
                 )) {
             socket.setSoTimeout(2_000);
-            writer.write(bind("worker-1"));
+            writer.write(bind(WORKER_ID));
             writer.write("\r\n");
             writer.flush();
             awaitBound(adapter);
 
             WorkerCommand command = command();
-            gateway.batches.add(Map.of("worker-1", command));
+            gateway.batches.add(Map.of(WORKER_ID, command));
             String commandLine = reader.readLine();
             assertThat(codec.decodeWorkerCommand(commandLine))
                     .isEqualTo(command);
@@ -104,7 +108,7 @@ class SocketWorkerDeliveryAdapterTest {
         try {
             assertClosedAfterLine(
                     port,
-                    "{\"extra\":true,\"workerId\":\"worker-1\"}"
+                    "{\"extra\":true,\"workerId\":\"" + WORKER_ID + "\"}"
             );
             assertClosedAfterLine(
                     port,
@@ -132,7 +136,7 @@ class SocketWorkerDeliveryAdapterTest {
                             )
                 )) {
                 socket.setSoTimeout(2_000);
-                String encodedBind = bind("worker-1");
+                String encodedBind = bind(WORKER_ID);
                 writer.write(encodedBind);
                 writer.write('\n');
                 writer.write(encodedBind);
@@ -140,6 +144,60 @@ class SocketWorkerDeliveryAdapterTest {
                 writer.flush();
                 assertThat(reader.readLine()).isNull();
             }
+        } finally {
+            adapter.close();
+        }
+    }
+
+    @Test
+    void retainsOnePendingResultUntilBindingVerificationCompletes()
+            throws Exception {
+        int port = availablePort();
+        CompletableFuture<Void> bindingResponse = new CompletableFuture<>();
+        FakeGateway gateway = new FakeGateway(bindingResponse);
+        SocketWorkerDeliveryAdapter adapter = adapter(port, gateway);
+        adapter.start();
+        WorkerResult result = new WorkerResult(
+                "a5e9e10d-f78b-469e-93ab-864b49c189c1",
+                TASK,
+                "test.observe",
+                "200",
+                "null",
+                "context"
+        );
+        String encodedResult = codec.encodeWorkerResult(result);
+        try (Socket socket = new Socket("127.0.0.1", port);
+                BufferedWriter writer = new BufferedWriter(
+                        new OutputStreamWriter(
+                                socket.getOutputStream(),
+                                StandardCharsets.UTF_8
+                        )
+                )) {
+            writer.write(bind(WORKER_ID));
+            writer.write('\n');
+            writer.write(encodedResult);
+            writer.write('\n');
+            writer.flush();
+
+            assertThat(gateway.bindingVerified.await(
+                    2,
+                    TimeUnit.SECONDS
+            )).isTrue();
+            assertThat(adapter.activeConnectionCount()).isZero();
+            assertThat(gateway.resultAppended.await(
+                    100,
+                    TimeUnit.MILLISECONDS
+            )).isFalse();
+
+            bindingResponse.complete(null);
+
+            awaitBound(adapter);
+            assertThat(gateway.resultAppended.await(
+                    2,
+                    TimeUnit.SECONDS
+            )).isTrue();
+            assertThat(gateway.appendedResults)
+                    .containsExactly(List.of(encodedResult));
         } finally {
             adapter.close();
         }
@@ -242,6 +300,17 @@ class SocketWorkerDeliveryAdapterTest {
                 new CopyOnWriteArrayList<>();
         private final CountDownLatch resultAppended =
                 new CountDownLatch(1);
+        private final CountDownLatch bindingVerified =
+                new CountDownLatch(1);
+        private final CompletableFuture<Void> bindingResponse;
+
+        private FakeGateway() {
+            this(CompletableFuture.completedFuture(null));
+        }
+
+        private FakeGateway(CompletableFuture<Void> bindingResponse) {
+            this.bindingResponse = bindingResponse;
+        }
 
         @Override
         public Map<String, WorkerCommand> consumeWorkerCommands(
@@ -261,6 +330,13 @@ class SocketWorkerDeliveryAdapterTest {
             endpointManagerIds.add(endpointManagerId);
             appendedResults.add(List.copyOf(results));
             resultAppended.countDown();
+        }
+
+        @Override
+        public java.util.concurrent.CompletionStage<Void>
+        verifyWorkerRoute(String endpointManagerId, String workerId) {
+            bindingVerified.countDown();
+            return bindingResponse;
         }
     }
 }
