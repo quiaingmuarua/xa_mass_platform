@@ -39,7 +39,9 @@ The repository contains seven active areas:
 - [`integrations/`](integrations/): externally assembled, runnable proof
   applications. The
   [`worker-capability-rpc`](integrations/worker-capability-rpc/) module owns
-  only Task creation and single-Item RPC invocation. The `scenario-workers`
+  Worker identity resolution, Task creation, and single-Item RPC invocation
+  through the public Runtime API, with independent JSONL evidence for each
+  WorkerGroup. The `scenario-workers`
   Server profile composes one real WebSocket Adapter with two reusable
   Scenario WorkerGroups and six capabilities.
 
@@ -72,6 +74,21 @@ JVM modules:
 ```text
 ./gradlew build
 ```
+
+Cross-process proofs use a real Redis service and Python Kernel process. The
+Server integration suite proves the Java/Python owner boundary; the external
+Scenario proof additionally starts the `scenario-workers` profile and executes
+60 targeted single-Item RPC calls through 20 real WebSocket Workers:
+
+```text
+./gradlew :server_jvm:integrationTest
+./gradlew :integrations:worker-capability-rpc:runRpcScenario
+```
+
+See
+[`integrations/worker-capability-rpc/README.md`](integrations/worker-capability-rpc/README.md)
+for the required process startup sequence. CI performs both cross-process
+proofs with isolated Redis services.
 
 See [`AGENTS.md`](AGENTS.md) before changing mechanism behavior and
 [`doc/README.md`](doc/README.md) for the retained historical method assets.

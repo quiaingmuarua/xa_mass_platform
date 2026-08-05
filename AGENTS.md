@@ -253,3 +253,8 @@ git diff --check
 For real Redis proof, set
 `KERNEL_DESIGN_REDIS_URL=redis://localhost:6379/15` before running the Python
 suite.
+
+The JVM workflow additionally runs `:server_jvm:integrationTest` and the
+external `:integrations:worker-capability-rpc:runRpcScenario` proof with
+isolated Redis services and real Python Kernel / Java Server processes. A
+Scenario or integration-only change must continue to trigger that workflow.

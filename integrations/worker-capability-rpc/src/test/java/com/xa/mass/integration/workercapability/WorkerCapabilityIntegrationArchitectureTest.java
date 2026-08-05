@@ -32,17 +32,20 @@ class WorkerCapabilityIntegrationArchitectureTest {
     }
 
     @Test
-    void rpcInvocationDoesNotHostWorkerAssembly()
+    void productionSourcesDoNotHostWorkerAssembly()
             throws Exception {
         Path root = Path.of(
                 "src/main/java/com/xa/mass/integration"
                         + "/workercapability"
         );
-        String main = Files.readString(
-                root.resolve("WorkerCapabilityRpcMain.java")
-        );
-
-        assertTrue(main.contains("WorkerCapabilityTaskClient"));
+        StringBuilder productionSources = new StringBuilder();
+        try (var files = Files.walk(root)) {
+            for (Path file : files.filter(path ->
+                    path.toString().endsWith(".java")
+            ).toList()) {
+                productionSources.append(Files.readString(file));
+            }
+        }
         for (String forbidden : new String[]{
                 "WebSocketWorkerTransport",
                 "WorkerResourceCatalog",
@@ -51,7 +54,10 @@ class WorkerCapabilityIntegrationArchitectureTest {
                 "ScenarioWorkers",
                 "Redis"
         }) {
-            assertFalse(main.contains(forbidden), forbidden);
+            assertFalse(
+                    productionSources.toString().contains(forbidden),
+                    forbidden
+            );
         }
         assertFalse(Files.exists(
                 root.resolve("PhoneNumberWorkerMain.java")

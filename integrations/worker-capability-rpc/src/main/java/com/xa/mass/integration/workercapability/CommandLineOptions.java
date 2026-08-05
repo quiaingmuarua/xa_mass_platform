@@ -42,19 +42,6 @@ final class CommandLineOptions {
         return values.getOrDefault(name, defaultValue);
     }
 
-    int positiveInt(String name, int defaultValue) {
-        String value = values.get(name);
-        int parsed = value == null
-                ? defaultValue
-                : Integer.parseInt(value);
-        if (parsed <= 0) {
-            throw new IllegalArgumentException(
-                    "--" + name + " must be positive"
-            );
-        }
-        return parsed;
-    }
-
     long positiveLong(String name, long defaultValue) {
         String value = values.get(name);
         long parsed = value == null

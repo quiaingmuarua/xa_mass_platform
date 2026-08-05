@@ -601,6 +601,15 @@ polling Worker and `ITEM_DRIVEN` through Netty WebSocket and Socket Adapter
 endpoints. All paths use the Server HTTP
 boundary, Python scheduling/ResultRouting, Java last-success query, and exact
 Worker release.
+
+The finite Scenario Worker acceptance is owned by
+[`integrations/worker-capability-rpc`](../integrations/worker-capability-rpc/).
+The repository JVM workflow starts this Server with the `scenario-workers`
+profile and proves Identity Register, Endpoint Bind, Adapter route validation,
+20 WebSocket Worker connections, and 60 targeted single-Item RPC results. This
+cross-process proof complements rather than replaces the Server integration
+suite above.
+
 Authentication, same-endpoint multi-instance ownership, pending/ack,
 failure-result projection, historical storage, tenant model, and quota remain
 out of scope.

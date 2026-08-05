@@ -29,11 +29,26 @@ TaskRuntime
   loadTaskItemSuccessResults
 
 TaskResourceCatalog
-  bounded descriptor reads
+  loadTaskAllocationDescriptors
 
 WorkerResourceCatalog
-  WorkerGroup descriptor reads
-  bounded random Worker descriptor samples
+  upsertWorkerGroup
+  getWorkerGroupDescriptors
+  getWorkerDescriptors
+  sampleWorkerDescriptors
+  patchWorkerPlatformProperties
+
+WorkerRuntime
+  upsertWorker
+
+WorkerPropertyIndexRuntime
+  updateIndexedProperties
+  loadIndexedPropertyValues
+
+WorkerScoreCore
+  getScoreStates
+  initializeHotAcquireScore
+  reconcileWorkerHotAcquire (parity proof only; no production caller)
 
 WorkerCommandRuntime
   point and bounded random batch consume
@@ -41,6 +56,13 @@ WorkerCommandRuntime
 WorkerResultRuntime
   append
 ```
+
+Worker score acquisition, lease, dirty, polarity, release, and recovery
+operations remain explicit gaps in the JVM provider. Task creation, TaskItem
+record reads, success-result writes, WorkerCommand append, and WorkerResult
+consume likewise remain Python-owned or unimplemented on this provider
+surface. Implementing one method in a translated interface does not imply that
+the complete owner has migrated.
 
 Every other translated operation is explicit and throws
 `KernelOperationNotImplementedException` when invoked by a partial provider.

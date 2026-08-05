@@ -3,8 +3,11 @@
 Status: current local handoff for `kernel_design/`.
 
 This directory owns clean-kernel mechanism contracts and the current Python
-executable specification. Kotlin production work lives under `kernel_jvm/` and
-must use this workspace as its parity oracle.
+executable specification. Incremental JVM contract and owner-provider parity
+lives under `kernel_jvm/` and must use this workspace as its oracle. That
+module is currently Java 21 and does not own scheduling, Pacers, or the Kernel
+application lifecycle; Kotlin behavior requires its own explicitly scoped
+parity slice.
 
 ## 0. TL;DR
 

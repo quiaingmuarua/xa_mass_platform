@@ -179,7 +179,7 @@ reason, transport connection, trace, or query projection truth.
 | Axis | Scheduling identity | Encoded direction | Time rule | Final/recovery rule |
 | --- | --- | --- | --- | --- |
 | Task | global `taskId` | positive lifecycle tag decreases | same-band `timeSlot` normally increases | negative score is immutable terminal |
-| Worker | `workerId` inside one home bucket / WorkerGroup | sign is kernel-owned TaskItem scheduling serviceability: positive HOT_ACQUIRE, negative RECOVERY_RECHECK | same-polarity `timeSlot` normally increases | polarity may toggle because Worker is long-lived; there is no terminal band |
+| Worker | global `workerId` with one immutable home WorkerGroup / score bucket | sign is kernel-owned TaskItem scheduling serviceability: positive HOT_ACQUIRE, negative RECOVERY_RECHECK | same-polarity `timeSlot` normally increases | polarity may toggle because Worker is long-lived; there is no terminal band |
 | TaskItem | `(taskId, messageId)` | outcome tag increases | ACTIVE same-band `timeSlot` increases | outcome precedence advances toward final success; there is no release |
 
 One WorkerId is one scheduler-visible execution slot and therefore one active
@@ -655,9 +655,11 @@ The Python executable spec lives under `kernel_design/executable_spec/`.
 `kernel_design/runtime_server/` is its Kernel Control FastAPI host.
 `transport/worker-core/` contains the external Worker execution and protocol
 state machines. `transport/okhttp-worker/` and `transport/android-client/`
-supply concrete network clients; none is a Kernel owner. The Kotlin production
-scaffold lives under `kernel_jvm/` and may
-implement behavior only through scoped parity slices against this workspace.
+supply concrete network clients; none is a Kernel owner. The Java 21
+`kernel_jvm/` module is the incremental JVM parity surface for Kernel owner
+contracts and selected owner-local providers. It does not implement
+scheduling, Pacers, or the Kernel application lifecycle, and may add behavior
+only through scoped parity slices against this workspace.
 Historical tag material must not constrain current interfaces, Redis shapes,
 or package boundaries.
 

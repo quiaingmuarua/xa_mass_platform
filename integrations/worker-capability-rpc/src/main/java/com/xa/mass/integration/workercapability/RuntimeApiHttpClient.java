@@ -56,11 +56,23 @@ final class RuntimeApiHttpClient {
                             StandardCharsets.UTF_8
                     )
             );
-            Map<String, Object> responseBody =
-                    response.body() == null
-                            || response.body().isBlank()
-                            ? Map.of()
-                            : Jsons.parseObject(response.body());
+            Map<String, Object> responseBody;
+            try {
+                responseBody = response.body() == null
+                        || response.body().isBlank()
+                        ? Map.of()
+                        : Jsons.parseObject(response.body());
+            } catch (IllegalArgumentException error) {
+                throw new IllegalStateException(
+                        "Runtime API returned invalid JSON: "
+                                + method
+                                + " "
+                                + path
+                                + " HTTP "
+                                + response.statusCode(),
+                        error
+                );
+            }
             return new ApiResponse(
                     response.statusCode(),
                     responseBody

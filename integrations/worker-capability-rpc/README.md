@@ -10,15 +10,17 @@ Server scenario-workers profile
   -> scenario-string-utils-workers / 10 Workers / 3 events
 
 WorkerCapabilityRpcMain
-  -> create and approve two ITEM_DRIVEN Tasks
-  -> target every Worker once for every event
-  -> execute 60 single-TaskItem RPC calls
-  -> write one JSON result per line
-  -> close both Tasks
+  -> resolve platform Worker IDs through idempotent Register calls
+  -> run the Phone WorkerGroup Task and write phone-number.jsonl
+  -> close the Phone Task
+  -> run the String WorkerGroup Task and write string-utils.jsonl
+  -> close the String Task
 ```
 
 The integration depends only on the shared JSON facade and the external
-Runtime API. The Server profile owns deployment composition, while
+Runtime API. It recovers each platform-issued Worker ID through the public,
+idempotent Register API before constructing explicit Worker allocation rules.
+The Server profile owns deployment composition, while
 `scenario_workers_jvm` owns business handlers, transport construction, and
 public-HTTP Register/Bind plus connection Bind construction. Server initializes the advisory WorkerGroup
 directory before starting Adapters and Scenario Workers. The caller does not depend on
@@ -89,9 +91,11 @@ Start the Runtime API Server with the reusable Worker scenario:
 ```
 
 The default Server profile has no Adapter and no built-in Worker. The explicit
-profile initializes two WorkerGroup catalog entries, starts one real WebSocket
-Adapter, starts and connects 20 real WebSocket Worker transports, then registers
-those Workers and refreshes their Properties through the public Runtime API.
+profile initializes two advisory WorkerGroup catalog entries and starts one
+real WebSocket Adapter. Scenario assembly then registers each client Worker
+key, binds the returned platform Worker ID and complete Properties snapshot,
+starts and connects 20 real WebSocket Worker transports, and finally attempts
+the explicit Property Index updates through the public Runtime API.
 There is no separate Worker launcher or in-process delivery shortcut.
 
 Run the external RPC proof:
@@ -100,14 +104,22 @@ Run the external RPC proof:
 .\gradlew.bat :integrations:worker-capability-rpc:runRpcScenario
 ```
 
-The runner creates `<scenarioId>-phone` and `<scenarioId>-string`, performs
-each of the six events against all 10 Workers in its group, and writes exactly
-60 JSON lines to `result.txt`. Every line includes `taskId`,
-`workerGroupId`, `workerId`, `eventCode`, the original input, and the parsed
-result. A `202 pending`, invalid domain result, missing event-specific field,
-or failed call fails the scenario. The outer report
-records the explicitly targeted Worker ID; business result payloads do not
-repeat Worker identity.
+The runner resolves the 20 configured client Worker keys to their stable
+platform UUIDs. It then executes the two WorkerGroups independently. Results
+are written to:
+
+```text
+results/<scenarioId>/phone-number.jsonl
+results/<scenarioId>/string-utils.jsonl
+```
+
+Each file contains 30 JSON lines for only its own WorkerGroup. Every line
+includes `taskId`, `workerGroupId`, `clientWorkerKey`, `workerId`, `eventCode`,
+the original input, and the parsed result. A `202 pending`, invalid domain
+result, missing event-specific field, or failed call fails that Group. If the
+Phone Group completes before the String Group fails, the completed Phone file
+remains available. The report records the explicitly targeted Worker ID;
+business result payloads do not repeat Worker identity.
 
 Options:
 
@@ -116,16 +128,17 @@ Options:
 --scenario-id=worker-capability-demo
 --phone-seed-path=phone-seed.txt
 --string-seed-path=string-seed.txt
---result-path=result.txt
+--result-dir=results
 --wait-timeout-millis=30000
 --request-timeout-millis=35000
 --task-close-after-millis=3600000
 ```
 
 The scenario is intentionally sequential because it proves the synchronous
-single-TaskItem wait path. The same profile can support later non-RPC,
-TASK_DRIVEN, or PRECOMPUTED integrations without changing these Worker
-identities or capabilities.
+single-TaskItem wait path. A scenario result directory must not already exist,
+which prevents stale output from being mistaken for a new run. The same
+profile can support later non-RPC, TASK_DRIVEN, or PRECOMPUTED integrations
+without changing these Worker identities or capabilities.
 
 ## Verification
 
@@ -135,3 +148,9 @@ identities or capabilities.
 .\gradlew.bat build
 git diff --check
 ```
+
+The repository JVM workflow also runs this complete scenario against an
+ephemeral Redis service, a real Python Kernel process, and a real Server using
+the `scenario-workers` profile. Changes confined to `scenario_workers_jvm/` or
+`integrations/` therefore still trigger the JVM workflow and the 60-call
+cross-process proof.

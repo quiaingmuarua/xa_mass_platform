@@ -78,3 +78,9 @@ Redis, scores, or Pacers. The Worker does not configure or know an
 ```text
 ./gradlew :scenario_workers_jvm:test
 ```
+
+The repository-level cross-process acceptance is owned by
+[`integrations/worker-capability-rpc`](../integrations/worker-capability-rpc/).
+CI starts Redis, the Python Kernel, and the Server `scenario-workers` profile,
+then proves Register, Bind, route verification, all 20 WebSocket connections,
+and 60 targeted RPC results. Module tests do not replace that process proof.
