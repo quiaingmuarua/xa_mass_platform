@@ -14,7 +14,6 @@ import java.util.Set;
 final class ScenarioWorkersJsonParser {
 
     private static final Set<String> GROUP_FIELDS = Set.of(
-            "attributes",
             "eventCodes",
             "endpointManagerId",
             "websocketUri",
@@ -58,7 +57,6 @@ final class ScenarioWorkersJsonParser {
             );
             configs.add(new ScenarioWorkerGroupConfig(
                     workerGroupId,
-                    optionalObject(group, "attributes"),
                     requireStringList(group, "eventCodes"),
                     requireString(group, "endpointManagerId"),
                     URI.create(requireString(group, "websocketUri")),

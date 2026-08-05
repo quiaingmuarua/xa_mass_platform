@@ -15,13 +15,15 @@ The repository contains seven active areas:
   the stable `/api/v1` surface. Task control operations use Python HTTP;
   Worker resource/Properties/index operations, Task data, and Worker Delivery use Java Redis
   providers without redefining Kernel runtime contracts. Its optional Worker
-  Assembly composes explicitly configured Scenario Workers through the same
-  public Worker transport path.
+  Assembly initializes advisory WorkerGroup catalog metadata, starts configured
+  Adapters, and then composes Scenario Workers through public Resource HTTP and
+  Worker transport paths.
 - [`scenario_workers_jvm/`](scenario_workers_jvm/): Java 21 finite Scenario
   Worker capability assembly. It owns the checked-in phone-number and
   string-utility event definitions, strict JSON deployment manifest,
-  WorkerGroup/Worker declarations, and aggregate WebSocket Worker resource
-  lifecycle without owning Server profiles or Adapters.
+  public-HTTP Worker registration, and aggregate WebSocket Worker lifecycle
+  without owning WorkerGroup catalog initialization, Server profiles, or
+  Adapters.
 - [`worker_delivery_contract_jvm/`](worker_delivery_contract_jvm/): shared
   Java 11 compatible Worker Delivery DTO, validation, outcome classification,
   strict codec, and JDK-value JSON facade shared with Android.

@@ -19,14 +19,15 @@ WorkerCapabilityRpcMain
 
 The integration depends only on the shared JSON facade and the external
 Runtime API. The Server profile owns deployment composition, while
-`scenario_workers_jvm` owns Worker resource declarations, business handlers,
-transport construction, and WorkerGroup lifecycle. The caller does not depend on
+`scenario_workers_jvm` owns business handlers, transport construction, and
+public-HTTP Worker registration. Server initializes the advisory WorkerGroup
+directory before starting Adapters and Scenario Workers. The caller does not depend on
 `server_jvm`, `scenario_workers_jvm`, `kernel_jvm`, the Adapter Runtime, Worker
 Core, a network client, or Redis.
 
 ## Scenario capabilities
 
-The phone-number WorkerGroup exposes:
+The profile's phone-number Scenario Workers implement:
 
 ```text
 phonenumber.e164
@@ -52,7 +53,7 @@ it is not converted into Worker failure. `originalCarrier` is the carrier
 originally assigned to the number range, not necessarily its current carrier.
 The checked-in `phone-seed.txt` contains example data, not user data.
 
-The string-utils WorkerGroup exposes:
+The profile's string-utils Scenario Workers implement:
 
 ```text
 string.md5
@@ -88,9 +89,9 @@ Start the Runtime API Server with the reusable Worker scenario:
 ```
 
 The default Server profile has no Adapter and no built-in Worker. The explicit
-profile starts one real WebSocket Adapter, upserts two WorkerGroups and 20
-Workers through Kernel owner contracts, starts 20 real WebSocket Worker
-transports, and waits for all initial connections before startup succeeds.
+profile initializes two WorkerGroup catalog entries, starts one real WebSocket
+Adapter, starts and connects 20 real WebSocket Worker transports, then registers
+those Workers and refreshes their Properties through the public Runtime API.
 There is no separate Worker launcher or in-process delivery shortcut.
 
 Run the external RPC proof:

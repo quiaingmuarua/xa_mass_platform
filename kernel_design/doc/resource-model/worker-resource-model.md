@@ -6,20 +6,23 @@ oracle and selected JVM Redis providers implement the production write path.
 ## Core Identity
 
 ```text
-WorkerGroup = one built Worker package/capability contract
+WorkerGroup = one plugin/package capability bucket
             + one scheduling namespace
 
 Worker      = one logical execution slot in exactly one WorkerGroup
 ```
 
-A WorkerGroup is close to a deployable module or package identity. Its
-`eventCodes` declare the common capabilities expected from every Worker in the
-group. It is not an operator-created pool, Adapter identity, tenant, transport
-connection, or display-only grouping.
+A WorkerGroup is close to a deployable plugin or package identity and provides
+a stable bucket for Workers with broadly shared capabilities. Its `eventCodes`
+are replaceable catalog metadata used for display and future Server
+recommendation. They may lag the definitions currently running in Workers and
+are not Kernel scheduling truth. A WorkerGroup is not an Adapter identity,
+tenant, or transport connection.
 
 Task admission fixes one `workerGroupId`. Candidate rules only narrow Workers
 inside that group. `eventCode` is delivered to the chosen Worker and resolved
-there; Kernel dispatch does not revalidate event capability for every Item.
+there; Kernel dispatch does not validate it against WorkerGroup catalog
+metadata.
 
 One `workerId` is one scheduler-visible serial slot. A process that executes
 multiple Items concurrently exposes multiple WorkerIds. Connection state is a
@@ -35,10 +38,11 @@ WorkerGroupDescriptor(
 )
 ```
 
-`eventCodes` is immutable after first creation. Changing the built capability
-contract requires a different WorkerGroup identity.
+An explicit WorkerGroup upsert atomically replaces both `attributes` and
+`eventCodes`. Identical content is a no-op. Updating this directory summary
+does not move Workers, change scores, or assert that running Worker definitions
+already match it.
 
-`attributes` is a complete replacement value on a successful repeat upsert.
 WorkerGroup does not declare indexes, index providers, or supported
 operators. Property indexes are process-level scheduling projections and can
 be added or removed from startup configuration without changing the package

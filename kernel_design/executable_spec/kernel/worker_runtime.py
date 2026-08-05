@@ -33,12 +33,12 @@ class WorkerRuntimeStatus(Enum):
 class WorkerGroupDescriptor:
     """Worker capability-group declaration and query projection.
 
-    One group names a base execution-capability contract and the scheduling
-    namespace for Workers that conform to it. event_codes is the declared
-    capability set. Kernel append, matching, and dispatch do not compare
-    TaskItem event codes with this declaration. Server/control-plane
-    validation and worker-local handler resolution remain outside the
-    scheduling hot path.
+    One group names a coarse plugin/capability bucket and the scheduling
+    namespace for Workers assigned to it. event_codes is a control-plane
+    catalog summary and may lag the handlers currently installed on Workers.
+    Kernel append, matching, and dispatch do not compare TaskItem event codes
+    with this metadata. Server recommendation and worker-local handler
+    resolution remain outside the scheduling hot path.
     """
 
     worker_group_id: WorkerGroupId

@@ -50,16 +50,57 @@ class RedisWorkerRuntimeTest(RedisWorkerRuntimeFixture):
         self.assertEqual(result.status, WorkerRuntimeStatus.OK)
         self.assertEqual(stored, changed)
 
-    def test_worker_group_event_codes_remain_immutable(self) -> None:
+    def test_worker_group_replaces_event_code_catalog_summary(self) -> None:
         self.upsert_group()
-        result = self.catalog.upsert_worker_group(
-            descriptor=WorkerGroupDescriptor(
-                worker_group_id="image-workers",
-                attributes={},
-                event_codes=frozenset({"other"}),
-            )
+        changed = WorkerGroupDescriptor(
+            worker_group_id="image-workers",
+            attributes={"kind": "updated"},
+            event_codes=frozenset({"other"}),
         )
-        self.assertEqual(result.status, WorkerRuntimeStatus.CONFLICT)
+        result = self.catalog.upsert_worker_group(
+            descriptor=changed
+        )
+        repeated = self.catalog.upsert_worker_group(descriptor=changed)
+        stored = self.catalog.get_worker_group_descriptors(
+            worker_group_ids=["image-workers"]
+        )["image-workers"]
+
+        self.assertEqual(result.status, WorkerRuntimeStatus.OK)
+        self.assertEqual(repeated.status, WorkerRuntimeStatus.NOOP)
+        self.assertEqual(stored, changed)
+
+    def test_worker_group_replacement_retries_after_concurrent_change(
+        self,
+    ) -> None:
+        self.upsert_group()
+        changed = WorkerGroupDescriptor(
+            worker_group_id="image-workers",
+            attributes={"kind": "final"},
+            event_codes=frozenset({"final.event"}),
+        )
+
+        def replace_observed(key: str, field: str) -> None:
+            self.redis.hset(
+                key,
+                field,
+                json.dumps(
+                    {
+                        "attributes": {"kind": "raced"},
+                        "eventCodes": ["raced.event"],
+                        "workerGroupId": "image-workers",
+                    }
+                ),
+            )
+
+        self.redis.before_hash_cas = replace_observed
+
+        result = self.catalog.upsert_worker_group(descriptor=changed)
+        stored = self.catalog.get_worker_group_descriptors(
+            worker_group_ids=["image-workers"]
+        )["image-workers"]
+
+        self.assertEqual(result.status, WorkerRuntimeStatus.OK)
+        self.assertEqual(stored, changed)
 
     def test_worker_group_field_identity_mismatch_is_not_read(self) -> None:
         self.redis.hset(

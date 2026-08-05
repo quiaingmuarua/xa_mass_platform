@@ -63,31 +63,46 @@ public final class RedisWorkerResourceCatalog
             return new WorkerRuntimeResult(WorkerRuntimeStatus.OK);
         }
 
-        WorkerGroupDescriptor current =
-                WorkerRedisSupport.decodeWorkerGroup(commands().hget(
-                        groupsKey(),
-                        descriptor.workerGroupId()
-                ));
-        if (current == null) {
-            return new WorkerRuntimeResult(
-                    WorkerRuntimeStatus.INVALID,
-                    "stored worker group descriptor is invalid"
+        for (int attempt = 0;
+                attempt < MAX_DESCRIPTOR_CAS_ATTEMPTS;
+                attempt++) {
+            String observed = commands().hget(
+                    groupsKey(),
+                    descriptor.workerGroupId()
             );
+            WorkerGroupDescriptor current =
+                    WorkerRedisSupport.decodeWorkerGroup(observed);
+            if (current == null) {
+                return new WorkerRuntimeResult(
+                        WorkerRuntimeStatus.INVALID,
+                        "stored worker group descriptor is invalid"
+                );
+            }
+            if (!current.workerGroupId().equals(
+                    descriptor.workerGroupId()
+            )) {
+                return new WorkerRuntimeResult(
+                        WorkerRuntimeStatus.CONFLICT,
+                        "stored worker group identity does not match"
+                );
+            }
+            if (current.equals(descriptor)) {
+                return new WorkerRuntimeResult(WorkerRuntimeStatus.NOOP);
+            }
+            if (WorkerRedisSupport.compareAndSetHashField(
+                    commands(),
+                    groupsKey(),
+                    descriptor.workerGroupId(),
+                    observed,
+                    encoded
+            )) {
+                return new WorkerRuntimeResult(WorkerRuntimeStatus.OK);
+            }
         }
-        if (!current.workerGroupId().equals(descriptor.workerGroupId())
-                || !current.eventCodes().equals(descriptor.eventCodes())) {
-            return new WorkerRuntimeResult(
-                    WorkerRuntimeStatus.CONFLICT,
-                    "worker group eventCodes are immutable"
-            );
-        }
-
-        commands().hset(
-                groupsKey(),
-                descriptor.workerGroupId(),
-                encoded
+        return new WorkerRuntimeResult(
+                WorkerRuntimeStatus.STALE,
+                "worker group descriptor changed during metadata replacement"
         );
-        return new WorkerRuntimeResult(WorkerRuntimeStatus.OK);
     }
 
     @Override

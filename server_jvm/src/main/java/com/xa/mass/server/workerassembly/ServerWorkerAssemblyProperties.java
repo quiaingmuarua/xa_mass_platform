@@ -1,5 +1,7 @@
 package com.xa.mass.server.workerassembly;
 
+import java.net.URI;
+import java.util.Objects;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 
@@ -8,13 +10,39 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
         ignoreUnknownFields = false
 )
 public record ServerWorkerAssemblyProperties(
-        @DefaultValue("{}") String configJson
+        @DefaultValue("http://127.0.0.1:18082") URI runtimeApiBaseUrl,
+        @DefaultValue("{}") String groupConfigJson,
+        @DefaultValue("{}") String workerConfigJson
 ) {
 
     public ServerWorkerAssemblyProperties {
-        if (configJson == null || configJson.isBlank()) {
+        requireRuntimeApiBaseUrl(runtimeApiBaseUrl);
+        requireJsonObjectText(groupConfigJson, "group-config-json");
+        requireJsonObjectText(workerConfigJson, "worker-config-json");
+    }
+
+    private static void requireRuntimeApiBaseUrl(URI value) {
+        Objects.requireNonNull(value, "runtime-api-base-url");
+        String scheme = value.getScheme();
+        if (!value.isAbsolute()
+                || value.getHost() == null
+                || value.getQuery() != null
+                || value.getFragment() != null
+                || (!"http".equalsIgnoreCase(scheme)
+                && !"https".equalsIgnoreCase(scheme))) {
             throw new IllegalArgumentException(
-                    "config-json must contain a JSON object"
+                    "runtime-api-base-url must be an absolute HTTP(S) URI"
+            );
+        }
+    }
+
+    private static void requireJsonObjectText(
+            String value,
+            String name
+    ) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(
+                    name + " must contain a JSON object"
             );
         }
     }

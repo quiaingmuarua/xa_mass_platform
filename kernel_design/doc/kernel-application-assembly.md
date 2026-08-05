@@ -101,6 +101,11 @@ a query projection containing Worker and Platform property snapshots. The
 Kernel Runtime Server owns its HTTP request models because they are
 protocol-edge translations.
 
+An explicit WorkerGroup upsert atomically replaces its `attributes` and
+`eventCodes`; identical content is a no-op. `workerGroupId` remains the stable
+scheduling partition identity. The replaced fields are control-plane catalog
+metadata and are not consulted by Matcher or Dispatch.
+
 First Worker registration selects the default lane rank internally and
 initializes the Worker HOT score without requiring the scheduling process to be
 running. Compatible repeat registration is a no-op except for repairing a

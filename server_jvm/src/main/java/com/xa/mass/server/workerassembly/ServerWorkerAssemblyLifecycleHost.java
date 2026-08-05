@@ -11,15 +11,21 @@ import org.springframework.beans.factory.DisposableBean;
 public final class ServerWorkerAssemblyLifecycleHost
         implements ApplicationRunner, DisposableBean {
 
+    private final ServerWorkerGroupInitializer groupInitializer;
     private final WorkerDeliveryAdapterManager adapterManager;
     private final ScenarioWorkers scenarioWorkers;
     private boolean started;
     private boolean closed;
 
     public ServerWorkerAssemblyLifecycleHost(
+            ServerWorkerGroupInitializer groupInitializer,
             WorkerDeliveryAdapterManager adapterManager,
             ScenarioWorkers scenarioWorkers
     ) {
+        this.groupInitializer = Objects.requireNonNull(
+                groupInitializer,
+                "groupInitializer"
+        );
         this.adapterManager = Objects.requireNonNull(
                 adapterManager,
                 "adapterManager"
@@ -43,6 +49,13 @@ public final class ServerWorkerAssemblyLifecycleHost
         }
         if (started) {
             return;
+        }
+
+        try {
+            groupInitializer.initialize();
+        } catch (RuntimeException failure) {
+            closed = true;
+            throw failure;
         }
 
         try {

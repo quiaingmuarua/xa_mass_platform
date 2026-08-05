@@ -8,10 +8,29 @@ xa:
             listen-host: 127.0.0.1
             listen-port: 18083
     worker-assembly:
-      config-json: |
+      runtime-api-base-url: http://127.0.0.1:18082
+      group-config-json: |
         {
           "scenario-phone-number-workers": {
             "attributes": {"capability":"libphonenumber"},
+            "eventCodes": [
+              "phonenumber.e164",
+              "phonenumber.country",
+              "phonenumber.original-carrier"
+            ]
+          },
+          "scenario-string-utils-workers": {
+            "attributes": {"capability":"string-utils"},
+            "eventCodes": [
+              "string.md5",
+              "string.sha1",
+              "string.base64.encode"
+            ]
+          }
+        }
+      worker-config-json: |
+        {
+          "scenario-phone-number-workers": {
             "eventCodes": [
               "phonenumber.e164",
               "phonenumber.country",
@@ -33,7 +52,6 @@ xa:
             ]
           },
           "scenario-string-utils-workers": {
-            "attributes": {"capability":"string-utils"},
             "eventCodes": [
               "string.md5",
               "string.sha1",

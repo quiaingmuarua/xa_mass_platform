@@ -26,10 +26,10 @@ must use this workspace as its parity oracle.
 - Do not promote route metadata, Adapter connectivity observations, command
   handoff, or result evidence into a Worker lifecycle without a concrete
   scenario and an implemented owner.
-- Treat `WorkerGroup.eventCodes` as an immutable capability declaration, not a
-  scheduling predicate. Server/control-plane code may validate semantic
-  compatibility; Kernel append, matching, and dispatch must not add per-Item
-  EventCode checks.
+- Treat `WorkerGroup.eventCodes` as replaceable catalog metadata for display
+  and future Server recommendation, not a scheduling predicate or current
+  Worker capability truth. Kernel append, matching, and dispatch must not add
+  per-Item EventCode checks or require equality with local Worker definitions.
 
 Core kernel shape:
 

@@ -12,7 +12,6 @@ import java.util.Objects;
 
 record ScenarioWorkerGroupConfig(
         String workerGroupId,
-        Map<String, Object> attributes,
         List<String> eventCodes,
         String endpointManagerId,
         URI workerWebSocketUri,
@@ -24,7 +23,6 @@ record ScenarioWorkerGroupConfig(
 
     ScenarioWorkerGroupConfig {
         requireNonBlank(workerGroupId, "workerGroupId");
-        attributes = immutableJsonMap(attributes, "attributes");
         Objects.requireNonNull(eventCodes, "eventCodes");
         if (eventCodes.isEmpty()) {
             throw new IllegalArgumentException(

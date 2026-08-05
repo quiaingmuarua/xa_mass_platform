@@ -578,8 +578,9 @@ no hidden compatibility path or second mainline remains
   - four scheduling planes for the new kernel core: task score-band, worker
     score-band, assignment-dispatch, and result-routing.
 - [Worker Resource Model](doc/resource-model/worker-resource-model.md)
-  - WorkerGroup capability identity, two-source Properties, and independently
-    registered scheduling projections.
+  - stable WorkerGroup scheduling identity, replaceable capability-directory
+    metadata, two-source Properties, and independently registered scheduling
+    projections.
 - [Worker HOT_ACQUIRE Lease Protocol](doc/scheduling/worker-hot-acquire-lease-protocol.md)
   - canonical allocation lease, dispatch exact recheck, result-driven
     release/recovery classification, explicit reconciliation mechanism, and

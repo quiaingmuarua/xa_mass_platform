@@ -178,6 +178,12 @@ refresh either property snapshot. The `worker-properties` PUT is the explicit
 complete replacement of `workerProperties`; it preserves Platform Properties,
 the endpoint coordinate, and every existing score state.
 
+WorkerGroup PUT atomically replaces `attributes` and `eventCodes`; identical
+content returns `NOOP`. `workerGroupId` is the stable catalog identity and
+Kernel scheduling partition. `eventCodes` is an advisory Server directory
+projection for display and future Task recommendation. It is not used by Task
+admission, Matcher, Dispatch, or as proof of installed Worker Handlers.
+
 WorkerGroup upsert and Worker registration/property update use Java Redis owner providers. Task
 create/approve/close use Python HTTP owner/application providers. Item append
 and result load use Java Redis owner providers. Append returns per-message
@@ -398,11 +404,10 @@ and submits at most one pending or buffered batch per
 
 ### Built-in Worker Assembly
 
-Built-in business Workers are opt-in. Server statically flattens the finite
-Definition lists exported by `scenario_workers_jvm` into an immutable
-`eventCode -> WorkerEventDefinition` map and passes one opaque JSON string.
-The Scenario module validates the JSON and resolves each WorkerGroup's ordered
-event codes. Configuration cannot provide a class name or Handler:
+Built-in business Workers are opt-in. The Server profile owns advisory
+WorkerGroup directory metadata, while `scenario_workers_jvm` owns its local
+Definitions and Worker execution. The two JSON documents are deliberately
+independent:
 
 ```yaml
 xa:
@@ -415,10 +420,21 @@ xa:
             listen-host: 127.0.0.1
             listen-port: 18083
     worker-assembly:
-      config-json: |
+      runtime-api-base-url: http://127.0.0.1:18082
+      group-config-json: |
         {
           "scenario-phone-number-workers": {
             "attributes": {"capability":"libphonenumber"},
+            "eventCodes": [
+              "phonenumber.e164",
+              "phonenumber.country",
+              "phonenumber.original-carrier"
+            ]
+          }
+        }
+      worker-config-json: |
+        {
+          "scenario-phone-number-workers": {
             "eventCodes": [
               "phonenumber.e164",
               "phonenumber.country",
@@ -435,7 +451,7 @@ xa:
         }
 ```
 
-The default `config-json` is `{}` and starts no built-in business Worker. The checked-in
+Both JSON values default to `{}`. The checked-in
 `scenario-workers` profile declares one WebSocket Adapter and two independent
 Worker capability groups. It creates no Task and has no dependency on RPC,
 ITEM_DRIVEN, TASK_DRIVEN, TARGETED, or PRECOMPUTED scheduling policy. Both
@@ -448,34 +464,29 @@ deployment configuration; Server does not derive one from the other.
 ./gradlew :server_jvm:bootRun --args="--spring.profiles.active=scenario-workers"
 ```
 
-During startup the Server starts all configured Adapters and then invokes one
-aggregate `ScenarioWorkers` handle. The Scenario module parses WorkerGroups in
-JSON order, resolves their Definitions, registers WorkerGroups and explicit
-Workers through owner contracts,
-replaces Worker Properties, applies configured Index updates, starts real
-WebSocket Worker transports, and waits for every initial connection. Shutdown
-and partial-start recovery close local transports in reverse order before the
-Adapter. Only `OK` and `NOOP` owner results are accepted. Invalid configuration,
-duplicate Worker identity,
-rejected owner operation, transport startup failure, or connection timeout
-aborts Server startup. Already accepted owner upserts are not rolled back
-across owners; deterministic declarations converge idempotently on the next
-startup.
+During startup the Server initializes WorkerGroup directory entries through the
+WorkerGroup owner, then starts configured Adapters, then invokes one aggregate
+`ScenarioWorkers` handle. Scenario starts every real WebSocket transport and
+waits for all initial connections before registering Workers, replacing Worker
+Properties, and applying best-effort Index updates through the public Runtime
+Resource HTTP API. Shutdown closes Scenario transports before Adapters;
+WorkerGroup directory entries are not rolled back or removed.
 
 The phone-number group references `phonenumber.e164`,
 `phonenumber.country`, and `phonenumber.original-carrier`. The string-utils
 group references `string.md5`, `string.sha1`, and `string.base64.encode`.
 Every Worker in a group receives the same immutable Definition list and shared
 Handler instances. Worker identity remains outside Event Definitions and
-business result payloads. The `scenario-*` identities deliberately avoid
-mutating older declarations that may remain in Redis.
+business result payloads. WorkerGroup `eventCodes` in `group-config-json` are a
+display/recommendation summary and may lag the local Definition list in
+`worker-config-json`; neither Server nor Kernel enforces equality.
 
 Worker Assembly does not expose a new Kernel operation, access Redis, start a
 second scheduler, or bypass the Adapter through an in-process path.
 `ScenarioWorkers` is the only public local lifecycle handle; it is not an
-implementation SPI or plugin system. Server only composes the finite Definition
-map; it does not implement Handlers or parse WorkerGroup, Worker identity,
-Properties, or Index fields. Closing the handle
+implementation SPI or plugin system. Server does not import Scenario business
+Definitions or Handlers. Scenario does not import Kernel or Server
+implementation types. Closing the handle
 only releases local network resources and does not change Kernel Worker truth.
 The profile and Adapter remain Server-owned, while capabilities and concrete
 Worker resource lifecycle belong to `scenario_workers_jvm`.

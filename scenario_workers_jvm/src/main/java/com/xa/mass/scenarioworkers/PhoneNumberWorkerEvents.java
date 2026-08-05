@@ -14,12 +14,12 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
-public final class PhoneNumberWorkerEvents {
+final class PhoneNumberWorkerEvents {
 
-    public static final String E164_EVENT_CODE = "phonenumber.e164";
-    public static final String COUNTRY_EVENT_CODE =
+    static final String E164_EVENT_CODE = "phonenumber.e164";
+    static final String COUNTRY_EVENT_CODE =
             "phonenumber.country";
-    public static final String ORIGINAL_CARRIER_EVENT_CODE =
+    static final String ORIGINAL_CARRIER_EVENT_CODE =
             "phonenumber.original-carrier";
 
     private static final PhoneNumberUtil PHONE_NUMBERS =
@@ -30,7 +30,7 @@ public final class PhoneNumberWorkerEvents {
     private PhoneNumberWorkerEvents() {
     }
 
-    public static List<WorkerEventDefinition<?>> definitions() {
+    static List<WorkerEventDefinition<?>> definitions() {
         return List.of(
                 definition(E164_EVENT_CODE, PhoneNumberWorkerEvents::e164),
                 definition(

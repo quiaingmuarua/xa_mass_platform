@@ -416,7 +416,7 @@ Acquired workers are candidates only. After acquire, worker-runtime validates:
 ```text
 worker declaration exists
 worker belongs to homeBucketId / workerGroupId
-worker group capability and task demand are compatible
+worker belongs to the Task-selected WorkerGroup scheduling partition
 approved scheduling metadata is current enough
 if dirty == 1 and the caller is continuing from a persisted assignment plan /
 hot score lease continuation, assignment owner discards / rematches or

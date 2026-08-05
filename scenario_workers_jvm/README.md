@@ -1,45 +1,33 @@
 # XA Mass Scenario Workers JVM
 
 `scenario_workers_jvm` is the finite Java 21 capability assembly used by the
-checked-in `scenario-workers` Server profile. It is a root module because its
-event definitions and Worker resource declarations are business scenario
-choices, not Worker Delivery mechanisms.
+checked-in `scenario-workers` Server profile. It demonstrates ordinary Workers;
+it is not a Kernel owner, privileged Server extension, Adapter, plugin SPI, or
+independently deployed application.
 
-The assembly is driven by two startup-time immutable maps:
+The module owns its built-in phone-number and string-utility
+`WorkerEventDefinition` values. Those definitions are package-private and are
+selected by each worker-config group's local `eventCodes`. This field is local
+assembly input, not the WorkerGroup catalog projection. Every Worker in the
+same configured group receives the same immutable Definition list and shared
+Handler instances, so built-in Handlers must be stateless or thread-safe.
 
-```text
-eventCode -> WorkerEventDefinition
-workerGroupId -> ordered eventCodes
+The only public assembly surface is:
+
+```java
+ScenarioWorkers workers = ScenarioWorkers.fromJson(
+        workerConfigJson,
+        URI.create("http://127.0.0.1:18082")
+);
+workers.start();
+workers.close();
 ```
 
-The first map is supplied to `ScenarioWorkers.fromJson(...)` by the host. The
-second is parsed from the ordered JSON deployment manifest. A WorkerGroup
-resolves its event codes once and every Worker in that group receives the same
-immutable Definition list and Handler instances. Handlers therefore must be
-stateless or thread-safe. Worker identity is resource and transport context;
-it is not an Event Definition parameter or business-result field.
-
-The module exposes:
-
-```text
-ScenarioWorkers.fromJson(...)
-ScenarioWorkers.start()
-ScenarioWorkers.close()
-PhoneNumberWorkerEvents.definitions()
-StringUtilityWorkerEvents.definitions()
-```
-
-The capability providers own the checked-in business Definitions. The Server
-may flatten those lists into the event-code map, but it does not implement or
-execute their Handlers. Definitions that are not referenced by a configured
-WorkerGroup have no resource or runtime side effect.
-
-The JSON object is keyed directly by WorkerGroup ID:
+The worker JSON is keyed by WorkerGroup ID:
 
 ```json
 {
   "scenario-phone-number-workers": {
-    "attributes": {"capability":"libphonenumber"},
     "eventCodes": [
       "phonenumber.e164",
       "phonenumber.country",
@@ -56,31 +44,30 @@ The JSON object is keyed directly by WorkerGroup ID:
 }
 ```
 
-There is no bundle ID, capability `type`, reflected class name, dynamic
-registry, or per-Worker Definition factory. `eventCodes` must be non-empty,
-unique, and present in the host-supplied Definition map. `{}` starts no
-WorkerGroup or Worker.
-
-Each generic WorkerGroup lifecycle performs:
+`fromJson` only parses and assembles local state. `start()` performs:
 
 ```text
-resolve ordered Definitions
--> upsert WorkerGroup
--> register each Worker
--> replace workerProperties
--> best-effort Property Index updates
--> start real WebSocket Worker transports
--> bounded initial connection wait
+create and start every WebSocket Worker transport
+-> wait for every configured group to connect
+-> register each Worker through the public Runtime Resource HTTP API
+-> replace workerProperties through the same API
+-> submit explicit Property Index updates as best effort
 ```
 
-Groups start in manifest order and close in reverse order. Partial startup
-failure closes local Worker transports but does not roll back Kernel resources.
-`close()` releases only local network and thread resources; it does not change
-Worker descriptors, scores, or Property Index truth.
+Required registration or property-update failure closes all local transports
+and fails startup. Index failure is diagnostic only. `close()` releases local
+network and thread resources in reverse order; it does not mutate WorkerGroup,
+Worker descriptor, score, or Property Index truth.
 
-The module depends on Kernel owner contracts and the concrete Worker network
-client. It does not depend on Spring, Server, the Netty Adapter, Redis, scores,
-Pacers, or HTTP controllers.
+WorkerGroup directory metadata is initialized separately by the Server profile.
+The profile's catalog `eventCodes` may intentionally lag this module's local
+Definition selection; Scenario Workers never compare or update the two values.
+
+The module depends internally on Worker Core, the concrete OkHttp network
+client, and the transport wire contract. Worker registration uses a private JDK
+HTTP client and Server's public API JSON. It has no dependency on `kernel_jvm`,
+Spring, Server implementation classes, the Netty Adapter, Redis, scores, or
+Pacers.
 
 ```text
 ./gradlew :scenario_workers_jvm:test

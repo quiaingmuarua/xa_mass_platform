@@ -14,17 +14,17 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
-public final class StringUtilityWorkerEvents {
+final class StringUtilityWorkerEvents {
 
-    public static final String MD5_EVENT_CODE = "string.md5";
-    public static final String SHA1_EVENT_CODE = "string.sha1";
-    public static final String BASE64_ENCODE_EVENT_CODE =
+    static final String MD5_EVENT_CODE = "string.md5";
+    static final String SHA1_EVENT_CODE = "string.sha1";
+    static final String BASE64_ENCODE_EVENT_CODE =
             "string.base64.encode";
 
     private StringUtilityWorkerEvents() {
     }
 
-    public static List<WorkerEventDefinition<?>> definitions() {
+    static List<WorkerEventDefinition<?>> definitions() {
         return List.of(
                 definition(
                         MD5_EVENT_CODE,

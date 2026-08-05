@@ -267,8 +267,9 @@ to initialize Item remaining budget; callers do not pass score fields.
 
 `eventCode` is stored and passed through to the selected Worker's local handler
 dispatch. Kernel Task admission, matching, and dispatch do not compare it with
-the WorkerGroup capability declaration. A Server may perform that semantic
-validation before invoking append; it is not a Kernel scheduling gate.
+the WorkerGroup catalog projection. Server may use that projection to recommend
+a WorkerGroup, but its possible staleness means it must not be promoted into a
+Kernel admission or dispatch guarantee.
 `expireAtMillis` is the new-attempt cutoff:
 TaskRuntime rejects an already-expired append, while Task dispatch final-fails
 an Item that expires after append before acquiring a Worker. Existing claimed

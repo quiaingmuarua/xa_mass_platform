@@ -16,17 +16,16 @@ Status: current repository handoff.
   operations to Python HTTP providers and Worker resource, Task data, and
   delivery operations to Java Redis providers; it does not define a second set
   of Kernel runtime ports. It may
-  pass an opaque JSON deployment manifest and a statically assembled
-  event-code Definition map to the Scenario Worker module after starting
-  configured Adapters. It does not implement Scenario handlers or own
+  initialize advisory WorkerGroup catalog metadata, start configured Adapters,
+  and pass an opaque Worker manifest plus the public Runtime API base URL to
+  the Scenario Worker module. It does not implement Scenario handlers or own
   individual Worker resource lifecycle.
 - `scenario_workers_jvm/` is the Java 21 finite Scenario Worker assembly. It
   owns the checked-in phone-number and string-utility event definitions,
-  strict JSON deployment manifest parsing, generic WorkerGroup/Worker
-  declaration lifecycle, real WebSocket Worker construction, initial
-  connection wait, and aggregate failure cleanup. It invokes only existing Kernel owner contracts
-  and is not a Kernel owner, Server profile, Adapter, plugin SPI, or
-  independently deployed application.
+  strict Worker JSON parsing, real WebSocket Worker construction, initial
+  connection wait, public-HTTP Worker registration/property update, and
+  aggregate failure cleanup. It is not a Kernel owner, Server profile,
+  Adapter, plugin SPI, or independently deployed application.
 - `worker_delivery_contract_jvm/` is the Java 11 compatible transport-neutral
   WorkerCommand/WorkerResult/WorkerConnectionBind contract shared by Server,
   Adapter, and Worker. Long-lived transports exchange direct command/result
@@ -134,24 +133,24 @@ tag.
 - `server_jvm` may bind a `Map<adapterId, JsonNode>`, construct concrete
   Adapter instances, register them, and invoke `manager.start()` /
   `manager.close()` at process boundaries. Its `workerassembly` package may
-  bind one opaque Scenario Workers JSON string, statically flatten the finite
-  capability Definition lists exported by `scenario_workers_jvm`, and sequence
-  Adapter startup before the aggregate `ScenarioWorkers` handle. It must not
-  implement Handlers, parse WorkerGroup configuration, derive Worker IDs or
-  Adapter URIs, or own concrete Worker construction, owner registration/update
-  behavior, connection waiting, generic class-name plugins, Server HTTP
-  loopback, Redis bypass, Adapter scheduling, connection selection, queue
+  initialize explicitly configured WorkerGroup catalog metadata, bind one
+  opaque Scenario Worker JSON string plus a Runtime API base URL, and sequence
+  WorkerGroup initialization before Adapter and Scenario startup. It must not
+  implement Handlers, parse Scenario Worker definitions, derive Worker IDs or
+  Adapter URIs, or own concrete Worker construction, Worker registration/update
+  behavior, connection waiting, generic class-name plugins, Redis bypass,
+  Adapter scheduling, connection selection, queue
   handling, result buffering, or trusted rejection policy.
 - `scenario_workers_jvm` may expose the final `ScenarioWorkers` aggregate
-  lifecycle handle, its `fromJson` composition entry, and finite capability
-  providers returning `WorkerEventDefinition` lists. Parsed configuration,
-  generic WorkerGroup lifecycle, and Worker factories stay module-internal.
+  lifecycle handle and its `fromJson(workerConfigJson, runtimeApiBaseUrl)`
+  composition entry. Finite capability providers, parsed configuration, and
+  Worker factories stay module-internal.
   Definitions and Handler instances are shared by all Workers that reference
   their event code and therefore must be stateless or thread-safe. The module may
-  depend on `kernel_jvm` owner contracts and `transport:okhttp-worker`; it must
-  not depend on Spring, `server_jvm`, `transport:netty-adapter`, Redis, scores,
-  Pacers, HTTP controllers, reflection, `ServiceLoader`, or configurable class
-  names.
+  depend internally on Worker Core, the transport contract, and
+  `transport:okhttp-worker`; it must not depend on `kernel_jvm`, Spring,
+  `server_jvm`, `transport:netty-adapter`, Redis, scores, Pacers, HTTP
+  controller types, reflection, `ServiceLoader`, or configurable class names.
 - The default Server profile must not declare Adapter instances or Scenario
   WorkerGroups. Both are opt-in deployment assembly supplied by a profile,
   external configuration, or environment variables.
@@ -159,8 +158,8 @@ tag.
   may declare WorkerGroups referencing the finite phone-number and string
   utility event codes, but it must
   not create Tasks or bind those Workers to RPC, Task type, or scheduling
-  policy. Each WorkerGroup's immutable `eventCodes` must exactly match every
-  Definition set resolved for that group.
+  policy. WorkerGroup `eventCodes` are an advisory catalog summary and may lag
+  the package-private Definition set resolved by Scenario Workers.
 
 ## JVM Incremental Assembly
 
@@ -201,14 +200,14 @@ WorkerDeliveryConfiguration
   -> Server point/batch HTTP application service
 
 ServerWorkerAssemblyConfiguration
-  -> opaque opt-in Scenario Workers JSON
-  -> static eventCode-to-Definition map
+  -> WorkerGroup catalog JSON -> WorkerResourceCatalog
+  -> opaque Scenario Worker JSON + Runtime API base URL
   -> ScenarioWorkers.fromJson
 
 scenario_workers_jvm
-  -> strict WorkerGroup JSON parsing and Definition resolution
-  -> WorkerResourceCatalog / WorkerRuntime owner registration and updates
-  -> fixed capability definitions
+  -> strict Worker JSON parsing and internal Definition resolution
+  -> public Runtime Resource HTTP registration and updates
+  -> package-private fixed capability definitions
   -> Worker Core + concrete network Client
 
 transport/netty-adapter

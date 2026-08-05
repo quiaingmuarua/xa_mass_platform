@@ -47,9 +47,17 @@ Upsert behavior:
 
 ```text
 HSETNX establishes WorkerGroup
-existing workerGroupId/eventCodes mismatch -> CONFLICT
-compatible repeat -> replace attributes
+identical descriptor -> NOOP
+changed attributes and/or eventCodes -> exact CAS full replacement
+stored descriptor identity mismatch -> CONFLICT
+damaged stored descriptor -> INVALID
+repeated CAS contention -> STALE
 ```
+
+`workerGroupId` is the stable HASH field and scheduling partition identity.
+`eventCodes` is replaceable control-plane catalog metadata; it is not read by
+Matcher or Dispatch and does not assert the Handler set currently installed on
+every Worker.
 
 ## Worker Descriptors
 

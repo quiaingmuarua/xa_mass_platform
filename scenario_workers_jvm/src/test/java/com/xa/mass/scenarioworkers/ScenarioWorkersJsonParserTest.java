@@ -15,7 +15,6 @@ class ScenarioWorkersJsonParserTest {
                 ScenarioWorkersJsonParser.parse("""
                         {
                           "phone-group": {
-                            "attributes":{"capability":"phone"},
                             "eventCodes":["phone.first","phone.second"],
                             "endpointManagerId":"adapter-1",
                             "websocketUri":"ws://127.0.0.1:18083/connect",
@@ -28,7 +27,6 @@ class ScenarioWorkersJsonParserTest {
                             }]
                           },
                           "string-group": {
-                            "attributes":{},
                             "eventCodes":["string.first"],
                             "endpointManagerId":"adapter-2",
                             "websocketUri":"wss://example.com/connect",
@@ -44,8 +42,6 @@ class ScenarioWorkersJsonParserTest {
                 .extracting(ScenarioWorkerGroupConfig::workerGroupId)
                 .containsExactly("phone-group", "string-group");
         ScenarioWorkerGroupConfig phone = configs.get(0);
-        assertThat(phone.attributes())
-                .containsEntry("capability", "phone");
         assertThat(phone.eventCodes())
                 .containsExactly("phone.first", "phone.second");
         assertThat(phone.requestTimeout()).isEqualTo(Duration.ofSeconds(10));
@@ -77,6 +73,7 @@ class ScenarioWorkersJsonParserTest {
                   "group": {
                     "type":"PHONE_NUMBER",
                     "workerGroupId":"group",
+                    "attributes":{},
                     "eventCodes":["phone.first"],
                     "endpointManagerId":"adapter",
                     "websocketUri":"ws://127.0.0.1:18083/connect",

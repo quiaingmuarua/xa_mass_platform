@@ -13,9 +13,7 @@ java {
 }
 
 dependencies {
-    api project(':kernel_jvm')
-    api project(':transport:worker-core')
-
+    implementation project(':transport:worker-core')
     implementation project(':worker_delivery_contract_jvm')
     implementation project(':transport:okhttp-worker')
     implementation 'com.googlecode.libphonenumber:libphonenumber:9.0.31'

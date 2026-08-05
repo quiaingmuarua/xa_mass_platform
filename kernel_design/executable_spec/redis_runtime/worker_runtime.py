@@ -112,25 +112,38 @@ class RedisWorkerResourceCatalog(WorkerResourceCatalog):
         ):
             return WorkerRuntimeResult(WorkerRuntimeStatus.OK)
 
-        current = self._decode_worker_group_descriptor(
-            self.redis.hget(self._groups_key(), descriptor.worker_group_id)
-        )
-        if current is None:
-            return WorkerRuntimeResult(
-                WorkerRuntimeStatus.INVALID,
-                "stored worker group descriptor is invalid",
+        for _ in range(_MAX_DESCRIPTOR_CAS_ATTEMPTS):
+            observed = self.redis.hget(
+                self._groups_key(),
+                descriptor.worker_group_id,
             )
-        if (
-            current.worker_group_id != descriptor.worker_group_id
-            or current.event_codes != descriptor.event_codes
-        ):
-            return WorkerRuntimeResult(
-                WorkerRuntimeStatus.CONFLICT,
-                "worker group eventCodes are immutable",
-            )
+            current = self._decode_worker_group_descriptor(observed)
+            if current is None:
+                return WorkerRuntimeResult(
+                    WorkerRuntimeStatus.INVALID,
+                    "stored worker group descriptor is invalid",
+                )
+            if current.worker_group_id != descriptor.worker_group_id:
+                return WorkerRuntimeResult(
+                    WorkerRuntimeStatus.CONFLICT,
+                    "stored worker group identity does not match",
+                )
+            if current == descriptor:
+                return WorkerRuntimeResult(WorkerRuntimeStatus.NOOP)
+            if self.redis.eval(
+                _COMPARE_AND_SET_HASH_FIELD_SCRIPT,
+                1,
+                self._groups_key(),
+                descriptor.worker_group_id,
+                observed,
+                encoded,
+            ) == 1:
+                return WorkerRuntimeResult(WorkerRuntimeStatus.OK)
 
-        self.redis.hset(self._groups_key(), descriptor.worker_group_id, encoded)
-        return WorkerRuntimeResult(WorkerRuntimeStatus.OK)
+        return WorkerRuntimeResult(
+            WorkerRuntimeStatus.STALE,
+            "worker group descriptor changed during metadata replacement",
+        )
 
     def get_worker_group_descriptors(
         self,

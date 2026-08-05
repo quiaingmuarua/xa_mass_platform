@@ -116,18 +116,15 @@ class RedisWorkerOwnerRuntimeIntegrationTest {
         WorkerGroupDescriptor updatedGroup = group(
                 "group-1",
                 Map.of("kind", "\u66f4\u65b0"),
-                initialGroup.eventCodes()
+                Set.of("event.other")
         );
         assertThat(catalog.upsertWorkerGroup(updatedGroup).status())
                 .isEqualTo(WorkerRuntimeStatus.OK);
-        assertThat(catalog.upsertWorkerGroup(group(
-                "group-1",
-                Map.of(),
-                Set.of("event.other")
-        )).status()).isEqualTo(WorkerRuntimeStatus.CONFLICT);
+        assertThat(catalog.upsertWorkerGroup(updatedGroup).status())
+                .isEqualTo(WorkerRuntimeStatus.NOOP);
         assertThat(redis.hget(groupsKey(), "group-1")).isEqualTo(
                 "{\"attributes\":{\"kind\":\"\\u66f4\\u65b0\"},"
-                        + "\"eventCodes\":[\"event.a\",\"event.b\"],"
+                        + "\"eventCodes\":[\"event.other\"],"
                         + "\"workerGroupId\":\"group-1\"}"
         );
 

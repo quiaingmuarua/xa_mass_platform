@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 class ScenarioWorkersArchitectureBoundaryTest {
 
     @Test
-    void publicSurfaceExposesOnlyLifecycleAndBuiltInDefinitions() {
+    void publicSurfaceExposesOnlyAggregateLifecycle() {
         assertThat(Modifier.isFinal(
                 ScenarioWorkers.class.getModifiers()
         )).isTrue();
@@ -31,31 +31,34 @@ class ScenarioWorkersArchitectureBoundaryTest {
                 ScenarioWorkerGroupConfig.class.getModifiers()
         )).isFalse();
         assertThat(Modifier.isPublic(
-                ScenarioWorkerGroup.class.getModifiers()
+                PhoneNumberWorkerEvents.class.getModifiers()
         )).isFalse();
         assertThat(Modifier.isPublic(
-                PhoneNumberWorkerEvents.class.getModifiers()
-        )).isTrue();
-        assertThat(Modifier.isPublic(
                 StringUtilityWorkerEvents.class.getModifiers()
-        )).isTrue();
+        )).isFalse();
+        Method fromJson = java.util.Arrays.stream(
+                ScenarioWorkers.class.getDeclaredMethods()
+        ).filter(method -> method.getName().equals("fromJson"))
+                .findFirst()
+                .orElseThrow();
+        assertThat(fromJson.getParameterTypes())
+                .containsExactly(String.class, java.net.URI.class);
     }
 
     @Test
-    void moduleUsesOwnerContractsAndWorkerTransportOnly()
+    void moduleUsesPublicResourceHttpAndWorkerTransportOnly()
             throws Exception {
         String sources = readSources(Path.of("src/main/java"));
         String build = Files.readString(Path.of("build.gradle"));
 
         assertThat(sources)
-                .contains("WorkerResourceCatalog")
-                .contains("WorkerRuntime")
                 .contains("definitionsByEventCode")
-                .contains("eventCodesByWorkerGroupId")
                 .contains("WebSocketWorkerTransport")
                 .contains("OkHttpTextWebSocketClient")
+                .contains("java.net.http.HttpClient")
                 .contains("ScenarioWorkersJsonParser");
         assertThat(sources)
+                .doesNotContain("com.xa.mass.kernel")
                 .doesNotContain("org.springframework")
                 .doesNotContain("com.xa.mass.server")
                 .doesNotContain("io.lettuce")
@@ -66,8 +69,10 @@ class ScenarioWorkersArchitectureBoundaryTest {
                 .doesNotContain("java.lang.reflect")
                 .doesNotContain("ServiceLoader");
         assertThat(build)
-                .contains("api project(':kernel_jvm')")
-                .contains("api project(':transport:worker-core')")
+                .contains(
+                        "implementation "
+                                + "project(':transport:worker-core')"
+                )
                 .contains(
                         "implementation "
                                 + "project(':worker_delivery_contract_jvm')"
@@ -76,6 +81,8 @@ class ScenarioWorkersArchitectureBoundaryTest {
                         "implementation "
                                 + "project(':transport:okhttp-worker')"
                 )
+                .doesNotContain("kernel_jvm")
+                .doesNotContain("api project")
                 .doesNotContain("transport:netty-adapter")
                 .doesNotContain("server_jvm")
                 .doesNotContain("spring");
