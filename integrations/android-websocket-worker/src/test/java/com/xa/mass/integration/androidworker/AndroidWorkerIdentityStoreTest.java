@@ -3,6 +3,7 @@ package com.xa.mass.integration.androidworker;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 
 import android.app.Application;
 import android.content.Context;
@@ -11,10 +12,13 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.RuntimeEnvironment;
+import org.robolectric.annotation.Config;
 
 @RunWith(RobolectricTestRunner.class)
+@Config(application = Application.class)
 public class AndroidWorkerIdentityStoreTest {
 
+    private static final String WORKER_GROUP_ID = "android-demo-workers";
     private static final String WORKER_ID =
             "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1";
 
@@ -30,36 +34,58 @@ public class AndroidWorkerIdentityStoreTest {
     }
 
     @Test
-    public void persistsLongLivedIdentityAndCounter() {
+    public void persistsLongLivedIdentity() {
         AndroidWorkerIdentityStore store =
                 new AndroidWorkerIdentityStore(
                         application,
-                        AndroidWorkerDemoController.WORKER_GROUP_ID
+                        WORKER_GROUP_ID
                 );
 
         AndroidWorkerIdentityStore.Identity created =
                 store.loadOrCreateIdentity();
         assertEquals(
-                AndroidWorkerDemoController.WORKER_GROUP_ID,
+                WORKER_GROUP_ID,
                 created.workerGroupId()
         );
-        assertEquals(true, created.clientWorkerKey().startsWith(
-                "android-demo-"
-        ));
+        assertEquals(
+                created.clientWorkerKey(),
+                java.util.UUID.fromString(
+                        created.clientWorkerKey()
+                ).toString()
+        );
         assertNull(created.workerId());
 
         store.persistWorkerId(WORKER_ID);
-        assertEquals(1, store.incrementCounter());
-        assertEquals(0, store.resetCounter());
 
         AndroidWorkerIdentityStore.Identity restored =
                 new AndroidWorkerIdentityStore(
                         application,
-                        AndroidWorkerDemoController.WORKER_GROUP_ID
+                        WORKER_GROUP_ID
                 ).loadOrCreateIdentity();
         assertEquals(created.clientWorkerKey(), restored.clientWorkerKey());
         assertEquals(WORKER_ID, restored.workerId());
-        assertEquals(0, store.counter());
+    }
+
+    @Test
+    public void preservesExistingNonBlankClientWorkerKey() {
+        assertTrue(application.getSharedPreferences(
+                AndroidWorkerIdentityStore.PREFERENCES,
+                Context.MODE_PRIVATE
+        ).edit()
+                .putString("workerGroupId", WORKER_GROUP_ID)
+                .putString("clientWorkerKey", "legacy-installation-key")
+                .commit());
+
+        AndroidWorkerIdentityStore.Identity identity =
+                new AndroidWorkerIdentityStore(
+                        application,
+                        WORKER_GROUP_ID
+                ).loadOrCreateIdentity();
+
+        assertEquals(
+                "legacy-installation-key",
+                identity.clientWorkerKey()
+        );
     }
 
     @Test
@@ -67,7 +93,7 @@ public class AndroidWorkerIdentityStoreTest {
         AndroidWorkerIdentityStore store =
                 new AndroidWorkerIdentityStore(
                         application,
-                        AndroidWorkerDemoController.WORKER_GROUP_ID
+                        WORKER_GROUP_ID
                 );
         store.loadOrCreateIdentity();
         store.persistWorkerId(WORKER_ID);

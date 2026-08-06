@@ -4,13 +4,20 @@ This module is a real installable Android application that composes the
 repository Worker layers without copying their state machines:
 
 ```text
-OkHttpWorkerControlClient
-  -> Register or restore long-lived workerId
-  -> Endpoint Bind and complete Worker Properties refresh
+MainActivity
+  -> observes AndroidWorkerDemoHost
 
-AndroidOkHttpTextWebSocketClient
-  -> WebSocketWorkerTransport
-  -> android.demo.state.read
+AndroidWorkerDemoApplication
+  -> AndroidWorkerDemoHost
+     -> AndroidWebSocketWorkerPlugin
+        -> Identity Store
+        -> Endpoint Cache Store
+        -> Register / Bind control client
+        -> Android WebSocket Client
+        -> WebSocketWorkerTransport
+     -> AndroidDemoStateCapability
+        -> counter state
+        -> android.demo.state.read Definition
 ```
 
 The application is an integration host, not an SDK. It does not depend on the
@@ -18,23 +25,52 @@ Server, Kernel, Scenario Worker, Netty Adapter, or Redis implementations.
 
 ## App Behavior
 
-The first start creates and persists a `clientWorkerKey`, calls Register, and
-persists the platform-issued canonical Worker ID in private
-`SharedPreferences`. Later starts skip Register and call Bind with the same
-Worker ID. Every Bind replaces the complete Worker Properties snapshot with
-the current package, application version, Android SDK, manufacturer, and
-model. The returned Endpoint URI is not persisted.
+The first start creates and persists a canonical UUID `clientWorkerKey`, calls
+Register, and stores the platform-issued Worker ID in private
+`SharedPreferences`. Existing non-empty client keys from earlier installs are
+retained. Identity storage contains only the WorkerGroup, client key, and
+Worker ID; demo state and endpoint routing are stored separately.
 
-The Activity starts the Worker while visible and closes it from `onStop`.
-There is no Service, WorkManager, heartbeat, offline command queue, or Android
-background-lifetime claim. `TRANSPORT_CONNECTED` means that the WebSocket is
-connected and the Worker Connection Bind frame was accepted by the client
-network stack. It is not Kernel Worker-online truth.
+After Bind, the App caches the returned Endpoint URI together with the Worker
+ID and a canonical SHA-256 of the submitted Worker Properties. A later start
+with the same identity and Properties skips both Register and Bind and connects
+directly to the cached URI. Missing, damaged, mismatched, or stale-Properties
+cache entries cause a new Bind, which replaces the complete device Properties
+snapshot. Endpoint cache failure never replaces the long-lived identity.
 
-The UI exposes a local persistent counter. `Increment` and `Reset` change that
-state; a remote `android.demo.state.read` command returns the current counter
-plus device and package information. Business output is intentionally allowed
-to vary between devices.
+Cached endpoint recovery is intentionally local to this Integration. Three
+consecutive connections that fail before remaining open for one request-timeout
+window trigger at most one background Bind per App start. The existing client
+keeps reconnecting while that Bind runs. A changed URI replaces the Transport;
+an unchanged URI only refreshes the cache. Bind failure keeps the prior route
+and does not form a Bind loop. This heuristic is not a Worker Core contract or
+an authentication mechanism.
+
+`AndroidWebSocketWorkerPlugin` has no Activity, Service, Application, UI, or
+demo-state dependency. It accepts Worker Properties and Definitions, then owns
+only identity recovery, Register/Bind decisions, endpoint recovery, and the
+WebSocket Worker Transport. An Android host can explicitly call its
+`start/stop/close` lifecycle from an Application, Service, or another process
+owner without changing Worker execution.
+
+This demo chooses `AndroidWorkerDemoApplication` as that owner and starts the
+Plugin when the application process is created. `MainActivity` only subscribes
+to snapshots while visible and invokes explicit Connect/Disconnect commands;
+leaving the Activity does not implicitly stop the Worker. Android can still
+kill the process in the background because this demo installs no Service or
+WorkManager and makes no background-lifetime guarantee.
+
+`TRANSPORT_CONNECTED` means that the WebSocket is connected and the Worker
+Connection Bind frame was accepted by the client network stack. It is not
+Kernel Worker-online truth.
+
+The example-specific counter belongs to `AndroidDemoStateCapability`, together
+with its Definition, Handler, processed count, and last-event observation. It
+is not Worker Plugin state. `Increment` and `Reset` change that capability; a
+remote `android.demo.state.read` command returns the current counter, package
+version, and device information. The capability owns no Worker ID, Endpoint,
+Activity, or control-client dependency. Business output is intentionally
+allowed to vary between devices.
 
 If the Server Identity registry is reset while the App still has a Worker ID,
 Bind fails visibly and the App does not replace its identity. Clear the App's

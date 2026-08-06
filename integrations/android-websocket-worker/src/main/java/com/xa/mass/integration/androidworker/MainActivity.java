@@ -9,11 +9,12 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
-import java.net.URI;
 
 public final class MainActivity extends Activity {
 
-    private AndroidWorkerDemoController controller;
+    private final AndroidWorkerDemoHost.Listener hostListener = this::render;
+
+    private AndroidWorkerDemoHost workerHost;
     private TextView statusValue;
     private TextView workerIdValue;
     private TextView endpointValue;
@@ -29,41 +30,33 @@ public final class MainActivity extends Activity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         bindViews();
-        controller = new AndroidWorkerDemoController(
-                getApplicationContext(),
-                URI.create(getString(R.string.runtime_api_base_url)),
-                this::render
-        );
-        connectButton.setOnClickListener(view -> controller.start());
-        disconnectButton.setOnClickListener(view -> controller.stop());
+        workerHost = ((AndroidWorkerDemoApplication) getApplication())
+                .workerHost();
+
+        connectButton.setOnClickListener(view -> workerHost.start());
+        disconnectButton.setOnClickListener(view -> workerHost.stop());
         findViewById(R.id.incrementButton).setOnClickListener(
-                view -> controller.incrementCounter()
+                view -> workerHost.incrementCounter()
         );
         findViewById(R.id.resetButton).setOnClickListener(
-                view -> controller.resetCounter()
+                view -> workerHost.resetCounter()
         );
         findViewById(R.id.copyWorkerIdButton).setOnClickListener(
                 view -> copyWorkerId()
         );
-        render(controller.snapshot());
+        render(workerHost.snapshot());
     }
 
     @Override
     protected void onStart() {
         super.onStart();
-        controller.start();
+        workerHost.addListener(hostListener);
     }
 
     @Override
     protected void onStop() {
-        controller.stop();
+        workerHost.removeListener(hostListener);
         super.onStop();
-    }
-
-    @Override
-    protected void onDestroy() {
-        controller.close();
-        super.onDestroy();
     }
 
     private void bindViews() {
@@ -78,7 +71,7 @@ public final class MainActivity extends Activity {
         disconnectButton = findViewById(R.id.disconnectButton);
     }
 
-    private void render(AndroidWorkerDemoController.Snapshot snapshot) {
+    private void render(AndroidWorkerDemoHost.Snapshot snapshot) {
         if (isFinishing() || isDestroyed()) {
             return;
         }
@@ -102,16 +95,18 @@ public final class MainActivity extends Activity {
         errorValue.setVisibility(snapshot.errorMessage() == null
                 ? View.GONE
                 : View.VISIBLE);
-        boolean stopped = snapshot.state()
-                == AndroidWorkerDemoController.State.STOPPED
+        boolean restartable = snapshot.state()
+                == AndroidWebSocketWorkerPlugin.State.STOPPED
                 || snapshot.state()
-                == AndroidWorkerDemoController.State.ERROR;
-        connectButton.setEnabled(stopped);
-        disconnectButton.setEnabled(!stopped);
+                == AndroidWebSocketWorkerPlugin.State.ERROR;
+        connectButton.setEnabled(restartable);
+        disconnectButton.setEnabled(!restartable
+                && snapshot.state()
+                != AndroidWebSocketWorkerPlugin.State.CLOSED);
     }
 
     private void copyWorkerId() {
-        String workerId = controller.snapshot().workerId();
+        String workerId = workerHost.snapshot().workerId();
         if (workerId == null) {
             Toast.makeText(
                     this,

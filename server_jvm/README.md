@@ -580,6 +580,12 @@ leaves Scenario Worker configuration empty. The Android App performs its own
 public Register, Endpoint Bind, and Worker connection flow; Server does not
 construct or manage that Worker.
 
+The demo App may reconnect directly to its private cached Endpoint when its
+long-lived identity and Worker Properties fingerprint still match. Bind remains
+the Server-owned route allocation and Properties-refresh operation; the local
+cache is only a connection optimization and is refreshed after repeated
+unstable cached-route attempts.
+
 The profile publishes a device-local URI because the documented real-device
 path uses `adb reverse` for ports `18082` and `18085`. This is a debug
 deployment address, not an Adapter discovery or authentication mechanism.

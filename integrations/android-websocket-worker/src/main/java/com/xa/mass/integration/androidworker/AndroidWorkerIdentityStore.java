@@ -6,11 +6,10 @@ import java.util.UUID;
 
 final class AndroidWorkerIdentityStore {
 
-    private static final String PREFERENCES = "android-worker-demo";
+    static final String PREFERENCES = "android-worker-demo";
     private static final String GROUP_ID = "workerGroupId";
     private static final String CLIENT_KEY = "clientWorkerKey";
     private static final String WORKER_ID = "workerId";
-    private static final String COUNTER = "counter";
 
     private final SharedPreferences preferences;
     private final String expectedWorkerGroupId;
@@ -40,6 +39,15 @@ final class AndroidWorkerIdentityStore {
         String clientWorkerKey = preferences.getString(CLIENT_KEY, null);
         String workerId = preferences.getString(WORKER_ID, null);
 
+        boolean anyIdentityField = storedGroup != null
+                || clientWorkerKey != null
+                || workerId != null;
+        if (anyIdentityField
+                && (storedGroup == null || clientWorkerKey == null)) {
+            throw new IllegalStateException(
+                    "Stored Android Worker identity is incomplete"
+            );
+        }
         if (storedGroup != null
                 && !expectedWorkerGroupId.equals(storedGroup)) {
             throw new IllegalStateException(
@@ -57,7 +65,7 @@ final class AndroidWorkerIdentityStore {
                         "Stored workerId has no clientWorkerKey"
                 );
             }
-            clientWorkerKey = "android-demo-" + UUID.randomUUID();
+            clientWorkerKey = UUID.randomUUID().toString();
             boolean stored = preferences.edit()
                     .putString(GROUP_ID, expectedWorkerGroupId)
                     .putString(CLIENT_KEY, clientWorkerKey)
@@ -80,6 +88,15 @@ final class AndroidWorkerIdentityStore {
 
     synchronized void persistWorkerId(String workerId) {
         String canonical = requireCanonicalWorkerId(workerId);
+        String storedGroup = preferences.getString(GROUP_ID, null);
+        String clientWorkerKey = preferences.getString(CLIENT_KEY, null);
+        if (!expectedWorkerGroupId.equals(storedGroup)
+                || clientWorkerKey == null
+                || clientWorkerKey.trim().isEmpty()) {
+            throw new IllegalStateException(
+                    "Android Worker identity must exist before workerId"
+            );
+        }
         String existing = preferences.getString(WORKER_ID, null);
         if (existing != null && !canonical.equals(existing)) {
             throw new IllegalStateException(
@@ -92,29 +109,6 @@ final class AndroidWorkerIdentityStore {
         if (!preferences.edit().putString(WORKER_ID, canonical).commit()) {
             throw new IllegalStateException(
                     "Unable to persist platform workerId"
-            );
-        }
-    }
-
-    synchronized int counter() {
-        return preferences.getInt(COUNTER, 0);
-    }
-
-    synchronized int incrementCounter() {
-        int next = Math.addExact(counter(), 1);
-        requireCounterStored(next);
-        return next;
-    }
-
-    synchronized int resetCounter() {
-        requireCounterStored(0);
-        return 0;
-    }
-
-    private void requireCounterStored(int value) {
-        if (!preferences.edit().putInt(COUNTER, value).commit()) {
-            throw new IllegalStateException(
-                    "Unable to persist Android Worker counter"
             );
         }
     }

@@ -3,6 +3,7 @@ package com.xa.mass.integration.androidworker;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import android.app.Application;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -11,16 +12,36 @@ import java.util.stream.Stream;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
+import org.robolectric.annotation.Config;
 
 @RunWith(RobolectricTestRunner.class)
+@Config(application = Application.class)
 public class AndroidWorkerDemoArchitectureTest {
 
     @Test
-    public void applicationComposesOnlyPublicWorkerLayers()
+    public void pluginIsHostNeutralAndDemoOwnershipStaysOutsideIt()
             throws IOException {
         Path project = Path.of("").toAbsolutePath();
         String build = read(project.resolve("build.gradle"));
         String source = readTree(project.resolve("src/main/java"));
+        String application = readSource(
+                project,
+                "AndroidWorkerDemoApplication.java"
+        );
+        String activity = readSource(project, "MainActivity.java");
+        String host = readSource(project, "AndroidWorkerDemoHost.java");
+        String plugin = readSource(
+                project,
+                "AndroidWebSocketWorkerPlugin.java"
+        );
+        String capability = readSource(
+                project,
+                "AndroidDemoStateCapability.java"
+        );
+        String identityStore = readSource(
+                project,
+                "AndroidWorkerIdentityStore.java"
+        );
         String mainManifest = read(project.resolve(
                 "src/main/AndroidManifest.xml"
         ));
@@ -39,6 +60,9 @@ public class AndroidWorkerDemoArchitectureTest {
                 "project(':transport:okhttp-worker')"
         ));
         assertTrue(mainManifest.contains("android.permission.INTERNET"));
+        assertTrue(mainManifest.contains(
+                "android:name=\".AndroidWorkerDemoApplication\""
+        ));
         assertFalse(mainManifest.contains("usesCleartextTraffic"));
         assertTrue(debugManifest.contains(
                 "android:usesCleartextTraffic=\"true\""
@@ -53,12 +77,86 @@ public class AndroidWorkerDemoArchitectureTest {
                 "io.netty",
                 "redis",
                 "items:call",
-                "WorkManager",
-                "android.app.Service"
+                "WorkManager"
         }) {
             assertFalse(forbidden, build.contains(forbidden));
             assertFalse(forbidden, source.contains(forbidden));
         }
+
+        assertTrue(application.contains(
+                "new AndroidWebSocketWorkerPlugin"
+        ));
+        assertTrue(application.contains(
+                "new AndroidDemoStateCapability"
+        ));
+        assertTrue(application.contains("workerHost.start();"));
+        assertTrue(activity.contains("workerHost.addListener"));
+        assertTrue(activity.contains("workerHost.removeListener"));
+        assertFalse(activity.contains("new AndroidWebSocketWorkerPlugin"));
+        assertFalse(activity.contains("OkHttpWorkerControlClient"));
+        assertFalse(activity.contains("WorkerEventDefinition"));
+        assertFalse(activity.contains("workerHost.close()"));
+        assertFalse(section(
+                activity,
+                "protected void onStop()",
+                "private void bindViews()"
+        ).contains("workerHost.stop()"));
+
+        for (String forbidden : new String[]{
+                "OkHttpWorkerControlClient",
+                "AndroidOkHttpTextWebSocketClient",
+                "WorkerEventDefinition",
+                ".register(",
+                ".bind("
+        }) {
+            assertFalse(forbidden, host.contains(forbidden));
+        }
+        for (String forbidden : new String[]{
+                "MainActivity",
+                "android.app.Application",
+                "android.app.Service",
+                "counter",
+                "AndroidDemoStateCapability"
+        }) {
+            assertFalse(forbidden, plugin.contains(forbidden));
+        }
+        for (String forbidden : new String[]{
+                "workerId",
+                "endpointUri",
+                "MainActivity",
+                "OkHttpWorkerControlClient"
+        }) {
+            assertFalse(forbidden, capability.contains(forbidden));
+        }
+        assertFalse(identityStore.contains("counter"));
+        assertFalse(identityStore.contains("cachedEndpoint"));
+        assertFalse(source.contains("AndroidWorkerDemoController"));
+        assertFalse(source.contains("AndroidDemoStateStore"));
+        assertFalse(source.contains("AndroidDemoEvents"));
+        assertFalse(source.contains("AndroidWebSocketWorkerRuntime"));
+    }
+
+    private static String readSource(Path project, String fileName)
+            throws IOException {
+        return read(project.resolve(
+                "src/main/java/com/xa/mass/integration/androidworker/"
+                        + fileName
+        ));
+    }
+
+    private static String section(
+            String source,
+            String startMarker,
+            String endMarker
+    ) {
+        int start = source.indexOf(startMarker);
+        int end = source.indexOf(endMarker, start);
+        if (start < 0 || end < 0) {
+            throw new IllegalArgumentException(
+                    "Unable to locate source section"
+            );
+        }
+        return source.substring(start, end);
     }
 
     private static String readTree(Path root) throws IOException {
