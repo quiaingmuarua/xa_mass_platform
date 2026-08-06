@@ -7,8 +7,9 @@ import android.app.Application;
 import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
-import java.time.Duration;
-import java.util.Collections;
+import com.xa.mass.worker.android.AndroidWorker;
+import java.net.URI;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.After;
 import org.junit.Before;
@@ -30,7 +31,7 @@ public class AndroidWorkerDemoHostTest {
     public void setUp() {
         application = RuntimeEnvironment.getApplication();
         application.getSharedPreferences(
-                AndroidWorkerIdentityStore.PREFERENCES,
+                "xa-mass-android-worker",
                 Context.MODE_PRIVATE
         ).edit().clear().commit();
         application.getSharedPreferences(
@@ -45,33 +46,19 @@ public class AndroidWorkerDemoHostTest {
                         application,
                         deviceProperties
                 );
-        AndroidWebSocketWorkerPlugin plugin =
-                new AndroidWebSocketWorkerPlugin(
-                        "android-demo-workers",
-                        new AndroidWorkerIdentityStore(
-                                application,
-                                "android-demo-workers"
-                        ),
-                        new AndroidWorkerEndpointCacheStore(application),
-                        () -> Collections.singletonMap(
-                                "runtime",
-                                "android"
-                        ),
-                        capability.definitions(),
-                        () -> {
-                            throw new AssertionError(
-                                    "control must not be used"
-                            );
-                        },
-                        endpoint -> {
-                            throw new AssertionError(
-                                    "network must not be used"
-                            );
-                        },
-                        Duration.ofSeconds(1)
-                );
+        AndroidWorker worker = AndroidWorker.builder(
+                        application,
+                        URI.create("http://127.0.0.1:18082"),
+                        "android-demo-workers"
+                )
+                .workerProperties(ignored -> Map.of(
+                        "runtime",
+                        "android"
+                ))
+                .eventDefinitions(capability.definitions())
+                .build();
         host = new AndroidWorkerDemoHost(
-                plugin,
+                worker,
                 capability,
                 new Handler(Looper.getMainLooper())
         );
@@ -83,13 +70,13 @@ public class AndroidWorkerDemoHostTest {
     }
 
     @Test
-    public void mergesPluginAndCapabilityWithoutOwningTheirMechanisms() {
+    public void mergesWorkerAndCapabilityWithoutOwningTheirMechanisms() {
         AtomicReference<AndroidWorkerDemoHost.Snapshot> observed =
                 new AtomicReference<>();
         host.addListener(observed::set);
 
         assertEquals(
-                AndroidWebSocketWorkerPlugin.State.STOPPED,
+                AndroidWorker.State.STOPPED,
                 host.snapshot().state()
         );
         assertEquals(1, host.incrementCounter());

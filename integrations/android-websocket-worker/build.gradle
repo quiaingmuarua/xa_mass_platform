@@ -32,9 +32,7 @@ android {
 }
 
 dependencies {
-    implementation project(':transport:worker-core')
-    implementation project(':transport:android-client')
-    implementation project(':transport:okhttp-worker')
+    implementation project(':transport:android-worker')
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
 
     testImplementation 'junit:junit:4.13.2'

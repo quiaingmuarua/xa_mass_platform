@@ -411,12 +411,14 @@ Only `/api/v1/**` routes are included. Scalar's JavaScript is served by the
 Server; telemetry, Agent Scalar, and external web fonts are disabled.
 
 Compose a [Worker Core](../transport/worker-core/README.md) transport with the
-[JVM Worker Clients](../transport/okhttp-worker/README.md) in a JVM
-application. An Android WebSocket host composes the same Worker Core transport
-with the [Android Client](../transport/android-client/README.md), then calls
-`WebSocketWorkerTransport.start()`. A polling host calls the Server point API
-directly. A WebSocket or Socket host connects to the selected Adapter listener.
-These libraries do not provide a CLI or own application lifecycle.
+[Java Worker Clients](../transport/java-worker/README.md) in a JVM
+application. An Android host builds
+[Android Worker](../transport/android-worker/README.md) with its Properties
+function and event definitions, then owns its `start/stop/close` lifecycle.
+Android Worker performs Register/Bind and composes Core's WebSocket Transport
+internally. A Java polling host calls the Server point API through its point
+Client. A Java WebSocket or Socket host connects to the selected Adapter
+listener. These libraries do not provide a CLI or own host-process lifetime.
 
 The default Server configuration defines only the Adapter-to-Server Gateway.
 It does not create or start any Adapter instance:

@@ -4,11 +4,12 @@ import android.content.Context;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import com.xa.mass.worker.android.AndroidWorkerProperties;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-final class AndroidDeviceProperties {
+final class AndroidDeviceProperties implements AndroidWorkerProperties {
 
     private final Context applicationContext;
 
@@ -19,7 +20,13 @@ final class AndroidDeviceProperties {
         applicationContext = context.getApplicationContext();
     }
 
-    Map<String, Object> workerProperties() {
+    @Override
+    public Map<String, Object> getProperties(Context applicationContext) {
+        if (applicationContext == null) {
+            throw new IllegalArgumentException(
+                    "applicationContext must be present"
+            );
+        }
         Map<String, Object> properties = new LinkedHashMap<>();
         properties.put("runtime", "android");
         properties.put("packageName", packageName());

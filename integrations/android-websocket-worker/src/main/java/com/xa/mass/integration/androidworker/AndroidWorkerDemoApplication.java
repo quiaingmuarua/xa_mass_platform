@@ -1,9 +1,7 @@
 package com.xa.mass.integration.androidworker;
 
 import android.app.Application;
-import com.xa.mass.transport.android.websocket
-        .AndroidOkHttpTextWebSocketClient;
-import com.xa.mass.transport.client.okhttp.OkHttpWorkerControlClient;
+import com.xa.mass.worker.android.AndroidWorker;
 import java.net.URI;
 import java.time.Duration;
 
@@ -26,29 +24,18 @@ public final class AndroidWorkerDemoApplication extends Application {
         URI runtimeApiBaseUrl = URI.create(
                 getString(R.string.runtime_api_base_url)
         );
-        AndroidWebSocketWorkerPlugin workerPlugin =
-                new AndroidWebSocketWorkerPlugin(
-                        WORKER_GROUP_ID,
-                        new AndroidWorkerIdentityStore(
-                                this,
-                                WORKER_GROUP_ID
-                        ),
-                        new AndroidWorkerEndpointCacheStore(this),
-                        deviceProperties::workerProperties,
-                        demoCapability.definitions(),
-                        () -> new OkHttpWorkerControlClient(
-                                runtimeApiBaseUrl
-                        ),
-                        endpointUri ->
-                                new AndroidOkHttpTextWebSocketClient(
-                                        endpointUri,
-                                        REQUEST_TIMEOUT,
-                                        RECONNECT_INTERVAL
-                                ),
-                        REQUEST_TIMEOUT
-                );
+        AndroidWorker worker = AndroidWorker.builder(
+                        this,
+                        runtimeApiBaseUrl,
+                        WORKER_GROUP_ID
+                )
+                .workerProperties(deviceProperties)
+                .eventDefinitions(demoCapability.definitions())
+                .requestTimeout(REQUEST_TIMEOUT)
+                .reconnectInterval(RECONNECT_INTERVAL)
+                .build();
         workerHost = new AndroidWorkerDemoHost(
-                workerPlugin,
+                worker,
                 demoCapability
         );
         workerHost.start();

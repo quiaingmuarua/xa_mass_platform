@@ -82,7 +82,7 @@ class ScenarioWorkersArchitectureBoundaryTest {
                 )
                 .contains(
                         "implementation "
-                                + "project(':transport:okhttp-worker')"
+                                + "project(':transport:java-worker')"
                 )
                 .doesNotContain("kernel_jvm")
                 .doesNotContain("api project")

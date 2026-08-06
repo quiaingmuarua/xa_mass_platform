@@ -9,6 +9,7 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
+import com.xa.mass.worker.android.AndroidWorker;
 
 public final class MainActivity extends Activity {
 
@@ -96,13 +97,13 @@ public final class MainActivity extends Activity {
                 ? View.GONE
                 : View.VISIBLE);
         boolean restartable = snapshot.state()
-                == AndroidWebSocketWorkerPlugin.State.STOPPED
+                == AndroidWorker.State.STOPPED
                 || snapshot.state()
-                == AndroidWebSocketWorkerPlugin.State.ERROR;
+                == AndroidWorker.State.ERROR;
         connectButton.setEnabled(restartable);
         disconnectButton.setEnabled(!restartable
                 && snapshot.state()
-                != AndroidWebSocketWorkerPlugin.State.CLOSED);
+                != AndroidWorker.State.CLOSED);
     }
 
     private void copyWorkerId() {

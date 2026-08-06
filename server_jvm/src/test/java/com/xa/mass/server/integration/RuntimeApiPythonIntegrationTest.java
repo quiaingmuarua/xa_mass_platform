@@ -11,7 +11,7 @@ import com.xa.mass.worker.transport.websocket.WebSocketWorkerTransport;
 import com.xa.mass.transport.client.jdk.JdkLineSocketClient;
 import com.xa.mass.transport.client.okhttp.OkHttpTextWebSocketClient;
 import com.xa.mass.transport.client.okhttp.OkHttpWorkerControlClient;
-import com.xa.mass.transport.client.okhttp.OkHttpWorkerControlClient.TransportType;
+import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.transport.client.okhttp.OkHttpWorkerPointClient;
 import java.net.URI;
 import java.net.ServerSocket;
@@ -492,9 +492,9 @@ class RuntimeApiPythonIntegrationTest {
                     clientWorkerKey,
                     workerId,
                     switch (profile) {
-                        case POLLING -> TransportType.POLLING;
-                        case WEBSOCKET -> TransportType.WEBSOCKET;
-                        case SOCKET -> TransportType.SOCKET;
+                        case POLLING -> WorkerTransportType.POLLING;
+                        case WEBSOCKET -> WorkerTransportType.WEBSOCKET;
+                        case SOCKET -> WorkerTransportType.SOCKET;
                     },
                     workerProperties,
                     Duration.ofSeconds(2)

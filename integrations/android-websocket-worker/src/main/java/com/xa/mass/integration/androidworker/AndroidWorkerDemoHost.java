@@ -2,6 +2,7 @@ package com.xa.mass.integration.androidworker;
 
 import android.os.Handler;
 import android.os.Looper;
+import com.xa.mass.worker.android.AndroidWorker;
 import java.net.URI;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
@@ -13,11 +14,11 @@ final class AndroidWorkerDemoHost implements AutoCloseable {
         void onSnapshot(Snapshot snapshot);
     }
 
-    private final AndroidWebSocketWorkerPlugin workerPlugin;
+    private final AndroidWorker worker;
     private final AndroidDemoStateCapability demoCapability;
     private final Handler mainHandler;
     private final Set<Listener> listeners = new CopyOnWriteArraySet<>();
-    private final AndroidWebSocketWorkerPlugin.Listener pluginListener =
+    private final AndroidWorker.Listener workerListener =
             ignored -> publish();
     private final AndroidDemoStateCapability.Listener capabilityListener =
             this::publish;
@@ -25,43 +26,43 @@ final class AndroidWorkerDemoHost implements AutoCloseable {
     private boolean closed;
 
     AndroidWorkerDemoHost(
-            AndroidWebSocketWorkerPlugin workerPlugin,
+            AndroidWorker worker,
             AndroidDemoStateCapability demoCapability
     ) {
         this(
-                workerPlugin,
+                worker,
                 demoCapability,
                 new Handler(Looper.getMainLooper())
         );
     }
 
     AndroidWorkerDemoHost(
-            AndroidWebSocketWorkerPlugin workerPlugin,
+            AndroidWorker worker,
             AndroidDemoStateCapability demoCapability,
             Handler mainHandler
     ) {
-        if (workerPlugin == null
+        if (worker == null
                 || demoCapability == null
                 || mainHandler == null) {
             throw new IllegalArgumentException(
                     "Demo host dependencies must be present"
             );
         }
-        this.workerPlugin = workerPlugin;
+        this.worker = worker;
         this.demoCapability = demoCapability;
         this.mainHandler = mainHandler;
-        workerPlugin.addListener(pluginListener);
+        worker.addListener(workerListener);
         demoCapability.addListener(capabilityListener);
     }
 
     void start() {
         requireOpen();
-        workerPlugin.start();
+        worker.start();
     }
 
     void stop() {
         if (!closed) {
-            workerPlugin.stop();
+            worker.stop();
         }
     }
 
@@ -90,18 +91,17 @@ final class AndroidWorkerDemoHost implements AutoCloseable {
     }
 
     Snapshot snapshot() {
-        AndroidWebSocketWorkerPlugin.Snapshot worker =
-                workerPlugin.snapshot();
+        AndroidWorker.Snapshot workerSnapshot = worker.snapshot();
         AndroidDemoStateCapability.Snapshot demo =
                 demoCapability.snapshot();
         return new Snapshot(
-                worker.state(),
-                worker.workerId(),
-                worker.endpointUri(),
+                workerSnapshot.state(),
+                workerSnapshot.workerId(),
+                workerSnapshot.endpointUri(),
                 demo.counter(),
                 demo.processedCommands(),
                 demo.lastEvent(),
-                worker.diagnosticMessage()
+                workerSnapshot.diagnosticMessage()
         );
     }
 
@@ -111,8 +111,8 @@ final class AndroidWorkerDemoHost implements AutoCloseable {
             return;
         }
         closed = true;
-        workerPlugin.close();
-        workerPlugin.removeListener(pluginListener);
+        worker.close();
+        worker.removeListener(workerListener);
         demoCapability.removeListener(capabilityListener);
         publish();
         listeners.clear();
@@ -156,7 +156,7 @@ final class AndroidWorkerDemoHost implements AutoCloseable {
 
     static final class Snapshot {
 
-        private final AndroidWebSocketWorkerPlugin.State state;
+        private final AndroidWorker.State state;
         private final String workerId;
         private final URI endpointUri;
         private final int counter;
@@ -165,7 +165,7 @@ final class AndroidWorkerDemoHost implements AutoCloseable {
         private final String errorMessage;
 
         private Snapshot(
-                AndroidWebSocketWorkerPlugin.State state,
+                AndroidWorker.State state,
                 String workerId,
                 URI endpointUri,
                 int counter,
@@ -182,7 +182,7 @@ final class AndroidWorkerDemoHost implements AutoCloseable {
             this.errorMessage = errorMessage;
         }
 
-        AndroidWebSocketWorkerPlugin.State state() {
+        AndroidWorker.State state() {
             return state;
         }
 

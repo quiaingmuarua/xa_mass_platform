@@ -22,7 +22,7 @@ class WorkerCapabilityIntegrationArchitectureTest {
                 "project(':scenario_workers_jvm')",
                 "project(':kernel_jvm')",
                 "project(':transport:netty-adapter')",
-                "project(':transport:okhttp-worker')",
+                "project(':transport:java-worker')",
                 "implementation 'com.googlecode.libphonenumber",
                 "springframework",
                 "io.lettuce"

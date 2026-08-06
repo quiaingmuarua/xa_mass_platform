@@ -84,7 +84,8 @@ Definition selection; Scenario Workers never compare or update the two values.
 
 The module depends internally on Worker Core, concrete OkHttp clients, and the
 transport wire contract. Register and Bind use the shared narrow OkHttp Worker
-control client; Index update uses a private HTTP client. It has no dependency
+control client from `transport:java-worker`; Index update uses a private HTTP
+client. It has no dependency
 on `kernel_jvm`, Spring, Server implementation classes, the Netty Adapter,
 Redis, scores, or Pacers. The Worker does not configure or know an
 `endpointManagerId`; Bind returns the selected public WebSocket URI.

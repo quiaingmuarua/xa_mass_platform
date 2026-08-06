@@ -2,7 +2,7 @@ package com.xa.mass.scenarioworkers;
 
 import com.xa.mass.transport.client.okhttp.OkHttpTextWebSocketClient;
 import com.xa.mass.transport.client.okhttp.OkHttpWorkerControlClient;
-import com.xa.mass.transport.client.okhttp.OkHttpWorkerControlClient.TransportType;
+import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.transport.websocket.WebSocketWorkerTransport;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
@@ -565,7 +565,7 @@ public final class ScenarioWorkers implements AutoCloseable {
                         workerGroupId,
                         clientWorkerKey,
                         workerId,
-                        TransportType.WEBSOCKET,
+                        WorkerTransportType.WEBSOCKET,
                         workerProperties,
                         timeout
                 );

@@ -84,11 +84,11 @@ class ServerArchitectureBoundaryTest {
                 .contains("implementation project(':transport:netty-adapter')")
                 .contains(
                         "testImplementation "
-                                + "project(':transport:okhttp-worker')"
+                                + "project(':transport:java-worker')"
                 )
                 .doesNotContain(
                         "implementation "
-                                + "project(':transport:okhttp-worker')"
+                                + "project(':transport:java-worker')"
                 )
                 .doesNotContain("com.googlecode.libphonenumber")
                 .doesNotContain("foundation_jvm")

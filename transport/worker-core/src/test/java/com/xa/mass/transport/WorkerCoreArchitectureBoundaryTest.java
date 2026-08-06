@@ -5,7 +5,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.xa.mass.transport.client.LineSocketClient;
 import com.xa.mass.transport.client.TextWebSocketClient;
+import com.xa.mass.transport.client.WorkerControlClient;
 import com.xa.mass.transport.client.WorkerPointClient;
+import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
 import com.xa.mass.worker.transport.socket.SocketWorkerTransport;
@@ -59,7 +61,7 @@ class WorkerCoreArchitectureBoundaryTest {
     }
 
     @Test
-    void clientContractsOnlyExposeStringsAndLifecycleSignals() {
+    void networkClientContractsDoNotExposeProtocolOrPlatformTypes() {
         for (Class<?> type : new Class<?>[]{
                 WorkerPointClient.class,
                 TextWebSocketClient.class,
@@ -96,6 +98,48 @@ class WorkerCoreArchitectureBoundaryTest {
                 "closeCurrent",
                 int.class,
                 String.class
+        ));
+    }
+
+    @Test
+    void controlClientIsAPlatformNeutralRegisterAndBindContract() {
+        for (Method method : WorkerControlClient.class
+                .getDeclaredMethods()) {
+            String signature = method.toGenericString();
+            for (String forbidden : new String[]{
+                    "okhttp3",
+                    "android.",
+                    "SharedPreferences",
+                    "WorkerConnectionBind"
+            }) {
+                assertFalse(signature.contains(forbidden), signature);
+            }
+        }
+
+        assertTrue(hasMethod(
+                WorkerControlClient.class,
+                "register",
+                String.class,
+                String.class,
+                java.time.Duration.class
+        ));
+        assertTrue(hasMethod(
+                WorkerControlClient.class,
+                "bind",
+                String.class,
+                String.class,
+                String.class,
+                WorkerTransportType.class,
+                java.util.Map.class,
+                java.time.Duration.class
+        ));
+        assertTrue(Arrays.equals(
+                WorkerTransportType.values(),
+                new WorkerTransportType[]{
+                        WorkerTransportType.POLLING,
+                        WorkerTransportType.WEBSOCKET,
+                        WorkerTransportType.SOCKET
+                }
         ));
     }
 

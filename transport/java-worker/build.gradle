@@ -1,0 +1,37 @@
+plugins {
+    id 'java-library'
+}
+
+base {
+    archivesName.set('xa-mass-java-worker')
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
+}
+
+tasks.named('compileJava', JavaCompile) {
+    options.release = 11
+}
+
+tasks.named('compileTestJava', JavaCompile) {
+    options.release = 11
+}
+
+dependencies {
+    api project(':transport:worker-core')
+    implementation 'com.squareup.okhttp3:okhttp:5.3.0'
+
+    testImplementation platform('org.junit:junit-bom:5.12.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testImplementation 'com.squareup.okhttp3:mockwebserver3:5.3.0'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

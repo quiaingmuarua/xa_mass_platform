@@ -10,6 +10,8 @@ It owns:
 - The transport-neutral `WorkerCommandExecutor`.
 - Polling, WebSocket, and line Socket Worker Transport state machines.
 - String-only point, text WebSocket, and line socket client interfaces.
+- The platform-neutral `WorkerControlClient` Register/Bind contract and
+  `WorkerTransportType`.
 
 It does not own network implementations, Adapter behavior, host process
 lifecycle, Redis access, or Kernel scheduling.
@@ -92,13 +94,17 @@ Core exposes only:
 WorkerPointClient
 TextWebSocketClient
 LineSocketClient
+WorkerControlClient
 ```
 
-These interfaces carry strings plus connection/lifecycle signals. They do not
-expose Worker DTOs or concrete networking types. Concrete Clients own network
-connection, reconnect, stale-callback isolation where applicable, and resource
-teardown. They must not cache Worker business messages; pending result
-ownership remains in the corresponding Worker Transport.
+The three network interfaces carry strings plus connection/lifecycle signals.
+`WorkerControlClient` expresses only long-lived identity Register and Endpoint
+Bind using JDK types; it does not own Identity persistence, Endpoint caching,
+or Worker startup policy. None of the Client contracts exposes concrete
+networking or Android types. Concrete Clients own network requests,
+connections, reconnect, stale-callback isolation where applicable, and
+resource teardown. They must not cache Worker business messages; pending
+result ownership remains in the corresponding Worker Transport.
 
 The WebSocket Client contract requires serialized listener callbacks, stale
 connection isolation, thread-safe non-blocking `send`, idempotent lifecycle,

@@ -9,12 +9,7 @@ MainActivity
 
 AndroidWorkerDemoApplication
   -> AndroidWorkerDemoHost
-     -> AndroidWebSocketWorkerPlugin
-        -> Identity Store
-        -> Endpoint Cache Store
-        -> Register / Bind control client
-        -> Android WebSocket Client
-        -> WebSocketWorkerTransport
+     -> AndroidWorker
      -> AndroidDemoStateCapability
         -> counter state
         -> android.demo.state.read Definition
@@ -28,8 +23,8 @@ Server, Kernel, Scenario Worker, Netty Adapter, or Redis implementations.
 The first start creates and persists a canonical UUID `clientWorkerKey`, calls
 Register, and stores the platform-issued Worker ID in private
 `SharedPreferences`. Existing non-empty client keys from earlier installs are
-retained. Identity storage contains only the WorkerGroup, client key, and
-Worker ID; demo state and endpoint routing are stored separately.
+retained. Identity and Endpoint cache storage are owned by
+`transport:android-worker`; demo state remains Integration-owned.
 
 After Bind, the App caches the returned Endpoint URI together with the Worker
 ID and a canonical SHA-256 of the submitted Worker Properties. A later start
@@ -38,23 +33,23 @@ directly to the cached URI. Missing, damaged, mismatched, or stale-Properties
 cache entries cause a new Bind, which replaces the complete device Properties
 snapshot. Endpoint cache failure never replaces the long-lived identity.
 
-Cached endpoint recovery is intentionally local to this Integration. Three
+Cached endpoint recovery is owned by Android Worker. Three
 consecutive connections that fail before remaining open for one request-timeout
-window trigger at most one background Bind per App start. The existing client
+window trigger at most one background Bind per Worker start. The existing client
 keeps reconnecting while that Bind runs. A changed URI replaces the Transport;
 an unchanged URI only refreshes the cache. Bind failure keeps the prior route
-and does not form a Bind loop. This heuristic is not a Worker Core contract or
-an authentication mechanism.
+and does not form a Bind loop. This Android-local heuristic is not a Worker
+Core contract or an authentication mechanism.
 
-`AndroidWebSocketWorkerPlugin` has no Activity, Service, Application, UI, or
-demo-state dependency. It accepts Worker Properties and Definitions, then owns
-only identity recovery, Register/Bind decisions, endpoint recovery, and the
-WebSocket Worker Transport. An Android host can explicitly call its
-`start/stop/close` lifecycle from an Application, Service, or another process
-owner without changing Worker execution.
+`AndroidWorker` has no Activity, Service, Application subclass, UI, or demo
+state dependency. It accepts a Properties function and Definitions, then owns
+identity recovery, Register/Bind decisions, endpoint recovery, and Core
+WebSocket Worker composition. An Android host can retain it from an
+Application, Service, or another process owner without changing Worker
+execution.
 
 This demo chooses `AndroidWorkerDemoApplication` as that owner and starts the
-Plugin when the application process is created. `MainActivity` only subscribes
+Worker when the application process is created. `MainActivity` only subscribes
 to snapshots while visible and invokes explicit Connect/Disconnect commands;
 leaving the Activity does not implicitly stop the Worker. Android can still
 kill the process in the background because this demo installs no Service or
@@ -66,11 +61,15 @@ Kernel Worker-online truth.
 
 The example-specific counter belongs to `AndroidDemoStateCapability`, together
 with its Definition, Handler, processed count, and last-event observation. It
-is not Worker Plugin state. `Increment` and `Reset` change that capability; a
+is not Android Worker state. `Increment` and `Reset` change that capability; a
 remote `android.demo.state.read` command returns the current counter, package
 version, and device information. The capability owns no Worker ID, Endpoint,
 Activity, or control-client dependency. Business output is intentionally
 allowed to vary between devices.
+
+The App excludes Android Worker Identity preferences from Auto Backup, so a
+device restore cannot silently duplicate a long-lived Worker identity. A real
+host must make that backup policy decision explicitly.
 
 If the Server Identity registry is reset while the App still has a Worker ID,
 Bind fails visibly and the App does not replace its identity. Clear the App's
