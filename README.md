@@ -43,7 +43,11 @@ The repository contains seven active areas:
   through the public Runtime API, with independent JSONL evidence for each
   WorkerGroup. The `scenario-workers`
   Server profile composes one real WebSocket Adapter with two reusable
-  Scenario WorkerGroups and six capabilities.
+  Scenario WorkerGroups and six capabilities. The installable
+  [`android-websocket-worker`](integrations/android-websocket-worker/) App
+  separately proves public Register/Bind, the Android network Client, shared
+  Worker Core, and a real device WebSocket Task result without embedding Task
+  control in the App.
 
 The shared contract and Transport modules are repository-local artifacts;
 they are not published SDKs.
@@ -89,6 +93,11 @@ See
 [`integrations/worker-capability-rpc/README.md`](integrations/worker-capability-rpc/README.md)
 for the required process startup sequence. CI performs both cross-process
 proofs with isolated Redis services.
+
+See
+[`integrations/android-websocket-worker/README.md`](integrations/android-websocket-worker/README.md)
+for the Android 13 device, `adb reverse`, dedicated Server profile, and
+Gradle-launched RPC proof.
 
 See [`AGENTS.md`](AGENTS.md) before changing mechanism behavior and
 [`doc/README.md`](doc/README.md) for the retained historical method assets.

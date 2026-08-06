@@ -102,6 +102,28 @@ class ServerWorkerAssemblyPropertiesTest {
     }
 
     @Test
+    void androidWorkerDemoProfileStartsOnlyItsCatalogAndAdapter() {
+        contextRunner.withInitializer(
+                new ConfigDataApplicationContextInitializer()
+        ).withPropertyValues(
+                "spring.profiles.active=android-worker-demo"
+        ).run(context -> {
+            assertThat(context).hasNotFailed();
+            assertThat(context.getBean(
+                    WorkerDeliveryAdapterManager.class
+            ).adapters()).containsOnlyKeys("android-demo-websocket");
+            ServerWorkerAssemblyProperties properties = context.getBean(
+                    ServerWorkerAssemblyProperties.class
+            );
+            assertThat(properties.groupConfigJson())
+                    .contains("\"android-demo-workers\"")
+                    .contains("\"android.demo.state.read\"")
+                    .contains("\"android-demo-state\"");
+            assertThat(properties.workerConfigJson()).isEqualTo("{}");
+        });
+    }
+
+    @Test
     void malformedGroupOrWorkerJsonFailsDuringAssembly() {
         contextRunner.withPropertyValues(
                 "xa.mass.worker-assembly.group-config-json={bad-json"

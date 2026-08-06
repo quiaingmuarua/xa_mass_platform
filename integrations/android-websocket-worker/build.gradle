@@ -1,0 +1,70 @@
+plugins {
+    id 'com.android.application'
+}
+
+base {
+    archivesName.set('xa-mass-android-websocket-worker-demo')
+}
+
+android {
+    namespace = 'com.xa.mass.integration.androidworker'
+    compileSdk = 36
+
+    defaultConfig {
+        applicationId = 'com.xa.mass.integration.androidworker'
+        minSdk = 24
+        targetSdk = 36
+        versionCode = 1
+        versionName = '0.1.0'
+    }
+
+    compileOptions {
+        coreLibraryDesugaringEnabled = true
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
+
+    testOptions {
+        unitTests {
+            includeAndroidResources = true
+        }
+    }
+}
+
+dependencies {
+    implementation project(':transport:worker-core')
+    implementation project(':transport:android-client')
+    implementation project(':transport:okhttp-worker')
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
+
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.robolectric:robolectric:4.16.1'
+    testImplementation 'com.squareup.okhttp3:mockwebserver3:5.3.0'
+}
+
+tasks.register('runDemoRpc', Exec) {
+    description = 'Runs one Task RPC against the Android WebSocket Worker.'
+    group = 'application'
+    workingDir = project.projectDir
+
+    doFirst {
+        String workerId = providers.gradleProperty('workerId').orNull
+        if (workerId == null || workerId.isBlank()) {
+            throw new GradleException(
+                    'runDemoRpc requires -PworkerId=<canonical UUID>'
+            )
+        }
+        String serverBaseUrl = providers.gradleProperty('serverBaseUrl')
+                .getOrElse('http://127.0.0.1:18082')
+        String pythonCommand = providers.gradleProperty('pythonCommand')
+                .getOrElse('python')
+        commandLine(
+                pythonCommand,
+                'host/run_demo.py',
+                '--worker-id',
+                workerId,
+                '--server-base-url',
+                serverBaseUrl
+        )
+    }
+}

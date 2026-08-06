@@ -63,6 +63,13 @@ its own lifetime ends. The Transport closes the Android Client. This module
 does not install an Activity, Service, WorkManager, static singleton, or
 process-lifetime policy.
 
+The repository's installable
+[`android-websocket-worker`](../../integrations/android-websocket-worker/)
+integration demonstrates this exact composition with persisted Worker
+identity, public Register/Bind calls, Activity-owned lifetime, and a real
+device Task RPC. That application behavior intentionally remains outside this
+network Client module.
+
 ## State And Retry
 
 Connection state is private to the Client:

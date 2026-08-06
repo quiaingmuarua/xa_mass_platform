@@ -570,6 +570,25 @@ recover their platform-issued Worker ID through Identity registration, build
 one Bind control request, connect with `WorkerConnectionBind(workerId)`, and own
 their own process lifecycle.
 
+### Android Worker Demo Profile
+
+The `android-worker-demo` profile exists for the installable
+[`integrations/android-websocket-worker`](../integrations/android-websocket-worker/)
+application. It initializes the advisory `android-demo-workers` catalog entry,
+starts only the `android-demo-websocket` Adapter on `127.0.0.1:18085`, and
+leaves Scenario Worker configuration empty. The Android App performs its own
+public Register, Endpoint Bind, and Worker connection flow; Server does not
+construct or manage that Worker.
+
+The profile publishes a device-local URI because the documented real-device
+path uses `adb reverse` for ports `18082` and `18085`. This is a debug
+deployment address, not an Adapter discovery or authentication mechanism.
+
+```text
+./gradlew :server_jvm:bootRun \
+  --args="--spring.profiles.active=android-worker-demo"
+```
+
 Defaults:
 
 ```text

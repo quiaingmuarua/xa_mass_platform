@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">XA Mass Android Worker</string>
+    <string name="runtime_api_base_url">http://127.0.0.1:18082</string>
+</resources>
