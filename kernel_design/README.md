@@ -630,12 +630,12 @@ no hidden compatibility path or second mainline remains
   - Java 11 compatible Worker execution, event dispatch, and
     Polling/WebSocket/Socket protocol state machines shared by JVM and Android
     hosts.
-- [Java Worker Clients](../transport/java-worker/README.md)
-  - concrete OkHttp point/WebSocket and JDK line-socket clients for Worker
-    Core.
+- [Java Worker](../transport/java-worker/README.md)
+  - Java WebSocket Worker assembly plus concrete OkHttp point/WebSocket and
+    JDK line-socket clients for Worker Core.
 - [Android Worker](../transport/android-worker/README.md)
-  - Android Identity, Register/Bind, Endpoint cache, HandlerThread WebSocket
-    client, and complete composition of Worker Core.
+  - Android Identity persistence, HandlerThread WebSocket client, and complete
+    composition of Worker Core's shared startup lifecycle.
 - [JVM Worker Delivery Contract](../worker_delivery_contract_jvm/README.md)
   - transport-neutral Java connection Bind/command/result DTOs, strict validation,
     outcome classification, and codec.
@@ -654,7 +654,8 @@ before changing either one.
 The Python executable spec lives under `kernel_design/executable_spec/`.
 `kernel_design/runtime_server/` is its Kernel Control FastAPI host.
 `transport/worker-core/` contains the external Worker execution and protocol
-state machines. `transport/java-worker/` supplies concrete Java network
+state machines and the shared WebSocket startup lifecycle.
+`transport/java-worker/` supplies the Java assembly and concrete network
 clients, while `transport/android-worker/` owns Android-specific Identity and
 WebSocket assembly; neither is a Kernel owner. The Java 21
 `kernel_jvm/` module is the incremental JVM parity surface for Kernel owner

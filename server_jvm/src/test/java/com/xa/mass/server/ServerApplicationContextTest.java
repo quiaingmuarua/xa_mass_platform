@@ -197,6 +197,24 @@ class ServerApplicationContextTest {
                         .build(),
                 HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
         );
+        HttpResponse<String> bindingResponse = client.send(
+                HttpRequest.newBuilder(endpoint(
+                                "/api/v1/worker-groups/legacy-group/workers/"
+                                        + "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1"
+                                        + ":bind"
+                        ))
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(
+                                "{\"clientWorkerKey\":\"legacy-worker\","
+                                        + "\"transportType\":\"WEBSOCKET\","
+                                        + "\"workerProperties\":{"
+                                        + "\"clientWorkerKey\":"
+                                        + "\"legacy-worker\"}}",
+                                StandardCharsets.UTF_8
+                        ))
+                        .build(),
+                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
+        );
 
         assertThat(groupResponse.statusCode()).isEqualTo(400);
         assertThat(groupResponse.body()).contains("\"code\":19001");
@@ -204,6 +222,8 @@ class ServerApplicationContextTest {
         assertThat(indexedGroupResponse.body()).contains("\"code\":19001");
         assertThat(workerResponse.statusCode()).isEqualTo(400);
         assertThat(workerResponse.body()).contains("\"code\":19001");
+        assertThat(bindingResponse.statusCode()).isEqualTo(400);
+        assertThat(bindingResponse.body()).contains("\"code\":19001");
     }
 
     private URI endpoint(String path) {

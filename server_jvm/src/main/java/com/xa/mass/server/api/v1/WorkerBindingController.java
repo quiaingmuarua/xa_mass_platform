@@ -31,7 +31,6 @@ public class WorkerBindingController {
     ) {
         return WorkerBindingResponse.from(bindings.bind(
                 workerGroupId,
-                request.clientWorkerKey(),
                 workerId,
                 request.transportType(),
                 request.workerProperties()

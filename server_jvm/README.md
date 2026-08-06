@@ -11,9 +11,9 @@ reads, and Worker Delivery bind to Java Redis owner providers. Controllers and
 services depend only on contracts from `kernel_jvm`.
 
 Worker identity is a separate Server-owned control-plane boundary. It maps a
-stable `workerGroupId + clientWorkerKey` to a long-lived canonical UUID in the
-`wi:{prefix}:...` namespace. It is not a Kernel owner contract and does not
-create a scheduler-visible Worker by itself.
+stable `workerGroupId + workerProperties.clientWorkerKey` to a long-lived
+canonical UUID in the `wi:{prefix}:...` namespace. It is not a Kernel owner
+contract and does not create a scheduler-visible Worker by itself.
 
 Runtime API failures use the module-local HTTP exception:
 
@@ -42,11 +42,12 @@ Task control client
   -> KernelApplication / scheduling truth
 
 Worker identity client
-  -> Server Register API with workerGroupId + clientWorkerKey
+  -> Server Register API with workerGroupId + complete workerProperties
+  -> extract workerProperties.clientWorkerKey
   -> long-lived platform-issued workerId
 
 Worker Bind control
-  -> Server verifies workerGroupId + clientWorkerKey + workerId
+  -> Server verifies workerGroupId + workerProperties.clientWorkerKey + workerId
   -> persist or reuse one Endpoint Manager
   -> WorkerRuntime.upsertWorker with endpointManagerId + workerProperties
   -> return the public endpoint URI
@@ -190,19 +191,29 @@ POST /api/v1/runtime-view/worker-groups:batch-get
 POST /api/v1/runtime-view/worker-groups/{workerGroupId}/workers:preview
 ```
 
-Identity registration accepts `workerGroupId + clientWorkerKey`. Repeating the
-same key in the same WorkerGroup returns the same canonical UUID; no Kernel
-Worker, score, or endpoint Binding is created. This is long-lived identity
-allocation in the current trusted deployment, not an authentication system.
+Identity registration accepts the WorkerGroup path coordinate and complete
+Worker Properties:
+
+```json
+{"workerProperties":{"clientWorkerKey":"installation-1","runtime":"java"}}
+```
+
+The Server extracts the exact, case-sensitive
+`workerProperties.clientWorkerKey`. Repeating the same key in the same
+WorkerGroup returns the same canonical UUID; other Properties may change and
+do not enter the identity coordinate. Register creates no Kernel Worker,
+score, or endpoint Binding. This is long-lived identity allocation in the
+current trusted deployment, not an authentication system.
 
 Authentication, authorization, and transport protection are separate ingress
 policies. A future deployment may apply HTTP sessions or tokens, mTLS, Gateway
 service identity, and permission checks before these operations. Neither a
 registered Worker ID nor Endpoint Binding is a credential.
 
-Bind validates the registration coordinate, persists one Endpoint Manager for
-the global `workerId`, and calls Kernel Worker upsert with that endpoint and the
-complete `workerProperties` snapshot. Repeated Bind reuses the same endpoint
+Bind receives `transportType` and the same complete `workerProperties`, uses
+its `clientWorkerKey` to validate the registration coordinate, persists one
+Endpoint Manager for the global `workerId`, and calls Kernel Worker upsert with
+that endpoint and the complete snapshot. Repeated Bind reuses the same endpoint
 and refreshes Properties. A different requested transport conflicts; endpoint
 migration is not implicit. `POLLING` is reserved to the single
 `system-polling` directory identity because point Client paths intentionally do
@@ -410,9 +421,9 @@ OpenAPI JSON          http://127.0.0.1:18082/v3/api-docs
 Only `/api/v1/**` routes are included. Scalar's JavaScript is served by the
 Server; telemetry, Agent Scalar, and external web fonts are disabled.
 
-Compose a [Worker Core](../transport/worker-core/README.md) transport with the
-[Java Worker Clients](../transport/java-worker/README.md) in a JVM
-application. An Android host builds
+Use the [Java Worker](../transport/java-worker/README.md) assembly in a JVM
+application, or compose lower-level [Worker Core](../transport/worker-core/README.md)
+transports and Java Clients directly. An Android host builds
 [Android Worker](../transport/android-worker/README.md) with its Properties
 function and event definitions, then owns its `start/stop/close` lifecycle.
 Android Worker performs Register/Bind and composes Core's WebSocket Transport
@@ -569,8 +580,8 @@ The profile and Adapter remain Server-owned, while capabilities and concrete
 Worker resource lifecycle belong to `scenario_workers_jvm`.
 External Worker applications remain supported. They persist a client key,
 recover their platform-issued Worker ID through Identity registration, build
-one Bind control request, connect with `WorkerConnectionBind(workerId)`, and own
-their own process lifecycle.
+one Bind control request for every start session, connect with
+`WorkerConnectionBind(workerId)`, and own their own process lifecycle.
 
 ### Android Worker Demo Profile
 
@@ -582,11 +593,9 @@ leaves Scenario Worker configuration empty. The Android App performs its own
 public Register, Endpoint Bind, and Worker connection flow; Server does not
 construct or manage that Worker.
 
-The demo App may reconnect directly to its private cached Endpoint when its
-long-lived identity and Worker Properties fingerprint still match. Bind remains
-the Server-owned route allocation and Properties-refresh operation; the local
-cache is only a connection optimization and is refreshed after repeated
-unstable cached-route attempts.
+The demo App restores its long-lived Worker ID but performs Bind on every
+Worker start. The returned Endpoint URI is session-local and is reused only by
+the WebSocket Client's temporary reconnects; it is not persisted by Android.
 
 The profile publishes a device-local URI because the documented real-device
 path uses `adb reverse` for ports `18082` and `18085`. This is a debug

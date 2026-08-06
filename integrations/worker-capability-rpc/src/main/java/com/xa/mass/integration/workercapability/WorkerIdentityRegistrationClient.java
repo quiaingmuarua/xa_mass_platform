@@ -21,8 +21,13 @@ final class WorkerIdentityRegistrationClient {
                         + RuntimeApiHttpClient.identifier(workerGroupId)
                         + "/workers:register",
                 Map.of(
-                        "clientWorkerKey",
-                        RuntimeApiHttpClient.identifier(clientWorkerKey)
+                        "workerProperties",
+                        Map.of(
+                                "clientWorkerKey",
+                                RuntimeApiHttpClient.identifier(
+                                        clientWorkerKey
+                                )
+                        )
                 )
         );
         RuntimeApiHttpClient.requireStatus(

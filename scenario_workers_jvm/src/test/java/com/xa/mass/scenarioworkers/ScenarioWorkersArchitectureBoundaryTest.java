@@ -56,10 +56,14 @@ class ScenarioWorkersArchitectureBoundaryTest {
 
         assertThat(sources)
                 .contains("definitionsByEventCode")
-                .contains("WebSocketWorkerTransport")
-                .contains("OkHttpTextWebSocketClient")
+                .contains("JavaWorker.builder")
+                .contains("WorkerIdentityStore")
                 .contains("java.net.http.HttpClient")
                 .contains("ScenarioWorkersJsonParser");
+        assertThat(sources)
+                .doesNotContain("new TextMessageWorkerTransport")
+                .doesNotContain("new OkHttpWorkerControlClient")
+                .doesNotContain("new OkHttpTextWebSocketClient");
         assertThat(sources)
                 .doesNotContain("com.xa.mass.kernel")
                 .doesNotContain("org.springframework")

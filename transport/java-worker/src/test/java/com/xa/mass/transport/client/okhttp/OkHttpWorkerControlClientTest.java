@@ -6,7 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import com.xa.mass.transport.client.WorkerTransportType;
+import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
+import com.xa.mass.workerdelivery.json.Jsons;
 import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
@@ -54,7 +56,12 @@ class OkHttpWorkerControlClientTest {
                 WORKER_ID,
                 client.register(
                         "group a",
-                        "installation/1",
+                        Map.of(
+                                "clientWorkerKey",
+                                "installation/1",
+                                "runtime",
+                                "java"
+                        ),
                         Duration.ofSeconds(2)
                 )
         );
@@ -67,8 +74,16 @@ class OkHttpWorkerControlClientTest {
         );
         assertNull(request.getHeaders().get("X-XA-Mass-Platform-Key"));
         assertEquals(
-                "{\"clientWorkerKey\":\"installation/1\"}",
-                request.getBody().utf8()
+                Map.of(
+                        "workerProperties",
+                        Map.of(
+                                "clientWorkerKey",
+                                "installation/1",
+                                "runtime",
+                                "java"
+                        )
+                ),
+                Jsons.parseObject(request.getBody().utf8())
         );
     }
 
@@ -82,10 +97,14 @@ class OkHttpWorkerControlClientTest {
 
         URI endpoint = client.bind(
                 "group a",
-                "installation/1",
                 WORKER_ID,
                 WorkerTransportType.WEBSOCKET,
-                Map.of("region", "local"),
+                Map.of(
+                        "clientWorkerKey",
+                        "installation/1",
+                        "region",
+                        "local"
+                ),
                 Duration.ofSeconds(2)
         );
 
@@ -101,10 +120,18 @@ class OkHttpWorkerControlClientTest {
                 request.getTarget()
         );
         assertEquals(
-                "{\"clientWorkerKey\":\"installation/1\","
-                        + "\"transportType\":\"WEBSOCKET\","
-                        + "\"workerProperties\":{\"region\":\"local\"}}",
-                request.getBody().utf8()
+                Map.of(
+                        "transportType",
+                        "WEBSOCKET",
+                        "workerProperties",
+                        Map.of(
+                                "clientWorkerKey",
+                                "installation/1",
+                                "region",
+                                "local"
+                        )
+                ),
+                Jsons.parseObject(request.getBody().utf8())
         );
     }
 
@@ -118,7 +145,7 @@ class OkHttpWorkerControlClientTest {
                 WorkerException.class,
                 () -> client.register(
                         "group",
-                        "installation",
+                        Map.of("clientWorkerKey", "installation"),
                         Duration.ofSeconds(2)
                 )
         );
@@ -132,12 +159,42 @@ class OkHttpWorkerControlClientTest {
                 WorkerException.class,
                 () -> client.bind(
                         "group",
-                        "installation",
                         WORKER_ID,
                         WorkerTransportType.WEBSOCKET,
-                        Map.of(),
+                        Map.of("clientWorkerKey", "installation"),
                         Duration.ofSeconds(2)
                 )
+        );
+    }
+
+    @Test
+    void classifiesRetryableAndRejectedControlResponses() {
+        server.enqueue(new MockResponse.Builder().code(503).build());
+        WorkerException unavailable = assertThrows(
+                WorkerException.class,
+                () -> client.register(
+                        "group",
+                        Map.of("clientWorkerKey", "installation"),
+                        Duration.ofSeconds(2)
+                )
+        );
+        assertEquals(
+                WorkerErrorCode.WORKER_CONTROL_UNAVAILABLE,
+                unavailable.errorCode()
+        );
+
+        server.enqueue(new MockResponse.Builder().code(409).build());
+        WorkerException rejected = assertThrows(
+                WorkerException.class,
+                () -> client.register(
+                        "group",
+                        Map.of("clientWorkerKey", "installation"),
+                        Duration.ofSeconds(2)
+                )
+        );
+        assertEquals(
+                WorkerErrorCode.WORKER_CONTROL_REJECTED,
+                rejected.errorCode()
         );
     }
 }

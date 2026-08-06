@@ -1,10 +1,9 @@
-package com.xa.mass.worker.android;
+package com.xa.mass.worker.runtime;
 
-import com.xa.mass.transport.client.TextWebSocketClient;
+import com.xa.mass.transport.client.TextMessageClient;
 import java.util.Objects;
 
-final class ObservedTextWebSocketClient
-        implements TextWebSocketClient {
+final class ObservedTextMessageClient implements TextMessageClient {
 
     interface Observer {
 
@@ -15,11 +14,11 @@ final class ObservedTextWebSocketClient
         void onFailure(Throwable error);
     }
 
-    private final TextWebSocketClient delegate;
+    private final TextMessageClient delegate;
     private final Observer observer;
 
-    ObservedTextWebSocketClient(
-            TextWebSocketClient delegate,
+    ObservedTextMessageClient(
+            TextMessageClient delegate,
             Observer observer
     ) {
         this.delegate = Objects.requireNonNull(delegate, "delegate");
@@ -37,13 +36,8 @@ final class ObservedTextWebSocketClient
             }
 
             @Override
-            public void onText(String message) {
-                listener.onText(message);
-            }
-
-            @Override
-            public void onBinary() {
-                listener.onBinary();
+            public void onMessage(String message) {
+                listener.onMessage(message);
             }
 
             @Override
@@ -66,8 +60,8 @@ final class ObservedTextWebSocketClient
     }
 
     @Override
-    public void closeCurrent(int code, String reason) {
-        delegate.closeCurrent(code, reason);
+    public void closeCurrent(CloseReason reason) {
+        delegate.closeCurrent(reason);
     }
 
     @Override

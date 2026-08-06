@@ -200,6 +200,16 @@ class TaskRpcWaitRegistryTest {
     private static void assertSucceeded(
             DeferredResult<ResponseEntity<TaskRpcCallResponse>> deferred
     ) {
+        long deadline = System.nanoTime()
+                + java.time.Duration.ofSeconds(1).toNanos();
+        while (!deferred.hasResult() && System.nanoTime() < deadline) {
+            try {
+                Thread.sleep(1);
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+                break;
+            }
+        }
         ResponseEntity<TaskRpcCallResponse> response =
                 (ResponseEntity<TaskRpcCallResponse>) deferred.getResult();
         assertThat(response).isNotNull();

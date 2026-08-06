@@ -9,7 +9,7 @@ The control and connection vocabulary is deliberately split by Owner:
 
 | Mechanism | Owner and effect | Not truth for |
 | --- | --- | --- |
-| Identity Register | Server maps `workerGroupId + clientWorkerKey` to a long-lived `workerId` | authentication or Worker scheduling state |
+| Identity Register | Server extracts `workerProperties.clientWorkerKey` and maps it with `workerGroupId` to a long-lived `workerId` | authentication or Worker scheduling state |
 | Endpoint Binding | Server persists `workerId -> endpointManagerId` and projects it through Kernel Worker upsert | connection liveness or credentials |
 | Connection Bind frame | Worker sends only `workerId` to initiate route verification | persistent Endpoint Binding |
 | Route Verification | Server read-only compares the persisted route with the receiving endpoint | authentication or Channel state |

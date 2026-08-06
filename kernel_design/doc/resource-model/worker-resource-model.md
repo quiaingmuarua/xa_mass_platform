@@ -80,10 +80,10 @@ connectivity or activation evidence. The Platform cannot patch the
 Worker-owned snapshot.
 
 The external Worker identity registry is not part of this Kernel contract. It
-maps `workerGroupId + clientWorkerKey` to a long-lived Worker ID. A separate
-Server Binding registry maps that Worker ID to an Endpoint Manager. Kernel
-receives only the resulting declaration and does not interpret the client key,
-public endpoint URI, or connection check.
+extracts `workerProperties.clientWorkerKey` and maps it with `workerGroupId` to
+a long-lived Worker ID. A separate Server Binding registry maps that Worker ID
+to an Endpoint Manager. Kernel receives only the resulting declaration and
+does not interpret the client key, public endpoint URI, or connection check.
 
 Worker identity coordinates are immutable:
 

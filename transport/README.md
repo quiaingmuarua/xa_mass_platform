@@ -13,16 +13,18 @@ Status: repository-local transport contracts and implementations.
 
 :transport:worker-core
   -> Java 11 Worker execution mechanism
-  -> Polling, WebSocket, and line Socket Worker state machines
-  -> network Client and Register/Bind control contracts
+  -> Polling plus one long-lived text-message Worker state machine
+  -> shared text-message startup lifecycle
+  -> network Client, Identity, Properties, and Register/Bind contracts
   -> no concrete network or platform implementation
 
 :transport:java-worker
+  -> JavaWorker WebSocket/line-Socket assembly
   -> OkHttp point/WebSocket and JDK line-socket Client implementations
 
 :transport:android-worker
   -> Android HandlerThread/Looper WebSocket Client
-  -> Android Identity, Endpoint Cache, and complete Worker assembly
+  -> Android Identity persistence and complete Worker assembly
 ```
 
 `transport/` groups local transport mechanisms and implementations. It does
@@ -37,11 +39,12 @@ into that wire contract.
 
 `transport:worker-core` is not a generic transport framework. It contains the
 shared Worker execution and protocol state machines plus narrow network and
-control Client contracts. Java hosts explicitly compose the Core state
-machines with Java Clients. Android hosts use `AndroidWorker`, which owns
-Identity recovery, Register/Bind, Endpoint caching, and composition of the
-same Core WebSocket state machine. Netty Adapter behavior remains independent
-until a concrete shared mechanism exists.
+control Client contracts. Java and Android long-lived hosts both delegate
+identity recovery, Register/Bind sequencing, Properties refresh, and session
+construction to Core's `TextMessageWorkerRuntime`. Platform modules provide
+Identity storage and concrete network Clients; no Endpoint URI is persisted.
+Netty Adapter behavior remains independent until a concrete shared mechanism
+exists.
 
 See:
 

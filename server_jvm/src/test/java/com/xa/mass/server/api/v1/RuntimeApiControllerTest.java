@@ -90,7 +90,7 @@ class RuntimeApiControllerTest {
                 .thenReturn(new WorkerRuntimeResult(WorkerRuntimeStatus.OK));
         when(workerIdentity.register(any(), any()))
                 .thenReturn("32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1");
-        when(workerBinding.bind(any(), any(), any(), any(), any()))
+        when(workerBinding.bind(any(), any(), any(), any()))
                 .thenReturn(new WorkerEndpointBinding(
                         "scenario-websocket",
                         WorkerTransportType.WEBSOCKET,
@@ -232,7 +232,10 @@ class RuntimeApiControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "clientWorkerKey": "installation-1"
+                                  "workerProperties": {
+                                    "clientWorkerKey": "installation-1",
+                                    "runtime": "java"
+                                  }
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -241,7 +244,12 @@ class RuntimeApiControllerTest {
                 ));
         verify(workerIdentity).register(
                 "phone-tools",
-                "installation-1"
+                Map.of(
+                        "clientWorkerKey",
+                        "installation-1",
+                        "runtime",
+                        "java"
+                )
         );
 
         mockMvc.perform(post(
@@ -252,9 +260,11 @@ class RuntimeApiControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {
-                                  "clientWorkerKey":"installation-1",
                                   "transportType":"WEBSOCKET",
-                                  "workerProperties":{"region":"local"}
+                                  "workerProperties":{
+                                    "clientWorkerKey":"installation-1",
+                                    "region":"local"
+                                  }
                                 }
                                 """))
                 .andExpect(status().isOk())
@@ -264,12 +274,23 @@ class RuntimeApiControllerTest {
                         .value("ws://127.0.0.1:18083/connect"));
         verify(workerBinding).bind(
                 "phone-tools",
-                "installation-1",
                 "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1",
                 WorkerTransportType.WEBSOCKET,
-                Map.of("region", "local")
+                Map.of(
+                        "clientWorkerKey",
+                        "installation-1",
+                        "region",
+                        "local"
+                )
         );
 
+        mockMvc.perform(post(
+                                "/api/v1/worker-groups/phone-tools/"
+                                        + "workers:register"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"clientWorkerKey\":\"legacy\"}"))
+                .andExpect(status().isBadRequest());
         mockMvc.perform(patch(
                                 "/api/v1/worker-groups/phone-tools/workers/"
                                         + "worker-1/platform-properties"

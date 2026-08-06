@@ -33,20 +33,18 @@ public final class WorkerBindingService {
 
     public WorkerEndpointBinding bind(
             String workerGroupId,
-            String clientWorkerKey,
             String workerId,
             WorkerTransportType transportType,
             Map<String, Object> workerProperties
     ) {
         String operation = "workerBinding.bind";
         requireNonBlank(workerGroupId, "workerGroupId", operation);
-        requireNonBlank(clientWorkerKey, "clientWorkerKey", operation);
         requireNonBlank(workerId, "workerId", operation);
         Objects.requireNonNull(transportType, "transportType");
         Objects.requireNonNull(workerProperties, "workerProperties");
         identities.requireRegistration(
                 workerGroupId,
-                clientWorkerKey,
+                workerProperties,
                 workerId
         );
 

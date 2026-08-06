@@ -38,18 +38,22 @@ Status: current repository handoff.
   Server ingress. It has no Spring, Server, Kernel, or Redis dependency.
 - `transport/worker-core/` is the Java 11 local core containing Worker
   execution, event definitions, error classification, Worker
-  Polling/WebSocket/Socket state machines, network Client contracts, and the
-  platform-neutral Register/Bind control Client contract. It contains no
-  concrete network or platform implementation.
-- `transport/java-worker/` owns only the default Java OkHttp
-  point/WebSocket/control and JDK line-socket Client implementations. It is not
-  a Worker state-machine owner, CLI, application, Android wrapper, or business
-  handler collection.
+  Polling plus unified long-lived text-message state machines, network Client
+  contracts, and the
+  platform-neutral Register/Bind control Client contract. It also owns the
+  shared text-message Worker startup lifecycle, Identity store contract, and
+  Properties provider contract. It contains no concrete network or platform
+  implementation.
+- `transport/java-worker/` owns the `JavaWorker` WebSocket/line-Socket assembly plus the
+  default Java OkHttp point/WebSocket/control and JDK line-socket Client
+  implementations. It is not a second Worker state-machine owner, CLI,
+  application, Android wrapper, or business handler collection.
 - `transport/android-worker/` is an internal Android Library containing the
   HandlerThread/Looper OkHttp WebSocket Client, Android Register/Bind Client,
-  long-lived Identity and Endpoint cache, and the complete `AndroidWorker`
-  assembly. It reuses Core's `WebSocketWorkerTransport`; it does not implement
-  a second command, result, or pending-result state machine.
+  long-lived Identity storage, and the complete `AndroidWorker` assembly. It
+  delegates lifecycle to Core's shared text-message Runtime and does not persist
+  Endpoint URIs or implement a second command, result, session, or
+  pending-result state machine.
 - The legacy Java platform is available exclusively from
   `legacy-java-platform-final-2026-07-24`.
 - There is no compatibility obligation to legacy Java APIs, modules, Redis
@@ -123,7 +127,9 @@ tag.
   in-process fast path.
 - `transport/worker-core` may depend only on the shared Worker Delivery
   contract. It must compile with `--release 11` and must not import OkHttp,
-  Android, Netty, Spring, Redis, Server, or Kernel implementations.
+  Android, Netty, Spring, Redis, Server, or Kernel implementations. Its shared
+  text-message Runtime owns Properties snapshotting, Worker ID recovery,
+  Register/Bind sequencing, one start session, and local lifecycle state.
 - `transport/java-worker` may depend on `transport/worker-core`, the shared
   Worker Delivery contract, OkHttp, and JDK networking. It must compile with
   `--release 11`, expose no OkHttp types, and must not import Android, JNDI,
@@ -132,8 +138,10 @@ tag.
   but not on `transport/java-worker`. Its network Client serializes connection
   state, generation filtering, callbacks, and fixed reconnect scheduling on a
   dedicated HandlerThread. `AndroidWorker` owns application-scoped Identity,
-  Register/Bind, Endpoint cache recovery, Properties snapshot refresh, and
-  Core WebSocket Transport construction. It must not cache or interpret
+  concrete Android Client assembly, and Application Context adaptation; Core
+  owns Register/Bind sequencing, Properties snapshot refresh, and unified
+  text-message Transport construction. Android Worker must not persist
+  Endpoint URIs or cache or interpret
   Worker business messages outside Core's one pending-result mechanism.
   Android hosts own process lifetime, permissions beyond INTERNET, static
   handler assembly, and backup policy.
@@ -222,7 +230,7 @@ scenario_workers_jvm
   -> WorkerConnectionBind(workerId) frame through the returned Adapter URI
   -> best-effort explicit Property Index updates
   -> package-private fixed capability definitions
-  -> Worker Core + concrete network Client
+  -> JavaWorker + shared Worker Core runtime
 
 transport/netty-adapter
   -> Adapter batch HTTP client

@@ -47,7 +47,7 @@ class WorkerCapabilityIntegrationArchitectureTest {
             }
         }
         for (String forbidden : new String[]{
-                "WebSocketWorkerTransport",
+                "TextMessageWorkerTransport",
                 "WorkerResourceCatalog",
                 "WorkerRuntime",
                 "ServerWorkerBundle",

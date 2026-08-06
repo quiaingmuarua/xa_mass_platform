@@ -2,10 +2,12 @@ package com.xa.mass.worker.android;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import java.nio.charset.StandardCharsets;
+import java.util.Optional;
 import java.util.UUID;
 
-final class AndroidWorkerIdentityStore {
+final class AndroidWorkerIdentityStore implements WorkerIdentityStore {
 
     static final String PREFERENCES = "xa-mass-android-worker";
 
@@ -28,7 +30,7 @@ final class AndroidWorkerIdentityStore {
                     "expectedWorkerGroupId must be non-blank"
             );
         }
-        this.preferences = context.getSharedPreferences(
+        preferences = context.getSharedPreferences(
                 PREFERENCES,
                 Context.MODE_PRIVATE
         );
@@ -39,85 +41,23 @@ final class AndroidWorkerIdentityStore {
         workerIdKey = prefix + "workerId";
     }
 
-    synchronized Identity loadOrCreateIdentity(
-            String configuredClientWorkerKey
-    ) {
-        String storedGroup = preferences.getString(groupIdKey, null);
-        String clientWorkerKey = preferences.getString(clientKeyKey, null);
+    @Override
+    public synchronized Optional<String> loadWorkerId() {
+        validateCoordinate();
         String workerId = preferences.getString(workerIdKey, null);
-
-        boolean anyIdentityField = storedGroup != null
-                || clientWorkerKey != null
-                || workerId != null;
-        if (anyIdentityField
-                && (storedGroup == null || clientWorkerKey == null)) {
-            throw new IllegalStateException(
-                    "Stored Android Worker identity is incomplete"
-            );
-        }
-        if (storedGroup != null
-                && !expectedWorkerGroupId.equals(storedGroup)) {
-            throw new IllegalStateException(
-                    "Stored WorkerGroup does not match this application"
-            );
-        }
-        if (clientWorkerKey != null && clientWorkerKey.trim().isEmpty()) {
-            throw new IllegalStateException(
-                    "Stored clientWorkerKey is invalid"
-            );
-        }
-        if (configuredClientWorkerKey != null) {
-            if (configuredClientWorkerKey.trim().isEmpty()) {
-                throw new IllegalArgumentException(
-                        "configured clientWorkerKey must be non-blank"
-                );
-            }
-            if (clientWorkerKey != null
-                    && !clientWorkerKey.equals(configuredClientWorkerKey)) {
-                throw new IllegalStateException(
-                        "Configured clientWorkerKey conflicts with "
-                                + "the stored Android Worker identity"
-                );
-            }
-        }
-        if (clientWorkerKey == null) {
-            if (workerId != null) {
-                throw new IllegalStateException(
-                        "Stored workerId has no clientWorkerKey"
-                );
-            }
-            clientWorkerKey = configuredClientWorkerKey == null
-                    ? UUID.randomUUID().toString()
-                    : configuredClientWorkerKey;
-            boolean stored = preferences.edit()
-                    .putString(groupIdKey, expectedWorkerGroupId)
-                    .putString(clientKeyKey, clientWorkerKey)
-                    .commit();
-            if (!stored) {
-                throw new IllegalStateException(
-                        "Unable to persist Android Worker identity"
-                );
-            }
-        }
-        if (workerId != null) {
-            workerId = requireCanonicalWorkerId(workerId);
-        }
-        return new Identity(
-                expectedWorkerGroupId,
-                clientWorkerKey,
-                workerId
-        );
+        return workerId == null
+                ? Optional.empty()
+                : Optional.of(requireCanonicalWorkerId(workerId));
     }
 
-    synchronized void persistWorkerId(String workerId) {
+    @Override
+    public synchronized void saveWorkerId(String workerId) {
         String canonical = requireCanonicalWorkerId(workerId);
-        String storedGroup = preferences.getString(groupIdKey, null);
+        validateCoordinate();
         String clientWorkerKey = preferences.getString(clientKeyKey, null);
-        if (!expectedWorkerGroupId.equals(storedGroup)
-                || clientWorkerKey == null
-                || clientWorkerKey.trim().isEmpty()) {
+        if (clientWorkerKey == null || clientWorkerKey.trim().isEmpty()) {
             throw new IllegalStateException(
-                    "Android Worker identity must exist before workerId"
+                    "Android clientWorkerKey must exist before workerId"
             );
         }
         String existing = preferences.getString(workerIdKey, null);
@@ -136,14 +76,40 @@ final class AndroidWorkerIdentityStore {
         }
     }
 
-    static String keyPrefix(String workerGroupId) {
-        String value = UUID.nameUUIDFromBytes(
-                workerGroupId.getBytes(StandardCharsets.UTF_8)
-        ).toString();
-        return "worker." + value;
+    private void validateCoordinate() {
+        String storedGroup = preferences.getString(groupIdKey, null);
+        String clientWorkerKey = preferences.getString(clientKeyKey, null);
+        String workerId = preferences.getString(workerIdKey, null);
+        boolean any = storedGroup != null
+                || clientWorkerKey != null
+                || workerId != null;
+        if (!any) {
+            return;
+        }
+        if (storedGroup == null || clientWorkerKey == null) {
+            throw new IllegalStateException(
+                    "Stored Android Worker identity is incomplete"
+            );
+        }
+        if (!expectedWorkerGroupId.equals(storedGroup)) {
+            throw new IllegalStateException(
+                    "Stored WorkerGroup does not match this application"
+            );
+        }
+        if (clientWorkerKey.trim().isEmpty()) {
+            throw new IllegalStateException(
+                    "Stored clientWorkerKey is invalid"
+            );
+        }
     }
 
-    private static String requireCanonicalWorkerId(String value) {
+    static String keyPrefix(String workerGroupId) {
+        return "worker." + UUID.nameUUIDFromBytes(
+                workerGroupId.getBytes(StandardCharsets.UTF_8)
+        );
+    }
+
+    static String requireCanonicalWorkerId(String value) {
         try {
             if (value == null
                     || !UUID.fromString(value).toString().equals(value)) {
@@ -155,35 +121,6 @@ final class AndroidWorkerIdentityStore {
                     "Stored workerId is not a canonical UUID",
                     error
             );
-        }
-    }
-
-    static final class Identity {
-
-        private final String workerGroupId;
-        private final String clientWorkerKey;
-        private final String workerId;
-
-        private Identity(
-                String workerGroupId,
-                String clientWorkerKey,
-                String workerId
-        ) {
-            this.workerGroupId = workerGroupId;
-            this.clientWorkerKey = clientWorkerKey;
-            this.workerId = workerId;
-        }
-
-        String workerGroupId() {
-            return workerGroupId;
-        }
-
-        String clientWorkerKey() {
-            return clientWorkerKey;
-        }
-
-        String workerId() {
-            return workerId;
         }
     }
 }

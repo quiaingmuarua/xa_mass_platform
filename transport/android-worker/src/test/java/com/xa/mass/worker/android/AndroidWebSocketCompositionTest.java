@@ -6,8 +6,8 @@ import static org.junit.Assert.assertTrue;
 
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
-import com.xa.mass.worker.transport.websocket.WebSocketWorkerTransport;
-import com.xa.mass.transport.client.TextWebSocketClient;
+import com.xa.mass.worker.transport.connection.TextMessageWorkerTransport;
+import com.xa.mass.transport.client.TextMessageClient;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
@@ -91,14 +91,14 @@ public class AndroidWebSocketCompositionTest {
                             .toString()
                             .replaceFirst("^http", "ws")
             );
-            TextWebSocketClient client =
+            TextMessageClient client =
                     new AndroidOkHttpTextWebSocketClient(
                             socketUri,
                             Duration.ofSeconds(2),
                             Duration.ofMillis(20)
                     );
-            WebSocketWorkerTransport worker =
-                    new WebSocketWorkerTransport(
+            TextMessageWorkerTransport worker =
+                    new TextMessageWorkerTransport(
                             client,
                             MESSAGE_ID,
                             List.of(WorkerEventDefinition.of(

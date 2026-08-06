@@ -1,10 +1,16 @@
-# XA Mass Java Worker Clients
+# XA Mass Java Worker
 
-`transport:java-worker` is a Java 11 library containing concrete Java network
-Clients for the Worker mechanisms in
-[`transport:worker-core`](../worker-core/README.md):
+`transport:java-worker` is the Java 11 Worker assembly and concrete Java
+network implementation module for
+[`transport:worker-core`](../worker-core/README.md).
+
+It provides:
 
 ```text
+JavaWorker
+  -> shared TextMessageWorkerRuntime assembly
+  -> explicit WEBSOCKET or SOCKET selection
+
 OkHttpWorkerPointClient
   -> target Worker poll/result HTTP
 
@@ -18,54 +24,58 @@ JdkLineSocketClient
   -> line-oriented TCP connection and fixed reconnect
 ```
 
-This module does not own `PollingWorkerTransport`,
-`WebSocketWorkerTransport`, or `SocketWorkerTransport`. It does not decode
-Worker commands, create connection Bind frames or Result messages, run event handlers, or retain
-pending Worker results.
+Core still owns `PollingWorkerTransport` and `TextMessageWorkerTransport`.
+This module does not decode commands, construct
+Worker results, or introduce a second pending-result state machine.
 
-## Explicit Composition
-
-The host creates a concrete Client and passes it to the shared Transport:
+## Long-lived Assembly
 
 ```java
-TextWebSocketClient client = new OkHttpTextWebSocketClient(
-        URI.create(
-                "ws://127.0.0.1:18083"
-                        + "/api/v1/worker-delivery/websocket"
-        ),
-        Duration.ofSeconds(5),
-        Duration.ofSeconds(1)
-);
-
-WebSocketWorkerTransport worker = new WebSocketWorkerTransport(
-        client,
-        workerId,
-        eventDefinitions
-);
+JavaWorker worker = JavaWorker.builder(
+                URI.create("http://127.0.0.1:18082"),
+                "phone-workers",
+                "stable-installation-key",
+                WorkerTransportType.WEBSOCKET
+        )
+        .identityStore(identityStore)
+        .workerProperties(() -> Map.of(
+                "runtime", "java",
+                "region", "local"
+        ))
+        .eventDefinitions(eventDefinitions)
+        .requestTimeout(Duration.ofSeconds(10))
+        .reconnectInterval(Duration.ofMillis(250))
+        .build();
 
 worker.start();
 ```
 
-`OkHttpTextWebSocketClient` accepts the final `ws/wss` URI and does not append
-a Worker route. `OkHttpWorkerControlClient` first registers the long-lived
-Worker identity and then binds it to a requested transport, returning the final
-endpoint URI. Polling composition creates `OkHttpWorkerPointClient` from the
-returned HTTP URI and `workerId`; WebSocket and Socket clients use the returned
-`ws/wss` or `tcp` URI. Registration and Bind remain control-plane calls outside
-the network Client state machines.
+The fixed client key is injected as the reserved
+`workerProperties.clientWorkerKey`; the caller Properties provider may not
+override it. `WorkerIdentityStore` is explicit. Long-lived hosts provide a
+persistent implementation, while finite tests may deliberately use
+`WorkerIdentityStore.noCache()` and rely on Register idempotency for the fixed
+key.
 
-The Worker Transport owns the supplied Client and closes it. A Client instance
-must not be shared by multiple Worker Transports.
+`WorkerTransportType.WEBSOCKET` selects `OkHttpTextWebSocketClient`, while
+`WorkerTransportType.SOCKET` selects `JdkLineSocketClient`. `POLLING` is
+rejected because its request-response lifecycle is assembled separately.
 
-## Network Boundary
+`JavaWorker` delegates lifecycle to Core's `TextMessageWorkerRuntime`: a missing
+Worker ID is registered and saved, every `start()` performs Endpoint Bind, and
+the returned URI is used for that session. Temporary disconnects are handled
+by the selected concrete Client against the same session URI and do not repeat
+Bind. `stop()` preserves identity; `refreshProperties()` rebinds only a changed
+complete snapshot.
 
-Clients expose only strings and connection events through Core interfaces.
-They own URL/request handling, sockets, stale callback suppression, fixed
-reconnect, and underlying network resources. They do not cache offline
-business messages. A successful send means only that the network stack
-accepted the message; no application ACK is added.
+## Lower-level Composition
 
-## Verification
+Callers may still compose concrete Clients with Core transports directly for
+Polling, line Socket, or custom lifecycle policy. Concrete Clients expose only
+Core interfaces and JDK types. They own URL/request handling, sockets, stale
+callback suppression, fixed reconnect, and network resources. They do not
+cache offline business messages, and successful `send` is not an application
+ACK.
 
 ```text
 ./gradlew :transport:java-worker:test

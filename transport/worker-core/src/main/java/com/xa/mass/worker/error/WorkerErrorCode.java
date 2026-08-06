@@ -9,9 +9,17 @@ public enum WorkerErrorCode {
             31003,
             "Worker result submission failed"
     ),
-    WORKER_CONTROL_FAILED(
+    WORKER_CONTROL_UNAVAILABLE(
             31004,
-            "Worker control request failed"
+            "Worker control service is unavailable"
+    ),
+    WORKER_CONTROL_REJECTED(
+            31005,
+            "Worker control request was rejected"
+    ),
+    WORKER_CONTROL_RESPONSE_INVALID(
+            31006,
+            "Worker control response is invalid"
     ),
     COMMAND_MESSAGE_INVALID(
             32003,

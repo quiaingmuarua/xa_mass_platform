@@ -372,10 +372,12 @@ POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/commands:cons
 POST /api/v1/worker-delivery/endpoint-managers/{endpointManagerId}/results:append
 ```
 
-Identity registration maps `workerGroupId + clientWorkerKey` to a long-lived
-platform-issued Worker UUID in a Server-owned namespace; it does not call a
-Kernel owner. Bind verifies those coordinates, persists an Endpoint Manager,
-and invokes Kernel Worker upsert with the complete Worker Properties snapshot.
+Identity registration receives complete Worker Properties and maps
+`workerGroupId + workerProperties.clientWorkerKey` to a long-lived
+platform-issued Worker UUID in a Server-owned namespace; other Properties do
+not enter that coordinate and Register does not call a Kernel owner. Bind
+receives the same complete snapshot, verifies its client key, persists an
+Endpoint Manager, and invokes Kernel Worker upsert with that snapshot.
 Pure polling Workers bind to the fixed logical `system-polling` endpoint
 manager and cannot scan the mailbox. Point calls and Adapter connections verify
 the persisted route; this is routing consistency, not authentication.

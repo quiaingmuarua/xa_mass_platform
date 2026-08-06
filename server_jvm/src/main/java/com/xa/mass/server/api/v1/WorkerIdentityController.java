@@ -31,7 +31,7 @@ public class WorkerIdentityController {
         return new WorkerIdentityRegisterResponse(
                 identities.register(
                         workerGroupId,
-                        request.clientWorkerKey()
+                        request.workerProperties()
                 )
         );
     }

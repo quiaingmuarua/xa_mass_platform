@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 class ConcreteWorkerClientArchitectureTest {
 
     @Test
-    void moduleContainsOnlyJavaElevenNetworkImplementations()
+    void moduleContainsJavaAssemblyAndJavaElevenNetworkImplementations()
             throws IOException {
         Path project = Path.of("").toAbsolutePath();
         String source = readTree(project.resolve("src/main/java"));
@@ -39,13 +39,11 @@ class ConcreteWorkerClientArchitectureTest {
 
         for (String forbidden : new String[]{
                 "class PollingWorkerTransport",
-                "class WebSocketWorkerTransport",
-                "class SocketWorkerTransport",
+                "class TextMessageWorkerTransport",
                 "WorkerCommand",
                 "WorkerResult",
                 "WorkerConnectionHello",
                 "WorkerCommandExecutor",
-                "WorkerEventDefinition",
                 "android.",
                 "androidx.",
                 "server_jvm",
@@ -56,6 +54,10 @@ class ConcreteWorkerClientArchitectureTest {
         }) {
             assertFalse(source.contains(forbidden), forbidden);
         }
+        assertTrue(source.contains("public final class JavaWorker"));
+        assertTrue(source.contains("new TextMessageWorkerRuntime("));
+        assertTrue(source.contains("WorkerTransportType.WEBSOCKET"));
+        assertTrue(source.contains("new JdkLineSocketClient("));
     }
 
     @Test

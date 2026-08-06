@@ -1,12 +1,12 @@
 package com.xa.mass.worker.android;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
-import static org.junit.Assert.assertTrue;
 
 import android.app.Application;
 import android.content.Context;
+import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -18,7 +18,6 @@ import org.robolectric.annotation.Config;
 @Config(application = Application.class)
 public class AndroidWorkerIdentityStoreTest {
 
-    private static final String WORKER_GROUP_ID = "android-demo-workers";
     private static final String WORKER_ID =
             "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1";
 
@@ -34,102 +33,92 @@ public class AndroidWorkerIdentityStoreTest {
     }
 
     @Test
-    public void persistsLongLivedIdentity() {
-        AndroidWorkerIdentityStore store =
-                new AndroidWorkerIdentityStore(
+    public void generatesAndRetainsCanonicalClientWorkerKey() {
+        AndroidClientWorkerKeyStore first =
+                new AndroidClientWorkerKeyStore(application, "group-1");
+        String generated = first.loadOrCreate();
+
+        assertEquals(UUID.fromString(generated).toString(), generated);
+        assertEquals(
+                generated,
+                new AndroidClientWorkerKeyStore(
                         application,
-                        WORKER_GROUP_ID
-                );
-
-        AndroidWorkerIdentityStore.Identity created =
-                store.loadOrCreateIdentity(null);
-        assertEquals(
-                WORKER_GROUP_ID,
-                created.workerGroupId()
-        );
-        assertEquals(
-                created.clientWorkerKey(),
-                java.util.UUID.fromString(
-                        created.clientWorkerKey()
-                ).toString()
-        );
-        assertNull(created.workerId());
-
-        store.persistWorkerId(WORKER_ID);
-
-        AndroidWorkerIdentityStore.Identity restored =
-                new AndroidWorkerIdentityStore(
-                        application,
-                        WORKER_GROUP_ID
-                ).loadOrCreateIdentity(null);
-        assertEquals(created.clientWorkerKey(), restored.clientWorkerKey());
-        assertEquals(WORKER_ID, restored.workerId());
-    }
-
-    @Test
-    public void preservesExistingNonBlankClientWorkerKey() {
-        AndroidWorkerIdentityStore store =
-                new AndroidWorkerIdentityStore(
-                        application,
-                        WORKER_GROUP_ID
-                );
-        AndroidWorkerIdentityStore.Identity identity =
-                store.loadOrCreateIdentity("installation-key");
-
-        assertEquals(
-                "installation-key",
-                identity.clientWorkerKey()
-        );
-        assertEquals(
-                "installation-key",
-                store.loadOrCreateIdentity(null).clientWorkerKey()
+                        "group-1"
+                ).loadOrCreate()
         );
     }
 
     @Test
-    public void refusesToReplaceOrMisrouteStoredIdentity() {
-        AndroidWorkerIdentityStore store =
-                new AndroidWorkerIdentityStore(
-                        application,
-                        WORKER_GROUP_ID
-                );
-        store.loadOrCreateIdentity("installation-key");
-        store.persistWorkerId(WORKER_ID);
+    public void workerIdStorePersistsAndRefusesReplacement() throws Exception {
+        new AndroidClientWorkerKeyStore(
+                application,
+                "group-1"
+        ).loadOrCreate();
+        AndroidWorkerIdentityStore store = new AndroidWorkerIdentityStore(
+                application,
+                "group-1"
+        );
+
+        assertFalse(store.loadWorkerId().isPresent());
+        store.saveWorkerId(WORKER_ID);
+        store.saveWorkerId(WORKER_ID);
+        assertEquals(WORKER_ID, store.loadWorkerId().orElseThrow());
 
         assertThrows(
                 IllegalStateException.class,
-                () -> store.persistWorkerId(
+                () -> store.saveWorkerId(
                         "4a2f9bc3-c146-4dce-ae85-6f44e94b5cb3"
                 )
         );
-        assertThrows(
-                IllegalStateException.class,
-                () -> store.loadOrCreateIdentity("different-key")
-        );
     }
 
     @Test
-    public void separatesIdentityByWorkerGroup() {
-        AndroidWorkerIdentityStore first =
-                new AndroidWorkerIdentityStore(
-                        application,
-                        WORKER_GROUP_ID
-                );
-        AndroidWorkerIdentityStore second =
-                new AndroidWorkerIdentityStore(
-                        application,
-                        "different-group"
-                );
+    public void coordinatesAreIsolatedByWorkerGroup() throws Exception {
+        String firstKey = new AndroidClientWorkerKeyStore(
+                application,
+                "group-1"
+        ).loadOrCreate();
+        String secondKey = new AndroidClientWorkerKeyStore(
+                application,
+                "group-2"
+        ).loadOrCreate();
 
-        assertEquals(
-                "first-key",
-                first.loadOrCreateIdentity("first-key")
-                        .clientWorkerKey()
+        assertFalse(firstKey.equals(secondKey));
+        new AndroidWorkerIdentityStore(
+                application,
+                "group-1"
+        ).saveWorkerId(WORKER_ID);
+        assertFalse(new AndroidWorkerIdentityStore(
+                application,
+                "group-2"
+        ).loadWorkerId().isPresent());
+    }
+
+    @Test
+    public void incompletePersistedIdentityFailsClosed() {
+        String prefix = AndroidWorkerIdentityStore.keyPrefix("group-1")
+                + ".identity.";
+        application.getSharedPreferences(
+                AndroidWorkerIdentityStore.PREFERENCES,
+                Context.MODE_PRIVATE
+        ).edit().putString(
+                prefix + "workerId",
+                WORKER_ID
+        ).commit();
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> new AndroidClientWorkerKeyStore(
+                        application,
+                        "group-1"
+                ).loadOrCreate()
         );
-        assertEquals(
-                "second-key",
-                second.loadOrCreateIdentity("second-key")
-                        .clientWorkerKey()
+        assertThrows(
+                IllegalStateException.class,
+                () -> new AndroidWorkerIdentityStore(
+                        application,
+                        "group-1"
+                ).loadWorkerId()
         );
     }
 }

@@ -47,8 +47,11 @@ public class AndroidWorkerArchitectureBoundaryTest {
         assertTrue(networkClient.contains("RECONNECT_SCHEDULED"));
         assertTrue(networkClient.contains("HandlerThread"));
         assertTrue(source.contains("public final class AndroidWorker"));
-        assertTrue(source.contains("WebSocketWorkerTransport"));
+        assertTrue(source.contains("new TextMessageWorkerRuntime("));
+        assertTrue(source.contains("WorkerTransportType.WEBSOCKET"));
         assertTrue(source.contains("SharedPreferences"));
+        assertFalse(source.contains("AndroidWorkerEndpointCacheStore"));
+        assertFalse(source.contains("AndroidWorkerPropertiesFingerprint"));
         assertFalse(source.contains("pendingMessages"));
         assertFalse(source.contains("MessageInterceptor"));
 

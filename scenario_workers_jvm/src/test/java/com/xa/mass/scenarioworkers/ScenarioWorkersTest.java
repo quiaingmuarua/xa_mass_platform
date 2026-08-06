@@ -2,450 +2,348 @@ package com.xa.mass.scenarioworkers;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.doThrow;
-import static org.mockito.Mockito.inOrder;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.verifyNoInteractions;
-import static org.mockito.Mockito.when;
 
 import com.xa.mass.worker.execution.WorkerEventDefinition;
-import com.xa.mass.worker.transport.websocket.WebSocketWorkerTransport;
+import com.xa.mass.worker.runtime.WorkerIdentityStore;
+import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
 import com.xa.mass.workerdelivery.json.Jsons;
-import java.net.URI;
-import java.nio.charset.StandardCharsets;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import org.mockito.InOrder;
 
 class ScenarioWorkersTest {
 
     private static final String WORKER_ID_1 =
             "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1";
     private static final String WORKER_ID_2 =
-            "a5e9e10d-f78b-469e-93ab-864b49c189c1";
-    private static final URI ENDPOINT_URI =
-            URI.create("ws://127.0.0.1:18083/connect");
+            "4a2f9bc3-c146-4dce-ae85-6f44e94b5cb3";
 
     @Test
     void publicAssemblyIsInertAndRejectsUnknownLocalEvent() {
         ScenarioWorkers empty = ScenarioWorkers.fromJson(
                 "{}",
-                URI.create("http://127.0.0.1:18082")
+                java.net.URI.create("http://127.0.0.1:18082")
         );
         empty.start();
+        empty.start();
+        empty.close();
         empty.close();
 
         assertThatThrownBy(() -> ScenarioWorkers.fromJson(
-                config("unknown.event", 1),
-                URI.create("http://127.0.0.1:18082")
+                config("missing.event", 1),
+                java.net.URI.create("http://127.0.0.1:18082")
         )).isInstanceOf(ScenarioWorkerAssemblyException.class)
-                .hasMessageContaining("references unknown eventCode");
+                .hasMessageContaining("unknown eventCode");
     }
 
     @Test
-    void registersAndBindsBeforeTransportAndClosesInReverse() {
-        ScenarioWorkers.WorkerControl control = workerControl();
-        ScenarioWorkerIndexClient indexes = acceptedIndexes();
-        WebSocketWorkerTransport first = connectedTransport();
-        WebSocketWorkerTransport second = connectedTransport();
-        List<String> receivedWorkerIds = new ArrayList<>();
-        List<URI> receivedEndpoints = new ArrayList<>();
+    void startsWorkersWithResolvedDefinitionsAndClosesInReverse() {
+        List<String> lifecycle = new ArrayList<>();
+        List<String> indexedWorkerIds = new ArrayList<>();
+        AtomicInteger created = new AtomicInteger();
         ScenarioWorkers workers = workers(
                 config(StringUtilityWorkerEvents.MD5_EVENT_CODE, 2),
-                control,
-                indexes,
-                (workerId, endpointUri, ignored, definitions) -> {
-                    receivedWorkerIds.add(workerId);
-                    receivedEndpoints.add(endpointUri);
-                    return WORKER_ID_1.equals(workerId)
-                            ? first
-                            : second;
+                (group, worker, identity, properties, definitions) -> {
+                    int ordinal = created.incrementAndGet();
+                    assertThat(group.workerGroupId()).isEqualTo(
+                            "scenario-group"
+                    );
+                    assertThat(definitions).extracting(
+                            WorkerEventDefinition::eventCode
+                    ).containsExactly(StringUtilityWorkerEvents.MD5_EVENT_CODE);
+                    try {
+                        assertThat(properties.loadProperties()).containsEntry(
+                                "region",
+                                "local"
+                        );
+                    } catch (Exception error) {
+                        throw new IllegalStateException(error);
+                    }
+                    return handle(
+                            ordinal == 1 ? WORKER_ID_1 : WORKER_ID_2,
+                            true,
+                            lifecycle,
+                            "worker-" + ordinal
+                    );
+                },
+                (group, workerId, updates, timeout) -> {
+                    indexedWorkerIds.add(workerId);
+                    return Map.of(
+                            "index.worker.region",
+                            new ScenarioWorkerIndexResult("ok", null)
+                    );
                 }
         );
 
         workers.start();
-        workers.start();
-
-        assertThat(receivedWorkerIds)
-                .containsExactly(WORKER_ID_1, WORKER_ID_2);
-        assertThat(receivedEndpoints)
-                .containsExactly(ENDPOINT_URI, ENDPOINT_URI);
-        InOrder startup = inOrder(control, first, second, indexes);
-        startup.verify(control).register(
-                "scenario-group",
-                "client-1",
-                Duration.ofSeconds(10)
-        );
-        startup.verify(control).bind(
-                "scenario-group",
-                "client-1",
-                WORKER_ID_1,
-                Map.of("region", "local"),
-                Duration.ofSeconds(10)
-        );
-        startup.verify(first).start();
-        startup.verify(control).register(
-                "scenario-group",
-                "client-2",
-                Duration.ofSeconds(10)
-        );
-        startup.verify(control).bind(
-                "scenario-group",
-                "client-2",
-                WORKER_ID_2,
-                Map.of("region", "local"),
-                Duration.ofSeconds(10)
-        );
-        startup.verify(second).start();
-        startup.verify(indexes).updateIndexedProperties(
-                "scenario-group",
-                WORKER_ID_1,
-                Map.of("index.worker.region", "local"),
-                Duration.ofSeconds(10)
-        );
-
-        workers.close();
         workers.close();
 
-        InOrder closing = inOrder(first, second, control);
-        closing.verify(second).close();
-        closing.verify(first).close();
-        closing.verify(control).close();
-        verify(first, times(1)).start();
-        verify(second, times(1)).start();
+        assertThat(indexedWorkerIds).containsExactly(
+                WORKER_ID_1,
+                WORKER_ID_2
+        );
+        assertThat(lifecycle).containsExactly(
+                "start:worker-1",
+                "start:worker-2",
+                "close:worker-2",
+                "close:worker-1"
+        );
     }
 
     @Test
-    void controlFailureClosesAlreadyStartedTransport() {
-        ScenarioWorkers.WorkerControl control = workerControl();
-        doThrow(new ScenarioWorkerAssemblyException(
-                14004,
-                "workerIdentity.register",
-                "rejected"
-        )).when(control).register(
-                "scenario-group",
-                "client-2",
-                Duration.ofSeconds(10)
-        );
-        WebSocketWorkerTransport first = connectedTransport();
+    void startupFailureClosesAlreadyCreatedWorkersInReverse() {
+        List<String> lifecycle = new ArrayList<>();
+        AtomicInteger created = new AtomicInteger();
         ScenarioWorkers workers = workers(
                 config(StringUtilityWorkerEvents.MD5_EVENT_CODE, 2),
-                control,
-                acceptedIndexes(),
-                (workerId, endpointUri, ignored, definitions) -> first
+                (group, worker, identity, properties, definitions) -> {
+                    int ordinal = created.incrementAndGet();
+                    if (ordinal == 2) {
+                        throw new IllegalStateException("factory failed");
+                    }
+                    return handle(
+                            WORKER_ID_1,
+                            true,
+                            lifecycle,
+                            "worker-1"
+                    );
+                },
+                acceptedIndexes()
         );
 
         assertThatThrownBy(workers::start)
                 .isInstanceOf(ScenarioWorkerAssemblyException.class)
-                .extracting("errorCode")
-                .isEqualTo(14004);
-
-        verify(first).close();
-        verify(control).close();
+                .hasMessageContaining("Could not start");
+        assertThat(lifecycle).containsExactly(
+                "start:worker-1",
+                "close:worker-1"
+        );
         assertThatThrownBy(workers::start)
-                .isInstanceOf(IllegalStateException.class);
-    }
-
-    @Test
-    void indexFailureIsBestEffort() {
-        ScenarioWorkerIndexClient indexes = mock(
-                ScenarioWorkerIndexClient.class
-        );
-        doThrow(new IllegalStateException("index unavailable"))
-                .when(indexes)
-                .updateIndexedProperties(
-                        anyString(), anyString(), any(), any()
-                );
-        ScenarioWorkers workers = workers(
-                config(StringUtilityWorkerEvents.MD5_EVENT_CODE, 1),
-                workerControl(),
-                indexes,
-                (workerId, endpointUri, ignored, definitions) ->
-                        connectedTransport()
-        );
-
-        workers.start();
-
-        verify(indexes).updateIndexedProperties(
-                anyString(), anyString(), any(), any()
-        );
-        workers.close();
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("closed");
     }
 
     @Test
     void connectionTimeoutPreventsIndexUpdate() {
-        ScenarioWorkers.WorkerControl control = workerControl();
-        ScenarioWorkerIndexClient indexes = acceptedIndexes();
-        WebSocketWorkerTransport transport = mock(
-                WebSocketWorkerTransport.class
-        );
+        AtomicInteger indexCalls = new AtomicInteger();
         ScenarioWorkerGroupConfig group = groupConfig(
                 StringUtilityWorkerEvents.MD5_EVENT_CODE,
                 1,
-                Duration.ofMillis(1)
+                Duration.ofMillis(5)
         );
         ScenarioWorkers workers = new ScenarioWorkers(
                 List.of(group),
                 definitions(),
-                control,
-                indexes,
-                (workerId, endpointUri, ignored, definitions) -> transport
+                (workerGroupId, workerId, updates, timeout) -> {
+                    indexCalls.incrementAndGet();
+                    return Map.of();
+                },
+                (ignoredGroup, worker, identity, properties, definitions) ->
+                        handle(WORKER_ID_1, false, new ArrayList<>(), "worker")
         );
 
         assertThatThrownBy(workers::start)
                 .isInstanceOf(ScenarioWorkerAssemblyException.class)
-                .extracting("errorCode")
-                .isEqualTo(14005);
-
-        verify(indexes, never()).updateIndexedProperties(
-                anyString(), anyString(), any(), any()
-        );
-        verify(transport).close();
+                .hasMessageContaining("0 of 1 Workers connected");
+        assertThat(indexCalls).hasValue(0);
     }
 
     @Test
-    void emptyConfigurationDoesNotCreateWorkers() {
-        ScenarioWorkers.WorkerControl control = mock(
-                ScenarioWorkers.WorkerControl.class
-        );
-        ScenarioWorkerIndexClient indexes = mock(
-                ScenarioWorkerIndexClient.class
-        );
-        ScenarioWorkers.WorkerFactory factory = mock(
-                ScenarioWorkers.WorkerFactory.class
-        );
-        ScenarioWorkers workers = new ScenarioWorkers(
-                List.of(),
-                definitions(),
-                control,
-                indexes,
-                factory
+    void indexFailureRemainsBestEffort() {
+        ScenarioWorkers workers = workers(
+                config(StringUtilityWorkerEvents.MD5_EVENT_CODE, 1),
+                (group, worker, identity, properties, definitions) ->
+                        handle(WORKER_ID_1, true, new ArrayList<>(), "worker"),
+                (group, workerId, updates, timeout) -> {
+                    throw new IllegalStateException("index unavailable");
+                }
         );
 
         workers.start();
         workers.close();
-
-        verifyNoInteractions(indexes, factory);
-        verify(control).close();
     }
 
     @Test
-    void persistsIdentityAndUsesFilePropertiesOnLaterStartup(
+    void sandboxIdentityAndPropertiesArePassedThroughWithoutRewrite(
             @TempDir Path temporaryDirectory
-    ) throws Exception {
-        Path sandbox = temporaryDirectory.resolve("worker");
-        ScenarioWorkers.WorkerControl firstControl = workerControl();
-        ScenarioWorkers first = workers(
-                sandboxConfig(sandbox, "initial"),
-                firstControl,
-                acceptedIndexes(),
-                (workerId, endpointUri, ignored, definitions) ->
-                        connectedTransport()
+    ) throws IOException {
+        Path sandboxDirectory = temporaryDirectory.resolve("worker");
+        List<Map<String, Object>> observedProperties = new ArrayList<>();
+        List<Optional<String>> observedIds = new ArrayList<>();
+        ScenarioWorkers.WorkerFactory firstFactory = storingFactory(
+                observedProperties,
+                observedIds
         );
-
+        ScenarioWorkers first = workers(
+                sandboxConfig(sandboxDirectory, "first"),
+                firstFactory,
+                acceptedIndexes()
+        );
         first.start();
         first.close();
 
-        verify(firstControl).register(
-                "scenario-group",
-                "client-1",
-                Duration.ofSeconds(10)
-        );
-        verify(firstControl).bind(
-                "scenario-group",
-                "client-1",
-                WORKER_ID_1,
-                Map.of("region", "initial"),
-                Duration.ofSeconds(10)
-        );
         Files.writeString(
-                sandbox.resolve("worker-properties.json"),
-                Jsons.toJson(Map.of("region", "edited")),
-                StandardCharsets.UTF_8
+                sandboxDirectory.resolve("worker-properties.json"),
+                Jsons.toJson(Map.of("region", "edited"))
         );
-
-        ScenarioWorkers.WorkerControl secondControl = workerControl();
         ScenarioWorkers second = workers(
-                sandboxConfig(sandbox, "profile-change"),
-                secondControl,
-                acceptedIndexes(),
-                (workerId, endpointUri, ignored, definitions) ->
-                        connectedTransport()
+                sandboxConfig(sandboxDirectory, "ignored-inline"),
+                storingFactory(observedProperties, observedIds),
+                acceptedIndexes()
         );
         second.start();
         second.close();
 
-        verify(secondControl, never()).register(
-                anyString(),
-                anyString(),
-                any()
+        assertThat(observedIds).containsExactly(
+                Optional.empty(),
+                Optional.of(WORKER_ID_1)
         );
-        verify(secondControl).bind(
-                "scenario-group",
-                "client-1",
-                WORKER_ID_1,
-                Map.of("region", "edited"),
-                Duration.ofSeconds(10)
+        assertThat(observedProperties).containsExactly(
+                Map.of("region", "first"),
+                Map.of("region", "edited")
         );
     }
 
     @Test
-    void sandboxPreflightFailureAvoidsNetworkAndReleasesLock(
+    void sandboxPreflightFailureCreatesNoWorkerAndReleasesLocks(
             @TempDir Path temporaryDirectory
-    ) throws Exception {
-        Path sandbox = temporaryDirectory.resolve("worker");
-        Files.createDirectories(sandbox);
+    ) throws IOException {
+        Path first = temporaryDirectory.resolve("first");
+        Path broken = temporaryDirectory.resolve("broken");
+        Files.createDirectories(broken);
         Files.writeString(
-                sandbox.resolve("worker-properties.json"),
-                "[]",
-                StandardCharsets.UTF_8
+                broken.resolve("worker-properties.json"),
+                "not-json"
         );
-        ScenarioWorkers.WorkerControl control = workerControl();
+        String config = Jsons.toJson(Map.of(
+                "scenario-group",
+                Map.of(
+                        "eventCodes",
+                        List.of(StringUtilityWorkerEvents.MD5_EVENT_CODE),
+                        "workers",
+                        List.of(
+                                sandboxWorker("client-1", first),
+                                sandboxWorker("client-2", broken)
+                        )
+                )
+        ));
+        AtomicInteger created = new AtomicInteger();
         ScenarioWorkers workers = workers(
-                sandboxConfig(sandbox, "initial"),
-                control,
-                acceptedIndexes(),
-                (workerId, endpointUri, ignored, definitions) ->
-                        connectedTransport()
+                config,
+                (group, worker, identity, properties, definitions) -> {
+                    created.incrementAndGet();
+                    return handle(WORKER_ID_1, true, new ArrayList<>(), "worker");
+                },
+                acceptedIndexes()
         );
 
         assertThatThrownBy(workers::start)
-                .isInstanceOf(ScenarioWorkerAssemblyException.class)
-                .extracting("errorCode")
-                .isEqualTo(14013);
+                .isInstanceOf(ScenarioWorkerAssemblyException.class);
+        assertThat(created).hasValue(0);
 
-        verify(control, never()).register(anyString(), anyString(), any());
-        verify(control, never()).bind(
-                anyString(),
-                anyString(),
-                anyString(),
-                any(),
-                any()
-        );
-        Files.writeString(
-                sandbox.resolve("worker-properties.json"),
-                "{}",
-                StandardCharsets.UTF_8
-        );
         ScenarioWorkerSandbox reopened = ScenarioWorkerSandbox.open(
-                sandbox,
+                first,
                 "scenario-group",
                 "client-1",
                 Map.of()
         );
-        reopened.close();
-    }
-
-    @Test
-    void persistedIdentityDoesNotFallBackToRegisterWhenBindFails(
-            @TempDir Path temporaryDirectory
-    ) {
-        Path sandbox = temporaryDirectory.resolve("worker");
-        ScenarioWorkerSandbox initialized = ScenarioWorkerSandbox.open(
-                sandbox,
-                "scenario-group",
-                "client-1",
-                Map.of("region", "local")
-        );
-        initialized.storeWorkerId(WORKER_ID_1);
-        initialized.close();
-
-        ScenarioWorkers.WorkerControl control = workerControl();
-        doThrow(new ScenarioWorkerAssemblyException(
-                14004,
-                "workerControl.bind",
-                "identity mismatch"
-        )).when(control).bind(
-                "scenario-group",
-                "client-1",
-                WORKER_ID_1,
-                Map.of("region", "local"),
-                Duration.ofSeconds(10)
-        );
-        ScenarioWorkers workers = workers(
-                sandboxConfig(sandbox, "profile-change"),
-                control,
-                acceptedIndexes(),
-                (workerId, endpointUri, ignored, definitions) ->
-                        connectedTransport()
-        );
-
-        assertThatThrownBy(workers::start)
-                .isInstanceOf(ScenarioWorkerAssemblyException.class)
-                .hasMessageContaining("identity mismatch");
-
-        verify(control, never()).register(anyString(), anyString(), any());
-        ScenarioWorkerSandbox reopened = ScenarioWorkerSandbox.open(
-                sandbox,
-                "scenario-group",
-                "client-1",
-                Map.of()
-        );
-        assertThat(reopened.workerId()).contains(WORKER_ID_1);
         reopened.close();
     }
 
     private static ScenarioWorkers workers(
             String json,
-            ScenarioWorkers.WorkerControl control,
-            ScenarioWorkerIndexClient indexes,
-            ScenarioWorkers.WorkerFactory factory
+            ScenarioWorkers.WorkerFactory factory,
+            ScenarioWorkerIndexClient indexes
     ) {
         return new ScenarioWorkers(
                 ScenarioWorkersJsonParser.parse(json),
                 definitions(),
-                control,
                 indexes,
                 factory
         );
     }
 
-    private static ScenarioWorkers.WorkerControl workerControl() {
-        ScenarioWorkers.WorkerControl control = mock(
-                ScenarioWorkers.WorkerControl.class
-        );
-        when(control.register(
-                "scenario-group",
-                "client-1",
-                Duration.ofSeconds(10)
-        )).thenReturn(WORKER_ID_1);
-        when(control.register(
-                "scenario-group",
-                "client-2",
-                Duration.ofSeconds(10)
-        )).thenReturn(WORKER_ID_2);
-        when(control.bind(
-                anyString(),
-                anyString(),
-                anyString(),
-                any(),
-                any()
-        )).thenReturn(ENDPOINT_URI);
-        return control;
+    private static ScenarioWorkers.WorkerFactory storingFactory(
+            List<Map<String, Object>> observedProperties,
+            List<Optional<String>> observedIds
+    ) {
+        return (group, worker, identity, properties, definitions) ->
+                new ScenarioWorkers.WorkerRuntimeHandle() {
+                    private String workerId;
+
+                    @Override
+                    public void start() {
+                        try {
+                            observedProperties.add(properties.loadProperties());
+                            Optional<String> loaded = identity.loadWorkerId();
+                            observedIds.add(loaded);
+                            workerId = loaded.orElse(WORKER_ID_1);
+                            if (loaded.isEmpty()) {
+                                identity.saveWorkerId(workerId);
+                            }
+                        } catch (Exception error) {
+                            throw new IllegalStateException(error);
+                        }
+                    }
+
+                    @Override
+                    public boolean isConnected() {
+                        return true;
+                    }
+
+                    @Override
+                    public String workerId() {
+                        return workerId;
+                    }
+
+                    @Override
+                    public void close() {
+                    }
+                };
+    }
+
+    private static ScenarioWorkers.WorkerRuntimeHandle handle(
+            String workerId,
+            boolean connected,
+            List<String> lifecycle,
+            String name
+    ) {
+        return new ScenarioWorkers.WorkerRuntimeHandle() {
+            @Override
+            public void start() {
+                lifecycle.add("start:" + name);
+            }
+
+            @Override
+            public boolean isConnected() {
+                return connected;
+            }
+
+            @Override
+            public String workerId() {
+                return workerId;
+            }
+
+            @Override
+            public void close() {
+                lifecycle.add("close:" + name);
+            }
+        };
     }
 
     private static ScenarioWorkerIndexClient acceptedIndexes() {
-        ScenarioWorkerIndexClient indexes = mock(
-                ScenarioWorkerIndexClient.class
-        );
-        when(indexes.updateIndexedProperties(
-                anyString(), anyString(), any(), any()
-        )).thenReturn(Map.of(
+        return (group, workerId, updates, timeout) -> Map.of(
                 "index.worker.region",
                 new ScenarioWorkerIndexResult("ok", null)
-        ));
-        return indexes;
+        );
     }
 
     private static Map<String, WorkerEventDefinition<?>> definitions() {
@@ -454,34 +352,27 @@ class ScenarioWorkersTest {
         return Map.of(definition.eventCode(), definition);
     }
 
-    private static WebSocketWorkerTransport connectedTransport() {
-        WebSocketWorkerTransport worker = mock(
-                WebSocketWorkerTransport.class
-        );
-        when(worker.isConnected()).thenReturn(true);
-        return worker;
-    }
-
     private static String config(String eventCode, int count) {
-        StringBuilder workerJson = new StringBuilder();
+        List<Map<String, Object>> workers = new ArrayList<>();
         for (int index = 1; index <= count; index++) {
-            if (index > 1) {
-                workerJson.append(',');
-            }
-            workerJson.append("""
-                    {"clientWorkerKey":"client-%d",
-                     "workerProperties":{"region":"local"},
-                     "indexedPropertyUpdates":{"index.worker.region":"local"}}
-                    """.formatted(index));
+            workers.add(Map.of(
+                    "clientWorkerKey",
+                    "client-" + index,
+                    "workerProperties",
+                    Map.of("region", "local"),
+                    "indexedPropertyUpdates",
+                    Map.of("index.worker.region", "local")
+            ));
         }
-        return """
-                {
-                  "scenario-group": {
-                    "eventCodes":["%s"],
-                    "workers":[%s]
-                  }
-                }
-                """.formatted(eventCode, workerJson);
+        return Jsons.toJson(Map.of(
+                "scenario-group",
+                Map.of(
+                        "eventCodes",
+                        List.of(eventCode),
+                        "workers",
+                        workers
+                )
+        ));
     }
 
     private static String sandboxConfig(Path sandbox, String region) {
@@ -503,6 +394,20 @@ class ScenarioWorkersTest {
         ));
     }
 
+    private static Map<String, Object> sandboxWorker(
+            String clientWorkerKey,
+            Path sandbox
+    ) {
+        return Map.of(
+                "clientWorkerKey",
+                clientWorkerKey,
+                "workerProperties",
+                Map.of(),
+                "sandboxDirectory",
+                sandbox.toString()
+        );
+    }
+
     private static ScenarioWorkerGroupConfig groupConfig(
             String eventCode,
             int count,
@@ -515,7 +420,7 @@ class ScenarioWorkersTest {
                         config(eventCode, count)
                 ).get(0).workers(),
                 Duration.ofSeconds(10),
-                Duration.ofMillis(250),
+                Duration.ofMillis(10),
                 connectTimeout
         );
     }

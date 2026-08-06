@@ -3,6 +3,7 @@ package com.xa.mass.server.workeridentity;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -41,9 +42,16 @@ class WorkerIdentityServiceTest {
 
         assertThat(service.register(
                 "group-1",
-                "installation-1"
+                properties("installation-1", 1)
         )).isEqualTo(WORKER_ID);
-        verify(registry).register("group-1", "installation-1");
+        assertThat(service.register(
+                "group-1",
+                properties("installation-1", 2)
+        )).isEqualTo(WORKER_ID);
+        verify(registry, times(2)).register(
+                "group-1",
+                "installation-1"
+        );
     }
 
     @Test
@@ -57,7 +65,7 @@ class WorkerIdentityServiceTest {
                 .thenReturn(missingGroup);
         assertThatThrownBy(() -> service.register(
                 "missing",
-                "installation-1"
+                properties("installation-1", 1)
         )).isInstanceOfSatisfying(ServerException.class, error ->
                 assertThat(error.errorCode())
                         .isEqualTo(ServerErrorCode.WORKER_IDENTITY_NOT_FOUND));
@@ -68,7 +76,7 @@ class WorkerIdentityServiceTest {
                 .thenReturn("not-a-uuid");
         assertThatThrownBy(() -> service.register(
                 "group-1",
-                "installation-1"
+                properties("installation-1", 2)
         )).isInstanceOfSatisfying(ServerException.class, error ->
                 assertThat(error.errorCode())
                         .isEqualTo(ServerErrorCode.WORKER_IDENTITY_CONFLICT));
@@ -78,13 +86,17 @@ class WorkerIdentityServiceTest {
     void verifiesTheCompleteIdentityCoordinate() {
         when(registry.matches("group-1", "installation-1", WORKER_ID))
                 .thenReturn(true);
-        service.requireRegistration("group-1", "installation-1", WORKER_ID);
+        service.requireRegistration(
+                "group-1",
+                properties("installation-1", 1),
+                WORKER_ID
+        );
 
         when(registry.matches("group-1", "other", WORKER_ID))
                 .thenReturn(false);
         assertThatThrownBy(() -> service.requireRegistration(
                 "group-1",
-                "other",
+                properties("other", 1),
                 WORKER_ID
         )).isInstanceOfSatisfying(ServerException.class, error ->
                 assertThat(error.errorCode())
@@ -92,7 +104,7 @@ class WorkerIdentityServiceTest {
 
         assertThatThrownBy(() -> service.requireRegistration(
                 "group-1",
-                "installation-1",
+                properties("installation-1", 2),
                 "not-a-uuid"
         )).isInstanceOfSatisfying(ServerException.class, error ->
                 assertThat(error.errorCode()).isEqualTo(
@@ -105,6 +117,18 @@ class WorkerIdentityServiceTest {
                 workerGroupId,
                 Map.of(),
                 Set.of("event")
+        );
+    }
+
+    private static Map<String, Object> properties(
+            String clientWorkerKey,
+            int version
+    ) {
+        return Map.of(
+                "clientWorkerKey",
+                clientWorkerKey,
+                "version",
+                version
         );
     }
 }

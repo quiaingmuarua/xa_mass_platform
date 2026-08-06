@@ -23,30 +23,22 @@ Server, Kernel, Scenario Worker, Netty Adapter, or Redis implementations.
 The first start creates and persists a canonical UUID `clientWorkerKey`, calls
 Register, and stores the platform-issued Worker ID in private
 `SharedPreferences`. Existing non-empty client keys from earlier installs are
-retained. Identity and Endpoint cache storage are owned by
-`transport:android-worker`; demo state remains Integration-owned.
+retained. Identity storage is owned by `transport:android-worker`; demo state
+remains Integration-owned.
 
-After Bind, the App caches the returned Endpoint URI together with the Worker
-ID and a canonical SHA-256 of the submitted Worker Properties. A later start
-with the same identity and Properties skips both Register and Bind and connects
-directly to the cached URI. Missing, damaged, mismatched, or stale-Properties
-cache entries cause a new Bind, which replaces the complete device Properties
-snapshot. Endpoint cache failure never replaces the long-lived identity.
-
-Cached endpoint recovery is owned by Android Worker. Three
-consecutive connections that fail before remaining open for one request-timeout
-window trigger at most one background Bind per Worker start. The existing client
-keeps reconnecting while that Bind runs. A changed URI replaces the Transport;
-an unchanged URI only refreshes the cache. Bind failure keeps the prior route
-and does not form a Bind loop. This Android-local heuristic is not a Worker
-Core contract or an authentication mechanism.
+Every App Worker `start()` loads a complete device Properties snapshot and
+performs Endpoint Bind, even when the long-lived Worker ID already exists. The
+returned URI belongs only to that start session and is not persisted. Temporary
+WebSocket disconnects reconnect to the same session URI without another
+Register or Bind. A later process start restores the same Worker ID, skips
+Register, and performs Bind again before connecting.
 
 `AndroidWorker` has no Activity, Service, Application subclass, UI, or demo
 state dependency. It accepts a Properties function and Definitions, then owns
-identity recovery, Register/Bind decisions, endpoint recovery, and Core
-WebSocket Worker composition. An Android host can retain it from an
-Application, Service, or another process owner without changing Worker
-execution.
+identity recovery and concrete Android Client assembly while Core owns
+Register/Bind sequencing and WebSocket Worker composition. An Android host can
+retain it from an Application, Service, or another process owner without
+changing Worker execution.
 
 This demo chooses `AndroidWorkerDemoApplication` as that owner and starts the
 Worker when the application process is created. `MainActivity` only subscribes

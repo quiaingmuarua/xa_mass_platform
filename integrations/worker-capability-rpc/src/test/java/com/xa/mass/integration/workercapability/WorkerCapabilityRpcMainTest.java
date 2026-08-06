@@ -262,7 +262,12 @@ class WorkerCapabilityRpcMainTest {
                 String path,
                 Map<String, Object> body
         ) throws IOException {
-            String clientWorkerKey = (String) body.get("clientWorkerKey");
+            @SuppressWarnings("unchecked")
+            Map<String, Object> workerProperties =
+                    (Map<String, Object>) body.get("workerProperties");
+            String clientWorkerKey = (String) workerProperties.get(
+                    "clientWorkerKey"
+            );
             String workerId = UUID.nameUUIDFromBytes(
                     (path + ":" + clientWorkerKey).getBytes(
                             StandardCharsets.UTF_8

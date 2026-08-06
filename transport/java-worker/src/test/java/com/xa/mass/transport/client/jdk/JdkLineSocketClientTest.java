@@ -1,6 +1,6 @@
 package com.xa.mass.transport.client.jdk;
 
-import com.xa.mass.transport.client.LineSocketClient;
+import com.xa.mass.transport.client.TextMessageClient;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -14,8 +14,8 @@ import java.net.Socket;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -40,7 +40,7 @@ class JdkLineSocketClientTest {
             @Override
             public void onOpen() {
                 super.onOpen();
-                assertTrue(reference.get().sendLine("result"));
+                assertTrue(reference.get().send("result"));
             }
         };
         JdkLineSocketClient client = new JdkLineSocketClient(
@@ -99,6 +99,30 @@ class JdkLineSocketClientTest {
         client.close();
     }
 
+    @Test
+    void closeCurrentClosesOnlyTheActiveSocketAndReconnects()
+            throws Exception {
+        RecordingListener listener = new RecordingListener();
+        JdkLineSocketClient client = new JdkLineSocketClient(
+                (uri, timeout) -> new ScriptedSocket(
+                        new BlockingInput(),
+                        new ByteArrayOutputStream()
+                ),
+                URI.create("tcp://127.0.0.1:18084"),
+                Duration.ofSeconds(1),
+                Duration.ofMillis(5)
+        );
+
+        client.start(listener);
+        await(() -> listener.opens.get() == 1);
+        client.closeCurrent(TextMessageClient.CloseReason.PROTOCOL_ERROR);
+        await(() -> listener.opens.get() == 2);
+
+        assertEquals(1, listener.disconnects.get());
+        assertTrue(client.isConnected());
+        client.close();
+    }
+
     private static void await(Check check) throws Exception {
         long deadline = System.nanoTime()
                 + TimeUnit.SECONDS.toNanos(2);
@@ -115,11 +139,12 @@ class JdkLineSocketClientTest {
     }
 
     private static class RecordingListener
-            implements LineSocketClient.Listener {
+            implements TextMessageClient.Listener {
 
         private final AtomicInteger opens = new AtomicInteger();
         private final AtomicInteger failures = new AtomicInteger();
-        private final List<String> lines = new ArrayList<>();
+        private final AtomicInteger disconnects = new AtomicInteger();
+        private final List<String> lines = new CopyOnWriteArrayList<>();
 
         @Override
         public void onOpen() {
@@ -127,12 +152,13 @@ class JdkLineSocketClientTest {
         }
 
         @Override
-        public void onLine(String message) {
+        public void onMessage(String message) {
             lines.add(message);
         }
 
         @Override
         public void onDisconnected() {
+            disconnects.incrementAndGet();
         }
 
         @Override

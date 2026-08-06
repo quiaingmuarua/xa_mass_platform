@@ -3,7 +3,7 @@ package com.xa.mass.worker.android;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
-import com.xa.mass.transport.client.TextWebSocketClient;
+import com.xa.mass.transport.client.TextMessageClient;
 import java.net.URI;
 import java.time.Duration;
 import java.util.Objects;
@@ -22,10 +22,14 @@ import okio.ByteString;
  * dedicated HandlerThread.
  */
 public final class AndroidOkHttpTextWebSocketClient
-        implements TextWebSocketClient {
+        implements TextMessageClient {
 
     private static final String THREAD_NAME =
             "xa-worker-websocket-client";
+    private static final int NORMAL_CLOSE = 1000;
+    private static final int UNSUPPORTED_DATA = 1003;
+    private static final int INVALID_DATA = 1007;
+    private static final int INTERNAL_FAILURE = 1011;
 
     private enum State {
         NEW,
@@ -123,23 +127,16 @@ public final class AndroidOkHttpTextWebSocketClient
             return false;
         }
 
-        boolean accepted;
-        Throwable failure = null;
         try {
-            accepted = active.socket.send(message);
+            return active.socket.send(message);
         } catch (RuntimeException error) {
-            accepted = false;
-            failure = error;
+            return false;
         }
-        if (!accepted) {
-            active.socket.cancel();
-            postDisconnect(active.generation, failure);
-        }
-        return accepted;
     }
 
     @Override
-    public void closeCurrent(int code, String reason) {
+    public void closeCurrent(CloseReason reason) {
+        Objects.requireNonNull(reason, "reason");
         ActiveConnection active = activeConnection.get();
         Handler target = currentHandler();
         if (active == null || target == null) {
@@ -147,8 +144,8 @@ public final class AndroidOkHttpTextWebSocketClient
         }
         target.post(() -> closeCurrentOnHandlerThread(
                 active.generation,
-                code,
-                reason
+                closeCode(reason),
+                closeMessage(reason)
         ));
     }
 
@@ -268,7 +265,7 @@ public final class AndroidOkHttpTextWebSocketClient
         }
         Listener callback = listener;
         if (callback != null) {
-            callback.onText(message);
+            callback.onMessage(message);
         }
     }
 
@@ -276,10 +273,11 @@ public final class AndroidOkHttpTextWebSocketClient
         if (!isConnectedGeneration(generation)) {
             return;
         }
-        Listener callback = listener;
-        if (callback != null) {
-            callback.onBinary();
-        }
+        closeCurrentOnHandlerThread(
+                generation,
+                UNSUPPORTED_DATA,
+                "Text messages only"
+        );
     }
 
     private void closeCurrentOnHandlerThread(
@@ -324,8 +322,9 @@ public final class AndroidOkHttpTextWebSocketClient
         if (!closeRequested && callback != null) {
             if (failure != null) {
                 callback.onFailure(failure);
+            } else {
+                callback.onDisconnected();
             }
-            callback.onDisconnected();
         }
         scheduleReconnectOnHandlerThread();
     }
@@ -611,6 +610,32 @@ public final class AndroidOkHttpTextWebSocketClient
         } catch (InterruptedException error) {
             Thread.currentThread().interrupt();
             return false;
+        }
+    }
+
+    private static int closeCode(CloseReason reason) {
+        switch (reason) {
+            case NORMAL:
+                return NORMAL_CLOSE;
+            case PROTOCOL_ERROR:
+                return INVALID_DATA;
+            case SEND_FAILURE:
+                return INTERNAL_FAILURE;
+            default:
+                throw new IllegalArgumentException("Unknown close reason");
+        }
+    }
+
+    private static String closeMessage(CloseReason reason) {
+        switch (reason) {
+            case NORMAL:
+                return "Worker stopped";
+            case PROTOCOL_ERROR:
+                return "Invalid Worker Delivery message";
+            case SEND_FAILURE:
+                return "Worker Delivery send failed";
+            default:
+                throw new IllegalArgumentException("Unknown close reason");
         }
     }
 

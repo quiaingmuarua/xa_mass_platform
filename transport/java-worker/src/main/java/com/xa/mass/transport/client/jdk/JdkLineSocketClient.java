@@ -1,6 +1,6 @@
 package com.xa.mass.transport.client.jdk;
 
-import com.xa.mass.transport.client.LineSocketClient;
+import com.xa.mass.transport.client.TextMessageClient;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -16,7 +16,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-public final class JdkLineSocketClient implements LineSocketClient {
+public final class JdkLineSocketClient implements TextMessageClient {
 
     private final Object lock = new Object();
     private final SocketConnector connector;
@@ -93,7 +93,7 @@ public final class JdkLineSocketClient implements LineSocketClient {
     }
 
     @Override
-    public boolean sendLine(String message) {
+    public boolean send(String message) {
         Objects.requireNonNull(message, "message");
         Connection connection;
         synchronized (lock) {
@@ -113,6 +113,20 @@ public final class JdkLineSocketClient implements LineSocketClient {
             closeQuietly(connection.socket);
             return false;
         }
+    }
+
+    @Override
+    public void closeCurrent(CloseReason reason) {
+        Objects.requireNonNull(reason, "reason");
+        Connection connection;
+        synchronized (lock) {
+            connection = current;
+            if (!running || closed || connection == null) {
+                return;
+            }
+            connection.closeRequested = true;
+        }
+        closeQuietly(connection.socket);
     }
 
     @Override
@@ -152,6 +166,7 @@ public final class JdkLineSocketClient implements LineSocketClient {
         while (isRunning()) {
             Connection connection = null;
             boolean opened = false;
+            Throwable failure = null;
             try {
                 Socket socket = connector.connect(
                         socketUri,
@@ -179,19 +194,24 @@ public final class JdkLineSocketClient implements LineSocketClient {
                 String line;
                 while (isCurrent(connection)
                         && (line = reader.readLine()) != null) {
-                    listener.onLine(line);
+                    listener.onMessage(line);
                 }
             } catch (IOException | RuntimeException error) {
-                if (isRunning()) {
-                    listener.onFailure(error);
-                }
+                failure = error;
             } finally {
+                boolean notify = isRunning();
+                boolean requested = connection != null
+                        && connection.closeRequested;
                 if (connection != null) {
                     clear(connection);
                     closeQuietly(connection.socket);
                 }
-                if (opened && isRunning()) {
-                    listener.onDisconnected();
+                if (notify) {
+                    if (failure != null && !requested) {
+                        listener.onFailure(failure);
+                    } else if (opened) {
+                        listener.onDisconnected();
+                    }
                 }
             }
             if (isRunning() && !sleepBeforeReconnect()) {
@@ -252,6 +272,7 @@ public final class JdkLineSocketClient implements LineSocketClient {
         private final Socket socket;
         private final BufferedReader reader;
         private final BufferedWriter writer;
+        private volatile boolean closeRequested;
 
         private Connection(
                 Socket socket,

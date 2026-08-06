@@ -248,7 +248,7 @@ class ServerArchitectureBoundaryTest {
                 .doesNotContain("STRING_UTILS")
                 .doesNotContain("workerIdPrefix")
                 .doesNotContain("workerCount")
-                .doesNotContain("WebSocketWorkerTransport")
+                .doesNotContain("TextMessageWorkerTransport")
                 .doesNotContain("OkHttpTextWebSocketClient")
                 .doesNotContain("PhoneNumberCapability")
                 .doesNotContain("StringUtilityCapability")

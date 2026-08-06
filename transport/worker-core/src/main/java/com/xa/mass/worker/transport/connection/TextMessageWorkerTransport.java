@@ -1,25 +1,27 @@
-package com.xa.mass.worker.transport.socket;
+package com.xa.mass.worker.transport.connection;
 
-import com.xa.mass.worker.error.WorkerErrorCode;
-import com.xa.mass.worker.error.WorkerException;
 import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
-import com.xa.mass.transport.client.LineSocketClient;
+import com.xa.mass.transport.client.TextMessageClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 import java.util.Collection;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 
-public final class SocketWorkerTransport
-        implements AutoCloseable, LineSocketClient.Listener {
+public final class TextMessageWorkerTransport
+        implements AutoCloseable, TextMessageClient.Listener {
 
-    private final LineSocketClient client;
+    private final TextMessageClient client;
     private final WorkerConnectionBind bind;
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
     private final WorkerCommandExecutor commandExecutor;
+    private final ExecutorService execution;
     private final CountDownLatch stopped = new CountDownLatch(1);
 
     private boolean running;
@@ -28,8 +30,8 @@ public final class SocketWorkerTransport
     private boolean processing;
     private WorkerResult pendingResult;
 
-    public SocketWorkerTransport(
-            LineSocketClient client,
+    public TextMessageWorkerTransport(
+            TextMessageClient client,
             String workerId,
             Collection<? extends WorkerEventDefinition<?>> definitions
     ) {
@@ -40,8 +42,8 @@ public final class SocketWorkerTransport
         );
     }
 
-    public SocketWorkerTransport(
-            LineSocketClient client,
+    public TextMessageWorkerTransport(
+            TextMessageClient client,
             String workerId,
             WorkerCommandExecutor commandExecutor
     ) {
@@ -58,13 +60,21 @@ public final class SocketWorkerTransport
         this.client = client;
         this.bind = new WorkerConnectionBind(workerId);
         this.commandExecutor = commandExecutor;
+        execution = Executors.newSingleThreadExecutor(runnable -> {
+            Thread thread = new Thread(
+                    runnable,
+                    "worker-command-execution"
+            );
+            thread.setDaemon(true);
+            return thread;
+        });
     }
 
     public void start() {
         synchronized (this) {
             if (closed) {
                 throw new IllegalStateException(
-                        "SocketWorkerTransport is closed"
+                    "TextMessageWorkerTransport is closed"
                 );
             }
             if (running) {
@@ -88,52 +98,39 @@ public final class SocketWorkerTransport
     }
 
     @Override
-    public synchronized void onOpen() {
-        if (!running || closed) {
-            return;
+    public void onOpen() {
+        synchronized (this) {
+            if (!running || closed) {
+                client.closeCurrent(TextMessageClient.CloseReason.NORMAL);
+                return;
+            }
+            bindSent = false;
+            sendBind();
         }
-        bindSent = false;
-        if (!client.sendLine(
-                codec.encodeWorkerConnectionBind(bind)
-        )) {
-            return;
-        }
-        bindSent = true;
-        sendPending();
     }
 
     @Override
-    public void onLine(String message) {
+    public void onMessage(String message) {
         synchronized (this) {
             if (!running
                     || closed
                     || !bindSent
                     || processing
                     || pendingResult != null) {
-                throw protocolFailure();
+                closeProtocolError();
+                return;
             }
             processing = true;
         }
 
-        Optional<WorkerResult> result;
         try {
-            result = commandExecutor.execute(message);
-        } catch (RuntimeException error) {
+            execution.execute(() -> executeCommand(message));
+        } catch (RejectedExecutionException error) {
             synchronized (this) {
                 processing = false;
-                bindSent = false;
-            }
-            throw error;
-        }
-
-        synchronized (this) {
-            processing = false;
-            if (!running || closed) {
-                return;
-            }
-            if (result.isPresent()) {
-                pendingResult = result.get();
-                sendPending();
+                if (running && !closed) {
+                    closeProtocolError();
+                }
             }
         }
     }
@@ -159,15 +156,59 @@ public final class SocketWorkerTransport
             bindSent = false;
         }
         client.close();
+        execution.shutdownNow();
         stopped.countDown();
+    }
+
+    public synchronized boolean hasPendingResult() {
+        return pendingResult != null;
     }
 
     public synchronized boolean isConnected() {
         return running && bindSent && client.isConnected();
     }
 
-    public synchronized boolean hasPendingResult() {
-        return pendingResult != null;
+    private void executeCommand(String encodedCommand) {
+        Optional<WorkerResult> result;
+        try {
+            result = commandExecutor.execute(encodedCommand);
+        } catch (RuntimeException error) {
+            synchronized (this) {
+                processing = false;
+                if (running && !closed) {
+                    closeProtocolError();
+                }
+            }
+            return;
+        }
+
+        synchronized (this) {
+            processing = false;
+            if (!running || closed) {
+                return;
+            }
+            if (result.isPresent()) {
+                pendingResult = result.get();
+                if (bindSent && client.isConnected()) {
+                    sendPending();
+                }
+            }
+        }
+    }
+
+    private void sendBind() {
+        boolean accepted = client.send(
+                codec.encodeWorkerConnectionBind(bind)
+        );
+        if (!accepted) {
+            bindSent = false;
+            client.closeCurrent(TextMessageClient.CloseReason.SEND_FAILURE);
+            return;
+        }
+        bindSent = true;
+        if (pendingResult != null) {
+            sendPending();
+        }
     }
 
     private void sendPending() {
@@ -175,8 +216,9 @@ public final class SocketWorkerTransport
         if (sending == null || !bindSent) {
             return;
         }
-        if (!client.sendLine(codec.encodeWorkerResult(sending))) {
+        if (!client.send(codec.encodeWorkerResult(sending))) {
             bindSent = false;
+            client.closeCurrent(TextMessageClient.CloseReason.SEND_FAILURE);
             return;
         }
         if (pendingResult == sending) {
@@ -184,12 +226,8 @@ public final class SocketWorkerTransport
         }
     }
 
-    private static WorkerException protocolFailure() {
-        return new WorkerException(
-                WorkerErrorCode.COMMAND_MESSAGE_INVALID,
-                "socket.receiveCommand",
-                "Invalid Worker Delivery command sequence",
-                null
-        );
+    private void closeProtocolError() {
+        bindSent = false;
+        client.closeCurrent(TextMessageClient.CloseReason.PROTOCOL_ERROR);
     }
 }

@@ -50,7 +50,13 @@ class WorkerIdentityRegistrationClientTest {
             );
             assertEquals(2, requestCount.get());
             assertEquals(
-                    Map.of("clientWorkerKey", "installation-1"),
+                    Map.of(
+                            "workerProperties",
+                            Map.of(
+                                    "clientWorkerKey",
+                                    "installation-1"
+                            )
+                    ),
                     Jsons.parseObject(requestBody.get())
             );
         }

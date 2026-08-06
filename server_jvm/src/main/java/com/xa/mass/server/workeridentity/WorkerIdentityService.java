@@ -4,6 +4,7 @@ import com.xa.mass.kernel.worker.WorkerResourceCatalog;
 import com.xa.mass.server.error.ServerErrorCode;
 import com.xa.mass.server.error.ServerException;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -25,11 +26,14 @@ public final class WorkerIdentityService {
 
     public String register(
             String workerGroupId,
-            String clientWorkerKey
+            Map<String, Object> workerProperties
     ) {
         String operation = "workerIdentity.register";
         requireNonBlank(workerGroupId, "workerGroupId", operation);
-        requireNonBlank(clientWorkerKey, "clientWorkerKey", operation);
+        String clientWorkerKey = requireClientWorkerKey(
+                workerProperties,
+                operation
+        );
         try {
             if (workerCatalog.getWorkerGroupDescriptors(
                     List.of(workerGroupId)
@@ -68,12 +72,15 @@ public final class WorkerIdentityService {
 
     public void requireRegistration(
             String workerGroupId,
-            String clientWorkerKey,
+            Map<String, Object> workerProperties,
             String workerId
     ) {
         String operation = "workerIdentity.requireRegistration";
         requireNonBlank(workerGroupId, "workerGroupId", operation);
-        requireNonBlank(clientWorkerKey, "clientWorkerKey", operation);
+        String clientWorkerKey = requireClientWorkerKey(
+                workerProperties,
+                operation
+        );
         if (!isCanonicalUuid(workerId)) {
             throw failure(
                     ServerErrorCode.INVALID_WORKER_IDENTITY_REQUEST,
@@ -120,6 +127,32 @@ public final class WorkerIdentityService {
                     null
             );
         }
+    }
+
+    private static String requireClientWorkerKey(
+            Map<String, Object> workerProperties,
+            String operation
+    ) {
+        if (workerProperties == null) {
+            throw failure(
+                    ServerErrorCode.INVALID_WORKER_IDENTITY_REQUEST,
+                    operation,
+                    "workerProperties must be present",
+                    null
+            );
+        }
+        Object value = workerProperties.get("clientWorkerKey");
+        if (!(value instanceof String)
+                || ((String) value).isBlank()) {
+            throw failure(
+                    ServerErrorCode.INVALID_WORKER_IDENTITY_REQUEST,
+                    operation,
+                    "workerProperties.clientWorkerKey must be a "
+                            + "non-blank string",
+                    null
+            );
+        }
+        return (String) value;
     }
 
     private static boolean isCanonicalUuid(String value) {

@@ -1,6 +1,6 @@
 package com.xa.mass.transport.client.okhttp;
 
-import com.xa.mass.transport.client.TextWebSocketClient;
+import com.xa.mass.transport.client.TextMessageClient;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -10,6 +10,7 @@ import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import okhttp3.Request;
@@ -27,7 +28,7 @@ class OkHttpTextWebSocketClientTest {
     private OkHttpTextWebSocketClient client;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         client = new OkHttpTextWebSocketClient(
                 new OkHttpTextWebSocketClient.ConnectorResources(
                         connector,
@@ -40,6 +41,7 @@ class OkHttpTextWebSocketClientTest {
                 Duration.ofMillis(5)
         );
         client.start(listener);
+        await(() -> connector.connections.size() == 1);
     }
 
     @AfterEach
@@ -48,18 +50,18 @@ class OkHttpTextWebSocketClientTest {
     }
 
     @Test
-    void forwardsOnlyRawNetworkEventsAndSendsText() {
+    void forwardsOnlyTextMessagesAndSendsText() throws Exception {
         FakeConnection first = connector.connections.get(0);
         first.open();
+        await(client::isConnected);
         first.text("command");
-        first.binary();
+        await(() -> listener.messages.size() == 1);
 
         assertTrue(client.isConnected());
         assertTrue(client.send("result"));
         assertEquals(List.of("result"), first.socket.sent);
         assertEquals(1, listener.opens.get());
-        assertEquals(List.of("command"), listener.texts);
-        assertEquals(1, listener.binaries.get());
+        assertEquals(List.of("command"), listener.messages);
         assertEquals(
                 URI.create(
                         "ws://127.0.0.1:18083/api/v1/"
@@ -75,31 +77,60 @@ class OkHttpTextWebSocketClientTest {
         FakeConnection first = connector.connections.get(0);
         first.open();
 
-        client.closeCurrent(1007, "invalid");
+        client.closeCurrent(TextMessageClient.CloseReason.PROTOCOL_ERROR);
         await(() -> connector.connections.size() == 2);
         FakeConnection second = connector.connections.get(1);
         second.open();
         first.text("stale");
         second.text("current");
 
-        assertEquals(List.of("current"), listener.texts);
+        await(() -> listener.messages.size() == 1);
+        assertEquals(List.of("current"), listener.messages);
         assertEquals(2, listener.opens.get());
         assertEquals(1, listener.disconnects.get());
         assertTrue(client.isConnected());
+        assertEquals(1007, first.socket.closeCode);
     }
 
     @Test
-    void rejectedSendDisconnectsAndSchedulesReconnect()
+    void rejectedSendIsClosedByTheTransportBoundaryAndReconnects()
             throws Exception {
         FakeConnection first = connector.connections.get(0);
         first.open();
+        await(client::isConnected);
         first.socket.rejectNextSend = true;
 
         assertFalse(client.send("result"));
+        client.closeCurrent(TextMessageClient.CloseReason.SEND_FAILURE);
         await(() -> connector.connections.size() == 2);
 
-        assertTrue(first.socket.cancelled);
+        assertEquals(1011, first.socket.closeCode);
         assertEquals(1, listener.disconnects.get());
+    }
+
+    @Test
+    void binaryFrameIsRejectedInsideTheWebSocketClient()
+            throws Exception {
+        FakeConnection first = connector.connections.get(0);
+        first.open();
+        await(client::isConnected);
+
+        first.binary();
+        await(() -> connector.connections.size() == 2);
+
+        assertEquals(1003, first.socket.closeCode);
+        assertTrue(listener.messages.isEmpty());
+    }
+
+    @Test
+    void listenerCallbacksAreSerialized() throws Exception {
+        FakeConnection first = connector.connections.get(0);
+        first.open();
+        first.text("one");
+        first.text("two");
+        await(() -> listener.messages.size() == 2);
+
+        assertEquals(1, listener.callbackThreads.stream().distinct().count());
     }
 
     @Test
@@ -143,35 +174,35 @@ class OkHttpTextWebSocketClientTest {
     }
 
     private static final class RecordingListener
-            implements TextWebSocketClient.Listener {
+            implements TextMessageClient.Listener {
 
         private final AtomicInteger opens = new AtomicInteger();
-        private final AtomicInteger binaries = new AtomicInteger();
         private final AtomicInteger disconnects = new AtomicInteger();
-        private final List<String> texts = new ArrayList<>();
+        private final List<String> messages = new CopyOnWriteArrayList<>();
+        private final List<String> callbackThreads =
+                new CopyOnWriteArrayList<>();
 
         @Override
         public void onOpen() {
+            callbackThreads.add(Thread.currentThread().getName());
             opens.incrementAndGet();
         }
 
         @Override
-        public void onText(String message) {
-            texts.add(message);
-        }
-
-        @Override
-        public void onBinary() {
-            binaries.incrementAndGet();
+        public void onMessage(String message) {
+            callbackThreads.add(Thread.currentThread().getName());
+            messages.add(message);
         }
 
         @Override
         public void onDisconnected() {
+            callbackThreads.add(Thread.currentThread().getName());
             disconnects.incrementAndGet();
         }
 
         @Override
         public void onFailure(Throwable error) {
+            callbackThreads.add(Thread.currentThread().getName());
         }
     }
 
@@ -179,7 +210,7 @@ class OkHttpTextWebSocketClientTest {
             implements OkHttpTextWebSocketClient.WebSocketConnector {
 
         private final List<FakeConnection> connections =
-                new ArrayList<>();
+                new CopyOnWriteArrayList<>();
         private boolean closed;
 
         @Override
@@ -229,6 +260,7 @@ class OkHttpTextWebSocketClientTest {
         private final List<String> sent = new ArrayList<>();
         private boolean rejectNextSend;
         private boolean cancelled;
+        private int closeCode = -1;
 
         @Override
         public Request request() {
@@ -259,6 +291,7 @@ class OkHttpTextWebSocketClientTest {
 
         @Override
         public boolean close(int code, String reason) {
+            closeCode = code;
             return true;
         }
 

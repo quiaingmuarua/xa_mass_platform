@@ -4,7 +4,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
-import com.xa.mass.transport.client.TextWebSocketClient;
+import com.xa.mass.transport.client.TextMessageClient;
 import java.net.URI;
 import java.time.Duration;
 import java.util.List;
@@ -61,11 +61,10 @@ public class AndroidOkHttpTextWebSocketClientTest {
 
         connection.open();
         connection.text("command");
-        connection.binary();
 
-        await(() -> listener.events.size() == 3);
+        await(() -> listener.events.size() == 2);
         assertEquals(
-                List.of("open", "text:command", "binary"),
+                List.of("open", "message:command"),
                 listener.events
         );
         Set<String> callbackThreads = listener.callbackThreads.stream()
@@ -92,7 +91,7 @@ public class AndroidOkHttpTextWebSocketClientTest {
         first.open();
         await(client::isConnected);
 
-        client.closeCurrent(1007, "invalid");
+        client.closeCurrent(TextMessageClient.CloseReason.PROTOCOL_ERROR);
         await(() -> listener.disconnects.get() == 1);
         advanceReconnectClock();
         FakeConnection second = awaitConnection(1);
@@ -101,9 +100,9 @@ public class AndroidOkHttpTextWebSocketClientTest {
 
         first.text("stale");
         second.text("current");
-        await(() -> listener.events.contains("text:current"));
+        await(() -> listener.events.contains("message:current"));
 
-        assertFalse(listener.events.contains("text:stale"));
+        assertFalse(listener.events.contains("message:stale"));
         assertEquals(2, listener.opens.get());
         assertEquals(1, listener.disconnects.get());
     }
@@ -118,6 +117,7 @@ public class AndroidOkHttpTextWebSocketClientTest {
         first.socket.rejectNextSend = true;
 
         assertFalse(client.send("result"));
+        client.closeCurrent(TextMessageClient.CloseReason.SEND_FAILURE);
         await(() -> listener.disconnects.get() == 1);
         advanceReconnectClock();
         FakeConnection second = awaitConnection(1);
@@ -127,6 +127,24 @@ public class AndroidOkHttpTextWebSocketClientTest {
 
         assertTrue(first.socket.sent.isEmpty());
         assertTrue(second.socket.sent.isEmpty());
+        assertEquals(1011, first.socket.closeCode);
+    }
+
+    @Test
+    public void binaryFrameIsRejectedInsideTheWebSocketClient()
+            throws Exception {
+        client.start(listener);
+        FakeConnection first = awaitConnection(0);
+        first.open();
+        await(client::isConnected);
+
+        first.binary();
+        await(() -> listener.disconnects.get() == 1);
+        advanceReconnectClock();
+        awaitConnection(1);
+
+        assertEquals(1003, first.socket.closeCode);
+        assertFalse(listener.events.contains("binary"));
     }
 
     @Test
@@ -141,12 +159,11 @@ public class AndroidOkHttpTextWebSocketClientTest {
         first.closed();
 
         await(() -> listener.failures.get() == 1);
-        await(() -> listener.disconnects.get() == 1);
         advanceReconnectClock();
         awaitConnection(1);
 
         assertEquals(1, listener.failures.get());
-        assertEquals(1, listener.disconnects.get());
+        assertEquals(0, listener.disconnects.get());
     }
 
     @Test
@@ -196,7 +213,7 @@ public class AndroidOkHttpTextWebSocketClientTest {
     }
 
     private static final class RecordingListener
-            implements TextWebSocketClient.Listener {
+            implements TextMessageClient.Listener {
 
         private final AtomicInteger opens = new AtomicInteger();
         private final AtomicInteger disconnects = new AtomicInteger();
@@ -213,13 +230,8 @@ public class AndroidOkHttpTextWebSocketClientTest {
         }
 
         @Override
-        public void onText(String message) {
-            record("text:" + message);
-        }
-
-        @Override
-        public void onBinary() {
-            record("binary");
+        public void onMessage(String message) {
+            record("message:" + message);
         }
 
         @Override
@@ -300,6 +312,7 @@ public class AndroidOkHttpTextWebSocketClientTest {
                 new CopyOnWriteArrayList<>();
         private volatile boolean rejectNextSend;
         private volatile boolean cancelled;
+        private volatile int closeCode = -1;
 
         @Override
         public Request request() {
@@ -330,6 +343,7 @@ public class AndroidOkHttpTextWebSocketClientTest {
 
         @Override
         public boolean close(int code, String reason) {
+            closeCode = code;
             return true;
         }
 

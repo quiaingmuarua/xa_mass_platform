@@ -45,7 +45,8 @@ The worker JSON is keyed by WorkerGroup ID:
 ```
 
 `sandboxDirectory` is optional. Without it, the Worker remains ephemeral and
-performs Identity registration on every process start. With it, the directory
+uses `WorkerIdentityStore.noCache()`, so each process start repeats the
+idempotent Register call with its fixed client key. With a sandbox, the directory
 is a local Worker state home containing `identity.json`,
 `worker-properties.json`, and an exclusive `worker.lock`. The configured
 `workerProperties` initialize the file once; after that the file is the sole
@@ -56,10 +57,10 @@ Endpoint URI, Binding, Index values, Channels, or pending Results.
 validates every configured sandbox before network activity, then performs:
 
 ```text
-load the persisted workerId, or register once when identity.json is absent
--> Bind workerId as WEBSOCKET and replace the Kernel workerProperties snapshot
+load the persisted workerId, or Register when it is absent
+-> always Bind workerId as WEBSOCKET and replace the Kernel workerProperties snapshot
 -> receive the configured Adapter public URI
--> create and start every WebSocket Worker transport
+-> create JavaWorker with WEBSOCKET and start the shared text-message Transport
 -> wait for every configured group to connect
 -> submit explicit Property Index updates as best effort
 ```
@@ -82,10 +83,10 @@ WorkerGroup directory metadata is initialized separately by the Server profile.
 The profile's catalog `eventCodes` may intentionally lag this module's local
 Definition selection; Scenario Workers never compare or update the two values.
 
-The module depends internally on Worker Core, concrete OkHttp clients, and the
-transport wire contract. Register and Bind use the shared narrow OkHttp Worker
-control client from `transport:java-worker`; Index update uses a private HTTP
-client. It has no dependency
+The module depends internally on Worker Core, `JavaWorker`, and the transport
+wire contract. `JavaWorker` injects each configured client key into the final
+Properties and delegates Register/Bind/session behavior to the shared Core
+runtime; Index update uses a private HTTP client. It has no dependency
 on `kernel_jvm`, Spring, Server implementation classes, the Netty Adapter,
 Redis, scores, or Pacers. The Worker does not configure or know an
 `endpointManagerId`; Bind returns the selected public WebSocket URI.

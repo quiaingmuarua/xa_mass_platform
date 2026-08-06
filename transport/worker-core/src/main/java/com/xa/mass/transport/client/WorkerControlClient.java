@@ -13,13 +13,12 @@ public interface WorkerControlClient extends AutoCloseable {
 
     String register(
             String workerGroupId,
-            String clientWorkerKey,
+            Map<String, Object> workerProperties,
             Duration timeout
     ) throws IOException;
 
     URI bind(
             String workerGroupId,
-            String clientWorkerKey,
             String workerId,
             WorkerTransportType transportType,
             Map<String, Object> workerProperties,

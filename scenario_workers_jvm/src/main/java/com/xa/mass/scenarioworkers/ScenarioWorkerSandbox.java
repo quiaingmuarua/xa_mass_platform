@@ -1,6 +1,7 @@
 package com.xa.mass.scenarioworkers;
 
 import com.xa.mass.workerdelivery.json.Jsons;
+import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
@@ -18,7 +19,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
-final class ScenarioWorkerSandbox implements AutoCloseable {
+final class ScenarioWorkerSandbox
+        implements WorkerIdentityStore, AutoCloseable {
 
     private static final int SANDBOX_INVALID = 14013;
     private static final int SANDBOX_UNAVAILABLE = 14014;
@@ -125,6 +127,12 @@ final class ScenarioWorkerSandbox implements AutoCloseable {
         return Optional.ofNullable(workerId);
     }
 
+    @Override
+    public Optional<String> loadWorkerId() {
+        requireOpen();
+        return workerId();
+    }
+
     void storeWorkerId(String value) {
         requireOpen();
         String canonical = requireCanonicalWorkerId(
@@ -152,6 +160,11 @@ final class ScenarioWorkerSandbox implements AutoCloseable {
                 "scenarioWorkerSandbox.storeIdentity"
         );
         workerId = canonical;
+    }
+
+    @Override
+    public void saveWorkerId(String value) {
+        storeWorkerId(value);
     }
 
     @Override

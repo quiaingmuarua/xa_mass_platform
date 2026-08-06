@@ -58,10 +58,9 @@ class WorkerBindingServiceTest {
 
         WorkerEndpointBinding binding = service.bind(
                 "group-1",
-                "installation-1",
                 WORKER_ID,
                 WorkerTransportType.WEBSOCKET,
-                Map.of("region", "local")
+                properties("local")
         );
 
         assertThat(binding).isEqualTo(new WorkerEndpointBinding(
@@ -71,7 +70,7 @@ class WorkerBindingServiceTest {
         ));
         verify(identities).requireRegistration(
                 "group-1",
-                "installation-1",
+                properties("local"),
                 WORKER_ID
         );
         verify(registry).bindIfAbsent(WORKER_ID, "websocket-a");
@@ -82,7 +81,7 @@ class WorkerBindingServiceTest {
                 WORKER_ID,
                 "group-1",
                 "websocket-a",
-                Map.of("region", "local")
+                properties("local")
         ));
     }
 
@@ -93,10 +92,14 @@ class WorkerBindingServiceTest {
 
         WorkerEndpointBinding binding = service.bind(
                 "group-1",
-                "installation-1",
                 WORKER_ID,
                 WorkerTransportType.WEBSOCKET,
-                Map.of("version", 2)
+                Map.of(
+                        "clientWorkerKey",
+                        "installation-1",
+                        "version",
+                        2
+                )
         );
 
         assertThat(binding.endpointManagerId()).isEqualTo("websocket-a");
@@ -105,7 +108,12 @@ class WorkerBindingServiceTest {
                 ArgumentCaptor.forClass(WorkerDeclaration.class);
         verify(workerRuntime).upsertWorker(declaration.capture());
         assertThat(declaration.getValue().workerProperties())
-                .isEqualTo(Map.of("version", 2));
+                .isEqualTo(Map.of(
+                        "clientWorkerKey",
+                        "installation-1",
+                        "version",
+                        2
+                ));
     }
 
     @Test
@@ -182,11 +190,28 @@ class WorkerBindingServiceTest {
     ) {
         return service.bind(
                 "group-1",
-                "installation-1",
                 WORKER_ID,
                 WorkerTransportType.WEBSOCKET,
-                workerProperties
+                withClientKey(workerProperties)
         );
+    }
+
+    private static Map<String, Object> properties(String region) {
+        return Map.of(
+                "clientWorkerKey",
+                "installation-1",
+                "region",
+                region
+        );
+    }
+
+    private static Map<String, Object> withClientKey(
+            Map<String, Object> properties
+    ) {
+        LinkedHashMap<String, Object> complete = new LinkedHashMap<>();
+        complete.put("clientWorkerKey", "installation-1");
+        complete.putAll(properties);
+        return complete;
     }
 
     private static WorkerEndpointDirectory endpointDirectory() {

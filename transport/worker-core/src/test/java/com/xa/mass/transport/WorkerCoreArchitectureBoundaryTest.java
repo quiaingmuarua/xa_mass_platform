@@ -3,15 +3,13 @@ package com.xa.mass.transport;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import com.xa.mass.transport.client.LineSocketClient;
-import com.xa.mass.transport.client.TextWebSocketClient;
+import com.xa.mass.transport.client.TextMessageClient;
 import com.xa.mass.transport.client.WorkerControlClient;
 import com.xa.mass.transport.client.WorkerPointClient;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
+import com.xa.mass.worker.transport.connection.TextMessageWorkerTransport;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
-import com.xa.mass.worker.transport.socket.SocketWorkerTransport;
-import com.xa.mass.worker.transport.websocket.WebSocketWorkerTransport;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
@@ -64,10 +62,8 @@ class WorkerCoreArchitectureBoundaryTest {
     void networkClientContractsDoNotExposeProtocolOrPlatformTypes() {
         for (Class<?> type : new Class<?>[]{
                 WorkerPointClient.class,
-                TextWebSocketClient.class,
-                TextWebSocketClient.Listener.class,
-                LineSocketClient.class,
-                LineSocketClient.Listener.class
+                TextMessageClient.class,
+                TextMessageClient.Listener.class
         }) {
             for (Method method : type.getDeclaredMethods()) {
                 String signature = method.toGenericString();
@@ -89,15 +85,14 @@ class WorkerCoreArchitectureBoundaryTest {
         }
 
         assertTrue(hasMethod(
-                TextWebSocketClient.class,
+                TextMessageClient.class,
                 "send",
                 String.class
         ));
         assertTrue(hasMethod(
-                TextWebSocketClient.class,
+                TextMessageClient.class,
                 "closeCurrent",
-                int.class,
-                String.class
+                TextMessageClient.CloseReason.class
         ));
     }
 
@@ -120,13 +115,12 @@ class WorkerCoreArchitectureBoundaryTest {
                 WorkerControlClient.class,
                 "register",
                 String.class,
-                String.class,
+                java.util.Map.class,
                 java.time.Duration.class
         ));
         assertTrue(hasMethod(
                 WorkerControlClient.class,
                 "bind",
-                String.class,
                 String.class,
                 String.class,
                 WorkerTransportType.class,
@@ -159,34 +153,21 @@ class WorkerCoreArchitectureBoundaryTest {
                 WorkerCommandExecutor.class
         );
         assertConstructor(
-                WebSocketWorkerTransport.class,
-                TextWebSocketClient.class,
+                TextMessageWorkerTransport.class,
+                TextMessageClient.class,
                 String.class,
                 Collection.class
         );
         assertConstructor(
-                WebSocketWorkerTransport.class,
-                TextWebSocketClient.class,
-                String.class,
-                WorkerCommandExecutor.class
-        );
-        assertConstructor(
-                SocketWorkerTransport.class,
-                LineSocketClient.class,
-                String.class,
-                Collection.class
-        );
-        assertConstructor(
-                SocketWorkerTransport.class,
-                LineSocketClient.class,
+                TextMessageWorkerTransport.class,
+                TextMessageClient.class,
                 String.class,
                 WorkerCommandExecutor.class
         );
 
         for (Class<?> transport : new Class<?>[]{
                 PollingWorkerTransport.class,
-                WebSocketWorkerTransport.class,
-                SocketWorkerTransport.class
+                TextMessageWorkerTransport.class
         }) {
             for (Constructor<?> constructor
                     : transport.getConstructors()) {

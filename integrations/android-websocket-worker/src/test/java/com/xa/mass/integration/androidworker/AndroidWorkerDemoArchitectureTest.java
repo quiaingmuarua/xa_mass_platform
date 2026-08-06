@@ -110,7 +110,7 @@ public class AndroidWorkerDemoArchitectureTest {
 
         for (String forbidden : new String[]{
                 "WorkerControlClient",
-                "TextWebSocketClient",
+                "TextMessageClient",
                 "WorkerEventDefinition",
                 ".register(",
                 ".bind("

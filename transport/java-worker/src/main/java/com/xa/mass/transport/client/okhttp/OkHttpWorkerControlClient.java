@@ -38,21 +38,18 @@ public final class OkHttpWorkerControlClient
 
     public String register(
             String workerGroupId,
-            String clientWorkerKey,
+            Map<String, Object> workerProperties,
             Duration requestTimeout
     ) throws IOException {
         requireOpen();
         String group = requireNonBlank(workerGroupId, "workerGroupId");
-        String clientKey = requireNonBlank(
-                clientWorkerKey,
-                "clientWorkerKey"
-        );
+        requireProperties(workerProperties);
         HttpUrl url = workerGroupBase(group).newBuilder()
                 .addPathSegment("workers:register")
                 .build();
         Map<String, Object> body = Map.of(
-                "clientWorkerKey",
-                clientKey
+                "workerProperties",
+                workerProperties
         );
         Map<String, Object> response = executeObject(
                 url,
@@ -63,6 +60,7 @@ public final class OkHttpWorkerControlClient
         if (!response.keySet().equals(Set.of("workerId"))
                 || !(response.get("workerId") instanceof String)) {
             throw failure(
+                    WorkerErrorCode.WORKER_CONTROL_RESPONSE_INVALID,
                     "workerControl.register",
                     "Worker registration response is invalid",
                     null
@@ -73,7 +71,6 @@ public final class OkHttpWorkerControlClient
 
     public URI bind(
             String workerGroupId,
-            String clientWorkerKey,
             String workerId,
             WorkerTransportType transportType,
             Map<String, Object> workerProperties,
@@ -81,28 +78,19 @@ public final class OkHttpWorkerControlClient
     ) throws IOException {
         requireOpen();
         String group = requireNonBlank(workerGroupId, "workerGroupId");
-        String clientKey = requireNonBlank(
-                clientWorkerKey,
-                "clientWorkerKey"
-        );
         String canonicalWorkerId = requireCanonicalWorkerId(workerId);
         if (transportType == null) {
             throw new IllegalArgumentException(
                     "transportType must be present"
             );
         }
-        if (workerProperties == null) {
-            throw new IllegalArgumentException(
-                    "workerProperties must be present"
-            );
-        }
+        requireProperties(workerProperties);
 
         HttpUrl url = workerGroupBase(group).newBuilder()
                 .addPathSegment("workers")
                 .addPathSegment(canonicalWorkerId + ":bind")
                 .build();
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("clientWorkerKey", clientKey);
         body.put("transportType", transportType.name());
         body.put("workerProperties", workerProperties);
         Map<String, Object> response = executeObject(
@@ -121,6 +109,7 @@ public final class OkHttpWorkerControlClient
                         response.get("transportType")
                 )) {
             throw failure(
+                    WorkerErrorCode.WORKER_CONTROL_RESPONSE_INVALID,
                     "workerControl.bind",
                     "Worker binding response is invalid",
                     null
@@ -159,11 +148,29 @@ public final class OkHttpWorkerControlClient
                 TimeUnit.MILLISECONDS
         );
         try (Response response = call.execute()) {
-            if (response.code() != 200 || response.body() == null) {
+            if (response.code() >= 500) {
                 throw failure(
+                        WorkerErrorCode.WORKER_CONTROL_UNAVAILABLE,
                         operation,
                         "Worker control request failed with HTTP "
                                 + response.code(),
+                        null
+                );
+            }
+            if (response.code() != 200) {
+                throw failure(
+                        WorkerErrorCode.WORKER_CONTROL_REJECTED,
+                        operation,
+                        "Worker control request failed with HTTP "
+                                + response.code(),
+                        null
+                );
+            }
+            if (response.body() == null) {
+                throw failure(
+                        WorkerErrorCode.WORKER_CONTROL_RESPONSE_INVALID,
+                        operation,
+                        "Worker control response is empty",
                         null
                 );
             }
@@ -171,6 +178,7 @@ public final class OkHttpWorkerControlClient
                 return Jsons.parseObject(response.body().string());
             } catch (IllegalArgumentException error) {
                 throw failure(
+                        WorkerErrorCode.WORKER_CONTROL_RESPONSE_INVALID,
                         operation,
                         "Worker control response is invalid",
                         error
@@ -205,6 +213,7 @@ public final class OkHttpWorkerControlClient
             uri = URI.create(encoded);
         } catch (IllegalArgumentException error) {
             throw failure(
+                    WorkerErrorCode.WORKER_CONTROL_RESPONSE_INVALID,
                     "workerControl.bind",
                     "Worker binding response contains an invalid endpointUri",
                     error
@@ -223,6 +232,7 @@ public final class OkHttpWorkerControlClient
         }
         if (!valid) {
             throw failure(
+                    WorkerErrorCode.WORKER_CONTROL_RESPONSE_INVALID,
                     "workerControl.bind",
                     "Worker binding response contains an endpointUri "
                             + "incompatible with " + transportType,
@@ -240,6 +250,7 @@ public final class OkHttpWorkerControlClient
             }
         } catch (IllegalArgumentException error) {
             throw failure(
+                    WorkerErrorCode.WORKER_CONTROL_RESPONSE_INVALID,
                     "workerControl.workerId",
                     "workerId must be a canonical UUID",
                     error
@@ -286,13 +297,24 @@ public final class OkHttpWorkerControlClient
         return value;
     }
 
+    private static void requireProperties(
+            Map<String, Object> workerProperties
+    ) {
+        if (workerProperties == null) {
+            throw new IllegalArgumentException(
+                    "workerProperties must be present"
+            );
+        }
+    }
+
     private static WorkerException failure(
+            WorkerErrorCode errorCode,
             String operation,
             String message,
             Throwable cause
     ) {
         return new WorkerException(
-                WorkerErrorCode.WORKER_CONTROL_FAILED,
+                errorCode,
                 operation,
                 message,
                 cause

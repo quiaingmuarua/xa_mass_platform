@@ -1,38 +1,40 @@
-package com.xa.mass.worker.transport.websocket;
+package com.xa.mass.worker.transport.connection;
 
 import static com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint.TASK;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
-import com.xa.mass.transport.client.TextWebSocketClient;
+import com.xa.mass.transport.client.TextMessageClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-class WebSocketWorkerTransportTest {
+class TextMessageWorkerTransportTest {
 
     private static final String COMMAND = "{\"command\":\"opaque\"}";
     private static final String COMMAND_ID =
             "a5e9e10d-f78b-469e-93ab-864b49c189c1";
 
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
-    private final FakeTextWebSocketClient client =
-            new FakeTextWebSocketClient();
+    private final FakeTextMessageClient client =
+            new FakeTextMessageClient();
     private final AtomicReference<String> executedCommand =
             new AtomicReference<>();
-    private WebSocketWorkerTransport transport;
+    private TextMessageWorkerTransport transport;
 
     @BeforeEach
     void setUp() {
@@ -48,7 +50,7 @@ class WebSocketWorkerTransportTest {
             executedCommand.set(encoded);
             return Optional.of(result());
         };
-        transport = new WebSocketWorkerTransport(
+        transport = new TextMessageWorkerTransport(
                 client,
                 COMMAND_ID,
                 executor
@@ -72,7 +74,7 @@ class WebSocketWorkerTransportTest {
                 codec.decodeWorkerConnectionBind(client.sent.get(0))
         );
 
-        client.text(COMMAND);
+        client.message(COMMAND);
         await(() -> client.sent.size() == 2);
 
         assertEquals(COMMAND, executedCommand.get());
@@ -89,7 +91,7 @@ class WebSocketWorkerTransportTest {
         client.open();
         client.rejectNextSend = true;
 
-        client.text(COMMAND);
+        client.message(COMMAND);
         await(transport::hasPendingResult);
         assertFalse(transport.isConnected());
 
@@ -108,15 +110,81 @@ class WebSocketWorkerTransportTest {
     }
 
     @Test
-    void protocolAndBinaryFailuresCloseThroughClientBoundary()
+    void protocolFailureClosesThroughClientBoundary()
             throws Exception {
         client.open();
-        client.text("{bad-json");
-        await(() -> client.lastCloseCode == 1007);
+        client.message("{bad-json");
+        await(() -> client.lastCloseReason
+                == TextMessageClient.CloseReason.PROTOCOL_ERROR);
+    }
+
+    @Test
+    void messageBeforeBindIsAProtocolFailure() {
+        client.message(COMMAND);
+
+        assertEquals(
+                TextMessageClient.CloseReason.PROTOCOL_ERROR,
+                client.lastCloseReason
+        );
+    }
+
+    @Test
+    void rejectedBindClosesAsSendFailure() {
+        client.rejectNextSend = true;
 
         client.open();
-        client.binary();
-        assertEquals(1003, client.lastCloseCode);
+
+        assertEquals(
+                TextMessageClient.CloseReason.SEND_FAILURE,
+                client.lastCloseReason
+        );
+        assertFalse(transport.isConnected());
+    }
+
+    @Test
+    void commandExecutionIsDedicatedAndConcurrentInputClosesConnection()
+            throws Exception {
+        FakeTextMessageClient isolatedClient =
+                new FakeTextMessageClient();
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        AtomicReference<String> executionThread = new AtomicReference<>();
+        TextMessageWorkerTransport isolatedTransport =
+                new TextMessageWorkerTransport(
+                        isolatedClient,
+                        COMMAND_ID,
+                        encoded -> {
+                            executionThread.set(
+                                    Thread.currentThread().getName()
+                            );
+                            entered.countDown();
+                            try {
+                                release.await(2, TimeUnit.SECONDS);
+                            } catch (InterruptedException error) {
+                                Thread.currentThread().interrupt();
+                                return Optional.empty();
+                            }
+                            return Optional.of(result());
+                        }
+                );
+        try {
+            isolatedTransport.start();
+            isolatedClient.open();
+            String callbackThread = Thread.currentThread().getName();
+
+            isolatedClient.message(COMMAND);
+            assertTrue(entered.await(2, TimeUnit.SECONDS));
+            assertNotEquals(callbackThread, executionThread.get());
+
+            isolatedClient.message("{\"command\":\"second\"}");
+            assertEquals(
+                    TextMessageClient.CloseReason.PROTOCOL_ERROR,
+                    isolatedClient.lastCloseReason
+            );
+        } finally {
+            release.countDown();
+            isolatedTransport.close();
+        }
     }
 
     @Test
@@ -160,15 +228,15 @@ class WebSocketWorkerTransportTest {
         boolean value();
     }
 
-    private static final class FakeTextWebSocketClient
-            implements TextWebSocketClient {
+    private static final class FakeTextMessageClient
+            implements TextMessageClient {
 
         private final List<String> sent = new ArrayList<>();
         private Listener listener;
         private boolean connected;
         private boolean rejectNextSend;
         private boolean closed;
-        private int lastCloseCode = -1;
+        private CloseReason lastCloseReason;
 
         @Override
         public void start(Listener listener) {
@@ -191,8 +259,8 @@ class WebSocketWorkerTransportTest {
         }
 
         @Override
-        public void closeCurrent(int code, String reason) {
-            lastCloseCode = code;
+        public void closeCurrent(CloseReason reason) {
+            lastCloseReason = reason;
             if (connected) {
                 connected = false;
                 listener.onDisconnected();
@@ -215,12 +283,8 @@ class WebSocketWorkerTransportTest {
             listener.onOpen();
         }
 
-        private void text(String message) {
-            listener.onText(message);
-        }
-
-        private void binary() {
-            listener.onBinary();
+        private void message(String message) {
+            listener.onMessage(message);
         }
     }
 }

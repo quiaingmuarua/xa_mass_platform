@@ -6,8 +6,7 @@ import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
-import com.xa.mass.worker.transport.socket.SocketWorkerTransport;
-import com.xa.mass.worker.transport.websocket.WebSocketWorkerTransport;
+import com.xa.mass.worker.transport.connection.TextMessageWorkerTransport;
 import com.xa.mass.transport.client.jdk.JdkLineSocketClient;
 import com.xa.mass.transport.client.okhttp.OkHttpTextWebSocketClient;
 import com.xa.mass.transport.client.okhttp.OkHttpWorkerControlClient;
@@ -20,6 +19,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -438,8 +438,8 @@ class RuntimeApiPythonIntegrationTest {
                         )
                 );
         return switch (transportProfile) {
-            case WEBSOCKET -> new WebSocketWorkerHandle(
-                    new WebSocketWorkerTransport(
+            case WEBSOCKET -> new TextMessageWorkerHandle(
+                    new TextMessageWorkerTransport(
                             new OkHttpTextWebSocketClient(
                                     serverUrl,
                                     Duration.ofSeconds(2),
@@ -449,8 +449,8 @@ class RuntimeApiPythonIntegrationTest {
                             definitions
                     )
             );
-            case SOCKET -> new SocketWorkerHandle(
-                    new SocketWorkerTransport(
+            case SOCKET -> new TextMessageWorkerHandle(
+                    new TextMessageWorkerTransport(
                             new JdkLineSocketClient(
                                     serverUrl,
                                     Duration.ofSeconds(2),
@@ -482,21 +482,26 @@ class RuntimeApiPythonIntegrationTest {
         try (var client = new OkHttpWorkerControlClient(
                 URI.create("http://127.0.0.1:" + port)
         )) {
+            Map<String, Object> completeProperties =
+                    new LinkedHashMap<>(workerProperties);
+            completeProperties.put(
+                    "clientWorkerKey",
+                    clientWorkerKey
+            );
             String workerId = client.register(
                     workerGroupId,
-                    clientWorkerKey,
+                    completeProperties,
                     Duration.ofSeconds(2)
             );
             URI endpointUri = client.bind(
                     workerGroupId,
-                    clientWorkerKey,
                     workerId,
                     switch (profile) {
                         case POLLING -> WorkerTransportType.POLLING;
                         case WEBSOCKET -> WorkerTransportType.WEBSOCKET;
                         case SOCKET -> WorkerTransportType.SOCKET;
                     },
-                    workerProperties,
+                    completeProperties,
                     Duration.ofSeconds(2)
             );
             return new BoundWorker(workerId, endpointUri);
@@ -848,13 +853,13 @@ class RuntimeApiPythonIntegrationTest {
         }
     }
 
-    private static final class WebSocketWorkerHandle
+    private static final class TextMessageWorkerHandle
             implements RunningWorker {
 
-        private final WebSocketWorkerTransport transport;
+        private final TextMessageWorkerTransport transport;
 
-        private WebSocketWorkerHandle(
-                WebSocketWorkerTransport transport
+        private TextMessageWorkerHandle(
+                TextMessageWorkerTransport transport
         ) throws Exception {
             this.transport = transport;
             transport.start();
@@ -867,7 +872,7 @@ class RuntimeApiPythonIntegrationTest {
             if (!transport.isConnected()) {
                 transport.close();
                 throw new AssertionError(
-                        "WebSocket Worker did not connect to its Adapter"
+                        "Text-message Worker did not connect to its Adapter"
                 );
             }
         }
@@ -875,52 +880,6 @@ class RuntimeApiPythonIntegrationTest {
         @Override
         public void close() {
             transport.close();
-        }
-    }
-
-    private static final class SocketWorkerHandle
-            implements RunningWorker {
-
-        private final SocketWorkerTransport transport;
-        private final Thread thread;
-
-        private SocketWorkerHandle(
-                SocketWorkerTransport transport
-        ) throws Exception {
-            this.transport = transport;
-            thread = Thread.ofPlatform()
-                    .name("integration-socket-worker")
-                    .daemon(true)
-                    .start(() -> {
-                        try {
-                            transport.runForever();
-                        } catch (InterruptedException error) {
-                            Thread.currentThread().interrupt();
-                        }
-                    });
-            long deadline = System.nanoTime()
-                    + Duration.ofSeconds(2).toNanos();
-            while (!transport.isConnected()
-                    && System.nanoTime() < deadline) {
-                Thread.sleep(10);
-            }
-            if (!transport.isConnected()) {
-                close();
-                throw new AssertionError(
-                        "Socket Worker did not connect to its Adapter"
-                );
-            }
-        }
-
-        @Override
-        public void close() {
-            transport.close();
-            thread.interrupt();
-            try {
-                thread.join(1_000);
-            } catch (InterruptedException error) {
-                Thread.currentThread().interrupt();
-            }
         }
     }
 }
