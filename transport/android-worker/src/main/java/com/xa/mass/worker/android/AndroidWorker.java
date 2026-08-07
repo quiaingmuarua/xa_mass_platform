@@ -3,6 +3,7 @@ package com.xa.mass.worker.android;
 import android.content.Context;
 
 import com.xa.mass.transport.client.WorkerTransportType;
+import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.runtime.RegisteredWorkerPreparation;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
@@ -258,7 +259,7 @@ public final class AndroidWorker implements WorkerLifecycle {
                             ),
                             resolvedRequestTimeout
                     ),
-                    definitions,
+                    new WorkerCommandDispatcher(definitions),
                     endpointUri -> new AndroidOkHttpTextWebSocketClient(
                             endpointUri,
                             resolvedRequestTimeout,

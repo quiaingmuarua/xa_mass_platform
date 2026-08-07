@@ -3,19 +3,14 @@ package com.xa.mass.worker.runtime;
 import com.xa.mass.transport.client.TextMessageClient;
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
-import com.xa.mass.worker.execution.WorkerCommandDispatcher;
-import com.xa.mass.worker.execution.WorkerEventDefinition;
+import com.xa.mass.worker.execution.WorkerCommandExecutor;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 
 import java.io.IOException;
 import java.net.URI;
-import java.util.Collection;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
@@ -34,16 +29,13 @@ public final class WorkerLoop implements WorkerLifecycle {
 
     private final Object lock = new Object();
     private final WorkerPreparation preparation;
-    private final WorkerCommandDispatcher dispatcher;
+    private final WorkerCommandExecutor commandExecutor;
     private final NetworkClientFactory networkClientFactory;
     private final WorkerRetryPolicy retryPolicy;
     private final ScheduledExecutorService supervisor;
-    private final ExecutorService commandExecutor;
     private final Set<Listener> listeners = new CopyOnWriteArraySet<>();
     private volatile Thread supervisorThread;
 
-    private boolean commandInFlight;
-    private boolean prepareAfterCommand;
     private long generation;
     private State state = State.STOPPED;
     private PreparedWorker preparedWorker;
@@ -53,7 +45,7 @@ public final class WorkerLoop implements WorkerLifecycle {
 
     public WorkerLoop(
             WorkerPreparation preparation,
-            Collection<? extends WorkerEventDefinition<?>> definitions,
+            WorkerCommandExecutor commandExecutor,
             NetworkClientFactory networkClientFactory,
             WorkerRetryPolicy retryPolicy
     ) {
@@ -61,12 +53,10 @@ public final class WorkerLoop implements WorkerLifecycle {
                 preparation,
                 "preparation"
         );
-        if (definitions == null || definitions.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "definitions must not be empty"
-            );
-        }
-        this.dispatcher = new WorkerCommandDispatcher(definitions);
+        this.commandExecutor = Objects.requireNonNull(
+                commandExecutor,
+                "commandExecutor"
+        );
         this.networkClientFactory = Objects.requireNonNull(
                 networkClientFactory,
                 "networkClientFactory"
@@ -84,20 +74,11 @@ public final class WorkerLoop implements WorkerLifecycle {
             supervisorThread = thread;
             return thread;
         });
-        commandExecutor = Executors.newSingleThreadExecutor(runnable -> {
-            Thread thread = new Thread(
-                    runnable,
-                    "xa-worker-command"
-            );
-            thread.setDaemon(true);
-            return thread;
-        });
     }
 
     @Override
     public void start() {
         long currentGeneration;
-        boolean prepareNow;
         WorkerResultSlot oldSlot;
         synchronized (lock) {
             if (state == State.CLOSED) {
@@ -113,17 +94,13 @@ public final class WorkerLoop implements WorkerLifecycle {
             activeRuntime = null;
             oldSlot = pendingResult;
             pendingResult = new WorkerResultSlot();
-            prepareNow = !commandInFlight;
-            prepareAfterCommand = !prepareNow;
         }
         closeQuietly(oldSlot);
         publish();
-        if (prepareNow) {
-            executeSupervisor(
-                    () -> attemptPreparation(currentGeneration, 1),
-                    currentGeneration
-            );
-        }
+        executeSupervisor(
+                () -> attemptPreparation(currentGeneration, 1),
+                currentGeneration
+        );
     }
 
     @Override
@@ -140,7 +117,6 @@ public final class WorkerLoop implements WorkerLifecycle {
             activeRuntime = null;
             pendingResult = null;
             preparedWorker = null;
-            prepareAfterCommand = false;
             state = State.STOPPED;
             diagnosticMessage = null;
         }
@@ -152,30 +128,19 @@ public final class WorkerLoop implements WorkerLifecycle {
     @Override
     public boolean send(WorkerCommand command) {
         Objects.requireNonNull(command, "command");
-        long commandGeneration;
+        TextMessageWorkerRuntime runtime;
         synchronized (lock) {
-            if (state != State.RUNNING
-                    || activeRuntime == null
-                    || !activeRuntime.isConnected()
-                    || commandInFlight
-                    || pendingResult == null
-                    || pendingResult.hasResult()) {
+            if (state != State.RUNNING) {
                 return false;
             }
-            commandInFlight = true;
-            commandGeneration = generation;
-        }
-        try {
-            commandExecutor.execute(
-                    () -> executeCommand(commandGeneration, command)
-            );
-            return true;
-        } catch (RejectedExecutionException error) {
-            synchronized (lock) {
-                commandInFlight = false;
+            runtime = activeRuntime;
+            if (runtime == null) {
+                throw new IllegalStateException(
+                        "RUNNING Worker has no active runtime"
+                );
             }
-            return false;
         }
+        return runtime.send(command);
     }
 
     @Override
@@ -237,7 +202,6 @@ public final class WorkerLoop implements WorkerLifecycle {
             activeRuntime = null;
             pendingResult = null;
             preparedWorker = null;
-            prepareAfterCommand = false;
             state = State.CLOSED;
             diagnosticMessage = null;
         }
@@ -245,7 +209,6 @@ public final class WorkerLoop implements WorkerLifecycle {
         closeQuietly(resultSlot);
         closeQuietly(preparation);
         publishFinalAndShutdown();
-        commandExecutor.shutdownNow();
     }
 
     private void attemptPreparation(long currentGeneration, int attempt) {
@@ -290,7 +253,7 @@ public final class WorkerLoop implements WorkerLifecycle {
         TextMessageWorkerRuntime runtime = new TextMessageWorkerRuntime(
                 client,
                 prepared.workerId(),
-                this::send,
+                commandExecutor,
                 resultSlot,
                 runtimeListener(currentGeneration)
         );
@@ -303,10 +266,7 @@ public final class WorkerLoop implements WorkerLifecycle {
             }
             activeRuntime = runtime;
             preparedWorker = prepared;
-            state = State.RUNNING;
-            diagnosticMessage = null;
         }
-        publish();
         try {
             runtime.start();
         } catch (RuntimeException error) {
@@ -315,7 +275,20 @@ public final class WorkerLoop implements WorkerLifecycle {
                     runtime,
                     error
             );
+            return;
         }
+        synchronized (lock) {
+            if (!isInstallingRuntimeLocked(
+                    currentGeneration,
+                    runtime
+            )) {
+                closeQuietly(runtime);
+                return;
+            }
+            state = State.RUNNING;
+            diagnosticMessage = null;
+        }
+        publish();
     }
 
     private TextMessageWorkerRuntime.Listener runtimeListener(
@@ -356,7 +329,7 @@ public final class WorkerLoop implements WorkerLifecycle {
             RuntimeException error
     ) {
         synchronized (lock) {
-            if (!isCurrentRuntimeLocked(
+            if (!isInstallingRuntimeLocked(
                     currentGeneration,
                     runtime
             )) {
@@ -380,7 +353,7 @@ public final class WorkerLoop implements WorkerLifecycle {
                 return;
             }
             if (failure != null) {
-                diagnosticMessage = "Text-message connection failed: "
+                diagnosticMessage = "Worker runtime reported failure: "
                         + safeMessage(failure);
             } else if (runtime.isConnected()) {
                 diagnosticMessage = null;
@@ -393,7 +366,6 @@ public final class WorkerLoop implements WorkerLifecycle {
             long currentGeneration,
             TextMessageWorkerRuntime runtime
     ) {
-        boolean prepareNow;
         synchronized (lock) {
             if (!isCurrentRuntimeLocked(
                     currentGeneration,
@@ -406,77 +378,10 @@ public final class WorkerLoop implements WorkerLifecycle {
             state = State.PREPARING;
             diagnosticMessage = "Connection retry budget exhausted; "
                     + "preparing Worker again";
-            prepareNow = !commandInFlight;
-            prepareAfterCommand = !prepareNow;
         }
         closeQuietly(runtime);
         publish();
-        if (prepareNow) {
-            attemptPreparation(currentGeneration, 1);
-        }
-    }
-
-    private void executeCommand(
-            long commandGeneration,
-            WorkerCommand command
-    ) {
-        Optional<WorkerResult> result;
-        RuntimeException failure = null;
-        try {
-            result = dispatcher.execute(command);
-        } catch (RuntimeException error) {
-            result = Optional.empty();
-            failure = error;
-        }
-        finishCommand(commandGeneration, result, failure);
-    }
-
-    private void finishCommand(
-            long commandGeneration,
-            Optional<WorkerResult> result,
-            RuntimeException failure
-    ) {
-        TextMessageWorkerRuntime runtime = null;
-        boolean prepareNow = false;
-        long prepareGeneration = 0L;
-        synchronized (lock) {
-            commandInFlight = false;
-            if (commandGeneration == generation
-                    && (state == State.RUNNING
-                            || state == State.PREPARING)) {
-                if (failure != null) {
-                    diagnosticMessage = "Worker command failed: "
-                            + safeMessage(failure);
-                } else if (result.isPresent()
-                        && pendingResult != null
-                        && !pendingResult.offer(result.get())) {
-                    diagnosticMessage = "Worker result slot is occupied";
-                }
-                if (state == State.RUNNING) {
-                    runtime = activeRuntime;
-                }
-            }
-            if (state == State.PREPARING
-                    && activeRuntime == null
-                    && prepareAfterCommand) {
-                prepareAfterCommand = false;
-                prepareNow = true;
-                prepareGeneration = generation;
-            }
-        }
-        if (runtime != null) {
-            runtime.flushPendingResult();
-        }
-        if (failure != null) {
-            publish();
-        }
-        if (prepareNow) {
-            long currentGeneration = prepareGeneration;
-            executeSupervisor(
-                    () -> attemptPreparation(currentGeneration, 1),
-                    currentGeneration
-            );
-        }
+        attemptPreparation(currentGeneration, 1);
     }
 
     private void handlePreparationFailure(
@@ -525,7 +430,6 @@ public final class WorkerLoop implements WorkerLifecycle {
             activeRuntime = null;
             pendingResult = null;
             preparedWorker = null;
-            prepareAfterCommand = false;
             state = State.ERROR;
             diagnosticMessage = message;
         }
@@ -552,6 +456,15 @@ public final class WorkerLoop implements WorkerLifecycle {
     ) {
         return generation == currentGeneration
                 && state == State.RUNNING
+                && activeRuntime == runtime;
+    }
+
+    private boolean isInstallingRuntimeLocked(
+            long currentGeneration,
+            TextMessageWorkerRuntime runtime
+    ) {
+        return generation == currentGeneration
+                && state == State.PREPARING
                 && activeRuntime == runtime;
     }
 

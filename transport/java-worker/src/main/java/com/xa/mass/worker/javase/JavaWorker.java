@@ -6,6 +6,7 @@ import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.transport.client.jdk.JdkLineSocketClient;
 import com.xa.mass.transport.client.okhttp.OkHttpTextWebSocketClient;
 import com.xa.mass.transport.client.okhttp.OkHttpWorkerControlClient;
+import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.runtime.RegisteredWorkerPreparation;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
@@ -215,7 +216,7 @@ public final class JavaWorker implements WorkerLifecycle {
                             ),
                             resolvedRequestTimeout
                     ),
-                    definitions,
+                    new WorkerCommandDispatcher(definitions),
                     endpointUri -> createNetworkClient(
                             transportType,
                             endpointUri,

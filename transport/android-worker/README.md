@@ -13,8 +13,10 @@ It owns:
 - Application-Context-specific Worker Properties loading.
 
 Core owns `RegisteredWorkerPreparation`, `WorkerLoop`, command dispatch, event
-definitions, the one-endpoint runtime, and pending-result behavior. Android
-does not implement a second Worker lifecycle or persist Endpoint URIs.
+definitions, and the one-endpoint runtime. The runtime is the final command
+admission and pending-result Owner; the loop only supervises preparation and
+runtime replacement. Android does not implement a second Worker lifecycle or
+persist Endpoint URIs.
 
 `AndroidWorker` implements Core's `WorkerLifecycle`. Its state, snapshot, and
 listener types are the shared Core contract rather than Android mirrors. The

@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.xa.mass.transport.client.TextMessageClient;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
+import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventHandler;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
@@ -23,6 +24,7 @@ import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -45,6 +47,34 @@ class WorkerLoopTest {
         for (WorkerLoop loop : loops) {
             loop.close();
         }
+    }
+
+    @Test
+    void runningIsPublishedOnlyAfterRuntimeStartReturns() throws Exception {
+        CountDownLatch startEntered = new CountDownLatch(1);
+        CountDownLatch startRelease = new CountDownLatch(1);
+        FakeTextMessageClient client = new FakeTextMessageClient(
+                startEntered,
+                startRelease
+        );
+        WorkerLoop loop = new WorkerLoop(
+                new FakePreparation(0),
+                command -> Optional.empty(),
+                endpoint -> client,
+                policy(1)
+        );
+        loops.add(loop);
+
+        loop.start();
+        assertTrue(startEntered.await(5, TimeUnit.SECONDS));
+        assertEquals(
+                WorkerLifecycle.State.PREPARING,
+                loop.snapshot().state()
+        );
+
+        startRelease.countDown();
+        await(() -> loop.snapshot().state()
+                == WorkerLifecycle.State.RUNNING);
     }
 
     @Test
@@ -133,7 +163,7 @@ class WorkerLoopTest {
     }
 
     @Test
-    void commandCompletesBeforeReprepareAndPendingResultCrossesRuntime()
+    void runtimeWaitsForCommandBeforeExitAndPendingResultCrossesRuntime()
             throws Exception {
         CountDownLatch entered = new CountDownLatch(1);
         CountDownLatch release = new CountDownLatch(1);
@@ -159,8 +189,11 @@ class WorkerLoopTest {
         assertTrue(entered.await(5, TimeUnit.SECONDS));
 
         first.exhaust();
-        await(() -> loop.snapshot().state()
-                == WorkerLifecycle.State.PREPARING);
+        assertEquals(
+                WorkerLifecycle.State.RUNNING,
+                loop.snapshot().state()
+        );
+        assertFalse(loop.isConnected());
         assertEquals(1, preparation.calls.get());
 
         release.countDown();
@@ -353,7 +386,9 @@ class WorkerLoopTest {
                 );
         WorkerLoop loop = new WorkerLoop(
                 preparation,
-                List.of(taskDefinition, systemDefinition),
+                new WorkerCommandDispatcher(
+                        List.of(taskDefinition, systemDefinition)
+                ),
                 networks,
                 retryPolicy
         );
@@ -462,13 +497,44 @@ class WorkerLoopTest {
     private static final class FakeTextMessageClient
             implements TextMessageClient {
 
+        private final CountDownLatch startEntered;
+        private final CountDownLatch startRelease;
         private volatile Listener listener;
         private volatile boolean connected;
         private final List<String> sent = new CopyOnWriteArrayList<>();
 
+        private FakeTextMessageClient() {
+            this(null, null);
+        }
+
+        private FakeTextMessageClient(
+                CountDownLatch startEntered,
+                CountDownLatch startRelease
+        ) {
+            this.startEntered = startEntered;
+            this.startRelease = startRelease;
+        }
+
         @Override
         public void start(Listener listener) {
             this.listener = listener;
+            if (startEntered == null) {
+                return;
+            }
+            startEntered.countDown();
+            try {
+                if (!startRelease.await(5, TimeUnit.SECONDS)) {
+                    throw new IllegalStateException(
+                            "Timed out waiting to start client"
+                    );
+                }
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(
+                        "Interrupted while starting client",
+                        error
+                );
+            }
         }
 
         @Override

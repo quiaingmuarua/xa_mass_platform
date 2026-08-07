@@ -1,24 +1,23 @@
 package com.xa.mass.worker.runtime;
 
 import com.xa.mass.transport.client.TextMessageClient;
+import com.xa.mass.worker.execution.WorkerCommandExecutor;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 
 import java.util.Objects;
+import java.util.Optional;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 
 /**
  * Runs Worker Delivery over one prepared, reconnecting text endpoint.
  */
 final class TextMessageWorkerRuntime
         implements AutoCloseable, TextMessageClient.Listener {
-
-    @FunctionalInterface
-    interface CommandReceiver {
-
-        boolean receive(WorkerCommand command);
-    }
 
     interface Listener {
 
@@ -33,7 +32,8 @@ final class TextMessageWorkerRuntime
     private final TextMessageClient client;
     private final WorkerConnectionBind bind;
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
-    private final CommandReceiver commandReceiver;
+    private final WorkerCommandExecutor commandExecutor;
+    private final ExecutorService commandThread;
     private final WorkerResultSlot pendingResult;
     private final Listener listener;
 
@@ -41,25 +41,35 @@ final class TextMessageWorkerRuntime
     private boolean closed;
     private boolean bindSent;
     private boolean exitNotified;
+    private boolean exitRequested;
+    private boolean commandInFlight;
 
     TextMessageWorkerRuntime(
             TextMessageClient client,
             String workerId,
-            CommandReceiver commandReceiver,
+            WorkerCommandExecutor commandExecutor,
             WorkerResultSlot pendingResult,
             Listener listener
     ) {
         this.client = Objects.requireNonNull(client, "client");
         this.bind = new WorkerConnectionBind(workerId);
-        this.commandReceiver = Objects.requireNonNull(
-                commandReceiver,
-                "commandReceiver"
+        this.commandExecutor = Objects.requireNonNull(
+                commandExecutor,
+                "commandExecutor"
         );
         this.pendingResult = Objects.requireNonNull(
                 pendingResult,
                 "pendingResult"
         );
         this.listener = Objects.requireNonNull(listener, "listener");
+        commandThread = Executors.newSingleThreadExecutor(runnable -> {
+            Thread thread = new Thread(
+                    runnable,
+                    "xa-worker-command"
+            );
+            thread.setDaemon(true);
+            return thread;
+        });
     }
 
     void start() {
@@ -104,19 +114,15 @@ final class TextMessageWorkerRuntime
 
     @Override
     public void onMessage(String message) {
-        synchronized (this) {
-            if (!started || closed || exitNotified || !bindSent) {
-                closeProtocolErrorLocked();
-                return;
-            }
+        WorkerCommand command;
+        try {
+            command = codec.decodeWorkerCommand(message);
+        } catch (RuntimeException error) {
+            closeProtocolError();
+            return;
         }
-        WorkerCommand command = codec.decodeWorkerCommand(message);
-        if (command == null || !commandReceiver.receive(command)) {
-            synchronized (this) {
-                if (!closed && !exitNotified) {
-                    closeProtocolErrorLocked();
-                }
-            }
+        if (command == null || !send(command)) {
+            closeProtocolError();
         }
     }
 
@@ -144,13 +150,41 @@ final class TextMessageWorkerRuntime
 
     @Override
     public void onReconnectExhausted() {
-        boolean notify;
+        boolean notify = false;
         synchronized (this) {
             bindSent = false;
-            notify = markExitLocked();
+            if (closed || exitNotified) {
+                return;
+            }
+            if (commandInFlight) {
+                exitRequested = true;
+            } else {
+                notify = markExitLocked();
+            }
         }
         if (notify) {
             notifyExit();
+        }
+    }
+
+    boolean send(WorkerCommand command) {
+        Objects.requireNonNull(command, "command");
+        synchronized (this) {
+            if (!isConnected()
+                    || commandInFlight
+                    || pendingResult.hasResult()) {
+                return false;
+            }
+            commandInFlight = true;
+        }
+        try {
+            commandThread.execute(() -> executeCommand(command));
+            return true;
+        } catch (RejectedExecutionException error) {
+            synchronized (this) {
+                commandInFlight = false;
+            }
+            return false;
         }
     }
 
@@ -160,15 +194,6 @@ final class TextMessageWorkerRuntime
                 && !exitNotified
                 && bindSent
                 && client.isConnected();
-    }
-
-    void flushPendingResult() {
-        synchronized (this) {
-            if (!isConnected()) {
-                return;
-            }
-            sendPendingLocked();
-        }
     }
 
     @Override
@@ -182,6 +207,51 @@ final class TextMessageWorkerRuntime
             bindSent = false;
         }
         client.close();
+        commandThread.shutdownNow();
+    }
+
+    private void executeCommand(WorkerCommand command) {
+        Optional<WorkerResult> result;
+        RuntimeException failure = null;
+        try {
+            result = commandExecutor.execute(command);
+        } catch (RuntimeException error) {
+            result = Optional.empty();
+            failure = error;
+        }
+        finishCommand(result, failure);
+    }
+
+    private void finishCommand(
+            Optional<WorkerResult> result,
+            RuntimeException failure
+    ) {
+        boolean notifyExit = false;
+        RuntimeException reportedFailure = failure;
+        synchronized (this) {
+            commandInFlight = false;
+            if (closed) {
+                return;
+            }
+            if (reportedFailure == null
+                    && result.isPresent()
+                    && !pendingResult.offer(result.get())) {
+                reportedFailure = new IllegalStateException(
+                        "Worker result slot is occupied"
+                );
+            }
+            if (exitRequested) {
+                notifyExit = markExitLocked();
+            } else if (isConnected()) {
+                sendPendingLocked();
+            }
+        }
+        if (reportedFailure != null) {
+            notifyStateChanged(reportedFailure);
+        }
+        if (notifyExit) {
+            notifyExit();
+        }
     }
 
     private boolean sendBindLocked() {
@@ -210,6 +280,12 @@ final class TextMessageWorkerRuntime
     private void closeProtocolErrorLocked() {
         bindSent = false;
         client.closeCurrent(TextMessageClient.CloseReason.PROTOCOL_ERROR);
+    }
+
+    private synchronized void closeProtocolError() {
+        if (!closed && !exitNotified) {
+            closeProtocolErrorLocked();
+        }
     }
 
     private boolean markExitLocked() {

@@ -129,9 +129,11 @@ tag.
   Android, Netty, Spring, Redis, Server, or Kernel implementations.
   `RegisteredWorkerPreparation` owns Properties snapshotting, Worker ID
   recovery, and Register/Bind. `WorkerLoop` owns bounded preparation retry,
-  serialized command execution, the single pending result, runtime replacement,
-  and local lifecycle state. The one-round runtime owns only connection Bind,
-  command decode, result send, and exact-once exit notification.
+  runtime replacement, the cross-round result-slot lifetime, and local
+  lifecycle state. It only performs a current-state gate before delegating
+  `send`. The one-round runtime owns final command admission, serialized
+  execution, connection Bind, pending-result access and send, and exact-once
+  exit notification.
 - `transport/java-worker` may depend on `transport/worker-core`, the shared
   Worker Delivery contract, OkHttp, and JDK networking. It must compile with
   `--release 11`, expose no OkHttp types, and must not import Android, JNDI,

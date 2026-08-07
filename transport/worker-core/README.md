@@ -22,7 +22,7 @@ Every command reaches the same DTO entry:
 ```text
 encoded network input
   -> strict WorkerCommand decode at the transport boundary
-  -> WorkerLoop.send(WorkerCommand)
+  -> TextMessageWorkerRuntime.send(WorkerCommand)
   -> WorkerCommandDispatcher
   -> WorkerEventDefinition(src, eventCode, resolver, handler)
   -> WorkerResult
@@ -61,10 +61,14 @@ complete immutable Properties snapshot, restores or registers the Worker ID,
 persists a newly issued ID, and performs Endpoint Bind. It does not start a
 network connection or execute commands.
 
-`WorkerLoop` owns static definitions, one command executor, one pending-result
-slot, preparation retry policy, and the current runtime reference. Preparation
-network failures consume the bounded prepare budget. Exhaustion or a contract
-failure enters `ERROR`; another round begins only after an explicit `start()`.
+Java and Android assemblies construct one immutable
+`WorkerCommandDispatcher` from their static definitions and inject it as a
+`WorkerCommandExecutor`. `WorkerLoop` owns only preparation retry, the current
+runtime reference, the result slot carried between automatic runtime rounds,
+and lifecycle state. It never inspects command-busy or pending-result state.
+Preparation network failures consume the bounded prepare budget. Exhaustion
+or a contract failure enters `ERROR`; another round begins only after an
+explicit `start()`.
 
 The one-round runtime owns only:
 
@@ -73,28 +77,34 @@ prepared workerId + endpoint Client
   -> onOpen: send WorkerConnectionBind
   -> send pending WorkerResult if present
   -> decode inbound WorkerCommand
-  -> call WorkerLoop.send
+  -> final command admission and serial execution
+  -> retain/send the resulting WorkerResult
   -> report reconnect exhaustion once
 ```
 
-It has no Identity Store, Properties provider, Control Client, definitions,
-dispatcher, or preparation retry logic. Ordinary reconnects stay inside the
-current `TextMessageClient` and reuse the prepared endpoint. Only reconnect
-budget exhaustion exits the runtime and returns control to `WorkerLoop`.
+It receives only the prepared endpoint, a `WorkerCommandExecutor`, and the
+shared result slot. It has no Identity Store, Properties provider, Control
+Client, definitions, dispatcher construction, or preparation retry logic.
+Ordinary reconnects stay inside the current `TextMessageClient` and reuse the
+prepared endpoint. Only reconnect budget exhaustion exits the runtime and
+returns control to `WorkerLoop`.
 
 ## Command And Result Ownership
 
 Adapter commands and local `SYSTEM` or `ADAPTER` commands use the same
-`WorkerLoop.send(WorkerCommand)` method. It returns `true` only while the
-Worker is running and connected, with no command executing and no pending
-result. Rejected commands are not queued and callers decide whether to retry.
+`WorkerLifecycle.send(WorkerCommand)` entry. `WorkerLoop` performs only a
+current `RUNNING` check and delegates to the current runtime. The runtime is
+the final admission owner: it accepts only while connected, with no command
+executing and no pending result. Rejected commands are not queued and callers
+decide whether to retry.
 
-If a runtime exits during handler execution, the handler completes before a
-new runtime is installed. Its result enters the Worker-owned single slot and
-crosses that automatic runtime replacement. The next connection sends Bind
-before the pending result. Network-stack acceptance clears the slot; this is
-not an application ACK. Explicit `stop()`, terminal `ERROR`, and `close()`
-clear the slot.
+If reconnect exhaustion occurs during handler execution, that runtime waits
+for the handler and places its result in the shared single slot before issuing
+its exact-once exit callback. `WorkerLoop` then starts the next preparation
+round without consulting command state. The next connection sends Bind before
+the pending result. Network-stack acceptance clears the slot; this is not an
+application ACK. Explicit `stop()`, terminal `ERROR`, and `close()` clear the
+slot.
 
 `PollingWorkerTransport` remains a separate request-response mechanism. It
 decodes the point response before calling the same DTO executor and submits a

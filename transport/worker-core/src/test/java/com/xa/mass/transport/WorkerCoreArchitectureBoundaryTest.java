@@ -194,7 +194,7 @@ class WorkerCoreArchitectureBoundaryTest {
         assertConstructor(
                 WorkerLoop.class,
                 WorkerPreparation.class,
-                Collection.class,
+                WorkerCommandExecutor.class,
                 WorkerLoop.NetworkClientFactory.class,
                 WorkerRetryPolicy.class
         );
@@ -250,6 +250,20 @@ class WorkerCoreArchitectureBoundaryTest {
                 "com/xa/mass/worker/transport/connection/"
                         + "TextMessageWorker" + "Transport.java"
         )));
+
+        Path loopFile = sourceRoot.resolve(
+                "com/xa/mass/worker/runtime/WorkerLoop.java"
+        );
+        String loop = Files.readString(loopFile);
+        for (String forbidden : new String[]{
+                "WorkerEventDefinition",
+                "WorkerCommandDispatcher",
+                "commandInFlight",
+                "prepareAfterCommand",
+                "pendingResult.hasResult()"
+        }) {
+            assertFalse(loop.contains(forbidden), forbidden);
+        }
     }
 
     private static boolean hasMethod(

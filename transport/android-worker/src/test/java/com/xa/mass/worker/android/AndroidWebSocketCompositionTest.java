@@ -4,6 +4,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
+import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.transport.client.TextMessageClient;
@@ -113,14 +114,17 @@ public class AndroidWebSocketCompositionTest {
                     );
             WorkerLoop worker = new WorkerLoop(
                             preparation,
-                            List.of(WorkerEventDefinition.of(
-                                    "TASK",
-                                    "test.observe",
-                                    WorkerEventParameterResolvers.jsonMap(),
-                                    parameters -> Jsons.toJson(Map.of(
-                                            "observed",
-                                            parameters.get("value")
-                                    ))
+                            new WorkerCommandDispatcher(List.of(
+                                    WorkerEventDefinition.of(
+                                            "TASK",
+                                            "test.observe",
+                                            WorkerEventParameterResolvers
+                                                    .jsonMap(),
+                                            parameters -> Jsons.toJson(Map.of(
+                                                    "observed",
+                                                    parameters.get("value")
+                                            ))
+                                    )
                             )),
                             endpoint ->
                                     new AndroidOkHttpTextWebSocketClient(

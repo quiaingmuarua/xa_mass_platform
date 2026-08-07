@@ -2,6 +2,7 @@ package com.xa.mass.server.integration;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
@@ -445,7 +446,7 @@ class RuntimeApiPythonIntegrationTest {
             case WEBSOCKET -> new TextMessageWorkerHandle(
                     new WorkerLoop(
                             fixedPreparation(workerId, serverUrl),
-                            definitions,
+                            new WorkerCommandDispatcher(definitions),
                             endpoint -> new OkHttpTextWebSocketClient(
                                     endpoint,
                                     Duration.ofSeconds(2),
@@ -457,7 +458,7 @@ class RuntimeApiPythonIntegrationTest {
             case SOCKET -> new TextMessageWorkerHandle(
                     new WorkerLoop(
                             fixedPreparation(workerId, serverUrl),
-                            definitions,
+                            new WorkerCommandDispatcher(definitions),
                             endpoint -> new JdkLineSocketClient(
                                     endpoint,
                                     Duration.ofSeconds(2),
