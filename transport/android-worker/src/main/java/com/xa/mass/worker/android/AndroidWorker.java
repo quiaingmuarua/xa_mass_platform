@@ -4,10 +4,12 @@ import android.content.Context;
 
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
-import com.xa.mass.worker.runtime.TextMessageWorkerRuntime;
+import com.xa.mass.worker.runtime.RegisteredWorkerPreparation;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
+import com.xa.mass.worker.runtime.WorkerLoop;
 import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
 import com.xa.mass.worker.runtime.WorkerRetryPolicy;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 
 import java.net.URI;
 import java.time.Duration;
@@ -27,16 +29,16 @@ public final class AndroidWorker implements WorkerLifecycle {
 
     private final Object lock = new Object();
     private final String processCoordinate;
-    private final TextMessageWorkerRuntime runtime;
+    private final WorkerLoop worker;
     private boolean processLeaseHeld;
     private boolean closed;
 
     private AndroidWorker(
             String processCoordinate,
-            TextMessageWorkerRuntime runtime
+            WorkerLoop worker
     ) {
         this.processCoordinate = processCoordinate;
-        this.runtime = runtime;
+        this.worker = worker;
     }
 
     public static Builder builder(
@@ -68,7 +70,7 @@ public final class AndroidWorker implements WorkerLifecycle {
             }
         }
         try {
-            runtime.start();
+            worker.start();
         } catch (RuntimeException error) {
             releaseProcessLease();
             throw error;
@@ -77,33 +79,33 @@ public final class AndroidWorker implements WorkerLifecycle {
 
     @Override
     public void stop() {
-        runtime.stop();
+        worker.stop();
         releaseProcessLease();
     }
 
     @Override
-    public void refreshProperties() {
-        runtime.refreshProperties();
+    public boolean send(WorkerCommand command) {
+        return worker.send(command);
     }
 
     @Override
     public Snapshot snapshot() {
-        return runtime.snapshot();
+        return worker.snapshot();
     }
 
     @Override
     public boolean isConnected() {
-        return runtime.isConnected();
+        return worker.isConnected();
     }
 
     @Override
     public void addListener(Listener listener) {
-        runtime.addListener(listener);
+        worker.addListener(listener);
     }
 
     @Override
     public void removeListener(Listener listener) {
-        runtime.removeListener(listener);
+        worker.removeListener(listener);
     }
 
     @Override
@@ -114,7 +116,7 @@ public final class AndroidWorker implements WorkerLifecycle {
             }
             closed = true;
         }
-        runtime.close();
+        worker.close();
         releaseProcessLease();
     }
 
@@ -245,25 +247,29 @@ public final class AndroidWorker implements WorkerLifecycle {
             };
             Duration resolvedRequestTimeout = requestTimeout;
             WorkerRetryPolicy resolvedRetryPolicy = retryPolicy;
-            TextMessageWorkerRuntime runtime = new TextMessageWorkerRuntime(
-                    workerGroupId,
-                    WorkerTransportType.WEBSOCKET,
-                    identityStore,
-                    completeProperties,
+            WorkerLoop worker = new WorkerLoop(
+                    new RegisteredWorkerPreparation(
+                            workerGroupId,
+                            WorkerTransportType.WEBSOCKET,
+                            identityStore,
+                            completeProperties,
+                            new AndroidOkHttpWorkerControlClient(
+                                    runtimeApiBaseUrl
+                            ),
+                            resolvedRequestTimeout
+                    ),
                     definitions,
-                    new AndroidOkHttpWorkerControlClient(runtimeApiBaseUrl),
                     endpointUri -> new AndroidOkHttpTextWebSocketClient(
                             endpointUri,
                             resolvedRequestTimeout,
                             resolvedRetryPolicy.connectionPolicy()
                     ),
-                    resolvedRequestTimeout,
                     resolvedRetryPolicy
             );
             return new AndroidWorker(
                     applicationContext.getPackageName()
                             + "\n" + workerGroupId,
-                    runtime
+                    worker
             );
         }
     }

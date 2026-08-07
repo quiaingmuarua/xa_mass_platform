@@ -38,11 +38,10 @@ Status: current repository handoff.
   Server ingress. It has no Spring, Server, Kernel, or Redis dependency.
 - `transport/worker-core/` is the Java 11 local core containing Worker
   execution, event definitions, error classification, Worker
-  Polling plus unified long-lived text-message state machines, network Client
-  contracts, and the
-  platform-neutral Register/Bind control Client contract. It also owns the
-  shared `WorkerLifecycle` observation contract, text-message Worker startup
-  runtime, Identity store contract, and Properties provider contract. It
+  Polling, `WorkerPreparation`, the long-lived `WorkerLoop`, one-round
+  text-message runtime, and network Client contracts. It also owns the shared
+  `WorkerLifecycle`, Identity store, Properties provider, and platform-neutral
+  Register/Bind control contracts. It
   contains no concrete network or platform implementation.
 - `transport/java-worker/` owns the `JavaWorker` WebSocket/line-Socket assembly plus the
   default Java OkHttp point/WebSocket/control and JDK line-socket Client
@@ -52,7 +51,7 @@ Status: current repository handoff.
   HandlerThread/Looper OkHttp WebSocket Client, Android Register/Bind Client,
   long-lived Identity storage, and the complete `AndroidWorker` assembly. It
   implements Core's `WorkerLifecycle`, delegates its mechanism to the shared
-  text-message Runtime, and does not persist Endpoint URIs or implement a
+  Worker Loop, and does not persist Endpoint URIs or implement a
   second command, result, session, or pending-result state machine.
 - The legacy Java platform is available exclusively from
   `legacy-java-platform-final-2026-07-24`.
@@ -127,10 +126,12 @@ tag.
   in-process fast path.
 - `transport/worker-core` may depend only on the shared Worker Delivery
   contract. It must compile with `--release 11` and must not import OkHttp,
-  Android, Netty, Spring, Redis, Server, or Kernel implementations. Its shared
-  text-message Runtime owns Properties snapshotting, Worker ID recovery,
-  bounded Register/Bind preparation, per-start pending-result ownership,
-  exhausted-Transport replacement, and local lifecycle state.
+  Android, Netty, Spring, Redis, Server, or Kernel implementations.
+  `RegisteredWorkerPreparation` owns Properties snapshotting, Worker ID
+  recovery, and Register/Bind. `WorkerLoop` owns bounded preparation retry,
+  serialized command execution, the single pending result, runtime replacement,
+  and local lifecycle state. The one-round runtime owns only connection Bind,
+  command decode, result send, and exact-once exit notification.
 - `transport/java-worker` may depend on `transport/worker-core`, the shared
   Worker Delivery contract, OkHttp, and JDK networking. It must compile with
   `--release 11`, expose no OkHttp types, and must not import Android, JNDI,
@@ -141,8 +142,8 @@ tag.
   bounded fixed reconnect scheduling on a
   dedicated HandlerThread. `AndroidWorker` owns application-scoped Identity,
   concrete Android Client assembly, and Application Context adaptation; Core
-  owns Register/Bind sequencing, Properties snapshot refresh, and unified
-  text-message Transport construction. Android Worker must not persist
+  owns Register/Bind preparation and the unified Worker Loop. Android Worker
+  must not persist
   Endpoint URIs or cache or interpret
   Worker business messages outside Core's one pending-result mechanism.
   Android hosts own process lifetime, permissions beyond INTERNET, static

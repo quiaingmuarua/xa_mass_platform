@@ -2,7 +2,6 @@ package com.xa.mass.worker.execution;
 
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 import java.util.Collection;
@@ -12,7 +11,6 @@ import java.util.function.LongSupplier;
 public final class WorkerCommandDispatcher
         implements WorkerCommandExecutor {
 
-    private final WorkerDeliveryCodec codec;
     private final WorkerEventDefinitionManager eventDefinitionManager;
     private final LongSupplier nowMillis;
 
@@ -21,29 +19,25 @@ public final class WorkerCommandDispatcher
     ) {
         this(
                 definitions,
-                new WorkerDeliveryCodec(),
                 System::currentTimeMillis
         );
     }
 
     WorkerCommandDispatcher(
             Collection<? extends WorkerEventDefinition<?>> definitions,
-            WorkerDeliveryCodec codec,
             LongSupplier nowMillis
     ) {
         this.eventDefinitionManager =
                 new WorkerEventDefinitionManager(definitions);
-        this.codec = requirePresent(codec, "codec");
         this.nowMillis = requirePresent(nowMillis, "nowMillis");
     }
 
     @Override
-    public Optional<WorkerResult> execute(String encodedCommand) {
-        WorkerCommand command = codec.decodeWorkerCommand(encodedCommand);
+    public Optional<WorkerResult> execute(WorkerCommand command) {
         if (command == null) {
             throw new WorkerException(
                     WorkerErrorCode.COMMAND_MESSAGE_INVALID,
-                    "command.decode",
+                    "command.execute",
                     null,
                     null
             );

@@ -1,5 +1,7 @@
 package com.xa.mass.worker.runtime;
 
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
+
 import java.net.URI;
 import java.util.Objects;
 
@@ -10,16 +12,10 @@ public interface WorkerLifecycle extends AutoCloseable {
 
     enum State {
         STOPPED,
-        STARTING,
+        PREPARING,
         RUNNING,
         ERROR,
         CLOSED
-    }
-
-    enum PrepareOperation {
-        NONE,
-        REGISTERING,
-        BINDING
     }
 
     enum ConnectionState {
@@ -38,7 +34,7 @@ public interface WorkerLifecycle extends AutoCloseable {
 
     void stop();
 
-    void refreshProperties();
+    boolean send(WorkerCommand command);
 
     Snapshot snapshot();
 
@@ -54,7 +50,6 @@ public interface WorkerLifecycle extends AutoCloseable {
     final class Snapshot {
 
         private final State state;
-        private final PrepareOperation prepareOperation;
         private final ConnectionState connectionState;
         private final String workerId;
         private final URI endpointUri;
@@ -62,17 +57,12 @@ public interface WorkerLifecycle extends AutoCloseable {
 
         public Snapshot(
                 State state,
-                PrepareOperation prepareOperation,
                 ConnectionState connectionState,
                 String workerId,
                 URI endpointUri,
                 String diagnosticMessage
         ) {
             this.state = Objects.requireNonNull(state, "state");
-            this.prepareOperation = Objects.requireNonNull(
-                    prepareOperation,
-                    "prepareOperation"
-            );
             this.connectionState = Objects.requireNonNull(
                     connectionState,
                     "connectionState"
@@ -84,10 +74,6 @@ public interface WorkerLifecycle extends AutoCloseable {
 
         public State state() {
             return state;
-        }
-
-        public PrepareOperation prepareOperation() {
-            return prepareOperation;
         }
 
         public ConnectionState connectionState() {

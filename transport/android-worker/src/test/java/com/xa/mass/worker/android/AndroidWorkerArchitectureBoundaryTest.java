@@ -53,7 +53,8 @@ public class AndroidWorkerArchitectureBoundaryTest {
         assertTrue(networkClient.contains("HandlerThread"));
         assertTrue(source.contains("public final class AndroidWorker"));
         assertTrue(source.contains("implements WorkerLifecycle"));
-        assertTrue(source.contains("new TextMessageWorkerRuntime("));
+        assertTrue(source.contains("new RegisteredWorkerPreparation("));
+        assertTrue(source.contains("new WorkerLoop("));
         assertFalse(source.contains("public enum State"));
         assertFalse(source.contains("public static final class Snapshot"));
         assertTrue(source.contains("WorkerTransportType.WEBSOCKET"));

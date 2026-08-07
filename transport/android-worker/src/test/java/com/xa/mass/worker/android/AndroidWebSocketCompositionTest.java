@@ -6,9 +6,12 @@ import static org.junit.Assert.assertTrue;
 
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
-import com.xa.mass.worker.transport.connection.TextMessageWorkerTransport;
 import com.xa.mass.transport.client.TextMessageClient;
 import com.xa.mass.transport.client.TextMessageReconnectPolicy;
+import com.xa.mass.worker.runtime.PreparedWorker;
+import com.xa.mass.worker.runtime.WorkerLoop;
+import com.xa.mass.worker.runtime.WorkerPreparation;
+import com.xa.mass.worker.runtime.WorkerRetryPolicy;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
@@ -92,20 +95,24 @@ public class AndroidWebSocketCompositionTest {
                             .toString()
                             .replaceFirst("^http", "ws")
             );
-            TextMessageClient client =
-                    new AndroidOkHttpTextWebSocketClient(
-                            socketUri,
-                            Duration.ofSeconds(2),
-                            TextMessageReconnectPolicy.of(
-                                    20,
-                                    Duration.ofMillis(20),
-                                    Duration.ofMillis(100)
-                            )
+            WorkerPreparation preparation = new WorkerPreparation() {
+                @Override
+                public PreparedWorker prepare() {
+                    return new PreparedWorker(MESSAGE_ID, socketUri);
+                }
+
+                @Override
+                public void close() {
+                }
+            };
+            TextMessageReconnectPolicy connectionPolicy =
+                    TextMessageReconnectPolicy.of(
+                            20,
+                            Duration.ofMillis(20),
+                            Duration.ofMillis(100)
                     );
-            TextMessageWorkerTransport worker =
-                    new TextMessageWorkerTransport(
-                            client,
-                            MESSAGE_ID,
+            WorkerLoop worker = new WorkerLoop(
+                            preparation,
                             List.of(WorkerEventDefinition.of(
                                     "TASK",
                                     "test.observe",
@@ -114,7 +121,18 @@ public class AndroidWebSocketCompositionTest {
                                             "observed",
                                             parameters.get("value")
                                     ))
-                            ))
+                            )),
+                            endpoint ->
+                                    new AndroidOkHttpTextWebSocketClient(
+                                            endpoint,
+                                            Duration.ofSeconds(2),
+                                            connectionPolicy
+                                    ),
+                            WorkerRetryPolicy.of(
+                                    1,
+                                    Duration.ofMillis(20),
+                                    connectionPolicy
+                            )
                     );
             try {
                 worker.start();

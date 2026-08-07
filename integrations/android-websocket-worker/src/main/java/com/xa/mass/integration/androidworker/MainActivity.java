@@ -80,8 +80,6 @@ public final class MainActivity extends Activity {
         statusValue.setText(
                 snapshot.state().name()
                         + " / "
-                        + snapshot.prepareOperation().name()
-                        + " / "
                         + snapshot.connectionState().name()
         );
         workerIdValue.setText(orFallback(

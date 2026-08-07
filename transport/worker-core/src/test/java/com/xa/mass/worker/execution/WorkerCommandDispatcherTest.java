@@ -11,7 +11,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
-import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
@@ -27,9 +26,6 @@ class WorkerCommandDispatcherTest {
     private static final long NOW = 1_000_000L;
     private static final String MESSAGE_ID =
             "91bc4b8c-29d8-4c18-950d-72c8f25e20e0";
-    private static final WorkerDeliveryCodec CODEC =
-            new WorkerDeliveryCodec();
-
     @Test
     void successfulEventProducesCorrelatedWorkerResult() {
         WorkerCommandDispatcher dispatcher = dispatcher(List.of(
@@ -42,7 +38,7 @@ class WorkerCommandDispatcherTest {
                 )
         ));
 
-        WorkerResult result = dispatcher.execute(encodedCommand(
+        WorkerResult result = dispatcher.execute(command(
                 TASK,
                 "test.observe",
                 "{\"value\":\"ready\"}",
@@ -105,7 +101,7 @@ class WorkerCommandDispatcherTest {
         ));
 
         assertFailure(
-                malformed.execute(encodedCommand(
+                malformed.execute(command(
                         TASK,
                         "test.observe",
                         "not-json",
@@ -114,7 +110,7 @@ class WorkerCommandDispatcherTest {
                 "1400"
         );
         assertFailure(
-                rejected.execute(encodedCommand(
+                rejected.execute(command(
                         TASK,
                         "test.observe",
                         "{}",
@@ -131,7 +127,7 @@ class WorkerCommandDispatcherTest {
         ));
 
         assertFailure(
-                dispatcher.execute(encodedCommand(
+                dispatcher.execute(command(
                         SYSTEM,
                         "shared.inspect",
                         "{}",
@@ -161,7 +157,7 @@ class WorkerCommandDispatcherTest {
         ));
 
         assertFailure(
-                throwing.execute(encodedCommand(
+                throwing.execute(command(
                         TASK,
                         "test.observe",
                         "{}",
@@ -170,7 +166,7 @@ class WorkerCommandDispatcherTest {
                 "1500"
         );
         assertFailure(
-                empty.execute(encodedCommand(
+                empty.execute(command(
                         TASK,
                         "test.observe",
                         "{}",
@@ -184,14 +180,14 @@ class WorkerCommandDispatcherTest {
     void malformedCommandIsAProtocolFailure() {
         WorkerException failure = assertThrows(
                 WorkerException.class,
-                () -> dispatcher(List.of()).execute("{bad-json")
+                () -> dispatcher(List.of()).execute(null)
         );
 
         assertEquals(
                 WorkerErrorCode.COMMAND_MESSAGE_INVALID,
                 failure.errorCode()
         );
-        assertEquals("command.decode", failure.operation());
+        assertEquals("command.execute", failure.operation());
     }
 
     @Test
@@ -205,7 +201,7 @@ class WorkerCommandDispatcherTest {
                 )
         ));
 
-        WorkerResult result = dispatcher.execute(encodedCommand(
+        WorkerResult result = dispatcher.execute(command(
                 TASK,
                 "test.raw",
                 "not-json",
@@ -230,7 +226,7 @@ class WorkerCommandDispatcherTest {
                 )
         ));
 
-        Optional<WorkerResult> result = dispatcher.execute(encodedCommand(
+        Optional<WorkerResult> result = dispatcher.execute(command(
                 TASK,
                 "test.observe",
                 "{}",
@@ -249,7 +245,6 @@ class WorkerCommandDispatcherTest {
                         "test.observe",
                         "\"done\""
                 )),
-                CODEC,
                 new java.util.function.LongSupplier() {
                     private int calls;
 
@@ -261,7 +256,7 @@ class WorkerCommandDispatcherTest {
                 }
         );
 
-        assertTrue(dispatcher.execute(encodedCommand(
+        assertTrue(dispatcher.execute(command(
                 TASK,
                 "test.observe",
                 "{}",
@@ -300,7 +295,6 @@ class WorkerCommandDispatcherTest {
     ) {
         return new WorkerCommandDispatcher(
                 definitions,
-                CODEC,
                 () -> NOW
         );
     }
@@ -310,7 +304,7 @@ class WorkerCommandDispatcherTest {
             WorkerMessageEndpoint src,
             String eventCode
     ) {
-        return dispatcher.execute(encodedCommand(
+        return dispatcher.execute(command(
                 src,
                 eventCode,
                 "{}",
@@ -318,13 +312,13 @@ class WorkerCommandDispatcherTest {
         )).orElseThrow().payload();
     }
 
-    private static String encodedCommand(
+    private static WorkerCommand command(
             WorkerMessageEndpoint src,
             String messageType,
             String payload,
             long executeBeforeMillis
     ) {
-        return CODEC.encodeWorkerCommand(new WorkerCommand(
+        return new WorkerCommand(
                 MESSAGE_ID,
                 src,
                 WORKER,
@@ -332,7 +326,7 @@ class WorkerCommandDispatcherTest {
                 executeBeforeMillis,
                 payload,
                 "result-context"
-        ));
+        );
     }
 
     private static void assertFailure(

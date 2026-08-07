@@ -7,11 +7,13 @@ import com.xa.mass.transport.client.jdk.JdkLineSocketClient;
 import com.xa.mass.transport.client.okhttp.OkHttpTextWebSocketClient;
 import com.xa.mass.transport.client.okhttp.OkHttpWorkerControlClient;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
-import com.xa.mass.worker.runtime.TextMessageWorkerRuntime;
+import com.xa.mass.worker.runtime.RegisteredWorkerPreparation;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
+import com.xa.mass.worker.runtime.WorkerLoop;
 import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
 import com.xa.mass.worker.runtime.WorkerRetryPolicy;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 
 import java.net.URI;
 import java.time.Duration;
@@ -24,10 +26,10 @@ public final class JavaWorker implements WorkerLifecycle {
     private static final String CLIENT_WORKER_KEY = "clientWorkerKey";
     private static final Duration DEFAULT_REQUEST_TIMEOUT =
             Duration.ofSeconds(10);
-    private final TextMessageWorkerRuntime runtime;
+    private final WorkerLoop worker;
 
-    private JavaWorker(TextMessageWorkerRuntime runtime) {
-        this.runtime = runtime;
+    private JavaWorker(WorkerLoop worker) {
+        this.worker = worker;
     }
 
     public static Builder builder(
@@ -46,42 +48,42 @@ public final class JavaWorker implements WorkerLifecycle {
 
     @Override
     public void start() {
-        runtime.start();
+        worker.start();
     }
 
     @Override
     public void stop() {
-        runtime.stop();
+        worker.stop();
     }
 
     @Override
-    public void refreshProperties() {
-        runtime.refreshProperties();
+    public boolean send(WorkerCommand command) {
+        return worker.send(command);
     }
 
     @Override
     public Snapshot snapshot() {
-        return runtime.snapshot();
+        return worker.snapshot();
     }
 
     @Override
     public boolean isConnected() {
-        return runtime.isConnected();
+        return worker.isConnected();
     }
 
     @Override
     public void addListener(Listener listener) {
-        runtime.addListener(listener);
+        worker.addListener(listener);
     }
 
     @Override
     public void removeListener(Listener listener) {
-        runtime.removeListener(listener);
+        worker.removeListener(listener);
     }
 
     @Override
     public void close() {
-        runtime.close();
+        worker.close();
     }
 
     public static final class Builder {
@@ -202,13 +204,18 @@ public final class JavaWorker implements WorkerLifecycle {
             };
             Duration resolvedRequestTimeout = requestTimeout;
             WorkerRetryPolicy resolvedRetryPolicy = retryPolicy;
-            TextMessageWorkerRuntime runtime = new TextMessageWorkerRuntime(
-                    workerGroupId,
-                    transportType,
-                    identityStore,
-                    completeProperties,
+            WorkerLoop worker = new WorkerLoop(
+                    new RegisteredWorkerPreparation(
+                            workerGroupId,
+                            transportType,
+                            identityStore,
+                            completeProperties,
+                            new OkHttpWorkerControlClient(
+                                    runtimeApiBaseUrl
+                            ),
+                            resolvedRequestTimeout
+                    ),
                     definitions,
-                    new OkHttpWorkerControlClient(runtimeApiBaseUrl),
                     endpointUri -> createNetworkClient(
                             transportType,
                             endpointUri,
@@ -216,10 +223,9 @@ public final class JavaWorker implements WorkerLifecycle {
                             resolvedRetryPolicy
                                     .connectionPolicy()
                     ),
-                    resolvedRequestTimeout,
                     resolvedRetryPolicy
             );
-            return new JavaWorker(runtime);
+            return new JavaWorker(worker);
         }
 
         private static TextMessageClient createNetworkClient(

@@ -7,6 +7,7 @@ import com.xa.mass.worker.execution.WorkerCommandExecutor;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.transport.client.WorkerPointClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 import java.io.IOException;
@@ -66,9 +67,18 @@ public final class PollingWorkerTransport implements AutoCloseable {
         if (!encodedCommand.isPresent()) {
             return false;
         }
-        Optional<WorkerResult> result = commandExecutor.execute(
+        WorkerCommand command = codec.decodeWorkerCommand(
                 encodedCommand.get()
         );
+        if (command == null) {
+            throw new WorkerException(
+                    WorkerErrorCode.COMMAND_MESSAGE_INVALID,
+                    "polling.decodeCommand",
+                    null,
+                    null
+            );
+        }
+        Optional<WorkerResult> result = commandExecutor.execute(command);
         if (!result.isPresent()) {
             return false;
         }

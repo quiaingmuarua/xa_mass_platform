@@ -6,7 +6,10 @@ import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
 import com.xa.mass.kernel.score.TaskItemScoreBandCore;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
-import com.xa.mass.worker.transport.connection.TextMessageWorkerTransport;
+import com.xa.mass.worker.runtime.PreparedWorker;
+import com.xa.mass.worker.runtime.WorkerLoop;
+import com.xa.mass.worker.runtime.WorkerPreparation;
+import com.xa.mass.worker.runtime.WorkerRetryPolicy;
 import com.xa.mass.transport.client.jdk.JdkLineSocketClient;
 import com.xa.mass.transport.client.okhttp.OkHttpTextWebSocketClient;
 import com.xa.mass.transport.client.okhttp.OkHttpWorkerControlClient;
@@ -440,25 +443,27 @@ class RuntimeApiPythonIntegrationTest {
                 );
         return switch (transportProfile) {
             case WEBSOCKET -> new TextMessageWorkerHandle(
-                    new TextMessageWorkerTransport(
-                            new OkHttpTextWebSocketClient(
-                                    serverUrl,
+                    new WorkerLoop(
+                            fixedPreparation(workerId, serverUrl),
+                            definitions,
+                            endpoint -> new OkHttpTextWebSocketClient(
+                                    endpoint,
                                     Duration.ofSeconds(2),
                                     connectionPolicy()
                             ),
-                            workerId,
-                            definitions
+                            workerRetryPolicy()
                     )
             );
             case SOCKET -> new TextMessageWorkerHandle(
-                    new TextMessageWorkerTransport(
-                            new JdkLineSocketClient(
-                                    serverUrl,
+                    new WorkerLoop(
+                            fixedPreparation(workerId, serverUrl),
+                            definitions,
+                            endpoint -> new JdkLineSocketClient(
+                                    endpoint,
                                     Duration.ofSeconds(2),
                                     connectionPolicy()
                             ),
-                            workerId,
-                            definitions
+                            workerRetryPolicy()
                     )
             );
             case POLLING -> new PollingWorkerHandle(
@@ -480,6 +485,30 @@ class RuntimeApiPythonIntegrationTest {
                 Duration.ofMillis(20),
                 Duration.ofSeconds(1)
         );
+    }
+
+    private static WorkerRetryPolicy workerRetryPolicy() {
+        return WorkerRetryPolicy.of(
+                1,
+                Duration.ofMillis(20),
+                connectionPolicy()
+        );
+    }
+
+    private static WorkerPreparation fixedPreparation(
+            String workerId,
+            URI endpointUri
+    ) {
+        return new WorkerPreparation() {
+            @Override
+            public PreparedWorker prepare() {
+                return new PreparedWorker(workerId, endpointUri);
+            }
+
+            @Override
+            public void close() {
+            }
+        };
     }
 
     private BoundWorker registerAndBindWorker(
@@ -865,10 +894,10 @@ class RuntimeApiPythonIntegrationTest {
     private static final class TextMessageWorkerHandle
             implements RunningWorker {
 
-        private final TextMessageWorkerTransport transport;
+        private final WorkerLoop transport;
 
         private TextMessageWorkerHandle(
-                TextMessageWorkerTransport transport
+                WorkerLoop transport
         ) throws Exception {
             this.transport = transport;
             transport.start();

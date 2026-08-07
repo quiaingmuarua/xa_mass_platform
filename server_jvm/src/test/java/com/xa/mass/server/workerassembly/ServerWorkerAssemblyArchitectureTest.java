@@ -53,7 +53,6 @@ class ServerWorkerAssemblyArchitectureTest {
                 .doesNotContain("WorkerEventDefinition")
                 .doesNotContain("WorkerEventHandler")
                 .doesNotContain("OkHttpTextWebSocketClient")
-                .doesNotContain("TextMessageWorkerTransport")
                 .doesNotContain("com.google.i18n.phonenumbers")
                 .doesNotContain("io.lettuce")
                 .doesNotContain("kernelredis")

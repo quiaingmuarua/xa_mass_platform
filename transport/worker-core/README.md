@@ -1,195 +1,145 @@
 # Worker Core
 
-`transport:worker-core` is the Java 11 Worker mechanism shared by JVM and
-Android network clients.
+`transport:worker-core` is the Java 11 Worker mechanism shared by Java and
+Android assemblies.
 
 It owns:
 
-- Worker event definitions, parameter resolution, dispatch, and error
-  classification.
-- The transport-neutral `WorkerCommandExecutor`.
-- Polling and one protocol-neutral long-lived text-message Worker Transport.
-- String-only point and long-lived text-message Client interfaces.
-- The platform-neutral `WorkerControlClient` Register/Bind contract and
-  `WorkerTransportType`.
-- `WorkerLifecycle`, the shared lifecycle, state, snapshot, and listener
-  contract implemented by assembled Java and Android Workers.
-- `TextMessageWorkerRuntime`, `WorkerIdentityStore`, and
-  `WorkerPropertiesProvider`, which define the shared Java/Android startup
-  lifecycle.
+- Worker event definitions, parameter resolution, dispatch, and outcome
+  mapping.
+- `WorkerPreparation` and the default Register/Bind implementation.
+- `WorkerLoop`, the long-lived lifecycle for one Worker identity.
+- The package-private one-endpoint text-message runtime.
+- Polling Worker behavior and platform-neutral network Client contracts.
 
-It does not own network implementations, Adapter behavior, host process
-lifecycle, Redis access, or Kernel scheduling.
+It does not own concrete network libraries, Android storage, host process
+lifecycle, Adapter behavior, Redis, or Kernel scheduling.
 
-## Execution Contract
+## Execution
 
-`WorkerCommandDispatcher` is the default `WorkerCommandExecutor`. It:
+Every command reaches the same DTO entry:
 
 ```text
-decode one direct WorkerCommand
-  -> reject malformed protocol input
-  -> drop an already-expired command before handler invocation
-  -> resolve one statically supplied (src, messageType) definition
-  -> invoke its parameter resolver and handler
-  -> return one direct WorkerResult with correlation/forward unchanged
+encoded network input
+  -> strict WorkerCommand decode at the transport boundary
+  -> WorkerLoop.send(WorkerCommand)
+  -> WorkerCommandDispatcher
+  -> WorkerEventDefinition(src, eventCode, resolver, handler)
+  -> WorkerResult
 ```
 
-The default outcome mapping is:
+`WorkerCommandDispatcher` does not parse transport data. It checks the
+deadline, resolves the static `(src, messageType)` definition, invokes its
+resolver and handler, and copies `messageId`, source, message type, and
+`forward` into the result.
 
 | Outcome | Meaning |
 | --- | --- |
 | `200` | Handler returned a non-empty result payload |
-| `1400` | Command payload or resolved handler input is invalid |
-| `1404` | No definition exists for the `(src, messageType)` pair |
-| `1500` | Handler failed or returned an empty result payload |
+| `1400` | Resolver or handler rejected event input |
+| `1404` | No definition exists for `(src, messageType)` |
+| `1500` | Handler failed or returned an empty payload |
 
-A malformed encoded command is a protocol failure and does not produce a
-`WorkerResult`. A command at or beyond `executeBeforeMillis` is dropped before
-the handler starts. Once a handler starts, the deadline is not checked again.
-Callers may supply a custom `WorkerCommandExecutor`; doing so replaces only
-command execution policy, not Transport protocol state.
+Expired commands are dropped before handler invocation. A deadline is not
+rechecked after execution starts.
 
-## Transport State Machines
+## Three Stages
 
-The Polling and long-lived Worker Transports accept either caller definitions
-or a custom executor together with the matching string-only Client interface:
+One `WorkerLoop` represents one long-lived Worker identity:
 
-```java
-TextMessageWorkerTransport worker =
-        new TextMessageWorkerTransport(
-                textMessageClient,
-                workerId,
-                eventDefinitions
-        );
+```text
+WorkerPreparation
+  -> PreparedWorker(workerId, endpointUri)
+  -> one TextMessageWorkerRuntime round
+  -> exact-once runtime exit callback
+  -> WorkerPreparation again
 ```
 
-Their stable behavior is:
+`RegisteredWorkerPreparation` owns `WorkerIdentityStore`,
+`WorkerPropertiesProvider`, and `WorkerControlClient`. Each call reads one
+complete immutable Properties snapshot, restores or registers the Worker ID,
+persists a newly issued ID, and performs Endpoint Bind. It does not start a
+network connection or execute commands.
 
-| Transport | Host operation | Protocol behavior |
-| --- | --- | --- |
-| `PollingWorkerTransport` | `runOnce()` or `runForever(interval)` | Submits a pending result before polling another command; its point Client targets the URI returned by Bind |
-| `TextMessageWorkerTransport` | `start()` or `runForever()` | Sends `WorkerConnectionBind(workerId)` first, serializes command execution, and replays a pending result after reconnect for either WebSocket or line Socket |
+`WorkerLoop` owns static definitions, one command executor, one pending-result
+slot, preparation retry policy, and the current runtime reference. Preparation
+network failures consume the bounded prepare budget. Exhaustion or a contract
+failure enters `ERROR`; another round begins only after an explicit `start()`.
 
-All three transports receive only the platform-issued `workerId`. Registration,
-Endpoint Binding, and Worker Properties refresh happen before Transport
-construction. WebSocket and Socket exchange a direct connection Bind frame,
-`WorkerCommand`, and `WorkerResult` JSON values. There is no generic
-connection-message envelope. A long-lived Transport accepts a command only
-after the connection Bind frame has been handed to the network Client and while no
-command is processing and no result is pending.
+The one-round runtime owns only:
 
-Each Transport retains at most one pending result. Polling retains it until the
-point result submission succeeds. The text-message Transport retains it until the
-active Client accepts the encoded result; after reconnect it sends the Bind
-frame first and then resends it. A Runtime-owned single slot survives automatic
-Transport replacement within one `start()` generation. Explicit `stop()`,
-`close()`, or terminal `ERROR` clears it. Client acceptance is not an
-application ACK, and Worker Core does not add a pending/ack ledger.
+```text
+prepared workerId + endpoint Client
+  -> onOpen: send WorkerConnectionBind
+  -> send pending WorkerResult if present
+  -> decode inbound WorkerCommand
+  -> call WorkerLoop.send
+  -> report reconnect exhaustion once
+```
 
-The Transport owns and closes its Client. Polling `close()`, and long-lived
-`start()`/`close()`, are idempotent at their lifecycle boundaries. A closed
-Transport cannot be restarted. Concrete WebSocket Clients reject binary input
-with close code `1003`; invalid Worker message sequencing is rejected by the
-shared Transport with `CloseReason.PROTOCOL_ERROR`.
+It has no Identity Store, Properties provider, Control Client, definitions,
+dispatcher, or preparation retry logic. Ordinary reconnects stay inside the
+current `TextMessageClient` and reuse the prepared endpoint. Only reconnect
+budget exhaustion exits the runtime and returns control to `WorkerLoop`.
 
-The optional `TextMessageWorkerTransport.Observer` reports Transport-level
-readiness only after the connection Bind has been accepted by the Client. Host
-lifecycle code observes this boundary rather than attaching a second listener
-to the underlying network Client.
+## Command And Result Ownership
+
+Adapter commands and local `SYSTEM` or `ADAPTER` commands use the same
+`WorkerLoop.send(WorkerCommand)` method. It returns `true` only while the
+Worker is running and connected, with no command executing and no pending
+result. Rejected commands are not queued and callers decide whether to retry.
+
+If a runtime exits during handler execution, the handler completes before a
+new runtime is installed. Its result enters the Worker-owned single slot and
+crosses that automatic runtime replacement. The next connection sends Bind
+before the pending result. Network-stack acceptance clears the slot; this is
+not an application ACK. Explicit `stop()`, terminal `ERROR`, and `close()`
+clear the slot.
+
+`PollingWorkerTransport` remains a separate request-response mechanism. It
+decodes the point response before calling the same DTO executor and submits a
+pending result before polling another command.
+
+## Lifecycle
+
+`WorkerLifecycle` exposes:
+
+```text
+start / stop / close
+send(WorkerCommand)
+snapshot / isConnected
+addListener / removeListener
+```
+
+Observation has two independent axes:
+
+```text
+State            STOPPED / PREPARING / RUNNING / ERROR / CLOSED
+ConnectionState  DISCONNECTED / CONNECTING / CONNECTED
+```
+
+`RUNNING` means a prepared one-round runtime is installed. `CONNECTED` means
+the network opened and the workerId-only connection Bind was accepted by the
+Client. Neither is Kernel online truth or scheduling availability.
+
+There is intentionally no direct Properties-refresh lifecycle method.
+Platform or Adapter initiated behavior is expressed through statically
+installed `WorkerEventDefinition` commands and the same `send` path.
 
 ## Client Boundary
 
-Core exposes only:
+Core exposes string-only `WorkerPointClient` and `TextMessageClient`, plus the
+JDK-type-only `WorkerControlClient`. Concrete Clients own networking,
+framing, reconnect scheduling, stale callback isolation, and resource
+teardown. They do not cache Worker commands or results.
 
-```text
-WorkerPointClient
-TextMessageClient
-WorkerControlClient
-```
+`TextMessageReconnectPolicy` bounds consecutive unstable connections. A
+connection must survive its stable window before the count resets. Exhaustion
+stops reconnecting and emits one `onReconnectExhausted()` callback.
 
-The network interfaces carry strings plus connection/lifecycle signals.
-`WorkerControlClient` expresses only long-lived identity Register and Endpoint
-Bind using JDK types. Register and Bind both receive the same complete,
-immutable Worker Properties snapshot, including the framework-reserved
-`clientWorkerKey`. None of the Client contracts exposes concrete
-networking or Android types. Concrete Clients own network requests,
-connections, reconnect, stale-callback isolation where applicable, and
-resource teardown. They must not cache Worker business messages; pending
-result ownership remains in the corresponding Worker Transport.
-
-The text-message Client contract requires serialized listener callbacks, one
-terminal callback per connection generation, stale-connection isolation,
-thread-safe non-blocking `send`, idempotent lifecycle, and no callbacks after
-`close()` returns. `TextMessageReconnectPolicy` bounds consecutive unstable
-connections. Opening a connection does not reset the count; only remaining
-connected for the configured stable window does. Once the budget is exhausted,
-the Client stops reconnecting and emits exactly one `onReconnectExhausted()`.
-WebSocket and line Socket implementations own framing and map `CloseReason` to
-their protocol-specific close operation.
-
-## Text-message Runtime
-
-`WorkerLifecycle` is the common public operation and observation surface.
-Platform Workers remain final composition facades and delegate that contract
-to `TextMessageWorkerRuntime`; they do not inherit a lifecycle template or
-copy the Core state model.
-
-`TextMessageWorkerRuntime` owns a two-level Java/Android host lifecycle:
-
-The Runtime owns one `WorkerControlClient` for its full lifetime. Prepare
-retries, later starts, and Properties refresh are serialized through that
-Client; only terminal `close()` releases it.
-
-```text
-outer supervisor
-  -> load one complete Properties snapshot
-  -> load the long-lived workerId
-  -> Register and save it only when absent
-  -> retry Endpoint Bind within the prepare budget
-  -> construct TextMessageWorkerTransport with the returned URI
-
-inner Client
-  -> connect and reconnect within the connection budget
-  -> after reconnect exhaustion notify the supervisor
-  -> supervisor closes the old Transport and prepares again
-```
-
-Temporary reconnects reuse the current URI and do not call Register or Bind.
-Connection-budget exhaustion starts a new prepare round, reloads Properties,
-and Bind may return the same or a different URI. The prepare-attempt budget
-applies to one such round; it is not a lifetime limit on supervisor rounds. If
-each Bind succeeds while connections keep exhausting, the supervisor continues
-until `stop()` or `close()`. `stop()` retains the Worker ID, while a later
-explicit `start()` always performs Bind again.
-`refreshProperties()` rebinds only when the canonical snapshot changes and
-requires the returned URI to remain unchanged. A changed URI enters `ERROR` so
-the local connection cannot silently diverge from the latest Bind response.
-Control network errors and HTTP 5xx consume the fixed prepare budget; contract
-rejection, malformed state, and Identity persistence failure enter `ERROR`
-immediately. Exhausting one prepare round also enters `ERROR`, and only an
-explicit later `start()` begins again.
-
-`WorkerRetryPolicy.defaults()` fixes prepare at 10 attempts separated by one
-second, and connection recovery at 20 consecutive unstable terminations
-separated by 500 milliseconds with a 10 second stable window.
-
-Lifecycle observation has three independent axes:
-
-```text
-State             STOPPED / STARTING / RUNNING / ERROR / CLOSED
-PrepareOperation  NONE / REGISTERING / BINDING
-ConnectionState   DISCONNECTED / CONNECTING / CONNECTED
-```
-
-`ConnectionState` is derived from the currently owned Transport rather than
-stored as a second connection truth inside the Runtime.
-
-`RUNNING` only means prepare produced a local Transport. `CONNECTED` only
-means the network opened and the workerId-only connection Bind was handed to
-the network stack. Neither is Kernel online truth or scheduling availability.
-The Runtime fixes one `WorkerTransportType` at construction; `WEBSOCKET` and
-`SOCKET` are supported and `POLLING` remains a separate request-response
-lifecycle.
+`WorkerRetryPolicy.defaults()` uses 10 preparation attempts one second apart,
+plus 20 unstable connection attempts 500 milliseconds apart with a 10 second
+stable window.
 
 ## Verification
 

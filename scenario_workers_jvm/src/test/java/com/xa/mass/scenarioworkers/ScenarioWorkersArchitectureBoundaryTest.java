@@ -61,7 +61,6 @@ class ScenarioWorkersArchitectureBoundaryTest {
                 .contains("java.net.http.HttpClient")
                 .contains("ScenarioWorkersJsonParser");
         assertThat(sources)
-                .doesNotContain("new TextMessageWorkerTransport")
                 .doesNotContain("new OkHttpWorkerControlClient")
                 .doesNotContain("new OkHttpTextWebSocketClient");
         assertThat(sources)

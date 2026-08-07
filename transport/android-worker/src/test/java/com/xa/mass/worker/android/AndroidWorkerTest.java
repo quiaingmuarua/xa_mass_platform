@@ -204,7 +204,7 @@ public class AndroidWorkerTest {
     }
 
     @Test
-    public void changedPropertiesRefreshesBindingWithoutReregistering()
+    public void changedPropertiesAreLoadedByTheNextExplicitStart()
             throws Exception {
         enqueueRegister();
         enqueueBind();
@@ -223,9 +223,16 @@ public class AndroidWorkerTest {
                 "region",
                 "updated"
         ));
+        worker.stop();
+        await(() -> worker.snapshot().state()
+                == WorkerLifecycle.State.STOPPED);
         enqueueBind();
-        worker.refreshProperties();
+        server.enqueue(webSocketSession(new WebSocketListener() {
+        }));
+        worker.start();
+        await(worker::isConnected);
         RecordedRequest refreshed = takeRequest();
+        takeRequest();
 
         assertTrue(refreshed.getTarget().endsWith(
                 "/workers/" + WORKER_ID + ":bind"

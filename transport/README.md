@@ -13,8 +13,8 @@ Status: repository-local transport contracts and implementations.
 
 :transport:worker-core
   -> Java 11 Worker execution mechanism
-  -> Polling plus one long-lived text-message Worker state machine
-  -> shared text-message startup lifecycle
+  -> WorkerPreparation + long-lived WorkerLoop + one-round text runtime
+  -> Polling remains a separate request-response mechanism
   -> network Client, Identity, Properties, and Register/Bind contracts
   -> no concrete network or platform implementation
 
@@ -39,13 +39,13 @@ into that wire contract.
 
 `transport:worker-core` is not a generic transport framework. It contains the
 shared Worker execution and protocol state machines plus narrow network and
-control Client contracts. Java and Android long-lived hosts both delegate
-identity recovery, bounded Register/Bind preparation, Properties refresh, and
-Transport supervision to Core's `TextMessageWorkerRuntime` and expose the same
-`WorkerLifecycle` state, snapshot, and listener contract. Platform modules
-provide Identity storage and concrete network Clients. Each Client owns
-bounded reconnect for one returned Endpoint; exhaustion returns control to the
-Core supervisor. No Endpoint URI is persisted.
+control Client contracts. Java and Android long-lived hosts both compose
+`RegisteredWorkerPreparation` with a long-lived `WorkerLoop` and expose the
+same `WorkerLifecycle` contract. The package-private runtime owns only one
+prepared endpoint round. Platform modules provide Identity storage and
+concrete network Clients. Each Client owns bounded reconnect for one returned
+Endpoint; exhaustion returns control to `WorkerLoop`, which prepares again.
+No Endpoint URI is persisted.
 Netty Adapter behavior remains independent until a concrete shared mechanism
 exists.
 

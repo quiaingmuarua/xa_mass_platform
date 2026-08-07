@@ -8,10 +8,13 @@ import com.xa.mass.transport.client.WorkerControlClient;
 import com.xa.mass.transport.client.WorkerPointClient;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
-import com.xa.mass.worker.runtime.TextMessageWorkerRuntime;
+import com.xa.mass.worker.runtime.PreparedWorker;
 import com.xa.mass.worker.runtime.WorkerLifecycle;
-import com.xa.mass.worker.transport.connection.TextMessageWorkerTransport;
+import com.xa.mass.worker.runtime.WorkerLoop;
+import com.xa.mass.worker.runtime.WorkerPreparation;
+import com.xa.mass.worker.runtime.WorkerRetryPolicy;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 
 import org.junit.jupiter.api.Test;
 
@@ -149,14 +152,16 @@ class WorkerCoreArchitectureBoundaryTest {
     @Test
     void assembledWorkersShareOneLifecycleAndObservationContract() {
         assertTrue(WorkerLifecycle.class.isAssignableFrom(
-                TextMessageWorkerRuntime.class
+                WorkerLoop.class
         ));
         assertTrue(hasMethod(WorkerLifecycle.class, "start"));
         assertTrue(hasMethod(WorkerLifecycle.class, "stop"));
         assertTrue(hasMethod(
                 WorkerLifecycle.class,
-                "refreshProperties"
+                "send",
+                WorkerCommand.class
         ));
+        assertFalse(hasMethod(WorkerLifecycle.class, "refreshProperties"));
         assertTrue(hasMethod(WorkerLifecycle.class, "snapshot"));
         assertTrue(hasMethod(WorkerLifecycle.class, "isConnected"));
         assertTrue(hasMethod(
@@ -187,29 +192,16 @@ class WorkerCoreArchitectureBoundaryTest {
                 WorkerCommandExecutor.class
         );
         assertConstructor(
-                TextMessageWorkerTransport.class,
-                TextMessageClient.class,
-                String.class,
-                Collection.class
-        );
-        assertConstructor(
-                TextMessageWorkerTransport.class,
-                TextMessageClient.class,
-                String.class,
-                WorkerCommandExecutor.class
-        );
-        assertConstructor(
-                TextMessageWorkerTransport.class,
-                TextMessageClient.class,
-                String.class,
-                WorkerCommandExecutor.class,
-                TextMessageWorkerTransport.PendingResultSlot.class,
-                TextMessageWorkerTransport.Observer.class
+                WorkerLoop.class,
+                WorkerPreparation.class,
+                Collection.class,
+                WorkerLoop.NetworkClientFactory.class,
+                WorkerRetryPolicy.class
         );
 
         for (Class<?> transport : new Class<?>[]{
                 PollingWorkerTransport.class,
-                TextMessageWorkerTransport.class
+                WorkerLoop.class
         }) {
             for (Constructor<?> constructor
                     : transport.getConstructors()) {
@@ -228,6 +220,36 @@ class WorkerCoreArchitectureBoundaryTest {
                 }
             }
         }
+    }
+
+    @Test
+    void preparationAndOneRoundRuntimeHaveNarrowOwnership()
+            throws Exception {
+        assertTrue(hasMethod(WorkerPreparation.class, "prepare"));
+        assertTrue(hasMethod(WorkerPreparation.class, "close"));
+        assertTrue(hasMethod(PreparedWorker.class, "workerId"));
+        assertTrue(hasMethod(PreparedWorker.class, "endpointUri"));
+
+        Path sourceRoot = Path.of("").toAbsolutePath()
+                .resolve("src/main/java");
+        Path runtimeFile = sourceRoot.resolve(
+                "com/xa/mass/worker/runtime/TextMessageWorkerRuntime.java"
+        );
+        String runtime = Files.readString(runtimeFile);
+        for (String forbidden : new String[]{
+                "WorkerIdentityStore",
+                "WorkerPropertiesProvider",
+                "WorkerControlClient",
+                "WorkerEventDefinition",
+                "WorkerCommandDispatcher",
+                "WorkerRetryPolicy"
+        }) {
+            assertFalse(runtime.contains(forbidden), forbidden);
+        }
+        assertFalse(Files.exists(sourceRoot.resolve(
+                "com/xa/mass/worker/transport/connection/"
+                        + "TextMessageWorker" + "Transport.java"
+        )));
     }
 
     private static boolean hasMethod(

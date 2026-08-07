@@ -1,6 +1,5 @@
 package com.xa.mass.worker.runtime;
 
-import com.xa.mass.workerdelivery.json.Jsons;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashMap;
@@ -13,17 +12,9 @@ final class WorkerPropertiesSnapshot {
     static final String CLIENT_WORKER_KEY = "clientWorkerKey";
 
     private final Map<String, Object> properties;
-    private final String canonicalJson;
-    private final String clientWorkerKey;
 
-    private WorkerPropertiesSnapshot(
-            Map<String, Object> properties,
-            String canonicalJson,
-            String clientWorkerKey
-    ) {
+    private WorkerPropertiesSnapshot(Map<String, Object> properties) {
         this.properties = properties;
-        this.canonicalJson = canonicalJson;
-        this.clientWorkerKey = clientWorkerKey;
     }
 
     static WorkerPropertiesSnapshot from(Map<String, Object> source) {
@@ -41,24 +32,11 @@ final class WorkerPropertiesSnapshot {
                             + "non-blank string"
             );
         }
-        String canonicalJson = Jsons.toJson(properties);
-        return new WorkerPropertiesSnapshot(
-                properties,
-                canonicalJson,
-                (String) rawClientKey
-        );
+        return new WorkerPropertiesSnapshot(properties);
     }
 
     Map<String, Object> properties() {
         return properties;
-    }
-
-    String canonicalJson() {
-        return canonicalJson;
-    }
-
-    String clientWorkerKey() {
-        return clientWorkerKey;
     }
 
     private static Map<String, Object> immutableObject(Map<?, ?> source) {

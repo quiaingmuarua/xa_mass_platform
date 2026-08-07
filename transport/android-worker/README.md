@@ -12,10 +12,9 @@ It owns:
 - Android OkHttp Register/Bind Client and HandlerThread WebSocket Client.
 - Application-Context-specific Worker Properties loading.
 
-Core owns the shared `TextMessageWorkerRuntime`, command dispatcher, event
-definitions, `TextMessageWorkerTransport`, pending result behavior, and startup
-state machine. Android does not implement a second Worker lifecycle or persist
-Endpoint URIs.
+Core owns `RegisteredWorkerPreparation`, `WorkerLoop`, command dispatch, event
+definitions, the one-endpoint runtime, and pending-result behavior. Android
+does not implement a second Worker lifecycle or persist Endpoint URIs.
 
 `AndroidWorker` implements Core's `WorkerLifecycle`. Its state, snapshot, and
 listener types are the shared Core contract rather than Android mirrors. The
@@ -62,25 +61,20 @@ start
   -> load one complete Properties snapshot with Application Context
   -> restore Worker ID, or Register and persist it
   -> always Bind
-  -> connect Core WebSocket Transport to the returned URI
+  -> install one Core runtime round for the returned URI
 
 temporary disconnect
   -> Android WebSocket Client reconnects to the current URI within its budget
   -> no Register or Bind
 
 reconnect exhausted
-  -> Core closes the exhausted Transport
+  -> the current runtime reports one exit callback
   -> reload Properties and run Register/Bind preparation again
-  -> create a new Transport from the returned URI
+  -> install a new runtime from the returned URI
 
 stop
   -> close the current local run
   -> retain client key and Worker ID
-
-refreshProperties
-  -> re-read the complete snapshot
-  -> Bind only when changed
-  -> enter ERROR if Bind unexpectedly returns a different Endpoint URI
 ```
 
 `start`, `stop`, and `close` are idempotent at their lifecycle boundaries;
@@ -93,12 +87,11 @@ Closing the Android network Client marks it terminal and cancels the current
 socket before returning; HandlerThread cleanup is posted asynchronously, so a
 host lifecycle callback does not wait for a network timeout.
 
-Shared `WorkerLifecycle` observation is split into three axes:
+Shared `WorkerLifecycle` observation is split into two axes:
 
 ```text
-State             STOPPED / STARTING / RUNNING / ERROR / CLOSED
-PrepareOperation  NONE / REGISTERING / BINDING
-ConnectionState   DISCONNECTED / CONNECTING / CONNECTED
+State            STOPPED / PREPARING / RUNNING / ERROR / CLOSED
+ConnectionState  DISCONNECTED / CONNECTING / CONNECTED
 ```
 
 `RUNNING + CONNECTED` means the WebSocket opened and Core handed the

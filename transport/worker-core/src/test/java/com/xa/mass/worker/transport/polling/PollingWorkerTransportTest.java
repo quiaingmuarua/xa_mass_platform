@@ -9,6 +9,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
 import com.xa.mass.transport.client.WorkerPointClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
+import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
 import java.io.IOException;
 import java.util.ArrayDeque;
@@ -20,18 +22,29 @@ import org.junit.jupiter.api.Test;
 
 class PollingWorkerTransportTest {
 
-    private static final String COMMAND = "{\"command\":\"opaque\"}";
     private static final String COMMAND_ID =
             "32e4a1d4-38e0-44a2-ac83-d608dd3ba2c1";
 
-    private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
+    private static final WorkerDeliveryCodec CODEC =
+            new WorkerDeliveryCodec();
+    private static final WorkerCommand COMMAND = new WorkerCommand(
+            COMMAND_ID,
+            TASK,
+            WorkerMessageEndpoint.WORKER,
+            "test.observe",
+            Long.MAX_VALUE,
+            "{\"value\":\"input\"}",
+            "opaque-context"
+    );
+    private static final String ENCODED_COMMAND =
+            CODEC.encodeWorkerCommand(COMMAND);
 
     @Test
     void executesEncodedCommandAndSubmitsEncodedResult()
             throws Exception {
         FakePointClient client = new FakePointClient();
-        client.commands.add(Optional.of(COMMAND));
-        AtomicReference<String> executed = new AtomicReference<>();
+        client.commands.add(Optional.of(ENCODED_COMMAND));
+        AtomicReference<WorkerCommand> executed = new AtomicReference<>();
         PollingWorkerTransport transport = transport(
                 client,
                 encoded -> {
@@ -47,7 +60,7 @@ class PollingWorkerTransportTest {
         assertEquals(1, client.submittedResults.size());
         assertEquals(
                 result(),
-                codec.decodeWorkerResult(
+                CODEC.decodeWorkerResult(
                         client.submittedResults.get(0)
                 )
         );
@@ -60,7 +73,7 @@ class PollingWorkerTransportTest {
             throws Exception {
         FakePointClient client = new FakePointClient();
         client.commands.add(Optional.empty());
-        client.commands.add(Optional.of(COMMAND));
+        client.commands.add(Optional.of(ENCODED_COMMAND));
         PollingWorkerTransport transport = transport(
                 client,
                 encoded -> Optional.empty()
@@ -78,7 +91,7 @@ class PollingWorkerTransportTest {
     void pendingResultRetriesBeforePollingAnotherCommand()
             throws Exception {
         FakePointClient client = new FakePointClient();
-        client.commands.add(Optional.of(COMMAND));
+        client.commands.add(Optional.of(ENCODED_COMMAND));
         client.submitFailures = 1;
         PollingWorkerTransport transport = transport(
                 client,

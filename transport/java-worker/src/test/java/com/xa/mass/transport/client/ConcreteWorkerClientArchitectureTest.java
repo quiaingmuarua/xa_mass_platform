@@ -41,8 +41,6 @@ class ConcreteWorkerClientArchitectureTest {
 
         for (String forbidden : new String[]{
                 "class PollingWorkerTransport",
-                "class TextMessageWorkerTransport",
-                "WorkerCommand",
                 "WorkerResult",
                 "WorkerConnectionHello",
                 "WorkerCommandExecutor",
@@ -58,7 +56,8 @@ class ConcreteWorkerClientArchitectureTest {
         }
         assertTrue(source.contains("public final class JavaWorker"));
         assertTrue(source.contains("implements WorkerLifecycle"));
-        assertTrue(source.contains("new TextMessageWorkerRuntime("));
+        assertTrue(source.contains("new RegisteredWorkerPreparation("));
+        assertTrue(source.contains("new WorkerLoop("));
         assertTrue(source.contains("WorkerTransportType.WEBSOCKET"));
         assertTrue(source.contains("new JdkLineSocketClient("));
     }
