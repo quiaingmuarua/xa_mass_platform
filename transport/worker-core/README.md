@@ -12,6 +12,8 @@ It owns:
 - String-only point and long-lived text-message Client interfaces.
 - The platform-neutral `WorkerControlClient` Register/Bind contract and
   `WorkerTransportType`.
+- `WorkerLifecycle`, the shared lifecycle, state, snapshot, and listener
+  contract implemented by assembled Java and Android Workers.
 - `TextMessageWorkerRuntime`, `WorkerIdentityStore`, and
   `WorkerPropertiesProvider`, which define the shared Java/Android startup
   lifecycle.
@@ -88,6 +90,11 @@ Transport cannot be restarted. Concrete WebSocket Clients reject binary input
 with close code `1003`; invalid Worker message sequencing is rejected by the
 shared Transport with `CloseReason.PROTOCOL_ERROR`.
 
+The optional `TextMessageWorkerTransport.Observer` reports Transport-level
+readiness only after the connection Bind has been accepted by the Client. Host
+lifecycle code observes this boundary rather than attaching a second listener
+to the underlying network Client.
+
 ## Client Boundary
 
 Core exposes only:
@@ -116,6 +123,11 @@ map `CloseReason` to their protocol-specific close operation.
 
 ## Text-message Runtime
 
+`WorkerLifecycle` is the common public operation and observation surface.
+Platform Workers remain final composition facades and delegate that contract
+to `TextMessageWorkerRuntime`; they do not inherit a lifecycle template or
+copy the Core state model.
+
 `TextMessageWorkerRuntime` owns the common Java/Android host lifecycle:
 
 ```text
@@ -130,8 +142,9 @@ Temporary network reconnects remain inside the concrete Client and reuse the
 URI for the current start session; they do not call Register or Bind. `stop()`
 closes that session but retains the Worker ID, while a later `start()` always
 performs Bind again. `refreshProperties()` rebinds only when the canonical
-snapshot changes and replaces the Transport only when Bind returns a different
-URI. Control network errors and HTTP 5xx are retried at the configured fixed
+snapshot changes. A different URI is recorded as requiring an explicit
+`stop()`/`start()`; Properties refresh does not implement an implicit Endpoint
+migration or run two Transports concurrently. Control network errors and HTTP 5xx are retried at the configured fixed
 interval; contract rejection, malformed state, and Identity persistence
 failure enter `ERROR`. The Runtime fixes one `WorkerTransportType` at
 construction; `WEBSOCKET` and `SOCKET` are supported and `POLLING` remains a

@@ -41,8 +41,10 @@ into that wire contract.
 shared Worker execution and protocol state machines plus narrow network and
 control Client contracts. Java and Android long-lived hosts both delegate
 identity recovery, Register/Bind sequencing, Properties refresh, and session
-construction to Core's `TextMessageWorkerRuntime`. Platform modules provide
-Identity storage and concrete network Clients; no Endpoint URI is persisted.
+construction to Core's `TextMessageWorkerRuntime` and expose the same
+`WorkerLifecycle` state, snapshot, and listener contract. Platform modules
+provide Identity storage and concrete network Clients; no Endpoint URI is
+persisted.
 Netty Adapter behavior remains independent until a concrete shared mechanism
 exists.
 

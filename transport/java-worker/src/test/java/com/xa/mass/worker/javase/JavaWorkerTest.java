@@ -8,27 +8,30 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
-import com.xa.mass.worker.runtime.TextMessageWorkerRuntime;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
+import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.workerdelivery.json.Jsons;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.net.URI;
 import java.net.ServerSocket;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.TimeUnit;
+
 import mockwebserver3.MockResponse;
 import mockwebserver3.MockWebServer;
 import mockwebserver3.RecordedRequest;
 import okhttp3.WebSocketListener;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 
 class JavaWorkerTest {
 
@@ -111,7 +114,7 @@ class JavaWorkerTest {
 
         worker.start();
         await(() -> worker.snapshot().state()
-                == TextMessageWorkerRuntime.State.ERROR);
+                == WorkerLifecycle.State.ERROR);
 
         assertEquals(0, server.getRequestCount());
         assertTrue(worker.snapshot().diagnosticMessage().contains(

@@ -5,25 +5,29 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import com.xa.mass.transport.client.TextMessageClient;
-import java.net.URI;
-import java.time.Duration;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
-import okhttp3.Request;
-import okhttp3.WebSocket;
-import okhttp3.WebSocketListener;
-import okio.ByteString;
+
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.shadows.ShadowSystemClock;
+
+import java.net.URI;
+import java.time.Duration;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
+
+import okhttp3.Request;
+import okhttp3.WebSocket;
+import okhttp3.WebSocketListener;
+import okio.ByteString;
 
 @RunWith(RobolectricTestRunner.class)
 public class AndroidOkHttpTextWebSocketClientTest {
@@ -182,6 +186,53 @@ public class AndroidOkHttpTextWebSocketClientTest {
 
         assertFalse(client.isConnected());
         assertEquals(eventCount, listener.events.size());
+        assertTrue(connection.socket.cancelled);
+        assertTrue(resourcesClosed.get());
+    }
+
+    @Test
+    public void closeDoesNotWaitForAHandlerCallback() throws Exception {
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        client.start(new TextMessageClient.Listener() {
+            @Override
+            public void onOpen() {
+                entered.countDown();
+                try {
+                    release.await(3, TimeUnit.SECONDS);
+                } catch (InterruptedException error) {
+                    Thread.currentThread().interrupt();
+                }
+            }
+
+            @Override
+            public void onMessage(String message) {
+            }
+
+            @Override
+            public void onDisconnected() {
+            }
+
+            @Override
+            public void onFailure(Throwable error) {
+            }
+        });
+        FakeConnection connection = awaitConnection(0);
+        connection.open();
+        assertTrue(entered.await(1, TimeUnit.SECONDS));
+
+        long startedAt = System.nanoTime();
+        try {
+            client.close();
+        } finally {
+            release.countDown();
+        }
+        long elapsedMillis = TimeUnit.NANOSECONDS.toMillis(
+                System.nanoTime() - startedAt
+        );
+
+        assertTrue("close blocked for " + elapsedMillis + " ms",
+                elapsedMillis < 500);
         assertTrue(connection.socket.cancelled);
         assertTrue(resourcesClosed.get());
     }

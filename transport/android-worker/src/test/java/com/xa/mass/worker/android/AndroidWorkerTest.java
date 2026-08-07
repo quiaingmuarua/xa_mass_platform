@@ -8,14 +8,25 @@ import static org.junit.Assert.assertTrue;
 
 import android.app.Application;
 import android.content.Context;
+
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
+import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.workerdelivery.json.Jsons;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerCommand;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerMessageEndpoint;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
+
+import org.junit.After;
+import org.junit.Before;
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.robolectric.RobolectricTestRunner;
+import org.robolectric.RuntimeEnvironment;
+import org.robolectric.annotation.Config;
+
 import java.net.URI;
 import java.time.Duration;
 import java.util.List;
@@ -24,19 +35,12 @@ import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+
 import mockwebserver3.MockResponse;
 import mockwebserver3.MockWebServer;
 import mockwebserver3.RecordedRequest;
-import okhttp3.Response;
 import okhttp3.WebSocket;
 import okhttp3.WebSocketListener;
-import org.junit.After;
-import org.junit.Before;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.robolectric.RobolectricTestRunner;
-import org.robolectric.RuntimeEnvironment;
-import org.robolectric.annotation.Config;
 
 @RunWith(RobolectricTestRunner.class)
 @Config(application = Application.class)
@@ -111,7 +115,7 @@ public class AndroidWorkerTest {
 
         worker.start();
         await(() -> worker.snapshot().state()
-                == AndroidWorker.State.TRANSPORT_CONNECTED);
+                == WorkerLifecycle.State.TRANSPORT_CONNECTED);
         assertTrue(resultReceived.await(5, TimeUnit.SECONDS));
 
         RecordedRequest register = takeRequest();
@@ -165,7 +169,7 @@ public class AndroidWorkerTest {
         worker = worker(context -> properties.get());
         worker.start();
         await(() -> worker.snapshot().state()
-                == AndroidWorker.State.TRANSPORT_CONNECTED);
+                == WorkerLifecycle.State.TRANSPORT_CONNECTED);
         RecordedRequest firstRegister = takeRequest();
         RecordedRequest firstBind = takeRequest();
         takeRequest();
@@ -176,13 +180,13 @@ public class AndroidWorkerTest {
 
         worker.stop();
         await(() -> worker.snapshot().state()
-                == AndroidWorker.State.STOPPED);
+                == WorkerLifecycle.State.STOPPED);
         enqueueBind();
         server.enqueue(webSocketSession(new WebSocketListener() {
         }));
         worker.start();
         await(() -> worker.snapshot().state()
-                == AndroidWorker.State.TRANSPORT_CONNECTED);
+                == WorkerLifecycle.State.TRANSPORT_CONNECTED);
 
         RecordedRequest secondBind = takeRequest();
         RecordedRequest secondSocket = takeRequest();
@@ -210,7 +214,7 @@ public class AndroidWorkerTest {
         worker = worker(context -> properties.get());
         worker.start();
         await(() -> worker.snapshot().state()
-                == AndroidWorker.State.TRANSPORT_CONNECTED);
+                == WorkerLifecycle.State.TRANSPORT_CONNECTED);
         takeRequest();
         takeRequest();
         takeRequest();
@@ -232,7 +236,7 @@ public class AndroidWorkerTest {
                 "updated",
                 bindingProperties(refreshed).get("region")
         );
-        assertEquals(AndroidWorker.State.TRANSPORT_CONNECTED,
+        assertEquals(WorkerLifecycle.State.TRANSPORT_CONNECTED,
                 worker.snapshot().state());
     }
 
@@ -246,7 +250,7 @@ public class AndroidWorkerTest {
 
         worker.start();
         await(() -> worker.snapshot().state()
-                == AndroidWorker.State.ERROR);
+                == WorkerLifecycle.State.ERROR);
 
         assertEquals(0, server.getRequestCount());
         assertTrue(worker.snapshot().diagnosticMessage().contains(
@@ -265,7 +269,7 @@ public class AndroidWorkerTest {
         try {
             worker.start();
             await(() -> worker.snapshot().state()
-                    == AndroidWorker.State.TRANSPORT_CONNECTED);
+                    == WorkerLifecycle.State.TRANSPORT_CONNECTED);
             assertThrows(IllegalStateException.class, duplicate::start);
         } finally {
             duplicate.close();

@@ -2,7 +2,10 @@ package com.xa.mass.integration.androidworker;
 
 import android.os.Handler;
 import android.os.Looper;
+
 import com.xa.mass.worker.android.AndroidWorker;
+import com.xa.mass.worker.runtime.WorkerLifecycle;
+
 import java.net.URI;
 import java.util.Set;
 import java.util.concurrent.CopyOnWriteArraySet;
@@ -18,7 +21,7 @@ final class AndroidWorkerDemoHost implements AutoCloseable {
     private final AndroidDemoStateCapability demoCapability;
     private final Handler mainHandler;
     private final Set<Listener> listeners = new CopyOnWriteArraySet<>();
-    private final AndroidWorker.Listener workerListener =
+    private final WorkerLifecycle.Listener workerListener =
             ignored -> publish();
     private final AndroidDemoStateCapability.Listener capabilityListener =
             this::publish;
@@ -91,7 +94,7 @@ final class AndroidWorkerDemoHost implements AutoCloseable {
     }
 
     Snapshot snapshot() {
-        AndroidWorker.Snapshot workerSnapshot = worker.snapshot();
+        WorkerLifecycle.Snapshot workerSnapshot = worker.snapshot();
         AndroidDemoStateCapability.Snapshot demo =
                 demoCapability.snapshot();
         return new Snapshot(
@@ -156,7 +159,7 @@ final class AndroidWorkerDemoHost implements AutoCloseable {
 
     static final class Snapshot {
 
-        private final AndroidWorker.State state;
+        private final WorkerLifecycle.State state;
         private final String workerId;
         private final URI endpointUri;
         private final int counter;
@@ -165,7 +168,7 @@ final class AndroidWorkerDemoHost implements AutoCloseable {
         private final String errorMessage;
 
         private Snapshot(
-                AndroidWorker.State state,
+                WorkerLifecycle.State state,
                 String workerId,
                 URI endpointUri,
                 int counter,
@@ -182,7 +185,7 @@ final class AndroidWorkerDemoHost implements AutoCloseable {
             this.errorMessage = errorMessage;
         }
 
-        AndroidWorker.State state() {
+        WorkerLifecycle.State state() {
             return state;
         }
 

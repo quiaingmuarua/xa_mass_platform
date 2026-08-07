@@ -7,10 +7,10 @@ import android.app.Application;
 import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
+
 import com.xa.mass.worker.android.AndroidWorker;
-import java.net.URI;
-import java.util.Map;
-import java.util.concurrent.atomic.AtomicReference;
+import com.xa.mass.worker.runtime.WorkerLifecycle;
+
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -19,6 +19,10 @@ import org.robolectric.RobolectricTestRunner;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
 import org.robolectric.shadows.ShadowLooper;
+
+import java.net.URI;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 @RunWith(RobolectricTestRunner.class)
 @Config(application = Application.class)
@@ -76,7 +80,7 @@ public class AndroidWorkerDemoHostTest {
         host.addListener(observed::set);
 
         assertEquals(
-                AndroidWorker.State.STOPPED,
+                WorkerLifecycle.State.STOPPED,
                 host.snapshot().state()
         );
         assertEquals(1, host.incrementCounter());

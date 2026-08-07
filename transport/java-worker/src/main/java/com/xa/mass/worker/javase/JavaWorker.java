@@ -8,14 +8,16 @@ import com.xa.mass.transport.client.okhttp.OkHttpWorkerControlClient;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.runtime.TextMessageWorkerRuntime;
 import com.xa.mass.worker.runtime.WorkerIdentityStore;
+import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
+
 import java.net.URI;
 import java.time.Duration;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-public final class JavaWorker implements AutoCloseable {
+public final class JavaWorker implements WorkerLifecycle {
 
     private static final String CLIENT_WORKER_KEY = "clientWorkerKey";
     private static final Duration DEFAULT_REQUEST_TIMEOUT =
@@ -43,31 +45,38 @@ public final class JavaWorker implements AutoCloseable {
         );
     }
 
+    @Override
     public void start() {
         runtime.start();
     }
 
+    @Override
     public void stop() {
         runtime.stop();
     }
 
+    @Override
     public void refreshProperties() {
         runtime.refreshProperties();
     }
 
-    public TextMessageWorkerRuntime.Snapshot snapshot() {
+    @Override
+    public Snapshot snapshot() {
         return runtime.snapshot();
     }
 
+    @Override
     public boolean isConnected() {
         return runtime.isConnected();
     }
 
-    public void addListener(TextMessageWorkerRuntime.Listener listener) {
+    @Override
+    public void addListener(Listener listener) {
         runtime.addListener(listener);
     }
 
-    public void removeListener(TextMessageWorkerRuntime.Listener listener) {
+    @Override
+    public void removeListener(Listener listener) {
         runtime.removeListener(listener);
     }
 

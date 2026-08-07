@@ -41,9 +41,9 @@ Status: current repository handoff.
   Polling plus unified long-lived text-message state machines, network Client
   contracts, and the
   platform-neutral Register/Bind control Client contract. It also owns the
-  shared text-message Worker startup lifecycle, Identity store contract, and
-  Properties provider contract. It contains no concrete network or platform
-  implementation.
+  shared `WorkerLifecycle` observation contract, text-message Worker startup
+  runtime, Identity store contract, and Properties provider contract. It
+  contains no concrete network or platform implementation.
 - `transport/java-worker/` owns the `JavaWorker` WebSocket/line-Socket assembly plus the
   default Java OkHttp point/WebSocket/control and JDK line-socket Client
   implementations. It is not a second Worker state-machine owner, CLI,
@@ -51,9 +51,9 @@ Status: current repository handoff.
 - `transport/android-worker/` is an internal Android Library containing the
   HandlerThread/Looper OkHttp WebSocket Client, Android Register/Bind Client,
   long-lived Identity storage, and the complete `AndroidWorker` assembly. It
-  delegates lifecycle to Core's shared text-message Runtime and does not persist
-  Endpoint URIs or implement a second command, result, session, or
-  pending-result state machine.
+  implements Core's `WorkerLifecycle`, delegates its mechanism to the shared
+  text-message Runtime, and does not persist Endpoint URIs or implement a
+  second command, result, session, or pending-result state machine.
 - The legacy Java platform is available exclusively from
   `legacy-java-platform-final-2026-07-24`.
 - There is no compatibility obligation to legacy Java APIs, modules, Redis

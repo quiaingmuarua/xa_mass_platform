@@ -7,6 +7,7 @@ import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.transport.connection.TextMessageWorkerTransport;
+
 import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
@@ -24,22 +25,13 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-public final class TextMessageWorkerRuntime implements AutoCloseable {
-
-    public enum State {
-        STOPPED,
-        REGISTERING,
-        BINDING,
-        CONNECTING,
-        TRANSPORT_CONNECTED,
-        ERROR,
-        CLOSED
-    }
-
-    public interface Listener {
-
-        void onSnapshot(Snapshot snapshot);
-    }
+/**
+ * Coordinates identity recovery, Register/Bind, and one long-lived Worker
+ * transport session. Network reconnect belongs to {@link TextMessageClient};
+ * command execution and pending results belong to
+ * {@link TextMessageWorkerTransport}.
+ */
+public final class TextMessageWorkerRuntime implements WorkerLifecycle {
 
     @FunctionalInterface
     public interface ControlClientFactory {
@@ -71,7 +63,6 @@ public final class TextMessageWorkerRuntime implements AutoCloseable {
     private boolean closed;
     private long generation;
     private long nextSessionId;
-    private long nextConnectionId;
     private State state = State.STOPPED;
     private String workerId;
     private URI endpointUri;
@@ -144,6 +135,7 @@ public final class TextMessageWorkerRuntime implements AutoCloseable {
         );
     }
 
+    @Override
     public void start() {
         long currentGeneration;
         synchronized (lock) {
@@ -157,7 +149,7 @@ public final class TextMessageWorkerRuntime implements AutoCloseable {
             }
             started = true;
             currentGeneration = ++generation;
-            state = State.REGISTERING;
+            state = State.STARTING;
             diagnosticMessage = null;
             endpointUri = null;
         }
@@ -165,6 +157,7 @@ public final class TextMessageWorkerRuntime implements AutoCloseable {
         execute(() -> beginStart(currentGeneration), currentGeneration);
     }
 
+    @Override
     public void stop() {
         Session session;
         synchronized (lock) {
@@ -184,6 +177,7 @@ public final class TextMessageWorkerRuntime implements AutoCloseable {
         publish();
     }
 
+    @Override
     public void refreshProperties() {
         long currentGeneration;
         long sessionId;
@@ -206,6 +200,7 @@ public final class TextMessageWorkerRuntime implements AutoCloseable {
         );
     }
 
+    @Override
     public void addListener(Listener listener) {
         Objects.requireNonNull(listener, "listener");
         synchronized (lock) {
@@ -219,12 +214,14 @@ public final class TextMessageWorkerRuntime implements AutoCloseable {
         publishTo(listener);
     }
 
+    @Override
     public void removeListener(Listener listener) {
         if (listener != null) {
             listeners.remove(listener);
         }
     }
 
+    @Override
     public Snapshot snapshot() {
         synchronized (lock) {
             return new Snapshot(
@@ -236,6 +233,7 @@ public final class TextMessageWorkerRuntime implements AutoCloseable {
         }
     }
 
+    @Override
     public boolean isConnected() {
         synchronized (lock) {
             return state == State.TRANSPORT_CONNECTED
@@ -366,9 +364,7 @@ public final class TextMessageWorkerRuntime implements AutoCloseable {
             installTransport(
                     currentGeneration,
                     session,
-                    resolvedEndpoint,
-                    false,
-                    null
+                    resolvedEndpoint
             );
         } catch (Exception error) {
             handleControlFailure(
@@ -416,9 +412,7 @@ public final class TextMessageWorkerRuntime implements AutoCloseable {
     private void installTransport(
             long currentGeneration,
             Session session,
-            URI resolvedEndpoint,
-            boolean refresh,
-            WorkerPropertiesSnapshot propertiesToCommit
+            URI resolvedEndpoint
     ) {
         TextMessageClient rawClient = networkClientFactory.create(
                 Objects.requireNonNull(resolvedEndpoint, "endpointUri")
@@ -428,34 +422,19 @@ public final class TextMessageWorkerRuntime implements AutoCloseable {
                     "networkClientFactory returned null"
             );
         }
-        long connectionId = nextConnectionId();
-        ObservedTextMessageClient observed =
-                new ObservedTextMessageClient(
-                        rawClient,
-                        observer(
-                                currentGeneration,
-                                session.id(),
-                                connectionId
-                        )
-                );
         TextMessageWorkerTransport replacement =
                 new TextMessageWorkerTransport(
-                        observed,
+                        rawClient,
                         session.workerId(),
-                        definitions
+                        definitions,
+                        observer(currentGeneration, session.id())
                 );
-        TransportSlot replacementSlot = new TransportSlot(
-                connectionId,
-                resolvedEndpoint,
-                replacement
-        );
-        TransportSlot previous;
         synchronized (lock) {
             if (!isCurrentLocked(currentGeneration, session)) {
                 closeQuietly(replacement);
                 return;
             }
-            previous = session.replace(replacementSlot);
+            session.installTransport(resolvedEndpoint, replacement);
             endpointUri = resolvedEndpoint;
             state = State.CONNECTING;
             diagnosticMessage = null;
@@ -464,67 +443,28 @@ public final class TextMessageWorkerRuntime implements AutoCloseable {
         try {
             replacement.start();
         } catch (RuntimeException error) {
-            boolean restored = false;
             synchronized (lock) {
                 if (isCurrentLocked(currentGeneration, session)
-                        && session.current() == replacementSlot) {
-                    session.restore(previous);
-                    endpointUri = previous == null
-                            ? null
-                            : previous.endpointUri();
-                    state = previous != null
-                            && previous.transport().isConnected()
-                            ? State.TRANSPORT_CONNECTED
-                            : State.CONNECTING;
-                    diagnosticMessage = "Text message transport start failed: "
-                            + safeMessage(error);
-                    restored = previous != null;
+                        && session.transport() == replacement) {
+                    session.clearTransport(replacement);
                 }
             }
             closeQuietly(replacement);
-            if (!restored && previous != null) {
-                previous.close();
-            }
-            if (!refresh || !restored) {
-                fail(currentGeneration, safeMessage(error));
-            } else {
-                publish();
-            }
-            return;
-        }
-        boolean committed = false;
-        synchronized (lock) {
-            if (isCurrentLocked(currentGeneration, session)
-                    && session.current() == replacementSlot) {
-                if (propertiesToCommit != null) {
-                    session.properties(propertiesToCommit);
-                    activeProperties = propertiesToCommit;
-                }
-                diagnosticMessage = null;
-                committed = true;
-            }
-        }
-        if (previous != null) {
-            previous.close();
-        }
-        if (committed && propertiesToCommit != null) {
-            publish();
+            fail(currentGeneration, safeMessage(error));
         }
     }
 
-    private ObservedTextMessageClient.Observer observer(
+    private TextMessageWorkerTransport.Observer observer(
             long currentGeneration,
-            long sessionId,
-            long connectionId
+            long sessionId
     ) {
-        return new ObservedTextMessageClient.Observer() {
+        return new TextMessageWorkerTransport.Observer() {
             @Override
-            public void onOpen() {
+            public void onReady() {
                 execute(
-                        () -> connectionOpened(
+                        () -> transportReady(
                                 currentGeneration,
-                                sessionId,
-                                connectionId
+                                sessionId
                         ),
                         currentGeneration
                 );
@@ -533,10 +473,9 @@ public final class TextMessageWorkerRuntime implements AutoCloseable {
             @Override
             public void onDisconnected() {
                 execute(
-                        () -> connectionDisconnected(
+                        () -> transportDisconnected(
                                 currentGeneration,
-                                sessionId,
-                                connectionId
+                                sessionId
                         ),
                         currentGeneration
                 );
@@ -545,10 +484,9 @@ public final class TextMessageWorkerRuntime implements AutoCloseable {
             @Override
             public void onFailure(Throwable error) {
                 execute(
-                        () -> connectionFailed(
+                        () -> transportFailed(
                                 currentGeneration,
                                 sessionId,
-                                connectionId,
                                 error
                         ),
                         currentGeneration
@@ -557,15 +495,13 @@ public final class TextMessageWorkerRuntime implements AutoCloseable {
         };
     }
 
-    private void connectionOpened(
+    private void transportReady(
             long currentGeneration,
-            long sessionId,
-            long connectionId
+            long sessionId
     ) {
-        if (updateConnectionState(
+        if (updateTransportState(
                 currentGeneration,
                 sessionId,
-                connectionId,
                 State.TRANSPORT_CONNECTED,
                 null
         )) {
@@ -573,15 +509,13 @@ public final class TextMessageWorkerRuntime implements AutoCloseable {
         }
     }
 
-    private void connectionDisconnected(
+    private void transportDisconnected(
             long currentGeneration,
-            long sessionId,
-            long connectionId
+            long sessionId
     ) {
-        if (updateConnectionState(
+        if (updateTransportState(
                 currentGeneration,
                 sessionId,
-                connectionId,
                 State.CONNECTING,
                 null
         )) {
@@ -589,27 +523,24 @@ public final class TextMessageWorkerRuntime implements AutoCloseable {
         }
     }
 
-    private void connectionFailed(
+    private void transportFailed(
             long currentGeneration,
             long sessionId,
-            long connectionId,
             Throwable error
     ) {
-        if (updateConnectionState(
+        if (updateTransportState(
                 currentGeneration,
                 sessionId,
-                connectionId,
                 State.CONNECTING,
-                "Text message connection failed: " + safeMessage(error)
+                "Text-message transport failed: " + safeMessage(error)
         )) {
             publish();
         }
     }
 
-    private boolean updateConnectionState(
+    private boolean updateTransportState(
             long currentGeneration,
             long sessionId,
-            long connectionId,
             State next,
             String message
     ) {
@@ -618,13 +549,11 @@ public final class TextMessageWorkerRuntime implements AutoCloseable {
                     currentGeneration,
                     sessionId
             );
-            if (session == null
-                    || session.current() == null
-                    || session.current().connectionId() != connectionId) {
+            if (session == null || session.transport() == null) {
                 return false;
             }
             if (next == State.TRANSPORT_CONNECTED
-                    && !session.current().transport().isConnected()) {
+                    && !session.transport().isConnected()) {
                 return false;
             }
             state = next;
@@ -677,16 +606,23 @@ public final class TextMessageWorkerRuntime implements AutoCloseable {
                 if (current == null) {
                     return;
                 }
-                previousEndpoint = current.current().endpointUri();
+                previousEndpoint = current.endpointUri();
             }
             if (!previousEndpoint.equals(refreshedEndpoint)) {
-                installTransport(
-                        currentGeneration,
-                        session,
-                        refreshedEndpoint,
-                        true,
-                        refreshed
-                );
+                synchronized (lock) {
+                    Session current = currentSessionLocked(
+                            currentGeneration,
+                            sessionId
+                    );
+                    if (current == null) {
+                        return;
+                    }
+                    current.properties(refreshed);
+                    activeProperties = refreshed;
+                    diagnosticMessage = "Worker endpoint changed; "
+                            + "stop and start to use the new endpoint";
+                }
+                publish();
             } else {
                 synchronized (lock) {
                     Session current = currentSessionLocked(
@@ -819,12 +755,13 @@ public final class TextMessageWorkerRuntime implements AutoCloseable {
     }
 
     private void publish() {
+        Snapshot current = snapshot();
         if (Thread.currentThread() == lifecycleThread) {
-            publishNow();
+            publishNow(current);
             return;
         }
         try {
-            lifecycleExecutor.execute(this::publishNow);
+            lifecycleExecutor.execute(() -> publishNow(current));
         } catch (RejectedExecutionException ignored) {
             // Terminal close may reject a stale notification.
         }
@@ -842,8 +779,7 @@ public final class TextMessageWorkerRuntime implements AutoCloseable {
         }
     }
 
-    private void publishNow() {
-        Snapshot current = snapshot();
+    private void publishNow(Snapshot current) {
         for (Listener listener : listeners) {
             notifyListener(listener, current);
         }
@@ -861,15 +797,16 @@ public final class TextMessageWorkerRuntime implements AutoCloseable {
     }
 
     private void publishFinalAndShutdown() {
+        Snapshot current = snapshot();
         if (Thread.currentThread() == lifecycleThread) {
-            publishNow();
+            publishNow(current);
             listeners.clear();
             lifecycleExecutor.shutdownNow();
             return;
         }
         try {
             lifecycleExecutor.execute(() -> {
-                publishNow();
+                publishNow(current);
                 listeners.clear();
             });
         } catch (RejectedExecutionException ignored) {
@@ -882,12 +819,6 @@ public final class TextMessageWorkerRuntime implements AutoCloseable {
     private long nextSessionId() {
         synchronized (lock) {
             return ++nextSessionId;
-        }
-    }
-
-    private long nextConnectionId() {
-        synchronized (lock) {
-            return ++nextConnectionId;
         }
     }
 
@@ -967,49 +898,14 @@ public final class TextMessageWorkerRuntime implements AutoCloseable {
         }
     }
 
-    public static final class Snapshot {
-
-        private final State state;
-        private final String workerId;
-        private final URI endpointUri;
-        private final String diagnosticMessage;
-
-        private Snapshot(
-                State state,
-                String workerId,
-                URI endpointUri,
-                String diagnosticMessage
-        ) {
-            this.state = state;
-            this.workerId = workerId;
-            this.endpointUri = endpointUri;
-            this.diagnosticMessage = diagnosticMessage;
-        }
-
-        public State state() {
-            return state;
-        }
-
-        public String workerId() {
-            return workerId;
-        }
-
-        public URI endpointUri() {
-            return endpointUri;
-        }
-
-        public String diagnosticMessage() {
-            return diagnosticMessage;
-        }
-    }
-
     private static final class Session implements AutoCloseable {
 
         private final long id;
         private final WorkerControlClient control;
         private String workerId;
         private WorkerPropertiesSnapshot properties;
-        private TransportSlot current;
+        private URI endpointUri;
+        private TextMessageWorkerTransport transport;
         private boolean closed;
 
         private Session(long id, WorkerControlClient control) {
@@ -1041,26 +937,38 @@ public final class TextMessageWorkerRuntime implements AutoCloseable {
             properties = value;
         }
 
-        synchronized TransportSlot current() {
-            return current;
+        synchronized URI endpointUri() {
+            return endpointUri;
         }
 
-        synchronized TransportSlot replace(TransportSlot replacement) {
+        synchronized void installTransport(
+                URI value,
+                TextMessageWorkerTransport replacement
+        ) {
             if (closed) {
                 replacement.close();
-                return null;
+                return;
             }
-            TransportSlot previous = current;
-            current = replacement;
-            return previous;
-        }
-
-        synchronized void restore(TransportSlot previous) {
-            current = previous;
+            if (transport != null) {
+                throw new IllegalStateException(
+                        "Session already owns a text-message transport"
+                );
+            }
+            endpointUri = value;
+            transport = replacement;
         }
 
         synchronized TextMessageWorkerTransport transport() {
-            return current == null ? null : current.transport();
+            return transport;
+        }
+
+        synchronized void clearTransport(
+                TextMessageWorkerTransport expected
+        ) {
+            if (transport == expected) {
+                transport = null;
+                endpointUri = null;
+            }
         }
 
         @Override
@@ -1070,47 +978,14 @@ public final class TextMessageWorkerRuntime implements AutoCloseable {
             }
             closed = true;
             try {
-                if (current != null) {
-                    current.close();
+                if (transport != null) {
+                    transport.close();
                 }
             } finally {
-                current = null;
+                transport = null;
+                endpointUri = null;
                 control.close();
             }
-        }
-    }
-
-    private static final class TransportSlot implements AutoCloseable {
-
-        private final long connectionId;
-        private final URI endpointUri;
-        private final TextMessageWorkerTransport transport;
-
-        private TransportSlot(
-                long connectionId,
-                URI endpointUri,
-                TextMessageWorkerTransport transport
-        ) {
-            this.connectionId = connectionId;
-            this.endpointUri = endpointUri;
-            this.transport = transport;
-        }
-
-        long connectionId() {
-            return connectionId;
-        }
-
-        URI endpointUri() {
-            return endpointUri;
-        }
-
-        TextMessageWorkerTransport transport() {
-            return transport;
-        }
-
-        @Override
-        public void close() {
-            transport.close();
         }
     }
 }

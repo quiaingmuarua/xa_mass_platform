@@ -17,6 +17,12 @@ definitions, `TextMessageWorkerTransport`, pending result behavior, and startup
 state machine. Android does not implement a second Worker lifecycle or persist
 Endpoint URIs.
 
+`AndroidWorker` implements Core's `WorkerLifecycle`. Its state, snapshot, and
+listener types are the shared Core contract rather than Android mirrors. The
+Android facade remains final and owns only Android composition concerns such
+as Application Context, SharedPreferences Identity, and the process-local
+single-instance guard.
+
 ## Assembly
 
 ```java
@@ -77,10 +83,15 @@ lifecycle thread, not the main Looper. The module installs no Activity,
 Service, WorkManager, or process survival policy. An `Application`, `Service`,
 or another host owner decides when to invoke the lifecycle.
 
-Local observation states are:
+Closing the Android network Client marks it terminal and cancels the current
+socket before returning; HandlerThread cleanup is posted asynchronously, so a
+host lifecycle callback does not wait for a network timeout.
+
+Shared `WorkerLifecycle` observation states are:
 
 ```text
 STOPPED
+STARTING
 REGISTERING
 BINDING
 CONNECTING

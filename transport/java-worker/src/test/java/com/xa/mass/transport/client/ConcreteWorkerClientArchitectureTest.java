@@ -7,13 +7,15 @@ import com.xa.mass.transport.client.jdk.JdkLineSocketClient;
 import com.xa.mass.transport.client.okhttp.OkHttpTextWebSocketClient;
 import com.xa.mass.transport.client.okhttp.OkHttpWorkerControlClient;
 import com.xa.mass.transport.client.okhttp.OkHttpWorkerPointClient;
+
+import org.junit.jupiter.api.Test;
+
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.stream.Stream;
-import org.junit.jupiter.api.Test;
 
 class ConcreteWorkerClientArchitectureTest {
 
@@ -55,6 +57,7 @@ class ConcreteWorkerClientArchitectureTest {
             assertFalse(source.contains(forbidden), forbidden);
         }
         assertTrue(source.contains("public final class JavaWorker"));
+        assertTrue(source.contains("implements WorkerLifecycle"));
         assertTrue(source.contains("new TextMessageWorkerRuntime("));
         assertTrue(source.contains("WorkerTransportType.WEBSOCKET"));
         assertTrue(source.contains("new JdkLineSocketClient("));

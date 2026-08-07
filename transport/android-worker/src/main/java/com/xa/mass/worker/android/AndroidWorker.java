@@ -1,10 +1,13 @@
 package com.xa.mass.worker.android;
 
 import android.content.Context;
+
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.runtime.TextMessageWorkerRuntime;
+import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.worker.runtime.WorkerPropertiesProvider;
+
 import java.net.URI;
 import java.time.Duration;
 import java.util.Collection;
@@ -13,7 +16,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-public final class AndroidWorker implements AutoCloseable {
+public final class AndroidWorker implements WorkerLifecycle {
 
     private static final String CLIENT_WORKER_KEY = "clientWorkerKey";
     private static final Duration DEFAULT_REQUEST_TIMEOUT =
@@ -23,26 +26,9 @@ public final class AndroidWorker implements AutoCloseable {
     private static final Set<String> ACTIVE_COORDINATES =
             ConcurrentHashMap.newKeySet();
 
-    public enum State {
-        STOPPED,
-        REGISTERING,
-        BINDING,
-        CONNECTING,
-        TRANSPORT_CONNECTED,
-        ERROR,
-        CLOSED
-    }
-
-    public interface Listener {
-
-        void onSnapshot(Snapshot snapshot);
-    }
-
     private final Object lock = new Object();
     private final String processCoordinate;
     private final TextMessageWorkerRuntime runtime;
-    private final Map<Listener, TextMessageWorkerRuntime.Listener> listeners =
-            new ConcurrentHashMap<>();
     private boolean processLeaseHeld;
     private boolean closed;
 
@@ -66,6 +52,7 @@ public final class AndroidWorker implements AutoCloseable {
         );
     }
 
+    @Override
     public void start() {
         synchronized (lock) {
             if (closed) {
@@ -89,42 +76,35 @@ public final class AndroidWorker implements AutoCloseable {
         }
     }
 
+    @Override
     public void stop() {
         runtime.stop();
         releaseProcessLease();
     }
 
+    @Override
     public void refreshProperties() {
         runtime.refreshProperties();
     }
 
+    @Override
     public Snapshot snapshot() {
-        return snapshot(runtime.snapshot());
+        return runtime.snapshot();
     }
 
+    @Override
+    public boolean isConnected() {
+        return runtime.isConnected();
+    }
+
+    @Override
     public void addListener(Listener listener) {
-        if (listener == null) {
-            throw new IllegalArgumentException("listener must be present");
-        }
-        TextMessageWorkerRuntime.Listener bridge = current ->
-                listener.onSnapshot(snapshot(current));
-        TextMessageWorkerRuntime.Listener previous = listeners.putIfAbsent(
-                listener,
-                bridge
-        );
-        if (previous == null) {
-            runtime.addListener(bridge);
-        }
+        runtime.addListener(listener);
     }
 
+    @Override
     public void removeListener(Listener listener) {
-        if (listener == null) {
-            return;
-        }
-        TextMessageWorkerRuntime.Listener bridge = listeners.remove(listener);
-        if (bridge != null) {
-            runtime.removeListener(bridge);
-        }
+        runtime.removeListener(listener);
     }
 
     @Override
@@ -137,7 +117,6 @@ public final class AndroidWorker implements AutoCloseable {
         }
         runtime.close();
         releaseProcessLease();
-        listeners.clear();
     }
 
     private void releaseProcessLease() {
@@ -149,17 +128,6 @@ public final class AndroidWorker implements AutoCloseable {
         if (release) {
             ACTIVE_COORDINATES.remove(processCoordinate);
         }
-    }
-
-    private static Snapshot snapshot(
-            TextMessageWorkerRuntime.Snapshot current
-    ) {
-        return new Snapshot(
-                State.valueOf(current.state().name()),
-                current.workerId(),
-                current.endpointUri(),
-                current.diagnosticMessage()
-        );
     }
 
     public static final class Builder {
@@ -298,42 +266,6 @@ public final class AndroidWorker implements AutoCloseable {
                             + "\n" + workerGroupId,
                     runtime
             );
-        }
-    }
-
-    public static final class Snapshot {
-
-        private final State state;
-        private final String workerId;
-        private final URI endpointUri;
-        private final String diagnosticMessage;
-
-        private Snapshot(
-                State state,
-                String workerId,
-                URI endpointUri,
-                String diagnosticMessage
-        ) {
-            this.state = state;
-            this.workerId = workerId;
-            this.endpointUri = endpointUri;
-            this.diagnosticMessage = diagnosticMessage;
-        }
-
-        public State state() {
-            return state;
-        }
-
-        public String workerId() {
-            return workerId;
-        }
-
-        public URI endpointUri() {
-            return endpointUri;
-        }
-
-        public String diagnosticMessage() {
-            return diagnosticMessage;
         }
     }
 

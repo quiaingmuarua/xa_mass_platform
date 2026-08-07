@@ -3,14 +3,15 @@ package com.xa.mass.worker.android;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
+import org.junit.Test;
+import org.junit.runner.RunWith;
+import org.robolectric.RobolectricTestRunner;
+
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.stream.Stream;
-import org.junit.Test;
-import org.junit.runner.RunWith;
-import org.robolectric.RobolectricTestRunner;
 
 @RunWith(RobolectricTestRunner.class)
 public class AndroidWorkerArchitectureBoundaryTest {
@@ -47,7 +48,10 @@ public class AndroidWorkerArchitectureBoundaryTest {
         assertTrue(networkClient.contains("RECONNECT_SCHEDULED"));
         assertTrue(networkClient.contains("HandlerThread"));
         assertTrue(source.contains("public final class AndroidWorker"));
+        assertTrue(source.contains("implements WorkerLifecycle"));
         assertTrue(source.contains("new TextMessageWorkerRuntime("));
+        assertFalse(source.contains("public enum State"));
+        assertFalse(source.contains("public static final class Snapshot"));
         assertTrue(source.contains("WorkerTransportType.WEBSOCKET"));
         assertTrue(source.contains("SharedPreferences"));
         assertFalse(source.contains("AndroidWorkerEndpointCacheStore"));

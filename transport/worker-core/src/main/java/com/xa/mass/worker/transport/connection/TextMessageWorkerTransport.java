@@ -1,12 +1,13 @@
 package com.xa.mass.worker.transport.connection;
 
+import com.xa.mass.transport.client.TextMessageClient;
 import com.xa.mass.worker.execution.WorkerCommandDispatcher;
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
-import com.xa.mass.transport.client.TextMessageClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
+
 import java.util.Collection;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
@@ -14,13 +15,41 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 
+/**
+ * Owns the Worker Delivery protocol over one reconnecting text-message client:
+ * connection Bind, serial command execution, and one pending result.
+ */
 public final class TextMessageWorkerTransport
         implements AutoCloseable, TextMessageClient.Listener {
+
+    public interface Observer {
+
+        void onReady();
+
+        void onDisconnected();
+
+        void onFailure(Throwable error);
+    }
+
+    private static final Observer NOOP_OBSERVER = new Observer() {
+        @Override
+        public void onReady() {
+        }
+
+        @Override
+        public void onDisconnected() {
+        }
+
+        @Override
+        public void onFailure(Throwable error) {
+        }
+    };
 
     private final TextMessageClient client;
     private final WorkerConnectionBind bind;
     private final WorkerDeliveryCodec codec = new WorkerDeliveryCodec();
     private final WorkerCommandExecutor commandExecutor;
+    private final Observer observer;
     private final ExecutorService execution;
     private final CountDownLatch stopped = new CountDownLatch(1);
 
@@ -38,7 +67,22 @@ public final class TextMessageWorkerTransport
         this(
                 client,
                 workerId,
-                new WorkerCommandDispatcher(definitions)
+                new WorkerCommandDispatcher(definitions),
+                NOOP_OBSERVER
+        );
+    }
+
+    public TextMessageWorkerTransport(
+            TextMessageClient client,
+            String workerId,
+            Collection<? extends WorkerEventDefinition<?>> definitions,
+            Observer observer
+    ) {
+        this(
+                client,
+                workerId,
+                new WorkerCommandDispatcher(definitions),
+                observer
         );
     }
 
@@ -46,6 +90,15 @@ public final class TextMessageWorkerTransport
             TextMessageClient client,
             String workerId,
             WorkerCommandExecutor commandExecutor
+    ) {
+        this(client, workerId, commandExecutor, NOOP_OBSERVER);
+    }
+
+    public TextMessageWorkerTransport(
+            TextMessageClient client,
+            String workerId,
+            WorkerCommandExecutor commandExecutor,
+            Observer observer
     ) {
         if (client == null) {
             throw new IllegalArgumentException(
@@ -57,9 +110,15 @@ public final class TextMessageWorkerTransport
                     "commandExecutor must be present"
             );
         }
+        if (observer == null) {
+            throw new IllegalArgumentException(
+                    "observer must be present"
+            );
+        }
         this.client = client;
         this.bind = new WorkerConnectionBind(workerId);
         this.commandExecutor = commandExecutor;
+        this.observer = observer;
         execution = Executors.newSingleThreadExecutor(runnable -> {
             Thread thread = new Thread(
                     runnable,
@@ -99,6 +158,7 @@ public final class TextMessageWorkerTransport
 
     @Override
     public void onOpen() {
+        boolean ready;
         synchronized (this) {
             if (!running || closed) {
                 client.closeCurrent(TextMessageClient.CloseReason.NORMAL);
@@ -106,6 +166,10 @@ public final class TextMessageWorkerTransport
             }
             bindSent = false;
             sendBind();
+            ready = bindSent && client.isConnected();
+        }
+        if (ready) {
+            notifyReady();
         }
     }
 
@@ -136,13 +200,19 @@ public final class TextMessageWorkerTransport
     }
 
     @Override
-    public synchronized void onDisconnected() {
-        bindSent = false;
+    public void onDisconnected() {
+        synchronized (this) {
+            bindSent = false;
+        }
+        notifyDisconnected();
     }
 
     @Override
-    public synchronized void onFailure(Throwable error) {
-        bindSent = false;
+    public void onFailure(Throwable error) {
+        synchronized (this) {
+            bindSent = false;
+        }
+        notifyFailure(error);
     }
 
     @Override
@@ -229,5 +299,29 @@ public final class TextMessageWorkerTransport
     private void closeProtocolError() {
         bindSent = false;
         client.closeCurrent(TextMessageClient.CloseReason.PROTOCOL_ERROR);
+    }
+
+    private void notifyReady() {
+        try {
+            observer.onReady();
+        } catch (RuntimeException ignored) {
+            // Host observation cannot interrupt Worker protocol handling.
+        }
+    }
+
+    private void notifyDisconnected() {
+        try {
+            observer.onDisconnected();
+        } catch (RuntimeException ignored) {
+            // Host observation cannot interrupt Worker protocol handling.
+        }
+    }
+
+    private void notifyFailure(Throwable error) {
+        try {
+            observer.onFailure(error);
+        } catch (RuntimeException ignored) {
+            // Host observation cannot interrupt Worker protocol handling.
+        }
     }
 }

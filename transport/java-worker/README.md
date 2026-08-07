@@ -61,12 +61,12 @@ key.
 `WorkerTransportType.SOCKET` selects `JdkLineSocketClient`. `POLLING` is
 rejected because its request-response lifecycle is assembled separately.
 
-`JavaWorker` delegates lifecycle to Core's `TextMessageWorkerRuntime`: a missing
-Worker ID is registered and saved, every `start()` performs Endpoint Bind, and
-the returned URI is used for that session. Temporary disconnects are handled
-by the selected concrete Client against the same session URI and do not repeat
-Bind. `stop()` preserves identity; `refreshProperties()` rebinds only a changed
-complete snapshot.
+`JavaWorker` implements Core's `WorkerLifecycle` and delegates its mechanism to
+`TextMessageWorkerRuntime`: a missing Worker ID is registered and saved, every
+`start()` performs Endpoint Bind, and the returned URI is used for that
+session. Temporary disconnects are handled by the selected concrete Client
+against the same session URI and do not repeat Bind. `stop()` preserves
+identity; `refreshProperties()` rebinds only a changed complete snapshot.
 
 ## Lower-level Composition
 

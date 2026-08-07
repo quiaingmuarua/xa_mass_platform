@@ -3,13 +3,15 @@ package com.xa.mass.worker.android;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Looper;
+
 import com.xa.mass.transport.client.TextMessageClient;
+
 import java.net.URI;
 import java.time.Duration;
 import java.util.Objects;
-import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
+
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -42,7 +44,6 @@ public final class AndroidOkHttpTextWebSocketClient
     private final Object lifecycleLock = new Object();
     private final NetworkResources networkResources;
     private final URI socketUri;
-    private final Duration requestTimeout;
     private final Duration reconnectInterval;
     private final AtomicReference<ActiveConnection> activeConnection =
             new AtomicReference<>();
@@ -82,7 +83,7 @@ public final class AndroidOkHttpTextWebSocketClient
                 "networkResources"
         );
         this.socketUri = requireWebSocketUri(socketUri);
-        this.requestTimeout = requirePositive(
+        requirePositive(
                 requestTimeout,
                 "requestTimeout"
         );
@@ -167,39 +168,35 @@ public final class AndroidOkHttpTextWebSocketClient
             closeRequested = true;
             target = handler;
             thread = handlerThread;
+            handler = null;
+            handlerThread = null;
         }
 
+        visibleState = State.CLOSED;
+        ActiveConnection active = activeConnection.getAndSet(null);
+        if (active != null) {
+            active.socket.cancel();
+        }
+        networkResources.close.run();
+
         if (target == null || thread == null) {
-            visibleState = State.CLOSED;
-            activeConnection.set(null);
-            networkResources.close.run();
             return;
         }
 
+        target.removeCallbacksAndMessages(null);
         if (Looper.myLooper() == thread.getLooper()) {
             closeOnHandlerThread();
             thread.quitSafely();
         } else {
-            CountDownLatch stopped = new CountDownLatch(1);
             boolean posted = target.post(() -> {
-                try {
-                    closeOnHandlerThread();
-                } finally {
-                    stopped.countDown();
-                }
+                closeOnHandlerThread();
+                thread.quitSafely();
             });
-            if (!posted || !await(stopped, requestTimeout)) {
+            if (!posted) {
                 forceCloseOutsideHandlerThread();
+                thread.quitSafely();
             }
-            thread.quitSafely();
-            join(thread, requestTimeout);
         }
-
-        synchronized (lifecycleLock) {
-            handler = null;
-            handlerThread = null;
-        }
-        networkResources.close.run();
     }
 
     private void startOnHandlerThread(Listener listener) {
@@ -374,6 +371,8 @@ public final class AndroidOkHttpTextWebSocketClient
         if (active != null) {
             active.socket.cancel();
         }
+        currentAttempt = null;
+        listener = null;
         visibleState = State.CLOSED;
     }
 
@@ -598,21 +597,6 @@ public final class AndroidOkHttpTextWebSocketClient
         return value;
     }
 
-    private static boolean await(
-            CountDownLatch latch,
-            Duration timeout
-    ) {
-        try {
-            return latch.await(
-                    timeout.toMillis(),
-                    TimeUnit.MILLISECONDS
-            );
-        } catch (InterruptedException error) {
-            Thread.currentThread().interrupt();
-            return false;
-        }
-    }
-
     private static int closeCode(CloseReason reason) {
         switch (reason) {
             case NORMAL:
@@ -639,14 +623,4 @@ public final class AndroidOkHttpTextWebSocketClient
         }
     }
 
-    private static void join(
-            HandlerThread thread,
-            Duration timeout
-    ) {
-        try {
-            thread.join(timeout.toMillis());
-        } catch (InterruptedException error) {
-            Thread.currentThread().interrupt();
-        }
-    }
 }

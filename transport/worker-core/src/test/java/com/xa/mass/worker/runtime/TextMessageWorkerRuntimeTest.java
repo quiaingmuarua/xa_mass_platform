@@ -13,6 +13,10 @@ import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
 import com.xa.mass.worker.execution.WorkerEventDefinition;
 import com.xa.mass.worker.execution.WorkerEventParameterResolvers;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.Test;
+
 import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
@@ -24,8 +28,6 @@ import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.Test;
 
 class TextMessageWorkerRuntimeTest {
 
@@ -63,7 +65,7 @@ class TextMessageWorkerRuntimeTest {
         FakeTextMessageClient client = networks.awaitClient(0);
         client.open();
         await(() -> runtime.snapshot().state()
-                == TextMessageWorkerRuntime.State.TRANSPORT_CONNECTED);
+                == WorkerLifecycle.State.TRANSPORT_CONNECTED);
 
         assertEquals(1, control.registerCalls);
         assertEquals(1, control.bindCalls);
@@ -90,6 +92,8 @@ class TextMessageWorkerRuntimeTest {
         MutableIdentityStore identity = new MutableIdentityStore(WORKER_ID);
         FakeControlClient control = new FakeControlClient();
         FakeNetworkFactory networks = new FakeNetworkFactory();
+        List<WorkerLifecycle.State> states =
+                new CopyOnWriteArrayList<>();
         runtime = runtime(
                 WorkerTransportType.SOCKET,
                 identity,
@@ -97,11 +101,17 @@ class TextMessageWorkerRuntimeTest {
                 control,
                 networks
         );
+        runtime.addListener(snapshot -> states.add(snapshot.state()));
 
         runtime.start();
         networks.awaitClient(0);
+        await(() -> states.contains(WorkerLifecycle.State.CONNECTING));
 
         assertEquals(WorkerTransportType.SOCKET, control.lastTransportType);
+        assertTrue(states.contains(WorkerLifecycle.State.STARTING));
+        assertFalse(states.contains(
+                WorkerLifecycle.State.REGISTERING
+        ));
     }
 
     @Test
@@ -125,12 +135,18 @@ class TextMessageWorkerRuntimeTest {
         FakeNetworkFactory networks = new FakeNetworkFactory();
         runtime = runtime(identity, TextMessageWorkerRuntimeTest::properties,
                 control, networks);
+        List<WorkerLifecycle.State> states =
+                new CopyOnWriteArrayList<>();
+        runtime.addListener(snapshot -> states.add(snapshot.state()));
 
         runtime.start();
         networks.awaitClient(0).open();
         await(runtime::isConnected);
         runtime.stop();
-        assertEquals(TextMessageWorkerRuntime.State.STOPPED,
+        await(() -> !states.isEmpty()
+                && states.get(states.size() - 1)
+                == WorkerLifecycle.State.STOPPED);
+        assertEquals(WorkerLifecycle.State.STOPPED,
                 runtime.snapshot().state());
 
         runtime.start();
@@ -211,7 +227,7 @@ class TextMessageWorkerRuntimeTest {
         await(runtime::isConnected);
         client.disconnect();
         await(() -> runtime.snapshot().state()
-                == TextMessageWorkerRuntime.State.CONNECTING);
+                == WorkerLifecycle.State.CONNECTING);
         client.open();
         await(runtime::isConnected);
 
@@ -240,13 +256,13 @@ class TextMessageWorkerRuntimeTest {
 
         assertFalse(runtime.isConnected());
         assertEquals(
-                TextMessageWorkerRuntime.State.CONNECTING,
+                WorkerLifecycle.State.CONNECTING,
                 runtime.snapshot().state()
         );
     }
 
     @Test
-    void refreshNoopsThenRebindsAndReplacesOnlyForChangedUri()
+    void refreshRebindsPropertiesWithoutHotSwappingEndpoint()
             throws Exception {
         MutableIdentityStore identity = new MutableIdentityStore(WORKER_ID);
         FakeControlClient control = new FakeControlClient();
@@ -278,11 +294,19 @@ class TextMessageWorkerRuntimeTest {
                 "version", 3
         ));
         runtime.refreshProperties();
-        FakeTextMessageClient second = networks.awaitClient(1);
-        second.open();
-        await(runtime::isConnected);
-        assertTrue(first.closed);
-        assertEquals(ENDPOINT_TWO, runtime.snapshot().endpointUri());
+        await(() -> control.bindCalls == 3);
+        await(() -> runtime.snapshot().diagnosticMessage() != null);
+        assertEquals(1, networks.clients.size());
+        assertFalse(first.closed);
+        assertTrue(runtime.isConnected());
+        assertEquals(ENDPOINT_ONE, runtime.snapshot().endpointUri());
+        assertTrue(runtime.snapshot().diagnosticMessage().contains(
+                "stop and start"
+        ));
+
+        runtime.refreshProperties();
+        Thread.sleep(30);
+        assertEquals(3, control.bindCalls);
 
         control.nextBindFailure = new WorkerException(
                 WorkerErrorCode.WORKER_CONTROL_REJECTED,
@@ -295,50 +319,12 @@ class TextMessageWorkerRuntimeTest {
                 "version", 4
         ));
         runtime.refreshProperties();
-        await(() -> runtime.snapshot().diagnosticMessage() != null);
-        assertEquals(2, networks.clients.size());
-        assertFalse(second.closed);
-        assertEquals(ENDPOINT_TWO, runtime.snapshot().endpointUri());
-    }
-
-    @Test
-    void refreshRetriesSameSnapshotWhenReplacementCannotStart()
-            throws Exception {
-        MutableIdentityStore identity = new MutableIdentityStore(WORKER_ID);
-        FakeControlClient control = new FakeControlClient();
-        FakeNetworkFactory networks = new FakeNetworkFactory();
-        AtomicReference<Map<String, Object>> current =
-                new AtomicReference<>(properties());
-        runtime = runtime(identity, current::get, control, networks);
-        runtime.start();
-        FakeTextMessageClient first = networks.awaitClient(0);
-        first.open();
-        await(runtime::isConnected);
-
-        control.endpoint = ENDPOINT_TWO;
-        current.set(Map.of(
-                "clientWorkerKey", "installation-1",
-                "version", 2
+        await(() -> runtime.snapshot().diagnosticMessage().contains(
+                "refresh failed"
         ));
-        networks.nextStartFailure = new IllegalStateException(
-                "cannot start replacement"
-        );
-        runtime.refreshProperties();
-
-        networks.awaitClient(1);
-        await(() -> runtime.snapshot().diagnosticMessage() != null);
+        assertEquals(1, networks.clients.size());
         assertFalse(first.closed);
         assertEquals(ENDPOINT_ONE, runtime.snapshot().endpointUri());
-        assertEquals(2, control.bindCalls);
-
-        runtime.refreshProperties();
-        FakeTextMessageClient replacement = networks.awaitClient(2);
-        replacement.open();
-        await(runtime::isConnected);
-
-        assertEquals(3, control.bindCalls);
-        assertTrue(first.closed);
-        assertEquals(ENDPOINT_TWO, runtime.snapshot().endpointUri());
     }
 
     @Test
@@ -354,7 +340,7 @@ class TextMessageWorkerRuntimeTest {
 
         runtime.start();
         await(() -> runtime.snapshot().state()
-                == TextMessageWorkerRuntime.State.ERROR);
+                == WorkerLifecycle.State.ERROR);
         assertEquals(0, control.registerCalls);
         assertTrue(networks.clients.isEmpty());
         runtime.close();
@@ -367,7 +353,7 @@ class TextMessageWorkerRuntimeTest {
         );
         runtime.start();
         await(() -> runtime.snapshot().state()
-                == TextMessageWorkerRuntime.State.ERROR);
+                == WorkerLifecycle.State.ERROR);
         assertEquals(0, control.bindCalls);
     }
 
@@ -540,18 +526,14 @@ class TextMessageWorkerRuntimeTest {
 
         private final List<FakeTextMessageClient> clients =
                 new CopyOnWriteArrayList<>();
-        private volatile RuntimeException nextStartFailure;
         private volatile boolean nextSendAccepted = true;
 
         @Override
         public TextMessageClient create(URI endpointUri) {
             FakeTextMessageClient client =
                     new FakeTextMessageClient(
-                            endpointUri,
-                            nextStartFailure,
                             nextSendAccepted
                     );
-            nextStartFailure = null;
             nextSendAccepted = true;
             clients.add(client);
             return client;
@@ -567,29 +549,20 @@ class TextMessageWorkerRuntimeTest {
     private static final class FakeTextMessageClient
             implements TextMessageClient {
 
-        private final URI endpointUri;
-        private final RuntimeException startFailure;
         private final boolean sendAccepted;
         private Listener listener;
         private volatile boolean connected;
         private volatile boolean closed;
 
         private FakeTextMessageClient(
-                URI endpointUri,
-                RuntimeException startFailure,
                 boolean sendAccepted
         ) {
-            this.endpointUri = endpointUri;
-            this.startFailure = startFailure;
             this.sendAccepted = sendAccepted;
         }
 
         @Override
         public void start(Listener value) {
             listener = value;
-            if (startFailure != null) {
-                throw startFailure;
-            }
         }
 
         @Override

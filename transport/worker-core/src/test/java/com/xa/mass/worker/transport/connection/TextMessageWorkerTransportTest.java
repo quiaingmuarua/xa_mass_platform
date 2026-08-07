@@ -6,22 +6,25 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.xa.mass.transport.client.TextMessageClient;
 import com.xa.mass.worker.error.WorkerErrorCode;
 import com.xa.mass.worker.error.WorkerException;
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
-import com.xa.mass.transport.client.TextMessageClient;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryCodec;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerConnectionBind;
 import com.xa.mass.workerdelivery.protocol.WorkerDeliveryProtocol.WorkerResult;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
-import org.junit.jupiter.api.AfterEach;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
 
 class TextMessageWorkerTransportTest {
 
@@ -34,6 +37,7 @@ class TextMessageWorkerTransportTest {
             new FakeTextMessageClient();
     private final AtomicReference<String> executedCommand =
             new AtomicReference<>();
+    private final RecordingObserver observer = new RecordingObserver();
     private TextMessageWorkerTransport transport;
 
     @BeforeEach
@@ -53,7 +57,8 @@ class TextMessageWorkerTransportTest {
         transport = new TextMessageWorkerTransport(
                 client,
                 COMMAND_ID,
-                executor
+                executor,
+                observer
         );
         transport.start();
     }
@@ -69,6 +74,7 @@ class TextMessageWorkerTransportTest {
         client.open();
 
         assertTrue(transport.isConnected());
+        assertEquals(1, observer.ready.get());
         assertEquals(
                 bind(),
                 codec.decodeWorkerConnectionBind(client.sent.get(0))
@@ -139,6 +145,18 @@ class TextMessageWorkerTransportTest {
                 client.lastCloseReason
         );
         assertFalse(transport.isConnected());
+        assertEquals(0, observer.ready.get());
+        assertEquals(1, observer.disconnected.get());
+    }
+
+    @Test
+    void failureIsReportedByTheTransportBoundary() {
+        IllegalStateException failure = new IllegalStateException("offline");
+
+        client.failure(failure);
+
+        assertEquals(1, observer.failures.get());
+        assertEquals(failure, observer.lastFailure.get());
     }
 
     @Test
@@ -285,6 +303,37 @@ class TextMessageWorkerTransportTest {
 
         private void message(String message) {
             listener.onMessage(message);
+        }
+
+        private void failure(Throwable error) {
+            connected = false;
+            listener.onFailure(error);
+        }
+    }
+
+    private static final class RecordingObserver
+            implements TextMessageWorkerTransport.Observer {
+
+        private final AtomicInteger ready = new AtomicInteger();
+        private final AtomicInteger disconnected = new AtomicInteger();
+        private final AtomicInteger failures = new AtomicInteger();
+        private final AtomicReference<Throwable> lastFailure =
+                new AtomicReference<>();
+
+        @Override
+        public void onReady() {
+            ready.incrementAndGet();
+        }
+
+        @Override
+        public void onDisconnected() {
+            disconnected.incrementAndGet();
+        }
+
+        @Override
+        public void onFailure(Throwable error) {
+            failures.incrementAndGet();
+            lastFailure.set(error);
         }
     }
 }

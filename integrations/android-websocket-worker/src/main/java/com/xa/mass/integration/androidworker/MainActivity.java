@@ -9,7 +9,8 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
-import com.xa.mass.worker.android.AndroidWorker;
+
+import com.xa.mass.worker.runtime.WorkerLifecycle;
 
 public final class MainActivity extends Activity {
 
@@ -97,13 +98,13 @@ public final class MainActivity extends Activity {
                 ? View.GONE
                 : View.VISIBLE);
         boolean restartable = snapshot.state()
-                == AndroidWorker.State.STOPPED
+                == WorkerLifecycle.State.STOPPED
                 || snapshot.state()
-                == AndroidWorker.State.ERROR;
+                == WorkerLifecycle.State.ERROR;
         connectButton.setEnabled(restartable);
         disconnectButton.setEnabled(!restartable
                 && snapshot.state()
-                != AndroidWorker.State.CLOSED);
+                != WorkerLifecycle.State.CLOSED);
     }
 
     private void copyWorkerId() {

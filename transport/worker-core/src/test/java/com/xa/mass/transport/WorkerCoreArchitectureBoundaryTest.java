@@ -8,8 +8,13 @@ import com.xa.mass.transport.client.WorkerControlClient;
 import com.xa.mass.transport.client.WorkerPointClient;
 import com.xa.mass.transport.client.WorkerTransportType;
 import com.xa.mass.worker.execution.WorkerCommandExecutor;
+import com.xa.mass.worker.runtime.TextMessageWorkerRuntime;
+import com.xa.mass.worker.runtime.WorkerLifecycle;
 import com.xa.mass.worker.transport.connection.TextMessageWorkerTransport;
 import com.xa.mass.worker.transport.polling.PollingWorkerTransport;
+
+import org.junit.jupiter.api.Test;
+
 import java.io.IOException;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
@@ -18,7 +23,6 @@ import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.stream.Stream;
-import org.junit.jupiter.api.Test;
 
 class WorkerCoreArchitectureBoundaryTest {
 
@@ -39,6 +43,7 @@ class WorkerCoreArchitectureBoundaryTest {
         assertTrue(build.contains("options.release = 11"));
         assertFalse(build.contains("foundation_jvm"));
         assertFalse(source.contains("com.xa.mass.foundation"));
+        assertFalse(source.contains("ObservedText" + "MessageClient"));
 
         for (String forbidden : new String[]{
                 "okhttp3",
@@ -138,6 +143,31 @@ class WorkerCoreArchitectureBoundaryTest {
     }
 
     @Test
+    void assembledWorkersShareOneLifecycleAndObservationContract() {
+        assertTrue(WorkerLifecycle.class.isAssignableFrom(
+                TextMessageWorkerRuntime.class
+        ));
+        assertTrue(hasMethod(WorkerLifecycle.class, "start"));
+        assertTrue(hasMethod(WorkerLifecycle.class, "stop"));
+        assertTrue(hasMethod(
+                WorkerLifecycle.class,
+                "refreshProperties"
+        ));
+        assertTrue(hasMethod(WorkerLifecycle.class, "snapshot"));
+        assertTrue(hasMethod(WorkerLifecycle.class, "isConnected"));
+        assertTrue(hasMethod(
+                WorkerLifecycle.class,
+                "addListener",
+                WorkerLifecycle.Listener.class
+        ));
+        assertTrue(hasMethod(
+                WorkerLifecycle.class,
+                "removeListener",
+                WorkerLifecycle.Listener.class
+        ));
+    }
+
+    @Test
     void workerTransportStateMachinesOnlyAcceptCoreSeams()
             throws Exception {
         assertConstructor(
@@ -163,6 +193,13 @@ class WorkerCoreArchitectureBoundaryTest {
                 TextMessageClient.class,
                 String.class,
                 WorkerCommandExecutor.class
+        );
+        assertConstructor(
+                TextMessageWorkerTransport.class,
+                TextMessageClient.class,
+                String.class,
+                Collection.class,
+                TextMessageWorkerTransport.Observer.class
         );
 
         for (Class<?> transport : new Class<?>[]{
